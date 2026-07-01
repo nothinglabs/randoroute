@@ -14,12 +14,14 @@
  */
 
 /* ---------------------------------------------------------------- palette */
-// Okabe-Ito colorblind-safe. 1 = safest .. 4 = avoid, 0 = unknown.
+// Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
+// the common types of color vision deficiency because it avoids green and
+// varies in lightness as well as hue. 1 = safest .. 4 = avoid, 0 = unknown.
 const COLORS = {
-  1: '#009E73',
-  2: '#56B4E9',
-  3: '#E69F00',
-  4: '#D55E00',
+  1: '#2c7bb6', // blue
+  2: '#abd9e9', // pale blue
+  3: '#fdae61', // pale orange
+  4: '#d7191c', // red
   0: '#999999', // unknown / no data
 };
 const LEGEND = [
@@ -370,8 +372,8 @@ function buildDisplayPanel() {
     <input type="checkbox" id="d-passFail" ${display.passFail ? 'checked' : ''}>
     <label for="d-passFail">Pass/fail mode</label>
     <div class="hint" style="width:100%">
-      Colorblind-friendly: show only roads that meet your criteria, in green.
-      Everything else is hidden. Updates live with the riding rules.
+      Show only roads that meet your criteria, in green — a simple go/no-go
+      view. Everything else is hidden. Updates live with the riding rules.
     </div>`;
   host.appendChild(wrap);
   wrap.querySelector('input').addEventListener('change', (e) => {
