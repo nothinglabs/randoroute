@@ -185,9 +185,28 @@ function scheduleRescore() {
   });
 }
 
+const FAIL_COLOR = '#9aa0a6';
+const failId = (src) => src.id + '__fail';
+
 function ensureLayer(src) {
   if (map.getLayer(src.id)) return;
   map.addSource(src.id, { type: 'geojson', data: src.fc });
+  // Fail overlay: roads we HAVE data for but that don't meet the criteria.
+  // Added first so the green "pass" layer draws on top where they overlap.
+  // Only visible in pass/fail mode (see updateVisibility).
+  map.addLayer({
+    id: failId(src),
+    type: 'line',
+    source: src.id,
+    layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
+    paint: {
+      'line-color': FAIL_COLOR,
+      'line-dasharray': [2, 2],
+      'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.4, 14, 2.6],
+      'line-opacity': 0.65,
+    },
+    filter: ['all', ['>=', ['get', 'level'], display.passMax + 1], ['<=', ['get', 'level'], 4]],
+  });
   map.addLayer({
     id: src.id,
     type: 'line',
@@ -200,32 +219,36 @@ function ensureLayer(src) {
     },
   });
   applyDisplayMode(src);
-  wireInspect(src.id);
+  attachHover(src, src.id);
+  attachHover(src, failId(src));
 }
 
-// Switch a layer between the color-ramp view and the green pass/fail view.
-// In pass/fail mode only features with 1 <= level <= passMax are shown.
+// Main layer visible when the source is on; fail overlay only in pass/fail mode.
+function updateVisibility(src) {
+  if (map.getLayer(src.id))
+    map.setLayoutProperty(src.id, 'visibility', src.enabled ? 'visible' : 'none');
+  if (map.getLayer(failId(src)))
+    map.setLayoutProperty(failId(src), 'visibility', src.enabled && display.passFail ? 'visible' : 'none');
+}
+
+// Switch a source between the color-ramp view and the green pass/fail view
+// (with its gray-dashed fail overlay).
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
   if (display.passFail) {
-    map.setFilter(src.id, [
-      'all',
-      ['>=', ['get', 'level'], 1],
-      ['<=', ['get', 'level'], display.passMax],
-    ]);
+    map.setFilter(src.id, ['all', ['>=', ['get', 'level'], 1], ['<=', ['get', 'level'], display.passMax]]);
     map.setPaintProperty(src.id, 'line-color', PASS_COLOR);
     map.setPaintProperty(src.id, 'line-opacity', 0.95);
-    map.setPaintProperty(src.id, 'line-width', [
-      'interpolate', ['linear'], ['zoom'], 6, 1.4, 10, 2.6, 14, 5,
-    ]);
+    map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.4, 10, 2.6, 14, 5]);
   } else {
     map.setFilter(src.id, null);
     map.setPaintProperty(src.id, 'line-color', colorExpr());
     map.setPaintProperty(src.id, 'line-opacity', 0.9);
-    map.setPaintProperty(src.id, 'line-width', [
-      'interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7,
-    ]);
+    map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7]);
   }
+  if (map.getLayer(failId(src)))
+    map.setFilter(failId(src), ['all', ['>=', ['get', 'level'], display.passMax + 1], ['<=', ['get', 'level'], 4]]);
+  updateVisibility(src);
 }
 
 function applyDisplayModeAll() {
@@ -253,25 +276,62 @@ async function loadSource(src) {
 
 function setSourceVisible(src, on) {
   src.enabled = on;
-  if (on) {
-    if (!src.fc) loadSource(src);
-    else if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', 'visible');
-    else ensureLayer(src);
-  } else if (map.getLayer(src.id)) {
-    map.setLayoutProperty(src.id, 'visibility', 'none');
-  }
+  if (on && !src.fc) return loadSource(src);
+  if (on && !map.getLayer(src.id)) return ensureLayer(src);
+  updateVisibility(src);
 }
 
 /* ---------------------------------------------- hover/click readout */
 const readoutEl = document.getElementById('readout');
-function wireInspect(layerId) {
+const LEVEL_NAME = { 0: 'unknown', 1: 'Low', 2: 'Moderate', 3: 'High', 4: 'Very high' };
+
+// Plain-language reason for a segment's effective level under the current rules.
+// Mirrors effectiveLevel()'s branches so the readout explains exactly why.
+function explainLevel(n) {
+  if (n.prohibited) return 'Bikes are not permitted here.';
+  if (n.limited_access && !rules.allowFreeways)
+    return 'Limited-access highway — turn on “Allow freeways” to include it.';
+  const adequate =
+    (n.shoulder_width != null && n.shoulder_width >= rules.minShoulder) || n.good_facility;
+  const spd = n.maxspeed_num;
+  if (spd == null) {
+    if (n.shoulder_width == null && !n.good_facility)
+      return n.baseScore == null
+        ? 'No speed or shoulder data for this segment.'
+        : `No speed data; falling back to WSDOT rating (BLTS ${n.baseScore}).`;
+    return adequate
+      ? 'No speed data; shoulder/facility meets your minimum.'
+      : `No speed data; shoulder under your ${rules.minShoulder} ft minimum.`;
+  }
+  if (spd <= rules.freeMaxSpeed)
+    return `${spd} mph ≤ your “free” ${rules.freeMaxSpeed} mph — comfortable regardless of shoulder.`;
+  if (adequate) {
+    const via = n.good_facility
+      ? 'has a bike facility'
+      : `${n.shoulder_width} ft shoulder ≥ your ${rules.minShoulder} ft`;
+    return `${spd} mph, but ${via} — moderate.`;
+  }
+  const sh = n.shoulder_width == null ? 'no shoulder data' : `${n.shoulder_width} ft shoulder < your ${rules.minShoulder} ft`;
+  if (spd <= rules.upperMaxSpeed)
+    return `${spd} mph over your “free” ${rules.freeMaxSpeed} mph, ${sh} — high stress.`;
+  if (rules.noUpperLimit)
+    return `${spd} mph over your upper ${rules.upperMaxSpeed} mph, ${sh} (hard cap off) — high stress.`;
+  return `${spd} mph over your upper max ${rules.upperMaxSpeed} mph, ${sh} — avoid.`;
+}
+
+function attachHover(src, layerId) {
   map.on('mousemove', layerId, (e) => {
     map.getCanvas().style.cursor = 'pointer';
     const p = e.features[0].properties;
+    const n = src.scorer(p);            // recompute normalized props from this feature
+    const lvl = p.level;
+    const verdict = lvl === 0 ? 'no data' : lvl <= display.passMax ? '✓ Pass' : '✗ Fail';
     const rows = [
       ['Route', p.RouteIdentifier],
-      ['BLTS (raw)', p.LTS_Bicycle],
-      ['Effective', p.level == 0 ? 'unknown' : p.level],
+      ['Result', verdict],
+      ['Stress', lvl === 0 ? 'unknown' : `${lvl} — ${LEVEL_NAME[lvl]}`],
+      ['Why', explainLevel(n)],
+      ['BLTS (WSDOT)', p.LTS_Bicycle],
       ['Speed limit', p.SpeedLimit != null ? p.SpeedLimit + ' mph' : null],
       ['Lanes', p.LaneCount],
       ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
@@ -371,8 +431,8 @@ function buildDisplayPanel() {
     <input type="checkbox" id="d-passFail" ${display.passFail ? 'checked' : ''}>
     <label for="d-passFail">Pass/fail mode</label>
     <div class="hint" style="width:100%">
-      Show only roads that meet your criteria, in green — a simple go/no-go
-      view. Everything else is hidden. Updates live with the riding rules.
+      Green = meets your criteria. Roads with data that don't qualify show as
+      gray dashed (hover any road for why). Updates live with the riding rules.
     </div>`;
   host.appendChild(wrap);
   wrap.querySelector('input').addEventListener('change', (e) => {
@@ -384,16 +444,21 @@ function buildDisplayPanel() {
 function buildLegend() {
   const host = document.getElementById('legend');
   host.innerHTML = '';
+  const dashed = `background:repeating-linear-gradient(90deg,${FAIL_COLOR} 0 4px,transparent 4px 8px)`;
   const rows = display.passFail
-    ? [[PASS_COLOR, 'Meets your criteria (Low–Moderate stress)'],
-       [null, 'All other roads are hidden']]
+    ? [[PASS_COLOR, 'Meets your criteria (Low–Moderate)'],
+       ['dashed', 'Has data — doesn’t meet criteria'],
+       [null, 'No-data roads are hidden']]
     : LEGEND.map(([lvl, label]) => [COLORS[lvl], label]);
   for (const [color, label] of rows) {
     const item = document.createElement('div');
     item.className = 'item';
-    const swatch = color
-      ? `<span class="swatch" style="background:${color}"></span>`
-      : `<span class="swatch" style="background:transparent;border:1px dashed #bbb"></span>`;
+    const swatch =
+      color === 'dashed'
+        ? `<span class="swatch" style="${dashed}"></span>`
+        : color
+        ? `<span class="swatch" style="background:${color}"></span>`
+        : `<span class="swatch" style="background:transparent;border:1px dashed #bbb"></span>`;
     item.innerHTML = `${swatch}<span>${label}</span>`;
     host.appendChild(item);
   }
