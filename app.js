@@ -19,8 +19,8 @@
 // varies in lightness as well as hue. 1 = safest .. 4 = avoid, 0 = unknown.
 const COLORS = {
   1: '#2c7bb6', // blue
-  2: '#abd9e9', // pale blue
-  3: '#fdae61', // pale orange
+  2: '#74add1', // medium blue (kept dark enough to read on the light basemap)
+  3: '#f46d43', // orange
   4: '#d7191c', // red
   0: '#999999', // unknown / no data
 };
@@ -70,32 +70,31 @@ function scoreBLTS(p) {
 }
 
 /* --------------------------------------------- source-agnostic scorer */
-// Reads normalized props (n) + rules; returns effective level 0..4.
+// "Your criteria decide": stress is computed from the road's own attributes
+// (speed, shoulder/facility, freeway status) against the current riding rules.
+// WSDOT's precomputed rating is NOT a floor — relaxing the rules lets more
+// roads pass, tightening lets fewer. Returns effective level 0 (unknown) or 1..4.
 function effectiveLevel(n) {
-  if (n.baseScore == null) return 0;          // unknown stays gray
-  if (n.prohibited) return 4;                 // e.g. bicycle=no (Phase 2)
+  if (n.prohibited) return 4;                              // bikes not allowed
+  if (n.limited_access && !rules.allowFreeways) return 4;  // freeway gate
 
-  // Freeway / limited-access gate.
-  if (n.limited_access && !rules.allowFreeways) return 4;
-
-  let eff = n.baseScore;
-  const spd = n.maxspeed_num;
-  const adequateShoulder =
+  const adequate =
     (n.shoulder_width != null && n.shoulder_width >= rules.minShoulder) || n.good_facility;
+  const spd = n.maxspeed_num;
 
   if (spd == null) {
-    // No speed info: shoulder rule alone.
-    if (!adequateShoulder) eff += 1;
-  } else if (spd <= rules.freeMaxSpeed) {
-    // Comfortable regardless of shoulder — no penalty.
-  } else {
-    // Above the "free" speed: shoulder starts to matter.
-    if (!adequateShoulder) eff += 1;
-    if (spd > rules.upperMaxSpeed && !adequateShoulder && !rules.noUpperLimit) {
-      eff = 4; // high-speed + inadequate shoulder + hard cap on => avoid
-    }
+    // No speed data. If we also have no shoulder/facility signal, defer to
+    // WSDOT's rating (or unknown); otherwise judge on shoulder alone.
+    if (n.shoulder_width == null && !n.good_facility) return n.baseScore == null ? 0 : n.baseScore;
+    return adequate ? 2 : 3;
   }
-  return Math.max(1, Math.min(4, Math.round(eff)));
+
+  if (spd <= rules.freeMaxSpeed) return 1;   // slow enough to be comfortable regardless of shoulder
+  if (adequate) return 2;                    // faster, but has an adequate shoulder / bike facility
+
+  // Faster than "free" speed AND no adequate shoulder:
+  if (spd <= rules.upperMaxSpeed) return 3;  // high stress
+  return rules.noUpperLimit ? 3 : 4;         // above the upper cap => avoid, unless the cap is disabled
 }
 
 /* ------------------------------------------------ data-source registry */
@@ -196,7 +195,7 @@ function ensureLayer(src) {
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       'line-color': colorExpr(),
-      'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.6, 14, 3.5],
+      'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7],
       'line-opacity': 0.9,
     },
   });
@@ -224,7 +223,7 @@ function applyDisplayMode(src) {
     map.setPaintProperty(src.id, 'line-color', colorExpr());
     map.setPaintProperty(src.id, 'line-opacity', 0.9);
     map.setPaintProperty(src.id, 'line-width', [
-      'interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.6, 14, 3.5,
+      'interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7,
     ]);
   }
 }
