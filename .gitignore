@@ -1,0 +1,6 @@
+# Raw source data (fetched at build time, not committed)
+data/BikePedLTS.zip
+data/BikePedLTS.gdb/
+data/BikePedLevelOfTrafficStress_FGDC.*
+node_modules/
+*.tgz

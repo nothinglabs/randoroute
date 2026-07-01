@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Washington Bike Safety Visualizer</title>
+  <link rel="stylesheet" href="vendor/maplibre-gl.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="panel">
+    <h1>WA Bike Safety</h1>
+    <p class="sub">Roads colored by bicycle level of traffic stress. Visualization only — no routing.</p>
+
+    <h2>Data sources</h2>
+    <div id="sources"></div>
+
+    <h2>Riding rules</h2>
+    <div id="rules"></div>
+
+    <h2>Legend</h2>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="readout" id="readout"></div>
+  <div class="status" id="status">Loading…</div>
+
+  <script src="vendor/maplibre-gl.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
