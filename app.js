@@ -186,16 +186,16 @@ function scheduleRescore() {
 }
 
 const FAIL_COLOR = '#9aa0a6';
-const failId = (src) => src.id + '__fail';
+const failId = (src) => src.id + '__fail'; // gray-dashed "has data but fails" (pass/fail mode)
+const vhId = (src) => src.id + '__vh';     // red-dashed "very high / avoid" (color-ramp mode)
 
 function ensureLayer(src) {
   if (map.getLayer(src.id)) return;
   map.addSource(src.id, { type: 'geojson', data: src.fc });
-  // Fail overlay: roads we HAVE data for but that don't meet the criteria.
-  // Added first so the green "pass" layer draws on top where they overlap.
-  // Only visible in pass/fail mode (see updateVisibility).
+  // Two dashed overlays are added first so the solid main layer draws on top
+  // where lines overlap. Each is shown in only one display mode.
   map.addLayer({
-    id: failId(src),
+    id: failId(src), // pass/fail mode: roads with data that don't qualify
     type: 'line',
     source: src.id,
     layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
@@ -206,6 +206,19 @@ function ensureLayer(src) {
       'line-opacity': 0.65,
     },
     filter: ['all', ['>=', ['get', 'level'], display.passMax + 1], ['<=', ['get', 'level'], 4]],
+  });
+  map.addLayer({
+    id: vhId(src), // color-ramp mode: level 4 shown dashed to read as "not passable"
+    type: 'line',
+    source: src.id,
+    layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
+    paint: {
+      'line-color': COLORS[4],
+      'line-dasharray': [2, 1.5],
+      'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7],
+      'line-opacity': 0.9,
+    },
+    filter: ['==', ['get', 'level'], 4],
   });
   map.addLayer({
     id: src.id,
@@ -221,18 +234,22 @@ function ensureLayer(src) {
   applyDisplayMode(src);
   attachHover(src, src.id);
   attachHover(src, failId(src));
+  attachHover(src, vhId(src));
 }
 
-// Main layer visible when the source is on; fail overlay only in pass/fail mode.
+// Main layer follows the source toggle; the two dashed overlays are each shown
+// in exactly one display mode.
 function updateVisibility(src) {
-  if (map.getLayer(src.id))
-    map.setLayoutProperty(src.id, 'visibility', src.enabled ? 'visible' : 'none');
+  const on = src.enabled;
+  if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', on ? 'visible' : 'none');
   if (map.getLayer(failId(src)))
-    map.setLayoutProperty(failId(src), 'visibility', src.enabled && display.passFail ? 'visible' : 'none');
+    map.setLayoutProperty(failId(src), 'visibility', on && display.passFail ? 'visible' : 'none');
+  if (map.getLayer(vhId(src)))
+    map.setLayoutProperty(vhId(src), 'visibility', on && !display.passFail ? 'visible' : 'none');
 }
 
-// Switch a source between the color-ramp view and the green pass/fail view
-// (with its gray-dashed fail overlay).
+// Switch a source between the color-ramp view (level 4 dashed) and the green
+// pass/fail view (gray-dashed fail overlay).
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
   if (display.passFail) {
@@ -241,13 +258,12 @@ function applyDisplayMode(src) {
     map.setPaintProperty(src.id, 'line-opacity', 0.95);
     map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.4, 10, 2.6, 14, 5]);
   } else {
-    map.setFilter(src.id, null);
+    // Solid ramp for levels 1-3 (and unknown); level 4 goes to the dashed vh layer.
+    map.setFilter(src.id, ['!=', ['get', 'level'], 4]);
     map.setPaintProperty(src.id, 'line-color', colorExpr());
     map.setPaintProperty(src.id, 'line-opacity', 0.9);
     map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7]);
   }
-  if (map.getLayer(failId(src)))
-    map.setFilter(failId(src), ['all', ['>=', ['get', 'level'], display.passMax + 1], ['<=', ['get', 'level'], 4]]);
   updateVisibility(src);
 }
 
@@ -444,18 +460,21 @@ function buildDisplayPanel() {
 function buildLegend() {
   const host = document.getElementById('legend');
   host.innerHTML = '';
-  const dashed = `background:repeating-linear-gradient(90deg,${FAIL_COLOR} 0 4px,transparent 4px 8px)`;
+  const dash = (c) => `background:repeating-linear-gradient(90deg,${c} 0 4px,transparent 4px 8px)`;
   const rows = display.passFail
     ? [[PASS_COLOR, 'Meets your criteria (Low–Moderate)'],
        ['dashed', 'Has data — doesn’t meet criteria'],
        [null, 'No-data roads are hidden']]
-    : LEGEND.map(([lvl, label]) => [COLORS[lvl], label]);
+    // Color-ramp view: level 4 is drawn dashed to read as "not passable".
+    : LEGEND.map(([lvl, label]) => [lvl === 4 ? 'dash4' : COLORS[lvl], label]);
   for (const [color, label] of rows) {
     const item = document.createElement('div');
     item.className = 'item';
     const swatch =
       color === 'dashed'
-        ? `<span class="swatch" style="${dashed}"></span>`
+        ? `<span class="swatch" style="${dash(FAIL_COLOR)}"></span>`
+        : color === 'dash4'
+        ? `<span class="swatch" style="${dash(COLORS[4])}"></span>`
         : color
         ? `<span class="swatch" style="background:${color}"></span>`
         : `<span class="swatch" style="background:transparent;border:1px dashed #bbb"></span>`;
