@@ -2,5 +2,7 @@
 data/BikePedLTS.zip
 data/BikePedLTS.gdb/
 data/BikePedLevelOfTrafficStress_FGDC.*
+data/washington-latest.osm.pbf
+data/*.osm.pbf
 node_modules/
 *.tgz

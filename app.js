@@ -65,6 +65,43 @@ function scoreBLTS(p) {
     restricted: false,
     limited_access: !!p.LimitedAccess,
     good_facility: !!(p.BikeFacilityType && p.BikeFacilityType.length),
+    infra: false,
+  };
+}
+
+// OSM bike infrastructure (Phase 2). Dedicated cycleways, bike lanes, shared
+// paths. These aren't shared-with-traffic roads, so the speed/shoulder rules
+// don't apply — the infrastructure TYPE is the rating (see effectiveLevel).
+// Mirrors scripts/build_osm.py's classify().
+const OSM_PROTECTED = new Set(['track', 'separated', 'opposite_track']);
+const OSM_LANE = new Set(['lane', 'shared_lane']);
+function osmCycleway(p) {
+  return p.cycleway || p['cycleway:both'] || p['cycleway:right'] || p['cycleway:left'] || null;
+}
+function scoreOSM(p) {
+  const bike = p.bicycle;
+  const hw = p.highway;
+  const cw = osmCycleway(p);
+  const bikeish = hw === 'cycleway' || hw === 'path' || hw === 'bridleway' || cw != null;
+  let base = null;
+  let prohibited = false;
+  if (hw === 'cycleway' && bike !== 'no' && bike !== 'dismount') base = 1;
+  else if (hw === 'path' && (bike === 'designated' || bike === 'yes')) base = 1;
+  else if (hw === 'footway' && bike === 'designated') base = 2;
+  else if (hw === 'bridleway' && (bike === 'designated' || bike === 'yes')) base = 2;
+  else if (OSM_PROTECTED.has(cw)) base = 1;
+  else if (OSM_LANE.has(cw)) base = 2;
+  else if ((bike === 'no' || bike === 'dismount') && bikeish) { base = 4; prohibited = true; }
+  const width = p.width != null ? parseFloat(p.width) : NaN;
+  return {
+    baseScore: base,
+    shoulder_width: Number.isFinite(width) ? width : null,
+    maxspeed_num: null,
+    prohibited,
+    restricted: false,
+    limited_access: false,
+    good_facility: base != null && !prohibited,
+    infra: true,
   };
 }
 
@@ -77,6 +114,10 @@ function scoreBLTS(p) {
 function effectiveLevel(n) {
   if (n.prohibited) return 4;                              // bikes not allowed
   if (n.limited_access && !rules.allowFreeways) return 4;  // freeway gate
+
+  // Dedicated bike infrastructure: the infra type IS the rating (cycleway = 1,
+  // bike lane = 2). The car-speed/shoulder rules don't apply to it.
+  if (n.infra) return n.baseScore == null ? 0 : n.baseScore;
 
   const spd = n.maxspeed_num;
   const sh = n.shoulder_width;
@@ -106,7 +147,15 @@ const SOURCES = [
     fc: null,     // cached FeatureCollection (loaded once)
     loading: false,
   },
-  // Phase 2 will push a second entry here (OSM bike infra) — same shape.
+  {
+    id: 'osm',
+    name: 'OSM bike infrastructure',
+    url: 'data/bikeinfra.geojson',
+    scorer: scoreOSM,
+    enabled: true,
+    fc: null,
+    loading: false,
+  },
 ];
 
 /* ------------------------------------------------------------- map */
@@ -302,7 +351,13 @@ const LEVEL_NAME = { 0: 'unknown', 1: 'Low', 2: 'Moderate', 3: 'High', 4: 'Very 
 // Plain-language reason for a segment's verdict under the current rules.
 // Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
 function explainLevel(n) {
-  if (n.prohibited) return 'Bikes are not permitted here.';
+  if (n.prohibited) return 'Bikes not allowed / must dismount here.';
+  if (n.infra)
+    return n.baseScore === 1
+      ? 'Dedicated or protected bike path — low stress.'
+      : n.baseScore === 2
+      ? 'Bike lane or shared path — moderate.'
+      : 'Bike infrastructure.';
   if (n.limited_access && !rules.allowFreeways)
     return 'Limited-access highway — turn on “Allow freeways” to include it.';
 
@@ -336,21 +391,39 @@ function attachHover(src, layerId) {
     const n = src.scorer(p);            // recompute normalized props from this feature
     const lvl = p.level;
     const verdict = lvl === 0 ? 'no data' : lvl <= display.passMax ? '✓ Pass' : '✗ Fail';
-    const rows = [
-      ['Route', p.RouteIdentifier],
+    const common = [
       ['Result', verdict],
       ['Stress', lvl === 0 ? 'unknown' : `${lvl} — ${LEVEL_NAME[lvl]}`],
       ['Why', explainLevel(n)],
-      ['BLTS (WSDOT)', p.LTS_Bicycle],
-      ['Speed limit', p.SpeedLimit != null ? p.SpeedLimit + ' mph' : null],
-      ['Lanes', p.LaneCount],
-      ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
-      ['Shoulder', p.ShoulderWidth != null ? p.ShoulderWidth + ' ft' : null],
-      ['Bike facility', p.BikeFacilityType],
-      ['Limited access', p.LimitedAccess ? 'yes' : null],
-    ].filter(([, v]) => v != null && v !== '');
+    ];
+    let title, rows;
+    if (src.id === 'osm') {
+      title = 'Bike infrastructure (OSM)';
+      rows = [
+        ['Name', p.name],
+        ...common,
+        ['Type', [p.highway, p.bicycle ? `bicycle=${p.bicycle}` : null].filter(Boolean).join(', ')],
+        ['Cycleway', osmCycleway(p)],
+        ['Surface', p.surface],
+        ['Width', p.width != null ? `${p.width} m` : null],
+      ];
+    } else {
+      title = 'Road segment (WSDOT)';
+      rows = [
+        ['Route', p.RouteIdentifier],
+        ...common,
+        ['BLTS (WSDOT)', p.LTS_Bicycle],
+        ['Speed limit', p.SpeedLimit != null ? p.SpeedLimit + ' mph' : null],
+        ['Lanes', p.LaneCount],
+        ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
+        ['Shoulder', p.ShoulderWidth != null ? p.ShoulderWidth + ' ft' : null],
+        ['Bike facility', p.BikeFacilityType],
+        ['Limited access', p.LimitedAccess ? 'yes' : null],
+      ];
+    }
+    rows = rows.filter(([, v]) => v != null && v !== '');
     readoutEl.innerHTML =
-      '<div class="rt-title">Segment</div><table>' +
+      `<div class="rt-title">${title}</div><table>` +
       rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('') +
       '</table>';
     readoutEl.classList.add('show');

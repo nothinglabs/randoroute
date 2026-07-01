@@ -1,17 +1,14 @@
 # Washington Bike Safety Visualizer
 
-A statewide bicycle-safety map for Washington State. It colors roads by how
-stressful they are to ride, using WSDOT's Bicycle Level of Traffic Stress (BLTS)
-data.
+A statewide bicycle-safety map for Washington State. It colors roads and bike
+infrastructure by how stressful they are to ride, from two local data sources:
+**WSDOT Bicycle Level of Traffic Stress (BLTS)** for state highways and
+**OpenStreetMap** for dedicated bike infrastructure.
 
 **Visualization only** — no routing, no route planning, no live network queries
 at runtime. Everything renders from local static data files prepared ahead of
 time. The whole runtime is a static file server handing out `index.html` +
-`data/blts.geojson`.
-
-> **Status: Phase 1 (WSDOT BLTS).** The architecture is built so a second,
-> fully-local OpenStreetMap bike-infrastructure source can be added in Phase 2
-> with its own toggle and scorer, flowing through the same scoring engine.
+the two GeoJSON files.
 
 ## Run it
 
@@ -25,55 +22,84 @@ python3 -m http.server 8000
 ## Features
 
 - **MapLibre GL JS** map of Washington on a **CARTO Positron** raster basemap.
-- Roads colored 1–4 (safest → avoid) plus "unknown", using the colorblind-safe
-  **Okabe-Ito** palette.
-- **Data-source toggle** (Phase 1 ships one: WSDOT BLTS).
-- **Riding rules** — a control group that re-scores and re-colors the map
-  **live, client-side, with no refetch**:
-  - *Allow freeways* — whether limited-access highways are shown as rideable.
-  - *Min shoulder width* — narrower shoulders get penalized.
-  - *"Free" max speed* — at/below this, a road is comfortable regardless of shoulder.
-  - *Upper max speed* — above this, high-stress unless the shoulder/facility is adequate.
-  - *No upper limit* — disables the high-speed hard cap.
-- Hover a segment for a **local readout** of its own properties (no lookups).
+- Two independent **data-source toggles**:
+  - *WSDOT BLTS (state highways)* — one rating per state-highway segment.
+  - *OSM bike infrastructure* — cycleways, bike lanes, shared paths/trails.
+- Colorblind-friendly **blue → red** ramp (ColorBrewer RdYlBu): blue = meets
+  your criteria, red **dashed** = fails / avoid.
+- **Riding rules** — controls that re-score and re-color the map **live,
+  client-side, with no refetch**. Each is a HARD gate: a road fails (avoid) if
+  the data we have shows a criterion isn't met (missing data isn't held against
+  a road):
+  - *Allow freeways* — include limited-access highways or not.
+  - *Min shoulder width* — a known shoulder under this fails a road.
+  - *"Free" max speed* — at/below this, comfortable regardless of shoulder.
+  - *Upper max speed* — above this a road fails (unless *No upper limit*).
+  - *No upper limit* — don't fail roads on speed alone.
+- **Pass/fail mode** — an accessibility view that drops color discrimination:
+  only roads meeting your criteria show (green); roads with data that fail show
+  gray-dashed; no-data roads are hidden.
+- Hover any segment for a **local readout** — the verdict (Pass/Fail), the
+  stress level, a plain-language *why*, and the raw attributes. No lookups.
 
 ## Architecture
 
-`app.js` is deliberately source-agnostic so Phase 2 slots in cleanly:
+`app.js` is source-agnostic:
 
-- **Sources** live in a registry (`SOURCES`). Each has its own toggle, layer,
-  and **scorer**.
+- **Sources** live in a registry (`SOURCES`). Each has its own toggle, layers,
+  and **scorer** (`scoreBLTS`, `scoreOSM`).
 - A **scorer** maps a source's raw properties to *normalized* props:
-  `baseScore`, `shoulder_width`, `maxspeed_num`, `prohibited`, `restricted`,
-  `limited_access`, `good_facility`.
-- **`effectiveLevel(normalized)`** is the single, source-agnostic function that
-  reads normalized props + the current riding rules and returns the effective
-  1–4 color level (0 = unknown). Re-scoring runs over cached features and
-  updates the map source in place — instant, no network.
+  `baseScore`, `shoulder_width`, `maxspeed_num`, `prohibited`, `limited_access`,
+  `good_facility`, `infra`.
+- **`effectiveLevel(normalized)`** is the single function that turns normalized
+  props + the current riding rules into an effective level: **1** (comfortable),
+  **2** (meets criteria), **4** (fails / avoid), or **0** (no data). There is no
+  "3". Dedicated bike infrastructure (`infra: true`) is rated by its type
+  (cycleway = 1, bike lane = 2); shared-with-traffic roads go through the hard
+  speed/shoulder/freeway gates. Re-scoring runs over cached features and updates
+  the map source in place — instant, no network.
+
+Each source gets three MapLibre line layers: the solid main layer, a red-dashed
+`__vh` overlay (level 4 in ramp view), and a gray-dashed `__fail` overlay
+(pass/fail view).
 
 ## Data (build-time)
 
-`data/blts.geojson` is baked from WSDOT's export and committed. It is **not**
-fetched at runtime. To regenerate it:
+Both GeoJSON files are baked from public sources and committed. Neither is
+fetched at runtime. The raw downloads are git-ignored.
+
+### WSDOT BLTS → `data/blts.geojson` (~55k segments)
 
 ```bash
-# 1. Download WSDOT's static bulk export (File Geodatabase, EPSG:2927)
 curl -o data/BikePedLTS.zip \
   https://data.wsdot.wa.gov/geospatial/DOT_ActiveTransportation/BikePedLTS.zip
 unzip -d data data/BikePedLTS.zip
-
-# 2. Reproject to EPSG:4326 and emit compact GeoJSON (~55k line features)
 pip install geopandas pyogrio pyproj shapely
 python3 scripts/build_blts.py --src data/BikePedLTS.gdb --out data/blts.geojson
 ```
 
-Source: WSDOT "Bicycle and Pedestrian Level of Traffic Stress (LTS)". The
-`LTS_Bicycle` field (1–4) is WSDOT's authoritative rating; `999`/missing is
-their no-data sentinel and renders gray. Limited-access segments
-(`AccessControlTypeCode` F/M/P) drive the freeway toggle.
+Source: WSDOT "Bicycle and Pedestrian Level of Traffic Stress (LTS)" (File
+Geodatabase, EPSG:2927 → reprojected to 4326). `LTS_Bicycle` (1–4); `999`/missing
+is no-data. Limited-access segments (`AccessControlTypeCode` F/M/P) drive the
+freeway toggle.
 
-The raw `BikePedLTS.zip` / `.gdb` are git-ignored; only the derived
-`blts.geojson` is committed.
+### OSM bike infrastructure → `data/bikeinfra.geojson` (~40k ways)
+
+```bash
+curl -o data/washington-latest.osm.pbf \
+  https://download.geofabrik.de/north-america/us/washington-latest.osm.pbf
+pip install osmium
+python3 scripts/build_osm.py --src data/washington-latest.osm.pbf \
+                             --out data/bikeinfra.geojson
+```
+
+Source: Geofabrik Washington extract (already EPSG:4326). `build_osm.py` keeps
+only ways that classify as real bike infrastructure — dedicated cycleways
+(`highway=cycleway`), bike/shared paths (`highway=path/footway/bridleway` with
+`bicycle=designated/yes`), and on-street lanes (`cycleway*` = `track/separated/
+lane/shared_lane`). Plain sidewalks/footpaths with no bicycle acceptance are
+dropped so we don't color noise. The keep/drop logic mirrors `scoreOSM` in
+`app.js`.
 
 ## Vendored library
 
