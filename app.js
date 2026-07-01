@@ -39,6 +39,17 @@ const rules = {
   noUpperLimit: false,  // disable the upper-speed hard cap
 };
 
+/* --------------------------------------------------- display state */
+// Pass/fail mode: an accessibility-friendly view that doesn't rely on telling
+// colors apart. Instead of a 1-4 color ramp it shows ONLY roads that meet the
+// criteria (effective level at/below passMax), painted a single green; every
+// other road is hidden. Recomputes live as the riding rules change.
+const PASS_COLOR = '#009E73';
+const display = {
+  passFail: false,
+  passMax: 2, // a road "passes" if its effective level is 1..passMax (Low & Moderate)
+};
+
 /* ------------------------------------------------------- the scorers */
 // Each returns normalized props. baseScore null => unknown (gray).
 
@@ -187,7 +198,38 @@ function ensureLayer(src) {
       'line-opacity': 0.9,
     },
   });
+  applyDisplayMode(src);
   wireInspect(src.id);
+}
+
+// Switch a layer between the color-ramp view and the green pass/fail view.
+// In pass/fail mode only features with 1 <= level <= passMax are shown.
+function applyDisplayMode(src) {
+  if (!map.getLayer(src.id)) return;
+  if (display.passFail) {
+    map.setFilter(src.id, [
+      'all',
+      ['>=', ['get', 'level'], 1],
+      ['<=', ['get', 'level'], display.passMax],
+    ]);
+    map.setPaintProperty(src.id, 'line-color', PASS_COLOR);
+    map.setPaintProperty(src.id, 'line-opacity', 0.95);
+    map.setPaintProperty(src.id, 'line-width', [
+      'interpolate', ['linear'], ['zoom'], 6, 1.4, 10, 2.6, 14, 5,
+    ]);
+  } else {
+    map.setFilter(src.id, null);
+    map.setPaintProperty(src.id, 'line-color', colorExpr());
+    map.setPaintProperty(src.id, 'line-opacity', 0.9);
+    map.setPaintProperty(src.id, 'line-width', [
+      'interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.6, 14, 3.5,
+    ]);
+  }
+}
+
+function applyDisplayModeAll() {
+  for (const src of SOURCES) applyDisplayMode(src);
+  buildLegend();
 }
 
 async function loadSource(src) {
@@ -320,12 +362,38 @@ function buildRulesPanel() {
   check('noUpperLimit', 'No upper limit', 'Disable the high-speed hard cap (compute a level instead of auto-4).');
 }
 
+function buildDisplayPanel() {
+  const host = document.getElementById('display');
+  const wrap = document.createElement('div');
+  wrap.className = 'check-rule';
+  wrap.innerHTML = `
+    <input type="checkbox" id="d-passFail" ${display.passFail ? 'checked' : ''}>
+    <label for="d-passFail">Pass/fail mode</label>
+    <div class="hint" style="width:100%">
+      Colorblind-friendly: show only roads that meet your criteria, in green.
+      Everything else is hidden. Updates live with the riding rules.
+    </div>`;
+  host.appendChild(wrap);
+  wrap.querySelector('input').addEventListener('change', (e) => {
+    display.passFail = e.target.checked;
+    applyDisplayModeAll();
+  });
+}
+
 function buildLegend() {
   const host = document.getElementById('legend');
-  for (const [lvl, label] of LEGEND) {
+  host.innerHTML = '';
+  const rows = display.passFail
+    ? [[PASS_COLOR, 'Meets your criteria (Low–Moderate stress)'],
+       [null, 'All other roads are hidden']]
+    : LEGEND.map(([lvl, label]) => [COLORS[lvl], label]);
+  for (const [color, label] of rows) {
     const item = document.createElement('div');
     item.className = 'item';
-    item.innerHTML = `<span class="swatch" style="background:${COLORS[lvl]}"></span><span>${label}</span>`;
+    const swatch = color
+      ? `<span class="swatch" style="background:${color}"></span>`
+      : `<span class="swatch" style="background:transparent;border:1px dashed #bbb"></span>`;
+    item.innerHTML = `${swatch}<span>${label}</span>`;
     host.appendChild(item);
   }
 }
@@ -333,6 +401,7 @@ function buildLegend() {
 /* ------------------------------------------------------------- boot */
 buildSourcePanel();
 buildRulesPanel();
+buildDisplayPanel();
 buildLegend();
 
 // Run cb as soon as the style spec is loaded. Polling avoids a styledata-event
