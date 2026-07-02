@@ -386,10 +386,16 @@ function applyDisplayMode(src) {
   const lvl = src.expr ? roadLevelExpr() : ['get', 'level'];
   // Optional declutter: drop neighborhood streets from the All-roads layer.
   const hideRes = display.hideResidential && src.id === 'roads';
-  const and = (f) =>
-    hideRes
-      ? ['all', f, ['!=', ['get', 'h'], 'residential'], ['!=', ['get', 'h'], 'living_street']]
-      : f;
+  // Dedup: while the (data-rich) WSDOT source is on, hide its state highways
+  // from the All-roads layer (d=1) — otherwise OSM's unknown-shoulder "pass"
+  // would visually mask WSDOT's measured verdict on the same physical road.
+  const dedup = src.id === 'roads' && SOURCES.find((s) => s.id === 'blts').enabled;
+  const and = (f) => {
+    const conds = [f];
+    if (hideRes) conds.push(['!=', ['get', 'h'], 'residential'], ['!=', ['get', 'h'], 'living_street']);
+    if (dedup) conds.push(['!=', ['get', 'd'], 1]);
+    return conds.length > 1 ? ['all', ...conds] : f;
+  };
   if (display.passFail) {
     map.setFilter(src.id, and(['all', ['>=', lvl, 1], ['<=', lvl, display.passMax]]));
     map.setPaintProperty(src.id, 'line-color', PASS_COLOR);
@@ -408,7 +414,7 @@ function applyDisplayMode(src) {
   if (map.getLayer(vhId(src)))
     map.setFilter(vhId(src), and(['==', lvl, 4]));
   if (map.getLayer(hitId(src)))
-    map.setFilter(hitId(src), hideRes ? and(['boolean', true]) : null); // keep hover off hidden streets
+    map.setFilter(hitId(src), hideRes || dedup ? and(['boolean', true]) : null); // keep hover off hidden roads
   updateVisibility(src);
 }
 
@@ -460,9 +466,14 @@ async function loadSource(src) {
 
 function setSourceVisible(src, on) {
   src.enabled = on;
-  if (on && !src.loaded) return loadSource(src);
-  if (on && !map.getLayer(src.id)) return ensureLayer(src);
-  updateVisibility(src);
+  if (on && !src.loaded) loadSource(src);
+  else if (on && !map.getLayer(src.id)) ensureLayer(src);
+  else updateVisibility(src);
+  // The roads layer's dedup filter depends on whether WSDOT is enabled.
+  if (src.id === 'blts') {
+    const roads = SOURCES.find((s) => s.id === 'roads');
+    if (map.getLayer(roads.id)) applyDisplayMode(roads);
+  }
 }
 
 /* ---------------------------------------------- hover/click readout */

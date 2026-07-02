@@ -52,6 +52,11 @@ DEFAULT_MPH = {
     'unclassified': 35, 'residential': 25, 'living_street': 15,
 }
 LIMITED = {'motorway', 'motorway_link'}
+# Ways covered by the WSDOT BLTS layer (state highways). Flagged d=1 so the app
+# can hide the OSM duplicate while the (data-rich) WSDOT source is enabled —
+# otherwise OSM's unknown-shoulder "pass" visually masks WSDOT's measured fail.
+WSDOT_CLASSES = {'motorway', 'motorway_link', 'trunk', 'trunk_link'}
+REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA)[-\s]?\d+', re.I)
 FACILITY = {'lane', 'shared_lane', 'buffered_lane', 'track', 'separated',
             'opposite_lane', 'opposite_track'}
 CYCLEWAY_KEYS = ('cycleway', 'cycleway:both', 'cycleway:right', 'cycleway:left')
@@ -135,6 +140,8 @@ def build(src, out_prefix):
             p['n'] = tags['name']
         if tags.get('ref'):
             p['r'] = tags['ref']
+        if hw in WSDOT_CLASSES or (tags.get('ref') and REF_STATE.search(tags['ref'])):
+            p['d'] = 1  # duplicated by the WSDOT BLTS layer
 
         feats.append(json.dumps(
             {'type': 'Feature', 'properties': p,
