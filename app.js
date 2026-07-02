@@ -49,6 +49,7 @@ const PASS_COLOR = '#009E73';
 const display = {
   passFail: false,
   passMax: 2, // a road "passes" if its effective level is 1..passMax (Low & Moderate)
+  hideResidential: false, // declutter: hide neighborhood streets in the All-roads layer
 };
 
 /* ------------------------------------------------------- the scorers */
@@ -383,23 +384,31 @@ function updateVisibility(src) {
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
   const lvl = src.expr ? roadLevelExpr() : ['get', 'level'];
+  // Optional declutter: drop neighborhood streets from the All-roads layer.
+  const hideRes = display.hideResidential && src.id === 'roads';
+  const and = (f) =>
+    hideRes
+      ? ['all', f, ['!=', ['get', 'h'], 'residential'], ['!=', ['get', 'h'], 'living_street']]
+      : f;
   if (display.passFail) {
-    map.setFilter(src.id, ['all', ['>=', lvl, 1], ['<=', lvl, display.passMax]]);
+    map.setFilter(src.id, and(['all', ['>=', lvl, 1], ['<=', lvl, display.passMax]]));
     map.setPaintProperty(src.id, 'line-color', PASS_COLOR);
     map.setPaintProperty(src.id, 'line-opacity', 0.95);
     map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.4, 10, 2.6, 14, 5]);
   } else {
     // Solid ramp for passing levels (and unknown); level 4 goes to the dashed vh layer.
-    map.setFilter(src.id, ['!=', lvl, 4]);
+    map.setFilter(src.id, and(['!=', lvl, 4]));
     map.setPaintProperty(src.id, 'line-color',
       ['match', lvl, 1, COLORS[1], 2, COLORS[2], 3, COLORS[3], 4, COLORS[4], COLORS[0]]);
     map.setPaintProperty(src.id, 'line-opacity', 0.9);
     map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7]);
   }
   if (map.getLayer(failId(src)))
-    map.setFilter(failId(src), ['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4]]);
+    map.setFilter(failId(src), and(['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4]]));
   if (map.getLayer(vhId(src)))
-    map.setFilter(vhId(src), ['==', lvl, 4]);
+    map.setFilter(vhId(src), and(['==', lvl, 4]));
+  if (map.getLayer(hitId(src)))
+    map.setFilter(hitId(src), hideRes ? and(['boolean', true]) : null); // keep hover off hidden streets
   updateVisibility(src);
 }
 
@@ -633,20 +642,24 @@ function buildRulesPanel() {
 
 function buildDisplayPanel() {
   const host = document.getElementById('display');
-  const wrap = document.createElement('div');
-  wrap.className = 'check-rule';
-  wrap.innerHTML = `
-    <input type="checkbox" id="d-passFail" ${display.passFail ? 'checked' : ''}>
-    <label for="d-passFail">Pass/fail mode</label>
-    <div class="hint" style="width:100%">
-      Green = meets your criteria. Roads with data that don't qualify show as
-      gray dashed (hover any road for why). Updates live with the riding rules.
-    </div>`;
-  host.appendChild(wrap);
-  wrap.querySelector('input').addEventListener('change', (e) => {
-    display.passFail = e.target.checked;
-    applyDisplayModeAll();
-  });
+  const add = (key, label, hint) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'check-rule';
+    wrap.innerHTML = `
+      <input type="checkbox" id="d-${key}" ${display[key] ? 'checked' : ''}>
+      <label for="d-${key}">${label}</label>
+      <div class="hint" style="width:100%">${hint}</div>`;
+    host.appendChild(wrap);
+    wrap.querySelector('input').addEventListener('change', (e) => {
+      display[key] = e.target.checked;
+      applyDisplayModeAll();
+    });
+  };
+  add('passFail', 'Pass/fail mode',
+    `Green = meets your criteria. Roads with data that don't qualify show as
+     gray dashed (hover any road for why). Updates live with the riding rules.`);
+  add('hideResidential', 'Hide residential streets',
+    'Declutter the All-roads layer: hide neighborhood streets (residential / living street).');
 }
 
 function buildLegend() {
