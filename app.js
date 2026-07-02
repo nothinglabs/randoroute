@@ -235,6 +235,7 @@ function scheduleRescore() {
 const FAIL_COLOR = '#9aa0a6';
 const failId = (src) => src.id + '__fail'; // gray-dashed "has data but fails" (pass/fail mode)
 const vhId = (src) => src.id + '__vh';     // red-dashed "very high / avoid" (color-ramp mode)
+const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
 
 function ensureLayer(src) {
   if (map.getLayer(src.id)) return;
@@ -278,10 +279,21 @@ function ensureLayer(src) {
       'line-opacity': 0.9,
     },
   });
+  // Invisible wide line on top — a forgiving hover target so you don't have to
+  // land pixel-perfect on the thin visible line. Transparent, so no visual change.
+  map.addLayer({
+    id: hitId(src),
+    type: 'line',
+    source: src.id,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': '#000',
+      'line-opacity': 0,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22],
+    },
+  });
   applyDisplayMode(src);
-  attachHover(src, src.id);
-  attachHover(src, failId(src));
-  attachHover(src, vhId(src));
+  attachHover(src, hitId(src));
 }
 
 // Main layer follows the source toggle; the two dashed overlays are each shown
@@ -289,6 +301,7 @@ function ensureLayer(src) {
 function updateVisibility(src) {
   const on = src.enabled;
   if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', on ? 'visible' : 'none');
+  if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', on ? 'visible' : 'none');
   if (map.getLayer(failId(src)))
     map.setLayoutProperty(failId(src), 'visibility', on && display.passFail ? 'visible' : 'none');
   if (map.getLayer(vhId(src)))
