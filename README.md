@@ -1,9 +1,12 @@
 # Washington Bike Safety Visualizer
 
 A statewide bicycle-safety map for Washington State. It colors roads and bike
-infrastructure by how stressful they are to ride, from two local data sources:
-**WSDOT Bicycle Level of Traffic Stress (BLTS)** for state highways and
-**OpenStreetMap** for dedicated bike infrastructure.
+infrastructure by how stressful they are to ride, from three local data sources:
+**WSDOT Bicycle Level of Traffic Stress (BLTS)** for state highways,
+**OpenStreetMap** for dedicated bike infrastructure, and the **full OSM road
+network** (every public drivable road, with speeds inferred from road class
+where OSM has no `maxspeed` tag — the approach pioneered by PeopleForBikes'
+Bicycle Network Analysis).
 
 **Visualization only** — no routing, no route planning, no live network queries
 at runtime. Everything renders from local static data files prepared ahead of
@@ -22,9 +25,12 @@ python3 -m http.server 8000
 ## Features
 
 - **MapLibre GL JS** map of Washington on a **CARTO Positron** raster basemap.
-- Two independent **data-source toggles**:
+- Three independent **data-source toggles**:
   - *WSDOT BLTS (state highways)* — one rating per state-highway segment.
   - *OSM bike infrastructure* — cycleways, bike lanes, shared paths/trails.
+  - *All roads (OSM, est. speeds)* — the full public drivable network
+    (~324k ways). Off by default (large download). Missing speed limits are
+    estimated from road class and labeled as estimates in the readout.
 - Colorblind-friendly **blue → red** ramp (ColorBrewer RdYlBu): blue = meets
   your criteria, red **dashed** = fails / avoid.
 - **Riding rules** — controls that re-score and re-color the map **live,
@@ -100,6 +106,27 @@ only ways that classify as real bike infrastructure — dedicated cycleways
 lane/shared_lane`). Plain sidewalks/footpaths with no bicycle acceptance are
 dropped so we don't color noise. The keep/drop logic mirrors `scoreOSM` in
 `app.js`.
+
+### Full road network → `data/roads-*.geojson` (~324k ways)
+
+```bash
+python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
+                               --out-prefix data/roads
+```
+
+Same Geofabrik extract. Keeps `motorway`..`tertiary` (+links), `unclassified`,
+`residential`, `living_street`; excludes `service`/`track` (driveways, parking
+aisles, logging roads) and `access=private/no`. Where OSM has no usable
+`maxspeed`, a class-based default is baked in (e.g. residential → 25 mph) and
+flagged `e=1` so the UI shows "(estimated from class)". Geometry is simplified
+(~5 m) and properties use short keys; output is split into parts under
+GitHub's 100 MB file limit — the app fetches `roads-1`, `roads-2`, … until a
+part is missing.
+
+Because this source has ~324k features, it is scored with **MapLibre
+expressions** (`roadLevelExpr` in `app.js`) instead of the setData path — a
+rule change just swaps paint/filter expressions, which is instant at any data
+size.
 
 ## Vendored library
 

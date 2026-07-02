@@ -105,6 +105,24 @@ function scoreOSM(p) {
   };
 }
 
+// Full OSM road network (Phase 3). Short property keys (see build_roads.py):
+// h=class s=speed(mph) e=estimated f=facility b=bike-prohibited m=limited-access
+// w=shoulder(ft) n=name r=ref. Speeds are always present — actual, or inferred
+// from road class (BNA-style) with e=1 marking the estimate.
+function scoreRoad(p) {
+  return {
+    baseScore: null,
+    shoulder_width: p.w == null ? null : p.w,
+    maxspeed_num: p.s == null ? null : p.s,
+    prohibited: p.b === 1,
+    restricted: false,
+    limited_access: p.m === 1,
+    good_facility: p.f === 1,
+    infra: false,
+    est: p.e === 1,
+  };
+}
+
 /* --------------------------------------------- source-agnostic scorer */
 // "Your criteria decide", as HARD gates: each criterion is pass/fail. A road
 // fails (level 4 = avoid) if the data we have shows any criterion is not met.
@@ -137,12 +155,14 @@ function effectiveLevel(n) {
 }
 
 /* ------------------------------------------------ data-source registry */
+// zRank controls draw order: higher ranks render on top of lower ones.
 const SOURCES = [
   {
     id: 'blts',
     name: 'WSDOT BLTS (state highways)',
     url: 'data/blts.geojson',
     scorer: scoreBLTS,
+    zRank: 1,
     enabled: true,
     fc: null,     // cached FeatureCollection (loaded once)
     loading: false,
@@ -152,11 +172,39 @@ const SOURCES = [
     name: 'OSM bike infrastructure',
     url: 'data/bikeinfra.geojson',
     scorer: scoreOSM,
+    zRank: 2,
     enabled: true,
     fc: null,
     loading: false,
   },
+  {
+    id: 'roads',
+    name: 'All roads (OSM, est. speeds)',
+    urlPattern: 'data/roads-{i}.geojson', // split into parts; fetched until a part is missing
+    scorer: scoreRoad,
+    zRank: 0,      // bottom: authoritative layers draw on top
+    expr: true,    // scored via map expressions — too many features for setData rescoring
+    enabled: false, // opt-in: large download
+    fc: null,
+    loading: false,
+  },
 ];
+
+// Level as a MapLibre expression for expression-scored sources. Mirrors
+// effectiveLevel() for road props (speed always present; flags optional).
+// Rules are baked in as constants — on any rule change we rebuild the
+// expression and re-apply paint/filters, which is instant at any data size.
+function roadLevelExpr() {
+  const spd = ['get', 's'];
+  const cases = [];
+  cases.push(['==', ['get', 'b'], 1], 4);                       // bikes prohibited
+  if (!rules.allowFreeways) cases.push(['==', ['get', 'm'], 1], 4); // freeway gate
+  cases.push(['<=', spd, rules.freeMaxSpeed], 1);               // slow = comfortable
+  cases.push(                                                    // known-bad shoulder
+    ['all', ['!=', ['get', 'f'], 1], ['has', 'w'], ['<', ['get', 'w'], rules.minShoulder]], 4);
+  if (!rules.noUpperLimit) cases.push(['>', spd, rules.upperMaxSpeed], 4); // speed cap
+  return ['case', ...cases, 2];                                  // meets criteria
+}
 
 /* ------------------------------------------------------------- map */
 const map = new maplibregl.Map({
@@ -216,7 +264,15 @@ function rescore(src) {
 
 function rescoreAll() {
   const t0 = performance.now();
-  for (const src of SOURCES) if (src.enabled && src.fc) rescore(src);
+  for (const src of SOURCES) {
+    if (!src.enabled) continue;
+    if (src.expr) {
+      // Expression-scored: rebuild paint/filter expressions (no data rewrite).
+      if (map.getLayer(src.id)) applyDisplayMode(src);
+    } else if (src.fc) {
+      rescore(src);
+    }
+  }
   const ms = Math.round(performance.now() - t0);
   if (ms > 0) setStatus(`Recolored in ${ms} ms`);
 }
@@ -237,8 +293,20 @@ const failId = (src) => src.id + '__fail'; // gray-dashed "has data but fails" (
 const vhId = (src) => src.id + '__vh';     // red-dashed "very high / avoid" (color-ramp mode)
 const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
 
+// Insert this source's layers below any already-added layers of higher-zRank
+// sources, so draw order follows zRank regardless of load order.
+function beforeIdFor(src) {
+  const style = map.getStyle();
+  if (!style || !style.layers) return undefined;
+  const higher = SOURCES.filter((s) => s.zRank > src.zRank).map((s) => s.id);
+  const hit = style.layers.find((l) =>
+    higher.some((id) => l.id === id || l.id.startsWith(id + '__')));
+  return hit ? hit.id : undefined;
+}
+
 function ensureLayer(src) {
   if (map.getLayer(src.id)) return;
+  const beforeId = beforeIdFor(src);
   map.addSource(src.id, { type: 'geojson', data: src.fc });
   // Two dashed overlays are added first so the solid main layer draws on top
   // where lines overlap. Each is shown in only one display mode.
@@ -254,7 +322,7 @@ function ensureLayer(src) {
       'line-opacity': 0.65,
     },
     filter: ['all', ['>=', ['get', 'level'], display.passMax + 1], ['<=', ['get', 'level'], 4]],
-  });
+  }, beforeId);
   map.addLayer({
     id: vhId(src), // color-ramp mode: level 4 shown dashed to read as "not passable"
     type: 'line',
@@ -267,7 +335,7 @@ function ensureLayer(src) {
       'line-opacity': 0.9,
     },
     filter: ['==', ['get', 'level'], 4],
-  });
+  }, beforeId);
   map.addLayer({
     id: src.id,
     type: 'line',
@@ -278,7 +346,7 @@ function ensureLayer(src) {
       'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7],
       'line-opacity': 0.9,
     },
-  });
+  }, beforeId);
   // Invisible wide line on top — a forgiving hover target so you don't have to
   // land pixel-perfect on the thin visible line. Transparent, so no visual change.
   map.addLayer({
@@ -291,7 +359,7 @@ function ensureLayer(src) {
       'line-opacity': 0,
       'line-width': ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22],
     },
-  });
+  }, beforeId);
   applyDisplayMode(src);
   attachHover(src, hitId(src));
 }
@@ -309,21 +377,29 @@ function updateVisibility(src) {
 }
 
 // Switch a source between the color-ramp view (level 4 dashed) and the green
-// pass/fail view (gray-dashed fail overlay).
+// pass/fail view (gray-dashed fail overlay). For setData sources the level
+// lives on each feature; for expression sources it's computed inline, so this
+// also serves as the "rescore" when rules change.
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
+  const lvl = src.expr ? roadLevelExpr() : ['get', 'level'];
   if (display.passFail) {
-    map.setFilter(src.id, ['all', ['>=', ['get', 'level'], 1], ['<=', ['get', 'level'], display.passMax]]);
+    map.setFilter(src.id, ['all', ['>=', lvl, 1], ['<=', lvl, display.passMax]]);
     map.setPaintProperty(src.id, 'line-color', PASS_COLOR);
     map.setPaintProperty(src.id, 'line-opacity', 0.95);
     map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.4, 10, 2.6, 14, 5]);
   } else {
-    // Solid ramp for levels 1-3 (and unknown); level 4 goes to the dashed vh layer.
-    map.setFilter(src.id, ['!=', ['get', 'level'], 4]);
-    map.setPaintProperty(src.id, 'line-color', colorExpr());
+    // Solid ramp for passing levels (and unknown); level 4 goes to the dashed vh layer.
+    map.setFilter(src.id, ['!=', lvl, 4]);
+    map.setPaintProperty(src.id, 'line-color',
+      ['match', lvl, 1, COLORS[1], 2, COLORS[2], 3, COLORS[3], 4, COLORS[4], COLORS[0]]);
     map.setPaintProperty(src.id, 'line-opacity', 0.9);
     map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7]);
   }
+  if (map.getLayer(failId(src)))
+    map.setFilter(failId(src), ['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4]]);
+  if (map.getLayer(vhId(src)))
+    map.setFilter(vhId(src), ['==', lvl, 4]);
   updateVisibility(src);
 }
 
@@ -333,26 +409,49 @@ function applyDisplayModeAll() {
 }
 
 async function loadSource(src) {
-  if (src.fc || src.loading) return;
+  if (src.loaded || src.loading) return;
   src.loading = true;
   setStatus(`Loading ${src.name}…`, true);
-  const res = await fetch(src.url);
-  if (!res.ok) {
-    setStatus(`Failed to load ${src.name} (${res.status})`, true);
+  try {
+    let fc;
+    if (src.urlPattern) {
+      // Multi-part source: fetch data/<name>-1.geojson, -2, ... until a part is missing.
+      const features = [];
+      for (let i = 1; i <= 20; i++) {
+        const res = await fetch(src.urlPattern.replace('{i}', i));
+        if (!res.ok) {
+          if (i === 1) throw new Error('HTTP ' + res.status);
+          break;
+        }
+        const part = await res.json();
+        // (no spread: pushing 200k+ args at once overflows the call stack)
+        for (const f of part.features) features.push(f);
+        setStatus(`Loading ${src.name}… ${features.length.toLocaleString()} segments`, true);
+      }
+      fc = { type: 'FeatureCollection', features };
+    } else {
+      const res = await fetch(src.url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      fc = await res.json();
+    }
+    src.count = fc.features.length;
+    src.fc = fc;
+    if (!src.expr) rescore(src); // sets .level on every feature
+    ensureLayer(src);
+    if (src.expr) src.fc = null; // expression-scored: the map keeps its own copy
+    src.loaded = true;
+    setStatus(`${src.name}: ${src.count.toLocaleString()} segments`);
+    updateSourceCount(src);
+  } catch (e) {
+    setStatus(`Failed to load ${src.name} (${e.message})`, true);
+  } finally {
     src.loading = false;
-    return;
   }
-  src.fc = await res.json();
-  src.loading = false;
-  rescore(src);      // sets .level on every feature
-  ensureLayer(src);
-  setStatus(`${src.name}: ${src.fc.features.length.toLocaleString()} segments`);
-  updateSourceCount(src);
 }
 
 function setSourceVisible(src, on) {
   src.enabled = on;
-  if (on && !src.fc) return loadSource(src);
+  if (on && !src.loaded) return loadSource(src);
   if (on && !map.getLayer(src.id)) return ensureLayer(src);
   updateVisibility(src);
 }
@@ -376,13 +475,14 @@ function explainLevel(n) {
 
   const spd = n.maxspeed_num;
   const sh = n.shoulder_width;
+  const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : null;
   if (spd != null && spd <= rules.freeMaxSpeed)
-    return `${spd} mph ≤ your “free” ${rules.freeMaxSpeed} mph — comfortable regardless of shoulder.`;
+    return `${spdTxt} ≤ your “free” ${rules.freeMaxSpeed} mph — comfortable regardless of shoulder.`;
 
   const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
   const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
   const reasons = [];
-  if (speedFails) reasons.push(`${spd} mph is over your ${rules.upperMaxSpeed} mph max`);
+  if (speedFails) reasons.push(`${spdTxt} is over your ${rules.upperMaxSpeed} mph max`);
   if (shoulderFails) reasons.push(`${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`);
   if (reasons.length) return `Fails: ${reasons.join(' and ')}.`;
 
@@ -393,7 +493,7 @@ function explainLevel(n) {
   if (n.good_facility) met.push('has a bike facility');
   else if (sh != null) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
   else met.push('shoulder unknown (not held against it)');
-  if (spd != null) met.push(`${spd} mph within your ${rules.upperMaxSpeed} mph max`);
+  if (spd != null) met.push(`${spdTxt} within your ${rules.upperMaxSpeed} mph max`);
   return `Meets your criteria — ${met.join(', ')}.`;
 }
 
@@ -402,7 +502,7 @@ function attachHover(src, layerId) {
     map.getCanvas().style.cursor = 'pointer';
     const p = e.features[0].properties;
     const n = src.scorer(p);            // recompute normalized props from this feature
-    const lvl = p.level;
+    const lvl = p.level != null ? p.level : effectiveLevel(n); // expr sources carry no .level
     const verdict = lvl === 0 ? 'no data' : lvl <= display.passMax ? '✓ Pass' : '✗ Fail';
     const common = [
       ['Result', verdict],
@@ -419,6 +519,17 @@ function attachHover(src, layerId) {
         ['Cycleway', osmCycleway(p)],
         ['Surface', p.surface],
         ['Width', p.width != null ? `${p.width} m` : null],
+      ];
+    } else if (src.id === 'roads') {
+      title = 'Road (OSM)';
+      rows = [
+        ['Name', p.n],
+        ...common,
+        ['Class', p.h + (p.r ? ` (${p.r})` : '')],
+        ['Speed limit', p.s != null ? `${p.s} mph${p.e ? ' (estimated from class)' : ''}` : null],
+        ['Shoulder', p.w != null ? p.w + ' ft' : null],
+        ['Bike facility', p.f ? 'yes' : null],
+        ['Limited access', p.m ? 'yes' : null],
       ];
     } else {
       title = 'Road segment (WSDOT)';
@@ -450,7 +561,8 @@ function attachHover(src, layerId) {
 /* ----------------------------------------------------- build panels */
 function updateSourceCount(src) {
   const el = document.querySelector(`#src-${src.id} .count`);
-  if (el && src.fc) el.textContent = src.fc.features.length.toLocaleString();
+  const count = src.count != null ? src.count : src.fc && src.fc.features.length;
+  if (el && count != null) el.textContent = count.toLocaleString();
 }
 
 function buildSourcePanel() {
