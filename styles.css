@@ -92,3 +92,12 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
   text-decoration: none;
 }
 .readout .gmap:hover { text-decoration: underline; }
+
+.panel .foot {
+  margin-top: 14px;
+  padding-top: 8px;
+  border-top: 1px solid #e6e6e6;
+  font-size: 11px;
+}
+.panel .foot a { color: #888; text-decoration: none; }
+.panel .foot a:hover { color: #0a66c2; }

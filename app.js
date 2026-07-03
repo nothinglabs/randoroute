@@ -63,6 +63,7 @@ function scoreBLTS(p) {
     shoulder_width: p.ShoulderWidth == null ? null : p.ShoulderWidth,
     maxspeed_num: p.SpeedLimit == null ? null : p.SpeedLimit,
     prohibited: !!p.Prohibited, // overlaps a WSDOT permanent bike restriction
+    wsdotBan: !!p.Prohibited,
     restricted: false,
     limited_access: !!p.LimitedAccess,
     good_facility: !!(p.BikeFacilityType && p.BikeFacilityType.length),
@@ -283,6 +284,7 @@ function rescore(src) {
   for (const f of src.fc.features) {
     if (!f.properties._n) f.properties._n = src.scorer(f.properties);
     f.properties.level = effectiveLevel(f.properties._n);
+    f.properties.banned = f.properties._n.prohibited ? 1 : 0;
   }
   const mapSrc = map.getSource(src.id);
   if (mapSrc) mapSrc.setData(src.fc);
@@ -318,6 +320,9 @@ const FAIL_COLOR = '#9aa0a6';
 const failId = (src) => src.id + '__fail'; // gray-dashed "has data but fails" (pass/fail mode)
 const vhId = (src) => src.id + '__vh';     // red-dashed "very high / avoid" (color-ramp mode)
 const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
+const banId = (src) => src.id + '__ban';   // black-dashed: bikes prohibited (both modes)
+const BAN_COLOR = '#1a1a1a';
+const bannedExprFor = (src) => (src.expr ? ['==', ['get', 'b'], 1] : ['==', ['get', 'banned'], 1]);
 
 // Insert this source's layers below any already-added layers of higher-zRank
 // sources, so draw order follows zRank regardless of load order.
@@ -373,6 +378,24 @@ function ensureLayer(src) {
       'line-opacity': 0.9,
     },
   }, beforeId);
+  // Bikes-prohibited overlay: same black-dashed treatment as the WSDOT
+  // restriction layer, shown in BOTH display modes (a legal ban isn't a
+  // preference). Not created for the fixed overlay source itself.
+  if (!src.fixed) {
+    map.addLayer({
+      id: banId(src),
+      type: 'line',
+      source: src.id,
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: {
+        'line-color': BAN_COLOR,
+        'line-dasharray': [1.6, 1.4],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.6, 10, 2.6, 14, 4.5],
+        'line-opacity': 0.95,
+      },
+      filter: bannedExprFor(src),
+    }, beforeId);
+  }
   // Invisible wide line on top — a forgiving hover target so you don't have to
   // land pixel-perfect on the thin visible line. Transparent, so no visual change.
   map.addLayer({
@@ -395,6 +418,7 @@ function ensureLayer(src) {
 function updateVisibility(src) {
   const on = src.enabled;
   if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', on ? 'visible' : 'none');
+  if (map.getLayer(banId(src))) map.setLayoutProperty(banId(src), 'visibility', on ? 'visible' : 'none');
   if (src.fixed) { // overlay has no mode-specific layers to manage beyond the main one
     if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', on ? 'visible' : 'none');
     if (map.getLayer(failId(src))) map.setLayoutProperty(failId(src), 'visibility', 'none');
@@ -452,10 +476,13 @@ function applyDisplayMode(src) {
     map.setPaintProperty(src.id, 'line-opacity', 0.9);
     map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7]);
   }
+  const notBanned = ['!=', bannedExprFor(src), true];
   if (map.getLayer(failId(src)))
-    map.setFilter(failId(src), and(['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4]]));
+    map.setFilter(failId(src), and(['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4], notBanned]));
   if (map.getLayer(vhId(src)))
-    map.setFilter(vhId(src), and(['==', lvl, 4]));
+    map.setFilter(vhId(src), and(['all', ['==', lvl, 4], notBanned]));
+  if (map.getLayer(banId(src)))
+    map.setFilter(banId(src), bannedExprFor(src)); // prohibitions ignore declutter/dedup
   if (map.getLayer(hitId(src)))
     map.setFilter(hitId(src), hideRes || dedup ? and(['boolean', true]) : null); // keep hover off hidden roads
   updateVisibility(src);
@@ -532,7 +559,10 @@ const LEVEL_NAME = { 0: 'unknown', 1: 'Low', 2: 'Moderate', 3: 'High', 4: 'Very 
 // Plain-language reason for a segment's verdict under the current rules.
 // Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
 function explainLevel(n) {
-  if (n.prohibited) return 'Bikes not allowed / must dismount here.';
+  if (n.prohibited)
+    return n.wsdotBan
+      ? 'Bikes prohibited — WSDOT permanent restriction.'
+      : 'Bikes prohibited — OSM-tagged (bicycle=no/dismount).';
   if (n.infra)
     return n.baseScore === 1
       ? 'Dedicated or protected bike path — low stress.'
@@ -627,6 +657,7 @@ function attachHover(src, layerId) {
         ['Shoulder', p.w != null ? p.w + ' ft' : null],
         ['Bike facility', p.f ? 'yes' : null],
         ['Limited access', p.m ? 'yes' : null],
+        ['Bikes prohibited', p.b ? 'yes (OSM tag)' : null],
       ];
     } else {
       title = 'Road segment (WSDOT)';
@@ -777,7 +808,7 @@ function buildLegend() {
        [null, 'No-data roads are hidden']]
     // Color-ramp view: level 4 is drawn dashed to read as "not passable".
     : LEGEND.map(([lvl, label]) => [lvl === 4 ? 'dash4' : COLORS[lvl], label]);
-  rows.push(['dashK', 'Bikes prohibited (WSDOT)']);
+  rows.push(['dashK', 'Bikes prohibited (WSDOT / OSM)']);
   for (const [color, label] of rows) {
     const item = document.createElement('div');
     item.className = 'item';
