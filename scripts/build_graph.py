@@ -24,10 +24,17 @@ Binary layout (little-endian), after 16-byte header 'BGR1' + N,E,D (u32):
   outStart u32[N+1], outTarget u32[D], outEdge u32[D]   (directed CSR)
   geomLon f32[G], geomLat f32[G]  (pool; G = sum of edgeGeomCnt)
 
+WSDOT conflation: the map's WSDOT layer fails roads on MEASURED shoulder
+width that OSM doesn't have — without it the router would happily use roads
+the map shows as failing. For state-highway edges we spatially match the
+nearest WSDOT BLTS segment (within ~30 m) and adopt its measured shoulder,
+real speed limit, and bikes-prohibited flag, so routing and the map agree.
+
 Usage: python3 scripts/build_graph.py [--src data/washington-latest.osm.pbf]
 """
 import argparse
 import gzip
+import json
 import math
 import re
 import struct
@@ -35,7 +42,8 @@ import sys
 from array import array
 
 import osmium
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point
+from shapely.strtree import STRtree
 
 DRIVE = {
     'motorway', 'motorway_link', 'trunk', 'trunk_link',
@@ -54,6 +62,32 @@ FACILITY = {'lane', 'shared_lane', 'buffered_lane', 'track', 'separated',
 CYCLEWAY_KEYS = ('cycleway', 'cycleway:both', 'cycleway:right', 'cycleway:left')
 SIMPLIFY_DEG = 0.00012  # ~12 m — route display geometry
 _num = re.compile(r'^\s*(\d+(?:\.\d+)?)')
+# Edges eligible for WSDOT conflation: state-highway-ish classes or state refs.
+WSDOT_CLASSES = {'motorway', 'motorway_link', 'trunk', 'trunk_link',
+                 'primary', 'primary_link', 'secondary', 'secondary_link'}
+REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA)[-\s]?\d+', re.I)
+WSDOT_MATCH_DEG = 0.00035  # ~30 m
+
+
+def load_blts_index(path):
+    """STRtree over WSDOT BLTS segments + per-segment attrs."""
+    fc = json.load(open(path))
+    geoms, attrs = [], []
+    for f in fc['features']:
+        p = f['properties']
+        g = f['geometry']
+        lines = [g['coordinates']] if g['type'] == 'LineString' else g['coordinates']
+        for cs in lines:
+            if len(cs) < 2:
+                continue
+            geoms.append(LineString(cs))
+            attrs.append({
+                'sh': p.get('ShoulderWidth'),
+                'spd': p.get('SpeedLimit'),
+                'prohibited': p.get('Prohibited') == 1,
+            })
+    print(f'  WSDOT index: {len(geoms):,} segments', flush=True)
+    return STRtree(geoms), geoms, attrs
 
 
 def parse_mph(v):
@@ -141,7 +175,8 @@ def line_len_m(coords):
     return sum(haversine_m(*coords[i], *coords[i + 1]) for i in range(len(coords) - 1))
 
 
-def build(src, out):
+def build(src, out, blts=None):
+    wsdot = load_blts_index(blts) if blts else None
     # ---- pass 1: which ways are kept; count node references to find junctions
     print('pass 1: scanning ways...', flush=True)
     refcount = {}
@@ -178,6 +213,7 @@ def build(src, out):
         return i
 
     oneway_arcs = 0
+    conflated = [0]
     for obj in osmium.FileProcessor(src).with_locations():
         if not obj.is_way():
             continue
@@ -192,6 +228,12 @@ def build(src, out):
         if ow == -1:
             pts = pts[::-1]
             ow = 1
+
+        wsdot_candidate = (
+            wsdot is not None and not attrs['infra']
+            and (tags.get('highway') in WSDOT_CLASSES
+                 or (tags.get('ref') and REF_STATE.search(tags['ref'])))
+        )
 
         flags = ((1 if attrs['est'] else 0) | (2 if attrs['fac'] else 0)
                  | (4 if attrs['lim'] else 0) | (8 if attrs['infra'] else 0)
@@ -211,8 +253,27 @@ def build(src, out):
                         a = gnode(seg[0][0], *coords[0])
                         b = gnode(seg[-1][0], *coords[-1])
                         if a != b or length > 10:  # drop degenerate micro-loops
+                            espeed, esh, eflags = attrs['speed'], sh, flags
+                            if wsdot_candidate:
+                                tree, geoms, wattrs = wsdot
+                                mid = Point(coords[len(coords) // 2])
+                                best, bestd = None, WSDOT_MATCH_DEG
+                                for gi in tree.query(mid.buffer(WSDOT_MATCH_DEG)):
+                                    d = geoms[gi].distance(mid)
+                                    if d < bestd:
+                                        bestd, best = d, wattrs[gi]
+                                if best is not None:
+                                    if best['prohibited']:
+                                        seg = [p]
+                                        continue  # WSDOT permanent bike restriction
+                                    if best['sh'] is not None:
+                                        esh = max(-1, min(127, int(best['sh'])))
+                                    if best['spd'] and (eflags & 1):
+                                        espeed = min(int(best['spd']), 255)
+                                        eflags &= ~1  # measured, not estimated
+                                    conflated[0] += 1
                             eA.append(a); eB.append(b); eLen.append(length)
-                            eSpeed.append(attrs['speed']); eFlags.append(flags); eSh.append(sh)
+                            eSpeed.append(espeed); eFlags.append(eflags); eSh.append(esh)
                             eOff.append(len(gLon)); eCnt.append(min(len(coords), 65535))
                             for x, y in coords[:65535]:
                                 gLon.append(x); gLat.append(y)
@@ -222,6 +283,7 @@ def build(src, out):
 
     N, E, G = len(node_lon), len(eA), len(gLon)
     print(f'  nodes {N:,}  edges {E:,}  geom vertices {G:,}  oneway edges {oneway_arcs:,}', flush=True)
+    print(f'  WSDOT-conflated edges: {conflated[0]:,}', flush=True)
 
     # ---- directed CSR adjacency
     print('building adjacency...', flush=True)
@@ -277,5 +339,7 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='data/washington-latest.osm.pbf')
     ap.add_argument('--out', default='data/graph.bin.gz')
+    ap.add_argument('--blts', default='data/blts.geojson',
+                    help='WSDOT BLTS geojson for shoulder/speed/prohibition conflation')
     args = ap.parse_args()
-    build(args.src, args.out)
+    build(args.src, args.out, args.blts)
