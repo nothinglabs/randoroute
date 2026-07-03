@@ -321,7 +321,7 @@ const failId = (src) => src.id + '__fail'; // gray-dashed "has data but fails" (
 const vhId = (src) => src.id + '__vh';     // red-dashed "very high / avoid" (color-ramp mode)
 const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
 const banId = (src) => src.id + '__ban';   // black-dashed: bikes prohibited (both modes)
-const BAN_COLOR = '#1a1a1a';
+const BAN_COLOR = '#ff1493'; // deep pink — distinct from the red 'fails' dash
 const bannedExprFor = (src) => (src.expr ? ['==', ['get', 'b'], 1] : ['==', ['get', 'banned'], 1]);
 
 // Insert this source's layers below any already-added layers of higher-zRank
@@ -378,10 +378,12 @@ function ensureLayer(src) {
       'line-opacity': 0.9,
     },
   }, beforeId);
-  // Bikes-prohibited overlay: same black-dashed treatment as the WSDOT
-  // restriction layer, shown in BOTH display modes (a legal ban isn't a
-  // preference). Not created for the fixed overlay source itself.
-  if (!src.fixed) {
+  // Bikes-prohibited overlay: same dashed treatment as the WSDOT restriction
+  // layer, shown in BOTH display modes (a legal ban isn't a preference). Not
+  // created for the fixed overlay itself, nor for BLTS — its prohibitions are
+  // derived from (and drawn by) the restriction overlay; stacking the two
+  // offset dash patterns read as a solid line.
+  if (!src.fixed && src.id !== 'blts') {
     map.addLayer({
       id: banId(src),
       type: 'line',
@@ -441,7 +443,7 @@ function applyDisplayMode(src) {
   if (src.fixed) {
     // Regulatory overlay: same look in every mode, exempt from rules/pass-fail.
     map.setFilter(src.id, null);
-    map.setPaintProperty(src.id, 'line-color', '#1a1a1a');
+    map.setPaintProperty(src.id, 'line-color', BAN_COLOR);
     map.setPaintProperty(src.id, 'line-dasharray', [1.6, 1.4]);
     map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.6, 10, 2.6, 14, 4.5]);
     map.setPaintProperty(src.id, 'line-opacity', 0.95);
@@ -463,26 +465,44 @@ function applyDisplayMode(src) {
     if (dedup) conds.push(['!=', ['get', 'd'], 1]);
     return conds.length > 1 ? ['all', ...conds] : f;
   };
+  // Roads layer: residential/living_street draw thinner so arterials stand out.
+  const isRes = ['match', ['get', 'h'], ['residential', 'living_street'], true, false];
+  const w = (r6, n6, r10, n10, r14, n14) =>
+    src.expr
+      ? ['interpolate', ['linear'], ['zoom'],
+         6, ['case', isRes, r6, n6], 10, ['case', isRes, r10, n10], 14, ['case', isRes, r14, n14]]
+      : ['interpolate', ['linear'], ['zoom'], 6, n6, 10, n10, 14, n14];
   if (display.passFail) {
     map.setFilter(src.id, and(['all', ['>=', lvl, 1], ['<=', lvl, display.passMax]]));
     map.setPaintProperty(src.id, 'line-color', PASS_COLOR);
     map.setPaintProperty(src.id, 'line-opacity', 0.95);
-    map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.4, 10, 2.6, 14, 5]);
+    map.setPaintProperty(src.id, 'line-width', w(0.8, 1.4, 1.5, 2.6, 2.8, 5));
   } else {
     // Solid ramp for passing levels (and unknown); level 4 goes to the dashed vh layer.
     map.setFilter(src.id, and(['!=', lvl, 4]));
     map.setPaintProperty(src.id, 'line-color',
       ['match', lvl, 1, COLORS[1], 2, COLORS[2], 3, COLORS[3], 4, COLORS[4], COLORS[0]]);
     map.setPaintProperty(src.id, 'line-opacity', 0.9);
-    map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7]);
+    map.setPaintProperty(src.id, 'line-width', w(0.6, 1.1, 1.1, 1.9, 2.1, 3.7));
   }
   const notBanned = ['!=', bannedExprFor(src), true];
   if (map.getLayer(failId(src)))
     map.setFilter(failId(src), and(['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4], notBanned]));
   if (map.getLayer(vhId(src)))
     map.setFilter(vhId(src), and(['all', ['==', lvl, 4], notBanned]));
-  if (map.getLayer(banId(src)))
-    map.setFilter(banId(src), bannedExprFor(src)); // prohibitions ignore declutter/dedup
+  if (map.getLayer(banId(src))) {
+    let banF = bannedExprFor(src);
+    if (src.id === 'roads' && SOURCES.find((s) => s.id === 'blts').enabled) {
+      // Mainline state-highway bans are already drawn by the WSDOT restriction
+      // overlay; keep ramps and non-state roads so nothing stacks or vanishes.
+      banF = ['all', banF, ['any',
+        ['!=', ['get', 'd'], 1],
+        ['match', ['get', 'h'],
+          ['motorway_link', 'trunk_link', 'primary_link', 'secondary_link', 'tertiary_link'],
+          true, false]]];
+    }
+    map.setFilter(banId(src), banF); // prohibitions ignore declutter
+  }
   if (map.getLayer(hitId(src)))
     map.setFilter(hitId(src), hideRes || dedup ? and(['boolean', true]) : null); // keep hover off hidden roads
   updateVisibility(src);
@@ -818,7 +838,7 @@ function buildLegend() {
         : color === 'dash4'
         ? `<span class="swatch" style="${dash(COLORS[4])}"></span>`
         : color === 'dashK'
-        ? `<span class="swatch" style="${dash('#1a1a1a')}"></span>`
+        ? `<span class="swatch" style="${dash(BAN_COLOR)}"></span>`
         : color
         ? `<span class="swatch" style="background:${color}"></span>`
         : `<span class="swatch" style="background:transparent;border:1px dashed #bbb"></span>`;
