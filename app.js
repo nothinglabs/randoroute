@@ -199,11 +199,15 @@ const SOURCES = [
   {
     id: 'roads',
     name: 'All roads (OSM, est. speeds)',
-    urlPattern: 'data/roads-{i}.geojson', // split into parts; fetched until a part is missing
+    // Vector tiles: the browser fetches only the small tiles in view, so this
+    // layer no longer loads 78MB of GeoJSON into memory (it was crashing iOS).
+    vector: 'pmtiles://data/roads.pmtiles',
+    sourceLayer: 'roads',
+    count: 323581, // baked at build time (tiles don't carry a global count)
     scorer: scoreRoad,
     zRank: 0,      // bottom: authoritative layers draw on top
-    expr: true,    // scored via map expressions — too many features for setData rescoring
-    enabled: false, // opt-in: large download
+    expr: true,    // scored via map expressions (works identically on tiles)
+    enabled: false, // opt-in
     fc: null,
     loading: false,
   },
@@ -249,6 +253,11 @@ const map = new maplibregl.Map({
   zoom: 6.4,
   maxZoom: 17,
 });
+// PMTiles: static single-file vector tiles over HTTP range requests — no server.
+if (window.pmtiles) {
+  const _pmProtocol = new pmtiles.Protocol();
+  maplibregl.addProtocol('pmtiles', _pmProtocol.tile);
+}
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 map.addControl(
   new maplibregl.GeolocateControl({
@@ -302,6 +311,7 @@ function rescoreAll() {
   }
   const ms = Math.round(performance.now() - t0);
   if (ms > 0) setStatus(`Recolored in ${ms} ms`);
+  if (routing.ready && routing.start && routing.end) computeRoute();
 }
 
 // Coalesce rapid rule changes (e.g. slider drags) into one recolor per frame.
@@ -328,19 +338,24 @@ function beforeIdFor(src) {
   const higher = SOURCES.filter((s) => s.zRank > src.zRank).map((s) => s.id);
   const hit = style.layers.find((l) =>
     higher.some((id) => l.id === id || l.id.startsWith(id + '__')));
-  return hit ? hit.id : undefined;
+  if (hit) return hit.id;
+  // keep the route line above every data source
+  return map.getLayer('route-casing') ? 'route-casing' : undefined;
 }
 
 function ensureLayer(src) {
   if (map.getLayer(src.id)) return;
   const beforeId = beforeIdFor(src);
-  map.addSource(src.id, { type: 'geojson', data: src.fc });
+  if (src.vector) map.addSource(src.id, { type: 'vector', url: src.vector });
+  else map.addSource(src.id, { type: 'geojson', data: src.fc });
+  const SL = src.vector ? { 'source-layer': src.sourceLayer } : {};
   // Two dashed overlays are added first so the solid main layer draws on top
   // where lines overlap. Each is shown in only one display mode.
   map.addLayer({
     id: failId(src), // pass/fail mode: roads with data that don't qualify
     type: 'line',
     source: src.id,
+    ...SL,
     layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
     paint: {
       'line-color': FAIL_COLOR,
@@ -354,6 +369,7 @@ function ensureLayer(src) {
     id: vhId(src), // color-ramp mode: level 4 shown dashed to read as "not passable"
     type: 'line',
     source: src.id,
+    ...SL,
     layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
     paint: {
       'line-color': COLORS[4],
@@ -367,6 +383,7 @@ function ensureLayer(src) {
     id: src.id,
     type: 'line',
     source: src.id,
+    ...SL,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       'line-color': colorExpr(),
@@ -380,6 +397,7 @@ function ensureLayer(src) {
     id: hitId(src),
     type: 'line',
     source: src.id,
+    ...SL,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       'line-color': '#000',
@@ -484,6 +502,14 @@ function applyDisplayModeAll() {
 
 async function loadSource(src) {
   if (src.loaded || src.loading) return;
+  if (src.vector) {
+    // Vector tiles: nothing to prefetch — the map streams tiles on demand.
+    ensureLayer(src);
+    src.loaded = true;
+    updateSourceCount(src);
+    setStatus(`${src.name}: streaming tiles`);
+    return;
+  }
   src.loading = true;
   setStatus(`Loading ${src.name}…`, true);
   try {
@@ -539,6 +565,167 @@ function setSourceVisible(src, on) {
     const roads = SOURCES.find((s) => s.id === 'roads');
     if (map.getLayer(roads.id)) applyDisplayMode(roads);
   }
+}
+
+/* --------------------------------------------------------- routing */
+// Fully client-side: A* over a prebuilt graph (data/graph.bin.gz) in a web
+// worker. No routing server. Costs come from the CURRENT riding rules; the
+// route recomputes when the rules change.
+const routing = {
+  arm: null,                 // 'start' | 'end' — next map tap sets that point
+  start: null, end: null,    // [lng, lat]
+  startMarker: null, endMarker: null,
+  worker: null, ready: false, loading: false,
+  tolerant: false, reqId: 0,
+};
+
+function setRouteStatus(t) {
+  const el = document.getElementById('route-status');
+  if (el) el.textContent = t;
+}
+
+async function ensureRouter() {
+  if (routing.ready || routing.loading) return;
+  routing.loading = true;
+  try {
+    setRouteStatus('Loading routing data (one-time download)…');
+    const res = await fetch('data/graph.bin.gz');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    let buf = await res.arrayBuffer();
+    const head = new Uint8Array(buf, 0, 2);
+    if (head[0] === 0x1f && head[1] === 0x8b) {
+      // Server delivered the gzip container raw — decompress ourselves.
+      const ds = new DecompressionStream('gzip');
+      buf = await new Response(new Blob([buf]).stream().pipeThrough(ds)).arrayBuffer();
+    }
+    routing.worker = new Worker('router-worker.js');
+    routing.worker.onmessage = onRouterMessage;
+    routing.worker.postMessage({ type: 'graph', buffer: buf }, [buf]);
+  } catch (e) {
+    routing.loading = false;
+    setRouteStatus('Routing data failed to load (' + e.message + ').');
+  }
+}
+
+function onRouterMessage(ev) {
+  const m = ev.data;
+  if (m.type === 'ready') {
+    routing.ready = true;
+    routing.loading = false;
+    setRouteStatus(routing.start && routing.end ? 'Routing…' : 'Ready — set start and end.');
+    computeRoute();
+  } else if (m.type === 'route') {
+    if (m.id !== routing.reqId) return; // stale reply
+    if (!m.ok) {
+      drawRoute([]);
+      setRouteStatus(m.reason);
+      return;
+    }
+    drawRoute(m.coords);
+    const mi = (x) => (x / 1609.34).toFixed(1);
+    setRouteStatus(
+      `${mi(m.distM)} mi` +
+        (m.failM > 0 ? ` — ${mi(m.failM)} mi on failing roads` : ' — all within your criteria')
+    );
+  } else if (m.type === 'error') {
+    setRouteStatus('Routing error: ' + m.message);
+  }
+}
+
+function computeRoute() {
+  if (!routing.start || !routing.end) return;
+  if (!routing.ready) { ensureRouter(); return; } // re-runs once ready
+  routing.reqId++;
+  setRouteStatus('Routing…');
+  routing.worker.postMessage({
+    type: 'route', id: routing.reqId,
+    start: routing.start, end: routing.end,
+    rules: { ...rules }, tolerant: routing.tolerant,
+  });
+}
+
+function drawRoute(coords) {
+  const data = { type: 'Feature', properties: {},
+    geometry: { type: 'LineString', coordinates: coords } };
+  const srcExisting = map.getSource('route');
+  if (srcExisting) { srcExisting.setData(data); return; }
+  map.addSource('route', { type: 'geojson', data });
+  map.addLayer({
+    id: 'route-casing', type: 'line', source: 'route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.85 },
+  });
+  map.addLayer({
+    id: 'route', type: 'line', source: 'route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#7b2cbf', 'line-width': 5, 'line-opacity': 0.9 },
+  });
+}
+
+function setRoutePoint(kind, lngLat) {
+  routing[kind] = [lngLat.lng, lngLat.lat];
+  const mk = kind + 'Marker';
+  if (routing[mk]) routing[mk].setLngLat(lngLat);
+  else {
+    routing[mk] = new maplibregl.Marker({
+      color: kind === 'start' ? '#009E73' : '#d7191c', draggable: true,
+    }).setLngLat(lngLat).addTo(map);
+    routing[mk].on('dragend', () => {
+      const ll = routing[mk].getLngLat();
+      routing[kind] = [ll.lng, ll.lat];
+      computeRoute();
+    });
+  }
+  computeRoute();
+}
+
+function clearRoute() {
+  routing.arm = null;
+  routing.start = routing.end = null;
+  for (const k of ['startMarker', 'endMarker']) {
+    if (routing[k]) { routing[k].remove(); routing[k] = null; }
+  }
+  drawRoute([]);
+  setRouteStatus('Tap “Set start”, then tap the map.');
+  updateArmButtons();
+}
+
+function updateArmButtons() {
+  for (const kind of ['start', 'end']) {
+    const b = document.getElementById('rt-' + kind);
+    if (b) b.classList.toggle('active', routing.arm === kind);
+  }
+}
+
+function buildRoutingPanel() {
+  const host = document.getElementById('routing');
+  host.innerHTML = `
+    <div class="hint">Local A* over the rideable network — uses your riding
+      rules as the cost. No server, works offline once loaded.</div>
+    <div class="route-row">
+      <button id="rt-start">Set start</button>
+      <button id="rt-end">Set end</button>
+      <button id="rt-clear">Clear</button>
+    </div>
+    <div class="check-rule">
+      <input type="checkbox" id="rt-tolerant">
+      <label for="rt-tolerant">Allow failing roads</label>
+      <div class="hint" style="width:100%">Route may use failing (red) roads,
+        heavily penalized, when nothing better exists.</div>
+    </div>
+    <div class="hint" id="route-status">Tap “Set start”, then tap the map.</div>`;
+  for (const kind of ['start', 'end']) {
+    document.getElementById('rt-' + kind).addEventListener('click', () => {
+      routing.arm = routing.arm === kind ? null : kind;
+      updateArmButtons();
+      ensureRouter(); // prefetch the graph on first interest
+    });
+  }
+  document.getElementById('rt-clear').addEventListener('click', clearRoute);
+  document.getElementById('rt-tolerant').addEventListener('change', (e) => {
+    routing.tolerant = e.target.checked;
+    computeRoute();
+  });
 }
 
 /* ---------------------------------------------- hover/click readout */
@@ -703,6 +890,13 @@ map.on('mousemove', (e) => {
   else readoutEl.classList.remove('show');
 });
 map.on('click', (e) => {
+  if (routing.arm) {
+    const kind = routing.arm;
+    routing.arm = null;
+    updateArmButtons();
+    setRoutePoint(kind, e.lngLat);
+    return;
+  }
   const f = featureAt(e.point);
   if (f) {
     renderReadout(f, e.lngLat);
@@ -837,6 +1031,7 @@ function buildLegend() {
 /* ------------------------------------------------------------- boot */
 buildSourcePanel();
 buildRulesPanel();
+buildRoutingPanel();
 buildDisplayPanel();
 buildLegend();
 

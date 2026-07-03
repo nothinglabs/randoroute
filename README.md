@@ -136,26 +136,43 @@ lane/shared_lane`). Plain sidewalks/footpaths with no bicycle acceptance are
 dropped so we don't color noise. The keep/drop logic mirrors `scoreOSM` in
 `app.js`.
 
-### Full road network → `data/roads-*.geojson` (~324k ways)
+### Full road network → `data/roads.pmtiles` (~324k ways, vector tiles)
 
 ```bash
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads
+tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
+  --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
+  --simplification=8 --read-parallel data/roads-1.geojson data/roads-2.geojson
+rm data/roads-*.geojson  # intermediate
 ```
 
 Same Geofabrik extract. Keeps `motorway`..`tertiary` (+links), `unclassified`,
-`residential`, `living_street`; excludes `service`/`track` (driveways, parking
-aisles, logging roads) and `access=private/no`. Where OSM has no usable
-`maxspeed`, a class-based default is baked in (e.g. residential → 25 mph) and
-flagged `e=1` so the UI shows "(estimated from class)". Geometry is simplified
-(~5 m) and properties use short keys; output is split into parts under
-GitHub's 100 MB file limit — the app fetches `roads-1`, `roads-2`, … until a
-part is missing.
+`residential`, `living_street`; excludes `service`/`track` and
+`access=private/no`. Where OSM has no usable `maxspeed`, a class-based default
+is baked in (e.g. residential → 25 mph) and flagged `e=1` so the UI shows
+"(estimated from class)".
 
-Because this source has ~324k features, it is scored with **MapLibre
-expressions** (`roadLevelExpr` in `app.js`) instead of the setData path — a
-rule change just swaps paint/filter expressions, which is instant at any data
-size.
+Served as **PMTiles** — a single static vector-tile file read via HTTP range
+requests (no tile server). The browser fetches only the small tiles in view,
+so this layer no longer parses ~78 MB of GeoJSON in the page (which crashed
+iOS Safari). It is scored with **MapLibre expressions** (`roadLevelExpr` in
+`app.js`): a rule change just swaps paint/filter expressions — instant at any
+data size, GeoJSON or tiles.
+
+### Routing graph → `data/graph.bin.gz`
+
+```bash
+python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
+```
+
+A compact binary graph (nodes at intersections; edges carry length, speed —
+actual or class-estimated — facility/limited-access/infrastructure flags, and
+shoulder where known). One-way streets honored for bikes; `bicycle=no` ways
+excluded entirely. The app routes over it **fully client-side**: A* in a web
+worker (`router-worker.js`), with edge costs derived from the current riding
+rules — strict mode only uses passing segments; "allow failing roads" permits
+them at a heavy penalty. No routing server; works offline once cached.
 
 ## Vendored library
 

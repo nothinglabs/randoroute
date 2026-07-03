@@ -1,0 +1,198 @@
+/*
+ * Client-side bike router. Runs A* over the prebuilt graph (data/graph.bin.gz,
+ * see scripts/build_graph.py) entirely in this worker — no routing server.
+ *
+ * Edge cost = length × multiplier from the user's riding rules:
+ *   level 1 (comfortable) ×0.95, level 2 (meets criteria) ×1.0,
+ *   level 4 (fails) — strict: impassable; tolerant: ×8.
+ * Prohibited ways were excluded from the graph at build time.
+ */
+'use strict';
+
+let N = 0, E = 0, D = 0;
+let nodeLon, nodeLat, eA, eB, eLen, eSpeed, eFlags, eSh, eOff, eCnt;
+let outStart, outTarget, outEdge, gLon, gLat;
+
+function loadGraph(buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, false) !== 0x42475231) throw new Error('bad graph magic'); // 'BGR1'
+  N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
+  let o = 16;
+  const f32 = (n) => { const a = new Float32Array(buf, o, n); o += 4 * n; return a; };
+  const u32 = (n) => { const a = new Uint32Array(buf, o, n); o += 4 * n; return a; };
+  const u16 = (n) => { const a = new Uint16Array(buf, o, n); o += 2 * n; return a; };
+  const u8 = (n) => { const a = new Uint8Array(buf, o, n); o += n; return a; };
+  const i8 = (n) => { const a = new Int8Array(buf, o, n); o += n; return a; };
+  const pad4 = () => { o += (4 - (o % 4)) % 4; };
+  nodeLon = f32(N); nodeLat = f32(N);
+  eA = u32(E); eB = u32(E); eLen = f32(E);
+  eSpeed = u8(E); eFlags = u8(E); eSh = i8(E);
+  pad4();
+  eOff = u32(E);
+  eCnt = u16(E);
+  pad4();
+  outStart = u32(N + 1); outTarget = u32(D); outEdge = u32(D);
+  const G = (buf.byteLength - o) / 8;
+  gLon = f32(G); gLat = f32(G);
+}
+
+const R = 6371000;
+function havM(lon1, lat1, lon2, lat2) {
+  const p1 = (lat1 * Math.PI) / 180, p2 = (lat2 * Math.PI) / 180;
+  const dp = p2 - p1, dl = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function nearestNode(lon, lat) {
+  const coslat = Math.cos((lat * Math.PI) / 180);
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < N; i++) {
+    const dx = (nodeLon[i] - lon) * coslat;
+    const dy = nodeLat[i] - lat;
+    const d = dx * dx + dy * dy;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return { node: best, distM: havM(lon, lat, nodeLon[best], nodeLat[best]) };
+}
+
+// Mirrors the app's effectiveLevel() for packed edge attributes.
+function edgeLevel(i, rules) {
+  const flags = eFlags[i];
+  if (flags & 4 && !rules.allowFreeways) return 4; // limited access
+  if (flags & 8) return 1;                          // dedicated infrastructure
+  const spd = eSpeed[i];
+  if (spd <= rules.freeMaxSpeed) return 1;
+  const sh = eSh[i];
+  if (!(flags & 2) && sh >= 0 && sh < rules.minShoulder) return 4;
+  if (!rules.noUpperLimit && spd > rules.upperMaxSpeed) return 4;
+  return 2;
+}
+
+// Binary min-heap on (key, node) pairs.
+function makeHeap(cap) {
+  let keys = new Float64Array(cap), vals = new Int32Array(cap), n = 0;
+  return {
+    get size() { return n; },
+    push(k, v) {
+      if (n === keys.length) {
+        const k2 = new Float64Array(n * 2), v2 = new Int32Array(n * 2);
+        k2.set(keys); v2.set(vals); keys = k2; vals = v2;
+      }
+      let i = n++; keys[i] = k; vals[i] = v;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (keys[p] <= keys[i]) break;
+        const tk = keys[p]; keys[p] = keys[i]; keys[i] = tk;
+        const tv = vals[p]; vals[p] = vals[i]; vals[i] = tv;
+        i = p;
+      }
+    },
+    pop() {
+      const topV = vals[0]; n--;
+      keys[0] = keys[n]; vals[0] = vals[n];
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let s = i;
+        if (l < n && keys[l] < keys[s]) s = l;
+        if (r < n && keys[r] < keys[s]) s = r;
+        if (s === i) break;
+        const tk = keys[s]; keys[s] = keys[i]; keys[i] = tk;
+        const tv = vals[s]; vals[s] = vals[i]; vals[i] = tv;
+        i = s;
+      }
+      return topV;
+    },
+  };
+}
+
+function route(startLL, endLL, rules, tolerant) {
+  const t0 = Date.now();
+  const s = nearestNode(startLL[0], startLL[1]);
+  const t = nearestNode(endLL[0], endLL[1]);
+  if (s.distM > 2000) return { ok: false, reason: 'Start point is too far from any rideable road.' };
+  if (t.distM > 2000) return { ok: false, reason: 'End point is too far from any rideable road.' };
+
+  const goalLon = nodeLon[t.node], goalLat = nodeLat[t.node];
+  const dist = new Float64Array(N).fill(Infinity);
+  const prevNode = new Int32Array(N).fill(-1);
+  const prevEdge = new Int32Array(N).fill(-1);
+  const done = new Uint8Array(N);
+  const heap = makeHeap(4096);
+  dist[s.node] = 0;
+  heap.push(havM(nodeLon[s.node], nodeLat[s.node], goalLon, goalLat) * 0.95, s.node);
+
+  let found = false;
+  while (heap.size) {
+    const u = heap.pop();
+    if (done[u]) continue;
+    done[u] = 1;
+    if (u === t.node) { found = true; break; }
+    const du = dist[u];
+    for (let a = outStart[u]; a < outStart[u + 1]; a++) {
+      const v = outTarget[a];
+      if (done[v]) continue;
+      const ei = outEdge[a];
+      const lvl = edgeLevel(ei, rules);
+      let mult;
+      if (lvl === 4) { if (!tolerant) continue; mult = 8; }
+      else mult = lvl === 1 ? 0.95 : 1.0;
+      const nd = du + eLen[ei] * mult;
+      if (nd < dist[v]) {
+        dist[v] = nd;
+        prevNode[v] = u;
+        prevEdge[v] = ei;
+        heap.push(nd + havM(nodeLon[v], nodeLat[v], goalLon, goalLat) * 0.95, v);
+      }
+    }
+  }
+  if (!found) {
+    return {
+      ok: false,
+      reason: tolerant
+        ? 'No route exists on the rideable network between these points.'
+        : 'No route meets your criteria. Try “allow failing roads” or relax the rules.',
+    };
+  }
+
+  // Reconstruct path (goal -> start), then emit forward.
+  const edges = [];
+  for (let v = t.node; v !== s.node; v = prevNode[v]) edges.push([prevEdge[v], prevNode[v]]);
+  edges.reverse();
+
+  const coords = [];
+  let distM = 0, passM = 0, failM = 0;
+  for (const [ei, fromNode] of edges) {
+    const off = eOff[ei], cnt = eCnt[ei];
+    const forward = eA[ei] === fromNode;
+    if (coords.length === 0) {
+      const j = forward ? 0 : cnt - 1;
+      coords.push([gLon[off + j], gLat[off + j]]);
+    }
+    if (forward) for (let j = 1; j < cnt; j++) coords.push([gLon[off + j], gLat[off + j]]);
+    else for (let j = cnt - 2; j >= 0; j--) coords.push([gLon[off + j], gLat[off + j]]);
+    distM += eLen[ei];
+    if (edgeLevel(ei, rules) === 4) failM += eLen[ei];
+    else passM += eLen[ei];
+  }
+  return {
+    ok: true, coords, distM, passM, failM,
+    snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
+  };
+}
+
+onmessage = (ev) => {
+  const m = ev.data;
+  try {
+    if (m.type === 'graph') {
+      loadGraph(m.buffer);
+      postMessage({ type: 'ready', nodes: N, edges: E });
+    } else if (m.type === 'route') {
+      const r = route(m.start, m.end, m.rules, m.tolerant);
+      postMessage({ type: 'route', id: m.id, ...r });
+    }
+  } catch (err) {
+    postMessage({ type: 'error', message: String(err && err.message || err) });
+  }
+};

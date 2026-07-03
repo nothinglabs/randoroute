@@ -9,7 +9,7 @@
  *  - Basemap tiles (CARTO): CACHE-FIRST — areas you've viewed keep working
  *    offline. Statewide coverage is never fully cached, only what you browse.
  */
-const VERSION = 'v2'; // bump when data/*.geojson change so installed clients refetch
+const VERSION = 'v3'; // bump when data files change so installed clients refetch
 const SHELL_CACHE = `shell-${VERSION}`;
 const DATA_CACHE = `data-${VERSION}`;
 const TILE_CACHE = `tiles-${VERSION}`;
@@ -18,6 +18,7 @@ const SHELL = [
   './',
   './index.html',
   './app.js',
+  './router-worker.js',
   './styles.css',
   './manifest.json',
   './vendor/maplibre-gl.js',
@@ -45,6 +46,9 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
+  // PMTiles uses HTTP Range requests; the Cache API can't serve partial
+  // content — let those hit the network untouched.
+  if (url.pathname.endsWith('.pmtiles')) return;
   if (url.origin === location.origin && url.pathname.includes('/data/')) {
     e.respondWith(cacheFirst(DATA_CACHE, e.request));
   } else if (url.hostname.endsWith('basemaps.cartocdn.com')) {
