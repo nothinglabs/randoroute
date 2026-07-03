@@ -27,7 +27,7 @@ const COLORS = {
 const LEGEND = [
   [1, 'Comfortable (slow)'],
   [2, 'Meets your criteria'],
-  [4, 'Fails a criterion (avoid)'],
+  [4, 'Fails / bikes prohibited (avoid)'],
   [0, 'Unknown / no data'],
 ];
 
@@ -284,7 +284,6 @@ function rescore(src) {
   for (const f of src.fc.features) {
     if (!f.properties._n) f.properties._n = src.scorer(f.properties);
     f.properties.level = effectiveLevel(f.properties._n);
-    f.properties.banned = f.properties._n.prohibited ? 1 : 0;
   }
   const mapSrc = map.getSource(src.id);
   if (mapSrc) mapSrc.setData(src.fc);
@@ -320,9 +319,6 @@ const FAIL_COLOR = '#9aa0a6';
 const failId = (src) => src.id + '__fail'; // gray-dashed "has data but fails" (pass/fail mode)
 const vhId = (src) => src.id + '__vh';     // red-dashed "very high / avoid" (color-ramp mode)
 const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
-const banId = (src) => src.id + '__ban';   // black-dashed: bikes prohibited (both modes)
-const BAN_COLOR = '#ff1493'; // deep pink — distinct from the red 'fails' dash
-const bannedExprFor = (src) => (src.expr ? ['==', ['get', 'b'], 1] : ['==', ['get', 'banned'], 1]);
 
 // Insert this source's layers below any already-added layers of higher-zRank
 // sources, so draw order follows zRank regardless of load order.
@@ -378,26 +374,6 @@ function ensureLayer(src) {
       'line-opacity': 0.9,
     },
   }, beforeId);
-  // Bikes-prohibited overlay: same dashed treatment as the WSDOT restriction
-  // layer, shown in BOTH display modes (a legal ban isn't a preference). Not
-  // created for the fixed overlay itself, nor for BLTS — its prohibitions are
-  // derived from (and drawn by) the restriction overlay; stacking the two
-  // offset dash patterns read as a solid line.
-  if (!src.fixed && src.id !== 'blts') {
-    map.addLayer({
-      id: banId(src),
-      type: 'line',
-      source: src.id,
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: {
-        'line-color': BAN_COLOR,
-        'line-dasharray': [1.6, 1.4],
-        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.6, 10, 2.6, 14, 4.5],
-        'line-opacity': 0.95,
-      },
-      filter: bannedExprFor(src),
-    }, beforeId);
-  }
   // Invisible wide line on top — a forgiving hover target so you don't have to
   // land pixel-perfect on the thin visible line. Transparent, so no visual change.
   map.addLayer({
@@ -420,7 +396,6 @@ function ensureLayer(src) {
 function updateVisibility(src) {
   const on = src.enabled;
   if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', on ? 'visible' : 'none');
-  if (map.getLayer(banId(src))) map.setLayoutProperty(banId(src), 'visibility', on ? 'visible' : 'none');
   if (src.fixed) { // overlay has no mode-specific layers to manage beyond the main one
     if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', on ? 'visible' : 'none');
     if (map.getLayer(failId(src))) map.setLayoutProperty(failId(src), 'visibility', 'none');
@@ -441,12 +416,20 @@ function updateVisibility(src) {
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
   if (src.fixed) {
-    // Regulatory overlay: same look in every mode, exempt from rules/pass-fail.
+    // Regulatory overlay: exempt from the rules, but drawn with the SAME
+    // color coding as any failing road in the current display mode.
     map.setFilter(src.id, null);
-    map.setPaintProperty(src.id, 'line-color', BAN_COLOR);
-    map.setPaintProperty(src.id, 'line-dasharray', [1.6, 1.4]);
-    map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.6, 10, 2.6, 14, 4.5]);
-    map.setPaintProperty(src.id, 'line-opacity', 0.95);
+    if (display.passFail) {
+      map.setPaintProperty(src.id, 'line-color', FAIL_COLOR);
+      map.setPaintProperty(src.id, 'line-dasharray', [2, 2]);
+      map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.4, 14, 2.6]);
+      map.setPaintProperty(src.id, 'line-opacity', 0.65);
+    } else {
+      map.setPaintProperty(src.id, 'line-color', COLORS[4]);
+      map.setPaintProperty(src.id, 'line-dasharray', [2, 1.5]);
+      map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7]);
+      map.setPaintProperty(src.id, 'line-opacity', 0.9);
+    }
     if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
     if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
     updateVisibility(src);
@@ -485,24 +468,10 @@ function applyDisplayMode(src) {
     map.setPaintProperty(src.id, 'line-opacity', 0.9);
     map.setPaintProperty(src.id, 'line-width', w(0.6, 1.1, 1.1, 1.9, 2.1, 3.7));
   }
-  const notBanned = ['!=', bannedExprFor(src), true];
   if (map.getLayer(failId(src)))
-    map.setFilter(failId(src), and(['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4], notBanned]));
+    map.setFilter(failId(src), and(['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4]]));
   if (map.getLayer(vhId(src)))
-    map.setFilter(vhId(src), and(['all', ['==', lvl, 4], notBanned]));
-  if (map.getLayer(banId(src))) {
-    let banF = bannedExprFor(src);
-    if (src.id === 'roads' && SOURCES.find((s) => s.id === 'blts').enabled) {
-      // Mainline state-highway bans are already drawn by the WSDOT restriction
-      // overlay; keep ramps and non-state roads so nothing stacks or vanishes.
-      banF = ['all', banF, ['any',
-        ['!=', ['get', 'd'], 1],
-        ['match', ['get', 'h'],
-          ['motorway_link', 'trunk_link', 'primary_link', 'secondary_link', 'tertiary_link'],
-          true, false]]];
-    }
-    map.setFilter(banId(src), banF); // prohibitions ignore declutter
-  }
+    map.setFilter(vhId(src), and(['==', lvl, 4]));
   if (map.getLayer(hitId(src)))
     map.setFilter(hitId(src), hideRes || dedup ? and(['boolean', true]) : null); // keep hover off hidden roads
   updateVisibility(src);
@@ -621,103 +590,124 @@ function explainLevel(n) {
   return `Meets your criteria — ${met.join(', ')}.`;
 }
 
-const HIT_LAYERS = []; // populated as sources attach; used for tap-to-dismiss
-// Clicking/tapping a road PINS the readout (so its links are clickable);
-// hovering only previews and never replaces a pinned readout.
+const HIT_LAYERS = [];  // hit-layer ids, registered as sources attach
+const HIT_SRC = {};     // hit-layer id -> its source
+// Clicking/tapping PINS the readout (so its links are clickable); hovering
+// only previews and never replaces a pinned readout.
 let readoutPinned = false;
 
 function attachHover(src, layerId) {
   HIT_LAYERS.push(layerId);
-  const show = (e, pin = false) => {
-    if (readoutPinned && !pin) return;
-    // Multiple overlapping layers fire for the same event; only the source
-    // that owns the TOPMOST rendered feature at this point may draw the
-    // readout (e.g. a WSDOT restriction beats the road underneath it).
-    const layers = HIT_LAYERS.filter((id) => map.getLayer(id));
-    const top = map.queryRenderedFeatures(e.point, { layers })[0];
-    if (top && top.layer.id !== layerId) return;
-    map.getCanvas().style.cursor = 'pointer';
-    const p = e.features[0].properties;
-    const n = src.scorer(p);            // recompute normalized props from this feature
-    const lvl = p.level != null ? p.level : effectiveLevel(n); // expr sources carry no .level
-    const verdict = lvl === 0 ? 'no data' : lvl <= display.passMax ? '✓ Pass' : '✗ Fail';
-    const common = [
-      ['Result', verdict],
-      ['Stress', lvl === 0 ? 'unknown' : `${lvl} — ${LEVEL_NAME[lvl]}`],
-      ['Why', explainLevel(n)],
-    ];
-    let title, rows;
-    if (src.id === 'restrict') {
-      title = 'Bikes prohibited (WSDOT)';
-      rows = [
-        ['Route', p.Route ? 'SR ' + String(p.Route).replace(/^0+/, '') : p.RouteIdentifier],
-        ['Result', '✗ Prohibited'],
-        ['Why', 'Permanent bicycle restriction by official WSDOT traffic action.'],
-        ['Direction', p.Direction],
-        ['Mileposts', p.BeginMile != null ? `${p.BeginMile} – ${p.EndMile}` : null],
-        ['Note', p.Comment],
-      ];
-    } else if (src.id === 'osm') {
-      title = 'Bike infrastructure (OSM)';
-      rows = [
-        ['Name', p.name],
-        ...common,
-        ['Type', [p.highway, p.bicycle ? `bicycle=${p.bicycle}` : null].filter(Boolean).join(', ')],
-        ['Cycleway', osmCycleway(p)],
-        ['Surface', p.surface],
-        ['Width', p.width != null ? `${p.width} m` : null],
-      ];
-    } else if (src.id === 'roads') {
-      title = 'Road (OSM)';
-      rows = [
-        ['Name', p.n],
-        ...common,
-        ['Class', p.h + (p.r ? ` (${p.r})` : '')],
-        ['Speed limit', p.s != null ? `${p.s} mph${p.e ? ' (estimated from class)' : ''}` : null],
-        ['Shoulder', p.w != null ? p.w + ' ft' : null],
-        ['Bike facility', p.f ? 'yes' : null],
-        ['Limited access', p.m ? 'yes' : null],
-        ['Bikes prohibited', p.b ? 'yes (OSM tag)' : null],
-      ];
-    } else {
-      title = 'Road segment (WSDOT)';
-      rows = [
-        ['Route', p.RouteIdentifier],
-        ...common,
-        ['BLTS (WSDOT)', p.LTS_Bicycle],
-        ['Speed limit', p.SpeedLimit != null ? p.SpeedLimit + ' mph' : null],
-        ['Lanes', p.LaneCount],
-        ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
-        ['Shoulder', p.ShoulderWidth != null ? p.ShoulderWidth + ' ft' : null],
-        ['Bike facility', p.BikeFacilityType],
-        ['Limited access', p.LimitedAccess ? 'yes' : null],
-        ['Bikes prohibited', p.Prohibited ? 'yes (WSDOT restriction)' : null],
-      ];
-    }
-    rows = rows.filter(([, v]) => v != null && v !== '');
-    const { lat, lng } = e.lngLat;
-    const gmaps = `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
-    readoutEl.innerHTML =
-      `<div class="rt-title">${title}</div><table>` +
-      rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('') +
-      '</table>' +
-      `<a class="gmap" href="${gmaps}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
-    readoutEl.classList.add('show');
-    if (pin) readoutPinned = true;
-  };
-  map.on('mousemove', layerId, (e) => show(e, false));
-  map.on('click', layerId, (e) => show(e, true)); // click/tap pins the readout
-  map.on('mouseleave', layerId, () => {
-    map.getCanvas().style.cursor = '';
-    if (!readoutPinned) readoutEl.classList.remove('show');
-  });
+  HIT_SRC[layerId] = src;
 }
 
-// Clicking/tapping empty map unpins and dismisses the readout.
+// Topmost feature within a small tolerance box around the pointer/tap —
+// forgiving for touch, and deterministic where several layers overlap.
+function featureAt(point) {
+  const layers = HIT_LAYERS.filter(
+    (id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none'
+  );
+  if (!layers.length) return null;
+  const pad = 6;
+  const feats = map.queryRenderedFeatures(
+    [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]],
+    { layers }
+  );
+  return feats[0] || null; // queryRenderedFeatures returns topmost first
+}
+
+function renderReadout(feature, lngLat) {
+  const src = HIT_SRC[feature.layer.id];
+  const p = feature.properties;
+  const n = src.scorer(p);            // recompute normalized props from this feature
+  const lvl = p.level != null ? p.level : effectiveLevel(n); // expr sources carry no .level
+  const verdict = lvl === 0 ? 'no data' : lvl <= display.passMax ? '✓ Pass' : '✗ Fail';
+  const common = [
+    ['Result', verdict],
+    ['Stress', lvl === 0 ? 'unknown' : `${lvl} — ${LEVEL_NAME[lvl]}`],
+    ['Why', explainLevel(n)],
+  ];
+  let title, rows;
+  if (src.id === 'restrict') {
+    title = 'Bikes prohibited (WSDOT)';
+    rows = [
+      ['Route', p.Route ? 'SR ' + String(p.Route).replace(/^0+/, '') : p.RouteIdentifier],
+      ['Result', '✗ Prohibited'],
+      ['Why', 'Permanent bicycle restriction by official WSDOT traffic action.'],
+      ['Direction', p.Direction],
+      ['Mileposts', p.BeginMile != null ? `${p.BeginMile} – ${p.EndMile}` : null],
+      ['Note', p.Comment],
+    ];
+  } else if (src.id === 'osm') {
+    title = 'Bike infrastructure (OSM)';
+    rows = [
+      ['Name', p.name],
+      ...common,
+      ['Type', [p.highway, p.bicycle ? `bicycle=${p.bicycle}` : null].filter(Boolean).join(', ')],
+      ['Cycleway', osmCycleway(p)],
+      ['Surface', p.surface],
+      ['Width', p.width != null ? `${p.width} m` : null],
+    ];
+  } else if (src.id === 'roads') {
+    title = 'Road (OSM)';
+    rows = [
+      ['Name', p.n],
+      ...common,
+      ['Class', p.h + (p.r ? ` (${p.r})` : '')],
+      ['Speed limit', p.s != null ? `${p.s} mph${p.e ? ' (estimated from class)' : ''}` : null],
+      ['Shoulder', p.w != null ? p.w + ' ft' : null],
+      ['Bike facility', p.f ? 'yes' : null],
+      ['Limited access', p.m ? 'yes' : null],
+      ['Bikes prohibited', p.b ? 'yes (OSM tag)' : null],
+    ];
+  } else {
+    title = 'Road segment (WSDOT)';
+    rows = [
+      ['Route', p.RouteIdentifier],
+      ...common,
+      ['BLTS (WSDOT)', p.LTS_Bicycle],
+      ['Speed limit', p.SpeedLimit != null ? p.SpeedLimit + ' mph' : null],
+      ['Lanes', p.LaneCount],
+      ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
+      ['Shoulder', p.ShoulderWidth != null ? p.ShoulderWidth + ' ft' : null],
+      ['Bike facility', p.BikeFacilityType],
+      ['Limited access', p.LimitedAccess ? 'yes' : null],
+      ['Bikes prohibited', p.Prohibited ? 'yes (WSDOT restriction)' : null],
+    ];
+  }
+  rows = rows.filter(([, v]) => v != null && v !== '');
+  // maps.google.com/?q= is the most universally handled form (opens the
+  // Google Maps app via universal link on iOS, web elsewhere).
+  const gmaps = `https://maps.google.com/?q=${lngLat.lat.toFixed(6)},${lngLat.lng.toFixed(6)}`;
+  readoutEl.innerHTML =
+    `<div class="rt-title">${title}</div><table>` +
+    rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('') +
+    '</table>' +
+    `<a class="gmap" href="${gmaps}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
+  // iOS standalone PWAs don't reliably honor target=_blank; open explicitly.
+  readoutEl.querySelector('.gmap').addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const w = window.open(gmaps, '_blank', 'noopener');
+    if (!w) location.href = gmaps; // popup blocked — navigate instead
+  });
+  readoutEl.classList.add('show');
+}
+
+// ONE global handler pair (per-layer handlers raced where layers overlap).
+map.on('mousemove', (e) => {
+  if (readoutPinned) return;
+  const f = featureAt(e.point);
+  map.getCanvas().style.cursor = f ? 'pointer' : '';
+  if (f) renderReadout(f, e.lngLat);
+  else readoutEl.classList.remove('show');
+});
 map.on('click', (e) => {
-  const layers = HIT_LAYERS.filter((id) => map.getLayer(id));
-  if (!layers.length) return;
-  if (!map.queryRenderedFeatures(e.point, { layers }).length) {
+  const f = featureAt(e.point);
+  if (f) {
+    renderReadout(f, e.lngLat);
+    readoutPinned = true;
+  } else {
     readoutPinned = false;
     readoutEl.classList.remove('show');
   }
@@ -824,11 +814,10 @@ function buildLegend() {
   const dash = (c) => `background:repeating-linear-gradient(90deg,${c} 0 4px,transparent 4px 8px)`;
   const rows = display.passFail
     ? [[PASS_COLOR, 'Meets your criteria (Low–Moderate)'],
-       ['dashed', 'Has data — doesn’t meet criteria'],
+       ['dashed', 'Fails / bikes prohibited'],
        [null, 'No-data roads are hidden']]
     // Color-ramp view: level 4 is drawn dashed to read as "not passable".
     : LEGEND.map(([lvl, label]) => [lvl === 4 ? 'dash4' : COLORS[lvl], label]);
-  rows.push(['dashK', 'Bikes prohibited (WSDOT / OSM)']);
   for (const [color, label] of rows) {
     const item = document.createElement('div');
     item.className = 'item';
@@ -837,8 +826,6 @@ function buildLegend() {
         ? `<span class="swatch" style="${dash(FAIL_COLOR)}"></span>`
         : color === 'dash4'
         ? `<span class="swatch" style="${dash(COLORS[4])}"></span>`
-        : color === 'dashK'
-        ? `<span class="swatch" style="${dash(BAN_COLOR)}"></span>`
         : color
         ? `<span class="swatch" style="background:${color}"></span>`
         : `<span class="swatch" style="background:transparent;border:1px dashed #bbb"></span>`;

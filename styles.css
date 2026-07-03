@@ -86,7 +86,8 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
 
 .readout .gmap {
   display: inline-block;
-  margin-top: 7px;
+  margin-top: 6px;
+  padding: 7px 10px 7px 0; /* generous touch target */
   color: #0a66c2;
   font-weight: 600;
   text-decoration: none;

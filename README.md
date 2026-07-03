@@ -109,8 +109,10 @@ python3 scripts/build_restrictions.py
 
 Official State Traffic Engineer calendar actions prohibiting bicycles on
 specific state-highway segments (route + milepost ranges + direction). Shown
-as an always-on-top black-dashed overlay (identical in both display modes),
-and joined into `blts.geojson` at build time: `build_blts.py --restrictions`
+as an always-on-top overlay drawn with the same color coding as any failing
+road (red dashed in ramp view, gray dashed in pass/fail — the readout
+identifies it as a WSDOT restriction), and joined into `blts.geojson` at
+build time: `build_blts.py --restrictions`
 flags BLTS segments whose milepost range overlaps a restriction as
 `Prohibited` so they hard-fail scoring. The join matches mainline
 RouteIdentifier and ignores direction (over-flags the opposite direction —
