@@ -33,11 +33,11 @@ const LEGEND = [
 
 /* ------------------------------------------------- riding-rules state */
 const rules = {
-  allowFreeways: false, // show limited-access/high-speed roads as rideable at all?
+  allowFreeways: true,  // show limited-access/high-speed roads as rideable at all?
   minShoulder: 4,       // ft; below this a road gets penalized
   freeMaxSpeed: 25,     // mph; at/below this a road is comfortable regardless of shoulder
   upperMaxSpeed: 45,    // mph; above this it's high-stress unless shoulder/facility is adequate
-  noUpperLimit: false,  // disable the upper-speed hard cap
+  noUpperLimit: true,   // disable the upper-speed hard cap
 };
 
 /* --------------------------------------------------- display state */
@@ -49,7 +49,7 @@ const PASS_COLOR = '#009E73';
 const display = {
   passFail: false,
   passMax: 2, // a road "passes" if its effective level is 1..passMax (Low & Moderate)
-  hideResidential: false, // declutter: hide neighborhood streets in the All-roads layer
+  hideResidential: true, // declutter: hide neighborhood streets in the All-roads layer
 };
 
 /* ------------------------------------------------------- the scorers */
@@ -527,15 +527,24 @@ function explainLevel(n) {
   if (n.good_facility) met.push('has a bike facility');
   else if (sh != null) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
   else met.push('shoulder unknown (not held against it)');
-  if (spd != null) met.push(`${spdTxt} within your ${rules.upperMaxSpeed} mph max`);
+  if (spd != null)
+    met.push(
+      rules.noUpperLimit
+        ? `${spdTxt} — speed not capped (“No upper limit” is on)`
+        : `${spdTxt} within your ${rules.upperMaxSpeed} mph max`
+    );
   return `Meets your criteria — ${met.join(', ')}.`;
 }
 
 const HIT_LAYERS = []; // populated as sources attach; used for tap-to-dismiss
+// Clicking/tapping a road PINS the readout (so its links are clickable);
+// hovering only previews and never replaces a pinned readout.
+let readoutPinned = false;
 
 function attachHover(src, layerId) {
   HIT_LAYERS.push(layerId);
-  const show = (e) => {
+  const show = (e, pin = false) => {
+    if (readoutPinned && !pin) return;
     map.getCanvas().style.cursor = 'pointer';
     const p = e.features[0].properties;
     const n = src.scorer(p);            // recompute normalized props from this feature
@@ -583,26 +592,32 @@ function attachHover(src, layerId) {
       ];
     }
     rows = rows.filter(([, v]) => v != null && v !== '');
+    const { lat, lng } = e.lngLat;
+    const gmaps = `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
     readoutEl.innerHTML =
       `<div class="rt-title">${title}</div><table>` +
       rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('') +
-      '</table>';
+      '</table>' +
+      `<a class="gmap" href="${gmaps}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
     readoutEl.classList.add('show');
+    if (pin) readoutPinned = true;
   };
-  map.on('mousemove', layerId, show);
-  map.on('click', layerId, show); // touch: tap a road to inspect it
+  map.on('mousemove', layerId, (e) => show(e, false));
+  map.on('click', layerId, (e) => show(e, true)); // click/tap pins the readout
   map.on('mouseleave', layerId, () => {
     map.getCanvas().style.cursor = '';
-    readoutEl.classList.remove('show');
+    if (!readoutPinned) readoutEl.classList.remove('show');
   });
 }
 
-// Touch: tapping empty map dismisses the readout.
+// Clicking/tapping empty map unpins and dismisses the readout.
 map.on('click', (e) => {
   const layers = HIT_LAYERS.filter((id) => map.getLayer(id));
   if (!layers.length) return;
-  if (!map.queryRenderedFeatures(e.point, { layers }).length)
+  if (!map.queryRenderedFeatures(e.point, { layers }).length) {
+    readoutPinned = false;
     readoutEl.classList.remove('show');
+  }
 });
 
 /* ----------------------------------------------------- build panels */

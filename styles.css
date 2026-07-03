@@ -83,3 +83,12 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
   border-radius: 6px; font-size: 12px; transition: opacity .3s; pointer-events: none;
 }
 .status.hidden { opacity: 0; }
+
+.readout .gmap {
+  display: inline-block;
+  margin-top: 7px;
+  color: #0a66c2;
+  font-weight: 600;
+  text-decoration: none;
+}
+.readout .gmap:hover { text-decoration: underline; }
