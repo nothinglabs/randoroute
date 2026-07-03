@@ -232,6 +232,14 @@ const map = new maplibregl.Map({
   maxZoom: 17,
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+map.addControl(
+  new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true,
+    showUserHeading: true,
+  }),
+  'top-right'
+);
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
 
 const colorExpr = () => {
@@ -433,7 +441,13 @@ async function loadSource(src) {
       // Multi-part source: fetch data/<name>-1.geojson, -2, ... until a part is missing.
       const features = [];
       for (let i = 1; i <= 20; i++) {
-        const res = await fetch(src.urlPattern.replace('{i}', i));
+        let res;
+        try {
+          res = await fetch(src.urlPattern.replace('{i}', i));
+        } catch (err) {
+          if (i === 1) throw err;
+          break; // offline: the end-of-parts probe can reject instead of 404
+        }
         if (!res.ok) {
           if (i === 1) throw new Error('HTTP ' + res.status);
           break;
@@ -517,8 +531,11 @@ function explainLevel(n) {
   return `Meets your criteria — ${met.join(', ')}.`;
 }
 
+const HIT_LAYERS = []; // populated as sources attach; used for tap-to-dismiss
+
 function attachHover(src, layerId) {
-  map.on('mousemove', layerId, (e) => {
+  HIT_LAYERS.push(layerId);
+  const show = (e) => {
     map.getCanvas().style.cursor = 'pointer';
     const p = e.features[0].properties;
     const n = src.scorer(p);            // recompute normalized props from this feature
@@ -571,12 +588,22 @@ function attachHover(src, layerId) {
       rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('') +
       '</table>';
     readoutEl.classList.add('show');
-  });
+  };
+  map.on('mousemove', layerId, show);
+  map.on('click', layerId, show); // touch: tap a road to inspect it
   map.on('mouseleave', layerId, () => {
     map.getCanvas().style.cursor = '';
     readoutEl.classList.remove('show');
   });
 }
+
+// Touch: tapping empty map dismisses the readout.
+map.on('click', (e) => {
+  const layers = HIT_LAYERS.filter((id) => map.getLayer(id));
+  if (!layers.length) return;
+  if (!map.queryRenderedFeatures(e.point, { layers }).length)
+    readoutEl.classList.remove('show');
+});
 
 /* ----------------------------------------------------- build panels */
 function updateSourceCount(src) {
@@ -704,6 +731,13 @@ buildSourcePanel();
 buildRulesPanel();
 buildDisplayPanel();
 buildLegend();
+
+// Small screens: panel starts collapsed behind the toggle button.
+const panelToggle = document.getElementById('panelToggle');
+if (window.matchMedia('(max-width: 640px)').matches)
+  document.body.classList.add('panel-collapsed');
+panelToggle.addEventListener('click', () =>
+  document.body.classList.toggle('panel-collapsed'));
 
 // Run cb as soon as the style spec is loaded. Polling avoids a styledata-event
 // race, and isStyleLoaded flips true independent of basemap TILE loading, so a

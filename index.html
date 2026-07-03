@@ -2,15 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Washington Bike Safety Visualizer</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#009E73" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="BikeSafety" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="map"></div>
 
-  <div class="panel">
+  <button id="panelToggle" aria-label="Toggle controls" title="Controls">☰</button>
+
+  <div class="panel" id="panel">
     <h1>WA Bike Safety</h1>
     <p class="sub">Roads colored by bicycle level of traffic stress. Visualization only — no routing.</p>
 
@@ -30,6 +40,15 @@
   <div class="readout" id="readout"></div>
   <div class="status" id="status">Loading…</div>
 
+  <script>
+    // Register the service worker (offline support + installability).
+    if ('serviceWorker' in navigator) {
+      window.__swReady = navigator.serviceWorker
+        .register('./sw.js')
+        .then((reg) => (navigator.serviceWorker.ready, reg))
+        .catch((e) => console.warn('SW registration failed:', e));
+    }
+  </script>
   <script src="vendor/maplibre-gl.js"></script>
   <script src="app.js"></script>
 </body>

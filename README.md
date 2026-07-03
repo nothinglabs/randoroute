@@ -47,6 +47,15 @@ python3 -m http.server 8000
   gray-dashed; no-data roads are hidden.
 - Hover any segment for a **local readout** — the verdict (Pass/Fail), the
   stress level, a plain-language *why*, and the raw attributes. No lookups.
+  On touch screens, tap a road instead; tap empty map to dismiss.
+- **PWA / offline**: installable ("Add to Home Screen" on iOS). A service
+  worker caches the app shell and data files after first use — the map works
+  offline (basemap tiles are cached for areas you've already viewed). The
+  shell is network-first, so deploys still update instantly when online.
+- **Location aware**: a geolocate control centers the map on you and can
+  follow along (blue dot + heading) — handy mid-ride.
+- **Mobile layout**: on small screens the control panel collapses behind a
+  ☰ button.
 
 ## Architecture
 
