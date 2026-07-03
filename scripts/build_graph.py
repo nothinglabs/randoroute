@@ -164,9 +164,9 @@ def build(src, out):
     print('pass 2: building edges...', flush=True)
     node_index = {}          # osm node id -> graph node index
     node_lon = array('f'); node_lat = array('f')
-    eA = array('L'); eB = array('L'); eLen = array('f')
+    eA = array('I'); eB = array('I'); eLen = array('f')
     eSpeed = array('B'); eFlags = array('B'); eSh = array('b')
-    eOff = array('L'); eCnt = array('H')
+    eOff = array('I'); eCnt = array('H')
     gLon = array('f'); gLat = array('f')
 
     def gnode(osmid, lon, lat):
@@ -225,21 +225,20 @@ def build(src, out):
 
     # ---- directed CSR adjacency
     print('building adjacency...', flush=True)
-    deg = array('L', [0]) * 0
-    deg = array('L', bytes(4 * (N)))
+    deg = array('I', bytes(4 * (N)))
     for i in range(E):
         deg[eA[i]] += 1
         if not (eFlags[i] & 16):
             deg[eB[i]] += 1
-    outStart = array('L', bytes(4 * (N + 1)))
+    outStart = array('I', bytes(4 * (N + 1)))
     s = 0
     for i in range(N):
         outStart[i] = s
         s += deg[i]
     outStart[N] = s
     D = s
-    outTarget = array('L', bytes(4 * D)); outEdge = array('L', bytes(4 * D))
-    cursor = array('L', outStart[:N])
+    outTarget = array('I', bytes(4 * D)); outEdge = array('I', bytes(4 * D))
+    cursor = array('I', outStart[:N])
     for i in range(E):
         a, b = eA[i], eB[i]
         c = cursor[a]; outTarget[c] = b; outEdge[c] = i; cursor[a] = c + 1

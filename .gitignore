@@ -9,3 +9,6 @@ node_modules/
 data/PermanentBikeRestrictions.zip
 data/PermBikeRestrictions.zip
 data/permbike/
+# local test scaffolding
+_*.mjs
+_*.html
