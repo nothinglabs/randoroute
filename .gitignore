@@ -6,3 +6,6 @@ data/washington-latest.osm.pbf
 data/*.osm.pbf
 node_modules/
 *.tgz
+data/PermanentBikeRestrictions.zip
+data/PermBikeRestrictions.zip
+data/permbike/

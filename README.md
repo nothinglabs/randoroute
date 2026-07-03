@@ -98,6 +98,24 @@ Geodatabase, EPSG:2927 → reprojected to 4326). `LTS_Bicycle` (1–4); `999`/mi
 is no-data. Limited-access segments (`AccessControlTypeCode` F/M/P) drive the
 freeway toggle.
 
+### WSDOT Permanent Bike Restrictions → `data/bike_restrictions.geojson` (81 segments)
+
+```bash
+curl -o data/PermanentBikeRestrictions.zip \
+  https://data.wsdot.wa.gov/geospatial/DOT_ActiveTransportation/PermanentBikeRestrictions.zip
+unzip -d data/permbike data/PermanentBikeRestrictions.zip
+python3 scripts/build_restrictions.py
+```
+
+Official State Traffic Engineer calendar actions prohibiting bicycles on
+specific state-highway segments (route + milepost ranges + direction). Shown
+as an always-on-top black-dashed overlay (identical in both display modes),
+and joined into `blts.geojson` at build time: `build_blts.py --restrictions`
+flags BLTS segments whose milepost range overlaps a restriction as
+`Prohibited` so they hard-fail scoring. The join matches mainline
+RouteIdentifier and ignores direction (over-flags the opposite direction —
+conservative for safety).
+
 ### OSM bike infrastructure → `data/bikeinfra.geojson` (~40k ways)
 
 ```bash

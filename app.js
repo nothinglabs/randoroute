@@ -62,7 +62,7 @@ function scoreBLTS(p) {
     baseScore: lts == null ? null : lts,
     shoulder_width: p.ShoulderWidth == null ? null : p.ShoulderWidth,
     maxspeed_num: p.SpeedLimit == null ? null : p.SpeedLimit,
-    prohibited: false,
+    prohibited: !!p.Prohibited, // overlaps a WSDOT permanent bike restriction
     restricted: false,
     limited_access: !!p.LimitedAccess,
     good_facility: !!(p.BikeFacilityType && p.BikeFacilityType.length),
@@ -124,6 +124,12 @@ function scoreRoad(p) {
   };
 }
 
+// WSDOT Permanent Bike Restrictions overlay: always prohibited, by definition.
+function scoreRestrict() {
+  return { baseScore: 4, shoulder_width: null, maxspeed_num: null, prohibited: true,
+           restricted: true, limited_access: false, good_facility: false, infra: false };
+}
+
 /* --------------------------------------------- source-agnostic scorer */
 // "Your criteria decide", as HARD gates: each criterion is pass/fail. A road
 // fails (level 4 = avoid) if the data we have shows any criterion is not met.
@@ -174,6 +180,17 @@ const SOURCES = [
     url: 'data/bikeinfra.geojson',
     scorer: scoreOSM,
     zRank: 2,
+    enabled: true,
+    fc: null,
+    loading: false,
+  },
+  {
+    id: 'restrict',
+    name: 'Bikes prohibited (WSDOT)',
+    url: 'data/bike_restrictions.geojson',
+    scorer: scoreRestrict,
+    zRank: 3,     // always on top
+    fixed: true,  // fixed regulatory styling — identical in both display modes
     enabled: true,
     fc: null,
     loading: false,
@@ -378,6 +395,12 @@ function ensureLayer(src) {
 function updateVisibility(src) {
   const on = src.enabled;
   if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', on ? 'visible' : 'none');
+  if (src.fixed) { // overlay has no mode-specific layers to manage beyond the main one
+    if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', on ? 'visible' : 'none');
+    if (map.getLayer(failId(src))) map.setLayoutProperty(failId(src), 'visibility', 'none');
+    if (map.getLayer(vhId(src))) map.setLayoutProperty(vhId(src), 'visibility', 'none');
+    return;
+  }
   if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', on ? 'visible' : 'none');
   if (map.getLayer(failId(src)))
     map.setLayoutProperty(failId(src), 'visibility', on && display.passFail ? 'visible' : 'none');
@@ -391,6 +414,18 @@ function updateVisibility(src) {
 // also serves as the "rescore" when rules change.
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
+  if (src.fixed) {
+    // Regulatory overlay: same look in every mode, exempt from rules/pass-fail.
+    map.setFilter(src.id, null);
+    map.setPaintProperty(src.id, 'line-color', '#1a1a1a');
+    map.setPaintProperty(src.id, 'line-dasharray', [1.6, 1.4]);
+    map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.6, 10, 2.6, 14, 4.5]);
+    map.setPaintProperty(src.id, 'line-opacity', 0.95);
+    if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
+    if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
+    updateVisibility(src);
+    return;
+  }
   const lvl = src.expr ? roadLevelExpr() : ['get', 'level'];
   // Optional declutter: drop neighborhood streets from the All-roads layer.
   const hideRes = display.hideResidential && src.id === 'roads';
@@ -545,6 +580,12 @@ function attachHover(src, layerId) {
   HIT_LAYERS.push(layerId);
   const show = (e, pin = false) => {
     if (readoutPinned && !pin) return;
+    // Multiple overlapping layers fire for the same event; only the source
+    // that owns the TOPMOST rendered feature at this point may draw the
+    // readout (e.g. a WSDOT restriction beats the road underneath it).
+    const layers = HIT_LAYERS.filter((id) => map.getLayer(id));
+    const top = map.queryRenderedFeatures(e.point, { layers })[0];
+    if (top && top.layer.id !== layerId) return;
     map.getCanvas().style.cursor = 'pointer';
     const p = e.features[0].properties;
     const n = src.scorer(p);            // recompute normalized props from this feature
@@ -556,7 +597,17 @@ function attachHover(src, layerId) {
       ['Why', explainLevel(n)],
     ];
     let title, rows;
-    if (src.id === 'osm') {
+    if (src.id === 'restrict') {
+      title = 'Bikes prohibited (WSDOT)';
+      rows = [
+        ['Route', p.Route ? 'SR ' + String(p.Route).replace(/^0+/, '') : p.RouteIdentifier],
+        ['Result', '✗ Prohibited'],
+        ['Why', 'Permanent bicycle restriction by official WSDOT traffic action.'],
+        ['Direction', p.Direction],
+        ['Mileposts', p.BeginMile != null ? `${p.BeginMile} – ${p.EndMile}` : null],
+        ['Note', p.Comment],
+      ];
+    } else if (src.id === 'osm') {
       title = 'Bike infrastructure (OSM)';
       rows = [
         ['Name', p.name],
@@ -589,6 +640,7 @@ function attachHover(src, layerId) {
         ['Shoulder', p.ShoulderWidth != null ? p.ShoulderWidth + ' ft' : null],
         ['Bike facility', p.BikeFacilityType],
         ['Limited access', p.LimitedAccess ? 'yes' : null],
+        ['Bikes prohibited', p.Prohibited ? 'yes (WSDOT restriction)' : null],
       ];
     }
     rows = rows.filter(([, v]) => v != null && v !== '');
@@ -725,6 +777,7 @@ function buildLegend() {
        [null, 'No-data roads are hidden']]
     // Color-ramp view: level 4 is drawn dashed to read as "not passable".
     : LEGEND.map(([lvl, label]) => [lvl === 4 ? 'dash4' : COLORS[lvl], label]);
+  rows.push(['dashK', 'Bikes prohibited (WSDOT)']);
   for (const [color, label] of rows) {
     const item = document.createElement('div');
     item.className = 'item';
@@ -733,6 +786,8 @@ function buildLegend() {
         ? `<span class="swatch" style="${dash(FAIL_COLOR)}"></span>`
         : color === 'dash4'
         ? `<span class="swatch" style="${dash(COLORS[4])}"></span>`
+        : color === 'dashK'
+        ? `<span class="swatch" style="${dash('#1a1a1a')}"></span>`
         : color
         ? `<span class="swatch" style="background:${color}"></span>`
         : `<span class="swatch" style="background:transparent;border:1px dashed #bbb"></span>`;

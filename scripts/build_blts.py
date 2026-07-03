@@ -47,11 +47,27 @@ def _str(v):
     return s or None
 
 
-def build(src, out):
+def load_restrictions(path):
+    """RouteIdentifier -> [(begin_arm, end_arm)] from WSDOT PermanentBikeRestrictions."""
+    r = gpd.read_file(path, layer="PermanentBikeRestrictions")
+    by_route = {}
+    for row in r.itertuples(index=False):
+        rid = _str(row.RouteIdentifier)
+        b, e = _num(row.BeginAccumulatedRouteMile), _num(row.EndAccumulatedRouteMile)
+        if rid is None or b is None or e is None:
+            continue
+        by_route.setdefault(rid, []).append((min(b, e), max(b, e)))
+    print(f"restrictions: {sum(len(v) for v in by_route.values())} spans on {len(by_route)} routes")
+    return by_route
+
+
+def build(src, out, restrictions=None):
     gdf = gpd.read_file(src, layer=LAYER)
     print(f"read {len(gdf)} features from {src} ({gdf.crs})")
     gdf = gdf.to_crs(4326)
     print(f"reprojected -> {gdf.crs}")
+    restr = load_restrictions(restrictions) if restrictions else {}
+    prohibited_count = 0
 
     feats = []
     for geom, row in zip(gdf.geometry.values, gdf.itertuples(index=False)):
@@ -92,6 +108,16 @@ def build(src, out):
         put("RouteIdentifier", _str(row.RouteIdentifier))
         if _str(row.AccessControlTypeCode) in LIMITED_ACCESS_CODES:
             props["LimitedAccess"] = 1
+        # Bikes-prohibited flag: this segment's ARM range overlaps a WSDOT
+        # permanent bike restriction on the same route (mainline match only).
+        rid = _str(row.RouteIdentifier)
+        if rid in restr:
+            b, e = _num(row.BeginARM), _num(row.EndARM)
+            if b is not None and e is not None:
+                lo, hi = min(b, e), max(b, e)
+                if any(lo < re_ and hi > rb for rb, re_ in restr[rid]):
+                    props["Prohibited"] = 1
+                    prohibited_count += 1
 
         feats.append({"type": "Feature", "properties": props, "geometry": gj})
 
@@ -99,11 +125,15 @@ def build(src, out):
     with open(out, "w") as f:
         json.dump(fc, f, separators=(",", ":"))
     print(f"wrote {len(feats)} features -> {out} ({os.path.getsize(out):,} bytes)")
+    if restrictions:
+        print(f"flagged Prohibited on {prohibited_count} segments")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="data/BikePedLTS.gdb")
     ap.add_argument("--out", default="data/blts.geojson")
+    ap.add_argument("--restrictions", default=None,
+                    help="path to PermanentBikeRestrictions.gdb to flag prohibited segments")
     args = ap.parse_args()
-    build(args.src, args.out)
+    build(args.src, args.out, args.restrictions)
