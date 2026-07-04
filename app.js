@@ -13,6 +13,8 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
+const APP_VERSION = '2026-07-04.1'; // shown in the panel footer; bump per release
+
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
 // the common types of color vision deficiency because it avoids green and
@@ -580,8 +582,10 @@ const routing = {
 };
 
 function setRouteStatus(t) {
-  const el = document.getElementById('route-status');
-  if (el) el.textContent = t;
+  for (const id of ['route-status', 'rb-status']) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = t;
+  }
 }
 
 async function ensureRouter() {
@@ -692,40 +696,39 @@ function clearRoute() {
 
 function updateArmButtons() {
   for (const kind of ['start', 'end']) {
-    const b = document.getElementById('rt-' + kind);
-    if (b) b.classList.toggle('active', routing.arm === kind);
+    for (const prefix of ['rt-', 'rb-']) {
+      const b = document.getElementById(prefix + kind);
+      if (b) b.classList.toggle('active', routing.arm === kind);
+    }
   }
 }
 
 function buildRoutingPanel() {
   const host = document.getElementById('routing');
   host.innerHTML = `
-    <div class="hint">Local A* over the rideable network — uses your riding
-      rules as the cost. No server, works offline once loaded.</div>
-    <div class="route-row">
-      <button id="rt-start">Set start</button>
-      <button id="rt-end">Set end</button>
-      <button id="rt-clear">Clear</button>
-    </div>
+    <div class="hint">Use the <b>A</b> / <b>B</b> buttons on the map, then tap
+      where you want to start and end. Local A* over the rideable network —
+      your riding rules are the cost. No server; works offline once loaded.</div>
     <div class="check-rule">
       <input type="checkbox" id="rt-tolerant">
       <label for="rt-tolerant">Allow failing roads</label>
       <div class="hint" style="width:100%">Route may use failing (red) roads,
         heavily penalized, when nothing better exists.</div>
     </div>
-    <div class="hint" id="route-status">Tap “Set start”, then tap the map.</div>`;
+    <div class="hint" id="route-status"></div>`;
+  document.getElementById('rt-tolerant').addEventListener('change', (e) => {
+    routing.tolerant = e.target.checked;
+    computeRoute();
+  });
+  // Floating map bar: A / B arm buttons + clear.
   for (const kind of ['start', 'end']) {
-    document.getElementById('rt-' + kind).addEventListener('click', () => {
+    document.getElementById('rb-' + kind).addEventListener('click', () => {
       routing.arm = routing.arm === kind ? null : kind;
       updateArmButtons();
       ensureRouter(); // prefetch the graph on first interest
     });
   }
-  document.getElementById('rt-clear').addEventListener('click', clearRoute);
-  document.getElementById('rt-tolerant').addEventListener('change', (e) => {
-    routing.tolerant = e.target.checked;
-    computeRoute();
-  });
+  document.getElementById('rb-clear').addEventListener('click', clearRoute);
 }
 
 /* ---------------------------------------------- hover/click readout */
@@ -894,6 +897,8 @@ map.on('click', (e) => {
     const kind = routing.arm;
     routing.arm = null;
     updateArmButtons();
+    readoutPinned = false;
+    readoutEl.classList.remove('show'); // don't leave a stale road popup up
     setRoutePoint(kind, e.lngLat);
     return;
   }
@@ -1034,6 +1039,27 @@ buildRulesPanel();
 buildRoutingPanel();
 buildDisplayPanel();
 buildLegend();
+
+// Footer: version stamp, share, and in-app update (standalone PWAs have no
+// browser chrome, so the app provides its own).
+document.getElementById('appVersion').textContent = 'v' + APP_VERSION;
+document.getElementById('shareBtn').addEventListener('click', async () => {
+  const url = 'https://nothinglabs.github.io/clauding/';
+  if (navigator.share) {
+    try { await navigator.share({ title: 'WA Bike Safety', url }); } catch (e) { /* cancelled */ }
+  } else {
+    try { await navigator.clipboard.writeText(url); setStatus('Link copied'); }
+    catch (e) { setStatus(url, true); }
+  }
+});
+document.getElementById('updateBtn').addEventListener('click', async () => {
+  setStatus('Checking for update…', true);
+  try {
+    const reg = await (navigator.serviceWorker && navigator.serviceWorker.getRegistration());
+    if (reg) await reg.update();
+  } catch (e) { /* offline etc. */ }
+  location.reload();
+});
 
 // Small screens: panel starts collapsed behind the toggle button.
 const panelToggle = document.getElementById('panelToggle');

@@ -20,6 +20,13 @@
 
   <button id="panelToggle" aria-label="Toggle controls" title="Controls">☰</button>
 
+  <div id="routeBar">
+    <button id="rb-start" title="Set route start">A</button>
+    <button id="rb-end" title="Set route end">B</button>
+    <button id="rb-clear" title="Clear route">✕</button>
+    <span id="rb-status"></span>
+  </div>
+
   <div class="panel" id="panel">
     <h1>WA Bike Safety</h1>
     <p class="sub">Roads colored by bicycle level of traffic stress. Everything runs in your browser — no servers.</p>
@@ -41,6 +48,11 @@
 
     <div class="foot">
       <a href="https://nothinglabs.github.io/clauding/" target="_blank" rel="noopener">nothinglabs.github.io/clauding</a>
+      <div class="foot-actions">
+        <button id="shareBtn">Share</button>
+        <button id="updateBtn">Check for update</button>
+        <span id="appVersion"></span>
+      </div>
     </div>
   </div>
 
