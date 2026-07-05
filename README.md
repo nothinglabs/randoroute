@@ -164,7 +164,7 @@ data size, GeoJSON or tiles.
 
 ```bash
 # one-time: fetch the WA DEM (AWS Terrarium elevation tiles, z12 ≈ 38 m)
-bash data/dem/fetch.sh   # or see build_graph.py DEM_* constants
+bash scripts/fetch_dem.sh
 python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
 ```
 

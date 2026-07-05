@@ -12,3 +12,4 @@ data/permbike/
 # local test scaffolding
 _*.mjs
 _*.html
+data/dem/
