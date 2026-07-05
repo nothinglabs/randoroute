@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-05.1'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-05.2'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -706,7 +706,11 @@ function onRouterMessage(ev) {
 
 function computeRoute() {
   if (!routing.start || !routing.end) return;
-  if (!routing.ready) { ensureRouter(); return; } // re-runs once ready
+  if (!routing.ready) { // re-runs once the graph is ready
+    ensureRouter();
+    setRouteStatus('Loading routing data…');
+    return;
+  }
   routing.reqId++;
   setRouteStatus('Routing…');
   routing.worker.postMessage({
@@ -807,7 +811,12 @@ function buildRoutingPanel() {
     routing.arm = routing.arm === kind ? null : kind;
     updateArmButtons();
     ensureRouter(); // prefetch the graph on first interest
-    if (routing.arm) setSheet('peek'); // get the sheet out of the way for the map tap
+    if (routing.arm) {
+      setSheet('peek'); // get the sheet out of the way for the map tap
+      setRouteStatus(`Tap the map to place ${kind === 'start' ? 'START' : 'END'}`);
+    } else {
+      setRouteStatus('');
+    }
   };
   for (const kind of ['start', 'end']) {
     document.getElementById('rb-' + kind).addEventListener('click', () => arm(kind));
@@ -978,16 +987,55 @@ map.on('mousemove', (e) => {
   if (f) renderReadout(f, e.lngLat);
   else readoutEl.classList.remove('show');
 });
+let lastPlacementTs = 0;
+function placeArmedPoint(lngLat) {
+  const kind = routing.arm;
+  if (!kind) return false;
+  lastPlacementTs = Date.now();
+  routing.arm = null;
+  updateArmButtons();
+  readoutPinned = false;
+  readoutEl.classList.remove('show'); // don't leave a stale road popup up
+  setRoutePoint(kind, lngLat);
+  if (!(routing.start && routing.end)) {
+    // confirm the placement; with only one point there's no route yet
+    setRouteStatus(kind === 'start' ? 'Start set — tap B to place the end'
+      : 'End set — tap A to place the start');
+  }
+  return true;
+}
+
+// Robust armed-tap on touch devices: a tap during map momentum doesn't always
+// produce a MapLibre 'click', so track touches on the canvas directly and
+// place the point on any short, still touch while armed.
+(() => {
+  const canvas = map.getCanvasContainer();
+  let t0 = null;
+  canvas.addEventListener('touchstart', (e) => {
+    if (!routing.arm || e.touches.length !== 1) { t0 = null; return; }
+    const t = e.touches[0];
+    t0 = { x: t.clientX, y: t.clientY, ts: Date.now() };
+  }, { passive: true });
+  canvas.addEventListener('touchend', (e) => {
+    if (!routing.arm || !t0) return;
+    const t = e.changedTouches[0];
+    const moved = Math.hypot(t.clientX - t0.x, t.clientY - t0.y);
+    const dur = Date.now() - t0.ts;
+    t0 = null;
+    if (moved < 12 && dur < 700) {
+      const rect = map.getCanvas().getBoundingClientRect();
+      const lngLat = map.unproject([t.clientX - rect.left, t.clientY - rect.top]);
+      placeArmedPoint(lngLat);
+    }
+  }, { passive: true });
+})();
+
 map.on('click', (e) => {
   if (routing.arm) {
-    const kind = routing.arm;
-    routing.arm = null;
-    updateArmButtons();
-    readoutPinned = false;
-    readoutEl.classList.remove('show'); // don't leave a stale road popup up
-    setRoutePoint(kind, e.lngLat);
+    placeArmedPoint(e.lngLat);
     return;
   }
+  if (Date.now() - lastPlacementTs < 600) return; // click synthesized from the placement touch
   const f = featureAt(e.point);
   if (f) {
     renderReadout(f, e.lngLat);
@@ -1142,10 +1190,50 @@ function setSheet(state) {
   document.body.classList.remove(...SHEET_STATES.map((s) => 'sheet-' + s));
   document.body.classList.add('sheet-' + state);
 }
-document.getElementById('sheetGrip').addEventListener('click', () => {
-  const cur = SHEET_STATES.find((s) => document.body.classList.contains('sheet-' + s)) || 'peek';
-  setSheet(cur === 'peek' ? 'half' : cur === 'half' ? 'full' : 'peek');
-});
+(() => {
+  // Grip: drag to resize (snaps to peek/half/full on release); a plain tap
+  // still cycles through the states.
+  const grip = document.getElementById('sheetGrip');
+  const panel = document.getElementById('panel');
+  let drag = null;
+  const stateHeights = () => {
+    const vh = window.innerHeight;
+    return { peek: 92, half: vh * 0.47, full: vh - 74 };
+  };
+  grip.addEventListener('pointerdown', (e) => {
+    drag = { y0: e.clientY, h0: panel.getBoundingClientRect().height, moved: false };
+    document.body.classList.add('sheet-dragging');
+    grip.setPointerCapture(e.pointerId);
+  });
+  grip.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dy = drag.y0 - e.clientY;
+    if (Math.abs(dy) > 6) drag.moved = true;
+    const H = stateHeights();
+    const h = Math.max(H.peek, Math.min(H.full, drag.h0 + dy));
+    panel.style.height = h + 'px';
+  });
+  const endDrag = (e) => {
+    if (!drag) return;
+    const wasDrag = drag.moved;
+    drag = null;
+    document.body.classList.remove('sheet-dragging');
+    const h = panel.getBoundingClientRect().height;
+    panel.style.height = '';
+    const H = stateHeights();
+    if (!wasDrag) {
+      const cur = SHEET_STATES.find((s) => document.body.classList.contains('sheet-' + s)) || 'peek';
+      setSheet(cur === 'peek' ? 'half' : cur === 'half' ? 'full' : 'peek');
+      return;
+    }
+    // snap to the nearest state
+    const d = (a) => Math.abs(h - a);
+    setSheet(d(H.peek) <= d(H.half) && d(H.peek) <= d(H.full) ? 'peek'
+      : d(H.half) <= d(H.full) ? 'half' : 'full');
+  };
+  grip.addEventListener('pointerup', endDrag);
+  grip.addEventListener('pointercancel', endDrag);
+})();
 
 // Footer: version stamp, share, and in-app update (standalone PWAs have no
 // browser chrome, so the app provides its own).

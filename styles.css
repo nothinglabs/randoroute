@@ -61,15 +61,21 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
   }
   body.sheet-peek .panel { height: 92px; }
   body.sheet-half .panel { height: 47vh; }
-  body.sheet-full .panel { height: 88vh; }
+  /* full: always leave the floating A/B bar + grip strip reachable */
+  body.sheet-full .panel { height: calc(100vh - 74px - env(safe-area-inset-top)); }
+  @supports (height: 100dvh) {
+    body.sheet-full .panel { height: calc(100dvh - 74px - env(safe-area-inset-top)); }
+  }
   body.sheet-peek .tab { display: none; }
+  body.sheet-dragging .panel { transition: none; }
   #sheetGrip {
     flex: none;
-    padding: 8px 0 2px;
-    cursor: pointer;
+    padding: 12px 0 6px; /* generous touch target for dragging */
+    cursor: grab;
+    touch-action: none;
   }
   #sheetGrip .grip {
-    width: 42px; height: 5px; border-radius: 3px;
+    width: 46px; height: 5px; border-radius: 3px;
     background: #cfd4da; margin: 0 auto;
   }
 }
