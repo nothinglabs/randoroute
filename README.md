@@ -8,10 +8,9 @@ network** (every public drivable road, with speeds inferred from road class
 where OSM has no `maxspeed` tag — the approach pioneered by PeopleForBikes'
 Bicycle Network Analysis).
 
-**Visualization only** — no routing, no route planning, no live network queries
-at runtime. Everything renders from local static data files prepared ahead of
-time. The whole runtime is a static file server handing out `index.html` +
-the two GeoJSON files.
+**Everything runs in the browser** — visualization *and* routing, with no
+servers and no live network queries beyond basemap tiles. All data is baked
+into local static files at build time; the runtime is any static file server.
 
 ## Run it
 
@@ -54,8 +53,9 @@ python3 -m http.server 8000
   shell is network-first, so deploys still update instantly when online.
 - **Location aware**: a geolocate control centers the map on you and can
   follow along (blue dot + heading) — handy mid-ride.
-- **Mobile layout**: on small screens the control panel collapses behind a
-  ☰ button.
+- **Mobile layout**: a bottom sheet with three tabs (Route / Layers /
+  Settings) — peek, half, and full heights; the floating A/B bar routes
+  without opening the sheet at all.
 
 ## Architecture
 
@@ -80,8 +80,8 @@ Each source gets three MapLibre line layers: the solid main layer, a red-dashed
 
 ## Data (build-time)
 
-Both GeoJSON files are baked from public sources and committed. Neither is
-fetched at runtime. The raw downloads are git-ignored.
+All data files are baked from public sources and committed. The raw
+downloads are git-ignored.
 
 ### WSDOT BLTS → `data/blts.geojson` (~55k segments)
 
@@ -160,19 +160,26 @@ iOS Safari). It is scored with **MapLibre expressions** (`roadLevelExpr` in
 `app.js`): a rule change just swaps paint/filter expressions — instant at any
 data size, GeoJSON or tiles.
 
-### Routing graph → `data/graph.bin.gz`
+### Routing graph → `data/graph2.bin.gz` (elevation-aware)
 
 ```bash
+# one-time: fetch the WA DEM (AWS Terrarium elevation tiles, z12 ≈ 38 m)
+bash data/dem/fetch.sh   # or see build_graph.py DEM_* constants
 python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
 ```
 
-A compact binary graph (nodes at intersections; edges carry length, speed —
-actual or class-estimated — facility/limited-access/infrastructure flags, and
-shoulder where known). One-way streets honored for bikes; `bicycle=no` ways
-excluded entirely. The app routes over it **fully client-side**: A* in a web
-worker (`router-worker.js`), with edge costs derived from the current riding
-rules — strict mode only uses passing segments; "allow failing roads" permits
-them at a heavy penalty. No routing server; works offline once cached.
+A compact binary graph (nodes at intersections; edges carry length, climb/
+descent sampled every 60 m from the DEM, speed — posted, WSDOT-measured, or
+class-estimated — facility/limited-access/infrastructure flags, and shoulder
+from WSDOT conflation or OSM). One-way streets honored; `bicycle=no` and
+WSDOT-restricted ways excluded entirely.
+
+The app routes **fully client-side**: A* in a web worker over estimated riding
+TIME (a grade-aware speed model), in three modes — **Direct** (fastest, failing
+roads allowed with a nudge), **Balanced** (failing roads cost 3× their time),
+**Low-stress** (failing roads impassable). Results include distance, duration,
+total climb/descent, and an elevation profile. No routing server; works
+offline once cached.
 
 ## Vendored library
 

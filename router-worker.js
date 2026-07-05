@@ -1,31 +1,38 @@
 /*
- * Client-side bike router. Runs A* over the prebuilt graph (data/graph.bin.gz,
- * see scripts/build_graph.py) entirely in this worker — no routing server.
+ * Client-side bike router v2. A* over the prebuilt graph (data/graph2.bin.gz,
+ * scripts/build_graph.py) entirely in this worker — no routing server.
  *
- * Edge cost = length × multiplier from the user's riding rules:
- *   level 1 (comfortable) ×0.95, level 2 (meets criteria) ×1.0,
- *   level 4 (fails) — strict: impassable; tolerant: ×8.
- * Prohibited ways were excluded from the graph at build time.
+ * Cost = estimated riding TIME (grade-aware speed model on baked-in DEM
+ * elevations), scaled per riding mode:
+ *   direct    — fastest ride; failing roads allowed with a slight nudge away
+ *   balanced  — failing roads cost 3x their time; gentle preference for
+ *               comfortable roads and bike infrastructure
+ *   low       — low-stress only: failing roads are impassable
+ * Prohibited ways were excluded from the graph at build time in every mode.
  */
 'use strict';
 
 let N = 0, E = 0, D = 0;
-let nodeLon, nodeLat, eA, eB, eLen, eSpeed, eFlags, eSh, eOff, eCnt;
+let nodeLon, nodeLat, nodeEle;
+let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 
 function loadGraph(buf) {
   const dv = new DataView(buf);
-  if (dv.getUint32(0, false) !== 0x42475231) throw new Error('bad graph magic'); // 'BGR1'
+  if (dv.getUint32(0, false) !== 0x42475232) throw new Error('bad graph magic (want BGR2)');
   N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
   let o = 16;
+  const pad4 = () => { o += (4 - (o % 4)) % 4; };
   const f32 = (n) => { const a = new Float32Array(buf, o, n); o += 4 * n; return a; };
   const u32 = (n) => { const a = new Uint32Array(buf, o, n); o += 4 * n; return a; };
   const u16 = (n) => { const a = new Uint16Array(buf, o, n); o += 2 * n; return a; };
+  const i16 = (n) => { const a = new Int16Array(buf, o, n); o += 2 * n; return a; };
   const u8 = (n) => { const a = new Uint8Array(buf, o, n); o += n; return a; };
   const i8 = (n) => { const a = new Int8Array(buf, o, n); o += n; return a; };
-  const pad4 = () => { o += (4 - (o % 4)) % 4; };
-  nodeLon = f32(N); nodeLat = f32(N);
+  nodeLon = f32(N); nodeLat = f32(N); nodeEle = i16(N);
+  pad4();
   eA = u32(E); eB = u32(E); eLen = f32(E);
+  eAsc = u16(E); eDes = u16(E);
   eSpeed = u8(E); eFlags = u8(E); eSh = i8(E);
   pad4();
   eOff = u32(E);
@@ -69,6 +76,130 @@ function edgeLevel(i, rules) {
   return 2;
 }
 
+/* ------------------------------------------------ time model */
+// Flat cruising speed (m/s): dedicated infrastructure is a touch slower
+// (shared paths, tighter geometry); roads assume a steady recreational pace.
+const V_ROAD = 5.6;   // ~12.5 mph
+const V_INFRA = 5.0;  // ~11.2 mph
+const V_MAX = 12.0;   // ~27 mph downhill cap (also the A* heuristic speed)
+const V_MIN = 1.3;    // steep-climb floor (~3 mph)
+
+// Seconds to ride edge i in the given direction (forward = a->b).
+function edgeTimeS(i, forward) {
+  const len = eLen[i];
+  const asc = forward ? eAsc[i] : eDes[i];
+  const des = forward ? eDes[i] : eAsc[i];
+  const vflat = (eFlags[i] & 8) ? V_INFRA : V_ROAD;
+  const g = (asc - des) / Math.max(len, 1); // net grade
+  let v;
+  if (g > 0) v = Math.max(vflat * Math.exp(-7 * g), V_MIN);
+  else v = Math.min(vflat * (1 - 2.5 * g), V_MAX);
+  let t = len / v;
+  // Undulation beyond the net climb still costs energy/time (~6 s per meter
+  // of extra up-and-down that the net grade doesn't see).
+  const extra = asc - Math.max(asc - des, 0);
+  t += extra * 6 * 0.5;
+  return t;
+}
+
+/* ------------------------------------------------ riding modes */
+// Multiplier applied to an edge's TIME, or Infinity to forbid it.
+function modeMult(mode, lvl) {
+  if (mode === 'direct') return lvl === 4 ? 1.15 : 1.0;
+  if (mode === 'balanced') return lvl === 4 ? 3.0 : lvl === 1 ? 0.92 : 1.0;
+  /* low */ return lvl === 4 ? Infinity : lvl === 1 ? 0.9 : 1.0;
+}
+
+function route(startLL, endLL, rules, mode) {
+  const t0 = Date.now();
+  const s = nearestNode(startLL[0], startLL[1]);
+  const t = nearestNode(endLL[0], endLL[1]);
+  if (s.distM > 2000) return { ok: false, reason: 'Start is too far from a rideable road.' };
+  if (t.distM > 2000) return { ok: false, reason: 'End is too far from a rideable road.' };
+
+  const goalLon = nodeLon[t.node], goalLat = nodeLat[t.node];
+  const dist = new Float64Array(N).fill(Infinity);
+  const prevNode = new Int32Array(N).fill(-1);
+  const prevEdge = new Int32Array(N).fill(-1);
+  const done = new Uint8Array(N);
+  const heap = makeHeap(4096);
+  const h = (n) => havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / V_MAX;
+  dist[s.node] = 0;
+  heap.push(h(s.node), s.node);
+
+  let found = false;
+  while (heap.size) {
+    const u = heap.pop();
+    if (done[u]) continue;
+    done[u] = 1;
+    if (u === t.node) { found = true; break; }
+    const du = dist[u];
+    for (let a = outStart[u]; a < outStart[u + 1]; a++) {
+      const v = outTarget[a];
+      if (done[v]) continue;
+      const ei = outEdge[a];
+      const mult = modeMult(mode, edgeLevel(ei, rules));
+      if (mult === Infinity) continue;
+      const forward = eA[ei] === u;
+      const nd = du + edgeTimeS(ei, forward) * mult;
+      if (nd < dist[v]) {
+        dist[v] = nd;
+        prevNode[v] = u;
+        prevEdge[v] = ei;
+        heap.push(nd + h(v), v);
+      }
+    }
+  }
+  if (!found) {
+    return {
+      ok: false,
+      reason: mode === 'low'
+        ? 'No low-stress route exists — try Balanced mode or relax the rules.'
+        : 'No route exists on the rideable network between these points.',
+    };
+  }
+
+  // Reconstruct (goal -> start), then emit forward.
+  const edges = [];
+  for (let v = t.node; v !== s.node; v = prevNode[v]) edges.push([prevEdge[v], prevNode[v]]);
+  edges.reverse();
+
+  const coords = [];
+  const profile = []; // [cumulative meters, elevation m] per node along the route
+  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0;
+  for (const [ei, fromNode] of edges) {
+    const off = eOff[ei], cnt = eCnt[ei];
+    const forward = eA[ei] === fromNode;
+    if (coords.length === 0) {
+      const j = forward ? 0 : cnt - 1;
+      coords.push([gLon[off + j], gLat[off + j]]);
+      profile.push([0, nodeEle[fromNode]]);
+    }
+    if (forward) for (let j = 1; j < cnt; j++) coords.push([gLon[off + j], gLat[off + j]]);
+    else for (let j = cnt - 2; j >= 0; j--) coords.push([gLon[off + j], gLat[off + j]]);
+    distM += eLen[ei];
+    timeS += edgeTimeS(ei, forward);
+    ascentM += forward ? eAsc[ei] : eDes[ei];
+    descentM += forward ? eDes[ei] : eAsc[ei];
+    if (edgeLevel(ei, rules) === 4) failM += eLen[ei];
+    const toNode = forward ? eB[ei] : eA[ei];
+    profile.push([distM, nodeEle[toNode]]);
+  }
+  // Downsample the profile to <= 240 points for the sparkline.
+  let prof = profile;
+  if (prof.length > 240) {
+    const stepN = prof.length / 240;
+    const ds = [];
+    for (let i = 0; i < prof.length; i += stepN) ds.push(prof[Math.floor(i)]);
+    ds.push(prof[prof.length - 1]);
+    prof = ds;
+  }
+  return {
+    ok: true, coords, distM, timeS, ascentM, descentM, failM,
+    profile: prof, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
+  };
+}
+
 // Binary min-heap on (key, node) pairs.
 function makeHeap(cap) {
   let keys = new Float64Array(cap), vals = new Int32Array(cap), n = 0;
@@ -107,81 +238,6 @@ function makeHeap(cap) {
   };
 }
 
-function route(startLL, endLL, rules, tolerant) {
-  const t0 = Date.now();
-  const s = nearestNode(startLL[0], startLL[1]);
-  const t = nearestNode(endLL[0], endLL[1]);
-  if (s.distM > 2000) return { ok: false, reason: 'Start point is too far from any rideable road.' };
-  if (t.distM > 2000) return { ok: false, reason: 'End point is too far from any rideable road.' };
-
-  const goalLon = nodeLon[t.node], goalLat = nodeLat[t.node];
-  const dist = new Float64Array(N).fill(Infinity);
-  const prevNode = new Int32Array(N).fill(-1);
-  const prevEdge = new Int32Array(N).fill(-1);
-  const done = new Uint8Array(N);
-  const heap = makeHeap(4096);
-  dist[s.node] = 0;
-  heap.push(havM(nodeLon[s.node], nodeLat[s.node], goalLon, goalLat) * 0.95, s.node);
-
-  let found = false;
-  while (heap.size) {
-    const u = heap.pop();
-    if (done[u]) continue;
-    done[u] = 1;
-    if (u === t.node) { found = true; break; }
-    const du = dist[u];
-    for (let a = outStart[u]; a < outStart[u + 1]; a++) {
-      const v = outTarget[a];
-      if (done[v]) continue;
-      const ei = outEdge[a];
-      const lvl = edgeLevel(ei, rules);
-      let mult;
-      if (lvl === 4) { if (!tolerant) continue; mult = 8; }
-      else mult = lvl === 1 ? 0.95 : 1.0;
-      const nd = du + eLen[ei] * mult;
-      if (nd < dist[v]) {
-        dist[v] = nd;
-        prevNode[v] = u;
-        prevEdge[v] = ei;
-        heap.push(nd + havM(nodeLon[v], nodeLat[v], goalLon, goalLat) * 0.95, v);
-      }
-    }
-  }
-  if (!found) {
-    return {
-      ok: false,
-      reason: tolerant
-        ? 'No route exists on the rideable network between these points.'
-        : 'No route meets your criteria. Try “allow failing roads” or relax the rules.',
-    };
-  }
-
-  // Reconstruct path (goal -> start), then emit forward.
-  const edges = [];
-  for (let v = t.node; v !== s.node; v = prevNode[v]) edges.push([prevEdge[v], prevNode[v]]);
-  edges.reverse();
-
-  const coords = [];
-  let distM = 0, passM = 0, failM = 0;
-  for (const [ei, fromNode] of edges) {
-    const off = eOff[ei], cnt = eCnt[ei];
-    const forward = eA[ei] === fromNode;
-    if (coords.length === 0) {
-      const j = forward ? 0 : cnt - 1;
-      coords.push([gLon[off + j], gLat[off + j]]);
-    }
-    if (forward) for (let j = 1; j < cnt; j++) coords.push([gLon[off + j], gLat[off + j]]);
-    else for (let j = cnt - 2; j >= 0; j--) coords.push([gLon[off + j], gLat[off + j]]);
-    distM += eLen[ei];
-    if (edgeLevel(ei, rules) === 4) failM += eLen[ei];
-    else passM += eLen[ei];
-  }
-  return {
-    ok: true, coords, distM, passM, failM,
-    snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
-  };
-}
-
 onmessage = (ev) => {
   const m = ev.data;
   try {
@@ -189,7 +245,7 @@ onmessage = (ev) => {
       loadGraph(m.buffer);
       postMessage({ type: 'ready', nodes: N, edges: E });
     } else if (m.type === 'route') {
-      const r = route(m.start, m.end, m.rules, m.tolerant);
+      const r = route(m.start, m.end, m.rules, m.mode || 'balanced');
       postMessage({ type: 'route', id: m.id, ...r });
     }
   } catch (err) {

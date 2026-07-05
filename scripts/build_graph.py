@@ -69,6 +69,77 @@ REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA)[-\s]?\d+', re.I)
 WSDOT_MATCH_DEG = 0.00035  # ~30 m
 
 
+DEM_Z = 12
+DEM_DIR = 'data/dem'
+
+def load_dem():
+    """Mosaic terrarium tiles into one int16 elevation array (meters)."""
+    import glob
+    import numpy as np
+    from PIL import Image
+    files = glob.glob(f'{DEM_DIR}/{DEM_Z}_*.png')
+    if not files:
+        return None
+    xs, ys = set(), set()
+    for f in files:
+        _, x, y = f.rsplit('/', 1)[-1][:-4].split('_')
+        xs.add(int(x)); ys.add(int(y))
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    W, H = (x1 - x0 + 1) * 256, (y1 - y0 + 1) * 256
+    mosaic = np.zeros((H, W), dtype=np.int16)
+    n = 0
+    for f in files:
+        _, x, y = f.rsplit('/', 1)[-1][:-4].split('_')
+        x, y = int(x), int(y)
+        try:
+            a = np.asarray(Image.open(f).convert('RGB'), dtype=np.float32)
+        except Exception:
+            continue
+        ele = (a[:, :, 0] * 256 + a[:, :, 1] + a[:, :, 2] / 256) - 32768
+        mosaic[(y - y0) * 256:(y - y0 + 1) * 256, (x - x0) * 256:(x - x0 + 1) * 256] = \
+            np.clip(ele, -32000, 32000).astype(np.int16)
+        n += 1
+    print(f'  DEM mosaic: {n} tiles, {W}x{H} px', flush=True)
+    scale = 2 ** DEM_Z
+    def ele_at(lon, lat):
+        fx = (lon + 180) / 360 * scale
+        fy = (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * scale
+        px = int((fx - x0) * 256); py = int((fy - y0) * 256)
+        if 0 <= py < H and 0 <= px < W:
+            return int(mosaic[py, px])
+        return 0
+    return ele_at
+
+
+def edge_climb(coords, ele_at, step_m=60.0):
+    """(ascent, descent) in meters going a->b, sampled every ~step_m with a
+    2 m deadband to suppress DEM noise on flats."""
+    # densify: walk the polyline, sampling elevation every step_m
+    samples = [ele_at(coords[0][0], coords[0][1])]
+    carry = 0.0
+    for i in range(len(coords) - 1):
+        (x1, y1), (x2, y2) = coords[i], coords[i + 1]
+        seg = haversine_m(x1, y1, x2, y2)
+        if seg <= 0:
+            continue
+        d = step_m - carry
+        while d < seg:
+            f = d / seg
+            samples.append(ele_at(x1 + (x2 - x1) * f, y1 + (y2 - y1) * f))
+            d += step_m
+        carry = (carry + seg) % step_m
+    samples.append(ele_at(coords[-1][0], coords[-1][1]))
+    asc = des = 0.0
+    ref = samples[0]
+    for e in samples[1:]:
+        delta = e - ref
+        if delta > 2:
+            asc += delta; ref = e
+        elif delta < -2:
+            des += -delta; ref = e
+    return asc, des
+
+
 def load_blts_index(path):
     """STRtree over WSDOT BLTS segments + per-segment attrs."""
     fc = json.load(open(path))
@@ -177,6 +248,10 @@ def line_len_m(coords):
 
 def build(src, out, blts=None):
     wsdot = load_blts_index(blts) if blts else None
+    ele_at = load_dem()
+    if ele_at is None:
+        print('  WARNING: no DEM tiles found — building without elevation', flush=True)
+        ele_at = lambda lon, lat: 0
     # ---- pass 1: which ways are kept; count node references to find junctions
     print('pass 1: scanning ways...', flush=True)
     refcount = {}
@@ -202,6 +277,8 @@ def build(src, out, blts=None):
     eA = array('I'); eB = array('I'); eLen = array('f')
     eSpeed = array('B'); eFlags = array('B'); eSh = array('b')
     eOff = array('I'); eCnt = array('H')
+    eAsc = array('H'); eDes = array('H')   # meters of climb a->b / descent a->b
+    nEle = array('h')                       # node elevation, meters
     gLon = array('f'); gLat = array('f')
 
     def gnode(osmid, lon, lat):
@@ -210,6 +287,7 @@ def build(src, out, blts=None):
             i = len(node_lon)
             node_index[osmid] = i
             node_lon.append(lon); node_lat.append(lat)
+            nEle.append(ele_at(lon, lat))
         return i
 
     oneway_arcs = 0
@@ -272,6 +350,8 @@ def build(src, out, blts=None):
                                         espeed = min(int(best['spd']), 255)
                                         eflags &= ~1  # measured, not estimated
                                     conflated[0] += 1
+                            asc, des = edge_climb(coords, ele_at)
+                            eAsc.append(min(int(asc), 65535)); eDes.append(min(int(des), 65535))
                             eA.append(a); eB.append(b); eLen.append(length)
                             eSpeed.append(espeed); eFlags.append(eflags); eSh.append(esh)
                             eOff.append(len(gLon)); eCnt.append(min(len(coords), 65535))
@@ -310,16 +390,19 @@ def build(src, out, blts=None):
 
     # ---- write
     print('writing...', flush=True)
-    for arr in (node_lon, node_lat, eA, eB, eLen, eSpeed, eFlags, eSh, eOff, eCnt,
-                outStart, outTarget, outEdge, gLon, gLat):
+    for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh,
+                eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat):
         if sys.byteorder == 'big':
             arr.byteswap()
     # JS typed-array views need 4-byte alignment: pad after the byte arrays
     # (3E bytes) and after the u16 array (2E bytes).
-    parts = [b'BGR1', struct.pack('<III', N, E, D),
-             node_lon.tobytes(), node_lat.tobytes(),
-             eA.tobytes(), eB.tobytes(), eLen.tobytes(),
-             eSpeed.tobytes(), eFlags.tobytes(), eSh.tobytes()]
+    parts = [b'BGR2', struct.pack('<III', N, E, D),
+             node_lon.tobytes(), node_lat.tobytes(), nEle.tobytes()]
+    off = sum(len(p) for p in parts)
+    parts.append(b'\x00' * ((4 - off % 4) % 4))
+    parts += [eA.tobytes(), eB.tobytes(), eLen.tobytes(),
+              eAsc.tobytes(), eDes.tobytes(),
+              eSpeed.tobytes(), eFlags.tobytes(), eSh.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
     parts.append(eOff.tobytes())
@@ -338,7 +421,7 @@ def build(src, out, blts=None):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='data/washington-latest.osm.pbf')
-    ap.add_argument('--out', default='data/graph.bin.gz')
+    ap.add_argument('--out', default='data/graph2.bin.gz')
     ap.add_argument('--blts', default='data/blts.geojson',
                     help='WSDOT BLTS geojson for shoulder/speed/prohibition conflation')
     args = ap.parse_args()

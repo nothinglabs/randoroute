@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-04.1'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-05.1'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -578,7 +578,9 @@ const routing = {
   start: null, end: null,    // [lng, lat]
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false,
-  tolerant: false, reqId: 0,
+  mode: 'balanced', // 'direct' | 'balanced' | 'low'
+  reqId: 0,
+  last: null, // last successful result (for redraws)
 };
 
 function setRouteStatus(t) {
@@ -593,7 +595,7 @@ async function ensureRouter() {
   routing.loading = true;
   try {
     setRouteStatus('Loading routing data (one-time download)…');
-    const res = await fetch('data/graph.bin.gz');
+    const res = await fetch('data/graph2.bin.gz');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     let buf = await res.arrayBuffer();
     const head = new Uint8Array(buf, 0, 2);
@@ -611,26 +613,92 @@ async function ensureRouter() {
   }
 }
 
+const fmtMi = (m) => (m / 1609.34).toFixed(1);
+const fmtFt = (m) => Math.round(m * 3.28084).toLocaleString();
+function fmtDur(s) {
+  const min = Math.round(s / 60);
+  if (min < 60) return `${min} min`;
+  return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} m`;
+}
+
+function renderRouteCard(m) {
+  const card = document.getElementById('routeCard');
+  if (!card) return;
+  if (!m) {
+    card.innerHTML = `<div class="rc-empty">Tap <b>A</b> on the map bar, then tap
+      your start point. Tap <b>B</b> for the destination. Routes follow your
+      riding rules and chosen mode, entirely on this device.</div>`;
+    return;
+  }
+  if (!m.ok) {
+    card.innerHTML = `<div class="rc-empty">${m.reason}</div>`;
+    return;
+  }
+  const warn = m.failM > 0
+    ? `<div class="rc-warn">⚠ ${fmtMi(m.failM)} mi on roads that fail your rules</div>`
+    : `<div class="rc-sub" style="color:#00795c;font-weight:600">✓ Entirely within your riding rules</div>`;
+  card.innerHTML = `
+    <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
+    <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
+    ${warn}
+    <canvas id="profileCv"></canvas>`;
+  drawProfile(m.profile, m.distM);
+}
+
+function drawProfile(profile, distM) {
+  const cv = document.getElementById('profileCv');
+  if (!cv || !profile || profile.length < 2) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth || 280, h = cv.clientHeight || 72;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  let lo = Infinity, hi = -Infinity;
+  for (const [, e] of profile) { if (e < lo) lo = e; if (e > hi) hi = e; }
+  if (hi - lo < 30) { const mid = (hi + lo) / 2; lo = mid - 15; hi = mid + 15; }
+  const padT = 12, padB = 14, padL = 2, padR = 2;
+  const X = (d) => padL + (d / distM) * (w - padL - padR);
+  const Y = (e) => padT + (1 - (e - lo) / (hi - lo)) * (h - padT - padB);
+  ctx.beginPath();
+  ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
+  for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
+  ctx.lineTo(X(profile[profile.length - 1][0]), h - padB);
+  ctx.lineTo(X(profile[0][0]), h - padB);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(44,123,182,0.18)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
+  for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
+  ctx.strokeStyle = '#2c7bb6';
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+  ctx.fillStyle = '#98a2ad';
+  ctx.font = '10px system-ui';
+  ctx.fillText(`${fmtFt(hi)} ft`, padL + 2, padT - 2);
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`${fmtFt(lo)} ft`, padL + 2, h - 1);
+}
+
 function onRouterMessage(ev) {
   const m = ev.data;
   if (m.type === 'ready') {
     routing.ready = true;
     routing.loading = false;
-    setRouteStatus(routing.start && routing.end ? 'Routing…' : 'Ready — set start and end.');
+    setRouteStatus(routing.start && routing.end ? 'Routing…' : '');
+    renderRouteCard(routing.last);
     computeRoute();
   } else if (m.type === 'route') {
     if (m.id !== routing.reqId) return; // stale reply
+    routing.last = m;
+    renderRouteCard(m);
     if (!m.ok) {
       drawRoute([]);
       setRouteStatus(m.reason);
       return;
     }
     drawRoute(m.coords);
-    const mi = (x) => (x / 1609.34).toFixed(1);
-    setRouteStatus(
-      `${mi(m.distM)} mi` +
-        (m.failM > 0 ? ` — ${mi(m.failM)} mi on failing roads` : ' — all within your criteria')
-    );
+    setRouteStatus(`${fmtMi(m.distM)} mi · ${fmtDur(m.timeS)}`);
   } else if (m.type === 'error') {
     setRouteStatus('Routing error: ' + m.message);
   }
@@ -644,7 +712,7 @@ function computeRoute() {
   routing.worker.postMessage({
     type: 'route', id: routing.reqId,
     start: routing.start, end: routing.end,
-    rules: { ...rules }, tolerant: routing.tolerant,
+    rules: { ...rules }, mode: routing.mode,
   });
 }
 
@@ -690,7 +758,9 @@ function clearRoute() {
     if (routing[k]) { routing[k].remove(); routing[k] = null; }
   }
   drawRoute([]);
-  setRouteStatus('Tap “Set start”, then tap the map.');
+  routing.last = null;
+  renderRouteCard(null);
+  setRouteStatus('');
   updateArmButtons();
 }
 
@@ -703,32 +773,48 @@ function updateArmButtons() {
   }
 }
 
+const MODES = [
+  ['direct', 'Direct', 'Fastest ride, even if stressful'],
+  ['balanced', 'Balanced', 'Avoids bad roads when the detour is reasonable'],
+  ['low', 'Low-stress', 'Only roads that pass your rules'],
+];
+
 function buildRoutingPanel() {
+  const chips = document.getElementById('modeChips');
+  chips.innerHTML = MODES.map(([id, label]) =>
+    `<button data-mode="${id}" ${id === routing.mode ? 'class="active"' : ''}
+       title="${MODES.find((m) => m[0] === id)[2]}">${label}</button>`).join('');
+  chips.querySelectorAll('button').forEach((b) => {
+    b.addEventListener('click', () => {
+      routing.mode = b.dataset.mode;
+      chips.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+      computeRoute();
+    });
+  });
+
+  renderRouteCard(null);
+
   const host = document.getElementById('routing');
   host.innerHTML = `
-    <div class="hint">Use the <b>A</b> / <b>B</b> buttons on the map, then tap
-      where you want to start and end. Local A* over the rideable network —
-      your riding rules are the cost. No server; works offline once loaded.</div>
-    <div class="check-rule">
-      <input type="checkbox" id="rt-tolerant">
-      <label for="rt-tolerant">Allow failing roads</label>
-      <div class="hint" style="width:100%">Route may use failing (red) roads,
-        heavily penalized, when nothing better exists.</div>
+    <div class="route-actions">
+      <button id="rt-start">Set start</button>
+      <button id="rt-end">Set end</button>
+      <button id="rt-clear">Clear</button>
     </div>
-    <div class="hint" id="route-status"></div>`;
-  document.getElementById('rt-tolerant').addEventListener('change', (e) => {
-    routing.tolerant = e.target.checked;
-    computeRoute();
-  });
-  // Floating map bar: A / B arm buttons + clear.
+    <div class="hint" id="route-status" style="margin-top:8px"></div>`;
+
+  const arm = (kind) => {
+    routing.arm = routing.arm === kind ? null : kind;
+    updateArmButtons();
+    ensureRouter(); // prefetch the graph on first interest
+    if (routing.arm) setSheet('peek'); // get the sheet out of the way for the map tap
+  };
   for (const kind of ['start', 'end']) {
-    document.getElementById('rb-' + kind).addEventListener('click', () => {
-      routing.arm = routing.arm === kind ? null : kind;
-      updateArmButtons();
-      ensureRouter(); // prefetch the graph on first interest
-    });
+    document.getElementById('rb-' + kind).addEventListener('click', () => arm(kind));
+    document.getElementById('rt-' + kind).addEventListener('click', () => arm(kind));
   }
   document.getElementById('rb-clear').addEventListener('click', clearRoute);
+  document.getElementById('rt-clear').addEventListener('click', clearRoute);
 }
 
 /* ---------------------------------------------- hover/click readout */
@@ -978,11 +1064,11 @@ function buildRulesPanel() {
     });
   };
 
-  check('allowFreeways', 'Allow freeways', 'Show limited-access / high-speed highways as rideable.');
-  slider('minShoulder', 'Min shoulder width', 'Known shoulder under this fails a road (unknown shoulder is not held against it).', 0, 10, 1, ' ft');
-  slider('freeMaxSpeed', '“Free” max speed', 'At/below this, comfortable regardless of shoulder.', 15, 40, 5, ' mph');
-  slider('upperMaxSpeed', 'Upper max speed', 'Above this a road fails (unless “No upper limit”).', 35, 65, 5, ' mph');
-  check('noUpperLimit', 'No upper limit', 'Ignore the upper-speed limit — don’t fail roads for speed alone.');
+  check('allowFreeways', 'Allow freeways', 'Ride limited-access highway shoulders where legal.');
+  slider('minShoulder', 'Minimum shoulder', 'Roads with a known shoulder narrower than this fail. Unknown isn’t held against a road.', 0, 10, 1, ' ft');
+  slider('freeMaxSpeed', 'Comfortable at or below', 'Traffic at this speed is fine regardless of shoulder.', 15, 40, 5, ' mph');
+  slider('upperMaxSpeed', 'Avoid roads faster than', 'Above this a road fails — unless “No speed cutoff” is on.', 35, 65, 5, ' mph');
+  check('noUpperLimit', 'No speed cutoff', 'Don’t fail roads on speed alone (shoulder rule still applies).');
 }
 
 function buildDisplayPanel() {
@@ -1040,6 +1126,27 @@ buildRoutingPanel();
 buildDisplayPanel();
 buildLegend();
 
+// Tabs.
+document.querySelectorAll('#tabs button').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
+    document.querySelectorAll('.tab').forEach((t) =>
+      t.classList.toggle('active', t.id === 'tab-' + b.dataset.tab));
+    if (document.body.className.includes('sheet-peek')) setSheet('half');
+  });
+});
+
+// Bottom-sheet states (mobile only; CSS ignores these classes on desktop).
+const SHEET_STATES = ['peek', 'half', 'full'];
+function setSheet(state) {
+  document.body.classList.remove(...SHEET_STATES.map((s) => 'sheet-' + s));
+  document.body.classList.add('sheet-' + state);
+}
+document.getElementById('sheetGrip').addEventListener('click', () => {
+  const cur = SHEET_STATES.find((s) => document.body.classList.contains('sheet-' + s)) || 'peek';
+  setSheet(cur === 'peek' ? 'half' : cur === 'half' ? 'full' : 'peek');
+});
+
 // Footer: version stamp, share, and in-app update (standalone PWAs have no
 // browser chrome, so the app provides its own).
 document.getElementById('appVersion').textContent = 'v' + APP_VERSION;
@@ -1061,12 +1168,7 @@ document.getElementById('updateBtn').addEventListener('click', async () => {
   location.reload();
 });
 
-// Small screens: panel starts collapsed behind the toggle button.
-const panelToggle = document.getElementById('panelToggle');
-if (window.matchMedia('(max-width: 640px)').matches)
-  document.body.classList.add('panel-collapsed');
-panelToggle.addEventListener('click', () =>
-  document.body.classList.toggle('panel-collapsed'));
+
 
 // Run cb as soon as the style spec is loaded. Polling avoids a styledata-event
 // race, and isStyleLoaded flips true independent of basemap TILE loading, so a

@@ -15,10 +15,8 @@
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="sheet-peek">
   <div id="map"></div>
-
-  <button id="panelToggle" aria-label="Toggle controls" title="Controls">☰</button>
 
   <div id="routeBar">
     <button id="rb-start" title="Set route start">A</button>
@@ -28,32 +26,42 @@
   </div>
 
   <div class="panel" id="panel">
-    <h1>WA Bike Safety</h1>
-    <p class="sub">Roads colored by bicycle level of traffic stress. Everything runs in your browser — no servers.</p>
+    <div id="sheetGrip" aria-label="Expand or collapse"><div class="grip"></div></div>
+    <nav id="tabs">
+      <button data-tab="route" class="active">Route</button>
+      <button data-tab="layers">Layers</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
 
-    <h2>Data sources</h2>
-    <div id="sources"></div>
+    <section class="tab active" id="tab-route">
+      <div id="modeChips"></div>
+      <div id="routeCard"></div>
+      <div id="routing"></div>
+    </section>
 
-    <h2>Riding rules</h2>
-    <div id="rules"></div>
+    <section class="tab" id="tab-layers">
+      <h2>Data layers</h2>
+      <div id="sources"></div>
+      <h2>Display</h2>
+      <div id="display"></div>
+      <h2>Legend</h2>
+      <div class="legend" id="legend"></div>
+    </section>
 
-    <h2>Routing</h2>
-    <div id="routing"></div>
-
-    <h2>Display</h2>
-    <div id="display"></div>
-
-    <h2>Legend</h2>
-    <div class="legend" id="legend"></div>
-
-    <div class="foot">
-      <a href="https://nothinglabs.github.io/clauding/" target="_blank" rel="noopener">nothinglabs.github.io/clauding</a>
-      <div class="foot-actions">
-        <button id="shareBtn">Share</button>
-        <button id="updateBtn">Check for update</button>
-        <span id="appVersion"></span>
+    <section class="tab" id="tab-settings">
+      <h2>Riding rules</h2>
+      <p class="hint">These define what counts as a road you'd ride. They drive
+        both the map colors and the router, live.</p>
+      <div id="rules"></div>
+      <div class="foot">
+        <a href="https://nothinglabs.github.io/clauding/" target="_blank" rel="noopener">nothinglabs.github.io/clauding</a>
+        <div class="foot-actions">
+          <button id="shareBtn">Share</button>
+          <button id="updateBtn">Check for update</button>
+          <span id="appVersion"></span>
+        </div>
       </div>
-    </div>
+    </section>
   </div>
 
   <div class="readout" id="readout"></div>
