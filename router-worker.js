@@ -70,7 +70,9 @@ function edgeLevel(i, rules) {
   if (flags & 8) return 1;                          // dedicated infrastructure
   const spd = eSpeed[i];
   if (spd <= rules.freeMaxSpeed) return 1;
-  const sh = eSh[i];
+  // eSh < 0 = unknown; pessimistic mode counts that as a 0 ft shoulder.
+  let sh = eSh[i];
+  if (sh < 0 && rules.unknownShoulderZero) sh = 0;
   if (!(flags & 2) && sh >= 0 && sh < rules.minShoulder) return 4;
   if (!rules.noUpperLimit && spd > rules.upperMaxSpeed) return 4;
   return 2;

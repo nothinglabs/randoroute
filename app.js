@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-05.2'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-07.1'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -37,6 +37,7 @@ const LEGEND = [
 const rules = {
   allowFreeways: true,  // show limited-access/high-speed roads as rideable at all?
   minShoulder: 4,       // ft; below this a road gets penalized
+  unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
   freeMaxSpeed: 25,     // mph; at/below this a road is comfortable regardless of shoulder
   upperMaxSpeed: 45,    // mph; above this it's high-stress unless shoulder/facility is adequate
   noUpperLimit: true,   // disable the upper-speed hard cap
@@ -148,12 +149,16 @@ function effectiveLevel(n) {
   if (n.infra) return n.baseScore == null ? 0 : n.baseScore;
 
   const spd = n.maxspeed_num;
-  const sh = n.shoulder_width;
+  // Pessimistic option: an unknown shoulder counts as 0 ft, so fast roads must
+  // PROVE an adequate shoulder to pass. Slow roads are unaffected (free-speed
+  // rule below fires first) and so are roads with a bike facility.
+  const sh = n.shoulder_width == null && rules.unknownShoulderZero ? 0 : n.shoulder_width;
 
   // Slow enough → comfortable regardless of shoulder.
   if (spd != null && spd <= rules.freeMaxSpeed) return 1;
 
-  // Hard gates. Each fails ONLY when we have data proving the violation.
+  // Hard gates. Each fails ONLY when we have data proving the violation
+  // (with the pessimistic option, "unknown = 0 ft" counts as data).
   const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
   const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
   if (shoulderFails || speedFails) return 4;
@@ -225,8 +230,12 @@ function roadLevelExpr() {
   cases.push(['==', ['get', 'b'], 1], 4);                       // bikes prohibited
   if (!rules.allowFreeways) cases.push(['==', ['get', 'm'], 1], 4); // freeway gate
   cases.push(['<=', spd, rules.freeMaxSpeed], 1);               // slow = comfortable
-  cases.push(                                                    // known-bad shoulder
-    ['all', ['!=', ['get', 'f'], 1], ['has', 'w'], ['<', ['get', 'w'], rules.minShoulder]], 4);
+  // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
+  // otherwise only a known-narrow shoulder fails.
+  const sh = rules.unknownShoulderZero
+    ? ['coalesce', ['get', 'w'], 0]
+    : ['case', ['has', 'w'], ['get', 'w'], rules.minShoulder]; // unknown -> never under
+  cases.push(['all', ['!=', ['get', 'f'], 1], ['<', sh, rules.minShoulder]], 4);
   if (!rules.noUpperLimit) cases.push(['>', spd, rules.upperMaxSpeed], 4); // speed cap
   return ['case', ...cases, 2];                                  // meets criteria
 }
@@ -847,7 +856,9 @@ function explainLevel(n) {
     return 'Limited-access highway — turn on “Allow freeways” to include it.';
 
   const spd = n.maxspeed_num;
-  const sh = n.shoulder_width;
+  const shRaw = n.shoulder_width;
+  const shUnknown = shRaw == null;
+  const sh = shUnknown && rules.unknownShoulderZero ? 0 : shRaw;
   const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : null;
   if (spd != null && spd <= rules.freeMaxSpeed)
     return `${spdTxt} ≤ your “free” ${rules.freeMaxSpeed} mph — comfortable regardless of shoulder.`;
@@ -856,15 +867,19 @@ function explainLevel(n) {
   const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
   const reasons = [];
   if (speedFails) reasons.push(`${spdTxt} is over your ${rules.upperMaxSpeed} mph max`);
-  if (shoulderFails) reasons.push(`${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`);
+  if (shoulderFails)
+    reasons.push(shUnknown
+      ? `shoulder unknown — treated as 0 ft, under your ${rules.minShoulder} ft minimum`
+      : `${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`);
   if (reasons.length) return `Fails: ${reasons.join(' and ')}.`;
 
-  if (spd == null && sh == null && !n.good_facility)
+  if (spd == null && shRaw == null && !n.good_facility && !rules.unknownShoulderZero)
     return 'No speed or shoulder data for this segment.';
 
   const met = [];
   if (n.good_facility) met.push('has a bike facility');
-  else if (sh != null) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
+  else if (!shUnknown) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
+  else if (rules.unknownShoulderZero) met.push(`shoulder unknown — treated as 0 ft, meets your ${rules.minShoulder} ft minimum`);
   else met.push('shoulder unknown (not held against it)');
   if (spd != null)
     met.push(
@@ -1113,7 +1128,9 @@ function buildRulesPanel() {
   };
 
   check('allowFreeways', 'Allow freeways', 'Ride limited-access highway shoulders where legal.');
-  slider('minShoulder', 'Minimum shoulder', 'Roads with a known shoulder narrower than this fail. Unknown isn’t held against a road.', 0, 10, 1, ' ft');
+  slider('minShoulder', 'Minimum shoulder', 'Roads with a shoulder narrower than this fail.', 0, 10, 1, ' ft');
+  check('unknownShoulderZero', 'Unknown shoulder treated as 0 ft',
+    'Fast roads must have shoulder data to pass. Off: unknown isn’t held against a road.');
   slider('freeMaxSpeed', 'Comfortable at or below', 'Traffic at this speed is fine regardless of shoulder.', 15, 40, 5, ' mph');
   slider('upperMaxSpeed', 'Avoid roads faster than', 'Above this a road fails — unless “No speed cutoff” is on.', 35, 65, 5, ' mph');
   check('noUpperLimit', 'No speed cutoff', 'Don’t fail roads on speed alone (shoulder rule still applies).');
