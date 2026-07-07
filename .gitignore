@@ -13,3 +13,6 @@ data/permbike/
 _*.mjs
 _*.html
 data/dem/
+# tippecanoe intermediates (rebuilt from the PBF; output is roads.pmtiles)
+data/roads-*.geojson
+data/*.pmtiles-journal
