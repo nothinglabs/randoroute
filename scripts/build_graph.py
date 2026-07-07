@@ -193,7 +193,10 @@ def classify_way(tags):
     hw = tags.get('highway')
     if bike in ('no', 'dismount'):
         return None  # illegal to ride — never routable
-    if tags.get('access') in ('private', 'no'):
+    # access=no/private is a blanket default that mode-specific tags override:
+    # e.g. the SR 520 Trail bridge is access=no + bicycle=designated (closed to
+    # general traffic, explicitly open to bikes).
+    if tags.get('access') in ('private', 'no') and bike not in ('yes', 'designated', 'permissive'):
         return None
 
     cw = next((tags[k] for k in CYCLEWAY_KEYS if tags.get(k)), None)

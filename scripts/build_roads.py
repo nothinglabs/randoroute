@@ -106,7 +106,10 @@ def build(src, out_prefix):
         hw = tags.get('highway')
         if hw not in CLASSES:
             continue
-        if tags.get('access') in ('private', 'no'):
+        # Mode-specific tags override the blanket access default: keep roads
+        # closed to general traffic but explicitly open to bikes.
+        if tags.get('access') in ('private', 'no') and \
+                tags.get('bicycle') not in ('yes', 'designated', 'permissive'):
             skipped_private += 1
             continue
 
