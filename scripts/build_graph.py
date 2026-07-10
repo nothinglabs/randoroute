@@ -406,6 +406,68 @@ def build(src, out, blts=None):
                                 oneway_arcs += 1
                 seg = [p]
 
+    # ---- ferry terminal stitching
+    # Docks often join the street grid only via pedestrian ways we exclude
+    # (e.g. Colman Dock's walkway), leaving the ferry edge on an island of
+    # dead-end dock roads. For each ferry endpoint whose land-only component
+    # is missing or tiny, add a short walk-the-bike connector (drawn straight)
+    # to the nearest node on a real street grid.
+    print('stitching ferry terminals...', flush=True)
+    parent = list(range(len(node_lon)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    land_touch = bytearray(len(node_lon))
+    ferry_nodes = set()
+    for i in range(len(eA)):
+        if eFlags[i] & 32:
+            ferry_nodes.add(eA[i]); ferry_nodes.add(eB[i])
+        else:
+            union(eA[i], eB[i])
+            land_touch[eA[i]] = land_touch[eB[i]] = 1
+    comp_size = {}
+    for n in range(len(node_lon)):
+        if land_touch[n]:
+            r = find(n)
+            comp_size[r] = comp_size.get(r, 0) + 1
+    BIG = 100          # a real street grid, not a dock stub
+    STITCH_MAX_M = 400
+    stitched = 0
+    for n in sorted(ferry_nodes):
+        if land_touch[n] and comp_size.get(find(n), 0) >= BIG:
+            continue  # already on a real grid
+        best, best_d = None, STITCH_MAX_M
+        lon0, lat0 = node_lon[n], node_lat[n]
+        box = STITCH_MAX_M / 111000.0 * 1.6  # generous degrees prefilter
+        for m in range(len(node_lon)):
+            if abs(node_lat[m] - lat0) > box or abs(node_lon[m] - lon0) > box:
+                continue
+            if not land_touch[m] or comp_size.get(find(m), 0) < BIG:
+                continue
+            d = haversine_m(lon0, lat0, node_lon[m], node_lat[m])
+            if d < best_d:
+                best_d, best = d, m
+        if best is None:
+            continue  # no street grid nearby (e.g. mid-water junction)
+        eA.append(n); eB.append(best); eLen.append(max(best_d, 1.0))
+        eAsc.append(0); eDes.append(0)
+        eSpeed.append(0); eFlags.append(8); eSh.append(-1)  # infra: walk the bike
+        eOff.append(len(gLon)); eCnt.append(2)
+        gLon.append(lon0); gLat.append(lat0)
+        gLon.append(node_lon[best]); gLat.append(node_lat[best])
+        union(n, best)
+        stitched += 1
+    print(f'  connector edges added: {stitched}', flush=True)
+
     N, E, G = len(node_lon), len(eA), len(gLon)
     print(f'  nodes {N:,}  edges {E:,}  geom vertices {G:,}  oneway edges {oneway_arcs:,}', flush=True)
     print(f'  WSDOT-conflated edges: {conflated[0]:,}', flush=True)
