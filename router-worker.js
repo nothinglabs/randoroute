@@ -17,6 +17,7 @@ let nodeLon, nodeLat, nodeEle;
 let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 let nodeHasLand;
+let inGiant;
 
 function loadGraph(buf) {
   const dv = new DataView(buf);
@@ -48,6 +49,19 @@ function loadGraph(buf) {
   for (let i = 0; i < E; i++) {
     if (!(eFlags[i] & 32)) { nodeHasLand[eA[i]] = 1; nodeHasLand[eB[i]] = 1; }
   }
+  // The graph contains thousands of tiny disconnected fragments (private
+  // loops, orphaned stubs). Snapping to one guarantees "no route", so mark
+  // the giant component and snap only within it.
+  const parent = new Int32Array(N);
+  for (let i = 0; i < N; i++) parent[i] = i;
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  for (let i = 0; i < E; i++) { const a = find(eA[i]), b = find(eB[i]); if (a !== b) parent[a] = b; }
+  const compSize = new Map();
+  for (let i = 0; i < N; i++) { const r = find(i); compSize.set(r, (compSize.get(r) || 0) + 1); }
+  let giantRoot = -1, giantSize = 0;
+  for (const [k, v] of compSize) if (v > giantSize) { giantSize = v; giantRoot = k; }
+  inGiant = new Uint8Array(N);
+  for (let i = 0; i < N; i++) if (find(i) === giantRoot) inGiant[i] = 1;
 }
 
 const R = 6371000;
@@ -62,6 +76,7 @@ function nearestNode(lon, lat) {
   const coslat = Math.cos((lat * Math.PI) / 180);
   let best = -1, bestD = Infinity;
   for (let i = 0; i < N; i++) {
+    if (!inGiant[i]) continue; // never snap onto a disconnected fragment
     const dx = (nodeLon[i] - lon) * coslat;
     const dy = nodeLat[i] - lat;
     const d = dx * dx + dy * dy;
@@ -78,6 +93,9 @@ function edgeLevel(i, rules) {
   if (flags & 8) return 1;                          // dedicated infrastructure
   const spd = eSpeed[i];
   if (spd <= rules.freeMaxSpeed) return 1;
+  // Designated bike route (USBR/regional): a vetted corridor is a known
+  // quantity — it meets criteria regardless of shoulder/speed data.
+  if (flags & 64) return 2;
   // eSh < 0 = unknown; pessimistic mode counts that as a 0 ft shoulder.
   let sh = eSh[i];
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;

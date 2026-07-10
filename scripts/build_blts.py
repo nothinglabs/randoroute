@@ -61,13 +61,36 @@ def load_restrictions(path):
     return by_route
 
 
-def build(src, out, restrictions=None):
+def load_routes_index(path):
+    """STRtree over designated bike-route lines (data/bikeroutes.geojson)."""
+    from shapely import STRtree
+    from shapely.geometry import LineString
+
+    fc = json.load(open(path))
+    geoms = []
+    for f in fc["features"]:
+        g = f["geometry"]
+        lines = g["coordinates"] if g["type"] == "MultiLineString" else [g["coordinates"]]
+        for cs in lines:
+            if len(cs) >= 2:
+                geoms.append(LineString(cs))
+    print(f"designated routes: {len(geoms)} line members")
+    return STRtree(geoms), geoms
+
+
+ROUTE_MATCH_DEG = 0.0003  # ~25-30 m: highway centerline vs route line offset
+
+
+def build(src, out, restrictions=None, routes=None):
+    from shapely.geometry import Point
+
     gdf = gpd.read_file(src, layer=LAYER)
     print(f"read {len(gdf)} features from {src} ({gdf.crs})")
     gdf = gdf.to_crs(4326)
     print(f"reprojected -> {gdf.crs}")
     restr = load_restrictions(restrictions) if restrictions else {}
-    prohibited_count = 0
+    rtree = load_routes_index(routes) if routes else None
+    prohibited_count = designated_count = 0
 
     feats = []
     for geom, row in zip(gdf.geometry.values, gdf.itertuples(index=False)):
@@ -119,6 +142,22 @@ def build(src, out, restrictions=None):
                     props["Prohibited"] = 1
                     prohibited_count += 1
 
+        # Designated bike route: 2 of 3 sample points along the segment lie on
+        # a designated route line (2-of-3 so a mere crossing doesn't count).
+        if rtree is not None:
+            tree, rgeoms = rtree
+            allc = [c for l in lines for c in l]
+            samples = [allc[len(allc) // 4], allc[len(allc) // 2], allc[(3 * len(allc)) // 4]]
+            hits = 0
+            for sx, sy in samples:
+                pt = Point(sx, sy)
+                if any(rgeoms[gi].distance(pt) < ROUTE_MATCH_DEG
+                       for gi in tree.query(pt.buffer(ROUTE_MATCH_DEG))):
+                    hits += 1
+            if hits >= 2:
+                props["Designated"] = 1
+                designated_count += 1
+
         feats.append({"type": "Feature", "properties": props, "geometry": gj})
 
     fc = {"type": "FeatureCollection", "features": feats}
@@ -127,6 +166,8 @@ def build(src, out, restrictions=None):
     print(f"wrote {len(feats)} features -> {out} ({os.path.getsize(out):,} bytes)")
     if restrictions:
         print(f"flagged Prohibited on {prohibited_count} segments")
+    if routes:
+        print(f"flagged Designated on {designated_count} segments")
 
 
 if __name__ == "__main__":
@@ -135,5 +176,7 @@ if __name__ == "__main__":
     ap.add_argument("--out", default="data/blts.geojson")
     ap.add_argument("--restrictions", default=None,
                     help="path to PermanentBikeRestrictions.gdb to flag prohibited segments")
+    ap.add_argument("--routes", default=None,
+                    help="path to bikeroutes.geojson to flag designated-route segments")
     args = ap.parse_args()
-    build(args.src, args.out, args.restrictions)
+    build(args.src, args.out, args.restrictions, args.routes)

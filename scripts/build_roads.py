@@ -24,6 +24,7 @@ Feature properties (short keys to keep the files small):
   b  1 = bikes prohibited   m  1 = limited access (motorway)
   w  shoulder width, ft (only when OSM has real shoulder data; shoulder=no -> 0)
   n  name                   r  ref (route number)
+  g  1 = on a designated bike route (USBR / regional trail)
 
 Requires: osmium (pyosmium), shapely.
 Usage: python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
@@ -97,6 +98,9 @@ def parse_shoulder_ft(tags):
 
 
 def build(src, out_prefix):
+    from build_graph import collect_designated
+    designated = collect_designated(src)
+    print(f'{len(designated):,} designated-route member ways', flush=True)
     feats = []
     kept = skipped_private = 0
     for obj in osmium.FileProcessor(src).with_locations():
@@ -145,6 +149,8 @@ def build(src, out_prefix):
             p['r'] = tags['ref']
         if hw in WSDOT_CLASSES or (tags.get('ref') and REF_STATE.search(tags['ref'])):
             p['d'] = 1  # duplicated by the WSDOT BLTS layer
+        if obj.id in designated:
+            p['g'] = 1  # on a designated bike route (USBR / regional trail)
 
         feats.append(json.dumps(
             {'type': 'Feature', 'properties': p,

@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-07.6'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-07.7'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -71,6 +71,7 @@ function scoreBLTS(p) {
     limited_access: !!p.LimitedAccess,
     good_facility: !!(p.BikeFacilityType && p.BikeFacilityType.length),
     infra: false,
+    desig: p.Designated === 1, // on a designated bike route (USBR / regional)
   };
 }
 
@@ -125,6 +126,7 @@ function scoreRoad(p) {
     good_facility: p.f === 1,
     infra: false,
     est: p.e === 1,
+    desig: p.g === 1, // on a designated bike route (USBR / regional)
   };
 }
 
@@ -163,6 +165,11 @@ function effectiveLevel(n) {
 
   // Slow enough → comfortable regardless of shoulder.
   if (spd != null && spd <= rules.freeMaxSpeed) return 1;
+
+  // Designated bike route (USBR / regional trail): a vetted corridor is a
+  // known quantity — meets criteria regardless of shoulder/speed data.
+  // (Freeway and prohibition gates above still apply.)
+  if (n.desig) return 2;
 
   // Hard gates. Each fails ONLY when we have data proving the violation
   // (with the pessimistic option, "unknown = 0 ft" counts as data).
@@ -226,9 +233,12 @@ const SOURCES = [
     name: 'All roads (OSM, est. speeds)',
     // Vector tiles: the browser fetches only the small tiles in view, so this
     // layer no longer loads 78MB of GeoJSON into memory (it was crashing iOS).
-    vector: 'pmtiles://data/roads.pmtiles',
+    // The ?v= busts stale HTTP range caches when the tiles are rebuilt —
+    // PMTiles bypasses the service worker, and mixing old/new byte ranges
+    // silently breaks tile decoding. Bump alongside the sw.js VERSION.
+    vector: 'pmtiles://data/roads.pmtiles?v=9',
     sourceLayer: 'roads',
-    count: 323581, // baked at build time (tiles don't carry a global count)
+    count: 323730, // baked at build time (tiles don't carry a global count)
     scorer: scoreRoad,
     zRank: 0,      // bottom: authoritative layers draw on top
     expr: true,    // scored via map expressions (works identically on tiles)
@@ -248,6 +258,7 @@ function roadLevelExpr() {
   cases.push(['==', ['get', 'b'], 1], 4);                       // bikes prohibited
   if (!rules.allowFreeways) cases.push(['==', ['get', 'm'], 1], 4); // freeway gate
   cases.push(['<=', spd, rules.freeMaxSpeed], 1);               // slow = comfortable
+  cases.push(['==', ['get', 'g'], 1], 2);                       // designated route = vetted
   // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
   // otherwise only a known-narrow shoulder fails.
   const sh = rules.unknownShoulderZero
@@ -920,6 +931,9 @@ function explainLevel(n) {
   const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : null;
   if (spd != null && spd <= rules.freeMaxSpeed)
     return `${spdTxt} ≤ your “free” ${rules.freeMaxSpeed} mph — comfortable regardless of shoulder.`;
+
+  if (n.desig)
+    return 'On a designated bike route (USBR / regional trail) — a vetted corridor, treated as meeting your criteria.';
 
   const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
   const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
