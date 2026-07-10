@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-07.5'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-07.6'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -685,10 +685,14 @@ function renderRouteCard(m) {
   const ferry = m.ferryM > 0
     ? `<div class="rc-sub">⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)</div>`
     : '';
+  const desig = m.desigM > 400
+    ? `<div class="rc-sub">★ ${fmtMi(m.desigM)} mi on designated bike routes</div>`
+    : '';
   card.innerHTML = `
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
     ${ferry}
+    ${desig}
     ${warn}
     <canvas id="profileCv"></canvas>`;
   drawProfile(m.profile, m.distM);

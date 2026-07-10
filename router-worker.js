@@ -91,8 +91,15 @@ function edgeLevel(i, rules) {
 // (shared paths, tighter geometry); roads assume a steady recreational pace.
 const V_ROAD = 5.6;   // ~12.5 mph
 const V_INFRA = 5.0;  // ~11.2 mph
-const V_MAX = 12.0;   // ~27 mph downhill cap (also the A* heuristic speed)
+const V_MAX = 12.0;   // ~27 mph downhill cap
 const V_MIN = 1.3;    // steep-climb floor (~3 mph)
+// A* heuristic speed: must not undershoot any effective edge speed, including
+// fast ferries and the designated-route cost bonus, or A* loses optimality.
+const V_HEUR = 23.0; // ferry cap 45 mph (20.1 m/s) / 0.9 bonus = 22.3
+// Designated bike routes (USBR / regional trails, edge flag 64) get a cost
+// bonus in Balanced/Low-stress: a vetted corridor wins ties against an
+// equivalent plain road. Cost only — reported times stay honest.
+const DESIGNATED_MULT = 0.9;
 // Average terminal wait folded into a ferry leg, applied once when boarding
 // from land (mid-water route junctions don't re-charge it).
 const FERRY_BOARD_S = 15 * 60;
@@ -140,7 +147,7 @@ function route(startLL, endLL, rules, mode) {
   const prevEdge = new Int32Array(N).fill(-1);
   const done = new Uint8Array(N);
   const heap = makeHeap(4096);
-  const h = (n) => havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / V_MAX;
+  const h = (n) => havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / V_HEUR;
   dist[s.node] = 0;
   heap.push(h(s.node), s.node);
 
@@ -160,7 +167,9 @@ function route(startLL, endLL, rules, mode) {
       const forward = eA[ei] === u;
       let step = edgeTimeS(ei, forward);
       if ((eFlags[ei] & 32) && nodeHasLand[u]) step += FERRY_BOARD_S; // boarding
-      const nd = du + step * mult;
+      let cost = step * mult;
+      if ((eFlags[ei] & 64) && mode !== 'direct') cost *= DESIGNATED_MULT;
+      const nd = du + cost;
       if (nd < dist[v]) {
         dist[v] = nd;
         prevNode[v] = u;
@@ -186,7 +195,7 @@ function route(startLL, endLL, rules, mode) {
   const coords = [];
   const profile = []; // [cumulative meters, elevation m] per node along the route
   const ferryRanges = []; // coord index ranges covered by ferry legs
-  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
+  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0, desigM = 0;
   for (const [ei, fromNode] of edges) {
     const off = eOff[ei], cnt = eCnt[ei];
     const forward = eA[ei] === fromNode;
@@ -209,6 +218,7 @@ function route(startLL, endLL, rules, mode) {
     }
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
+    if (eFlags[ei] & 64) desigM += eLen[ei];
     if (edgeLevel(ei, rules) === 4) failM += eLen[ei];
     const toNode = forward ? eB[ei] : eA[ei];
     profile.push([distM, nodeEle[toNode]]);
@@ -224,7 +234,7 @@ function route(startLL, endLL, rules, mode) {
     prof = ds;
   }
   return {
-    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
+    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs, desigM,
     profile: prof, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
 }

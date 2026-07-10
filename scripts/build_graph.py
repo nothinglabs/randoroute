@@ -19,7 +19,7 @@ Binary layout (little-endian), after 16-byte header 'BGR1' + N,E,D (u32):
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
   edgeSpeed u8[E] (mph; 0 = separated infra), edgeFlags u8[E]
     (1=est speed, 2=bike facility, 4=limited access, 8=infra, 16=oneway a->b,
-     32=ferry crossing),
+     32=ferry crossing, 64=designated bike route),
   edgeShoulder i8[E] (-1 unknown, else ft),
   edgeGeomOff u32[E], edgeGeomCnt u16[E]  (into the geometry pool)
   outStart u32[N+1], outTarget u32[D], outEdge u32[D]   (directed CSR)
@@ -208,6 +208,36 @@ def parse_shoulder_ft(tags):
     return None
 
 
+def collect_designated(src):
+    """Way ids on a designated bike route (OSM route=bicycle, network ncn/rcn).
+
+    Mirrors scripts/build_routes.py: national (USBR) + regional routes, skipping
+    proposed ones; nested relations resolved transitively.
+    """
+    ids, way_members, sub_members = set(), {}, {}
+    for o in osmium.FileProcessor(src, osmium.osm.RELATION):
+        t = o.tags
+        if t.get('route') != 'bicycle' or t.get('network') not in ('ncn', 'rcn'):
+            continue
+        if t.get('state') == 'proposed':
+            continue
+        ids.add(o.id)
+        way_members[o.id] = {m.ref for m in o.members if m.type == 'w'}
+        sub_members[o.id] = {m.ref for m in o.members if m.type == 'r'}
+    ways = set()
+    for rid in ids:
+        ways |= way_members[rid]
+        stack, seen = list(sub_members[rid]), set()
+        while stack:
+            s = stack.pop()
+            if s in seen or s not in ids:
+                continue
+            seen.add(s)
+            ways |= way_members[s]
+            stack.extend(sub_members[s])
+    return ways
+
+
 def classify_way(tags):
     """Return edge attrs dict, or None to exclude from the routable graph."""
     bike = tags.get('bicycle')
@@ -286,6 +316,11 @@ def build(src, out, blts=None):
     if ele_at is None:
         print('  WARNING: no DEM tiles found — building without elevation', flush=True)
         ele_at = lambda lon, lat: 0
+    # ---- pass 0: designated bike-route membership (router prefers these)
+    print('pass 0: designated-route relations...', flush=True)
+    designated = collect_designated(src)
+    print(f'  {len(designated):,} designated member ways', flush=True)
+
     # ---- pass 1: which ways are kept; count node references to find junctions
     print('pass 1: scanning ways...', flush=True)
     refcount = {}
@@ -360,7 +395,8 @@ def build(src, out, blts=None):
 
         flags = ((1 if attrs['est'] else 0) | (2 if attrs['fac'] else 0)
                  | (4 if attrs['lim'] else 0) | (8 if attrs['infra'] else 0)
-                 | (16 if ow == 1 else 0) | (32 if is_ferry else 0))
+                 | (16 if ow == 1 else 0) | (32 if is_ferry else 0)
+                 | (64 if obj.id in designated else 0))
         sh = -1 if attrs['sh'] is None else max(-1, min(127, attrs['sh']))
 
         seg = [pts[0]]
