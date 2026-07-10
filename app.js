@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-08.1'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-08.2'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -635,6 +635,7 @@ const routing = {
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false,
   mode: 'balanced', // 'direct' | 'balanced' | 'low'
+  prefDesig: false, // strongly prefer designated routes & dedicated trails
   reqId: 0,
   last: null, // last successful result (for redraws)
 };
@@ -782,6 +783,7 @@ function computeRoute() {
     type: 'route', id: routing.reqId,
     start: routing.start, end: routing.end,
     rules: { ...rules }, mode: routing.mode,
+    prefDesignated: routing.prefDesig,
   });
 }
 
@@ -937,6 +939,20 @@ function buildRoutingPanel() {
       chips.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
       computeRoute();
     });
+  });
+
+  // Strong preference for designated routes / dedicated trails — the "take
+  // the Burke-Gilman even if streets are a bit quicker" option.
+  const pref = document.createElement('div');
+  pref.className = 'check-rule';
+  pref.style.margin = '0 0 10px';
+  pref.innerHTML = `
+    <input type="checkbox" id="prefDesig">
+    <label for="prefDesig">Strongly prefer bike routes &amp; trails</label>`;
+  chips.after(pref);
+  pref.querySelector('input').addEventListener('change', (e) => {
+    routing.prefDesig = e.target.checked;
+    computeRoute();
   });
 
   renderRouteCard(null);

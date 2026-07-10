@@ -198,9 +198,12 @@ TIME (a grade-aware speed model), in three modes — **Direct** (fastest, failin
 roads allowed with a nudge), **Balanced** (failing roads cost 3× their time),
 **Low-stress** (failing roads cost 30× — any reasonable detour wins, and when
 some failing pavement is truly unavoidable the route still comes back with
-those segments pulsing red instead of a refusal). Results include distance,
-duration, total climb/descent, and an elevation profile. No routing server;
-works offline once cached.
+those segments pulsing red instead of a refusal). A **"Strongly prefer bike
+routes & trails"** option prices designated routes and dedicated trails at
+half cost — worth riding up to ~2× the distance to stay on a Burke-Gilman
+instead of parallel streets. Results include distance, duration, total
+climb/descent, and an elevation profile. No routing server; works offline
+once cached.
 
 ## Vendored library
 

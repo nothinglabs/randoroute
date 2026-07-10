@@ -121,12 +121,17 @@ const V_INFRA = 5.0;  // ~11.2 mph
 const V_MAX = 12.0;   // ~27 mph downhill cap
 const V_MIN = 1.3;    // steep-climb floor (~3 mph)
 // A* heuristic speed: must not undershoot any effective edge speed, including
-// fast ferries and the designated-route cost bonus, or A* loses optimality.
-const V_HEUR = 23.0; // ferry cap 45 mph (20.1 m/s) / 0.9 bonus = 22.3
+// fast ferries and the strongest cost bonuses, or A* loses optimality.
+// Worst case: V_MAX 12 / (0.9 L1 bonus x 0.45 strong-preference) = 29.6 m/s.
+const V_HEUR = 30.0;
 // Designated bike routes (USBR / regional trails, edge flag 64) get a cost
 // bonus in Balanced/Low-stress: a vetted corridor wins ties against an
 // equivalent plain road. Cost only — reported times stay honest.
 const DESIGNATED_MULT = 0.9;
+// "Strongly prefer bike routes & trails": designated routes and dedicated
+// infrastructure at half cost or better — worth riding up to ~2x the distance
+// to stay on a trail. Ferries keep their own economics.
+const PREF_DESIG_MULT = 0.45;
 // Average terminal wait folded into a ferry leg, applied once when boarding
 // from land (mid-water route junctions don't re-charge it).
 const FERRY_BOARD_S = 15 * 60;
@@ -164,7 +169,7 @@ function modeMult(mode, lvl) {
   /* low */ return lvl === 4 ? 30.0 : lvl === 1 ? 0.9 : 1.0;
 }
 
-function route(startLL, endLL, rules, mode) {
+function route(startLL, endLL, rules, mode, prefDesig) {
   const t0 = Date.now();
   const s = nearestNode(startLL[0], startLL[1]);
   const t = nearestNode(endLL[0], endLL[1]);
@@ -198,7 +203,9 @@ function route(startLL, endLL, rules, mode) {
       let step = edgeTimeS(ei, forward);
       if ((eFlags[ei] & 32) && nodeHasLand[u]) step += FERRY_BOARD_S; // boarding
       let cost = step * mult;
-      if ((eFlags[ei] & 64) && mode !== 'direct') cost *= DESIGNATED_MULT;
+      const fl = eFlags[ei];
+      if (prefDesig && !(fl & 32) && (fl & (64 | 8))) cost *= PREF_DESIG_MULT;
+      else if ((fl & 64) && mode !== 'direct') cost *= DESIGNATED_MULT;
       const nd = du + cost;
       if (nd < dist[v]) {
         dist[v] = nd;
@@ -314,7 +321,7 @@ onmessage = (ev) => {
       loadGraph(m.buffer);
       postMessage({ type: 'ready', nodes: N, edges: E });
     } else if (m.type === 'route') {
-      const r = route(m.start, m.end, m.rules, m.mode || 'balanced');
+      const r = route(m.start, m.end, m.rules, m.mode || 'balanced', !!m.prefDesignated);
       postMessage({ type: 'route', id: m.id, ...r });
     }
   } catch (err) {
