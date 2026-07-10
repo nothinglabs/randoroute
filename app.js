@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-08.3'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-08.4'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -635,7 +635,7 @@ const routing = {
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false,
   mode: 'balanced', // 'direct' | 'balanced' | 'low'
-  prefDesig: false, // strongly prefer designated routes & dedicated trails
+  prefDesig: true, // strongly prefer designated routes & dedicated trails (default on)
   reqId: 0,
   last: null, // last successful result (for redraws)
 };
@@ -947,7 +947,7 @@ function buildRoutingPanel() {
   pref.className = 'check-rule';
   pref.style.margin = '0 0 10px';
   pref.innerHTML = `
-    <input type="checkbox" id="prefDesig">
+    <input type="checkbox" id="prefDesig" ${routing.prefDesig ? 'checked' : ''}>
     <label for="prefDesig">Strongly prefer bike routes &amp; trails</label>`;
   chips.after(pref);
   pref.querySelector('input').addEventListener('change', (e) => {
