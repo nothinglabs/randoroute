@@ -16,3 +16,4 @@ data/dem/
 # tippecanoe intermediates (rebuilt from the PBF; output is roads.pmtiles)
 data/roads-*.geojson
 data/*.pmtiles-journal
+__pycache__/
