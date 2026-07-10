@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-08.4'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-08.5'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -810,10 +810,14 @@ function setFailPulse(on) {
   if (on && !failPulseTimer) {
     let t = 0;
     failPulseTimer = setInterval(() => {
-      t += 0.16;
+      t += 0.11;
       if (!map.getLayer('route-fail')) return;
-      map.setPaintProperty('route-fail', 'line-opacity', 0.35 + 0.6 * Math.abs(Math.sin(t)));
-    }, 90);
+      const p = Math.abs(Math.sin(t)); // 0..1 throb
+      map.setPaintProperty('route-fail', 'line-opacity', 0.55 + 0.45 * p);
+      map.setPaintProperty('route-fail', 'line-width', 6 + 8 * p);
+      map.setPaintProperty('route-fail-casing', 'line-width', 10 + 9 * p);
+      map.setPaintProperty('route-fail-casing', 'line-opacity', 0.5 + 0.4 * p);
+    }, 80);
   } else if (!on && failPulseTimer) {
     clearInterval(failPulseTimer);
     failPulseTimer = null;
@@ -860,6 +864,11 @@ function drawRoute(coords, ferrySegs, segs) {
     id: 'route', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#7b2cbf', 'line-width': 5, 'line-opacity': 0.9 },
+  });
+  map.addLayer({
+    id: 'route-fail-casing', type: 'line', source: 'route-fail',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': 12, 'line-opacity': 0.8 },
   });
   map.addLayer({
     id: 'route-fail', type: 'line', source: 'route-fail',

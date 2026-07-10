@@ -136,6 +136,17 @@ const PREF_DESIG_MULT = 0.45;
 // from land (mid-water route junctions don't re-charge it).
 const FERRY_BOARD_S = 15 * 60;
 
+// Graded pressure toward slower roads: every mph of speed limit over the
+// rider's comfort speed makes a road edge cost more (1%/mph balanced,
+// 2%/mph low-stress). Trails, ferries, and Direct mode are exempt — a
+// 45 mph road costs ~20-40% over a 25 mph street of the same length.
+function speedStress(mode, fl, spd, freeMax) {
+  if (mode === 'direct' || (fl & (8 | 32))) return 1.0;
+  const over = spd - freeMax;
+  if (over <= 0) return 1.0;
+  return 1 + (mode === 'low' ? 0.02 : 0.01) * over;
+}
+
 // Seconds to ride edge i in the given direction (forward = a->b).
 function edgeTimeS(i, forward) {
   if (eFlags[i] & 32) {
@@ -204,6 +215,7 @@ function route(startLL, endLL, rules, mode, prefDesig) {
       if ((eFlags[ei] & 32) && nodeHasLand[u]) step += FERRY_BOARD_S; // boarding
       let cost = step * mult;
       const fl = eFlags[ei];
+      cost *= speedStress(mode, fl, eSpeed[ei], rules.freeMaxSpeed);
       if (prefDesig && !(fl & 32) && (fl & (64 | 8))) cost *= PREF_DESIG_MULT;
       else if ((fl & 64) && mode !== 'direct') cost *= DESIGNATED_MULT;
       const nd = du + cost;
