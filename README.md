@@ -160,6 +160,20 @@ iOS Safari). It is scored with **MapLibre expressions** (`roadLevelExpr` in
 `app.js`): a rule change just swaps paint/filter expressions — instant at any
 data size, GeoJSON or tiles.
 
+### Designated bike routes → `data/bikeroutes.geojson` (114 routes)
+
+```bash
+python3 scripts/build_routes.py --src data/washington-latest.osm.pbf
+```
+
+U.S. Bicycle Routes (USBR 10, 20, 87, 95, 97, …) and regional rail-trails
+(Burke-Gilman, Centennial, Palouse to Cascades, …), extracted from OSM
+`route=bicycle` relations (`network=ncn`/`rcn`; local greenways are skipped
+as noise at state scale). Drawn as an orange ribbon *under* the scoring
+layers — the designation is information, not a safety verdict. The readout
+adds a "Bike route" line to any road a designated route follows. WSDOT
+publishes these only as PDF maps; OSM carries the same designations as data.
+
 ### Routing graph → `data/graph2.bin.gz` (elevation-aware)
 
 ```bash

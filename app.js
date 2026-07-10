@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-07.4'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-07.5'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -128,6 +128,13 @@ function scoreRoad(p) {
   };
 }
 
+// Designated-routes overlay (USBR / regional trails): informational, not
+// scored — the underlying roads are judged by the other layers.
+function scoreRouteOverlay() {
+  return { baseScore: null, shoulder_width: null, maxspeed_num: null, prohibited: false,
+           restricted: false, limited_access: false, good_facility: false, infra: false };
+}
+
 // WSDOT Permanent Bike Restrictions overlay: always prohibited, by definition.
 function scoreRestrict() {
   return { baseScore: 4, shoulder_width: null, maxspeed_num: null, prohibited: true,
@@ -172,6 +179,17 @@ function effectiveLevel(n) {
 /* ------------------------------------------------ data-source registry */
 // zRank controls draw order: higher ranks render on top of lower ones.
 const SOURCES = [
+  {
+    id: 'routes',
+    name: 'Designated routes (USBR & trails)',
+    url: 'data/bikeroutes.geojson',
+    scorer: scoreRouteOverlay,
+    zRank: -1,     // a ribbon UNDER the scoring layers
+    ribbon: true,  // informational overlay: identical in both display modes
+    enabled: true,
+    fc: null,
+    loading: false,
+  },
   {
     id: 'blts',
     name: 'WSDOT BLTS (state highways)',
@@ -444,6 +462,24 @@ function updateVisibility(src) {
 // also serves as the "rescore" when rules change.
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
+  if (src.ribbon) {
+    // Informational ribbon under the scoring layers: orange = designated
+    // route. National (USBR) draws wider than regional trails. Same in both
+    // display modes — the designation doesn't depend on your rules.
+    map.setFilter(src.id, null);
+    map.setPaintProperty(src.id, 'line-color',
+      ['match', ['get', 't'], 'ncn', '#e08214', '#fdb863']);
+    map.setPaintProperty(src.id, 'line-width',
+      ['interpolate', ['linear'], ['zoom'],
+        6, ['match', ['get', 't'], 'ncn', 2.6, 1.6],
+        10, ['match', ['get', 't'], 'ncn', 5, 3],
+        14, ['match', ['get', 't'], 'ncn', 9, 5.5]]);
+    map.setPaintProperty(src.id, 'line-opacity', 0.38);
+    if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
+    if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
+    updateVisibility(src);
+    return;
+  }
   if (src.fixed) {
     // Regulatory overlay: exempt from the rules, but drawn with the SAME
     // color coding as any failing road in the current display mode.
@@ -934,6 +970,25 @@ function featureAt(point) {
   return feats[0] || null; // queryRenderedFeatures returns topmost first
 }
 
+// Designated-route labels under a screen point (e.g. "US Bicycle Route 10"),
+// deduped across overlapping relations; null when none or the layer is off.
+function routeBadgeAt(point) {
+  const lyr = 'routes__hit';
+  if (!map.getLayer(lyr) || map.getLayoutProperty('routes', 'visibility') === 'none') return null;
+  const pad = 6;
+  const fs = map.queryRenderedFeatures(
+    [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]], { layers: [lyr] });
+  const labels = new Set();
+  for (const f of fs) {
+    const p = f.properties;
+    const label = p.t === 'ncn' && /^\d+$/.test(p.r || '')
+      ? 'US Bicycle Route ' + p.r
+      : p.n || p.r;
+    if (label) labels.add(label);
+  }
+  return labels.size ? [...labels].join(' · ') : null;
+}
+
 function renderReadout(feature, lngLat) {
   const src = HIT_SRC[feature.layer.id];
   const p = feature.properties;
@@ -946,7 +1001,16 @@ function renderReadout(feature, lngLat) {
     ['Why', explainLevel(n)],
   ];
   let title, rows;
-  if (src.id === 'restrict') {
+  if (src.id === 'routes') {
+    title = 'Designated bike route';
+    const isUSBR = p.t === 'ncn' && /^\d+$/.test(p.r || '');
+    rows = [
+      ['Name', p.n || null],
+      ['Route', isUSBR ? 'US Bicycle Route ' + p.r : p.r || null],
+      ['Network', p.t === 'ncn' ? 'National (AASHTO-designated)' : 'Regional trail / route'],
+      ['Note', 'Officially designated cycling corridor. The colored scoring still applies to the roads it follows.'],
+    ];
+  } else if (src.id === 'restrict') {
     title = 'Bikes prohibited (WSDOT)';
     rows = [
       ['Route', p.Route ? 'SR ' + String(p.Route).replace(/^0+/, '') : p.RouteIdentifier],
@@ -992,6 +1056,12 @@ function renderReadout(feature, lngLat) {
       ['Limited access', p.LimitedAccess ? 'yes' : null],
       ['Bikes prohibited', p.Prohibited ? 'yes (WSDOT restriction)' : null],
     ];
+  }
+  // If a designated route runs under this spot, say so — the scored layers
+  // draw on top of the ribbon, so this is how the designation stays visible.
+  if (src.id !== 'routes') {
+    const badge = routeBadgeAt(map.project(lngLat));
+    if (badge) rows.push(['Bike route', badge]);
   }
   rows = rows.filter(([, v]) => v != null && v !== '');
   // maps.google.com/?q= is the most universally handled form (opens the
