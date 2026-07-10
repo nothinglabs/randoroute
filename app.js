@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-07.2'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-07.3'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -646,9 +646,13 @@ function renderRouteCard(m) {
   const warn = m.failM > 0
     ? `<div class="rc-warn">⚠ ${fmtMi(m.failM)} mi on roads that fail your rules</div>`
     : `<div class="rc-sub" style="color:#00795c;font-weight:600">✓ Entirely within your riding rules</div>`;
+  const ferry = m.ferryM > 0
+    ? `<div class="rc-sub">⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)</div>`
+    : '';
   card.innerHTML = `
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
+    ${ferry}
     ${warn}
     <canvas id="profileCv"></canvas>`;
   drawProfile(m.profile, m.distM);
@@ -706,7 +710,7 @@ function onRouterMessage(ev) {
       setRouteStatus(m.reason);
       return;
     }
-    drawRoute(m.coords);
+    drawRoute(m.coords, m.ferrySegs);
     setRouteStatus(`${fmtMi(m.distM)} mi · ${fmtDur(m.timeS)}`);
   } else if (m.type === 'error') {
     setRouteStatus('Routing error: ' + m.message);
@@ -729,12 +733,21 @@ function computeRoute() {
   });
 }
 
-function drawRoute(coords) {
+function drawRoute(coords, ferrySegs) {
   const data = { type: 'Feature', properties: {},
     geometry: { type: 'LineString', coordinates: coords } };
+  // Ferry legs are drawn as white dashes on top of the route line, so the
+  // crossing reads as "not riding" at a glance.
+  const fdata = { type: 'FeatureCollection', features: (ferrySegs || []).map((c) => ({
+    type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) };
   const srcExisting = map.getSource('route');
-  if (srcExisting) { srcExisting.setData(data); return; }
+  if (srcExisting) {
+    srcExisting.setData(data);
+    map.getSource('route-ferry').setData(fdata);
+    return;
+  }
   map.addSource('route', { type: 'geojson', data });
+  map.addSource('route-ferry', { type: 'geojson', data: fdata });
   map.addLayer({
     id: 'route-casing', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -744,6 +757,11 @@ function drawRoute(coords) {
     id: 'route', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#7b2cbf', 'line-width': 5, 'line-opacity': 0.9 },
+  });
+  map.addLayer({
+    id: 'route-ferry', type: 'line', source: 'route-ferry',
+    paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.9,
+             'line-dasharray': [0.6, 1.8] },
   });
 }
 

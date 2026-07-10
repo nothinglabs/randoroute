@@ -18,7 +18,8 @@ Binary layout (little-endian), after 16-byte header 'BGR1' + N,E,D (u32):
   nodeLon f32[N], nodeLat f32[N]
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
   edgeSpeed u8[E] (mph; 0 = separated infra), edgeFlags u8[E]
-    (1=est speed, 2=bike facility, 4=limited access, 8=infra, 16=oneway a->b),
+    (1=est speed, 2=bike facility, 4=limited access, 8=infra, 16=oneway a->b,
+     32=ferry crossing),
   edgeShoulder i8[E] (-1 unknown, else ft),
   edgeGeomOff u32[E], edgeGeomCnt u16[E]  (into the geometry pool)
   outStart u32[N+1], outTarget u32[D], outEdge u32[D]   (directed CSR)
@@ -174,6 +175,26 @@ def parse_mph(v):
     return int(round(val))
 
 
+FERRY_DEFAULT_MPH = 15  # ~13 knots, when a ferry way has no duration tag
+
+
+def parse_duration_s(v):
+    """OSM duration: 'MM', 'HH:MM', or 'HH:MM:SS' -> seconds (None if unparseable)."""
+    if not v:
+        return None
+    try:
+        nums = [float(p) for p in v.strip().split(':')]
+    except ValueError:
+        return None
+    if len(nums) == 1:
+        return nums[0] * 60
+    if len(nums) == 2:
+        return nums[0] * 3600 + nums[1] * 60
+    if len(nums) == 3:
+        return nums[0] * 3600 + nums[1] * 60 + nums[2]
+    return None
+
+
 def parse_shoulder_ft(tags):
     s = tags.get('shoulder')
     if s in ('no', 'none'):
@@ -198,6 +219,16 @@ def classify_way(tags):
     # general traffic, explicitly open to bikes).
     if tags.get('access') in ('private', 'no') and bike not in ('yes', 'designated', 'permissive'):
         return None
+
+    # Ferries (route=ferry, no highway tag): routable crossings for bikes.
+    # Speed is derived from the duration tag at edge-build time; edge flag 32
+    # marks them so the router prices them as a crossing, not a road.
+    if tags.get('route') == 'ferry':
+        if tags.get('foot') == 'private' or tags.get('motor_vehicle') == 'private':
+            return None
+        return {'speed': FERRY_DEFAULT_MPH, 'est': True, 'fac': False, 'lim': False,
+                'infra': False, 'sh': None, 'ferry': True,
+                'duration': tags.get('duration')}
 
     cw = next((tags[k] for k in CYCLEWAY_KEYS if tags.get(k)), None)
 
@@ -310,15 +341,26 @@ def build(src, out, blts=None):
             pts = pts[::-1]
             ow = 1
 
+        is_ferry = attrs.get('ferry', False)
+        if is_ferry:
+            # Crossing speed from the whole-way duration; keep the default for
+            # missing/garbled tags (sanity-check the implied speed).
+            dur_s = parse_duration_s(attrs.get('duration'))
+            if dur_s and dur_s > 60:
+                mph = (line_len_m([(x, y) for _, x, y in pts]) / 1609.34) / (dur_s / 3600.0)
+                if 3 <= mph <= 45:
+                    attrs['speed'] = int(round(mph))
+                    attrs['est'] = False
+
         wsdot_candidate = (
-            wsdot is not None and not attrs['infra']
+            wsdot is not None and not attrs['infra'] and not is_ferry
             and (tags.get('highway') in WSDOT_CLASSES
                  or (tags.get('ref') and REF_STATE.search(tags['ref'])))
         )
 
         flags = ((1 if attrs['est'] else 0) | (2 if attrs['fac'] else 0)
                  | (4 if attrs['lim'] else 0) | (8 if attrs['infra'] else 0)
-                 | (16 if ow == 1 else 0))
+                 | (16 if ow == 1 else 0) | (32 if is_ferry else 0))
         sh = -1 if attrs['sh'] is None else max(-1, min(127, attrs['sh']))
 
         seg = [pts[0]]
@@ -353,7 +395,7 @@ def build(src, out, blts=None):
                                         espeed = min(int(best['spd']), 255)
                                         eflags &= ~1  # measured, not estimated
                                     conflated[0] += 1
-                            asc, des = edge_climb(coords, ele_at)
+                            asc, des = (0.0, 0.0) if is_ferry else edge_climb(coords, ele_at)
                             eAsc.append(min(int(asc), 65535)); eDes.append(min(int(des), 65535))
                             eA.append(a); eB.append(b); eLen.append(length)
                             eSpeed.append(espeed); eFlags.append(eflags); eSh.append(esh)

@@ -16,6 +16,7 @@ let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
 let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
+let nodeHasLand;
 
 function loadGraph(buf) {
   const dv = new DataView(buf);
@@ -41,6 +42,12 @@ function loadGraph(buf) {
   outStart = u32(N + 1); outTarget = u32(D); outEdge = u32(D);
   const G = (buf.byteLength - o) / 8;
   gLon = f32(G); gLat = f32(G);
+  // Terminal detection for ferry boarding: a node touching any land edge.
+  // (Mid-water junctions where ferry routes cross have only ferry edges.)
+  nodeHasLand = new Uint8Array(N);
+  for (let i = 0; i < E; i++) {
+    if (!(eFlags[i] & 32)) { nodeHasLand[eA[i]] = 1; nodeHasLand[eB[i]] = 1; }
+  }
 }
 
 const R = 6371000;
@@ -66,6 +73,7 @@ function nearestNode(lon, lat) {
 // Mirrors the app's effectiveLevel() for packed edge attributes.
 function edgeLevel(i, rules) {
   const flags = eFlags[i];
+  if (flags & 32) return 2;                         // ferry — no road rules apply
   if (flags & 4 && !rules.allowFreeways) return 4; // limited access
   if (flags & 8) return 1;                          // dedicated infrastructure
   const spd = eSpeed[i];
@@ -85,9 +93,16 @@ const V_ROAD = 5.6;   // ~12.5 mph
 const V_INFRA = 5.0;  // ~11.2 mph
 const V_MAX = 12.0;   // ~27 mph downhill cap (also the A* heuristic speed)
 const V_MIN = 1.3;    // steep-climb floor (~3 mph)
+// Average terminal wait folded into a ferry leg, applied once when boarding
+// from land (mid-water route junctions don't re-charge it).
+const FERRY_BOARD_S = 15 * 60;
 
 // Seconds to ride edge i in the given direction (forward = a->b).
 function edgeTimeS(i, forward) {
+  if (eFlags[i] & 32) {
+    // Ferry: sail at the crossing speed baked from the duration tag (mph).
+    return eLen[i] / (Math.max(eSpeed[i], 3) * 0.44704);
+  }
   const len = eLen[i];
   const asc = forward ? eAsc[i] : eDes[i];
   const des = forward ? eDes[i] : eAsc[i];
@@ -143,7 +158,9 @@ function route(startLL, endLL, rules, mode) {
       const mult = modeMult(mode, edgeLevel(ei, rules));
       if (mult === Infinity) continue;
       const forward = eA[ei] === u;
-      const nd = du + edgeTimeS(ei, forward) * mult;
+      let step = edgeTimeS(ei, forward);
+      if ((eFlags[ei] & 32) && nodeHasLand[u]) step += FERRY_BOARD_S; // boarding
+      const nd = du + step * mult;
       if (nd < dist[v]) {
         dist[v] = nd;
         prevNode[v] = u;
@@ -168,7 +185,8 @@ function route(startLL, endLL, rules, mode) {
 
   const coords = [];
   const profile = []; // [cumulative meters, elevation m] per node along the route
-  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0;
+  const ferryRanges = []; // coord index ranges covered by ferry legs
+  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   for (const [ei, fromNode] of edges) {
     const off = eOff[ei], cnt = eCnt[ei];
     const forward = eA[ei] === fromNode;
@@ -177,16 +195,25 @@ function route(startLL, endLL, rules, mode) {
       coords.push([gLon[off + j], gLat[off + j]]);
       profile.push([0, nodeEle[fromNode]]);
     }
+    const c0 = coords.length - 1;
     if (forward) for (let j = 1; j < cnt; j++) coords.push([gLon[off + j], gLat[off + j]]);
     else for (let j = cnt - 2; j >= 0; j--) coords.push([gLon[off + j], gLat[off + j]]);
     distM += eLen[ei];
     timeS += edgeTimeS(ei, forward);
+    if (eFlags[ei] & 32) {
+      if (nodeHasLand[fromNode]) timeS += FERRY_BOARD_S;
+      ferryM += eLen[ei];
+      const last = ferryRanges[ferryRanges.length - 1];
+      if (last && last[1] === c0) last[1] = coords.length - 1;
+      else ferryRanges.push([c0, coords.length - 1]);
+    }
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (edgeLevel(ei, rules) === 4) failM += eLen[ei];
     const toNode = forward ? eB[ei] : eA[ei];
     profile.push([distM, nodeEle[toNode]]);
   }
+  const ferrySegs = ferryRanges.map(([a, b]) => coords.slice(a, b + 1));
   // Downsample the profile to <= 240 points for the sparkline.
   let prof = profile;
   if (prof.length > 240) {
@@ -197,7 +224,7 @@ function route(startLL, endLL, rules, mode) {
     prof = ds;
   }
   return {
-    ok: true, coords, distM, timeS, ascentM, descentM, failM,
+    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
     profile: prof, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
 }

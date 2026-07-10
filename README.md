@@ -172,7 +172,12 @@ A compact binary graph (nodes at intersections; edges carry length, climb/
 descent sampled every 60 m from the DEM, speed — posted, WSDOT-measured, or
 class-estimated — facility/limited-access/infrastructure flags, and shoulder
 from WSDOT conflation or OSM). One-way streets honored; `bicycle=no` and
-WSDOT-restricted ways excluded entirely.
+WSDOT-restricted ways excluded entirely. **Ferries** (`route=ferry` with bikes
+allowed — all WSF runs plus county and passenger-only ferries) are routable
+crossings: speed derives from the OSM `duration` tag, a ~15-minute typical
+terminal wait is charged when boarding from land, ferry legs never count
+against the riding rules, and the route card calls out ferry mileage (the
+leg draws dashed on the map).
 
 The app routes **fully client-side**: A* in a web worker over estimated riding
 TIME (a grade-aware speed model), in three modes — **Direct** (fastest, failing
