@@ -114,10 +114,10 @@ function edgeLevel(i, rules) {
 }
 
 /* ------------------------------------------------ time model */
-// Flat cruising speed (m/s): dedicated infrastructure is a touch slower
-// (shared paths, tighter geometry); roads assume a steady recreational pace.
+// Flat cruising speed (m/s): one steady recreational pace everywhere — a
+// dedicated trail allows full transit speed, so it is never modeled slower
+// than a road.
 const V_ROAD = 5.6;   // ~12.5 mph
-const V_INFRA = 5.0;  // ~11.2 mph
 const V_MAX = 12.0;   // ~27 mph downhill cap
 const V_MIN = 1.3;    // steep-climb floor (~3 mph)
 // A* heuristic speed: must not undershoot any effective edge speed, including
@@ -145,7 +145,7 @@ function edgeTimeS(i, forward) {
   const len = eLen[i];
   const asc = forward ? eAsc[i] : eDes[i];
   const des = forward ? eDes[i] : eAsc[i];
-  const vflat = (eFlags[i] & 8) ? V_INFRA : V_ROAD;
+  const vflat = V_ROAD;
   const g = (asc - des) / Math.max(len, 1); // net grade
   let v;
   if (g > 0) v = Math.max(vflat * Math.exp(-7 * g), V_MIN);
