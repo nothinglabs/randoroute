@@ -14,7 +14,7 @@ Included edges:
 One-way streets are honored for bikes (oneway / junction=roundabout, with
 oneway:bicycle=no overriding; oneway=-1 reverses the edge).
 
-Binary layout (little-endian), after 16-byte header 'BGR1' + N,E,D (u32):
+Binary layout (little-endian), after header 'BGR3' + N,E,D,G,U,B (u32):
   nodeLon f32[N], nodeLat f32[N]
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
   edgeSpeed u8[E] (mph; 0 = separated infra), edgeFlags u8[E]
@@ -359,6 +359,20 @@ def build(src, out, blts=None):
             nEle.append(ele_at(lon, lat))
         return i
 
+    # Per-edge road/ferry name (deduped string table; empty string id 0).
+    name_ids = {'': 0}
+    name_list = ['']
+    eName = array('I')
+
+    def name_idx(s):
+        s = (s or '').strip()[:60]
+        i = name_ids.get(s)
+        if i is None:
+            i = len(name_list)
+            name_ids[s] = i
+            name_list.append(s)
+        return i
+
     oneway_arcs = 0
     conflated = [0]
     for obj in osmium.FileProcessor(src).with_locations():
@@ -435,6 +449,7 @@ def build(src, out, blts=None):
                             eAsc.append(min(int(asc), 65535)); eDes.append(min(int(des), 65535))
                             eA.append(a); eB.append(b); eLen.append(length)
                             eSpeed.append(espeed); eFlags.append(eflags); eSh.append(esh)
+                            eName.append(name_idx(tags.get('name') or tags.get('ref')))
                             eOff.append(len(gLon)); eCnt.append(min(len(coords), 65535))
                             for x, y in coords[:65535]:
                                 gLon.append(x); gLat.append(y)
@@ -517,6 +532,7 @@ def build(src, out, blts=None):
         eA.append(n); eB.append(best); eLen.append(max(best_d, 1.0))
         eAsc.append(0); eDes.append(0)
         eSpeed.append(0); eFlags.append(8); eSh.append(-1)  # infra: walk the bike
+        eName.append(name_idx('Ferry terminal connector'))
         eOff.append(len(gLon)); eCnt.append(2)
         gLon.append(lon0); gLat.append(lat0)
         gLon.append(node_lon[best]); gLat.append(node_lat[best])
@@ -558,13 +574,23 @@ def build(src, out, blts=None):
 
     # ---- write
     print('writing...', flush=True)
+    # Name string table: per-edge u32 index -> [offsets u32[U+1]] + utf-8 blob.
+    name_blob = bytearray()
+    name_offs = array('I', [0])
+    for s in name_list:
+        name_blob += s.encode('utf-8')
+        name_offs.append(len(name_blob))
+    U, B = len(name_list), len(name_blob)
+    print(f'  names: {U:,} unique, blob {B:,} bytes', flush=True)
+
     for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh,
-                eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat):
+                eName, name_offs, eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat):
         if sys.byteorder == 'big':
             arr.byteswap()
     # JS typed-array views need 4-byte alignment: pad after the byte arrays
-    # (3E bytes) and after the u16 array (2E bytes).
-    parts = [b'BGR2', struct.pack('<III', N, E, D),
+    # (3E bytes) and after the u16 array (2E bytes). The name blob goes LAST
+    # so everything before it stays aligned.
+    parts = [b'BGR3', struct.pack('<IIIIII', N, E, D, G, U, B),
              node_lon.tobytes(), node_lat.tobytes(), nEle.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
@@ -578,7 +604,8 @@ def build(src, out, blts=None):
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
     parts += [outStart.tobytes(), outTarget.tobytes(), outEdge.tobytes(),
-              gLon.tobytes(), gLat.tobytes()]
+              eName.tobytes(), name_offs.tobytes(),
+              gLon.tobytes(), gLat.tobytes(), bytes(name_blob)]
     raw = b''.join(parts)
     with gzip.open(out, 'wb', compresslevel=9) as f:
         f.write(raw)

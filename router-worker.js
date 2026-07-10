@@ -16,14 +16,22 @@ let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
 let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
+let eName, nameOff, nameBytes;
 let nodeHasLand;
 let inGiant;
 
+const _dec = new TextDecoder();
+function edgeName(i) {
+  const id = eName[i];
+  return _dec.decode(nameBytes.subarray(nameOff[id], nameOff[id + 1]));
+}
+
 function loadGraph(buf) {
   const dv = new DataView(buf);
-  if (dv.getUint32(0, false) !== 0x42475232) throw new Error('bad graph magic (want BGR2)');
+  if (dv.getUint32(0, false) !== 0x42475233) throw new Error('bad graph magic (want BGR3)');
   N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
-  let o = 16;
+  const G = dv.getUint32(16, true), U = dv.getUint32(20, true), B = dv.getUint32(24, true);
+  let o = 28;
   const pad4 = () => { o += (4 - (o % 4)) % 4; };
   const f32 = (n) => { const a = new Float32Array(buf, o, n); o += 4 * n; return a; };
   const u32 = (n) => { const a = new Uint32Array(buf, o, n); o += 4 * n; return a; };
@@ -41,8 +49,9 @@ function loadGraph(buf) {
   eCnt = u16(E);
   pad4();
   outStart = u32(N + 1); outTarget = u32(D); outEdge = u32(D);
-  const G = (buf.byteLength - o) / 8;
+  eName = u32(E); nameOff = u32(U + 1);
   gLon = f32(G); gLat = f32(G);
+  nameBytes = u8(B);
   // Terminal detection for ferry boarding: a node touching any land edge.
   // (Mid-water junctions where ferry routes cross have only ferry edges.)
   nodeHasLand = new Uint8Array(N);
@@ -213,6 +222,7 @@ function route(startLL, endLL, rules, mode) {
   const coords = [];
   const profile = []; // [cumulative meters, elevation m] per node along the route
   const ferryRanges = []; // coord index ranges covered by ferry legs
+  const segs = [];        // per-edge attrs for the tap-to-inspect route readout
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0, desigM = 0;
   for (const [ei, fromNode] of edges) {
     const off = eOff[ei], cnt = eCnt[ei];
@@ -238,6 +248,8 @@ function route(startLL, endLL, rules, mode) {
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (eFlags[ei] & 64) desigM += eLen[ei];
     if (edgeLevel(ei, rules) === 4) failM += eLen[ei];
+    segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
+      mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], lenM: Math.round(eLen[ei]) });
     const toNode = forward ? eB[ei] : eA[ei];
     profile.push([distM, nodeEle[toNode]]);
   }
@@ -252,7 +264,7 @@ function route(startLL, endLL, rules, mode) {
     prof = ds;
   }
   return {
-    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs, desigM,
+    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs, desigM, segs,
     profile: prof, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
 }

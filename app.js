@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-07.8'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-07.9'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -761,7 +761,7 @@ function onRouterMessage(ev) {
       setRouteStatus(m.reason);
       return;
     }
-    drawRoute(m.coords, m.ferrySegs);
+    drawRoute(m.coords, m.ferrySegs, m.segs);
     setRouteStatus(`${fmtMi(m.distM)} mi · ${fmtDur(m.timeS)}`);
   } else if (m.type === 'error') {
     setRouteStatus('Routing error: ' + m.message);
@@ -784,21 +784,48 @@ function computeRoute() {
   });
 }
 
-function drawRoute(coords, ferrySegs) {
+// Pseudo-source for tapping the route line itself: segments carry their graph
+// attributes, so the route is inspectable even with every data layer off.
+const ROUTESEG_SRC = { id: 'routeseg', name: 'Your route', scorer: scoreRouteSeg };
+function scoreRouteSeg(p) {
+  return {
+    baseScore: null,
+    shoulder_width: p.sh >= 0 ? p.sh : null,
+    maxspeed_num: p.ferry ? null : p.mph,
+    prohibited: false, restricted: false,
+    limited_access: p.lim === 1,
+    good_facility: p.fac === 1,
+    infra: p.infra === 1,
+    est: p.e === 1,
+    desig: p.desig === 1,
+  };
+}
+
+function drawRoute(coords, ferrySegs, segs) {
   const data = { type: 'Feature', properties: {},
     geometry: { type: 'LineString', coordinates: coords } };
   // Ferry legs are drawn as white dashes on top of the route line, so the
   // crossing reads as "not riding" at a glance.
   const fdata = { type: 'FeatureCollection', features: (ferrySegs || []).map((c) => ({
     type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) };
+  // Per-edge segments with graph attrs feed the invisible tap target.
+  const sdata = { type: 'FeatureCollection', features: (segs || []).map((s) => ({
+    type: 'Feature',
+    properties: { name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
+      e: s.flags & 1 ? 1 : 0, fac: s.flags & 2 ? 1 : 0, lim: s.flags & 4 ? 1 : 0,
+      infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0 },
+    geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
+  })) };
   const srcExisting = map.getSource('route');
   if (srcExisting) {
     srcExisting.setData(data);
     map.getSource('route-ferry').setData(fdata);
+    map.getSource('route-seg').setData(sdata);
     return;
   }
   map.addSource('route', { type: 'geojson', data });
   map.addSource('route-ferry', { type: 'geojson', data: fdata });
+  map.addSource('route-seg', { type: 'geojson', data: sdata });
   map.addLayer({
     id: 'route-casing', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -814,6 +841,15 @@ function drawRoute(coords, ferrySegs) {
     paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.9,
              'line-dasharray': [0.6, 1.8] },
   });
+  // Invisible wide tap target over the route — topmost, so tapping the route
+  // inspects the route segment rather than whatever layer is underneath.
+  map.addLayer({
+    id: 'route-seg-hit', type: 'line', source: 'route-seg',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#000', 'line-opacity': 0,
+             'line-width': ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22] },
+  });
+  attachHover(ROUTESEG_SRC, 'route-seg-hit');
 }
 
 function setRoutePoint(kind, lngLat) {
@@ -1019,7 +1055,25 @@ function renderReadout(feature, lngLat) {
     ['Why', explainLevel(n)],
   ];
   let title, rows;
-  if (src.id === 'routes') {
+  if (src.id === 'routeseg') {
+    title = 'Your route — segment';
+    if (p.ferry === 1) {
+      rows = [
+        ['Name', p.name || 'Ferry crossing'],
+        ['Result', '⛴ Ferry'],
+        ['Why', 'Crossing by ferry — road rules don’t apply on the boat.'],
+        ['Speed', p.mph ? `~${p.mph} mph crossing` : null],
+      ];
+    } else {
+      rows = [
+        ['Name', p.name || '(unnamed road)'],
+        ...common,
+        ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
+        ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
+        ['Type', p.infra ? 'Dedicated bike infrastructure' : p.lim ? 'Limited-access highway' : null],
+      ];
+    }
+  } else if (src.id === 'routes') {
     title = 'Designated bike route';
     const isUSBR = p.t === 'ncn' && /^\d+$/.test(p.r || '');
     rows = [
