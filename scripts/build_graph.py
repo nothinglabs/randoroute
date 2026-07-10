@@ -457,17 +457,25 @@ def build(src, out, blts=None):
         if p_out is None and p_in is None:
             continue  # well connected both ways
         avoid = (p_out or set()) | (p_in or set())
-        best, best_d = None, STITCH_MAX_M
         lon0, lat0 = node_lon[n], node_lat[n]
         box = STITCH_MAX_M / 111000.0 * 1.6  # generous degrees prefilter
+        cands = []
         for m in range(len(node_lon)):
             if abs(node_lat[m] - lat0) > box or abs(node_lon[m] - lon0) > box:
                 continue
             if not land_touch[m] or m in avoid:
                 continue
             d = haversine_m(lon0, lat0, node_lon[m], node_lat[m])
-            if d < best_d:
-                best_d, best = d, m
+            if d < STITCH_MAX_M:
+                cands.append((d, m))
+        # The target must itself be BIDIRECTIONALLY open — merely being outside
+        # the boarding pocket isn't enough (a one-way exit-ramp node is outside
+        # the pocket but unreachable from the city, making the connector useless).
+        best, best_d = None, None
+        for d, m in sorted(cands):
+            if pocket(m, out_adj) is None and pocket(m, in_adj) is None:
+                best, best_d = m, d
+                break
         if best is None:
             continue  # no street grid nearby (e.g. mid-water junction, small island)
         eA.append(n); eB.append(best); eLen.append(max(best_d, 1.0))
