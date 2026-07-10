@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-07.7'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-07.8'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -1026,7 +1026,7 @@ function renderReadout(feature, lngLat) {
       ['Name', p.n || null],
       ['Route', isUSBR ? 'US Bicycle Route ' + p.r : p.r || null],
       ['Network', p.t === 'ncn' ? 'National (AASHTO-designated)' : 'Regional trail / route'],
-      ['Note', 'Officially designated cycling corridor. The colored scoring still applies to the roads it follows.'],
+      ['Note', 'Officially designated cycling corridor — treated as meeting your criteria (freeway and prohibition rules still apply).'],
     ];
   } else if (src.id === 'restrict') {
     title = 'Bikes prohibited (WSDOT)';
