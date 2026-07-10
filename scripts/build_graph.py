@@ -439,23 +439,36 @@ def build(src, out, blts=None):
         if land_touch[n]:
             r = find(n)
             comp_size[r] = comp_size.get(r, 0) + 1
+    giant_root = max(comp_size, key=comp_size.get)
     BIG = 100          # a real street grid, not a dock stub
     STITCH_MAX_M = 400
     stitched = 0
     for n in sorted(ferry_nodes):
-        if land_touch[n] and comp_size.get(find(n), 0) >= BIG:
-            continue  # already on a real grid
+        if land_touch[n] and find(n) == giant_root:
+            continue  # already on the statewide grid
+        # Prefer the statewide grid; fall back to any sizable different
+        # component (an island's own grid, for a stub-isolated island dock).
         best, best_d = None, STITCH_MAX_M
+        best2, best2_d = None, STITCH_MAX_M
         lon0, lat0 = node_lon[n], node_lat[n]
+        rn = find(n)
         box = STITCH_MAX_M / 111000.0 * 1.6  # generous degrees prefilter
         for m in range(len(node_lon)):
             if abs(node_lat[m] - lat0) > box or abs(node_lon[m] - lon0) > box:
                 continue
-            if not land_touch[m] or comp_size.get(find(m), 0) < BIG:
+            if not land_touch[m]:
+                continue
+            rm = find(m)
+            if rm == rn:
                 continue
             d = haversine_m(lon0, lat0, node_lon[m], node_lat[m])
-            if d < best_d:
-                best_d, best = d, m
+            if rm == giant_root:
+                if d < best_d:
+                    best_d, best = d, m
+            elif comp_size.get(rm, 0) >= BIG and d < best2_d:
+                best2_d, best2 = d, m
+        if best is None:
+            best, best_d = best2, best2_d
         if best is None:
             continue  # no street grid nearby (e.g. mid-water junction)
         eA.append(n); eB.append(best); eLen.append(max(best_d, 1.0))
