@@ -407,77 +407,81 @@ def build(src, out, blts=None):
                 seg = [p]
 
     # ---- ferry terminal stitching
-    # Docks often join the street grid only via pedestrian ways we exclude
-    # (e.g. Colman Dock's walkway), leaving the ferry edge on an island of
-    # dead-end dock roads. For each ferry endpoint whose land-only component
-    # is missing or tiny, add a short walk-the-bike connector (drawn straight)
-    # to the nearest node on a real street grid.
+    # Docks often join the street grid only via ways we exclude (pedestrian
+    # walkways) or one-way exit loops, leaving the ferry edge on a directed
+    # pocket you can never enter (Colman Dock) or leave. Detect pockets with
+    # a directed BFS over land edges from each ferry endpoint, in both
+    # directions; a ferry node whose in- or out-reachable land world is a
+    # small CLOSED set gets a walk-the-bike connector (drawn straight) to
+    # the nearest land node outside that pocket.
     print('stitching ferry terminals...', flush=True)
-    parent = list(range(len(node_lon)))
-
-    def find(x):
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(x, y):
-        rx, ry = find(x), find(y)
-        if rx != ry:
-            parent[rx] = ry
-
+    out_adj = {}
+    in_adj = {}
     land_touch = bytearray(len(node_lon))
     ferry_nodes = set()
     for i in range(len(eA)):
+        a, b = eA[i], eB[i]
         if eFlags[i] & 32:
-            ferry_nodes.add(eA[i]); ferry_nodes.add(eB[i])
-        else:
-            union(eA[i], eB[i])
-            land_touch[eA[i]] = land_touch[eB[i]] = 1
-    comp_size = {}
-    for n in range(len(node_lon)):
-        if land_touch[n]:
-            r = find(n)
-            comp_size[r] = comp_size.get(r, 0) + 1
-    giant_root = max(comp_size, key=comp_size.get)
-    BIG = 100          # a real street grid, not a dock stub
+            ferry_nodes.add(a); ferry_nodes.add(b)
+            continue
+        land_touch[a] = land_touch[b] = 1
+        out_adj.setdefault(a, []).append(b)
+        in_adj.setdefault(b, []).append(a)
+        if not (eFlags[i] & 16):  # two-way
+            out_adj.setdefault(b, []).append(a)
+            in_adj.setdefault(a, []).append(b)
+
+    POCKET_K = 2000     # a closed set smaller than this is a dock pocket
     STITCH_MAX_M = 400
+
+    def pocket(n, adj):
+        """BFS over adj from n; return visited set if CLOSED and small, else None."""
+        seen = {n}
+        frontier = [n]
+        while frontier:
+            nxt = []
+            for u in frontier:
+                for v in adj.get(u, ()):
+                    if v not in seen:
+                        seen.add(v)
+                        if len(seen) >= POCKET_K:
+                            return None  # big open world — fine
+                        nxt.append(v)
+            frontier = nxt
+        return seen
+
     stitched = 0
     for n in sorted(ferry_nodes):
-        if land_touch[n] and find(n) == giant_root:
-            continue  # already on the statewide grid
-        # Prefer the statewide grid; fall back to any sizable different
-        # component (an island's own grid, for a stub-isolated island dock).
+        p_out = pocket(n, out_adj)
+        p_in = pocket(n, in_adj)
+        if p_out is None and p_in is None:
+            continue  # well connected both ways
+        avoid = (p_out or set()) | (p_in or set())
         best, best_d = None, STITCH_MAX_M
-        best2, best2_d = None, STITCH_MAX_M
         lon0, lat0 = node_lon[n], node_lat[n]
-        rn = find(n)
         box = STITCH_MAX_M / 111000.0 * 1.6  # generous degrees prefilter
         for m in range(len(node_lon)):
             if abs(node_lat[m] - lat0) > box or abs(node_lon[m] - lon0) > box:
                 continue
-            if not land_touch[m]:
-                continue
-            rm = find(m)
-            if rm == rn:
+            if not land_touch[m] or m in avoid:
                 continue
             d = haversine_m(lon0, lat0, node_lon[m], node_lat[m])
-            if rm == giant_root:
-                if d < best_d:
-                    best_d, best = d, m
-            elif comp_size.get(rm, 0) >= BIG and d < best2_d:
-                best2_d, best2 = d, m
+            if d < best_d:
+                best_d, best = d, m
         if best is None:
-            best, best_d = best2, best2_d
-        if best is None:
-            continue  # no street grid nearby (e.g. mid-water junction)
+            continue  # no street grid nearby (e.g. mid-water junction, small island)
         eA.append(n); eB.append(best); eLen.append(max(best_d, 1.0))
         eAsc.append(0); eDes.append(0)
         eSpeed.append(0); eFlags.append(8); eSh.append(-1)  # infra: walk the bike
         eOff.append(len(gLon)); eCnt.append(2)
         gLon.append(lon0); gLat.append(lat0)
         gLon.append(node_lon[best]); gLat.append(node_lat[best])
-        union(n, best)
+        # register the connector so sibling ferry nodes on this dock see it
+        out_adj.setdefault(n, []).append(best)
+        out_adj.setdefault(best, []).append(n)
+        in_adj.setdefault(n, []).append(best)
+        in_adj.setdefault(best, []).append(n)
+        land_touch[n] = 1
         stitched += 1
     print(f'  connector edges added: {stitched}', flush=True)
 
