@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-07.9'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-08.1'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -691,7 +691,8 @@ function renderRouteCard(m) {
     return;
   }
   const warn = m.failM > 0
-    ? `<div class="rc-warn">⚠ ${fmtMi(m.failM)} mi on roads that fail your rules</div>`
+    ? `<div class="rc-warn">⚠ ${fmtMi(m.failM)} mi on roads that fail your rules${
+        routing.mode === 'low' ? ' (unavoidable — pulsing red on the map)' : ' (pulsing red on the map)'}</div>`
     : `<div class="rc-sub" style="color:#00795c;font-weight:600">✓ Entirely within your riding rules</div>`;
   const ferry = m.ferryM > 0
     ? `<div class="rc-sub">⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)</div>`
@@ -801,6 +802,22 @@ function scoreRouteSeg(p) {
   };
 }
 
+// Pulse animation for failing portions of the route — impossible to miss.
+let failPulseTimer = null;
+function setFailPulse(on) {
+  if (on && !failPulseTimer) {
+    let t = 0;
+    failPulseTimer = setInterval(() => {
+      t += 0.16;
+      if (!map.getLayer('route-fail')) return;
+      map.setPaintProperty('route-fail', 'line-opacity', 0.35 + 0.6 * Math.abs(Math.sin(t)));
+    }, 90);
+  } else if (!on && failPulseTimer) {
+    clearInterval(failPulseTimer);
+    failPulseTimer = null;
+  }
+}
+
 function drawRoute(coords, ferrySegs, segs) {
   const data = { type: 'Feature', properties: {},
     geometry: { type: 'LineString', coordinates: coords } };
@@ -816,16 +833,22 @@ function drawRoute(coords, ferrySegs, segs) {
       infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0 },
     geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
   })) };
+  // Failing portions (scored live against the current rules) pulse red on top.
+  const failData = { type: 'FeatureCollection',
+    features: sdata.features.filter((f) => effectiveLevel(scoreRouteSeg(f.properties)) === 4) };
   const srcExisting = map.getSource('route');
   if (srcExisting) {
     srcExisting.setData(data);
     map.getSource('route-ferry').setData(fdata);
     map.getSource('route-seg').setData(sdata);
+    map.getSource('route-fail').setData(failData);
+    setFailPulse(failData.features.length > 0);
     return;
   }
   map.addSource('route', { type: 'geojson', data });
   map.addSource('route-ferry', { type: 'geojson', data: fdata });
   map.addSource('route-seg', { type: 'geojson', data: sdata });
+  map.addSource('route-fail', { type: 'geojson', data: failData });
   map.addLayer({
     id: 'route-casing', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -837,10 +860,16 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: { 'line-color': '#7b2cbf', 'line-width': 5, 'line-opacity': 0.9 },
   });
   map.addLayer({
+    id: 'route-fail', type: 'line', source: 'route-fail',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#d7191c', 'line-width': 6.5, 'line-opacity': 0.9 },
+  });
+  map.addLayer({
     id: 'route-ferry', type: 'line', source: 'route-ferry',
     paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.9,
              'line-dasharray': [0.6, 1.8] },
   });
+  setFailPulse(failData.features.length > 0);
   // Invisible wide tap target over the route — topmost, so tapping the route
   // inspects the route segment rather than whatever layer is underneath.
   map.addLayer({
@@ -894,7 +923,7 @@ function updateArmButtons() {
 const MODES = [
   ['direct', 'Direct', 'Fastest ride, even if stressful'],
   ['balanced', 'Balanced', 'Avoids bad roads when the detour is reasonable'],
-  ['low', 'Low-stress', 'Only roads that pass your rules'],
+  ['low', 'Low-stress', 'Detours hard to avoid failing roads; unavoidable ones pulse red'],
 ];
 
 function buildRoutingPanel() {

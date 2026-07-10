@@ -154,11 +154,14 @@ function edgeTimeS(i, forward) {
 }
 
 /* ------------------------------------------------ riding modes */
-// Multiplier applied to an edge's TIME, or Infinity to forbid it.
+// Multiplier applied to an edge's TIME. Low-stress uses a huge (but finite)
+// penalty: it takes any reasonable detour to avoid failing roads, yet still
+// returns a route when some failing pavement is truly unavoidable — the app
+// highlights those segments instead of refusing to route.
 function modeMult(mode, lvl) {
   if (mode === 'direct') return lvl === 4 ? 1.15 : 1.0;
   if (mode === 'balanced') return lvl === 4 ? 3.0 : lvl === 1 ? 0.92 : 1.0;
-  /* low */ return lvl === 4 ? Infinity : lvl === 1 ? 0.9 : 1.0;
+  /* low */ return lvl === 4 ? 30.0 : lvl === 1 ? 0.9 : 1.0;
 }
 
 function route(startLL, endLL, rules, mode) {
@@ -206,12 +209,9 @@ function route(startLL, endLL, rules, mode) {
     }
   }
   if (!found) {
-    return {
-      ok: false,
-      reason: mode === 'low'
-        ? 'No low-stress route exists — try Balanced mode or relax the rules.'
-        : 'No route exists on the rideable network between these points.',
-    };
+    // With finite mode multipliers this only happens when the endpoints are
+    // on genuinely disconnected pieces of the network.
+    return { ok: false, reason: 'No route exists on the rideable network between these points.' };
   }
 
   // Reconstruct (goal -> start), then emit forward.
