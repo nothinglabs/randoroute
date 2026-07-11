@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-08.11'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-11.16'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -230,6 +230,17 @@ const SOURCES = [
     loading: false,
   },
   {
+    id: 'closures',
+    name: 'Known route closures (OSM)',
+    url: 'data/route_closures.geojson',
+    zRank: 4,     // always above roads, routes, and the active route line
+    closure: true,
+    expr: true,   // static GeoJSON; no riding-rule score to calculate
+    enabled: true,
+    fc: null,
+    loading: false,
+  },
+  {
     id: 'roads',
     name: 'All roads (OSM, est. speeds)',
     // Vector tiles: the browser fetches only the small tiles in view, so this
@@ -329,6 +340,18 @@ const map = new maplibregl.Map({
   zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
   maxZoom: 17,
 });
+// Keep the statewide view readable; neighborhood streets appear only once a
+// rider has zoomed in past the arterial context.
+const RES_MIN_ZOOM = 13;
+let residentialZoomVisible = null;
+function refreshResidentialRoads() {
+  const visible = map.getZoom() >= RES_MIN_ZOOM;
+  if (visible === residentialZoomVisible) return;
+  residentialZoomVisible = visible;
+  const roads = SOURCES.find((src) => src.id === 'roads');
+  if (roads && map.getLayer(roads.id)) applyDisplayMode(roads);
+}
+map.on('zoomend', refreshResidentialRoads);
 // PMTiles: static single-file vector tiles over HTTP range requests — no server.
 if (window.pmtiles) {
   const _pmProtocol = new pmtiles.Protocol();
@@ -427,6 +450,33 @@ function ensureLayer(src) {
   if (src.vector) map.addSource(src.id, { type: 'vector', url: src.vector });
   else map.addSource(src.id, { type: 'geojson', data: src.fc });
   const SL = src.vector ? { 'source-layer': src.sourceLayer } : {};
+  if (src.closure) {
+    map.addLayer({
+      id: src.id + '__line', type: 'line', source: src.id,
+      minzoom: 10,
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: { 'line-color': '#d7191c', 'line-width': 7, 'line-opacity': 0.92,
+               'line-dasharray': [1.2, 1.1] },
+      filter: ['==', ['geometry-type'], 'LineString'],
+    }, beforeId);
+    map.addLayer({
+      id: src.id, type: 'circle', source: src.id,
+      minzoom: 10,
+      paint: { 'circle-radius': 9, 'circle-color': '#d7191c',
+               'circle-stroke-color': '#fff', 'circle-stroke-width': 2 },
+      filter: ['==', ['geometry-type'], 'Point'],
+    }, beforeId);
+    map.addLayer({
+      id: src.id + '__label', type: 'symbol', source: src.id,
+      minzoom: 10,
+      layout: { 'text-field': '×', 'text-size': 16, 'text-allow-overlap': true,
+                'text-ignore-placement': true },
+      paint: { 'text-color': '#fff' },
+      filter: ['==', ['geometry-type'], 'Point'],
+    }, beforeId);
+    updateVisibility(src);
+    return;
+  }
   // Two dashed overlays are added first so the solid main layer draws on top
   // where lines overlap. Each is shown in only one display mode.
   map.addLayer({
@@ -491,6 +541,12 @@ function ensureLayer(src) {
 // in exactly one display mode.
 function updateVisibility(src) {
   const on = src.enabled;
+  if (src.closure) {
+    for (const id of [src.id, src.id + '__line', src.id + '__label']) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+    }
+    return;
+  }
   if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', on ? 'visible' : 'none');
   if (src.fixed) { // overlay has no mode-specific layers to manage beyond the main one
     if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', on ? 'visible' : 'none');
@@ -511,6 +567,10 @@ function updateVisibility(src) {
 // also serves as the "rescore" when rules change.
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
+  if (src.closure) {
+    updateVisibility(src);
+    return;
+  }
   if (src.ribbon) {
     // Informational ribbon under the scoring layers: orange = designated
     // route. National (USBR) draws wider than regional trails. Same in both
@@ -552,7 +612,6 @@ function applyDisplayMode(src) {
   const lvl = src.expr ? roadLevelExpr() : ['get', 'level'];
   // Declutter: neighborhood streets in the All-roads layer only appear once
   // you're zoomed into neighborhood scale (no toggle — automatic).
-  const RES_MIN_ZOOM = 12;
   const hideRes = src.id === 'roads';
   // Dedup: while the (data-rich) WSDOT source is on, hide its state highways
   // from the All-roads layer (d=1) — otherwise OSM's unknown-shoulder "pass"
@@ -560,9 +619,8 @@ function applyDisplayMode(src) {
   const dedup = src.id === 'roads' && SOURCES.find((s) => s.id === 'blts').enabled;
   const and = (f) => {
     const conds = [f];
-    if (hideRes) {
-      conds.push(['any', ['>=', ['zoom'], RES_MIN_ZOOM],
-        ['all', ['!=', ['get', 'h'], 'residential'], ['!=', ['get', 'h'], 'living_street']]]);
+    if (hideRes && map.getZoom() < RES_MIN_ZOOM) {
+      conds.push(['all', ['!=', ['get', 'h'], 'residential'], ['!=', ['get', 'h'], 'living_street']]);
     }
     if (dedup) conds.push(['!=', ['get', 'd'], 1]);
     return conds.length > 1 ? ['all', ...conds] : f;
@@ -1452,13 +1510,6 @@ function renderReadout(feature, lngLat) {
     rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('') +
     '</table>' +
     `<a class="gmap" href="${gmaps}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
-  // iOS standalone PWAs don't reliably honor target=_blank; open explicitly.
-  readoutEl.querySelector('.gmap').addEventListener('click', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    const w = window.open(gmaps, '_blank', 'noopener');
-    if (!w) location.href = gmaps; // popup blocked — navigate instead
-  });
   readoutEl.classList.add('show');
 }
 

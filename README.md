@@ -14,10 +14,11 @@ into local static files at build time; the runtime is any static file server.
 
 ## Run it
 
-Any static file server works — no build server, no tiling server:
+Use the included local server — it supports the HTTP byte ranges required by
+the optional all-roads PMTiles layer:
 
 ```bash
-python3 -m http.server 8000
+python3 scripts/serve.py
 # then open http://localhost:8000/
 ```
 
