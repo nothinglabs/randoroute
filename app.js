@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.16'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-11.17'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -51,7 +51,7 @@ const rules = {
 // other road is hidden. Recomputes live as the riding rules change.
 const PASS_COLOR = '#009E73';
 const display = {
-  passFail: false,
+  passFail: false, // retained internally for backwards-compatible saved state; no UI toggle
   passMax: 2, // a road "passes" if its effective level is 1..passMax (Low & Moderate)
 };
 
@@ -265,6 +265,12 @@ try {
   const st = JSON.parse(localStorage.getItem('wa-bike-state-1') || 'null');
   if (st && st.sources) for (const s of SOURCES) if (st.sources[s.id] != null) s.enabled = st.sources[s.id];
 } catch (e) { /* ignore */ }
+// Closures are an informational map annotation, not a user-selectable data
+// layer. Keep them visible even if an older saved preference disabled them.
+for (const src of SOURCES) if (src.closure) src.enabled = true;
+// The pass/fail presentation was removed from the UI; use the normal
+// low-to-high stress colors even for visitors with an older saved preference.
+display.passFail = false;
 
 // Level as a MapLibre expression for expression-scored sources. Mirrors
 // effectiveLevel() for road props (speed always present; flags optional).
@@ -1595,6 +1601,7 @@ function updateSourceCount(src) {
 function buildSourcePanel() {
   const host = document.getElementById('sources');
   for (const src of SOURCES) {
+    if (src.closure) continue;
     const row = document.createElement('div');
     row.className = 'source-row';
     row.id = `src-${src.id}`;
@@ -1691,26 +1698,6 @@ function buildRulesPanel() {
   }
 }
 
-function buildDisplayPanel() {
-  const host = document.getElementById('display');
-  const add = (key, label, hint) => {
-    const wrap = document.createElement('div');
-    wrap.className = 'check-rule';
-    wrap.innerHTML = `
-      <input type="checkbox" id="d-${key}" ${display[key] ? 'checked' : ''}>
-      <label for="d-${key}">${label}</label>
-      <div class="hint" style="width:100%">${hint}</div>`;
-    host.appendChild(wrap);
-    wrap.querySelector('input').addEventListener('change', (e) => {
-      display[key] = e.target.checked;
-      applyDisplayModeAll();
-    });
-  };
-  add('passFail', 'Pass/fail mode',
-    `Green = meets your criteria. Roads with data that don't qualify show as
-     gray dashed (hover any road for why). Updates live with the riding rules.`);
-}
-
 function buildLegend() {
   const host = document.getElementById('legend');
   host.innerHTML = '';
@@ -1741,7 +1728,6 @@ function buildLegend() {
 buildSourcePanel();
 buildRulesPanel();
 buildRoutingPanel();
-buildDisplayPanel();
 buildLegend();
 
 // Tabs.
@@ -1768,7 +1754,7 @@ function setSheet(state) {
   let drag = null;
   const stateHeights = () => {
     const vh = window.innerHeight;
-    return { peek: 92, half: vh * 0.47, full: vh - 74 };
+    return { peek: 74, half: vh * 0.42, full: vh - 74 };
   };
   grip.addEventListener('pointerdown', (e) => {
     drag = { y0: e.clientY, h0: panel.getBoundingClientRect().height, moved: false };
