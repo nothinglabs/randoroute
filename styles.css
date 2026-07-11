@@ -235,7 +235,19 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   color: #222;
   cursor: pointer;
 }
-#routeBar #rb-start.active, #routeBar #rb-end.active { background: #0a66c2; color: #fff; }
+#routeBar .rb-dot { font-size: 17px; line-height: 1; }
+#routeBar .rb-dot-start { color: #009E73; }
+#routeBar .rb-dot-end { color: #d7191c; }
+#routeBar #rb-start.active, #routeBar #rb-end.active,
+#routeBar #rb-via.active { background: #0a66c2; color: #fff; }
+#rt-start { color: #009E73; }
+#rt-end { color: #d7191c; }
+.place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
+#placeResults .place-choice {
+  display: inline-block; margin: 4px 4px 8px 12px; padding: 7px 11px;
+  border: 1px solid #d5d5d5; border-radius: 8px; background: #fff;
+  font: 600 12px system-ui; color: #0a66c2; cursor: pointer;
+}
 #routeBar #rb-clear { font-weight: 400; }
 #rb-status {
   font: 600 12px system-ui; color: #222;

@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-08.8'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-08.9'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -1031,8 +1031,8 @@ function buildRoutingPanel() {
   const host = document.getElementById('routing');
   host.innerHTML = `
     <div class="route-actions">
-      <button id="rt-start">Set start</button>
-      <button id="rt-end">Set end</button>
+      <button id="rt-start">● Set start</button>
+      <button id="rt-end">● Set destination</button>
       <button id="rt-clear">Clear</button>
     </div>
     <div class="hint" id="route-status" style="margin-top:8px"></div>`;
@@ -1044,7 +1044,7 @@ function buildRoutingPanel() {
     if (routing.arm) {
       setSheet('peek'); // get the sheet out of the way for the map tap
       setRouteStatus(kind === 'via' ? 'Tap the map to add a stop'
-        : `Tap the map to place ${kind === 'start' ? 'START' : 'END'}`);
+        : `Tap the map to set the ${kind === 'start' ? 'START (green)' : 'DESTINATION (red)'}`);
     } else {
       setRouteStatus('');
     }
@@ -1174,18 +1174,38 @@ function buildFindBox() {
   input.addEventListener('focus', ensurePlaces);
   input.addEventListener('input', () => { ensurePlaces().then(search); search(); });
   results.addEventListener('click', (e) => {
+    const choice = e.target.closest('.place-choice');
+    if (choice) {
+      const lngLat = { lng: Number(choice.dataset.lon), lat: Number(choice.dataset.lat) };
+      map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
+      if (choice.dataset.act === 'start') { setRoutePoint('start', lngLat); setRouteStatus('Start moved'); }
+      else if (choice.dataset.act === 'end') { setRoutePoint('end', lngLat); setRouteStatus('Destination moved'); }
+      else { addVia(lngLat); setRouteStatus('Stop added'); }
+      input.value = '';
+      render([]);
+      return;
+    }
     const hit = e.target.closest('.place-hit');
     if (!hit) return;
     const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
-    map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
     if (!routing.start) {
+      map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
       setRoutePoint('start', lngLat);
-      setRouteStatus('Start set — search or tap to set the end');
+      setRouteStatus('Start set — search or tap the map for the destination');
+      routing.arm = routing.end ? null : 'end';
+      updateArmButtons();
     } else if (!routing.end) {
+      map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
       setRoutePoint('end', lngLat);
+      setRouteStatus('');
     } else {
-      addVia(lngLat);
-      setRouteStatus('Stop added');
+      // Both set: ask what this place should become.
+      results.innerHTML = `
+        <div class="place-ask">${hit.textContent.trim()} — use as:</div>
+        <button class="place-choice" data-act="start" data-lon="${hit.dataset.lon}" data-lat="${hit.dataset.lat}">New start</button>
+        <button class="place-choice" data-act="end" data-lon="${hit.dataset.lon}" data-lat="${hit.dataset.lat}">New destination</button>
+        <button class="place-choice" data-act="via" data-lon="${hit.dataset.lon}" data-lat="${hit.dataset.lat}">Add as stop</button>`;
+      return;
     }
     input.value = '';
     render([]);
@@ -1198,7 +1218,12 @@ function buildFindBox() {
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
       setRoutePoint('start', lngLat);
       map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
-      setRouteStatus(routing.end ? '' : 'Start set at your location — now set B');
+      if (!routing.end) {
+        // Flow straight into picking the destination.
+        routing.arm = 'end';
+        updateArmButtons();
+        setRouteStatus('Start = your location. Tap the map (or search) for the destination');
+      }
     }, () => setRouteStatus('Could not get your location'), { enableHighAccuracy: true, timeout: 10000 });
   });
 }
@@ -1442,8 +1467,8 @@ function placeArmedPoint(lngLat) {
   setRoutePoint(kind, lngLat);
   if (!(routing.start && routing.end)) {
     // confirm the placement; with only one point there's no route yet
-    setRouteStatus(kind === 'start' ? 'Start set — tap B to place the end'
-      : 'End set — tap A to place the start');
+    setRouteStatus(kind === 'start' ? 'Start set — now set the destination'
+      : 'Destination set — now set the start');
   }
   return true;
 }

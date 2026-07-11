@@ -19,6 +19,7 @@ let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
 let nodeHasLand;
 let inGiant;
+let nodeLocal;
 
 const _dec = new TextDecoder();
 function edgeName(i) {
@@ -71,6 +72,12 @@ function loadGraph(buf) {
   for (const [k, v] of compSize) if (v > giantSize) { giantSize = v; giantRoot = k; }
   inGiant = new Uint8Array(N);
   for (let i = 0; i < N; i++) if (find(i) === giantRoot) inGiant[i] = 1;
+  // Nodes touching at least one LOCAL edge (not limited-access, not ferry):
+  // snapping prefers these so a tap near a freeway doesn't board the freeway.
+  nodeLocal = new Uint8Array(N);
+  for (let i = 0; i < E; i++) {
+    if (!(eFlags[i] & (4 | 32))) { nodeLocal[eA[i]] = 1; nodeLocal[eB[i]] = 1; }
+  }
 }
 
 const R = 6371000;
@@ -83,13 +90,22 @@ function havM(lon1, lat1, lon2, lat2) {
 
 function nearestNode(lon, lat) {
   const coslat = Math.cos((lat * Math.PI) / 180);
-  let best = -1, bestD = Infinity;
+  let best = -1, bestD = Infinity;         // nearest of any kind
+  let bestL = -1, bestLD = Infinity;       // nearest touching a local road
   for (let i = 0; i < N; i++) {
     if (!inGiant[i]) continue; // never snap onto a disconnected fragment
     const dx = (nodeLon[i] - lon) * coslat;
     const dy = nodeLat[i] - lat;
     const d = dx * dx + dy * dy;
     if (d < bestD) { bestD = d; best = i; }
+    if (nodeLocal[i] && d < bestLD) { bestLD = d; bestL = i; }
+  }
+  // Prefer the local-road node unless it's much farther (>300 m extra) than
+  // the absolute nearest — a tap beside I-90 should not board I-90.
+  if (bestL >= 0 && best !== bestL) {
+    const dAny = havM(lon, lat, nodeLon[best], nodeLat[best]);
+    const dLoc = havM(lon, lat, nodeLon[bestL], nodeLat[bestL]);
+    if (dLoc <= dAny + 300) return { node: bestL, distM: dLoc };
   }
   return { node: best, distM: havM(lon, lat, nodeLon[best], nodeLat[best]) };
 }
@@ -220,8 +236,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig) {
       let cost = step * mult;
       const fl = eFlags[ei];
       cost *= speedStress(mode, fl, eSpeed[ei], rules.freeMaxSpeed);
-      if (prefDesig && !(fl & 32) && (fl & (64 | 8))) cost *= PREF_DESIG_MULT;
-      else if ((fl & 64) && mode !== 'direct') cost *= DESIGNATED_MULT;
+      // Bonuses never apply to limited-access highways: I-90's shoulder is a
+      // designated bike route, but "prefer trails" must not make a freeway
+      // ATTRACTIVE — it stays routable at full cost only.
+      if (prefDesig && !(fl & (32 | 4)) && (fl & (64 | 8))) cost *= PREF_DESIG_MULT;
+      else if ((fl & 64) && !(fl & 4) && mode !== 'direct') cost *= DESIGNATED_MULT;
       const nd = du + cost;
       if (nd < dist[v]) {
         dist[v] = nd;
