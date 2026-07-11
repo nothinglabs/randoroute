@@ -174,6 +174,16 @@ layers — the designation is information, not a safety verdict. The readout
 adds a "Bike route" line to any road a designated route follows. WSDOT
 publishes these only as PDF maps; OSM carries the same designations as data.
 
+### Offline place search → `data/places.json` (2,602 places)
+
+```bash
+python3 scripts/build_places.py --src data/washington-latest.osm.pbf
+```
+
+Settlements and ferry terminals from OSM, population-ranked, 122 KB — the
+Route tab's search works fully offline. Routes support intermediate stops
+(A → B → C via the + button) and can start at the rider's current location.
+
 ### Routing graph → `data/graph2.bin.gz` (elevation-aware)
 
 ```bash

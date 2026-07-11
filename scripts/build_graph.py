@@ -262,12 +262,16 @@ def classify_way(tags):
 
     cw = next((tags[k] for k in CYCLEWAY_KEYS if tags.get(k)), None)
 
-    # Rideable dedicated infrastructure (mirrors build_osm.py classify)
+    # Rideable dedicated infrastructure (mirrors build_osm.py classify).
+    # Tracks need explicit bike permission: a bicycle=yes track is often the
+    # 70 m link that joins two halves of a rail-trail — dropping it severs
+    # the trail and forces highway shoulders (Issaquah-Preston, High Point).
     infra = (
         hw == 'cycleway'
         or (hw == 'path' and bike in ('designated', 'yes'))
         or (hw == 'footway' and bike == 'designated')
         or (hw == 'bridleway' and bike in ('designated', 'yes'))
+        or (hw == 'track' and bike in ('designated', 'yes'))
     )
     if infra:
         return {'speed': 0, 'est': False, 'fac': True, 'lim': False,

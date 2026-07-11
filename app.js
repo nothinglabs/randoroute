@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-08.6'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-08.7'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -88,13 +88,14 @@ function scoreOSM(p) {
   const bike = p.bicycle;
   const hw = p.highway;
   const cw = osmCycleway(p);
-  const bikeish = hw === 'cycleway' || hw === 'path' || hw === 'bridleway' || cw != null;
+  const bikeish = hw === 'cycleway' || hw === 'path' || hw === 'bridleway' || hw === 'track' || cw != null;
   let base = null;
   let prohibited = false;
   if (hw === 'cycleway' && bike !== 'no' && bike !== 'dismount') base = 1;
   else if (hw === 'path' && (bike === 'designated' || bike === 'yes')) base = 1;
   else if (hw === 'footway' && bike === 'designated') base = 2;
   else if (hw === 'bridleway' && (bike === 'designated' || bike === 'yes')) base = 2;
+  else if (hw === 'track' && (bike === 'designated' || bike === 'yes')) base = 2;
   else if (OSM_PROTECTED.has(cw)) base = 1;
   else if (OSM_LANE.has(cw)) base = 2;
   else if ((bike === 'no' || bike === 'dismount') && bikeish) { base = 4; prohibited = true; }
@@ -637,6 +638,7 @@ function setSourceVisible(src, on) {
 const routing = {
   arm: null,                 // 'start' | 'end' — next map tap sets that point
   start: null, end: null,    // [lng, lat]
+  vias: [],                  // intermediate stops: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false,
   mode: 'balanced', // 'direct' | 'balanced' | 'low'
@@ -786,7 +788,7 @@ function computeRoute() {
   setRouteStatus('Routing…');
   routing.worker.postMessage({
     type: 'route', id: routing.reqId,
-    start: routing.start, end: routing.end,
+    points: [routing.start, ...routing.vias.map((v) => v.pt), routing.end],
     rules: { ...rules }, mode: routing.mode,
     prefDesignated: routing.prefDesig,
   });
@@ -914,9 +916,24 @@ function setRoutePoint(kind, lngLat) {
   computeRoute();
 }
 
+function addVia(lngLat) {
+  const marker = new maplibregl.Marker({ color: '#e08214', draggable: true, scale: 0.85 })
+    .setLngLat(lngLat).addTo(map);
+  const via = { pt: [lngLat.lng, lngLat.lat], marker };
+  routing.vias.push(via);
+  marker.on('dragend', () => {
+    const ll = marker.getLngLat();
+    via.pt = [ll.lng, ll.lat];
+    computeRoute();
+  });
+  computeRoute();
+}
+
 function clearRoute() {
   routing.arm = null;
   routing.start = routing.end = null;
+  for (const v of routing.vias) v.marker.remove();
+  routing.vias = [];
   for (const k of ['startMarker', 'endMarker']) {
     if (routing[k]) { routing[k].remove(); routing[k] = null; }
   }
@@ -928,7 +945,7 @@ function clearRoute() {
 }
 
 function updateArmButtons() {
-  for (const kind of ['start', 'end']) {
+  for (const kind of ['start', 'end', 'via']) {
     for (const prefix of ['rt-', 'rb-']) {
       const b = document.getElementById(prefix + kind);
       if (b) b.classList.toggle('active', routing.arm === kind);
@@ -986,7 +1003,8 @@ function buildRoutingPanel() {
     ensureRouter(); // prefetch the graph on first interest
     if (routing.arm) {
       setSheet('peek'); // get the sheet out of the way for the map tap
-      setRouteStatus(`Tap the map to place ${kind === 'start' ? 'START' : 'END'}`);
+      setRouteStatus(kind === 'via' ? 'Tap the map to add a stop'
+        : `Tap the map to place ${kind === 'start' ? 'START' : 'END'}`);
     } else {
       setRouteStatus('');
     }
@@ -995,8 +1013,82 @@ function buildRoutingPanel() {
     document.getElementById('rb-' + kind).addEventListener('click', () => arm(kind));
     document.getElementById('rt-' + kind).addEventListener('click', () => arm(kind));
   }
+  document.getElementById('rb-via').addEventListener('click', () => arm('via'));
   document.getElementById('rb-clear').addEventListener('click', clearRoute);
   document.getElementById('rt-clear').addEventListener('click', clearRoute);
+  buildFindBox();
+}
+
+/* ------------------------------------------- find box: search + locate */
+// Offline place search over a baked OSM index (data/places.json). Picking a
+// result fills A, then B, then adds stops — and flies the map there.
+let placesIndex = null, placesPromise = null;
+function ensurePlaces() {
+  if (!placesPromise) {
+    placesPromise = fetch('data/places.json')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((j) => { placesIndex = j; })
+      .catch(() => { placesPromise = null; }); // offline pre-cache: retry next time
+  }
+  return placesPromise;
+}
+
+function buildFindBox() {
+  const input = document.getElementById('placeSearch');
+  const results = document.getElementById('placeResults');
+  const TYPE_LABEL = { city: 'city', town: 'town', village: 'village', hamlet: 'hamlet',
+    suburb: 'suburb', neighbourhood: 'neighborhood', ferry: 'ferry terminal' };
+
+  const render = (items) => {
+    results.innerHTML = items.map(([n, lon, lat, t], i) =>
+      `<button class="place-hit" data-i="${i}" data-lon="${lon}" data-lat="${lat}">
+         ${n} <small>${TYPE_LABEL[t] || t}</small></button>`).join('');
+    results.classList.toggle('show', items.length > 0);
+  };
+
+  const search = () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q || !placesIndex) { render([]); return; }
+    const starts = [], contains = [];
+    for (const p of placesIndex) {
+      const n = p[0].toLowerCase();
+      if (n.startsWith(q)) starts.push(p);
+      else if (n.includes(q)) contains.push(p);
+      if (starts.length >= 8) break;
+    }
+    render(starts.concat(contains).slice(0, 8));
+  };
+
+  input.addEventListener('focus', ensurePlaces);
+  input.addEventListener('input', () => { ensurePlaces().then(search); search(); });
+  results.addEventListener('click', (e) => {
+    const hit = e.target.closest('.place-hit');
+    if (!hit) return;
+    const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
+    map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
+    if (!routing.start) {
+      setRoutePoint('start', lngLat);
+      setRouteStatus('Start set — search or tap to set the end');
+    } else if (!routing.end) {
+      setRoutePoint('end', lngLat);
+    } else {
+      addVia(lngLat);
+      setRouteStatus('Stop added');
+    }
+    input.value = '';
+    render([]);
+  });
+
+  document.getElementById('useLoc').addEventListener('click', () => {
+    if (!navigator.geolocation) { setStatus('No location access on this device', true); return; }
+    setRouteStatus('Locating…');
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
+      setRoutePoint('start', lngLat);
+      map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
+      setRouteStatus(routing.end ? '' : 'Start set at your location — now set B');
+    }, () => setRouteStatus('Could not get your location'), { enableHighAccuracy: true, timeout: 10000 });
+  });
 }
 
 /* ---------------------------------------------- hover/click readout */
@@ -1230,6 +1322,11 @@ function placeArmedPoint(lngLat) {
   updateArmButtons();
   readoutPinned = false;
   readoutEl.classList.remove('show'); // don't leave a stale road popup up
+  if (kind === 'via') {
+    addVia(lngLat);
+    setRouteStatus('Stop added — tap + to add another');
+    return true;
+  }
   setRoutePoint(kind, lngLat);
   if (!(routing.start && routing.end)) {
     // confirm the placement; with only one point there's no route yet

@@ -180,12 +180,12 @@ function modeMult(mode, lvl) {
   /* low */ return lvl === 4 ? 30.0 : lvl === 1 ? 0.9 : 1.0;
 }
 
-function route(startLL, endLL, rules, mode, prefDesig) {
+function routeLeg(startLL, endLL, rules, mode, prefDesig) {
   const t0 = Date.now();
   const s = nearestNode(startLL[0], startLL[1]);
   const t = nearestNode(endLL[0], endLL[1]);
-  if (s.distM > 2000) return { ok: false, reason: 'Start is too far from a rideable road.' };
-  if (t.distM > 2000) return { ok: false, reason: 'End is too far from a rideable road.' };
+  if (s.distM > 2000 || t.distM > 2000)
+    return { ok: false, reason: 'A route point is too far from a rideable road.' };
 
   const goalLon = nodeLon[t.node], goalLat = nodeLat[t.node];
   const dist = new Float64Array(N).fill(Infinity);
@@ -280,6 +280,34 @@ function route(startLL, endLL, rules, mode, prefDesig) {
     profile.push([distM, nodeEle[toNode]]);
   }
   const ferrySegs = ferryRanges.map(([a, b]) => coords.slice(a, b + 1));
+  return {
+    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs, desigM, segs,
+    profile, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
+  };
+}
+
+// Route through an ordered list of points (A -> B -> C ...): one A* per leg,
+// results merged into a single continuous route.
+function route(points, rules, mode, prefDesig) {
+  const t0 = Date.now();
+  const legs = [];
+  for (let i = 0; i + 1 < points.length; i++) {
+    const leg = routeLeg(points[i], points[i + 1], rules, mode, prefDesig);
+    if (!leg.ok) return leg;
+    legs.push(leg);
+  }
+  const coords = [], segs = [], ferrySegs = [], profile = [];
+  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0, desigM = 0;
+  for (const leg of legs) {
+    const cOff = coords.length ? coords.length - 1 : 0; // joint vertex is shared
+    for (let j = coords.length ? 1 : 0; j < leg.coords.length; j++) coords.push(leg.coords[j]);
+    for (const g of leg.segs) segs.push({ ...g, c0: g.c0 + cOff, c1: g.c1 + cOff });
+    for (const f of leg.ferrySegs) ferrySegs.push(f);
+    for (let j = profile.length ? 1 : 0; j < leg.profile.length; j++)
+      profile.push([leg.profile[j][0] + distM, leg.profile[j][1]]);
+    distM += leg.distM; timeS += leg.timeS; ascentM += leg.ascentM; descentM += leg.descentM;
+    failM += leg.failM; ferryM += leg.ferryM; desigM += leg.desigM;
+  }
   // Downsample the profile to <= 240 points for the sparkline.
   let prof = profile;
   if (prof.length > 240) {
@@ -291,7 +319,8 @@ function route(startLL, endLL, rules, mode, prefDesig) {
   }
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs, desigM, segs,
-    profile: prof, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
+    profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
+    ms: Date.now() - t0,
   };
 }
 
@@ -340,7 +369,8 @@ onmessage = (ev) => {
       loadGraph(m.buffer);
       postMessage({ type: 'ready', nodes: N, edges: E });
     } else if (m.type === 'route') {
-      const r = route(m.start, m.end, m.rules, m.mode || 'balanced', !!m.prefDesignated);
+      const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
+      const r = route(pts, m.rules, m.mode || 'balanced', !!m.prefDesignated);
       postMessage({ type: 'route', id: m.id, ...r });
     }
   } catch (err) {

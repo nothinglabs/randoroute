@@ -28,7 +28,7 @@ KEEP_TAGS = [
     "highway", "cycleway", "cycleway:both", "cycleway:left", "cycleway:right",
     "bicycle", "surface", "foot", "name", "oneway", "segregated", "width",
 ]
-CANDIDATE_HW = {"cycleway", "path", "footway", "bridleway"}
+CANDIDATE_HW = {"cycleway", "path", "footway", "bridleway", "track"}
 CYCLEWAY_KEYS = ("cycleway", "cycleway:both", "cycleway:right", "cycleway:left")
 PROTECTED = {"track", "separated", "opposite_track"}
 LANE = {"lane", "shared_lane"}
@@ -48,7 +48,7 @@ def classify(tags):
     bike = tags.get("bicycle")
     hw = tags.get("highway")
     cw = cycleway_value(tags)
-    bikeish = hw in ("cycleway", "path", "bridleway") or cw is not None
+    bikeish = hw in ("cycleway", "path", "bridleway", "track") or cw is not None
 
     if hw == "cycleway" and bike not in ("no", "dismount"):
         return 1, False
@@ -57,6 +57,8 @@ def classify(tags):
     if hw == "footway" and bike == "designated":
         return 2, False
     if hw == "bridleway" and bike in ("designated", "yes"):
+        return 2, False
+    if hw == "track" and bike in ("designated", "yes"):
         return 2, False
     if cw in PROTECTED:
         return 1, False
