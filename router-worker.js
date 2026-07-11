@@ -316,6 +316,7 @@ function route(points, rules, mode, prefDesig) {
     legs.push(leg);
   }
   const coords = [], segs = [], ferrySegs = [], profile = [];
+  const legSummaries = legs.map((l) => ({ distM: l.distM, timeS: l.timeS, failM: l.failM }));
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0, desigM = 0;
   for (const leg of legs) {
     const cOff = coords.length ? coords.length - 1 : 0; // joint vertex is shared
@@ -338,6 +339,7 @@ function route(points, rules, mode, prefDesig) {
   }
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs, desigM, segs,
+    legs: legSummaries,
     profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
     ms: Date.now() - t0,
   };

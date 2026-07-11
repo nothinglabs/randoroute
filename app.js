@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-08.10'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-08.11'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -746,11 +746,17 @@ function renderRouteCard(m) {
   const desig = m.desigM > 400
     ? `<div class="rc-sub">★ ${fmtMi(m.desigM)} mi on designated bike routes</div>`
     : '';
+  const legs = m.legs && m.legs.length > 1
+    ? `<div class="rc-legs">${m.legs.map((l, i) =>
+        `<div class="rc-leg">Leg ${i + 1}: <b>${fmtMi(l.distM)} mi</b> · ${fmtDur(l.timeS)}${
+          l.failM > 80 ? ` · <span class="rc-leg-warn">${fmtMi(l.failM)} mi fail</span>` : ''}</div>`).join('')}</div>`
+    : '';
   card.innerHTML = `
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
     ${ferry}
     ${desig}
+    ${legs}
     ${warn}
     <canvas id="profileCv"></canvas>`;
   drawProfile(m.profile, m.distM);
@@ -887,7 +893,8 @@ function drawRoute(coords, ferrySegs, segs) {
   })) };
   // Failing portions (scored live against the current rules) pulse red on top.
   const failData = { type: 'FeatureCollection',
-    features: sdata.features.filter((f) => effectiveLevel(scoreRouteSeg(f.properties)) === 4) };
+    features: sdata.features.filter((f) =>
+      f.properties.ferry !== 1 && effectiveLevel(scoreRouteSeg(f.properties)) === 4) };
   const srcExisting = map.getSource('route');
   if (srcExisting) {
     srcExisting.setData(data);
@@ -944,7 +951,7 @@ function setRoutePoint(kind, lngLat) {
   if (routing[mk]) routing[mk].setLngLat(lngLat);
   else {
     routing[mk] = new maplibregl.Marker({
-      color: kind === 'start' ? '#009E73' : '#d7191c', draggable: true,
+      color: kind === 'start' ? '#0072B2' : '#D55E00', draggable: true,
     }).setLngLat(lngLat).addTo(map);
     routing[mk].on('dragend', () => {
       const ll = routing[mk].getLngLat();
@@ -956,7 +963,7 @@ function setRoutePoint(kind, lngLat) {
 }
 
 function addVia(lngLat) {
-  const marker = new maplibregl.Marker({ color: '#e08214', draggable: true, scale: 0.85 })
+  const marker = new maplibregl.Marker({ color: '#555555', draggable: true, scale: 0.85 })
     .setLngLat(lngLat).addTo(map);
   const via = { pt: [lngLat.lng, lngLat.lat], marker };
   routing.vias.push(via);
@@ -1044,8 +1051,8 @@ function buildRoutingPanel() {
   const host = document.getElementById('routing');
   host.innerHTML = `
     <div class="route-actions">
-      <button id="rt-start">● Set start</button>
-      <button id="rt-end">● Set destination</button>
+      <button id="rt-start">Set start</button>
+      <button id="rt-end">Set destination</button>
       <button id="rt-clear">Clear</button>
     </div>
     <div class="hint" id="route-status" style="margin-top:8px"></div>`;
@@ -1057,7 +1064,7 @@ function buildRoutingPanel() {
     if (routing.arm) {
       setSheet('peek'); // get the sheet out of the way for the map tap
       setRouteStatus(kind === 'via' ? 'Tap the map to add a stop'
-        : `Tap the map to set the ${kind === 'start' ? 'START (green)' : 'DESTINATION (red)'}`);
+        : `Tap the map to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
     } else {
       setRouteStatus('');
     }
@@ -1097,7 +1104,7 @@ function buildSavedRoutes() {
     const list = loadSavedRoutes();
     host.innerHTML = '<h2>Saved routes</h2>'
       + '<button id="saveRouteBtn" class="save-route-btn">Save current route</button>'
-      + (list.length ? '' : '<div class="hint">Set a route, then save it to reuse later (works offline).</div>')
+      + (list.length ? '' : '<div class="hint">Set a route, then save it to reuse later.</div>')
       + list.map((r, i) =>
         `<div class="saved-row">
            <button class="saved-load" data-i="${i}">${r.name}</button>
@@ -1609,7 +1616,7 @@ function buildRulesPanel() {
     const cur = rules.noUpperLimit ? NONE_AT : rules.upperMaxSpeed;
     wrap.innerHTML = `
       <div class="rule-head">
-        <label for="r-upperMaxSpeed">Avoid roads faster than</label>
+        <label for="r-upperMaxSpeed">Never allow roads faster than</label>
         <span class="val" id="v-upperMaxSpeed"></span>
       </div>
       <div class="hint">Above this a road fails outright. Slide to the top for no speed cutoff (the shoulder rule still applies).</div>

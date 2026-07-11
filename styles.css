@@ -127,6 +127,9 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
 #routeCard .rc-main small { font: 600 15px system-ui; color: #555; }
 #routeCard .rc-sub { margin-top: 4px; font-size: 12px; color: #555; }
 #routeCard .rc-warn { margin-top: 4px; font-size: 12px; color: #b45309; font-weight: 600; }
+#routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }
+#routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
+#routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
 #routeCard canvas { width: 100%; height: 72px; margin-top: 10px; display: block; }
 
 .route-actions { display: flex; gap: 6px; }
@@ -235,13 +238,16 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   color: #222;
   cursor: pointer;
 }
-#routeBar .rb-dot { font-size: 17px; line-height: 1; }
-#routeBar .rb-dot-start { color: #009E73; }
-#routeBar .rb-dot-end { color: #d7191c; }
+#routeBar .rb-pill {
+  width: auto; padding: 0 12px; border-radius: 17px;
+  font: 700 12px system-ui;
+}
+#routeBar .rb-pill-start { color: #0072B2; }
+#routeBar .rb-pill-end { color: #D55E00; }
 #routeBar #rb-start.active, #routeBar #rb-end.active,
 #routeBar #rb-via.active { background: #0a66c2; color: #fff; }
-#rt-start { color: #009E73; }
-#rt-end { color: #d7191c; }
+#rt-start { color: #0072B2; }
+#rt-end { color: #D55E00; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 #placeResults .place-choice {
   display: inline-block; margin: 4px 4px 8px 12px; padding: 7px 11px;
@@ -255,7 +261,8 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 #rb-status:empty { display: none; }
 
-.foot { margin-top: 16px; padding-top: 8px; border-top: 1px solid #e6e6e6; font-size: 11px; }
+.foot { flex: none; margin: 0; padding: 8px 14px 12px; border-top: 1px solid #e6e6e6; font-size: 11px; }
+@media (max-width: 720px) { body.sheet-peek .foot { display: none; } }
 .foot a { color: #888; text-decoration: none; }
 .foot a:hover { color: #0a66c2; }
 .foot-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }

@@ -19,8 +19,8 @@
   <div id="map"></div>
 
   <div id="routeBar">
-    <button id="rb-start" class="rb-dot rb-dot-start" title="Set start (green marker)">●</button>
-    <button id="rb-end" class="rb-dot rb-dot-end" title="Set destination (red marker)">●</button>
+    <button id="rb-start" class="rb-pill rb-pill-start" title="Set start">Start</button>
+    <button id="rb-end" class="rb-pill rb-pill-end" title="Set destination">End</button>
     <button id="rb-via" title="Add a stop">+</button>
     <button id="rb-clear" title="Clear route">✕</button>
     <span id="rb-status"></span>
@@ -37,7 +37,7 @@
     <section class="tab active" id="tab-route">
       <div id="findBox">
         <button id="useLoc">📍 Start at my location</button>
-        <input id="placeSearch" type="search" placeholder="Find a place (works offline)…" autocomplete="off">
+        <input id="placeSearch" type="search" placeholder="Find a place…" autocomplete="off">
         <div id="placeResults"></div>
       </div>
       <div id="modeChips"></div>
@@ -62,16 +62,16 @@
         reasonable alternative — those stretches pulse red on the route.
         Changes apply live to both the map and the router.</p>
       <div id="rules"></div>
-      <div class="foot">
-        <a href="https://nothinglabs.github.io/clauding/" target="_blank" rel="noopener">nothinglabs.github.io/clauding</a>
-        <div class="foot-actions">
-          <button id="shareBtn">Share</button>
-          <button id="updateBtn">Check for update</button>
-          <span id="appVersion"></span>
-        </div>
-      </div>
     </section>
-  </div>
+
+    <div class="foot">
+      <a href="https://nothinglabs.github.io/clauding/" target="_blank" rel="noopener">nothinglabs.github.io/clauding</a>
+      <div class="foot-actions">
+        <button id="shareBtn">Share</button>
+        <button id="updateBtn">Check for update</button>
+        <span id="appVersion"></span>
+      </div>
+    </div>
 
   <div class="readout" id="readout"></div>
   <div class="status" id="status">Loading…</div>
