@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-08.9'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-08.10'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -1026,6 +1026,19 @@ function buildRoutingPanel() {
     computeRoute();
   });
 
+  const safe = document.createElement('div');
+  safe.className = 'check-rule';
+  safe.style.margin = '0 0 10px';
+  safe.innerHTML = `
+    <input type="checkbox" id="requireSafe" ${rules.requireSafe ? 'checked' : ''}>
+    <label for="requireSafe">Fail if no complete safe route found</label>`;
+  pref.after(safe);
+  safe.querySelector('input').addEventListener('change', (e) => {
+    rules.requireSafe = e.target.checked;
+    saveStateSoon();
+    computeRoute();
+  });
+
   renderRouteCard(null);
 
   const host = document.getElementById('routing');
@@ -1584,8 +1597,6 @@ function buildRulesPanel() {
   slider('minShoulder', 'Minimum shoulder', 'Roads with a shoulder narrower than this fail.', 0, 10, 1, ' ft');
   check('unknownShoulderZero', 'Unknown shoulder treated as 0 ft',
     'Fast roads must have shoulder data to pass. Off: unknown isn’t held against a road.');
-  check('requireSafe', 'Fail if no complete safe route found',
-    'Show an error instead of a route that includes failing roads.');
   slider('freeMaxSpeed', 'Max acceptable speed without shoulder',
     'At or below this speed a road passes even with no shoulder. Faster roads must meet the shoulder minimum.', 15, 45, 5, ' mph');
 
