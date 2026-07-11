@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.17'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-11.18'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -254,7 +254,8 @@ const SOURCES = [
     scorer: scoreRoad,
     zRank: 0,      // bottom: authoritative layers draw on top
     expr: true,    // scored via map expressions (works identically on tiles)
-    enabled: false, // opt-in
+    minVisibleZoom: 10,
+    enabled: true,  // on by default; automatically decluttered when zoomed out
     fc: null,
     loading: false,
   },
@@ -346,18 +347,21 @@ const map = new maplibregl.Map({
   zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
   maxZoom: 17,
 });
-// Keep the statewide view readable; neighborhood streets appear only once a
-// rider has zoomed in past the arterial context.
+// Keep the statewide view readable. The All-roads layer is on by default, but
+// it appears only in a local/regional view; neighborhood streets need a closer
+// zoom still.
+const ROADS_MIN_ZOOM = 10;
 const RES_MIN_ZOOM = 13;
-let residentialZoomVisible = null;
-function refreshResidentialRoads() {
-  const visible = map.getZoom() >= RES_MIN_ZOOM;
-  if (visible === residentialZoomVisible) return;
-  residentialZoomVisible = visible;
+let roadsZoomState = null;
+function refreshRoadsForZoom() {
+  const zoom = map.getZoom();
+  const state = `${zoom >= ROADS_MIN_ZOOM}:${zoom >= RES_MIN_ZOOM}`;
+  if (state === roadsZoomState) return;
+  roadsZoomState = state;
   const roads = SOURCES.find((src) => src.id === 'roads');
   if (roads && map.getLayer(roads.id)) applyDisplayMode(roads);
 }
-map.on('zoomend', refreshResidentialRoads);
+map.on('zoomend', refreshRoadsForZoom);
 // PMTiles: static single-file vector tiles over HTTP range requests — no server.
 if (window.pmtiles) {
   const _pmProtocol = new pmtiles.Protocol();
@@ -546,7 +550,9 @@ function ensureLayer(src) {
 // Main layer follows the source toggle; the two dashed overlays are each shown
 // in exactly one display mode.
 function updateVisibility(src) {
-  const on = src.enabled;
+  // A source must be enabled by its checkbox, and the dense All-roads tiles
+  // also require a close enough zoom to avoid obscuring the statewide map.
+  const on = src.enabled && (!src.minVisibleZoom || map.getZoom() >= src.minVisibleZoom);
   if (src.closure) {
     for (const id of [src.id, src.id + '__line', src.id + '__label']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
