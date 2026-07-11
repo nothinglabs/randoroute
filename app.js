@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-08.7'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-08.8'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -249,6 +249,12 @@ const SOURCES = [
   },
 ];
 
+// Layer toggles restore from the persisted state (before panels build).
+try {
+  const st = JSON.parse(localStorage.getItem('wa-bike-state-1') || 'null');
+  if (st && st.sources) for (const s of SOURCES) if (st.sources[s.id] != null) s.enabled = st.sources[s.id];
+} catch (e) { /* ignore */ }
+
 // Level as a MapLibre expression for expression-scored sources. Mirrors
 // effectiveLevel() for road props (speed always present; flags optional).
 // Rules are baked in as constants — on any rule change we rebuild the
@@ -271,6 +277,35 @@ function roadLevelExpr() {
 }
 
 /* ------------------------------------------------------------- map */
+/* ------------------------------------------------- persistence */
+// Everything the rider set — rules, mode, layers, view, and the current
+// route — survives refreshes and app updates via localStorage.
+const STATE_KEY = 'wa-bike-state-1';
+const SAVED_ROUTES_KEY = 'wa-bike-saved-routes-1';
+let savedState = null;
+try { savedState = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); } catch (e) { /* ignore */ }
+if (savedState) {
+  if (savedState.rules) Object.assign(rules, savedState.rules);
+  if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
+}
+
+let saveTimer = null;
+function saveStateSoon() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STATE_KEY, JSON.stringify({
+        rules, passFail: display.passFail,
+        mode: routing.mode, prefDesig: routing.prefDesig,
+        sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
+        view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
+        route: routing.start && routing.end
+          ? { s: routing.start, e: routing.end, v: routing.vias.map((x) => x.pt) } : null,
+      }));
+    } catch (e) { /* storage full/blocked — nonfatal */ }
+  }, 800);
+}
+
 const map = new maplibregl.Map({
   container: 'map',
   style: {
@@ -290,8 +325,8 @@ const map = new maplibregl.Map({
     },
     layers: [{ id: 'positron', type: 'raster', source: 'positron' }],
   },
-  center: [-120.5, 47.4], // Washington State
-  zoom: 6.4,
+  center: (savedState && savedState.view && savedState.view.c) || [-120.5, 47.4],
+  zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
   maxZoom: 17,
 });
 // PMTiles: static single-file vector tiles over HTTP range requests — no server.
@@ -300,6 +335,7 @@ if (window.pmtiles) {
   maplibregl.addProtocol('pmtiles', _pmProtocol.tile);
 }
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+map.on('moveend', saveStateSoon);
 map.addControl(
   new maplibregl.GeolocateControl({
     positionOptions: { enableHighAccuracy: true },
@@ -358,6 +394,7 @@ function rescoreAll() {
 // Coalesce rapid rule changes (e.g. slider drags) into one recolor per frame.
 let _rescorePending = false;
 function scheduleRescore() {
+  saveStateSoon();
   if (_rescorePending) return;
   _rescorePending = true;
   requestAnimationFrame(() => {
@@ -641,8 +678,9 @@ const routing = {
   vias: [],                  // intermediate stops: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false,
-  mode: 'balanced', // 'direct' | 'balanced' | 'low'
-  prefDesig: true, // strongly prefer designated routes & dedicated trails (default on)
+  mode: (savedState && savedState.mode) || 'balanced', // 'direct' | 'balanced' | 'low'
+  prefDesig: savedState && typeof savedState.prefDesig === 'boolean'
+    ? savedState.prefDesig : true, // strongly prefer designated routes & trails
   reqId: 0,
   last: null, // last successful result (for redraws)
 };
@@ -786,6 +824,7 @@ function computeRoute() {
   }
   routing.reqId++;
   setRouteStatus('Routing…');
+  saveStateSoon();
   routing.worker.postMessage({
     type: 'route', id: routing.reqId,
     points: [routing.start, ...routing.vias.map((v) => v.pt), routing.end],
@@ -942,6 +981,7 @@ function clearRoute() {
   renderRouteCard(null);
   setRouteStatus('');
   updateArmButtons();
+  saveStateSoon();
 }
 
 function updateArmButtons() {
@@ -1017,6 +1057,78 @@ function buildRoutingPanel() {
   document.getElementById('rb-clear').addEventListener('click', clearRoute);
   document.getElementById('rt-clear').addEventListener('click', clearRoute);
   buildFindBox();
+  buildSavedRoutes();
+
+  // Restore the persisted route (markers + recompute) from the last session.
+  if (savedState && savedState.route) {
+    const rt = savedState.route;
+    setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] });
+    for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] });
+    setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] });
+  }
+}
+
+/* --------------------------------------------------- saved routes */
+function loadSavedRoutes() {
+  try { return JSON.parse(localStorage.getItem(SAVED_ROUTES_KEY) || '[]'); } catch (e) { return []; }
+}
+function storeSavedRoutes(list) {
+  try { localStorage.setItem(SAVED_ROUTES_KEY, JSON.stringify(list)); } catch (e) { /* ignore */ }
+}
+
+function buildSavedRoutes() {
+  const host = document.getElementById('savedRoutes');
+  if (!host) return;
+
+  const render = () => {
+    const list = loadSavedRoutes();
+    host.innerHTML = '<h2>Saved routes</h2>'
+      + '<button id="saveRouteBtn" class="save-route-btn">Save current route</button>'
+      + (list.length ? '' : '<div class="hint">Set a route, then save it to reuse later (works offline).</div>')
+      + list.map((r, i) =>
+        `<div class="saved-row">
+           <button class="saved-load" data-i="${i}">${r.name}</button>
+           <button class="saved-del" data-i="${i}" title="Delete">✕</button>
+         </div>`).join('');
+
+    host.querySelector('#saveRouteBtn').addEventListener('click', () => {
+      if (!(routing.start && routing.end)) { setStatus('Set a route first', true); return; }
+      const name = prompt('Name this route:',
+        `Route ${new Date().toLocaleDateString()}`);
+      if (!name) return;
+      const list2 = loadSavedRoutes();
+      list2.unshift({ name: name.slice(0, 60), s: routing.start, e: routing.end,
+        v: routing.vias.map((x) => x.pt), mode: routing.mode, prefDesig: routing.prefDesig,
+        ts: Date.now() });
+      storeSavedRoutes(list2.slice(0, 30));
+      render();
+    });
+    host.querySelectorAll('.saved-load').forEach((b) => b.addEventListener('click', () => {
+      const r = loadSavedRoutes()[Number(b.dataset.i)];
+      if (!r) return;
+      clearRoute();
+      routing.mode = r.mode || routing.mode;
+      routing.prefDesig = r.prefDesig != null ? r.prefDesig : routing.prefDesig;
+      document.querySelectorAll('#modeChips button').forEach((x) =>
+        x.classList.toggle('active', x.dataset.mode === routing.mode));
+      const pd = document.getElementById('prefDesig');
+      if (pd) pd.checked = routing.prefDesig;
+      setRoutePoint('start', { lng: r.s[0], lat: r.s[1] });
+      for (const p of r.v || []) addVia({ lng: p[0], lat: p[1] });
+      setRoutePoint('end', { lng: r.e[0], lat: r.e[1] });
+      const lons = [r.s[0], r.e[0], ...(r.v || []).map((p) => p[0])];
+      const lats = [r.s[1], r.e[1], ...(r.v || []).map((p) => p[1])];
+      map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+        { padding: 60, maxZoom: 13 });
+    }));
+    host.querySelectorAll('.saved-del').forEach((b) => b.addEventListener('click', () => {
+      const list2 = loadSavedRoutes();
+      list2.splice(Number(b.dataset.i), 1);
+      storeSavedRoutes(list2);
+      render();
+    }));
+  };
+  render();
 }
 
 /* ------------------------------------------- find box: search + locate */
