@@ -208,7 +208,11 @@ function route(startLL, endLL, rules, mode, prefDesig) {
       const v = outTarget[a];
       if (done[v]) continue;
       const ei = outEdge[a];
-      const mult = modeMult(mode, edgeLevel(ei, rules));
+      const lvl = edgeLevel(ei, rules);
+      // "Fail if no complete safe route": failing roads become impassable in
+      // EVERY mode — the mode then picks among fully-passing routes only.
+      if (rules.requireSafe && lvl === 4) continue;
+      const mult = modeMult(mode, lvl);
       if (mult === Infinity) continue;
       const forward = eA[ei] === u;
       let step = edgeTimeS(ei, forward);
@@ -228,9 +232,12 @@ function route(startLL, endLL, rules, mode, prefDesig) {
     }
   }
   if (!found) {
-    // With finite mode multipliers this only happens when the endpoints are
-    // on genuinely disconnected pieces of the network.
-    return { ok: false, reason: 'No route exists on the rideable network between these points.' };
+    return {
+      ok: false,
+      reason: rules.requireSafe
+        ? 'No complete safe route exists under your rules — relax a rule, or uncheck “Fail if no complete safe route”.'
+        : 'No route exists on the rideable network between these points.',
+    };
   }
 
   // Reconstruct (goal -> start), then emit forward.

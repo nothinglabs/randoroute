@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-08.5'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-08.6'; // shown in the panel footer; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -38,9 +38,10 @@ const rules = {
   allowFreeways: true,  // show limited-access/high-speed roads as rideable at all?
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
-  freeMaxSpeed: 25,     // mph; at/below this a road is comfortable regardless of shoulder
+  freeMaxSpeed: 35,     // mph; at/below this a road passes even without a shoulder
   upperMaxSpeed: 45,    // mph; above this it's high-stress unless shoulder/facility is adequate
   noUpperLimit: true,   // disable the upper-speed hard cap
+  requireSafe: false,   // error out instead of returning a route with failing roads
 };
 
 /* --------------------------------------------------- display state */
@@ -52,7 +53,6 @@ const PASS_COLOR = '#009E73';
 const display = {
   passFail: false,
   passMax: 2, // a road "passes" if its effective level is 1..passMax (Low & Moderate)
-  hideResidential: true, // declutter: hide neighborhood streets in the All-roads layer
 };
 
 /* ------------------------------------------------------- the scorers */
@@ -512,15 +512,20 @@ function applyDisplayMode(src) {
     return;
   }
   const lvl = src.expr ? roadLevelExpr() : ['get', 'level'];
-  // Optional declutter: drop neighborhood streets from the All-roads layer.
-  const hideRes = display.hideResidential && src.id === 'roads';
+  // Declutter: neighborhood streets in the All-roads layer only appear once
+  // you're zoomed into neighborhood scale (no toggle — automatic).
+  const RES_MIN_ZOOM = 12;
+  const hideRes = src.id === 'roads';
   // Dedup: while the (data-rich) WSDOT source is on, hide its state highways
   // from the All-roads layer (d=1) — otherwise OSM's unknown-shoulder "pass"
   // would visually mask WSDOT's measured verdict on the same physical road.
   const dedup = src.id === 'roads' && SOURCES.find((s) => s.id === 'blts').enabled;
   const and = (f) => {
     const conds = [f];
-    if (hideRes) conds.push(['!=', ['get', 'h'], 'residential'], ['!=', ['get', 'h'], 'living_street']);
+    if (hideRes) {
+      conds.push(['any', ['>=', ['zoom'], RES_MIN_ZOOM],
+        ['all', ['!=', ['get', 'h'], 'residential'], ['!=', ['get', 'h'], 'living_street']]]);
+    }
     if (dedup) conds.push(['!=', ['get', 'd'], 1]);
     return conds.length > 1 ? ['all', ...conds] : f;
   };
@@ -1020,7 +1025,7 @@ function explainLevel(n) {
   const sh = shUnknown && rules.unknownShoulderZero ? 0 : shRaw;
   const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : null;
   if (spd != null && spd <= rules.freeMaxSpeed)
-    return `${spdTxt} ≤ your “free” ${rules.freeMaxSpeed} mph — comfortable regardless of shoulder.`;
+    return `${spdTxt} — at or below your ${rules.freeMaxSpeed} mph no-shoulder limit, passes without a shoulder.`;
 
   if (n.desig)
     return 'On a designated bike route (USBR / regional trail) — a vetted corridor, treated as meeting your criteria.';
@@ -1046,7 +1051,7 @@ function explainLevel(n) {
   if (spd != null)
     met.push(
       rules.noUpperLimit
-        ? `${spdTxt} — speed not capped (“No upper limit” is on)`
+        ? `${spdTxt} — no speed cutoff set`
         : `${spdTxt} within your ${rules.upperMaxSpeed} mph max`
     );
   return `Meets your criteria — ${met.join(', ')}.`;
@@ -1345,9 +1350,42 @@ function buildRulesPanel() {
   slider('minShoulder', 'Minimum shoulder', 'Roads with a shoulder narrower than this fail.', 0, 10, 1, ' ft');
   check('unknownShoulderZero', 'Unknown shoulder treated as 0 ft',
     'Fast roads must have shoulder data to pass. Off: unknown isn’t held against a road.');
-  slider('freeMaxSpeed', 'Comfortable at or below', 'Traffic at this speed is fine regardless of shoulder.', 15, 40, 5, ' mph');
-  slider('upperMaxSpeed', 'Avoid roads faster than', 'Above this a road fails — unless “No speed cutoff” is on.', 35, 65, 5, ' mph');
-  check('noUpperLimit', 'No speed cutoff', 'Don’t fail roads on speed alone (shoulder rule still applies).');
+  check('requireSafe', 'Fail if no complete safe route found',
+    'Show an error instead of a route that includes failing roads.');
+  slider('freeMaxSpeed', 'Max acceptable speed without shoulder',
+    'At or below this speed a road passes even with no shoulder. Faster roads must meet the shoulder minimum.', 15, 45, 5, ' mph');
+
+  // Upper speed cutoff: one slider, whose TOP position means "no cutoff"
+  // (replaces the old separate "No speed cutoff" checkbox).
+  {
+    const NONE_AT = 70;
+    const wrap = document.createElement('div');
+    wrap.className = 'rule';
+    const cur = rules.noUpperLimit ? NONE_AT : rules.upperMaxSpeed;
+    wrap.innerHTML = `
+      <div class="rule-head">
+        <label for="r-upperMaxSpeed">Avoid roads faster than</label>
+        <span class="val" id="v-upperMaxSpeed"></span>
+      </div>
+      <div class="hint">Above this a road fails outright. Slide to the top for no speed cutoff (the shoulder rule still applies).</div>
+      <input type="range" id="r-upperMaxSpeed" min="35" max="${NONE_AT}" step="5" value="${cur}">`;
+    host.appendChild(wrap);
+    const input = wrap.querySelector('input');
+    const valEl = wrap.querySelector('#v-upperMaxSpeed');
+    const render = (v) => { valEl.textContent = v >= NONE_AT ? 'no cutoff' : v + ' mph'; };
+    render(cur);
+    input.addEventListener('input', () => {
+      const v = Number(input.value);
+      if (v >= NONE_AT) {
+        rules.noUpperLimit = true;
+      } else {
+        rules.noUpperLimit = false;
+        rules.upperMaxSpeed = v;
+      }
+      render(v);
+      scheduleRescore();
+    });
+  }
 }
 
 function buildDisplayPanel() {
@@ -1368,8 +1406,6 @@ function buildDisplayPanel() {
   add('passFail', 'Pass/fail mode',
     `Green = meets your criteria. Roads with data that don't qualify show as
      gray dashed (hover any road for why). Updates live with the riding rules.`);
-  add('hideResidential', 'Hide residential streets',
-    'Declutter the All-roads layer: hide neighborhood streets (residential / living street).');
 }
 
 function buildLegend() {
