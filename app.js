@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.72'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.73'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -495,13 +495,13 @@ function scheduleRescore() {
     _rescoreTimer = setTimeout(() => {
       _rescoreTimer = null;
       rescoreAll(false);
-    }, 100);
+    }, 180);
   }
   clearTimeout(_ruleRouteTimer);
   _ruleRouteTimer = setTimeout(() => {
     _ruleRouteTimer = null;
     if (routing.ready && routing.start && routing.end) computeRoute();
-  }, 350);
+  }, 700);
 }
 
 const FAIL_COLOR = '#9aa0a6';
@@ -1009,7 +1009,9 @@ function navigationBannerInfo() {
   if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
   if (turnNav.offRoute) return {
     headline: turnNav.message || 'You are off route',
-    meta: 'Tap Reroute to make a new route from here',
+    meta: turnNav.routeM < 250
+      ? 'Move route start to current location (if that’s accurate)'
+      : 'Tap Reroute to make a new route from here',
     kicker: 'Off route',
   };
   const next = turnNav.route?.instructions[turnNav.next];
@@ -2350,14 +2352,6 @@ const READOUT_COLOR_LABEL = {
   3: 'Orange — Caution (limited-access highway)',
   4: 'Red dashed — Fails / bikes prohibited (avoid)',
 };
-const READOUT_RESULT_LABEL = {
-  0: '? Unknown / no data',
-  1: '✓ Comfortable',
-  2: '✓ Meets your criteria',
-  3: '⚠ Caution',
-  4: '✗ Fails / bikes prohibited',
-};
-
 // Plain-language reason for a segment's verdict under the current rules.
 // Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
 function explainLevel(n) {
@@ -2475,10 +2469,8 @@ function renderReadout(feature, lngLat) {
   const p = feature.properties;
   const n = src.scorer(p);            // recompute normalized props from this feature
   const lvl = p.level != null ? p.level : effectiveLevel(n); // expr sources carry no .level
-  const verdict = READOUT_RESULT_LABEL[lvl] || READOUT_RESULT_LABEL[0];
   const common = [
     ['Map color', READOUT_COLOR_LABEL[lvl] || READOUT_COLOR_LABEL[0]],
-    ['Result', verdict],
     ['Stress', lvl === 0 ? 'unknown' : `${lvl} — ${LEVEL_NAME[lvl]}`],
     ['Why', explainLevel(n)],
   ];
@@ -2516,7 +2508,6 @@ function renderReadout(feature, lngLat) {
     rows = [
       ['Route', p.Route ? 'SR ' + String(p.Route).replace(/^0+/, '') : p.RouteIdentifier],
       ['Map color', 'Red dashed — Fails / bikes prohibited (avoid)'],
-      ['Result', '✗ Prohibited'],
       ['Why', 'Permanent bicycle restriction by official WSDOT traffic action.'],
       ['Direction', p.Direction],
       ['Mileposts', p.BeginMile != null ? `${p.BeginMile} – ${p.EndMile}` : null],
@@ -2698,6 +2689,21 @@ function buildRulesPanel() {
   slidersHost.replaceChildren();
   optionsHost.replaceChildren();
 
+  // Safari can emit a delayed synthetic click after a range-thumb drag. Keep
+  // that gesture owned by Settings so it cannot reach the map and dismiss the
+  // panel as though the rider had tapped a road.
+  const protectSliderGesture = (input) => {
+    const protect = () => suppressRoadInfo(1800);
+    input.addEventListener('pointerdown', protect);
+    input.addEventListener('pointermove', protect);
+    input.addEventListener('pointerup', protect);
+    input.addEventListener('pointercancel', protect);
+    input.addEventListener('touchstart', protect, { passive: true });
+    input.addEventListener('touchmove', protect, { passive: true });
+    input.addEventListener('touchend', protect, { passive: true });
+    input.addEventListener('touchcancel', protect, { passive: true });
+  };
+
   const slider = (key, label, min, max, step, unit) => {
     const wrap = document.createElement('div');
     wrap.className = 'rule rule-card';
@@ -2709,12 +2715,13 @@ function buildRulesPanel() {
       <input type="range" id="r-${key}" min="${min}" max="${max}" step="${step}" value="${rules[key]}">`;
     slidersHost.appendChild(wrap);
     const input = wrap.querySelector('input');
+    protectSliderGesture(input);
     input.addEventListener('input', () => {
       rules[key] = Number(input.value);
       document.getElementById(`v-${key}`).textContent = rules[key] + unit;
       // A delayed synthetic map click after a mobile range drag must never
       // open road info and dismiss the Settings panel.
-      suppressRoadInfo(900);
+      suppressRoadInfo(1800);
       scheduleRescore();
     });
   };
@@ -2756,6 +2763,7 @@ function buildRulesPanel() {
       <input type="range" id="r-upperMaxSpeed" min="35" max="${NONE_AT}" step="5" value="${cur}">`;
     slidersHost.appendChild(wrap);
     const input = wrap.querySelector('input');
+    protectSliderGesture(input);
     const valEl = wrap.querySelector('#v-upperMaxSpeed');
     const render = (v) => { valEl.textContent = v >= NONE_AT ? 'no cutoff' : v + ' mph'; };
     render(cur);
@@ -2768,7 +2776,7 @@ function buildRulesPanel() {
         rules.upperMaxSpeed = v;
       }
       render(v);
-      suppressRoadInfo(900);
+      suppressRoadInfo(1800);
       scheduleRescore();
     });
   }
