@@ -18,9 +18,11 @@ Binary layout (little-endian), after header 'BGR3' + N,E,D,G,U,B (u32):
   nodeLon f32[N], nodeLat f32[N]
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
   edgeSpeed u8[E] (mph; 0 = separated infra), edgeFlags u8[E]
-    (1=est speed, 2=bike facility, 4=limited access, 8=infra, 16=oneway a->b,
-     32=ferry crossing, 64=designated bike route),
-  edgeShoulder i8[E] (-1 unknown, else ft),
+    (1=est speed, 2=bike facility, 4=OSM motorway/freeway, 8=infra,
+     16=oneway a->b, 32=ferry crossing, 64=designated bike route,
+     128=WSDOT limited-access caution),
+  edgeShoulder i8[E] (-128 migration-only permanent prohibition, -1 unknown,
+                       else ft),
   edgeGeomOff u32[E], edgeGeomCnt u16[E]  (into the geometry pool)
   outStart u32[N+1], outTarget u32[D], outEdge u32[D]   (directed CSR)
   geomLon f32[G], geomLat f32[G]  (pool; G = sum of edgeGeomCnt)
@@ -28,8 +30,9 @@ Binary layout (little-endian), after header 'BGR3' + N,E,D,G,U,B (u32):
 WSDOT conflation: the map's WSDOT layer fails roads on MEASURED shoulder
 width that OSM doesn't have — without it the router would happily use roads
 the map shows as failing. For state-highway edges we spatially match the
-nearest WSDOT BLTS segment (within ~30 m) and adopt its measured shoulder,
-real speed limit, and bikes-prohibited flag, so routing and the map agree.
+nearest WSDOT BLTS segment (within ~30 m) and adopt its measured shoulder and
+real speed limit. WSDOT permanent bike restrictions are also matched directly
+against their authoritative linework and omitted from the graph entirely.
 
 Usage: python3 scripts/build_graph.py [--src data/washington-latest.osm.pbf]
 """
@@ -161,6 +164,55 @@ def load_blts_index(path):
             })
     print(f'  WSDOT index: {len(geoms):,} segments', flush=True)
     return STRtree(geoms), geoms, attrs
+
+
+def load_restriction_index(path):
+    """STRtree over the authoritative WSDOT permanent bike restrictions."""
+    fc = json.load(open(path))
+    geoms, routes = [], []
+    for f in fc['features']:
+        p = f['properties']
+        g = f['geometry']
+        lines = [g['coordinates']] if g['type'] == 'LineString' else g['coordinates']
+        route = _route_number(p.get('RouteIdentifier') or p.get('Route'))
+        for cs in lines:
+            if len(cs) >= 2:
+                geoms.append(LineString(cs))
+                routes.append(route)
+    print(f'  WSDOT restriction index: {len(geoms):,} segments', flush=True)
+    return STRtree(geoms), geoms, routes
+
+
+def _route_number(value):
+    m = re.search(r'\d+', str(value or ''))
+    return int(m.group()) if m else None
+
+
+def _route_numbers(*values):
+    return {int(v) for value in values for v in re.findall(r'\d+', str(value or ''))}
+
+
+def is_restricted_edge(coords, tags, index):
+    """True only for a road that follows a WSDOT prohibited line.
+
+    A near-exact match catches normal OSM/WSDOT centerline offset. A looser
+    match also needs the same route number, so a legal parallel sidewalk or
+    frontage road is not excluded just because it is nearby.
+    """
+    tree, geoms, routes = index
+    edge_routes = _route_numbers(tags.get('ref'), tags.get('name'))
+    strict = 0.00004  # ~4 m
+    # Check every simplified geometry point, not only an edge midpoint: a
+    # restriction boundary can fall inside a graph edge.
+    for x, y in coords:
+        point = Point(x, y)
+        for gi in tree.query(point.buffer(WSDOT_MATCH_DEG)):
+            distance = geoms[gi].distance(point)
+            if distance <= strict:
+                return True
+            if distance <= WSDOT_MATCH_DEG and routes[gi] in edge_routes:
+                return True
+    return False
 
 
 def parse_mph(v):
@@ -315,8 +367,9 @@ def line_len_m(coords):
     return sum(haversine_m(*coords[i], *coords[i + 1]) for i in range(len(coords) - 1))
 
 
-def build(src, out, blts=None):
+def build(src, out, blts=None, restrictions=None):
     wsdot = load_blts_index(blts) if blts else None
+    restriction_index = load_restriction_index(restrictions) if restrictions else None
     ele_at = load_dem()
     if ele_at is None:
         print('  WARNING: no DEM tiles found — building without elevation', flush=True)
@@ -380,6 +433,7 @@ def build(src, out, blts=None):
 
     oneway_arcs = 0
     conflated = [0]
+    restricted_edges = [0]
     for obj in osmium.FileProcessor(src).with_locations():
         if not obj.is_way():
             continue
@@ -432,6 +486,11 @@ def build(src, out, blts=None):
                         b = gnode(seg[-1][0], *coords[-1])
                         if a != b or length > 10:  # drop degenerate micro-loops
                             espeed, esh, eflags = attrs['speed'], sh, flags
+                            if (restriction_index and not attrs['infra']
+                                    and is_restricted_edge(coords, tags, restriction_index)):
+                                restricted_edges[0] += 1
+                                seg = [p]
+                                continue  # WSDOT permanent bike restriction
                             if wsdot_candidate:
                                 tree, geoms, wattrs = wsdot
                                 mid = Point(coords[len(coords) // 2])
@@ -445,9 +504,12 @@ def build(src, out, blts=None):
                                         seg = [p]
                                         continue  # WSDOT permanent bike restriction
                                     if best['limited']:
-                                        # WSDOT access control is authoritative even when
-                                        # OSM calls the road a trunk rather than a motorway.
-                                        eflags |= 4
+                                        # WSDOT access control is useful safety context even
+                                        # when OSM calls the road a trunk rather than a
+                                        # motorway. Keep it distinct from flag 4: a bicycle-
+                                        # legal access-controlled highway is a caution, while
+                                        # a true motorway remains a last-resort route failure.
+                                        eflags |= 128
                                     if best['sh'] is not None:
                                         esh = max(-1, min(127, int(best['sh'])))
                                     if best['spd'] and (eflags & 1):
@@ -556,7 +618,7 @@ def build(src, out, blts=None):
 
     N, E, G = len(node_lon), len(eA), len(gLon)
     print(f'  nodes {N:,}  edges {E:,}  geom vertices {G:,}  oneway edges {oneway_arcs:,}', flush=True)
-    print(f'  WSDOT-conflated edges: {conflated[0]:,}', flush=True)
+    print(f'  WSDOT-conflated edges: {conflated[0]:,}; direct restrictions excluded: {restricted_edges[0]:,}', flush=True)
 
     # ---- directed CSR adjacency
     print('building adjacency...', flush=True)
@@ -628,5 +690,7 @@ if __name__ == '__main__':
     ap.add_argument('--out', default='data/graph2.bin.gz')
     ap.add_argument('--blts', default='data/blts.geojson',
                     help='WSDOT BLTS geojson for shoulder/speed/prohibition conflation')
+    ap.add_argument('--restrictions', default='data/bike_restrictions.geojson',
+                    help='WSDOT permanent bike restrictions geojson for hard graph exclusion')
     args = ap.parse_args()
-    build(args.src, args.out, args.blts)
+    build(args.src, args.out, args.blts, args.restrictions)

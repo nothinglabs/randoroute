@@ -7,13 +7,14 @@
  * Architecture (built to let Phase 2's OSM source slot in with no rewrite):
  *   - Each data source has its own toggle, its own scorer, and its own layer.
  *   - A scorer maps that source's raw props to NORMALIZED props:
- *       baseScore, shoulder_width, maxspeed_num, prohibited, restricted, limited_access, good_facility
+ *       baseScore, shoulder_width, maxspeed_num, prohibited, restricted, freeway,
+ *       limited_access, good_facility
  *   - applyEffective() is source-agnostic: it reads only normalized props + the
  *     current riding-rules settings and writes an effective 1-4 level (or 0 = unknown)
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.39'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.43'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -29,6 +30,7 @@ const COLORS = {
 const LEGEND = [
   [1, 'Comfortable (slow)'],
   [2, 'Meets your criteria'],
+  [3, 'Caution — limited-access highway'],
   [4, 'Fails / bikes prohibited (avoid)'],
   [0, 'Unknown / no data'],
 ];
@@ -68,6 +70,7 @@ function scoreBLTS(p) {
     prohibited: !!p.Prohibited, // overlaps a WSDOT permanent bike restriction
     wsdotBan: !!p.Prohibited,
     restricted: false,
+    freeway: false,
     limited_access: !!p.LimitedAccess,
     good_facility: !!(p.BikeFacilityType && p.BikeFacilityType.length),
     infra: false,
@@ -106,6 +109,7 @@ function scoreOSM(p) {
     maxspeed_num: null,
     prohibited,
     restricted: false,
+    freeway: false,
     limited_access: false,
     good_facility: base != null && !prohibited,
     infra: true,
@@ -113,7 +117,7 @@ function scoreOSM(p) {
 }
 
 // Full OSM road network (Phase 3). Short property keys (see build_roads.py):
-// h=class s=speed(mph) e=estimated f=facility b=bike-prohibited m=limited-access
+// h=class s=speed(mph) e=estimated f=facility b=bike-prohibited m=motorway
 // w=shoulder(ft) n=name r=ref. Speeds are always present — actual, or inferred
 // from road class (BNA-style) with e=1 marking the estimate.
 function scoreRoad(p) {
@@ -123,6 +127,7 @@ function scoreRoad(p) {
     maxspeed_num: p.s == null ? null : p.s,
     prohibited: p.b === 1,
     restricted: false,
+    freeway: p.m === 1,
     limited_access: p.m === 1,
     good_facility: p.f === 1,
     infra: false,
@@ -135,24 +140,24 @@ function scoreRoad(p) {
 // scored — the underlying roads are judged by the other layers.
 function scoreRouteOverlay() {
   return { baseScore: null, shoulder_width: null, maxspeed_num: null, prohibited: false,
-           restricted: false, limited_access: false, good_facility: false, infra: false };
+           restricted: false, freeway: false, limited_access: false, good_facility: false, infra: false };
 }
 
 // WSDOT Permanent Bike Restrictions overlay: always prohibited, by definition.
 function scoreRestrict() {
   return { baseScore: 4, shoulder_width: null, maxspeed_num: null, prohibited: true,
-           restricted: true, limited_access: false, good_facility: false, infra: false };
+           restricted: true, freeway: false, limited_access: false, good_facility: false, infra: false };
 }
 
 /* --------------------------------------------- source-agnostic scorer */
 // "Your criteria decide", as HARD gates: each criterion is pass/fail. A road
 // fails (level 4 = avoid) if the data we have shows any criterion is not met.
-// Missing data does NOT fail a road — only a known-bad value does. There is no
-// middle "3": a road either meets the criteria (1 = comfortable, 2 = meets)
-// or it fails (4). Returns 0 only when there's no usable data at all.
+// Missing data does NOT fail a road — only a known-bad value does. Level 3 is
+// reserved for a bike-legal WSDOT limited-access highway that otherwise meets
+// the rider's rules: a useful caution, not a failed route criterion.
 function effectiveLevel(n) {
   if (n.prohibited) return 4;                              // bikes not allowed
-  if (n.limited_access) return 4;                          // freeway: last-resort failure
+  if (n.freeway) return 4;                                 // true motorway: last resort
 
   // Dedicated bike infrastructure: the infra type IS the rating (cycleway = 1,
   // bike lane = 2). The car-speed/shoulder rules don't apply to it.
@@ -165,12 +170,12 @@ function effectiveLevel(n) {
   const sh = n.shoulder_width == null && rules.unknownShoulderZero ? 0 : n.shoulder_width;
 
   // Slow enough → comfortable regardless of shoulder.
-  if (spd != null && spd <= rules.freeMaxSpeed) return 1;
+  if (spd != null && spd <= rules.freeMaxSpeed) return n.limited_access ? 3 : 1;
 
   // Designated bike route (USBR / regional trail): a vetted corridor is a
   // known quantity — meets criteria regardless of shoulder/speed data.
   // (Freeway and prohibition gates above still apply.)
-  if (n.desig) return 2;
+  if (n.desig) return n.limited_access ? 3 : 2;
 
   // Hard gates. Each fails ONLY when we have data proving the violation
   // (with the pessimistic option, "unknown = 0 ft" counts as data).
@@ -181,7 +186,7 @@ function effectiveLevel(n) {
   // No usable data on any criterion → unknown.
   if (spd == null && sh == null && !n.good_facility) return 0;
 
-  return 2; // meets your criteria
+  return n.limited_access ? 3 : 2; // caution, or meets your criteria
 }
 
 /* ------------------------------------------------ data-source registry */
@@ -845,13 +850,13 @@ function fallbackRouteLevel(s) {
   const flags = s.flags || 0;
   if (flags & 4) return 4;
   if (flags & 8) return 1;
-  if (s.mph <= rules.freeMaxSpeed) return 1;
-  if (flags & 64) return 2;
+  if (s.mph <= rules.freeMaxSpeed) return flags & 128 ? 3 : 1;
+  if (flags & 64) return flags & 128 ? 3 : 2;
   let sh = s.sh;
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
   if (!(flags & 2) && sh >= 0 && sh < rules.minShoulder) return 4;
   if (!rules.noUpperLimit && s.mph > rules.upperMaxSpeed) return 4;
-  return 2;
+  return flags & 128 ? 3 : 2;
 }
 
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
@@ -862,7 +867,7 @@ function isHighwaySegment(s) {
 
 function routeSummaryStats(m) {
   const levels = [0, 0, 0, 0, 0];
-  let highwayM = 0, freewayM = 0;
+  let highwayM = 0, freewayM = 0, limitedAccessM = 0;
   for (const s of m.segs || []) {
     const flags = s.flags || 0;
     const len = Number(s.lenM) || 0;
@@ -870,9 +875,10 @@ function routeSummaryStats(m) {
     const level = s.level || fallbackRouteLevel(s);
     if (level >= 1 && level <= 4) levels[level] += len;
     if (flags & 4) freewayM += len;
+    else if (flags & 128) limitedAccessM += len;
     else if (isHighwaySegment(s)) highwayM += len;
   }
-  return { levels, highwayM, freewayM };
+  return { levels, highwayM, freewayM, limitedAccessM };
 }
 
 const ROUTE_DETAILS_KEY = 'wa-bike-route-details-1';
@@ -896,6 +902,260 @@ function storeRouteDetails(m) {
     }));
   } catch (e) { /* storage unavailable — the map still works normally */ }
 }
+
+/* --------------------------------------------------- turn navigation */
+// This is deliberately a foreground navigation mode. It uses the browser's
+// GPS, speech synthesis, and Screen Wake Lock API while the app is visible.
+// A native iOS wrapper is still required for reliable background navigation.
+const turnNav = {
+  active: false,
+  watchId: null,
+  wakeLock: null,
+  marker: null,
+  route: null,
+  next: 0,
+  nearest: 0,
+  routeM: 0,
+  message: '',
+  offRouteSpokenAt: 0,
+  arrived: false,
+};
+
+function navDistanceM(a, b) {
+  const rad = Math.PI / 180;
+  const p1 = a[1] * rad, p2 = b[1] * rad;
+  const dp = (b[1] - a[1]) * rad, dl = (b[0] - a[0]) * rad;
+  const h = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function navBearing(a, b) {
+  const rad = Math.PI / 180;
+  const p1 = a[1] * rad, p2 = b[1] * rad, dl = (b[0] - a[0]) * rad;
+  const y = Math.sin(dl) * Math.cos(p2);
+  const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+  return (Math.atan2(y, x) / rad + 360) % 360;
+}
+
+function navDelta(inBearing, outBearing) {
+  return ((outBearing - inBearing + 540) % 360) - 180;
+}
+
+function navRoadName(name) {
+  const value = String(name || '').trim();
+  return value && !/^unnamed|^ferry terminal connector$/i.test(value) ? value : '';
+}
+
+function navTurnText(delta, road) {
+  const abs = Math.abs(delta);
+  const onto = road ? ` onto ${road}` : '';
+  if (abs >= 150) return `Make a U-turn${onto}`;
+  if (abs >= 55) return `Turn ${delta > 0 ? 'right' : 'left'}${onto}`;
+  if (abs >= 20) return `Bear ${delta > 0 ? 'right' : 'left'}${onto}`;
+  return road ? `Continue onto ${road}` : 'Continue';
+}
+
+function navDistanceText(m) {
+  if (m < 160.934) return `${Math.max(25, Math.round(m / 25) * 25)} feet`;
+  return `${(m / 1609.34).toFixed(m < 1609.34 ? 1 : 1)} miles`;
+}
+
+function buildTurnInstructions(m) {
+  const coords = m.coords || [];
+  const cumulative = [0];
+  for (let i = 1; i < coords.length; i++) cumulative.push(cumulative[i - 1] + navDistanceM(coords[i - 1], coords[i]));
+  const instructions = [];
+  let lastM = -Infinity;
+  const segs = m.segs || [];
+  for (let i = 0; i + 1 < segs.length; i++) {
+    const current = segs[i], next = segs[i + 1];
+    const at = Math.max(1, Math.min(coords.length - 2, next.c0));
+    const incoming = navBearing(coords[Math.max(0, at - 2)], coords[at]);
+    const outgoing = navBearing(coords[at], coords[Math.min(coords.length - 1, at + 2)]);
+    const delta = navDelta(incoming, outgoing);
+    const from = navRoadName(current.name);
+    const to = navRoadName(next.name);
+    const changedRoad = !!to && to.toLowerCase() !== from.toLowerCase();
+    if (!changedRoad && Math.abs(delta) < 40) continue;
+    const distanceM = cumulative[at];
+    // Do not speak a chain of tiny graph-edge transitions as separate turns.
+    if (distanceM - lastM < 70) continue;
+    instructions.push({ distanceM, coordIndex: at, text: navTurnText(delta, to) });
+    lastM = distanceM;
+  }
+  return { coords, cumulative, instructions, totalM: cumulative[cumulative.length - 1] || 0 };
+}
+
+function navigationStatusText() {
+  if (!turnNav.active) return 'GPS voice guidance · keeps the screen awake when supported';
+  if (turnNav.arrived) return 'Arrived';
+  const next = turnNav.route?.instructions[turnNav.next];
+  if (!next) return turnNav.message || 'Navigation active';
+  const remaining = Math.max(0, next.distanceM - turnNav.routeM);
+  return `${turnNav.message ? `${turnNav.message} · ` : ''}Next: ${next.text} in ${navDistanceText(remaining)}`;
+}
+
+function refreshNavigationCard() {
+  const status = document.getElementById('navStatus');
+  if (status) status.textContent = navigationStatusText();
+  const start = document.querySelector('[data-nav-action="start"]');
+  const stop = document.querySelector('[data-nav-action="stop"]');
+  if (start) start.hidden = turnNav.active;
+  if (stop) stop.hidden = !turnNav.active;
+}
+
+function speakNavigation(text) {
+  if (!('speechSynthesis' in window)) {
+    turnNav.message = 'Voice is unavailable in this browser';
+    refreshNavigationCard();
+    return;
+  }
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.05;
+    utterance.lang = navigator.language || 'en-US';
+    window.speechSynthesis.speak(utterance);
+  } catch (e) { /* the status line remains useful without speech */ }
+}
+
+async function requestNavigationWakeLock() {
+  if (!turnNav.active || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+  try {
+    turnNav.wakeLock = await navigator.wakeLock.request('screen');
+    turnNav.wakeLock.addEventListener('release', () => {
+      if (turnNav.active && document.visibilityState === 'visible') requestNavigationWakeLock();
+    }, { once: true });
+    turnNav.message = '';
+  } catch (e) {
+    turnNav.message = 'Screen may sleep on this browser';
+  }
+  refreshNavigationCard();
+}
+
+function releaseNavigationWakeLock() {
+  const lock = turnNav.wakeLock;
+  turnNav.wakeLock = null;
+  if (lock) lock.release().catch(() => {});
+}
+
+function nearestNavigationPoint(lon, lat) {
+  const route = turnNav.route;
+  if (!route?.coords?.length) return null;
+  const point = [lon, lat];
+  const hasPosition = turnNav.routeM > 0 || turnNav.nearest > 0;
+  let lo = hasPosition ? Math.max(0, turnNav.nearest - 80) : 0;
+  let hi = hasPosition ? Math.min(route.coords.length - 1, turnNav.nearest + 500) : route.coords.length - 1;
+  let best = lo, bestM = Infinity;
+  for (let i = lo; i <= hi; i++) {
+    const d = navDistanceM(point, route.coords[i]);
+    if (d < bestM) { bestM = d; best = i; }
+  }
+  // If the rider has jumped well beyond the local search window (for example,
+  // restarting navigation farther along the route), do one complete recovery scan.
+  if (hasPosition && bestM > 250) {
+    lo = 0; hi = route.coords.length - 1; bestM = Infinity;
+    for (let i = lo; i <= hi; i++) {
+      const d = navDistanceM(point, route.coords[i]);
+      if (d < bestM) { bestM = d; best = i; }
+    }
+  }
+  return { index: best, offRouteM: bestM, routeM: route.cumulative[best] };
+}
+
+function updateTurnNavigation(pos) {
+  if (!turnNav.active || !turnNav.route) return;
+  const { longitude, latitude } = pos.coords;
+  if (!turnNav.marker) {
+    turnNav.marker = new maplibregl.Marker({ color: '#00795c', scale: 0.75 })
+      .setLngLat([longitude, latitude]).addTo(map);
+  } else turnNav.marker.setLngLat([longitude, latitude]);
+
+  const nearest = nearestNavigationPoint(longitude, latitude);
+  if (!nearest) return;
+  turnNav.nearest = Math.max(turnNav.nearest, nearest.index);
+  turnNav.routeM = Math.max(turnNav.routeM, nearest.routeM);
+  if (nearest.offRouteM > 100) {
+    turnNav.message = `Off route by ${navDistanceText(nearest.offRouteM)}`;
+    if (Date.now() - turnNav.offRouteSpokenAt > 30000) {
+      speakNavigation('You appear to be off route. Check the map to recalculate.');
+      turnNav.offRouteSpokenAt = Date.now();
+    }
+    refreshNavigationCard();
+    return;
+  }
+  turnNav.message = '';
+  const next = turnNav.route.instructions[turnNav.next];
+  if (!next) {
+    if (!turnNav.arrived && turnNav.route.totalM - turnNav.routeM < 55) {
+      turnNav.arrived = true;
+      turnNav.message = 'Arrived';
+      speakNavigation('You have arrived at your destination.');
+    }
+    refreshNavigationCard();
+    return;
+  }
+  const remaining = next.distanceM - turnNav.routeM;
+  if (remaining < -35) {
+    turnNav.next++;
+    updateTurnNavigation(pos);
+    return;
+  }
+  if (!next.approach && remaining <= 350) {
+    next.approach = true;
+    speakNavigation(`In ${navDistanceText(remaining)}, ${next.text.toLowerCase()}.`);
+  }
+  if (!next.now && remaining <= 70) {
+    next.now = true;
+    speakNavigation(`${next.text}.`);
+  }
+  refreshNavigationCard();
+}
+
+function startTurnNavigation() {
+  if (!routing.last?.ok || !navigator.geolocation) {
+    setStatus('Set a route and allow location access to start navigation.', true);
+    return;
+  }
+  turnNav.route = buildTurnInstructions(routing.last);
+  turnNav.active = true;
+  turnNav.next = 0;
+  turnNav.nearest = 0;
+  turnNav.routeM = 0;
+  turnNav.arrived = false;
+  turnNav.offRouteSpokenAt = 0;
+  turnNav.message = 'Getting your location';
+  renderRouteCard(routing.last);
+  speakNavigation('Navigation started. Follow the route on the map.');
+  turnNav.watchId = navigator.geolocation.watchPosition(
+    updateTurnNavigation,
+    () => {
+      turnNav.message = 'Location is unavailable';
+      refreshNavigationCard();
+      setStatus('Navigation needs location access.', true);
+    },
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+  );
+  requestNavigationWakeLock();
+}
+
+function stopTurnNavigation(announce = true) {
+  if (!turnNav.active) return;
+  if (turnNav.watchId != null) navigator.geolocation?.clearWatch(turnNav.watchId);
+  turnNav.watchId = null;
+  releaseNavigationWakeLock();
+  if (turnNav.marker) { turnNav.marker.remove(); turnNav.marker = null; }
+  turnNav.active = false;
+  turnNav.route = null;
+  turnNav.message = '';
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  if (announce) speakNavigation('Navigation stopped.');
+  if (routing.last?.ok) renderRouteCard(routing.last);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (turnNav.active && document.visibilityState === 'visible') requestNavigationWakeLock();
+});
 
 function renderRouteCard(m) {
   const card = document.getElementById('routeCard');
@@ -922,6 +1182,9 @@ function renderRouteCard(m) {
     ? `<div class="rc-warn">⚠ ${fmtDist(m.failM)} on roads that fail your rules${
         routing.mode === 'low' ? ' (unavoidable — pulsing red on the map)' : ' (pulsing red on the map)'}</div>`
     : `<div class="rc-sub" style="color:#00795c;font-weight:600">✓ Entirely within your riding rules</div>`;
+  const caution = stats.levels[3] > 0
+    ? `<div class="rc-caution">⚠ ${fmtDist(stats.levels[3])} on limited-access roads that otherwise meet your rules</div>`
+    : '';
   const ferry = m.ferryM > 0
     ? `<div class="rc-sub">⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)</div>`
     : '';
@@ -930,9 +1193,10 @@ function renderRouteCard(m) {
   ];
   if (stats.highwayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="highway" aria-pressed="false" title="Highlight highway segments on the map"><span>⚠ Highways</span><b>${fmtDist(stats.highwayM)}</b></button>`);
   if (stats.freewayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="freeway" aria-pressed="false" title="Highlight freeway segments on the map"><span>⛔ Freeways</span><b>${fmtDist(stats.freewayM)}</b></button>`);
+  if (stats.limitedAccessM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access highway segments on the map"><span>⚠ Limited access</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`);
   const routeTypes = `<div class="rc-route-types">${routeTypeParts.join('')}</div>`;
-  const levelNames = ['', 'Comfy', 'Meets rules', '', 'Fails rules'];
-  const levels = `<div class="rc-levels">${[1, 2, 4].map((level) =>
+  const levelNames = ['', 'Comfy', 'Meets rules', 'Caution', 'Fails rules'];
+  const levels = `<div class="rc-levels">${[1, 2, 3, 4].map((level) =>
     `<button class="rc-level rc-l${level}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
   ).join('')}</div>`;
   const legs = m.legs && m.legs.length > 1
@@ -940,16 +1204,24 @@ function renderRouteCard(m) {
         `<div class="rc-leg">Leg ${i + 1}: <b>${fmtMi(l.distM)} mi</b> · ${fmtDur(l.timeS)}${
           l.failM > 0 ? ` · <span class="rc-leg-warn">${fmtDist(l.failM)} fail</span>` : ''}</div>`).join('')}</div>`
     : '';
+  const navigation = `
+    <div class="nav-control ${turnNav.active ? 'active' : ''}">
+      <button type="button" data-nav-action="start" ${turnNav.active ? 'hidden' : ''}>▶ Start navigation</button>
+      <button type="button" data-nav-action="stop" ${turnNav.active ? '' : 'hidden'}>■ Stop</button>
+      <span id="navStatus">${navigationStatusText()}</span>
+    </div>`;
   card.innerHTML = `
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
     <a class="route-details-link" href="route-details.html">Route concerns &amp; highlights <span aria-hidden="true">→</span></a>
+    ${navigation}
     <div id="routeControlsSlot"></div>
     ${ferry}
     <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
     ${routeTypes}
     ${levels}
     ${legs}
+    ${caution}
     ${warn}
     <canvas id="profileCv"></canvas>`;
   moveControls();
@@ -1022,13 +1294,23 @@ function onRouterMessage(ev) {
   } else if (m.type === 'route') {
     if (m.id !== routing.reqId) return; // stale reply
     routing.last = m;
-    renderRouteCard(m);
     if (!m.ok) {
+      stopTurnNavigation(false);
+      renderRouteCard(m);
       drawRoute([]);
       setRouteStatus(m.reason);
       if (m.code === 'point-too-far') showPointTooFarPopup(m);
       return;
     }
+    if (turnNav.active) {
+      turnNav.route = buildTurnInstructions(m);
+      turnNav.next = 0;
+      turnNav.nearest = 0;
+      turnNav.routeM = 0;
+      turnNav.arrived = false;
+      turnNav.message = 'Route updated';
+    }
+    renderRouteCard(m);
     storeRouteDetails(m);
     drawRoute(m.coords, m.ferrySegs, m.segs);
     setRouteStatus(`${fmtMi(m.distM)} mi`);
@@ -1064,7 +1346,8 @@ function scoreRouteSeg(p) {
     shoulder_width: p.sh >= 0 ? p.sh : null,
     maxspeed_num: p.ferry ? null : p.mph,
     prohibited: false, restricted: false,
-    limited_access: p.lim === 1,
+    freeway: p.fw === 1,
+    limited_access: p.lim === 1 || p.fw === 1,
     good_facility: p.fac === 1,
     infra: p.infra === 1,
     est: p.e === 1,
@@ -1104,7 +1387,8 @@ function drawRoute(coords, ferrySegs, segs) {
   const sdata = { type: 'FeatureCollection', features: (segs || []).map((s) => ({
     type: 'Feature',
     properties: { name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
-      e: s.flags & 1 ? 1 : 0, fac: s.flags & 2 ? 1 : 0, lim: s.flags & 4 ? 1 : 0,
+      e: s.flags & 1 ? 1 : 0, fac: s.flags & 2 ? 1 : 0, fw: s.flags & 4 ? 1 : 0,
+      lim: s.flags & 128 ? 1 : 0,
       infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
       level: s.level || fallbackRouteLevel(s), hwy: isHighwaySegment(s) ? 1 : 0 },
     geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
@@ -1184,9 +1468,11 @@ let routeHighlightKey = null;
 const ROUTE_HIGHLIGHT_FILTERS = {
   desig: ['==', ['get', 'desig'], 1],
   highway: ['==', ['get', 'hwy'], 1],
-  freeway: ['==', ['get', 'lim'], 1],
+  freeway: ['==', ['get', 'fw'], 1],
+  'limited-access': ['==', ['get', 'lim'], 1],
   'level-1': ['==', ['get', 'level'], 1],
   'level-2': ['==', ['get', 'level'], 2],
+  'level-3': ['==', ['get', 'level'], 3],
   'level-4': ['==', ['get', 'level'], 4],
 };
 
@@ -1354,6 +1640,7 @@ function removeLastVia() {
 }
 
 function clearRoute() {
+  stopTurnNavigation(false);
   routing.arm = null;
   closePlacePicker(false);
   routing.start = routing.end = null;
@@ -1399,6 +1686,12 @@ const MODES = [
 function buildRoutingPanel() {
   const chips = document.getElementById('modeChips');
   document.getElementById('routeCard').addEventListener('click', (e) => {
+    const navAction = e.target.closest('[data-nav-action]');
+    if (navAction) {
+      if (navAction.dataset.navAction === 'start') startTurnNavigation();
+      else stopTurnNavigation();
+      return;
+    }
     const button = e.target.closest('[data-highlight]');
     if (button && !button.disabled) toggleRouteHighlight(button.dataset.highlight);
   });
@@ -1765,7 +2058,7 @@ function buildPlacePicker() {
 
 /* ---------------------------------------------- hover/click readout */
 const readoutEl = document.getElementById('readout');
-const LEVEL_NAME = { 0: 'unknown', 1: 'Low', 2: 'Moderate', 3: 'High', 4: 'Very high' };
+const LEVEL_NAME = { 0: 'unknown', 1: 'Low', 2: 'Moderate', 3: 'Caution', 4: 'Very high' };
 
 // Plain-language reason for a segment's verdict under the current rules.
 // Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
@@ -1774,25 +2067,28 @@ function explainLevel(n) {
     return n.wsdotBan
       ? 'Bikes prohibited — WSDOT permanent restriction.'
       : 'Bikes prohibited — OSM-tagged (bicycle=no/dismount).';
+  if (n.freeway)
+    return 'Limited-access freeway — treated as a last-resort route failure.';
   if (n.infra)
     return n.baseScore === 1
       ? 'Dedicated or protected bike path — low stress.'
       : n.baseScore === 2
       ? 'Bike lane or shared path — moderate.'
       : 'Bike infrastructure.';
-  if (n.limited_access)
-    return 'Limited-access freeway — treated as a last-resort route failure.';
-
   const spd = n.maxspeed_num;
   const shRaw = n.shoulder_width;
   const shUnknown = shRaw == null;
   const sh = shUnknown && rules.unknownShoulderZero ? 0 : shRaw;
   const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : null;
   if (spd != null && spd <= rules.freeMaxSpeed)
-    return `${spdTxt} — at or below your ${rules.freeMaxSpeed} mph no-shoulder limit, passes without a shoulder.`;
+    return n.limited_access
+      ? `${spdTxt} — meets your speed/shoulder rules, but this is a limited-access highway (caution).`
+      : `${spdTxt} — at or below your ${rules.freeMaxSpeed} mph no-shoulder limit, passes without a shoulder.`;
 
   if (n.desig)
-    return 'On a designated bike route (USBR / regional trail) — a vetted corridor, treated as meeting your criteria.';
+    return n.limited_access
+      ? 'On a designated bike route, but it is also a limited-access highway (caution).'
+      : 'On a designated bike route (USBR / regional trail) — a vetted corridor, treated as meeting your criteria.';
 
   const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
   const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
@@ -1803,6 +2099,9 @@ function explainLevel(n) {
       ? `shoulder unknown — treated as 0 ft, under your ${rules.minShoulder} ft minimum`
       : `${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`);
   if (reasons.length) return `Fails: ${reasons.join(' and ')}.`;
+
+  if (n.limited_access)
+    return 'Limited-access highway — caution. Its recorded speed and shoulder meet your current criteria.';
 
   if (spd == null && shRaw == null && !n.good_facility && !rules.unknownShoulderZero)
     return 'No speed or shoulder data for this segment.';
@@ -1878,7 +2177,7 @@ function renderReadout(feature, lngLat) {
   const p = feature.properties;
   const n = src.scorer(p);            // recompute normalized props from this feature
   const lvl = p.level != null ? p.level : effectiveLevel(n); // expr sources carry no .level
-  const verdict = lvl === 0 ? 'no data' : lvl <= display.passMax ? '✓ Pass' : '✗ Fail';
+  const verdict = lvl === 0 ? 'no data' : lvl === 3 ? '⚠ Caution' : lvl === 4 ? '✗ Fail' : '✓ Pass';
   const common = [
     ['Result', verdict],
     ['Stress', lvl === 0 ? 'unknown' : `${lvl} — ${LEVEL_NAME[lvl]}`],
@@ -1900,7 +2199,7 @@ function renderReadout(feature, lngLat) {
         ...common,
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
-        ['Type', p.infra ? 'Dedicated bike infrastructure' : p.lim ? 'Limited-access highway' : null],
+        ['Type', p.infra ? 'Dedicated bike infrastructure' : (p.fw || p.lim) ? 'Limited-access highway' : null],
       ];
     }
   } else if (src.id === 'routes') {

@@ -3,6 +3,7 @@ const FLAG_FACILITY = 2;
 const FLAG_FREEWAY = 4;
 const FLAG_INFRA = 8;
 const FLAG_FERRY = 32;
+const FLAG_LIMITED_ACCESS = 128;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 
 function fmtMi(m) { return (m / 1609.34).toFixed(1); }
@@ -15,7 +16,7 @@ function fmtDur(s) {
 function roadName(seg) { return seg.name || 'Unnamed road'; }
 function isHighway(seg) {
   const f = seg.flags || 0;
-  return !(f & (FLAG_FREEWAY | FLAG_INFRA | FLAG_FERRY))
+  return !(f & (FLAG_FREEWAY | FLAG_LIMITED_ACCESS | FLAG_INFRA | FLAG_FERRY))
     && (seg.mph >= 45 || HIGHWAY_NAME.test(seg.name || ''));
 }
 function failReason(seg, rules) {
@@ -94,6 +95,11 @@ if (!details || !details.summary || !Array.isArray(details.segs)) {
     name: roadName(s),
     meta: [s.mph ? `${s.mph} mph` : null, 'limited-access freeway'].filter(Boolean).join(' · '),
   }));
+  const limitedAccess = sections(segs,
+    (s) => !(s.flags & FLAG_FREEWAY) && !!(s.flags & FLAG_LIMITED_ACCESS), (s) => ({
+      name: roadName(s),
+      meta: [s.mph ? `${s.mph} mph` : null, 'limited-access highway'].filter(Boolean).join(' · '),
+    }));
   const highways = sections(segs, isHighway, (s) => ({
     name: roadName(s),
     meta: s.mph ? `${s.mph} mph highway` : 'Highway',
@@ -108,15 +114,22 @@ if (!details || !details.summary || !Array.isArray(details.segs)) {
     alert.textContent = `${freewayM ? `${fmtDist(freewayM)} on a freeway. ` : ''}${fmtDist(totals.failM)} of this route does not meet your riding rules.`;
   } else {
     alert.hidden = false;
-    alert.classList.add('good');
-    alert.textContent = 'No route concerns were found under your current riding rules.';
+    if (limitedAccess.length) {
+      const limitedM = limitedAccess.reduce((sum, item) => sum + item.lenM, 0);
+      alert.classList.add('caution');
+      alert.textContent = `${fmtDist(limitedM)} on a limited-access highway. It meets your current riding rules, but is shown as a caution.`;
+    } else {
+      alert.classList.add('good');
+      alert.textContent = 'No route concerns were found under your current riding rules.';
+    }
   }
 
   // This page is intentionally a short concern report, not a route inventory.
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway');
+  if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution');
   if (highways.length) renderSection(report, 'Highways', highways, '');
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail');
-  if (!freeways.length && !highways.length && !failing.length) {
-    report.innerHTML = '<div class="no-route">No freeway, highway, or rule-failing sections were found on this route.</div>';
+  if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length) {
+    report.innerHTML = '<div class="no-route">No freeway, limited-access highway, highway, or rule-failing sections were found on this route.</div>';
   }
 }

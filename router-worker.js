@@ -8,7 +8,8 @@
  *   balanced  — failing roads cost 3x their time; gentle preference for
  *               comfortable roads and bike infrastructure
  *   low       — low-stress only: failing roads are impassable
- * Prohibited ways were excluded from the graph at build time in every mode.
+ * Prohibited ways are excluded at build time (or marked by the graph migration)
+ * in every mode.
  */
 'use strict';
 
@@ -22,6 +23,10 @@ let inGiant;
 let nodeLocal;
 
 const _dec = new TextDecoder();
+// BGR3's signed shoulder byte normally ranges from -1 (unknown) to 127 ft.
+// -128 is reserved by the migration tool for a WSDOT permanent bike
+// restriction. It is a hard graph exclusion, never a routing penalty.
+const PROHIBITED_SHOULDER = -128;
 function edgeName(i) {
   const id = eName[i];
   return _dec.decode(nameBytes.subarray(nameOff[id], nameOff[id + 1]));
@@ -72,11 +77,15 @@ function loadGraph(buf) {
   for (const [k, v] of compSize) if (v > giantSize) { giantSize = v; giantRoot = k; }
   inGiant = new Uint8Array(N);
   for (let i = 0; i < N; i++) if (find(i) === giantRoot) inGiant[i] = 1;
-  // Nodes touching at least one LOCAL edge (not limited-access, not ferry):
-  // snapping prefers these so a tap near a freeway doesn't board the freeway.
+  // Nodes touching at least one LOCAL, bicycle-legal edge (not a true freeway,
+  // ferry, or permanent restriction):
+  // snapping prefers these so a tap near I-5 does not board it. A bike-legal
+  // limited-access state highway remains eligible as a normal snap target.
   nodeLocal = new Uint8Array(N);
   for (let i = 0; i < E; i++) {
-    if (!(eFlags[i] & (4 | 32))) { nodeLocal[eA[i]] = 1; nodeLocal[eB[i]] = 1; }
+    if (eSh[i] !== PROHIBITED_SHOULDER && !(eFlags[i] & (4 | 32))) {
+      nodeLocal[eA[i]] = 1; nodeLocal[eB[i]] = 1;
+    }
   }
 }
 
@@ -113,20 +122,22 @@ function nearestNode(lon, lat) {
 // Mirrors the app's effectiveLevel() for packed edge attributes.
 function edgeLevel(i, rules) {
   const flags = eFlags[i];
+  if (eSh[i] === PROHIBITED_SHOULDER) return 4;      // WSDOT prohibition
   if (flags & 32) return 2;                         // ferry — no road rules apply
   if (flags & 4) return 4;                         // freeway: last-resort failure
   if (flags & 8) return 1;                          // dedicated infrastructure
+  const limitedAccess = flags & 128;                // WSDOT bike-legal caution
   const spd = eSpeed[i];
-  if (spd <= rules.freeMaxSpeed) return 1;
+  if (spd <= rules.freeMaxSpeed) return limitedAccess ? 3 : 1;
   // Designated bike route (USBR/regional): a vetted corridor is a known
   // quantity — it meets criteria regardless of shoulder/speed data.
-  if (flags & 64) return 2;
+  if (flags & 64) return limitedAccess ? 3 : 2;
   // eSh < 0 = unknown; pessimistic mode counts that as a 0 ft shoulder.
   let sh = eSh[i];
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
   if (!(flags & 2) && sh >= 0 && sh < rules.minShoulder) return 4;
   if (!rules.noUpperLimit && spd > rules.upperMaxSpeed) return 4;
-  return 2;
+  return limitedAccess ? 3 : 2;
 }
 
 /* ------------------------------------------------ time model */
@@ -151,6 +162,12 @@ const PREF_DESIG_MULT = 0.45;
 // Freeways are a true last resort: even a short ordinary failure should win
 // over a much longer freeway detour.
 const FREEWAY_LAST_RESORT_MULT = 60;
+// WSDOT LimitedAccess is not a bike prohibition. When its own speed/shoulder
+// data passes the rider's rules, it remains a caution that is preferable to a
+// known rule failure, but less attractive than an ordinary passing road. In
+// Low-stress mode its normal high-speed cost is enough: adding a separate
+// 3x surcharge can make it lose to a known narrow-shoulder rule failure.
+const LIMITED_ACCESS_CAUTION_MULT = { direct: 1.05, balanced: 1.35, low: 1 };
 // Average terminal wait folded into a ferry leg, applied once when boarding
 // from land (mid-water route junctions don't re-charge it).
 const FERRY_BOARD_S = 15 * 60;
@@ -237,7 +254,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig) {
       if (done[v]) continue;
       const ei = outEdge[a];
       const fl = eFlags[ei];
-      // This setting controls whether a freeway can be used at all. When it
+      // Permanent WSDOT bike restriction: never traverse it, in any mode or
+      // with any setting. This is intentionally before all cost/rules logic.
+      if (eSh[ei] === PROHIBITED_SHOULDER) continue;
+      // This setting controls whether a true freeway can be used at all. When it
       // can, its level and cost still make it a route failure and last resort.
       if (!rules.allowFreeways && (fl & 4)) continue;
       const lvl = edgeLevel(ei, rules);
@@ -252,11 +272,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig) {
       let cost = step * mult;
       cost *= speedStress(mode, fl, eSpeed[ei], rules.freeMaxSpeed);
       if (fl & 4) cost *= FREEWAY_LAST_RESORT_MULT;
-      // Bonuses never apply to limited-access highways: I-90's shoulder is a
-      // designated bike route, but "prefer trails" must never cancel the
-      // last-resort freeway penalty.
-      if (prefDesig && !(fl & (32 | 4)) && (fl & (64 | 8))) cost *= PREF_DESIG_MULT;
-      else if ((fl & 64) && !(fl & 4) && mode !== 'direct') cost *= DESIGNATED_MULT;
+      if (fl & 128) cost *= LIMITED_ACCESS_CAUTION_MULT[mode];
+      // Bonuses never apply to freeway or WSDOT limited-access highways:
+      // a designation should not erase their extra caution cost.
+      if (prefDesig && !(fl & (32 | 4 | 128)) && (fl & (64 | 8))) cost *= PREF_DESIG_MULT;
+      else if ((fl & 64) && !(fl & (4 | 128)) && mode !== 'direct') cost *= DESIGNATED_MULT;
       const nd = du + cost;
       if (nd < dist[v]) {
         dist[v] = nd;

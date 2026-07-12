@@ -31,8 +31,9 @@ python3 scripts/serve.py
   - *All roads (OSM, est. speeds)* — the full public drivable network
     (~324k ways). Off by default (large download). Missing speed limits are
     estimated from road class and labeled as estimates in the readout.
-- Colorblind-friendly **blue → red** ramp (ColorBrewer RdYlBu): blue = meets
-  your criteria, red **dashed** = fails / avoid.
+- Colorblind-friendly **blue → orange → red** ramp (ColorBrewer RdYlBu): blue
+  = meets your criteria, orange = limited-access caution, red **dashed** =
+  fails / avoid.
 - **Riding rules** — controls that re-score and re-color the map **live,
   client-side, with no refetch**. Each is a HARD gate: a road fails (avoid) if
   the data we have shows a criterion isn't met (missing data isn't held against
@@ -55,6 +56,11 @@ python3 scripts/serve.py
   shell is network-first, so deploys still update instantly when online.
 - **Location aware**: a geolocate control centers the map on you and can
   follow along (blue dot + heading) — handy mid-ride.
+- **Foreground turn-by-turn navigation**: Start navigation on a planned route
+  for GPS progress, spoken approaching-turn prompts, and an on-route position
+  marker. The app requests a Screen Wake Lock while active where the browser
+  supports it. This keeps the screen awake; reliable background navigation is
+  a native-app feature, not a PWA guarantee.
 - **Mobile layout**: a bottom sheet with three tabs (Route / Layers /
   Settings) — peek, half, and full heights; the floating A/B bar routes
   without opening the sheet at all.
@@ -66,15 +72,16 @@ python3 scripts/serve.py
 - **Sources** live in a registry (`SOURCES`). Each has its own toggle, layers,
   and **scorer** (`scoreBLTS`, `scoreOSM`).
 - A **scorer** maps a source's raw properties to *normalized* props:
-  `baseScore`, `shoulder_width`, `maxspeed_num`, `prohibited`, `limited_access`,
-  `good_facility`, `infra`.
+  `baseScore`, `shoulder_width`, `maxspeed_num`, `prohibited`, `freeway`,
+  `limited_access`, `good_facility`, `infra`.
 - **`effectiveLevel(normalized)`** is the single function that turns normalized
   props + the current riding rules into an effective level: **1** (comfortable),
-  **2** (meets criteria), **4** (fails / avoid), or **0** (no data). There is no
-  "3". Dedicated bike infrastructure (`infra: true`) is rated by its type
-  (cycleway = 1, bike lane = 2); shared-with-traffic roads go through the hard
-  speed/shoulder/freeway gates. Re-scoring runs over cached features and updates
-  the map source in place — instant, no network.
+  **2** (meets criteria), **3** (limited-access caution that otherwise meets
+  criteria), **4** (fails / avoid), or **0** (no data). Dedicated bike
+  infrastructure (`infra: true`) is rated by its type (cycleway = 1, bike lane
+  = 2); shared-with-traffic roads go through the hard speed/shoulder/freeway
+  gates. Re-scoring runs over cached features and updates the map source in
+  place — instant, no network.
 
 Each source gets three MapLibre line layers: the solid main layer, a red-dashed
 `__vh` overlay (level 4 in ramp view), and a gray-dashed `__fail` overlay
@@ -97,8 +104,10 @@ python3 scripts/build_blts.py --src data/BikePedLTS.gdb --out data/blts.geojson
 
 Source: WSDOT "Bicycle and Pedestrian Level of Traffic Stress (LTS)" (File
 Geodatabase, EPSG:2927 → reprojected to 4326). `LTS_Bicycle` (1–4); `999`/missing
-is no-data. Limited-access segments (`AccessControlTypeCode` F/M/P) drive the
-freeway toggle.
+is no-data. Limited-access segments (`AccessControlTypeCode` F/M/P) are shown
+as an orange caution when their recorded speed and shoulder otherwise meet the
+rider's rules. They are distinct from true OSM motorways/freeways, which drive
+the freeway toggle and remain last-resort route failures.
 
 ### WSDOT Permanent Bike Restrictions → `data/bike_restrictions.geojson` (81 segments)
 
@@ -118,7 +127,9 @@ build time: `build_blts.py --restrictions`
 flags BLTS segments whose milepost range overlaps a restriction as
 `Prohibited` so they hard-fail scoring. The join matches mainline
 RouteIdentifier and ignores direction (over-flags the opposite direction —
-conservative for safety).
+conservative for safety). The routing graph also matches this authoritative
+restriction linework directly and excludes those edges in every routing mode;
+it never treats a permanent prohibition as a cost tradeoff.
 
 ### OSM bike infrastructure → `data/bikeinfra.geojson` (~40k ways)
 
@@ -196,10 +207,11 @@ python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
 
 A compact binary graph (nodes at intersections; edges carry length, climb/
 descent sampled every 60 m from the DEM, speed — posted, WSDOT-measured, or
-class-estimated — facility/limited-access/infrastructure flags, and shoulder
-from WSDOT conflation or OSM). WSDOT `LimitedAccess` is carried into the
-graph's freeway flag, even when OSM does not classify the road as a motorway.
-One-way streets honored; `bicycle=no` and
+class-estimated — facility/freeway/limited-access/infrastructure flags, and
+shoulder from WSDOT conflation or OSM). WSDOT `LimitedAccess` is carried into
+a separate caution flag, even when OSM does not classify the road as a
+motorway; it is routable when its speed and shoulder meet the rules. OSM
+motorways remain the graph's true freeway flag. One-way streets honored; `bicycle=no` and
 WSDOT-restricted ways excluded entirely. **Ferries** (`route=ferry` with bikes
 allowed — all WSF runs plus county and passenger-only ferries) are routable
 crossings: speed derives from the OSM `duration` tag, a ~15-minute typical
@@ -212,7 +224,10 @@ TIME (a grade-aware speed model), in three modes — **Direct** (fastest, failin
 roads allowed with a nudge), **Balanced** (failing roads cost 3× their time),
 **Low-stress** (failing roads cost 30× — any reasonable detour wins, and when
 some failing pavement is truly unavoidable the route still comes back with
-those segments pulsing red instead of a refusal). A **"Strongly prefer bike
+those segments pulsing red instead of a refusal). A limited-access road that
+otherwise meets the rider's speed and shoulder rules keeps its normal
+high-speed cost in Low-stress mode, so it can win over a known rule violation.
+A **"Strongly prefer bike
 routes & trails"** option prices designated routes and dedicated trails at
 half cost — worth riding up to ~2× the distance to stay on a Burke-Gilman
 instead of parallel streets. Results include distance, duration, total

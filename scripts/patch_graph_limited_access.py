@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Backfill WSDOT limited-access flags into an existing BGR3 routing graph.
+"""Backfill WSDOT limited-access caution flags into an existing BGR3 graph.
 
 This is a migration tool for the checked-in graph when the raw OSM and DEM
 inputs used to build it are unavailable. It preserves all graph geometry and
-elevation values, changing only edge flag bit 4 (limited access / freeway).
+elevation values, changing only edge flag bit 128 (WSDOT limited-access
+caution). It deliberately leaves bit 4 alone: that is the original OSM
+motorway/freeway flag, which the router treats as a true last resort.
 
 For a normal future rebuild, build_graph.py is authoritative and applies the
 same WSDOT LimitedAccess rule while it creates the graph.
@@ -25,7 +27,7 @@ from pathlib import Path
 MATCH_DEG = 0.00035
 STRICT_MATCH_DEG = 0.00018
 CELL_DEG = 0.01
-LIMITED_ACCESS_FLAG = 4
+LIMITED_ACCESS_CAUTION_FLAG = 128
 
 
 def align4(offset):
@@ -71,6 +73,7 @@ def graph_layout(raw):
     offset += e      # edge speed
     edge_flags = offset
     offset += e
+    edge_shoulder = offset
     offset += e      # edge shoulder
     offset = align4(offset)
     edge_geom_off = offset
@@ -94,6 +97,7 @@ def graph_layout(raw):
     return {
         'edges': e,
         'edge_flags': edge_flags,
+        'edge_shoulder': edge_shoulder,
         'edge_geom_off': edge_geom_off,
         'edge_geom_count': edge_geom_count,
         'edge_name': edge_name,
@@ -150,6 +154,11 @@ def patch_graph(raw, grid, match_deg, strict_match_deg):
     changed_by_route = Counter()
 
     for edge in range(layout['edges']):
+        # WSDOT's roadway centerline can run immediately beside a legal bike
+        # path. The normal builder never conflates WSDOT road attributes onto
+        # dedicated infrastructure, so the migration must not either.
+        if raw[layout['edge_flags'] + edge] & 8:
+            continue
         geom_off = struct.unpack_from('<I', raw, layout['edge_geom_off'] + 4 * edge)[0]
         geom_count = struct.unpack_from('<H', raw, layout['edge_geom_count'] + 2 * edge)[0]
         if geom_count < 2:
@@ -180,13 +189,13 @@ def patch_graph(raw, grid, match_deg, strict_match_deg):
         matched += 1
         matched_by_route[best_route] += 1
         flag_offset = layout['edge_flags'] + edge
-        if not raw[flag_offset] & LIMITED_ACCESS_FLAG:
-            raw[flag_offset] |= LIMITED_ACCESS_FLAG
+        if not raw[flag_offset] & LIMITED_ACCESS_CAUTION_FLAG:
+            raw[flag_offset] |= LIMITED_ACCESS_CAUTION_FLAG
             changed += 1
             changed_by_route[best_route] += 1
 
     print(f'Matched {matched:,} graph edges ({strict_matches:,} close, {numbered_matches:,} route-number matches).')
-    print(f'Added WSDOT limited-access flags to {changed:,} graph edges.')
+    print(f'Added WSDOT limited-access caution flags to {changed:,} graph edges.')
     for route in (5, 90, 104, 405, 520):
         if matched_by_route[route]:
             print(f'  SR/I-{route}: {changed_by_route[route]:,} new of {matched_by_route[route]:,} matched edges')
