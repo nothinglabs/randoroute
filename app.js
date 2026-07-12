@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.19'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.20'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -1039,6 +1039,7 @@ function addVia(lngLat) {
 
 function clearRoute() {
   routing.arm = null;
+  closePlacePicker(false);
   routing.start = routing.end = null;
   for (const v of routing.vias) v.marker.remove();
   routing.vias = [];
@@ -1095,27 +1096,14 @@ function buildRoutingPanel() {
     computeRoute();
   });
 
-  const safe = document.createElement('div');
-  safe.className = 'check-rule';
-  safe.style.margin = '0 0 10px';
-  safe.innerHTML = `
-    <input type="checkbox" id="requireSafe" ${rules.requireSafe ? 'checked' : ''}>
-    <label for="requireSafe">Fail if no complete safe route found</label>`;
-  pref.after(safe);
-  safe.querySelector('input').addEventListener('change', (e) => {
-    rules.requireSafe = e.target.checked;
-    saveStateSoon();
-    computeRoute();
-  });
-
   renderRouteCard(null);
 
   for (const kind of ['start', 'end']) {
-    document.getElementById('rb-' + kind).addEventListener('click', () => openPlaceDialog(kind));
+    document.getElementById('rb-' + kind).addEventListener('click', () => openPlacePicker(kind));
   }
   document.getElementById('rb-via').addEventListener('click', () => armRoutePoint('via'));
   document.getElementById('rb-clear').addEventListener('click', clearRoute);
-  buildPlaceDialog();
+  buildPlacePicker();
   buildSavedRoutes();
 
   // Restore the persisted route (markers + recompute) from the last session.
@@ -1208,19 +1196,35 @@ function ensurePlaces() {
 }
 
 let placeTarget = null;
-function openPlaceDialog(kind) {
+function closePlacePicker(cancelArm = false) {
+  document.getElementById('placePicker').hidden = true;
+  document.getElementById('placeResults').replaceChildren();
+  document.getElementById('placeResults').classList.remove('show');
+  if (cancelArm && (routing.arm === 'start' || routing.arm === 'end')) {
+    routing.arm = null;
+    updateArmButtons();
+    setRouteStatus('');
+  }
+}
+
+function openPlacePicker(kind) {
   placeTarget = kind;
-  const dialog = document.getElementById('placeDialog');
-  document.getElementById('placeDialogTitle').textContent = kind === 'start' ? 'Set start' : 'Set destination';
+  routing.arm = kind;
+  updateArmButtons();
+  ensureRouter();
+  setPanelOpen(false);
+  document.getElementById('placePickerTitle').textContent =
+    (kind === 'start' ? 'Set start' : 'Set destination') + ' — tap map or search';
   document.getElementById('useLoc').hidden = kind !== 'start';
   document.getElementById('placeSearch').value = '';
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
-  dialog.showModal();
-  document.getElementById('placeSearch').focus();
+  document.getElementById('placePicker').hidden = false;
+  setRouteStatus(`Tap the map or search to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
 }
 
 function armRoutePoint(kind) {
+  closePlacePicker(false);
   routing.arm = routing.arm === kind ? null : kind;
   updateArmButtons();
   ensureRouter();
@@ -1233,7 +1237,7 @@ function armRoutePoint(kind) {
   }
 }
 
-function buildPlaceDialog() {
+function buildPlacePicker() {
   const input = document.getElementById('placeSearch');
   const results = document.getElementById('placeResults');
   const TYPE_LABEL = { city: 'city', town: 'town', village: 'village', hamlet: 'hamlet',
@@ -1267,16 +1271,15 @@ function buildPlaceDialog() {
     const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
     map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
     setRoutePoint(placeTarget, lngLat);
+    routing.arm = null;
+    updateArmButtons();
     setRouteStatus(placeTarget === 'start' ? 'Start set — choose End next' : 'Destination set');
-    document.getElementById('placeDialog').close();
+    closePlacePicker(false);
     input.value = '';
     render([]);
   });
 
-  document.getElementById('placeMapBtn').addEventListener('click', () => {
-    document.getElementById('placeDialog').close();
-    armRoutePoint(placeTarget);
-  });
+  document.getElementById('placePickerClose').addEventListener('click', () => closePlacePicker(true));
   document.getElementById('useLoc').addEventListener('click', () => {
     if (!navigator.geolocation) { setStatus('No location access on this device', true); return; }
     setRouteStatus('Locating…');
@@ -1284,7 +1287,9 @@ function buildPlaceDialog() {
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
       setRoutePoint(placeTarget, lngLat);
       map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
-      document.getElementById('placeDialog').close();
+      routing.arm = null;
+      updateArmButtons();
+      closePlacePicker(false);
       setRouteStatus('Start = your location. Choose End next');
     }, () => setRouteStatus('Could not get your location'), { enableHighAccuracy: true, timeout: 10000 });
   });
@@ -1490,12 +1495,19 @@ function renderReadout(feature, lngLat) {
   // Google Maps app via universal link on iOS, web elsewhere).
   const gmaps = `https://maps.google.com/?q=${lngLat.lat.toFixed(6)},${lngLat.lng.toFixed(6)}`;
   readoutEl.innerHTML =
+    `<button class="readout-close" aria-label="Close road information">✕</button>` +
     `<div class="rt-title">${title}</div><table>` +
     rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('') +
     '</table>' +
     `<a class="gmap" href="${gmaps}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
   readoutEl.classList.add('show');
 }
+
+readoutEl.addEventListener('click', (e) => {
+  if (!e.target.closest('.readout-close')) return;
+  readoutPinned = false;
+  readoutEl.classList.remove('show');
+});
 
 // ONE global handler pair (per-layer handlers raced where layers overlap).
 map.on('mousemove', (e) => {
@@ -1512,6 +1524,7 @@ function placeArmedPoint(lngLat) {
   lastPlacementTs = Date.now();
   routing.arm = null;
   updateArmButtons();
+  closePlacePicker(false);
   readoutPinned = false;
   readoutEl.classList.remove('show'); // don't leave a stale road popup up
   if (kind === 'via') {
@@ -1561,6 +1574,7 @@ map.on('click', (e) => {
   if (Date.now() - lastPlacementTs < 600) return; // click synthesized from the placement touch
   const f = featureAt(e.point);
   if (f) {
+    if (window.matchMedia('(max-width: 720px)').matches) setPanelOpen(false);
     renderReadout(f, e.lngLat);
     readoutPinned = true;
   } else {
@@ -1637,6 +1651,8 @@ function buildRulesPanel() {
   };
 
   check('allowFreeways', 'Allow freeways', 'Ride limited-access highway shoulders where legal.');
+  check('requireSafe', 'Fail if no complete safe route found',
+    'Off by default. When enabled, routing fails instead of using an unavoidable road outside your rules.');
   slider('minShoulder', 'Minimum shoulder', 'Roads with a shoulder narrower than this fail.', 0, 10, 1, ' ft');
   check('unknownShoulderZero', 'Unknown shoulder treated as 0 ft',
     'Fast roads must have shoulder data to pass. Off: unknown isn’t held against a road.');
@@ -1712,18 +1728,18 @@ buildLegend();
 function setPanelOpen(open) {
   document.body.classList.toggle('panel-open', open);
 }
-document.querySelectorAll('#tabs button').forEach((b) => {
+document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
   b.addEventListener('click', () => {
-    const selected = b.classList.contains('active');
-    if (window.matchMedia('(max-width: 720px)').matches && selected && document.body.classList.contains('panel-open')) {
-      setPanelOpen(false);
-      return;
-    }
     document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
     document.querySelectorAll('.tab').forEach((t) =>
       t.classList.toggle('active', t.id === 'tab-' + b.dataset.tab));
     setPanelOpen(true);
   });
+});
+document.getElementById('panelClose').addEventListener('click', () => setPanelOpen(false));
+document.getElementById('panelOpen').addEventListener('click', () => {
+  closePlacePicker(true);
+  setPanelOpen(true);
 });
 
 // Dialog close buttons and small map-corner version stamp.

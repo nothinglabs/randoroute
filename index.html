@@ -27,11 +27,14 @@
     <span id="rb-status"></span>
   </div>
 
+  <button id="panelOpen" aria-label="Show map controls" title="Show map controls">☰</button>
+
   <div class="panel" id="panel">
     <nav id="tabs">
       <button data-tab="route" class="active">Route</button>
       <button data-tab="layers">Layers</button>
       <button data-tab="settings">Settings</button>
+      <button id="panelClose" aria-label="Hide map controls" title="Hide map controls">✕</button>
     </nav>
 
     <section class="tab active" id="tab-route">
@@ -56,17 +59,16 @@
       <div id="rules"></div>
       <button id="updateBtn" class="update-btn">Check for update</button>
     </section>
+  </div>
 
-  <dialog id="placeDialog" class="map-dialog">
-    <div class="dialog-head"><h2 id="placeDialogTitle">Set location</h2><button class="dialog-close" data-close="placeDialog" aria-label="Close">✕</button></div>
-    <p class="hint">Find a town, trailhead, or ferry terminal.</p>
-    <input id="placeSearch" type="search" placeholder="Search places…" autocomplete="off">
-    <div id="placeResults" class="place-results"></div>
-    <div class="dialog-actions">
-      <button id="placeMapBtn">Tap on map</button>
-      <button id="useLoc">Use my location</button>
+  <div id="placePicker" class="place-picker" hidden>
+    <div class="picker-head"><strong id="placePickerTitle">Set location — tap map or search</strong><button id="placePickerClose" aria-label="Close location picker">✕</button></div>
+    <div class="picker-search-row">
+      <input id="placeSearch" type="search" placeholder="Search places…" autocomplete="off">
+      <button id="useLoc" aria-label="Use my location" title="Use my location">⌖</button>
     </div>
-  </dialog>
+    <div id="placeResults" class="place-results"></div>
+  </div>
 
   <dialog id="routesDialog" class="map-dialog">
     <div class="dialog-head"><h2>Saved routes</h2><button class="dialog-close" data-close="routesDialog" aria-label="Close">✕</button></div>
