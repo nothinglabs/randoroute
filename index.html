@@ -33,6 +33,13 @@
     </div>
   </div>
   <div id="mobileNavDock"></div>
+  <button id="legendToggle" type="button" aria-expanded="false" aria-controls="legendFlyout" title="Show map legend">
+    <span aria-hidden="true">≡</span> Legend
+  </button>
+  <aside id="legendFlyout" aria-label="Map legend" hidden>
+    <div class="legend-flyout-head"><strong>Map legend</strong><button id="legendClose" type="button" aria-label="Hide map legend" title="Hide map legend">✕</button></div>
+    <div class="legend" id="legend"></div>
+  </aside>
 
   <button id="panelOpen" aria-label="Show map controls" title="Show map controls"><span class="panel-control-icon" aria-hidden="true">☰</span><span class="panel-control-label">Menu</span></button>
 
@@ -53,9 +60,8 @@
     </section>
 
     <section class="tab" id="tab-layers">
+      <div class="layers-intro"><strong>Map layers</strong><span>Choose the data drawn on the map.</span></div>
       <div id="sources"></div>
-      <h2>Legend</h2>
-      <div class="legend" id="legend"></div>
     </section>
 
     <section class="tab" id="tab-settings">
@@ -64,8 +70,14 @@
         <button type="button" role="tab" aria-selected="false" data-settings-pane="options">Options</button>
         <button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button>
       </div>
-      <div id="settings-limits" class="settings-pane" role="tabpanel"><div id="settingsSliders"></div></div>
-      <div id="settings-options" class="settings-pane" role="tabpanel" hidden><div id="settingsOptions"></div></div>
+      <div id="settings-limits" class="settings-pane" role="tabpanel">
+        <p class="settings-summary">Set rules a route must pass — map colors update live.</p>
+        <div id="settingsSliders"></div>
+      </div>
+      <div id="settings-options" class="settings-pane" role="tabpanel" hidden>
+        <p class="settings-summary">Set rules a route must pass — map colors update live.</p>
+        <div id="settingsOptions"></div>
+      </div>
     </section>
   </div>
 

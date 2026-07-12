@@ -402,7 +402,7 @@ const map = new maplibregl.Map({
 });
 // A double tap is too easy to trigger while placing or inspecting a point on
 // a phone, and can leave the app looking brokenly zoomed-in. Desktop keeps the
-// conventional double-click zoom; touch devices use the visible +/- controls.
+// conventional double-click zoom; touch devices still support pinch zoom.
 const COARSE_POINTER = window.matchMedia('(pointer: coarse)').matches;
 if (COARSE_POINTER) map.doubleClickZoom.disable();
 // Keep the statewide view readable. The All-roads layer is on by default, but
@@ -428,7 +428,6 @@ if (window.pmtiles) {
   const _pmProtocol = new pmtiles.Protocol();
   maplibregl.addProtocol('pmtiles', _pmProtocol.tile);
 }
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 map.on('moveend', saveStateSoon);
 map.addControl(
   new maplibregl.GeolocateControl({
@@ -1183,6 +1182,22 @@ function updateTurnNavigation(pos) {
   refreshNavigationUI();
 }
 
+function handleTurnNavigationLocationError(error) {
+  if (!turnNav.active) return;
+  // A navigation watch can time out while the map's own location watch still
+  // has a usable (possibly cached) fix.  Treat only an explicit denial as an
+  // access problem; the other geolocation errors are normally transient GPS
+  // acquisition issues and the watch remains active to recover on its own.
+  if (Number(error?.code) === 1) {
+    turnNav.message = 'Location permission is blocked';
+  } else if (Number(error?.code) === 3) {
+    turnNav.message = 'Waiting for a GPS fix';
+  } else {
+    turnNav.message = 'Location signal is temporarily unavailable';
+  }
+  refreshNavigationUI();
+}
+
 function startTurnNavigation() {
   if (!routing.last?.ok || !navigator.geolocation) {
     setStatus('Set a route and allow location access to start navigation.', true);
@@ -1203,12 +1218,11 @@ function startTurnNavigation() {
   speakNavigation('Navigation started. Follow the route on the map.');
   turnNav.watchId = navigator.geolocation.watchPosition(
     updateTurnNavigation,
-    () => {
-      turnNav.message = 'Location is unavailable';
-      refreshNavigationUI();
-      setStatus('Navigation needs location access.', true);
-    },
-    { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+    handleTurnNavigationLocationError,
+    // Accept a recent fix and allow GPS a little longer to acquire one. This
+    // avoids a false "needs location access" warning on phones whose map
+    // marker is already working but whose second watcher has not updated yet.
+    { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 }
   );
   requestNavigationWakeLock();
 }
@@ -1295,9 +1309,11 @@ function renderRouteCard(m) {
     return;
   }
   const stats = routeSummaryStats(m);
-  const ferry = m.ferryM > 0
-    ? `<div class="rc-sub">⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)</div>`
-    : '';
+  // Reserve this line even when a mode does not use a ferry. That keeps the
+  // sheet from jumping when switching between otherwise valid route modes.
+  const ferry = `<div class="rc-sub rc-ferry">${m.ferryM > 0
+    ? `⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)`
+    : '&nbsp;'}</div>`;
   const routeTypeParts = [
     `<button class="rc-highlight-item" data-highlight="desig" aria-pressed="false" title="Highlight bike-route segments on the map" ${m.desigM > 0 ? '' : 'disabled'}><span>★ Bike routes</span><b>${fmtDist(m.desigM)}</b></button>`,
   ];
@@ -2699,6 +2715,18 @@ buildSourcePanel();
 buildRulesPanel();
 buildRoutingPanel();
 buildLegend();
+
+function setLegendOpen(open) {
+  const flyout = document.getElementById('legendFlyout');
+  const toggle = document.getElementById('legendToggle');
+  if (!flyout || !toggle) return;
+  flyout.hidden = !open;
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.title = open ? 'Hide map legend' : 'Show map legend';
+}
+document.getElementById('legendToggle').addEventListener('click', () =>
+  setLegendOpen(document.getElementById('legendFlyout').hidden));
+document.getElementById('legendClose').addEventListener('click', () => setLegendOpen(false));
 
 // On phones, navigation and Menu form a left-thumb control dock. The
 // navigation control moves above the open sheet so guidance never disappears
