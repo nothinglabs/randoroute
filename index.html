@@ -24,6 +24,7 @@
     <button id="rb-end" class="rb-pill rb-pill-end" title="Set destination">End</button>
     <button id="rb-via" title="Add a stop">+</button>
     <button id="rb-via-remove" title="Remove last stop" aria-label="Remove last stop">−</button>
+    <button id="rb-nav" class="rb-pill rb-nav" title="Start turn-by-turn navigation" hidden>Start nav</button>
     <button id="rb-clear" title="Clear route">✕</button>
     <span id="rb-status"></span>
   </div>
@@ -109,6 +110,11 @@
 
   <div class="readout" id="readout"></div>
   <div class="status" id="status">Loading…</div>
+  <div id="navBanner" class="nav-banner" role="status" aria-live="polite" hidden>
+    <span id="navBannerText"></span>
+    <button type="button" data-nav-action="details">Route details</button>
+    <button type="button" data-nav-action="pause">Pause</button>
+  </div>
   <div id="updatePrompt" class="update-prompt" hidden>
     <span>New version available</span>
     <button id="getUpdateBtn">Get update?</button>

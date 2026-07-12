@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.43'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.44'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -995,19 +995,31 @@ function navigationStatusText() {
   return `${turnNav.message ? `${turnNav.message} · ` : ''}Next: ${next.text} in ${navDistanceText(remaining)}`;
 }
 
-function refreshNavigationCard() {
-  const status = document.getElementById('navStatus');
-  if (status) status.textContent = navigationStatusText();
-  const start = document.querySelector('[data-nav-action="start"]');
-  const stop = document.querySelector('[data-nav-action="stop"]');
-  if (start) start.hidden = turnNav.active;
-  if (stop) stop.hidden = !turnNav.active;
+function openRouteDetails() {
+  if (routing.last?.ok) window.location.href = 'route-details.html';
+}
+
+function refreshNavigationUI() {
+  const routeAvailable = !!routing.last?.ok;
+  document.body.classList.toggle('navigation-active', turnNav.active);
+  const navButton = document.getElementById('rb-nav');
+  if (navButton) {
+    navButton.hidden = !routeAvailable;
+    navButton.classList.toggle('active', turnNav.active);
+    navButton.textContent = turnNav.active ? 'Pause' : 'Start nav';
+    navButton.title = turnNav.active ? 'Pause turn-by-turn navigation' : 'Start turn-by-turn navigation';
+    navButton.setAttribute('aria-label', navButton.title);
+  }
+  const banner = document.getElementById('navBanner');
+  const bannerText = document.getElementById('navBannerText');
+  if (banner) banner.hidden = !turnNav.active;
+  if (bannerText) bannerText.textContent = navigationStatusText();
 }
 
 function speakNavigation(text) {
   if (!('speechSynthesis' in window)) {
     turnNav.message = 'Voice is unavailable in this browser';
-    refreshNavigationCard();
+    refreshNavigationUI();
     return;
   }
   try {
@@ -1030,7 +1042,7 @@ async function requestNavigationWakeLock() {
   } catch (e) {
     turnNav.message = 'Screen may sleep on this browser';
   }
-  refreshNavigationCard();
+  refreshNavigationUI();
 }
 
 function releaseNavigationWakeLock() {
@@ -1081,7 +1093,7 @@ function updateTurnNavigation(pos) {
       speakNavigation('You appear to be off route. Check the map to recalculate.');
       turnNav.offRouteSpokenAt = Date.now();
     }
-    refreshNavigationCard();
+    refreshNavigationUI();
     return;
   }
   turnNav.message = '';
@@ -1092,7 +1104,7 @@ function updateTurnNavigation(pos) {
       turnNav.message = 'Arrived';
       speakNavigation('You have arrived at your destination.');
     }
-    refreshNavigationCard();
+    refreshNavigationUI();
     return;
   }
   const remaining = next.distanceM - turnNav.routeM;
@@ -1109,7 +1121,7 @@ function updateTurnNavigation(pos) {
     next.now = true;
     speakNavigation(`${next.text}.`);
   }
-  refreshNavigationCard();
+  refreshNavigationUI();
 }
 
 function startTurnNavigation() {
@@ -1125,13 +1137,13 @@ function startTurnNavigation() {
   turnNav.arrived = false;
   turnNav.offRouteSpokenAt = 0;
   turnNav.message = 'Getting your location';
-  renderRouteCard(routing.last);
+  refreshNavigationUI();
   speakNavigation('Navigation started. Follow the route on the map.');
   turnNav.watchId = navigator.geolocation.watchPosition(
     updateTurnNavigation,
     () => {
       turnNav.message = 'Location is unavailable';
-      refreshNavigationCard();
+      refreshNavigationUI();
       setStatus('Navigation needs location access.', true);
     },
     { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
@@ -1150,7 +1162,7 @@ function stopTurnNavigation(announce = true) {
   turnNav.message = '';
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   if (announce) speakNavigation('Navigation stopped.');
-  if (routing.last?.ok) renderRouteCard(routing.last);
+  refreshNavigationUI();
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -1170,11 +1182,13 @@ function renderRouteCard(m) {
       search for or tap your start point. Use <b>End</b> for the destination. Routes follow your
       riding rules and chosen mode, entirely on this device.</div><div id="routeControlsSlot"></div>`;
     moveControls();
+    refreshNavigationUI();
     return;
   }
   if (!m.ok) {
     card.innerHTML = `<div class="rc-empty">${m.reason}</div><div id="routeControlsSlot"></div>`;
     moveControls();
+    refreshNavigationUI();
     return;
   }
   const stats = routeSummaryStats(m);
@@ -1193,10 +1207,10 @@ function renderRouteCard(m) {
   ];
   if (stats.highwayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="highway" aria-pressed="false" title="Highlight highway segments on the map"><span>⚠ Highways</span><b>${fmtDist(stats.highwayM)}</b></button>`);
   if (stats.freewayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="freeway" aria-pressed="false" title="Highlight freeway segments on the map"><span>⛔ Freeways</span><b>${fmtDist(stats.freewayM)}</b></button>`);
-  if (stats.limitedAccessM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access highway segments on the map"><span>⚠ Limited access</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`);
+  if (stats.limitedAccessM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access (caution) segments on the map"><span>⚠ Limited access</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`);
   const routeTypes = `<div class="rc-route-types">${routeTypeParts.join('')}</div>`;
   const levelNames = ['', 'Comfy', 'Meets rules', 'Caution', 'Fails rules'];
-  const levels = `<div class="rc-levels">${[1, 2, 3, 4].map((level) =>
+  const levels = `<div class="rc-levels">${[1, 2, 4].map((level) =>
     `<button class="rc-level rc-l${level}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
   ).join('')}</div>`;
   const legs = m.legs && m.legs.length > 1
@@ -1204,17 +1218,10 @@ function renderRouteCard(m) {
         `<div class="rc-leg">Leg ${i + 1}: <b>${fmtMi(l.distM)} mi</b> · ${fmtDur(l.timeS)}${
           l.failM > 0 ? ` · <span class="rc-leg-warn">${fmtDist(l.failM)} fail</span>` : ''}</div>`).join('')}</div>`
     : '';
-  const navigation = `
-    <div class="nav-control ${turnNav.active ? 'active' : ''}">
-      <button type="button" data-nav-action="start" ${turnNav.active ? 'hidden' : ''}>▶ Start navigation</button>
-      <button type="button" data-nav-action="stop" ${turnNav.active ? '' : 'hidden'}>■ Stop</button>
-      <span id="navStatus">${navigationStatusText()}</span>
-    </div>`;
   card.innerHTML = `
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
     <a class="route-details-link" href="route-details.html">Route concerns &amp; highlights <span aria-hidden="true">→</span></a>
-    ${navigation}
     <div id="routeControlsSlot"></div>
     ${ferry}
     <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
@@ -1231,6 +1238,7 @@ function renderRouteCard(m) {
     b.setAttribute('aria-pressed', String(active));
   });
   drawProfile(m.profile, m.distM);
+  refreshNavigationUI();
 }
 
 function drawProfile(profile, distM) {
@@ -1686,12 +1694,6 @@ const MODES = [
 function buildRoutingPanel() {
   const chips = document.getElementById('modeChips');
   document.getElementById('routeCard').addEventListener('click', (e) => {
-    const navAction = e.target.closest('[data-nav-action]');
-    if (navAction) {
-      if (navAction.dataset.navAction === 'start') startTurnNavigation();
-      else stopTurnNavigation();
-      return;
-    }
     const button = e.target.closest('[data-highlight]');
     if (button && !button.disabled) toggleRouteHighlight(button.dataset.highlight);
   });
@@ -1727,7 +1729,16 @@ function buildRoutingPanel() {
   }
   document.getElementById('rb-via').addEventListener('click', () => armRoutePoint('via'));
   document.getElementById('rb-via-remove').addEventListener('click', removeLastVia);
+  document.getElementById('rb-nav').addEventListener('click', () => {
+    if (turnNav.active) stopTurnNavigation();
+    else startTurnNavigation();
+  });
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
+  document.getElementById('navBanner').addEventListener('click', (e) => {
+    const action = e.target.closest('[data-nav-action]')?.dataset.navAction;
+    if (action === 'pause') stopTurnNavigation();
+    else if (action === 'details') openRouteDetails();
+  });
   document.getElementById('confirmClearRoute').addEventListener('click', () => {
     document.getElementById('clearRouteDialog').close();
     clearRoute();
