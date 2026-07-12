@@ -34,7 +34,7 @@
   </div>
   <div id="mobileNavDock"></div>
   <button id="legendToggle" type="button" aria-expanded="false" aria-controls="legendFlyout" title="Show map legend">
-    <span aria-hidden="true">≡</span> Legend
+    <span aria-hidden="true">☰</span>
   </button>
   <aside id="legendFlyout" aria-label="Map legend" hidden>
     <div class="legend-flyout-head"><strong>Map legend</strong><button id="legendClose" type="button" aria-label="Hide map legend" title="Hide map legend">✕</button></div>
@@ -60,7 +60,7 @@
     </section>
 
     <section class="tab" id="tab-layers">
-      <div class="layers-intro"><strong>Map layers</strong><span>Choose the data drawn on the map.</span></div>
+      <div class="layers-intro"><strong>Map layers</strong><br><span>Choose the data drawn on the map.</span></div>
       <div id="sources"></div>
     </section>
 
@@ -71,11 +71,11 @@
         <button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button>
       </div>
       <div id="settings-limits" class="settings-pane" role="tabpanel">
-        <p class="settings-summary">Set rules a route must pass — map colors update live.</p>
+        <p class="settings-summary">Rules update map colors and your route in real time.</p>
         <div id="settingsSliders"></div>
       </div>
       <div id="settings-options" class="settings-pane" role="tabpanel" hidden>
-        <p class="settings-summary">Set rules a route must pass — map colors update live.</p>
+        <p class="settings-summary">Rules update map colors and your route in real time.</p>
         <div id="settingsOptions"></div>
       </div>
     </section>
@@ -85,6 +85,7 @@
     <div class="picker-head"><strong id="placePickerTitle">Set location — tap map or search</strong><button id="placePickerClose" aria-label="Close location picker">✕</button></div>
     <div class="picker-search-row">
       <input id="placeSearch" type="search" placeholder="Search places…" autocomplete="off">
+      <button id="onlinePlaceSearch" hidden aria-label="Search online for places" title="Search online for places">⌕</button>
       <button id="useLoc" aria-label="Use my location" title="Use my location">⌖</button>
     </div>
     <div id="placeResults" class="place-results"></div>
@@ -131,7 +132,7 @@
   <dialog id="settingsHelpDialog" class="map-dialog settings-help-dialog">
     <div class="dialog-head"><h2>Routing settings</h2><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div>
     <section><h3>Limits</h3><p><b>Minimum shoulder</b> is the width required on faster roads. <b>Max acceptable speed without shoulder</b> lets slower roads pass even where shoulder data is missing. <b>Never allow roads faster than</b> makes roads above the selected speed fail; “no cutoff” leaves the shoulder rule in charge.</p></section>
-    <section><h3>Options</h3><p><b>Allow freeway as last resort</b> permits a freeway only when the network otherwise has no route; it still fails the rules. <b>Fail if no complete safe route found</b> returns no route instead of showing an unavoidable failing segment. <b>Unknown shoulder treated as 0 ft</b> requires fast roads to prove an adequate shoulder.</p></section>
+    <section><h3>Options</h3><p><b>Allow freeway as last resort</b> permits a freeway only when the network otherwise has no route; it still fails the rules. <b>Fail if no complete safe route found</b> returns no route instead of showing an unavoidable failing segment. <b>Unknown shoulder treated as 0 ft</b> requires fast roads to prove an adequate shoulder. <b>Try online place search</b> adds a manual online lookup button to Start and End search; local search remains available, and the typed query is sent only when that button is pressed.</p></section>
     <section><h3>How the router uses them</h3><p>Direct is quickest, Balanced avoids bad roads when the detour is reasonable, and Low-stress detours further to avoid failures. Designated bike routes and trails are strongly preferred when that option is on.</p></section>
   </dialog>
 

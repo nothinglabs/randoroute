@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.69'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.70'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -44,6 +44,12 @@ const rules = {
   upperMaxSpeed: 45,    // mph; above this it's high-stress unless shoulder/facility is adequate
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // error out instead of returning a route with failing roads
+};
+
+// These change the app experience but not how a route is scored, so they stay
+// local to this device rather than being included in a shared route link.
+const preferences = {
+  onlinePlaceSearch: false,
 };
 
 /* --------------------------------------------------- display state */
@@ -310,6 +316,7 @@ let savedState = null;
 try { savedState = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); } catch (e) { /* ignore */ }
 if (savedState) {
   if (savedState.rules) Object.assign(rules, savedState.rules);
+  if (savedState.preferences) Object.assign(preferences, savedState.preferences);
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
 }
 
@@ -366,7 +373,7 @@ function saveStateSoon() {
   saveTimer = setTimeout(() => {
     try {
       localStorage.setItem(STATE_KEY, JSON.stringify({
-        rules, passFail: display.passFail,
+        rules, preferences, passFail: display.passFail,
         mode: routing.mode, prefDesig: routing.prefDesig,
         sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
         view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
@@ -435,7 +442,7 @@ map.addControl(
     trackUserLocation: true,
     showUserHeading: true,
   }),
-  'top-right'
+  'bottom-left'
 );
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
 
@@ -2142,7 +2149,47 @@ function ensurePlaces() {
 }
 
 let placeTarget = null;
+let placeSearchRequestId = 0;
+const onlinePlaceCache = new Map();
+let onlinePlaceLastRequestAt = 0;
+const ONLINE_PLACE_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
+const ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS = 1100;
+
+function syncOnlinePlaceSearchControl() {
+  const button = document.getElementById('onlinePlaceSearch');
+  if (button) button.hidden = !preferences.onlinePlaceSearch;
+}
+
+async function searchOnlinePlaces(query) {
+  const normalized = query.trim().replace(/\s+/g, ' ').toLowerCase();
+  if (normalized.length < 2) return [];
+  if (onlinePlaceCache.has(normalized)) return onlinePlaceCache.get(normalized);
+  if (navigator.onLine === false) throw new Error('offline');
+
+  const waitMs = Math.max(0, ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS - (Date.now() - onlinePlaceLastRequestAt));
+  if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
+  onlinePlaceLastRequestAt = Date.now();
+
+  const url = new URL(ONLINE_PLACE_SEARCH_ENDPOINT);
+  url.search = new URLSearchParams({
+    format: 'jsonv2', q: query.trim(), limit: '5', countrycodes: 'us', addressdetails: '0',
+  });
+  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!response.ok) throw new Error(`search failed (${response.status})`);
+  const data = await response.json();
+  const matches = (Array.isArray(data) ? data : [])
+    .map((item) => ({
+      name: String(item.display_name || '').trim().slice(0, 180),
+      lon: Number(item.lon), lat: Number(item.lat), source: 'online',
+    }))
+    .filter((item) => item.name && Number.isFinite(item.lon) && Number.isFinite(item.lat));
+  if (onlinePlaceCache.size >= 50) onlinePlaceCache.delete(onlinePlaceCache.keys().next().value);
+  onlinePlaceCache.set(normalized, matches);
+  return matches;
+}
+
 function closePlacePicker(cancelArm = false) {
+  placeSearchRequestId++;
   const picker = document.getElementById('placePicker');
   if (document.activeElement && picker.contains(document.activeElement)) document.activeElement.blur();
   picker.hidden = true;
@@ -2165,6 +2212,10 @@ function openPlacePicker(kind) {
   document.getElementById('placePickerTitle').textContent =
     (kind === 'start' ? 'Set start' : 'Set destination') + ' — tap map or search';
   document.getElementById('useLoc').hidden = kind !== 'start';
+  syncOnlinePlaceSearchControl();
+  const onlineButton = document.getElementById('onlinePlaceSearch');
+  onlineButton.disabled = false;
+  onlineButton.textContent = '⌕';
   document.getElementById('placeSearch').value = '';
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
@@ -2191,19 +2242,31 @@ function armRoutePoint(kind) {
 function buildPlacePicker() {
   const input = document.getElementById('placeSearch');
   const results = document.getElementById('placeResults');
+  const onlineButton = document.getElementById('onlinePlaceSearch');
   const TYPE_LABEL = { city: 'city', town: 'town', village: 'village', hamlet: 'hamlet',
     suburb: 'suburb', neighbourhood: 'neighborhood', ferry: 'ferry terminal' };
 
   const render = (items) => {
-    results.innerHTML = items.map(([n, lon, lat, t], i) =>
-      `<button class="place-hit" data-i="${i}" data-lon="${lon}" data-lat="${lat}">
-         ${n} <small>${TYPE_LABEL[t] || t}</small></button>`).join('');
+    results.replaceChildren();
+    for (const item of items) {
+      const hit = document.createElement('button');
+      hit.className = 'place-hit';
+      hit.dataset.lon = String(item.lon);
+      hit.dataset.lat = String(item.lat);
+      hit.append(document.createTextNode(item.name + ' '));
+      const detail = document.createElement('small');
+      detail.textContent = item.source === 'online'
+        ? 'online · OpenStreetMap'
+        : (TYPE_LABEL[item.type] || item.type || 'place');
+      hit.append(detail);
+      results.append(hit);
+    }
     results.classList.toggle('show', items.length > 0);
   };
 
-  const search = () => {
+  const localMatches = () => {
     const q = input.value.trim().toLowerCase();
-    if (!q || !placesIndex) { render([]); return; }
+    if (!q || !placesIndex) return [];
     const starts = [], contains = [];
     for (const p of placesIndex) {
       const n = p[0].toLowerCase();
@@ -2211,11 +2274,54 @@ function buildPlacePicker() {
       else if (n.includes(q)) contains.push(p);
       if (starts.length >= 8) break;
     }
-    render(starts.concat(contains).slice(0, 8));
+    return starts.concat(contains).slice(0, 8).map(([name, lon, lat, type]) =>
+      ({ name, lon, lat, type, source: 'local' }));
+  };
+
+  const showLocalMatches = () => render(localMatches());
+  const searchOnline = async () => {
+    const query = input.value.trim();
+    if (!preferences.onlinePlaceSearch) return;
+    if (query.length < 2) {
+      setRouteStatus('Enter at least two characters to search online');
+      return;
+    }
+    const requestId = ++placeSearchRequestId;
+    onlineButton.disabled = true;
+    onlineButton.textContent = '…';
+    showLocalMatches();
+    try {
+      const onlineMatches = await searchOnlinePlaces(query);
+      if (requestId !== placeSearchRequestId || input.value.trim() !== query) return;
+      render([...onlineMatches, ...localMatches()]);
+      if (!onlineMatches.length) setRouteStatus('No online matches — local search is still available');
+    } catch (e) {
+      if (requestId === placeSearchRequestId) {
+        showLocalMatches();
+        setRouteStatus('Online search unavailable — showing local places');
+      }
+    } finally {
+      if (requestId === placeSearchRequestId) {
+        onlineButton.disabled = false;
+        onlineButton.textContent = '⌕';
+      }
+    }
   };
 
   input.addEventListener('focus', ensurePlaces);
-  input.addEventListener('input', () => { ensurePlaces().then(search); search(); });
+  input.addEventListener('input', () => {
+    placeSearchRequestId++;
+    const query = input.value;
+    ensurePlaces().then(() => { if (input.value === query) showLocalMatches(); });
+    showLocalMatches();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && preferences.onlinePlaceSearch) {
+      e.preventDefault();
+      searchOnline();
+    }
+  });
+  onlineButton.addEventListener('click', searchOnline);
   results.addEventListener('click', (e) => {
     const hit = e.target.closest('.place-hit');
     if (!hit) return;
@@ -2608,25 +2714,29 @@ function buildRulesPanel() {
     });
   };
 
-  const check = (key, label) => {
+  const check = (key, label, state = rules, onChange = scheduleRescore) => {
     const wrap = document.createElement('div');
     wrap.className = 'check-rule rule-card';
     wrap.innerHTML = `
       <label class="rule-check" for="r-${key}">
-        <input type="checkbox" id="r-${key}" ${rules[key] ? 'checked' : ''}>
+        <input type="checkbox" id="r-${key}" ${state[key] ? 'checked' : ''}>
         <span>${label}</span>
       </label>`;
     optionsHost.appendChild(wrap);
     wrap.querySelector('input').addEventListener('change', (e) => {
-      rules[key] = e.target.checked;
+      state[key] = e.target.checked;
       suppressRoadInfo(900);
-      scheduleRescore();
+      onChange();
     });
   };
 
   check('allowFreeways', 'Allow freeway as last resort');
   check('requireSafe', 'Fail if no complete safe route found');
   check('unknownShoulderZero', 'Unknown shoulder treated as 0 ft');
+  check('onlinePlaceSearch', 'Try online place search', preferences, () => {
+    syncOnlinePlaceSearchControl();
+    saveStateSoon();
+  });
   slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');
   slider('freeMaxSpeed', 'Max speed without shoulder', 15, 45, 5, ' mph');
 
