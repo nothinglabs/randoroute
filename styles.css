@@ -1,5 +1,5 @@
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; touch-action: manipulation; }
+html, body { margin: 0; height: 100%; height: 100dvh; height: var(--app-height, 100dvh); overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; touch-action: manipulation; }
 #map { position: absolute; inset: 0; touch-action: manipulation; }
 button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 
@@ -101,7 +101,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeControls { margin-top: 6px; padding-top: 5px; border-top: 1px solid #e4e7eb; }
 #routeControls .check-rule { margin: 4px 0 0 !important; min-height: 17px; font-size: 11px; }
 #routeControls .check-rule label { font-weight: 600; }
-#routeLibraryBtn { flex: 0 0 30px; width: 30px; border: 1px solid #d5d5d5; border-radius: 8px; background: #fff; cursor: pointer; font-size: 14px; }
+#routeLibraryBtn { flex: 0 0 30px; width: 30px; display: grid; place-items: center; border: 1px solid #d5d5d5; border-radius: 8px; background: #fff; color: #0a66c2; cursor: pointer; }
+.share-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 #modeChips { display: flex; flex: 1; min-width: 0; gap: 4px; margin: 0; }
 #modeChips button {
@@ -160,7 +161,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   #routeCard canvas { height: 50px; margin-top: 6px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
   #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }
-  #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; font-size: 16px; }
+  #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; }
+  #routeLibraryBtn .share-icon { width: 19px; height: 19px; }
   #modeChips { gap: 6px; }
   #modeChips button { padding: 8px 0; font-size: 13px; }
   .rc-highlight-hint { margin-top: 7px; font-size: 11px; }
@@ -319,19 +321,26 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .dialog-actions button, .save-route-form button { flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; font: 600 12px system-ui; cursor: pointer; }
 .save-route-form input { min-width: 0; flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; font: 13px system-ui; }
 .share-route { margin-top: 10px; padding-top: 9px; border-top: 1px solid #e4e7eb; }
+.import-route { margin-top: 10px; padding-top: 9px; border-top: 1px solid #e4e7eb; }
 .share-route-title { font: 700 11px system-ui; color: #444; }
 .share-route-actions { display: flex; gap: 7px; margin-top: 6px; }
 .share-route-actions button { flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; font: 600 12px system-ui; cursor: pointer; }
 .share-route-actions button:disabled { opacity: .48; cursor: default; }
+.import-route-actions { display: flex; gap: 7px; margin-top: 6px; }
+.import-route-actions input { flex: 1; min-width: 0; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; font: 12px system-ui; }
+.import-route-actions button { flex: 0 0 58px; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; font: 600 12px system-ui; cursor: pointer; }
 #shareRouteUrl { width: 100%; margin-top: 7px; padding: 7px; border: 1px solid #d5d5d5; border-radius: 8px; color: #555; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
 #shareRouteStatus { margin: 5px 0 0; }
+.import-route #importRouteStatus { margin: 5px 0 0; }
 .route-problem-dialog { border-top: 4px solid #D55E00; }
 .route-problem-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .clear-route-dialog { border-top: 4px solid #b42318; }
 .clear-route-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
+.shared-route-tip { border-top: 4px solid #0a66c2; }
+.shared-route-tip p { margin: 12px 0 2px; font: 13px/1.45 system-ui; color: #444; }
 .dialog-actions .danger { border-color: #b42318; background: #c52b22; color: #fff; }
 /* iOS Safari zooms the entire page when a focused field is below 16px, which
    can leave map controls outside the visual viewport after search closes. */
 @media (max-width: 720px) {
-  #placeSearch, .save-route-form input, #shareRouteUrl { font-size: 16px; }
+  #placeSearch, .save-route-form input, #shareRouteUrl, .import-route-actions input { font-size: 16px; }
 }

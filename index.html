@@ -40,7 +40,7 @@
 
     <section class="tab active" id="tab-route">
       <div id="routeControls">
-        <div class="mode-row"><div id="modeChips"></div><button id="routeLibraryBtn" title="Saved routes" aria-label="Saved routes">💾</button></div>
+        <div class="mode-row"><div id="modeChips"></div><button id="routeLibraryBtn" title="Save or share routes" aria-label="Save or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0-11 4 4m-4-4-4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button></div>
       </div>
       <div id="routeCard"></div>
     </section>
@@ -81,6 +81,11 @@
       <input id="shareRouteUrl" type="text" readonly hidden aria-label="Share route link">
       <div id="shareRouteStatus" class="hint"></div>
     </div>
+    <div class="import-route">
+      <div class="share-route-title">Load a shared route</div>
+      <div class="import-route-actions"><input id="importShareUrl" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste shared route link"><button id="loadShareRouteBtn">Load</button></div>
+      <div id="importRouteStatus" class="hint"></div>
+    </div>
     <div id="savedRoutes"></div>
   </dialog>
 
@@ -94,6 +99,12 @@
     <div class="dialog-head"><h2>Clear this route?</h2><button class="dialog-close" data-close="clearRouteDialog" aria-label="Close">✕</button></div>
     <p>Start, destination, and any stops will be removed.</p>
     <div class="dialog-actions"><button data-close="clearRouteDialog">Keep route</button><button id="confirmClearRoute" class="danger">Clear route</button></div>
+  </dialog>
+
+  <dialog id="sharedRouteTip" class="map-dialog shared-route-tip">
+    <div class="dialog-head"><h2>Best on your Home Screen</h2><button class="dialog-close" data-close="sharedRouteTip" aria-label="Close">✕</button></div>
+    <p>This shared route opened in your browser. For the full-screen map, open BikeSafety from your Home Screen. To move this route there, copy this link, open BikeSafety, tap the share button, and paste it under “Load a shared route.”</p>
+    <div class="dialog-actions"><button data-close="sharedRouteTip">Got it</button></div>
   </dialog>
 
   <div class="readout" id="readout"></div>

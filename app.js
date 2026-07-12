@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.34'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.36'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -316,9 +316,8 @@ function validRoutePoint(point) {
 
 // A share link keeps the route entirely client-side. Its URL-safe payload is
 // validated before it can override a visitor's locally saved route or rules.
-function readSharedRoute() {
+function decodeSharedRouteToken(token) {
   try {
-    const token = new URLSearchParams(location.hash.slice(1)).get('route');
     if (!token || token.length > 6000) return null;
     const base64 = token.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((token.length + 3) % 4);
     const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
@@ -338,6 +337,16 @@ function readSharedRoute() {
       prefDesig: typeof data.p === 'boolean' ? data.p : null,
       rules: sharedRules,
     };
+  } catch (e) {
+    return null;
+  }
+}
+
+function readSharedRoute(urlLike = location.href) {
+  try {
+    const raw = String(urlLike).trim();
+    const hash = raw.startsWith('#') ? raw.slice(1) : new URL(raw, location.href).hash.slice(1);
+    return decodeSharedRouteToken(new URLSearchParams(hash).get('route'));
   } catch (e) {
     return null;
   }
@@ -1409,21 +1418,19 @@ function buildRoutingPanel() {
   buildPlacePicker();
   buildSavedRoutes();
 
-  // A shared link wins over the receiver's locally persisted route. Both
-  // restore paths use the same normal endpoint setup and client-side router.
-  const routeToRestore = sharedRoute?.route || (savedState && savedState.route);
-  if (routeToRestore) {
-    const rt = routeToRestore;
+  // A shared link wins over the receiver's locally persisted route.
+  if (sharedRoute) {
+    const rt = sharedRoute.route;
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] });
     for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] });
-    if (sharedRoute) {
-      const lons = [rt.s[0], rt.e[0], ...(rt.v || []).map((p) => p[0])];
-      const lats = [rt.s[1], rt.e[1], ...(rt.v || []).map((p) => p[1])];
-      map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-        { padding: 60, maxZoom: 13 });
-      setStatus('Shared route loaded');
-    }
+    fitRouteBounds(rt);
+    setStatus('Shared route loaded');
+  } else if (savedState && savedState.route) {
+    const rt = savedState.route;
+    setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] });
+    for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] });
+    setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] });
   }
 }
 
@@ -1450,6 +1457,34 @@ function shareRouteUrl() {
   return url.toString();
 }
 
+function fitRouteBounds(route) {
+  const lons = [route.s[0], route.e[0], ...(route.v || []).map((p) => p[0])];
+  const lats = [route.s[1], route.e[1], ...(route.v || []).map((p) => p[1])];
+  map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+    { padding: 60, maxZoom: 13 });
+}
+
+function loadSharedRouteIntoPlanner(shared) {
+  if (!shared || !shared.route) return false;
+  clearRoute();
+  Object.assign(rules, shared.rules || {});
+  buildRulesPanel();
+  rescoreAll();
+  if (shared.mode) routing.mode = shared.mode;
+  if (shared.prefDesig != null) routing.prefDesig = shared.prefDesig;
+  document.querySelectorAll('#modeChips button').forEach((b) =>
+    b.classList.toggle('active', b.dataset.mode === routing.mode));
+  const pref = document.getElementById('prefDesig');
+  if (pref) pref.checked = routing.prefDesig;
+  const route = shared.route;
+  setRoutePoint('start', { lng: route.s[0], lat: route.s[1] });
+  for (const p of route.v || []) addVia({ lng: p[0], lat: p[1] });
+  setRoutePoint('end', { lng: route.e[0], lat: route.e[1] });
+  fitRouteBounds(route);
+  saveStateSoon();
+  return true;
+}
+
 function loadSavedRoutes() {
   try { return JSON.parse(localStorage.getItem(SAVED_ROUTES_KEY) || '[]'); } catch (e) { return []; }
 }
@@ -1464,6 +1499,9 @@ function buildSavedRoutes() {
   const nativeShare = document.getElementById('nativeShareRouteBtn');
   const shareUrlInput = document.getElementById('shareRouteUrl');
   const shareStatus = document.getElementById('shareRouteStatus');
+  const importUrlInput = document.getElementById('importShareUrl');
+  const loadShareRoute = document.getElementById('loadShareRouteBtn');
+  const importStatus = document.getElementById('importRouteStatus');
   if (!host) return;
 
   const setShareAvailability = () => {
@@ -1473,6 +1511,7 @@ function buildSavedRoutes() {
     nativeShare.hidden = !navigator.share;
     shareUrlInput.hidden = true;
     shareStatus.textContent = hasRoute ? 'Send this route to another device.' : 'Set a route to share it.';
+    importStatus.textContent = 'Paste a route link sent from another device.';
   };
   const showShareUrl = (url, message) => {
     shareUrlInput.hidden = false;
@@ -1549,6 +1588,22 @@ function buildSavedRoutes() {
     } catch (e) {
       if (e && e.name !== 'AbortError') showShareUrl(url, 'Copy this link and open it on your phone.');
     }
+  });
+  const importSharedRoute = () => {
+    const shared = readSharedRoute(importUrlInput.value);
+    if (!shared) {
+      importStatus.textContent = 'That does not look like a valid shared BikeSafety route link.';
+      return;
+    }
+    loadSharedRouteIntoPlanner(shared);
+    importUrlInput.value = '';
+    importStatus.textContent = 'Shared route loaded.';
+    dialog.close();
+    setStatus('Shared route loaded');
+  };
+  loadShareRoute.addEventListener('click', importSharedRoute);
+  importUrlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') importSharedRoute();
   });
   document.getElementById('saveRouteBtn').addEventListener('click', () => {
     if (!(routing.start && routing.end)) { setStatus('Set a route first', true); return; }
@@ -2014,6 +2069,7 @@ function buildSourcePanel() {
 
 function buildRulesPanel() {
   const host = document.getElementById('rules');
+  host.replaceChildren();
 
   const slider = (key, label, hint, min, max, step, unit) => {
     const wrap = document.createElement('div');
@@ -2152,6 +2208,40 @@ document.getElementById('panelOpen').addEventListener('click', () => {
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () =>
   document.getElementById(b.dataset.close).close()));
 document.getElementById('appVersion').textContent = 'v' + APP_VERSION;
+
+function isStandaloneApp() {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || window.matchMedia('(display-mode: fullscreen)').matches
+    || window.navigator.standalone === true;
+}
+
+// Safari's layout viewport can extend beneath its URL bar. Keep the app's
+// canvas tied to the visible viewport so map controls and the bottom sheet
+// remain reachable in a shared link opened in a normal browser tab.
+function syncVisibleViewport() {
+  if (isStandaloneApp()) {
+    document.documentElement.style.removeProperty('--app-height');
+    return;
+  }
+  const vv = window.visualViewport;
+  const height = Math.round(vv ? vv.height : window.innerHeight);
+  document.documentElement.style.setProperty('--app-height', `${height}px`);
+}
+syncVisibleViewport();
+window.visualViewport?.addEventListener('resize', syncVisibleViewport);
+window.visualViewport?.addEventListener('scroll', syncVisibleViewport);
+window.addEventListener('resize', syncVisibleViewport);
+
+function offerSharedRouteTip() {
+  if (!sharedRoute || isStandaloneApp() || !window.matchMedia('(pointer: coarse)').matches) return;
+  try {
+    if (sessionStorage.getItem('wa-bike-shared-route-tip')) return;
+    sessionStorage.setItem('wa-bike-shared-route-tip', '1');
+  } catch (e) { /* private browsing may block session storage */ }
+  const dialog = document.getElementById('sharedRouteTip');
+  if (dialog && !dialog.open) dialog.showModal();
+}
+offerSharedRouteTip();
 
 let pendingUpdateWorker = null;
 function offerUpdate(worker) {
