@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.70'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.71'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -44,12 +44,6 @@ const rules = {
   upperMaxSpeed: 45,    // mph; above this it's high-stress unless shoulder/facility is adequate
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // error out instead of returning a route with failing roads
-};
-
-// These change the app experience but not how a route is scored, so they stay
-// local to this device rather than being included in a shared route link.
-const preferences = {
-  onlinePlaceSearch: false,
 };
 
 /* --------------------------------------------------- display state */
@@ -316,7 +310,6 @@ let savedState = null;
 try { savedState = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); } catch (e) { /* ignore */ }
 if (savedState) {
   if (savedState.rules) Object.assign(rules, savedState.rules);
-  if (savedState.preferences) Object.assign(preferences, savedState.preferences);
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
 }
 
@@ -373,7 +366,7 @@ function saveStateSoon() {
   saveTimer = setTimeout(() => {
     try {
       localStorage.setItem(STATE_KEY, JSON.stringify({
-        rules, preferences, passFail: display.passFail,
+        rules, passFail: display.passFail,
         mode: routing.mode, prefDesig: routing.prefDesig,
         sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
         view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
@@ -1016,7 +1009,7 @@ function navigationBannerInfo() {
   if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
   if (turnNav.offRoute) return {
     headline: turnNav.message || 'You are off route',
-    meta: 'Use Reroute to return to the nearest planned route point',
+    meta: 'Tap Reroute to make a new route from here',
     kicker: 'Off route',
   };
   const next = turnNav.route?.instructions[turnNav.next];
@@ -1150,7 +1143,7 @@ function updateTurnNavigation(pos) {
     turnNav.offRoute = true;
     turnNav.message = `Off route by ${navDistanceText(nearest.offRouteM)}`;
     if (Date.now() - turnNav.offRouteSpokenAt > 30000) {
-      speakNavigation('You appear to be off route. Use the reroute button if you need help returning to your planned route.');
+      speakNavigation('You are off route. Tap Reroute to make a new route from here.');
       turnNav.offRouteSpokenAt = Date.now();
     }
     refreshNavigationUI();
@@ -1265,7 +1258,7 @@ function rerouteNavigation() {
   if (routing.startMarker) routing.startMarker.setLngLat({ lng: position[0], lat: position[1] });
   turnNav.offRoute = false;
   turnNav.rejoinAwaiting = true;
-  turnNav.message = 'Rerouting to the nearest planned route point';
+  turnNav.message = 'Rerouting from here';
   setRouteStatus('Rerouting…');
   updateArmButtons();
   refreshNavigationUI();
@@ -2155,11 +2148,6 @@ let onlinePlaceLastRequestAt = 0;
 const ONLINE_PLACE_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 const ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS = 1100;
 
-function syncOnlinePlaceSearchControl() {
-  const button = document.getElementById('onlinePlaceSearch');
-  if (button) button.hidden = !preferences.onlinePlaceSearch;
-}
-
 async function searchOnlinePlaces(query) {
   const normalized = query.trim().replace(/\s+/g, ' ').toLowerCase();
   if (normalized.length < 2) return [];
@@ -2212,7 +2200,6 @@ function openPlacePicker(kind) {
   document.getElementById('placePickerTitle').textContent =
     (kind === 'start' ? 'Set start' : 'Set destination') + ' — tap map or search';
   document.getElementById('useLoc').hidden = kind !== 'start';
-  syncOnlinePlaceSearchControl();
   const onlineButton = document.getElementById('onlinePlaceSearch');
   onlineButton.disabled = false;
   onlineButton.textContent = '⌕';
@@ -2281,7 +2268,6 @@ function buildPlacePicker() {
   const showLocalMatches = () => render(localMatches());
   const searchOnline = async () => {
     const query = input.value.trim();
-    if (!preferences.onlinePlaceSearch) return;
     if (query.length < 2) {
       setRouteStatus('Enter at least two characters to search online');
       return;
@@ -2316,7 +2302,7 @@ function buildPlacePicker() {
     showLocalMatches();
   });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && preferences.onlinePlaceSearch) {
+    if (e.key === 'Enter') {
       e.preventDefault();
       searchOnline();
     }
@@ -2733,10 +2719,6 @@ function buildRulesPanel() {
   check('allowFreeways', 'Allow freeway as last resort');
   check('requireSafe', 'Fail if no complete safe route found');
   check('unknownShoulderZero', 'Unknown shoulder treated as 0 ft');
-  check('onlinePlaceSearch', 'Try online place search', preferences, () => {
-    syncOnlinePlaceSearchControl();
-    saveStateSoon();
-  });
   slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');
   slider('freeMaxSpeed', 'Max speed without shoulder', 15, 45, 5, ' mph');
 
