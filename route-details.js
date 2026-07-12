@@ -6,6 +6,8 @@ const FLAG_FERRY = 32;
 const FLAG_LIMITED_ACCESS = 128;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 
+if (window.self !== window.top) document.body.classList.add('embedded');
+
 function fmtMi(m) { return (m / 1609.34).toFixed(1); }
 function fmtFt(m) { return Math.round(m * 3.28084).toLocaleString(); }
 function fmtDist(m) { return m < 160.934 ? `${fmtFt(m)} ft` : `${fmtMi(m)} mi`; }

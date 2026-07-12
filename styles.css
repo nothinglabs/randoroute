@@ -43,28 +43,6 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .tab { display: none; overflow-y: auto; padding: 0 10px 8px; }
 .tab.active { display: block; flex: 1; min-height: 0; }
 
-/* Settings is a focused reading/editing surface: it deliberately covers the
-   map, while preserving the bottom tab strip and its close control. */
-body.settings-open .panel {
-  top: 0; right: 0; bottom: 0; left: 0; z-index: 40;
-  width: auto; max-height: none; height: var(--app-height, 100dvh);
-  border-radius: 0; transform: translateY(0); background: #fff;
-}
-body.settings-open #tabs {
-  order: 2; gap: 5px;
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-  border-top: 1px solid #dbe4ea; background: rgba(250, 252, 253, .98);
-}
-body.settings-open .tab { order: 1; }
-body.settings-open .tab.active { flex: 1 1 auto; }
-body.settings-open #tab-settings { padding: 16px max(18px, calc((100vw - 620px) / 2)) 14px; }
-body.settings-open #tabs #panelClose {
-  display: flex; order: -1; flex: 0 0 42px; padding: 0;
-  border: 1px solid #c8d5df; border-radius: 9px;
-  color: #2f4858; background: #dce7ef;
-}
-body.settings-open #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; border-radius: 9px; }
-
 /* Desktop: docked left panel */
 @media (min-width: 721px) {
   .panel {
@@ -240,15 +218,18 @@ body.settings-open #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; borde
 .rule label { font-weight: 600; }
 .rule .val { color: #0a66c2; font-variant-numeric: tabular-nums; font-weight: 600; }
 .rule input[type="range"] { width: 100%; }
-#rules { display: grid; gap: 8px; margin-top: 9px; }
-#rules .rule-card { margin: 0; padding: 10px 11px; border: 1px solid #dbe5eb; border-radius: 10px; background: #fbfcfd; }
-#rules .rule-head { margin-bottom: 7px; }
-#rules .rule-card input[type="range"] { display: block; margin: 0; }
-#rules input[type="range"] { touch-action: pan-y; }
-#rules .rule-hint { margin: 6px 0 0; color: #637581; font: 11px/1.35 system-ui; }
-#rules .check-rule.rule-card { display: block; }
-#rules .rule-check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
-#rules .rule-check span { flex: 1; }
+.settings-tabs { display: flex; gap: 4px; margin: 6px 0; }
+.settings-tabs button { flex: 1; min-height: 30px; padding: 4px 8px; border: 1px solid #d5dfe6; border-radius: 8px; background: #f2f5f7; color: #4c5b66; font: 700 11px system-ui; cursor: pointer; }
+.settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
+.settings-tabs .settings-help-btn { flex: 0 0 30px; padding: 0; border-radius: 50%; font: 800 15px/1 system-ui; }
+.settings-pane { margin-top: 2px; }
+#settingsSliders, #settingsOptions { display: grid; gap: 6px; }
+#settingsSliders .rule-card, #settingsOptions .rule-card { margin: 0; padding: 8px 10px; border: 1px solid #dbe5eb; border-radius: 9px; background: #fbfcfd; }
+#settingsSliders .rule-head { margin-bottom: 5px; }
+#settingsSliders .rule-card input[type="range"] { display: block; margin: 0; touch-action: pan-y; }
+#settingsOptions .check-rule.rule-card { display: block; }
+#settingsOptions .rule-check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
+#settingsOptions .rule-check span { flex: 1; }
 .check-rule { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
 .check-rule label { font-weight: 600; cursor: pointer; }
 input[type="checkbox"] { width: 17px; height: 17px; }
@@ -399,19 +380,31 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 @media (max-width: 720px) {
   #topToolbar { gap: 4px; max-width: calc(100vw - 12px); }
   .nav-start { min-height: 34px; padding: 0 9px; font-size: 11px; }
-  #routeBar { gap: 4px; padding: 4px 7px 4px 5px; max-width: calc(100vw - 98px); }
+  #routeBar { gap: 4px; padding: 4px 7px 4px 5px; max-width: calc(100vw - 12px); }
   #routeBar button { width: 30px; height: 30px; }
   #routeBar .rb-pill { padding: 0 9px; font-size: 11px; }
   #routeBar #rb-via, #routeBar #rb-via-remove { width: 29px; }
-  body:not(.panel-open) .nav-banner { bottom: calc(98px + env(safe-area-inset-bottom)); }
-  body:not(.panel-open).navigation-active .update-prompt { bottom: calc(170px + env(safe-area-inset-bottom)); }
-  body.panel-open .update-prompt { bottom: calc(min(60vh, 520px) + 12px + env(safe-area-inset-bottom)); }
-  body.panel-open .nav-banner { bottom: calc(min(60vh, 520px) + 12px + env(safe-area-inset-bottom)); }
-  body.panel-open.navigation-active .update-prompt { bottom: calc(min(60vh, 520px) + 78px + env(safe-area-inset-bottom)); }
+  #mobileNavDock { display: block; position: absolute; z-index: 15; right: 10px; bottom: calc(60px + env(safe-area-inset-bottom)); transition: bottom .2s ease; }
+  body.panel-open #mobileNavDock { bottom: calc(var(--mobile-panel-height, 0px) + 12px + env(safe-area-inset-bottom)); }
+  #panelOpen { right: 10px; left: auto; }
+  body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 10px; right: 112px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; }
+  body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 12px + env(safe-area-inset-bottom)); }
+  body:not(.panel-open) .update-prompt, body.panel-open .update-prompt { left: 10px; right: 112px; width: auto; max-width: none; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; }
+  body:not(.panel-open).navigation-active .update-prompt { bottom: calc(126px + env(safe-area-inset-bottom)); }
+  body.panel-open .update-prompt { bottom: calc(var(--mobile-panel-height, 0px) + 58px + env(safe-area-inset-bottom)); }
+  body.panel-open.navigation-active .update-prompt { bottom: calc(var(--mobile-panel-height, 0px) + 78px + env(safe-area-inset-bottom)); }
   #rb-status { display: none; }
 }
 .map-dialog { width: min(92vw, 360px); border: none; border-radius: 14px; padding: 14px; color: #222; box-shadow: 0 12px 36px rgba(0,0,0,.3); }
 .map-dialog::backdrop { background: rgba(0,0,0,.25); }
+.route-details-dialog { width: min(96vw, 860px); height: min(92dvh, 860px); max-width: none; max-height: none; margin: auto; padding: 0; overflow: hidden; border: none; border-radius: 16px; background: #f4f7f9; box-shadow: 0 14px 44px rgba(0,0,0,.32); }
+.route-details-dialog::backdrop { background: rgba(18,42,60,.42); }
+.route-details-dialog-head { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 10px 0 16px; border-bottom: 1px solid #dbe4ea; background: #fff; color: #334a58; font: 750 14px system-ui; }
+.route-details-dialog-head button { min-height: 32px; padding: 0 10px; border: 1px solid #b8cbd8; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 700 12px system-ui; cursor: pointer; }
+#routeDetailsFrame { display: block; width: 100%; height: calc(100% - 48px); border: none; background: #f4f7f9; }
+@media (max-width: 720px) {
+  .route-details-dialog { width: 100vw; height: var(--app-height, 100dvh); margin: 0; border-radius: 0; }
+}
 .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dialog-head h2 { margin: 0; border: none; padding: 0; font-size: 14px; color: #222; text-transform: none; letter-spacing: 0; }
 .dialog-close { width: 28px; height: 28px; border: none; border-radius: 7px; background: #eef1f4; cursor: pointer; }
@@ -436,6 +429,10 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .clear-route-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .shared-route-tip { border-top: 4px solid #0a66c2; }
 .shared-route-tip p { margin: 12px 0 2px; font: 13px/1.45 system-ui; color: #444; }
+.settings-help-dialog { max-height: min(76dvh, 620px); overflow-y: auto; }
+.settings-help-dialog section { margin-top: 12px; }
+.settings-help-dialog h3 { margin: 0 0 4px; color: #2c3e4c; font: 750 13px system-ui; }
+.settings-help-dialog p { margin: 0; color: #52616d; font: 12px/1.42 system-ui; }
 .dialog-actions .danger { border-color: #b42318; background: #c52b22; color: #fff; }
 /* iOS Safari zooms the entire page when a focused field is below 16px, which
    can leave map controls outside the visual viewport after search closes. */

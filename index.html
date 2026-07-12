@@ -32,6 +32,7 @@
       <span id="rb-status"></span>
     </div>
   </div>
+  <div id="mobileNavDock"></div>
 
   <button id="panelOpen" aria-label="Show map controls" title="Show map controls"><span class="panel-control-icon" aria-hidden="true">☰</span><span class="panel-control-label">Menu</span></button>
 
@@ -58,12 +59,13 @@
     </section>
 
     <section class="tab" id="tab-settings">
-      <h2>Routing Settings</h2>
-      <p class="hint">Roads that don't meet these criteria <b>fail</b>. The
-        router avoids failing roads and only rides one when there's no
-        reasonable alternative — those stretches pulse red on the route.
-        Changes apply live to both the map and the router.</p>
-      <div id="rules"></div>
+      <div id="settingsTabs" class="settings-tabs" role="tablist" aria-label="Routing settings">
+        <button type="button" role="tab" aria-selected="true" data-settings-pane="limits">Limits</button>
+        <button type="button" role="tab" aria-selected="false" data-settings-pane="options">Options</button>
+        <button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button>
+      </div>
+      <div id="settings-limits" class="settings-pane" role="tabpanel"><div id="settingsSliders"></div></div>
+      <div id="settings-options" class="settings-pane" role="tabpanel" hidden><div id="settingsOptions"></div></div>
     </section>
   </div>
 
@@ -112,6 +114,21 @@
     <div class="dialog-head"><h2>Best on your Home Screen</h2><button class="dialog-close" data-close="sharedRouteTip" aria-label="Close">✕</button></div>
     <p>This shared route opened in your browser. For the full-screen map, open BikeSafety from your Home Screen. To move this route there, copy this link, open BikeSafety, tap the share button, and paste it under “Load a shared route.”</p>
     <div class="dialog-actions"><button data-close="sharedRouteTip">Got it</button></div>
+  </dialog>
+
+  <dialog id="settingsHelpDialog" class="map-dialog settings-help-dialog">
+    <div class="dialog-head"><h2>Routing settings</h2><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div>
+    <section><h3>Limits</h3><p><b>Minimum shoulder</b> is the width required on faster roads. <b>Max acceptable speed without shoulder</b> lets slower roads pass even where shoulder data is missing. <b>Never allow roads faster than</b> makes roads above the selected speed fail; “no cutoff” leaves the shoulder rule in charge.</p></section>
+    <section><h3>Options</h3><p><b>Allow freeway as last resort</b> permits a freeway only when the network otherwise has no route; it still fails the rules. <b>Fail if no complete safe route found</b> returns no route instead of showing an unavoidable failing segment. <b>Unknown shoulder treated as 0 ft</b> requires fast roads to prove an adequate shoulder.</p></section>
+    <section><h3>How the router uses them</h3><p>Direct is quickest, Balanced avoids bad roads when the detour is reasonable, and Low-stress detours further to avoid failures. Designated bike routes and trails are strongly preferred when that option is on.</p></section>
+  </dialog>
+
+  <dialog id="routeDetailsDialog" class="route-details-dialog">
+    <div class="route-details-dialog-head">
+      <span>Route details</span>
+      <button type="button" data-close="routeDetailsDialog">← Back to map</button>
+    </div>
+    <iframe id="routeDetailsFrame" title="Route details and routing tips"></iframe>
   </dialog>
 
   <div class="readout" id="readout"></div>

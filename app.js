@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.63'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.68'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -28,7 +28,7 @@ const COLORS = {
   0: '#999999', // unknown / no data
 };
 const LEGEND = [
-  [1, 'Comfortable (slow)'],
+  [1, 'Comfortable'],
   [2, 'Meets your criteria'],
   [3, 'Caution — limited-access highway'],
   [4, 'Fails / bikes prohibited (avoid)'],
@@ -1030,7 +1030,15 @@ function navigationStatusText() {
 }
 
 function openRouteDetails() {
-  window.location.href = 'route-details.html';
+  const dialog = document.getElementById('routeDetailsDialog');
+  const frame = document.getElementById('routeDetailsFrame');
+  if (!dialog || !frame || !dialog.showModal) {
+    window.location.href = 'route-details.html';
+    return;
+  }
+  // Reload the embedded report so it always reflects the latest route data.
+  frame.src = `route-details.html?embedded=1&t=${Date.now()}`;
+  if (!dialog.open) dialog.showModal();
 }
 
 function refreshNavigationUI() {
@@ -1054,9 +1062,7 @@ function refreshNavigationUI() {
   const bannerMeta = document.getElementById('navBannerMeta');
   const reroute = document.querySelector('[data-nav-action="reroute"]');
   const info = navigationBannerInfo();
-  const mobileMenuOpen = window.matchMedia('(max-width: 720px)').matches
-    && document.body.classList.contains('panel-open');
-  if (banner) banner.hidden = !turnNav.active || mobileMenuOpen;
+  if (banner) banner.hidden = !turnNav.active;
   if (reroute) reroute.hidden = !(turnNav.active && turnNav.offRoute && turnNav.lastPosition && turnNav.route?.coords?.length);
   if (kicker) kicker.textContent = info.kicker;
   if (bannerText) bannerText.textContent = info.headline;
@@ -2561,10 +2567,12 @@ function buildSourcePanel() {
 }
 
 function buildRulesPanel() {
-  const host = document.getElementById('rules');
-  host.replaceChildren();
+  const slidersHost = document.getElementById('settingsSliders');
+  const optionsHost = document.getElementById('settingsOptions');
+  slidersHost.replaceChildren();
+  optionsHost.replaceChildren();
 
-  const slider = (key, label, hint, min, max, step, unit) => {
+  const slider = (key, label, min, max, step, unit) => {
     const wrap = document.createElement('div');
     wrap.className = 'rule rule-card';
     wrap.innerHTML = `
@@ -2572,9 +2580,8 @@ function buildRulesPanel() {
         <label for="r-${key}">${label}</label>
         <span class="val" id="v-${key}">${rules[key]}${unit}</span>
       </div>
-      <input type="range" id="r-${key}" min="${min}" max="${max}" step="${step}" value="${rules[key]}">
-      <p class="rule-hint">${hint}</p>`;
-    host.appendChild(wrap);
+      <input type="range" id="r-${key}" min="${min}" max="${max}" step="${step}" value="${rules[key]}">`;
+    slidersHost.appendChild(wrap);
     const input = wrap.querySelector('input');
     input.addEventListener('input', () => {
       rules[key] = Number(input.value);
@@ -2586,31 +2593,27 @@ function buildRulesPanel() {
     });
   };
 
-  const check = (key, label, hint) => {
+  const check = (key, label) => {
     const wrap = document.createElement('div');
     wrap.className = 'check-rule rule-card';
     wrap.innerHTML = `
       <label class="rule-check" for="r-${key}">
         <input type="checkbox" id="r-${key}" ${rules[key] ? 'checked' : ''}>
         <span>${label}</span>
-      </label>
-      ${hint ? `<p class="rule-hint">${hint}</p>` : ''}`;
-    host.appendChild(wrap);
+      </label>`;
+    optionsHost.appendChild(wrap);
     wrap.querySelector('input').addEventListener('change', (e) => {
       rules[key] = e.target.checked;
+      suppressRoadInfo(900);
       scheduleRescore();
     });
   };
 
-  check('allowFreeways', 'Allow freeway as last resort',
-    'Freeways always fail your rules and are heavily avoided. Turn this off to exclude them entirely.');
-  check('requireSafe', 'Fail if no complete safe route found',
-    'Off by default. When enabled, routing fails instead of using an unavoidable road outside your rules.');
-  slider('minShoulder', 'Minimum shoulder', 'Roads with a shoulder narrower than this fail.', 0, 10, 1, ' ft');
-  check('unknownShoulderZero', 'Unknown shoulder treated as 0 ft',
-    'Fast roads must have shoulder data to pass. Off: unknown isn’t held against a road.');
-  slider('freeMaxSpeed', 'Max acceptable speed without shoulder',
-    'At or below this speed a road passes even with no shoulder. Faster roads must meet the shoulder minimum.', 15, 45, 5, ' mph');
+  check('allowFreeways', 'Allow freeway as last resort');
+  check('requireSafe', 'Fail if no complete safe route found');
+  check('unknownShoulderZero', 'Unknown shoulder treated as 0 ft');
+  slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');
+  slider('freeMaxSpeed', 'Max speed without shoulder', 15, 45, 5, ' mph');
 
   // Upper speed cutoff: one slider, whose TOP position means "no cutoff"
   // (replaces the old separate "No speed cutoff" checkbox).
@@ -2624,9 +2627,8 @@ function buildRulesPanel() {
         <label for="r-upperMaxSpeed">Never allow roads faster than</label>
         <span class="val" id="v-upperMaxSpeed"></span>
       </div>
-      <input type="range" id="r-upperMaxSpeed" min="35" max="${NONE_AT}" step="5" value="${cur}">
-      <p class="rule-hint">Above this a road fails outright. Slide to the top for no speed cutoff (the shoulder rule still applies).</p>`;
-    host.appendChild(wrap);
+      <input type="range" id="r-upperMaxSpeed" min="35" max="${NONE_AT}" step="5" value="${cur}">`;
+    slidersHost.appendChild(wrap);
     const input = wrap.querySelector('input');
     const valEl = wrap.querySelector('#v-upperMaxSpeed');
     const render = (v) => { valEl.textContent = v >= NONE_AT ? 'no cutoff' : v + ' mph'; };
@@ -2644,6 +2646,25 @@ function buildRulesPanel() {
       scheduleRescore();
     });
   }
+
+  const settingsTabs = document.getElementById('settingsTabs');
+  if (!settingsTabs.dataset.bound) {
+    const selectSettingsPane = (pane) => {
+      document.querySelectorAll('[data-settings-pane]').forEach((button) => {
+        const active = button.dataset.settingsPane === pane;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', String(active));
+      });
+      document.querySelectorAll('.settings-pane').forEach((panel) => {
+        panel.hidden = panel.id !== `settings-${pane}`;
+      });
+    };
+    document.querySelectorAll('[data-settings-pane]').forEach((button) =>
+      button.addEventListener('click', () => selectSettingsPane(button.dataset.settingsPane)));
+    document.getElementById('settingsHelpBtn').addEventListener('click', () =>
+      document.getElementById('settingsHelpDialog').showModal());
+    settingsTabs.dataset.bound = 'true';
+  }
 }
 
 function buildLegend() {
@@ -2656,6 +2677,8 @@ function buildLegend() {
        [null, 'No-data roads are hidden']]
     // Color-ramp view: level 4 is drawn dashed to read as "not passable".
     : LEGEND.map(([lvl, label]) => [lvl === 4 ? 'dash4' : COLORS[lvl], label]);
+  const routes = SOURCES.find((src) => src.id === 'routes');
+  if (!display.passFail && routes?.enabled) rows.unshift(['#fdb863', 'Orange: designated routes (USBR & trails)']);
   for (const [color, label] of rows) {
     const item = document.createElement('div');
     item.className = 'item';
@@ -2678,11 +2701,41 @@ buildRulesPanel();
 buildRoutingPanel();
 buildLegend();
 
+// On phones, navigation and Menu form a right-thumb control dock. The
+// navigation control moves above the open sheet so guidance never disappears
+// behind it; desktop keeps the existing top-toolbar arrangement.
+const mobileNavMedia = window.matchMedia('(max-width: 720px)');
+function syncMobileNavDock() {
+  if (!mobileNavMedia.matches) return;
+  const dock = document.getElementById('mobileNavDock');
+  const panel = document.getElementById('panel');
+  const height = document.body.classList.contains('panel-open')
+    ? Math.ceil(panel.getBoundingClientRect().height) : 0;
+  dock.style.setProperty('--mobile-panel-height', `${height}px`);
+}
+function scheduleMobileNavDock() {
+  if (mobileNavMedia.matches) requestAnimationFrame(syncMobileNavDock);
+}
+function placeNavigationControl() {
+  const nav = document.getElementById('navStartButton');
+  const topToolbar = document.getElementById('topToolbar');
+  const dock = document.getElementById('mobileNavDock');
+  if (mobileNavMedia.matches) {
+    if (nav.parentElement !== dock) dock.appendChild(nav);
+  } else if (nav.parentElement !== topToolbar) {
+    topToolbar.insertBefore(nav, topToolbar.firstChild);
+  }
+  scheduleMobileNavDock();
+}
+placeNavigationControl();
+if (mobileNavMedia.addEventListener) mobileNavMedia.addEventListener('change', placeNavigationControl);
+else mobileNavMedia.addListener(placeNavigationControl);
+
 // Tabs.
 function setPanelOpen(open) {
   document.body.classList.toggle('panel-open', open);
-  document.body.classList.toggle('settings-open', open && document.getElementById('tab-settings').classList.contains('active'));
   refreshNavigationUI();
+  scheduleMobileNavDock();
 }
 
 function selectPanelTab(tabId) {
@@ -2690,6 +2743,7 @@ function selectPanelTab(tabId) {
     b.classList.toggle('active', b.dataset.tab === tabId));
   document.querySelectorAll('.tab').forEach((t) =>
     t.classList.toggle('active', t.id === 'tab-' + tabId));
+  scheduleMobileNavDock();
 }
 
 document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
@@ -2734,6 +2788,7 @@ syncVisibleViewport();
 window.visualViewport?.addEventListener('resize', syncVisibleViewport);
 window.visualViewport?.addEventListener('scroll', syncVisibleViewport);
 window.addEventListener('resize', syncVisibleViewport);
+window.addEventListener('resize', scheduleMobileNavDock);
 
 function offerSharedRouteTip() {
   if (!sharedRoute || isStandaloneApp() || !window.matchMedia('(pointer: coarse)').matches) return;
