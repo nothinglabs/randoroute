@@ -167,7 +167,13 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
 .check-rule { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
 .check-rule label { font-weight: 600; cursor: pointer; }
 input[type="checkbox"] { width: 17px; height: 17px; }
-.endpoint-marker { touch-action: none; }
+.endpoint-marker,
+.endpoint-marker * {
+  touch-action: none !important;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
 .endpoint-marker.endpoint-moving { filter: drop-shadow(0 0 5px rgba(10,102,194,.9)); }
 
 .legend { margin-top: 6px; }

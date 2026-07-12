@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.24'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.25'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -1123,54 +1123,93 @@ function enableLongPressEndpointMove(kind, marker) {
   const el = marker.getElement();
   el.classList.add('endpoint-marker');
   let gesture = null;
+  const setMapGesturesEnabled = (enabled, state = {}) => {
+    const handlers = [
+      ['dragPan', state.dragPan],
+      ['touchZoomRotate', state.touchZoomRotate],
+    ];
+    for (const [name, wasEnabled] of handlers) {
+      const handler = map[name];
+      if (!handler) continue;
+      if (enabled) {
+        if (wasEnabled) handler.enable();
+      } else if (handler.isEnabled()) {
+        handler.disable();
+      }
+    }
+  };
+  const pointAt = (x, y) => {
+    const rect = map.getCanvas().getBoundingClientRect();
+    marker.setLngLat(map.unproject([x - rect.left, y - rect.top]));
+  };
   const stop = (commit) => {
     if (!gesture) return;
+    const finished = gesture;
     clearTimeout(gesture.timer);
     el.classList.remove('endpoint-moving');
-    if (gesture.active && commit) {
+    setMapGesturesEnabled(true, finished.mapGestures);
+    if (finished.active && commit) {
       const ll = marker.getLngLat();
       routing[kind] = [ll.lng, ll.lat];
       setRouteStatus(`${kind === 'start' ? 'Start' : 'Destination'} moved`);
       computeRoute();
       saveStateSoon();
-    } else if (gesture.active) {
-      marker.setLngLat(gesture.original);
+    } else if (finished.active) {
+      marker.setLngLat(finished.original);
     }
     gesture = null;
   };
   el.addEventListener('pointerdown', (e) => {
-    if (gesture) return;
+    if (gesture || (e.pointerType === 'mouse' && e.button !== 0)) return;
     e.preventDefault();
     e.stopPropagation();
+    const mapGestures = {
+      dragPan: map.dragPan?.isEnabled() ?? false,
+      touchZoomRotate: map.touchZoomRotate?.isEnabled() ?? false,
+    };
+    // MapLibre listens above the marker container. Suspend its handlers for
+    // the whole press so a held endpoint can never turn into a map pan.
+    setMapGesturesEnabled(false);
+    map.stop();
     el.setPointerCapture(e.pointerId);
     gesture = {
-      id: e.pointerId, x: e.clientX, y: e.clientY, active: false,
-      original: marker.getLngLat(), timer: null,
+      id: e.pointerId, x: e.clientX, y: e.clientY,
+      lastX: e.clientX, lastY: e.clientY, active: false,
+      original: marker.getLngLat(), mapGestures, timer: null,
     };
     gesture.timer = setTimeout(() => {
       if (!gesture) return;
       gesture.active = true;
       el.classList.add('endpoint-moving');
+      pointAt(gesture.lastX, gesture.lastY);
+      navigator.vibrate?.(20);
       setRouteStatus(`Move ${kind === 'start' ? 'START' : 'DESTINATION'} marker`);
     }, 550);
-  });
+  }, { capture: true });
   el.addEventListener('pointermove', (e) => {
     if (!gesture || e.pointerId !== gesture.id) return;
     e.preventDefault();
     e.stopPropagation();
+    gesture.lastX = e.clientX;
+    gesture.lastY = e.clientY;
     if (!gesture.active) {
-      if (Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) > 10) {
-        clearTimeout(gesture.timer);
-      }
+      // Allow for the small amount a finger naturally wanders while held.
+      // A deliberate early drag cancels the long press but still must not pan
+      // the map from underneath an endpoint marker.
+      if (Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) > 24) stop(false);
       return;
     }
-    const rect = map.getCanvas().getBoundingClientRect();
-    marker.setLngLat(map.unproject([e.clientX - rect.left, e.clientY - rect.top]));
-  });
+    pointAt(e.clientX, e.clientY);
+  }, { capture: true });
   el.addEventListener('pointerup', (e) => {
-    if (gesture && e.pointerId === gesture.id) stop(true);
-  });
+    if (!gesture || e.pointerId !== gesture.id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    stop(true);
+  }, { capture: true });
   el.addEventListener('pointercancel', () => stop(false));
+  el.addEventListener('lostpointercapture', () => stop(false));
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 function addVia(lngLat) {
