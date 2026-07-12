@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.20'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.21'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -1086,11 +1086,11 @@ function buildRoutingPanel() {
   // the Burke-Gilman even if streets are a bit quicker" option.
   const pref = document.createElement('div');
   pref.className = 'check-rule';
-  pref.style.margin = '0 0 10px';
+  pref.style.margin = '0 0 6px';
   pref.innerHTML = `
     <input type="checkbox" id="prefDesig" ${routing.prefDesig ? 'checked' : ''}>
     <label for="prefDesig">Strongly prefer bike routes &amp; trails</label>`;
-  chips.after(pref);
+  chips.closest('.mode-row').after(pref);
   pref.querySelector('input').addEventListener('change', (e) => {
     routing.prefDesig = e.target.checked;
     computeRoute();
@@ -1197,7 +1197,9 @@ function ensurePlaces() {
 
 let placeTarget = null;
 function closePlacePicker(cancelArm = false) {
-  document.getElementById('placePicker').hidden = true;
+  const picker = document.getElementById('placePicker');
+  if (document.activeElement && picker.contains(document.activeElement)) document.activeElement.blur();
+  picker.hidden = true;
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   if (cancelArm && (routing.arm === 'start' || routing.arm === 'end')) {
