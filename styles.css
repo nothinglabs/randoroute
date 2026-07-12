@@ -1,6 +1,7 @@
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-#map { position: absolute; inset: 0; }
+html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; touch-action: manipulation; }
+#map { position: absolute; inset: 0; touch-action: manipulation; }
+button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 
 /* ------------------------------------------------------------- panel/sheet */
 .panel {
@@ -45,7 +46,7 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
 @media (min-width: 721px) {
   .panel {
     top: 12px; left: 12px;
-    width: 320px;
+    width: min(370px, calc(100vw - 24px));
     max-height: calc(100% - 24px);
     border-radius: 12px;
   }
@@ -146,6 +147,11 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
 .rc-highlight-item:disabled::after, .rc-level:disabled::after { content: ''; }
 .rc-highlight-item.active, .rc-level.active { background: #ffe35c; border-color: #c99f00; box-shadow: 0 0 0 1px rgba(201,159,0,.32); color: #3f3200; font-weight: 700; }
 .rc-highlight-item.active::after, .rc-level.active::after { content: '✓'; color: #5c4900; font-size: 10px; }
+@media (min-width: 721px) {
+  .rc-levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rc-levels > :last-child:nth-child(odd) { grid-column: span 2; }
+  .rc-highlight-item, .rc-level { font-size: 10px; }
+}
 
 .saved-row { display: flex; gap: 6px; margin: 5px 0; }
 .saved-row .saved-load {
@@ -267,7 +273,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #rb-status:empty { display: none; }
 
 #appVersion { position: absolute; top: calc(env(safe-area-inset-top) + 3px); left: 4px; z-index: 13; font-size: 9px; color: #56616a; background: rgba(255,255,255,.9); border-radius: 3px; padding: 1px 3px; pointer-events: none; }
-@media (min-width: 721px) { #appVersion { left: 340px; } }
+@media (min-width: 721px) { #appVersion { left: 390px; } }
 
 .place-picker {
   position: absolute; z-index: 14; top: calc(env(safe-area-inset-top) + 62px); left: 50%;
@@ -296,10 +302,20 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .dialog-actions, .save-route-form { display: flex; gap: 7px; margin-top: 10px; }
 .dialog-actions button, .save-route-form button { flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; font: 600 12px system-ui; cursor: pointer; }
 .save-route-form input { min-width: 0; flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; font: 13px system-ui; }
+.share-route { margin-top: 10px; padding-top: 9px; border-top: 1px solid #e4e7eb; }
+.share-route-title { font: 700 11px system-ui; color: #444; }
+.share-route-actions { display: flex; gap: 7px; margin-top: 6px; }
+.share-route-actions button { flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; font: 600 12px system-ui; cursor: pointer; }
+.share-route-actions button:disabled { opacity: .48; cursor: default; }
+#shareRouteUrl { width: 100%; margin-top: 7px; padding: 7px; border: 1px solid #d5d5d5; border-radius: 8px; color: #555; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+#shareRouteStatus { margin: 5px 0 0; }
 .route-problem-dialog { border-top: 4px solid #D55E00; }
 .route-problem-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
+.clear-route-dialog { border-top: 4px solid #b42318; }
+.clear-route-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
+.dialog-actions .danger { border-color: #b42318; background: #c52b22; color: #fff; }
 /* iOS Safari zooms the entire page when a focused field is below 16px, which
    can leave map controls outside the visual viewport after search closes. */
 @media (max-width: 720px) {
-  #placeSearch, .save-route-form input { font-size: 16px; }
+  #placeSearch, .save-route-form input, #shareRouteUrl { font-size: 16px; }
 }

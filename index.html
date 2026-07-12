@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Washington Bike Safety Visualizer</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#009E73" />
@@ -70,10 +70,16 @@
   </div>
 
   <dialog id="routesDialog" class="map-dialog">
-    <div class="dialog-head"><h2>Saved routes</h2><button class="dialog-close" data-close="routesDialog" aria-label="Close">✕</button></div>
+    <div class="dialog-head"><h2>Save &amp; share routes</h2><button class="dialog-close" data-close="routesDialog" aria-label="Close">✕</button></div>
     <div class="save-route-form">
       <input id="savedRouteName" type="text" maxlength="60" placeholder="Route name">
       <button id="saveRouteBtn">Save</button>
+    </div>
+    <div class="share-route">
+      <div class="share-route-title">Share current route</div>
+      <div class="share-route-actions"><button id="copyShareRouteBtn">Copy share link</button><button id="nativeShareRouteBtn" hidden>Share…</button></div>
+      <input id="shareRouteUrl" type="text" readonly hidden aria-label="Share route link">
+      <div id="shareRouteStatus" class="hint"></div>
     </div>
     <div id="savedRoutes"></div>
   </dialog>
@@ -82,6 +88,12 @@
     <div class="dialog-head"><h2>Point is outside the routing network</h2><button class="dialog-close" data-close="routeProblemDialog" aria-label="Close">✕</button></div>
     <p id="routeProblemText"></p>
     <div class="dialog-actions"><button data-close="routeProblemDialog">OK</button></div>
+  </dialog>
+
+  <dialog id="clearRouteDialog" class="map-dialog clear-route-dialog">
+    <div class="dialog-head"><h2>Clear this route?</h2><button class="dialog-close" data-close="clearRouteDialog" aria-label="Close">✕</button></div>
+    <p>Start, destination, and any stops will be removed.</p>
+    <div class="dialog-actions"><button data-close="clearRouteDialog">Keep route</button><button id="confirmClearRoute" class="danger">Clear route</button></div>
   </dialog>
 
   <div class="readout" id="readout"></div>

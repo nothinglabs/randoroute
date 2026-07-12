@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.28'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.33'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -308,6 +308,44 @@ if (savedState) {
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
 }
 
+function validRoutePoint(point) {
+  return Array.isArray(point) && point.length === 2
+    && Number.isFinite(point[0]) && Number.isFinite(point[1])
+    && point[0] >= -180 && point[0] <= 180 && point[1] >= -90 && point[1] <= 90;
+}
+
+// A share link keeps the route entirely client-side. Its URL-safe payload is
+// validated before it can override a visitor's locally saved route or rules.
+function readSharedRoute() {
+  try {
+    const token = new URLSearchParams(location.hash.slice(1)).get('route');
+    if (!token || token.length > 6000) return null;
+    const base64 = token.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((token.length + 3) % 4);
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const data = JSON.parse(new TextDecoder().decode(bytes));
+    if (data.v !== 1 || !validRoutePoint(data.s) || !validRoutePoint(data.e)) return null;
+    const vias = Array.isArray(data.x) ? data.x.slice(0, 8) : [];
+    if (!vias.every(validRoutePoint)) return null;
+    const sharedRules = {};
+    for (const key of Object.keys(rules)) {
+      const value = data.r && data.r[key];
+      if (typeof rules[key] === 'boolean' && typeof value === 'boolean') sharedRules[key] = value;
+      if (typeof rules[key] === 'number' && Number.isFinite(value)) sharedRules[key] = value;
+    }
+    return {
+      route: { s: data.s, e: data.e, v: vias },
+      mode: ['direct', 'balanced', 'low'].includes(data.m) ? data.m : null,
+      prefDesig: typeof data.p === 'boolean' ? data.p : null,
+      rules: sharedRules,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+const sharedRoute = readSharedRoute();
+if (sharedRoute) Object.assign(rules, sharedRoute.rules);
+
 let saveTimer = null;
 function saveStateSoon() {
   clearTimeout(saveTimer);
@@ -348,6 +386,10 @@ const map = new maplibregl.Map({
   zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
   maxZoom: 17,
 });
+// A double tap is too easy to trigger while placing or inspecting a point on
+// a phone, and can leave the app looking brokenly zoomed-in. Desktop keeps the
+// conventional double-click zoom; touch devices use the visible +/- controls.
+if (window.matchMedia('(pointer: coarse)').matches) map.doubleClickZoom.disable();
 // Keep the statewide view readable. The All-roads layer is on by default, but
 // it appears only in a local/regional view; neighborhood streets need a closer
 // zoom still.
@@ -455,7 +497,7 @@ function beforeIdFor(src) {
     higher.some((id) => l.id === id || l.id.startsWith(id + '__')));
   if (hit) return hit.id;
   // keep the route line above every data source
-  return map.getLayer('route-casing') ? 'route-casing' : undefined;
+  return map.getLayer('route-shadow') ? 'route-shadow' : undefined;
 }
 
 function ensureLayer(src) {
@@ -744,8 +786,8 @@ const routing = {
   vias: [],                  // intermediate stops: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false,
-  mode: (savedState && savedState.mode) || 'balanced', // 'direct' | 'balanced' | 'low'
-  prefDesig: savedState && typeof savedState.prefDesig === 'boolean'
+  mode: sharedRoute?.mode || (savedState && savedState.mode) || 'balanced', // 'direct' | 'balanced' | 'low'
+  prefDesig: sharedRoute?.prefDesig != null ? sharedRoute.prefDesig : savedState && typeof savedState.prefDesig === 'boolean'
     ? savedState.prefDesig : true, // strongly prefer designated routes & trails
   reqId: 0,
   last: null, // last successful result (for redraws)
@@ -860,7 +902,7 @@ function renderRouteCard(m) {
   const routeTypes = `<div class="rc-route-types">${routeTypeParts.join('')}</div>`;
   const levelNames = ['', 'Comfortable', 'Meets rules', '', 'Fails rules'];
   const levels = `<div class="rc-levels">${[1, 2, 4].map((level) =>
-    `<button class="rc-level rc-l${level}" data-highlight="level-${level}" aria-pressed="false" title="Highlight L${level} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>L${level} ${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
+    `<button class="rc-level rc-l${level}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
   ).join('')}</div>`;
   const legs = m.legs && m.legs.length > 1
     ? `<div class="rc-legs">${m.legs.map((l, i) =>
@@ -1052,14 +1094,20 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-seg', { type: 'geojson', data: sdata });
   map.addSource('route-fail', { type: 'geojson', data: failData });
   map.addLayer({
+    id: 'route-shadow', type: 'line', source: 'route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#102a43', 'line-width': 15, 'line-opacity': 0.42,
+             'line-blur': 1.2 },
+  });
+  map.addLayer({
     id: 'route-casing', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.85 },
+    paint: { 'line-color': '#ffffff', 'line-width': 11, 'line-opacity': 0.98 },
   });
   map.addLayer({
     id: 'route', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#7b2cbf', 'line-width': 5, 'line-opacity': 0.9 },
+    paint: { 'line-color': '#7623bb', 'line-width': 6.5, 'line-opacity': 1 },
   });
   map.addLayer({
     id: 'route-fail-casing', type: 'line', source: 'route-fail',
@@ -1289,6 +1337,12 @@ function clearRoute() {
   saveStateSoon();
 }
 
+function requestClearRoute() {
+  if (!routing.start && !routing.end && routing.vias.length === 0) return;
+  const dialog = document.getElementById('clearRouteDialog');
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
 function updateArmButtons() {
   for (const kind of ['start', 'end', 'via']) {
     for (const prefix of ['rt-', 'rb-']) {
@@ -1346,21 +1400,56 @@ function buildRoutingPanel() {
   }
   document.getElementById('rb-via').addEventListener('click', () => armRoutePoint('via'));
   document.getElementById('rb-via-remove').addEventListener('click', removeLastVia);
-  document.getElementById('rb-clear').addEventListener('click', clearRoute);
+  document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
+  document.getElementById('confirmClearRoute').addEventListener('click', () => {
+    document.getElementById('clearRouteDialog').close();
+    clearRoute();
+  });
   updateArmButtons();
   buildPlacePicker();
   buildSavedRoutes();
 
-  // Restore the persisted route (markers + recompute) from the last session.
-  if (savedState && savedState.route) {
-    const rt = savedState.route;
+  // A shared link wins over the receiver's locally persisted route. Both
+  // restore paths use the same normal endpoint setup and client-side router.
+  const routeToRestore = sharedRoute?.route || (savedState && savedState.route);
+  if (routeToRestore) {
+    const rt = routeToRestore;
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] });
     for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] });
+    if (sharedRoute) {
+      const lons = [rt.s[0], rt.e[0], ...(rt.v || []).map((p) => p[0])];
+      const lats = [rt.s[1], rt.e[1], ...(rt.v || []).map((p) => p[1])];
+      map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+        { padding: 60, maxZoom: 13 });
+      setStatus('Shared route loaded');
+    }
   }
 }
 
 /* --------------------------------------------------- saved routes */
+function shareRouteUrl() {
+  if (!(routing.start && routing.end)) return null;
+  const point = (p) => p.map((v) => +Number(v).toFixed(5));
+  const payload = {
+    v: 1,
+    s: point(routing.start),
+    e: point(routing.end),
+    x: routing.vias.map((via) => point(via.pt)),
+    m: routing.mode,
+    p: routing.prefDesig,
+    r: { ...rules },
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  const token = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const url = new URL(location.href);
+  url.search = '';
+  url.hash = 'route=' + token;
+  return url.toString();
+}
+
 function loadSavedRoutes() {
   try { return JSON.parse(localStorage.getItem(SAVED_ROUTES_KEY) || '[]'); } catch (e) { return []; }
 }
@@ -1371,9 +1460,30 @@ function storeSavedRoutes(list) {
 function buildSavedRoutes() {
   const dialog = document.getElementById('routesDialog');
   const host = document.getElementById('savedRoutes');
+  const copyShare = document.getElementById('copyShareRouteBtn');
+  const nativeShare = document.getElementById('nativeShareRouteBtn');
+  const shareUrlInput = document.getElementById('shareRouteUrl');
+  const shareStatus = document.getElementById('shareRouteStatus');
   if (!host) return;
 
+  const setShareAvailability = () => {
+    const hasRoute = !!(routing.start && routing.end);
+    copyShare.disabled = !hasRoute;
+    nativeShare.disabled = !hasRoute;
+    nativeShare.hidden = !navigator.share;
+    shareUrlInput.hidden = true;
+    shareStatus.textContent = hasRoute ? 'Send this route to another device.' : 'Set a route to share it.';
+  };
+  const showShareUrl = (url, message) => {
+    shareUrlInput.hidden = false;
+    shareUrlInput.value = url;
+    shareStatus.textContent = message;
+    shareUrlInput.focus({ preventScroll: true });
+    shareUrlInput.select();
+  };
+
   const render = () => {
+    setShareAvailability();
     const list = loadSavedRoutes();
     host.innerHTML = (list.length ? '' : '<div class="hint">Saved routes stay on this device.</div>')
       + list.map((r, i) =>
@@ -1411,6 +1521,34 @@ function buildSavedRoutes() {
   document.getElementById('routeLibraryBtn').addEventListener('click', () => {
     render();
     dialog.showModal();
+  });
+  copyShare.addEventListener('click', async () => {
+    const url = shareRouteUrl();
+    if (!url) return;
+    // Show the actual link immediately. This remains useful on browsers that
+    // delay or deny clipboard permission, particularly in an installed PWA.
+    showShareUrl(url, 'Share link ready — copy it or send it to your phone.');
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(url);
+      shareStatus.textContent = 'Share link copied — open it on your phone.';
+    } catch (e) {
+      shareStatus.textContent = 'Copy this link and open it on your phone.';
+    }
+  });
+  nativeShare.addEventListener('click', async () => {
+    const url = shareRouteUrl();
+    if (!url || !navigator.share) return;
+    try {
+      await navigator.share({
+        title: 'Washington bike route',
+        text: 'Open this bike route in Washington Bike Safety Visualizer.',
+        url,
+      });
+      shareStatus.textContent = 'Share link sent.';
+    } catch (e) {
+      if (e && e.name !== 'AbortError') showShareUrl(url, 'Copy this link and open it on your phone.');
+    }
   });
   document.getElementById('saveRouteBtn').addEventListener('click', () => {
     if (!(routing.start && routing.end)) { setStatus('Set a route first', true); return; }
@@ -1457,6 +1595,7 @@ function closePlacePicker(cancelArm = false) {
 function openPlacePicker(kind) {
   placeTarget = kind;
   routing.arm = kind;
+  suppressRoadInfo();
   updateArmButtons();
   ensureRouter();
   setPanelOpen(false);
@@ -1474,6 +1613,7 @@ function armRoutePoint(kind) {
   if (kind === 'via' && !(routing.start && routing.end)) return;
   closePlacePicker(false);
   routing.arm = routing.arm === kind ? null : kind;
+  if (routing.arm) suppressRoadInfo();
   updateArmButtons();
   ensureRouter();
   if (routing.arm) {
@@ -1606,6 +1746,13 @@ const HIT_SRC = {};     // hit-layer id -> its source
 // Clicking/tapping PINS the readout (so its links are clickable); hovering
 // only previews and never replaces a pinned readout.
 let readoutPinned = false;
+let roadInfoSuppressedUntil = 0;
+
+function suppressRoadInfo(ms = 1200) {
+  roadInfoSuppressedUntil = Math.max(roadInfoSuppressedUntil, Date.now() + ms);
+  readoutPinned = false;
+  readoutEl.classList.remove('show');
+}
 
 function attachHover(src, layerId) {
   HIT_LAYERS.push(layerId);
@@ -1761,6 +1908,10 @@ readoutEl.addEventListener('click', (e) => {
 
 // ONE global handler pair (per-layer handlers raced where layers overlap).
 map.on('mousemove', (e) => {
+  if (routing.arm || Date.now() < roadInfoSuppressedUntil) {
+    readoutEl.classList.remove('show');
+    return;
+  }
   if (readoutPinned) return;
   const f = featureAt(e.point);
   map.getCanvas().style.cursor = f ? 'pointer' : '';
@@ -1772,11 +1923,10 @@ function placeArmedPoint(lngLat) {
   const kind = routing.arm;
   if (!kind) return false;
   lastPlacementTs = Date.now();
+  suppressRoadInfo(1500);
   routing.arm = null;
   updateArmButtons();
   closePlacePicker(false);
-  readoutPinned = false;
-  readoutEl.classList.remove('show'); // don't leave a stale road popup up
   if (kind === 'via') {
     addVia(lngLat);
     setRouteStatus('Stop added — tap + to add another');
@@ -1809,11 +1959,15 @@ function placeArmedPoint(lngLat) {
     const dur = Date.now() - t0.ts;
     t0 = null;
     if (moved < 12 && dur < 700) {
+      // Consume the placement tap. Otherwise iOS/MapLibre can emit a later
+      // synthetic click that opens the road-information card underneath it.
+      e.preventDefault();
+      e.stopPropagation();
       const rect = map.getCanvas().getBoundingClientRect();
       const lngLat = map.unproject([t.clientX - rect.left, t.clientY - rect.top]);
       placeArmedPoint(lngLat);
     }
-  }, { passive: true });
+  }, { passive: false });
 })();
 
 map.on('click', (e) => {
@@ -1821,7 +1975,7 @@ map.on('click', (e) => {
     placeArmedPoint(e.lngLat);
     return;
   }
-  if (Date.now() - lastPlacementTs < 600) return; // click synthesized from the placement touch
+  if (Date.now() < roadInfoSuppressedUntil || Date.now() - lastPlacementTs < 600) return;
   const f = featureAt(e.point);
   if (f) {
     if (window.matchMedia('(max-width: 720px)').matches) setPanelOpen(false);
