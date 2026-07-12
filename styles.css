@@ -64,10 +64,11 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
   }
   body.panel-open .panel { transform: translateY(0); }
   body:not(.panel-open) .tab { display: none; }
-  #panelClose {
-    display: block; flex: 0 0 34px; padding: 0;
-    border-radius: 9px; color: #53606c; background: #e5ebf0;
-    font-size: 15px; line-height: 1;
+  #tabs #panelClose {
+    display: block; flex: 0 0 46px; padding: 0;
+    border: 1px solid #c8d5df; border-radius: 9px;
+    color: #2f4858; background: #dce7ef;
+    font-size: 21px; font-weight: 800; line-height: 1;
   }
   #panelOpen {
     display: block; position: absolute; left: 10px;
@@ -225,6 +226,8 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #routeBar .rb-pill-end { color: #D55E00; }
 #routeBar #rb-start.active, #routeBar #rb-end.active,
 #routeBar #rb-via.active { background: #0a66c2; color: #fff; }
+#routeBar button:disabled { opacity: .38; cursor: default; }
+#routeBar #rb-via, #routeBar #rb-via-remove { width: 32px; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 .place-results .place-choice {
   display: inline-block; margin: 4px 4px 8px 12px; padding: 7px 11px;

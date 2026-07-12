@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.21'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.22'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -877,7 +877,7 @@ function onRouterMessage(ev) {
       return;
     }
     drawRoute(m.coords, m.ferrySegs, m.segs);
-    setRouteStatus(`${fmtMi(m.distM)} mi · ${fmtDur(m.timeS)}`);
+    setRouteStatus(`${fmtMi(m.distM)} mi`);
   } else if (m.type === 'error') {
     setRouteStatus('Routing error: ' + m.message);
   }
@@ -1022,6 +1022,7 @@ function setRoutePoint(kind, lngLat) {
     });
   }
   computeRoute();
+  updateArmButtons();
 }
 
 function addVia(lngLat) {
@@ -1035,6 +1036,17 @@ function addVia(lngLat) {
     computeRoute();
   });
   computeRoute();
+  updateArmButtons();
+}
+
+function removeLastVia() {
+  const via = routing.vias.pop();
+  if (!via) return;
+  via.marker.remove();
+  if (routing.arm === 'via') routing.arm = null;
+  updateArmButtons();
+  computeRoute();
+  saveStateSoon();
 }
 
 function clearRoute() {
@@ -1061,6 +1073,10 @@ function updateArmButtons() {
       if (b) b.classList.toggle('active', routing.arm === kind);
     }
   }
+  const add = document.getElementById('rb-via');
+  const remove = document.getElementById('rb-via-remove');
+  if (add) add.disabled = !(routing.start && routing.end);
+  if (remove) remove.disabled = routing.vias.length === 0;
 }
 
 const MODES = [
@@ -1102,7 +1118,9 @@ function buildRoutingPanel() {
     document.getElementById('rb-' + kind).addEventListener('click', () => openPlacePicker(kind));
   }
   document.getElementById('rb-via').addEventListener('click', () => armRoutePoint('via'));
+  document.getElementById('rb-via-remove').addEventListener('click', removeLastVia);
   document.getElementById('rb-clear').addEventListener('click', clearRoute);
+  updateArmButtons();
   buildPlacePicker();
   buildSavedRoutes();
 
@@ -1226,6 +1244,7 @@ function openPlacePicker(kind) {
 }
 
 function armRoutePoint(kind) {
+  if (kind === 'via' && !(routing.start && routing.end)) return;
   closePlacePicker(false);
   routing.arm = routing.arm === kind ? null : kind;
   updateArmButtons();
@@ -1741,6 +1760,8 @@ document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
 document.getElementById('panelClose').addEventListener('click', () => setPanelOpen(false));
 document.getElementById('panelOpen').addEventListener('click', () => {
   closePlacePicker(true);
+  readoutPinned = false;
+  readoutEl.classList.remove('show');
   setPanelOpen(true);
 });
 
