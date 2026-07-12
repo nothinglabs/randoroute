@@ -129,6 +129,9 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-main { font: 700 20px/1.15 system-ui; color: #111; }
 #routeCard .rc-main small { font: 600 15px system-ui; color: #555; }
 #routeCard .rc-sub { margin-top: 3px; font-size: 12px; color: #555; }
+.route-details-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; color: #0a66c2; font: 700 11px system-ui; text-decoration: none; }
+.route-details-link span { font-size: 15px; line-height: 10px; }
+.route-details-link:hover { text-decoration: underline; }
 #routeCard .rc-warn { margin-top: 3px; font-size: 12px; color: #b45309; font-weight: 600; }
 #routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }
 #routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
@@ -158,6 +161,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   #routeCard .rc-main { font-size: 23px; }
   #routeCard .rc-main small { font-size: 16px; }
   #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
+  .route-details-link { margin-top: 8px; font-size: 12px; }
   #routeCard canvas { height: 50px; margin-top: 6px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
   #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }

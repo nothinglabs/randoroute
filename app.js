@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.36'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.37'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -875,6 +875,28 @@ function routeSummaryStats(m) {
   return { levels, highwayM, freewayM };
 }
 
+const ROUTE_DETAILS_KEY = 'wa-bike-route-details-1';
+function storeRouteDetails(m) {
+  if (!m || !m.ok) return;
+  try {
+    localStorage.setItem(ROUTE_DETAILS_KEY, JSON.stringify({
+      savedAt: Date.now(),
+      mode: routing.mode,
+      rules: { ...rules },
+      summary: {
+        distM: m.distM, timeS: m.timeS, ascentM: m.ascentM, descentM: m.descentM,
+        failM: m.failM, desigM: m.desigM, ferryM: m.ferryM,
+      },
+      // Keep the detailed report compact: it only needs road attributes and
+      // lengths, not the complete route geometry or elevation profile.
+      segs: (m.segs || []).map((s) => ({
+        name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
+        level: s.level || fallbackRouteLevel(s), lenM: Number(s.lenM) || 0,
+      })),
+    }));
+  } catch (e) { /* storage unavailable — the map still works normally */ }
+}
+
 function renderRouteCard(m) {
   const card = document.getElementById('routeCard');
   const controls = document.getElementById('routeControls');
@@ -909,7 +931,7 @@ function renderRouteCard(m) {
   if (stats.highwayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="highway" aria-pressed="false" title="Highlight highway segments on the map"><span>⚠ Highways</span><b>${fmtDist(stats.highwayM)}</b></button>`);
   if (stats.freewayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="freeway" aria-pressed="false" title="Highlight freeway segments on the map"><span>⛔ Freeways</span><b>${fmtDist(stats.freewayM)}</b></button>`);
   const routeTypes = `<div class="rc-route-types">${routeTypeParts.join('')}</div>`;
-  const levelNames = ['', 'Comfortable', 'Meets rules', '', 'Fails rules'];
+  const levelNames = ['', 'Comfy', 'Meets rules', '', 'Fails rules'];
   const levels = `<div class="rc-levels">${[1, 2, 4].map((level) =>
     `<button class="rc-level rc-l${level}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
   ).join('')}</div>`;
@@ -921,6 +943,7 @@ function renderRouteCard(m) {
   card.innerHTML = `
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
+    <a class="route-details-link" href="route-details.html">Route details &amp; highlights <span aria-hidden="true">→</span></a>
     <div id="routeControlsSlot"></div>
     ${ferry}
     <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
@@ -1006,6 +1029,7 @@ function onRouterMessage(ev) {
       if (m.code === 'point-too-far') showPointTooFarPopup(m);
       return;
     }
+    storeRouteDetails(m);
     drawRoute(m.coords, m.ferrySegs, m.segs);
     setRouteStatus(`${fmtMi(m.distM)} mi`);
   } else if (m.type === 'error') {
@@ -1340,6 +1364,7 @@ function clearRoute() {
   }
   drawRoute([]);
   routing.last = null;
+  try { localStorage.removeItem(ROUTE_DETAILS_KEY); } catch (e) { /* nonfatal */ }
   renderRouteCard(null);
   setRouteStatus('');
   updateArmButtons();
