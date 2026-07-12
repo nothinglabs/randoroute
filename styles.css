@@ -46,7 +46,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 @media (min-width: 721px) {
   .panel {
     top: 12px; left: 12px;
-    width: min(370px, calc(100vw - 24px));
+    width: min(clamp(370px, 33vw, 430px), calc(100vw - 24px));
     max-height: calc(100% - 24px);
     border-radius: 12px;
   }
@@ -150,7 +150,23 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 @media (min-width: 721px) {
   .rc-levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rc-levels > :last-child:nth-child(odd) { grid-column: span 2; }
-  .rc-highlight-item, .rc-level { font-size: 10px; }
+  #tabs { gap: 6px; padding: 7px 10px; }
+  #tabs button { padding: 8px 0; border-radius: 10px; font-size: 14px; }
+  .tab { padding: 0 12px 10px; }
+  #routeCard { padding: 10px 12px; }
+  #routeCard .rc-main { font-size: 23px; }
+  #routeCard .rc-main small { font-size: 16px; }
+  #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
+  #routeCard canvas { height: 50px; margin-top: 6px; }
+  #routeControls { margin-top: 8px; padding-top: 7px; }
+  #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }
+  #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; font-size: 16px; }
+  #modeChips { gap: 6px; }
+  #modeChips button { padding: 8px 0; font-size: 13px; }
+  .rc-highlight-hint { margin-top: 7px; font-size: 11px; }
+  .rc-route-types, .rc-levels { gap: 5px; margin-top: 5px; }
+  .rc-highlight-item, .rc-level { padding: 5px 6px; border-radius: 6px; font-size: 11px; }
+  .rc-highlight-item::after, .rc-level::after { font-size: 15px; }
 }
 
 .saved-row { display: flex; gap: 6px; margin: 5px 0; }
@@ -273,7 +289,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #rb-status:empty { display: none; }
 
 #appVersion { position: absolute; top: calc(env(safe-area-inset-top) + 3px); left: 4px; z-index: 13; font-size: 9px; color: #56616a; background: rgba(255,255,255,.9); border-radius: 3px; padding: 1px 3px; pointer-events: none; }
-@media (min-width: 721px) { #appVersion { left: 390px; } }
+@media (min-width: 721px) { #appVersion { left: 450px; } }
 
 .place-picker {
   position: absolute; z-index: 14; top: calc(env(safe-area-inset-top) + 62px); left: 50%;
