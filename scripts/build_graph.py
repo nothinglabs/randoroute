@@ -157,6 +157,7 @@ def load_blts_index(path):
                 'sh': p.get('ShoulderWidth'),
                 'spd': p.get('SpeedLimit'),
                 'prohibited': p.get('Prohibited') == 1,
+                'limited': p.get('LimitedAccess') == 1,
             })
     print(f'  WSDOT index: {len(geoms):,} segments', flush=True)
     return STRtree(geoms), geoms, attrs
@@ -443,6 +444,10 @@ def build(src, out, blts=None):
                                     if best['prohibited']:
                                         seg = [p]
                                         continue  # WSDOT permanent bike restriction
+                                    if best['limited']:
+                                        # WSDOT access control is authoritative even when
+                                        # OSM calls the road a trunk rather than a motorway.
+                                        eflags |= 4
                                     if best['sh'] is not None:
                                         esh = max(-1, min(127, int(best['sh'])))
                                     if best['spd'] and (eflags & 1):
