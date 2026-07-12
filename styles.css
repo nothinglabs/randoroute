@@ -56,12 +56,12 @@ body.settings-open #tabs {
   border-top: 1px solid #dbe4ea; background: rgba(250, 252, 253, .98);
 }
 body.settings-open .tab { order: 1; }
+body.settings-open .tab.active { flex: 1 1 auto; }
 body.settings-open #tab-settings { padding: 16px max(18px, calc((100vw - 620px) / 2)) 14px; }
 body.settings-open #tabs #panelClose {
-  display: block; order: -1; flex: 0 0 42px; padding: 0;
+  display: flex; order: -1; flex: 0 0 42px; padding: 0;
   border: 1px solid #c8d5df; border-radius: 9px;
   color: #2f4858; background: #dce7ef;
-  font-size: 21px; font-weight: 800; line-height: 1;
 }
 body.settings-open #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; border-radius: 9px; }
 
@@ -82,7 +82,8 @@ body.settings-open #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; borde
     left: 0; right: 0; bottom: 0;
     border-radius: 16px 16px 0 0;
     padding-bottom: 0;
-    height: min(60vh, 520px);
+    height: auto;
+    max-height: min(60vh, 520px);
     transition: transform 0.2s ease;
     transform: translateY(100%);
   }
@@ -96,22 +97,28 @@ body.settings-open #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; borde
     background: rgba(250, 252, 253, .98);
   }
   .tab { order: 1; }
+  .tab.active { flex: 0 1 auto; }
   #tabs #panelClose {
-    display: block; order: -1; flex: 0 0 42px; padding: 0;
+    display: flex; order: -1; flex: 0 0 42px; padding: 0;
     border: 1px solid #c8d5df; border-radius: 9px;
     color: #2f4858; background: #dce7ef;
-    font-size: 21px; font-weight: 800; line-height: 1;
   }
   #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; border-radius: 9px; }
   #panelOpen {
-    display: block; position: absolute; left: 10px;
+    display: flex; position: absolute; left: 10px;
     bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 11;
-    width: 42px; height: 42px; border: none; border-radius: 12px;
+    width: 42px; height: 42px; border: 1px solid #c8d5df; border-radius: 12px;
     background: rgba(255,255,255,.96); box-shadow: 0 2px 10px rgba(0,0,0,.22);
-    font: 700 18px system-ui; color: #333; cursor: pointer;
+    color: #2f4858; cursor: pointer;
   }
   body.panel-open #panelOpen { display: none; }
 }
+
+#panelOpen, #tabs #panelClose {
+  flex-direction: column; align-items: center; justify-content: center; gap: 0;
+}
+.panel-control-icon { display: block; height: 19px; font: 800 19px/17px system-ui; }
+.panel-control-label { display: block; font: 750 8px/10px system-ui; letter-spacing: .02em; }
 
 /* -------------------------------------------------------------- route tab */
 #placeSearch {
@@ -232,6 +239,14 @@ body.settings-open #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; borde
 .rule label { font-weight: 600; }
 .rule .val { color: #0a66c2; font-variant-numeric: tabular-nums; font-weight: 600; }
 .rule input[type="range"] { width: 100%; }
+#rules { display: grid; gap: 8px; margin-top: 9px; }
+#rules .rule-card { margin: 0; padding: 10px 11px; border: 1px solid #dbe5eb; border-radius: 10px; background: #fbfcfd; }
+#rules .rule-head { margin-bottom: 7px; }
+#rules .rule-card input[type="range"] { display: block; margin: 0; }
+#rules .rule-hint { margin: 6px 0 0; color: #637581; font: 11px/1.35 system-ui; }
+#rules .check-rule.rule-card { display: block; }
+#rules .rule-check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
+#rules .rule-check span { flex: 1; }
 .check-rule { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
 .check-rule label { font-weight: 600; cursor: pointer; }
 input[type="checkbox"] { width: 17px; height: 17px; }
@@ -250,7 +265,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 
 /* -------------------------------------------------------------- overlays */
 .readout {
-  position: absolute; z-index: 12;
+  position: absolute; z-index: 16;
   background: rgba(255, 255, 255, 0.97); border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
   padding: 9px 34px 9px 12px; font-size: 12px; max-width: 320px;
@@ -284,12 +299,19 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .status.hidden { opacity: 0; }
 
-#routeBar {
+#topToolbar {
   position: absolute;
   top: calc(env(safe-area-inset-top) + 12px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 16px);
+}
+#routeBar {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -331,15 +353,11 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #rb-status:empty { display: none; }
 
 .nav-start {
-  position: absolute; z-index: 11; top: calc(env(safe-area-inset-top) + 64px); left: 50%;
-  transform: translateX(-50%); min-height: 38px; padding: 0 14px; border: 1px solid #057861;
+  flex: none; min-height: 38px; padding: 0 12px; border: 1px solid #057861;
   border-radius: 20px; background: #008b73; box-shadow: 0 2px 9px rgba(0, 0, 0, .2);
-  color: #fff; font: 750 12px system-ui; cursor: pointer;
+  color: #fff; font: 750 12px system-ui; cursor: pointer; white-space: nowrap;
 }
-.nav-start[hidden] { display: none; }
-@media (min-width: 721px) {
-  .nav-start { left: min(70%, calc(100% - 150px)); }
-}
+.nav-start:disabled { border-color: #c1ccd2; background: #e3eaed; box-shadow: none; color: #78868d; cursor: default; }
 
 .nav-banner {
   position: absolute; z-index: 14; left: 50%; bottom: calc(60px + env(safe-area-inset-bottom));
@@ -354,7 +372,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #navBannerText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 750 13px/1.2 system-ui; }
 #navBannerMeta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #4f6f68; font: 600 10.5px/1.15 system-ui; }
 .nav-banner button { flex: none; min-height: 29px; border: 1px solid #b8c9d2; border-radius: 8px; padding: 4px 7px; background: #fff; color: #235064; font: 700 11px system-ui; cursor: pointer; }
-.nav-banner button[data-nav-action="pause"] { border-color: #a73732; background: #c64840; color: #fff; }
+.nav-banner button[data-nav-action="reroute"] { border-color: #bb7b00; background: #f2a900; color: #2e2400; }
 .navigation-active .update-prompt { bottom: calc(128px + env(safe-area-inset-bottom)); }
 
 #appVersion { position: absolute; top: calc(env(safe-area-inset-top) + 3px); left: 4px; z-index: 13; font-size: 9px; color: #56616a; background: rgba(255,255,255,.9); border-radius: 3px; padding: 1px 3px; pointer-events: none; }
@@ -377,6 +395,12 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #getUpdateBtn { padding: 6px 9px; border: none; border-radius: 8px; background: #0a66c2; color: #fff; font: 700 11px system-ui; cursor: pointer; }
 #updateLaterBtn { width: 26px; height: 26px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
 @media (max-width: 720px) {
+  #topToolbar { gap: 4px; max-width: calc(100vw - 12px); }
+  .nav-start { min-height: 34px; padding: 0 9px; font-size: 11px; }
+  #routeBar { gap: 4px; padding: 4px 7px 4px 5px; max-width: calc(100vw - 98px); }
+  #routeBar button { width: 30px; height: 30px; }
+  #routeBar .rb-pill { padding: 0 9px; font-size: 11px; }
+  #routeBar #rb-via, #routeBar #rb-via-remove { width: 29px; }
   body:not(.panel-open) .nav-banner { bottom: calc(98px + env(safe-area-inset-bottom)); }
   body:not(.panel-open).navigation-active .update-prompt { bottom: calc(170px + env(safe-area-inset-bottom)); }
   body.panel-open .update-prompt { bottom: calc(min(60vh, 520px) + 12px + env(safe-area-inset-bottom)); }

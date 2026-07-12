@@ -19,24 +19,25 @@
   <div id="map"></div>
   <div id="appVersion" aria-label="App version"></div>
 
-  <div id="routeBar">
-    <button id="rb-start" class="rb-pill rb-pill-start" title="Set start">Start</button>
-    <button id="rb-end" class="rb-pill rb-pill-end" title="Set destination">End</button>
-    <button id="rb-via" title="Add a stop">+</button>
-    <button id="rb-via-remove" title="Remove last stop" aria-label="Remove last stop">−</button>
-    <button id="rb-clear" title="Clear route">✕</button>
-    <span id="rb-status"></span>
+  <div id="topToolbar">
+    <button id="navStartButton" class="nav-start" type="button" disabled title="Set a route to navigate">
+      <span id="navStartIcon" aria-hidden="true">▶</span> <span id="navStartLabel">Navigate</span>
+    </button>
+    <div id="routeBar">
+      <button id="rb-start" class="rb-pill rb-pill-start" title="Set start">Start</button>
+      <button id="rb-end" class="rb-pill rb-pill-end" title="Set destination">End</button>
+      <button id="rb-via" title="Add a stop">+</button>
+      <button id="rb-via-remove" title="Remove last stop" aria-label="Remove last stop">−</button>
+      <button id="rb-clear" title="Clear route">✕</button>
+      <span id="rb-status"></span>
+    </div>
   </div>
 
-  <button id="navStartButton" class="nav-start" type="button" hidden>
-    <span aria-hidden="true">▶</span> Start navigation
-  </button>
-
-  <button id="panelOpen" aria-label="Show map controls" title="Show map controls">☰</button>
+  <button id="panelOpen" aria-label="Show map controls" title="Show map controls"><span class="panel-control-icon" aria-hidden="true">☰</span><span class="panel-control-label">Menu</span></button>
 
   <div class="panel" id="panel">
     <nav id="tabs">
-      <button id="panelClose" aria-label="Hide map controls" title="Hide map controls">↓</button>
+      <button id="panelClose" aria-label="Hide map controls" title="Hide map controls"><span class="panel-control-icon" aria-hidden="true">↓</span><span class="panel-control-label">Close</span></button>
       <button data-tab="route" class="active">Route</button>
       <button data-tab="layers">Layers</button>
       <button data-tab="settings">Settings</button>
@@ -57,6 +58,7 @@
     </section>
 
     <section class="tab" id="tab-settings">
+      <h2>Routing Settings</h2>
       <p class="hint">Roads that don't meet these criteria <b>fail</b>. The
         router avoids failing roads and only rides one when there's no
         reasonable alternative — those stretches pulse red on the route.
@@ -121,7 +123,7 @@
       <span id="navBannerMeta"></span>
     </div>
     <button type="button" data-nav-action="details">Details</button>
-    <button type="button" data-nav-action="pause">Pause</button>
+    <button type="button" data-nav-action="reroute" hidden>Reroute</button>
   </div>
   <div id="updatePrompt" class="update-prompt" hidden>
     <span>New version available</span>

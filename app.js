@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.48'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.60'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -403,7 +403,8 @@ const map = new maplibregl.Map({
 // A double tap is too easy to trigger while placing or inspecting a point on
 // a phone, and can leave the app looking brokenly zoomed-in. Desktop keeps the
 // conventional double-click zoom; touch devices use the visible +/- controls.
-if (window.matchMedia('(pointer: coarse)').matches) map.doubleClickZoom.disable();
+const COARSE_POINTER = window.matchMedia('(pointer: coarse)').matches;
+if (COARSE_POINTER) map.doubleClickZoom.disable();
 // Keep the statewide view readable. The All-roads layer is on by default, but
 // it appears only in a local/regional view; neighborhood streets need a closer
 // zoom still.
@@ -798,6 +799,7 @@ const routing = {
   arm: null,                 // 'start' | 'end' — next map tap sets that point
   start: null, end: null,    // [lng, lat]
   vias: [],                  // intermediate stops: { pt: [lng,lat], marker }
+  navRejoin: null,           // transient route point used by turn-by-turn rerouting
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false,
   mode: sharedRoute?.mode || (savedState && savedState.mode) || 'balanced', // 'direct' | 'balanced' | 'low'
@@ -918,6 +920,9 @@ const turnNav = {
   routeM: 0,
   message: '',
   offRouteSpokenAt: 0,
+  offRoute: false,
+  lastPosition: null,
+  rejoinAwaiting: false,
   arrived: false,
 };
 
@@ -995,6 +1000,11 @@ function navigationBannerInfo() {
   const remainingRouteM = Math.max(0, (turnNav.route?.totalM || 0) - turnNav.routeM);
   const routeMeta = `${navDistanceText(remainingRouteM)} remaining`;
   if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
+  if (turnNav.offRoute) return {
+    headline: turnNav.message || 'You are off route',
+    meta: 'Use Reroute to return to the nearest planned route point',
+    kicker: 'Off route',
+  };
   const next = turnNav.route?.instructions[turnNav.next];
   if (turnNav.message) return { headline: turnNav.message, meta: routeMeta, kicker: 'Turn-by-turn navigation' };
   if (!next) return { headline: 'Continue to your destination', meta: routeMeta, kicker: 'Turn-by-turn navigation' };
@@ -1020,13 +1030,27 @@ function refreshNavigationUI() {
   const detailsButton = document.getElementById('routeDetailsBtn');
   if (detailsButton) detailsButton.disabled = !routeAvailable;
   const startButton = document.getElementById('navStartButton');
-  if (startButton) startButton.hidden = !routeAvailable || turnNav.active;
+  if (startButton) {
+    startButton.disabled = !routeAvailable;
+    startButton.title = !routeAvailable
+      ? 'Set a route to navigate'
+      : turnNav.active ? 'Pause navigation' : 'Start turn-by-turn navigation';
+    startButton.setAttribute('aria-pressed', String(turnNav.active));
+  }
+  const startLabel = document.getElementById('navStartLabel');
+  if (startLabel) startLabel.textContent = turnNav.active ? 'Pause' : 'Navigate';
+  const startIcon = document.getElementById('navStartIcon');
+  if (startIcon) startIcon.textContent = turnNav.active ? 'Ⅱ' : '▶';
   const banner = document.getElementById('navBanner');
   const kicker = document.getElementById('navBannerKicker');
   const bannerText = document.getElementById('navBannerText');
   const bannerMeta = document.getElementById('navBannerMeta');
+  const reroute = document.querySelector('[data-nav-action="reroute"]');
   const info = navigationBannerInfo();
-  if (banner) banner.hidden = !turnNav.active;
+  const mobileMenuOpen = window.matchMedia('(max-width: 720px)').matches
+    && document.body.classList.contains('panel-open');
+  if (banner) banner.hidden = !turnNav.active || mobileMenuOpen;
+  if (reroute) reroute.hidden = !(turnNav.active && turnNav.offRoute && turnNav.lastPosition && turnNav.route?.coords?.length);
   if (kicker) kicker.textContent = info.kicker;
   if (bannerText) bannerText.textContent = info.headline;
   if (bannerMeta) bannerMeta.textContent = info.meta;
@@ -1094,6 +1118,7 @@ function nearestNavigationPoint(lon, lat) {
 function updateTurnNavigation(pos) {
   if (!turnNav.active || !turnNav.route) return;
   const { longitude, latitude } = pos.coords;
+  turnNav.lastPosition = [longitude, latitude];
   if (!turnNav.marker) {
     turnNav.marker = new maplibregl.Marker({ color: '#00795c', scale: 0.75 })
       .setLngLat([longitude, latitude]).addTo(map);
@@ -1104,15 +1129,21 @@ function updateTurnNavigation(pos) {
   turnNav.nearest = Math.max(turnNav.nearest, nearest.index);
   turnNav.routeM = Math.max(turnNav.routeM, nearest.routeM);
   if (nearest.offRouteM > 100) {
+    turnNav.offRoute = true;
     turnNav.message = `Off route by ${navDistanceText(nearest.offRouteM)}`;
     if (Date.now() - turnNav.offRouteSpokenAt > 30000) {
-      speakNavigation('You appear to be off route. Check the map to recalculate.');
+      speakNavigation('You appear to be off route. Use the reroute button if you need help returning to your planned route.');
       turnNav.offRouteSpokenAt = Date.now();
     }
     refreshNavigationUI();
     return;
   }
+  turnNav.offRoute = false;
   turnNav.message = '';
+  const rejoinLegM = Number(routing.last?.legs?.[0]?.distM) || Infinity;
+  if (routing.navRejoin && !turnNav.rejoinAwaiting && turnNav.routeM >= rejoinLegM - 30) {
+    routing.navRejoin = null;
+  }
   const next = turnNav.route.instructions[turnNav.next];
   if (!next) {
     if (!turnNav.arrived && turnNav.route.totalM - turnNav.routeM < 55) {
@@ -1152,6 +1183,9 @@ function startTurnNavigation() {
   turnNav.routeM = 0;
   turnNav.arrived = false;
   turnNav.offRouteSpokenAt = 0;
+  turnNav.offRoute = false;
+  turnNav.lastPosition = null;
+  turnNav.rejoinAwaiting = false;
   turnNav.message = 'Getting your location';
   refreshNavigationUI();
   speakNavigation('Navigation started. Follow the route on the map.');
@@ -1167,6 +1201,44 @@ function startTurnNavigation() {
   requestNavigationWakeLock();
 }
 
+function remainingNavigationVias() {
+  const legs = routing.last?.legs || [];
+  const virtualLegs = routing.navRejoin ? 1 : 0;
+  let distanceM = 0;
+  for (let i = 0; i < virtualLegs; i++) distanceM += Number(legs[i]?.distM) || 0;
+  let completed = 0;
+  for (let i = 0; i < routing.vias.length; i++) {
+    const legM = Number(legs[virtualLegs + i]?.distM);
+    if (!Number.isFinite(legM)) break;
+    distanceM += legM;
+    if (turnNav.routeM >= distanceM - 30) completed++;
+    else break;
+  }
+  for (const via of routing.vias.slice(0, completed)) via.marker.remove();
+  return routing.vias.slice(completed);
+}
+
+function rerouteNavigation() {
+  const position = turnNav.lastPosition;
+  const rejoin = turnNav.route?.coords?.[turnNav.nearest];
+  if (!turnNav.active || !position || !rejoin || !routing.end) {
+    turnNav.message = 'Waiting for a GPS location to reroute';
+    refreshNavigationUI();
+    return;
+  }
+  routing.vias = remainingNavigationVias();
+  routing.start = [...position];
+  routing.navRejoin = [...rejoin];
+  if (routing.startMarker) routing.startMarker.setLngLat({ lng: position[0], lat: position[1] });
+  turnNav.offRoute = false;
+  turnNav.rejoinAwaiting = true;
+  turnNav.message = 'Rerouting to the nearest planned route point';
+  setRouteStatus('Rerouting…');
+  updateArmButtons();
+  refreshNavigationUI();
+  computeRoute();
+}
+
 function stopTurnNavigation(announce = true) {
   if (!turnNav.active) return;
   if (turnNav.watchId != null) navigator.geolocation?.clearWatch(turnNav.watchId);
@@ -1176,6 +1248,9 @@ function stopTurnNavigation(announce = true) {
   turnNav.active = false;
   turnNav.route = null;
   turnNav.message = '';
+  turnNav.offRoute = false;
+  turnNav.lastPosition = null;
+  turnNav.rejoinAwaiting = false;
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   if (announce) speakNavigation('Navigation stopped.');
   refreshNavigationUI();
@@ -1309,6 +1384,7 @@ function onRouterMessage(ev) {
     if (m.id !== routing.reqId) return; // stale reply
     routing.last = m;
     if (!m.ok) {
+      routing.navRejoin = null;
       stopTurnNavigation(false);
       renderRouteCard(m);
       drawRoute([]);
@@ -1322,6 +1398,8 @@ function onRouterMessage(ev) {
       turnNav.nearest = 0;
       turnNav.routeM = 0;
       turnNav.arrived = false;
+      turnNav.offRoute = false;
+      turnNav.rejoinAwaiting = false;
       turnNav.message = 'Route updated';
     }
     renderRouteCard(m);
@@ -1345,7 +1423,7 @@ function computeRoute() {
   saveStateSoon();
   routing.worker.postMessage({
     type: 'route', id: routing.reqId,
-    points: [routing.start, ...routing.vias.map((v) => v.pt), routing.end],
+    points: [routing.start, ...(routing.navRejoin ? [routing.navRejoin] : []), ...routing.vias.map((v) => v.pt), routing.end],
     rules: { ...rules }, mode: routing.mode,
     prefDesignated: routing.prefDesig,
   });
@@ -1658,6 +1736,7 @@ function clearRoute() {
   routing.arm = null;
   closePlacePicker(false);
   routing.start = routing.end = null;
+  routing.navRejoin = null;
   for (const v of routing.vias) v.marker.remove();
   routing.vias = [];
   for (const k of ['startMarker', 'endMarker']) {
@@ -1737,12 +1816,15 @@ function buildRoutingPanel() {
   }
   document.getElementById('rb-via').addEventListener('click', () => armRoutePoint('via'));
   document.getElementById('rb-via-remove').addEventListener('click', removeLastVia);
-  document.getElementById('navStartButton').addEventListener('click', startTurnNavigation);
+  document.getElementById('navStartButton').addEventListener('click', () => {
+    if (turnNav.active) stopTurnNavigation();
+    else startTurnNavigation();
+  });
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
   document.getElementById('navBanner').addEventListener('click', (e) => {
     const action = e.target.closest('[data-nav-action]')?.dataset.navAction;
-    if (action === 'pause') stopTurnNavigation();
-    else if (action === 'details') openRouteDetails();
+    if (action === 'details') openRouteDetails();
+    else if (action === 'reroute') rerouteNavigation();
   });
   document.getElementById('confirmClearRoute').addEventListener('click', () => {
     document.getElementById('clearRouteDialog').close();
@@ -2413,14 +2495,14 @@ function buildRulesPanel() {
 
   const slider = (key, label, hint, min, max, step, unit) => {
     const wrap = document.createElement('div');
-    wrap.className = 'rule';
+    wrap.className = 'rule rule-card';
     wrap.innerHTML = `
       <div class="rule-head">
         <label for="r-${key}">${label}</label>
         <span class="val" id="v-${key}">${rules[key]}${unit}</span>
       </div>
-      <div class="hint">${hint}</div>
-      <input type="range" id="r-${key}" min="${min}" max="${max}" step="${step}" value="${rules[key]}">`;
+      <input type="range" id="r-${key}" min="${min}" max="${max}" step="${step}" value="${rules[key]}">
+      <p class="rule-hint">${hint}</p>`;
     host.appendChild(wrap);
     const input = wrap.querySelector('input');
     input.addEventListener('input', () => {
@@ -2432,17 +2514,13 @@ function buildRulesPanel() {
 
   const check = (key, label, hint) => {
     const wrap = document.createElement('div');
-    wrap.className = 'check-rule';
+    wrap.className = 'check-rule rule-card';
     wrap.innerHTML = `
-      <input type="checkbox" id="r-${key}" ${rules[key] ? 'checked' : ''}>
-      <label for="r-${key}">${label}</label>`;
-    if (hint) {
-      const h = document.createElement('div');
-      h.className = 'hint';
-      h.style.width = '100%';
-      h.textContent = hint;
-      wrap.appendChild(h);
-    }
+      <label class="rule-check" for="r-${key}">
+        <input type="checkbox" id="r-${key}" ${rules[key] ? 'checked' : ''}>
+        <span>${label}</span>
+      </label>
+      ${hint ? `<p class="rule-hint">${hint}</p>` : ''}`;
     host.appendChild(wrap);
     wrap.querySelector('input').addEventListener('change', (e) => {
       rules[key] = e.target.checked;
@@ -2465,15 +2543,15 @@ function buildRulesPanel() {
   {
     const NONE_AT = 70;
     const wrap = document.createElement('div');
-    wrap.className = 'rule';
+    wrap.className = 'rule rule-card';
     const cur = rules.noUpperLimit ? NONE_AT : rules.upperMaxSpeed;
     wrap.innerHTML = `
       <div class="rule-head">
         <label for="r-upperMaxSpeed">Never allow roads faster than</label>
         <span class="val" id="v-upperMaxSpeed"></span>
       </div>
-      <div class="hint">Above this a road fails outright. Slide to the top for no speed cutoff (the shoulder rule still applies).</div>
-      <input type="range" id="r-upperMaxSpeed" min="35" max="${NONE_AT}" step="5" value="${cur}">`;
+      <input type="range" id="r-upperMaxSpeed" min="35" max="${NONE_AT}" step="5" value="${cur}">
+      <p class="rule-hint">Above this a road fails outright. Slide to the top for no speed cutoff (the shoulder rule still applies).</p>`;
     host.appendChild(wrap);
     const input = wrap.querySelector('input');
     const valEl = wrap.querySelector('#v-upperMaxSpeed');
@@ -2529,12 +2607,19 @@ buildLegend();
 function setPanelOpen(open) {
   document.body.classList.toggle('panel-open', open);
   document.body.classList.toggle('settings-open', open && document.getElementById('tab-settings').classList.contains('active'));
+  refreshNavigationUI();
 }
+
+function selectPanelTab(tabId) {
+  document.querySelectorAll('#tabs button[data-tab]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.tab === tabId));
+  document.querySelectorAll('.tab').forEach((t) =>
+    t.classList.toggle('active', t.id === 'tab-' + tabId));
+}
+
 document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
   b.addEventListener('click', () => {
-    document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
-    document.querySelectorAll('.tab').forEach((t) =>
-      t.classList.toggle('active', t.id === 'tab-' + b.dataset.tab));
+    selectPanelTab(b.dataset.tab);
     setPanelOpen(true);
   });
 });
@@ -2543,6 +2628,7 @@ document.getElementById('panelOpen').addEventListener('click', () => {
   closePlacePicker(true);
   readoutPinned = false;
   readoutEl.classList.remove('show');
+  selectPanelTab('route');
   setPanelOpen(true);
 });
 
