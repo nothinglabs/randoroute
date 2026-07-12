@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.71'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.72'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -2341,6 +2341,22 @@ function buildPlacePicker() {
 /* ---------------------------------------------- hover/click readout */
 const readoutEl = document.getElementById('readout');
 const LEVEL_NAME = { 0: 'unknown', 1: 'Low', 2: 'Moderate', 3: 'Caution', 4: 'Very high' };
+// The road card must repeat the legend vocabulary, so a rider can connect a
+// colored line on the map with the detailed verdict they just opened.
+const READOUT_COLOR_LABEL = {
+  0: 'Gray — Unknown / no data',
+  1: 'Blue — Comfortable',
+  2: 'Light blue — Meets your criteria',
+  3: 'Orange — Caution (limited-access highway)',
+  4: 'Red dashed — Fails / bikes prohibited (avoid)',
+};
+const READOUT_RESULT_LABEL = {
+  0: '? Unknown / no data',
+  1: '✓ Comfortable',
+  2: '✓ Meets your criteria',
+  3: '⚠ Caution',
+  4: '✗ Fails / bikes prohibited',
+};
 
 // Plain-language reason for a segment's verdict under the current rules.
 // Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
@@ -2459,8 +2475,9 @@ function renderReadout(feature, lngLat) {
   const p = feature.properties;
   const n = src.scorer(p);            // recompute normalized props from this feature
   const lvl = p.level != null ? p.level : effectiveLevel(n); // expr sources carry no .level
-  const verdict = lvl === 0 ? 'no data' : lvl === 3 ? '⚠ Caution' : lvl === 4 ? '✗ Fail' : '✓ Pass';
+  const verdict = READOUT_RESULT_LABEL[lvl] || READOUT_RESULT_LABEL[0];
   const common = [
+    ['Map color', READOUT_COLOR_LABEL[lvl] || READOUT_COLOR_LABEL[0]],
     ['Result', verdict],
     ['Stress', lvl === 0 ? 'unknown' : `${lvl} — ${LEVEL_NAME[lvl]}`],
     ['Why', explainLevel(n)],
@@ -2491,12 +2508,14 @@ function renderReadout(feature, lngLat) {
       ['Name', p.n || null],
       ['Route', isUSBR ? 'US Bicycle Route ' + p.r : p.r || null],
       ['Network', p.t === 'ncn' ? 'National (AASHTO-designated)' : 'Regional trail / route'],
+      ['Map color', 'Orange — designated routes (USBR & trails)'],
       ['Note', 'Officially designated cycling corridor — treated as meeting your criteria (freeway and prohibition rules still apply).'],
     ];
   } else if (src.id === 'restrict') {
     title = 'Bikes prohibited (WSDOT)';
     rows = [
       ['Route', p.Route ? 'SR ' + String(p.Route).replace(/^0+/, '') : p.RouteIdentifier],
+      ['Map color', 'Red dashed — Fails / bikes prohibited (avoid)'],
       ['Result', '✗ Prohibited'],
       ['Why', 'Permanent bicycle restriction by official WSDOT traffic action.'],
       ['Direction', p.Direction],
