@@ -34,8 +34,7 @@ function failReason(seg, rules) {
   return reasons.length ? reasons.join(' · ') : 'does not meet your selected riding rules';
 }
 
-// Consecutive edges with the same meaning become one useful, named report
-// entry. This turns a 500 ft freeway merge into a single readable line.
+// Consecutive graph edges with the same meaning become one readable road item.
 function sections(segs, include, describe) {
   const out = [];
   let previousIndex = -2;
@@ -52,7 +51,7 @@ function sections(segs, include, describe) {
   return out;
 }
 
-function renderSection(host, title, items, emptyText, cls = '') {
+function renderSection(host, title, items, emptyText, cls = '', numbered = false) {
   const total = items.reduce((sum, item) => sum + item.lenM, 0);
   const section = document.createElement('section');
   section.className = `detail-section ${cls}`;
@@ -63,8 +62,8 @@ function renderSection(host, title, items, emptyText, cls = '') {
     empty.textContent = emptyText;
     section.appendChild(empty);
   } else {
-    const list = document.createElement('ul');
-    list.className = 'detail-list';
+    const list = document.createElement('ol');
+    list.className = `detail-list${numbered ? ' numbered' : ''}`;
     for (const item of items) {
       const li = document.createElement('li');
       li.className = `detail-item ${cls}`;
@@ -76,18 +75,75 @@ function renderSection(host, title, items, emptyText, cls = '') {
   host.appendChild(section);
 }
 
+function buildRouteSteps(segs) {
+  const out = [];
+  for (const seg of segs) {
+    if (seg.flags & FLAG_FERRY) continue;
+    const name = roadName(seg);
+    const last = out[out.length - 1];
+    if (last && last.name === name) {
+      last.lenM += seg.lenM;
+      last.flags |= seg.flags || 0;
+      last.mph = Math.max(last.mph, seg.mph || 0);
+      if (seg.level === 4) last.failM += seg.lenM;
+    } else {
+      out.push({
+        name,
+        lenM: seg.lenM,
+        flags: seg.flags || 0,
+        mph: seg.mph || 0,
+        failM: seg.level === 4 ? seg.lenM : 0,
+      });
+    }
+  }
+  return out.map((step) => ({ ...step, meta: stepMeta(step) }));
+}
+
+function stepMeta(step) {
+  const flags = step.flags || 0;
+  const bits = [];
+  if (step.mph) bits.push(`${step.mph} mph`);
+  if (flags & FLAG_FREEWAY) bits.push('freeway');
+  else if (flags & FLAG_LIMITED_ACCESS) bits.push('limited access');
+  else if (flags & FLAG_INFRA) bits.push('bike infrastructure');
+  else if (flags & FLAG_FACILITY) bits.push('bike route');
+  else if (HIGHWAY_NAME.test(step.name) || step.mph >= 45) bits.push('highway');
+  if (step.failM > 0) bits.push(`includes ${fmtDist(step.failM)} that fails rules`);
+  else if (flags & FLAG_LIMITED_ACCESS) bits.push('caution');
+  return bits.join(' · ') || 'follow this road';
+}
+
 function loadDetails() {
   try { return JSON.parse(localStorage.getItem(ROUTE_DETAILS_KEY) || 'null'); } catch (e) { return null; }
 }
 
+function selectDetailTab(tabId) {
+  document.querySelectorAll('[data-detail-tab]').forEach((tab) => {
+    const selected = tab.dataset.detailTab === tabId;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  });
+  document.querySelectorAll('.detail-panel').forEach((panel) => {
+    panel.hidden = panel.id !== `panel-${tabId}`;
+  });
+}
+
 const details = loadDetails();
+const hasRoute = !!(details && details.summary && Array.isArray(details.segs));
 const report = document.getElementById('report');
+const steps = document.getElementById('steps');
 const summary = document.getElementById('summary');
 const alert = document.getElementById('routeAlert');
 
-if (!details || !details.summary || !Array.isArray(details.segs)) {
-  summary.textContent = 'No current route is available.';
-  report.innerHTML = '<div class="no-route">Plan a route on the map, then use “Route concerns & highlights” to see its road-by-road report.</div>';
+document.querySelectorAll('[data-detail-tab]').forEach((tab) => {
+  tab.addEventListener('click', () => selectDetailTab(tab.dataset.detailTab));
+});
+
+if (!hasRoute) {
+  summary.textContent = 'No current route — start with the routing tips.';
+  report.innerHTML = '<div class="no-route">Set a start and destination on the map to see freeways, highways, and any road-rule concerns here.</div>';
+  steps.innerHTML = '<div class="no-route">Set a start and destination on the map to see the road-by-road route steps here.</div>';
+  selectDetailTab('tips');
 } else {
   const { rules = {}, summary: totals, segs } = details;
   summary.textContent = `${fmtMi(totals.distM)} mi · ${fmtDur(totals.timeS)} · ${fmtFt(totals.ascentM)} ft climb`;
@@ -107,6 +163,10 @@ if (!details || !details.summary || !Array.isArray(details.segs)) {
   const failing = sections(segs, (s) => s.level === 4, (s) => ({
     name: roadName(s), meta: failReason(s, rules),
   }));
+  const routeSteps = buildRouteSteps(segs);
+  const ferries = sections(segs, (s) => !!(s.flags & FLAG_FERRY), () => ({
+    name: 'Ferry crossing', meta: 'Ferry segment',
+  }));
 
   if (totals.failM > 0) {
     alert.hidden = false;
@@ -124,7 +184,6 @@ if (!details || !details.summary || !Array.isArray(details.segs)) {
     }
   }
 
-  // This page is intentionally a short concern report, not a route inventory.
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway');
   if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution');
   if (highways.length) renderSection(report, 'Highways', highways, '');
@@ -132,4 +191,7 @@ if (!details || !details.summary || !Array.isArray(details.segs)) {
   if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length) {
     report.innerHTML = '<div class="no-route">No freeway, limited-access highway, highway, or rule-failing sections were found on this route.</div>';
   }
+  renderSection(steps, 'Follow these roads in order', routeSteps, 'No street-level steps are available for this route.', '', true);
+  if (ferries.length) renderSection(steps, 'Ferry crossings', ferries, '', 'caution', true);
+  selectDetailTab('concerns');
 }

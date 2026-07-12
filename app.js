@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.60'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.61'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -1021,14 +1021,12 @@ function navigationStatusText() {
 }
 
 function openRouteDetails() {
-  if (routing.last?.ok) window.location.href = 'route-details.html';
+  window.location.href = 'route-details.html';
 }
 
 function refreshNavigationUI() {
   const routeAvailable = !!routing.last?.ok;
   document.body.classList.toggle('navigation-active', turnNav.active);
-  const detailsButton = document.getElementById('routeDetailsBtn');
-  if (detailsButton) detailsButton.disabled = !routeAvailable;
   const startButton = document.getElementById('navStartButton');
   if (startButton) {
     startButton.disabled = !routeAvailable;
@@ -1801,7 +1799,7 @@ function buildRoutingPanel() {
   pref.innerHTML = `
     <input type="checkbox" id="prefDesig" ${routing.prefDesig ? 'checked' : ''}>
     <label for="prefDesig">Strongly prefer bike routes &amp; trails</label>
-    <button type="button" id="routeDetailsBtn" class="route-details-btn" title="Route concerns, highlights, and help">Details</button>`;
+    <button type="button" id="routeDetailsBtn" class="route-details-btn" aria-label="Open route details and routing tips" title="Route details and routing tips"><span aria-hidden="true">i</span></button>`;
   chips.closest('#routeControls').append(pref);
   pref.querySelector('input').addEventListener('change', (e) => {
     routing.prefDesig = e.target.checked;
@@ -1823,8 +1821,7 @@ function buildRoutingPanel() {
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
   document.getElementById('navBanner').addEventListener('click', (e) => {
     const action = e.target.closest('[data-nav-action]')?.dataset.navAction;
-    if (action === 'details') openRouteDetails();
-    else if (action === 'reroute') rerouteNavigation();
+    if (action === 'reroute') rerouteNavigation();
   });
   document.getElementById('confirmClearRoute').addEventListener('click', () => {
     document.getElementById('clearRouteDialog').close();

@@ -215,7 +215,8 @@ body.settings-open #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; borde
   .rc-highlight-item::after, .rc-level::after { font-size: 15px; }
 }
 
-.route-details-btn { margin-left: auto; padding: 3px 7px; border: 1px solid #a9c5da; border-radius: 7px; background: #fff; color: #0a66c2; font: 700 10.5px system-ui; cursor: pointer; }
+.route-details-btn { display: grid; place-items: center; width: 22px; height: 22px; margin-left: auto; padding: 0; border: 1px solid #8db4d1; border-radius: 50%; background: #fff; color: #0a66c2; font: 800 13px/1 Georgia, serif; cursor: pointer; }
+.route-details-btn span { display: block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%; font: 800 9px/10px system-ui; text-align: center; }
 .route-details-btn:disabled { opacity: .45; cursor: default; }
 
 .saved-row { display: flex; gap: 6px; margin: 5px 0; }

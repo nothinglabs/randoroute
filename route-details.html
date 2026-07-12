@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#009E73" />
-  <title>Route concerns · WA Bike Safety</title>
+  <title>Route details · WA Bike Safety</title>
   <link rel="stylesheet" href="route-details.css" />
 </head>
 <body>
@@ -12,17 +12,47 @@
     <a class="back" href="index.html">← Back to map</a>
     <header>
       <p class="eyebrow">Washington Bike Safety</p>
-      <h1>Route concerns</h1>
+      <h1>Route details</h1>
       <p id="summary" class="summary"></p>
     </header>
 
-    <div id="routeAlert" class="route-alert" hidden></div>
-    <section class="route-help">
-      <h2>Quick guide</h2>
-      <p><b>Map buttons:</b> tap Bike routes, Highways, Caution, or Fails rules to highlight those parts of your route.</p>
-      <p><b>Routing:</b> Direct is quickest, Balanced avoids bad roads when practical, and Low-stress favors avoiding rule failures. “Strongly prefer bike routes” favors signed bike routes and trails.</p>
+    <nav class="detail-tabs" aria-label="Route details">
+      <button type="button" role="tab" id="tab-concerns" aria-controls="panel-concerns" aria-selected="true" data-detail-tab="concerns">Route concerns</button>
+      <button type="button" role="tab" id="tab-steps" aria-controls="panel-steps" aria-selected="false" data-detail-tab="steps">Route steps</button>
+      <button type="button" role="tab" id="tab-tips" aria-controls="panel-tips" aria-selected="false" data-detail-tab="tips">Routing tips</button>
+    </nav>
+
+    <section id="panel-concerns" class="detail-panel" role="tabpanel" aria-labelledby="tab-concerns">
+      <div id="routeAlert" class="route-alert" hidden></div>
+      <div id="report"></div>
     </section>
-    <div id="report"></div>
+
+    <section id="panel-steps" class="detail-panel" role="tabpanel" aria-labelledby="tab-steps" hidden>
+      <div id="steps"></div>
+    </section>
+
+    <section id="panel-tips" class="detail-panel" role="tabpanel" aria-labelledby="tab-tips" hidden>
+      <section class="route-help">
+        <h2>Plan a route</h2>
+        <p>Use <b>Start</b> and <b>End</b> in the map bar, then tap the map or search for each place. Use <b>+</b> after both are set to add an optional stop.</p>
+      </section>
+      <section class="route-help">
+        <h2>Choose a routing style</h2>
+        <p><b>Direct</b> is the quickest ride. <b>Balanced</b> avoids bad roads when the detour is reasonable. <b>Low-stress</b> is willing to detour farther to avoid rule-failing roads.</p>
+      </section>
+      <section class="route-help">
+        <h2>Understand the map</h2>
+        <p>Tap Bike routes, Highways, Caution, or Fails rules in the route card to highlight those portions of the line. A red pulse marks a road the router could not avoid under your current rules.</p>
+      </section>
+      <section class="route-help">
+        <h2>Adjust your rules</h2>
+        <p>In <b>Routing Settings</b>, set your shoulder and speed requirements. The app avoids roads that fail them unless there is no reasonable alternative.</p>
+      </section>
+      <section class="route-help">
+        <h2>Use navigation</h2>
+        <p>After making a route, tap <b>Navigate</b> and allow location access. If you leave the route, the navigation banner offers <b>Reroute</b> back to the nearest planned point.</p>
+      </section>
+    </section>
   </main>
   <script src="route-details.js"></script>
 </body>
