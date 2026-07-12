@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.23'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.24'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -803,10 +803,15 @@ function fallbackRouteLevel(s) {
   return 2;
 }
 
+const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
+function isHighwaySegment(s) {
+  const flags = s.flags || 0;
+  return !(flags & (4 | 8 | 32)) && (s.mph >= 45 || HIGHWAY_NAME.test(s.name || ''));
+}
+
 function routeSummaryStats(m) {
   const levels = [0, 0, 0, 0, 0];
   let highwayM = 0, freewayM = 0;
-  const highwayName = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
   for (const s of m.segs || []) {
     const flags = s.flags || 0;
     const len = Number(s.lenM) || 0;
@@ -814,7 +819,7 @@ function routeSummaryStats(m) {
     const level = s.level || fallbackRouteLevel(s);
     if (level >= 1 && level <= 4) levels[level] += len;
     if (flags & 4) freewayM += len;
-    else if (!(flags & 8) && (s.mph >= 45 || highwayName.test(s.name || ''))) highwayM += len;
+    else if (isHighwaySegment(s)) highwayM += len;
   }
   return { levels, highwayM, freewayM };
 }
@@ -840,16 +845,16 @@ function renderRouteCard(m) {
   const ferry = m.ferryM > 0
     ? `<div class="rc-sub">⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)</div>`
     : '';
-  const desig = `<div class="rc-sub">★ Bike routes: ${fmtDist(m.desigM)}</div>`;
-  const levelNames = ['', 'Comfortable', 'Meets rules', 'Caution', 'Fails rules'];
-  const levels = `<div class="rc-levels">${[1, 2, 3, 4].map((level) =>
-    `<div class="rc-level rc-l${level}"><span>L${level} ${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></div>`
+  const desig = `<button class="rc-summary-filter rc-bike-route" data-highlight="desig" ${m.desigM > 0 ? '' : 'disabled'}>★ Bike routes <b>${fmtDist(m.desigM)}</b></button>`;
+  const levelNames = ['', 'Comfortable', 'Meets rules', '', 'Fails rules'];
+  const levels = `<div class="rc-levels">${[1, 2, 4].map((level) =>
+    `<button class="rc-level rc-l${level}" data-highlight="level-${level}" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>L${level} ${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
   ).join('')}</div>`;
   const roadUseParts = [];
-  if (stats.highwayM > 0) roadUseParts.push(`Highways: ${fmtDist(stats.highwayM)}`);
-  if (stats.freewayM > 0) roadUseParts.push(`Freeways: ${fmtDist(stats.freewayM)}`);
+  if (stats.highwayM > 0) roadUseParts.push(`<button class="rc-summary-filter" data-highlight="highway">Highways <b>${fmtDist(stats.highwayM)}</b></button>`);
+  if (stats.freewayM > 0) roadUseParts.push(`<button class="rc-summary-filter" data-highlight="freeway">Freeways <b>${fmtDist(stats.freewayM)}</b></button>`);
   const roadUse = roadUseParts.length
-    ? `<div class="rc-road-use">⚠ ${roadUseParts.join(' · ')}</div>` : '';
+    ? `<div class="rc-road-use">⚠ ${roadUseParts.join('')}</div>` : '';
   const legs = m.legs && m.legs.length > 1
     ? `<div class="rc-legs">${m.legs.map((l, i) =>
         `<div class="rc-leg">Leg ${i + 1}: <b>${fmtMi(l.distM)} mi</b> · ${fmtDur(l.timeS)}${
@@ -983,6 +988,7 @@ function setFailPulse(on) {
 }
 
 function drawRoute(coords, ferrySegs, segs) {
+  clearRouteHighlight();
   const data = { type: 'Feature', properties: {},
     geometry: { type: 'LineString', coordinates: coords } };
   // Ferry legs are drawn as white dashes on top of the route line, so the
@@ -994,7 +1000,8 @@ function drawRoute(coords, ferrySegs, segs) {
     type: 'Feature',
     properties: { name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
       e: s.flags & 1 ? 1 : 0, fac: s.flags & 2 ? 1 : 0, lim: s.flags & 4 ? 1 : 0,
-      infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0 },
+      infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
+      level: s.level || fallbackRouteLevel(s), hwy: isHighwaySegment(s) ? 1 : 0 },
     geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
   })) };
   // Failing portions (scored live against the current rules) pulse red on top.
@@ -1040,6 +1047,17 @@ function drawRoute(coords, ferrySegs, segs) {
              'line-dasharray': [0.6, 1.8] },
   });
   setFailPulse(failData.features.length > 0);
+  map.addLayer({
+    id: 'route-highlight-halo', type: 'line', source: 'route-seg',
+    layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+    paint: { 'line-color': '#fff4a3', 'line-width': 16, 'line-opacity': 0.78,
+             'line-blur': 2 },
+  });
+  map.addLayer({
+    id: 'route-highlight', type: 'line', source: 'route-seg',
+    layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+    paint: { 'line-color': '#ffd400', 'line-width': 8, 'line-opacity': 1 },
+  });
   // Invisible wide tap target over the route — topmost, so tapping the route
   // inspects the route segment rather than whatever layer is underneath.
   map.addLayer({
@@ -1049,6 +1067,36 @@ function drawRoute(coords, ferrySegs, segs) {
              'line-width': ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22] },
   });
   attachHover(ROUTESEG_SRC, 'route-seg-hit');
+}
+
+let routeHighlightKey = null;
+const ROUTE_HIGHLIGHT_FILTERS = {
+  desig: ['==', ['get', 'desig'], 1],
+  highway: ['==', ['get', 'hwy'], 1],
+  freeway: ['==', ['get', 'lim'], 1],
+  'level-1': ['==', ['get', 'level'], 1],
+  'level-2': ['==', ['get', 'level'], 2],
+  'level-4': ['==', ['get', 'level'], 4],
+};
+
+function clearRouteHighlight() {
+  routeHighlightKey = null;
+  for (const id of ['route-highlight-halo', 'route-highlight']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+  }
+  document.querySelectorAll('[data-highlight]').forEach((b) => b.classList.remove('active'));
+}
+
+function toggleRouteHighlight(key) {
+  if (!ROUTE_HIGHLIGHT_FILTERS[key] || !map.getLayer('route-highlight')) return;
+  if (routeHighlightKey === key) { clearRouteHighlight(); return; }
+  routeHighlightKey = key;
+  for (const id of ['route-highlight-halo', 'route-highlight']) {
+    map.setFilter(id, ROUTE_HIGHLIGHT_FILTERS[key]);
+    map.setLayoutProperty(id, 'visibility', 'visible');
+  }
+  document.querySelectorAll('[data-highlight]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.highlight === key));
 }
 
 function setRoutePoint(kind, lngLat) {
@@ -1187,6 +1235,10 @@ const MODES = [
 
 function buildRoutingPanel() {
   const chips = document.getElementById('modeChips');
+  document.getElementById('routeCard').addEventListener('click', (e) => {
+    const button = e.target.closest('[data-highlight]');
+    if (button && !button.disabled) toggleRouteHighlight(button.dataset.highlight);
+  });
   chips.innerHTML = MODES.map(([id, label]) =>
     `<button data-mode="${id}" ${id === routing.mode ? 'class="active"' : ''}
        title="${MODES.find((m) => m[0] === id)[2]}">${label}</button>`).join('');
