@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.18'; // shown in the panel footer; bump per release
+const APP_VERSION = '2026-07-11.19'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -476,14 +476,6 @@ function ensureLayer(src) {
                'circle-stroke-color': '#fff', 'circle-stroke-width': 2 },
       filter: ['==', ['geometry-type'], 'Point'],
     }, beforeId);
-    map.addLayer({
-      id: src.id + '__label', type: 'symbol', source: src.id,
-      minzoom: 10,
-      layout: { 'text-field': '×', 'text-size': 16, 'text-allow-overlap': true,
-                'text-ignore-placement': true },
-      paint: { 'text-color': '#fff' },
-      filter: ['==', ['geometry-type'], 'Point'],
-    }, beforeId);
     updateVisibility(src);
     return;
   }
@@ -554,7 +546,7 @@ function updateVisibility(src) {
   // also require a close enough zoom to avoid obscuring the statewide map.
   const on = src.enabled && (!src.minVisibleZoom || map.getZoom() >= src.minVisibleZoom);
   if (src.closure) {
-    for (const id of [src.id, src.id + '__line', src.id + '__label']) {
+    for (const id of [src.id, src.id + '__line']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
     }
     return;
@@ -797,8 +789,8 @@ function renderRouteCard(m) {
   const card = document.getElementById('routeCard');
   if (!card) return;
   if (!m) {
-    card.innerHTML = `<div class="rc-empty">Tap <b>A</b> on the map bar, then tap
-      your start point. Tap <b>B</b> for the destination. Routes follow your
+    card.innerHTML = `<div class="rc-empty">Use <b>Start</b> on the map bar to
+      search for or tap your start point. Use <b>End</b> for the destination. Routes follow your
       riding rules and chosen mode, entirely on this device.</div>`;
     return;
   }
@@ -1118,35 +1110,12 @@ function buildRoutingPanel() {
 
   renderRouteCard(null);
 
-  const host = document.getElementById('routing');
-  host.innerHTML = `
-    <div class="route-actions">
-      <button id="rt-start">Set start</button>
-      <button id="rt-end">Set destination</button>
-      <button id="rt-clear">Clear</button>
-    </div>
-    <div class="hint" id="route-status" style="margin-top:8px"></div>`;
-
-  const arm = (kind) => {
-    routing.arm = routing.arm === kind ? null : kind;
-    updateArmButtons();
-    ensureRouter(); // prefetch the graph on first interest
-    if (routing.arm) {
-      setSheet('peek'); // get the sheet out of the way for the map tap
-      setRouteStatus(kind === 'via' ? 'Tap the map to add a stop'
-        : `Tap the map to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
-    } else {
-      setRouteStatus('');
-    }
-  };
   for (const kind of ['start', 'end']) {
-    document.getElementById('rb-' + kind).addEventListener('click', () => arm(kind));
-    document.getElementById('rt-' + kind).addEventListener('click', () => arm(kind));
+    document.getElementById('rb-' + kind).addEventListener('click', () => openPlaceDialog(kind));
   }
-  document.getElementById('rb-via').addEventListener('click', () => arm('via'));
+  document.getElementById('rb-via').addEventListener('click', () => armRoutePoint('via'));
   document.getElementById('rb-clear').addEventListener('click', clearRoute);
-  document.getElementById('rt-clear').addEventListener('click', clearRoute);
-  buildFindBox();
+  buildPlaceDialog();
   buildSavedRoutes();
 
   // Restore the persisted route (markers + recompute) from the last session.
@@ -1167,32 +1136,19 @@ function storeSavedRoutes(list) {
 }
 
 function buildSavedRoutes() {
+  const dialog = document.getElementById('routesDialog');
   const host = document.getElementById('savedRoutes');
   if (!host) return;
 
   const render = () => {
     const list = loadSavedRoutes();
-    host.innerHTML = '<h2>Saved routes</h2>'
-      + '<button id="saveRouteBtn" class="save-route-btn">Save current route</button>'
-      + (list.length ? '' : '<div class="hint">Set a route, then save it to reuse later.</div>')
+    host.innerHTML = (list.length ? '' : '<div class="hint">Saved routes stay on this device.</div>')
       + list.map((r, i) =>
         `<div class="saved-row">
            <button class="saved-load" data-i="${i}">${r.name}</button>
            <button class="saved-del" data-i="${i}" title="Delete">✕</button>
          </div>`).join('');
 
-    host.querySelector('#saveRouteBtn').addEventListener('click', () => {
-      if (!(routing.start && routing.end)) { setStatus('Set a route first', true); return; }
-      const name = prompt('Name this route:',
-        `Route ${new Date().toLocaleDateString()}`);
-      if (!name) return;
-      const list2 = loadSavedRoutes();
-      list2.unshift({ name: name.slice(0, 60), s: routing.start, e: routing.end,
-        v: routing.vias.map((x) => x.pt), mode: routing.mode, prefDesig: routing.prefDesig,
-        ts: Date.now() });
-      storeSavedRoutes(list2.slice(0, 30));
-      render();
-    });
     host.querySelectorAll('.saved-load').forEach((b) => b.addEventListener('click', () => {
       const r = loadSavedRoutes()[Number(b.dataset.i)];
       if (!r) return;
@@ -1210,6 +1166,7 @@ function buildSavedRoutes() {
       const lats = [r.s[1], r.e[1], ...(r.v || []).map((p) => p[1])];
       map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
         { padding: 60, maxZoom: 13 });
+      dialog.close();
     }));
     host.querySelectorAll('.saved-del').forEach((b) => b.addEventListener('click', () => {
       const list2 = loadSavedRoutes();
@@ -1218,12 +1175,27 @@ function buildSavedRoutes() {
       render();
     }));
   };
+  document.getElementById('routeLibraryBtn').addEventListener('click', () => {
+    render();
+    dialog.showModal();
+  });
+  document.getElementById('saveRouteBtn').addEventListener('click', () => {
+    if (!(routing.start && routing.end)) { setStatus('Set a route first', true); return; }
+    const input = document.getElementById('savedRouteName');
+    const name = input.value.trim() || `Route ${new Date().toLocaleDateString()}`;
+    const list = loadSavedRoutes();
+    list.unshift({ name: name.slice(0, 60), s: routing.start, e: routing.end,
+      v: routing.vias.map((x) => x.pt), mode: routing.mode, prefDesig: routing.prefDesig,
+      ts: Date.now() });
+    storeSavedRoutes(list.slice(0, 30));
+    input.value = '';
+    render();
+  });
   render();
 }
 
-/* ------------------------------------------- find box: search + locate */
-// Offline place search over a baked OSM index (data/places.json). Picking a
-// result fills A, then B, then adds stops — and flies the map there.
+/* --------------------------------------- start/end location dialog */
+// Offline place search over a baked OSM index (data/places.json).
 let placesIndex = null, placesPromise = null;
 function ensurePlaces() {
   if (!placesPromise) {
@@ -1235,7 +1207,33 @@ function ensurePlaces() {
   return placesPromise;
 }
 
-function buildFindBox() {
+let placeTarget = null;
+function openPlaceDialog(kind) {
+  placeTarget = kind;
+  const dialog = document.getElementById('placeDialog');
+  document.getElementById('placeDialogTitle').textContent = kind === 'start' ? 'Set start' : 'Set destination';
+  document.getElementById('useLoc').hidden = kind !== 'start';
+  document.getElementById('placeSearch').value = '';
+  document.getElementById('placeResults').replaceChildren();
+  document.getElementById('placeResults').classList.remove('show');
+  dialog.showModal();
+  document.getElementById('placeSearch').focus();
+}
+
+function armRoutePoint(kind) {
+  routing.arm = routing.arm === kind ? null : kind;
+  updateArmButtons();
+  ensureRouter();
+  if (routing.arm) {
+    setPanelOpen(false);
+    setRouteStatus(kind === 'via' ? 'Tap the map to add a stop'
+      : `Tap the map to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
+  } else {
+    setRouteStatus('');
+  }
+}
+
+function buildPlaceDialog() {
   const input = document.getElementById('placeSearch');
   const results = document.getElementById('placeResults');
   const TYPE_LABEL = { city: 'city', town: 'town', village: 'village', hamlet: 'hamlet',
@@ -1264,56 +1262,30 @@ function buildFindBox() {
   input.addEventListener('focus', ensurePlaces);
   input.addEventListener('input', () => { ensurePlaces().then(search); search(); });
   results.addEventListener('click', (e) => {
-    const choice = e.target.closest('.place-choice');
-    if (choice) {
-      const lngLat = { lng: Number(choice.dataset.lon), lat: Number(choice.dataset.lat) };
-      map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
-      if (choice.dataset.act === 'start') { setRoutePoint('start', lngLat); setRouteStatus('Start moved'); }
-      else if (choice.dataset.act === 'end') { setRoutePoint('end', lngLat); setRouteStatus('Destination moved'); }
-      else { addVia(lngLat); setRouteStatus('Stop added'); }
-      input.value = '';
-      render([]);
-      return;
-    }
     const hit = e.target.closest('.place-hit');
     if (!hit) return;
     const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
-    if (!routing.start) {
-      map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
-      setRoutePoint('start', lngLat);
-      setRouteStatus('Start set — search or tap the map for the destination');
-      routing.arm = routing.end ? null : 'end';
-      updateArmButtons();
-    } else if (!routing.end) {
-      map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
-      setRoutePoint('end', lngLat);
-      setRouteStatus('');
-    } else {
-      // Both set: ask what this place should become.
-      results.innerHTML = `
-        <div class="place-ask">${hit.textContent.trim()} — use as:</div>
-        <button class="place-choice" data-act="start" data-lon="${hit.dataset.lon}" data-lat="${hit.dataset.lat}">New start</button>
-        <button class="place-choice" data-act="end" data-lon="${hit.dataset.lon}" data-lat="${hit.dataset.lat}">New destination</button>
-        <button class="place-choice" data-act="via" data-lon="${hit.dataset.lon}" data-lat="${hit.dataset.lat}">Add as stop</button>`;
-      return;
-    }
+    map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
+    setRoutePoint(placeTarget, lngLat);
+    setRouteStatus(placeTarget === 'start' ? 'Start set — choose End next' : 'Destination set');
+    document.getElementById('placeDialog').close();
     input.value = '';
     render([]);
   });
 
+  document.getElementById('placeMapBtn').addEventListener('click', () => {
+    document.getElementById('placeDialog').close();
+    armRoutePoint(placeTarget);
+  });
   document.getElementById('useLoc').addEventListener('click', () => {
     if (!navigator.geolocation) { setStatus('No location access on this device', true); return; }
     setRouteStatus('Locating…');
     navigator.geolocation.getCurrentPosition((pos) => {
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
-      setRoutePoint('start', lngLat);
+      setRoutePoint(placeTarget, lngLat);
       map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
-      if (!routing.end) {
-        // Flow straight into picking the destination.
-        routing.arm = 'end';
-        updateArmButtons();
-        setRouteStatus('Start = your location. Tap the map (or search) for the destination');
-      }
+      document.getElementById('placeDialog').close();
+      setRouteStatus('Start = your location. Choose End next');
     }, () => setRouteStatus('Could not get your location'), { enableHighAccuracy: true, timeout: 10000 });
   });
 }
@@ -1737,78 +1709,27 @@ buildRoutingPanel();
 buildLegend();
 
 // Tabs.
+function setPanelOpen(open) {
+  document.body.classList.toggle('panel-open', open);
+}
 document.querySelectorAll('#tabs button').forEach((b) => {
   b.addEventListener('click', () => {
+    const selected = b.classList.contains('active');
+    if (window.matchMedia('(max-width: 720px)').matches && selected && document.body.classList.contains('panel-open')) {
+      setPanelOpen(false);
+      return;
+    }
     document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('active', x === b));
     document.querySelectorAll('.tab').forEach((t) =>
       t.classList.toggle('active', t.id === 'tab-' + b.dataset.tab));
-    if (document.body.className.includes('sheet-peek')) setSheet('half');
+    setPanelOpen(true);
   });
 });
 
-// Bottom-sheet states (mobile only; CSS ignores these classes on desktop).
-const SHEET_STATES = ['peek', 'half', 'full'];
-function setSheet(state) {
-  document.body.classList.remove(...SHEET_STATES.map((s) => 'sheet-' + s));
-  document.body.classList.add('sheet-' + state);
-}
-(() => {
-  // Grip: drag to resize (snaps to peek/half/full on release); a plain tap
-  // still cycles through the states.
-  const grip = document.getElementById('sheetGrip');
-  const panel = document.getElementById('panel');
-  let drag = null;
-  const stateHeights = () => {
-    const vh = window.innerHeight;
-    return { peek: 74, half: vh * 0.42, full: vh - 74 };
-  };
-  grip.addEventListener('pointerdown', (e) => {
-    drag = { y0: e.clientY, h0: panel.getBoundingClientRect().height, moved: false };
-    document.body.classList.add('sheet-dragging');
-    grip.setPointerCapture(e.pointerId);
-  });
-  grip.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    const dy = drag.y0 - e.clientY;
-    if (Math.abs(dy) > 6) drag.moved = true;
-    const H = stateHeights();
-    const h = Math.max(H.peek, Math.min(H.full, drag.h0 + dy));
-    panel.style.height = h + 'px';
-  });
-  const endDrag = (e) => {
-    if (!drag) return;
-    const wasDrag = drag.moved;
-    drag = null;
-    document.body.classList.remove('sheet-dragging');
-    const h = panel.getBoundingClientRect().height;
-    panel.style.height = '';
-    const H = stateHeights();
-    if (!wasDrag) {
-      const cur = SHEET_STATES.find((s) => document.body.classList.contains('sheet-' + s)) || 'peek';
-      setSheet(cur === 'peek' ? 'half' : cur === 'half' ? 'full' : 'peek');
-      return;
-    }
-    // snap to the nearest state
-    const d = (a) => Math.abs(h - a);
-    setSheet(d(H.peek) <= d(H.half) && d(H.peek) <= d(H.full) ? 'peek'
-      : d(H.half) <= d(H.full) ? 'half' : 'full');
-  };
-  grip.addEventListener('pointerup', endDrag);
-  grip.addEventListener('pointercancel', endDrag);
-})();
-
-// Footer: version stamp, share, and in-app update (standalone PWAs have no
-// browser chrome, so the app provides its own).
+// Dialog close buttons and small map-corner version stamp.
+document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () =>
+  document.getElementById(b.dataset.close).close()));
 document.getElementById('appVersion').textContent = 'v' + APP_VERSION;
-document.getElementById('shareBtn').addEventListener('click', async () => {
-  const url = 'https://nothinglabs.github.io/clauding/';
-  if (navigator.share) {
-    try { await navigator.share({ title: 'WA Bike Safety', url }); } catch (e) { /* cancelled */ }
-  } else {
-    try { await navigator.clipboard.writeText(url); setStatus('Link copied'); }
-    catch (e) { setStatus(url, true); }
-  }
-});
 document.getElementById('updateBtn').addEventListener('click', async () => {
   setStatus('Checking for update…', true);
   try {

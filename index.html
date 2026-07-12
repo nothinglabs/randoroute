@@ -15,8 +15,9 @@
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="sheet-peek">
+<body class="panel-open">
   <div id="map"></div>
+  <div id="appVersion" aria-label="App version"></div>
 
   <div id="routeBar">
     <button id="rb-start" class="rb-pill rb-pill-start" title="Set start">Start</button>
@@ -27,7 +28,6 @@
   </div>
 
   <div class="panel" id="panel">
-    <div id="sheetGrip" aria-label="Expand or collapse"><div class="grip"></div></div>
     <nav id="tabs">
       <button data-tab="route" class="active">Route</button>
       <button data-tab="layers">Layers</button>
@@ -35,15 +35,9 @@
     </nav>
 
     <section class="tab active" id="tab-route">
-      <div id="findBox">
-        <button id="useLoc">📍 Start at my location</button>
-        <input id="placeSearch" type="search" placeholder="Find a place…" autocomplete="off">
-        <div id="placeResults"></div>
-      </div>
+      <div class="route-tab-head"><span>Route options</span><button id="routeLibraryBtn" title="Saved routes" aria-label="Saved routes">💾</button></div>
       <div id="modeChips"></div>
       <div id="routeCard"></div>
-      <div id="routing"></div>
-      <div id="savedRoutes"></div>
     </section>
 
     <section class="tab" id="tab-layers">
@@ -60,16 +54,28 @@
         reasonable alternative — those stretches pulse red on the route.
         Changes apply live to both the map and the router.</p>
       <div id="rules"></div>
+      <button id="updateBtn" class="update-btn">Check for update</button>
     </section>
 
-    <div class="foot">
-      <a href="https://nothinglabs.github.io/clauding/" target="_blank" rel="noopener">nothinglabs.github.io/clauding</a>
-      <div class="foot-actions">
-        <button id="shareBtn">Share</button>
-        <button id="updateBtn">Check for update</button>
-        <span id="appVersion"></span>
-      </div>
+  <dialog id="placeDialog" class="map-dialog">
+    <div class="dialog-head"><h2 id="placeDialogTitle">Set location</h2><button class="dialog-close" data-close="placeDialog" aria-label="Close">✕</button></div>
+    <p class="hint">Find a town, trailhead, or ferry terminal.</p>
+    <input id="placeSearch" type="search" placeholder="Search places…" autocomplete="off">
+    <div id="placeResults" class="place-results"></div>
+    <div class="dialog-actions">
+      <button id="placeMapBtn">Tap on map</button>
+      <button id="useLoc">Use my location</button>
     </div>
+  </dialog>
+
+  <dialog id="routesDialog" class="map-dialog">
+    <div class="dialog-head"><h2>Saved routes</h2><button class="dialog-close" data-close="routesDialog" aria-label="Close">✕</button></div>
+    <div class="save-route-form">
+      <input id="savedRouteName" type="text" maxlength="60" placeholder="Route name">
+      <button id="saveRouteBtn">Save</button>
+    </div>
+    <div id="savedRoutes"></div>
+  </dialog>
 
   <div class="readout" id="readout"></div>
   <div class="status" id="status">Loading…</div>
