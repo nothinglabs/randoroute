@@ -24,24 +24,28 @@
     <button id="rb-end" class="rb-pill rb-pill-end" title="Set destination">End</button>
     <button id="rb-via" title="Add a stop">+</button>
     <button id="rb-via-remove" title="Remove last stop" aria-label="Remove last stop">−</button>
-    <button id="rb-nav" class="rb-pill rb-nav" title="Start turn-by-turn navigation" hidden>Start nav</button>
     <button id="rb-clear" title="Clear route">✕</button>
     <span id="rb-status"></span>
   </div>
+
+  <button id="navStartButton" class="nav-start" type="button" hidden>
+    <span aria-hidden="true">▶</span> Start navigation
+  </button>
 
   <button id="panelOpen" aria-label="Show map controls" title="Show map controls">☰</button>
 
   <div class="panel" id="panel">
     <nav id="tabs">
+      <button id="panelClose" aria-label="Hide map controls" title="Hide map controls">↓</button>
       <button data-tab="route" class="active">Route</button>
       <button data-tab="layers">Layers</button>
       <button data-tab="settings">Settings</button>
-      <button id="panelClose" aria-label="Hide map controls" title="Hide map controls">↓</button>
+      <button id="routeLibraryBtn" title="Save or share routes" aria-label="Save or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0-11 4 4m-4-4-4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button>
     </nav>
 
     <section class="tab active" id="tab-route">
       <div id="routeControls">
-        <div class="mode-row"><div id="modeChips"></div><button id="routeLibraryBtn" title="Save or share routes" aria-label="Save or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0-11 4 4m-4-4-4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button></div>
+        <div class="mode-row"><div id="modeChips"></div></div>
       </div>
       <div id="routeCard"></div>
     </section>
@@ -111,8 +115,12 @@
   <div class="readout" id="readout"></div>
   <div class="status" id="status">Loading…</div>
   <div id="navBanner" class="nav-banner" role="status" aria-live="polite" hidden>
-    <span id="navBannerText"></span>
-    <button type="button" data-nav-action="details">Route details</button>
+    <div class="nav-banner-copy">
+      <span id="navBannerKicker">Turn-by-turn navigation</span>
+      <strong id="navBannerText"></strong>
+      <span id="navBannerMeta"></span>
+    </div>
+    <button type="button" data-nav-action="details">Details</button>
     <button type="button" data-nav-action="pause">Pause</button>
   </div>
   <div id="updatePrompt" class="update-prompt" hidden>

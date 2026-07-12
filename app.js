@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.44'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.46'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -986,13 +986,28 @@ function buildTurnInstructions(m) {
   return { coords, cumulative, instructions, totalM: cumulative[cumulative.length - 1] || 0 };
 }
 
-function navigationStatusText() {
-  if (!turnNav.active) return 'GPS voice guidance · keeps the screen awake when supported';
-  if (turnNav.arrived) return 'Arrived';
+function navigationBannerInfo() {
+  if (!turnNav.active) return {
+    headline: 'GPS voice guidance · keeps the screen awake when supported',
+    meta: '',
+    kicker: 'Turn-by-turn navigation',
+  };
+  const remainingRouteM = Math.max(0, (turnNav.route?.totalM || 0) - turnNav.routeM);
+  const routeMeta = `${navDistanceText(remainingRouteM)} remaining`;
+  if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
   const next = turnNav.route?.instructions[turnNav.next];
-  if (!next) return turnNav.message || 'Navigation active';
+  if (turnNav.message) return { headline: turnNav.message, meta: routeMeta, kicker: 'Turn-by-turn navigation' };
+  if (!next) return { headline: 'Continue to your destination', meta: routeMeta, kicker: 'Turn-by-turn navigation' };
   const remaining = Math.max(0, next.distanceM - turnNav.routeM);
-  return `${turnNav.message ? `${turnNav.message} · ` : ''}Next: ${next.text} in ${navDistanceText(remaining)}`;
+  return {
+    headline: `In ${navDistanceText(remaining)} · ${next.text}`,
+    meta: `${routeMeta} · GPS guidance active`,
+    kicker: 'Next maneuver',
+  };
+}
+
+function navigationStatusText() {
+  return navigationBannerInfo().headline;
 }
 
 function openRouteDetails() {
@@ -1002,18 +1017,17 @@ function openRouteDetails() {
 function refreshNavigationUI() {
   const routeAvailable = !!routing.last?.ok;
   document.body.classList.toggle('navigation-active', turnNav.active);
-  const navButton = document.getElementById('rb-nav');
-  if (navButton) {
-    navButton.hidden = !routeAvailable;
-    navButton.classList.toggle('active', turnNav.active);
-    navButton.textContent = turnNav.active ? 'Pause' : 'Start nav';
-    navButton.title = turnNav.active ? 'Pause turn-by-turn navigation' : 'Start turn-by-turn navigation';
-    navButton.setAttribute('aria-label', navButton.title);
-  }
+  const startButton = document.getElementById('navStartButton');
+  if (startButton) startButton.hidden = !routeAvailable || turnNav.active;
   const banner = document.getElementById('navBanner');
+  const kicker = document.getElementById('navBannerKicker');
   const bannerText = document.getElementById('navBannerText');
+  const bannerMeta = document.getElementById('navBannerMeta');
+  const info = navigationBannerInfo();
   if (banner) banner.hidden = !turnNav.active;
-  if (bannerText) bannerText.textContent = navigationStatusText();
+  if (kicker) kicker.textContent = info.kicker;
+  if (bannerText) bannerText.textContent = info.headline;
+  if (bannerMeta) bannerMeta.textContent = info.meta;
 }
 
 function speakNavigation(text) {
@@ -1729,10 +1743,7 @@ function buildRoutingPanel() {
   }
   document.getElementById('rb-via').addEventListener('click', () => armRoutePoint('via'));
   document.getElementById('rb-via-remove').addEventListener('click', removeLastVia);
-  document.getElementById('rb-nav').addEventListener('click', () => {
-    if (turnNav.active) stopTurnNavigation();
-    else startTurnNavigation();
-  });
+  document.getElementById('navStartButton').addEventListener('click', startTurnNavigation);
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
   document.getElementById('navBanner').addEventListener('click', (e) => {
     const action = e.target.closest('[data-nav-action]')?.dataset.navAction;
