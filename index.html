@@ -39,7 +39,9 @@
     </nav>
 
     <section class="tab active" id="tab-route">
-      <div class="mode-row"><div id="modeChips"></div><button id="routeLibraryBtn" title="Saved routes" aria-label="Saved routes">💾</button></div>
+      <div id="routeControls">
+        <div class="mode-row"><div id="modeChips"></div><button id="routeLibraryBtn" title="Saved routes" aria-label="Saved routes">💾</button></div>
+      </div>
       <div id="routeCard"></div>
     </section>
 
@@ -74,6 +76,12 @@
       <button id="saveRouteBtn">Save</button>
     </div>
     <div id="savedRoutes"></div>
+  </dialog>
+
+  <dialog id="routeProblemDialog" class="map-dialog route-problem-dialog">
+    <div class="dialog-head"><h2>Point is outside the routing network</h2><button class="dialog-close" data-close="routeProblemDialog" aria-label="Close">✕</button></div>
+    <p id="routeProblemText"></p>
+    <div class="dialog-actions"><button data-close="routeProblemDialog">OK</button></div>
   </dialog>
 
   <div class="readout" id="readout"></div>

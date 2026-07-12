@@ -96,7 +96,10 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
 .place-results .place-hit:last-child { border-bottom: none; }
 .place-results .place-hit small { color: #999; font-weight: 400; margin-left: 6px; }
 
-.mode-row { display: flex; align-items: stretch; gap: 5px; margin: 1px 0 5px; }
+.mode-row { display: flex; align-items: stretch; gap: 5px; margin: 0; }
+#routeControls { margin-top: 6px; padding-top: 5px; border-top: 1px solid #e4e7eb; }
+#routeControls .check-rule { margin: 4px 0 0 !important; min-height: 17px; font-size: 11px; }
+#routeControls .check-rule label { font-weight: 600; }
 #routeLibraryBtn { flex: 0 0 30px; width: 30px; border: 1px solid #d5d5d5; border-radius: 8px; background: #fff; cursor: pointer; font-size: 14px; }
 
 #modeChips { display: flex; flex: 1; min-width: 0; gap: 4px; margin: 0; }
@@ -129,19 +132,20 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
 #routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
 #routeCard canvas { width: 100%; height: 42px; margin-top: 4px; display: block; }
-.rc-levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px 4px; margin-top: 4px; }
-.rc-level { display: flex; justify-content: space-between; gap: 4px; min-width: 0; padding: 3px 4px; border: none; border-left: 3px solid #999; border-radius: 4px; background: rgba(255,255,255,.72); font: 500 9.5px system-ui; color: #555; cursor: pointer; }
-.rc-level b { color: #333; white-space: nowrap; }
+.rc-highlight-hint { margin-top: 5px; color: #6b7280; font: 650 9.5px/1.2 system-ui; }
+.rc-route-types { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 3px; margin-top: 3px; }
+.rc-levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 3px; }
+.rc-highlight-item, .rc-level { display: grid; grid-template-columns: minmax(0, 1fr) auto 7px; align-items: center; gap: 3px; min-width: 0; padding: 3px 4px; border: 1px solid #dde2e7; border-left: 3px solid #999; border-radius: 5px; background: rgba(255,255,255,.82); font: 500 9.5px system-ui; color: #555; cursor: pointer; text-align: left; }
+.rc-highlight-item b, .rc-level b { color: #333; white-space: nowrap; }
+.rc-highlight-item::after, .rc-level::after { content: '›'; color: #777; font-size: 13px; font-weight: 800; line-height: 8px; }
+.rc-highlight-item { border-left-color: #8064a2; }
 .rc-level.rc-l1 { border-left-color: #2c7bb6; }
 .rc-level.rc-l2 { border-left-color: #74add1; }
 .rc-level.rc-l4 { border-left-color: #d7191c; }
-.rc-summary-filter { border: none; border-radius: 5px; background: transparent; color: #555; font: 500 11px system-ui; cursor: pointer; }
-.rc-summary-filter b { color: #333; }
-.rc-bike-route { display: flex; justify-content: space-between; width: 100%; margin-top: 3px; padding: 2px 4px; text-align: left; }
-.rc-road-use { display: flex; align-items: center; gap: 3px; margin-top: 3px; color: #a84b08; font-size: 11px; font-weight: 650; }
-.rc-road-use .rc-summary-filter { padding: 2px 4px; color: #a84b08; }
-.rc-summary-filter:disabled, .rc-level:disabled { opacity: .48; cursor: default; }
-.rc-summary-filter.active, .rc-level.active { background: #fff0a6; box-shadow: inset 0 0 0 1px #e3b900; color: #4a3900; }
+.rc-highlight-item:disabled, .rc-level:disabled { opacity: .44; cursor: default; }
+.rc-highlight-item:disabled::after, .rc-level:disabled::after { content: ''; }
+.rc-highlight-item.active, .rc-level.active { background: #ffe35c; border-color: #c99f00; box-shadow: 0 0 0 1px rgba(201,159,0,.32); color: #3f3200; font-weight: 700; }
+.rc-highlight-item.active::after, .rc-level.active::after { content: '✓'; color: #5c4900; font-size: 10px; }
 
 .saved-row { display: flex; gap: 6px; margin: 5px 0; }
 .saved-row .saved-load {
@@ -292,6 +296,8 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .dialog-actions, .save-route-form { display: flex; gap: 7px; margin-top: 10px; }
 .dialog-actions button, .save-route-form button { flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; font: 600 12px system-ui; cursor: pointer; }
 .save-route-form input { min-width: 0; flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; font: 13px system-ui; }
+.route-problem-dialog { border-top: 4px solid #D55E00; }
+.route-problem-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 /* iOS Safari zooms the entire page when a focused field is below 16px, which
    can leave map controls outside the visual viewport after search closes. */
 @media (max-width: 720px) {

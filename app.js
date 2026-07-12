@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.25'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.28'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -826,15 +826,22 @@ function routeSummaryStats(m) {
 
 function renderRouteCard(m) {
   const card = document.getElementById('routeCard');
+  const controls = document.getElementById('routeControls');
+  const moveControls = () => {
+    const slot = card.querySelector('#routeControlsSlot');
+    if (slot && controls) slot.replaceWith(controls);
+  };
   if (!card) return;
   if (!m) {
     card.innerHTML = `<div class="rc-empty">Use <b>Start</b> on the map bar to
       search for or tap your start point. Use <b>End</b> for the destination. Routes follow your
-      riding rules and chosen mode, entirely on this device.</div>`;
+      riding rules and chosen mode, entirely on this device.</div><div id="routeControlsSlot"></div>`;
+    moveControls();
     return;
   }
   if (!m.ok) {
-    card.innerHTML = `<div class="rc-empty">${m.reason}</div>`;
+    card.innerHTML = `<div class="rc-empty">${m.reason}</div><div id="routeControlsSlot"></div>`;
+    moveControls();
     return;
   }
   const stats = routeSummaryStats(m);
@@ -845,16 +852,16 @@ function renderRouteCard(m) {
   const ferry = m.ferryM > 0
     ? `<div class="rc-sub">⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)</div>`
     : '';
-  const desig = `<button class="rc-summary-filter rc-bike-route" data-highlight="desig" ${m.desigM > 0 ? '' : 'disabled'}>★ Bike routes <b>${fmtDist(m.desigM)}</b></button>`;
+  const routeTypeParts = [
+    `<button class="rc-highlight-item" data-highlight="desig" aria-pressed="false" title="Highlight bike-route segments on the map" ${m.desigM > 0 ? '' : 'disabled'}><span>★ Bike routes</span><b>${fmtDist(m.desigM)}</b></button>`,
+  ];
+  if (stats.highwayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="highway" aria-pressed="false" title="Highlight highway segments on the map"><span>⚠ Highways</span><b>${fmtDist(stats.highwayM)}</b></button>`);
+  if (stats.freewayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="freeway" aria-pressed="false" title="Highlight freeway segments on the map"><span>⛔ Freeways</span><b>${fmtDist(stats.freewayM)}</b></button>`);
+  const routeTypes = `<div class="rc-route-types">${routeTypeParts.join('')}</div>`;
   const levelNames = ['', 'Comfortable', 'Meets rules', '', 'Fails rules'];
   const levels = `<div class="rc-levels">${[1, 2, 4].map((level) =>
-    `<button class="rc-level rc-l${level}" data-highlight="level-${level}" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>L${level} ${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
+    `<button class="rc-level rc-l${level}" data-highlight="level-${level}" aria-pressed="false" title="Highlight L${level} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>L${level} ${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
   ).join('')}</div>`;
-  const roadUseParts = [];
-  if (stats.highwayM > 0) roadUseParts.push(`<button class="rc-summary-filter" data-highlight="highway">Highways <b>${fmtDist(stats.highwayM)}</b></button>`);
-  if (stats.freewayM > 0) roadUseParts.push(`<button class="rc-summary-filter" data-highlight="freeway">Freeways <b>${fmtDist(stats.freewayM)}</b></button>`);
-  const roadUse = roadUseParts.length
-    ? `<div class="rc-road-use">⚠ ${roadUseParts.join('')}</div>` : '';
   const legs = m.legs && m.legs.length > 1
     ? `<div class="rc-legs">${m.legs.map((l, i) =>
         `<div class="rc-leg">Leg ${i + 1}: <b>${fmtMi(l.distM)} mi</b> · ${fmtDur(l.timeS)}${
@@ -863,13 +870,20 @@ function renderRouteCard(m) {
   card.innerHTML = `
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
+    <div id="routeControlsSlot"></div>
     ${ferry}
-    ${desig}
+    <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
+    ${routeTypes}
     ${levels}
-    ${roadUse}
     ${legs}
     ${warn}
     <canvas id="profileCv"></canvas>`;
+  moveControls();
+  card.querySelectorAll('[data-highlight]').forEach((b) => {
+    const active = b.dataset.highlight === routeHighlightKey;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
   drawProfile(m.profile, m.distM);
 }
 
@@ -908,6 +922,21 @@ function drawProfile(profile, distM) {
   ctx.fillText(`${fmtFt(lo)} ft`, padL + 2, h - 1);
 }
 
+function showPointTooFarPopup(m) {
+  const dialog = document.getElementById('routeProblemDialog');
+  const text = document.getElementById('routeProblemText');
+  if (!dialog || !text) return;
+  const pointName = (index) => {
+    if (index === 0) return 'Start';
+    if (index === m.pointCount - 1) return 'Destination';
+    return `Stop ${index}`;
+  };
+  const points = (m.farPoints || []).map((p) =>
+    `${pointName(p.pointIndex)} is ${fmtDist(p.distanceM)} from the nearest routable road or path.`);
+  text.textContent = `${points.join(' ')} Move ${points.length === 1 ? 'it' : 'them'} closer and try again.`;
+  if (!dialog.open) dialog.showModal();
+}
+
 function onRouterMessage(ev) {
   const m = ev.data;
   if (m.type === 'ready') {
@@ -923,6 +952,7 @@ function onRouterMessage(ev) {
     if (!m.ok) {
       drawRoute([]);
       setRouteStatus(m.reason);
+      if (m.code === 'point-too-far') showPointTooFarPopup(m);
       return;
     }
     drawRoute(m.coords, m.ferrySegs, m.segs);
@@ -1084,7 +1114,10 @@ function clearRouteHighlight() {
   for (const id of ['route-highlight-halo', 'route-highlight']) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
   }
-  document.querySelectorAll('[data-highlight]').forEach((b) => b.classList.remove('active'));
+  document.querySelectorAll('[data-highlight]').forEach((b) => {
+    b.classList.remove('active');
+    b.setAttribute('aria-pressed', 'false');
+  });
 }
 
 function toggleRouteHighlight(key) {
@@ -1095,8 +1128,11 @@ function toggleRouteHighlight(key) {
     map.setFilter(id, ROUTE_HIGHLIGHT_FILTERS[key]);
     map.setLayoutProperty(id, 'visibility', 'visible');
   }
-  document.querySelectorAll('[data-highlight]').forEach((b) =>
-    b.classList.toggle('active', b.dataset.highlight === key));
+  document.querySelectorAll('[data-highlight]').forEach((b) => {
+    const active = b.dataset.highlight === key;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
 }
 
 function setRoutePoint(kind, lngLat) {
@@ -1297,7 +1333,7 @@ function buildRoutingPanel() {
   pref.innerHTML = `
     <input type="checkbox" id="prefDesig" ${routing.prefDesig ? 'checked' : ''}>
     <label for="prefDesig">Strongly prefer bike routes &amp; trails</label>`;
-  chips.closest('.mode-row').after(pref);
+  chips.closest('#routeControls').append(pref);
   pref.querySelector('input').addEventListener('change', (e) => {
     routing.prefDesig = e.target.checked;
     computeRoute();

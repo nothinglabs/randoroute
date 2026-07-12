@@ -200,8 +200,17 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig) {
   const t0 = Date.now();
   const s = nearestNode(startLL[0], startLL[1]);
   const t = nearestNode(endLL[0], endLL[1]);
-  if (s.distM > 2000 || t.distM > 2000)
-    return { ok: false, reason: 'A route point is too far from a rideable road.' };
+  const farPoints = [];
+  if (s.distM > 2000) farPoints.push({ pointOffset: 0, distanceM: s.distM });
+  if (t.distM > 2000) farPoints.push({ pointOffset: 1, distanceM: t.distM });
+  if (farPoints.length) {
+    return {
+      ok: false,
+      code: 'point-too-far',
+      reason: 'A route point is too far from a routable road or path.',
+      farPoints,
+    };
+  }
 
   const goalLon = nodeLon[t.node], goalLat = nodeLat[t.node];
   const dist = new Float64Array(N).fill(Infinity);
@@ -314,7 +323,16 @@ function route(points, rules, mode, prefDesig) {
   const legs = [];
   for (let i = 0; i + 1 < points.length; i++) {
     const leg = routeLeg(points[i], points[i + 1], rules, mode, prefDesig);
-    if (!leg.ok) return leg;
+    if (!leg.ok) {
+      if (leg.code === 'point-too-far') {
+        leg.farPoints = leg.farPoints.map((p) => ({
+          pointIndex: i + p.pointOffset,
+          distanceM: p.distanceM,
+        }));
+        leg.pointCount = points.length;
+      }
+      return leg;
+    }
     legs.push(leg);
   }
   const coords = [], segs = [], ferrySegs = [], profile = [];
