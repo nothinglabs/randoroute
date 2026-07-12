@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.22'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.23'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -214,6 +214,7 @@ const SOURCES = [
     url: 'data/bikeinfra.geojson',
     scorer: scoreOSM,
     zRank: 2,
+    minVisibleZoom: 10,
     enabled: true,
     fc: null,
     loading: false,
@@ -360,6 +361,9 @@ function refreshRoadsForZoom() {
   roadsZoomState = state;
   const roads = SOURCES.find((src) => src.id === 'roads');
   if (roads && map.getLayer(roads.id)) applyDisplayMode(roads);
+  for (const src of SOURCES) {
+    if (src.minVisibleZoom && map.getLayer(src.id)) updateVisibility(src);
+  }
 }
 map.on('zoomend', refreshRoadsForZoom);
 // PMTiles: static single-file vector tiles over HTTP range requests — no server.
@@ -779,10 +783,40 @@ async function ensureRouter() {
 
 const fmtMi = (m) => (m / 1609.34).toFixed(1);
 const fmtFt = (m) => Math.round(m * 3.28084).toLocaleString();
+const fmtDist = (m) => m < 160.934 ? `${fmtFt(m)} ft` : `${fmtMi(m)} mi`;
 function fmtDur(s) {
   const min = Math.round(s / 60);
   if (min < 60) return `${min} min`;
   return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} m`;
+}
+
+function fallbackRouteLevel(s) {
+  const flags = s.flags || 0;
+  if (flags & 4 && !rules.allowFreeways) return 4;
+  if (flags & 8) return 1;
+  if (s.mph <= rules.freeMaxSpeed) return 1;
+  if (flags & 64) return 2;
+  let sh = s.sh;
+  if (sh < 0 && rules.unknownShoulderZero) sh = 0;
+  if (!(flags & 2) && sh >= 0 && sh < rules.minShoulder) return 4;
+  if (!rules.noUpperLimit && s.mph > rules.upperMaxSpeed) return 4;
+  return 2;
+}
+
+function routeSummaryStats(m) {
+  const levels = [0, 0, 0, 0, 0];
+  let highwayM = 0, freewayM = 0;
+  const highwayName = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
+  for (const s of m.segs || []) {
+    const flags = s.flags || 0;
+    const len = Number(s.lenM) || 0;
+    if (flags & 32) continue; // ferry is reported separately, not a safety level
+    const level = s.level || fallbackRouteLevel(s);
+    if (level >= 1 && level <= 4) levels[level] += len;
+    if (flags & 4) freewayM += len;
+    else if (!(flags & 8) && (s.mph >= 45 || highwayName.test(s.name || ''))) highwayM += len;
+  }
+  return { levels, highwayM, freewayM };
 }
 
 function renderRouteCard(m) {
@@ -798,26 +832,36 @@ function renderRouteCard(m) {
     card.innerHTML = `<div class="rc-empty">${m.reason}</div>`;
     return;
   }
+  const stats = routeSummaryStats(m);
   const warn = m.failM > 0
-    ? `<div class="rc-warn">⚠ ${fmtMi(m.failM)} mi on roads that fail your rules${
+    ? `<div class="rc-warn">⚠ ${fmtDist(m.failM)} on roads that fail your rules${
         routing.mode === 'low' ? ' (unavoidable — pulsing red on the map)' : ' (pulsing red on the map)'}</div>`
     : `<div class="rc-sub" style="color:#00795c;font-weight:600">✓ Entirely within your riding rules</div>`;
   const ferry = m.ferryM > 0
     ? `<div class="rc-sub">⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)</div>`
     : '';
-  const desig = m.desigM > 400
-    ? `<div class="rc-sub">★ ${fmtMi(m.desigM)} mi on designated bike routes</div>`
-    : '';
+  const desig = `<div class="rc-sub">★ Bike routes: ${fmtDist(m.desigM)}</div>`;
+  const levelNames = ['', 'Comfortable', 'Meets rules', 'Caution', 'Fails rules'];
+  const levels = `<div class="rc-levels">${[1, 2, 3, 4].map((level) =>
+    `<div class="rc-level rc-l${level}"><span>L${level} ${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></div>`
+  ).join('')}</div>`;
+  const roadUseParts = [];
+  if (stats.highwayM > 0) roadUseParts.push(`Highways: ${fmtDist(stats.highwayM)}`);
+  if (stats.freewayM > 0) roadUseParts.push(`Freeways: ${fmtDist(stats.freewayM)}`);
+  const roadUse = roadUseParts.length
+    ? `<div class="rc-road-use">⚠ ${roadUseParts.join(' · ')}</div>` : '';
   const legs = m.legs && m.legs.length > 1
     ? `<div class="rc-legs">${m.legs.map((l, i) =>
         `<div class="rc-leg">Leg ${i + 1}: <b>${fmtMi(l.distM)} mi</b> · ${fmtDur(l.timeS)}${
-          l.failM > 80 ? ` · <span class="rc-leg-warn">${fmtMi(l.failM)} mi fail</span>` : ''}</div>`).join('')}</div>`
+          l.failM > 0 ? ` · <span class="rc-leg-warn">${fmtDist(l.failM)} fail</span>` : ''}</div>`).join('')}</div>`
     : '';
   card.innerHTML = `
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
     ${ferry}
     ${desig}
+    ${levels}
+    ${roadUse}
     ${legs}
     ${warn}
     <canvas id="profileCv"></canvas>`;
@@ -1012,17 +1056,73 @@ function setRoutePoint(kind, lngLat) {
   const mk = kind + 'Marker';
   if (routing[mk]) routing[mk].setLngLat(lngLat);
   else {
+    const touchEndpoint = window.matchMedia('(pointer: coarse)').matches;
     routing[mk] = new maplibregl.Marker({
-      color: kind === 'start' ? '#0072B2' : '#D55E00', draggable: true,
+      color: kind === 'start' ? '#0072B2' : '#D55E00', draggable: !touchEndpoint,
     }).setLngLat(lngLat).addTo(map);
-    routing[mk].on('dragend', () => {
-      const ll = routing[mk].getLngLat();
-      routing[kind] = [ll.lng, ll.lat];
-      computeRoute();
-    });
+    if (touchEndpoint) enableLongPressEndpointMove(kind, routing[mk]);
+    else routing[mk].on('dragend', () => {
+        const ll = routing[mk].getLngLat();
+        routing[kind] = [ll.lng, ll.lat];
+        computeRoute();
+      });
   }
   computeRoute();
   updateArmButtons();
+}
+
+function enableLongPressEndpointMove(kind, marker) {
+  const el = marker.getElement();
+  el.classList.add('endpoint-marker');
+  let gesture = null;
+  const stop = (commit) => {
+    if (!gesture) return;
+    clearTimeout(gesture.timer);
+    el.classList.remove('endpoint-moving');
+    if (gesture.active && commit) {
+      const ll = marker.getLngLat();
+      routing[kind] = [ll.lng, ll.lat];
+      setRouteStatus(`${kind === 'start' ? 'Start' : 'Destination'} moved`);
+      computeRoute();
+      saveStateSoon();
+    } else if (gesture.active) {
+      marker.setLngLat(gesture.original);
+    }
+    gesture = null;
+  };
+  el.addEventListener('pointerdown', (e) => {
+    if (gesture) return;
+    e.preventDefault();
+    e.stopPropagation();
+    el.setPointerCapture(e.pointerId);
+    gesture = {
+      id: e.pointerId, x: e.clientX, y: e.clientY, active: false,
+      original: marker.getLngLat(), timer: null,
+    };
+    gesture.timer = setTimeout(() => {
+      if (!gesture) return;
+      gesture.active = true;
+      el.classList.add('endpoint-moving');
+      setRouteStatus(`Move ${kind === 'start' ? 'START' : 'DESTINATION'} marker`);
+    }, 550);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!gesture || e.pointerId !== gesture.id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!gesture.active) {
+      if (Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) > 10) {
+        clearTimeout(gesture.timer);
+      }
+      return;
+    }
+    const rect = map.getCanvas().getBoundingClientRect();
+    marker.setLngLat(map.unproject([e.clientX - rect.left, e.clientY - rect.top]));
+  });
+  el.addEventListener('pointerup', (e) => {
+    if (gesture && e.pointerId === gesture.id) stop(true);
+  });
+  el.addEventListener('pointercancel', () => stop(false));
 }
 
 function addVia(lngLat) {
@@ -1512,15 +1612,17 @@ function renderReadout(feature, lngLat) {
     if (badge) rows.push(['Bike route', badge]);
   }
   rows = rows.filter(([, v]) => v != null && v !== '');
-  // maps.google.com/?q= is the most universally handled form (opens the
-  // Google Maps app via universal link on iOS, web elsewhere).
-  const gmaps = `https://maps.google.com/?q=${lngLat.lat.toFixed(6)},${lngLat.lng.toFixed(6)}`;
+  // Maps URLs need no API key. Street View opens the panorama nearest the
+  // tapped coordinates; Google Maps falls back gracefully where coverage is
+  // unavailable.
+  const streetView = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${
+    lngLat.lat.toFixed(6)},${lngLat.lng.toFixed(6)}`;
   readoutEl.innerHTML =
     `<button class="readout-close" aria-label="Close road information">✕</button>` +
     `<div class="rt-title">${title}</div><table>` +
     rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('') +
     '</table>' +
-    `<a class="gmap" href="${gmaps}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
+    `<a class="gmap" href="${streetView}" target="_blank" rel="noopener">Open Street View ↗</a>`;
   readoutEl.classList.add('show');
 }
 
@@ -1769,14 +1871,58 @@ document.getElementById('panelOpen').addEventListener('click', () => {
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () =>
   document.getElementById(b.dataset.close).close()));
 document.getElementById('appVersion').textContent = 'v' + APP_VERSION;
-document.getElementById('updateBtn').addEventListener('click', async () => {
-  setStatus('Checking for update…', true);
+
+let pendingUpdateWorker = null;
+function offerUpdate(worker) {
+  if (!worker || !navigator.serviceWorker.controller) return;
+  pendingUpdateWorker = worker;
+  document.getElementById('updatePrompt').hidden = false;
+}
+
+async function setupAutomaticUpdates() {
+  if (!window.__swReady) return;
   try {
-    const reg = await (navigator.serviceWorker && navigator.serviceWorker.getRegistration());
-    if (reg) await reg.update();
-  } catch (e) { /* offline etc. */ }
-  location.reload();
+    const reg = await window.__swReady;
+    const watch = (worker) => {
+      if (!worker) return;
+      const checkState = () => {
+        if (worker.state === 'installed') offerUpdate(worker);
+      };
+      worker.addEventListener('statechange', checkState);
+      checkState();
+    };
+    if (reg.waiting) offerUpdate(reg.waiting);
+    watch(reg.installing);
+    reg.addEventListener('updatefound', () => watch(reg.installing));
+
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      location.reload();
+    });
+
+    const check = async () => {
+      try {
+        await reg.update();
+        if (reg.waiting) offerUpdate(reg.waiting);
+      } catch (e) { /* offline — try again later */ }
+    };
+    check();
+    setInterval(check, 30 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') check();
+    });
+  } catch (e) { /* service worker unavailable — app still works online */ }
+}
+
+document.getElementById('getUpdateBtn').addEventListener('click', () => {
+  if (pendingUpdateWorker) pendingUpdateWorker.postMessage({ type: 'SKIP_WAITING' });
 });
+document.getElementById('updateLaterBtn').addEventListener('click', () => {
+  document.getElementById('updatePrompt').hidden = true;
+});
+setupAutomaticUpdates();
 
 
 

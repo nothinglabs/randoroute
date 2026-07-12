@@ -50,7 +50,6 @@
     </section>
 
     <section class="tab" id="tab-settings">
-      <button id="updateBtn" class="update-btn">Check for update</button>
       <p class="hint">Roads that don't meet these criteria <b>fail</b>. The
         router avoids failing roads and only rides one when there's no
         reasonable alternative — those stretches pulse red on the route.
@@ -79,6 +78,11 @@
 
   <div class="readout" id="readout"></div>
   <div class="status" id="status">Loading…</div>
+  <div id="updatePrompt" class="update-prompt" hidden>
+    <span>New version available</span>
+    <button id="getUpdateBtn">Get update?</button>
+    <button id="updateLaterBtn" aria-label="Not now" title="Not now">✕</button>
+  </div>
 
   <script>
     // Register the service worker (offline support + installability).

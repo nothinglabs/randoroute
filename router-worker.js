@@ -292,9 +292,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig) {
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (eFlags[ei] & 64) desigM += eLen[ei];
-    if (edgeLevel(ei, rules) === 4) failM += eLen[ei];
+    const level = edgeLevel(ei, rules);
+    if (level === 4) failM += eLen[ei];
     segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
-      mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], lenM: Math.round(eLen[ei]) });
+      mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], level,
+      lenM: Math.round(eLen[ei]) });
     const toNode = forward ? eB[ei] : eA[ei];
     profile.push([distM, nodeEle[toNode]]);
   }
