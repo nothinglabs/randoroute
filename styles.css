@@ -215,8 +215,8 @@ body.settings-open #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; borde
   .rc-highlight-item::after, .rc-level::after { font-size: 15px; }
 }
 
-.route-details-btn { display: grid; place-items: center; width: 22px; height: 22px; margin-left: auto; padding: 0; border: 1px solid #8db4d1; border-radius: 50%; background: #fff; color: #0a66c2; font: 800 13px/1 Georgia, serif; cursor: pointer; }
-.route-details-btn span { display: block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%; font: 800 9px/10px system-ui; text-align: center; }
+.route-details-btn { display: grid; place-items: center; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 1px solid #78a9cc; border-radius: 50%; background: #fff; color: #0a66c2; font: 800 15px/1 Georgia, serif; cursor: pointer; }
+.route-details-btn span { display: block; width: 16px; height: 16px; border: 1.75px solid currentColor; border-radius: 50%; font: 800 11px/13px system-ui; text-align: center; }
 .route-details-btn:disabled { opacity: .45; cursor: default; }
 
 .saved-row { display: flex; gap: 6px; margin: 5px 0; }
@@ -244,6 +244,7 @@ body.settings-open #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; borde
 #rules .rule-card { margin: 0; padding: 10px 11px; border: 1px solid #dbe5eb; border-radius: 10px; background: #fbfcfd; }
 #rules .rule-head { margin-bottom: 7px; }
 #rules .rule-card input[type="range"] { display: block; margin: 0; }
+#rules input[type="range"] { touch-action: pan-y; }
 #rules .rule-hint { margin: 6px 0 0; color: #637581; font: 11px/1.35 system-ui; }
 #rules .check-rule.rule-card { display: block; }
 #rules .rule-check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }

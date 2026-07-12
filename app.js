@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.61'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.63'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -469,7 +469,7 @@ function rescore(src) {
   if (mapSrc) mapSrc.setData(src.fc);
 }
 
-function rescoreAll() {
+function rescoreAll(recomputeRoute = true) {
   const t0 = performance.now();
   for (const src of SOURCES) {
     if (!src.enabled) continue;
@@ -482,19 +482,28 @@ function rescoreAll() {
   }
   const ms = Math.round(performance.now() - t0);
   if (ms > 0) setStatus(`Recolored in ${ms} ms`);
-  if (routing.ready && routing.start && routing.end) computeRoute();
+  if (recomputeRoute && routing.ready && routing.start && routing.end) computeRoute();
 }
 
-// Coalesce rapid rule changes (e.g. slider drags) into one recolor per frame.
+// Recolor the map promptly while the thumb moves, but wait for a short pause
+// before sending a fresh route request. Re-routing on every slider tick made
+// touch sliders feel sticky on phones.
 let _rescorePending = false;
+let _ruleRouteTimer = null;
 function scheduleRescore() {
   saveStateSoon();
-  if (_rescorePending) return;
-  _rescorePending = true;
-  requestAnimationFrame(() => {
-    _rescorePending = false;
-    rescoreAll();
-  });
+  if (!_rescorePending) {
+    _rescorePending = true;
+    requestAnimationFrame(() => {
+      _rescorePending = false;
+      rescoreAll(false);
+    });
+  }
+  clearTimeout(_ruleRouteTimer);
+  _ruleRouteTimer = setTimeout(() => {
+    _ruleRouteTimer = null;
+    if (routing.ready && routing.start && routing.end) computeRoute();
+  }, 220);
 }
 
 const FAIL_COLOR = '#9aa0a6';
@@ -1487,12 +1496,14 @@ function drawRoute(coords, ferrySegs, segs) {
   const failData = { type: 'FeatureCollection',
     features: sdata.features.filter((f) =>
       f.properties.ferry !== 1 && effectiveLevel(scoreRouteSeg(f.properties)) === 4) };
+  const emptyHighlights = { type: 'FeatureCollection', features: [] };
   const srcExisting = map.getSource('route');
   if (srcExisting) {
     srcExisting.setData(data);
     map.getSource('route-ferry').setData(fdata);
     map.getSource('route-seg').setData(sdata);
     map.getSource('route-fail').setData(failData);
+    map.getSource('route-highlight-marker').setData(emptyHighlights);
     setFailPulse(failData.features.length > 0);
     return;
   }
@@ -1500,6 +1511,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-ferry', { type: 'geojson', data: fdata });
   map.addSource('route-seg', { type: 'geojson', data: sdata });
   map.addSource('route-fail', { type: 'geojson', data: failData });
+  map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addLayer({
     id: 'route-shadow', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -1543,6 +1555,26 @@ function drawRoute(coords, ferrySegs, segs) {
     layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
     paint: { 'line-color': '#ffd400', 'line-width': 8, 'line-opacity': 1 },
   });
+  // A short highlighted edge can be less than a pixel long at the current
+  // zoom. One marker per contiguous highlighted stretch gives it an obvious
+  // location without filling long stretches with repeated dots.
+  map.addLayer({
+    id: 'route-highlight-marker-halo', type: 'circle', source: 'route-highlight-marker',
+    layout: { visibility: 'none' },
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 12, 10, 14, 14, 17],
+      'circle-color': '#fff4a3', 'circle-opacity': 0.92, 'circle-blur': 0.18,
+    },
+  });
+  map.addLayer({
+    id: 'route-highlight-marker', type: 'circle', source: 'route-highlight-marker',
+    layout: { visibility: 'none' },
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 7, 10, 8, 14, 10],
+      'circle-color': '#ffd400', 'circle-stroke-color': '#735b00',
+      'circle-stroke-width': 2, 'circle-opacity': 1,
+    },
+  });
   // Invisible wide tap target over the route — topmost, so tapping the route
   // inspects the route segment rather than whatever layer is underneath.
   map.addLayer({
@@ -1566,9 +1598,45 @@ const ROUTE_HIGHLIGHT_FILTERS = {
   'level-4': ['==', ['get', 'level'], 4],
 };
 
+function routeSegmentMatchesHighlight(seg, key) {
+  const flags = seg.flags || 0;
+  const level = seg.level || fallbackRouteLevel(seg);
+  if (key === 'desig') return !!(flags & 64);
+  if (key === 'highway') return isHighwaySegment(seg);
+  if (key === 'freeway') return !!(flags & 4);
+  if (key === 'limited-access') return !!(flags & 128);
+  const levelMatch = /^level-(\d)$/.exec(key);
+  return !!levelMatch && level === Number(levelMatch[1]);
+}
+
+function routeHighlightMarkers(key) {
+  const route = routing.last;
+  if (!route?.coords?.length || !route.segs?.length) return [];
+  const groups = [];
+  let group = null;
+  for (let index = 0; index < route.segs.length; index++) {
+    const seg = route.segs[index];
+    if (!routeSegmentMatchesHighlight(seg, key)) {
+      group = null;
+      continue;
+    }
+    if (group && group.lastIndex === index - 1 && seg.c0 <= group.c1 + 1) {
+      group.c1 = seg.c1;
+      group.lastIndex = index;
+      continue;
+    }
+    group = { c0: seg.c0, c1: seg.c1, lastIndex: index };
+    groups.push(group);
+  }
+  return groups.map((g) => ({
+    type: 'Feature', properties: {},
+    geometry: { type: 'Point', coordinates: route.coords[Math.round((g.c0 + g.c1) / 2)] },
+  })).filter((f) => Array.isArray(f.geometry.coordinates));
+}
+
 function clearRouteHighlight() {
   routeHighlightKey = null;
-  for (const id of ['route-highlight-halo', 'route-highlight']) {
+  for (const id of ['route-highlight-halo', 'route-highlight', 'route-highlight-marker-halo', 'route-highlight-marker']) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
   }
   document.querySelectorAll('[data-highlight]').forEach((b) => {
@@ -1584,6 +1652,12 @@ function toggleRouteHighlight(key) {
   for (const id of ['route-highlight-halo', 'route-highlight']) {
     map.setFilter(id, ROUTE_HIGHLIGHT_FILTERS[key]);
     map.setLayoutProperty(id, 'visibility', 'visible');
+  }
+  const markerFeatures = routeHighlightMarkers(key);
+  const markerSource = map.getSource('route-highlight-marker');
+  if (markerSource) markerSource.setData({ type: 'FeatureCollection', features: markerFeatures });
+  for (const id of ['route-highlight-marker-halo', 'route-highlight-marker']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', markerFeatures.length ? 'visible' : 'none');
   }
   document.querySelectorAll('[data-highlight]').forEach((b) => {
     const active = b.dataset.highlight === key;
@@ -2505,6 +2579,9 @@ function buildRulesPanel() {
     input.addEventListener('input', () => {
       rules[key] = Number(input.value);
       document.getElementById(`v-${key}`).textContent = rules[key] + unit;
+      // A delayed synthetic map click after a mobile range drag must never
+      // open road info and dismiss the full-screen Settings panel.
+      suppressRoadInfo(900);
       scheduleRescore();
     });
   };
@@ -2563,6 +2640,7 @@ function buildRulesPanel() {
         rules.upperMaxSpeed = v;
       }
       render(v);
+      suppressRoadInfo(900);
       scheduleRescore();
     });
   }
