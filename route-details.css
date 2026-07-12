@@ -12,6 +12,10 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-alert { margin: 0 0 14px; padding: 11px 13px; border-left: 4px solid #c33327; border-radius: 8px; background: #fff3f0; color: #812218; font: 650 14px/1.4 system-ui; }
 .route-alert.good { border-left-color: #008b68; background: #edf9f5; color: #00664d; }
 .route-alert.caution { border-left-color: #c27b00; background: #fff8de; color: #795000; }
+.route-help { margin: 0 0 12px; padding: 11px 13px; border: 1px solid #dce5ea; border-radius: 11px; background: #fff; color: #52616d; }
+.route-help h2 { margin: 0 0 5px; color: #2c3e4c; font: 750 14px/1.2 system-ui; }
+.route-help p { margin: 4px 0; font: 12.5px/1.35 system-ui; }
+.route-help b { color: #293b47; }
 .detail-section { margin: 12px 0; padding: 14px; border: 1px solid #dde5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18, 42, 60, .04); }
 .detail-section h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0; font: 750 18px/1.2 system-ui; }
 .detail-section h2 span { color: #52616d; font: 700 13px system-ui; white-space: nowrap; }

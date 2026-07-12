@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.46'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.48'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -1017,6 +1017,8 @@ function openRouteDetails() {
 function refreshNavigationUI() {
   const routeAvailable = !!routing.last?.ok;
   document.body.classList.toggle('navigation-active', turnNav.active);
+  const detailsButton = document.getElementById('routeDetailsBtn');
+  if (detailsButton) detailsButton.disabled = !routeAvailable;
   const startButton = document.getElementById('navStartButton');
   if (startButton) startButton.hidden = !routeAvailable || turnNav.active;
   const banner = document.getElementById('navBanner');
@@ -1192,27 +1194,20 @@ function renderRouteCard(m) {
   };
   if (!card) return;
   if (!m) {
-    card.innerHTML = `<div class="rc-empty">Use <b>Start</b> on the map bar to
+    card.innerHTML = `<div id="routeControlsSlot"></div><div class="rc-empty">Use <b>Start</b> on the map bar to
       search for or tap your start point. Use <b>End</b> for the destination. Routes follow your
-      riding rules and chosen mode, entirely on this device.</div><div id="routeControlsSlot"></div>`;
+      riding rules and chosen mode, entirely on this device.</div>`;
     moveControls();
     refreshNavigationUI();
     return;
   }
   if (!m.ok) {
-    card.innerHTML = `<div class="rc-empty">${m.reason}</div><div id="routeControlsSlot"></div>`;
+    card.innerHTML = `<div id="routeControlsSlot"></div><div class="rc-empty">${m.reason}</div>`;
     moveControls();
     refreshNavigationUI();
     return;
   }
   const stats = routeSummaryStats(m);
-  const warn = m.failM > 0
-    ? `<div class="rc-warn">⚠ ${fmtDist(m.failM)} on roads that fail your rules${
-        routing.mode === 'low' ? ' (unavoidable — pulsing red on the map)' : ' (pulsing red on the map)'}</div>`
-    : `<div class="rc-sub" style="color:#00795c;font-weight:600">✓ Entirely within your riding rules</div>`;
-  const caution = stats.levels[3] > 0
-    ? `<div class="rc-caution">⚠ ${fmtDist(stats.levels[3])} on limited-access roads that otherwise meet your rules</div>`
-    : '';
   const ferry = m.ferryM > 0
     ? `<div class="rc-sub">⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)</div>`
     : '';
@@ -1221,11 +1216,11 @@ function renderRouteCard(m) {
   ];
   if (stats.highwayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="highway" aria-pressed="false" title="Highlight highway segments on the map"><span>⚠ Highways</span><b>${fmtDist(stats.highwayM)}</b></button>`);
   if (stats.freewayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="freeway" aria-pressed="false" title="Highlight freeway segments on the map"><span>⛔ Freeways</span><b>${fmtDist(stats.freewayM)}</b></button>`);
-  if (stats.limitedAccessM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access (caution) segments on the map"><span>⚠ Limited access</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`);
+  if (stats.limitedAccessM > 0) routeTypeParts.push(`<button class="rc-highlight-item rc-attention" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access caution segments on the map"><span>⚠ Caution</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`);
   const routeTypes = `<div class="rc-route-types">${routeTypeParts.join('')}</div>`;
   const levelNames = ['', 'Comfy', 'Meets rules', 'Caution', 'Fails rules'];
   const levels = `<div class="rc-levels">${[1, 2, 4].map((level) =>
-    `<button class="rc-level rc-l${level}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
+    `<button class="rc-level rc-l${level}${level === 4 && stats.levels[level] > 0 ? ' rc-attention' : ''}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
   ).join('')}</div>`;
   const legs = m.legs && m.legs.length > 1
     ? `<div class="rc-legs">${m.legs.map((l, i) =>
@@ -1233,17 +1228,14 @@ function renderRouteCard(m) {
           l.failM > 0 ? ` · <span class="rc-leg-warn">${fmtDist(l.failM)} fail</span>` : ''}</div>`).join('')}</div>`
     : '';
   card.innerHTML = `
+    <div id="routeControlsSlot"></div>
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
-    <a class="route-details-link" href="route-details.html">Route concerns &amp; highlights <span aria-hidden="true">→</span></a>
-    <div id="routeControlsSlot"></div>
     ${ferry}
     <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
     ${routeTypes}
     ${levels}
     ${legs}
-    ${caution}
-    ${warn}
     <canvas id="profileCv"></canvas>`;
   moveControls();
   card.querySelectorAll('[data-highlight]').forEach((b) => {
@@ -1729,12 +1721,14 @@ function buildRoutingPanel() {
   pref.style.margin = '0 0 6px';
   pref.innerHTML = `
     <input type="checkbox" id="prefDesig" ${routing.prefDesig ? 'checked' : ''}>
-    <label for="prefDesig">Strongly prefer bike routes &amp; trails</label>`;
+    <label for="prefDesig">Strongly prefer bike routes &amp; trails</label>
+    <button type="button" id="routeDetailsBtn" class="route-details-btn" title="Route concerns, highlights, and help">Details</button>`;
   chips.closest('#routeControls').append(pref);
   pref.querySelector('input').addEventListener('change', (e) => {
     routing.prefDesig = e.target.checked;
     computeRoute();
   });
+  pref.querySelector('#routeDetailsBtn').addEventListener('click', openRouteDetails);
 
   renderRouteCard(null);
 
@@ -2534,6 +2528,7 @@ buildLegend();
 // Tabs.
 function setPanelOpen(open) {
   document.body.classList.toggle('panel-open', open);
+  document.body.classList.toggle('settings-open', open && document.getElementById('tab-settings').classList.contains('active'));
 }
 document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
   b.addEventListener('click', () => {
