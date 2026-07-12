@@ -13,7 +13,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-11.37'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-11.38'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -35,7 +35,7 @@ const LEGEND = [
 
 /* ------------------------------------------------- riding-rules state */
 const rules = {
-  allowFreeways: true,  // show limited-access/high-speed roads as rideable at all?
+  allowFreeways: true,  // only permit heavily penalized freeway fallback?
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
   freeMaxSpeed: 35,     // mph; at/below this a road passes even without a shoulder
@@ -152,7 +152,7 @@ function scoreRestrict() {
 // or it fails (4). Returns 0 only when there's no usable data at all.
 function effectiveLevel(n) {
   if (n.prohibited) return 4;                              // bikes not allowed
-  if (n.limited_access && !rules.allowFreeways) return 4;  // freeway gate
+  if (n.limited_access) return 4;                          // freeway: last-resort failure
 
   // Dedicated bike infrastructure: the infra type IS the rating (cycleway = 1,
   // bike lane = 2). The car-speed/shoulder rules don't apply to it.
@@ -282,7 +282,7 @@ function roadLevelExpr() {
   const spd = ['get', 's'];
   const cases = [];
   cases.push(['==', ['get', 'b'], 1], 4);                       // bikes prohibited
-  if (!rules.allowFreeways) cases.push(['==', ['get', 'm'], 1], 4); // freeway gate
+  cases.push(['==', ['get', 'm'], 1], 4);                       // freeway: last-resort failure
   cases.push(['<=', spd, rules.freeMaxSpeed], 1);               // slow = comfortable
   cases.push(['==', ['get', 'g'], 1], 2);                       // designated route = vetted
   // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
@@ -843,7 +843,7 @@ function fmtDur(s) {
 
 function fallbackRouteLevel(s) {
   const flags = s.flags || 0;
-  if (flags & 4 && !rules.allowFreeways) return 4;
+  if (flags & 4) return 4;
   if (flags & 8) return 1;
   if (s.mph <= rules.freeMaxSpeed) return 1;
   if (flags & 64) return 2;
@@ -943,7 +943,7 @@ function renderRouteCard(m) {
   card.innerHTML = `
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
-    <a class="route-details-link" href="route-details.html">Route details &amp; highlights <span aria-hidden="true">→</span></a>
+    <a class="route-details-link" href="route-details.html">Route concerns &amp; highlights <span aria-hidden="true">→</span></a>
     <div id="routeControlsSlot"></div>
     ${ferry}
     <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
@@ -1780,8 +1780,8 @@ function explainLevel(n) {
       : n.baseScore === 2
       ? 'Bike lane or shared path — moderate.'
       : 'Bike infrastructure.';
-  if (n.limited_access && !rules.allowFreeways)
-    return 'Limited-access highway — turn on “Allow freeways” to include it.';
+  if (n.limited_access)
+    return 'Limited-access freeway — treated as a last-resort route failure.';
 
   const spd = n.maxspeed_num;
   const shRaw = n.shoulder_width;
@@ -2135,7 +2135,8 @@ function buildRulesPanel() {
     });
   };
 
-  check('allowFreeways', 'Allow freeways', 'Ride limited-access highway shoulders where legal.');
+  check('allowFreeways', 'Allow freeway as last resort',
+    'Freeways always fail your rules and are heavily avoided. Turn this off to exclude them entirely.');
   check('requireSafe', 'Fail if no complete safe route found',
     'Off by default. When enabled, routing fails instead of using an unavoidable road outside your rules.');
   slider('minShoulder', 'Minimum shoulder', 'Roads with a shoulder narrower than this fail.', 0, 10, 1, ' ft');

@@ -37,7 +37,8 @@ python3 scripts/serve.py
   client-side, with no refetch**. Each is a HARD gate: a road fails (avoid) if
   the data we have shows a criterion isn't met (missing data isn't held against
   a road):
-  - *Allow freeways* — include limited-access highways or not.
+  - *Allow freeway as last resort* — freeways always fail the rules and carry
+    a very large routing penalty; turn this off to exclude them entirely.
   - *Min shoulder width* — a known shoulder under this fails a road.
   - *"Free" max speed* — at/below this, comfortable regardless of shoulder.
   - *Upper max speed* — above this a road fails (unless *No upper limit*).

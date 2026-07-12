@@ -114,7 +114,7 @@ function nearestNode(lon, lat) {
 function edgeLevel(i, rules) {
   const flags = eFlags[i];
   if (flags & 32) return 2;                         // ferry — no road rules apply
-  if (flags & 4 && !rules.allowFreeways) return 4; // limited access
+  if (flags & 4) return 4;                         // freeway: last-resort failure
   if (flags & 8) return 1;                          // dedicated infrastructure
   const spd = eSpeed[i];
   if (spd <= rules.freeMaxSpeed) return 1;
@@ -148,6 +148,9 @@ const DESIGNATED_MULT = 0.9;
 // infrastructure at half cost or better — worth riding up to ~2x the distance
 // to stay on a trail. Ferries keep their own economics.
 const PREF_DESIG_MULT = 0.45;
+// Freeways are a true last resort: even a short ordinary failure should win
+// over a much longer freeway detour.
+const FREEWAY_LAST_RESORT_MULT = 60;
 // Average terminal wait folded into a ferry leg, applied once when boarding
 // from land (mid-water route junctions don't re-charge it).
 const FERRY_BOARD_S = 15 * 60;
@@ -233,6 +236,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig) {
       const v = outTarget[a];
       if (done[v]) continue;
       const ei = outEdge[a];
+      const fl = eFlags[ei];
+      // This setting controls whether a freeway can be used at all. When it
+      // can, its level and cost still make it a route failure and last resort.
+      if (!rules.allowFreeways && (fl & 4)) continue;
       const lvl = edgeLevel(ei, rules);
       // "Fail if no complete safe route": failing roads become impassable in
       // EVERY mode — the mode then picks among fully-passing routes only.
@@ -241,13 +248,13 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig) {
       if (mult === Infinity) continue;
       const forward = eA[ei] === u;
       let step = edgeTimeS(ei, forward);
-      if ((eFlags[ei] & 32) && nodeHasLand[u]) step += FERRY_BOARD_S; // boarding
+      if ((fl & 32) && nodeHasLand[u]) step += FERRY_BOARD_S; // boarding
       let cost = step * mult;
-      const fl = eFlags[ei];
       cost *= speedStress(mode, fl, eSpeed[ei], rules.freeMaxSpeed);
+      if (fl & 4) cost *= FREEWAY_LAST_RESORT_MULT;
       // Bonuses never apply to limited-access highways: I-90's shoulder is a
-      // designated bike route, but "prefer trails" must not make a freeway
-      // ATTRACTIVE — it stays routable at full cost only.
+      // designated bike route, but "prefer trails" must never cancel the
+      // last-resort freeway penalty.
       if (prefDesig && !(fl & (32 | 4)) && (fl & (64 | 8))) cost *= PREF_DESIG_MULT;
       else if ((fl & 64) && !(fl & 4) && mode !== 'direct') cost *= DESIGNATED_MULT;
       const nd = du + cost;
