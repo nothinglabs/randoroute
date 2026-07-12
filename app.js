@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.68'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.69'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -485,25 +485,24 @@ function rescoreAll(recomputeRoute = true) {
   if (recomputeRoute && routing.ready && routing.start && routing.end) computeRoute();
 }
 
-// Recolor the map promptly while the thumb moves, but wait for a short pause
-// before sending a fresh route request. Re-routing on every slider tick made
-// touch sliders feel sticky on phones.
-let _rescorePending = false;
+// Rule sliders may update several large GeoJSON sources. Throttle map work and
+// wait for the thumb to settle before routing again; otherwise Safari can queue
+// enough style/data work during a drag to become unstable.
+let _rescoreTimer = null;
 let _ruleRouteTimer = null;
 function scheduleRescore() {
   saveStateSoon();
-  if (!_rescorePending) {
-    _rescorePending = true;
-    requestAnimationFrame(() => {
-      _rescorePending = false;
+  if (_rescoreTimer == null) {
+    _rescoreTimer = setTimeout(() => {
+      _rescoreTimer = null;
       rescoreAll(false);
-    });
+    }, 100);
   }
   clearTimeout(_ruleRouteTimer);
   _ruleRouteTimer = setTimeout(() => {
     _ruleRouteTimer = null;
     if (routing.ready && routing.start && routing.end) computeRoute();
-  }, 220);
+  }, 350);
 }
 
 const FAIL_COLOR = '#9aa0a6';
@@ -2587,7 +2586,7 @@ function buildRulesPanel() {
       rules[key] = Number(input.value);
       document.getElementById(`v-${key}`).textContent = rules[key] + unit;
       // A delayed synthetic map click after a mobile range drag must never
-      // open road info and dismiss the full-screen Settings panel.
+      // open road info and dismiss the Settings panel.
       suppressRoadInfo(900);
       scheduleRescore();
     });
@@ -2701,20 +2700,27 @@ buildRulesPanel();
 buildRoutingPanel();
 buildLegend();
 
-// On phones, navigation and Menu form a right-thumb control dock. The
+// On phones, navigation and Menu form a left-thumb control dock. The
 // navigation control moves above the open sheet so guidance never disappears
 // behind it; desktop keeps the existing top-toolbar arrangement.
 const mobileNavMedia = window.matchMedia('(max-width: 720px)');
+let _mobileDockFrame = null;
 function syncMobileNavDock() {
   if (!mobileNavMedia.matches) return;
   const dock = document.getElementById('mobileNavDock');
   const panel = document.getElementById('panel');
   const height = document.body.classList.contains('panel-open')
     ? Math.ceil(panel.getBoundingClientRect().height) : 0;
-  dock.style.setProperty('--mobile-panel-height', `${height}px`);
+  // The dock and the banner are siblings, so put the shared measurement on
+  // <body> rather than only on the dock. Both elements then rise together.
+  document.body.style.setProperty('--mobile-panel-height', `${height}px`);
 }
 function scheduleMobileNavDock() {
-  if (mobileNavMedia.matches) requestAnimationFrame(syncMobileNavDock);
+  if (!mobileNavMedia.matches || _mobileDockFrame != null) return;
+  _mobileDockFrame = requestAnimationFrame(() => {
+    _mobileDockFrame = null;
+    syncMobileNavDock();
+  });
 }
 function placeNavigationControl() {
   const nav = document.getElementById('navStartButton');
@@ -2730,6 +2736,9 @@ function placeNavigationControl() {
 placeNavigationControl();
 if (mobileNavMedia.addEventListener) mobileNavMedia.addEventListener('change', placeNavigationControl);
 else mobileNavMedia.addListener(placeNavigationControl);
+if (window.ResizeObserver) {
+  new ResizeObserver(scheduleMobileNavDock).observe(document.getElementById('panel'));
+}
 
 // Tabs.
 function setPanelOpen(open) {

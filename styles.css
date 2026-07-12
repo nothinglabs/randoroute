@@ -384,12 +384,12 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   #routeBar button { width: 30px; height: 30px; }
   #routeBar .rb-pill { padding: 0 9px; font-size: 11px; }
   #routeBar #rb-via, #routeBar #rb-via-remove { width: 29px; }
-  #mobileNavDock { display: block; position: absolute; z-index: 15; right: 10px; bottom: calc(60px + env(safe-area-inset-bottom)); transition: bottom .2s ease; }
+  #mobileNavDock { display: block; position: absolute; z-index: 15; left: 10px; bottom: calc(60px + env(safe-area-inset-bottom)); transition: bottom .2s ease; }
   body.panel-open #mobileNavDock { bottom: calc(var(--mobile-panel-height, 0px) + 12px + env(safe-area-inset-bottom)); }
-  #panelOpen { right: 10px; left: auto; }
-  body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 10px; right: 112px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; }
+  #panelOpen { left: 10px; right: auto; }
+  body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
   body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 12px + env(safe-area-inset-bottom)); }
-  body:not(.panel-open) .update-prompt, body.panel-open .update-prompt { left: 10px; right: 112px; width: auto; max-width: none; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; }
+  body:not(.panel-open) .update-prompt, body.panel-open .update-prompt { left: 112px; right: 10px; width: auto; max-width: none; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; }
   body:not(.panel-open).navigation-active .update-prompt { bottom: calc(126px + env(safe-area-inset-bottom)); }
   body.panel-open .update-prompt { bottom: calc(var(--mobile-panel-height, 0px) + 58px + env(safe-area-inset-bottom)); }
   body.panel-open.navigation-active .update-prompt { bottom: calc(var(--mobile-panel-height, 0px) + 78px + env(safe-area-inset-bottom)); }
