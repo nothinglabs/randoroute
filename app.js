@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.79'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.81'; // shown in the map corner; bump per release
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1936,6 +1936,27 @@ function removeLastVia() {
   saveStateSoon();
 }
 
+function reverseRoute() {
+  if (!(routing.start && routing.end)) return;
+  stopTurnNavigation(false);
+  routing.arm = null;
+  routing.navRejoin = null;
+  closePlacePicker(false);
+
+  const start = routing.start;
+  routing.start = routing.end;
+  routing.end = start;
+  routing.vias.reverse();
+  routing.startMarker?.setLngLat(routing.start);
+  routing.endMarker?.setLngLat(routing.end);
+
+  clearRouteHighlight();
+  updateArmButtons();
+  setRouteStatus('Route reversed');
+  computeRoute();
+  saveStateSoon();
+}
+
 function clearRoute() {
   stopTurnNavigation(false);
   routing.arm = null;
@@ -1971,8 +1992,10 @@ function updateArmButtons() {
   }
   const add = document.getElementById('rb-via');
   const remove = document.getElementById('rb-via-remove');
+  const reverse = document.getElementById('rb-reverse');
   if (add) add.disabled = !(routing.start && routing.end);
   if (remove) remove.disabled = routing.vias.length === 0;
+  if (reverse) reverse.disabled = !(routing.start && routing.end);
 }
 
 const MODES = [
@@ -2040,6 +2063,7 @@ function buildRoutingPanel() {
   }
   document.getElementById('rb-via').addEventListener('click', () => armRoutePoint('via'));
   document.getElementById('rb-via-remove').addEventListener('click', removeLastVia);
+  document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.getElementById('navStartButton').addEventListener('click', () => {
     if (turnNav.active) stopTurnNavigation();
     else startTurnNavigation();
