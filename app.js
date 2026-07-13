@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.81'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-13.82'; // shown in the map corner; bump per release
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -945,7 +945,6 @@ const turnNav = {
   offRouteExit: null,
   offRouteMovingMs: 0,
   offRouteFix: null,
-  offRouteReminderSent: false,
   lastPosition: null,
   rejoinAwaiting: false,
   arrived: false,
@@ -1016,8 +1015,7 @@ function buildTurnInstructions(m) {
   return { coords, cumulative, instructions, segs, totalM: cumulative[cumulative.length - 1] || 0 };
 }
 
-const AUTO_REROUTE_AFTER_MS = 60_000;
-const AUTO_REROUTE_REMINDER_MS = 45_000;
+const AUTO_REROUTE_AFTER_MS = 15_000;
 const NAV_MOVING_MPS = 0.7;
 
 function routeRoadNameAt(index) {
@@ -1032,7 +1030,6 @@ function clearOffRouteTracking() {
   turnNav.offRouteExit = null;
   turnNav.offRouteMovingMs = 0;
   turnNav.offRouteFix = null;
-  turnNav.offRouteReminderSent = false;
 }
 
 function beginOffRouteTracking(pos, nearest) {
@@ -1046,7 +1043,6 @@ function beginOffRouteTracking(pos, nearest) {
   };
   turnNav.offRouteMovingMs = 0;
   turnNav.offRouteFix = { point, at };
-  turnNav.offRouteReminderSent = false;
   turnNav.message = `Off route by ${navDistanceText(nearest.offRouteM)}`;
 }
 
@@ -1087,7 +1083,7 @@ function navigationBannerInfo() {
     const nearStart = turnNav.offRouteExit?.routeM < 250;
     const remainingSeconds = Math.max(0, Math.ceil((AUTO_REROUTE_AFTER_MS - turnNav.offRouteMovingMs) / 1000));
     const meta = navigationOptions.autoReroute
-      ? (nearStart && turnNav.offRouteMovingMs < AUTO_REROUTE_REMINDER_MS
+      ? (nearStart && turnNav.offRouteMovingMs < AUTO_REROUTE_AFTER_MS
         ? 'Move route start to current location (if that’s accurate)'
         : `Auto-reroute in ${remainingSeconds} sec of moving time · Tap Reroute now`)
       : 'Tap Reroute to make a new route from here';
@@ -1240,17 +1236,12 @@ function updateTurnNavigation(pos) {
         ? ' If this is your actual location, move the route start to your current location.'
         : '';
       const autoHint = navigationOptions.autoReroute
-        ? ' Auto reroute will begin after 60 seconds of moving off route. You can tap Reroute now.'
+        ? ' The route will update automatically in 15 seconds of moving time.'
         : ' You can tap Reroute to make a new route from here.';
       speakNavigation(`You are off route. Return to ${target}.${startHint}${autoHint}`);
       turnNav.offRouteSpokenAt = Date.now();
     } else {
       trackOffRouteMovingTime(pos);
-    }
-    if (navigationOptions.autoReroute && !turnNav.offRouteReminderSent
-        && turnNav.offRouteMovingMs >= AUTO_REROUTE_REMINDER_MS) {
-      turnNav.offRouteReminderSent = true;
-      speakNavigation('You are still off route. Auto rerouting in 15 seconds of moving time. Tap Reroute to do it now.');
     }
     if (navigationOptions.autoReroute && turnNav.offRouteMovingMs >= AUTO_REROUTE_AFTER_MS) {
       rerouteNavigation(true);
@@ -1368,8 +1359,8 @@ function rerouteNavigation(automatic = false) {
   if (routing.startMarker) routing.startMarker.setLngLat({ lng: position[0], lat: position[1] });
   clearOffRouteTracking();
   turnNav.rejoinAwaiting = true;
-  if (automatic) speakNavigation('You are still off route. Rerouting from your current location now.');
-  turnNav.message = automatic ? 'Auto-rerouting from here' : 'Rerouting from here';
+  if (automatic) speakNavigation('Updating route.');
+  turnNav.message = 'Updating route';
   setRouteStatus('Rerouting…');
   updateArmButtons();
   refreshNavigationUI();
