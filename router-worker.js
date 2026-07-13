@@ -7,7 +7,7 @@
  *   direct    — fastest ride; failing roads allowed with a slight nudge away
  *   balanced  — failing roads cost 3x their time; gentle preference for
  *               comfortable roads and bike infrastructure
- *   low       — low-stress only: failing roads are impassable
+ *   low       — strongly avoids failing roads, but can use one as a last resort
  * Prohibited ways are excluded at build time (or marked by the graph migration)
  * in every mode.
  */
@@ -128,6 +128,10 @@ function edgeLevel(i, rules) {
   if (flags & 8) return 1;                          // dedicated infrastructure
   const limitedAccess = flags & 128;                // WSDOT bike-legal caution
   const spd = eSpeed[i];
+  // The rider-facing “Never allow roads faster than” control is absolute for
+  // ordinary roads, including designated routes. Dedicated infrastructure,
+  // ferries, freeways, and prohibitions were handled above.
+  if (!rules.noUpperLimit && spd > rules.upperMaxSpeed) return 4;
   if (spd <= rules.freeMaxSpeed) return limitedAccess ? 3 : 1;
   // Designated bike route (USBR/regional): a vetted corridor is a known
   // quantity — it meets criteria regardless of shoulder/speed data.
@@ -136,7 +140,6 @@ function edgeLevel(i, rules) {
   let sh = eSh[i];
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
   if (!(flags & 2) && sh >= 0 && sh < rules.minShoulder) return 4;
-  if (!rules.noUpperLimit && spd > rules.upperMaxSpeed) return 4;
   return limitedAccess ? 3 : 2;
 }
 
@@ -149,8 +152,9 @@ const V_MAX = 12.0;   // ~27 mph downhill cap
 const V_MIN = 1.3;    // steep-climb floor (~3 mph)
 // A* heuristic speed: must not undershoot any effective edge speed, including
 // fast ferries and the strongest cost bonuses, or A* loses optimality.
-// Worst case: V_MAX 12 / (0.9 L1 bonus x 0.45 strong-preference) = 29.6 m/s.
-const V_HEUR = 30.0;
+// Worst case: V_MAX 12 / (0.9 L1 x 0.45 designated x 0.78 residential)
+// = 38.0 m/s. Keep a little headroom so the heuristic remains admissible.
+const V_HEUR = 40.0;
 // Designated bike routes (USBR / regional trails, edge flag 64) get a cost
 // bonus in Balanced/Low-stress: a vetted corridor wins ties against an
 // equivalent plain road. Cost only — reported times stay honest.
@@ -237,6 +241,17 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
       code: 'point-too-far',
       reason: 'A route point is too far from a routable road or path.',
       farPoints,
+    };
+  }
+
+  if (s.node === t.node) {
+    return {
+      ok: true,
+      empty: true,
+      coords: [[nodeLon[s.node], nodeLat[s.node]]],
+      distM: 0, timeS: 0, ascentM: 0, descentM: 0, failM: 0, ferryM: 0,
+      ferrySegs: [], desigM: 0, segs: [], profile: [[0, nodeEle[s.node]]],
+      snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
     };
   }
 
@@ -373,6 +388,13 @@ function route(points, rules, mode, prefDesig, prefResidential) {
     }
     legs.push(leg);
   }
+  if (legs.every((leg) => leg.empty)) {
+    return {
+      ok: false,
+      code: 'same-point',
+      reason: 'Start and destination snap to the same road point. Move one of them farther away.',
+    };
+  }
   const coords = [], segs = [], ferrySegs = [], profile = [];
   const legSummaries = legs.map((l) => ({ distM: l.distM, timeS: l.timeS, failM: l.failM }));
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0, desigM = 0;
@@ -453,6 +475,6 @@ onmessage = (ev) => {
       postMessage({ type: 'route', id: m.id, ...r });
     }
   } catch (err) {
-    postMessage({ type: 'error', message: String(err && err.message || err) });
+    postMessage({ type: 'error', id: m.id, message: String(err && err.message || err) });
   }
 };

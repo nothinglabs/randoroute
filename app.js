@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-13.82'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-13.83'; // shown in the map corner; bump per release
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -45,10 +45,29 @@ const rules = {
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
   freeMaxSpeed: 35,     // mph; at/below this a road passes even without a shoulder
-  upperMaxSpeed: 45,    // mph; above this it's high-stress unless shoulder/facility is adequate
+  upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // error out instead of returning a route with failing roads
 };
+const RULE_NUMBER_LIMITS = {
+  minShoulder: [0, 10],
+  freeMaxSpeed: [15, 45],
+  upperMaxSpeed: [35, 65],
+};
+
+function validRuleOverrides(source) {
+  const clean = {};
+  if (!source || typeof source !== 'object') return clean;
+  for (const [key, current] of Object.entries(rules)) {
+    const value = source[key];
+    if (typeof current === 'boolean' && typeof value === 'boolean') clean[key] = value;
+    if (typeof current === 'number' && Number.isFinite(value)) {
+      const [min, max] = RULE_NUMBER_LIMITS[key] || [-Infinity, Infinity];
+      clean[key] = Math.min(max, Math.max(min, value));
+    }
+  }
+  return clean;
+}
 
 /* --------------------------------------------------- display state */
 // Pass/fail mode: an accessibility-friendly view that doesn't rely on telling
@@ -168,6 +187,11 @@ function effectiveLevel(n) {
   if (n.infra) return n.baseScore == null ? 0 : n.baseScore;
 
   const spd = n.maxspeed_num;
+  // This setting is an absolute road-speed ceiling. It comes before the
+  // slow-road and designated-route shortcuts so the UI's “Never allow” label
+  // always means what it says. Dedicated bike infrastructure remains exempt.
+  const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
+  if (speedFails) return 4;
   // Pessimistic option: an unknown shoulder counts as 0 ft, so fast roads must
   // PROVE an adequate shoulder to pass. Slow roads are unaffected (free-speed
   // rule below fires first) and so are roads with a bike facility.
@@ -177,15 +201,14 @@ function effectiveLevel(n) {
   if (spd != null && spd <= rules.freeMaxSpeed) return n.limited_access ? 3 : 1;
 
   // Designated bike route (USBR / regional trail): a vetted corridor is a
-  // known quantity — meets criteria regardless of shoulder/speed data.
-  // (Freeway and prohibition gates above still apply.)
+  // known quantity — meets criteria regardless of shoulder data.
+  // (Freeway, prohibition, and absolute speed-cutoff gates above still apply.)
   if (n.desig) return n.limited_access ? 3 : 2;
 
   // Hard gates. Each fails ONLY when we have data proving the violation
   // (with the pessimistic option, "unknown = 0 ft" counts as data).
-  const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
-  const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
-  if (shoulderFails || speedFails) return 4;
+  const shoulderFails = !n.good_facility && !n.desig && sh != null && sh < rules.minShoulder;
+  if (shoulderFails) return 4;
 
   // No usable data on any criterion → unknown.
   if (spd == null && sh == null && !n.good_facility) return 0;
@@ -292,6 +315,7 @@ function roadLevelExpr() {
   const cases = [];
   cases.push(['==', ['get', 'b'], 1], 4);                       // bikes prohibited
   cases.push(['==', ['get', 'm'], 1], 4);                       // freeway: last-resort failure
+  if (!rules.noUpperLimit) cases.push(['>', spd, rules.upperMaxSpeed], 4); // absolute speed cap
   cases.push(['<=', spd, rules.freeMaxSpeed], 1);               // slow = comfortable
   cases.push(['==', ['get', 'g'], 1], 2);                       // designated route = vetted
   // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
@@ -300,7 +324,6 @@ function roadLevelExpr() {
     ? ['coalesce', ['get', 'w'], 0]
     : ['case', ['has', 'w'], ['get', 'w'], rules.minShoulder]; // unknown -> never under
   cases.push(['all', ['!=', ['get', 'f'], 1], ['<', sh, rules.minShoulder]], 4);
-  if (!rules.noUpperLimit) cases.push(['>', spd, rules.upperMaxSpeed], 4); // speed cap
   return ['case', ...cases, 2];                                  // meets criteria
 }
 
@@ -313,7 +336,7 @@ const SAVED_ROUTES_KEY = 'wa-bike-saved-routes-1';
 let savedState = null;
 try { savedState = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); } catch (e) { /* ignore */ }
 if (savedState) {
-  if (savedState.rules) Object.assign(rules, savedState.rules);
+  if (savedState.rules) Object.assign(rules, validRuleOverrides(savedState.rules));
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
 }
 
@@ -329,6 +352,17 @@ function validRoutePoint(point) {
     && point[0] >= -180 && point[0] <= 180 && point[1] >= -90 && point[1] <= 90;
 }
 
+const MAX_ROUTE_STOPS = 8;
+
+function normalizeStoredRoute(route) {
+  if (!route || !validRoutePoint(route.s) || !validRoutePoint(route.e)) return null;
+  const vias = Array.isArray(route.v) ? route.v : [];
+  if (!vias.every(validRoutePoint)) return null;
+  // Preserve plans created before the editor gained a stop limit. New edits
+  // cannot add past the limit, but opening an old plan must not delete stops.
+  return { s: route.s, e: route.e, v: [...vias] };
+}
+
 // A share link keeps the route entirely client-side. Its URL-safe payload is
 // validated before it can override a visitor's locally saved route or rules.
 function decodeSharedRouteToken(token) {
@@ -338,16 +372,13 @@ function decodeSharedRouteToken(token) {
     const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
     const data = JSON.parse(new TextDecoder().decode(bytes));
     if (data.v !== 1 || !validRoutePoint(data.s) || !validRoutePoint(data.e)) return null;
-    const vias = Array.isArray(data.x) ? data.x.slice(0, 8) : [];
+    const vias = Array.isArray(data.x) ? data.x : [];
     if (!vias.every(validRoutePoint)) return null;
-    const sharedRules = {};
-    for (const key of Object.keys(rules)) {
-      const value = data.r && data.r[key];
-      if (typeof rules[key] === 'boolean' && typeof value === 'boolean') sharedRules[key] = value;
-      if (typeof rules[key] === 'number' && Number.isFinite(value)) sharedRules[key] = value;
-    }
+    const sharedRules = validRuleOverrides(data.r);
     return {
-      route: { s: data.s, e: data.e, v: vias },
+      // Version-1 links historically loaded their first eight stops. Preserve
+      // that behavior so older links in messages continue to work.
+      route: { s: data.s, e: data.e, v: vias.slice(0, MAX_ROUTE_STOPS) },
       mode: ['direct', 'balanced', 'low'].includes(data.m) ? data.m : null,
       prefDesig: typeof data.p === 'boolean' ? data.p : null,
       prefResidential: typeof data.q === 'boolean' ? data.q : null,
@@ -368,26 +399,49 @@ function readSharedRoute(urlLike = location.href) {
   }
 }
 
+function consumeSharedRouteHash() {
+  try {
+    const url = new URL(location.href);
+    const params = new URLSearchParams(url.hash.slice(1));
+    if (!params.has('route')) return;
+    params.delete('route');
+    url.hash = params.toString();
+    history.replaceState(history.state, '', url.toString());
+  } catch (e) { /* address-bar cleanup is optional */ }
+}
+
 const sharedRoute = readSharedRoute();
 if (sharedRoute) Object.assign(rules, sharedRoute.rules);
 
 let saveTimer = null;
-function saveStateSoon() {
+let stateDirty = false;
+function saveStateNow() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(STATE_KEY, JSON.stringify({
-        rules, passFail: display.passFail,
-        mode: routing.mode, prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
-        autoReroute: navigationOptions.autoReroute,
-        sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
-        view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
-        route: routing.start && routing.end
-          ? { s: routing.start, e: routing.end, v: routing.vias.map((x) => x.pt) } : null,
-      }));
-    } catch (e) { /* storage full/blocked — nonfatal */ }
-  }, 800);
+  saveTimer = null;
+  // An untouched older tab must not overwrite a newer tab's route when a
+  // service-worker update reloads every open copy of the app.
+  if (!stateDirty) return true;
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      rules, passFail: display.passFail,
+      mode: routing.mode, prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
+      autoReroute: navigationOptions.autoReroute,
+      sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
+      view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
+      route: routing.start && routing.end
+        ? { s: routing.start, e: routing.end, v: routing.vias.map((x) => x.pt) } : null,
+    }));
+    stateDirty = false;
+    return true;
+  } catch (e) { /* storage full/blocked — nonfatal */ }
+  return false;
 }
+function saveStateSoon() {
+  stateDirty = true;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveStateNow, 800);
+}
+window.addEventListener('pagehide', saveStateNow);
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -502,6 +556,7 @@ function rescoreAll(recomputeRoute = true) {
 let _rescoreTimer = null;
 let _ruleRouteTimer = null;
 function scheduleRescore() {
+  clearNavigationRejoin();
   saveStateSoon();
   if (_rescoreTimer == null) {
     _rescoreTimer = setTimeout(() => {
@@ -808,6 +863,8 @@ function setSourceVisible(src, on) {
     const roads = SOURCES.find((s) => s.id === 'roads');
     if (map.getLayer(roads.id)) applyDisplayMode(roads);
   }
+  buildLegend();
+  saveStateSoon();
 }
 
 /* --------------------------------------------------------- routing */
@@ -821,7 +878,8 @@ const routing = {
   navRejoin: null,           // transient route point used by turn-by-turn rerouting
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false,
-  mode: sharedRoute?.mode || (savedState && savedState.mode) || 'balanced', // 'direct' | 'balanced' | 'low'
+  mode: sharedRoute?.mode || (['direct', 'balanced', 'low'].includes(savedState?.mode)
+    ? savedState.mode : 'balanced'), // 'direct' | 'balanced' | 'low'
   prefDesig: sharedRoute?.prefDesig != null ? sharedRoute.prefDesig : savedState && typeof savedState.prefDesig === 'boolean'
     ? savedState.prefDesig : true, // strongly prefer designated routes & trails
   prefResidential: sharedRoute?.prefResidential != null ? sharedRoute.prefResidential
@@ -835,6 +893,23 @@ function setRouteStatus(t) {
     const el = document.getElementById(id);
     if (el) el.textContent = t;
   }
+}
+
+function handleRouterFailure(message) {
+  const detail = String(message || 'unknown error');
+  const reason = `Routing failed (${detail}). Change a route point to try again.`;
+  routing.reqId++; // invalidate any reply still queued by the failed worker
+  routing.ready = false;
+  routing.loading = false;
+  if (routing.worker) routing.worker.terminate();
+  routing.worker = null;
+  routing.navRejoin = null;
+  stopTurnNavigation(false);
+  routing.last = { ok: false, code: 'router-error', reason };
+  clearStoredRouteDetails();
+  renderRouteCard(routing.last);
+  if (map.isStyleLoaded()) drawRoute([]);
+  setRouteStatus(reason);
 }
 
 async function ensureRouter() {
@@ -853,10 +928,14 @@ async function ensureRouter() {
     }
     routing.worker = new Worker('router-worker.js');
     routing.worker.onmessage = onRouterMessage;
+    routing.worker.onerror = (event) => {
+      event.preventDefault?.();
+      handleRouterFailure(event.message || 'routing worker stopped');
+    };
+    routing.worker.onmessageerror = () => handleRouterFailure('routing worker sent unreadable data');
     routing.worker.postMessage({ type: 'graph', buffer: buf }, [buf]);
   } catch (e) {
-    routing.loading = false;
-    setRouteStatus('Routing data failed to load (' + e.message + ').');
+    handleRouterFailure(`routing data could not load: ${e.message}`);
   }
 }
 
@@ -873,12 +952,12 @@ function fallbackRouteLevel(s) {
   const flags = s.flags || 0;
   if (flags & 4) return 4;
   if (flags & 8) return 1;
+  if (!rules.noUpperLimit && s.mph > rules.upperMaxSpeed) return 4;
   if (s.mph <= rules.freeMaxSpeed) return flags & 128 ? 3 : 1;
   if (flags & 64) return flags & 128 ? 3 : 2;
   let sh = s.sh;
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
   if (!(flags & 2) && sh >= 0 && sh < rules.minShoulder) return 4;
-  if (!rules.noUpperLimit && s.mph > rules.upperMaxSpeed) return 4;
   return flags & 128 ? 3 : 2;
 }
 
@@ -905,6 +984,9 @@ function routeSummaryStats(m) {
 }
 
 const ROUTE_DETAILS_KEY = 'wa-bike-route-details-1';
+function clearStoredRouteDetails() {
+  try { localStorage.removeItem(ROUTE_DETAILS_KEY); } catch (e) { /* nonfatal */ }
+}
 function storeRouteDetails(m) {
   if (!m || !m.ok) return;
   try {
@@ -1121,7 +1203,7 @@ function openRouteDetails() {
 }
 
 function refreshNavigationUI() {
-  const routeAvailable = !!routing.last?.ok;
+  const routeAvailable = !!(routing.last?.ok && routing.last.coords?.length > 1);
   document.body.classList.toggle('navigation-active', turnNav.active);
   const startButton = document.getElementById('navStartButton');
   if (startButton) {
@@ -1252,7 +1334,8 @@ function updateTurnNavigation(pos) {
   }
   clearOffRouteTracking();
   turnNav.message = '';
-  const rejoinLegM = Number(routing.last?.legs?.[0]?.distM) || Infinity;
+  const rejoinLegValue = Number(routing.last?.legs?.[0]?.distM);
+  const rejoinLegM = Number.isFinite(rejoinLegValue) ? rejoinLegValue : Infinity;
   if (routing.navRejoin && !turnNav.rejoinAwaiting && turnNav.routeM >= rejoinLegM - 30) {
     routing.navRejoin = null;
   }
@@ -1300,7 +1383,7 @@ function handleTurnNavigationLocationError(error) {
 }
 
 function startTurnNavigation() {
-  if (!routing.last?.ok || !navigator.geolocation) {
+  if (!routing.last?.ok || routing.last.coords?.length < 2 || !navigator.geolocation) {
     setStatus('Set a route and allow location access to start navigation.', true);
     return;
   }
@@ -1367,8 +1450,16 @@ function rerouteNavigation(automatic = false) {
   computeRoute();
 }
 
+function clearNavigationRejoin() {
+  const hadRejoin = !!routing.navRejoin;
+  routing.navRejoin = null;
+  turnNav.rejoinAwaiting = false;
+  return hadRejoin;
+}
+
 function stopTurnNavigation(announce = true) {
-  if (!turnNav.active) return;
+  const hadRejoin = clearNavigationRejoin();
+  if (!turnNav.active) return hadRejoin;
   if (turnNav.watchId != null) navigator.geolocation?.clearWatch(turnNav.watchId);
   turnNav.watchId = null;
   releaseNavigationWakeLock();
@@ -1382,6 +1473,7 @@ function stopTurnNavigation(announce = true) {
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   if (announce) speakNavigation('Navigation stopped.');
   refreshNavigationUI();
+  return hadRejoin;
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -1405,12 +1497,19 @@ function renderRouteCard(m) {
     return;
   }
   if (!m.ok) {
-    card.innerHTML = `<div id="routeControlsSlot"></div><div class="rc-empty">${m.reason}</div>`;
+    card.innerHTML = '<div id="routeControlsSlot"></div><div class="rc-empty"></div>';
+    card.querySelector('.rc-empty').textContent = String(m.reason || 'No route found.');
     moveControls();
     refreshNavigationUI();
     return;
   }
   const stats = routeSummaryStats(m);
+  const snapNotes = [];
+  if (Number(m.snapStartM) > 80) snapNotes.push(`Start connects ${fmtDist(m.snapStartM)} away`);
+  if (Number(m.snapEndM) > 80) snapNotes.push(`Destination connects ${fmtDist(m.snapEndM)} away`);
+  const snapNotice = snapNotes.length
+    ? `<div class="rc-warn">⚠ ${snapNotes.join(' · ')} — move the marker closer to a road if this looks wrong.</div>`
+    : '';
   // Reserve this line even when a mode does not use a ferry. That keeps the
   // sheet from jumping when switching between otherwise valid route modes.
   const ferry = `<div class="rc-sub rc-ferry">${m.ferryM > 0
@@ -1429,13 +1528,14 @@ function renderRouteCard(m) {
   ).join('')}</div>`;
   const legs = m.legs && m.legs.length > 1
     ? `<div class="rc-legs">${m.legs.map((l, i) =>
-        `<div class="rc-leg">Leg ${i + 1}: <b>${fmtMi(l.distM)} mi</b> · ${fmtDur(l.timeS)}${
+        `<div class="rc-leg">Leg ${i + 1}: <b>${fmtDist(l.distM)}</b> · ${fmtDur(l.timeS)}${
           l.failM > 0 ? ` · <span class="rc-leg-warn">${fmtDist(l.failM)} fail</span>` : ''}</div>`).join('')}</div>`
     : '';
   card.innerHTML = `
     <div id="routeControlsSlot"></div>
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
+    ${snapNotice}
     ${ferry}
     <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
     ${routeTypes}
@@ -1516,6 +1616,7 @@ function onRouterMessage(ev) {
     if (!m.ok) {
       routing.navRejoin = null;
       stopTurnNavigation(false);
+      clearStoredRouteDetails();
       renderRouteCard(m);
       drawRoute([]);
       setRouteStatus(m.reason);
@@ -1537,7 +1638,8 @@ function onRouterMessage(ev) {
     drawRoute(m.coords, m.ferrySegs, m.segs);
     setRouteStatus(`${fmtMi(m.distM)} mi`);
   } else if (m.type === 'error') {
-    setRouteStatus('Routing error: ' + m.message);
+    if (m.id != null && m.id !== routing.reqId) return;
+    handleRouterFailure(m.message);
   }
 }
 
@@ -1791,6 +1893,7 @@ function toggleRouteHighlight(key) {
 }
 
 function setRoutePoint(kind, lngLat) {
+  clearNavigationRejoin();
   routing[kind] = [lngLat.lng, lngLat.lat];
   const mk = kind + 'Marker';
   if (routing[mk]) routing[mk].setLngLat(lngLat);
@@ -1801,6 +1904,7 @@ function setRoutePoint(kind, lngLat) {
     }).setLngLat(lngLat).addTo(map);
     if (touchEndpoint) enableLongPressEndpointMove(kind, routing[mk]);
     else routing[mk].on('dragend', () => {
+        clearNavigationRejoin();
         const ll = routing[mk].getLngLat();
         routing[kind] = [ll.lng, ll.lat];
         computeRoute();
@@ -1840,6 +1944,7 @@ function enableLongPressEndpointMove(kind, marker) {
     el.classList.remove('endpoint-moving');
     setMapGesturesEnabled(true, finished.mapGestures);
     if (finished.active && commit) {
+      clearNavigationRejoin();
       const ll = marker.getLngLat();
       routing[kind] = [ll.lng, ll.lat];
       setRouteStatus(`${kind === 'start' ? 'Start' : 'Destination'} moved`);
@@ -1903,21 +2008,31 @@ function enableLongPressEndpointMove(kind, marker) {
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
-function addVia(lngLat) {
+function addVia(lngLat, { allowPastLimit = false } = {}) {
+  if (!allowPastLimit && routing.vias.length >= MAX_ROUTE_STOPS) {
+    routing.arm = null;
+    updateArmButtons();
+    setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} stops`);
+    return false;
+  }
+  clearNavigationRejoin();
   const marker = new maplibregl.Marker({ color: '#555555', draggable: true, scale: 0.85 })
     .setLngLat(lngLat).addTo(map);
   const via = { pt: [lngLat.lng, lngLat.lat], marker };
   routing.vias.push(via);
   marker.on('dragend', () => {
+    clearNavigationRejoin();
     const ll = marker.getLngLat();
     via.pt = [ll.lng, ll.lat];
     computeRoute();
   });
   computeRoute();
   updateArmButtons();
+  return true;
 }
 
 function removeLastVia() {
+  clearNavigationRejoin();
   const via = routing.vias.pop();
   if (!via) return;
   via.marker.remove();
@@ -1954,6 +2069,7 @@ function clearRoute() {
   closePlacePicker(false);
   routing.start = routing.end = null;
   routing.navRejoin = null;
+  routing.reqId++; // a route already being calculated must not reappear after clear
   for (const v of routing.vias) v.marker.remove();
   routing.vias = [];
   for (const k of ['startMarker', 'endMarker']) {
@@ -1961,7 +2077,7 @@ function clearRoute() {
   }
   drawRoute([]);
   routing.last = null;
-  try { localStorage.removeItem(ROUTE_DETAILS_KEY); } catch (e) { /* nonfatal */ }
+  clearStoredRouteDetails();
   renderRouteCard(null);
   setRouteStatus('');
   updateArmButtons();
@@ -1984,7 +2100,11 @@ function updateArmButtons() {
   const add = document.getElementById('rb-via');
   const remove = document.getElementById('rb-via-remove');
   const reverse = document.getElementById('rb-reverse');
-  if (add) add.disabled = !(routing.start && routing.end);
+  if (add) {
+    add.disabled = !(routing.start && routing.end) || routing.vias.length >= MAX_ROUTE_STOPS;
+    add.title = routing.vias.length >= MAX_ROUTE_STOPS
+      ? `Maximum of ${MAX_ROUTE_STOPS} stops reached` : 'Add a stop';
+  }
   if (remove) remove.disabled = routing.vias.length === 0;
   if (reverse) reverse.disabled = !(routing.start && routing.end);
 }
@@ -2002,6 +2122,14 @@ function syncRoutePreferenceControls() {
   if (residential) residential.checked = routing.prefResidential;
 }
 
+function syncModeControls() {
+  document.querySelectorAll('#modeChips button').forEach((button) => {
+    const active = button.dataset.mode === routing.mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
 function buildRoutingPanel() {
   const chips = document.getElementById('modeChips');
   document.getElementById('routeCard').addEventListener('click', (e) => {
@@ -2010,11 +2138,13 @@ function buildRoutingPanel() {
   });
   chips.innerHTML = MODES.map(([id, label]) =>
     `<button data-mode="${id}" ${id === routing.mode ? 'class="active"' : ''}
-       title="${MODES.find((m) => m[0] === id)[2]}">${label}</button>`).join('');
+       aria-pressed="${id === routing.mode}" title="${MODES.find((m) => m[0] === id)[2]}">${label}</button>`).join('');
   chips.querySelectorAll('button').forEach((b) => {
     b.addEventListener('click', () => {
+      clearNavigationRejoin();
       routing.mode = b.dataset.mode;
-      chips.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+      syncModeControls();
+      saveStateSoon();
       computeRoute();
     });
   });
@@ -2036,11 +2166,13 @@ function buildRoutingPanel() {
     <button type="button" id="routeDetailsBtn" class="route-details-btn" aria-label="Open route details and routing tips" title="Route details and routing tips"><span aria-hidden="true">i</span></button>`;
   chips.closest('#routeControls').append(pref);
   pref.querySelector('input').addEventListener('change', (e) => {
+    clearNavigationRejoin();
     routing.prefDesig = e.target.checked;
     saveStateSoon();
     computeRoute();
   });
   pref.querySelector('#prefResidential').addEventListener('change', (e) => {
+    clearNavigationRejoin();
     routing.prefResidential = e.target.checked;
     saveStateSoon();
     computeRoute();
@@ -2056,7 +2188,10 @@ function buildRoutingPanel() {
   document.getElementById('rb-via-remove').addEventListener('click', removeLastVia);
   document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.getElementById('navStartButton').addEventListener('click', () => {
-    if (turnNav.active) stopTurnNavigation();
+    if (turnNav.active) {
+      const routeChanged = stopTurnNavigation();
+      if (routeChanged) computeRoute();
+    }
     else startTurnNavigation();
   });
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
@@ -2080,10 +2215,14 @@ function buildRoutingPanel() {
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] });
     fitRouteBounds(rt);
     setStatus('Shared route loaded');
-  } else if (savedState && savedState.route) {
-    const rt = savedState.route;
+    // The route is now persisted like any other plan. Removing the consumed
+    // token prevents Clear/Edit + refresh from resurrecting the original link.
+    saveStateSoon();
+    if (saveStateNow()) consumeSharedRouteHash();
+  } else if (savedState && normalizeStoredRoute(savedState.route)) {
+    const rt = normalizeStoredRoute(savedState.route);
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] });
-    for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] });
+    for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] });
   }
 }
@@ -2128,8 +2267,7 @@ function loadSharedRouteIntoPlanner(shared) {
   if (shared.mode) routing.mode = shared.mode;
   if (shared.prefDesig != null) routing.prefDesig = shared.prefDesig;
   if (shared.prefResidential != null) routing.prefResidential = shared.prefResidential;
-  document.querySelectorAll('#modeChips button').forEach((b) =>
-    b.classList.toggle('active', b.dataset.mode === routing.mode));
+  syncModeControls();
   syncRoutePreferenceControls();
   const route = shared.route;
   setRoutePoint('start', { lng: route.s[0], lat: route.s[1] });
@@ -2141,7 +2279,10 @@ function loadSharedRouteIntoPlanner(shared) {
 }
 
 function loadSavedRoutes() {
-  try { return JSON.parse(localStorage.getItem(SAVED_ROUTES_KEY) || '[]'); } catch (e) { return []; }
+  try {
+    const value = JSON.parse(localStorage.getItem(SAVED_ROUTES_KEY) || '[]');
+    return Array.isArray(value) ? value : [];
+  } catch (e) { return []; }
 }
 function storeSavedRoutes(list) {
   try { localStorage.setItem(SAVED_ROUTES_KEY, JSON.stringify(list)); } catch (e) { /* ignore */ }
@@ -2179,38 +2320,62 @@ function buildSavedRoutes() {
   const render = () => {
     setShareAvailability();
     const list = loadSavedRoutes();
-    host.innerHTML = (list.length ? '' : '<div class="hint">Saved routes stay on this device.</div>')
-      + list.map((r, i) =>
-        `<div class="saved-row">
-           <button class="saved-load" data-i="${i}">${r.name}</button>
-           <button class="saved-del" data-i="${i}" title="Delete">✕</button>
-         </div>`).join('');
-
-    host.querySelectorAll('.saved-load').forEach((b) => b.addEventListener('click', () => {
-      const r = loadSavedRoutes()[Number(b.dataset.i)];
-      if (!r) return;
-      clearRoute();
-      routing.mode = r.mode || routing.mode;
-      routing.prefDesig = r.prefDesig != null ? r.prefDesig : routing.prefDesig;
-      routing.prefResidential = r.prefResidential != null ? r.prefResidential : routing.prefResidential;
-      document.querySelectorAll('#modeChips button').forEach((x) =>
-        x.classList.toggle('active', x.dataset.mode === routing.mode));
-      syncRoutePreferenceControls();
-      setRoutePoint('start', { lng: r.s[0], lat: r.s[1] });
-      for (const p of r.v || []) addVia({ lng: p[0], lat: p[1] });
-      setRoutePoint('end', { lng: r.e[0], lat: r.e[1] });
-      const lons = [r.s[0], r.e[0], ...(r.v || []).map((p) => p[0])];
-      const lats = [r.s[1], r.e[1], ...(r.v || []).map((p) => p[1])];
-      map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-        { padding: 60, maxZoom: 13 });
-      dialog.close();
-    }));
-    host.querySelectorAll('.saved-del').forEach((b) => b.addEventListener('click', () => {
-      const list2 = loadSavedRoutes();
-      list2.splice(Number(b.dataset.i), 1);
-      storeSavedRoutes(list2);
-      render();
-    }));
+    host.replaceChildren();
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'hint';
+      empty.textContent = 'Saved routes stay on this device.';
+      host.appendChild(empty);
+    }
+    list.forEach((saved, index) => {
+      const route = normalizeStoredRoute(saved);
+      const name = String(saved?.name || `Saved route ${index + 1}`);
+      const row = document.createElement('div');
+      row.className = 'saved-row';
+      const load = document.createElement('button');
+      load.className = 'saved-load';
+      load.textContent = name;
+      load.disabled = !route;
+      load.addEventListener('click', () => {
+        const current = loadSavedRoutes()[index];
+        const currentRoute = normalizeStoredRoute(current);
+        if (!current || !currentRoute) return;
+        clearRoute();
+        if (current.rules) {
+          Object.assign(rules, validRuleOverrides(current.rules));
+          buildRulesPanel();
+          rescoreAll(false);
+        }
+        routing.mode = ['direct', 'balanced', 'low'].includes(current.mode) ? current.mode : routing.mode;
+        routing.prefDesig = typeof current.prefDesig === 'boolean' ? current.prefDesig : routing.prefDesig;
+        routing.prefResidential = typeof current.prefResidential === 'boolean'
+          ? current.prefResidential : routing.prefResidential;
+        syncModeControls();
+        syncRoutePreferenceControls();
+        setRoutePoint('start', { lng: currentRoute.s[0], lat: currentRoute.s[1] });
+        for (const point of currentRoute.v) addVia(
+          { lng: point[0], lat: point[1] }, { allowPastLimit: true });
+        setRoutePoint('end', { lng: currentRoute.e[0], lat: currentRoute.e[1] });
+        fitRouteBounds(currentRoute);
+        saveStateSoon();
+        dialog.close();
+      });
+      const remove = document.createElement('button');
+      remove.className = 'saved-del';
+      remove.type = 'button';
+      remove.title = `Delete ${name}`;
+      remove.setAttribute('aria-label', `Delete ${name}`);
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => {
+        const current = loadSavedRoutes();
+        current.splice(index, 1);
+        storeSavedRoutes(current);
+        render();
+        document.getElementById('savedRoutesStatus').textContent = `Deleted ${name}.`;
+      });
+      row.append(load, remove);
+      host.appendChild(row);
+    });
   };
   document.getElementById('routeLibraryBtn').addEventListener('click', () => {
     render();
@@ -2267,11 +2432,12 @@ function buildSavedRoutes() {
     const list = loadSavedRoutes();
     list.unshift({ name: name.slice(0, 60), s: routing.start, e: routing.end,
       v: routing.vias.map((x) => x.pt), mode: routing.mode, prefDesig: routing.prefDesig,
-      prefResidential: routing.prefResidential,
+      prefResidential: routing.prefResidential, rules: { ...rules },
       ts: Date.now() });
     storeSavedRoutes(list.slice(0, 30));
     input.value = '';
     render();
+    document.getElementById('savedRoutesStatus').textContent = `Saved ${name.slice(0, 60)}.`;
   });
   render();
 }
@@ -2309,6 +2475,9 @@ async function searchOnlinePlaces(query) {
   const url = new URL(ONLINE_PLACE_SEARCH_ENDPOINT);
   url.search = new URLSearchParams({
     format: 'jsonv2', q: query.trim(), limit: '5', countrycodes: 'us', addressdetails: '0',
+    // This router only contains Washington. Out-of-state search hits can
+    // never produce a route, so constrain results to the graph's coverage.
+    viewbox: '-124.9,49.1,-116.8,45.5', bounded: '1',
   });
   const response = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!response.ok) throw new Error(`search failed (${response.status})`);
@@ -2339,6 +2508,7 @@ function closePlacePicker(cancelArm = false) {
 }
 
 function openPlacePicker(kind) {
+  setLegendOpen(false);
   placeTarget = kind;
   routing.arm = kind;
   suppressRoadInfo();
@@ -2360,6 +2530,10 @@ function openPlacePicker(kind) {
 
 function armRoutePoint(kind) {
   if (kind === 'via' && !(routing.start && routing.end)) return;
+  if (kind === 'via' && routing.vias.length >= MAX_ROUTE_STOPS) {
+    setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} stops`);
+    return;
+  }
   closePlacePicker(false);
   routing.arm = routing.arm === kind ? null : kind;
   if (routing.arm) suppressRoadInfo();
@@ -2518,18 +2692,18 @@ function explainLevel(n) {
   const shUnknown = shRaw == null;
   const sh = shUnknown && rules.unknownShoulderZero ? 0 : shRaw;
   const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : null;
-  if (spd != null && spd <= rules.freeMaxSpeed)
+  const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
+  if (!speedFails && spd != null && spd <= rules.freeMaxSpeed)
     return n.limited_access
       ? `${spdTxt} — meets your speed/shoulder rules, but this is a limited-access highway (caution).`
       : `${spdTxt} — at or below your ${rules.freeMaxSpeed} mph no-shoulder limit, passes without a shoulder.`;
 
-  if (n.desig)
+  if (!speedFails && n.desig)
     return n.limited_access
       ? 'On a designated bike route, but it is also a limited-access highway (caution).'
       : 'On a designated bike route (USBR / regional trail) — a vetted corridor, treated as meeting your criteria.';
 
-  const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
-  const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
+  const shoulderFails = !n.good_facility && !n.desig && sh != null && sh < rules.minShoulder;
   const reasons = [];
   if (speedFails) reasons.push(`${spdTxt} is over your ${rules.upperMaxSpeed} mph max`);
   if (shoulderFails)
@@ -2647,7 +2821,7 @@ function renderReadout(feature, lngLat) {
       ['Route', isUSBR ? 'US Bicycle Route ' + p.r : p.r || null],
       ['Network', p.t === 'ncn' ? 'National (AASHTO-designated)' : 'Regional trail / route'],
       ['Map color', 'Orange — designated routes (USBR & trails)'],
-      ['Note', 'Officially designated cycling corridor — treated as meeting your criteria (freeway and prohibition rules still apply).'],
+      ['Note', 'Officially designated cycling corridor — treated as meeting your criteria unless it is prohibited, a freeway, or above your absolute speed cutoff.'],
     ];
   } else if (src.id === 'restrict') {
     title = 'Bikes prohibited (WSDOT)';
@@ -2708,12 +2882,32 @@ function renderReadout(feature, lngLat) {
   // unavailable.
   const streetView = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${
     lngLat.lat.toFixed(6)},${lngLat.lng.toFixed(6)}`;
-  readoutEl.innerHTML =
-    `<button class="readout-close" aria-label="Close road information">✕</button>` +
-    `<div class="rt-title">${title}</div><table>` +
-    rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('') +
-    '</table>' +
-    `<a class="gmap" href="${streetView}" target="_blank" rel="noopener">Open Street View ↗</a>`;
+  readoutEl.replaceChildren();
+  const close = document.createElement('button');
+  close.className = 'readout-close';
+  close.setAttribute('aria-label', 'Close road information');
+  close.textContent = '✕';
+  const heading = document.createElement('div');
+  heading.className = 'rt-title';
+  heading.textContent = title;
+  const table = document.createElement('table');
+  for (const [key, value] of rows) {
+    const tr = document.createElement('tr');
+    const keyCell = document.createElement('td');
+    keyCell.className = 'k';
+    keyCell.textContent = key;
+    const valueCell = document.createElement('td');
+    valueCell.textContent = String(value);
+    tr.append(keyCell, valueCell);
+    table.appendChild(tr);
+  }
+  const streetViewLink = document.createElement('a');
+  streetViewLink.className = 'gmap';
+  streetViewLink.href = streetView;
+  streetViewLink.target = '_blank';
+  streetViewLink.rel = 'noopener';
+  streetViewLink.textContent = 'Open Street View ↗';
+  readoutEl.append(close, heading, table, streetViewLink);
   readoutEl.classList.add('show');
 }
 
@@ -2745,8 +2939,10 @@ function placeArmedPoint(lngLat) {
   updateArmButtons();
   closePlacePicker(false);
   if (kind === 'via') {
-    addVia(lngLat);
-    setRouteStatus('Stop added — tap + to add another');
+    const added = addVia(lngLat);
+    if (added) setRouteStatus(routing.vias.length >= MAX_ROUTE_STOPS
+      ? `Stop added — maximum of ${MAX_ROUTE_STOPS} reached`
+      : 'Stop added — tap + to add another');
     return true;
   }
   setRoutePoint(kind, lngLat);
@@ -2890,7 +3086,7 @@ function buildRulesPanel() {
 
   check('allowFreeways', 'Allow freeway as last resort');
   check('requireSafe', 'Fail if no complete safe route found');
-  check('autoReroute', 'Auto-reroute after 60 sec off route while moving', navigationOptions, () => {
+  check('autoReroute', 'Auto-reroute after 15 sec off route while moving', navigationOptions, () => {
     saveStateSoon();
     refreshNavigationUI();
   });
@@ -2933,20 +3129,33 @@ function buildRulesPanel() {
 
   const settingsTabs = document.getElementById('settingsTabs');
   if (!settingsTabs.dataset.bound) {
+    const paneButtons = [...document.querySelectorAll('[data-settings-pane]')];
     const selectSettingsPane = (pane) => {
-      document.querySelectorAll('[data-settings-pane]').forEach((button) => {
+      paneButtons.forEach((button) => {
         const active = button.dataset.settingsPane === pane;
         button.classList.toggle('active', active);
         button.setAttribute('aria-selected', String(active));
+        button.tabIndex = active ? 0 : -1;
       });
       document.querySelectorAll('.settings-pane').forEach((panel) => {
         panel.hidden = panel.id !== `settings-${pane}`;
       });
     };
-    document.querySelectorAll('[data-settings-pane]').forEach((button) =>
-      button.addEventListener('click', () => selectSettingsPane(button.dataset.settingsPane)));
+    paneButtons.forEach((button) => {
+      button.addEventListener('click', () => selectSettingsPane(button.dataset.settingsPane));
+      button.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const current = paneButtons.indexOf(button);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? paneButtons.length - 1
+          : (current + (event.key === 'ArrowRight' ? 1 : -1) + paneButtons.length) % paneButtons.length;
+        paneButtons[next].focus();
+        selectSettingsPane(paneButtons[next].dataset.settingsPane);
+      });
+    });
     document.getElementById('settingsHelpBtn').addEventListener('click', () =>
       document.getElementById('settingsHelpDialog').showModal());
+    selectSettingsPane(document.querySelector('[data-settings-pane].active')?.dataset.settingsPane || 'limits');
     settingsTabs.dataset.bound = 'true';
   }
 }
@@ -3028,6 +3237,7 @@ function placeNavigationControl() {
   } else if (nav.parentElement !== topToolbar) {
     topToolbar.insertBefore(nav, topToolbar.firstChild);
   }
+  syncPanelInteractivity();
   scheduleMobileNavDock();
 }
 placeNavigationControl();
@@ -3038,15 +3248,27 @@ if (window.ResizeObserver) {
 }
 
 // Tabs.
+function syncPanelInteractivity() {
+  const panel = document.getElementById('panel');
+  const hidden = mobileNavMedia.matches && !document.body.classList.contains('panel-open');
+  panel.inert = hidden;
+  if (hidden) panel.setAttribute('aria-hidden', 'true');
+  else panel.removeAttribute('aria-hidden');
+}
+
 function setPanelOpen(open) {
   document.body.classList.toggle('panel-open', open);
+  syncPanelInteractivity();
   refreshNavigationUI();
   scheduleMobileNavDock();
 }
 
 function selectPanelTab(tabId) {
-  document.querySelectorAll('#tabs button[data-tab]').forEach((b) =>
-    b.classList.toggle('active', b.dataset.tab === tabId));
+  document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
+    const active = b.dataset.tab === tabId;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
   document.querySelectorAll('.tab').forEach((t) =>
     t.classList.toggle('active', t.id === 'tab-' + tabId));
   scheduleMobileNavDock();
@@ -3058,13 +3280,18 @@ document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
     setPanelOpen(true);
   });
 });
-document.getElementById('panelClose').addEventListener('click', () => setPanelOpen(false));
+selectPanelTab('route');
+document.getElementById('panelClose').addEventListener('click', () => {
+  setPanelOpen(false);
+  document.getElementById('panelOpen').focus({ preventScroll: true });
+});
 document.getElementById('panelOpen').addEventListener('click', () => {
   closePlacePicker(true);
   readoutPinned = false;
   readoutEl.classList.remove('show');
   selectPanelTab('route');
   setPanelOpen(true);
+  document.getElementById('panelClose').focus({ preventScroll: true });
 });
 
 // Dialog close buttons and small map-corner version stamp.
@@ -3108,8 +3335,9 @@ function offerSharedRouteTip() {
 offerSharedRouteTip();
 
 let pendingUpdateWorker = null;
+let deferredUpdateWorker = null;
 function offerUpdate(worker) {
-  if (!worker || !navigator.serviceWorker.controller) return;
+  if (!worker || worker === deferredUpdateWorker || !navigator.serviceWorker.controller) return;
   pendingUpdateWorker = worker;
   document.getElementById('updatePrompt').hidden = false;
 }
@@ -3134,6 +3362,7 @@ async function setupAutomaticUpdates() {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (reloading) return;
       reloading = true;
+      saveStateNow();
       location.reload();
     });
 
@@ -3152,9 +3381,11 @@ async function setupAutomaticUpdates() {
 }
 
 document.getElementById('getUpdateBtn').addEventListener('click', () => {
+  saveStateNow();
   if (pendingUpdateWorker) pendingUpdateWorker.postMessage({ type: 'SKIP_WAITING' });
 });
 document.getElementById('updateLaterBtn').addEventListener('click', () => {
+  deferredUpdateWorker = pendingUpdateWorker;
   document.getElementById('updatePrompt').hidden = true;
 });
 setupAutomaticUpdates();

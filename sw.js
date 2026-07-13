@@ -9,10 +9,12 @@
  *  - Basemap tiles (CARTO): CACHE-FIRST — areas you've viewed keep working
  *    offline. Statewide coverage is never fully cached, only what you browse.
  */
-const VERSION = 'v82'; // bump when app shell or data files change so installed clients refetch
+const VERSION = 'v83'; // bump when app shell or data files change so installed clients refetch
 const SHELL_CACHE = `shell-${VERSION}`;
 const DATA_CACHE = `data-${VERSION}`;
-const TILE_CACHE = `tiles-${VERSION}`;
+// Keep viewed basemap tiles across ordinary app-shell releases. The provider
+// URL already changes if the tile set itself ever needs invalidation.
+const TILE_CACHE = 'tiles-v82';
 
 const SHELL = [
   './',
@@ -33,7 +35,12 @@ const SHELL = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL))
+    Promise.all([
+      caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL)),
+      // The local place index is the guaranteed fallback when online search
+      // is unavailable, so install it proactively instead of waiting for use.
+      caches.open(DATA_CACHE).then((c) => c.addAll(['./data/places.json'])),
+    ])
   );
 });
 
@@ -82,7 +89,7 @@ async function networkFirst(name, req) {
     if (res.ok) cache.put(req, res.clone());
     return res;
   } catch (err) {
-    const hit = await cache.match(req, { ignoreVary: true });
+    const hit = await cache.match(req, { ignoreVary: true, ignoreSearch: true });
     if (hit) return hit;
     throw err;
   }

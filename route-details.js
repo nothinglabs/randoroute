@@ -3,6 +3,7 @@ const FLAG_FACILITY = 2;
 const FLAG_FREEWAY = 4;
 const FLAG_INFRA = 8;
 const FLAG_FERRY = 32;
+const FLAG_DESIGNATED = 64;
 const FLAG_LIMITED_ACCESS = 128;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 
@@ -23,17 +24,17 @@ function isHighway(seg) {
 }
 function failReason(seg, rules) {
   const f = seg.flags || 0;
-  const reasons = [];
-  if (f & FLAG_FREEWAY) reasons.push('limited-access freeway — last resort only');
+  if (f & FLAG_FREEWAY) return 'limited-access freeway — last resort only';
+  if (!rules.noUpperLimit && seg.mph > rules.upperMaxSpeed) {
+    return `${seg.mph} mph is above your ${rules.upperMaxSpeed} mph maximum`;
+  }
   let shoulder = seg.sh;
   if (shoulder < 0 && rules.unknownShoulderZero) shoulder = 0;
-  if (!(f & FLAG_FACILITY) && shoulder >= 0 && shoulder < rules.minShoulder) {
-    reasons.push(seg.sh < 0 ? 'shoulder is unknown and treated as 0 ft' : `${shoulder} ft shoulder is below your ${rules.minShoulder} ft minimum`);
+  if (!(f & (FLAG_FACILITY | FLAG_DESIGNATED)) && shoulder >= 0 && shoulder < rules.minShoulder) {
+    return seg.sh < 0 ? 'shoulder is unknown and treated as 0 ft'
+      : `${shoulder} ft shoulder is below your ${rules.minShoulder} ft minimum`;
   }
-  if (!rules.noUpperLimit && seg.mph > rules.upperMaxSpeed) {
-    reasons.push(`${seg.mph} mph is above your ${rules.upperMaxSpeed} mph maximum`);
-  }
-  return reasons.length ? reasons.join(' · ') : 'does not meet your selected riding rules';
+  return 'does not meet your selected riding rules';
 }
 
 // Consecutive graph edges with the same meaning become one readable road item.
@@ -57,7 +58,12 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
   const total = items.reduce((sum, item) => sum + item.lenM, 0);
   const section = document.createElement('section');
   section.className = `detail-section ${cls}`;
-  section.innerHTML = `<h2>${title}<span>${items.length ? fmtDist(total) : 'None'}</span></h2>`;
+  const heading = document.createElement('h2');
+  heading.append(document.createTextNode(title));
+  const totalLabel = document.createElement('span');
+  totalLabel.textContent = items.length ? fmtDist(total) : 'None';
+  heading.appendChild(totalLabel);
+  section.appendChild(heading);
   if (!items.length) {
     const empty = document.createElement('p');
     empty.className = 'empty';
@@ -69,7 +75,18 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
     for (const item of items) {
       const li = document.createElement('li');
       li.className = `detail-item ${cls}`;
-      li.innerHTML = `<div class="line"><span>${item.name}</span><span class="distance">${fmtDist(item.lenM)}</span></div><div class="meta">${item.meta}</div>`;
+      const line = document.createElement('div');
+      line.className = 'line';
+      const name = document.createElement('span');
+      name.textContent = item.name;
+      const distance = document.createElement('span');
+      distance.className = 'distance';
+      distance.textContent = fmtDist(item.lenM);
+      line.append(name, distance);
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = item.meta;
+      li.append(line, meta);
       list.appendChild(li);
     }
     section.appendChild(list);
@@ -98,6 +115,25 @@ function buildRouteSteps(segs) {
       });
     }
   }
+  // Graph geometry can insert a tiny unnamed connector at each block
+  // boundary. If the same street continues immediately afterward, fold that
+  // connector into the street instead of presenting a series of fake turns.
+  for (let i = 1; i + 1 < out.length;) {
+    const bridge = out[i];
+    const previous = out[i - 1];
+    const next = out[i + 1];
+    const severe = bridge.flags & (FLAG_FREEWAY | FLAG_LIMITED_ACCESS | FLAG_INFRA);
+    if (bridge.name === 'Unnamed road' && bridge.lenM <= 100 && !severe
+        && previous.name === next.name) {
+      previous.lenM += bridge.lenM + next.lenM;
+      previous.flags |= bridge.flags | next.flags;
+      previous.mph = Math.max(previous.mph, bridge.mph, next.mph);
+      previous.failM += bridge.failM + next.failM;
+      out.splice(i, 2);
+    } else {
+      i++;
+    }
+  }
   return out.map((step) => ({ ...step, meta: stepMeta(step) }));
 }
 
@@ -108,7 +144,8 @@ function stepMeta(step) {
   if (flags & FLAG_FREEWAY) bits.push('freeway');
   else if (flags & FLAG_LIMITED_ACCESS) bits.push('limited access');
   else if (flags & FLAG_INFRA) bits.push('bike infrastructure');
-  else if (flags & FLAG_FACILITY) bits.push('bike route');
+  else if (flags & FLAG_DESIGNATED) bits.push('bike route');
+  else if (flags & FLAG_FACILITY) bits.push('bike facility');
   else if (HIGHWAY_NAME.test(step.name) || step.mph >= 45) bits.push('highway');
   if (step.failM > 0) bits.push(`includes ${fmtDist(step.failM)} that fails rules`);
   else if (flags & FLAG_LIMITED_ACCESS) bits.push('caution');
@@ -137,8 +174,18 @@ const steps = document.getElementById('steps');
 const summary = document.getElementById('summary');
 const alert = document.getElementById('routeAlert');
 
-document.querySelectorAll('[data-detail-tab]').forEach((tab) => {
+const detailTabs = [...document.querySelectorAll('[data-detail-tab]')];
+detailTabs.forEach((tab) => {
   tab.addEventListener('click', () => selectDetailTab(tab.dataset.detailTab));
+  tab.addEventListener('keydown', (event) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const current = detailTabs.indexOf(tab);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? detailTabs.length - 1
+      : (current + (event.key === 'ArrowRight' ? 1 : -1) + detailTabs.length) % detailTabs.length;
+    detailTabs[next].focus();
+    selectDetailTab(detailTabs[next].dataset.detailTab);
+  });
 });
 
 if (!hasRoute) {
