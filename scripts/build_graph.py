@@ -14,7 +14,7 @@ Included edges:
 One-way streets are honored for bikes (oneway / junction=roundabout, with
 oneway:bicycle=no overriding; oneway=-1 reverses the edge).
 
-Binary layout (little-endian), after header 'BGR3' + N,E,D,G,U,B (u32):
+Binary layout (little-endian), after header 'BGR4' + N,E,D,G,U,B (u32):
   nodeLon f32[N], nodeLat f32[N]
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
   edgeSpeed u8[E] (mph; 0 = separated infra), edgeFlags u8[E]
@@ -23,6 +23,7 @@ Binary layout (little-endian), after header 'BGR3' + N,E,D,G,U,B (u32):
      128=WSDOT limited-access caution),
   edgeShoulder i8[E] (-128 migration-only permanent prohibition, -1 unknown,
                        else ft),
+  edgeRoadClass u8[E] (OSM highway class; 0 for infrastructure/ferries),
   edgeGeomOff u32[E], edgeGeomCnt u16[E]  (into the geometry pool)
   outStart u32[N+1], outTarget u32[D], outEdge u32[D]   (directed CSR)
   geomLon f32[G], geomLat f32[G]  (pool; G = sum of edgeGeomCnt)
@@ -61,6 +62,24 @@ DEFAULT_MPH = {
     'residential': 25, 'living_street': 15,
 }
 LIMITED = {'motorway', 'motorway_link'}
+# Stored independently of speed: signed 25 mph arterials and residential
+# streets otherwise look identical to the router.  Keep the values compact and
+# stable because one byte is written for every graph edge.
+ROAD_CLASS = {
+    'residential': 1,
+    'living_street': 2,
+    'unclassified': 3,
+    'tertiary': 4,
+    'tertiary_link': 5,
+    'secondary': 6,
+    'secondary_link': 7,
+    'primary': 8,
+    'primary_link': 9,
+    'trunk': 10,
+    'trunk_link': 11,
+    'motorway': 12,
+    'motorway_link': 13,
+}
 FACILITY = {'lane', 'shared_lane', 'buffered_lane', 'track', 'separated',
             'opposite_lane', 'opposite_track'}
 CYCLEWAY_KEYS = ('cycleway', 'cycleway:both', 'cycleway:right', 'cycleway:left')
@@ -310,7 +329,7 @@ def classify_way(tags):
         if tags.get('foot') == 'private' or tags.get('motor_vehicle') == 'private':
             return None
         return {'speed': FERRY_DEFAULT_MPH, 'est': True, 'fac': False, 'lim': False,
-                'infra': False, 'sh': None, 'ferry': True,
+                'infra': False, 'sh': None, 'road_class': 0, 'ferry': True,
                 'duration': tags.get('duration')}
 
     cw = next((tags[k] for k in CYCLEWAY_KEYS if tags.get(k)), None)
@@ -328,7 +347,7 @@ def classify_way(tags):
     )
     if infra:
         return {'speed': 0, 'est': False, 'fac': True, 'lim': False,
-                'infra': True, 'sh': None}
+                'infra': True, 'sh': None, 'road_class': 0}
     if hw not in DRIVE:
         return None
 
@@ -340,6 +359,7 @@ def classify_way(tags):
         'speed': min(spd, 255), 'est': est,
         'fac': cw in FACILITY, 'lim': hw in LIMITED,
         'infra': False, 'sh': parse_shoulder_ft(tags),
+        'road_class': ROAD_CLASS[hw],
     }
 
 
@@ -402,7 +422,7 @@ def build(src, out, blts=None, restrictions=None):
     node_index = {}          # osm node id -> graph node index
     node_lon = array('f'); node_lat = array('f')
     eA = array('I'); eB = array('I'); eLen = array('f')
-    eSpeed = array('B'); eFlags = array('B'); eSh = array('b')
+    eSpeed = array('B'); eFlags = array('B'); eSh = array('b'); eClass = array('B')
     eOff = array('I'); eCnt = array('H')
     eAsc = array('H'); eDes = array('H')   # meters of climb a->b / descent a->b
     nEle = array('h')                       # node elevation, meters
@@ -520,6 +540,7 @@ def build(src, out, blts=None, restrictions=None):
                             eAsc.append(min(int(asc), 65535)); eDes.append(min(int(des), 65535))
                             eA.append(a); eB.append(b); eLen.append(length)
                             eSpeed.append(espeed); eFlags.append(eflags); eSh.append(esh)
+                            eClass.append(attrs['road_class'])
                             eName.append(name_idx(tags.get('name') or tags.get('ref')))
                             eOff.append(len(gLon)); eCnt.append(min(len(coords), 65535))
                             for x, y in coords[:65535]:
@@ -602,7 +623,7 @@ def build(src, out, blts=None, restrictions=None):
             continue  # no street grid nearby (e.g. mid-water junction, small island)
         eA.append(n); eB.append(best); eLen.append(max(best_d, 1.0))
         eAsc.append(0); eDes.append(0)
-        eSpeed.append(0); eFlags.append(8); eSh.append(-1)  # infra: walk the bike
+        eSpeed.append(0); eFlags.append(8); eSh.append(-1); eClass.append(0)  # infra: walk the bike
         eName.append(name_idx('Ferry terminal connector'))
         eOff.append(len(gLon)); eCnt.append(2)
         gLon.append(lon0); gLat.append(lat0)
@@ -654,20 +675,20 @@ def build(src, out, blts=None, restrictions=None):
     U, B = len(name_list), len(name_blob)
     print(f'  names: {U:,} unique, blob {B:,} bytes', flush=True)
 
-    for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh,
+    for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass,
                 eName, name_offs, eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat):
         if sys.byteorder == 'big':
             arr.byteswap()
     # JS typed-array views need 4-byte alignment: pad after the byte arrays
-    # (3E bytes) and after the u16 array (2E bytes). The name blob goes LAST
+    # (4E bytes) and after the u16 array (2E bytes). The name blob goes LAST
     # so everything before it stays aligned.
-    parts = [b'BGR3', struct.pack('<IIIIII', N, E, D, G, U, B),
+    parts = [b'BGR4', struct.pack('<IIIIII', N, E, D, G, U, B),
              node_lon.tobytes(), node_lat.tobytes(), nEle.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
     parts += [eA.tobytes(), eB.tobytes(), eLen.tobytes(),
               eAsc.tobytes(), eDes.tobytes(),
-              eSpeed.tobytes(), eFlags.tobytes(), eSh.tobytes()]
+              eSpeed.tobytes(), eFlags.tobytes(), eSh.tobytes(), eClass.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
     parts.append(eOff.tobytes())

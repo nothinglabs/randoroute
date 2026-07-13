@@ -15,7 +15,7 @@
 
 let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
-let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eOff, eCnt;
+let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
 let nodeHasLand;
@@ -23,7 +23,7 @@ let inGiant;
 let nodeLocal;
 
 const _dec = new TextDecoder();
-// BGR3's signed shoulder byte normally ranges from -1 (unknown) to 127 ft.
+// BGR4's signed shoulder byte normally ranges from -1 (unknown) to 127 ft.
 // -128 is reserved by the migration tool for a WSDOT permanent bike
 // restriction. It is a hard graph exclusion, never a routing penalty.
 const PROHIBITED_SHOULDER = -128;
@@ -34,7 +34,7 @@ function edgeName(i) {
 
 function loadGraph(buf) {
   const dv = new DataView(buf);
-  if (dv.getUint32(0, false) !== 0x42475233) throw new Error('bad graph magic (want BGR3)');
+  if (dv.getUint32(0, false) !== 0x42475234) throw new Error('bad graph magic (want BGR4)');
   N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
   const G = dv.getUint32(16, true), U = dv.getUint32(20, true), B = dv.getUint32(24, true);
   let o = 28;
@@ -49,7 +49,7 @@ function loadGraph(buf) {
   pad4();
   eA = u32(E); eB = u32(E); eLen = f32(E);
   eAsc = u16(E); eDes = u16(E);
-  eSpeed = u8(E); eFlags = u8(E); eSh = i8(E);
+  eSpeed = u8(E); eFlags = u8(E); eSh = i8(E); eClass = u8(E);
   pad4();
   eOff = u32(E);
   eCnt = u16(E);
@@ -159,13 +159,13 @@ const DESIGNATED_MULT = 0.9;
 // infrastructure at half cost or better — worth riding up to ~2x the distance
 // to stay on a trail. Ferries keep their own economics.
 const PREF_DESIG_MULT = 0.45;
-// The compact graph does not retain raw OSM highway classes, but its inferred
-// 25 mph / 15 mph speed is the builder's stable residential/living-street
-// signature. This modest bonus lets a local grid win over a nearby tertiary
-// without pretending that every slow, explicitly signed arterial is local.
+// OSM road class is carried directly in BGR4.  This deliberately does not use
+// speed as a stand-in: a signed 25 mph arterial (such as NW 80th in Seattle)
+// is not a residential street.  The preference is a cost bonus, not a rule;
+// it still lets a shorter/safer non-residential connection win when needed.
 const PREF_RESIDENTIAL_MULT = 0.78;
-function isResidentialLike(i) {
-  return (eFlags[i] & 1) && eSpeed[i] <= 25;
+function isResidential(i) {
+  return eClass[i] === 1 || eClass[i] === 2; // residential / living_street
 }
 // Freeways are a true last resort: even a short ordinary failure should win
 // over a much longer freeway detour.
@@ -285,7 +285,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
       // a designation should not erase their extra caution cost.
       if (prefDesig && !(fl & (32 | 4 | 128)) && (fl & (64 | 8))) cost *= PREF_DESIG_MULT;
       else if ((fl & 64) && !(fl & (4 | 128)) && mode !== 'direct') cost *= DESIGNATED_MULT;
-      if (prefResidential && !(fl & (8 | 32 | 4 | 128)) && isResidentialLike(ei)) {
+      if (prefResidential && !(fl & (8 | 32 | 4 | 128)) && isResidential(ei)) {
         cost *= PREF_RESIDENTIAL_MULT;
       }
       const nd = du + cost;
@@ -342,7 +342,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
     const level = edgeLevel(ei, rules);
     if (level === 4) failM += eLen[ei];
     segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
-      mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], level,
+      mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], roadClass: eClass[ei], level,
       lenM: Math.round(eLen[ei]) });
     const toNode = forward ? eB[ei] : eA[ei];
     profile.push([distM, nodeEle[toNode]]);

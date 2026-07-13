@@ -5,6 +5,7 @@ data/BikePedLevelOfTrafficStress_FGDC.*
 data/washington-latest.osm.pbf
 data/*.osm.pbf
 node_modules/
+.venv/
 *.tgz
 data/PermanentBikeRestrictions.zip
 data/PermBikeRestrictions.zip

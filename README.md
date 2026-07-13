@@ -203,12 +203,17 @@ Route tab's search works fully offline. Routes support intermediate stops
 # one-time: fetch the WA DEM (AWS Terrarium elevation tiles, z12 ≈ 38 m)
 bash scripts/fetch_dem.sh
 python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
+# Conservative final passes over the authoritative WSDOT linework. They are
+# idempotent and catch a few very-close matches that the build-time conflation
+# deliberately leaves alone.
+python3 scripts/patch_graph_limited_access.py --apply
+python3 scripts/patch_graph_prohibited.py --apply
 ```
 
 A compact binary graph (nodes at intersections; edges carry length, climb/
-descent sampled every 60 m from the DEM, speed — posted, WSDOT-measured, or
-class-estimated — facility/freeway/limited-access/infrastructure flags, and
-shoulder from WSDOT conflation or OSM). WSDOT `LimitedAccess` is carried into
+descent sampled every 60 m from the DEM, the original OSM road class, speed —
+posted, WSDOT-measured, or class-estimated — facility/freeway/limited-access/
+infrastructure flags, and shoulder from WSDOT conflation or OSM). WSDOT `LimitedAccess` is carried into
 a separate caution flag, even when OSM does not classify the road as a
 motorway; it is routable when its speed and shoulder meet the rules. OSM
 motorways remain the graph's true freeway flag. One-way streets honored; `bicycle=no` and

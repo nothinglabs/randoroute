@@ -14,7 +14,11 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.74'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.78'; // shown in the map corner; bump per release
+// Increment whenever router-worker.js changes the binary graph contract. It
+// keeps a just-updated worker from receiving a graph cached by an older
+// service worker during the first post-update load.
+const GRAPH_FORMAT_VERSION = 'bgr4';
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -838,7 +842,7 @@ async function ensureRouter() {
   routing.loading = true;
   try {
     setRouteStatus('Loading routing data (one-time download)…');
-    const res = await fetch('data/graph2.bin.gz');
+    const res = await fetch(`data/graph2.bin.gz?format=${GRAPH_FORMAT_VERSION}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     let buf = await res.arrayBuffer();
     const head = new Uint8Array(buf, 0, 2);
@@ -1012,7 +1016,7 @@ function buildTurnInstructions(m) {
   return { coords, cumulative, instructions, segs, totalM: cumulative[cumulative.length - 1] || 0 };
 }
 
-const AUTO_REROUTE_AFTER_MS = 90_000;
+const AUTO_REROUTE_AFTER_MS = 60_000;
 const AUTO_REROUTE_REMINDER_MS = 45_000;
 const NAV_MOVING_MPS = 0.7;
 
@@ -1236,7 +1240,7 @@ function updateTurnNavigation(pos) {
         ? ' If this is your actual location, move the route start to your current location.'
         : '';
       const autoHint = navigationOptions.autoReroute
-        ? ' Auto reroute will begin after 90 seconds of moving off route. You can tap Reroute now.'
+        ? ' Auto reroute will begin after 60 seconds of moving off route. You can tap Reroute now.'
         : ' You can tap Reroute to make a new route from here.';
       speakNavigation(`You are off route. Return to ${target}.${startHint}${autoHint}`);
       turnNav.offRouteSpokenAt = Date.now();
@@ -1246,7 +1250,7 @@ function updateTurnNavigation(pos) {
     if (navigationOptions.autoReroute && !turnNav.offRouteReminderSent
         && turnNav.offRouteMovingMs >= AUTO_REROUTE_REMINDER_MS) {
       turnNav.offRouteReminderSent = true;
-      speakNavigation('You are still off route. Auto rerouting in 45 seconds of moving time. Tap Reroute to do it now.');
+      speakNavigation('You are still off route. Auto rerouting in 15 seconds of moving time. Tap Reroute to do it now.');
     }
     if (navigationOptions.autoReroute && turnNav.offRouteMovingMs >= AUTO_REROUTE_AFTER_MS) {
       rerouteNavigation(true);
@@ -2871,7 +2875,7 @@ function buildRulesPanel() {
 
   check('allowFreeways', 'Allow freeway as last resort');
   check('requireSafe', 'Fail if no complete safe route found');
-  check('autoReroute', 'Auto-reroute after 90 sec off route while moving', navigationOptions, () => {
+  check('autoReroute', 'Auto-reroute after 60 sec off route while moving', navigationOptions, () => {
     saveStateSoon();
     refreshNavigationUI();
   });

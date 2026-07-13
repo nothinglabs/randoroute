@@ -24,5 +24,5 @@ fetch_one() {
   echo "FAIL $t" >> fails.txt
 }
 export -f fetch_one
-xargs -a tiles.txt -P 16 -I{} bash -c 'fetch_one "$@"' _ {}
+xargs -P 16 -I{} bash -c 'fetch_one "$@"' _ {} < tiles.txt
 echo "DONE: $(ls *.png 2>/dev/null | wc -l) tiles, $(cat fails.txt 2>/dev/null | wc -l || echo 0) failures"

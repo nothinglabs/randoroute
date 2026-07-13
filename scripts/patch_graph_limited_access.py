@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Backfill WSDOT limited-access caution flags into an existing BGR3 graph.
+"""Backfill WSDOT limited-access caution flags into an existing BGR3/BGR4 graph.
 
-This is a migration tool for the checked-in graph when the raw OSM and DEM
-inputs used to build it are unavailable. It preserves all graph geometry and
-elevation values, changing only edge flag bit 128 (WSDOT limited-access
-caution). It deliberately leaves bit 4 alone: that is the original OSM
-motorway/freeway flag, which the router treats as a true last resort.
+This is a conservative final safety net after a normal build, and a migration
+tool when the raw OSM and DEM inputs used to build the checked-in graph are
+unavailable. It preserves all graph geometry and elevation values, changing
+only edge flag bit 128 (WSDOT limited-access caution). It deliberately leaves
+bit 4 alone: that is the original OSM motorway/freeway flag, which the router
+treats as a true last resort.
 
 For a normal future rebuild, build_graph.py is authoritative and applies the
 same WSDOT LimitedAccess rule while it creates the graph.
@@ -57,8 +58,9 @@ def point_segment_distance_sq(px, py, ax, ay, bx, by):
 
 
 def graph_layout(raw):
-    if raw[:4] != b'BGR3':
-        raise ValueError('not a BGR3 graph')
+    magic = bytes(raw[:4])
+    if magic not in (b'BGR3', b'BGR4'):
+        raise ValueError('not a BGR3 or BGR4 graph')
     n, e, d, g, u, name_bytes = struct.unpack_from('<6I', raw, 4)
     offset = 28
     offset += 4 * n  # node longitude
@@ -75,6 +77,10 @@ def graph_layout(raw):
     offset += e
     edge_shoulder = offset
     offset += e      # edge shoulder
+    edge_road_class = None
+    if magic == b'BGR4':
+        edge_road_class = offset
+        offset += e  # OSM highway class
     offset = align4(offset)
     edge_geom_off = offset
     offset += 4 * e
@@ -93,11 +99,12 @@ def graph_layout(raw):
     geom_lat = offset
     offset += 4 * g
     if offset + name_bytes != len(raw):
-        raise ValueError('unexpected BGR3 layout')
+        raise ValueError(f'unexpected {magic.decode()} layout')
     return {
         'edges': e,
         'edge_flags': edge_flags,
         'edge_shoulder': edge_shoulder,
+        'edge_road_class': edge_road_class,
         'edge_geom_off': edge_geom_off,
         'edge_geom_count': edge_geom_count,
         'edge_name': edge_name,
