@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.78'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.79'; // shown in the map corner; bump per release
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -825,7 +825,7 @@ const routing = {
   prefDesig: sharedRoute?.prefDesig != null ? sharedRoute.prefDesig : savedState && typeof savedState.prefDesig === 'boolean'
     ? savedState.prefDesig : true, // strongly prefer designated routes & trails
   prefResidential: sharedRoute?.prefResidential != null ? sharedRoute.prefResidential
-    : savedState && typeof savedState.prefResidential === 'boolean' ? savedState.prefResidential : false,
+    : savedState && typeof savedState.prefResidential === 'boolean' ? savedState.prefResidential : true,
   reqId: 0,
   last: null, // last successful result (for redraws)
 };
