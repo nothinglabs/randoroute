@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-12.73'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-12.74'; // shown in the map corner; bump per release
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -313,6 +313,12 @@ if (savedState) {
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
 }
 
+// Navigation choices are local device preferences, not part of a shared route.
+// Keep automatic recovery on by default, while still letting a rider opt out.
+const navigationOptions = {
+  autoReroute: !savedState || typeof savedState.autoReroute !== 'boolean' ? true : savedState.autoReroute,
+};
+
 function validRoutePoint(point) {
   return Array.isArray(point) && point.length === 2
     && Number.isFinite(point[0]) && Number.isFinite(point[1])
@@ -340,6 +346,7 @@ function decodeSharedRouteToken(token) {
       route: { s: data.s, e: data.e, v: vias },
       mode: ['direct', 'balanced', 'low'].includes(data.m) ? data.m : null,
       prefDesig: typeof data.p === 'boolean' ? data.p : null,
+      prefResidential: typeof data.q === 'boolean' ? data.q : null,
       rules: sharedRules,
     };
   } catch (e) {
@@ -367,7 +374,8 @@ function saveStateSoon() {
     try {
       localStorage.setItem(STATE_KEY, JSON.stringify({
         rules, passFail: display.passFail,
-        mode: routing.mode, prefDesig: routing.prefDesig,
+        mode: routing.mode, prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
+        autoReroute: navigationOptions.autoReroute,
         sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
         view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
         route: routing.start && routing.end
@@ -435,7 +443,7 @@ map.addControl(
     trackUserLocation: true,
     showUserHeading: true,
   }),
-  'bottom-left'
+  'top-right'
 );
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
 
@@ -812,6 +820,8 @@ const routing = {
   mode: sharedRoute?.mode || (savedState && savedState.mode) || 'balanced', // 'direct' | 'balanced' | 'low'
   prefDesig: sharedRoute?.prefDesig != null ? sharedRoute.prefDesig : savedState && typeof savedState.prefDesig === 'boolean'
     ? savedState.prefDesig : true, // strongly prefer designated routes & trails
+  prefResidential: sharedRoute?.prefResidential != null ? sharedRoute.prefResidential
+    : savedState && typeof savedState.prefResidential === 'boolean' ? savedState.prefResidential : false,
   reqId: 0,
   last: null, // last successful result (for redraws)
 };
@@ -928,6 +938,10 @@ const turnNav = {
   message: '',
   offRouteSpokenAt: 0,
   offRoute: false,
+  offRouteExit: null,
+  offRouteMovingMs: 0,
+  offRouteFix: null,
+  offRouteReminderSent: false,
   lastPosition: null,
   rejoinAwaiting: false,
   arrived: false,
@@ -995,7 +1009,65 @@ function buildTurnInstructions(m) {
     instructions.push({ distanceM, coordIndex: at, text: navTurnText(delta, to) });
     lastM = distanceM;
   }
-  return { coords, cumulative, instructions, totalM: cumulative[cumulative.length - 1] || 0 };
+  return { coords, cumulative, instructions, segs, totalM: cumulative[cumulative.length - 1] || 0 };
+}
+
+const AUTO_REROUTE_AFTER_MS = 90_000;
+const AUTO_REROUTE_REMINDER_MS = 45_000;
+const NAV_MOVING_MPS = 0.7;
+
+function routeRoadNameAt(index) {
+  for (const seg of turnNav.route?.segs || []) {
+    if (index >= seg.c0 && index <= seg.c1) return navRoadName(seg.name);
+  }
+  return '';
+}
+
+function clearOffRouteTracking() {
+  turnNav.offRoute = false;
+  turnNav.offRouteExit = null;
+  turnNav.offRouteMovingMs = 0;
+  turnNav.offRouteFix = null;
+  turnNav.offRouteReminderSent = false;
+}
+
+function beginOffRouteTracking(pos, nearest) {
+  const point = [pos.coords.longitude, pos.coords.latitude];
+  const at = Number.isFinite(pos.timestamp) ? pos.timestamp : Date.now();
+  turnNav.offRoute = true;
+  turnNav.offRouteExit = {
+    index: turnNav.nearest,
+    routeM: turnNav.routeM,
+    road: routeRoadNameAt(turnNav.nearest),
+  };
+  turnNav.offRouteMovingMs = 0;
+  turnNav.offRouteFix = { point, at };
+  turnNav.offRouteReminderSent = false;
+  turnNav.message = `Off route by ${navDistanceText(nearest.offRouteM)}`;
+}
+
+function trackOffRouteMovingTime(pos) {
+  const point = [pos.coords.longitude, pos.coords.latitude];
+  const at = Number.isFinite(pos.timestamp) ? pos.timestamp : Date.now();
+  const previous = turnNav.offRouteFix;
+  turnNav.offRouteFix = { point, at };
+  if (!previous) return false;
+  const elapsedMs = Math.max(0, Math.min(30_000, at - previous.at));
+  if (!elapsedMs) return false;
+  const distanceM = navDistanceM(previous.point, point);
+  const reportedSpeed = pos.coords.speed == null ? NaN : Number(pos.coords.speed);
+  const derivedSpeed = distanceM / (elapsedMs / 1000);
+  // Browser GPS speed is often null. When it is, require both a plausible
+  // riding speed and enough distance to reject stationary GPS drift.
+  const moving = Number.isFinite(reportedSpeed)
+    ? reportedSpeed >= NAV_MOVING_MPS
+    : distanceM >= 6 && derivedSpeed >= NAV_MOVING_MPS;
+  if (moving) turnNav.offRouteMovingMs += elapsedMs;
+  return moving;
+}
+
+function offRouteReturnTarget() {
+  return turnNav.offRouteExit?.road || 'your planned route';
 }
 
 function navigationBannerInfo() {
@@ -1007,13 +1079,20 @@ function navigationBannerInfo() {
   const remainingRouteM = Math.max(0, (turnNav.route?.totalM || 0) - turnNav.routeM);
   const routeMeta = `${navDistanceText(remainingRouteM)} remaining`;
   if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
-  if (turnNav.offRoute) return {
-    headline: turnNav.message || 'You are off route',
-    meta: turnNav.routeM < 250
-      ? 'Move route start to current location (if that’s accurate)'
-      : 'Tap Reroute to make a new route from here',
-    kicker: 'Off route',
-  };
+  if (turnNav.offRoute) {
+    const nearStart = turnNav.offRouteExit?.routeM < 250;
+    const remainingSeconds = Math.max(0, Math.ceil((AUTO_REROUTE_AFTER_MS - turnNav.offRouteMovingMs) / 1000));
+    const meta = navigationOptions.autoReroute
+      ? (nearStart && turnNav.offRouteMovingMs < AUTO_REROUTE_REMINDER_MS
+        ? 'Move route start to current location (if that’s accurate)'
+        : `Auto-reroute in ${remainingSeconds} sec of moving time · Tap Reroute now`)
+      : 'Tap Reroute to make a new route from here';
+    return {
+      headline: `Off route — return to ${offRouteReturnTarget()}`,
+      meta,
+      kicker: 'Off route',
+    };
+  }
   const next = turnNav.route?.instructions[turnNav.next];
   if (turnNav.message) return { headline: turnNav.message, meta: routeMeta, kicker: 'Turn-by-turn navigation' };
   if (!next) return { headline: 'Continue to your destination', meta: routeMeta, kicker: 'Turn-by-turn navigation' };
@@ -1137,21 +1216,46 @@ function updateTurnNavigation(pos) {
       .setLngLat([longitude, latitude]).addTo(map);
   } else turnNav.marker.setLngLat([longitude, latitude]);
 
+  // A reroute is already on its way to the worker. Ignore GPS fixes against
+  // the old geometry until the replacement route arrives.
+  if (turnNav.rejoinAwaiting) {
+    refreshNavigationUI();
+    return;
+  }
+
   const nearest = nearestNavigationPoint(longitude, latitude);
   if (!nearest) return;
   turnNav.nearest = Math.max(turnNav.nearest, nearest.index);
   turnNav.routeM = Math.max(turnNav.routeM, nearest.routeM);
   if (nearest.offRouteM > 100) {
-    turnNav.offRoute = true;
-    turnNav.message = `Off route by ${navDistanceText(nearest.offRouteM)}`;
-    if (Date.now() - turnNav.offRouteSpokenAt > 30000) {
-      speakNavigation('You are off route. Tap Reroute to make a new route from here.');
+    const justLeftRoute = !turnNav.offRoute;
+    if (justLeftRoute) {
+      beginOffRouteTracking(pos, nearest);
+      const target = offRouteReturnTarget();
+      const startHint = turnNav.offRouteExit.routeM < 250
+        ? ' If this is your actual location, move the route start to your current location.'
+        : '';
+      const autoHint = navigationOptions.autoReroute
+        ? ' Auto reroute will begin after 90 seconds of moving off route. You can tap Reroute now.'
+        : ' You can tap Reroute to make a new route from here.';
+      speakNavigation(`You are off route. Return to ${target}.${startHint}${autoHint}`);
       turnNav.offRouteSpokenAt = Date.now();
+    } else {
+      trackOffRouteMovingTime(pos);
+    }
+    if (navigationOptions.autoReroute && !turnNav.offRouteReminderSent
+        && turnNav.offRouteMovingMs >= AUTO_REROUTE_REMINDER_MS) {
+      turnNav.offRouteReminderSent = true;
+      speakNavigation('You are still off route. Auto rerouting in 45 seconds of moving time. Tap Reroute to do it now.');
+    }
+    if (navigationOptions.autoReroute && turnNav.offRouteMovingMs >= AUTO_REROUTE_AFTER_MS) {
+      rerouteNavigation(true);
+      return;
     }
     refreshNavigationUI();
     return;
   }
-  turnNav.offRoute = false;
+  clearOffRouteTracking();
   turnNav.message = '';
   const rejoinLegM = Number(routing.last?.legs?.[0]?.distM) || Infinity;
   if (routing.navRejoin && !turnNav.rejoinAwaiting && turnNav.routeM >= rejoinLegM - 30) {
@@ -1212,7 +1316,7 @@ function startTurnNavigation() {
   turnNav.routeM = 0;
   turnNav.arrived = false;
   turnNav.offRouteSpokenAt = 0;
-  turnNav.offRoute = false;
+  clearOffRouteTracking();
   turnNav.lastPosition = null;
   turnNav.rejoinAwaiting = false;
   turnNav.message = 'Getting your location';
@@ -1246,7 +1350,7 @@ function remainingNavigationVias() {
   return routing.vias.slice(completed);
 }
 
-function rerouteNavigation() {
+function rerouteNavigation(automatic = false) {
   const position = turnNav.lastPosition;
   const rejoin = turnNav.route?.coords?.[turnNav.nearest];
   if (!turnNav.active || !position || !rejoin || !routing.end) {
@@ -1258,9 +1362,10 @@ function rerouteNavigation() {
   routing.start = [...position];
   routing.navRejoin = [...rejoin];
   if (routing.startMarker) routing.startMarker.setLngLat({ lng: position[0], lat: position[1] });
-  turnNav.offRoute = false;
+  clearOffRouteTracking();
   turnNav.rejoinAwaiting = true;
-  turnNav.message = 'Rerouting from here';
+  if (automatic) speakNavigation('You are still off route. Rerouting from your current location now.');
+  turnNav.message = automatic ? 'Auto-rerouting from here' : 'Rerouting from here';
   setRouteStatus('Rerouting…');
   updateArmButtons();
   refreshNavigationUI();
@@ -1276,7 +1381,7 @@ function stopTurnNavigation(announce = true) {
   turnNav.active = false;
   turnNav.route = null;
   turnNav.message = '';
-  turnNav.offRoute = false;
+  clearOffRouteTracking();
   turnNav.lastPosition = null;
   turnNav.rejoinAwaiting = false;
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -1428,7 +1533,7 @@ function onRouterMessage(ev) {
       turnNav.nearest = 0;
       turnNav.routeM = 0;
       turnNav.arrived = false;
-      turnNav.offRoute = false;
+      clearOffRouteTracking();
       turnNav.rejoinAwaiting = false;
       turnNav.message = 'Route updated';
     }
@@ -1456,6 +1561,7 @@ function computeRoute() {
     points: [routing.start, ...(routing.navRejoin ? [routing.navRejoin] : []), ...routing.vias.map((v) => v.pt), routing.end],
     rules: { ...rules }, mode: routing.mode,
     prefDesignated: routing.prefDesig,
+    prefResidential: routing.prefResidential,
   });
 }
 
@@ -1871,6 +1977,13 @@ const MODES = [
   ['low', 'Low-stress', 'Detours hard to avoid failing roads; unavoidable ones pulse red'],
 ];
 
+function syncRoutePreferenceControls() {
+  const designated = document.getElementById('prefDesig');
+  const residential = document.getElementById('prefResidential');
+  if (designated) designated.checked = routing.prefDesig;
+  if (residential) residential.checked = routing.prefResidential;
+}
+
 function buildRoutingPanel() {
   const chips = document.getElementById('modeChips');
   document.getElementById('routeCard').addEventListener('click', (e) => {
@@ -1888,18 +2001,30 @@ function buildRoutingPanel() {
     });
   });
 
-  // Strong preference for designated routes / dedicated trails — the "take
-  // the Burke-Gilman even if streets are a bit quicker" option.
+  // Route preferences intentionally share this single compact row on phones.
+  // The details button stays alongside them, so the route card keeps its
+  // previous height instead of pushing the map farther down.
   const pref = document.createElement('div');
-  pref.className = 'check-rule';
-  pref.style.margin = '0 0 6px';
+  pref.className = 'route-preferences';
   pref.innerHTML = `
-    <input type="checkbox" id="prefDesig" ${routing.prefDesig ? 'checked' : ''}>
-    <label for="prefDesig">Strongly prefer bike routes &amp; trails</label>
+    <label class="route-preference" for="prefDesig" title="Strongly prefer designated bike routes and trails">
+      <input type="checkbox" id="prefDesig" ${routing.prefDesig ? 'checked' : ''}>
+      <span>Prefer bike routes</span>
+    </label>
+    <label class="route-preference" for="prefResidential" title="Prefer local residential streets over ordinary tertiary streets">
+      <input type="checkbox" id="prefResidential" ${routing.prefResidential ? 'checked' : ''}>
+      <span>Prefer residential</span>
+    </label>
     <button type="button" id="routeDetailsBtn" class="route-details-btn" aria-label="Open route details and routing tips" title="Route details and routing tips"><span aria-hidden="true">i</span></button>`;
   chips.closest('#routeControls').append(pref);
   pref.querySelector('input').addEventListener('change', (e) => {
     routing.prefDesig = e.target.checked;
+    saveStateSoon();
+    computeRoute();
+  });
+  pref.querySelector('#prefResidential').addEventListener('change', (e) => {
+    routing.prefResidential = e.target.checked;
+    saveStateSoon();
     computeRoute();
   });
   pref.querySelector('#routeDetailsBtn').addEventListener('click', openRouteDetails);
@@ -1955,6 +2080,7 @@ function shareRouteUrl() {
     x: routing.vias.map((via) => point(via.pt)),
     m: routing.mode,
     p: routing.prefDesig,
+    q: routing.prefResidential,
     r: { ...rules },
   };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
@@ -1982,10 +2108,10 @@ function loadSharedRouteIntoPlanner(shared) {
   rescoreAll();
   if (shared.mode) routing.mode = shared.mode;
   if (shared.prefDesig != null) routing.prefDesig = shared.prefDesig;
+  if (shared.prefResidential != null) routing.prefResidential = shared.prefResidential;
   document.querySelectorAll('#modeChips button').forEach((b) =>
     b.classList.toggle('active', b.dataset.mode === routing.mode));
-  const pref = document.getElementById('prefDesig');
-  if (pref) pref.checked = routing.prefDesig;
+  syncRoutePreferenceControls();
   const route = shared.route;
   setRoutePoint('start', { lng: route.s[0], lat: route.s[1] });
   for (const p of route.v || []) addVia({ lng: p[0], lat: p[1] });
@@ -2047,10 +2173,10 @@ function buildSavedRoutes() {
       clearRoute();
       routing.mode = r.mode || routing.mode;
       routing.prefDesig = r.prefDesig != null ? r.prefDesig : routing.prefDesig;
+      routing.prefResidential = r.prefResidential != null ? r.prefResidential : routing.prefResidential;
       document.querySelectorAll('#modeChips button').forEach((x) =>
         x.classList.toggle('active', x.dataset.mode === routing.mode));
-      const pd = document.getElementById('prefDesig');
-      if (pd) pd.checked = routing.prefDesig;
+      syncRoutePreferenceControls();
       setRoutePoint('start', { lng: r.s[0], lat: r.s[1] });
       for (const p of r.v || []) addVia({ lng: p[0], lat: p[1] });
       setRoutePoint('end', { lng: r.e[0], lat: r.e[1] });
@@ -2122,6 +2248,7 @@ function buildSavedRoutes() {
     const list = loadSavedRoutes();
     list.unshift({ name: name.slice(0, 60), s: routing.start, e: routing.end,
       v: routing.vias.map((x) => x.pt), mode: routing.mode, prefDesig: routing.prefDesig,
+      prefResidential: routing.prefResidential,
       ts: Date.now() });
     storeSavedRoutes(list.slice(0, 30));
     input.value = '';
@@ -2744,6 +2871,10 @@ function buildRulesPanel() {
 
   check('allowFreeways', 'Allow freeway as last resort');
   check('requireSafe', 'Fail if no complete safe route found');
+  check('autoReroute', 'Auto-reroute after 90 sec off route while moving', navigationOptions, () => {
+    saveStateSoon();
+    refreshNavigationUI();
+  });
   check('unknownShoulderZero', 'Unknown shoulder treated as 0 ft');
   slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');
   slider('freeMaxSpeed', 'Max speed without shoulder', 15, 45, 5, ' mph');
@@ -2847,9 +2978,9 @@ document.getElementById('legendToggle').addEventListener('click', () =>
   setLegendOpen(document.getElementById('legendFlyout').hidden));
 document.getElementById('legendClose').addEventListener('click', () => setLegendOpen(false));
 
-// On phones, navigation and Menu form a left-thumb control dock. The
-// navigation control moves above the open sheet so guidance never disappears
-// behind it; desktop keeps the existing top-toolbar arrangement.
+// On phones, Menu and Navigate share the lower-left thumb zone. Navigate sits
+// beside Menu while the map is unobstructed, then shifts to the sheet's left
+// edge when it opens; desktop keeps the existing top-toolbar arrangement.
 const mobileNavMedia = window.matchMedia('(max-width: 720px)');
 let _mobileDockFrame = null;
 function syncMobileNavDock() {

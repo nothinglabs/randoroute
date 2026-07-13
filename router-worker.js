@@ -159,6 +159,14 @@ const DESIGNATED_MULT = 0.9;
 // infrastructure at half cost or better — worth riding up to ~2x the distance
 // to stay on a trail. Ferries keep their own economics.
 const PREF_DESIG_MULT = 0.45;
+// The compact graph does not retain raw OSM highway classes, but its inferred
+// 25 mph / 15 mph speed is the builder's stable residential/living-street
+// signature. This modest bonus lets a local grid win over a nearby tertiary
+// without pretending that every slow, explicitly signed arterial is local.
+const PREF_RESIDENTIAL_MULT = 0.78;
+function isResidentialLike(i) {
+  return (eFlags[i] & 1) && eSpeed[i] <= 25;
+}
 // Freeways are a true last resort: even a short ordinary failure should win
 // over a much longer freeway detour.
 const FREEWAY_LAST_RESORT_MULT = 60;
@@ -216,7 +224,7 @@ function modeMult(mode, lvl) {
   /* low */ return lvl === 4 ? 30.0 : lvl === 1 ? 0.9 : 1.0;
 }
 
-function routeLeg(startLL, endLL, rules, mode, prefDesig) {
+function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
   const t0 = Date.now();
   const s = nearestNode(startLL[0], startLL[1]);
   const t = nearestNode(endLL[0], endLL[1]);
@@ -277,6 +285,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig) {
       // a designation should not erase their extra caution cost.
       if (prefDesig && !(fl & (32 | 4 | 128)) && (fl & (64 | 8))) cost *= PREF_DESIG_MULT;
       else if ((fl & 64) && !(fl & (4 | 128)) && mode !== 'direct') cost *= DESIGNATED_MULT;
+      if (prefResidential && !(fl & (8 | 32 | 4 | 128)) && isResidentialLike(ei)) {
+        cost *= PREF_RESIDENTIAL_MULT;
+      }
       const nd = du + cost;
       if (nd < dist[v]) {
         dist[v] = nd;
@@ -345,11 +356,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig) {
 
 // Route through an ordered list of points (A -> B -> C ...): one A* per leg,
 // results merged into a single continuous route.
-function route(points, rules, mode, prefDesig) {
+function route(points, rules, mode, prefDesig, prefResidential) {
   const t0 = Date.now();
   const legs = [];
   for (let i = 0; i + 1 < points.length; i++) {
-    const leg = routeLeg(points[i], points[i + 1], rules, mode, prefDesig);
+    const leg = routeLeg(points[i], points[i + 1], rules, mode, prefDesig, prefResidential);
     if (!leg.ok) {
       if (leg.code === 'point-too-far') {
         leg.farPoints = leg.farPoints.map((p) => ({
@@ -438,7 +449,7 @@ onmessage = (ev) => {
       postMessage({ type: 'ready', nodes: N, edges: E });
     } else if (m.type === 'route') {
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
-      const r = route(pts, m.rules, m.mode || 'balanced', !!m.prefDesignated);
+      const r = route(pts, m.rules, m.mode || 'balanced', !!m.prefDesignated, !!m.prefResidential);
       postMessage({ type: 'route', id: m.id, ...r });
     }
   } catch (err) {
