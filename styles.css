@@ -124,20 +124,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeControls { margin-top: 6px; padding-top: 5px; border-top: 1px solid #e4e7eb; }
 #routeControls .check-rule { margin: 4px 0 0 !important; min-height: 17px; font-size: 11px; }
 #routeControls .check-rule label { font-weight: 600; }
-#routeControls .route-preferences {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: center; gap: 4px; min-height: 34px; margin: 9px 0 6px;
-  padding: 7px 2px 0; border-top: 1px solid #e3e8ec;
-}
-#routeControls .route-preference {
-  display: flex; align-items: center; gap: 4px; min-width: 0;
-  color: #35434d; font: 650 10.5px/1 system-ui; cursor: pointer;
-}
-#routeControls .route-preference input { flex: 0 0 auto; margin: 0; }
-#routeControls .route-preference span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#routeControls .route-preferences .route-details-btn {
-  grid-column: 2; justify-self: end; margin: 4px 0 0;
-}
+#routeControls .mode-row .route-details-btn { flex: 0 0 38px; width: 38px; height: 38px; margin: 0; }
 #routeLibraryBtn { cursor: pointer; }
 .share-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -204,8 +191,6 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   #routeCard canvas { height: 50px; margin-top: 6px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
   #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }
-  #routeControls .route-preferences { gap: 6px; margin-bottom: 7px; }
-  #routeControls .route-preference { font-size: 11.5px; }
   #tabs #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; }
   #tabs #routeLibraryBtn .share-icon { width: 19px; height: 19px; }
   #modeChips { gap: 6px; }
@@ -261,6 +246,10 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #settingsOptions .check-rule.rule-card { display: block; }
 #settingsOptions .rule-check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
 #settingsOptions .rule-check span { flex: 1; }
+#settingsOptions { gap: 4px; }
+#settingsOptions .rule-card { min-height: 27px; padding: 4px 8px; }
+#settingsOptions .rule-check { gap: 6px; font-size: 11px; line-height: 1.15; }
+#settingsOptions .rule-check input { flex: 0 0 auto; margin: 0; }
 .check-rule { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
 .check-rule label { font-weight: 600; cursor: pointer; }
 input[type="checkbox"] { width: 17px; height: 17px; }
@@ -468,13 +457,13 @@ body.navigation-active #routeBar { display: none; }
 #updateLaterBtn { width: 26px; height: 26px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
 @media (max-width: 720px) {
   #topToolbar { gap: 4px; max-width: calc(100vw - 12px); }
-  .nav-start { min-height: 42px; padding: 0 11px; font-size: 12px; }
+  .nav-start { min-height: 46px; padding: 0 11px; font-size: 12px; }
   #routeBar { gap: 4px; padding: 4px 7px 4px 5px; max-width: calc(100vw - 12px); }
   #routeBar button { width: 30px; height: 30px; }
   #routeBar .rb-pill { padding: 0 9px; font-size: 11px; }
   #routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 29px; }
   #mobileNavDock { display: block; position: absolute; z-index: 15; left: 66px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
-  body.panel-open #mobileNavDock { left: 10px; bottom: calc(var(--mobile-panel-height, 0px) - 12px); }
+  body.panel-open #mobileNavDock { left: 10px; bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group { margin-top: calc(env(safe-area-inset-top) + 10px); border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.22); }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 42px; height: 42px; border-radius: 12px; }
   #panelOpen { left: 10px; right: auto; }

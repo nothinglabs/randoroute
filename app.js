@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-13.83'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-13.84'; // shown in the map corner; bump per release
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -35,7 +35,7 @@ const LEGEND = [
   [1, 'Comfortable'],
   [2, 'Meets your criteria'],
   [3, 'Caution — limited-access highway'],
-  [4, 'Fails / bikes prohibited (avoid)'],
+  [4, 'Fails your rules (avoid)'],
   [0, 'Unknown / no data'],
 ];
 
@@ -2116,8 +2116,8 @@ const MODES = [
 ];
 
 function syncRoutePreferenceControls() {
-  const designated = document.getElementById('prefDesig');
-  const residential = document.getElementById('prefResidential');
+  const designated = document.getElementById('r-prefDesig');
+  const residential = document.getElementById('r-prefResidential');
   if (designated) designated.checked = routing.prefDesig;
   if (residential) residential.checked = routing.prefResidential;
 }
@@ -2149,35 +2149,17 @@ function buildRoutingPanel() {
     });
   });
 
-  // Route preferences intentionally share this single compact row on phones.
-  // The details button stays alongside them, so the route card keeps its
-  // previous height instead of pushing the map farther down.
-  const pref = document.createElement('div');
-  pref.className = 'route-preferences';
-  pref.innerHTML = `
-    <label class="route-preference" for="prefDesig" title="Strongly prefer designated bike routes and trails">
-      <input type="checkbox" id="prefDesig" ${routing.prefDesig ? 'checked' : ''}>
-      <span>Prefer bike routes</span>
-    </label>
-    <label class="route-preference" for="prefResidential" title="Prefer local residential streets over ordinary tertiary streets">
-      <input type="checkbox" id="prefResidential" ${routing.prefResidential ? 'checked' : ''}>
-      <span>Prefer residential</span>
-    </label>
-    <button type="button" id="routeDetailsBtn" class="route-details-btn" aria-label="Open route details and routing tips" title="Route details and routing tips"><span aria-hidden="true">i</span></button>`;
-  chips.closest('#routeControls').append(pref);
-  pref.querySelector('input').addEventListener('change', (e) => {
-    clearNavigationRejoin();
-    routing.prefDesig = e.target.checked;
-    saveStateSoon();
-    computeRoute();
-  });
-  pref.querySelector('#prefResidential').addEventListener('change', (e) => {
-    clearNavigationRejoin();
-    routing.prefResidential = e.target.checked;
-    saveStateSoon();
-    computeRoute();
-  });
-  pref.querySelector('#routeDetailsBtn').addEventListener('click', openRouteDetails);
+  // Preferences live in Settings so this frequently used route summary stays
+  // compact. Keep Details beside the mode choices without adding another row.
+  const details = document.createElement('button');
+  details.type = 'button';
+  details.id = 'routeDetailsBtn';
+  details.className = 'route-details-btn';
+  details.setAttribute('aria-label', 'Open route details and routing tips');
+  details.title = 'Route details and routing tips';
+  details.innerHTML = '<span aria-hidden="true">i</span>';
+  chips.closest('.mode-row').append(details);
+  details.addEventListener('click', openRouteDetails);
 
   renderRouteCard(null);
 
@@ -2670,7 +2652,7 @@ const READOUT_COLOR_LABEL = {
   1: 'Blue — Comfortable',
   2: 'Light blue — Meets your criteria',
   3: 'Orange — Caution (limited-access highway)',
-  4: 'Red dashed — Fails / bikes prohibited (avoid)',
+  4: 'Red dashed — Fails your rules (avoid)',
 };
 // Plain-language reason for a segment's verdict under the current rules.
 // Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
@@ -2827,7 +2809,7 @@ function renderReadout(feature, lngLat) {
     title = 'Bikes prohibited (WSDOT)';
     rows = [
       ['Route', p.Route ? 'SR ' + String(p.Route).replace(/^0+/, '') : p.RouteIdentifier],
-      ['Map color', 'Red dashed — Fails / bikes prohibited (avoid)'],
+      ['Map color', 'Red dashed — Fails your rules (avoid)'],
       ['Why', 'Permanent bicycle restriction by official WSDOT traffic action.'],
       ['Direction', p.Direction],
       ['Mileposts', p.BeginMile != null ? `${p.BeginMile} – ${p.EndMile}` : null],
@@ -3084,6 +3066,13 @@ function buildRulesPanel() {
     });
   };
 
+  const updateRoutePreference = () => {
+    clearNavigationRejoin();
+    saveStateSoon();
+    computeRoute();
+  };
+  check('prefDesig', 'Always strongly prefer bike routes', routing, updateRoutePreference);
+  check('prefResidential', 'Always strongly prefer residential streets', routing, updateRoutePreference);
   check('allowFreeways', 'Allow freeway as last resort');
   check('requireSafe', 'Fail if no complete safe route found');
   check('autoReroute', 'Auto-reroute after 15 sec off route while moving', navigationOptions, () => {
@@ -3166,7 +3155,7 @@ function buildLegend() {
   const dash = (c) => `background:repeating-linear-gradient(90deg,${c} 0 4px,transparent 4px 8px)`;
   const rows = display.passFail
     ? [[PASS_COLOR, 'Meets your criteria (Low–Moderate)'],
-       ['dashed', 'Fails / bikes prohibited'],
+       ['dashed', 'Fails your rules'],
        [null, 'No-data roads are hidden']]
     // Color-ramp view: level 4 is drawn dashed to read as "not passable".
     : LEGEND.map(([lvl, label]) => [lvl === 4 ? 'dash4' : COLORS[lvl], label]);
