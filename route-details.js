@@ -10,6 +10,13 @@ const FACILITY_NAME = {
   1: 'shared lane', 2: 'bike lane', 3: 'buffered bike lane',
   4: 'separated bike lane', 5: 'shared-use path',
 };
+const ROAD_CLASS_NAME = {
+  1: 'residential street', 2: 'living street', 3: 'unclassified road',
+  4: 'tertiary road', 5: 'tertiary link', 6: 'secondary road',
+  7: 'secondary link', 8: 'primary road', 9: 'primary link',
+  10: 'trunk road', 11: 'trunk link', 12: 'motorway', 13: 'motorway link',
+};
+const SAFETY_NAME = { 1: 'Comfy', 2: 'Meets rules', 3: 'Caution', 4: 'Fails rules' };
 
 if (window.self !== window.top) document.body.classList.add('embedded');
 
@@ -40,6 +47,26 @@ function failReason(seg, rules) {
       : `${shoulder} ft shoulder is below your ${rules.minShoulder} ft minimum`;
   }
   return 'does not meet your selected riding rules';
+}
+
+function failedRoadDetails(seg, rules) {
+  const flags = seg.flags || 0;
+  const facts = [];
+  if (seg.mph > 0) {
+    const source = seg.official & 1 ? 'WSDOT' : flags & 1 ? 'estimated' : null;
+    facts.push(`${seg.mph} mph speed limit${source ? ` (${source})` : ''}`);
+  } else {
+    facts.push('speed limit unknown');
+  }
+  facts.push(seg.sh >= 0 ? `${seg.sh} ft shoulder` : 'shoulder unknown');
+  if (FACILITY_NAME[seg.facility]) {
+    facts.push(`${FACILITY_NAME[seg.facility]}${seg.official & 2 ? ' (WSDOT)' : ''}`);
+  }
+  if (flags & FLAG_FREEWAY) facts.push('freeway');
+  else if (flags & FLAG_LIMITED_ACCESS) facts.push('limited-access highway');
+  else if (ROAD_CLASS_NAME[seg.roadClass]) facts.push(ROAD_CLASS_NAME[seg.roadClass]);
+  facts.push(`Fails: ${failReason(seg, rules)}`);
+  return facts.join(' · ');
 }
 
 // Consecutive graph edges with the same meaning become one readable road item.
@@ -80,10 +107,24 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
     for (const item of items) {
       const li = document.createElement('li');
       li.className = `detail-item ${cls}`;
+      if (item.level) li.classList.add(`safety-l${item.level}`);
+      const content = item.startIndex == null ? li : document.createElement('button');
+      if (content !== li) {
+        content.type = 'button';
+        content.className = 'step-button';
+        content.setAttribute('aria-label', `${item.name}, ${fmtDist(item.lenM)}, ${item.safetyLabel}. Show on map`);
+        content.addEventListener('click', () => showRouteStep(item));
+      }
       const line = document.createElement('div');
       line.className = 'line';
       const name = document.createElement('span');
       name.textContent = item.name;
+      if (item.safetyLabel) {
+        const safety = document.createElement('span');
+        safety.className = 'step-safety';
+        safety.textContent = item.safetyLabel;
+        name.prepend(safety);
+      }
       const distance = document.createElement('span');
       distance.className = 'distance';
       distance.textContent = fmtDist(item.lenM);
@@ -91,7 +132,8 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
       const meta = document.createElement('div');
       meta.className = 'meta';
       meta.textContent = item.meta;
-      li.append(line, meta);
+      content.append(line, meta);
+      if (content !== li) li.appendChild(content);
       list.appendChild(li);
     }
     section.appendChild(list);
@@ -99,27 +141,50 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
   host.appendChild(section);
 }
 
+function showRouteStep(step) {
+  const message = {
+    type: 'highlight-route-step',
+    startIndex: step.startIndex,
+    endIndex: step.endIndex,
+    name: step.name,
+  };
+  if (window.self !== window.top) {
+    window.parent.postMessage(message, window.location.origin);
+    return;
+  }
+  // Direct visits to route-details.html use the same handoff after returning
+  // to the map; the app consumes this once its saved route is redrawn.
+  try { sessionStorage.setItem('wa-bike-step-highlight', JSON.stringify(message)); } catch (e) { /* nonfatal */ }
+  window.location.href = 'index.html';
+}
+
 function buildRouteSteps(segs) {
   const out = [];
-  for (const seg of segs) {
+  for (let index = 0; index < segs.length; index++) {
+    const seg = segs[index];
     if (seg.flags & FLAG_FERRY) continue;
     const name = roadName(seg);
     const last = out[out.length - 1];
-    if (last && last.name === name) {
+    if (last && last.endIndex === index - 1 && last.name === name) {
       last.lenM += seg.lenM;
+      last.endIndex = index;
       last.flags |= seg.flags || 0;
       last.facility = Math.max(last.facility || 0, seg.facility || 0);
       last.official |= seg.official || 0;
       last.mph = Math.max(last.mph, seg.mph || 0);
+      last.level = Math.max(last.level, seg.level || 0);
       if (seg.level === 4) last.failM += seg.lenM;
     } else {
       out.push({
         name,
+        startIndex: index,
+        endIndex: index,
         lenM: seg.lenM,
         flags: seg.flags || 0,
         facility: seg.facility || 0,
         official: seg.official || 0,
         mph: seg.mph || 0,
+        level: seg.level || 0,
         failM: seg.level === 4 ? seg.lenM : 0,
       });
     }
@@ -136,16 +201,22 @@ function buildRouteSteps(segs) {
         && previous.name === next.name) {
       previous.lenM += bridge.lenM + next.lenM;
       previous.flags |= bridge.flags | next.flags;
+      previous.endIndex = next.endIndex;
       previous.facility = Math.max(previous.facility || 0, bridge.facility || 0, next.facility || 0);
       previous.official |= (bridge.official || 0) | (next.official || 0);
       previous.mph = Math.max(previous.mph, bridge.mph, next.mph);
+      previous.level = Math.max(previous.level, bridge.level, next.level);
       previous.failM += bridge.failM + next.failM;
       out.splice(i, 2);
     } else {
       i++;
     }
   }
-  return out.map((step) => ({ ...step, meta: stepMeta(step) }));
+  return out.map((step) => ({
+    ...step,
+    safetyLabel: SAFETY_NAME[step.level] || 'Unknown',
+    meta: `${stepMeta(step)} · Tap to show on map`,
+  }));
 }
 
 function stepMeta(step) {
@@ -228,7 +299,7 @@ if (!hasRoute) {
     meta: s.mph ? `${s.mph} mph highway` : 'Highway',
   }));
   const failing = sections(segs, (s) => s.level === 4, (s) => ({
-    name: roadName(s), meta: failReason(s, rules),
+    name: roadName(s), meta: failedRoadDetails(s, rules),
   }));
   const routeSteps = buildRouteSteps(segs);
   const ferries = sections(segs, (s) => !!(s.flags & FLAG_FERRY), () => ({
@@ -251,10 +322,13 @@ if (!hasRoute) {
     }
   }
 
+  // Put the actionable rule violations first; road-type context follows.
+  // A freeway can appear in both sections because one answers “what failed?”
+  // while the other answers “what kind of road is this?”.
+  if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail');
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway');
   if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution');
   if (highways.length) renderSection(report, 'Highways', highways, '');
-  if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail');
   if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length) {
     report.innerHTML = '<div class="no-route">No freeway, limited-access highway, highway, or rule-failing sections were found on this route.</div>';
   }

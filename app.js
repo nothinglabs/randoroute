@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-14.89'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-14.92'; // shown in the map corner; bump per release
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1045,6 +1045,7 @@ function storeRouteDetails(m) {
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
         facility: s.facility || 0, official: s.official || 0,
+        roadClass: s.roadClass || 0,
         level: s.level || fallbackRouteLevel(s), lenM: Number(s.lenM) || 0,
       })),
     }));
@@ -1244,6 +1245,13 @@ function openRouteDetails() {
   frame.src = `route-details.html?embedded=1&t=${Date.now()}`;
   if (!dialog.open) dialog.showModal();
 }
+
+window.addEventListener('message', (event) => {
+  const frame = document.getElementById('routeDetailsFrame');
+  if (event.origin !== window.location.origin || event.source !== frame?.contentWindow) return;
+  if (event.data?.type !== 'highlight-route-step') return;
+  showRouteStepOnMap(event.data.startIndex, event.data.endIndex);
+});
 
 function refreshNavigationUI() {
   const routeAvailable = !!(routing.last?.ok && routing.last.coords?.length > 1);
@@ -1787,13 +1795,14 @@ function drawRoute(coords, ferrySegs, segs) {
   const fdata = { type: 'FeatureCollection', features: (ferrySegs || []).map((c) => ({
     type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) };
   // Per-edge segments with graph attrs feed the invisible tap target.
-  const sdata = { type: 'FeatureCollection', features: (segs || []).map((s) => ({
+  const sdata = { type: 'FeatureCollection', features: (segs || []).map((s, routeIndex) => ({
     type: 'Feature',
     properties: { name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
       e: s.flags & 1 ? 1 : 0, fac: s.flags & 2 ? 1 : 0, fw: s.flags & 4 ? 1 : 0,
       lim: s.flags & 128 ? 1 : 0,
       infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
       facility: s.facility || 0, official: s.official || 0,
+      routeIndex,
       level: s.level || fallbackRouteLevel(s), hwy: isHighwaySegment(s) ? 1 : 0 },
     geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
   })) };
@@ -1968,6 +1977,69 @@ function toggleRouteHighlight(key) {
     b.classList.toggle('active', active);
     b.setAttribute('aria-pressed', String(active));
   });
+}
+
+function showRouteStepOnMap(startIndex, endIndex) {
+  const route = routing.last;
+  startIndex = Math.trunc(Number(startIndex));
+  endIndex = Math.trunc(Number(endIndex));
+  if (!route?.ok || !route.segs?.length || !map.getLayer('route-highlight')
+      || !Number.isFinite(startIndex) || !Number.isFinite(endIndex)) return;
+  startIndex = Math.max(0, Math.min(startIndex, route.segs.length - 1));
+  endIndex = Math.max(startIndex, Math.min(endIndex, route.segs.length - 1));
+  clearRouteHighlight();
+  routeHighlightKey = `step:${startIndex}:${endIndex}`;
+  const filter = ['all', ['>=', ['get', 'routeIndex'], startIndex],
+    ['<=', ['get', 'routeIndex'], endIndex]];
+  for (const id of ['route-highlight-halo', 'route-highlight']) {
+    map.setFilter(id, filter);
+    map.setLayoutProperty(id, 'visibility', 'visible');
+  }
+
+  const first = route.segs[startIndex];
+  const last = route.segs[endIndex];
+  const selected = route.coords.slice(first.c0, last.c1 + 1);
+  const markerPoint = selected[Math.floor(selected.length / 2)];
+  const markerSource = map.getSource('route-highlight-marker');
+  if (markerSource && markerPoint) markerSource.setData({
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: markerPoint } }],
+  });
+  for (const id of ['route-highlight-marker-halo', 'route-highlight-marker']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', markerPoint ? 'visible' : 'none');
+  }
+
+  const dialog = document.getElementById('routeDetailsDialog');
+  if (dialog?.open) dialog.close();
+  suppressRoadInfo(900);
+  if (mobileNavMedia.matches) setPanelOpen(false);
+  if (!selected.length) return;
+  requestAnimationFrame(() => {
+    if (selected.length === 1) {
+      map.easeTo({ center: selected[0], zoom: Math.max(map.getZoom(), 15), duration: 450 });
+      return;
+    }
+    const bounds = new maplibregl.LngLatBounds(selected[0], selected[0]);
+    for (const coordinate of selected.slice(1)) bounds.extend(coordinate);
+    map.fitBounds(bounds, {
+      padding: mobileNavMedia.matches
+        ? { top: 90, right: 45, bottom: 90, left: 45 }
+        : { top: 80, right: 70, bottom: 80, left: 470 },
+      maxZoom: 16,
+      duration: 500,
+    });
+  });
+}
+
+function consumePendingRouteStepHighlight() {
+  let pending = null;
+  try {
+    pending = JSON.parse(sessionStorage.getItem('wa-bike-step-highlight') || 'null');
+    if (pending) sessionStorage.removeItem('wa-bike-step-highlight');
+  } catch (e) { /* nonfatal */ }
+  if (pending?.type === 'highlight-route-step') {
+    requestAnimationFrame(() => showRouteStepOnMap(pending.startIndex, pending.endIndex));
+  }
 }
 
 function setRoutePoint(kind, lngLat) {
@@ -2266,6 +2338,7 @@ function activateRouteOption(option, updateNavigation = false) {
   renderRouteCard(option);
   storeRouteDetails(option);
   drawRoute(option.coords, option.ferrySegs, option.segs);
+  consumePendingRouteStepHighlight();
   setRouteStatus(`${fmtMi(option.distM)} mi · ${option.optimization?.label || 'route choice'}`);
   saveStateSoon();
 }
