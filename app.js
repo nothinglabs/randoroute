@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-13.87'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-13.88'; // shown in the map corner; bump per release
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -354,7 +354,9 @@ function validRoutePoint(point) {
 
 const MAX_ROUTE_STOPS = 8;
 const ROUTE_PROFILE_IDS = new Set([
-  'quick', 'efficient', 'bike', 'residential', 'bike-residential', 'gentle', 'friendly',
+  'quick', 'quick-bike', 'quick-residential', 'quick-friendly',
+  'efficient', 'bike', 'residential', 'bike-residential',
+  'gentle', 'gentle-bike', 'gentle-residential', 'friendly',
 ]);
 function legacyRouteProfile(mode) {
   if (mode === 'direct') return 'quick';
@@ -899,6 +901,7 @@ const routing = {
   prefResidential: sharedRoute?.prefResidential != null ? sharedRoute.prefResidential
     : savedState && typeof savedState.prefResidential === 'boolean' ? savedState.prefResidential : false,
   reqId: 0,
+  compareStartedAt: 0,
   options: [],
   last: null, // last successful result (for redraws)
 };
@@ -1015,9 +1018,12 @@ function optimizationDescription(optimization) {
   const preferences = [];
   if (optimization.prefDesignated) preferences.push('bike routes and trails');
   if (optimization.prefResidential) preferences.push('residential streets');
-  if (!preferences.length) return `${base} No additional road-type preference was applied.`;
-  const list = preferences.length === 2 ? `${preferences[0]} and ${preferences[1]}` : preferences[0];
-  return `${base} Strongly prefers ${list}.`;
+  const method = !preferences.length
+    ? `${base} No additional road-type preference was applied.`
+    : `${base} Strongly prefers ${preferences.length === 2
+      ? `${preferences[0]}, plus ${preferences[1]}` : preferences[0]}.`;
+  if (optimization.reason) return `${optimization.reason} Search method: ${method}`;
+  return method;
 }
 function storeRouteDetails(m) {
   if (!m || !m.ok) return;
@@ -1649,6 +1655,11 @@ function onRouterMessage(ev) {
     computeRoute();
   } else if (m.type === 'route-options') {
     if (m.id !== routing.reqId) return;
+    const remaining = 400 - (performance.now() - routing.compareStartedAt);
+    if (!m.displayDelayApplied && remaining > 0) {
+      setTimeout(() => onRouterMessage({ data: { ...m, displayDelayApplied: true } }), remaining);
+      return;
+    }
     document.body.dataset.routeOptionsMs = String(Math.round(Number(m.ms) || 0));
     setRouteOptionsLoading(false);
     if (!m.ok || !Array.isArray(m.options) || !m.options.length) {
@@ -1717,6 +1728,7 @@ function computeRoute() {
       prefResidential: routing.prefResidential || !!selected?.prefResidential,
     });
   } else {
+    routing.compareStartedAt = performance.now();
     routing.worker.postMessage({
       type: 'route-options', id: routing.reqId, points, rules: { ...rules },
       forceDesignated: routing.prefDesig,
@@ -2197,6 +2209,16 @@ function setRouteOptionsLoading(loading) {
   if (!host) return;
   host.classList.toggle('loading', loading);
   host.setAttribute('aria-busy', String(loading));
+  const current = host.querySelector('.route-options-loading');
+  if (loading && !current) {
+    const indicator = document.createElement('span');
+    indicator.className = 'route-options-loading';
+    indicator.setAttribute('role', 'status');
+    indicator.innerHTML = '<span aria-hidden="true"></span>Comparing routes…';
+    host.append(indicator);
+  } else if (!loading && current) {
+    current.remove();
+  }
   host.querySelectorAll('button[data-route-option]').forEach((button) => {
     button.disabled = loading || turnNav.active;
   });
@@ -2216,7 +2238,7 @@ function renderRouteOptionControls() {
     return `<button type="button" data-route-option="${index}" ${active ? 'class="active"' : ''}
       aria-pressed="${active}" aria-label="Choose route ${index + 1}: ${label}"
       title="${optimizationDescription(optimization)}" ${turnNav.active ? 'disabled' : ''}>
-      <span class="route-option-number">${index + 1}</span><span>${label}</span></button>`;
+      <span>${label}</span></button>`;
   }).join('');
 }
 
@@ -2241,7 +2263,7 @@ function activateRouteOption(option, updateNavigation = false) {
   renderRouteCard(option);
   storeRouteDetails(option);
   drawRoute(option.coords, option.ferrySegs, option.segs);
-  setRouteStatus(`${fmtMi(option.distM)} mi · option ${routing.options.indexOf(option) + 1} of ${routing.options.length}`);
+  setRouteStatus(`${fmtMi(option.distM)} mi · ${option.optimization?.label || 'route choice'}`);
   saveStateSoon();
 }
 

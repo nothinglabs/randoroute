@@ -128,7 +128,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeLibraryBtn { cursor: pointer; }
 .share-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-#routeOptions { display: flex; flex: 1; min-width: 0; gap: 3px; margin: 0; }
+#routeOptions { position: relative; display: flex; flex: 1; min-width: 0; gap: 3px; margin: 0; }
 #routeOptions button {
   flex: 1 1 0;
   min-width: 0;
@@ -137,17 +137,18 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   border: 1.5px solid #d5d5d5;
   border-radius: 8px;
   background: #fff;
-  font: 650 9px/1.05 system-ui;
+  font: 650 10px/1.05 system-ui;
   color: #333;
   cursor: pointer;
   overflow: hidden;
 }
 #routeOptions button span:last-child { display: block; overflow-wrap: anywhere; }
-#routeOptions button .route-option-number { display: block; margin-bottom: 1px; color: #788692; font: 750 8px/1 system-ui; }
 #routeOptions button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
-#routeOptions button.active .route-option-number { color: #0a66c2; }
 #routeOptions button:disabled { cursor: default; opacity: .64; }
-#routeOptions.loading { opacity: .55; }
+.route-options-loading { position: absolute; z-index: 2; inset: 0; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1.5px solid #8eb9d8; border-radius: 8px; background: rgba(245,250,254,.97); color: #0a66c2; font: 700 11px system-ui; }
+.route-options-loading > span { width: 12px; height: 12px; border: 2px solid #bad3e6; border-top-color: #0a66c2; border-radius: 50%; animation: route-options-spin .7s linear infinite; }
+@keyframes route-options-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .route-options-loading > span { animation: none; border-top-color: #bad3e6; background: #0a66c2; } }
 .route-options-empty { display: grid; place-items: center; flex: 1; height: 38px; border: 1px dashed #ccd6dd; border-radius: 9px; color: #7a8790; font: 650 11px system-ui; }
 
 #routeCard {
@@ -170,7 +171,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
 #routeCard canvas { width: 100%; height: 42px; margin-top: 4px; display: block; }
 .rc-highlight-hint { margin-top: 5px; color: #6b7280; font: 650 9.5px/1.2 system-ui; }
-.rc-route-types, .rc-levels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; margin-top: 3px; }
+.rc-route-types, .rc-levels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; margin-top: 3px; align-content: start; }
+.rc-route-types { min-height: 57px; }
 .rc-highlight-item, .rc-level { display: grid; grid-template-columns: minmax(0, 1fr) auto 7px; align-items: center; gap: 3px; min-width: 0; min-height: 27px; padding: 3px 4px; border: 1px solid #dde2e7; border-left: 3px solid #999; border-radius: 5px; background: rgba(255,255,255,.82); font: 500 9.5px system-ui; color: #555; cursor: pointer; text-align: left; }
 .rc-highlight-item b, .rc-level b { color: #333; white-space: nowrap; }
 .rc-highlight-item::after, .rc-level::after { content: '›'; color: #777; font-size: 13px; font-weight: 800; line-height: 8px; }
@@ -199,9 +201,10 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   #tabs #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; }
   #tabs #routeLibraryBtn .share-icon { width: 19px; height: 19px; }
   #routeOptions { gap: 5px; }
-  #routeOptions button { height: 38px; padding: 4px 3px; font-size: 10px; }
+  #routeOptions button { height: 38px; padding: 4px 3px; font-size: 11px; }
   .rc-highlight-hint { margin-top: 7px; font-size: 11px; }
   .rc-route-types, .rc-levels { gap: 5px; margin-top: 5px; }
+  .rc-route-types { min-height: 67px; }
   .rc-highlight-item, .rc-level { padding: 5px 6px; border-radius: 6px; font-size: 11px; }
   .rc-highlight-item::after, .rc-level::after { font-size: 15px; }
 }

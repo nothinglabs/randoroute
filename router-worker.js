@@ -448,13 +448,18 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps) {
 // residential bias finds a genuinely better corridor. Global preference
 // switches force the corresponding bias on for every profile.
 const ROUTE_PROFILES = [
-  { id: 'quick', label: 'Fastest', mode: 'direct', prefDesig: false, prefResidential: false, order: 0 },
-  { id: 'efficient', label: 'Efficient', mode: 'balanced', prefDesig: false, prefResidential: false, order: 1 },
-  { id: 'bike', label: 'Bike routes', mode: 'balanced', prefDesig: true, prefResidential: false, order: 2 },
-  { id: 'residential', label: 'Residential', mode: 'balanced', prefDesig: false, prefResidential: true, order: 2.1 },
-  { id: 'bike-residential', label: 'Bike + calm', mode: 'balanced', prefDesig: true, prefResidential: true, order: 2.2 },
-  { id: 'gentle', label: 'Gentler', mode: 'low', prefDesig: false, prefResidential: false, order: 3 },
-  { id: 'friendly', label: 'Friendly', mode: 'low', prefDesig: true, prefResidential: true, order: 4 },
+  { id: 'quick', label: 'Direct', mode: 'direct', prefDesig: false, prefResidential: false, order: 0 },
+  { id: 'quick-bike', label: 'Direct + bike', mode: 'direct', prefDesig: true, prefResidential: false, order: 0.1 },
+  { id: 'quick-residential', label: 'Direct + residential', mode: 'direct', prefDesig: false, prefResidential: true, order: 0.2 },
+  { id: 'quick-friendly', label: 'Direct + both', mode: 'direct', prefDesig: true, prefResidential: true, order: 0.3 },
+  { id: 'efficient', label: 'Balanced', mode: 'balanced', prefDesig: false, prefResidential: false, order: 1 },
+  { id: 'bike', label: 'Balanced + bike', mode: 'balanced', prefDesig: true, prefResidential: false, order: 1.1 },
+  { id: 'residential', label: 'Balanced + residential', mode: 'balanced', prefDesig: false, prefResidential: true, order: 1.2 },
+  { id: 'bike-residential', label: 'Balanced + both', mode: 'balanced', prefDesig: true, prefResidential: true, order: 1.3 },
+  { id: 'gentle', label: 'Low stress', mode: 'low', prefDesig: false, prefResidential: false, order: 2 },
+  { id: 'gentle-bike', label: 'Low stress + bike', mode: 'low', prefDesig: true, prefResidential: false, order: 2.1 },
+  { id: 'gentle-residential', label: 'Low stress + residential', mode: 'low', prefDesig: false, prefResidential: true, order: 2.2 },
+  { id: 'friendly', label: 'Low stress + both', mode: 'low', prefDesig: true, prefResidential: true, order: 2.3 },
 ];
 
 function candidateProfiles(forceDesig, forceResidential) {
@@ -505,13 +510,86 @@ function routeAggression(r) {
   return stress - friendlyCoverage;
 }
 
+function compareSafety(a, b) {
+  // A known rule failure is the first-order distinction. The remaining
+  // metrics break ties between routes with the same failing distance.
+  if (a.failM !== b.failM) return a.failM - b.failM;
+  if (a.freewayM !== b.freewayM) return a.freewayM - b.freewayM;
+  if (a.limitedAccessM !== b.limitedAccessM) return a.limitedAccessM - b.limitedAccessM;
+  return a.aggression - b.aggression || a.timeS - b.timeS;
+}
+
+function outcomeDistance(meters) {
+  if (meters <= 0) return 'no distance';
+  if (meters < 160.934) return `${Math.max(10, Math.round(meters * 3.28084 / 10) * 10)} ft`;
+  return `${(meters / 1609.344).toFixed(1)} mi`;
+}
+
+function outcomeSnapshot(route) {
+  const ridingM = Math.max(1, route.distM - route.ferryM);
+  const comfyPct = Math.round(100 * (route.levelM?.[1] || 0) / ridingM);
+  const bikePct = Math.round(100 * route.desigM / ridingM);
+  const fail = route.failM > 0 ? `${outcomeDistance(route.failM)} fails rules` : 'no rule-failing segments';
+  const details = [fail];
+  if (comfyPct > 0) details.push(`${comfyPct}% comfy`);
+  if (bikePct > 0) details.push(`${bikePct}% on bike routes`);
+  return details.join(' · ');
+}
+
+function presentByOutcome(routes) {
+  if (!routes.length) return routes;
+  const fastest = routes.reduce((best, route) => route.timeS < best.timeS ? route : best, routes[0]);
+  const safest = routes.reduce((best, route) => compareSafety(route, best) < 0 ? route : best, routes[0]);
+  const middle = routes.filter((route) => route !== fastest && route !== safest);
+  middle.sort(fastest === safest
+    ? (a, b) => a.timeS - b.timeS
+    : (a, b) => compareSafety(b, a) || a.timeS - b.timeS);
+  const ordered = fastest === safest ? [fastest, ...middle] : [fastest, ...middle, safest];
+
+  const rankedLabels = fastest === safest
+    ? (ordered.length >= 5
+      ? ['Fastest + safest', 'Next quickest', 'Middle option', 'Longer option', 'Longest option']
+      : ordered.length === 4
+        ? ['Fastest + safest', 'Next quickest', 'Longer option', 'Longest option']
+        : ordered.length === 3
+          ? ['Fastest + safest', 'Next quickest', 'Longer option']
+          : ordered.length === 2 ? ['Fastest + safest', 'Longer option'] : ['Fastest'])
+    : (ordered.length >= 5
+      ? ['Fastest', 'Quicker', 'Balanced', 'Safer', 'Safest']
+      : ordered.length === 4
+        ? ['Fastest', 'Quicker', 'Safer', 'Safest']
+        : ordered.length === 3
+          ? ['Fastest', 'Balanced', 'Safest']
+          : ordered.length === 2 ? ['Fastest', 'Safest'] : ['Fastest']);
+
+  for (let i = 0; i < ordered.length; i++) {
+    const route = ordered[i];
+    let label = rankedLabels[i] || 'Alternative';
+    let lead = i === 0
+      ? 'Lowest estimated ride time among the choices.'
+      : i === ordered.length - 1
+        ? 'Least rule-failing distance among the choices; comfy and bike-route coverage break ties.'
+        : i < ordered.length / 2
+          ? 'A quicker alternative, ranked using its actual safety outcome.'
+          : 'A safer alternative, ranked using rule failures, caution, comfy roads, and bike-route coverage.';
+    if (fastest === safest && route === fastest) {
+      lead = 'Both the fastest and the safest of the distinct choices found.';
+    } else if (fastest === safest) {
+      lead = 'A meaningfully different route, ordered by its estimated ride time.';
+    }
+    route._outcome = { label, reason: `${lead} ${outcomeSnapshot(route)}.` };
+  }
+  return ordered;
+}
+
 function publicCandidate(candidate) {
-  const { edgeIds, _profile, ...routeResult } = candidate;
+  const { edgeIds, _profile, _outcome, ...routeResult } = candidate;
   return {
     ...routeResult,
     optimization: {
       profileId: _profile.id,
-      label: _profile.label,
+      label: _outcome?.label || _profile.label,
+      reason: _outcome?.reason || '',
       mode: _profile.mode,
       prefDesignated: _profile.prefDesig,
       prefResidential: _profile.prefResidential,
@@ -565,14 +643,25 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   unique.sort((a, b) => a._profile.order - b._profile.order
     || b.aggression - a.aggression || a.timeS - b.timeS);
 
-  const selected = [];
   const preferred = unique.find((r) => r._profile.id === preferredProfileId);
-  if (unique.length <= 5) {
-    selected.push(...unique);
+  const bothPreferences = unique.find((r) => r._profile.prefDesig && r._profile.prefResidential);
+  const protectedCandidates = new Set([preferred, bothPreferences].filter(Boolean));
+  const useful = unique.filter((candidate) => protectedCandidates.has(candidate)
+    || !unique.some((other) => {
+      if (other === candidate) return false;
+      const safety = compareSafety(other, candidate);
+      const noSlower = other.timeS <= candidate.timeS + 5;
+      return noSlower && safety <= 0 && (other.timeS < candidate.timeS - 5 || safety < 0);
+    }));
+  const choices = useful.length ? useful : unique;
+
+  const selected = [];
+  if (choices.length <= 5) {
+    selected.push(...choices);
   } else {
-    selected.push(unique[0]);
-    const last = unique[unique.length - 1];
-    const pool = unique.slice(1, -1);
+    selected.push(choices[0]);
+    const last = choices[choices.length - 1];
+    const pool = choices.slice(1, -1);
     while (selected.length < 4 && pool.length) {
       let bestIndex = 0, bestScore = -Infinity;
       for (let i = 0; i < pool.length; i++) {
@@ -590,20 +679,24 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (selected.every((other) => meaningfullyDifferent(last, other))) selected.push(last);
   }
 
-  // A saved/shared choice should not silently disappear merely because a
-  // diversity tie selected another candidate for the fifth slot.
-  if (preferred && !selected.includes(preferred)) {
-    const replaceAt = selected.length >= 5 ? selected.length - 2 : selected.length;
-    selected.splice(replaceAt, selected.length >= 5 ? 1 : 0, preferred);
+  const fastestOverall = choices.reduce((best, route) => route.timeS < best.timeS ? route : best, choices[0]);
+  const safestOverall = choices.reduce((best, route) => compareSafety(route, best) < 0 ? route : best, choices[0]);
+  // Preserve the actual fastest and safest outcomes, the both-preferences
+  // probe, and a saved/shared selection before spending remaining slots on
+  // geometric diversity.
+  const required = [...new Set([fastestOverall, safestOverall, bothPreferences, preferred].filter(Boolean))];
+  for (const candidate of required) {
+    if (selected.includes(candidate)) continue;
+    if (selected.length < 5) {
+      selected.push(candidate);
+      continue;
+    }
+    let replaceAt = selected.length - 1;
+    while (replaceAt >= 0 && required.includes(selected[replaceAt])) replaceAt--;
+    if (replaceAt >= 0) selected.splice(replaceAt, 1, candidate);
   }
-  const bothPreferences = unique.find((r) => r._profile.prefDesig && r._profile.prefResidential);
-  if (bothPreferences && !selected.includes(bothPreferences)) {
-    const replaceAt = selected.length >= 5 ? selected.length - 1 : selected.length;
-    selected.splice(replaceAt, selected.length >= 5 ? 1 : 0, bothPreferences);
-  }
-  selected.sort((a, b) => a._profile.order - b._profile.order
-    || b.aggression - a.aggression || a.timeS - b.timeS);
-  return { ok: true, options: selected.slice(0, 5).map(publicCandidate), ms: Date.now() - started };
+  const presented = presentByOutcome(selected.slice(0, 5));
+  return { ok: true, options: presented.map(publicCandidate), ms: Date.now() - started };
 }
 
 // Binary min-heap on (key, node) pairs.
