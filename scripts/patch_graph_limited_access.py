@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill WSDOT limited-access caution flags into an existing BGR3/BGR4 graph.
+"""Backfill WSDOT limited-access caution flags into an existing BGR3/BGR4/BGR5 graph.
 
 This is a conservative final safety net after a normal build, and a migration
 tool when the raw OSM and DEM inputs used to build the checked-in graph are
@@ -59,8 +59,8 @@ def point_segment_distance_sq(px, py, ax, ay, bx, by):
 
 def graph_layout(raw):
     magic = bytes(raw[:4])
-    if magic not in (b'BGR3', b'BGR4'):
-        raise ValueError('not a BGR3 or BGR4 graph')
+    if magic not in (b'BGR3', b'BGR4', b'BGR5'):
+        raise ValueError('not a BGR3, BGR4, or BGR5 graph')
     n, e, d, g, u, name_bytes = struct.unpack_from('<6I', raw, 4)
     offset = 28
     offset += 4 * n  # node longitude
@@ -78,9 +78,12 @@ def graph_layout(raw):
     edge_shoulder = offset
     offset += e      # edge shoulder
     edge_road_class = None
-    if magic == b'BGR4':
+    if magic in (b'BGR4', b'BGR5'):
         edge_road_class = offset
         offset += e  # OSM highway class
+    if magic == b'BGR5':
+        offset += e  # typed bicycle facility
+        offset += e  # authoritative WSDOT source bits
     offset = align4(offset)
     edge_geom_off = offset
     offset += 4 * e

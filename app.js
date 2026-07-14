@@ -14,11 +14,11 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-13.88'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-14.89'; // shown in the map corner; bump per release
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
-const GRAPH_FORMAT_VERSION = 'bgr4';
+const GRAPH_FORMAT_VERSION = 'bgr5';
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -972,13 +972,13 @@ function fmtDur(s) {
 function fallbackRouteLevel(s) {
   const flags = s.flags || 0;
   if (flags & 4) return 4;
-  if (flags & 8) return 1;
+  if ((flags & 8) || (s.facility || 0) >= 4) return 1;
   if (!rules.noUpperLimit && s.mph > rules.upperMaxSpeed) return 4;
   if (s.mph <= rules.freeMaxSpeed) return flags & 128 ? 3 : 1;
   if (flags & 64) return flags & 128 ? 3 : 2;
   let sh = s.sh;
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
-  if (!(flags & 2) && sh >= 0 && sh < rules.minShoulder) return 4;
+  if ((s.facility || 0) < 2 && sh >= 0 && sh < rules.minShoulder) return 4;
   return flags & 128 ? 3 : 2;
 }
 
@@ -1038,12 +1038,13 @@ function storeRouteDetails(m) {
       rules: { ...rules },
       summary: {
         distM: m.distM, timeS: m.timeS, ascentM: m.ascentM, descentM: m.descentM,
-        failM: m.failM, desigM: m.desigM, ferryM: m.ferryM,
+        failM: m.failM, desigM: m.desigM, facilityM: m.facilityM, ferryM: m.ferryM,
       },
       // Keep the detailed report compact: it only needs road attributes and
       // lengths, not the complete route geometry or elevation profile.
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
+        facility: s.facility || 0, official: s.official || 0,
         level: s.level || fallbackRouteLevel(s), lenM: Number(s.lenM) || 0,
       })),
     }));
@@ -1742,15 +1743,16 @@ function computeRoute() {
 // attributes, so the route is inspectable even with every data layer off.
 const ROUTESEG_SRC = { id: 'routeseg', name: 'Your route', scorer: scoreRouteSeg };
 function scoreRouteSeg(p) {
+  const facility = p.facility || 0;
   return {
-    baseScore: null,
+    baseScore: facility >= 4 || p.infra === 1 ? 1 : facility >= 2 ? 2 : null,
     shoulder_width: p.sh >= 0 ? p.sh : null,
     maxspeed_num: p.ferry ? null : p.mph,
     prohibited: false, restricted: false,
     freeway: p.fw === 1,
     limited_access: p.lim === 1 || p.fw === 1,
-    good_facility: p.fac === 1,
-    infra: p.infra === 1,
+    good_facility: facility >= 2,
+    infra: p.infra === 1 || facility >= 4,
     est: p.e === 1,
     desig: p.desig === 1,
   };
@@ -1791,6 +1793,7 @@ function drawRoute(coords, ferrySegs, segs) {
       e: s.flags & 1 ? 1 : 0, fac: s.flags & 2 ? 1 : 0, fw: s.flags & 4 ? 1 : 0,
       lim: s.flags & 128 ? 1 : 0,
       infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
+      facility: s.facility || 0, official: s.official || 0,
       level: s.level || fallbackRouteLevel(s), hwy: isHighwaySegment(s) ? 1 : 0 },
     geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
   })) };
@@ -2791,6 +2794,13 @@ const READOUT_COLOR_LABEL = {
   3: 'Orange — Caution (limited-access highway)',
   4: 'Red dashed — Fails your rules (avoid)',
 };
+const FACILITY_NAME = {
+  1: 'Shared lane marking',
+  2: 'Bike lane',
+  3: 'Buffered bike lane',
+  4: 'Separated bike lane',
+  5: 'Shared-use path',
+};
 // Plain-language reason for a segment's verdict under the current rules.
 // Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
 function explainLevel(n) {
@@ -2928,7 +2938,10 @@ function renderReadout(feature, lngLat) {
         ['Name', p.name || '(unnamed road)'],
         ...common,
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
+        ['Speed source', p.official & 1 ? 'WSDOT legal speed' : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
+        ['Bike facility', FACILITY_NAME[p.facility] || null],
+        ['Facility source', p.official & 2 ? 'WSDOT Active Transportation Data' : null],
         ['Type', p.infra ? 'Dedicated bike infrastructure' : (p.fw || p.lim) ? 'Limited-access highway' : null],
       ];
     }

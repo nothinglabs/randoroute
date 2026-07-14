@@ -14,7 +14,7 @@ Included edges:
 One-way streets are honored for bikes (oneway / junction=roundabout, with
 oneway:bicycle=no overriding; oneway=-1 reverses the edge).
 
-Binary layout (little-endian), after header 'BGR4' + N,E,D,G,U,B (u32):
+Binary layout (little-endian), after header 'BGR5' + N,E,D,G,U,B (u32):
   nodeLon f32[N], nodeLat f32[N]
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
   edgeSpeed u8[E] (mph; 0 = separated infra), edgeFlags u8[E]
@@ -24,16 +24,18 @@ Binary layout (little-endian), after header 'BGR4' + N,E,D,G,U,B (u32):
   edgeShoulder i8[E] (-128 migration-only permanent prohibition, -1 unknown,
                        else ft),
   edgeRoadClass u8[E] (OSM highway class; 0 for infrastructure/ferries),
+  edgeFacility u8[E] (0=none, 1=shared lane, 2=bike lane,
+                      3=buffered lane, 4=separated lane, 5=shared-use path),
+  edgeOfficial u8[E] (1=WSDOT legal speed, 2=WSDOT facility),
   edgeGeomOff u32[E], edgeGeomCnt u16[E]  (into the geometry pool)
   outStart u32[N+1], outTarget u32[D], outEdge u32[D]   (directed CSR)
   geomLon f32[G], geomLat f32[G]  (pool; G = sum of edgeGeomCnt)
 
-WSDOT conflation: the map's WSDOT layer fails roads on MEASURED shoulder
-width that OSM doesn't have — without it the router would happily use roads
-the map shows as failing. For state-highway edges we spatially match the
-nearest WSDOT BLTS segment (within ~30 m) and adopt its measured shoulder and
-real speed limit. WSDOT permanent bike restrictions are also matched directly
-against their authoritative linework and omitted from the graph entirely.
+WSDOT conflation: BLTS provides measured shoulder/access-control context;
+Roadway Characteristic Data provides authoritative legal speeds; and Active
+Transportation Data provides typed bicycle facilities. Official attributes
+are matched to OSM topology so they improve routing without creating duplicate
+or disconnected linework. Permanent bike restrictions are omitted entirely.
 
 Usage: python3 scripts/build_graph.py [--src data/washington-latest.osm.pbf]
 """
@@ -80,8 +82,6 @@ ROAD_CLASS = {
     'motorway': 12,
     'motorway_link': 13,
 }
-FACILITY = {'lane', 'shared_lane', 'buffered_lane', 'track', 'separated',
-            'opposite_lane', 'opposite_track'}
 CYCLEWAY_KEYS = ('cycleway', 'cycleway:both', 'cycleway:right', 'cycleway:left')
 SIMPLIFY_DEG = 0.00012  # ~12 m — route display geometry
 _num = re.compile(r'^\s*(\d+(?:\.\d+)?)')
@@ -90,6 +90,25 @@ WSDOT_CLASSES = {'motorway', 'motorway_link', 'trunk', 'trunk_link',
                  'primary', 'primary_link', 'secondary', 'secondary_link'}
 REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA)[-\s]?\d+', re.I)
 WSDOT_MATCH_DEG = 0.00035  # ~30 m
+WSDOT_STRICT_DEG = 0.00009  # ~8–10 m; safe without a shared route number
+
+FACILITY_NONE = 0
+FACILITY_SHARED = 1
+FACILITY_LANE = 2
+FACILITY_BUFFERED = 3
+FACILITY_SEPARATED = 4
+FACILITY_PATH = 5
+OFFICIAL_SPEED = 1
+OFFICIAL_FACILITY = 2
+
+WSDOT_FACILITY_TYPE = {
+    'Shared Lane': FACILITY_SHARED,
+    'Bike Lane': FACILITY_LANE,
+    'Buffered Bike Lane': FACILITY_BUFFERED,
+    'One-Way Separated Bike Lane': FACILITY_SEPARATED,
+    'Two-Way Separated Bike Lane': FACILITY_SEPARATED,
+    'Shared-Use Path': FACILITY_PATH,
+}
 
 
 DEM_Z = 12
@@ -202,6 +221,34 @@ def load_restriction_index(path):
     return STRtree(geoms), geoms, routes
 
 
+def load_official_index(path, kind):
+    """Load official WSDOT legal-speed or bicycle-facility linework."""
+    fc = json.load(open(path))
+    geoms, attrs = [], []
+    for feature in fc['features']:
+        props = feature['properties']
+        geometry = feature.get('geometry')
+        if not geometry:
+            continue
+        if kind == 'speed':
+            value = props.get('SpeedLimit')
+            if not value or value <= 0:
+                continue
+        else:
+            value = WSDOT_FACILITY_TYPE.get(props.get('BikeFacilityType'))
+            if not value or props.get('Status') != 'Existing':
+                continue
+        lines = [geometry['coordinates']] if geometry['type'] == 'LineString' else geometry['coordinates']
+        route = _route_number(props.get('RouteIdentifier'))
+        for coords in lines:
+            if len(coords) < 2:
+                continue
+            geoms.append(LineString(coords))
+            attrs.append({'value': int(value), 'route': route})
+    print(f'  WSDOT {kind} index: {len(geoms):,} segments', flush=True)
+    return STRtree(geoms), geoms, attrs
+
+
 def _route_number(value):
     m = re.search(r'\d+', str(value or ''))
     return int(m.group()) if m else None
@@ -209,6 +256,46 @@ def _route_number(value):
 
 def _route_numbers(*values):
     return {int(v) for value in values for v in re.findall(r'\d+', str(value or ''))}
+
+
+def sampled_points(coords):
+    """Three interior points keep nearby crossings from becoming matches."""
+    line = LineString(coords)
+    if line.length == 0:
+        return []
+    return [line.interpolate(frac, normalized=True) for frac in (0.2, 0.5, 0.8)]
+
+
+def official_match(coords, tags, index, max_deg=WSDOT_MATCH_DEG):
+    """Return the best official attribute matched along the edge.
+
+    A matching route number permits normal WSDOT/OSM centerline offsets. With
+    no common route number, at least two interior samples must be within the
+    strict tolerance. This rejects roads that merely cross official linework.
+    """
+    tree, geoms, attrs = index
+    points = sampled_points(coords)
+    if not points:
+        return None
+    # Only explicit route refs relax the spatial tolerance. A numbered local
+    # street name (for example, "40th Avenue") is not evidence that it is
+    # WSDOT route 40.
+    edge_routes = _route_numbers(tags.get('ref'))
+    candidates = set()
+    for point in points:
+        candidates.update(int(i) for i in tree.query(point.buffer(max_deg)))
+    best = None
+    for gi in candidates:
+        distances = [geoms[gi].distance(point) for point in points]
+        same_route = attrs[gi]['route'] is not None and attrs[gi]['route'] in edge_routes
+        close_count = sum(distance <= (max_deg if same_route else WSDOT_STRICT_DEG)
+                          for distance in distances)
+        if close_count < 2:
+            continue
+        score = sum(sorted(distances)[:2])
+        if best is None or score < best[0]:
+            best = (score, attrs[gi])
+    return best[1] if best else None
 
 
 def is_restricted_edge(coords, tags, index):
@@ -328,11 +415,23 @@ def classify_way(tags):
     if tags.get('route') == 'ferry':
         if tags.get('foot') == 'private' or tags.get('motor_vehicle') == 'private':
             return None
-        return {'speed': FERRY_DEFAULT_MPH, 'est': True, 'fac': False, 'lim': False,
+        return {'speed': FERRY_DEFAULT_MPH, 'est': True, 'facility': FACILITY_NONE, 'lim': False,
                 'infra': False, 'sh': None, 'road_class': 0, 'ferry': True,
                 'duration': tags.get('duration')}
 
-    cw = next((tags[k] for k in CYCLEWAY_KEYS if tags.get(k)), None)
+    cycleways = [tags[k] for k in CYCLEWAY_KEYS if tags.get(k)]
+
+    def osm_facility():
+        values = set(cycleways)
+        if values & {'track', 'separated', 'opposite_track'}:
+            return FACILITY_SEPARATED
+        if 'buffered_lane' in values or any(tags.get(f'{key}:buffer') == 'yes' for key in CYCLEWAY_KEYS):
+            return FACILITY_BUFFERED
+        if values & {'lane', 'opposite_lane'}:
+            return FACILITY_LANE
+        if 'shared_lane' in values:
+            return FACILITY_SHARED
+        return FACILITY_NONE
 
     # Rideable dedicated infrastructure (mirrors build_osm.py classify).
     # Tracks need explicit bike permission: a bicycle=yes track is often the
@@ -346,7 +445,7 @@ def classify_way(tags):
         or (hw == 'track' and bike in ('designated', 'yes'))
     )
     if infra:
-        return {'speed': 0, 'est': False, 'fac': True, 'lim': False,
+        return {'speed': 0, 'est': False, 'facility': FACILITY_PATH, 'lim': False,
                 'infra': True, 'sh': None, 'road_class': 0}
     if hw not in DRIVE:
         return None
@@ -357,7 +456,7 @@ def classify_way(tags):
         spd = DEFAULT_MPH[hw]
     return {
         'speed': min(spd, 255), 'est': est,
-        'fac': cw in FACILITY, 'lim': hw in LIMITED,
+        'facility': osm_facility(), 'lim': hw in LIMITED,
         'infra': False, 'sh': parse_shoulder_ft(tags),
         'road_class': ROAD_CLASS[hw],
     }
@@ -387,9 +486,11 @@ def line_len_m(coords):
     return sum(haversine_m(*coords[i], *coords[i + 1]) for i in range(len(coords) - 1))
 
 
-def build(src, out, blts=None, restrictions=None):
+def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=None):
     wsdot = load_blts_index(blts) if blts else None
     restriction_index = load_restriction_index(restrictions) if restrictions else None
+    speed_index = load_official_index(legal_speeds, 'speed') if legal_speeds else None
+    facility_index = load_official_index(facilities, 'facility') if facilities else None
     ele_at = load_dem()
     if ele_at is None:
         print('  WARNING: no DEM tiles found — building without elevation', flush=True)
@@ -423,6 +524,7 @@ def build(src, out, blts=None, restrictions=None):
     node_lon = array('f'); node_lat = array('f')
     eA = array('I'); eB = array('I'); eLen = array('f')
     eSpeed = array('B'); eFlags = array('B'); eSh = array('b'); eClass = array('B')
+    eFacility = array('B'); eOfficial = array('B')
     eOff = array('I'); eCnt = array('H')
     eAsc = array('H'); eDes = array('H')   # meters of climb a->b / descent a->b
     nEle = array('h')                       # node elevation, meters
@@ -453,6 +555,8 @@ def build(src, out, blts=None, restrictions=None):
 
     oneway_arcs = 0
     conflated = [0]
+    official_speeds = [0]
+    official_facilities = [0]
     restricted_edges = [0]
     for obj in osmium.FileProcessor(src).with_locations():
         if not obj.is_way():
@@ -486,7 +590,7 @@ def build(src, out, blts=None, restrictions=None):
                  or (tags.get('ref') and REF_STATE.search(tags['ref'])))
         )
 
-        flags = ((1 if attrs['est'] else 0) | (2 if attrs['fac'] else 0)
+        flags = ((1 if attrs['est'] else 0) | (2 if attrs['facility'] else 0)
                  | (4 if attrs['lim'] else 0) | (8 if attrs['infra'] else 0)
                  | (16 if ow == 1 else 0) | (32 if is_ferry else 0)
                  | (64 if obj.id in designated else 0))
@@ -506,6 +610,7 @@ def build(src, out, blts=None, restrictions=None):
                         b = gnode(seg[-1][0], *coords[-1])
                         if a != b or length > 10:  # drop degenerate micro-loops
                             espeed, esh, eflags = attrs['speed'], sh, flags
+                            efacility, eofficial = attrs['facility'], 0
                             if (restriction_index and not attrs['infra']
                                     and is_restricted_edge(coords, tags, restriction_index)):
                                 restricted_edges[0] += 1
@@ -536,11 +641,31 @@ def build(src, out, blts=None, restrictions=None):
                                         espeed = min(int(best['spd']), 255)
                                         eflags &= ~1  # measured, not estimated
                                     conflated[0] += 1
+                            if speed_index and not attrs['infra'] and not is_ferry:
+                                match = official_match(coords, tags, speed_index)
+                                if match is not None:
+                                    espeed = min(match['value'], 255)
+                                    eflags &= ~1
+                                    eofficial |= OFFICIAL_SPEED
+                                    official_speeds[0] += 1
+                            if facility_index and not is_ferry:
+                                match = official_match(coords, tags, facility_index)
+                                if match is not None:
+                                    official_type = match['value']
+                                    # Shared-use paths belong on OSM path topology;
+                                    # on-street facilities belong on road topology.
+                                    compatible = ((official_type == FACILITY_PATH) == bool(attrs['infra']))
+                                    if compatible:
+                                        efacility = official_type
+                                        eflags |= 2
+                                        eofficial |= OFFICIAL_FACILITY
+                                        official_facilities[0] += 1
                             asc, des = (0.0, 0.0) if is_ferry else edge_climb(coords, ele_at)
                             eAsc.append(min(int(asc), 65535)); eDes.append(min(int(des), 65535))
                             eA.append(a); eB.append(b); eLen.append(length)
                             eSpeed.append(espeed); eFlags.append(eflags); eSh.append(esh)
                             eClass.append(attrs['road_class'])
+                            eFacility.append(efacility); eOfficial.append(eofficial)
                             eName.append(name_idx(tags.get('name') or tags.get('ref')))
                             eOff.append(len(gLon)); eCnt.append(min(len(coords), 65535))
                             for x, y in coords[:65535]:
@@ -624,6 +749,7 @@ def build(src, out, blts=None, restrictions=None):
         eA.append(n); eB.append(best); eLen.append(max(best_d, 1.0))
         eAsc.append(0); eDes.append(0)
         eSpeed.append(0); eFlags.append(8); eSh.append(-1); eClass.append(0)  # infra: walk the bike
+        eFacility.append(FACILITY_PATH); eOfficial.append(0)
         eName.append(name_idx('Ferry terminal connector'))
         eOff.append(len(gLon)); eCnt.append(2)
         gLon.append(lon0); gLat.append(lat0)
@@ -640,6 +766,7 @@ def build(src, out, blts=None, restrictions=None):
     N, E, G = len(node_lon), len(eA), len(gLon)
     print(f'  nodes {N:,}  edges {E:,}  geom vertices {G:,}  oneway edges {oneway_arcs:,}', flush=True)
     print(f'  WSDOT-conflated edges: {conflated[0]:,}; direct restrictions excluded: {restricted_edges[0]:,}', flush=True)
+    print(f'  official legal speeds: {official_speeds[0]:,}; official facilities: {official_facilities[0]:,}', flush=True)
 
     # ---- directed CSR adjacency
     print('building adjacency...', flush=True)
@@ -676,19 +803,21 @@ def build(src, out, blts=None, restrictions=None):
     print(f'  names: {U:,} unique, blob {B:,} bytes', flush=True)
 
     for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass,
+                eFacility, eOfficial,
                 eName, name_offs, eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat):
         if sys.byteorder == 'big':
             arr.byteswap()
     # JS typed-array views need 4-byte alignment: pad after the byte arrays
     # (4E bytes) and after the u16 array (2E bytes). The name blob goes LAST
     # so everything before it stays aligned.
-    parts = [b'BGR4', struct.pack('<IIIIII', N, E, D, G, U, B),
+    parts = [b'BGR5', struct.pack('<IIIIII', N, E, D, G, U, B),
              node_lon.tobytes(), node_lat.tobytes(), nEle.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
     parts += [eA.tobytes(), eB.tobytes(), eLen.tobytes(),
               eAsc.tobytes(), eDes.tobytes(),
-              eSpeed.tobytes(), eFlags.tobytes(), eSh.tobytes(), eClass.tobytes()]
+              eSpeed.tobytes(), eFlags.tobytes(), eSh.tobytes(), eClass.tobytes(),
+              eFacility.tobytes(), eOfficial.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
     parts.append(eOff.tobytes())
@@ -713,5 +842,9 @@ if __name__ == '__main__':
                     help='WSDOT BLTS geojson for shoulder/speed/prohibition conflation')
     ap.add_argument('--restrictions', default='data/bike_restrictions.geojson',
                     help='WSDOT permanent bike restrictions geojson for hard graph exclusion')
+    ap.add_argument('--legal-speeds', default='data/wsdot_legal_speeds.geojson',
+                    help='WSDOT Roadway Characteristic legal-speed GeoJSON')
+    ap.add_argument('--facilities', default='data/wsdot_bike_facilities.geojson',
+                    help='WSDOT existing bicycle-facility GeoJSON')
     args = ap.parse_args()
-    build(args.src, args.out, args.blts, args.restrictions)
+    build(args.src, args.out, args.blts, args.restrictions, args.legal_speeds, args.facilities)

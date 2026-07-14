@@ -131,6 +131,27 @@ conservative for safety). The routing graph also matches this authoritative
 restriction linework directly and excludes those edges in every routing mode;
 it never treats a permanent prohibition as a cost tradeoff.
 
+### WSDOT legal speeds and bicycle facilities → routing graph
+
+```bash
+python3 scripts/fetch_wsdot_graph_data.py
+```
+
+This reproducible fetch reads two official WSDOT ArcGIS FeatureServer layers:
+Roadway Characteristic Data (legal speed limits) and Active Transportation
+Data (existing shared lanes, bike lanes, buffered lanes, separated lanes, and
+shared-use paths). The downloaded GeoJSON files are build inputs and are
+git-ignored; their source URLs and fetch time are recorded in each file.
+
+The graph builder spatially conflates those attributes onto OSM topology.
+Legal speeds override OSM/class estimates on matched state-road edges. Bicycle
+facility types remain distinct, so a shared-lane marking does not substitute
+for a shoulder, a conventional/buffered lane does, and a separated lane or
+shared-use path is treated as protected infrastructure. Matching uses several
+points along each edge plus route-number checks where available to reject
+nearby crossings and frontage roads. WSDOT linework enriches OSM edges rather
+than creating duplicate graph edges, preserving OSM intersection connectivity.
+
 ### OSM bike infrastructure → `data/bikeinfra.geojson` (~40k ways)
 
 ```bash
@@ -202,6 +223,8 @@ Route tab's search works fully offline. Routes support intermediate stops
 ```bash
 # one-time: fetch the WA DEM (AWS Terrarium elevation tiles, z12 ≈ 38 m)
 bash scripts/fetch_dem.sh
+# refresh official WSDOT legal-speed and existing-facility build inputs
+python3 scripts/fetch_wsdot_graph_data.py
 python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
 # Conservative final passes over the authoritative WSDOT linework. They are
 # idempotent and catch a few very-close matches that the build-time conflation
@@ -210,9 +233,10 @@ python3 scripts/patch_graph_limited_access.py --apply
 python3 scripts/patch_graph_prohibited.py --apply
 ```
 
-A compact binary graph (nodes at intersections; edges carry length, climb/
-descent sampled every 60 m from the DEM, the original OSM road class, speed —
-posted, WSDOT-measured, or class-estimated — facility/freeway/limited-access/
+A compact BGR5 binary graph (nodes at intersections; edges carry length,
+climb/descent sampled every 60 m from the DEM, the original OSM road class,
+speed — official WSDOT legal speed, OSM-posted, or class-estimated — typed
+bicycle facility, authoritative-source bits, freeway/limited-access/
 infrastructure flags, and shoulder from WSDOT conflation or OSM). WSDOT `LimitedAccess` is carried into
 a separate caution flag, even when OSM does not classify the road as a
 motorway; it is routable when its speed and shoulder meet the rules. OSM
@@ -225,19 +249,18 @@ against the riding rules, and the route card calls out ferry mileage (the
 leg draws dashed on the map).
 
 The app routes **fully client-side**: A* in a web worker over estimated riding
-TIME (a grade-aware speed model), in three modes — **Direct** (fastest, failing
-roads allowed with a nudge), **Balanced** (failing roads cost 3× their time),
-**Low-stress** (failing roads cost 30× — any reasonable detour wins, and when
-some failing pavement is truly unavoidable the route still comes back with
-those segments pulsing red instead of a refusal). A limited-access road that
-otherwise meets the rider's speed and shoulder rules keeps its normal
-high-speed cost in Low-stress mode, so it can win over a known rule violation.
-A **"Strongly prefer bike
-routes & trails"** option prices designated routes and dedicated trails at
-half cost — worth riding up to ~2× the distance to stay on a Burke-Gilman
-instead of parallel streets. Results include distance, duration, total
-climb/descent, and an elevation profile. No routing server; works offline
-once cached.
+TIME (a grade-aware speed model). Each request probes a matrix of direct,
+balanced, and low-stress costs with and without bike-route and residential
+preferences. Near-duplicates and dominated choices are removed, leaving up to
+five useful alternatives. Visible names describe the measured outcomes rather
+than those internal recipes: **Fastest** has the lowest estimated ride time and
+**Safest** has the least rule-failing distance, with freeway/caution exposure,
+comfy coverage, and bike-route coverage breaking ties. Middle choices progress
+from quicker toward safer. Limited-access roads that otherwise meet the rider's
+speed and shoulder rules remain preferable to known rule violations. Settings
+can force the bike-route or residential preference across every candidate.
+Results include distance, duration, total climb/descent, and an elevation
+profile. No routing server; works offline once cached.
 
 ## Vendored library
 

@@ -6,6 +6,10 @@ const FLAG_FERRY = 32;
 const FLAG_DESIGNATED = 64;
 const FLAG_LIMITED_ACCESS = 128;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
+const FACILITY_NAME = {
+  1: 'shared lane', 2: 'bike lane', 3: 'buffered bike lane',
+  4: 'separated bike lane', 5: 'shared-use path',
+};
 
 if (window.self !== window.top) document.body.classList.add('embedded');
 
@@ -30,7 +34,8 @@ function failReason(seg, rules) {
   }
   let shoulder = seg.sh;
   if (shoulder < 0 && rules.unknownShoulderZero) shoulder = 0;
-  if (!(f & (FLAG_FACILITY | FLAG_DESIGNATED)) && shoulder >= 0 && shoulder < rules.minShoulder) {
+  if ((seg.facility || 0) < 2 && !(f & FLAG_DESIGNATED)
+      && shoulder >= 0 && shoulder < rules.minShoulder) {
     return seg.sh < 0 ? 'shoulder is unknown and treated as 0 ft'
       : `${shoulder} ft shoulder is below your ${rules.minShoulder} ft minimum`;
   }
@@ -103,6 +108,8 @@ function buildRouteSteps(segs) {
     if (last && last.name === name) {
       last.lenM += seg.lenM;
       last.flags |= seg.flags || 0;
+      last.facility = Math.max(last.facility || 0, seg.facility || 0);
+      last.official |= seg.official || 0;
       last.mph = Math.max(last.mph, seg.mph || 0);
       if (seg.level === 4) last.failM += seg.lenM;
     } else {
@@ -110,6 +117,8 @@ function buildRouteSteps(segs) {
         name,
         lenM: seg.lenM,
         flags: seg.flags || 0,
+        facility: seg.facility || 0,
+        official: seg.official || 0,
         mph: seg.mph || 0,
         failM: seg.level === 4 ? seg.lenM : 0,
       });
@@ -127,6 +136,8 @@ function buildRouteSteps(segs) {
         && previous.name === next.name) {
       previous.lenM += bridge.lenM + next.lenM;
       previous.flags |= bridge.flags | next.flags;
+      previous.facility = Math.max(previous.facility || 0, bridge.facility || 0, next.facility || 0);
+      previous.official |= (bridge.official || 0) | (next.official || 0);
       previous.mph = Math.max(previous.mph, bridge.mph, next.mph);
       previous.failM += bridge.failM + next.failM;
       out.splice(i, 2);
@@ -143,9 +154,11 @@ function stepMeta(step) {
   if (step.mph) bits.push(`${step.mph} mph`);
   if (flags & FLAG_FREEWAY) bits.push('freeway');
   else if (flags & FLAG_LIMITED_ACCESS) bits.push('limited access');
+  else if (FACILITY_NAME[step.facility]) bits.push(FACILITY_NAME[step.facility]);
   else if (flags & FLAG_INFRA) bits.push('bike infrastructure');
   else if (flags & FLAG_DESIGNATED) bits.push('bike route');
   else if (flags & FLAG_FACILITY) bits.push('bike facility');
+  if (step.official & 1) bits.push('WSDOT legal speed');
   else if (HIGHWAY_NAME.test(step.name) || step.mph >= 45) bits.push('highway');
   if (step.failM > 0) bits.push(`includes ${fmtDist(step.failM)} that fails rules`);
   else if (flags & FLAG_LIMITED_ACCESS) bits.push('caution');

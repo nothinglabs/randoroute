@@ -10,6 +10,8 @@ node_modules/
 data/PermanentBikeRestrictions.zip
 data/PermBikeRestrictions.zip
 data/permbike/
+data/wsdot_bike_facilities.geojson
+data/wsdot_legal_speeds.geojson
 # local test scaffolding
 _*.mjs
 _*.html

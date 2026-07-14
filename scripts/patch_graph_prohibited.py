@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill WSDOT permanent bike restrictions into an existing BGR3/BGR4 graph.
+"""Backfill WSDOT permanent bike restrictions into an existing BGR3/BGR4/BGR5 graph.
 
 Raw OSM and DEM inputs are not required. Matched graph edges retain their
 geometry and elevation but receive the unused shoulder sentinel -128. The
