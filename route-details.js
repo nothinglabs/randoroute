@@ -172,6 +172,7 @@ const hasRoute = !!(details && details.summary && Array.isArray(details.segs));
 const report = document.getElementById('report');
 const steps = document.getElementById('steps');
 const summary = document.getElementById('summary');
+const optimization = document.getElementById('optimization');
 const alert = document.getElementById('routeAlert');
 
 const detailTabs = [...document.querySelectorAll('[data-detail-tab]')];
@@ -196,6 +197,10 @@ if (!hasRoute) {
 } else {
   const { rules = {}, summary: totals, segs } = details;
   summary.textContent = `${fmtMi(totals.distM)} mi · ${fmtDur(totals.timeS)} · ${fmtFt(totals.ascentM)} ft climb`;
+  if (details.optimization?.description) {
+    optimization.hidden = false;
+    optimization.textContent = `${details.optimization.label || 'Selected option'}: ${details.optimization.description}`;
+  }
   const freeways = sections(segs, (s) => !!(s.flags & FLAG_FREEWAY), (s) => ({
     name: roadName(s),
     meta: [s.mph ? `${s.mph} mph` : null, 'limited-access freeway'].filter(Boolean).join(' · '),

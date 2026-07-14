@@ -55,7 +55,7 @@
 
     <section class="tab active" id="tab-route">
       <div id="routeControls">
-        <div class="mode-row"><div id="modeChips"></div></div>
+        <div class="mode-row"><div id="routeOptions" aria-label="Route options"></div></div>
       </div>
       <div id="routeCard"></div>
     </section>
@@ -136,8 +136,8 @@
   <dialog id="settingsHelpDialog" class="map-dialog settings-help-dialog" aria-label="Routing settings help">
     <div class="dialog-head"><h2>Routing settings</h2><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div>
     <section><h3>Limits</h3><p><b>Minimum shoulder</b> is the width required on faster roads. <b>Max acceptable speed without shoulder</b> lets slower roads pass even where shoulder data is missing. <b>Never allow roads faster than</b> makes roads above the selected speed fail; “no cutoff” leaves the shoulder rule in charge.</p></section>
-    <section><h3>Options</h3><p><b>Always strongly prefer bike routes</b> favors designated trails and corridors in every routing style. <b>Always strongly prefer residential streets</b> favors streets mapped as residential or living streets over ordinary tertiary streets. <b>Allow freeway as last resort</b> permits a freeway only when the network otherwise has no route; it still fails the rules. <b>Fail if no complete safe route found</b> returns no route instead of showing an unavoidable failing segment. <b>Auto-reroute</b> waits for 15 seconds of actual movement while you remain off route, then announces “updating route” and reroutes from your current location; turn it off to reroute only when you choose. <b>Unknown shoulder treated as 0 ft</b> requires fast roads to prove an adequate shoulder. Start and End search always keep local results available; the search icon also performs a manual online place lookup.</p></section>
-    <section><h3>How the router uses them</h3><p>Direct is quickest, Balanced avoids bad roads when the detour is reasonable, and Low-stress detours further to avoid failures. Preferences in Options apply across all three routing styles.</p></section>
+    <section><h3>Options</h3><p><b>Strongly prefer bike routes for all route options</b> forces every choice to favor designated trails and corridors. <b>Strongly prefer residential streets for all route options</b> forces every choice to favor streets mapped as residential or living streets over ordinary tertiary streets. <b>Allow freeway as last resort</b> permits a freeway only when the network otherwise has no route; it still fails the rules. <b>Only show fully safe routes</b> returns no route instead of showing an unavoidable failing segment. <b>Auto-reroute</b> waits for 15 seconds of actual movement while you remain off route, then announces “updating route” and reroutes from your current location; turn it off to reroute only when you choose. <b>Unknown shoulder treated as 0 ft</b> requires fast roads to prove an adequate shoulder. Start and End search always keep local results available; the search icon also performs a manual online place lookup.</p></section>
+    <section><h3>How route choices work</h3><p>The app tests quicker, gentler, bike-route, and residential optimizations, then shows up to five meaningfully different choices. Choices are ordered roughly from more efficient to more friendly. A forced preference above applies to every choice.</p></section>
   </dialog>
 
   <dialog id="routeDetailsDialog" class="route-details-dialog" aria-label="Route details">

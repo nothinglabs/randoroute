@@ -3,11 +3,9 @@
  * scripts/build_graph.py) entirely in this worker — no routing server.
  *
  * Cost = estimated riding TIME (grade-aware speed model on baked-in DEM
- * elevations), scaled per riding mode:
- *   direct    — fastest ride; failing roads allowed with a slight nudge away
- *   balanced  — failing roads cost 3x their time; gentle preference for
- *               comfortable roads and bike infrastructure
- *   low       — strongly avoids failing roads, but can use one as a last resort
+ * elevations), scaled across several internal optimization profiles. A route
+ * request tests those profiles, removes near-duplicates, and returns up to five
+ * genuinely different choices ordered roughly from efficient to friendly.
  * Prohibited ways are excluded at build time (or marked by the graph migration)
  * in every mode.
  */
@@ -228,10 +226,10 @@ function modeMult(mode, lvl) {
   /* low */ return lvl === 4 ? 30.0 : lvl === 1 ? 0.9 : 1.0;
 }
 
-function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
+function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential, startSnap, endSnap) {
   const t0 = Date.now();
-  const s = nearestNode(startLL[0], startLL[1]);
-  const t = nearestNode(endLL[0], endLL[1]);
+  const s = startSnap || nearestNode(startLL[0], startLL[1]);
+  const t = endSnap || nearestNode(endLL[0], endLL[1]);
   const farPoints = [];
   if (s.distM > 2000) farPoints.push({ pointOffset: 0, distanceM: s.distM });
   if (t.distM > 2000) farPoints.push({ pointOffset: 1, distanceM: t.distM });
@@ -250,7 +248,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
       empty: true,
       coords: [[nodeLon[s.node], nodeLat[s.node]]],
       distM: 0, timeS: 0, ascentM: 0, descentM: 0, failM: 0, ferryM: 0,
-      ferrySegs: [], desigM: 0, segs: [], profile: [[0, nodeEle[s.node]]],
+      ferrySegs: [], desigM: 0, residentialM: 0, freewayM: 0,
+      limitedAccessM: 0, levelM: [0, 0, 0, 0, 0], edgeIds: [],
+      segs: [], profile: [[0, nodeEle[s.node]]],
       snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
     };
   }
@@ -284,7 +284,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
       // can, its level and cost still make it a route failure and last resort.
       if (!rules.allowFreeways && (fl & 4)) continue;
       const lvl = edgeLevel(ei, rules);
-      // "Fail if no complete safe route": failing roads become impassable in
+      // "Only show fully safe routes": failing roads become impassable in
       // EVERY mode — the mode then picks among fully-passing routes only.
       if (rules.requireSafe && lvl === 4) continue;
       const mult = modeMult(mode, lvl);
@@ -316,7 +316,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
     return {
       ok: false,
       reason: rules.requireSafe
-        ? 'No complete safe route exists under your rules — relax a rule, or uncheck “Fail if no complete safe route”.'
+        ? 'No fully safe route exists under your rules — relax a rule, or turn off “Only show fully safe routes”.'
         : 'No route exists on the rideable network between these points.',
     };
   }
@@ -330,8 +330,12 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
   const profile = []; // [cumulative meters, elevation m] per node along the route
   const ferryRanges = []; // coord index ranges covered by ferry legs
   const segs = [];        // per-edge attrs for the tap-to-inspect route readout
-  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0, desigM = 0;
+  const edgeIds = [];
+  const levelM = [0, 0, 0, 0, 0];
+  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0;
   for (const [ei, fromNode] of edges) {
+    edgeIds.push(ei);
     const off = eOff[ei], cnt = eCnt[ei];
     const forward = eA[ei] === fromNode;
     if (coords.length === 0) {
@@ -354,7 +358,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (eFlags[ei] & 64) desigM += eLen[ei];
+    if (!(eFlags[ei] & (8 | 32 | 4 | 128)) && isResidential(ei)) residentialM += eLen[ei];
+    if (eFlags[ei] & 4) freewayM += eLen[ei];
+    else if (eFlags[ei] & 128) limitedAccessM += eLen[ei];
     const level = edgeLevel(ei, rules);
+    levelM[level] += eLen[ei];
     if (level === 4) failM += eLen[ei];
     segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
       mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], roadClass: eClass[ei], level,
@@ -364,18 +372,20 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential) {
   }
   const ferrySegs = ferryRanges.map(([a, b]) => coords.slice(a, b + 1));
   return {
-    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs, desigM, segs,
+    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
+    desigM, residentialM, freewayM, limitedAccessM, levelM, edgeIds, segs,
     profile, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
 }
 
 // Route through an ordered list of points (A -> B -> C ...): one A* per leg,
 // results merged into a single continuous route.
-function route(points, rules, mode, prefDesig, prefResidential) {
+function route(points, rules, mode, prefDesig, prefResidential, snaps) {
   const t0 = Date.now();
   const legs = [];
   for (let i = 0; i + 1 < points.length; i++) {
-    const leg = routeLeg(points[i], points[i + 1], rules, mode, prefDesig, prefResidential);
+    const leg = routeLeg(points[i], points[i + 1], rules, mode, prefDesig, prefResidential,
+      snaps?.[i], snaps?.[i + 1]);
     if (!leg.ok) {
       if (leg.code === 'point-too-far') {
         leg.farPoints = leg.farPoints.map((p) => ({
@@ -397,7 +407,10 @@ function route(points, rules, mode, prefDesig, prefResidential) {
   }
   const coords = [], segs = [], ferrySegs = [], profile = [];
   const legSummaries = legs.map((l) => ({ distM: l.distM, timeS: l.timeS, failM: l.failM }));
-  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0, desigM = 0;
+  const edgeIds = [];
+  const levelM = [0, 0, 0, 0, 0];
+  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0;
   for (const leg of legs) {
     const cOff = coords.length ? coords.length - 1 : 0; // joint vertex is shared
     for (let j = coords.length ? 1 : 0; j < leg.coords.length; j++) coords.push(leg.coords[j]);
@@ -407,6 +420,9 @@ function route(points, rules, mode, prefDesig, prefResidential) {
       profile.push([leg.profile[j][0] + distM, leg.profile[j][1]]);
     distM += leg.distM; timeS += leg.timeS; ascentM += leg.ascentM; descentM += leg.descentM;
     failM += leg.failM; ferryM += leg.ferryM; desigM += leg.desigM;
+    residentialM += leg.residentialM; freewayM += leg.freewayM;
+    limitedAccessM += leg.limitedAccessM; edgeIds.push(...leg.edgeIds);
+    for (let level = 1; level <= 4; level++) levelM[level] += leg.levelM[level];
   }
   // Downsample the profile to <= 240 points for the sparkline.
   let prof = profile;
@@ -418,11 +434,176 @@ function route(points, rules, mode, prefDesig, prefResidential) {
     prof = ds;
   }
   return {
-    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs, desigM, segs,
+    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
+    desigM, residentialM, freewayM, limitedAccessM, levelM, edgeIds, segs,
     legs: legSummaries,
     profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
     ms: Date.now() - t0,
   };
+}
+
+/* ------------------------------------------ diverse route choices */
+// These are internal search profiles, not fixed user-facing modes. The
+// preference combinations deliberately probe whether a bike-route or
+// residential bias finds a genuinely better corridor. Global preference
+// switches force the corresponding bias on for every profile.
+const ROUTE_PROFILES = [
+  { id: 'quick', label: 'Fastest', mode: 'direct', prefDesig: false, prefResidential: false, order: 0 },
+  { id: 'efficient', label: 'Efficient', mode: 'balanced', prefDesig: false, prefResidential: false, order: 1 },
+  { id: 'bike', label: 'Bike routes', mode: 'balanced', prefDesig: true, prefResidential: false, order: 2 },
+  { id: 'residential', label: 'Residential', mode: 'balanced', prefDesig: false, prefResidential: true, order: 2.1 },
+  { id: 'bike-residential', label: 'Bike + calm', mode: 'balanced', prefDesig: true, prefResidential: true, order: 2.2 },
+  { id: 'gentle', label: 'Gentler', mode: 'low', prefDesig: false, prefResidential: false, order: 3 },
+  { id: 'friendly', label: 'Friendly', mode: 'low', prefDesig: true, prefResidential: true, order: 4 },
+];
+
+function candidateProfiles(forceDesig, forceResidential) {
+  const seen = new Set();
+  const profiles = [];
+  for (const base of ROUTE_PROFILES) {
+    const profile = {
+      ...base,
+      prefDesig: forceDesig || base.prefDesig,
+      prefResidential: forceResidential || base.prefResidential,
+    };
+    const key = `${profile.mode}:${profile.prefDesig}:${profile.prefResidential}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    profiles.push(profile);
+  }
+  return profiles;
+}
+
+function edgeOverlap(a, b) {
+  const aSet = new Set(a.edgeIds);
+  const bSet = new Set(b.edgeIds);
+  let sharedM = 0;
+  for (const edge of aSet) if (bSet.has(edge)) sharedM += eLen[edge];
+  return sharedM / Math.max(1, Math.min(a.distM, b.distM));
+}
+
+function materialTradeoff(a, b) {
+  const routeScale = Math.max(250, Math.min(a.distM, b.distM) * 0.08);
+  return Math.abs(a.failM - b.failM) >= Math.max(60, routeScale * 0.25)
+    || Math.abs(a.freewayM - b.freewayM) >= 60
+    || Math.abs(a.limitedAccessM - b.limitedAccessM) >= Math.max(120, routeScale * 0.5)
+    || Math.abs(a.desigM - b.desigM) >= routeScale
+    || Math.abs(a.residentialM - b.residentialM) >= routeScale;
+}
+
+function meaningfullyDifferent(a, b) {
+  const overlap = edgeOverlap(a, b);
+  return overlap < 0.9 || (overlap < 0.985 && materialTradeoff(a, b));
+}
+
+function routeAggression(r) {
+  const ridingM = Math.max(1, r.distM - r.ferryM);
+  const levels = r.levelM || [0, 0, 0, 0, 0];
+  const stress = (levels[2] * 0.18 + levels[3] * 0.75 + levels[4] * 3.5
+    + r.freewayM * 4 + r.limitedAccessM * 0.8) / ridingM;
+  const friendlyCoverage = (r.desigM * 0.12 + r.residentialM * 0.08) / ridingM;
+  return stress - friendlyCoverage;
+}
+
+function publicCandidate(candidate) {
+  const { edgeIds, _profile, ...routeResult } = candidate;
+  return {
+    ...routeResult,
+    optimization: {
+      profileId: _profile.id,
+      label: _profile.label,
+      mode: _profile.mode,
+      prefDesignated: _profile.prefDesig,
+      prefResidential: _profile.prefResidential,
+    },
+  };
+}
+
+function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId) {
+  const started = Date.now();
+  const profiles = candidateProfiles(forceDesig, forceResidential);
+  // Snapping scans the statewide node table. Do it once per route point, not
+  // once again for every optimization profile.
+  const snaps = points.map((point) => nearestNode(point[0], point[1]));
+  const raw = [];
+  let firstFailure = null;
+  for (const profile of profiles) {
+    const result = route(points, rules, profile.mode, profile.prefDesig, profile.prefResidential, snaps);
+    if (!result.ok) {
+      if (!firstFailure) firstFailure = result;
+      // A bad point or disconnected network is profile-independent.
+      if (result.code === 'point-too-far' || result.code === 'same-point') return result;
+      continue;
+    }
+    result._profile = profile;
+    result.aggression = routeAggression(result);
+    raw.push(result);
+  }
+  if (!raw.length) return firstFailure || { ok: false, reason: 'No route options were found.' };
+
+  const fastest = raw.reduce((best, r) => r.timeS < best.timeS ? r : best, raw[0]);
+  const reasonable = raw.filter((r) => r.timeS <= fastest.timeS * 2.2 + 600
+    || r.failM + 80 < fastest.failM || r.freewayM + 80 < fastest.freewayM);
+
+  // Collapse paths that are not meaningfully different. If one of the equivalent
+  // searches used both friendly preferences, retain that explanation so the
+  // presented choices still include the required both-preferences candidate.
+  const unique = [];
+  for (const candidate of reasonable) {
+    const same = unique.find((existing) => !meaningfullyDifferent(candidate, existing));
+    if (!same) {
+      unique.push(candidate);
+    } else if (candidate._profile.id === preferredProfileId) {
+      unique[unique.indexOf(same)] = candidate;
+    } else if (same._profile.id !== preferredProfileId
+        && candidate._profile.prefDesig && candidate._profile.prefResidential
+        && !(same._profile.prefDesig && same._profile.prefResidential)) {
+      unique[unique.indexOf(same)] = candidate;
+    }
+  }
+
+  unique.sort((a, b) => a._profile.order - b._profile.order
+    || b.aggression - a.aggression || a.timeS - b.timeS);
+
+  const selected = [];
+  const preferred = unique.find((r) => r._profile.id === preferredProfileId);
+  if (unique.length <= 5) {
+    selected.push(...unique);
+  } else {
+    selected.push(unique[0]);
+    const last = unique[unique.length - 1];
+    const pool = unique.slice(1, -1);
+    while (selected.length < 4 && pool.length) {
+      let bestIndex = 0, bestScore = -Infinity;
+      for (let i = 0; i < pool.length; i++) {
+        const candidate = pool[i];
+        const diversity = Math.min(...selected.map((other) => 1 - edgeOverlap(candidate, other)));
+        const profileSpread = Math.min(...selected.map((other) =>
+          Math.abs(candidate._profile.order - other._profile.order))) / 4;
+        const preferenceBonus = candidate._profile.prefDesig && candidate._profile.prefResidential ? 0.08 : 0;
+        const score = diversity + profileSpread * 0.2 + preferenceBonus;
+        if (score > bestScore) { bestScore = score; bestIndex = i; }
+      }
+      const candidate = pool.splice(bestIndex, 1)[0];
+      if (selected.every((other) => meaningfullyDifferent(candidate, other))) selected.push(candidate);
+    }
+    if (selected.every((other) => meaningfullyDifferent(last, other))) selected.push(last);
+  }
+
+  // A saved/shared choice should not silently disappear merely because a
+  // diversity tie selected another candidate for the fifth slot.
+  if (preferred && !selected.includes(preferred)) {
+    const replaceAt = selected.length >= 5 ? selected.length - 2 : selected.length;
+    selected.splice(replaceAt, selected.length >= 5 ? 1 : 0, preferred);
+  }
+  const bothPreferences = unique.find((r) => r._profile.prefDesig && r._profile.prefResidential);
+  if (bothPreferences && !selected.includes(bothPreferences)) {
+    const replaceAt = selected.length >= 5 ? selected.length - 1 : selected.length;
+    selected.splice(replaceAt, selected.length >= 5 ? 1 : 0, bothPreferences);
+  }
+  selected.sort((a, b) => a._profile.order - b._profile.order
+    || b.aggression - a.aggression || a.timeS - b.timeS);
+  return { ok: true, options: selected.slice(0, 5).map(publicCandidate), ms: Date.now() - started };
 }
 
 // Binary min-heap on (key, node) pairs.
@@ -472,7 +653,17 @@ onmessage = (ev) => {
     } else if (m.type === 'route') {
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const r = route(pts, m.rules, m.mode || 'balanced', !!m.prefDesignated, !!m.prefResidential);
-      postMessage({ type: 'route', id: m.id, ...r });
+      const profile = {
+        id: m.profileId || 'efficient', label: m.profileLabel || 'Selected route',
+        mode: m.mode || 'balanced', prefDesig: !!m.prefDesignated,
+        prefResidential: !!m.prefResidential,
+      };
+      postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }) });
+    } else if (m.type === 'route-options') {
+      const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
+      const result = routeOptions(pts, m.rules, !!m.forceDesignated,
+        !!m.forceResidential, m.preferredProfileId);
+      postMessage({ type: 'route-options', id: m.id, ...result });
     }
   } catch (err) {
     postMessage({ type: 'error', id: m.id, message: String(err && err.message || err) });

@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-13.84'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-13.87'; // shown in the map corner; bump per release
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -353,6 +353,14 @@ function validRoutePoint(point) {
 }
 
 const MAX_ROUTE_STOPS = 8;
+const ROUTE_PROFILE_IDS = new Set([
+  'quick', 'efficient', 'bike', 'residential', 'bike-residential', 'gentle', 'friendly',
+]);
+function legacyRouteProfile(mode) {
+  if (mode === 'direct') return 'quick';
+  if (mode === 'low') return 'gentle';
+  return 'efficient';
+}
 
 function normalizeStoredRoute(route) {
   if (!route || !validRoutePoint(route.s) || !validRoutePoint(route.e)) return null;
@@ -380,6 +388,7 @@ function decodeSharedRouteToken(token) {
       // that behavior so older links in messages continue to work.
       route: { s: data.s, e: data.e, v: vias.slice(0, MAX_ROUTE_STOPS) },
       mode: ['direct', 'balanced', 'low'].includes(data.m) ? data.m : null,
+      profileId: ROUTE_PROFILE_IDS.has(data.o) ? data.o : null,
       prefDesig: typeof data.p === 'boolean' ? data.p : null,
       prefResidential: typeof data.q === 'boolean' ? data.q : null,
       rules: sharedRules,
@@ -424,7 +433,8 @@ function saveStateNow() {
   try {
     localStorage.setItem(STATE_KEY, JSON.stringify({
       rules, passFail: display.passFail,
-      mode: routing.mode, prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
+      mode: routing.mode, profileId: routing.profileId,
+      prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
       autoReroute: navigationOptions.autoReroute,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
@@ -880,11 +890,16 @@ const routing = {
   worker: null, ready: false, loading: false,
   mode: sharedRoute?.mode || (['direct', 'balanced', 'low'].includes(savedState?.mode)
     ? savedState.mode : 'balanced'), // 'direct' | 'balanced' | 'low'
+  profileId: sharedRoute
+    ? (sharedRoute.profileId || legacyRouteProfile(sharedRoute.mode))
+    : (ROUTE_PROFILE_IDS.has(savedState?.profileId)
+      ? savedState.profileId : legacyRouteProfile(savedState?.mode)),
   prefDesig: sharedRoute?.prefDesig != null ? sharedRoute.prefDesig : savedState && typeof savedState.prefDesig === 'boolean'
-    ? savedState.prefDesig : true, // strongly prefer designated routes & trails
+    ? savedState.prefDesig : false, // force this preference across every route option
   prefResidential: sharedRoute?.prefResidential != null ? sharedRoute.prefResidential
-    : savedState && typeof savedState.prefResidential === 'boolean' ? savedState.prefResidential : true,
+    : savedState && typeof savedState.prefResidential === 'boolean' ? savedState.prefResidential : false,
   reqId: 0,
+  options: [],
   last: null, // last successful result (for redraws)
 };
 
@@ -904,6 +919,9 @@ function handleRouterFailure(message) {
   if (routing.worker) routing.worker.terminate();
   routing.worker = null;
   routing.navRejoin = null;
+  routing.options = [];
+  setRouteOptionsLoading(false);
+  renderRouteOptionControls();
   stopTurnNavigation(false);
   routing.last = { ok: false, code: 'router-error', reason };
   clearStoredRouteDetails();
@@ -987,12 +1005,30 @@ const ROUTE_DETAILS_KEY = 'wa-bike-route-details-1';
 function clearStoredRouteDetails() {
   try { localStorage.removeItem(ROUTE_DETAILS_KEY); } catch (e) { /* nonfatal */ }
 }
+function optimizationDescription(optimization) {
+  if (!optimization) return '';
+  const base = optimization.mode === 'direct'
+    ? 'Prioritizes a quicker trip.'
+    : optimization.mode === 'low'
+      ? 'Strongly avoids roads that fail your rules, even when that requires a longer ride.'
+      : 'Balances travel time with avoiding roads that fail your rules.';
+  const preferences = [];
+  if (optimization.prefDesignated) preferences.push('bike routes and trails');
+  if (optimization.prefResidential) preferences.push('residential streets');
+  if (!preferences.length) return `${base} No additional road-type preference was applied.`;
+  const list = preferences.length === 2 ? `${preferences[0]} and ${preferences[1]}` : preferences[0];
+  return `${base} Strongly prefers ${list}.`;
+}
 function storeRouteDetails(m) {
   if (!m || !m.ok) return;
   try {
     localStorage.setItem(ROUTE_DETAILS_KEY, JSON.stringify({
       savedAt: Date.now(),
       mode: routing.mode,
+      optimization: m.optimization ? {
+        ...m.optimization,
+        description: optimizationDescription(m.optimization),
+      } : null,
       rules: { ...rules },
       summary: {
         distM: m.distM, timeS: m.timeS, ascentM: m.ascentM, descentM: m.descentM,
@@ -1217,6 +1253,7 @@ function refreshNavigationUI() {
   if (startLabel) startLabel.textContent = turnNav.active ? 'Pause' : 'Navigate';
   const startIcon = document.getElementById('navStartIcon');
   if (startIcon) startIcon.textContent = turnNav.active ? 'Ⅱ' : '▶';
+  syncRouteOptionControls();
   const banner = document.getElementById('navBanner');
   const kicker = document.getElementById('navBannerKicker');
   const bannerText = document.getElementById('navBannerText');
@@ -1491,7 +1528,7 @@ function renderRouteCard(m) {
   if (!m) {
     card.innerHTML = `<div id="routeControlsSlot"></div><div class="rc-empty">Use <b>Start</b> on the map bar to
       search for or tap your start point. Use <b>End</b> for the destination. Routes follow your
-      riding rules and chosen mode, entirely on this device.</div>`;
+      riding rules, entirely on this device. When meaningful alternatives exist, they appear above.</div>`;
     moveControls();
     refreshNavigationUI();
     return;
@@ -1523,7 +1560,7 @@ function renderRouteCard(m) {
   if (stats.limitedAccessM > 0) routeTypeParts.push(`<button class="rc-highlight-item rc-attention" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access caution segments on the map"><span>⚠ Caution</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`);
   const routeTypes = `<div class="rc-route-types">${routeTypeParts.join('')}</div>`;
   const levelNames = ['', 'Comfy', 'Meets rules', 'Caution', 'Fails rules'];
-  const levels = `<div class="rc-levels">${[1, 2, 4].map((level) =>
+  const levels = `<div class="rc-levels">${[1, 4].map((level) =>
     `<button class="rc-level rc-l${level}${level === 4 && stats.levels[level] > 0 ? ' rc-attention' : ''}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
   ).join('')}</div>`;
   const legs = m.legs && m.legs.length > 1
@@ -1610,10 +1647,35 @@ function onRouterMessage(ev) {
     setRouteStatus(routing.start && routing.end ? 'Routing…' : '');
     renderRouteCard(routing.last);
     computeRoute();
+  } else if (m.type === 'route-options') {
+    if (m.id !== routing.reqId) return;
+    document.body.dataset.routeOptionsMs = String(Math.round(Number(m.ms) || 0));
+    setRouteOptionsLoading(false);
+    if (!m.ok || !Array.isArray(m.options) || !m.options.length) {
+      routing.options = [];
+      routing.navRejoin = null;
+      stopTurnNavigation(false);
+      clearStoredRouteDetails();
+      const failure = { ...m, ok: false, reason: m.reason || 'No useful route options were found.' };
+      routing.last = failure;
+      renderRouteOptionControls();
+      renderRouteCard(failure);
+      drawRoute([]);
+      setRouteStatus(failure.reason);
+      if (m.code === 'point-too-far') showPointTooFarPopup(m);
+      return;
+    }
+    routing.options = m.options;
+    const selected = m.options.find((option) => option.optimization?.profileId === routing.profileId)
+      || m.options[Math.floor((m.options.length - 1) / 2)];
+    activateRouteOption(selected);
   } else if (m.type === 'route') {
     if (m.id !== routing.reqId) return; // stale reply
-    routing.last = m;
+    setRouteOptionsLoading(false);
     if (!m.ok) {
+      routing.options = [];
+      routing.last = m;
+      renderRouteOptionControls();
       routing.navRejoin = null;
       stopTurnNavigation(false);
       clearStoredRouteDetails();
@@ -1623,20 +1685,8 @@ function onRouterMessage(ev) {
       if (m.code === 'point-too-far') showPointTooFarPopup(m);
       return;
     }
-    if (turnNav.active) {
-      turnNav.route = buildTurnInstructions(m);
-      turnNav.next = 0;
-      turnNav.nearest = 0;
-      turnNav.routeM = 0;
-      turnNav.arrived = false;
-      clearOffRouteTracking();
-      turnNav.rejoinAwaiting = false;
-      turnNav.message = 'Route updated';
-    }
-    renderRouteCard(m);
-    storeRouteDetails(m);
-    drawRoute(m.coords, m.ferrySegs, m.segs);
-    setRouteStatus(`${fmtMi(m.distM)} mi`);
+    routing.options = [m];
+    activateRouteOption(m, true);
   } else if (m.type === 'error') {
     if (m.id != null && m.id !== routing.reqId) return;
     handleRouterFailure(m.message);
@@ -1652,14 +1702,28 @@ function computeRoute() {
   }
   routing.reqId++;
   setRouteStatus('Routing…');
+  setRouteOptionsLoading(true);
   saveStateSoon();
-  routing.worker.postMessage({
-    type: 'route', id: routing.reqId,
-    points: [routing.start, ...(routing.navRejoin ? [routing.navRejoin] : []), ...routing.vias.map((v) => v.pt), routing.end],
-    rules: { ...rules }, mode: routing.mode,
-    prefDesignated: routing.prefDesig,
-    prefResidential: routing.prefResidential,
-  });
+  const points = [routing.start, ...(routing.navRejoin ? [routing.navRejoin] : []),
+    ...routing.vias.map((v) => v.pt), routing.end];
+  const selected = routing.last?.optimization;
+  if (turnNav.active || routing.navRejoin) {
+    routing.worker.postMessage({
+      type: 'route', id: routing.reqId, points, rules: { ...rules },
+      mode: selected?.mode || routing.mode,
+      profileId: selected?.profileId || routing.profileId,
+      profileLabel: selected?.label,
+      prefDesignated: routing.prefDesig || !!selected?.prefDesignated,
+      prefResidential: routing.prefResidential || !!selected?.prefResidential,
+    });
+  } else {
+    routing.worker.postMessage({
+      type: 'route-options', id: routing.reqId, points, rules: { ...rules },
+      forceDesignated: routing.prefDesig,
+      forceResidential: routing.prefResidential,
+      preferredProfileId: routing.profileId,
+    });
+  }
 }
 
 // Pseudo-source for tapping the route line itself: segments carry their graph
@@ -1819,7 +1883,6 @@ const ROUTE_HIGHLIGHT_FILTERS = {
   freeway: ['==', ['get', 'fw'], 1],
   'limited-access': ['==', ['get', 'lim'], 1],
   'level-1': ['==', ['get', 'level'], 1],
-  'level-2': ['==', ['get', 'level'], 2],
   'level-3': ['==', ['get', 'level'], 3],
   'level-4': ['==', ['get', 'level'], 4],
 };
@@ -2077,7 +2140,9 @@ function clearRoute() {
   }
   drawRoute([]);
   routing.last = null;
+  routing.options = [];
   clearStoredRouteDetails();
+  renderRouteOptionControls();
   renderRouteCard(null);
   setRouteStatus('');
   updateArmButtons();
@@ -2109,12 +2174,6 @@ function updateArmButtons() {
   if (reverse) reverse.disabled = !(routing.start && routing.end);
 }
 
-const MODES = [
-  ['direct', 'Direct', 'Fastest ride, even if stressful'],
-  ['balanced', 'Balanced', 'Avoids bad roads when the detour is reasonable'],
-  ['low', 'Low-stress', 'Detours hard to avoid failing roads; unavoidable ones pulse red'],
-];
-
 function syncRoutePreferenceControls() {
   const designated = document.getElementById('r-prefDesig');
   const residential = document.getElementById('r-prefResidential');
@@ -2122,35 +2181,86 @@ function syncRoutePreferenceControls() {
   if (residential) residential.checked = routing.prefResidential;
 }
 
-function syncModeControls() {
-  document.querySelectorAll('#modeChips button').forEach((button) => {
-    const active = button.dataset.mode === routing.mode;
+function syncRouteOptionControls() {
+  const host = document.getElementById('routeOptions');
+  const busy = host?.classList.contains('loading');
+  document.querySelectorAll('#routeOptions button[data-route-option]').forEach((button) => {
+    const active = Number(button.dataset.routeOption) === routing.options.indexOf(routing.last);
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
+    button.disabled = turnNav.active || busy;
   });
 }
 
+function setRouteOptionsLoading(loading) {
+  const host = document.getElementById('routeOptions');
+  if (!host) return;
+  host.classList.toggle('loading', loading);
+  host.setAttribute('aria-busy', String(loading));
+  host.querySelectorAll('button[data-route-option]').forEach((button) => {
+    button.disabled = loading || turnNav.active;
+  });
+}
+
+function renderRouteOptionControls() {
+  const host = document.getElementById('routeOptions');
+  if (!host) return;
+  if (!routing.options.length) {
+    host.innerHTML = '<span class="route-options-empty">Route choices</span>';
+    return;
+  }
+  host.innerHTML = routing.options.map((option, index) => {
+    const optimization = option.optimization || {};
+    const label = optimization.label || `Option ${index + 1}`;
+    const active = option === routing.last;
+    return `<button type="button" data-route-option="${index}" ${active ? 'class="active"' : ''}
+      aria-pressed="${active}" aria-label="Choose route ${index + 1}: ${label}"
+      title="${optimizationDescription(optimization)}" ${turnNav.active ? 'disabled' : ''}>
+      <span class="route-option-number">${index + 1}</span><span>${label}</span></button>`;
+  }).join('');
+}
+
+function activateRouteOption(option, updateNavigation = false) {
+  if (!option?.ok) return;
+  routing.last = option;
+  if (option.optimization) {
+    routing.profileId = option.optimization.profileId || routing.profileId;
+    routing.mode = option.optimization.mode || routing.mode;
+  }
+  if (updateNavigation && turnNav.active) {
+    turnNav.route = buildTurnInstructions(option);
+    turnNav.next = 0;
+    turnNav.nearest = 0;
+    turnNav.routeM = 0;
+    turnNav.arrived = false;
+    clearOffRouteTracking();
+    turnNav.rejoinAwaiting = false;
+    turnNav.message = 'Route updated';
+  }
+  renderRouteOptionControls();
+  renderRouteCard(option);
+  storeRouteDetails(option);
+  drawRoute(option.coords, option.ferrySegs, option.segs);
+  setRouteStatus(`${fmtMi(option.distM)} mi · option ${routing.options.indexOf(option) + 1} of ${routing.options.length}`);
+  saveStateSoon();
+}
+
 function buildRoutingPanel() {
-  const chips = document.getElementById('modeChips');
+  const choices = document.getElementById('routeOptions');
   document.getElementById('routeCard').addEventListener('click', (e) => {
     const button = e.target.closest('[data-highlight]');
     if (button && !button.disabled) toggleRouteHighlight(button.dataset.highlight);
   });
-  chips.innerHTML = MODES.map(([id, label]) =>
-    `<button data-mode="${id}" ${id === routing.mode ? 'class="active"' : ''}
-       aria-pressed="${id === routing.mode}" title="${MODES.find((m) => m[0] === id)[2]}">${label}</button>`).join('');
-  chips.querySelectorAll('button').forEach((b) => {
-    b.addEventListener('click', () => {
-      clearNavigationRejoin();
-      routing.mode = b.dataset.mode;
-      syncModeControls();
-      saveStateSoon();
-      computeRoute();
-    });
+  choices.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-route-option]');
+    if (!button || button.disabled || turnNav.active || choices.classList.contains('loading')) return;
+    clearNavigationRejoin();
+    const option = routing.options[Number(button.dataset.routeOption)];
+    if (option && option !== routing.last) activateRouteOption(option);
   });
+  renderRouteOptionControls();
 
-  // Preferences live in Settings so this frequently used route summary stays
-  // compact. Keep Details beside the mode choices without adding another row.
+  // Keep Details beside the route choices without adding another row.
   const details = document.createElement('button');
   details.type = 'button';
   details.id = 'routeDetailsBtn';
@@ -2158,7 +2268,7 @@ function buildRoutingPanel() {
   details.setAttribute('aria-label', 'Open route details and routing tips');
   details.title = 'Route details and routing tips';
   details.innerHTML = '<span aria-hidden="true">i</span>';
-  chips.closest('.mode-row').append(details);
+  choices.closest('.mode-row').append(details);
   details.addEventListener('click', openRouteDetails);
 
   renderRouteCard(null);
@@ -2219,6 +2329,7 @@ function shareRouteUrl() {
     e: point(routing.end),
     x: routing.vias.map((via) => point(via.pt)),
     m: routing.mode,
+    o: routing.profileId,
     p: routing.prefDesig,
     q: routing.prefResidential,
     r: { ...rules },
@@ -2247,9 +2358,10 @@ function loadSharedRouteIntoPlanner(shared) {
   buildRulesPanel();
   rescoreAll();
   if (shared.mode) routing.mode = shared.mode;
+  routing.profileId = shared.profileId || legacyRouteProfile(shared.mode || routing.mode);
   if (shared.prefDesig != null) routing.prefDesig = shared.prefDesig;
   if (shared.prefResidential != null) routing.prefResidential = shared.prefResidential;
-  syncModeControls();
+  renderRouteOptionControls();
   syncRoutePreferenceControls();
   const route = shared.route;
   setRoutePoint('start', { lng: route.s[0], lat: route.s[1] });
@@ -2329,10 +2441,12 @@ function buildSavedRoutes() {
           rescoreAll(false);
         }
         routing.mode = ['direct', 'balanced', 'low'].includes(current.mode) ? current.mode : routing.mode;
+        routing.profileId = ROUTE_PROFILE_IDS.has(current.profileId)
+          ? current.profileId : legacyRouteProfile(current.mode || routing.mode);
         routing.prefDesig = typeof current.prefDesig === 'boolean' ? current.prefDesig : routing.prefDesig;
         routing.prefResidential = typeof current.prefResidential === 'boolean'
           ? current.prefResidential : routing.prefResidential;
-        syncModeControls();
+        renderRouteOptionControls();
         syncRoutePreferenceControls();
         setRoutePoint('start', { lng: currentRoute.s[0], lat: currentRoute.s[1] });
         for (const point of currentRoute.v) addVia(
@@ -2413,7 +2527,8 @@ function buildSavedRoutes() {
     const name = input.value.trim() || `Route ${new Date().toLocaleDateString()}`;
     const list = loadSavedRoutes();
     list.unshift({ name: name.slice(0, 60), s: routing.start, e: routing.end,
-      v: routing.vias.map((x) => x.pt), mode: routing.mode, prefDesig: routing.prefDesig,
+      v: routing.vias.map((x) => x.pt), mode: routing.mode, profileId: routing.profileId,
+      prefDesig: routing.prefDesig,
       prefResidential: routing.prefResidential, rules: { ...rules },
       ts: Date.now() });
     storeSavedRoutes(list.slice(0, 30));
@@ -3071,10 +3186,10 @@ function buildRulesPanel() {
     saveStateSoon();
     computeRoute();
   };
-  check('prefDesig', 'Always strongly prefer bike routes', routing, updateRoutePreference);
-  check('prefResidential', 'Always strongly prefer residential streets', routing, updateRoutePreference);
+  check('prefDesig', 'Strongly prefer bike routes for all route options', routing, updateRoutePreference);
+  check('prefResidential', 'Strongly prefer residential streets for all route options', routing, updateRoutePreference);
   check('allowFreeways', 'Allow freeway as last resort');
-  check('requireSafe', 'Fail if no complete safe route found');
+  check('requireSafe', 'Only show fully safe routes');
   check('autoReroute', 'Auto-reroute after 15 sec off route while moving', navigationOptions, () => {
     saveStateSoon();
     refreshNavigationUI();
