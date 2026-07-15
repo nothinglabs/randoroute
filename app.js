@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-14.96';
+const APP_VERSION = '2026-07-14.98';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -522,21 +522,21 @@ if (COARSE_POINTER) map.doubleClickZoom.disable();
 // Keep the statewide view readable. The All-roads layer is on by default, but
 // it appears only in a local/regional view; neighborhood streets need a closer
 // zoom still.
-const ROADS_MIN_ZOOM = 10;
 const RES_MIN_ZOOM = 13;
-let roadsZoomState = null;
+let residentialRoadsVisible = null;
 function refreshRoadsForZoom() {
   const zoom = map.getZoom();
-  const state = `${zoom >= ROADS_MIN_ZOOM}:${zoom >= RES_MIN_ZOOM}`;
-  if (state === roadsZoomState) return;
-  roadsZoomState = state;
+  // The broad source cutoff is handled natively by each MapLibre layer's
+  // minzoom. Only the feature-level residential filter needs rebuilding.
+  const state = zoom >= RES_MIN_ZOOM;
+  if (state === residentialRoadsVisible) return;
+  residentialRoadsVisible = state;
   const roads = SOURCES.find((src) => src.id === 'roads');
   if (roads && map.getLayer(roads.id)) applyDisplayMode(roads);
-  for (const src of SOURCES) {
-    if (src.minVisibleZoom && map.getLayer(src.id)) updateVisibility(src);
-  }
 }
-map.on('zoomend', refreshRoadsForZoom);
+// Desktop wheel/trackpad zoom can remain in an active gesture for a while, so
+// update as the threshold is crossed instead of waiting for zoomend.
+map.on('zoom', refreshRoadsForZoom);
 // PMTiles: static single-file vector tiles over HTTP range requests — no server.
 if (window.pmtiles) {
   const _pmProtocol = new pmtiles.Protocol();
@@ -669,6 +669,7 @@ function ensureLayer(src) {
     type: 'line',
     source: src.id,
     ...SL,
+    minzoom: src.minVisibleZoom || 0,
     layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
     paint: {
       'line-color': FAIL_COLOR,
@@ -683,6 +684,7 @@ function ensureLayer(src) {
     type: 'line',
     source: src.id,
     ...SL,
+    minzoom: src.minVisibleZoom || 0,
     layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
     paint: {
       'line-color': COLORS[4],
@@ -697,6 +699,7 @@ function ensureLayer(src) {
     type: 'line',
     source: src.id,
     ...SL,
+    minzoom: src.minVisibleZoom || 0,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       'line-color': colorExpr(),
@@ -711,6 +714,7 @@ function ensureLayer(src) {
     type: 'line',
     source: src.id,
     ...SL,
+    minzoom: src.minVisibleZoom || 0,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       'line-color': '#000',
@@ -725,9 +729,10 @@ function ensureLayer(src) {
 // Main layer follows the source toggle; the two dashed overlays are each shown
 // in exactly one display mode.
 function updateVisibility(src) {
-  // A source must be enabled by its checkbox, and the dense All-roads tiles
-  // also require a close enough zoom to avoid obscuring the statewide map.
-  const on = src.enabled && (!src.minVisibleZoom || map.getZoom() >= src.minVisibleZoom);
+  // Source checkboxes control layout visibility. Dense sources use the
+  // layers' native minzoom, which updates reliably throughout wheel, trackpad,
+  // touch, keyboard, and programmatic zoom gestures.
+  const on = src.enabled;
   if (src.closure) {
     for (const id of [src.id, src.id + '__line']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');

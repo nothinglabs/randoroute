@@ -44,8 +44,9 @@ for (let index = 0; index < scenarios.length; index++) {
   const scenario = scenarios[index];
   messages.length = 0;
   context.onmessage({ data: { type: 'route-options', id: index + 1,
-    points: scenario.points, rules, forceDesignated: false,
-    forceResidential: false, weights: scenario.weights, debug: !!scenario.debugStages } });
+    points: scenario.points, rules, forceDesignated: !!scenario.forceDesignated,
+    forceResidential: !!scenario.forceResidential, preferredProfileId: scenario.preferredProfileId,
+    weights: scenario.weights, debug: !!scenario.debugStages } });
   const result = messages.at(-1);
   if (!result?.ok) {
     console.log(`${scenario.name}: FAIL — ${result?.reason || 'no response'}`);
@@ -63,8 +64,11 @@ for (let index = 0; index < scenarios.length; index++) {
       + `${Math.round(option.freewayM)} m freeway; `
       + `${(option.desigM / 1609.344).toFixed(1)} mi designated; `
       + `${(option.facilityM / 1609.344).toFixed(1)} mi bike facility; `
-      + `${(option.residentialM / 1609.344).toFixed(1)} mi residential; `
-      + `${((option.longestFriendlyM || 0) / 1609.344).toFixed(1)} mi longest bike run${probeText}`);
+      + `${(option.residentialM / 1609.344).toFixed(1)} mi residential${probeText}`);
+    if (scenario.printLegs) {
+      console.log(`    legs: ${option.legs.map((leg, legIndex) =>
+        `${legIndex + 1}=${(leg.distM / 1609.344).toFixed(1)} mi/${Math.round(leg.failM)} m fail/${(leg.desigM / 1609.344).toFixed(1)} mi designated/${(leg.facilityM / 1609.344).toFixed(1)} mi facility`).join(' | ')}`);
+    }
   }
   if (scenario.profileSweep) {
     console.log('  all base profiles:');
@@ -80,6 +84,10 @@ for (let index = 0; index < scenarios.length; index++) {
         + `${(option.desigM / 1609.344).toFixed(1)} mi designated; `
         + `${(option.facilityM / 1609.344).toFixed(1)} mi facility; `
         + `${(option.residentialM / 1609.344).toFixed(1)} mi residential`);
+      if (scenario.printLegs) {
+        console.log(`      legs: ${option.legs.map((leg, legIndex) =>
+          `${legIndex + 1}=${(leg.distM / 1609.344).toFixed(1)} mi/${Math.round(leg.failM)} m fail/${(leg.desigM / 1609.344).toFixed(1)} mi designated/${(leg.facilityM / 1609.344).toFixed(1)} mi facility`).join(' | ')}`);
+      }
     }
   }
 }

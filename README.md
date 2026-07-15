@@ -268,12 +268,14 @@ preferences. Near-duplicates and dominated choices are removed, leaving up to
 five useful alternatives. Visible names describe the measured outcomes rather
 than those internal recipes: **Fastest** has the lowest estimated ride time and
 **Safest** has the least rule-failing distance, with freeway/caution exposure,
-comfy coverage, and bike-route coverage breaking ties. A near-safest candidate
-with especially strong, continuous designated-route or bike-facility coverage
-is preserved as **Trail-rich**; middle choices otherwise progress from quicker
-toward safer. Limited-access roads that meet the rider's speed and shoulder
-rules remain preferable to known rule violations. Settings can force the
-bike-route or residential preference across every candidate.
+comfy coverage, and bike-route coverage breaking ties. Middle choices progress
+from quicker toward safer. On routes with stops, candidate selection checks
+detours leg by leg and preserves the safest bounded-detour option, while keeping
+at most one extreme-detour result when that is the true safest path. This keeps
+a small concern near one stop from filling the choices with large local loops.
+Limited-access roads that meet the rider's speed and shoulder rules remain
+preferable to known rule violations. Settings can force the bike-route or
+residential preference across every candidate.
 Results include distance, duration, total climb/descent, and an elevation
 profile. No routing server; works offline once cached.
 
