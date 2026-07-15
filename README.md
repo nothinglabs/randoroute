@@ -215,8 +215,10 @@ python3 scripts/build_places.py --src data/washington-latest.osm.pbf
 ```
 
 Settlements and ferry terminals from OSM, population-ranked, 122 KB — the
-Route tab's search works fully offline. Routes support intermediate stops
-(A → B → C via the + button) and can start at the rider's current location.
+Route tab's settlement/ferry search works fully offline, with online OSM place
+search when connected. Start, destination, and intermediate stops all support
+the same search-or-tap picker (A → B → C via the + button), and a route can
+start at the rider's current location.
 
 ### Routing graph → `data/graph2.bin.gz` (elevation-aware)
 
@@ -233,15 +235,13 @@ python3 scripts/patch_graph_limited_access.py --apply
 python3 scripts/patch_graph_prohibited.py --apply
 ```
 
-A compact BGR6 binary graph (nodes at intersections; edges carry length,
+A compact BGR7 binary graph (nodes at intersections; edges carry length,
 climb/descent sampled every 60 m from the DEM, the original OSM road class,
 speed — official WSDOT legal speed, OSM-posted, or class-estimated — typed
 bicycle facility, authoritative-source bits, freeway/limited-access/
-infrastructure flags, shoulder from WSDOT conflation or OSM, walk-only kind,
-and directional curve-warning severity/range). Mapped sidewalks/crossings,
-paved footways, pedestrian streets, explicit `bicycle=dismount` links, and
-road-side sidewalk tags provide a short walk-bike fallback. The router prices
-them at walking speed and caps route walking at about 0.5 mile. A directional
+infrastructure flags, shoulder from WSDOT conflation or OSM, and directional
+curve-warning severity/range). Pedestrian-only and `bicycle=dismount` ways are
+not included in the riding graph. A directional
 possible limited-visibility uphill-curve warning is inferred from overlapping
 curve geometry and uphill grade, then adjusted for speed, shoulder, and
 facility; it is explicitly a proxy rather than measured sight distance.
@@ -250,6 +250,11 @@ a separate caution flag, even when OSM does not classify the road as a
 motorway; it is routable when its speed and shoulder meet the rules. OSM
 motorways remain the graph's true freeway flag. One-way streets honored; `bicycle=no` and
 WSDOT-restricted ways excluded entirely. **Ferries** (`route=ferry` with bikes
+allowed) are included with their crossing duration plus a configurable typical
+boarding wait. At runtime, tertiary/secondary/primary/trunk classes without a
+recorded bike facility receive increasing soft costs as a traffic-volume proxy;
+they remain routable and do not become rule failures. The full set of soft
+costs is exposed under Settings → Weights (adv.) and can be reset to defaults.
 allowed — all WSF runs plus county and passenger-only ferries) are routable
 crossings: speed derives from the OSM `duration` tag, a ~15-minute typical
 terminal wait is charged when boarding from land, ferry legs never count

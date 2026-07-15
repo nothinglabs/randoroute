@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill WSDOT limited-access caution flags into an existing BGR3-BGR6 graph.
+"""Backfill WSDOT limited-access caution flags into an existing BGR3-BGR7 graph.
 
 This is a conservative final safety net after a normal build, and a migration
 tool when the raw OSM and DEM inputs used to build the checked-in graph are
@@ -59,7 +59,7 @@ def point_segment_distance_sq(px, py, ax, ay, bx, by):
 
 def graph_layout(raw):
     magic = bytes(raw[:4])
-    if magic not in (b'BGR3', b'BGR4', b'BGR5', b'BGR6'):
+    if magic not in (b'BGR3', b'BGR4', b'BGR5', b'BGR6', b'BGR7'):
         raise ValueError('not a supported BGR graph')
     n, e, d, g, u, name_bytes = struct.unpack_from('<6I', raw, 4)
     offset = 28
@@ -78,16 +78,17 @@ def graph_layout(raw):
     edge_shoulder = offset
     offset += e      # edge shoulder
     edge_road_class = None
-    if magic in (b'BGR4', b'BGR5', b'BGR6'):
+    if magic in (b'BGR4', b'BGR5', b'BGR6', b'BGR7'):
         edge_road_class = offset
         offset += e  # OSM highway class
     edge_walk = None
-    if magic in (b'BGR5', b'BGR6'):
+    if magic in (b'BGR5', b'BGR6', b'BGR7'):
         offset += e  # typed bicycle facility
         offset += e  # authoritative WSDOT source bits
     if magic == b'BGR6':
         edge_walk = offset
         offset += e  # walk-only kind
+    if magic in (b'BGR6', b'BGR7'):
         offset += e  # curve hazard a->b
         offset += e  # curve hazard b->a
         offset += offset % 2

@@ -7,17 +7,14 @@ the browser routes over locally (A* in a web worker). No routing server.
 
 Included edges:
   - drivable roads (same classes/filters as build_roads.py, with the same
-    BNA-style speed inference), excluding bicycle=no
+    BNA-style speed inference), excluding bicycle=no/dismount
   - rideable bike infrastructure (same keep logic as build_osm.py classify,
     excluding prohibited) — flagged infra=1
-  - short-fallback pedestrian topology: mapped sidewalks/crossings, paved
-    footways, pedestrian streets, and bicycle=dismount links. These are stored
-    as walk-only edges; the router never presents them as bicycle facilities.
 
 One-way streets are honored for bikes (oneway / junction=roundabout, with
 oneway:bicycle=no overriding; oneway=-1 reverses the edge).
 
-Binary layout (little-endian), after header 'BGR6' + N,E,D,G,U,B (u32):
+Binary layout (little-endian), after header 'BGR7' + N,E,D,G,U,B (u32):
   nodeLon f32[N], nodeLat f32[N]
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
   edgeSpeed u8[E] (mph; 0 = separated infra), edgeFlags u8[E]
@@ -30,8 +27,6 @@ Binary layout (little-endian), after header 'BGR6' + N,E,D,G,U,B (u32):
   edgeFacility u8[E] (0=none, 1=shared lane, 2=bike lane,
                       3=buffered lane, 4=separated lane, 5=shared-use path),
   edgeOfficial u8[E] (1=WSDOT legal speed, 2=WSDOT facility),
-  edgeWalkKind u8[E] (0=ride, 1=sidewalk/crossing, 2=footway/pedestrian,
-                      3=explicit bicycle=dismount),
   edgeHazardAB u8[E], edgeHazardBA u8[E]
     (0=none; 1-3 directional possible limited-visibility uphill curve),
   edgeHazardStartAB u16[E], edgeHazardEndAB u16[E],
@@ -110,15 +105,6 @@ FACILITY_SEPARATED = 4
 FACILITY_PATH = 5
 OFFICIAL_SPEED = 1
 OFFICIAL_FACILITY = 2
-WALK_NONE = 0
-WALK_SIDEWALK = 1
-WALK_FOOTWAY = 2
-WALK_DISMOUNT = 3
-PAVED_FOOTWAY_SURFACES = {
-    'paved', 'asphalt', 'concrete', 'concrete:plates', 'paving_stones',
-    'compacted', 'fine_gravel',
-}
-
 WSDOT_FACILITY_TYPE = {
     'Shared Lane': FACILITY_SHARED,
     'Bike Lane': FACILITY_LANE,
@@ -420,8 +406,8 @@ def classify_way(tags):
     bike = tags.get('bicycle')
     foot = tags.get('foot')
     hw = tags.get('highway')
-    if bike == 'no':
-        return None  # user's strict bicycle prohibition — never routable
+    if bike in ('no', 'dismount'):
+        return None  # not rideable; pedestrian/dismount fallbacks are not in this graph
     # access=no/private is a blanket default that mode-specific tags override:
     # e.g. the SR 520 Trail bridge is access=no + bicycle=designated (closed to
     # general traffic, explicitly open to bikes).
@@ -438,8 +424,7 @@ def classify_way(tags):
             return None
         return {'speed': FERRY_DEFAULT_MPH, 'est': True, 'facility': FACILITY_NONE, 'lim': False,
                 'infra': False, 'sh': None, 'road_class': 0, 'ferry': True,
-                'duration': tags.get('duration'), 'walk_kind': WALK_NONE,
-                'parallel_walk': False}
+                'duration': tags.get('duration')}
 
     cycleways = [tags[k] for k in CYCLEWAY_KEYS if tags.get(k)]
 
@@ -468,30 +453,7 @@ def classify_way(tags):
     )
     if infra:
         return {'speed': 0, 'est': False, 'facility': FACILITY_PATH, 'lim': False,
-                'infra': True, 'sh': None, 'road_class': 0,
-                'walk_kind': WALK_NONE, 'parallel_walk': False}
-
-    # Walking a bicycle is a separate fallback mode. Plain footways are kept
-    # only when they are recognizably sidewalk/crossing topology or have a
-    # reasonably walkable surface; this avoids turning every remote hiking
-    # path into a statewide bicycle-route alternative. Explicit dismount ways
-    # are retained whenever pedestrian access is legal.
-    pedestrian_access = foot not in ('no', 'private')
-    sidewalk = tags.get('footway') in ('sidewalk', 'crossing') or tags.get('path') == 'sidewalk'
-    paved_footway = tags.get('surface') in PAVED_FOOTWAY_SURFACES
-    walk_kind = WALK_NONE
-    if bike == 'dismount' and pedestrian_access:
-        walk_kind = WALK_DISMOUNT
-    elif hw == 'footway' and pedestrian_access and (sidewalk or paved_footway):
-        walk_kind = WALK_SIDEWALK if sidewalk else WALK_FOOTWAY
-    elif hw == 'path' and pedestrian_access and paved_footway:
-        walk_kind = WALK_FOOTWAY
-    elif hw == 'pedestrian' and pedestrian_access:
-        walk_kind = WALK_FOOTWAY
-    if walk_kind:
-        return {'speed': 0, 'est': False, 'facility': FACILITY_NONE, 'lim': False,
-                'infra': False, 'sh': None, 'road_class': 0,
-                'walk_kind': walk_kind, 'parallel_walk': False}
+                'infra': True, 'sh': None, 'road_class': 0}
     if hw not in DRIVE:
         return None
 
@@ -499,18 +461,11 @@ def classify_way(tags):
     est = spd is None
     if est:
         spd = DEFAULT_MPH[hw]
-    sidewalk_values = {
-        tags.get('sidewalk'), tags.get('sidewalk:both'),
-        tags.get('sidewalk:left'), tags.get('sidewalk:right'),
-    }
-    parallel_walk = bool(sidewalk_values & {'yes', 'both', 'left', 'right'}) \
-        and 'separate' not in sidewalk_values and foot not in ('no', 'private')
     return {
         'speed': min(spd, 255), 'est': est,
         'facility': osm_facility(), 'lim': hw in LIMITED,
         'infra': False, 'sh': parse_shoulder_ft(tags),
         'road_class': ROAD_CLASS[hw],
-        'walk_kind': WALK_NONE, 'parallel_walk': parallel_walk,
     }
 
 
@@ -541,8 +496,8 @@ def line_len_m(coords):
 def simplify_line(coords, tolerance=SIMPLIFY_DEG):
     """Small iterative Douglas-Peucker simplifier for millions of short ways.
 
-    Constructing a Shapely geometry for every four-point sidewalk dominates
-    graph-build time; this keeps the same endpoint-preserving behavior with a
+    Constructing a Shapely geometry for every short road/path dominates graph
+    build time; this keeps the same endpoint-preserving behavior with a
     lightweight planar tolerance suitable for Washington-scale coordinates.
     """
     if len(coords) <= 3:
@@ -687,7 +642,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     node_lon = array('f'); node_lat = array('f')
     eA = array('I'); eB = array('I'); eLen = array('f')
     eSpeed = array('B'); eFlags = array('B'); eSh = array('b'); eClass = array('B')
-    eFacility = array('B'); eOfficial = array('B'); eWalk = array('B')
+    eFacility = array('B'); eOfficial = array('B')
     eHazAB = array('B'); eHazBA = array('B')
     eHazStartAB = array('H'); eHazEndAB = array('H')
     eHazStartBA = array('H'); eHazEndBA = array('H')
@@ -724,7 +679,6 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     official_speeds = [0]
     official_facilities = [0]
     restricted_edges = [0]
-    walk_edges = [0]
     hazard_edges = [0]
     for obj in osmium.FileProcessor(src).with_locations():
         if not obj.is_way():
@@ -779,7 +733,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                         if a != b or length > 10:  # drop degenerate micro-loops
                             espeed, esh, eflags = attrs['speed'], sh, flags
                             efacility, eofficial = attrs['facility'], 0
-                            if (restriction_index and not attrs['infra'] and not attrs.get('walk_kind')
+                            if (restriction_index and not attrs['infra']
                                     and is_restricted_edge(coords, tags, restriction_index)):
                                 restricted_edges[0] += 1
                                 seg = [p]
@@ -809,7 +763,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                         espeed = min(int(best['spd']), 255)
                                         eflags &= ~1  # measured, not estimated
                                     conflated[0] += 1
-                            if speed_index and not attrs['infra'] and not attrs.get('walk_kind') and not is_ferry:
+                            if speed_index and not attrs['infra'] and not is_ferry:
                                 match = official_match(coords, tags, speed_index)
                                 if match is not None:
                                     espeed = min(match['value'], 255)
@@ -829,8 +783,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                         eofficial |= OFFICIAL_FACILITY
                                         official_facilities[0] += 1
                             asc, des = (0.0, 0.0) if is_ferry else edge_climb(coords, ele_at)
-                            walk_kind = attrs.get('walk_kind', WALK_NONE)
-                            if walk_kind or is_ferry or attrs['infra']:
+                            if is_ferry or attrs['infra']:
                                 haz_ab = haz_ba = (0, 0, 0)
                             else:
                                 haz_ab, haz_ba = directional_curve_hazard(
@@ -840,37 +793,25 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             for x, y in coords[:geom_cnt]:
                                 gLon.append(x); gLat.append(y)
 
-                            def append_edge(kind, edge_flags, edge_speed, edge_sh,
+                            def append_edge(edge_flags, edge_speed, edge_sh,
                                             edge_class, edge_facility, edge_official,
-                                            edge_asc, edge_des, ab, ba, bidirectional=False):
+                                            edge_asc, edge_des, ab, ba):
                                 eAsc.append(min(int(edge_asc), 65535)); eDes.append(min(int(edge_des), 65535))
                                 eA.append(a); eB.append(b); eLen.append(length)
-                                eSpeed.append(edge_speed); eFlags.append(edge_flags & (~16 if bidirectional else 255))
+                                eSpeed.append(edge_speed); eFlags.append(edge_flags)
                                 eSh.append(edge_sh); eClass.append(edge_class)
                                 eFacility.append(edge_facility); eOfficial.append(edge_official)
-                                eWalk.append(kind)
                                 eHazAB.append(ab[0]); eHazBA.append(ba[0])
                                 eHazStartAB.append(ab[1]); eHazEndAB.append(ab[2])
                                 eHazStartBA.append(ba[1]); eHazEndBA.append(ba[2])
                                 eName.append(name_idx(tags.get('name') or tags.get('ref')))
                                 eOff.append(geom_off); eCnt.append(geom_cnt)
 
-                            append_edge(walk_kind, eflags, espeed, esh,
+                            append_edge(eflags, espeed, esh,
                                         attrs['road_class'], efacility, eofficial,
                                         asc, des, haz_ab, haz_ba)
-                            if walk_kind:
-                                walk_edges[0] += 1
                             if haz_ab[0] or haz_ba[0]:
                                 hazard_edges[0] += 1
-                            # An OSM road-side sidewalk tag describes a parallel
-                            # pedestrian fallback even when its line was not
-                            # mapped separately. It is deliberately bidirectional
-                            # and carries no road-rule or facility classification.
-                            if attrs.get('parallel_walk'):
-                                append_edge(WALK_SIDEWALK, 0, 0, -1, 0,
-                                            FACILITY_NONE, 0, asc, des,
-                                            (0, 0, 0), (0, 0, 0), True)
-                                walk_edges[0] += 1
                             if ow == 1:
                                 oneway_arcs += 1
                 seg = [p]
@@ -950,7 +891,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
         eA.append(n); eB.append(best); eLen.append(max(best_d, 1.0))
         eAsc.append(0); eDes.append(0)
         eSpeed.append(0); eFlags.append(8); eSh.append(-1); eClass.append(0)  # infra: walk the bike
-        eFacility.append(FACILITY_NONE); eOfficial.append(0); eWalk.append(WALK_DISMOUNT)
+        eFacility.append(FACILITY_PATH); eOfficial.append(0)
         eHazAB.append(0); eHazBA.append(0)
         eHazStartAB.append(0); eHazEndAB.append(0); eHazStartBA.append(0); eHazEndBA.append(0)
         eName.append(name_idx('Ferry terminal connector'))
@@ -964,14 +905,13 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
         in_adj.setdefault(best, []).append(n)
         land_touch[n] = 1
         stitched += 1
-        walk_edges[0] += 1
     print(f'  connector edges added: {stitched}', flush=True)
 
     N, E, G = len(node_lon), len(eA), len(gLon)
     print(f'  nodes {N:,}  edges {E:,}  geom vertices {G:,}  oneway edges {oneway_arcs:,}', flush=True)
     print(f'  WSDOT-conflated edges: {conflated[0]:,}; direct restrictions excluded: {restricted_edges[0]:,}', flush=True)
     print(f'  official legal speeds: {official_speeds[0]:,}; official facilities: {official_facilities[0]:,}', flush=True)
-    print(f'  walk-only fallback edges: {walk_edges[0]:,}; directional curve-warning edges: {hazard_edges[0]:,}', flush=True)
+    print(f'  directional curve-warning edges: {hazard_edges[0]:,}', flush=True)
 
     # ---- directed CSR adjacency
     print('building adjacency...', flush=True)
@@ -1008,22 +948,22 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     print(f'  names: {U:,} unique, blob {B:,} bytes', flush=True)
 
     for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass,
-                eFacility, eOfficial, eWalk, eHazAB, eHazBA,
+                eFacility, eOfficial, eHazAB, eHazBA,
                 eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA,
                 eName, name_offs, eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat):
         if sys.byteorder == 'big':
             arr.byteswap()
     # JS typed-array views need 4-byte alignment: pad after the byte arrays
-    # (4E bytes) and after the u16 array (2E bytes). The name blob goes LAST
+    # and after the u16 arrays. The name blob goes LAST
     # so everything before it stays aligned.
-    parts = [b'BGR6', struct.pack('<IIIIII', N, E, D, G, U, B),
+    parts = [b'BGR7', struct.pack('<IIIIII', N, E, D, G, U, B),
              node_lon.tobytes(), node_lat.tobytes(), nEle.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
     parts += [eA.tobytes(), eB.tobytes(), eLen.tobytes(),
               eAsc.tobytes(), eDes.tobytes(),
               eSpeed.tobytes(), eFlags.tobytes(), eSh.tobytes(), eClass.tobytes(),
-              eFacility.tobytes(), eOfficial.tobytes(), eWalk.tobytes(),
+              eFacility.tobytes(), eOfficial.tobytes(),
               eHazAB.tobytes(), eHazBA.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((2 - off % 2) % 2))

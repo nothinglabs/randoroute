@@ -18,7 +18,6 @@
 <body class="panel-open">
   <div id="map"></div>
   <button id="appHelpBtn" type="button" aria-label="How to use the app" title="How to use the app">?</button>
-  <div id="appVersion" aria-label="App version"></div>
 
   <div id="topToolbar">
     <button id="navStartButton" class="nav-start" type="button" disabled title="Set a route to navigate">
@@ -72,6 +71,7 @@
         <div class="settings-tab-pair" role="tablist" aria-label="Routing settings">
           <button id="settings-tab-limits" type="button" role="tab" aria-selected="true" aria-controls="settings-limits" data-settings-pane="limits" class="active">Limits</button>
           <button id="settings-tab-options" type="button" role="tab" aria-selected="false" aria-controls="settings-options" data-settings-pane="options">Options</button>
+          <button id="settings-tab-weights" type="button" role="tab" aria-selected="false" aria-controls="weightsDialog">Weights <span>(adv.)</span></button>
         </div>
         <button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button>
       </div>
@@ -123,6 +123,20 @@
     <div class="dialog-actions"><button data-close="routeProblemDialog">OK</button></div>
   </dialog>
 
+  <dialog id="elevationDialog" class="elevation-dialog" aria-label="Route elevation profile">
+    <div class="dialog-head"><div><small>Selected route</small><h2>Elevation profile</h2></div><button class="dialog-close" data-close="elevationDialog" aria-label="Close elevation profile">✕</button></div>
+    <div id="elevationDialogSummary" class="elevation-dialog-summary"></div>
+    <canvas id="elevationLargeCanvas"></canvas>
+  </dialog>
+
+  <dialog id="weightsDialog" class="full-help-dialog weights-dialog" aria-label="Advanced routing weights">
+    <div class="full-help-head"><div><span>Advanced tool</span><h2>Routing weights</h2></div><div class="weights-head-actions"><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button><button class="dialog-close" data-close="weightsDialog" aria-label="Close routing weights">✕</button></div></div>
+    <div class="weights-body">
+      <p class="help-lead">These are soft route-choice costs, not safety rules. Changes recalculate the current route and affect every generated option. Lower than 1 favors a feature; higher than 1 avoids it.</p>
+      <div id="routingWeightsEditor" class="weights-groups"></div>
+    </div>
+  </dialog>
+
   <dialog id="clearRouteDialog" class="map-dialog clear-route-dialog" aria-label="Clear this route">
     <div class="dialog-head"><h2>Clear this route?</h2><button class="dialog-close" data-close="clearRouteDialog" aria-label="Close">✕</button></div>
     <p>Start, destination, and any stops will be removed.</p>
@@ -139,6 +153,7 @@
     <div class="dialog-head"><h2>Routing settings</h2><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div>
     <section><h3>Limits</h3><p><b>Minimum shoulder</b> is the width required on faster roads. <b>Max acceptable speed without shoulder</b> lets slower roads pass even where shoulder data is missing. <b>Never allow roads faster than</b> makes roads above the selected speed fail; “no cutoff” leaves the shoulder rule in charge.</p></section>
     <section><h3>Options</h3><p><b>Strongly prefer bike routes for all route options</b> forces every choice to favor designated trails and corridors. <b>Strongly prefer residential streets for all route options</b> forces every choice to favor streets mapped as residential or living streets. <b>Allow freeway as last resort</b> permits a freeway only as a heavily penalized fallback; it still fails the rules. <b>Only show fully safe routes</b> returns no route instead of showing an unavoidable failing road. <b>Auto-reroute</b> waits for moving time while you remain off route, then announces and updates the route. <b>Unknown shoulder treated as 0 ft</b> requires faster roads to prove an adequate shoulder.</p></section>
+    <section><h3>Weights (advanced)</h3><p>Opens a full-screen tuning tool for soft route-choice costs: route safety, bike facilities, major-road classes, curves, hills, ferries, and alternative-corridor searches. These controls do not override bicycle prohibitions or your hard Limits. Use <b>Reset all defaults</b> to return to the tested setup.</p></section>
   </dialog>
 
   <dialog id="appHelpDialog" class="map-dialog app-help-dialog" aria-label="How to use the app">
@@ -150,6 +165,7 @@
       <li>Tap <b>Navigate</b> for foreground GPS and voice guidance.</li>
     </ol>
     <p>Map colors and routes update on this device. Always follow signs and current road conditions.</p>
+    <p id="appVersion" class="app-help-version" aria-label="App version"></p>
   </dialog>
 
   <dialog id="layersHelpDialog" class="full-help-dialog" aria-label="Map data and layers help">
@@ -157,10 +173,9 @@
     <div class="full-help-body">
       <p class="help-lead">The app combines official Washington data with OpenStreetMap and elevation into one offline, on-device routing graph. Layer switches change what is drawn; they do not remove data from routing.</p>
       <section><h3>Official WSDOT data</h3><p><b>Bicycle Level of Traffic Stress (BLTS)</b> supplies statewide road stress, measured shoulder context, and access-control information. <b>Roadway Characteristic Data</b> supplies legal speeds on state highways. <b>Active Transportation Facilities</b> identifies shared lanes, bike lanes, buffered or separated lanes, and shared-use paths. <b>Permanent bicycle restrictions</b> are hard exclusions: the router never traverses them.</p></section>
-      <section><h3>OpenStreetMap data</h3><p>OSM supplies the connected road and path network, street names, signed speeds where tagged, road class, one-way rules, shoulders, bicycle access, cycleways, designated national/regional bicycle routes, ferries, residential streets, and pedestrian connections. Missing speed limits use a documented road-class estimate; the street popup says when speed is estimated. A path tagged <b>bicycle=no</b> is never routed.</p></section>
-      <section><h3>Short walk-bike fallbacks</h3><p>Mapped sidewalks and crossings, paved footways, pedestrian streets, explicit <b>bicycle=dismount</b> connections, and road-side sidewalk tags can form a walk-only graph edge. They are priced at walking speed and shown separately—not called bike infrastructure. The router limits walk-bike use to about 0.5 mile per route so it remains a short safety fallback.</p></section>
+      <section><h3>OpenStreetMap data</h3><p>OSM supplies the connected rideable road and bicycle-path network, street names, signed speeds where tagged, road class, one-way rules, shoulders, bicycle access, cycleways, designated national/regional bicycle routes, ferries, and residential streets. Missing speed limits use a documented road-class estimate; the street popup says when speed is estimated. Ways tagged <b>bicycle=no</b> or <b>bicycle=dismount</b> are not part of the riding graph.</p></section>
       <section><h3>Elevation &amp; curve cautions</h3><p>AWS Terrarium elevation tiles provide climb/descent and grade-aware travel time. The builder also looks for a tight curve that overlaps an uphill grade on a faster road without a protective facility, then adjusts concern using known shoulder width. This is a <b>possible limited-visibility uphill curve</b>, directional and separately reported. It is a geometry/elevation proxy—not measured sight distance—and does not by itself fail your riding rules.</p></section>
-      <section><h3>How routes are chosen</h3><p>The router tests several time/safety and road-preference combinations, removes nearly identical paths, and presents up to five meaningfully different results. Rule failures, freeways, limited access, curve cautions, speed, grade, facilities, designated routes, and residential preference affect cost. Freeways remain a last resort; legal limited-access highways are cautions; permanent prohibitions are impassable.</p></section>
+      <section><h3>How routes are chosen</h3><p>The router tests several time/safety and road-preference combinations, removes nearly identical paths, and presents up to five meaningfully different results. Rule failures, freeways, limited access, curve cautions, speed, grade, facilities, designated routes, and residential preference affect cost. OSM tertiary, secondary, primary, and trunk classes also add increasing soft costs when no bike facility is recorded; this is a traffic-volume proxy, not a rule failure. Freeways remain a last resort; legal limited-access highways are cautions; permanent prohibitions are impassable.</p></section>
       <section><h3>What each map layer means</h3><ul>
         <li><b>Designated routes (USBR &amp; trails)</b>: official national/regional OSM bicycle-route relationships, drawn orange beneath the scored network.</li>
         <li><b>WSDOT BLTS (state highways)</b>: official state-road stress and shoulder/access context.</li>

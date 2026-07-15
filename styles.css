@@ -1,4 +1,5 @@
 * { box-sizing: border-box; }
+:root { --desktop-panel-width: min(clamp(370px, 33vw, 430px), calc(100vw - 24px)); }
 html, body { margin: 0; height: 100%; height: 100dvh; height: var(--app-height, 100dvh); overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; touch-action: manipulation; }
 #map { position: absolute; inset: 0; touch-action: manipulation; }
 button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
@@ -48,7 +49,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 @media (min-width: 721px) {
   .panel {
     top: 12px; left: 12px;
-    width: min(clamp(370px, 33vw, 430px), calc(100vw - 24px));
+    width: var(--desktop-panel-width);
     max-height: calc(100% - 24px);
     border-radius: 12px;
   }
@@ -163,17 +164,15 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-main { font: 700 20px/1.15 system-ui; color: #111; }
 #routeCard .rc-main small { font: 600 15px system-ui; color: #555; }
 #routeCard .rc-sub { margin-top: 3px; font-size: 12px; color: #555; }
-#routeCard .rc-ferry { min-height: 30px; }
 #routeCard .rc-warn { margin-top: 3px; font-size: 12px; color: #b45309; font-weight: 600; }
 #routeCard .rc-caution { margin-top: 3px; font-size: 12px; color: #b45309; font-weight: 600; }
 #routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }
 #routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
-#routeCard canvas { width: 100%; height: 42px; margin-top: 4px; display: block; }
-.rc-highlight-hint { margin-top: 5px; color: #6b7280; font: 650 9.5px/1.2 system-ui; }
-.rc-route-types, .rc-levels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; margin-top: 3px; align-content: start; }
-.rc-route-types { min-height: 57px; }
-.rc-highlight-item, .rc-level { display: grid; grid-template-columns: minmax(0, 1fr) auto 7px; align-items: center; gap: 3px; min-width: 0; min-height: 27px; padding: 3px 4px; border: 1px solid #dde2e7; border-left: 3px solid #999; border-radius: 5px; background: rgba(255,255,255,.82); font: 500 9.5px system-ui; color: #555; cursor: pointer; text-align: left; }
+#routeCard canvas { display: block; }
+.rc-highlight-hint { margin-top: 4px; color: #6b7280; font: 650 9.5px/1.2 system-ui; }
+.rc-highlights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; min-height: 84px; margin-top: 3px; align-content: start; }
+.rc-highlight-item, .rc-level { display: grid; grid-template-columns: minmax(0, 1fr) auto 7px; align-items: center; gap: 2px; min-width: 0; min-height: 26px; padding: 2px 4px; border: 1px solid #dde2e7; border-left: 3px solid #999; border-radius: 5px; background: rgba(255,255,255,.82); font: 500 9px system-ui; color: #555; cursor: pointer; text-align: left; }
 .rc-highlight-item b, .rc-level b { color: #333; white-space: nowrap; }
 .rc-highlight-item::after, .rc-level::after { content: '›'; color: #777; font-size: 13px; font-weight: 800; line-height: 8px; }
 .rc-highlight-item { border-left-color: #8064a2; }
@@ -187,6 +186,9 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .rc-level.rc-attention { border-color: #d54a3d; background: #fff0ed; box-shadow: 0 0 0 1px rgba(213,74,61,.24); font-weight: 700; }
 .rc-highlight-item.active, .rc-level.active { background: #ffe35c; border-color: #c99f00; box-shadow: 0 0 0 1px rgba(201,159,0,.32); color: #3f3200; font-weight: 700; }
 .rc-highlight-item.active::after, .rc-level.active::after { content: '✓'; color: #5c4900; font-size: 10px; }
+.rc-elevation-button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; width: 100%; min-height: 34px; margin-top: 4px; padding: 2px 7px; overflow: hidden; border: 1px solid #d8e3ea; border-radius: 7px; background: #f7fafc; color: #486271; font: 700 9.5px system-ui; cursor: pointer; text-align: left; }
+.rc-elevation-button canvas { width: 100%; height: 29px; min-width: 0; }
+.rc-elevation-button b { color: #0a66c2; font-size: 13px; }
 @media (min-width: 721px) {
   #tabs { gap: 6px; padding: 7px 10px; }
   #tabs button { padding: 8px 0; border-radius: 10px; font-size: 14px; }
@@ -195,18 +197,18 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   #routeCard .rc-main { font-size: 23px; }
   #routeCard .rc-main small { font-size: 16px; }
   #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
-  #routeCard canvas { height: 50px; margin-top: 6px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
   #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }
   #tabs #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; }
   #tabs #routeLibraryBtn .share-icon { width: 19px; height: 19px; }
   #routeOptions { gap: 5px; }
   #routeOptions button { height: 38px; padding: 4px 3px; font-size: 11px; }
-  .rc-highlight-hint { margin-top: 7px; font-size: 11px; }
-  .rc-route-types, .rc-levels { gap: 5px; margin-top: 5px; }
-  .rc-route-types { min-height: 67px; }
-  .rc-highlight-item, .rc-level { padding: 5px 6px; border-radius: 6px; font-size: 11px; }
+  .rc-highlight-hint { margin-top: 5px; font-size: 10.5px; }
+  .rc-highlights { gap: 4px; min-height: 88px; margin-top: 4px; }
+  .rc-highlight-item, .rc-level { min-height: 27px; padding: 3px 5px; border-radius: 6px; font-size: 10px; }
   .rc-highlight-item::after, .rc-level::after { font-size: 15px; }
+  .rc-elevation-button { min-height: 38px; margin-top: 5px; font-size: 10.5px; }
+  .rc-elevation-button canvas { height: 32px; }
 }
 
 .route-details-btn { display: grid; place-items: center; width: 38px; height: 38px; margin-left: auto; padding: 0; border: 1px solid #78a9cc; border-radius: 50%; background: #fff; color: #0a66c2; font: 800 15px/1 Georgia, serif; cursor: pointer; }
@@ -358,13 +360,13 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   align-items: center;
   gap: 6px;
   background: rgba(255, 255, 255, 0.97);
-  border-radius: 25px;
+  border-radius: 28px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  padding: 6px 11px 6px 7px;
-  max-width: min(82vw, 470px);
+  padding: 7px 12px 7px 8px;
+  max-width: min(82vw, 500px);
 }
 #routeBar button {
-  width: 40px; height: 40px; flex: none;
+  width: 44px; height: 44px; flex: none;
   border: none; border-radius: 50%;
   background: #eef1f4;
   font: 700 13px system-ui;
@@ -372,15 +374,15 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   cursor: pointer;
 }
 #routeBar .rb-pill {
-  width: auto; padding: 0 14px; border-radius: 20px;
-  font: 700 13px system-ui;
+  width: auto; padding: 0 16px; border-radius: 22px;
+  font: 700 13.5px system-ui;
 }
 #routeBar .rb-pill-start { color: #0072B2; }
 #routeBar .rb-pill-end { color: #D55E00; }
 #routeBar #rb-start.active, #routeBar #rb-end.active,
 #routeBar #rb-via.active { background: #0a66c2; color: #fff; }
 #routeBar button:disabled { opacity: .38; cursor: default; }
-#routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 38px; }
+#routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 42px; }
 #routeBar #rb-reverse { font-size: 17px; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 .place-results .place-choice {
@@ -427,7 +429,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
    the way, but the same Navigate button remains available as Pause. */
 body.navigation-active #routeBar { display: none; }
 @media (min-width: 721px) {
-  body.navigation-active #topToolbar { left: 12px; transform: none; max-width: calc(100vw - 24px); }
+  body.navigation-active #topToolbar { left: 12px; right: 12px; transform: none; max-width: none; }
   body.navigation-active .nav-banner {
     top: calc(env(safe-area-inset-top) + 8px); right: 54px; bottom: auto; left: 122px;
     width: auto; transform: none;
@@ -435,22 +437,22 @@ body.navigation-active #routeBar { display: none; }
   body.navigation-active #legendFlyout { top: calc(env(safe-area-inset-top) + 104px); }
 }
 
-/* Keep the route editor clear of the docked panel on tablets and short
-   landscape phones, where centering both controls creates an overlap. */
-@media (min-width: 721px) and (max-width: 1000px) {
-  body:not(.navigation-active) #topToolbar { left: auto; right: 52px; transform: none; }
-  #rb-status { display: none; }
-}
-@media (min-width: 1001px) {
+@media (min-width: 721px) {
   body:not(.navigation-active) #topToolbar {
-    left: calc(clamp(370px, 33vw, 430px) + 70px);
+    left: calc(68px + var(--desktop-panel-width));
+    right: 12px;
     transform: none;
+    max-width: none;
   }
+  #routeBar { max-width: 100%; }
+  #rb-status { min-width: 0; }
 }
 
-#appVersion { position: absolute; top: calc(env(safe-area-inset-top) + 44px); left: 8px; z-index: 13; font-size: 9px; color: #56616a; background: rgba(255,255,255,.9); border-radius: 3px; padding: 1px 3px; pointer-events: none; }
 #appHelpBtn { position: absolute; z-index: 13; top: calc(env(safe-area-inset-top) + 8px); left: 8px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #b8cbd8; border-radius: 10px; background: rgba(255,255,255,.96); box-shadow: 0 2px 9px rgba(0,0,0,.18); color: #0a66c2; font: 800 17px/1 system-ui; cursor: pointer; }
-@media (min-width: 721px) { #appVersion { left: 450px; top: calc(env(safe-area-inset-top) + 50px); } #appHelpBtn { left: 450px; top: calc(env(safe-area-inset-top) + 12px); } }
+.app-help-version { margin: 12px 0 0 !important; padding-top: 8px; border-top: 1px solid #e1e7eb; color: #56616a; font: 650 12px/1.2 system-ui; }
+@media (min-width: 721px) {
+  #appHelpBtn { left: calc(20px + var(--desktop-panel-width)); top: calc(env(safe-area-inset-top) + 12px); width: 44px; height: 44px; border-radius: 13px; font-size: 20px; }
+}
 
 .place-picker {
   position: absolute; z-index: 18; top: calc(env(safe-area-inset-top) + 62px); left: 50%;
@@ -475,10 +477,10 @@ body.navigation-active #routeBar { display: none; }
 @media (max-width: 720px) {
   #topToolbar { gap: 4px; max-width: calc(100vw - 12px); }
   .nav-start { min-height: 46px; padding: 0 11px; font-size: 12px; }
-  #routeBar { gap: 4px; padding: 5px 8px 5px 6px; max-width: calc(100vw - 12px); }
-  #routeBar button { width: 34px; height: 34px; }
-  #routeBar .rb-pill { padding: 0 10px; font-size: 11.5px; }
-  #routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 33px; }
+  #routeBar { gap: 4px; padding: 6px 8px 6px 6px; max-width: calc(100vw - 12px); }
+  #routeBar button { width: 38px; height: 38px; }
+  #routeBar .rb-pill { padding: 0 11px; font-size: 12px; }
+  #routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 37px; }
   .route-action-toast { top: calc(env(safe-area-inset-top) + 66px); }
   #mobileNavDock { display: block; position: absolute; z-index: 15; left: 66px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
   body.panel-open #mobileNavDock { left: 10px; bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
@@ -555,6 +557,30 @@ body.navigation-active #routeBar { display: none; }
 .full-help-body p, .full-help-body li { color: #52616d; font: 13px/1.48 system-ui; }
 .full-help-body p { margin: 0; }
 .full-help-body ul { display: grid; gap: 5px; margin: 7px 0; padding-left: 20px; }
+.elevation-dialog { width: min(720px, calc(100vw - 24px)); max-width: none; padding: 0; border: 0; border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.28); color: #263b48; }
+.elevation-dialog::backdrop { background: rgba(18,42,60,.38); }
+.elevation-dialog .dialog-head { padding: 12px 14px; }
+.elevation-dialog .dialog-head small { color: #72818a; font: 700 10px system-ui; text-transform: uppercase; letter-spacing: .06em; }
+.elevation-dialog .dialog-head h2 { margin: 1px 0 0; font-size: 19px; }
+.elevation-dialog-summary { padding: 10px 16px 0; color: #526771; font: 650 12px system-ui; }
+#elevationLargeCanvas { display: block; width: calc(100% - 28px); height: min(36vh, 250px); margin: 8px 14px 16px; border: 1px solid #dce7ed; border-radius: 9px; background: #f8fbfc; }
+.weights-dialog { overflow: hidden; }
+.weights-head-actions { display: flex; align-items: center; gap: 8px; }
+.weights-reset { min-height: 38px; padding: 0 15px; border: 1px solid #b34b3f; border-radius: 9px; background: #fff4f2; color: #9f352a; font: 750 12px system-ui; cursor: pointer; }
+.weights-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 18px 0 max(34px, env(safe-area-inset-bottom)); }
+.weights-body > .help-lead { max-width: 850px; margin: 0 0 14px; color: #435967; font: 650 13px/1.45 system-ui; }
+.weights-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
+.weights-group { padding: 13px; border: 1px solid #d7e2e8; border-radius: 11px; background: #fff; box-shadow: 0 1px 3px rgba(32,57,71,.05); }
+.weights-group h3 { margin: 0 0 9px; color: #304957; font: 760 14px system-ui; }
+.weight-row { display: grid; grid-template-columns: minmax(0, 1fr) 52px; gap: 2px 8px; align-items: center; padding: 5px 0; border-top: 1px solid #eef2f4; color: #52636d; font: 620 11px/1.2 system-ui; }
+.weight-row output { text-align: right; color: #0a66c2; font: 750 11px tabular-nums, system-ui; }
+.weight-row input { grid-column: 1 / -1; width: 100%; margin: 0; touch-action: pan-y; }
+@media (max-width: 600px) {
+  .full-help-head { padding-left: 12px; padding-right: 10px; }
+  .full-help-head h2 { font-size: 17px; }
+  .weights-reset { padding: 0 9px; font-size: 10.5px; }
+  .weights-groups { grid-template-columns: 1fr; }
+}
 .dialog-actions .danger { border-color: #b42318; background: #c52b22; color: #fff; }
 /* iOS Safari zooms the entire page when a focused field is below 16px, which
    can leave map controls outside the visual viewport after search closes. */

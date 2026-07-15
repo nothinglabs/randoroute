@@ -14,7 +14,7 @@
 let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
 let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass, eFacility, eOfficial;
-let eWalk, eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
+let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
 let nodeHasLand;
@@ -33,7 +33,7 @@ function edgeName(i) {
 
 function loadGraph(buf) {
   const dv = new DataView(buf);
-  if (dv.getUint32(0, false) !== 0x42475236) throw new Error('bad graph magic (want BGR6)');
+  if (dv.getUint32(0, false) !== 0x42475237) throw new Error('bad graph magic (want BGR7)');
   N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
   const G = dv.getUint32(16, true), U = dv.getUint32(20, true), B = dv.getUint32(24, true);
   let o = 28;
@@ -50,7 +50,7 @@ function loadGraph(buf) {
   eA = u32(E); eB = u32(E); eLen = f32(E);
   eAsc = u16(E); eDes = u16(E);
   eSpeed = u8(E); eFlags = u8(E); eSh = i8(E); eClass = u8(E);
-  eFacility = u8(E); eOfficial = u8(E); eWalk = u8(E);
+  eFacility = u8(E); eOfficial = u8(E);
   eHazAB = u8(E); eHazBA = u8(E);
   pad2();
   eHazStartAB = u16(E); eHazEndAB = u16(E);
@@ -88,7 +88,7 @@ function loadGraph(buf) {
   // limited-access state highway remains eligible as a normal snap target.
   nodeLocal = new Uint8Array(N);
   for (let i = 0; i < E; i++) {
-    if (!eWalk[i] && eSh[i] !== PROHIBITED_SHOULDER && !(eFlags[i] & (4 | 32))) {
+    if (eSh[i] !== PROHIBITED_SHOULDER && !(eFlags[i] & (4 | 32))) {
       nodeLocal[eA[i]] = 1; nodeLocal[eB[i]] = 1;
     }
   }
@@ -128,7 +128,6 @@ function nearestNode(lon, lat) {
 function edgeLevel(i, rules) {
   const flags = eFlags[i];
   if (eSh[i] === PROHIBITED_SHOULDER) return 4;      // WSDOT prohibition
-  if (eWalk[i]) return 2;                            // separate walk-bike fallback
   if (flags & 32) return 2;                         // ferry — no road rules apply
   if (flags & 4) return 4;                         // freeway: last-resort failure
   if ((flags & 8) || eFacility[i] >= 4) return 1;  // protected lane / shared path
@@ -162,44 +161,78 @@ const V_MIN = 1.3;    // steep-climb floor (~3 mph)
 // fast ferries and the strongest cost bonuses, or A* loses optimality.
 // Worst case: V_MAX 12 / (0.9 L1 x 0.45 designated x 0.78 residential)
 // = 38.0 m/s. Keep a little headroom so the heuristic remains admissible.
-const V_HEUR = 40.0;
+const V_HEUR = 160.0;
 // Designated bike routes (USBR / regional trails, edge flag 64) get a cost
 // bonus in Balanced/Low-stress: a vetted corridor wins ties against an
 // equivalent plain road. Cost only — reported times stay honest.
-const DESIGNATED_MULT = 0.9;
+const DEFAULT_WEIGHTS = Object.freeze({
+  directFail: 1.15, balancedComfy: 0.92, balancedFail: 3, lowComfy: 0.9, lowFail: 30,
+  designated: 0.86, strongDesignated: 0.42, residential: 0.78,
+  facilityShared: 0.9, facilityLane: 0.72, facilityBuffered: 0.62,
+  facilitySeparated: 0.5, facilityPath: 0.42,
+  freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1,
+  speedBalanced: 0.01, speedLow: 0.02,
+  hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
+  hazardBalanced1: 1.35, hazardBalanced2: 1.8, hazardBalanced3: 2.6,
+  hazardLow1: 1.8, hazardLow2: 3.4, hazardLow3: 6.5,
+  arterialTertiaryDirect: 1.02, arterialTertiaryBalanced: 1.12, arterialTertiaryLow: 1.22,
+  arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
+  arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
+  ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
+  diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
+});
+let activeWeights = { ...DEFAULT_WEIGHTS };
+function useWeights(source) {
+  activeWeights = { ...DEFAULT_WEIGHTS };
+  if (!source || typeof source !== 'object') return;
+  const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow', 'downhillFactor', 'undulationSecPerM']);
+  for (const key of Object.keys(DEFAULT_WEIGHTS)) {
+    const value = Number(source[key]);
+    if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) activeWeights[key] = value;
+  }
+}
 // "Strongly prefer bike routes & trails": designated routes and dedicated
 // infrastructure at half cost or better — worth riding up to ~2x the distance
 // to stay on a trail. Ferries keep their own economics.
-const PREF_DESIG_MULT = 0.45;
-// OSM road class is carried directly in BGR6.  This deliberately does not use
+// OSM road class is carried directly in BGR7.  This deliberately does not use
 // speed as a stand-in: a signed 25 mph arterial (such as NW 80th in Seattle)
 // is not a residential street.  The preference is a cost bonus, not a rule;
 // it still lets a shorter/safer non-residential connection win when needed.
-const PREF_RESIDENTIAL_MULT = 0.78;
-const FACILITY_PREF_MULT = [1, 0.9, 0.72, 0.62, 0.5, 0.45];
+function facilityPrefMult(level) {
+  return [1, activeWeights.facilityShared, activeWeights.facilityLane,
+    activeWeights.facilityBuffered, activeWeights.facilitySeparated,
+    activeWeights.facilityPath][level] || 1;
+}
 function isResidential(i) {
   return eClass[i] === 1 || eClass[i] === 2; // residential / living_street
 }
 // Freeways are a true last resort: even a short ordinary failure should win
 // over a much longer freeway detour.
-const FREEWAY_LAST_RESORT_MULT = 60;
 // WSDOT LimitedAccess is not a bike prohibition. When its own speed/shoulder
 // data passes the rider's rules, it remains a caution that is preferable to a
 // known rule failure, but less attractive than an ordinary passing road. In
 // Low-stress mode its normal high-speed cost is enough: adding a separate
 // 3x surcharge can make it lose to a known narrow-shoulder rule failure.
-const LIMITED_ACCESS_CAUTION_MULT = { direct: 1.05, balanced: 1.35, low: 1 };
 // Average terminal wait folded into a ferry leg, applied once when boarding
 // from land (mid-water route junctions don't re-charge it).
-const FERRY_BOARD_S = 15 * 60;
-const V_WALK = 1.4; // ~3.1 mph while walking a bicycle
-const WALK_MULT = { direct: 1.7, balanced: 1.15, low: 0.85 };
-const HAZARD_MULT = {
-  direct: [1, 1.08, 1.16, 1.3],
-  balanced: [1, 1.35, 1.8, 2.6],
-  low: [1, 1.8, 3.4, 6.5],
-};
-const MAX_WALK_M = 805; // keep sidewalk/footpath use a short fallback
+function hazardMult(mode, severity) {
+  if (!severity) return 1;
+  const prefix = mode === 'direct' ? 'hazardDirect' : mode === 'low' ? 'hazardLow' : 'hazardBalanced';
+  return activeWeights[prefix + Math.min(3, severity)] || 1;
+}
+
+// OSM road class is a useful traffic-volume proxy where measured AADT is not
+// available. This is deliberately a finite route-choice cost, not a safety
+// failure. A real bike lane/path (facility >= 2) removes the proxy penalty.
+function majorRoadMult(i, mode) {
+  if (eFacility[i] >= 2 || (eFlags[i] & (8 | 32 | 4 | 128))) return 1;
+  const cls = eClass[i];
+  const suffix = mode === 'direct' ? 'Direct' : mode === 'low' ? 'Low' : 'Balanced';
+  if (cls === 4 || cls === 5) return activeWeights['arterialTertiary' + suffix];
+  if (cls === 6 || cls === 7) return activeWeights['arterialSecondary' + suffix];
+  if (cls >= 8 && cls <= 11) return activeWeights['arterialPrimary' + suffix];
+  return 1;
+}
 
 function edgeHazard(i, forward) { return forward ? eHazAB[i] : eHazBA[i]; }
 
@@ -211,12 +244,11 @@ function speedStress(mode, fl, spd, freeMax) {
   if (mode === 'direct' || (fl & (8 | 32))) return 1.0;
   const over = spd - freeMax;
   if (over <= 0) return 1.0;
-  return 1 + (mode === 'low' ? 0.02 : 0.01) * over;
+  return 1 + (mode === 'low' ? activeWeights.speedLow : activeWeights.speedBalanced) * over;
 }
 
 // Seconds to ride edge i in the given direction (forward = a->b).
 function edgeTimeS(i, forward) {
-  if (eWalk[i]) return eLen[i] / V_WALK;
   if (eFlags[i] & 32) {
     // Ferry: sail at the crossing speed baked from the duration tag (mph).
     return eLen[i] / (Math.max(eSpeed[i], 3) * 0.44704);
@@ -227,13 +259,13 @@ function edgeTimeS(i, forward) {
   const vflat = V_ROAD;
   const g = (asc - des) / Math.max(len, 1); // net grade
   let v;
-  if (g > 0) v = Math.max(vflat * Math.exp(-7 * g), V_MIN);
-  else v = Math.min(vflat * (1 - 2.5 * g), V_MAX);
+  if (g > 0) v = Math.max(vflat * Math.exp(-activeWeights.uphillFactor * g), V_MIN);
+  else v = Math.min(vflat * (1 - activeWeights.downhillFactor * g), V_MAX);
   let t = len / v;
   // Undulation beyond the net climb still costs energy/time (~6 s per meter
   // of extra up-and-down that the net grade doesn't see).
   const extra = asc - Math.max(asc - des, 0);
-  t += extra * 6 * 0.5;
+  t += extra * activeWeights.undulationSecPerM;
   return t;
 }
 
@@ -243,12 +275,13 @@ function edgeTimeS(i, forward) {
 // returns a route when some failing pavement is truly unavoidable — the app
 // highlights those segments instead of refusing to route.
 function modeMult(mode, lvl) {
-  if (mode === 'direct') return lvl === 4 ? 1.15 : 1.0;
-  if (mode === 'balanced') return lvl === 4 ? 3.0 : lvl === 1 ? 0.92 : 1.0;
-  /* low */ return lvl === 4 ? 30.0 : lvl === 1 ? 0.9 : 1.0;
+  if (mode === 'direct') return lvl === 4 ? activeWeights.directFail : 1.0;
+  if (mode === 'balanced') return lvl === 4 ? activeWeights.balancedFail : lvl === 1 ? activeWeights.balancedComfy : 1.0;
+  /* low */ return lvl === 4 ? activeWeights.lowFail : lvl === 1 ? activeWeights.lowComfy : 1.0;
 }
 
-function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential, startSnap, endSnap) {
+function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
+  startSnap, endSnap, diversityEdges = null, diversityFactor = 1) {
   const t0 = Date.now();
   const s = startSnap || nearestNode(startLL[0], startLL[1]);
   const t = endSnap || nearestNode(endLL[0], endLL[1]);
@@ -271,7 +304,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential, start
       coords: [[nodeLon[s.node], nodeLat[s.node]]],
       distM: 0, timeS: 0, ascentM: 0, descentM: 0, failM: 0, ferryM: 0,
       ferrySegs: [], desigM: 0, residentialM: 0, freewayM: 0,
-      limitedAccessM: 0, facilityM: 0, walkM: 0, hazardM: 0,
+      limitedAccessM: 0, facilityM: 0, hazardM: 0,
       levelM: [0, 0, 0, 0, 0], edgeIds: [],
       segs: [], profile: [[0, nodeEle[s.node]]],
       snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
@@ -314,21 +347,26 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential, start
       if (mult === Infinity) continue;
       const forward = eA[ei] === u;
       let step = edgeTimeS(ei, forward);
-      if ((fl & 32) && nodeHasLand[u]) step += FERRY_BOARD_S; // boarding
+      if ((fl & 32) && nodeHasLand[u]) step += activeWeights.ferryWaitMin * 60; // boarding
       let cost = step * mult;
-      if (eWalk[ei]) cost *= WALK_MULT[mode];
-      else cost *= speedStress(mode, fl, eSpeed[ei], rules.freeMaxSpeed);
-      cost *= HAZARD_MULT[mode][edgeHazard(ei, forward) || 0];
-      if (fl & 4) cost *= FREEWAY_LAST_RESORT_MULT;
-      if (fl & 128) cost *= LIMITED_ACCESS_CAUTION_MULT[mode];
+      cost *= speedStress(mode, fl, eSpeed[ei], rules.freeMaxSpeed);
+      cost *= hazardMult(mode, edgeHazard(ei, forward) || 0);
+      cost *= majorRoadMult(ei, mode);
+      if (fl & 4) cost *= activeWeights.freeway;
+      if (fl & 128) cost *= activeWeights[mode === 'direct' ? 'limitedDirect' : mode === 'low' ? 'limitedLow' : 'limitedBalanced'];
       // Bonuses never apply to freeway or WSDOT limited-access highways:
       // a designation should not erase their extra caution cost.
-      if (!eWalk[ei] && prefDesig && !(fl & (32 | 4 | 128)) && (fl & 64)) cost *= PREF_DESIG_MULT;
-      else if (!eWalk[ei] && prefDesig && !(fl & (32 | 4 | 128)) && eFacility[ei]) cost *= FACILITY_PREF_MULT[eFacility[ei]];
-      else if (!eWalk[ei] && (fl & 64) && !(fl & (4 | 128)) && mode !== 'direct') cost *= DESIGNATED_MULT;
-      if (!eWalk[ei] && prefResidential && !(fl & (8 | 32 | 4 | 128)) && isResidential(ei)) {
-        cost *= PREF_RESIDENTIAL_MULT;
+      if (prefDesig && !(fl & (32 | 4 | 128)) && (fl & 64)) cost *= activeWeights.strongDesignated;
+      else if (prefDesig && !(fl & (32 | 4 | 128)) && eFacility[ei]) cost *= facilityPrefMult(eFacility[ei]);
+      else if ((fl & 64) && !(fl & (4 | 128)) && mode !== 'direct') cost *= activeWeights.designated;
+      if (prefResidential && !(fl & (8 | 32 | 4 | 128)) && isResidential(ei)) {
+        cost *= activeWeights.residential;
       }
+      // Alternative-corridor probes softly penalize one already-found path.
+      // This uncovers good parallel streets that ordinary safety profiles all
+      // converge past, without ever making an edge illegal or changing the
+      // route's reported time/safety outcome.
+      if (diversityEdges?.has(ei)) cost *= diversityFactor;
       const nd = du + cost;
       if (nd < dist[v]) {
         dist[v] = nd;
@@ -359,7 +397,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential, start
   const edgeIds = [];
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
-  let walkM = 0, hazardM = 0;
+  let hazardM = 0;
   let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0;
   for (const [ei, fromNode] of edges) {
     edgeIds.push(ei);
@@ -376,7 +414,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential, start
     distM += eLen[ei];
     timeS += edgeTimeS(ei, forward);
     if (eFlags[ei] & 32) {
-      if (nodeHasLand[fromNode]) timeS += FERRY_BOARD_S;
+      if (nodeHasLand[fromNode]) timeS += activeWeights.ferryWaitMin * 60;
       ferryM += eLen[ei];
       const last = ferryRanges[ferryRanges.length - 1];
       if (last && last[1] === c0) last[1] = coords.length - 1;
@@ -384,15 +422,14 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential, start
     }
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
-    if (!eWalk[ei] && (eFlags[ei] & 64)) desigM += eLen[ei];
-    if (!eWalk[ei] && eFacility[ei] >= 2) facilityM += eLen[ei];
+    if (eFlags[ei] & 64) desigM += eLen[ei];
+    if (eFacility[ei] >= 2) facilityM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4 | 128)) && isResidential(ei)) residentialM += eLen[ei];
     if (eFlags[ei] & 4) freewayM += eLen[ei];
     else if (eFlags[ei] & 128) limitedAccessM += eLen[ei];
     const level = edgeLevel(ei, rules);
-    if (eWalk[ei]) walkM += eLen[ei];
-    else levelM[level] += eLen[ei];
-    if (!eWalk[ei] && level === 4) failM += eLen[ei];
+    levelM[level] += eLen[ei];
+    if (level === 4) failM += eLen[ei];
     const hazard = edgeHazard(ei, forward);
     let hazC0 = null, hazC1 = null;
     if (hazard) {
@@ -413,7 +450,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential, start
     segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
       mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], roadClass: eClass[ei],
       facility: eFacility[ei], official: eOfficial[ei], level,
-      walkKind: eWalk[ei], hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
+      hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: Math.round(10 * 100 * ((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei])) / Math.max(1, eLen[ei])) / 10,
       lenM: Math.round(eLen[ei]) });
@@ -423,7 +460,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential, start
   const ferrySegs = ferryRanges.map(([a, b]) => coords.slice(a, b + 1));
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, walkM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, hazardM,
     levelM, edgeIds, segs,
     profile, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
@@ -431,12 +468,13 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential, start
 
 // Route through an ordered list of points (A -> B -> C ...): one A* per leg,
 // results merged into a single continuous route.
-function route(points, rules, mode, prefDesig, prefResidential, snaps) {
+function route(points, rules, mode, prefDesig, prefResidential, snaps,
+  diversityEdges = null, diversityFactor = 1) {
   const t0 = Date.now();
   const legs = [];
   for (let i = 0; i + 1 < points.length; i++) {
     const leg = routeLeg(points[i], points[i + 1], rules, mode, prefDesig, prefResidential,
-      snaps?.[i], snaps?.[i + 1]);
+      snaps?.[i], snaps?.[i + 1], diversityEdges, diversityFactor);
     if (!leg.ok) {
       if (leg.code === 'point-too-far') {
         leg.farPoints = leg.farPoints.map((p) => ({
@@ -461,7 +499,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps) {
   const edgeIds = [];
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
-  let walkM = 0, hazardM = 0;
+  let hazardM = 0;
   let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0;
   for (const leg of legs) {
     const cOff = coords.length ? coords.length - 1 : 0; // joint vertex is shared
@@ -478,7 +516,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps) {
     failM += leg.failM; ferryM += leg.ferryM; desigM += leg.desigM;
     residentialM += leg.residentialM; freewayM += leg.freewayM;
     limitedAccessM += leg.limitedAccessM; facilityM += leg.facilityM;
-    walkM += leg.walkM || 0; hazardM += leg.hazardM || 0; edgeIds.push(...leg.edgeIds);
+    hazardM += leg.hazardM || 0; edgeIds.push(...leg.edgeIds);
     for (let level = 1; level <= 4; level++) levelM[level] += leg.levelM[level];
   }
   // Downsample the profile to <= 240 points for the sparkline.
@@ -492,7 +530,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps) {
   }
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, walkM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, hazardM,
     levelM, edgeIds, segs,
     legs: legSummaries,
     profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
@@ -551,7 +589,6 @@ function materialTradeoff(a, b) {
     || Math.abs(a.freewayM - b.freewayM) >= 60
     || Math.abs(a.limitedAccessM - b.limitedAccessM) >= Math.max(120, routeScale * 0.5)
     || Math.abs(a.facilityM - b.facilityM) >= routeScale
-    || Math.abs((a.walkM || 0) - (b.walkM || 0)) >= 50
     || Math.abs((a.hazardM || 0) - (b.hazardM || 0)) >= 50
     || Math.abs(a.desigM - b.desigM) >= routeScale
     || Math.abs(a.residentialM - b.residentialM) >= routeScale;
@@ -559,7 +596,11 @@ function materialTradeoff(a, b) {
 
 function meaningfullyDifferent(a, b) {
   const overlap = edgeOverlap(a, b);
-  return overlap < 0.9 || (overlap < 0.985 && materialTradeoff(a, b));
+  // Retain a corridor once at least ~4% of the shorter route changes. That is
+  // enough to represent a real neighborhood/road choice on ordinary trips,
+  // while still collapsing paths that differ by only a block-end connector.
+  // Very-close paths survive only when their safety/facility outcome changes.
+  return overlap < 0.96 || (overlap < 0.99 && materialTradeoff(a, b));
 }
 
 function routeAggression(r) {
@@ -595,7 +636,6 @@ function outcomeSnapshot(route) {
   const details = [fail];
   if (comfyPct > 0) details.push(`${comfyPct}% comfy`);
   if (bikePct > 0) details.push(`${bikePct}% on bike routes/facilities`);
-  if (route.walkM > 0) details.push(`${outcomeDistance(route.walkM)} walk-bike`);
   if (route.hazardM > 0) details.push(`${outcomeDistance(route.hazardM)} curve caution`);
   return details.join(' · ');
 }
@@ -657,6 +697,7 @@ function publicCandidate(candidate) {
       mode: _profile.mode,
       prefDesignated: _profile.prefDesig,
       prefResidential: _profile.prefResidential,
+      alternativeCorridor: !!_profile.alternativeCorridor,
     },
   };
 }
@@ -683,11 +724,44 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   }
   if (!raw.length) return firstFailure || { ok: false, reason: 'No route options were found.' };
 
-  const shortWalk = raw.filter((r) => (r.walkM || 0) <= MAX_WALK_M);
-  if (!shortWalk.length) return { ok: false,
-    reason: 'No route was found without more than 0.5 mile of walking the bicycle.' };
-  const fastest = shortWalk.reduce((best, r) => r.timeS < best.timeS ? r : best, shortWalk[0]);
-  const reasonable = shortWalk.filter((r) => r.timeS <= fastest.timeS * 2.2 + 600
+  // Cost profiles can all converge on the same one or two corridors even
+  // where a reasonable parallel route exists. If that happens, run a small
+  // number of additional A* probes that softly penalize an existing route's
+  // edges. The normal time/safety filters and geometry dedupe still decide
+  // whether the resulting path is good and distinct enough to show.
+  const distinctBeforeProbes = [];
+  for (const candidate of raw) {
+    if (distinctBeforeProbes.every((other) => meaningfullyDifferent(candidate, other))) {
+      distinctBeforeProbes.push(candidate);
+    }
+  }
+  if (distinctBeforeProbes.length < 5) {
+    const fastestSeed = raw.reduce((best, r) => r.timeS < best.timeS ? r : best, raw[0]);
+    const safestSeed = raw.reduce((best, r) => compareSafety(r, best) < 0 ? r : best, raw[0]);
+    const probes = [
+      { id: 'alt-quick', mode: 'direct', prefDesig: forceDesig,
+        prefResidential: forceResidential, order: 0.45, seed: fastestSeed, factor: activeWeights.diversityQuick },
+      { id: 'alt-balanced', mode: 'balanced', prefDesig: true,
+        prefResidential: true, order: 1.45, seed: fastestSeed, factor: activeWeights.diversityBalanced },
+      { id: 'alt-safer', mode: 'low', prefDesig: true,
+        prefResidential: true, order: 2.35, seed: safestSeed, factor: activeWeights.diversitySafer },
+      { id: 'alt-wide', mode: 'balanced', prefDesig: forceDesig,
+        prefResidential: true, order: 1.55, seed: fastestSeed, factor: activeWeights.diversityWide },
+    ];
+    for (const probe of probes) {
+      const profile = { ...probe, label: 'Alternative corridor', alternativeCorridor: true };
+      delete profile.seed; delete profile.factor;
+      const result = route(points, rules, profile.mode, profile.prefDesig,
+        profile.prefResidential, snaps, new Set(probe.seed.edgeIds), probe.factor);
+      if (!result.ok) continue;
+      result._profile = profile;
+      result.aggression = routeAggression(result);
+      raw.push(result);
+    }
+  }
+
+  const fastest = raw.reduce((best, r) => r.timeS < best.timeS ? r : best, raw[0]);
+  const reasonable = raw.filter((r) => r.timeS <= fastest.timeS * 2.2 + 600
     || r.failM + 80 < fastest.failM || r.freewayM + 80 < fastest.freewayM);
 
   // Collapse paths that are not meaningfully different. If one of the equivalent
@@ -718,7 +792,12 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       if (other === candidate) return false;
       const safety = compareSafety(other, candidate);
       const noSlower = other.timeS <= candidate.timeS + 5;
-      return noSlower && safety <= 0 && (other.timeS < candidate.timeS - 5 || safety < 0);
+      // A route may be objectively slower and no safer yet still give the
+      // rider a useful different corridor. Only prune dominated candidates
+      // when their geometry is also effectively the same.
+      const sameCorridor = edgeOverlap(other, candidate) >= 0.96;
+      return sameCorridor && noSlower && safety <= 0
+        && (other.timeS < candidate.timeS - 5 || safety < 0);
     }));
   const choices = useful.length ? useful : unique;
 
@@ -811,6 +890,7 @@ onmessage = (ev) => {
       loadGraph(m.buffer);
       postMessage({ type: 'ready', nodes: N, edges: E });
     } else if (m.type === 'route') {
+      useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const r = route(pts, m.rules, m.mode || 'balanced', !!m.prefDesignated, !!m.prefResidential);
       const profile = {
@@ -820,6 +900,7 @@ onmessage = (ev) => {
       };
       postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }) });
     } else if (m.type === 'route-options') {
+      useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const result = routeOptions(pts, m.rules, !!m.forceDesignated,
         !!m.forceResidential, m.preferredProfileId);

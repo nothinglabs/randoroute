@@ -176,8 +176,7 @@ function buildRouteSteps(segs) {
     if (seg.flags & FLAG_FERRY) continue;
     const name = roadName(seg);
     const last = out[out.length - 1];
-    if (last && last.endIndex === index - 1 && last.name === name
-        && (last.walkKind || 0) === (seg.walkKind || 0)) {
+    if (last && last.endIndex === index - 1 && last.name === name) {
       last.lenM += seg.lenM;
       last.endIndex = index;
       last.flags |= seg.flags || 0;
@@ -185,7 +184,6 @@ function buildRouteSteps(segs) {
       last.official |= seg.official || 0;
       last.mph = Math.max(last.mph, seg.mph || 0);
       last.level = Math.max(last.level, seg.level || 0);
-      last.walkKind = Math.max(last.walkKind || 0, seg.walkKind || 0);
       last.hazard = Math.max(last.hazard || 0, seg.hazard || 0);
       if (seg.level === 4) last.failM += seg.lenM;
     } else {
@@ -199,7 +197,6 @@ function buildRouteSteps(segs) {
         official: seg.official || 0,
         mph: seg.mph || 0,
         level: seg.level || 0,
-        walkKind: seg.walkKind || 0,
         hazard: seg.hazard || 0,
         failM: seg.level === 4 ? seg.lenM : 0,
       });
@@ -222,7 +219,6 @@ function buildRouteSteps(segs) {
       previous.official |= (bridge.official || 0) | (next.official || 0);
       previous.mph = Math.max(previous.mph, bridge.mph, next.mph);
       previous.level = Math.max(previous.level, bridge.level, next.level);
-      previous.walkKind = Math.max(previous.walkKind || 0, bridge.walkKind || 0, next.walkKind || 0);
       previous.hazard = Math.max(previous.hazard || 0, bridge.hazard || 0, next.hazard || 0);
       previous.failM += bridge.failM + next.failM;
       out.splice(i, 2);
@@ -232,7 +228,7 @@ function buildRouteSteps(segs) {
   }
   return out.map((step) => ({
     ...step,
-    safetyLabel: step.walkKind ? 'Walk bike' : SAFETY_NAME[step.level] || 'Unknown',
+    safetyLabel: SAFETY_NAME[step.level] || 'Unknown',
     meta: `${stepMeta(step)} · Tap to show on map`,
   }));
 }
@@ -240,7 +236,6 @@ function buildRouteSteps(segs) {
 function stepMeta(step) {
   const flags = step.flags || 0;
   const bits = [];
-  if (step.walkKind) bits.push('walk bicycle');
   if (step.hazard) bits.push('possible limited-visibility uphill curve');
   if (step.mph) bits.push(`${step.mph} mph`);
   if (flags & FLAG_FREEWAY) bits.push('freeway');
@@ -351,11 +346,6 @@ if (!hasRoute) {
     coordStart: s.hazC0 ?? s.c0, coordEnd: s.hazC1 ?? s.c1,
     lenM: s.hazardLenM || s.lenM,
   }));
-  const walking = sections(segs, (s) => !!s.walkKind, (s) => ({
-    name: roadName(s),
-    meta: `${s.walkKind === 1 ? 'Sidewalk/crossing' : s.walkKind === 3 ? 'Bicycle dismount connection' : 'Footway/pedestrian connection'} · walk bicycle · Tap to show on map`,
-    safetyLabel: 'Walk bike',
-  }));
   const routeSteps = buildRouteSteps(segs);
   const ferries = sections(segs, (s) => !!(s.flags & FLAG_FERRY), () => ({
     name: 'Ferry crossing', meta: 'Ferry segment',
@@ -367,13 +357,12 @@ if (!hasRoute) {
     alert.textContent = `${freewayM ? `${fmtDist(freewayM)} on a freeway. ` : ''}${fmtDist(totals.failM)} of this route does not meet your riding rules.`;
   } else {
     alert.hidden = false;
-    if (limitedAccess.length || curveHazards.length || walking.length) {
+    if (limitedAccess.length || curveHazards.length) {
       const limitedM = limitedAccess.reduce((sum, item) => sum + item.lenM, 0);
       alert.classList.add('caution');
       const notes = [];
       if (limitedM) notes.push(`${fmtDist(limitedM)} on a limited-access highway`);
       if (curveHazards.length) notes.push(`${fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0))} with a possible uphill-curve visibility caution`);
-      if (walking.length) notes.push(`${fmtDist(walking.reduce((sum, item) => sum + item.lenM, 0))} to walk the bicycle`);
       alert.textContent = `${notes.join(' · ')}. These are called out for judgment but are not road-rule failures.`;
     } else {
       alert.classList.add('good');
@@ -386,12 +375,11 @@ if (!hasRoute) {
   // while the other answers “what kind of road is this?”.
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail');
   if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution');
-  if (walking.length) renderSection(report, 'Walk-bike fallbacks', walking, '', 'caution');
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway');
   if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution');
   if (highways.length) renderSection(report, 'Highways', highways, '');
   if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length
-      && !curveHazards.length && !walking.length) {
+      && !curveHazards.length) {
     report.innerHTML = '<div class="no-route">No freeway, limited-access highway, highway, or rule-failing sections were found on this route.</div>';
   }
   renderSection(steps, 'Follow these roads in order', routeSteps, 'No street-level steps are available for this route.', '', true);

@@ -14,11 +14,11 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-14.93'; // shown in the map corner; bump per release
+const APP_VERSION = '2026-07-14.95';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
-const GRAPH_FORMAT_VERSION = 'bgr6-1';
+const GRAPH_FORMAT_VERSION = 'bgr7-1';
 
 /* ---------------------------------------------------------------- palette */
 // Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
@@ -54,6 +54,36 @@ const RULE_NUMBER_LIMITS = {
   freeMaxSpeed: [15, 45],
   upperMaxSpeed: [35, 65],
 };
+
+// Soft route-choice costs. These never make an edge legal or illegal; the
+// rider-facing Limits remain the hard safety rules. Kept in one shared shape
+// with router-worker.js so the advanced desktop editor is reproducible.
+const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
+  directFail: 1.15, balancedComfy: 0.92, balancedFail: 3, lowComfy: 0.9, lowFail: 30,
+  designated: 0.86, strongDesignated: 0.42, residential: 0.78,
+  facilityShared: 0.9, facilityLane: 0.72, facilityBuffered: 0.62,
+  facilitySeparated: 0.5, facilityPath: 0.42,
+  freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1,
+  speedBalanced: 0.01, speedLow: 0.02,
+  hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
+  hazardBalanced1: 1.35, hazardBalanced2: 1.8, hazardBalanced3: 2.6,
+  hazardLow1: 1.8, hazardLow2: 3.4, hazardLow3: 6.5,
+  arterialTertiaryDirect: 1.02, arterialTertiaryBalanced: 1.12, arterialTertiaryLow: 1.22,
+  arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
+  arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
+  ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
+  diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
+});
+function validRoutingWeights(source) {
+  const clean = {};
+  const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow', 'downhillFactor', 'undulationSecPerM']);
+  if (!source || typeof source !== 'object') return clean;
+  for (const key of Object.keys(DEFAULT_ROUTING_WEIGHTS)) {
+    const value = Number(source[key]);
+    if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) clean[key] = value;
+  }
+  return clean;
+}
 
 function validRuleOverrides(source) {
   const clean = {};
@@ -339,6 +369,7 @@ if (savedState) {
   if (savedState.rules) Object.assign(rules, validRuleOverrides(savedState.rules));
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
 }
+const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...validRoutingWeights(savedState?.weights) };
 
 // Navigation choices are local device preferences, not part of a shared route.
 // Keep automatic recovery on by default, while still letting a rider opt out.
@@ -357,6 +388,7 @@ const ROUTE_PROFILE_IDS = new Set([
   'quick', 'quick-bike', 'quick-residential', 'quick-friendly',
   'efficient', 'bike', 'residential', 'bike-residential',
   'gentle', 'gentle-bike', 'gentle-residential', 'friendly',
+  'alt-quick', 'alt-balanced', 'alt-safer', 'alt-wide',
 ]);
 function legacyRouteProfile(mode) {
   if (mode === 'direct') return 'quick';
@@ -438,6 +470,7 @@ function saveStateNow() {
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
       autoReroute: navigationOptions.autoReroute,
+      weights: routingWeights,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
       route: routing.start && routing.end
@@ -987,7 +1020,6 @@ function fmtDur(s) {
 
 function fallbackRouteLevel(s) {
   const flags = s.flags || 0;
-  if (s.walkKind) return 2;
   if (flags & 4) return 4;
   if ((flags & 8) || (s.facility || 0) >= 4) return 1;
   if (!rules.noUpperLimit && s.mph > rules.upperMaxSpeed) return 4;
@@ -1011,7 +1043,7 @@ function routeSummaryStats(m) {
   for (const s of m.segs || []) {
     const flags = s.flags || 0;
     const len = Number(s.lenM) || 0;
-    if ((flags & 32) || s.walkKind) continue; // reported separately, not a riding safety level
+    if (flags & 32) continue; // ferry is reported separately, not a riding safety level
     const level = s.level || fallbackRouteLevel(s);
     if (level >= 1 && level <= 4) levels[level] += len;
     if (flags & 4) freewayM += len;
@@ -1039,8 +1071,10 @@ function optimizationDescription(optimization) {
     ? `${base} No additional road-type preference was applied.`
     : `${base} Strongly prefers ${preferences.length === 2
       ? `${preferences[0]}, plus ${preferences[1]}` : preferences[0]}.`;
-  if (optimization.reason) return `${optimization.reason} Search method: ${method}`;
-  return method;
+  const alternative = optimization.alternativeCorridor
+    ? ' It was also searched as a distinct alternative to another route.' : '';
+  if (optimization.reason) return `${optimization.reason} Search method: ${method}${alternative}`;
+  return `${method}${alternative}`;
 }
 function storeRouteDetails(m) {
   if (!m || !m.ok) return;
@@ -1056,7 +1090,7 @@ function storeRouteDetails(m) {
       summary: {
         distM: m.distM, timeS: m.timeS, ascentM: m.ascentM, descentM: m.descentM,
         failM: m.failM, desigM: m.desigM, facilityM: m.facilityM, ferryM: m.ferryM,
-        walkM: m.walkM || 0, hazardM: m.hazardM || 0,
+        hazardM: m.hazardM || 0,
       },
       // Keep the detailed report compact: it only needs road attributes and
       // lengths, not the complete route geometry or elevation profile.
@@ -1064,7 +1098,7 @@ function storeRouteDetails(m) {
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
         facility: s.facility || 0, official: s.official || 0,
         roadClass: s.roadClass || 0, c0: s.c0, c1: s.c1,
-        walkKind: s.walkKind || 0, hazard: s.hazard || 0,
+        hazard: s.hazard || 0,
         hazardLenM: s.hazardLenM || 0, hazC0: s.hazC0, hazC1: s.hazC1,
         gradePct: s.gradePct || 0,
         level: s.level || fallbackRouteLevel(s), lenM: Number(s.lenM) || 0,
@@ -1144,11 +1178,7 @@ function buildTurnInstructions(m) {
   let lastM = -Infinity;
   const segs = m.segs || [];
   for (const seg of segs) {
-    if (seg.walkKind) {
-      const at = Math.max(0, seg.c0);
-      instructions.push({ distanceM: cumulative[at] || 0, coordIndex: at,
-        text: `Dismount and walk your bicycle${navRoadName(seg.name) ? ` on ${navRoadName(seg.name)}` : ''}` });
-    } else if (seg.hazard) {
+    if (seg.hazard) {
       const at = Math.max(0, seg.hazC0 ?? seg.c0);
       instructions.push({ distanceM: cumulative[at] || 0, coordIndex: at,
         text: 'Caution: possible limited-visibility uphill curve ahead' });
@@ -1596,24 +1626,17 @@ function renderRouteCard(m) {
   const snapNotice = snapNotes.length
     ? `<div class="rc-warn">⚠ ${snapNotes.join(' · ')} — move the marker closer to a road if this looks wrong.</div>`
     : '';
-  // Reserve this line even when a mode does not use a ferry. That keeps the
-  // sheet from jumping when switching between otherwise valid route modes.
-  const ferry = `<div class="rc-sub rc-ferry">${m.ferryM > 0
-    ? `⛴ ${fmtMi(m.ferryM)} mi by ferry (crossing + typical wait included)`
-    : '&nbsp;'}</div>`;
-  const routeTypeParts = [
-    `<button class="rc-highlight-item" data-highlight="desig" aria-pressed="false" title="Highlight bike-route segments on the map" ${m.desigM > 0 ? '' : 'disabled'}><span>★ Bike routes</span><b>${fmtDist(m.desigM)}</b></button>`,
-  ];
-  if (stats.highwayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="highway" aria-pressed="false" title="Highlight highway segments on the map"><span>⚠ Highways</span><b>${fmtDist(stats.highwayM)}</b></button>`);
-  if (stats.freewayM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="freeway" aria-pressed="false" title="Highlight freeway segments on the map"><span>⛔ Freeways</span><b>${fmtDist(stats.freewayM)}</b></button>`);
-  if (stats.limitedAccessM > 0) routeTypeParts.push(`<button class="rc-highlight-item rc-attention" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access caution segments on the map"><span>⚠ Caution</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`);
-  if (m.hazardM > 0) routeTypeParts.push(`<button class="rc-highlight-item rc-attention" data-highlight="curve-hazard" aria-pressed="false" title="Highlight possible limited-visibility uphill curves"><span>↗ Curves</span><b>${fmtDist(m.hazardM)}</b></button>`);
-  if (m.walkM > 0) routeTypeParts.push(`<button class="rc-highlight-item" data-highlight="walk-bike" aria-pressed="false" title="Highlight sections where the route uses a short walk-bike fallback"><span>🚶 Walk bike</span><b>${fmtDist(m.walkM)}</b></button>`);
-  const routeTypes = `<div class="rc-route-types">${routeTypeParts.join('')}</div>`;
   const levelNames = ['', 'Comfy', 'Meets rules', 'Caution', 'Fails rules'];
-  const levels = `<div class="rc-levels">${[1, 4].map((level) =>
-    `<button class="rc-level rc-l${level}${level === 4 && stats.levels[level] > 0 ? ' rc-attention' : ''}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`
-  ).join('')}</div>`;
+  const highlightButtons = [
+    `<button class="rc-highlight-item" data-highlight="desig" aria-pressed="false" title="Highlight bike-route segments on the map" ${m.desigM > 0 ? '' : 'disabled'}><span>★ Bike routes</span><b>${fmtDist(m.desigM)}</b></button>`,
+    `<button class="rc-highlight-item" data-highlight="highway" aria-pressed="false" title="Highlight highway segments on the map" ${stats.highwayM > 0 ? '' : 'disabled'}><span>⚠ Highways</span><b>${fmtDist(stats.highwayM)}</b></button>`,
+    `<button class="rc-highlight-item${stats.freewayM > 0 ? ' rc-attention' : ''}" data-highlight="freeway" aria-pressed="false" title="Highlight freeway segments on the map" ${stats.freewayM > 0 ? '' : 'disabled'}><span>⛔ Freeways</span><b>${fmtDist(stats.freewayM)}</b></button>`,
+    `<button class="rc-highlight-item${stats.limitedAccessM > 0 ? ' rc-attention' : ''}" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access caution segments on the map" ${stats.limitedAccessM > 0 ? '' : 'disabled'}><span>⚠ Caution</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`,
+    `<button class="rc-highlight-item${m.hazardM > 0 ? ' rc-attention' : ''}" data-highlight="curve-hazard" aria-pressed="false" title="Highlight possible limited-visibility uphill curves" ${m.hazardM > 0 ? '' : 'disabled'}><span>↗ Curves</span><b>${fmtDist(m.hazardM || 0)}</b></button>`,
+    ...[1, 4].map((level) =>
+      `<button class="rc-level rc-l${level}${level === 4 && stats.levels[level] > 0 ? ' rc-attention' : ''}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`),
+  ];
+  const highlights = `<div class="rc-highlights">${highlightButtons.join('')}</div>`;
   const legs = m.legs && m.legs.length > 1
     ? `<div class="rc-legs">${m.legs.map((l, i) =>
         `<div class="rc-leg">Leg ${i + 1}: <b>${fmtDist(l.distM)}</b> · ${fmtDur(l.timeS)}${
@@ -1622,14 +1645,12 @@ function renderRouteCard(m) {
   card.innerHTML = `
     <div id="routeControlsSlot"></div>
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
-    <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent</div>
+    <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi ferry` : ''}</div>
     ${snapNotice}
-    ${ferry}
     <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
-    ${routeTypes}
-    ${levels}
+    ${highlights}
     ${legs}
-    <canvas id="profileCv"></canvas>`;
+    <button type="button" class="rc-elevation-button" data-route-action="elevation" title="Open larger elevation profile"><span>Elevation</span><canvas id="profileCv"></canvas><b aria-hidden="true">↗</b></button>`;
   moveControls();
   card.querySelectorAll('[data-highlight]').forEach((b) => {
     const active = b.dataset.highlight === routeHighlightKey;
@@ -1640,8 +1661,8 @@ function renderRouteCard(m) {
   refreshNavigationUI();
 }
 
-function drawProfile(profile, distM) {
-  const cv = document.getElementById('profileCv');
+function drawProfile(profile, distM, canvasId = 'profileCv') {
+  const cv = document.getElementById(canvasId);
   if (!cv || !profile || profile.length < 2) return;
   const dpr = window.devicePixelRatio || 1;
   const w = cv.clientWidth || 280, h = cv.clientHeight || 72;
@@ -1651,7 +1672,8 @@ function drawProfile(profile, distM) {
   let lo = Infinity, hi = -Infinity;
   for (const [, e] of profile) { if (e < lo) lo = e; if (e > hi) hi = e; }
   if (hi - lo < 30) { const mid = (hi + lo) / 2; lo = mid - 15; hi = mid + 15; }
-  const padT = 12, padB = 14, padL = 2, padR = 2;
+  const large = canvasId === 'elevationLargeCanvas';
+  const padT = large ? 24 : 10, padB = large ? 26 : 11, padL = large ? 8 : 2, padR = large ? 8 : 2;
   const X = (d) => padL + (d / distM) * (w - padL - padR);
   const Y = (e) => padT + (1 - (e - lo) / (hi - lo)) * (h - padT - padB);
   ctx.beginPath();
@@ -1669,7 +1691,7 @@ function drawProfile(profile, distM) {
   ctx.lineWidth = 1.8;
   ctx.stroke();
   ctx.fillStyle = '#98a2ad';
-  ctx.font = '10px system-ui';
+  ctx.font = `${large ? 13 : 9}px system-ui`;
   ctx.fillText(`${fmtFt(hi)} ft`, padL + 2, padT - 2);
   ctx.textBaseline = 'bottom';
   ctx.fillText(`${fmtFt(lo)} ft`, padL + 2, h - 1);
@@ -1774,6 +1796,7 @@ function computeRoute() {
       profileLabel: selected?.label,
       prefDesignated: routing.prefDesig || !!selected?.prefDesignated,
       prefResidential: routing.prefResidential || !!selected?.prefResidential,
+      weights: { ...routingWeights },
     });
   } else {
     routing.compareStartedAt = performance.now();
@@ -1782,6 +1805,7 @@ function computeRoute() {
       forceDesignated: routing.prefDesig,
       forceResidential: routing.prefResidential,
       preferredProfileId: routing.profileId,
+      weights: { ...routingWeights },
     });
   }
 }
@@ -1839,10 +1863,10 @@ function drawRoute(coords, ferrySegs, segs) {
     properties: { name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
       e: s.flags & 1 ? 1 : 0, fac: s.flags & 2 ? 1 : 0, fw: s.flags & 4 ? 1 : 0,
       lim: s.flags & 128 ? 1 : 0,
-      walk: s.walkKind ? 1 : 0, walkKind: s.walkKind || 0,
       hazard: s.hazard || 0, gradePct: s.gradePct || 0,
       infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
       facility: s.facility || 0, official: s.official || 0,
+      roadClass: s.roadClass || 0,
       routeIndex,
       level: s.level || fallbackRouteLevel(s), hwy: isHighwaySegment(s) ? 1 : 0 },
     geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
@@ -1851,8 +1875,6 @@ function drawRoute(coords, ferrySegs, segs) {
   const failData = { type: 'FeatureCollection',
     features: sdata.features.filter((f) =>
       f.properties.ferry !== 1 && effectiveLevel(scoreRouteSeg(f.properties)) === 4) };
-  const walkData = { type: 'FeatureCollection',
-    features: sdata.features.filter((f) => f.properties.walk === 1) };
   const hazardData = { type: 'FeatureCollection', features: (segs || [])
     .filter((s) => s.hazard && s.hazC0 != null && s.hazC1 != null)
     .map((s) => ({ type: 'Feature', properties: { severity: s.hazard },
@@ -1865,7 +1887,6 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-ferry').setData(fdata);
     map.getSource('route-seg').setData(sdata);
     map.getSource('route-fail').setData(failData);
-    map.getSource('route-walk').setData(walkData);
     map.getSource('route-hazard').setData(hazardData);
     map.getSource('route-highlight-marker').setData(emptyHighlights);
     map.getSource('route-detail-selection').setData(emptyLine);
@@ -1876,7 +1897,6 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-ferry', { type: 'geojson', data: fdata });
   map.addSource('route-seg', { type: 'geojson', data: sdata });
   map.addSource('route-fail', { type: 'geojson', data: failData });
-  map.addSource('route-walk', { type: 'geojson', data: walkData });
   map.addSource('route-hazard', { type: 'geojson', data: hazardData });
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-selection', { type: 'geojson', data: emptyLine });
@@ -1910,11 +1930,6 @@ function drawRoute(coords, ferrySegs, segs) {
     id: 'route-ferry', type: 'line', source: 'route-ferry',
     paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.9,
              'line-dasharray': [0.6, 1.8] },
-  });
-  map.addLayer({
-    id: 'route-walk', type: 'line', source: 'route-walk',
-    paint: { 'line-color': '#00a6a6', 'line-width': 7, 'line-opacity': 1,
-             'line-dasharray': [0.8, 1.2] },
   });
   map.addLayer({
     id: 'route-hazard', type: 'line', source: 'route-hazard',
@@ -1981,7 +1996,6 @@ const ROUTE_HIGHLIGHT_FILTERS = {
   highway: ['==', ['get', 'hwy'], 1],
   freeway: ['==', ['get', 'fw'], 1],
   'limited-access': ['==', ['get', 'lim'], 1],
-  'walk-bike': ['==', ['get', 'walk'], 1],
   'curve-hazard': ['>', ['get', 'hazard'], 0],
   'level-1': ['==', ['get', 'level'], 1],
   'level-3': ['==', ['get', 'level'], 3],
@@ -1995,7 +2009,6 @@ function routeSegmentMatchesHighlight(seg, key) {
   if (key === 'highway') return isHighwaySegment(seg);
   if (key === 'freeway') return !!(flags & 4);
   if (key === 'limited-access') return !!(flags & 128);
-  if (key === 'walk-bike') return !!seg.walkKind;
   if (key === 'curve-hazard') return !!seg.hazard;
   const levelMatch = /^level-(\d)$/.exec(key);
   return !!levelMatch && level === Number(levelMatch[1]);
@@ -2413,7 +2426,7 @@ function renderRouteOptionControls() {
 
 function activateRouteOption(option, updateNavigation = false) {
   if (!option?.ok) return;
-  showRouteActionToast('Route updated', { duration: 1200 });
+  showRouteActionToast('');
   routing.last = option;
   if (option.optimization) {
     routing.profileId = option.optimization.profileId || routing.profileId;
@@ -2441,6 +2454,14 @@ function activateRouteOption(option, updateNavigation = false) {
 function buildRoutingPanel() {
   const choices = document.getElementById('routeOptions');
   document.getElementById('routeCard').addEventListener('click', (e) => {
+    if (e.target.closest('[data-route-action="elevation"]') && routing.last?.ok) {
+      const dialog = document.getElementById('elevationDialog');
+      document.getElementById('elevationDialogSummary').textContent =
+        `${fmtMi(routing.last.distM)} mi · ${fmtFt(routing.last.ascentM)} ft climb · ${fmtFt(routing.last.descentM)} ft descent`;
+      dialog.showModal();
+      requestAnimationFrame(() => drawProfile(routing.last.profile, routing.last.distM, 'elevationLargeCanvas'));
+      return;
+    }
     const button = e.target.closest('[data-highlight]');
     if (button && !button.disabled) toggleRouteHighlight(button.dataset.highlight);
   });
@@ -2469,7 +2490,7 @@ function buildRoutingPanel() {
   for (const kind of ['start', 'end']) {
     document.getElementById('rb-' + kind).addEventListener('click', () => openPlacePicker(kind));
   }
-  document.getElementById('rb-via').addEventListener('click', () => armRoutePoint('via'));
+  document.getElementById('rb-via').addEventListener('click', () => openPlacePicker('via'));
   document.getElementById('rb-via-remove').addEventListener('click', removeLastVia);
   document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.getElementById('navStartButton').addEventListener('click', () => {
@@ -2790,7 +2811,7 @@ function closePlacePicker(cancelArm = false) {
   picker.hidden = true;
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
-  if (cancelArm && (routing.arm === 'start' || routing.arm === 'end')) {
+  if (cancelArm && (routing.arm === 'start' || routing.arm === 'end' || routing.arm === 'via')) {
     routing.arm = null;
     updateArmButtons();
     setRouteStatus('');
@@ -2798,6 +2819,7 @@ function closePlacePicker(cancelArm = false) {
 }
 
 function openPlacePicker(kind) {
+  if (kind === 'via' && (!(routing.start && routing.end) || routing.vias.length >= MAX_ROUTE_STOPS)) return;
   setLegendOpen(false);
   placeTarget = kind;
   routing.arm = kind;
@@ -2806,7 +2828,7 @@ function openPlacePicker(kind) {
   ensureRouter();
   setPanelOpen(false);
   document.getElementById('placePickerTitle').textContent =
-    (kind === 'start' ? 'Set start' : 'Set destination') + ' — tap map or search';
+    (kind === 'start' ? 'Set start' : kind === 'via' ? 'Add a stop' : 'Set destination') + ' — tap map or search';
   document.getElementById('useLoc').hidden = kind !== 'start';
   const onlineButton = document.getElementById('onlinePlaceSearch');
   onlineButton.disabled = false;
@@ -2815,7 +2837,8 @@ function openPlacePicker(kind) {
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   document.getElementById('placePicker').hidden = false;
-  setRouteStatus(`Tap the map or search to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
+  setRouteStatus(kind === 'via' ? 'Tap the map or search to add a STOP'
+    : `Tap the map or search to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
 }
 
 function armRoutePoint(kind) {
@@ -2926,10 +2949,16 @@ function buildPlacePicker() {
     if (!hit) return;
     const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
     map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
-    setRoutePoint(placeTarget, lngLat);
+    if (placeTarget === 'via') addVia(lngLat);
+    else setRoutePoint(placeTarget, lngLat);
     routing.arm = null;
     updateArmButtons();
-    if (!advanceToEndAfterStart(placeTarget)) setRouteStatus(placeTarget === 'start' ? 'Start set' : 'Destination set');
+    if (placeTarget === 'via') {
+      setRouteStatus('Stop added');
+      showRouteActionToast('Stop added — route recalculating', { duration: 2200 });
+    } else if (!advanceToEndAfterStart(placeTarget)) {
+      setRouteStatus(placeTarget === 'start' ? 'Start set' : 'Destination set');
+    }
     closePlacePicker(false);
     input.value = '';
     render([]);
@@ -2970,6 +2999,22 @@ const FACILITY_NAME = {
   4: 'Separated bike lane',
   5: 'Shared-use path',
 };
+const ROAD_CLASS_NAME = {
+  1: 'Residential', 2: 'Living street', 3: 'Unclassified/local',
+  4: 'Tertiary road', 5: 'Tertiary link', 6: 'Secondary road',
+  7: 'Secondary link', 8: 'Primary road', 9: 'Primary link',
+  10: 'Trunk road', 11: 'Trunk link', 12: 'Motorway', 13: 'Motorway link',
+};
+function routeClassNote(p) {
+  if (p.infra || p.ferry || p.facility >= 2 || !p.roadClass) return null;
+  if (p.roadClass >= 8 && p.roadClass <= 11)
+    return 'Major-road proxy adds a strong soft cost because no bike facility is recorded.';
+  if (p.roadClass >= 6 && p.roadClass <= 7)
+    return 'Major-road proxy adds a moderate soft cost because no bike facility is recorded.';
+  if (p.roadClass >= 4 && p.roadClass <= 5)
+    return 'Tertiary-road proxy adds a small soft cost because no bike facility is recorded.';
+  return null;
+}
 // Plain-language reason for a segment's verdict under the current rules.
 // Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
 function explainLevel(n) {
@@ -3102,13 +3147,6 @@ function renderReadout(feature, lngLat) {
         ['Why', 'Crossing by ferry — road rules don’t apply on the boat.'],
         ['Speed', p.mph ? `~${p.mph} mph crossing` : null],
       ];
-    } else if (p.walk === 1) {
-      rows = [
-        ['Name', p.name || '(unnamed connection)'],
-        ['Result', 'Walk bike'],
-        ['Why', 'Short pedestrian fallback used instead of riding a less suitable road.'],
-        ['Type', p.walkKind === 1 ? 'Sidewalk / crossing' : p.walkKind === 3 ? 'Bicycle dismount connection' : 'Footway / pedestrian connection'],
-      ];
     } else {
       rows = [
         ['Name', p.name || '(unnamed road)'],
@@ -3118,6 +3156,8 @@ function renderReadout(feature, lngLat) {
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
         ['Bike facility', FACILITY_NAME[p.facility] || null],
         ['Facility source', p.official & 2 ? 'WSDOT Active Transportation Data' : null],
+        ['Road class', ROAD_CLASS_NAME[p.roadClass] || null],
+        ['Route choice', routeClassNote(p)],
         ['Type', p.infra ? 'Dedicated bike infrastructure' : (p.fw || p.lim) ? 'Limited-access highway' : null],
         ['Curve caution', p.hazard ? `Possible limited-visibility uphill curve${p.gradePct ? ` (${p.gradePct}% net grade)` : ''}; inferred, not measured sight distance` : null],
       ];
@@ -3335,6 +3375,70 @@ function buildSourcePanel() {
   }
 }
 
+const ROUTING_WEIGHT_GROUPS = [
+  ['Safety outcomes', [
+    ['directFail', 'Direct: failing road', 1, 8, .05], ['balancedFail', 'Balanced: failing road', 1, 12, .1],
+    ['lowFail', 'Friendly: failing road', 2, 60, 1], ['balancedComfy', 'Balanced: comfy road', .5, 1.2, .01],
+    ['lowComfy', 'Friendly: comfy road', .5, 1.2, .01], ['freeway', 'Freeway last resort', 5, 100, 1],
+  ]],
+  ['Bike and neighborhood preference', [
+    ['designated', 'Designated route', .25, 1.2, .01], ['strongDesignated', 'Strong bike-route preference', .2, 1, .01],
+    ['residential', 'Residential street', .4, 1.1, .01], ['facilityShared', 'Shared-lane marking', .4, 1.2, .01],
+    ['facilityLane', 'Bike lane', .25, 1.1, .01], ['facilityBuffered', 'Buffered bike lane', .2, 1.1, .01],
+    ['facilitySeparated', 'Separated bike lane', .2, 1.1, .01], ['facilityPath', 'Shared-use path', .2, 1.1, .01],
+  ]],
+  ['Major roads without a bike facility', [
+    ['arterialTertiaryDirect', 'Tertiary · direct', 1, 3, .01], ['arterialTertiaryBalanced', 'Tertiary · balanced', 1, 3, .01],
+    ['arterialTertiaryLow', 'Tertiary · friendly', 1, 3, .01], ['arterialSecondaryDirect', 'Secondary · direct', 1, 4, .01],
+    ['arterialSecondaryBalanced', 'Secondary · balanced', 1, 4, .01], ['arterialSecondaryLow', 'Secondary · friendly', 1, 4, .01],
+    ['arterialPrimaryDirect', 'Primary/trunk · direct', 1, 5, .01], ['arterialPrimaryBalanced', 'Primary/trunk · balanced', 1, 5, .01],
+    ['arterialPrimaryLow', 'Primary/trunk · friendly', 1, 5, .01],
+  ]],
+  ['Speed, access and curve caution', [
+    ['speedBalanced', 'Balanced: each mph over comfort', 0, .08, .002], ['speedLow', 'Friendly: each mph over comfort', 0, .1, .002],
+    ['limitedDirect', 'Limited access · direct', 1, 5, .05], ['limitedBalanced', 'Limited access · balanced', 1, 6, .05],
+    ['limitedLow', 'Limited access · friendly', 1, 8, .05],
+    ['hazardDirect1', 'Curve low · direct', 1, 5, .01], ['hazardDirect2', 'Curve medium · direct', 1, 6, .01],
+    ['hazardDirect3', 'Curve high · direct', 1, 8, .01], ['hazardBalanced1', 'Curve low · balanced', 1, 5, .01],
+    ['hazardBalanced2', 'Curve medium · balanced', 1, 8, .01], ['hazardBalanced3', 'Curve high · balanced', 1, 12, .1],
+    ['hazardLow1', 'Curve low · friendly', 1, 8, .01], ['hazardLow2', 'Curve medium · friendly', 1, 12, .1],
+    ['hazardLow3', 'Curve high · friendly', 1, 20, .1],
+  ]],
+  ['Ride model and alternatives', [
+    ['ferryWaitMin', 'Ferry boarding wait (minutes)', 0, 60, 1], ['uphillFactor', 'Uphill effort', 1, 15, .25],
+    ['downhillFactor', 'Downhill speed benefit', 0, 5, .1], ['undulationSecPerM', 'Rolling-hill cost (sec/m)', 0, 10, .25],
+    ['diversityQuick', 'Alternative corridor · quick', 1.05, 3, .05], ['diversityBalanced', 'Alternative corridor · balanced', 1.05, 3, .05],
+    ['diversitySafer', 'Alternative corridor · safer', 1.05, 3, .05], ['diversityWide', 'Alternative corridor · wide search', 1.05, 4, .05],
+  ]],
+];
+
+function buildRoutingWeightsEditor() {
+  const host = document.getElementById('routingWeightsEditor');
+  host.replaceChildren();
+  for (const [title, items] of ROUTING_WEIGHT_GROUPS) {
+    const group = document.createElement('section');
+    group.className = 'weights-group';
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    group.append(heading);
+    for (const [key, label, min, max, step] of items) {
+      const row = document.createElement('label');
+      row.className = 'weight-row';
+      row.innerHTML = `<span>${label}</span><output>${routingWeights[key]}</output>
+        <input type="range" min="${min}" max="${max}" step="${step}" value="${routingWeights[key]}" data-weight="${key}">`;
+      const input = row.querySelector('input');
+      input.addEventListener('input', () => {
+        routingWeights[key] = Number(input.value);
+        row.querySelector('output').textContent = input.value;
+        suppressRoadInfo(1200);
+        scheduleRescore();
+      });
+      group.append(row);
+    }
+    host.append(group);
+  }
+}
+
 function buildRulesPanel() {
   const slidersHost = document.getElementById('settingsSliders');
   const optionsHost = document.getElementById('settingsOptions');
@@ -3472,6 +3576,17 @@ function buildRulesPanel() {
     });
     document.getElementById('settingsHelpBtn').addEventListener('click', () =>
       document.getElementById('settingsHelpDialog').showModal());
+    const weightsButton = document.getElementById('settings-tab-weights');
+    weightsButton.addEventListener('click', () => {
+      buildRoutingWeightsEditor();
+      document.getElementById('weightsDialog').showModal();
+    });
+    document.getElementById('resetRoutingWeights').addEventListener('click', () => {
+      Object.assign(routingWeights, DEFAULT_ROUTING_WEIGHTS);
+      buildRoutingWeightsEditor();
+      scheduleRescore();
+      showRouteActionToast('Routing weights reset to defaults', { duration: 2200 });
+    });
     selectSettingsPane(document.querySelector('[data-settings-pane].active')?.dataset.settingsPane || 'limits');
     settingsTabs.dataset.bound = 'true';
   }
@@ -3611,7 +3726,7 @@ document.getElementById('panelOpen').addEventListener('click', () => {
   document.getElementById('panelClose').focus({ preventScroll: true });
 });
 
-// Dialog close buttons and small map-corner version stamp.
+// Dialog close buttons and the version shown inside Getting Started help.
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () =>
   document.getElementById(b.dataset.close).close()));
 document.getElementById('appVersion').textContent = 'v' + APP_VERSION;

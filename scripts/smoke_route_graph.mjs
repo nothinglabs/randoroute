@@ -26,12 +26,18 @@ const rules = {
   allowFreeways: true, minShoulder: 4, unknownShoulderZero: true,
   freeMaxSpeed: 35, upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
 };
+function distanceM(a, b) {
+  const r = 6371000, p1 = a[1] * Math.PI / 180, p2 = b[1] * Math.PI / 180;
+  const dp = p2 - p1, dl = (b[0] - a[0]) * Math.PI / 180;
+  const h = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(h));
+}
 for (let index = 0; index < scenarios.length; index++) {
   const scenario = scenarios[index];
   messages.length = 0;
   context.onmessage({ data: { type: 'route-options', id: index + 1,
     points: scenario.points, rules, forceDesignated: false,
-    forceResidential: false } });
+    forceResidential: false, weights: scenario.weights } });
   const result = messages.at(-1);
   if (!result?.ok) {
     console.log(`${scenario.name}: FAIL — ${result?.reason || 'no response'}`);
@@ -39,9 +45,15 @@ for (let index = 0; index < scenarios.length; index++) {
   }
   console.log(`${scenario.name}: ${result.options.length} option(s), ${result.ms} ms`);
   for (const option of result.options) {
+    const probeText = scenario.probe
+      ? `; ${Math.round(Math.min(...option.coords.map((p) => distanceM(p, scenario.probe))))} m from probe`
+      : '';
     console.log(`  ${option.optimization.label}: ${(option.distM / 1609.344).toFixed(1)} mi; `
-      + `${Math.round(option.failM)} m fail; ${Math.round(option.walkM || 0)} m walk; `
+      + `${Math.round(option.failM)} m fail; `
       + `${Math.round(option.hazardM || 0)} m curve caution; `
-      + `${Math.round(option.freewayM)} m freeway`);
+      + `${Math.round(option.freewayM)} m freeway; `
+      + `${(option.desigM / 1609.344).toFixed(1)} mi designated; `
+      + `${(option.facilityM / 1609.344).toFixed(1)} mi bike facility; `
+      + `${(option.residentialM / 1609.344).toFixed(1)} mi residential${probeText}`);
   }
 }
