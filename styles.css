@@ -130,6 +130,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .share-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 #routeOptions { position: relative; display: flex; flex: 1; min-width: 0; gap: 3px; margin: 0; }
+.route-options-label { display: grid; place-items: center; flex: 0 0 32px; height: 38px; color: #667784; font: 750 7.5px/1.05 system-ui; letter-spacing: .03em; text-align: center; text-transform: uppercase; }
 #routeOptions button {
   flex: 1 1 0;
   min-width: 0;
@@ -164,10 +165,11 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-main { font: 700 20px/1.15 system-ui; color: #111; }
 #routeCard .rc-main small { font: 600 15px system-ui; color: #555; }
 #routeCard .rc-sub { margin-top: 3px; font-size: 12px; color: #555; }
-#routeCard .rc-safety { margin-top: 4px; font: 600 10.5px/1.25 system-ui; color: #52616b; }
-#routeCard .rc-safety b { color: #314653; }
-#routeCard .rc-grade-C, #routeCard .rc-grade-D, #routeCard .rc-grade-F { color: #9a5a08; }
-#routeCard .rc-grade-D b, #routeCard .rc-grade-F b { color: #b42318; }
+#routeCard .rc-ride-mix { display: flex; align-items: baseline; gap: 4px; min-width: 0; margin-top: 4px; color: #52616b; font: 600 10px/1.2 system-ui; white-space: nowrap; }
+#routeCard .rc-ride-mix b { color: #223c4b; font-weight: 800; }
+#routeCard .rc-ride-mix i { color: #a0aab1; font-style: normal; }
+#routeCard .rc-ride-label { padding: 2px 4px; border-radius: 4px; background: #e7eef3; color: #405866; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+#routeCard .rc-ride-fail, #routeCard .rc-ride-fail b { color: #b42318; }
 #routeCard .rc-warn { margin-top: 3px; font-size: 12px; color: #b45309; font-weight: 600; }
 #routeCard .rc-caution { margin-top: 3px; font-size: 12px; color: #b45309; font-weight: 600; }
 #routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }

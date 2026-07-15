@@ -58,7 +58,7 @@ for (let index = 0; index < scenarios.length; index++) {
     const probeText = scenario.probe
       ? `; ${Math.round(Math.min(...option.coords.map((p) => distanceM(p, scenario.probe))))} m from probe`
       : '';
-    console.log(`  ${option.optimization.label} [stress ${option.stress?.grade || '?'}; ${option.optimization.profileId}; bike=${option.optimization.prefDesignated ? 'y' : 'n'}; residential=${option.optimization.prefResidential ? 'y' : 'n'}]: ${(option.distM / 1609.344).toFixed(1)} mi; `
+    console.log(`  ${option.optimization.label} [${option.optimization.profileId}; bike=${option.optimization.prefDesignated ? 'y' : 'n'}; residential=${option.optimization.prefResidential ? 'y' : 'n'}]: ${(option.distM / 1609.344).toFixed(1)} mi; `
       + `${Math.round(option.failM)} m fail; `
       + `${Math.round(option.hazardM || 0)} m curve caution; `
       + `${Math.round(option.freewayM)} m freeway; `

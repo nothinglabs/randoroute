@@ -269,11 +269,9 @@ five useful alternatives labeled **Route A–E**. Route A is always selected by
 default and is the safest candidate that stays within a practical per-leg
 detour of the quickest result; the other letters are meaningfully different
 options without implying a fixed fastest-to-safest scale. Each selected route
-gets an aggregate stress grade based on rule-failing distance, freeway and
-caution exposure, and comfy-road coverage: A has no known failures or cautions
-and is mostly comfy; B has no known failures but includes caution or less-comfy
-riding; C has up to 1% rule-failing distance; D has 1–3%; and F has more than
-3% or any freeway riding. On routes with stops, candidate
+shows a compact ride mix: the share of riding distance that is comfy, on the
+bike network (designated routes, trails, or bike facilities), or fails the
+current rules. The letters identify alternatives and are not grades. On routes with stops, candidate
 selection also checks detours leg by leg and keeps at most one extreme-detour
 result. This keeps a small concern near one stop from filling the choices with
 large local loops.

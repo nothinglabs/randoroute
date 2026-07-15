@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-15.99';
+const APP_VERSION = '2026-07-15.100';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1044,18 +1044,27 @@ function isHighwaySegment(s) {
 
 function routeSummaryStats(m) {
   const levels = [0, 0, 0, 0, 0];
-  let highwayM = 0, freewayM = 0, limitedAccessM = 0;
+  let highwayM = 0, freewayM = 0, limitedAccessM = 0, bikeNetworkM = 0;
   for (const s of m.segs || []) {
     const flags = s.flags || 0;
     const len = Number(s.lenM) || 0;
     if (flags & 32) continue; // ferry is reported separately, not a riding safety level
     const level = s.level || fallbackRouteLevel(s);
     if (level >= 1 && level <= 4) levels[level] += len;
+    if ((flags & (8 | 64)) || (s.facility || 0) >= 2) bikeNetworkM += len;
     if (flags & 4) freewayM += len;
     else if (flags & 128) limitedAccessM += len;
     else if (isHighwaySegment(s)) highwayM += len;
   }
-  return { levels, highwayM, freewayM, limitedAccessM };
+  return { levels, highwayM, freewayM, limitedAccessM, bikeNetworkM };
+}
+
+function routePercent(meters, total, preciseSmall = false) {
+  if (!(meters > 0) || !(total > 0)) return '0%';
+  const pct = Math.min(100, 100 * meters / total);
+  if (preciseSmall && pct < 0.1) return '<0.1%';
+  if (preciseSmall && pct < 1) return `${pct.toFixed(1)}%`;
+  return `${Math.round(pct)}%`;
 }
 
 const ROUTE_DETAILS_KEY = 'wa-bike-route-details-1';
@@ -1095,7 +1104,7 @@ function storeRouteDetails(m) {
       summary: {
         distM: m.distM, timeS: m.timeS, ascentM: m.ascentM, descentM: m.descentM,
         failM: m.failM, desigM: m.desigM, facilityM: m.facilityM, ferryM: m.ferryM,
-        hazardM: m.hazardM || 0, stress: m.stress || null,
+        hazardM: m.hazardM || 0,
       },
       // Keep the detailed report compact: it only needs road attributes and
       // lengths, not the complete route geometry or elevation profile.
@@ -1632,21 +1641,12 @@ function renderRouteCard(m) {
     ? `<div class="rc-warn">⚠ ${snapNotes.join(' · ')} — move the marker closer to a road if this looks wrong.</div>`
     : '';
   const levelNames = ['', 'Comfy', 'Meets rules', 'Caution', 'Fails rules'];
-  const grade = m.stress?.grade || '—';
-  const comfyPct = Math.round(100 * (stats.levels[1] || 0)
-    / Math.max(1, m.distM - (m.ferryM || 0)));
-  let safetySentence;
-  if (stats.freewayM > 0) {
-    safetySentence = `Includes ${fmtDist(stats.freewayM)} of freeway; inspect the concerns.`;
-  } else if (m.failM > 0) {
-    safetySentence = `${fmtDist(m.failM)} fails your rules; ${comfyPct}% is comfy.`;
-  } else if (stats.limitedAccessM > 0 || (m.hazardM || 0) > 0) {
-    safetySentence = `No rule failures; ${comfyPct}% is comfy with some caution segments.`;
-  } else {
-    safetySentence = `No segments fail your rules; ${comfyPct}% is comfy.`;
-  }
+  const ridingM = Math.max(1, m.distM - (m.ferryM || 0));
+  const comfyPct = routePercent(stats.levels[1] || 0, ridingM);
+  const bikePct = routePercent(stats.bikeNetworkM, ridingM);
+  const failPct = routePercent(m.failM || 0, ridingM, true);
   const highlightButtons = [
-    `<button class="rc-highlight-item" data-highlight="desig" aria-pressed="false" title="Highlight bike-route segments on the map" ${m.desigM > 0 ? '' : 'disabled'}><span>★ Bike routes</span><b>${fmtDist(m.desigM)}</b></button>`,
+    `<button class="rc-highlight-item" data-highlight="bike-network" aria-pressed="false" title="Highlight designated routes, trails, and bike facilities on the map" ${stats.bikeNetworkM > 0 ? '' : 'disabled'}><span>★ Bike network</span><b>${fmtDist(stats.bikeNetworkM)}</b></button>`,
     `<button class="rc-highlight-item" data-highlight="highway" aria-pressed="false" title="Highlight highway segments on the map" ${stats.highwayM > 0 ? '' : 'disabled'}><span>⚠ Highways</span><b>${fmtDist(stats.highwayM)}</b></button>`,
     `<button class="rc-highlight-item${stats.freewayM > 0 ? ' rc-attention' : ''}" data-highlight="freeway" aria-pressed="false" title="Highlight freeway segments on the map" ${stats.freewayM > 0 ? '' : 'disabled'}><span>⛔ Freeways</span><b>${fmtDist(stats.freewayM)}</b></button>`,
     `<button class="rc-highlight-item${stats.limitedAccessM > 0 ? ' rc-attention' : ''}" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access caution segments on the map" ${stats.limitedAccessM > 0 ? '' : 'disabled'}><span>⚠ Caution</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`,
@@ -1663,7 +1663,7 @@ function renderRouteCard(m) {
     <div id="routeControlsSlot"></div>
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi ferry` : ''}</div>
-    <div class="rc-safety rc-grade-${grade}"><b>Stress grade ${grade}</b> — ${safetySentence}</div>
+    <div class="rc-ride-mix" title="Percent of riding distance"><span class="rc-ride-label">Ride</span><span><b>${comfyPct}</b> comfy</span><i>·</i><span><b>${bikePct}</b> bike network</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><b>${failPct}</b> fails</span></div>
     ${snapNotice}
     <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
     ${highlights}
@@ -2007,7 +2007,7 @@ function drawRoute(coords, ferrySegs, segs) {
 
 let routeHighlightKey = null;
 const ROUTE_HIGHLIGHT_FILTERS = {
-  desig: ['==', ['get', 'desig'], 1],
+  'bike-network': ['any', ['==', ['get', 'desig'], 1], ['==', ['get', 'infra'], 1], ['>=', ['get', 'facility'], 2]],
   highway: ['==', ['get', 'hwy'], 1],
   freeway: ['==', ['get', 'fw'], 1],
   'limited-access': ['==', ['get', 'lim'], 1],
@@ -2020,7 +2020,7 @@ const ROUTE_HIGHLIGHT_FILTERS = {
 function routeSegmentMatchesHighlight(seg, key) {
   const flags = seg.flags || 0;
   const level = seg.level || fallbackRouteLevel(seg);
-  if (key === 'desig') return !!(flags & 64);
+  if (key === 'bike-network') return !!(flags & (8 | 64)) || (seg.facility || 0) >= 2;
   if (key === 'highway') return isHighwaySegment(seg);
   if (key === 'freeway') return !!(flags & 4);
   if (key === 'limited-access') return !!(flags & 128);
@@ -2438,6 +2438,7 @@ function renderRouteOptionControls() {
       title="${optimizationDescription(optimization)}" ${turnNav.active ? 'disabled' : ''}>
       <span>${shortLabel}</span></button>`;
   }).join('');
+  host.insertAdjacentHTML('afterbegin', '<span class="route-options-label" aria-hidden="true">Route<br>options</span>');
 }
 
 function activateRouteOption(option, updateNavigation = false) {

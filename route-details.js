@@ -319,7 +319,7 @@ if (!hasRoute) {
   if (!restoreDetailPosition()) selectDetailTab('tips');
 } else {
   const { rules = {}, summary: totals, segs } = details;
-  summary.textContent = `${fmtMi(totals.distM)} mi · ${fmtDur(totals.timeS)} · ${fmtFt(totals.ascentM)} ft climb${totals.stress?.grade ? ` · Stress grade ${totals.stress.grade}` : ''}`;
+  summary.textContent = `${fmtMi(totals.distM)} mi · ${fmtDur(totals.timeS)} · ${fmtFt(totals.ascentM)} ft climb`;
   if (details.optimization?.description) {
     optimization.hidden = false;
     optimization.textContent = `${details.optimization.label || 'Selected option'}: ${details.optimization.description}`;

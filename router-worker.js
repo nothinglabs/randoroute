@@ -638,27 +638,19 @@ function outcomeDistance(meters) {
 function outcomeSnapshot(route) {
   const ridingM = Math.max(1, route.distM - route.ferryM);
   const comfyPct = Math.round(100 * (route.levelM?.[1] || 0) / ridingM);
-  const bikePct = Math.round(100 * Math.min(ridingM, route.desigM + route.facilityM) / ridingM);
+  const bikeNetworkM = (route.segs || []).reduce((sum, seg) => {
+    const flags = seg.flags || 0;
+    return sum + (!(flags & 32) && ((flags & (8 | 64)) || (seg.facility || 0) >= 2)
+      ? Number(seg.lenM) || 0 : 0);
+  }, 0);
+  const bikePct = Math.round(100 * Math.min(ridingM, bikeNetworkM) / ridingM);
   const fail = route.failM > 0 ? `${outcomeDistance(route.failM)} fails rules` : 'no rule-failing segments';
   const details = [fail];
   if (comfyPct > 0) details.push(`${comfyPct}% comfy`);
-  if (bikePct > 0) details.push(`${bikePct}% on bike routes/facilities`);
+  if (bikePct > 0) details.push(`${bikePct}% on the bike network`);
   if (route.limitedAccessM > 0) details.push(`${outcomeDistance(route.limitedAccessM)} limited-access caution`);
   if (route.hazardM > 0) details.push(`${outcomeDistance(route.hazardM)} curve caution`);
   return details.join(' · ');
-}
-
-function stressAssessment(route) {
-  const ridingM = Math.max(1, route.distM - route.ferryM);
-  const failShare = route.failM / ridingM;
-  const comfyShare = (route.levelM?.[1] || 0) / ridingM;
-  if (route.freewayM > 0 || failShare > 0.03) return { grade: 'F', label: 'High concern' };
-  if (failShare > 0.01) return { grade: 'D', label: 'Elevated concern' };
-  if (route.failM > 0) return { grade: 'C', label: 'Some concerns' };
-  if (route.limitedAccessM > 0 || (route.hazardM || 0) > 0 || comfyShare < 0.7) {
-    return { grade: 'B', label: 'Generally low stress' };
-  }
-  return { grade: 'A', label: 'Low stress' };
 }
 
 function presentAsLetters(routes, recommended) {
@@ -679,7 +671,6 @@ function presentAsLetters(routes, recommended) {
     const lead = i === 0
       ? 'Recommended as the strongest safety/practicality balance among the choices.'
       : 'A meaningfully different alternative with its own measured tradeoffs.';
-    route._stress = stressAssessment(route);
     route._outcome = {
       label: `Route ${letter}`,
       reason: `${lead} ${outcomeSnapshot(route)}.`,
@@ -690,10 +681,9 @@ function presentAsLetters(routes, recommended) {
 }
 
 function publicCandidate(candidate) {
-  const { edgeIds, _profile, _outcome, _stress, ...routeResult } = candidate;
+  const { edgeIds, _profile, _outcome, ...routeResult } = candidate;
   return {
     ...routeResult,
-    stress: _stress || stressAssessment(candidate),
     optimization: {
       profileId: _profile.id,
       label: _outcome?.label || _profile.label,
