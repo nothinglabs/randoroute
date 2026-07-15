@@ -528,9 +528,19 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
     ds.push(prof[prof.length - 1]);
     prof = ds;
   }
+  let friendlyRunM = 0, longestFriendlyM = 0;
+  for (const seg of segs) {
+    const bikeFriendly = !(seg.flags & 32) && ((seg.flags & (8 | 64)) || seg.facility >= 2);
+    if (bikeFriendly) {
+      friendlyRunM += seg.lenM;
+      longestFriendlyM = Math.max(longestFriendlyM, friendlyRunM);
+    } else {
+      friendlyRunM = 0;
+    }
+  }
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, hazardM, longestFriendlyM,
     levelM, edgeIds, segs,
     legs: legSummaries,
     profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
@@ -614,11 +624,20 @@ function routeAggression(r) {
 
 function compareSafety(a, b) {
   // A known rule failure is the first-order distinction. The remaining
-  // metrics break ties between routes with the same failing distance.
+  // metrics break ties between routes with the same failing distance. Once
+  // the hard concerns tie, prefer sustained designated/facility coverage:
+  // this keeps a long, coherent trail corridor from losing merely because a
+  // plain-road alternative has a little more level-1 mileage.
   if (a.failM !== b.failM) return a.failM - b.failM;
   if (a.freewayM !== b.freewayM) return a.freewayM - b.freewayM;
   if ((a.hazardM || 0) !== (b.hazardM || 0)) return (a.hazardM || 0) - (b.hazardM || 0);
   if (a.limitedAccessM !== b.limitedAccessM) return a.limitedAccessM - b.limitedAccessM;
+  const aRide = Math.max(1, a.distM - a.ferryM);
+  const bRide = Math.max(1, b.distM - b.ferryM);
+  const designatedDelta = b.desigM / bRide - a.desigM / aRide;
+  if (Math.abs(designatedDelta) >= 0.015) return designatedDelta;
+  const facilityDelta = b.facilityM / bRide - a.facilityM / aRide;
+  if (Math.abs(facilityDelta) >= 0.015) return facilityDelta;
   return a.aggression - b.aggression || a.timeS - b.timeS;
 }
 
@@ -636,6 +655,7 @@ function outcomeSnapshot(route) {
   const details = [fail];
   if (comfyPct > 0) details.push(`${comfyPct}% comfy`);
   if (bikePct > 0) details.push(`${bikePct}% on bike routes/facilities`);
+  if (route.limitedAccessM > 0) details.push(`${outcomeDistance(route.limitedAccessM)} limited-access caution`);
   if (route.hazardM > 0) details.push(`${outcomeDistance(route.hazardM)} curve caution`);
   return details.join(' · ');
 }
@@ -681,13 +701,17 @@ function presentByOutcome(routes) {
     } else if (fastest === safest) {
       lead = 'A meaningfully different route, ordered by its estimated ride time.';
     }
+    if (route._trailFriendly && route !== fastest && route !== safest) {
+      label = 'Trail-rich';
+      lead = `The strongest sustained designated-route and bike-facility coverage among near-safest choices, including a ${outcomeDistance(route.longestFriendlyM || 0)} continuous bike-friendly run.`;
+    }
     route._outcome = { label, reason: `${lead} ${outcomeSnapshot(route)}.` };
   }
   return ordered;
 }
 
 function publicCandidate(candidate) {
-  const { edgeIds, _profile, _outcome, ...routeResult } = candidate;
+  const { edgeIds, _profile, _outcome, _trailFriendly, ...routeResult } = candidate;
   return {
     ...routeResult,
     optimization: {
@@ -702,7 +726,7 @@ function publicCandidate(candidate) {
   };
 }
 
-function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId) {
+function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false) {
   const started = Date.now();
   const profiles = candidateProfiles(forceDesig, forceResidential);
   // Snapping scans the statewide node table. Do it once per route point, not
@@ -827,10 +851,31 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
 
   const fastestOverall = choices.reduce((best, route) => route.timeS < best.timeS ? route : best, choices[0]);
   const safestOverall = choices.reduce((best, route) => compareSafety(route, best) < 0 ? route : best, choices[0]);
-  // Preserve the actual fastest and safest outcomes, the both-preferences
-  // probe, and a saved/shared selection before spending remaining slots on
-  // geometric diversity.
-  const required = [...new Set([fastestOverall, safestOverall, bothPreferences, preferred].filter(Boolean))];
+  // Preserve one coherent trail-forward choice among routes whose hard
+  // concerns are essentially as good as the safest result. A short legal
+  // limited-access caution can still be a worthwhile connector to many miles
+  // of trail, so it is a score deduction rather than an exclusion here.
+  const trailPool = choices.filter((route) =>
+    route.failM <= safestOverall.failM + 30
+    && route.freewayM <= safestOverall.freewayM + 30
+    && (route.hazardM || 0) <= (safestOverall.hazardM || 0) + 75
+    && route.timeS <= fastestOverall.timeS * 1.65 + 600);
+  const trailScore = (route) => {
+    const ridingM = Math.max(1, route.distM - route.ferryM);
+    const extraTime = Math.max(0, route.timeS / Math.max(1, fastestOverall.timeS) - 1);
+    return 0.35 * route.desigM / ridingM + 0.22 * route.facilityM / ridingM
+      + 0.35 * (route.longestFriendlyM || 0) / ridingM
+      + 0.03 * route.residentialM / ridingM - 0.25 * route.limitedAccessM / ridingM
+      - 0.12 * extraTime;
+  };
+  const trailFriendly = trailPool.reduce((best, route) =>
+    !best || trailScore(route) > trailScore(best) ? route : best, null);
+  if (trailFriendly) trailFriendly._trailFriendly = true;
+  // Preserve the actual fastest and safest outcomes, a coherent trail-forward
+  // option, the both-preferences probe, and a saved/shared selection before
+  // spending remaining slots on pure geometric diversity.
+  const required = [...new Set([fastestOverall, safestOverall, trailFriendly,
+    bothPreferences, preferred].filter(Boolean))];
   for (const candidate of required) {
     if (selected.includes(candidate)) continue;
     if (selected.length < 5) {
@@ -842,7 +887,15 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (replaceAt >= 0) selected.splice(replaceAt, 1, candidate);
   }
   const presented = presentByOutcome(selected.slice(0, 5));
-  return { ok: true, options: presented.map(publicCandidate), ms: Date.now() - started };
+  return {
+    ok: true, options: presented.map(publicCandidate), ms: Date.now() - started,
+    debug: debug ? {
+      raw: raw.map((r) => r._profile.id), reasonable: reasonable.map((r) => r._profile.id),
+      unique: unique.map((r) => r._profile.id), useful: useful.map((r) => r._profile.id),
+      choices: choices.map((r) => r._profile.id), selected: selected.map((r) => r._profile.id),
+      safest: safestOverall._profile.id, trailFriendly: trailFriendly?._profile.id,
+    } : undefined,
+  };
 }
 
 // Binary min-heap on (key, node) pairs.
@@ -903,7 +956,7 @@ onmessage = (ev) => {
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const result = routeOptions(pts, m.rules, !!m.forceDesignated,
-        !!m.forceResidential, m.preferredProfileId);
+        !!m.forceResidential, m.preferredProfileId, !!m.debug);
       postMessage({ type: 'route-options', id: m.id, ...result });
     }
   } catch (err) {
