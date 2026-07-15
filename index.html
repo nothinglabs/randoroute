@@ -17,6 +17,7 @@
 </head>
 <body class="panel-open">
   <div id="map"></div>
+  <button id="appHelpBtn" type="button" aria-label="How to use the app" title="How to use the app">?</button>
   <div id="appVersion" aria-label="App version"></div>
 
   <div id="topToolbar">
@@ -33,6 +34,7 @@
       <span id="rb-status"></span>
     </div>
   </div>
+  <div id="routeActionToast" class="route-action-toast" role="status" aria-live="polite" hidden><span class="route-action-spinner" aria-hidden="true"></span><span id="routeActionText"></span></div>
   <div id="mobileNavDock"></div>
   <button id="legendToggle" type="button" aria-expanded="false" aria-controls="legendFlyout" title="Show map legend">
     <svg class="legend-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2" fill="#2c7bb6"/><path d="M10 6h9M10 12h9M10 18h9"/><circle cx="5" cy="12" r="2" fill="#f46d43"/><circle cx="5" cy="18" r="2" fill="#d7191c"/></svg>
@@ -61,7 +63,7 @@
     </section>
 
     <section class="tab" id="tab-layers">
-      <div class="layers-intro"><strong>Map layers</strong><br><span>Choose the data drawn on the map.</span></div>
+      <div class="layers-intro"><div><strong>Map layers</strong><br><span>Choose the data drawn on the map.</span></div><button type="button" id="layersHelpBtn" class="layers-help-btn" aria-label="Map data and layers help" title="Map data and layers help">?</button></div>
       <div id="sources"></div>
     </section>
 
@@ -89,7 +91,7 @@
     <div class="picker-search-row">
       <input id="placeSearch" type="search" placeholder="Search places…" aria-label="Search for a place" autocomplete="off">
       <button id="onlinePlaceSearch" aria-label="Search online for places" title="Search online for places">⌕</button>
-      <button id="useLoc" aria-label="Use my location" title="Use my location">⌖</button>
+      <button id="useLoc" aria-label="Use my current location" title="Use my current location"><span aria-hidden="true">⌖</span> Use my location</button>
     </div>
     <div id="placeResults" class="place-results"></div>
   </div>
@@ -136,8 +138,38 @@
   <dialog id="settingsHelpDialog" class="map-dialog settings-help-dialog" aria-label="Routing settings help">
     <div class="dialog-head"><h2>Routing settings</h2><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div>
     <section><h3>Limits</h3><p><b>Minimum shoulder</b> is the width required on faster roads. <b>Max acceptable speed without shoulder</b> lets slower roads pass even where shoulder data is missing. <b>Never allow roads faster than</b> makes roads above the selected speed fail; “no cutoff” leaves the shoulder rule in charge.</p></section>
-    <section><h3>Options</h3><p>The app compares a wider set of internal searches, removes near-duplicates, then names the visible choices from their actual results: fastest ride, rule-failing distance, caution, comfy coverage, and bike-route coverage. <b>Strongly prefer bike routes for all route options</b> forces every choice to favor designated trails and corridors. <b>Strongly prefer residential streets for all route options</b> forces every choice to favor streets mapped as residential or living streets over ordinary tertiary streets. <b>Allow freeway as last resort</b> permits a freeway only when the network otherwise has no route; it still fails the rules. <b>Only show fully safe routes</b> returns no route instead of showing an unavoidable failing segment. <b>Auto-reroute</b> waits for 15 seconds of actual movement while you remain off route, then announces “updating route” and reroutes from your current location; turn it off to reroute only when you choose. <b>Unknown shoulder treated as 0 ft</b> requires fast roads to prove an adequate shoulder. Start and End search always keep local results available; the search icon also performs a manual online place lookup.</p></section>
-    <section><h3>How route choices work</h3><p>Fastest is always the lowest-time result. Safest minimizes distance that fails your rules, then considers freeway and limited-access exposure, overall stress, comfy roads, and bike-route coverage. Middle choices progress from quicker toward safer. A forced preference above applies to every internal search.</p></section>
+    <section><h3>Options</h3><p><b>Strongly prefer bike routes for all route options</b> forces every choice to favor designated trails and corridors. <b>Strongly prefer residential streets for all route options</b> forces every choice to favor streets mapped as residential or living streets. <b>Allow freeway as last resort</b> permits a freeway only as a heavily penalized fallback; it still fails the rules. <b>Only show fully safe routes</b> returns no route instead of showing an unavoidable failing road. <b>Auto-reroute</b> waits for moving time while you remain off route, then announces and updates the route. <b>Unknown shoulder treated as 0 ft</b> requires faster roads to prove an adequate shoulder.</p></section>
+  </dialog>
+
+  <dialog id="appHelpDialog" class="map-dialog app-help-dialog" aria-label="How to use the app">
+    <div class="dialog-head"><h2>Plan a safer bike route</h2><button class="dialog-close" data-close="appHelpDialog" aria-label="Close">✕</button></div>
+    <ol>
+      <li>Set <b>Start</b> and <b>End</b> by search or by tapping the map.</li>
+      <li>Compare the distinct route choices, then tap a route-card item to highlight concerns.</li>
+      <li>Use <b>Settings</b> for your riding rules, <b>Layers</b> to inspect the source data, and <b>ⓘ</b> for route details.</li>
+      <li>Tap <b>Navigate</b> for foreground GPS and voice guidance.</li>
+    </ol>
+    <p>Map colors and routes update on this device. Always follow signs and current road conditions.</p>
+  </dialog>
+
+  <dialog id="layersHelpDialog" class="full-help-dialog" aria-label="Map data and layers help">
+    <div class="full-help-head"><div><span>Help</span><h2>Map data &amp; routing graph</h2></div><button class="dialog-close" data-close="layersHelpDialog" aria-label="Close">✕</button></div>
+    <div class="full-help-body">
+      <p class="help-lead">The app combines official Washington data with OpenStreetMap and elevation into one offline, on-device routing graph. Layer switches change what is drawn; they do not remove data from routing.</p>
+      <section><h3>Official WSDOT data</h3><p><b>Bicycle Level of Traffic Stress (BLTS)</b> supplies statewide road stress, measured shoulder context, and access-control information. <b>Roadway Characteristic Data</b> supplies legal speeds on state highways. <b>Active Transportation Facilities</b> identifies shared lanes, bike lanes, buffered or separated lanes, and shared-use paths. <b>Permanent bicycle restrictions</b> are hard exclusions: the router never traverses them.</p></section>
+      <section><h3>OpenStreetMap data</h3><p>OSM supplies the connected road and path network, street names, signed speeds where tagged, road class, one-way rules, shoulders, bicycle access, cycleways, designated national/regional bicycle routes, ferries, residential streets, and pedestrian connections. Missing speed limits use a documented road-class estimate; the street popup says when speed is estimated. A path tagged <b>bicycle=no</b> is never routed.</p></section>
+      <section><h3>Short walk-bike fallbacks</h3><p>Mapped sidewalks and crossings, paved footways, pedestrian streets, explicit <b>bicycle=dismount</b> connections, and road-side sidewalk tags can form a walk-only graph edge. They are priced at walking speed and shown separately—not called bike infrastructure. The router limits walk-bike use to about 0.5 mile per route so it remains a short safety fallback.</p></section>
+      <section><h3>Elevation &amp; curve cautions</h3><p>AWS Terrarium elevation tiles provide climb/descent and grade-aware travel time. The builder also looks for a tight curve that overlaps an uphill grade on a faster road without a protective facility, then adjusts concern using known shoulder width. This is a <b>possible limited-visibility uphill curve</b>, directional and separately reported. It is a geometry/elevation proxy—not measured sight distance—and does not by itself fail your riding rules.</p></section>
+      <section><h3>How routes are chosen</h3><p>The router tests several time/safety and road-preference combinations, removes nearly identical paths, and presents up to five meaningfully different results. Rule failures, freeways, limited access, curve cautions, speed, grade, facilities, designated routes, and residential preference affect cost. Freeways remain a last resort; legal limited-access highways are cautions; permanent prohibitions are impassable.</p></section>
+      <section><h3>What each map layer means</h3><ul>
+        <li><b>Designated routes (USBR &amp; trails)</b>: official national/regional OSM bicycle-route relationships, drawn orange beneath the scored network.</li>
+        <li><b>WSDOT BLTS (state highways)</b>: official state-road stress and shoulder/access context.</li>
+        <li><b>OSM bike infrastructure</b>: mapped bike lanes, cycle tracks, shared-use paths, and other bicycle facilities.</li>
+        <li><b>Bikes prohibited (WSDOT)</b>: permanent state restriction data for inspection; these graph segments are excluded from routing.</li>
+        <li><b>All roads (OSM, est. speeds)</b>: the broader street network, including residential roads; its visibility is reduced when zoomed out to keep the map readable.</li>
+      </ul><p>Blue means comfortable or meets the selected criteria, orange means caution, red dashes mean a road fails the current rules, and gray means unknown/no data. Use the map legend for the current exact swatches.</p></section>
+      <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. A missing shoulder, bike facility, traffic volume, surface, or sight-distance measurement is not proof that it is absent. Always use local signs and conditions; the app is a planning aid, not a guarantee of safety.</p></section>
+    </div>
   </dialog>
 
   <dialog id="routeDetailsDialog" class="route-details-dialog" aria-label="Route details">

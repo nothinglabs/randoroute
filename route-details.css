@@ -32,6 +32,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .detail-list.numbered { padding-left: 25px; list-style: decimal; }
 .detail-list.numbered .detail-item { padding: 0; overflow: hidden; }
 .detail-item { padding: 9px 10px; border-radius: 9px; background: #f6f8fa; }
+.detail-item.clickable { padding: 0; overflow: hidden; }
 .detail-item.fail { background: #fff3f0; }
 .detail-item.caution { background: #fff8de; }
 .detail-item.safety-l1 { border-left: 5px solid #2c7bb6; }

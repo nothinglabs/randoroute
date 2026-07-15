@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill WSDOT permanent bike restrictions into an existing BGR3/BGR4/BGR5 graph.
+"""Backfill WSDOT permanent bike restrictions into an existing BGR3-BGR6 graph.
 
 Raw OSM and DEM inputs are not required. Matched graph edges retain their
 geometry and elevation but receive the unused shoulder sentinel -128. The
@@ -88,7 +88,8 @@ def patch_graph(raw, grid, match_deg, strict_match_deg):
         # the restricted roadway (for example, a "bikes use sidewalk" order).
         # Keep dedicated infrastructure routable unless it is separately
         # tagged bicycle=no by OSM, which the graph builder already excludes.
-        if raw[layout['edge_flags'] + edge] & 8:
+        if (raw[layout['edge_flags'] + edge] & 8
+                or (layout.get('edge_walk') is not None and raw[layout['edge_walk'] + edge])):
             continue
         result = best_match(raw, layout, edge, grid, match_deg, strict_match_deg)
         if result is None:

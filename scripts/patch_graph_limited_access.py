@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backfill WSDOT limited-access caution flags into an existing BGR3/BGR4/BGR5 graph.
+"""Backfill WSDOT limited-access caution flags into an existing BGR3-BGR6 graph.
 
 This is a conservative final safety net after a normal build, and a migration
 tool when the raw OSM and DEM inputs used to build the checked-in graph are
@@ -59,8 +59,8 @@ def point_segment_distance_sq(px, py, ax, ay, bx, by):
 
 def graph_layout(raw):
     magic = bytes(raw[:4])
-    if magic not in (b'BGR3', b'BGR4', b'BGR5'):
-        raise ValueError('not a BGR3, BGR4, or BGR5 graph')
+    if magic not in (b'BGR3', b'BGR4', b'BGR5', b'BGR6'):
+        raise ValueError('not a supported BGR graph')
     n, e, d, g, u, name_bytes = struct.unpack_from('<6I', raw, 4)
     offset = 28
     offset += 4 * n  # node longitude
@@ -78,12 +78,20 @@ def graph_layout(raw):
     edge_shoulder = offset
     offset += e      # edge shoulder
     edge_road_class = None
-    if magic in (b'BGR4', b'BGR5'):
+    if magic in (b'BGR4', b'BGR5', b'BGR6'):
         edge_road_class = offset
         offset += e  # OSM highway class
-    if magic == b'BGR5':
+    edge_walk = None
+    if magic in (b'BGR5', b'BGR6'):
         offset += e  # typed bicycle facility
         offset += e  # authoritative WSDOT source bits
+    if magic == b'BGR6':
+        edge_walk = offset
+        offset += e  # walk-only kind
+        offset += e  # curve hazard a->b
+        offset += e  # curve hazard b->a
+        offset += offset % 2
+        offset += 8 * e  # four u16 hazard geometry ranges
     offset = align4(offset)
     edge_geom_off = offset
     offset += 4 * e
@@ -108,6 +116,7 @@ def graph_layout(raw):
         'edge_flags': edge_flags,
         'edge_shoulder': edge_shoulder,
         'edge_road_class': edge_road_class,
+        'edge_walk': edge_walk,
         'edge_geom_off': edge_geom_off,
         'edge_geom_count': edge_geom_count,
         'edge_name': edge_name,
@@ -167,7 +176,8 @@ def patch_graph(raw, grid, match_deg, strict_match_deg):
         # WSDOT's roadway centerline can run immediately beside a legal bike
         # path. The normal builder never conflates WSDOT road attributes onto
         # dedicated infrastructure, so the migration must not either.
-        if raw[layout['edge_flags'] + edge] & 8:
+        if (raw[layout['edge_flags'] + edge] & 8
+                or (layout.get('edge_walk') is not None and raw[layout['edge_walk'] + edge])):
             continue
         geom_off = struct.unpack_from('<I', raw, layout['edge_geom_off'] + 4 * edge)[0]
         geom_count = struct.unpack_from('<H', raw, layout['edge_geom_count'] + 2 * edge)[0]

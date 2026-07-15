@@ -227,9 +227,10 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 }
 
 /* ------------------------------------------------------------ layers etc. */
-.layers-intro { margin: 5px 1px 4px; color: #667680; }
+.layers-intro { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 5px 1px 4px; color: #667680; }
 .layers-intro strong { color: #40515c; font: 750 11px/1.2 system-ui; }
 .layers-intro span { font: 600 10.5px/1.2 system-ui; }
+.layers-help-btn { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; border: 1px solid #b8cbd8; border-radius: 50%; background: #f7fafb; color: #0a66c2; font: 800 16px/1 system-ui; cursor: pointer; }
 .source-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; min-height: 25px; }
 .source-row label { font-weight: 600; cursor: pointer; }
 .source-row .count { color: #888; font-weight: 400; font-size: 11.5px; margin-left: auto; }
@@ -357,13 +358,13 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   align-items: center;
   gap: 6px;
   background: rgba(255, 255, 255, 0.97);
-  border-radius: 22px;
+  border-radius: 25px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  padding: 5px 10px 5px 6px;
-  max-width: min(76vw, 430px);
+  padding: 6px 11px 6px 7px;
+  max-width: min(82vw, 470px);
 }
 #routeBar button {
-  width: 34px; height: 34px; flex: none;
+  width: 40px; height: 40px; flex: none;
   border: none; border-radius: 50%;
   background: #eef1f4;
   font: 700 13px system-ui;
@@ -371,15 +372,15 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   cursor: pointer;
 }
 #routeBar .rb-pill {
-  width: auto; padding: 0 12px; border-radius: 17px;
-  font: 700 12px system-ui;
+  width: auto; padding: 0 14px; border-radius: 20px;
+  font: 700 13px system-ui;
 }
 #routeBar .rb-pill-start { color: #0072B2; }
 #routeBar .rb-pill-end { color: #D55E00; }
 #routeBar #rb-start.active, #routeBar #rb-end.active,
 #routeBar #rb-via.active { background: #0a66c2; color: #fff; }
 #routeBar button:disabled { opacity: .38; cursor: default; }
-#routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 32px; }
+#routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 38px; }
 #routeBar #rb-reverse { font-size: 17px; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 .place-results .place-choice {
@@ -392,6 +393,11 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   font: 600 12px system-ui; color: #222;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.route-action-toast { position: absolute; z-index: 19; top: calc(env(safe-area-inset-top) + 72px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 24px); padding: 8px 12px; border: 1px solid #9fc8df; border-radius: 999px; background: rgba(247,252,255,.98); box-shadow: 0 3px 14px rgba(0,0,0,.2); color: #22485e; font: 750 12px/1.25 system-ui; pointer-events: none; }
+.route-action-toast[hidden] { display: none; }
+.route-action-spinner { display: none; width: 14px; height: 14px; border: 2px solid #b8d6e8; border-top-color: #0a66c2; border-radius: 50%; }
+.route-action-toast.busy .route-action-spinner { display: block; animation: route-spin .75s linear infinite; }
+@keyframes route-spin { to { transform: rotate(360deg); } }
 #rb-status:empty { display: none; }
 
 .nav-start {
@@ -437,13 +443,14 @@ body.navigation-active #routeBar { display: none; }
 }
 @media (min-width: 1001px) {
   body:not(.navigation-active) #topToolbar {
-    left: calc(clamp(370px, 33vw, 430px) + 24px);
+    left: calc(clamp(370px, 33vw, 430px) + 70px);
     transform: none;
   }
 }
 
-#appVersion { position: absolute; top: calc(env(safe-area-inset-top) + 3px); left: 4px; z-index: 13; font-size: 9px; color: #56616a; background: rgba(255,255,255,.9); border-radius: 3px; padding: 1px 3px; pointer-events: none; }
-@media (min-width: 721px) { #appVersion { left: 450px; } }
+#appVersion { position: absolute; top: calc(env(safe-area-inset-top) + 44px); left: 8px; z-index: 13; font-size: 9px; color: #56616a; background: rgba(255,255,255,.9); border-radius: 3px; padding: 1px 3px; pointer-events: none; }
+#appHelpBtn { position: absolute; z-index: 13; top: calc(env(safe-area-inset-top) + 8px); left: 8px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #b8cbd8; border-radius: 10px; background: rgba(255,255,255,.96); box-shadow: 0 2px 9px rgba(0,0,0,.18); color: #0a66c2; font: 800 17px/1 system-ui; cursor: pointer; }
+@media (min-width: 721px) { #appVersion { left: 450px; top: calc(env(safe-area-inset-top) + 50px); } #appHelpBtn { left: 450px; top: calc(env(safe-area-inset-top) + 12px); } }
 
 .place-picker {
   position: absolute; z-index: 18; top: calc(env(safe-area-inset-top) + 62px); left: 50%;
@@ -452,10 +459,13 @@ body.navigation-active #routeBar { display: none; }
   box-shadow: 0 5px 18px rgba(0,0,0,.2); color: #222;
 }
 .picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 5px; font-size: 12px; }
-#placePickerClose { width: 26px; height: 26px; border: none; border-radius: 7px; background: #eef1f4; color: #555; cursor: pointer; }
+#placePickerClose { flex: 0 0 34px; width: 34px; height: 34px; padding: 0; border: none; border-radius: 9px; background: #eef1f4; color: #555; font: 700 16px/1 system-ui; cursor: pointer; }
 .picker-search-row { display: flex; gap: 5px; }
 .picker-search-row #placeSearch { flex: 1; min-width: 0; }
-#onlinePlaceSearch, #useLoc { flex: 0 0 36px; width: 36px; border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; color: #0a66c2; font: 700 18px system-ui; cursor: pointer; }
+#onlinePlaceSearch, #useLoc { border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; color: #0a66c2; cursor: pointer; }
+#onlinePlaceSearch { flex: 0 0 36px; width: 36px; font: 700 18px system-ui; }
+#useLoc { flex: 0 0 auto; padding: 0 9px; white-space: nowrap; font: 700 11px system-ui; }
+#useLoc span { margin-right: 2px; font-size: 16px; vertical-align: -1px; }
 #onlinePlaceSearch { color: #405d77; }
 
 .update-prompt { position: absolute; z-index: 30; left: 50%; bottom: calc(68px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 7px; width: max-content; max-width: calc(100vw - 20px); padding: 7px 8px 7px 11px; border: 1px solid #cfd8e0; border-radius: 12px; background: rgba(255,255,255,.98); box-shadow: 0 4px 16px rgba(0,0,0,.24); color: #333; font: 600 11px system-ui; }
@@ -465,10 +475,11 @@ body.navigation-active #routeBar { display: none; }
 @media (max-width: 720px) {
   #topToolbar { gap: 4px; max-width: calc(100vw - 12px); }
   .nav-start { min-height: 46px; padding: 0 11px; font-size: 12px; }
-  #routeBar { gap: 4px; padding: 4px 7px 4px 5px; max-width: calc(100vw - 12px); }
-  #routeBar button { width: 30px; height: 30px; }
-  #routeBar .rb-pill { padding: 0 9px; font-size: 11px; }
-  #routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 29px; }
+  #routeBar { gap: 4px; padding: 5px 8px 5px 6px; max-width: calc(100vw - 12px); }
+  #routeBar button { width: 34px; height: 34px; }
+  #routeBar .rb-pill { padding: 0 10px; font-size: 11.5px; }
+  #routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 33px; }
+  .route-action-toast { top: calc(env(safe-area-inset-top) + 66px); }
   #mobileNavDock { display: block; position: absolute; z-index: 15; left: 66px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
   body.panel-open #mobileNavDock { left: 10px; bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group { margin-top: calc(env(safe-area-inset-top) + 10px); border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.22); }
@@ -529,6 +540,21 @@ body.navigation-active #routeBar { display: none; }
 .settings-help-dialog section { margin-top: 12px; }
 .settings-help-dialog h3 { margin: 0 0 4px; color: #2c3e4c; font: 750 13px system-ui; }
 .settings-help-dialog p { margin: 0; color: #52616d; font: 12px/1.42 system-ui; }
+.app-help-dialog ol { display: grid; gap: 7px; margin: 13px 0 10px; padding-left: 21px; color: #405562; font: 12.5px/1.4 system-ui; }
+.app-help-dialog p { margin: 0; color: #667784; font: 11.5px/1.4 system-ui; }
+.full-help-dialog { width: 100vw; height: var(--app-height, 100dvh); max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: #f4f7f9; color: #1d2935; }
+.full-help-dialog::backdrop { background: rgba(18,42,60,.42); }
+.full-help-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: max(10px, env(safe-area-inset-top)) 18px 10px; border-bottom: 1px solid #d8e2e8; background: rgba(255,255,255,.96); }
+.full-help-head span { display: block; color: #667784; font: 700 10px/1.2 system-ui; letter-spacing: .08em; text-transform: uppercase; }
+.full-help-head h2 { margin: 1px 0 0; color: #263b48; font: 760 20px/1.15 system-ui; }
+.full-help-head .dialog-close { width: 38px; height: 38px; font-size: 16px; }
+.full-help-body { width: min(100% - 28px, 780px); margin: 0 auto; padding: 18px 0 max(32px, env(safe-area-inset-bottom)); }
+.full-help-body .help-lead { margin: 0 0 14px; color: #405562; font: 650 14px/1.45 system-ui; }
+.full-help-body section { margin: 10px 0; padding: 14px; border: 1px solid #dce5ea; border-radius: 11px; background: #fff; }
+.full-help-body h3 { margin: 0 0 5px; color: #2c3e4c; font: 750 15px/1.2 system-ui; }
+.full-help-body p, .full-help-body li { color: #52616d; font: 13px/1.48 system-ui; }
+.full-help-body p { margin: 0; }
+.full-help-body ul { display: grid; gap: 5px; margin: 7px 0; padding-left: 20px; }
 .dialog-actions .danger { border-color: #b42318; background: #c52b22; color: #fff; }
 /* iOS Safari zooms the entire page when a focused field is below 16px, which
    can leave map controls outside the visual viewport after search closes. */
