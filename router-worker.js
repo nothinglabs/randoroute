@@ -648,7 +648,20 @@ function outcomeSnapshot(route) {
   return details.join(' · ');
 }
 
-function presentByOutcome(routes) {
+function stressAssessment(route) {
+  const ridingM = Math.max(1, route.distM - route.ferryM);
+  const failShare = route.failM / ridingM;
+  const comfyShare = (route.levelM?.[1] || 0) / ridingM;
+  if (route.freewayM > 0 || failShare > 0.03) return { grade: 'F', label: 'High concern' };
+  if (failShare > 0.01) return { grade: 'D', label: 'Elevated concern' };
+  if (route.failM > 0) return { grade: 'C', label: 'Some concerns' };
+  if (route.limitedAccessM > 0 || (route.hazardM || 0) > 0 || comfyShare < 0.7) {
+    return { grade: 'B', label: 'Generally low stress' };
+  }
+  return { grade: 'A', label: 'Low stress' };
+}
+
+function presentAsLetters(routes, recommended) {
   if (!routes.length) return routes;
   const fastest = routes.reduce((best, route) => route.timeS < best.timeS ? route : best, routes[0]);
   const safest = routes.reduce((best, route) => compareSafety(route, best) < 0 ? route : best, routes[0]);
@@ -656,48 +669,31 @@ function presentByOutcome(routes) {
   middle.sort(fastest === safest
     ? (a, b) => a.timeS - b.timeS
     : (a, b) => compareSafety(b, a) || a.timeS - b.timeS);
-  const ordered = fastest === safest ? [fastest, ...middle] : [fastest, ...middle, safest];
-
-  const rankedLabels = fastest === safest
-    ? (ordered.length >= 5
-      ? ['Fastest + safest', 'Next quickest', 'Middle option', 'Longer option', 'Longest option']
-      : ordered.length === 4
-        ? ['Fastest + safest', 'Next quickest', 'Longer option', 'Longest option']
-        : ordered.length === 3
-          ? ['Fastest + safest', 'Next quickest', 'Longer option']
-          : ordered.length === 2 ? ['Fastest + safest', 'Longer option'] : ['Fastest'])
-    : (ordered.length >= 5
-      ? ['Fastest', 'Quicker', 'Balanced', 'Safer', 'Safest']
-      : ordered.length === 4
-        ? ['Fastest', 'Quicker', 'Safer', 'Safest']
-        : ordered.length === 3
-          ? ['Fastest', 'Balanced', 'Safest']
-          : ordered.length === 2 ? ['Fastest', 'Safest'] : ['Fastest']);
+  const outcomeOrder = fastest === safest ? [fastest, ...middle] : [fastest, ...middle, safest];
+  const ordered = recommended && outcomeOrder.includes(recommended)
+    ? [recommended, ...outcomeOrder.filter((route) => route !== recommended)] : outcomeOrder;
 
   for (let i = 0; i < ordered.length; i++) {
     const route = ordered[i];
-    let label = rankedLabels[i] || 'Alternative';
-    let lead = i === 0
-      ? 'Lowest estimated ride time among the choices.'
-      : i === ordered.length - 1
-        ? 'Least rule-failing distance among the choices; comfy and bike-route coverage break ties.'
-        : i < ordered.length / 2
-          ? 'A quicker alternative, ranked using its actual safety outcome.'
-          : 'A safer alternative, ranked using rule failures, caution, comfy roads, and bike-route coverage.';
-    if (fastest === safest && route === fastest) {
-      lead = 'Both the fastest and the safest of the distinct choices found.';
-    } else if (fastest === safest) {
-      lead = 'A meaningfully different route, ordered by its estimated ride time.';
-    }
-    route._outcome = { label, reason: `${lead} ${outcomeSnapshot(route)}.` };
+    const letter = String.fromCharCode(65 + i);
+    const lead = i === 0
+      ? 'Recommended as the strongest safety/practicality balance among the choices.'
+      : 'A meaningfully different alternative with its own measured tradeoffs.';
+    route._stress = stressAssessment(route);
+    route._outcome = {
+      label: `Route ${letter}`,
+      reason: `${lead} ${outcomeSnapshot(route)}.`,
+      recommended: i === 0,
+    };
   }
   return ordered;
 }
 
 function publicCandidate(candidate) {
-  const { edgeIds, _profile, _outcome, ...routeResult } = candidate;
+  const { edgeIds, _profile, _outcome, _stress, ...routeResult } = candidate;
   return {
     ...routeResult,
+    stress: _stress || stressAssessment(candidate),
     optimization: {
       profileId: _profile.id,
       label: _outcome?.label || _profile.label,
@@ -706,6 +702,7 @@ function publicCandidate(candidate) {
       prefDesignated: _profile.prefDesig,
       prefResidential: _profile.prefResidential,
       alternativeCorridor: !!_profile.alternativeCorridor,
+      recommended: !!_outcome?.recommended,
     },
   };
 }
@@ -823,6 +820,17 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     })) : choices;
   const boundedSafer = boundedChoices.reduce((best, route) =>
     !best || compareSafety(route, best) < 0 ? route : best, null);
+  // Route A is not necessarily the absolute safest or the absolute fastest.
+  // Choose the safest result whose every leg stays within a practical detour
+  // of the quickest option; the stricter choices remain available as letters.
+  const practicalChoices = choices.filter((route) =>
+    route.legs.length === fastestOverall.legs.length && route.legs.every((leg, index) => {
+      const quickestLeg = fastestOverall.legs[index];
+      return leg.distM <= quickestLeg.distM * 1.35 + 800
+        && leg.timeS <= quickestLeg.timeS * 1.4 + 300;
+    }));
+  const recommended = practicalChoices.reduce((best, route) =>
+    !best || compareSafety(route, best) < 0 ? route : best, null);
   const boundedPreferred = (!hasStops || !preferred || boundedChoices.includes(preferred)
     || preferred === safestOverall) ? preferred : null;
   const boundedBothPreferences = (!hasStops || !bothPreferences
@@ -856,7 +864,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     }
     if (selected.every((other) => meaningfullyDifferent(last, other))) selected.push(last);
   }
-  const required = [...new Set([fastestOverall, safestOverall, boundedSafer,
+  const required = [...new Set([recommended, fastestOverall, safestOverall, boundedSafer,
     boundedBothPreferences, boundedPreferred].filter(Boolean))];
   for (const candidate of required) {
     if (selected.includes(candidate)) continue;
@@ -868,7 +876,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     while (replaceAt >= 0 && required.includes(selected[replaceAt])) replaceAt--;
     if (replaceAt >= 0) selected.splice(replaceAt, 1, candidate);
   }
-  const presented = presentByOutcome(selected.slice(0, 5));
+  const presented = presentAsLetters(selected.slice(0, 5), recommended);
   return {
     ok: true, options: presented.map(publicCandidate), ms: Date.now() - started,
     debug: debug ? {
@@ -876,6 +884,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       unique: unique.map((r) => r._profile.id), useful: useful.map((r) => r._profile.id),
       choices: choices.map((r) => r._profile.id), selected: selected.map((r) => r._profile.id),
       safest: safestOverall._profile.id, boundedSafer: boundedSafer?._profile.id,
+      recommended: recommended?._profile.id,
     } : undefined,
   };
 }

@@ -265,14 +265,18 @@ The app routes **fully client-side**: A* in a web worker over estimated riding
 TIME (a grade-aware speed model). Each request probes a matrix of direct,
 balanced, and low-stress costs with and without bike-route and residential
 preferences. Near-duplicates and dominated choices are removed, leaving up to
-five useful alternatives. Visible names describe the measured outcomes rather
-than those internal recipes: **Fastest** has the lowest estimated ride time and
-**Safest** has the least rule-failing distance, with freeway/caution exposure,
-comfy coverage, and bike-route coverage breaking ties. Middle choices progress
-from quicker toward safer. On routes with stops, candidate selection checks
-detours leg by leg and preserves the safest bounded-detour option, while keeping
-at most one extreme-detour result when that is the true safest path. This keeps
-a small concern near one stop from filling the choices with large local loops.
+five useful alternatives labeled **Route A–E**. Route A is always selected by
+default and is the safest candidate that stays within a practical per-leg
+detour of the quickest result; the other letters are meaningfully different
+options without implying a fixed fastest-to-safest scale. Each selected route
+gets an aggregate stress grade based on rule-failing distance, freeway and
+caution exposure, and comfy-road coverage: A has no known failures or cautions
+and is mostly comfy; B has no known failures but includes caution or less-comfy
+riding; C has up to 1% rule-failing distance; D has 1–3%; and F has more than
+3% or any freeway riding. On routes with stops, candidate
+selection also checks detours leg by leg and keeps at most one extreme-detour
+result. This keeps a small concern near one stop from filling the choices with
+large local loops.
 Limited-access roads that meet the rider's speed and shoulder rules remain
 preferable to known rule violations. Settings can force the bike-route or
 residential preference across every candidate.

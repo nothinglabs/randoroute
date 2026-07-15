@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-14.98';
+const APP_VERSION = '2026-07-15.99';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1095,7 +1095,7 @@ function storeRouteDetails(m) {
       summary: {
         distM: m.distM, timeS: m.timeS, ascentM: m.ascentM, descentM: m.descentM,
         failM: m.failM, desigM: m.desigM, facilityM: m.facilityM, ferryM: m.ferryM,
-        hazardM: m.hazardM || 0,
+        hazardM: m.hazardM || 0, stress: m.stress || null,
       },
       // Keep the detailed report compact: it only needs road attributes and
       // lengths, not the complete route geometry or elevation profile.
@@ -1632,12 +1632,24 @@ function renderRouteCard(m) {
     ? `<div class="rc-warn">⚠ ${snapNotes.join(' · ')} — move the marker closer to a road if this looks wrong.</div>`
     : '';
   const levelNames = ['', 'Comfy', 'Meets rules', 'Caution', 'Fails rules'];
+  const grade = m.stress?.grade || '—';
+  const comfyPct = Math.round(100 * (stats.levels[1] || 0)
+    / Math.max(1, m.distM - (m.ferryM || 0)));
+  let safetySentence;
+  if (stats.freewayM > 0) {
+    safetySentence = `Includes ${fmtDist(stats.freewayM)} of freeway; inspect the concerns.`;
+  } else if (m.failM > 0) {
+    safetySentence = `${fmtDist(m.failM)} fails your rules; ${comfyPct}% is comfy.`;
+  } else if (stats.limitedAccessM > 0 || (m.hazardM || 0) > 0) {
+    safetySentence = `No rule failures; ${comfyPct}% is comfy with some caution segments.`;
+  } else {
+    safetySentence = `No segments fail your rules; ${comfyPct}% is comfy.`;
+  }
   const highlightButtons = [
     `<button class="rc-highlight-item" data-highlight="desig" aria-pressed="false" title="Highlight bike-route segments on the map" ${m.desigM > 0 ? '' : 'disabled'}><span>★ Bike routes</span><b>${fmtDist(m.desigM)}</b></button>`,
     `<button class="rc-highlight-item" data-highlight="highway" aria-pressed="false" title="Highlight highway segments on the map" ${stats.highwayM > 0 ? '' : 'disabled'}><span>⚠ Highways</span><b>${fmtDist(stats.highwayM)}</b></button>`,
     `<button class="rc-highlight-item${stats.freewayM > 0 ? ' rc-attention' : ''}" data-highlight="freeway" aria-pressed="false" title="Highlight freeway segments on the map" ${stats.freewayM > 0 ? '' : 'disabled'}><span>⛔ Freeways</span><b>${fmtDist(stats.freewayM)}</b></button>`,
     `<button class="rc-highlight-item${stats.limitedAccessM > 0 ? ' rc-attention' : ''}" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access caution segments on the map" ${stats.limitedAccessM > 0 ? '' : 'disabled'}><span>⚠ Caution</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`,
-    `<button class="rc-highlight-item${m.hazardM > 0 ? ' rc-attention' : ''}" data-highlight="curve-hazard" aria-pressed="false" title="Highlight possible limited-visibility uphill curves" ${m.hazardM > 0 ? '' : 'disabled'}><span>↗ Curves</span><b>${fmtDist(m.hazardM || 0)}</b></button>`,
     ...[1, 4].map((level) =>
       `<button class="rc-level rc-l${level}${level === 4 && stats.levels[level] > 0 ? ' rc-attention' : ''}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`),
   ];
@@ -1651,18 +1663,18 @@ function renderRouteCard(m) {
     <div id="routeControlsSlot"></div>
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi ferry` : ''}</div>
+    <div class="rc-safety rc-grade-${grade}"><b>Stress grade ${grade}</b> — ${safetySentence}</div>
     ${snapNotice}
     <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
     ${highlights}
     ${legs}
-    <button type="button" class="rc-elevation-button" data-route-action="elevation" title="Open larger elevation profile"><span>Elevation</span><canvas id="profileCv"></canvas><b aria-hidden="true">↗</b></button>`;
+    <div class="rc-card-actions"><button type="button" class="rc-elevation-button" data-route-action="elevation" title="Open elevation profile"><span aria-hidden="true">⌁</span> Elevation</button></div>`;
   moveControls();
   card.querySelectorAll('[data-highlight]').forEach((b) => {
     const active = b.dataset.highlight === routeHighlightKey;
     b.classList.toggle('active', active);
     b.setAttribute('aria-pressed', String(active));
   });
-  drawProfile(m.profile, m.distM);
   refreshNavigationUI();
 }
 
@@ -1750,9 +1762,7 @@ function onRouterMessage(ev) {
       return;
     }
     routing.options = m.options;
-    const selected = m.options.find((option) => option.optimization?.profileId === routing.profileId)
-      || m.options[Math.floor((m.options.length - 1) / 2)];
-    activateRouteOption(selected);
+    activateRouteOption(m.options[0]);
   } else if (m.type === 'route') {
     if (m.id !== routing.reqId) return; // stale reply
     setRouteOptionsLoading(false);
@@ -2421,11 +2431,12 @@ function renderRouteOptionControls() {
   host.innerHTML = routing.options.map((option, index) => {
     const optimization = option.optimization || {};
     const label = optimization.label || `Option ${index + 1}`;
+    const shortLabel = /^Route [A-Z]$/.test(label) ? label.slice(-1) : label;
     const active = option === routing.last;
     return `<button type="button" data-route-option="${index}" ${active ? 'class="active"' : ''}
       aria-pressed="${active}" aria-label="Choose route ${index + 1}: ${label}"
       title="${optimizationDescription(optimization)}" ${turnNav.active ? 'disabled' : ''}>
-      <span>${label}</span></button>`;
+      <span>${shortLabel}</span></button>`;
   }).join('');
 }
 
