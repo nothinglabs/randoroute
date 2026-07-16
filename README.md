@@ -302,6 +302,12 @@ preferable to known rule violations. Roads below the rider's “Max speed withou
 shoulder” setting also receive a soft routing preference: modestly in Direct,
 more strongly in Balanced, and strongest in Friendly mode. Settings can force
 the bike-route or residential preference across every candidate.
+
+Advanced routing weights also provide separate **routing no-shoulder max**
+speeds: Direct defaults to the rider's map limit, while Balanced and Friendly
+default to 30 mph and 25 mph. These stricter profile-specific values affect
+only which route is selected; map colors, route safety reporting, and “Only
+show fully safe routes” always use the rider's actual no-shoulder rule.
 Results include distance, duration, total climb/descent, and an elevation
 profile. No routing server; works offline once cached.
 

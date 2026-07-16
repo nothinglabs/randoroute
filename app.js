@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-16.103';
+const APP_VERSION = '2026-07-16.104';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -61,6 +61,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
   freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1,
+  routingNoShoulderDirect: 45, routingNoShoulderBalanced: 30, routingNoShoulderLow: 25,
   speedBalanced: 0.01, speedLow: 0.02,
   speedBelowDirect: 0.003, speedBelowBalanced: 0.01, speedBelowLow: 0.02,
   hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
@@ -1229,11 +1230,15 @@ function clearStoredRouteDetails() {
 }
 function optimizationDescription(optimization) {
   if (!optimization) return '';
-  const base = optimization.mode === 'direct'
+  let base = optimization.mode === 'direct'
     ? 'Prioritizes a quicker trip.'
     : optimization.mode === 'low'
       ? 'Strongly avoids roads that fail your rules, even when that requires a longer ride.'
       : 'Balances travel time with avoiding roads that fail your rules.';
+  if (Number.isFinite(optimization.routingNoShoulderSpeed)
+      && optimization.routingNoShoulderSpeed < rules.freeMaxSpeed) {
+    base += ` For route choice, it treats ${optimization.routingNoShoulderSpeed} mph as the no-shoulder comfort limit; map colors still use your ${rules.freeMaxSpeed} mph rule.`;
+  }
   const preferences = [];
   if (optimization.prefDesignated) preferences.push('bike routes and trails');
   if (optimization.prefResidential) preferences.push('residential streets');
@@ -1953,6 +1958,7 @@ function computeRoute() {
       mode: selected?.mode || routing.mode,
       profileId: selected?.profileId || routing.profileId,
       profileLabel: selected?.label,
+      routingNoShoulderSpeed: selected?.routingNoShoulderSpeed,
       prefDesignated: routing.prefDesig || !!selected?.prefDesignated,
       prefResidential: routing.prefResidential || !!selected?.prefResidential,
       weights: { ...routingWeights },
@@ -3715,6 +3721,9 @@ const ROUTING_WEIGHT_GROUPS = [
     ['arterialPrimaryLow', 'Primary/trunk · friendly', 1, 5, .01],
   ]],
   ['Speed, access and curve caution', [
+    ['routingNoShoulderDirect', 'Direct: routing no-shoulder max', 15, 45, 5],
+    ['routingNoShoulderBalanced', 'Balanced: routing no-shoulder max', 15, 45, 5],
+    ['routingNoShoulderLow', 'Friendly: routing no-shoulder max', 15, 45, 5],
     ['speedBalanced', 'Balanced: each mph over comfort', 0, .08, .002], ['speedLow', 'Friendly: each mph over comfort', 0, .1, .002],
     ['speedBelowDirect', 'Direct: each mph below comfort', 0, .04, .001], ['speedBelowBalanced', 'Balanced: each mph below comfort', 0, .08, .002],
     ['speedBelowLow', 'Friendly: each mph below comfort', 0, .1, .002],
