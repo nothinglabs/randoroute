@@ -49,6 +49,9 @@ python3 scripts/serve.py
   a road):
   - *Allow freeway as last resort* — freeways always fail the rules and carry
     a very large routing penalty; turn this off to exclude them entirely.
+  - *Treat designated bike routes as vetted* — by default, a USBR or regional
+    designation satisfies the shoulder rule; turn this off to apply the same
+    speed and shoulder limits as every other road.
   - *Min shoulder width* — a known shoulder under this fails a road.
   - *"Free" max speed* — at/below this, the road passes regardless of shoulder.
   - *Upper max speed* — above this a road fails (unless *No upper limit*).
@@ -295,8 +298,10 @@ selection also checks detours leg by leg and keeps at most one extreme-detour
 result. This keeps a small concern near one stop from filling the choices with
 large local loops.
 Limited-access roads that meet the rider's speed and shoulder rules remain
-preferable to known rule violations. Settings can force the bike-route or
-residential preference across every candidate.
+preferable to known rule violations. Roads below the rider's “Max speed without
+shoulder” setting also receive a soft routing preference: modestly in Direct,
+more strongly in Balanced, and strongest in Friendly mode. Settings can force
+the bike-route or residential preference across every candidate.
 Results include distance, duration, total climb/descent, and an elevation
 profile. No routing server; works offline once cached.
 

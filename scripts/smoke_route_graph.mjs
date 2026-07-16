@@ -24,7 +24,8 @@ context.onmessage({ data: { type: 'graph', buffer } });
 
 const rules = {
   allowFreeways: true, minShoulder: 4, unknownShoulderZero: true,
-  allowMtbTrails: false, freeMaxSpeed: 35, upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
+  allowMtbTrails: false, vettedBikeRoutes: true,
+  freeMaxSpeed: 35, upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
 };
 const sweepProfiles = [
   ['quick', 'direct', false, false], ['quick-bike', 'direct', true, false],
@@ -42,9 +43,10 @@ function distanceM(a, b) {
 }
 for (let index = 0; index < scenarios.length; index++) {
   const scenario = scenarios[index];
+  const scenarioRules = { ...rules, ...(scenario.rules || {}) };
   messages.length = 0;
   context.onmessage({ data: { type: 'route-options', id: index + 1,
-    points: scenario.points, rules, forceDesignated: !!scenario.forceDesignated,
+    points: scenario.points, rules: scenarioRules, forceDesignated: !!scenario.forceDesignated,
     forceResidential: !!scenario.forceResidential, preferredProfileId: scenario.preferredProfileId,
     weights: scenario.weights, debug: !!scenario.debugStages } });
   const result = messages.at(-1);
@@ -76,7 +78,7 @@ for (let index = 0; index < scenarios.length; index++) {
     for (const [id, mode, prefDesignated, prefResidential] of sweepProfiles) {
       messages.length = 0;
       context.onmessage({ data: { type: 'route', id: 1000 + index,
-        points: scenario.points, rules, mode, profileId: id,
+        points: scenario.points, rules: scenarioRules, mode, profileId: id,
         prefDesignated, prefResidential, weights: scenario.weights } });
       const option = messages.at(-1);
       if (!option?.ok) continue;

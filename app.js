@@ -37,6 +37,7 @@ const COLORS = {
 const rules = {
   allowFreeways: true,  // only permit heavily penalized freeway fallback?
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
+  vettedBikeRoutes: true, // let designated corridors pass despite missing/narrow shoulder data?
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
   freeMaxSpeed: 35,     // mph; at/below this a road passes even without a shoulder
@@ -61,6 +62,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   mtbTrail: 6,
   freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1,
   speedBalanced: 0.01, speedLow: 0.02,
+  speedBelowDirect: 0.003, speedBelowBalanced: 0.01, speedBelowLow: 0.02,
   hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
   hazardBalanced1: 1.35, hazardBalanced2: 1.8, hazardBalanced3: 2.6,
   hazardLow1: 1.8, hazardLow2: 3.4, hazardLow3: 6.5,
@@ -78,7 +80,8 @@ const PREVIOUS_ROUTING_WEIGHT_DEFAULTS = Object.freeze({
 });
 function validRoutingWeights(source) {
   const clean = {};
-  const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow', 'downhillFactor', 'undulationSecPerM']);
+  const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
+    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM']);
   if (!source || typeof source !== 'object') return clean;
   for (const key of Object.keys(DEFAULT_ROUTING_WEIGHTS)) {
     const value = Number(source[key]);
@@ -250,14 +253,14 @@ function effectiveLevel(n) {
   // Slow enough → comfortable regardless of shoulder.
   if (spd != null && spd <= rules.freeMaxSpeed) return n.limited_access ? 3 : 1;
 
-  // Designated bike route (USBR / regional trail): a vetted corridor is a
-  // known quantity — meets criteria regardless of shoulder data.
-  // (Freeway, prohibition, and absolute speed-cutoff gates above still apply.)
-  if (n.desig) return n.limited_access ? 3 : 2;
+  // A rider can opt to treat a designated bike route (USBR / regional trail)
+  // as a vetted corridor. The freeway, prohibition, and speed-cutoff gates
+  // above still apply; otherwise it is evaluated by the shoulder rule.
+  if (n.desig && rules.vettedBikeRoutes) return n.limited_access ? 3 : 2;
 
   // Hard gates. Each fails ONLY when we have data proving the violation
   // (with the pessimistic option, "unknown = 0 ft" counts as data).
-  const shoulderFails = !n.good_facility && !n.desig && sh != null && sh < rules.minShoulder;
+  const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
   if (shoulderFails) return 4;
 
   // No usable data on any criterion → unknown.
@@ -367,7 +370,8 @@ function roadLevelExpr() {
   cases.push(['==', ['get', 'm'], 1], 4);                       // freeway: last-resort failure
   if (!rules.noUpperLimit) cases.push(['>', spd, rules.upperMaxSpeed], 4); // absolute speed cap
   cases.push(['<=', spd, rules.freeMaxSpeed], 1);               // slow = comfortable
-  cases.push(['==', ['get', 'g'], 1], 2);                       // designated route = vetted
+  if (rules.vettedBikeRoutes)
+    cases.push(['==', ['get', 'g'], 1], 2);                     // designated route = vetted
   // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
   // otherwise only a known-narrow shoulder fails.
   const sh = rules.unknownShoulderZero
@@ -1179,7 +1183,7 @@ function fallbackRouteLevel(s) {
   if ((flags & 8) || (s.facility || 0) >= 4) return 1;
   if (!rules.noUpperLimit && s.mph > rules.upperMaxSpeed) return 4;
   if (s.mph <= rules.freeMaxSpeed) return flags & 128 ? 3 : 1;
-  if (flags & 64) return flags & 128 ? 3 : 2;
+  if ((flags & 64) && rules.vettedBikeRoutes) return flags & 128 ? 3 : 2;
   let sh = s.sh;
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
   if ((s.facility || 0) < 2 && sh >= 0 && sh < rules.minShoulder) return 4;
@@ -3351,12 +3355,12 @@ function explainLevel(n) {
       ? `${spdTxt} — meets your speed/shoulder rules, but this is a limited-access highway (caution).`
       : `${spdTxt} — at or below your ${rules.freeMaxSpeed} mph no-shoulder limit, passes without a shoulder.`;
 
-  if (!speedFails && n.desig)
+  if (!speedFails && n.desig && rules.vettedBikeRoutes)
     return n.limited_access
       ? 'On a designated bike route, but it is also a limited-access highway (caution).'
       : 'On a designated bike route (USBR / regional trail) — a vetted corridor, treated as meeting your criteria.';
 
-  const shoulderFails = !n.good_facility && !n.desig && sh != null && sh < rules.minShoulder;
+  const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
   const reasons = [];
   if (speedFails) reasons.push(`${spdTxt} is over your ${rules.upperMaxSpeed} mph max`);
   if (shoulderFails)
@@ -3376,6 +3380,7 @@ function explainLevel(n) {
   else if (!shUnknown) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
   else if (rules.unknownShoulderZero) met.push(`shoulder unknown — treated as 0 ft, meets your ${rules.minShoulder} ft minimum`);
   else met.push('shoulder unknown (not held against it)');
+  if (n.desig && !rules.vettedBikeRoutes) met.push('designated route, checked against your rules');
   if (spd != null)
     met.push(
       rules.noUpperLimit
@@ -3711,6 +3716,8 @@ const ROUTING_WEIGHT_GROUPS = [
   ]],
   ['Speed, access and curve caution', [
     ['speedBalanced', 'Balanced: each mph over comfort', 0, .08, .002], ['speedLow', 'Friendly: each mph over comfort', 0, .1, .002],
+    ['speedBelowDirect', 'Direct: each mph below comfort', 0, .04, .001], ['speedBelowBalanced', 'Balanced: each mph below comfort', 0, .08, .002],
+    ['speedBelowLow', 'Friendly: each mph below comfort', 0, .1, .002],
     ['limitedDirect', 'Limited access · direct', 1, 5, .05], ['limitedBalanced', 'Limited access · balanced', 1, 6, .05],
     ['limitedLow', 'Limited access · friendly', 1, 8, .05],
     ['hazardDirect1', 'Curve low · direct', 1, 5, .01], ['hazardDirect2', 'Curve medium · direct', 1, 6, .01],
@@ -3820,6 +3827,7 @@ function buildRulesPanel() {
   };
   check('prefDesig', 'Strongly prefer bike routes for all route options', routing, updateRoutePreference);
   check('prefResidential', 'Strongly prefer residential streets for all route options', routing, updateRoutePreference);
+  check('vettedBikeRoutes', 'Treat designated bike routes as vetted');
   check('allowFreeways', 'Allow freeway as last resort');
   check('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
     // This option affects both eligibility in the graph and the OSM layer's

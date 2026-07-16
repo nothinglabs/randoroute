@@ -150,9 +150,9 @@ function edgeLevel(i, rules) {
   // ferries, freeways, and prohibitions were handled above.
   if (!rules.noUpperLimit && spd > rules.upperMaxSpeed) return 4;
   if (spd <= rules.freeMaxSpeed) return limitedAccess ? 3 : 1;
-  // Designated bike route (USBR/regional): a vetted corridor is a known
-  // quantity — it meets criteria regardless of shoulder/speed data.
-  if (flags & 64) return limitedAccess ? 3 : 2;
+  // A rider can opt to treat a designated bike route (USBR/regional) as a
+  // vetted corridor. Otherwise it is evaluated by the normal shoulder rule.
+  if ((flags & 64) && rules.vettedBikeRoutes) return limitedAccess ? 3 : 2;
   // eSh < 0 = unknown; pessimistic mode counts that as a 0 ft shoulder.
   let sh = eSh[i];
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
@@ -185,6 +185,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   mtbTrail: 6,
   freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1,
   speedBalanced: 0.01, speedLow: 0.02,
+  speedBelowDirect: 0.003, speedBelowBalanced: 0.01, speedBelowLow: 0.02,
   hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
   hazardBalanced1: 1.35, hazardBalanced2: 1.8, hazardBalanced3: 2.6,
   hazardLow1: 1.8, hazardLow2: 3.4, hazardLow3: 6.5,
@@ -198,7 +199,8 @@ let activeWeights = { ...DEFAULT_WEIGHTS };
 function useWeights(source) {
   activeWeights = { ...DEFAULT_WEIGHTS };
   if (!source || typeof source !== 'object') return;
-  const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow', 'downhillFactor', 'undulationSecPerM']);
+  const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
+    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM']);
   for (const key of Object.keys(DEFAULT_WEIGHTS)) {
     const value = Number(source[key]);
     if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) activeWeights[key] = value;
@@ -250,15 +252,23 @@ function majorRoadMult(i, mode) {
 
 function edgeHazard(i, forward) { return forward ? eHazAB[i] : eHazBA[i]; }
 
-// Graded pressure toward slower roads: every mph of speed limit over the
-// rider's comfort speed makes a road edge cost more (1%/mph balanced,
-// 2%/mph low-stress). Trails, ferries, and Direct mode are exempt — a
-// 45 mph road costs ~20-40% over a 25 mph street of the same length.
+// Graded pressure toward slower roads. Every mph over the comfort speed makes
+// a road cost more in Balanced/Friendly modes; every mph below it earns a
+// capped bonus in every mode. At the default 35 mph setting, an otherwise
+// identical 25 mph road costs 3% less in Direct, 10% less in Balanced, and
+// 20% less in Friendly. Trails and ferries remain speed-neutral.
 function speedStress(mode, fl, spd, freeMax) {
-  if (mode === 'direct' || (fl & (8 | 32))) return 1.0;
-  const over = spd - freeMax;
-  if (over <= 0) return 1.0;
-  return 1 + (mode === 'low' ? activeWeights.speedLow : activeWeights.speedBalanced) * over;
+  if (fl & (8 | 32)) return 1.0;
+  const delta = spd - freeMax;
+  if (delta > 0) {
+    if (mode === 'direct') return 1.0;
+    return 1 + (mode === 'low' ? activeWeights.speedLow : activeWeights.speedBalanced) * delta;
+  }
+  if (delta === 0) return 1.0;
+  const belowKey = mode === 'direct'
+    ? 'speedBelowDirect'
+    : mode === 'low' ? 'speedBelowLow' : 'speedBelowBalanced';
+  return Math.max(0.25, 1 - activeWeights[belowKey] * -delta);
 }
 
 // Seconds to ride edge i in the given direction (forward = a->b).
