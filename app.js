@@ -1994,6 +1994,53 @@ function scoreRouteSeg(p) {
   };
 }
 
+// Graph edges are deliberately short: that gives the router reliable snapping
+// and accurate safety reporting, but MapLibre restarts a dash pattern at every
+// GeoJSON feature.  Drawing those raw edges made a continuous trail look like
+// a series of big, zoom-dependent blobs.  Keep the raw per-edge source for
+// tapping/highlighting, and build a separate, merged source for visible route
+// strokes.  A new stroke begins only when its visual safety/facility category
+// changes.
+function routeVisualStyle(p) {
+  if (p.ferry === 1) return null;
+  if (effectiveLevel(scoreRouteSeg(p)) === 4) return 'fail';
+  if (p.level === 3) return 'caution';
+  if (p.level === 0) return 'unknown';
+  const bike = p.infra === 1 || p.facility >= 2;
+  if (bike && p.facility === 5) return 'trail';
+  if (bike) return 'bike';
+  if (p.desig === 1) return 'designated';
+  return 'pass';
+}
+
+function sameRouteCoordinate(a, b) {
+  return Array.isArray(a) && Array.isArray(b) && a[0] === b[0] && a[1] === b[1];
+}
+
+function buildRouteRenderData(sdata) {
+  const features = [];
+  let current = null;
+  for (const feature of sdata.features) {
+    const style = routeVisualStyle(feature.properties);
+    const coordinates = feature.geometry.coordinates;
+    if (!style || coordinates.length < 2) {
+      current = null;
+      continue;
+    }
+    const previous = current?.geometry.coordinates.at(-1);
+    if (current && current.properties.style === style && sameRouteCoordinate(previous, coordinates[0])) {
+      current.geometry.coordinates.push(...coordinates.slice(1));
+      continue;
+    }
+    current = {
+      type: 'Feature', properties: { style },
+      geometry: { type: 'LineString', coordinates: coordinates.slice() },
+    };
+    features.push(current);
+  }
+  return { type: 'FeatureCollection', features };
+}
+
 // Pulse animation for failing portions of the route — impossible to miss.
 let failPulseTimer = null;
 let detailSelectionPulseTimer = null;
@@ -2066,13 +2113,15 @@ function drawRoute(coords, ferrySegs, segs) {
       facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
       roadClass: s.roadClass || 0,
       routeIndex,
-      level: s.level || fallbackRouteLevel(s), hwy: isHighwaySegment(s) ? 1 : 0 },
+      level: s.level ?? fallbackRouteLevel(s), hwy: isHighwaySegment(s) ? 1 : 0 },
     geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
   })) };
+  const renderData = buildRouteRenderData(sdata);
   // Failing portions (scored live against the current rules) pulse red on top.
+  // These use the same merged geometry as the visible route so their dashes
+  // remain continuous rather than restarting at every graph edge.
   const failData = { type: 'FeatureCollection',
-    features: sdata.features.filter((f) =>
-      f.properties.ferry !== 1 && effectiveLevel(scoreRouteSeg(f.properties)) === 4) };
+    features: renderData.features.filter((f) => f.properties.style === 'fail') };
   const emptyHighlights = { type: 'FeatureCollection', features: [] };
   const emptyLine = { type: 'FeatureCollection', features: [] };
   const srcExisting = map.getSource('route');
@@ -2080,6 +2129,7 @@ function drawRoute(coords, ferrySegs, segs) {
     srcExisting.setData(data);
     map.getSource('route-ferry').setData(fdata);
     map.getSource('route-seg').setData(sdata);
+    map.getSource('route-render').setData(renderData);
     map.getSource('route-fail').setData(failData);
     map.getSource('route-highlight-marker').setData(emptyHighlights);
     map.getSource('route-detail-marker').setData(emptyHighlights);
@@ -2091,6 +2141,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route', { type: 'geojson', data });
   map.addSource('route-ferry', { type: 'geojson', data: fdata });
   map.addSource('route-seg', { type: 'geojson', data: sdata });
+  map.addSource('route-render', { type: 'geojson', data: renderData });
   map.addSource('route-fail', { type: 'geojson', data: failData });
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
@@ -2110,53 +2161,48 @@ function drawRoute(coords, ferrySegs, segs) {
     'line-color': color, 'line-width': 6.5, 'line-opacity': 1,
   });
   map.addLayer({
-    id: 'route-pass', type: 'line', source: 'route-seg',
+    id: 'route-pass', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: routeVerdictPaint(COLORS[1]),
-    filter: ['all', ['!=', ['get', 'ferry'], 1], ROUTE_SEG_PASS_EXPR,
-      ROUTE_SEG_NOT_BIKE_EXPR, ROUTE_SEG_NOT_DESIGNATED_EXPR],
+    filter: ['==', ['get', 'style'], 'pass'],
   });
   map.addLayer({
-    id: 'route-designated', type: 'line', source: 'route-seg',
+    id: 'route-designated', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { ...routeVerdictPaint(COLORS[2]), 'line-width': 7.2,
              'line-dasharray': [1.6, 1.15] },
-    filter: ['all', ['!=', ['get', 'ferry'], 1], ROUTE_SEG_PASS_EXPR,
-      ROUTE_SEG_NOT_BIKE_EXPR, ROUTE_SEG_DESIGNATED_EXPR],
+    filter: ['==', ['get', 'style'], 'designated'],
   });
   map.addLayer({
-    id: 'route-bike', type: 'line', source: 'route-seg',
+    id: 'route-bike', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: routeVerdictPaint(BIKE_NETWORK_COLOR),
-    filter: ['all', ['!=', ['get', 'ferry'], 1], ROUTE_SEG_PASS_EXPR,
-      ROUTE_SEG_BIKE_EXPR, ROUTE_SEG_NOT_TRAIL_EXPR],
+    filter: ['==', ['get', 'style'], 'bike'],
   });
   map.addLayer({
-    id: 'route-bike-trail', type: 'line', source: 'route-seg',
+    id: 'route-bike-trail', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { ...routeVerdictPaint(BIKE_NETWORK_COLOR), 'line-width': 7.2 },
-    filter: ['all', ['!=', ['get', 'ferry'], 1], ROUTE_SEG_PASS_EXPR,
-      ROUTE_SEG_BIKE_EXPR, ROUTE_SEG_TRAIL_EXPR],
+    filter: ['==', ['get', 'style'], 'trail'],
   });
   map.addLayer({
-    id: 'route-bike-trail-dots', type: 'line', source: 'route-seg',
+    id: 'route-bike-trail-dots', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#687d00', 'line-width': 2.2, 'line-opacity': 0.96,
              'line-dasharray': [0.05, 2.1] },
-    filter: ['all', ['!=', ['get', 'ferry'], 1], ROUTE_SEG_PASS_EXPR,
-      ROUTE_SEG_BIKE_EXPR, ROUTE_SEG_TRAIL_EXPR],
+    filter: ['==', ['get', 'style'], 'trail'],
   });
   map.addLayer({
-    id: 'route-caution', type: 'line', source: 'route-seg',
+    id: 'route-caution', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: routeVerdictPaint(COLORS[3]),
-    filter: ['all', ['!=', ['get', 'ferry'], 1], ['==', ['get', 'level'], 3]],
+    filter: ['==', ['get', 'style'], 'caution'],
   });
   map.addLayer({
-    id: 'route-unknown', type: 'line', source: 'route-seg',
+    id: 'route-unknown', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: routeVerdictPaint(COLORS[0]),
-    filter: ['all', ['!=', ['get', 'ferry'], 1], ['==', ['get', 'level'], 0]],
+    filter: ['==', ['get', 'style'], 'unknown'],
   });
   map.addLayer({
     id: 'route-fail-casing', type: 'line', source: 'route-fail',
@@ -3630,10 +3676,8 @@ function buildSourcePanel() {
     row.className = 'source-row';
     row.id = `src-${src.id}`;
     const note = src.id === 'routes'
-      ? '<small class="source-note">Thicker dashed lines; may not have bike facilities</small>'
-      : src.id === 'osm'
-        ? '<small class="source-note">Technical mountain-bike trails are hidden unless enabled in Settings</small>'
-        : '';
+      ? '<small class="source-note source-note-prominent">Thicker dashed lines; may not have bike facilities</small>'
+      : '';
     row.innerHTML = `
       <input type="checkbox" id="chk-${src.id}" ${src.enabled ? 'checked' : ''}>
       <span class="source-copy"><label for="chk-${src.id}">${src.name}</label>${note}</span>
