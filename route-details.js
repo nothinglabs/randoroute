@@ -6,6 +6,7 @@ const FLAG_INFRA = 8;
 const FLAG_FERRY = 32;
 const FLAG_DESIGNATED = 64;
 const FLAG_LIMITED_ACCESS = 128;
+const OFFICIAL_MTB = 4;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 const FACILITY_NAME = {
   1: 'shared lane', 2: 'bike lane', 3: 'buffered bike lane',
@@ -17,7 +18,28 @@ const ROAD_CLASS_NAME = {
   7: 'secondary link', 8: 'primary road', 9: 'primary link',
   10: 'trunk road', 11: 'trunk link', 12: 'motorway', 13: 'motorway link',
 };
-const SAFETY_NAME = { 1: 'Comfy', 2: 'Meets rules', 3: 'Caution', 4: 'Fails rules' };
+function isBikeNetwork(seg) {
+  const flags = seg.flags || 0;
+  return !!(flags & FLAG_INFRA) || (seg.facility || 0) >= 2;
+}
+
+function isDesignated(seg) {
+  return !!((seg.flags || 0) & FLAG_DESIGNATED);
+}
+
+function isMountainBikeTrail(seg) {
+  return !!seg.mtb || !!((seg.official || 0) & OFFICIAL_MTB);
+}
+
+function safetyVerdict(seg) {
+  if (seg.level === 4) return { label: 'Fails rules', className: 'fail' };
+  if (isMountainBikeTrail(seg)) return { label: 'Mountain-bike trail', className: 'caution' };
+  if (seg.level === 3) return { label: 'Caution', className: 'caution' };
+  if (!seg.level) return { label: 'Insufficient data', className: 'unknown' };
+  if (seg.bikeNetworkAll ?? isBikeNetwork(seg)) return { label: 'Bike network', className: 'bike' };
+  if (seg.designatedAll ?? isDesignated(seg)) return { label: 'Designated route', className: 'designated' };
+  return { label: 'Passes rules', className: 'pass' };
+}
 
 if (window.self !== window.top) document.body.classList.add('embedded');
 
@@ -87,7 +109,7 @@ function sections(segs, include, describe) {
       if (info.coordEnd != null) last.coordEnd = info.coordEnd;
     } else out.push({ key, name: info.name, meta: info.meta, lenM: itemLenM,
       startIndex: i, endIndex: i, coordStart: info.coordStart, coordEnd: info.coordEnd,
-      safetyLabel: info.safetyLabel || '' });
+      safetyLabel: info.safetyLabel || '', safetyClass: info.safetyClass || '' });
     previousIndex = i;
   }
   return out;
@@ -114,7 +136,7 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
     for (const item of items) {
       const li = document.createElement('li');
       li.className = `detail-item ${cls}`;
-      if (item.level) li.classList.add(`safety-l${item.level}`);
+      if (item.safetyClass) li.classList.add(`safety-${item.safetyClass}`);
       const content = item.startIndex == null ? li : document.createElement('button');
       if (content !== li) {
         li.classList.add('clickable');
@@ -184,6 +206,8 @@ function buildRouteSteps(segs) {
       last.official |= seg.official || 0;
       last.mph = Math.max(last.mph, seg.mph || 0);
       last.level = Math.max(last.level, seg.level || 0);
+      last.bikeNetworkAll = last.bikeNetworkAll && isBikeNetwork(seg);
+      last.designatedAll = last.designatedAll && isDesignated(seg);
       last.hazard = Math.max(last.hazard || 0, seg.hazard || 0);
       if (seg.level === 4) last.failM += seg.lenM;
     } else {
@@ -197,6 +221,8 @@ function buildRouteSteps(segs) {
         official: seg.official || 0,
         mph: seg.mph || 0,
         level: seg.level || 0,
+        bikeNetworkAll: isBikeNetwork(seg),
+        designatedAll: isDesignated(seg),
         hazard: seg.hazard || 0,
         failM: seg.level === 4 ? seg.lenM : 0,
       });
@@ -219,6 +245,10 @@ function buildRouteSteps(segs) {
       previous.official |= (bridge.official || 0) | (next.official || 0);
       previous.mph = Math.max(previous.mph, bridge.mph, next.mph);
       previous.level = Math.max(previous.level, bridge.level, next.level);
+      previous.bikeNetworkAll = previous.bikeNetworkAll
+        && bridge.bikeNetworkAll && next.bikeNetworkAll;
+      previous.designatedAll = previous.designatedAll
+        && bridge.designatedAll && next.designatedAll;
       previous.hazard = Math.max(previous.hazard || 0, bridge.hazard || 0, next.hazard || 0);
       previous.failM += bridge.failM + next.failM;
       out.splice(i, 2);
@@ -228,7 +258,8 @@ function buildRouteSteps(segs) {
   }
   return out.map((step) => ({
     ...step,
-    safetyLabel: SAFETY_NAME[step.level] || 'Unknown',
+    safetyLabel: safetyVerdict(step).label,
+    safetyClass: safetyVerdict(step).className,
     meta: `${stepMeta(step)} · Tap to show on map`,
   }));
 }
@@ -236,6 +267,7 @@ function buildRouteSteps(segs) {
 function stepMeta(step) {
   const flags = step.flags || 0;
   const bits = [];
+  if (isMountainBikeTrail(step)) bits.push('mountain-bike trail');
   if (step.hazard) bits.push('possible limited-visibility uphill curve');
   if (step.mph) bits.push(`${step.mph} mph`);
   if (flags & FLAG_FREEWAY) bits.push('freeway');
@@ -340,6 +372,10 @@ if (!hasRoute) {
   const failing = sections(segs, (s) => s.level === 4, (s) => ({
     name: roadName(s), meta: `${failedRoadDetails(s, rules)} · Tap to show on map`,
   }));
+  const mountainBike = sections(segs, isMountainBikeTrail, (s) => ({
+    name: roadName(s),
+    meta: `Mountain-bike trail · allowed by your Settings option · ${s.mtb ? 'explicit OSM MTB tag' : 'OSM MTB route membership'} · Tap to show on map`,
+  }));
   const curveHazards = sections(segs, (s) => !!s.hazard, (s) => ({
     name: roadName(s),
     meta: `Possible limited-visibility uphill curve · ${s.gradePct > 0 ? `${s.gradePct}% net climb · ` : ''}${s.mph ? `${s.mph} mph · ` : ''}${s.sh >= 0 ? `${s.sh} ft shoulder` : 'shoulder unknown'} · geometry/elevation estimate, not measured sight distance · Tap to show on map`,
@@ -357,10 +393,12 @@ if (!hasRoute) {
     alert.textContent = `${freewayM ? `${fmtDist(freewayM)} on a freeway. ` : ''}${fmtDist(totals.failM)} of this route does not meet your riding rules.`;
   } else {
     alert.hidden = false;
-    if (limitedAccess.length || curveHazards.length) {
+    if (mountainBike.length || limitedAccess.length || curveHazards.length) {
       const limitedM = limitedAccess.reduce((sum, item) => sum + item.lenM, 0);
+      const mountainBikeM = mountainBike.reduce((sum, item) => sum + item.lenM, 0);
       alert.classList.add('caution');
       const notes = [];
+      if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} on mountain-bike trail`);
       if (limitedM) notes.push(`${fmtDist(limitedM)} on a limited-access highway`);
       if (curveHazards.length) notes.push(`${fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0))} with a possible uphill-curve visibility caution`);
       alert.textContent = `${notes.join(' · ')}. These are called out for judgment but are not road-rule failures.`;
@@ -374,11 +412,12 @@ if (!hasRoute) {
   // A freeway can appear in both sections because one answers “what failed?”
   // while the other answers “what kind of road is this?”.
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail');
+  if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution');
   if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution');
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway');
   if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution');
   if (highways.length) renderSection(report, 'Highways', highways, '');
-  if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length
+  if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length && !mountainBike.length
       && !curveHazards.length) {
     report.innerHTML = '<div class="no-route">No freeway, limited-access highway, highway, or rule-failing sections were found on this route.</div>';
   }

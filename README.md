@@ -25,15 +25,24 @@ python3 scripts/serve.py
 ## Features
 
 - **MapLibre GL JS** map of Washington on a **CARTO Positron** raster basemap.
-- Three independent **data-source toggles**:
+- Five independent **data-source toggles**:
+  - *Designated routes (USBR & regional)* — a dashed blue corridor beneath
+    the scored road or facility verdict.
   - *WSDOT BLTS (state highways)* — one rating per state-highway segment.
   - *OSM bike infrastructure* — cycleways, bike lanes, shared paths/trails.
+  - *Bikes prohibited (WSDOT)* — official permanent restrictions for
+    inspection; these edges are excluded from routing.
   - *All roads (OSM, est. speeds)* — the full public drivable network
-    (~324k ways). Off by default (large download). Missing speed limits are
-    estimated from road class and labeled as estimates in the readout.
-- Colorblind-friendly **blue → orange → red** ramp (ColorBrewer RdYlBu): blue
-  = meets your criteria, orange = limited-access caution, red **dashed** =
-  fails / avoid.
+    (~324k ways). On by default and automatically decluttered when zoomed out.
+    Missing speed limits are estimated from road class and labeled as estimates
+    in the readout.
+- One verdict system on the background network and planned route: yellow-lime
+  = a physical bike facility that passes, dashed blue = a designated bicycle
+  route that passes, solid blue = another road that passes, orange = bike-legal
+  limited-access caution, red **dashed** = fails / unavailable, and gray =
+  insufficient data. Off-street paths/trails use a lime line with a fine
+  dotted center, while on-street bike accommodations are solid. A failing
+  portion of a planned route pulses dark red.
 - **Riding rules** — controls that re-score and re-color the map **live,
   client-side, with no refetch**. Each is a HARD gate: a road fails (avoid) if
   the data we have shows a criterion isn't met (missing data isn't held against
@@ -41,14 +50,11 @@ python3 scripts/serve.py
   - *Allow freeway as last resort* — freeways always fail the rules and carry
     a very large routing penalty; turn this off to exclude them entirely.
   - *Min shoulder width* — a known shoulder under this fails a road.
-  - *"Free" max speed* — at/below this, comfortable regardless of shoulder.
+  - *"Free" max speed* — at/below this, the road passes regardless of shoulder.
   - *Upper max speed* — above this a road fails (unless *No upper limit*).
   - *No upper limit* — don't fail roads on speed alone.
-- **Pass/fail mode** — an accessibility view that drops color discrimination:
-  only roads meeting your criteria show (green); roads with data that fail show
-  gray-dashed; no-data roads are hidden.
-- Hover any segment for a **local readout** — the verdict (Pass/Fail), the
-  stress level, a plain-language *why*, and the raw attributes. No lookups.
+- Hover any segment for a **local readout** — the same color/verdict wording as
+  the legend, a plain-language *why*, and the raw attributes. No lookups.
   On touch screens, tap a road instead; tap empty map to dismiss.
 - **PWA / offline**: installable ("Add to Home Screen" on iOS). A service
   worker caches the app shell and data files after first use — the map works
@@ -61,9 +67,8 @@ python3 scripts/serve.py
   marker. The app requests a Screen Wake Lock while active where the browser
   supports it. This keeps the screen awake; reliable background navigation is
   a native-app feature, not a PWA guarantee.
-- **Mobile layout**: a bottom sheet with three tabs (Route / Layers /
-  Settings) — peek, half, and full heights; the floating A/B bar routes
-  without opening the sheet at all.
+- **Mobile layout**: a hideable bottom sheet with three tabs (Route / Layers /
+  Settings); the floating route-editing bar works without opening the sheet.
 
 ## Architecture
 
@@ -75,17 +80,22 @@ python3 scripts/serve.py
   `baseScore`, `shoulder_width`, `maxspeed_num`, `prohibited`, `freeway`,
   `limited_access`, `good_facility`, `infra`.
 - **`effectiveLevel(normalized)`** is the single function that turns normalized
-  props + the current riding rules into an effective level: **1** (comfortable),
-  **2** (meets criteria), **3** (limited-access caution that otherwise meets
+  props + the current riding rules into an internal effective level: **1**
+  (lower-stress pass), **2** (other pass), **3** (limited-access caution that otherwise meets
   criteria), **4** (fails / avoid), or **0** (no data). Dedicated bike
   infrastructure (`infra: true`) is rated by its type (cycleway = 1, bike lane
   = 2); shared-with-traffic roads go through the hard speed/shoulder/freeway
   gates. Re-scoring runs over cached features and updates the map source in
   place — instant, no network.
 
-Each source gets three MapLibre line layers: the solid main layer, a red-dashed
-`__vh` overlay (level 4 in ramp view), and a gray-dashed `__fail` overlay
-(pass/fail view).
+Each scored source gets a solid verdict layer plus a red-dashed level-4
+overlay. The two passing levels remain distinct for routing costs but share the
+same blue map verdict unless the edge has a physical bike facility, which is
+lime. Off-street bicycle paths and trails use a dotted-center lime line;
+on-street accommodations remain solid. Designated routes get a dashed blue ribbon below
+the verdict layer, so their useful corridor context remains recognizable
+without implying that designation alone is infrastructure or masking caution
+or failure.
 
 ## Data (build-time)
 
@@ -120,9 +130,8 @@ python3 scripts/build_restrictions.py
 
 Official State Traffic Engineer calendar actions prohibiting bicycles on
 specific state-highway segments (route + milepost ranges + direction). Shown
-as an always-on-top overlay drawn with the same color coding as any failing
-road (red dashed in ramp view, gray dashed in pass/fail — the readout
-identifies it as a WSDOT restriction), and joined into `blts.geojson` at
+as an always-on-top red-dashed overlay—the same verdict used for any failing
+road—and joined into `blts.geojson` at
 build time: `build_blts.py --restrictions`
 flags BLTS segments whose milepost range overlaps a restriction as
 `Prohibited` so they hard-fail scoring. The join matches mainline
@@ -168,7 +177,10 @@ only ways that classify as real bike infrastructure — dedicated cycleways
 `bicycle=designated/yes`), and on-street lanes (`cycleway*` = `track/separated/
 lane/shared_lane`). Plain sidewalks/footpaths with no bicycle acceptance are
 dropped so we don't color noise. The keep/drop logic mirrors `scoreOSM` in
-`app.js`.
+`app.js`. Explicit mountain-bike paths (`mtb:*`, including IMBA scale tags)
+and members of OSM `route=mtb` relations are retained with an MTB marker. The
+app hides and excludes them by default, but can make them available through
+the rider-controlled **Allow mountain bike trails** option.
 
 ### Full road network → `data/roads.pmtiles` (~324k ways, vector tiles)
 
@@ -235,7 +247,9 @@ python3 scripts/patch_graph_limited_access.py --apply
 python3 scripts/patch_graph_prohibited.py --apply
 ```
 
-A compact BGR7 binary graph (nodes at intersections; edges carry length,
+A compact BGR7 binary graph (nodes at intersections plus graph-only nodes at
+roughly 120 m intervals on dedicated paths, so a point placed on a long trail
+snaps to that trail; edges carry length,
 climb/descent sampled every 60 m from the DEM, the original OSM road class,
 speed — official WSDOT legal speed, OSM-posted, or class-estimated — typed
 bicycle facility, authoritative-source bits, freeway/limited-access/
@@ -251,15 +265,19 @@ motorway; it is routable when its speed and shoulder meet the rules. OSM
 motorways remain the graph's true freeway flag. One-way streets honored; `bicycle=no` and
 WSDOT-restricted ways excluded entirely. **Ferries** (`route=ferry` with bikes
 allowed) are included with their crossing duration plus a configurable typical
-boarding wait. At runtime, tertiary/secondary/primary/trunk classes without a
+boarding wait. The builder does not invent pedestrian or straight-line dock
+connections; a ferry is routable only where OSM supplies a bicycle-legal link
+to the riding graph. At runtime, tertiary/secondary/primary/trunk classes without a
 recorded bike facility receive increasing soft costs as a traffic-volume proxy;
 they remain routable and do not become rule failures. The full set of soft
 costs is exposed under Settings → Weights (adv.) and can be reset to defaults.
-allowed — all WSF runs plus county and passenger-only ferries) are routable
-crossings: speed derives from the OSM `duration` tag, a ~15-minute typical
-terminal wait is charged when boarding from land, ferry legs never count
-against the riding rules, and the route card calls out ferry mileage (the
-leg draws dashed on the map).
+Explicitly mountain-bike-tagged paths remain in the graph with a separate
+marker: they are unavailable by default, and when enabled carry a substantial
+soft cost and are reported in Route Details.
+Ferry speed derives from the OSM `duration` tag, a typical terminal wait is
+charged when boarding from land, ferry legs never count against the riding
+rules, and the route card calls out ferry mileage (the leg draws dashed on the
+map).
 
 The app routes **fully client-side**: A* in a web worker over estimated riding
 TIME (a grade-aware speed model). Each request probes a matrix of direct,
@@ -269,9 +287,10 @@ five useful alternatives labeled **Route A–E**. Route A is always selected by
 default and is the safest candidate that stays within a practical per-leg
 detour of the quickest result; the other letters are meaningfully different
 options without implying a fixed fastest-to-safest scale. Each selected route
-shows a compact ride mix: the share of riding distance that is comfy, on the
-bike network (designated routes, trails, or bike facilities), or fails the
-current rules. The letters identify alternatives and are not grades. On routes with stops, candidate
+shows a compact ride mix: the share of riding distance on the bike network
+(designated routes, trails, or bike facilities) and the shares that pass, need
+caution, or fail the current rules. The bike-network share overlaps those
+verdict shares. The letters identify alternatives and are not grades. On routes with stops, candidate
 selection also checks detours leg by leg and keeps at most one extreme-detour
 result. This keeps a small concern near one stop from filling the choices with
 large local loops.

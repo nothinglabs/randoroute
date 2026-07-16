@@ -24,7 +24,7 @@ context.onmessage({ data: { type: 'graph', buffer } });
 
 const rules = {
   allowFreeways: true, minShoulder: 4, unknownShoulderZero: true,
-  freeMaxSpeed: 35, upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
+  allowMtbTrails: false, freeMaxSpeed: 35, upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
 };
 const sweepProfiles = [
   ['quick', 'direct', false, false], ['quick-bike', 'direct', true, false],
@@ -62,6 +62,7 @@ for (let index = 0; index < scenarios.length; index++) {
       + `${Math.round(option.failM)} m fail; `
       + `${Math.round(option.hazardM || 0)} m curve caution; `
       + `${Math.round(option.freewayM)} m freeway; `
+      + `${Math.round(option.mtbM || 0)} m mountain-bike trail; `
       + `${(option.desigM / 1609.344).toFixed(1)} mi designated; `
       + `${(option.facilityM / 1609.344).toFixed(1)} mi bike facility; `
       + `${(option.residentialM / 1609.344).toFixed(1)} mi residential${probeText}`);
@@ -81,6 +82,7 @@ for (let index = 0; index < scenarios.length; index++) {
       if (!option?.ok) continue;
       console.log(`    ${id}: ${(option.distM / 1609.344).toFixed(1)} mi; `
         + `${option.failM.toFixed(2)} m fail; ${option.limitedAccessM.toFixed(2)} m limited; `
+        + `${(option.mtbM || 0).toFixed(2)} m mountain-bike trail; `
         + `${(option.desigM / 1609.344).toFixed(1)} mi designated; `
         + `${(option.facilityM / 1609.344).toFixed(1)} mi facility; `
         + `${(option.residentialM / 1609.344).toFixed(1)} mi residential`);

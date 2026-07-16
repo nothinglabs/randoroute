@@ -26,7 +26,8 @@ Binary layout (little-endian), after header 'BGR7' + N,E,D,G,U,B (u32):
   edgeRoadClass u8[E] (OSM highway class; 0 for infrastructure/ferries),
   edgeFacility u8[E] (0=none, 1=shared lane, 2=bike lane,
                       3=buffered lane, 4=separated lane, 5=shared-use path),
-  edgeOfficial u8[E] (1=WSDOT legal speed, 2=WSDOT facility),
+  edgeOfficial u8[E] (1=WSDOT legal speed, 2=WSDOT facility,
+                      4=explicit mountain-bike path),
   edgeHazardAB u8[E], edgeHazardBA u8[E]
     (0=none; 1-3 directional possible limited-visibility uphill curve),
   edgeHazardStartAB u16[E], edgeHazardEndAB u16[E],
@@ -105,6 +106,11 @@ FACILITY_SEPARATED = 4
 FACILITY_PATH = 5
 OFFICIAL_SPEED = 1
 OFFICIAL_FACILITY = 2
+# This byte has spare bits beyond the two WSDOT-source markers.  Keeping the
+# MTB marker here preserves the compact BGR7 layout while making technical
+# paths available to a rider-controlled runtime option instead of deleting
+# them during the build.
+EDGE_MTB = 4
 WSDOT_FACILITY_TYPE = {
     'Shared Lane': FACILITY_SHARED,
     'Bike Lane': FACILITY_LANE,
@@ -117,6 +123,10 @@ WSDOT_FACILITY_TYPE = {
 
 DEM_Z = 12
 DEM_DIR = 'data/dem'
+# A marker placed in the middle of a long OSM path otherwise snaps to a distant
+# way endpoint or nearby road.  Add graph-only nodes at this spacing while
+# retaining the original path geometry for display and turn-by-turn output.
+PATH_SNAP_SPACING_M = 120.0
 
 def load_dem():
     """Mosaic terrarium tiles into one int16 elevation array (meters)."""
@@ -401,6 +411,41 @@ def collect_designated(src):
     return ways
 
 
+def collect_mtb_route_members(src):
+    """Return all way members of OSM ``route=mtb`` relations.
+
+    Some technical routes apply their MTB designation to a relation instead of
+    each constituent way.  Resolve nested route relations as well so the
+    runtime MTB option sees a consistent path-level marker.
+    """
+    ids, way_members, sub_members = set(), {}, {}
+    for obj in osmium.FileProcessor(src, osmium.osm.RELATION):
+        if obj.tags.get('route') != 'mtb':
+            continue
+        ids.add(obj.id)
+        way_members[obj.id] = {member.ref for member in obj.members if member.type == 'w'}
+        sub_members[obj.id] = {member.ref for member in obj.members if member.type == 'r'}
+    ways = set()
+    for relation_id in ids:
+        ways |= way_members[relation_id]
+        stack, seen = list(sub_members[relation_id]), set()
+        while stack:
+            nested = stack.pop()
+            if nested in seen or nested not in ids:
+                continue
+            seen.add(nested)
+            ways |= way_members[nested]
+            stack.extend(sub_members[nested])
+    return ways
+
+
+def is_mountain_bike_way(tags, way_id, mtb_route_members):
+    """Recognize direct OSM MTB tags and MTB route-relation membership."""
+    return (way_id in mtb_route_members
+            or 'mtb' in tags
+            or any(key.startswith('mtb:') for key in tags))
+
+
 def classify_way(tags):
     """Return edge attrs dict, or None to exclude from the routable graph."""
     bike = tags.get('bicycle')
@@ -491,6 +536,51 @@ def haversine_m(lon1, lat1, lon2, lat2):
 
 def line_len_m(coords):
     return sum(haversine_m(*coords[i], *coords[i + 1]) for i in range(len(coords) - 1))
+
+
+def densify_path_nodes(points, way_id, max_spacing_m=PATH_SNAP_SPACING_M):
+    """Insert graph-only path nodes so no dedicated-path edge is too long.
+
+    OSM ways are normally split only where they join another way.  A trail can
+    therefore be represented by a single multi-kilometre graph edge even
+    though it visibly passes under a rider's marker.  These virtual references
+    are unique to the way and only exist in the routing graph; the emitted
+    geometry still follows the exact OSM line.
+    """
+    if len(points) < 2:
+        return points
+    output = [points[0]]
+    serial = 0
+    since_split = 0.0
+    for start, end in zip(points, points[1:]):
+        _, lon0, lat0 = start
+        _, lon1, lat1 = end
+        distance = haversine_m(lon0, lat0, lon1, lat1)
+        if distance <= 0:
+            output.append(end)
+            continue
+        traveled = 0.0
+        # Most OSM path ways already have frequent shape nodes.  Splitting
+        # only an individual long original segment misses the real problem:
+        # thousands of short shape segments can still become one 3 km graph
+        # edge.  Carry the distance since the last graph split across every
+        # original segment instead.
+        while distance - traveled > max_spacing_m - since_split:
+            to_split = max_spacing_m - since_split
+            traveled += to_split
+            ratio = traveled / distance
+            serial += 1
+            output.append((('path-node', way_id, serial),
+                           lon0 + (lon1 - lon0) * ratio,
+                           lat0 + (lat1 - lat0) * ratio))
+            since_split = 0.0
+        since_split += distance - traveled
+        output.append(end)
+    return output
+
+
+def is_virtual_path_node(node_ref):
+    return isinstance(node_ref, tuple) and len(node_ref) == 3 and node_ref[0] == 'path-node'
 
 
 def simplify_line(coords, tolerance=SIMPLIFY_DEG):
@@ -613,19 +703,21 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     if ele_at is None:
         print('  WARNING: no DEM tiles found — building without elevation', flush=True)
         ele_at = lambda lon, lat: 0
-    # ---- pass 0: designated bike-route membership (router prefers these)
-    print('pass 0: designated-route relations...', flush=True)
+    # ---- pass 0: route-relation membership
+    print('pass 0: designated and mountain-bike route relations...', flush=True)
     designated = collect_designated(src)
-    print(f'  {len(designated):,} designated member ways', flush=True)
+    mtb_route_members = collect_mtb_route_members(src)
+    print(f'  {len(designated):,} designated member ways; {len(mtb_route_members):,} MTB member ways', flush=True)
 
     # ---- pass 1: which ways are kept; count node references to find junctions
     print('pass 1: scanning ways...', flush=True)
     refcount = {}
     kept_ways = 0
-    for obj in osmium.FileProcessor(src, osmium.osm.WAY):
+    def count_way_refs(obj):
+        nonlocal kept_ways
         tags = {t.k: t.v for t in obj.tags}
         if classify_way(tags) is None:
-            continue
+            return
         kept_ways += 1
         refs = [n.ref for n in obj.nodes]
         for r in refs:
@@ -634,6 +726,12 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
         if refs:
             refcount[refs[0]] += 1
             refcount[refs[-1]] += 1
+
+    class RefcountHandler(osmium.SimpleHandler):
+        def way(self, obj):
+            count_way_refs(obj)
+
+    RefcountHandler().apply_file(src, locations=False)
     print(f'  kept {kept_ways:,} ways, {len(refcount):,} referenced nodes', flush=True)
 
     # ---- pass 2: build edges split at junctions
@@ -680,16 +778,27 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     official_facilities = [0]
     restricted_edges = [0]
     hazard_edges = [0]
-    for obj in osmium.FileProcessor(src).with_locations():
-        if not obj.is_way():
-            continue
+    mtb_edges = [0]
+    densified_paths = [0]
+    # ``FileProcessor(...).with_locations()`` only works when Python also
+    # iterates every source node, which is extremely slow for this statewide
+    # extract.  SimpleHandler keeps the location index in libosmium and streams
+    # each completed way directly into the existing edge builder.
+    def process_way(obj):
+        nonlocal oneway_arcs
         tags = {t.k: t.v for t in obj.tags}
         attrs = classify_way(tags)
         if attrs is None:
-            continue
+            return
+        attrs['mtb'] = is_mountain_bike_way(tags, obj.id, mtb_route_members)
         pts = [(n.ref, n.location.lon, n.location.lat) for n in obj.nodes if n.location.valid()]
         if len(pts) < 2:
-            continue
+            return
+        if attrs['infra']:
+            expanded = densify_path_nodes(pts, obj.id)
+            if len(expanded) > len(pts):
+                densified_paths[0] += 1
+                pts = expanded
         ow = oneway_dir(tags)
         if ow == -1:
             pts = pts[::-1]
@@ -721,7 +830,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
         seg = [pts[0]]
         for p in pts[1:]:
             seg.append(p)
-            if refcount.get(p[0], 0) >= 2 or p is pts[-1]:
+            if refcount.get(p[0], 0) >= 2 or is_virtual_path_node(p[0]) or p is pts[-1]:
                 coords = [(x, y) for _, x, y in seg]
                 if len(coords) >= 2:
                     length = line_len_m(coords)
@@ -732,7 +841,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                         b = gnode(seg[-1][0], *coords[-1])
                         if a != b or length > 10:  # drop degenerate micro-loops
                             espeed, esh, eflags = attrs['speed'], sh, flags
-                            efacility, eofficial = attrs['facility'], 0
+                            efacility, eofficial = attrs['facility'], EDGE_MTB if attrs['mtb'] else 0
                             if (restriction_index and not attrs['infra']
                                     and is_restricted_edge(coords, tags, restriction_index)):
                                 restricted_edges[0] += 1
@@ -810,107 +919,25 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             append_edge(eflags, espeed, esh,
                                         attrs['road_class'], efacility, eofficial,
                                         asc, des, haz_ab, haz_ba)
+                            if attrs['mtb']:
+                                mtb_edges[0] += 1
                             if haz_ab[0] or haz_ba[0]:
                                 hazard_edges[0] += 1
                             if ow == 1:
                                 oneway_arcs += 1
                 seg = [p]
 
-    # ---- ferry terminal stitching
-    # Docks often join the street grid only via ways we exclude (pedestrian
-    # walkways) or one-way exit loops, leaving the ferry edge on a directed
-    # pocket you can never enter (Colman Dock) or leave. Detect pockets with
-    # a directed BFS over land edges from each ferry endpoint, in both
-    # directions; a ferry node whose in- or out-reachable land world is a
-    # small CLOSED set gets a walk-the-bike connector (drawn straight) to
-    # the nearest land node outside that pocket.
-    print('stitching ferry terminals...', flush=True)
-    out_adj = {}
-    in_adj = {}
-    land_touch = bytearray(len(node_lon))
-    ferry_nodes = set()
-    for i in range(len(eA)):
-        a, b = eA[i], eB[i]
-        if eFlags[i] & 32:
-            ferry_nodes.add(a); ferry_nodes.add(b)
-            continue
-        land_touch[a] = land_touch[b] = 1
-        out_adj.setdefault(a, []).append(b)
-        in_adj.setdefault(b, []).append(a)
-        if not (eFlags[i] & 16):  # two-way
-            out_adj.setdefault(b, []).append(a)
-            in_adj.setdefault(a, []).append(b)
+    class GraphWayHandler(osmium.SimpleHandler):
+        def way(self, obj):
+            process_way(obj)
 
-    POCKET_K = 2000     # a closed set smaller than this is a dock pocket
-    STITCH_MAX_M = 400
-
-    def pocket(n, adj):
-        """BFS over adj from n; return visited set if CLOSED and small, else None."""
-        seen = {n}
-        frontier = [n]
-        while frontier:
-            nxt = []
-            for u in frontier:
-                for v in adj.get(u, ()):
-                    if v not in seen:
-                        seen.add(v)
-                        if len(seen) >= POCKET_K:
-                            return None  # big open world — fine
-                        nxt.append(v)
-            frontier = nxt
-        return seen
-
-    stitched = 0
-    for n in sorted(ferry_nodes):
-        p_out = pocket(n, out_adj)
-        p_in = pocket(n, in_adj)
-        if p_out is None and p_in is None:
-            continue  # well connected both ways
-        avoid = (p_out or set()) | (p_in or set())
-        lon0, lat0 = node_lon[n], node_lat[n]
-        box = STITCH_MAX_M / 111000.0 * 1.6  # generous degrees prefilter
-        cands = []
-        for m in range(len(node_lon)):
-            if abs(node_lat[m] - lat0) > box or abs(node_lon[m] - lon0) > box:
-                continue
-            if not land_touch[m] or m in avoid:
-                continue
-            d = haversine_m(lon0, lat0, node_lon[m], node_lat[m])
-            if d < STITCH_MAX_M:
-                cands.append((d, m))
-        # The target must itself be BIDIRECTIONALLY open — merely being outside
-        # the boarding pocket isn't enough (a one-way exit-ramp node is outside
-        # the pocket but unreachable from the city, making the connector useless).
-        best, best_d = None, None
-        for d, m in sorted(cands):
-            if pocket(m, out_adj) is None and pocket(m, in_adj) is None:
-                best, best_d = m, d
-                break
-        if best is None:
-            continue  # no street grid nearby (e.g. mid-water junction, small island)
-        eA.append(n); eB.append(best); eLen.append(max(best_d, 1.0))
-        eAsc.append(0); eDes.append(0)
-        eSpeed.append(0); eFlags.append(8); eSh.append(-1); eClass.append(0)  # infra: walk the bike
-        eFacility.append(FACILITY_PATH); eOfficial.append(0)
-        eHazAB.append(0); eHazBA.append(0)
-        eHazStartAB.append(0); eHazEndAB.append(0); eHazStartBA.append(0); eHazEndBA.append(0)
-        eName.append(name_idx('Ferry terminal connector'))
-        eOff.append(len(gLon)); eCnt.append(2)
-        gLon.append(lon0); gLat.append(lat0)
-        gLon.append(node_lon[best]); gLat.append(node_lat[best])
-        # register the connector so sibling ferry nodes on this dock see it
-        out_adj.setdefault(n, []).append(best)
-        out_adj.setdefault(best, []).append(n)
-        in_adj.setdefault(n, []).append(best)
-        in_adj.setdefault(best, []).append(n)
-        land_touch[n] = 1
-        stitched += 1
-    print(f'  connector edges added: {stitched}', flush=True)
+    GraphWayHandler().apply_file(src, locations=True)
 
     N, E, G = len(node_lon), len(eA), len(gLon)
     print(f'  nodes {N:,}  edges {E:,}  geom vertices {G:,}  oneway edges {oneway_arcs:,}', flush=True)
     print(f'  WSDOT-conflated edges: {conflated[0]:,}; direct restrictions excluded: {restricted_edges[0]:,}', flush=True)
     print(f'  official legal speeds: {official_speeds[0]:,}; official facilities: {official_facilities[0]:,}', flush=True)
+    print(f'  MTB-tagged edges: {mtb_edges[0]:,}; dedicated paths densified for snapping: {densified_paths[0]:,}', flush=True)
     print(f'  directional curve-warning edges: {hazard_edges[0]:,}', flush=True)
 
     # ---- directed CSR adjacency

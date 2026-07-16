@@ -14,34 +14,29 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-15.100';
+const APP_VERSION = '2026-07-16.102';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
-const GRAPH_FORMAT_VERSION = 'bgr7-1';
+const GRAPH_FORMAT_VERSION = 'bgr7-2';
 
 /* ---------------------------------------------------------------- palette */
-// Blue -> red diverging (ColorBrewer RdYlBu, 4-class). Distinguishable across
-// the common types of color vision deficiency because it avoids green and
-// varies in lightness as well as hue. 1 = safest .. 4 = avoid, 0 = unknown.
+// One visual verdict system. Internal levels 1 and 2 retain different routing
+// costs but share blue; a passing bike-network edge is promoted to lime.
+// Caution is a muted purple, failure is red, and insufficient data is gray.
+const BIKE_NETWORK_COLOR = '#9fc400';
 const COLORS = {
-  1: '#2c7bb6', // blue
-  2: '#74add1', // medium blue (kept dark enough to read on the light basemap)
-  3: '#f46d43', // orange
-  4: '#d7191c', // red
-  0: '#999999', // unknown / no data
+  1: '#168ad1', // passes rules
+  2: '#168ad1', // passes rules (internal levels remain distinct for routing)
+  3: '#63418f', // caution — dark muted purple, distinct from lime facilities
+  4: '#b2182b', // fails rules
+  0: '#999999', // insufficient data
 };
-const LEGEND = [
-  [1, 'Comfortable'],
-  [2, 'Meets your criteria'],
-  [3, 'Caution — limited-access highway'],
-  [4, 'Fails your rules (avoid)'],
-  [0, 'Unknown / no data'],
-];
 
 /* ------------------------------------------------- riding-rules state */
 const rules = {
   allowFreeways: true,  // only permit heavily penalized freeway fallback?
+  allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
   freeMaxSpeed: 35,     // mph; at/below this a road passes even without a shoulder
@@ -60,9 +55,10 @@ const RULE_NUMBER_LIMITS = {
 // with router-worker.js so the advanced desktop editor is reproducible.
 const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   directFail: 1.15, balancedComfy: 0.92, balancedFail: 3, lowComfy: 0.9, lowFail: 30,
-  designated: 0.86, strongDesignated: 0.42, residential: 0.78,
-  facilityShared: 0.9, facilityLane: 0.72, facilityBuffered: 0.62,
-  facilitySeparated: 0.5, facilityPath: 0.42,
+  designated: 0.94, strongDesignated: 0.86, residential: 0.78,
+  facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
+  facilitySeparated: 0.46, facilityPath: 0.38,
+  mtbTrail: 6,
   freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1,
   speedBalanced: 0.01, speedLow: 0.02,
   hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
@@ -73,6 +69,12 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
+});
+const ROUTING_WEIGHTS_VERSION = 4;
+const PREVIOUS_ROUTING_WEIGHT_DEFAULTS = Object.freeze({
+  designated: [0.86, 0.92], strongDesignated: [0.42, 0.76],
+  facilityShared: [0.9], facilityLane: [0.72, 0.68], facilityBuffered: [0.62, 0.58],
+  facilitySeparated: [0.5, 0.46], facilityPath: [0.42, 0.38],
 });
 function validRoutingWeights(source) {
   const clean = {};
@@ -109,6 +111,23 @@ const display = {
   passFail: false, // retained internally for backwards-compatible saved state; no UI toggle
   passMax: 2, // a road "passes" if its effective level is 1..passMax (Low & Moderate)
 };
+
+// The background network is useful context, but the planned route needs to
+// remain visually dominant.  Keep every non-route line at a consistent visual
+// strength, then soften it again while a route is on the map.  Scaling from
+// the former 0.95 baseline preserves the deliberately quieter designation and
+// failure overlays without letting any of them compete with the route.
+let routeIsDisplayed = false;
+function backgroundLineOpacity(baseOpacity) {
+  const targetOpacity = routeIsDisplayed ? 0.4 : 0.6;
+  return Math.min(1, baseOpacity * (targetOpacity / 0.95));
+}
+
+// Caution has a specific semantic meaning, so keep it solid enough to avoid
+// a dashed layer beneath showing through at the normal background opacity.
+function cautionBackgroundLineOpacity() {
+  return routeIsDisplayed ? 0.65 : 0.76;
+}
 
 /* ------------------------------------------------------- the scorers */
 // Each returns normalized props. baseScore null => unknown (gray).
@@ -166,6 +185,7 @@ function scoreOSM(p) {
     limited_access: false,
     good_facility: base != null && !prohibited,
     infra: true,
+    mountain_bike: p.mtb === 1,
   };
 }
 
@@ -251,7 +271,7 @@ function effectiveLevel(n) {
 const SOURCES = [
   {
     id: 'routes',
-    name: 'Designated routes (USBR & trails)',
+    name: 'Designated routes (USBR & regional)',
     url: 'data/bikeroutes.geojson',
     scorer: scoreRouteOverlay,
     zRank: -1,     // a ribbon UNDER the scoring layers
@@ -369,7 +389,15 @@ if (savedState) {
   if (savedState.rules) Object.assign(rules, validRuleOverrides(savedState.rules));
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
 }
-const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...validRoutingWeights(savedState?.weights) };
+const savedRoutingWeights = validRoutingWeights(savedState?.weights);
+// Preserve intentional advanced edits, while migrating untouched older
+// defaults to the new hierarchy: a physical facility beats designation alone.
+if ((savedState?.weightsVersion || 0) < ROUTING_WEIGHTS_VERSION) {
+  for (const [key, oldDefaults] of Object.entries(PREVIOUS_ROUTING_WEIGHT_DEFAULTS)) {
+    if (oldDefaults.includes(savedRoutingWeights[key])) savedRoutingWeights[key] = DEFAULT_ROUTING_WEIGHTS[key];
+  }
+}
+const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 
 // Navigation choices are local device preferences, not part of a shared route.
 // Keep automatic recovery on by default, while still letting a rider opt out.
@@ -470,7 +498,7 @@ function saveStateNow() {
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
       autoReroute: navigationOptions.autoReroute,
-      weights: routingWeights,
+      weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
       route: routing.start && routing.end
@@ -523,20 +551,10 @@ if (COARSE_POINTER) map.doubleClickZoom.disable();
 // it appears only in a local/regional view; neighborhood streets need a closer
 // zoom still.
 const RES_MIN_ZOOM = 13;
-let residentialRoadsVisible = null;
-function refreshRoadsForZoom() {
-  const zoom = map.getZoom();
-  // The broad source cutoff is handled natively by each MapLibre layer's
-  // minzoom. Only the feature-level residential filter needs rebuilding.
-  const state = zoom >= RES_MIN_ZOOM;
-  if (state === residentialRoadsVisible) return;
-  residentialRoadsVisible = state;
-  const roads = SOURCES.find((src) => src.id === 'roads');
-  if (roads && map.getLayer(roads.id)) applyDisplayMode(roads);
-}
-// Desktop wheel/trackpad zoom can remain in an active gesture for a while, so
-// update as the threshold is crossed instead of waiting for zoomend.
-map.on('zoom', refreshRoadsForZoom);
+// Residential visibility is expressed directly in each MapLibre paint
+// expression below. That lets the renderer update continuously during wheel,
+// trackpad, touch, keyboard, and programmatic zooms without relying on a JS
+// zoom event to rebuild feature filters.
 // PMTiles: static single-file vector tiles over HTTP range requests — no server.
 if (window.pmtiles) {
   const _pmProtocol = new pmtiles.Protocol();
@@ -553,12 +571,29 @@ map.addControl(
 );
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
 
-const colorExpr = () => {
-  const expr = ['match', ['get', 'level']];
-  for (const lvl of [1, 2, 3, 4, 0]) expr.push(lvl, COLORS[lvl]);
-  expr.push(COLORS[0]);
-  return expr;
-};
+function bikeNetworkExpr(src) {
+  if (src.id === 'osm') return ['boolean', true];
+  if (src.id === 'roads') {
+    return ['==', ['get', 'f'], 1];
+  }
+  if (src.id === 'blts') {
+    return ['all', ['has', 'BikeFacilityType'], ['!=', ['get', 'BikeFacilityType'], '']];
+  }
+  return ['boolean', false];
+}
+
+function verdictColorExpr(src, levelExpr = ['get', 'level']) {
+  const passes = ['match', levelExpr, [1, 2], true, false];
+  return ['case',
+    ['all', passes, bikeNetworkExpr(src)], BIKE_NETWORK_COLOR,
+    ['match', levelExpr, 1, COLORS[1], 2, COLORS[2], 3, COLORS[3],
+      4, COLORS[4], COLORS[0]],
+  ];
+}
+
+function isBikeNetworkVerdict(n) {
+  return !!(n && (n.infra || n.good_facility));
+}
 
 /* -------------------------------------------------------- status UI */
 const statusEl = document.getElementById('status');
@@ -569,6 +604,17 @@ function setStatus(msg, sticky = false) {
   clearTimeout(statusTimer);
   if (!sticky) statusTimer = setTimeout(() => statusEl.classList.add('hidden'), 1400);
 }
+
+// PMTiles needs byte-range responses. A plain static server can otherwise make
+// the statewide layer look like a zoom/rendering failure, even though the
+// tiles never arrived. Make the recovery path explicit for local development.
+let pmtilesRangeWarningShown = false;
+map.on('error', (event) => {
+  const message = String(event?.error?.message || '');
+  if (pmtilesRangeWarningShown || !/byte serving|content-length|range/i.test(message)) return;
+  pmtilesRangeWarningShown = true;
+  setStatus('All roads could not load — use scripts/serve.py for byte-range support.', true);
+});
 
 /* ------------------------------------- scoring + pushing to the map */
 // Compute normalized props once per feature (cached on _n), then effective level.
@@ -623,6 +669,14 @@ const FAIL_COLOR = '#9aa0a6';
 const failId = (src) => src.id + '__fail'; // gray-dashed "has data but fails" (pass/fail mode)
 const vhId = (src) => src.id + '__vh';     // red-dashed "very high / avoid" (color-ramp mode)
 const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
+const trailId = (src) => src.id + '__trail'; // lime base for off-street OSM bike paths/trails
+const trailDotsId = (src) => src.id + '__trail-dots'; // fine dotted trail centerline
+const trailHitId = (src) => src.id + '__trail-hit'; // dedicated wide target for dotted trails
+const OSM_TRAIL_EXPR = ['match', ['get', 'highway'],
+  ['cycleway', 'path', 'footway', 'bridleway', 'track'], true, false];
+const OSM_NOT_TRAIL_EXPR = ['match', ['get', 'highway'],
+  ['cycleway', 'path', 'footway', 'bridleway', 'track'], false, true];
+const OSM_NOT_MTB_EXPR = ['!=', ['get', 'mtb'], 1];
 
 // Insert this source's layers below any already-added layers of higher-zRank
 // sources, so draw order follows zRank regardless of load order.
@@ -648,14 +702,14 @@ function ensureLayer(src) {
       id: src.id + '__line', type: 'line', source: src.id,
       minzoom: 10,
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: { 'line-color': '#d7191c', 'line-width': 7, 'line-opacity': 0.92,
+      paint: { 'line-color': COLORS[4], 'line-width': 7, 'line-opacity': backgroundLineOpacity(0.92),
                'line-dasharray': [1.2, 1.1] },
       filter: ['==', ['geometry-type'], 'LineString'],
     }, beforeId);
     map.addLayer({
       id: src.id, type: 'circle', source: src.id,
       minzoom: 10,
-      paint: { 'circle-radius': 9, 'circle-color': '#d7191c',
+      paint: { 'circle-radius': 9, 'circle-color': COLORS[4],
                'circle-stroke-color': '#fff', 'circle-stroke-width': 2 },
       filter: ['==', ['geometry-type'], 'Point'],
     }, beforeId);
@@ -675,7 +729,7 @@ function ensureLayer(src) {
       'line-color': FAIL_COLOR,
       'line-dasharray': [2, 2],
       'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.4, 14, 2.6],
-      'line-opacity': 0.65,
+      'line-opacity': backgroundLineOpacity(0.65),
     },
     filter: ['all', ['>=', ['get', 'level'], display.passMax + 1], ['<=', ['get', 'level'], 4]],
   }, beforeId);
@@ -690,7 +744,7 @@ function ensureLayer(src) {
       'line-color': COLORS[4],
       'line-dasharray': [2, 1.5],
       'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7],
-      'line-opacity': 0.9,
+      'line-opacity': backgroundLineOpacity(0.9),
     },
     filter: ['==', ['get', 'level'], 4],
   }, beforeId);
@@ -702,11 +756,59 @@ function ensureLayer(src) {
     minzoom: src.minVisibleZoom || 0,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
-      'line-color': colorExpr(),
+      'line-color': verdictColorExpr(src),
       'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7],
-      'line-opacity': 0.9,
+      'line-opacity': backgroundLineOpacity(0.9),
     },
   }, beforeId);
+  if (src.id === 'osm') {
+    map.addLayer({
+      id: trailId(src),
+      type: 'line',
+      source: src.id,
+      ...SL,
+      minzoom: src.minVisibleZoom || 0,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': BIKE_NETWORK_COLOR,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.9, 10, 3, 14, 5],
+        'line-opacity': backgroundLineOpacity(0.95),
+      },
+      filter: ['boolean', false],
+    }, beforeId);
+    map.addLayer({
+      id: trailDotsId(src),
+      type: 'line',
+      source: src.id,
+      ...SL,
+      minzoom: src.minVisibleZoom || 0,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#687d00',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.2, 14, 1.8],
+        'line-opacity': backgroundLineOpacity(0.95),
+        'line-dasharray': [0.05, 2.1],
+      },
+      filter: ['boolean', false],
+    }, beforeId);
+    // Keep dotted paths as easy to inspect as ordinary streets.  This sits
+    // directly on the source geometry (not the gaps between rendered dots),
+    // so a trail remains hoverable across its full length.
+    map.addLayer({
+      id: trailHitId(src),
+      type: 'line',
+      source: src.id,
+      ...SL,
+      minzoom: src.minVisibleZoom || 0,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#000',
+        'line-opacity': 0,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 12, 12, 18, 16, 26],
+      },
+      filter: OSM_TRAIL_EXPR,
+    }, beforeId);
+  }
   // Invisible wide line on top — a forgiving hover target so you don't have to
   // land pixel-perfect on the thin visible line. Transparent, so no visual change.
   map.addLayer({
@@ -724,6 +826,7 @@ function ensureLayer(src) {
   }, beforeId);
   applyDisplayMode(src);
   attachHover(src, hitId(src));
+  if (src.id === 'osm') attachHover(src, trailHitId(src));
 }
 
 // Main layer follows the source toggle; the two dashed overlays are each shown
@@ -740,6 +843,9 @@ function updateVisibility(src) {
     return;
   }
   if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', on ? 'visible' : 'none');
+  if (map.getLayer(trailId(src))) map.setLayoutProperty(trailId(src), 'visibility', on ? 'visible' : 'none');
+  if (map.getLayer(trailDotsId(src))) map.setLayoutProperty(trailDotsId(src), 'visibility', on ? 'visible' : 'none');
+  if (map.getLayer(trailHitId(src))) map.setLayoutProperty(trailHitId(src), 'visibility', on ? 'visible' : 'none');
   if (src.fixed) { // overlay has no mode-specific layers to manage beyond the main one
     if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', on ? 'visible' : 'none');
     if (map.getLayer(failId(src))) map.setLayoutProperty(failId(src), 'visibility', 'none');
@@ -760,22 +866,24 @@ function updateVisibility(src) {
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
   if (src.closure) {
+    if (map.getLayer(src.id + '__line')) {
+      map.setPaintProperty(src.id + '__line', 'line-opacity', backgroundLineOpacity(0.92));
+    }
     updateVisibility(src);
     return;
   }
   if (src.ribbon) {
-    // Informational ribbon under the scoring layers: orange = designated
-    // route. National (USBR) draws wider than regional trails. Same in both
-    // display modes — the designation doesn't depend on your rules.
+    // Designation is useful context, not physical infrastructure: show it as
+    // a dashed blue corridor beneath the actual facility/safety verdict.
     map.setFilter(src.id, null);
-    map.setPaintProperty(src.id, 'line-color',
-      ['match', ['get', 't'], 'ncn', '#e08214', '#fdb863']);
+    map.setPaintProperty(src.id, 'line-color', COLORS[2]);
     map.setPaintProperty(src.id, 'line-width',
       ['interpolate', ['linear'], ['zoom'],
         6, ['match', ['get', 't'], 'ncn', 2.6, 1.6],
         10, ['match', ['get', 't'], 'ncn', 5, 3],
         14, ['match', ['get', 't'], 'ncn', 9, 5.5]]);
-    map.setPaintProperty(src.id, 'line-opacity', 0.38);
+    map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.42));
+    map.setPaintProperty(src.id, 'line-dasharray', [2, 1.4]);
     if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
     if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
     updateVisibility(src);
@@ -789,12 +897,12 @@ function applyDisplayMode(src) {
       map.setPaintProperty(src.id, 'line-color', FAIL_COLOR);
       map.setPaintProperty(src.id, 'line-dasharray', [2, 2]);
       map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.4, 14, 2.6]);
-      map.setPaintProperty(src.id, 'line-opacity', 0.65);
+      map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.65));
     } else {
       map.setPaintProperty(src.id, 'line-color', COLORS[4]);
       map.setPaintProperty(src.id, 'line-dasharray', [2, 1.5]);
       map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7]);
-      map.setPaintProperty(src.id, 'line-opacity', 0.9);
+      map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.9));
     }
     if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
     if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
@@ -811,10 +919,10 @@ function applyDisplayMode(src) {
   const dedup = src.id === 'roads' && SOURCES.find((s) => s.id === 'blts').enabled;
   const and = (f) => {
     const conds = [f];
-    if (hideRes && map.getZoom() < RES_MIN_ZOOM) {
-      conds.push(['all', ['!=', ['get', 'h'], 'residential'], ['!=', ['get', 'h'], 'living_street']]);
-    }
     if (dedup) conds.push(['!=', ['get', 'd'], 1]);
+    // Explicitly technical MTB paths stay out of the normal map view as well
+    // as the normal router. They reappear immediately when the rider opts in.
+    if (src.id === 'osm' && !rules.allowMtbTrails) conds.push(OSM_NOT_MTB_EXPR);
     return conds.length > 1 ? ['all', ...conds] : f;
   };
   // Roads layer: residential/living_street draw thinner so arterials stand out.
@@ -824,25 +932,67 @@ function applyDisplayMode(src) {
       ? ['interpolate', ['linear'], ['zoom'],
          6, ['case', isRes, r6, n6], 10, ['case', isRes, r10, n10], 14, ['case', isRes, r14, n14]]
       : ['interpolate', ['linear'], ['zoom'], 6, n6, 10, n10, 14, n14];
+  const opacity = (value) => {
+    const backgroundOpacity = backgroundLineOpacity(value);
+    const verdictOpacity = ['case', ['==', lvl, 3], cautionBackgroundLineOpacity(), backgroundOpacity];
+    return hideRes
+      ? ['step', ['zoom'], ['case', isRes, 0, verdictOpacity], RES_MIN_ZOOM, verdictOpacity]
+      : verdictOpacity;
+  };
+  // Keep background data present without competing with a planned route. The
+  // broad invisible hit target below preserves easy road inspection even with
+  // these deliberately fine visual strokes.
   if (display.passFail) {
-    map.setFilter(src.id, and(['all', ['>=', lvl, 1], ['<=', lvl, display.passMax]]));
+    const passFilter = ['all', ['>=', lvl, 1], ['<=', lvl, display.passMax]];
+    map.setFilter(src.id, and(src.id === 'osm' ? ['all', passFilter, OSM_NOT_TRAIL_EXPR] : passFilter));
     map.setPaintProperty(src.id, 'line-color', PASS_COLOR);
-    map.setPaintProperty(src.id, 'line-opacity', 0.95);
-    map.setPaintProperty(src.id, 'line-width', w(0.8, 1.4, 1.5, 2.6, 2.8, 5));
+    map.setPaintProperty(src.id, 'line-opacity', opacity(0.95));
+    map.setPaintProperty(src.id, 'line-width', w(0.5, 0.85, 0.9, 1.55, 1.55, 2.85));
   } else {
     // Solid ramp for passing levels (and unknown); level 4 goes to the dashed vh layer.
-    map.setFilter(src.id, and(['!=', lvl, 4]));
-    map.setPaintProperty(src.id, 'line-color',
-      ['match', lvl, 1, COLORS[1], 2, COLORS[2], 3, COLORS[3], 4, COLORS[4], COLORS[0]]);
-    map.setPaintProperty(src.id, 'line-opacity', 0.9);
-    map.setPaintProperty(src.id, 'line-width', w(0.6, 1.1, 1.1, 1.9, 2.1, 3.7));
+    const verdictFilter = ['!=', lvl, 4];
+    map.setFilter(src.id, and(src.id === 'osm' ? ['all', verdictFilter, OSM_NOT_TRAIL_EXPR] : verdictFilter));
+    map.setPaintProperty(src.id, 'line-color', verdictColorExpr(src, lvl));
+    map.setPaintProperty(src.id, 'line-opacity', opacity(0.9));
+    map.setPaintProperty(src.id, 'line-width', w(0.4, 0.7, 0.75, 1.2, 1.3, 2.35));
   }
-  if (map.getLayer(failId(src)))
+  const visibleTrail = display.passFail
+    ? ['all', ['>=', lvl, 1], ['<=', lvl, display.passMax], OSM_TRAIL_EXPR]
+    : ['all', ['!=', lvl, 4], OSM_TRAIL_EXPR];
+  if (map.getLayer(trailId(src))) {
+    map.setFilter(trailId(src), and(visibleTrail));
+    map.setPaintProperty(trailId(src), 'line-color', display.passFail ? PASS_COLOR : BIKE_NETWORK_COLOR);
+    map.setPaintProperty(trailId(src), 'line-opacity', backgroundLineOpacity(0.95));
+  }
+  if (map.getLayer(trailDotsId(src))) {
+    map.setFilter(trailDotsId(src), and(visibleTrail));
+    map.setPaintProperty(trailDotsId(src), 'line-color', display.passFail ? '#587400' : '#687d00');
+    map.setPaintProperty(trailDotsId(src), 'line-opacity', backgroundLineOpacity(0.95));
+  }
+  if (map.getLayer(trailHitId(src))) map.setFilter(trailHitId(src), and(visibleTrail));
+  if (map.getLayer(failId(src))) {
     map.setFilter(failId(src), and(['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4]]));
-  if (map.getLayer(vhId(src)))
+    map.setPaintProperty(failId(src), 'line-opacity', opacity(0.65));
+  }
+  if (map.getLayer(vhId(src))) {
     map.setFilter(vhId(src), and(['==', lvl, 4]));
-  if (map.getLayer(hitId(src)))
-    map.setFilter(hitId(src), hideRes || dedup ? and(['boolean', true]) : null); // keep hover off hidden roads
+    map.setPaintProperty(vhId(src), 'line-opacity', opacity(0.9));
+  }
+  if (map.getLayer(hitId(src))) {
+    // OSM trails use their purpose-built, wider hit layer above.  Keeping the
+    // generic road target off them ensures the full-width trail target wins
+    // instead of a thinner overlapping target being returned first.
+    const mainHitFilter = src.id === 'osm' ? OSM_NOT_TRAIL_EXPR : ['boolean', true];
+    map.setFilter(hitId(src), (dedup || src.id === 'osm') ? and(mainHitFilter) : null);
+    const normalHitWidth = ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22];
+    const residentialHitWidth = ['step', ['zoom'],
+      ['case', isRes, 0, 8],
+      10, ['case', isRes, 0, 11],
+      12, ['case', isRes, 0, 14],
+      RES_MIN_ZOOM, 16,
+      16, 22];
+    map.setPaintProperty(hitId(src), 'line-width', hideRes ? residentialHitWidth : normalHitWidth);
+  }
   updateVisibility(src);
 }
 
@@ -1044,7 +1194,7 @@ function isHighwaySegment(s) {
 
 function routeSummaryStats(m) {
   const levels = [0, 0, 0, 0, 0];
-  let highwayM = 0, freewayM = 0, limitedAccessM = 0, bikeNetworkM = 0;
+  let highwayM = 0, freewayM = 0, limitedAccessM = 0, bikeNetworkM = 0, mtbM = 0;
   for (const s of m.segs || []) {
     const flags = s.flags || 0;
     const len = Number(s.lenM) || 0;
@@ -1052,11 +1202,12 @@ function routeSummaryStats(m) {
     const level = s.level || fallbackRouteLevel(s);
     if (level >= 1 && level <= 4) levels[level] += len;
     if ((flags & (8 | 64)) || (s.facility || 0) >= 2) bikeNetworkM += len;
+    if (s.mtb || ((s.official || 0) & 4)) mtbM += len;
     if (flags & 4) freewayM += len;
     else if (flags & 128) limitedAccessM += len;
     else if (isHighwaySegment(s)) highwayM += len;
   }
-  return { levels, highwayM, freewayM, limitedAccessM, bikeNetworkM };
+  return { levels, highwayM, freewayM, limitedAccessM, bikeNetworkM, mtbM };
 }
 
 function routePercent(meters, total, preciseSmall = false) {
@@ -1064,6 +1215,7 @@ function routePercent(meters, total, preciseSmall = false) {
   const pct = Math.min(100, 100 * meters / total);
   if (preciseSmall && pct < 0.1) return '<0.1%';
   if (preciseSmall && pct < 1) return `${pct.toFixed(1)}%`;
+  if (preciseSmall && pct > 99 && pct < 100) return `${pct.toFixed(1)}%`;
   return `${Math.round(pct)}%`;
 }
 
@@ -1104,13 +1256,13 @@ function storeRouteDetails(m) {
       summary: {
         distM: m.distM, timeS: m.timeS, ascentM: m.ascentM, descentM: m.descentM,
         failM: m.failM, desigM: m.desigM, facilityM: m.facilityM, ferryM: m.ferryM,
-        hazardM: m.hazardM || 0,
+        mtbM: m.mtbM || 0, hazardM: m.hazardM || 0,
       },
       // Keep the detailed report compact: it only needs road attributes and
       // lengths, not the complete route geometry or elevation profile.
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
-        facility: s.facility || 0, official: s.official || 0,
+        facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
         roadClass: s.roadClass || 0, c0: s.c0, c1: s.c1,
         hazard: s.hazard || 0,
         hazardLenM: s.hazardLenM || 0, hazC0: s.hazC0, hazC1: s.hazC1,
@@ -1640,20 +1792,14 @@ function renderRouteCard(m) {
   const snapNotice = snapNotes.length
     ? `<div class="rc-warn">⚠ ${snapNotes.join(' · ')} — move the marker closer to a road if this looks wrong.</div>`
     : '';
-  const levelNames = ['', 'Comfy', 'Meets rules', 'Caution', 'Fails rules'];
   const ridingM = Math.max(1, m.distM - (m.ferryM || 0));
-  const comfyPct = routePercent(stats.levels[1] || 0, ridingM);
   const bikePct = routePercent(stats.bikeNetworkM, ridingM);
+  const passPct = routePercent((stats.levels[1] || 0) + (stats.levels[2] || 0), ridingM, true);
+  const cautionPct = routePercent(stats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(m.failM || 0, ridingM, true);
-  const highlightButtons = [
-    `<button class="rc-highlight-item" data-highlight="bike-network" aria-pressed="false" title="Highlight designated routes, trails, and bike facilities on the map" ${stats.bikeNetworkM > 0 ? '' : 'disabled'}><span>★ Bike network</span><b>${fmtDist(stats.bikeNetworkM)}</b></button>`,
-    `<button class="rc-highlight-item" data-highlight="highway" aria-pressed="false" title="Highlight highway segments on the map" ${stats.highwayM > 0 ? '' : 'disabled'}><span>⚠ Highways</span><b>${fmtDist(stats.highwayM)}</b></button>`,
-    `<button class="rc-highlight-item${stats.freewayM > 0 ? ' rc-attention' : ''}" data-highlight="freeway" aria-pressed="false" title="Highlight freeway segments on the map" ${stats.freewayM > 0 ? '' : 'disabled'}><span>⛔ Freeways</span><b>${fmtDist(stats.freewayM)}</b></button>`,
-    `<button class="rc-highlight-item${stats.limitedAccessM > 0 ? ' rc-attention' : ''}" data-highlight="limited-access" aria-pressed="false" title="Highlight limited-access caution segments on the map" ${stats.limitedAccessM > 0 ? '' : 'disabled'}><span>⚠ Caution</span><b>${fmtDist(stats.limitedAccessM)}</b></button>`,
-    ...[1, 4].map((level) =>
-      `<button class="rc-level rc-l${level}${level === 4 && stats.levels[level] > 0 ? ' rc-attention' : ''}" data-highlight="level-${level}" aria-pressed="false" title="Highlight ${levelNames[level].toLowerCase()} segments on the map" ${stats.levels[level] > 0 ? '' : 'disabled'}><span>${levelNames[level]}</span><b>${fmtDist(stats.levels[level])}</b></button>`),
-  ];
-  const highlights = `<div class="rc-highlights">${highlightButtons.join('')}</div>`;
+  const mtbNotice = stats.mtbM > 0
+    ? `<div class="rc-warn rc-mtb">⚠ ${fmtDist(stats.mtbM)} on mountain-bike trail</div>`
+    : '';
   const legs = m.legs && m.legs.length > 1
     ? `<div class="rc-legs">${m.legs.map((l, i) =>
         `<div class="rc-leg">Leg ${i + 1}: <b>${fmtDist(l.distM)}</b> · ${fmtDur(l.timeS)}${
@@ -1663,18 +1809,12 @@ function renderRouteCard(m) {
     <div id="routeControlsSlot"></div>
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi ferry` : ''}</div>
-    <div class="rc-ride-mix" title="Percent of riding distance"><span class="rc-ride-label">Ride</span><span><b>${comfyPct}</b> comfy</span><i>·</i><span><b>${bikePct}</b> bike network</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><b>${failPct}</b> fails</span></div>
+    <div class="rc-ride-mix" title="Percent of riding distance"><span class="rc-ride-label">Ride</span><span><b>${bikePct}</b> bike</span><i>·</i><span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><b>${failPct}</b> fail</span></div>
+    ${mtbNotice}
     ${snapNotice}
-    <div class="rc-highlight-hint">Tap an item to highlight it on the map</div>
-    ${highlights}
     ${legs}
     <div class="rc-card-actions"><button type="button" class="rc-elevation-button" data-route-action="elevation" title="Open elevation profile"><span aria-hidden="true">⌁</span> Elevation</button></div>`;
   moveControls();
-  card.querySelectorAll('[data-highlight]').forEach((b) => {
-    const active = b.dataset.highlight === routeHighlightKey;
-    b.classList.toggle('active', active);
-    b.setAttribute('aria-pressed', String(active));
-  });
   refreshNavigationUI();
 }
 
@@ -1828,6 +1968,16 @@ function computeRoute() {
 // Pseudo-source for tapping the route line itself: segments carry their graph
 // attributes, so the route is inspectable even with every data layer off.
 const ROUTESEG_SRC = { id: 'routeseg', name: 'Your route', scorer: scoreRouteSeg };
+const ROUTE_SEG_BIKE_EXPR = ['any', ['==', ['get', 'infra'], 1],
+  ['>=', ['get', 'facility'], 2]];
+const ROUTE_SEG_TRAIL_EXPR = ['==', ['get', 'facility'], 5];
+const ROUTE_SEG_NOT_TRAIL_EXPR = ['!=', ['get', 'facility'], 5];
+const ROUTE_SEG_NOT_BIKE_EXPR = ['all', ['!=', ['get', 'infra'], 1],
+  ['<', ['get', 'facility'], 2]];
+const ROUTE_SEG_DESIGNATED_EXPR = ['==', ['get', 'desig'], 1];
+const ROUTE_SEG_NOT_DESIGNATED_EXPR = ['!=', ['get', 'desig'], 1];
+const ROUTE_SEG_PASS_EXPR = ['any', ['==', ['get', 'level'], 1],
+  ['==', ['get', 'level'], 2]];
 function scoreRouteSeg(p) {
   const facility = p.facility || 0;
   return {
@@ -1846,6 +1996,7 @@ function scoreRouteSeg(p) {
 
 // Pulse animation for failing portions of the route — impossible to miss.
 let failPulseTimer = null;
+let detailSelectionPulseTimer = null;
 function setFailPulse(on) {
   if (on && !failPulseTimer) {
     let t = 0;
@@ -1864,7 +2015,39 @@ function setFailPulse(on) {
   }
 }
 
+// A report-item selection should retain the segment's own safety color.  The
+// white overlay comes and goes, so the rider can locate it without mistaking
+// a temporary selection color for another safety category.
+function setDetailSelectionPulse(on) {
+  if (on && !detailSelectionPulseTimer) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (map.getLayer('route-detail-highlight')) {
+        map.setPaintProperty('route-detail-highlight', 'line-opacity', 0.9);
+      }
+      return;
+    }
+    let whiteVisible = true;
+    if (map.getLayer('route-detail-highlight')) {
+      map.setPaintProperty('route-detail-highlight', 'line-opacity', 1);
+    }
+    detailSelectionPulseTimer = setInterval(() => {
+      if (!map.getLayer('route-detail-highlight')) return;
+      // Alternate cleanly between the underlying route color and white; a
+      // binary flash is more recognizable outdoors than a subtle fade.
+      whiteVisible = !whiteVisible;
+      map.setPaintProperty('route-detail-highlight', 'line-opacity', whiteVisible ? 1 : 0);
+    }, 430);
+  } else if (!on) {
+    if (detailSelectionPulseTimer) clearInterval(detailSelectionPulseTimer);
+    detailSelectionPulseTimer = null;
+    if (map.getLayer('route-detail-highlight')) {
+      map.setPaintProperty('route-detail-highlight', 'line-opacity', 0.9);
+    }
+  }
+}
+
 function drawRoute(coords, ferrySegs, segs) {
+  routeIsDisplayed = Array.isArray(coords) && coords.length >= 2;
   clearRouteHighlight();
   const data = { type: 'Feature', properties: {},
     geometry: { type: 'LineString', coordinates: coords } };
@@ -1880,7 +2063,7 @@ function drawRoute(coords, ferrySegs, segs) {
       lim: s.flags & 128 ? 1 : 0,
       hazard: s.hazard || 0, gradePct: s.gradePct || 0,
       infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
-      facility: s.facility || 0, official: s.official || 0,
+      facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
       roadClass: s.roadClass || 0,
       routeIndex,
       level: s.level || fallbackRouteLevel(s), hwy: isHighwaySegment(s) ? 1 : 0 },
@@ -1890,10 +2073,6 @@ function drawRoute(coords, ferrySegs, segs) {
   const failData = { type: 'FeatureCollection',
     features: sdata.features.filter((f) =>
       f.properties.ferry !== 1 && effectiveLevel(scoreRouteSeg(f.properties)) === 4) };
-  const hazardData = { type: 'FeatureCollection', features: (segs || [])
-    .filter((s) => s.hazard && s.hazC0 != null && s.hazC1 != null)
-    .map((s) => ({ type: 'Feature', properties: { severity: s.hazard },
-      geometry: { type: 'LineString', coordinates: coords.slice(s.hazC0, s.hazC1 + 1) } })) };
   const emptyHighlights = { type: 'FeatureCollection', features: [] };
   const emptyLine = { type: 'FeatureCollection', features: [] };
   const srcExisting = map.getSource('route');
@@ -1902,18 +2081,19 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-ferry').setData(fdata);
     map.getSource('route-seg').setData(sdata);
     map.getSource('route-fail').setData(failData);
-    map.getSource('route-hazard').setData(hazardData);
     map.getSource('route-highlight-marker').setData(emptyHighlights);
+    map.getSource('route-detail-marker').setData(emptyHighlights);
     map.getSource('route-detail-selection').setData(emptyLine);
     setFailPulse(failData.features.length > 0);
+    applyDisplayModeAll();
     return;
   }
   map.addSource('route', { type: 'geojson', data });
   map.addSource('route-ferry', { type: 'geojson', data: fdata });
   map.addSource('route-seg', { type: 'geojson', data: sdata });
   map.addSource('route-fail', { type: 'geojson', data: failData });
-  map.addSource('route-hazard', { type: 'geojson', data: hazardData });
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
+  map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-selection', { type: 'geojson', data: emptyLine });
   map.addLayer({
     id: 'route-shadow', type: 'line', source: 'route',
@@ -1926,10 +2106,57 @@ function drawRoute(coords, ferrySegs, segs) {
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-width': 11, 'line-opacity': 0.98 },
   });
+  const routeVerdictPaint = (color) => ({
+    'line-color': color, 'line-width': 6.5, 'line-opacity': 1,
+  });
   map.addLayer({
-    id: 'route', type: 'line', source: 'route',
+    id: 'route-pass', type: 'line', source: 'route-seg',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#7623bb', 'line-width': 6.5, 'line-opacity': 1 },
+    paint: routeVerdictPaint(COLORS[1]),
+    filter: ['all', ['!=', ['get', 'ferry'], 1], ROUTE_SEG_PASS_EXPR,
+      ROUTE_SEG_NOT_BIKE_EXPR, ROUTE_SEG_NOT_DESIGNATED_EXPR],
+  });
+  map.addLayer({
+    id: 'route-designated', type: 'line', source: 'route-seg',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { ...routeVerdictPaint(COLORS[2]), 'line-width': 7.2,
+             'line-dasharray': [1.6, 1.15] },
+    filter: ['all', ['!=', ['get', 'ferry'], 1], ROUTE_SEG_PASS_EXPR,
+      ROUTE_SEG_NOT_BIKE_EXPR, ROUTE_SEG_DESIGNATED_EXPR],
+  });
+  map.addLayer({
+    id: 'route-bike', type: 'line', source: 'route-seg',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: routeVerdictPaint(BIKE_NETWORK_COLOR),
+    filter: ['all', ['!=', ['get', 'ferry'], 1], ROUTE_SEG_PASS_EXPR,
+      ROUTE_SEG_BIKE_EXPR, ROUTE_SEG_NOT_TRAIL_EXPR],
+  });
+  map.addLayer({
+    id: 'route-bike-trail', type: 'line', source: 'route-seg',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { ...routeVerdictPaint(BIKE_NETWORK_COLOR), 'line-width': 7.2 },
+    filter: ['all', ['!=', ['get', 'ferry'], 1], ROUTE_SEG_PASS_EXPR,
+      ROUTE_SEG_BIKE_EXPR, ROUTE_SEG_TRAIL_EXPR],
+  });
+  map.addLayer({
+    id: 'route-bike-trail-dots', type: 'line', source: 'route-seg',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#687d00', 'line-width': 2.2, 'line-opacity': 0.96,
+             'line-dasharray': [0.05, 2.1] },
+    filter: ['all', ['!=', ['get', 'ferry'], 1], ROUTE_SEG_PASS_EXPR,
+      ROUTE_SEG_BIKE_EXPR, ROUTE_SEG_TRAIL_EXPR],
+  });
+  map.addLayer({
+    id: 'route-caution', type: 'line', source: 'route-seg',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: routeVerdictPaint(COLORS[3]),
+    filter: ['all', ['!=', ['get', 'ferry'], 1], ['==', ['get', 'level'], 3]],
+  });
+  map.addLayer({
+    id: 'route-unknown', type: 'line', source: 'route-seg',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: routeVerdictPaint(COLORS[0]),
+    filter: ['all', ['!=', ['get', 'ferry'], 1], ['==', ['get', 'level'], 0]],
   });
   map.addLayer({
     id: 'route-fail-casing', type: 'line', source: 'route-fail',
@@ -1939,17 +2166,13 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-fail', type: 'line', source: 'route-fail',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#d7191c', 'line-width': 6.5, 'line-opacity': 0.9 },
+    paint: { 'line-color': COLORS[4], 'line-width': 6.5, 'line-opacity': 0.9,
+             'line-dasharray': [1.25, 1] },
   });
   map.addLayer({
     id: 'route-ferry', type: 'line', source: 'route-ferry',
     paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.9,
              'line-dasharray': [0.6, 1.8] },
-  });
-  map.addLayer({
-    id: 'route-hazard', type: 'line', source: 'route-hazard',
-    paint: { 'line-color': '#ff9f1c', 'line-width': 8, 'line-opacity': 0.95,
-             'line-dasharray': [1.2, 1] },
   });
   setFailPulse(failData.features.length > 0);
   map.addLayer({
@@ -1964,15 +2187,9 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: { 'line-color': '#ffd400', 'line-width': 8, 'line-opacity': 1 },
   });
   map.addLayer({
-    id: 'route-detail-highlight-halo', type: 'line', source: 'route-detail-selection',
-    layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    paint: { 'line-color': '#fff4a3', 'line-width': 16, 'line-opacity': 0.78,
-             'line-blur': 2 },
-  });
-  map.addLayer({
     id: 'route-detail-highlight', type: 'line', source: 'route-detail-selection',
     layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    paint: { 'line-color': '#ffd400', 'line-width': 8, 'line-opacity': 1 },
+    paint: { 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.9 },
   });
   // A short highlighted edge can be less than a pixel long at the current
   // zoom. One marker per contiguous highlighted stretch gives it an obvious
@@ -1983,6 +2200,22 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: {
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 12, 10, 14, 14, 17],
       'circle-color': '#fff4a3', 'circle-opacity': 0.92, 'circle-blur': 0.18,
+    },
+  });
+  map.addLayer({
+    id: 'route-detail-marker-halo', type: 'circle', source: 'route-detail-marker',
+    layout: { visibility: 'none' },
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 11, 10, 13, 14, 16],
+      'circle-color': '#1f2933', 'circle-opacity': 0.86,
+    },
+  });
+  map.addLayer({
+    id: 'route-detail-marker', type: 'circle', source: 'route-detail-marker',
+    layout: { visibility: 'none' },
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 6, 10, 7, 14, 9],
+      'circle-color': '#ffffff', 'circle-opacity': 1,
     },
   });
   map.addLayer({
@@ -2003,6 +2236,7 @@ function drawRoute(coords, ferrySegs, segs) {
              'line-width': ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22] },
   });
   attachHover(ROUTESEG_SRC, 'route-seg-hit');
+  applyDisplayModeAll();
 }
 
 let routeHighlightKey = null;
@@ -2055,9 +2289,11 @@ function routeHighlightMarkers(key) {
 }
 
 function clearRouteHighlight() {
+  setDetailSelectionPulse(false);
   routeHighlightKey = null;
   for (const id of ['route-highlight-halo', 'route-highlight', 'route-detail-highlight-halo',
-    'route-detail-highlight', 'route-highlight-marker-halo', 'route-highlight-marker']) {
+    'route-detail-highlight', 'route-highlight-marker-halo', 'route-highlight-marker',
+    'route-detail-marker-halo', 'route-detail-marker']) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
   }
   document.querySelectorAll('[data-highlight]').forEach((b) => {
@@ -2099,9 +2335,22 @@ function showRouteStepOnMap(startIndex, endIndex, coordStart = null, coordEnd = 
   routeHighlightKey = `step:${startIndex}:${endIndex}`;
   const first = route.segs[startIndex];
   const last = route.segs[endIndex];
-  const selectedStart = Number.isFinite(Number(coordStart)) ? Math.trunc(Number(coordStart)) : first.c0;
-  const selectedEnd = Number.isFinite(Number(coordEnd)) ? Math.trunc(Number(coordEnd)) : last.c1;
-  const selected = route.coords.slice(Math.max(0, selectedStart), Math.min(route.coords.length - 1, selectedEnd) + 1);
+  // A report item only supplies a narrowed coordinate range when it has one
+  // (for example, an uphill-curve concern).  `Number(null)` is 0, so testing
+  // Number.isFinite alone used to turn ordinary report items into a selection
+  // of the very first route coordinate.  Fall back to the selected graph-edge
+  // range instead, then make even a one-point range visibly selectable.
+  const suppliedStart = coordStart != null && coordStart !== '' && Number.isFinite(Number(coordStart));
+  const suppliedEnd = coordEnd != null && coordEnd !== '' && Number.isFinite(Number(coordEnd));
+  let selectedStart = suppliedStart ? Math.trunc(Number(coordStart)) : first.c0;
+  let selectedEnd = suppliedEnd ? Math.trunc(Number(coordEnd)) : last.c1;
+  selectedStart = Math.max(0, Math.min(selectedStart, route.coords.length - 1));
+  selectedEnd = Math.max(selectedStart, Math.min(selectedEnd, route.coords.length - 1));
+  if (selectedEnd === selectedStart && route.coords.length > 1) {
+    if (selectedEnd < route.coords.length - 1) selectedEnd++;
+    else selectedStart--;
+  }
+  const selected = route.coords.slice(selectedStart, selectedEnd + 1);
   const selectionSource = map.getSource('route-detail-selection');
   if (selectionSource && selected.length >= 2) selectionSource.setData({
     type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: selected },
@@ -2110,14 +2359,15 @@ function showRouteStepOnMap(startIndex, endIndex, coordStart = null, coordEnd = 
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', selected.length >= 2 ? 'visible' : 'none');
   }
   const markerPoint = selected[Math.floor(selected.length / 2)];
-  const markerSource = map.getSource('route-highlight-marker');
+  const markerSource = map.getSource('route-detail-marker');
   if (markerSource && markerPoint) markerSource.setData({
     type: 'FeatureCollection',
     features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: markerPoint } }],
   });
-  for (const id of ['route-highlight-marker-halo', 'route-highlight-marker']) {
+  for (const id of ['route-detail-marker-halo', 'route-detail-marker']) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', markerPoint ? 'visible' : 'none');
   }
+  setDetailSelectionPulse(selected.length >= 2);
 
   const dialog = document.getElementById('routeDetailsDialog');
   if (dialog?.open) dialog.close();
@@ -2479,8 +2729,6 @@ function buildRoutingPanel() {
       requestAnimationFrame(() => drawProfile(routing.last.profile, routing.last.distM, 'elevationLargeCanvas'));
       return;
     }
-    const button = e.target.closest('[data-highlight]');
-    if (button && !button.disabled) toggleRouteHighlight(button.dataset.highlight);
   });
   choices.addEventListener('click', (event) => {
     const button = event.target.closest('[data-route-option]');
@@ -2999,16 +3247,15 @@ function buildPlacePicker() {
 
 /* ---------------------------------------------- hover/click readout */
 const readoutEl = document.getElementById('readout');
-const LEVEL_NAME = { 0: 'unknown', 1: 'Low', 2: 'Moderate', 3: 'Caution', 4: 'Very high' };
-// The road card must repeat the legend vocabulary, so a rider can connect a
-// colored line on the map with the detailed verdict they just opened.
-const READOUT_COLOR_LABEL = {
-  0: 'Gray — Unknown / no data',
-  1: 'Blue — Comfortable',
-  2: 'Light blue — Meets your criteria',
-  3: 'Orange — Caution (limited-access highway)',
-  4: 'Red dashed — Fails your rules (avoid)',
-};
+// The road card repeats the one shared map/route verdict vocabulary.
+function readoutVerdict(n, level) {
+  if (level === 4) return 'Red dashed — Fails your rules';
+  if (level === 3) return 'Muted purple — Caution (limited-access highway)';
+  if (level === 0) return 'Gray — Insufficient data';
+  if (isBikeNetworkVerdict(n)) return 'Lime — Bike network; passes your rules';
+  if (n.desig) return 'Blue dashed — Designated bike route; passes your rules';
+  return 'Blue — Passes your rules';
+}
 const FACILITY_NAME = {
   1: 'Shared lane marking',
   2: 'Bike lane',
@@ -3043,9 +3290,9 @@ function explainLevel(n) {
     return 'Limited-access freeway — treated as a last-resort route failure.';
   if (n.infra)
     return n.baseScore === 1
-      ? 'Dedicated or protected bike path — low stress.'
+      ? 'Dedicated or protected bike path — part of the bike network and passes your rules.'
       : n.baseScore === 2
-      ? 'Bike lane or shared path — moderate.'
+      ? 'Bike lane or shared path — part of the bike network and passes your rules.'
       : 'Bike infrastructure.';
   const spd = n.maxspeed_num;
   const shRaw = n.shoulder_width;
@@ -3089,7 +3336,7 @@ function explainLevel(n) {
         ? `${spdTxt} — no speed cutoff set`
         : `${spdTxt} within your ${rules.upperMaxSpeed} mph max`
     );
-  return `Meets your criteria — ${met.join(', ')}.`;
+  return `Passes your rules — ${met.join(', ')}.`;
 }
 
 const HIT_LAYERS = [];  // hit-layer ids, registered as sources attach
@@ -3150,8 +3397,7 @@ function renderReadout(feature, lngLat) {
   const n = src.scorer(p);            // recompute normalized props from this feature
   const lvl = p.level != null ? p.level : effectiveLevel(n); // expr sources carry no .level
   const common = [
-    ['Map color', READOUT_COLOR_LABEL[lvl] || READOUT_COLOR_LABEL[0]],
-    ['Stress', lvl === 0 ? 'unknown' : `${lvl} — ${LEVEL_NAME[lvl]}`],
+    ['Verdict', readoutVerdict(n, lvl)],
     ['Why', explainLevel(n)],
   ];
   let title, rows;
@@ -3176,6 +3422,7 @@ function renderReadout(feature, lngLat) {
         ['Road class', ROAD_CLASS_NAME[p.roadClass] || null],
         ['Route choice', routeClassNote(p)],
         ['Type', p.infra ? 'Dedicated bike infrastructure' : (p.fw || p.lim) ? 'Limited-access highway' : null],
+        ['Trail type', p.mtb ? 'Mountain-bike trail — allowed by your Settings option' : null],
         ['Curve caution', p.hazard ? `Possible limited-visibility uphill curve${p.gradePct ? ` (${p.gradePct}% net grade)` : ''}; inferred, not measured sight distance` : null],
       ];
     }
@@ -3186,14 +3433,14 @@ function renderReadout(feature, lngLat) {
       ['Name', p.n || null],
       ['Route', isUSBR ? 'US Bicycle Route ' + p.r : p.r || null],
       ['Network', p.t === 'ncn' ? 'National (AASHTO-designated)' : 'Regional trail / route'],
-      ['Map color', 'Orange — designated routes (USBR & trails)'],
-      ['Note', 'Officially designated cycling corridor — treated as meeting your criteria unless it is prohibited, a freeway, or above your absolute speed cutoff.'],
+      ['Map symbol', 'Blue dashed — designated cycling corridor'],
+      ['Note', 'A designation is not necessarily a bike facility. The scored road or facility supplies the safety verdict and takes visual precedence.'],
     ];
   } else if (src.id === 'restrict') {
     title = 'Bikes prohibited (WSDOT)';
     rows = [
       ['Route', p.Route ? 'SR ' + String(p.Route).replace(/^0+/, '') : p.RouteIdentifier],
-      ['Map color', 'Red dashed — Fails your rules (avoid)'],
+      ['Verdict', 'Red dashed — Fails your rules'],
       ['Why', 'Permanent bicycle restriction by official WSDOT traffic action.'],
       ['Direction', p.Direction],
       ['Mileposts', p.BeginMile != null ? `${p.BeginMile} – ${p.EndMile}` : null],
@@ -3206,6 +3453,7 @@ function renderReadout(feature, lngLat) {
       ...common,
       ['Type', [p.highway, p.bicycle ? `bicycle=${p.bicycle}` : null].filter(Boolean).join(', ')],
       ['Cycleway', osmCycleway(p)],
+      ['Trail type', p.mtb === 1 ? 'Mountain-bike trail — hidden and not routed unless enabled in Settings' : null],
       ['Surface', p.surface],
       ['Width', p.width != null ? `${p.width} m` : null],
     ];
@@ -3381,9 +3629,14 @@ function buildSourcePanel() {
     const row = document.createElement('div');
     row.className = 'source-row';
     row.id = `src-${src.id}`;
+    const note = src.id === 'routes'
+      ? '<small class="source-note">Thicker dashed lines; may not have bike facilities</small>'
+      : src.id === 'osm'
+        ? '<small class="source-note">Technical mountain-bike trails are hidden unless enabled in Settings</small>'
+        : '';
     row.innerHTML = `
       <input type="checkbox" id="chk-${src.id}" ${src.enabled ? 'checked' : ''}>
-      <label for="chk-${src.id}">${src.name}</label>
+      <span class="source-copy"><label for="chk-${src.id}">${src.name}</label>${note}</span>
       <span class="count"></span>`;
     host.appendChild(row);
     row.querySelector('input').addEventListener('change', (e) =>
@@ -3395,14 +3648,15 @@ function buildSourcePanel() {
 const ROUTING_WEIGHT_GROUPS = [
   ['Safety outcomes', [
     ['directFail', 'Direct: failing road', 1, 8, .05], ['balancedFail', 'Balanced: failing road', 1, 12, .1],
-    ['lowFail', 'Friendly: failing road', 2, 60, 1], ['balancedComfy', 'Balanced: comfy road', .5, 1.2, .01],
-    ['lowComfy', 'Friendly: comfy road', .5, 1.2, .01], ['freeway', 'Freeway last resort', 5, 100, 1],
+    ['lowFail', 'Friendly: failing road', 2, 60, 1], ['balancedComfy', 'Balanced: lower-stress road', .5, 1.2, .01],
+    ['lowComfy', 'Friendly: lower-stress road', .5, 1.2, .01], ['freeway', 'Freeway last resort', 5, 100, 1],
   ]],
   ['Bike and neighborhood preference', [
-    ['designated', 'Designated route', .25, 1.2, .01], ['strongDesignated', 'Strong bike-route preference', .2, 1, .01],
+    ['designated', 'Designated route (no facility)', .25, 1.2, .01], ['strongDesignated', 'Strong designated-route preference', .2, 1, .01],
     ['residential', 'Residential street', .4, 1.1, .01], ['facilityShared', 'Shared-lane marking', .4, 1.2, .01],
     ['facilityLane', 'Bike lane', .25, 1.1, .01], ['facilityBuffered', 'Buffered bike lane', .2, 1.1, .01],
     ['facilitySeparated', 'Separated bike lane', .2, 1.1, .01], ['facilityPath', 'Shared-use path', .2, 1.1, .01],
+    ['mtbTrail', 'Mountain-bike trail when allowed', 1, 30, .5],
   ]],
   ['Major roads without a bike facility', [
     ['arterialTertiaryDirect', 'Tertiary · direct', 1, 3, .01], ['arterialTertiaryBalanced', 'Tertiary · balanced', 1, 3, .01],
@@ -3523,6 +3777,14 @@ function buildRulesPanel() {
   check('prefDesig', 'Strongly prefer bike routes for all route options', routing, updateRoutePreference);
   check('prefResidential', 'Strongly prefer residential streets for all route options', routing, updateRoutePreference);
   check('allowFreeways', 'Allow freeway as last resort');
+  check('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
+    // This option affects both eligibility in the graph and the OSM layer's
+    // feature filter. Repaint immediately, then recompute after the usual
+    // small debounce used for all rider settings.
+    const osm = SOURCES.find((source) => source.id === 'osm');
+    if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
+    scheduleRescore();
+  });
   check('requireSafe', 'Only show fully safe routes');
   check('autoReroute', 'Auto-reroute after 15 sec off route while moving', navigationOptions, () => {
     saveStateSoon();
@@ -3613,22 +3875,24 @@ function buildLegend() {
   const host = document.getElementById('legend');
   host.innerHTML = '';
   const dash = (c) => `background:repeating-linear-gradient(90deg,${c} 0 4px,transparent 4px 8px)`;
-  const rows = display.passFail
-    ? [[PASS_COLOR, 'Meets your criteria (Low–Moderate)'],
-       ['dashed', 'Fails your rules'],
-       [null, 'No-data roads are hidden']]
-    // Color-ramp view: level 4 is drawn dashed to read as "not passable".
-    : LEGEND.map(([lvl, label]) => [lvl === 4 ? 'dash4' : COLORS[lvl], label]);
-  const routes = SOURCES.find((src) => src.id === 'routes');
-  if (!display.passFail && routes?.enabled) rows.unshift(['#fdb863', 'Orange: designated routes (USBR & trails)']);
+  const trail = `background-color:${BIKE_NETWORK_COLOR};background-image:radial-gradient(circle,#687d00 0 1.2px,transparent 1.45px);background-size:7px 6px;background-repeat:repeat-x;background-position:center`;
+  const rows = [
+    [BIKE_NETWORK_COLOR, 'Bike network'],
+    ['trail', 'Off-street trails'],
+    [COLORS[1], 'Meets safety rules'],
+    [COLORS[3], 'Caution — limited-access highway'],
+    ['dash4', 'Fails safety rules'],
+  ];
   for (const [color, label] of rows) {
     const item = document.createElement('div');
     item.className = 'item';
     const swatch =
-      color === 'dashed'
-        ? `<span class="swatch" style="${dash(FAIL_COLOR)}"></span>`
+      color === 'trail'
+        ? `<span class="swatch" style="${trail}"></span>`
         : color === 'dash4'
         ? `<span class="swatch" style="${dash(COLORS[4])}"></span>`
+        : color === 'dash2'
+        ? `<span class="swatch" style="${dash(COLORS[2])}"></span>`
         : color
         ? `<span class="swatch" style="background:${color}"></span>`
         : `<span class="swatch" style="background:transparent;border:1px dashed #bbb"></span>`;

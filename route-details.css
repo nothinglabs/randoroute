@@ -18,7 +18,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .detail-tabs button[aria-selected="true"] { border-color: #b5d0e1; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.08); color: #0a66c2; }
 .route-alert { margin: 0 0 14px; padding: 11px 13px; border-left: 4px solid #c33327; border-radius: 8px; background: #fff3f0; color: #812218; font: 650 14px/1.4 system-ui; }
 .route-alert.good { border-left-color: #008b68; background: #edf9f5; color: #00664d; }
-.route-alert.caution { border-left-color: #c27b00; background: #fff8de; color: #795000; }
+.route-alert.caution { border-left-color: #63418f; background: #f3eef9; color: #472c69; }
 .route-help { margin: 0 0 10px; padding: 12px 13px; border: 1px solid #dce5ea; border-radius: 11px; background: #fff; color: #52616d; }
 .route-help h2 { margin: 0 0 5px; color: #2c3e4c; font: 750 14px/1.2 system-ui; }
 .route-help p { margin: 0; font: 12.5px/1.4 system-ui; }
@@ -34,20 +34,24 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .detail-item { padding: 9px 10px; border-radius: 9px; background: #f6f8fa; }
 .detail-item.clickable { padding: 0; overflow: hidden; }
 .detail-item.fail { background: #fff3f0; }
-.detail-item.caution { background: #fff8de; }
-.detail-item.safety-l1 { border-left: 5px solid #2c7bb6; }
-.detail-item.safety-l2 { border-left: 5px solid #74add1; }
-.detail-item.safety-l3 { border-left: 5px solid #f46d43; }
-.detail-item.safety-l4 { border-left: 5px solid #d7191c; background: #fff3f0; }
+.detail-item.caution { background: #f4effa; }
+.detail-item.safety-bike { border-left: 5px solid #9fc400; }
+.detail-item.safety-designated { border-left: 5px dashed #168ad1; }
+.detail-item.safety-pass { border-left: 5px solid #168ad1; }
+.detail-item.safety-caution { border-left: 5px solid #63418f; }
+.detail-item.safety-fail { border-left: 5px solid #b2182b; background: #fff3f0; }
+.detail-item.safety-unknown { border-left: 5px solid #999; }
 .step-button { display: block; width: 100%; padding: 9px 10px; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; touch-action: manipulation; }
 .step-button:hover { background: rgba(44,123,182,.07); }
 .step-button:focus-visible { outline: 3px solid #0a66c2; outline-offset: -3px; }
 .step-button .line > span:first-child { min-width: 0; }
 .step-safety { display: inline-block; margin-right: 7px; padding: 2px 6px; border-radius: 999px; color: #fff; font: 750 10px/1.25 system-ui; vertical-align: 1px; white-space: nowrap; }
-.safety-l1 .step-safety { background: #2c7bb6; }
-.safety-l2 .step-safety { background: #74add1; color: #17384f; }
-.safety-l3 .step-safety { background: #f46d43; color: #3e190f; }
-.safety-l4 .step-safety { background: #d7191c; }
+.safety-bike .step-safety { background: #728e00; }
+.safety-designated .step-safety { border: 1px dashed #168ad1; background: #eef7fd; color: #0c6099; }
+.safety-pass .step-safety { background: #168ad1; }
+.safety-caution .step-safety { background: #63418f; color: #fff; }
+.safety-fail .step-safety { background: #b2182b; }
+.safety-unknown .step-safety { background: #777; }
 .detail-item .line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font: 700 14px/1.25 system-ui; }
 .detail-item .distance { color: #43515d; white-space: nowrap; }
 .detail-item .meta { margin-top: 3px; color: #667784; font: 13px/1.35 system-ui; }

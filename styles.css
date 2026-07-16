@@ -169,29 +169,14 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-ride-mix b { color: #223c4b; font-weight: 800; }
 #routeCard .rc-ride-mix i { color: #a0aab1; font-style: normal; }
 #routeCard .rc-ride-label { padding: 2px 4px; border-radius: 4px; background: #e7eef3; color: #405866; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+#routeCard .rc-ride-caution, #routeCard .rc-ride-caution b { color: #5f4588; }
 #routeCard .rc-ride-fail, #routeCard .rc-ride-fail b { color: #b42318; }
 #routeCard .rc-warn { margin-top: 3px; font-size: 12px; color: #b45309; font-weight: 600; }
-#routeCard .rc-caution { margin-top: 3px; font-size: 12px; color: #b45309; font-weight: 600; }
+#routeCard .rc-caution { margin-top: 3px; font-size: 12px; color: #674b91; font-weight: 600; }
 #routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }
 #routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
 #routeCard canvas { display: block; }
-.rc-highlight-hint { margin-top: 4px; color: #6b7280; font: 650 9.5px/1.2 system-ui; }
-.rc-highlights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; min-height: 55px; margin-top: 3px; align-content: start; }
-.rc-highlight-item, .rc-level { display: grid; grid-template-columns: minmax(0, 1fr) auto 7px; align-items: center; gap: 2px; min-width: 0; min-height: 26px; padding: 2px 4px; border: 1px solid #dde2e7; border-left: 3px solid #999; border-radius: 5px; background: rgba(255,255,255,.82); font: 500 9px system-ui; color: #555; cursor: pointer; text-align: left; }
-.rc-highlight-item b, .rc-level b { color: #333; white-space: nowrap; }
-.rc-highlight-item::after, .rc-level::after { content: '›'; color: #777; font-size: 13px; font-weight: 800; line-height: 8px; }
-.rc-highlight-item { border-left-color: #8064a2; }
-.rc-level.rc-l1 { border-left-color: #2c7bb6; }
-.rc-level.rc-l2 { border-left-color: #74add1; }
-.rc-level.rc-l3 { border-left-color: #f46d43; }
-.rc-level.rc-l4 { border-left-color: #d7191c; }
-.rc-highlight-item:disabled, .rc-level:disabled { opacity: .44; cursor: default; }
-.rc-highlight-item:disabled::after, .rc-level:disabled::after { content: ''; }
-.rc-highlight-item.rc-attention { border-color: #d69b15; background: #fff7df; box-shadow: 0 0 0 1px rgba(214,155,21,.25); font-weight: 700; }
-.rc-level.rc-attention { border-color: #d54a3d; background: #fff0ed; box-shadow: 0 0 0 1px rgba(213,74,61,.24); font-weight: 700; }
-.rc-highlight-item.active, .rc-level.active { background: #ffe35c; border-color: #c99f00; box-shadow: 0 0 0 1px rgba(201,159,0,.32); color: #3f3200; font-weight: 700; }
-.rc-highlight-item.active::after, .rc-level.active::after { content: '✓'; color: #5c4900; font-size: 10px; }
 .rc-card-actions { display: flex; justify-content: flex-end; margin-top: 3px; }
 .rc-elevation-button { display: inline-flex; align-items: center; gap: 4px; width: auto; min-height: 24px; margin: 0; padding: 3px 8px; border: 1px solid #d8e3ea; border-radius: 7px; background: #f7fafc; color: #486271; font: 700 9.5px system-ui; cursor: pointer; }
 .rc-elevation-button span { color: #0a66c2; font-size: 14px; line-height: 1; }
@@ -209,10 +194,6 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   #tabs #routeLibraryBtn .share-icon { width: 19px; height: 19px; }
   #routeOptions { gap: 5px; }
   #routeOptions button { height: 38px; padding: 4px 3px; font-size: 16px; }
-  .rc-highlight-hint { margin-top: 5px; font-size: 10.5px; }
-  .rc-highlights { gap: 4px; min-height: 58px; margin-top: 4px; }
-  .rc-highlight-item, .rc-level { min-height: 27px; padding: 3px 5px; border-radius: 6px; font-size: 10px; }
-  .rc-highlight-item::after, .rc-level::after { font-size: 15px; }
   .rc-elevation-button { min-height: 26px; padding: 4px 9px; font-size: 10.5px; }
 }
 
@@ -238,8 +219,13 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .layers-intro strong { color: #40515c; font: 750 11px/1.2 system-ui; }
 .layers-intro span { font: 600 10.5px/1.2 system-ui; }
 .layers-help-btn { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; border: 1px solid #b8cbd8; border-radius: 50%; background: #f7fafb; color: #0a66c2; font: 800 16px/1 system-ui; cursor: pointer; }
+.layers-special-note { position: relative; margin: 7px 0 0; padding: 7px 8px 7px 33px; border: 1px solid #c9dce9; border-radius: 8px; background: #f1f7fb; color: #425d70; font: 600 9.5px/1.3 system-ui; }
+.layers-special-note > span { position: absolute; top: 12px; left: 8px; width: 17px; height: 6px; border-radius: 2px; background: repeating-linear-gradient(90deg,#168ad1 0 4px,transparent 4px 7px); }
+.layers-special-note b { color: #195d91; }
 .source-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; min-height: 25px; }
 .source-row label { font-weight: 600; cursor: pointer; }
+.source-row .source-copy { display: grid; gap: 2px; min-width: 0; }
+.source-row .source-note { display: block; color: #526d7c; font: 650 9px/1.2 system-ui; }
 .source-row .count { color: #888; font-weight: 400; font-size: 11.5px; margin-left: auto; }
 
 .rule { margin: 12px 0; }

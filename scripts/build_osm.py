@@ -35,6 +35,43 @@ LANE = {"lane", "shared_lane"}
 COORD_DECIMALS = 5
 
 
+def collect_mtb_route_members(src):
+    """Return ways belonging to OSM ``route=mtb`` relations.
+
+    A technical trail is not always tagged on every individual way.  Relation
+    membership is a useful second signal alongside a direct ``mtb:*`` tag.
+    We retain the feature in the export (the app has an opt-in toggle), but
+    mark it so it is hidden and unavailable by default.
+    """
+    relations, way_members, sub_members = set(), {}, {}
+    for obj in osmium.FileProcessor(src, osmium.osm.RELATION):
+        if obj.tags.get("route") != "mtb":
+            continue
+        relations.add(obj.id)
+        way_members[obj.id] = {member.ref for member in obj.members if member.type == "w"}
+        sub_members[obj.id] = {member.ref for member in obj.members if member.type == "r"}
+
+    ways = set()
+    for relation_id in relations:
+        ways |= way_members[relation_id]
+        stack, seen = list(sub_members[relation_id]), set()
+        while stack:
+            nested = stack.pop()
+            if nested in seen or nested not in relations:
+                continue
+            seen.add(nested)
+            ways |= way_members[nested]
+            stack.extend(sub_members[nested])
+    return ways
+
+
+def is_mountain_bike_way(tags, way_id, mtb_route_members):
+    """True for explicitly technical/MTB OSM paths and MTB route members."""
+    return (way_id in mtb_route_members
+            or "mtb" in tags
+            or any(key.startswith("mtb:") for key in tags))
+
+
 def cycleway_value(tags):
     for k in CYCLEWAY_KEYS:
         v = tags.get(k)
@@ -77,30 +114,40 @@ def is_candidate(tags):
 def build(src, out):
     feats = []
     kept = dropped = 0
-    for obj in osmium.FileProcessor(src).with_locations():
-        if not obj.is_way():
-            continue
-        tags = {t.k: t.v for t in obj.tags}
-        if not is_candidate(tags):
-            continue
-        base, prohibited = classify(tags)
-        if base is None:
-            dropped += 1
-            continue
-        coords = []
-        for nd in obj.nodes:
-            if nd.location.valid():
-                coords.append([round(nd.location.lon, COORD_DECIMALS), round(nd.location.lat, COORD_DECIMALS)])
-        if len(coords) < 2:
-            continue
-        props = {k: tags[k] for k in KEEP_TAGS if k in tags}
-        props["osm_id"] = obj.id
-        feats.append({
-            "type": "Feature",
-            "properties": props,
-            "geometry": {"type": "LineString", "coordinates": coords},
-        })
-        kept += 1
+    print("scanning mountain-bike route relations")
+    mtb_route_members = collect_mtb_route_members(src)
+    print(f"  {len(mtb_route_members):,} MTB route-member ways")
+    class InfraHandler(osmium.SimpleHandler):
+        def way(self, obj):
+            nonlocal kept, dropped
+            tags = {t.k: t.v for t in obj.tags}
+            if not is_candidate(tags):
+                return
+            base, prohibited = classify(tags)
+            if base is None:
+                dropped += 1
+                return
+            coords = []
+            for nd in obj.nodes:
+                if nd.location.valid():
+                    coords.append([round(nd.location.lon, COORD_DECIMALS), round(nd.location.lat, COORD_DECIMALS)])
+            if len(coords) < 2:
+                return
+            props = {k: tags[k] for k in KEEP_TAGS if k in tags}
+            if is_mountain_bike_way(tags, obj.id, mtb_route_members):
+                # Keep a compact flag rather than exposing a grab bag of MTB
+                # values.  The app defaults to hiding/routing around these paths,
+                # but can include them when the rider explicitly opts in.
+                props["mtb"] = 1
+            props["osm_id"] = obj.id
+            feats.append({
+                "type": "Feature",
+                "properties": props,
+                "geometry": {"type": "LineString", "coordinates": coords},
+            })
+            kept += 1
+
+    InfraHandler().apply_file(src, locations=True)
 
     fc = {"type": "FeatureCollection", "features": feats}
     with open(out, "w") as f:

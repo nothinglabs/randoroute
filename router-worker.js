@@ -19,13 +19,17 @@ let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
 let nodeHasLand;
 let inGiant;
-let nodeLocal;
+let nodeLocal, nodeNonMtb;
 
 const _dec = new TextDecoder();
 // The signed shoulder byte normally ranges from -1 (unknown) to 127 ft.
 // -128 is reserved by the migration tool for a WSDOT permanent bike
 // restriction. It is a hard graph exclusion, never a routing penalty.
 const PROHIBITED_SHOULDER = -128;
+// Bit 4 of the graph's metadata byte marks OSM paths explicitly identified as
+// mountain-bike infrastructure (including mtb:scale:imba). They remain in the
+// graph for the rider-controlled option, but are unavailable by default.
+const EDGE_MTB = 4;
 function edgeName(i) {
   const id = eName[i];
   return _dec.decode(nameBytes.subarray(nameOff[id], nameOff[id + 1]));
@@ -87,9 +91,16 @@ function loadGraph(buf) {
   // snapping prefers these so a tap near I-5 does not board it. A bike-legal
   // limited-access state highway remains eligible as a normal snap target.
   nodeLocal = new Uint8Array(N);
+  // Keep a second set with explicitly technical MTB paths removed. When the
+  // option is off, a point beside one should attach to the closest ordinary
+  // bike network rather than snap onto an edge that A* will reject.
+  nodeNonMtb = new Uint8Array(N);
   for (let i = 0; i < E; i++) {
     if (eSh[i] !== PROHIBITED_SHOULDER && !(eFlags[i] & (4 | 32))) {
       nodeLocal[eA[i]] = 1; nodeLocal[eB[i]] = 1;
+      if (!(eOfficial[i] & EDGE_MTB)) {
+        nodeNonMtb[eA[i]] = 1; nodeNonMtb[eB[i]] = 1;
+      }
     }
   }
 }
@@ -102,17 +113,18 @@ function havM(lon1, lat1, lon2, lat2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-function nearestNode(lon, lat) {
+function nearestNode(lon, lat, rules = null) {
   const coslat = Math.cos((lat * Math.PI) / 180);
   let best = -1, bestD = Infinity;         // nearest of any kind
-  let bestL = -1, bestLD = Infinity;       // nearest touching a local road
+  let bestL = -1, bestLD = Infinity;       // nearest usable local-network node
+  const usableLocal = rules?.allowMtbTrails ? nodeLocal : nodeNonMtb;
   for (let i = 0; i < N; i++) {
     if (!inGiant[i]) continue; // never snap onto a disconnected fragment
     const dx = (nodeLon[i] - lon) * coslat;
     const dy = nodeLat[i] - lat;
     const d = dx * dx + dy * dy;
     if (d < bestD) { bestD = d; best = i; }
-    if (nodeLocal[i] && d < bestLD) { bestLD = d; bestL = i; }
+    if (usableLocal[i] && d < bestLD) { bestLD = d; bestL = i; }
   }
   // Prefer the local-road node unless it's much farther (>300 m extra) than
   // the absolute nearest — a tap beside I-90 should not board I-90.
@@ -159,17 +171,18 @@ const V_MAX = 12.0;   // ~27 mph downhill cap
 const V_MIN = 1.3;    // steep-climb floor (~3 mph)
 // A* heuristic speed: must not undershoot any effective edge speed, including
 // fast ferries and the strongest cost bonuses, or A* loses optimality.
-// Worst case: V_MAX 12 / (0.9 L1 x 0.45 designated x 0.78 residential)
-// = 38.0 m/s. Keep a little headroom so the heuristic remains admissible.
+// Worst case: V_MAX 12 / (0.38 path facility x 0.78 residential)
+// = 40.5 m/s. Keep ample headroom so the heuristic remains admissible.
 const V_HEUR = 160.0;
-// Designated bike routes (USBR / regional trails, edge flag 64) get a cost
-// bonus in Balanced/Low-stress: a vetted corridor wins ties against an
-// equivalent plain road. Cost only — reported times stay honest.
+// Designated bike routes (USBR / regional, edge flag 64) get a modest cost
+// bonus. A recorded physical bike facility always gets the stronger bonus;
+// designation is useful route context, but is not itself infrastructure.
 const DEFAULT_WEIGHTS = Object.freeze({
   directFail: 1.15, balancedComfy: 0.92, balancedFail: 3, lowComfy: 0.9, lowFail: 30,
-  designated: 0.86, strongDesignated: 0.42, residential: 0.78,
-  facilityShared: 0.9, facilityLane: 0.72, facilityBuffered: 0.62,
-  facilitySeparated: 0.5, facilityPath: 0.42,
+  designated: 0.94, strongDesignated: 0.86, residential: 0.78,
+  facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
+  facilitySeparated: 0.46, facilityPath: 0.38,
+  mtbTrail: 6,
   freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1,
   speedBalanced: 0.01, speedLow: 0.02,
   hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
@@ -191,9 +204,10 @@ function useWeights(source) {
     if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) activeWeights[key] = value;
   }
 }
-// "Strongly prefer bike routes & trails": designated routes and dedicated
-// infrastructure at half cost or better — worth riding up to ~2x the distance
-// to stay on a trail. Ferries keep their own economics.
+// Facility multipliers reflect the physical protection recorded on the edge.
+// Shared-lane markings get only a small benefit; a separated lane or shared-
+// use path can justify a meaningfully longer route. Ferries keep their own
+// economics.
 // OSM road class is carried directly in BGR7.  This deliberately does not use
 // speed as a stand-in: a signed 25 mph arterial (such as NW 80th in Seattle)
 // is not a residential street.  The preference is a cost bonus, not a rule;
@@ -283,8 +297,8 @@ function modeMult(mode, lvl) {
 function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   startSnap, endSnap, diversityEdges = null, diversityFactor = 1) {
   const t0 = Date.now();
-  const s = startSnap || nearestNode(startLL[0], startLL[1]);
-  const t = endSnap || nearestNode(endLL[0], endLL[1]);
+  const s = startSnap || nearestNode(startLL[0], startLL[1], rules);
+  const t = endSnap || nearestNode(endLL[0], endLL[1], rules);
   const farPoints = [];
   if (s.distM > 2000) farPoints.push({ pointOffset: 0, distanceM: s.distM });
   if (t.distM > 2000) farPoints.push({ pointOffset: 1, distanceM: t.distM });
@@ -304,7 +318,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       coords: [[nodeLon[s.node], nodeLat[s.node]]],
       distM: 0, timeS: 0, ascentM: 0, descentM: 0, failM: 0, ferryM: 0,
       ferrySegs: [], desigM: 0, residentialM: 0, freewayM: 0,
-      limitedAccessM: 0, facilityM: 0, hazardM: 0,
+      limitedAccessM: 0, facilityM: 0, mtbM: 0, hazardM: 0,
       levelM: [0, 0, 0, 0, 0], edgeIds: [],
       segs: [], profile: [[0, nodeEle[s.node]]],
       snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
@@ -336,6 +350,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // Permanent WSDOT bike restriction: never traverse it, in any mode or
       // with any setting. This is intentionally before all cost/rules logic.
       if (eSh[ei] === PROHIBITED_SHOULDER) continue;
+      // Technical mountain-bike paths are opt-in. Unlike a bicycle=no road,
+      // they remain available to an informed rider, but never appear in an
+      // ordinary road-bike route.
+      if (!rules.allowMtbTrails && (eOfficial[ei] & EDGE_MTB)) continue;
       // This setting controls whether a true freeway can be used at all. When it
       // can, its level and cost still make it a route failure and last resort.
       if (!rules.allowFreeways && (fl & 4)) continue;
@@ -354,11 +372,22 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       cost *= majorRoadMult(ei, mode);
       if (fl & 4) cost *= activeWeights.freeway;
       if (fl & 128) cost *= activeWeights[mode === 'direct' ? 'limitedDirect' : mode === 'low' ? 'limitedLow' : 'limitedBalanced'];
-      // Bonuses never apply to freeway or WSDOT limited-access highways:
-      // a designation should not erase their extra caution cost.
-      if (prefDesig && !(fl & (32 | 4 | 128)) && (fl & 64)) cost *= activeWeights.strongDesignated;
-      else if (prefDesig && !(fl & (32 | 4 | 128)) && eFacility[ei]) cost *= facilityPrefMult(eFacility[ei]);
-      else if ((fl & 64) && !(fl & (4 | 128)) && mode !== 'direct') cost *= activeWeights.designated;
+      if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
+      // Bonuses never apply to ferries, freeways, or WSDOT limited-access
+      // highways: preference must not erase their access/caution costs. For
+      // an ordinary road, a physical facility beats designation alone; when
+      // both are present, use whichever benefit is stronger rather than
+      // stacking them into an outsized corridor bonus.
+      if (!(fl & (32 | 4 | 128))) {
+        const facilityBonus = eFacility[ei] ? facilityPrefMult(eFacility[ei]) : 1;
+        if (prefDesig) {
+          const designationBonus = (fl & 64) ? activeWeights.strongDesignated : 1;
+          cost *= Math.min(facilityBonus, designationBonus);
+        } else if (mode !== 'direct') {
+          const designationBonus = (fl & 64) ? activeWeights.designated : 1;
+          cost *= Math.min(facilityBonus, designationBonus);
+        }
+      }
       if (prefResidential && !(fl & (8 | 32 | 4 | 128)) && isResidential(ei)) {
         cost *= activeWeights.residential;
       }
@@ -398,7 +427,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
-  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0;
   for (const [ei, fromNode] of edges) {
     edgeIds.push(ei);
     const off = eOff[ei], cnt = eCnt[ei];
@@ -424,6 +453,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (eFlags[ei] & 64) desigM += eLen[ei];
     if (eFacility[ei] >= 2) facilityM += eLen[ei];
+    if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4 | 128)) && isResidential(ei)) residentialM += eLen[ei];
     if (eFlags[ei] & 4) freewayM += eLen[ei];
     else if (eFlags[ei] & 128) limitedAccessM += eLen[ei];
@@ -449,7 +479,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     }
     segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
       mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], roadClass: eClass[ei],
-      facility: eFacility[ei], official: eOfficial[ei], level,
+      facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB), level,
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: Math.round(10 * 100 * ((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei])) / Math.max(1, eLen[ei])) / 10,
@@ -460,7 +490,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const ferrySegs = ferryRanges.map(([a, b]) => coords.slice(a, b + 1));
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
     levelM, edgeIds, segs,
     profile, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
@@ -497,14 +527,14 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
   const coords = [], segs = [], ferrySegs = [], profile = [];
   const legSummaries = legs.map((l) => ({
     distM: l.distM, timeS: l.timeS, failM: l.failM,
-    desigM: l.desigM, facilityM: l.facilityM, residentialM: l.residentialM,
+    desigM: l.desigM, facilityM: l.facilityM, mtbM: l.mtbM || 0, residentialM: l.residentialM,
     freewayM: l.freewayM, limitedAccessM: l.limitedAccessM, hazardM: l.hazardM || 0,
   }));
   const edgeIds = [];
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
-  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0;
   for (const leg of legs) {
     const cOff = coords.length ? coords.length - 1 : 0; // joint vertex is shared
     for (let j = coords.length ? 1 : 0; j < leg.coords.length; j++) coords.push(leg.coords[j]);
@@ -519,7 +549,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
     distM += leg.distM; timeS += leg.timeS; ascentM += leg.ascentM; descentM += leg.descentM;
     failM += leg.failM; ferryM += leg.ferryM; desigM += leg.desigM;
     residentialM += leg.residentialM; freewayM += leg.freewayM;
-    limitedAccessM += leg.limitedAccessM; facilityM += leg.facilityM;
+    limitedAccessM += leg.limitedAccessM; facilityM += leg.facilityM; mtbM += leg.mtbM || 0;
     hazardM += leg.hazardM || 0; edgeIds.push(...leg.edgeIds);
     for (let level = 1; level <= 4; level++) levelM[level] += leg.levelM[level];
   }
@@ -534,7 +564,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
   }
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
     levelM, edgeIds, segs,
     legs: legSummaries,
     profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
@@ -595,6 +625,7 @@ function materialTradeoff(a, b) {
   return Math.abs(a.failM - b.failM) >= 60
     || Math.abs(a.freewayM - b.freewayM) >= 60
     || Math.abs(a.limitedAccessM - b.limitedAccessM) >= Math.max(120, routeScale * 0.5)
+    || Math.abs((a.mtbM || 0) - (b.mtbM || 0)) >= 40
     || Math.abs(a.facilityM - b.facilityM) >= routeScale
     || Math.abs((a.hazardM || 0) - (b.hazardM || 0)) >= 50
     || Math.abs(a.desigM - b.desigM) >= routeScale
@@ -614,7 +645,8 @@ function routeAggression(r) {
   const ridingM = Math.max(1, r.distM - r.ferryM);
   const levels = r.levelM || [0, 0, 0, 0, 0];
   const stress = (levels[2] * 0.18 + levels[3] * 0.75 + levels[4] * 3.5
-    + r.freewayM * 4 + r.limitedAccessM * 0.8 + (r.hazardM || 0) * 1.1) / ridingM;
+    + r.freewayM * 4 + r.limitedAccessM * 0.8 + (r.hazardM || 0) * 1.1
+    + (r.mtbM || 0) * 1.25) / ridingM;
   const friendlyCoverage = (r.desigM * 0.12 + r.facilityM * 0.1 + r.residentialM * 0.08) / ridingM;
   return stress - friendlyCoverage;
 }
@@ -624,6 +656,7 @@ function compareSafety(a, b) {
   // metrics break ties between routes with the same failing distance.
   if (a.failM !== b.failM) return a.failM - b.failM;
   if (a.freewayM !== b.freewayM) return a.freewayM - b.freewayM;
+  if ((a.mtbM || 0) !== (b.mtbM || 0)) return (a.mtbM || 0) - (b.mtbM || 0);
   if ((a.hazardM || 0) !== (b.hazardM || 0)) return (a.hazardM || 0) - (b.hazardM || 0);
   if (a.limitedAccessM !== b.limitedAccessM) return a.limitedAccessM - b.limitedAccessM;
   return a.aggression - b.aggression || a.timeS - b.timeS;
@@ -637,7 +670,8 @@ function outcomeDistance(meters) {
 
 function outcomeSnapshot(route) {
   const ridingM = Math.max(1, route.distM - route.ferryM);
-  const comfyPct = Math.round(100 * (route.levelM?.[1] || 0) / ridingM);
+  const passPct = Math.round(100 * ((route.levelM?.[1] || 0) + (route.levelM?.[2] || 0)) / ridingM);
+  const cautionPct = Math.round(100 * (route.levelM?.[3] || 0) / ridingM);
   const bikeNetworkM = (route.segs || []).reduce((sum, seg) => {
     const flags = seg.flags || 0;
     return sum + (!(flags & 32) && ((flags & (8 | 64)) || (seg.facility || 0) >= 2)
@@ -646,9 +680,11 @@ function outcomeSnapshot(route) {
   const bikePct = Math.round(100 * Math.min(ridingM, bikeNetworkM) / ridingM);
   const fail = route.failM > 0 ? `${outcomeDistance(route.failM)} fails rules` : 'no rule-failing segments';
   const details = [fail];
-  if (comfyPct > 0) details.push(`${comfyPct}% comfy`);
   if (bikePct > 0) details.push(`${bikePct}% on the bike network`);
+  if (passPct > 0) details.push(`${passPct}% passes`);
+  if (cautionPct > 0) details.push(`${cautionPct}% caution`);
   if (route.limitedAccessM > 0) details.push(`${outcomeDistance(route.limitedAccessM)} limited-access caution`);
+  if (route.mtbM > 0) details.push(`${outcomeDistance(route.mtbM)} mountain-bike trail`);
   if (route.hazardM > 0) details.push(`${outcomeDistance(route.hazardM)} curve caution`);
   return details.join(' · ');
 }
@@ -702,7 +738,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const profiles = candidateProfiles(forceDesig, forceResidential);
   // Snapping scans the statewide node table. Do it once per route point, not
   // once again for every optimization profile.
-  const snaps = points.map((point) => nearestNode(point[0], point[1]));
+  const snaps = points.map((point) => nearestNode(point[0], point[1], rules));
   const raw = [];
   let firstFailure = null;
   for (const profile of profiles) {
