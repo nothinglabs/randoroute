@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-17.134';
+const APP_VERSION = '2026-07-17.135';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -421,8 +421,8 @@ const ROUTING_PRESETS = Object.freeze([
   {
     id: 'randonneur',
     label: 'The Randonneur',
-    audience: 'For long-distance riders who want the widest practical range of route choices.',
-    outcome: 'Less restrictive rules are less likely to flag routes with safety concerns.',
+    audience: 'For long-distance riders who want the widest range of route choices.',
+    outcome: 'Loose rules flag fewer safety concerns.',
     rules: Object.freeze({ ...DEFAULT_RULES }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
@@ -430,7 +430,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'weekend-wanderer',
     label: 'Weekend Wanderer',
     audience: 'For day riders who want slower roads with practical flexibility.',
-    outcome: 'Will route more aggressive rides, but safety concerns are clearly marked in pulsing red.',
+    outcome: 'Allows aggressive rides; safety concerns pulse red.',
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
