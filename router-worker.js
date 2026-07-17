@@ -136,10 +136,8 @@ function nearestNode(lon, lat, rules = null) {
   return { node: best, distM: havM(lon, lat, nodeLon[best], nodeLat[best]) };
 }
 
-// Mirrors the app's effectiveLevel() for packed edge attributes. Route
-// searches can pass a lower no-shoulder speed for cost selection without
-// changing the rider-visible verdict, which always uses rules.freeMaxSpeed.
-function edgeLevel(i, rules, freeMaxSpeed = rules.freeMaxSpeed) {
+// Mirrors the app's effectiveLevel() for packed edge attributes.
+function edgeLevel(i, rules) {
   const flags = eFlags[i];
   if (eSh[i] === PROHIBITED_SHOULDER) return 4;      // WSDOT prohibition
   if (flags & 32) return 2;                         // ferry — no road rules apply
@@ -151,7 +149,7 @@ function edgeLevel(i, rules, freeMaxSpeed = rules.freeMaxSpeed) {
   // ordinary roads, including designated routes. Dedicated infrastructure,
   // ferries, freeways, and prohibitions were handled above.
   if (!rules.noUpperLimit && spd > rules.upperMaxSpeed) return 4;
-  if (spd <= freeMaxSpeed) return limitedAccess ? 3 : 1;
+  if (spd <= rules.freeMaxSpeed) return limitedAccess ? 3 : 1;
   // A rider can opt to treat a designated bike route (USBR/regional) as a
   // vetted corridor. Otherwise it is evaluated by the normal shoulder rule.
   if ((flags & 64) && rules.vettedBikeRoutes) return limitedAccess ? 3 : 2;
@@ -186,9 +184,8 @@ const DEFAULT_WEIGHTS = Object.freeze({
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
   freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1,
-  routingNoShoulderDirect: 45, routingNoShoulderBalanced: 30, routingNoShoulderLow: 25,
   speedBalanced: 0.01, speedLow: 0.02,
-  speedBelowDirect: 0.003, speedBelowBalanced: 0.01, speedBelowLow: 0.02,
+  speedBelowDirect: 0.005, speedBelowBalanced: 0.015, speedBelowLow: 0.03,
   hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
   hazardBalanced1: 1.35, hazardBalanced2: 1.8, hazardBalanced3: 2.6,
   hazardLow1: 1.8, hazardLow2: 3.4, hazardLow3: 6.5,
@@ -255,19 +252,20 @@ function majorRoadMult(i, mode) {
 
 function edgeHazard(i, forward) { return forward ? eHazAB[i] : eHazBA[i]; }
 
-// Graded pressure toward slower roads. Every mph over the comfort speed makes
-// a road cost more in Balanced/Friendly modes; every mph below it earns a
-// capped bonus in every mode. At the default 35 mph setting, an otherwise
-// identical 25 mph road costs 3% less in Direct, 10% less in Balanced, and
-// 20% less in Friendly. Trails and ferries remain speed-neutral.
-function speedStress(mode, fl, spd, freeMax) {
+// Graded pressure toward slower no-shoulder roads. Every mph over the comfort
+// speed makes a road cost more in Balanced/Friendly modes. When the shoulder
+// is unknown or zero, every mph below that speed earns a capped bonus in every
+// mode. At the default 35 mph setting, an otherwise identical 25 mph road
+// without shoulder costs 5% less in Direct, 15% less in Balanced, and 30%
+// less in Friendly. Trails and ferries remain speed-neutral.
+function speedStress(mode, fl, spd, freeMax, shoulder) {
   if (fl & (8 | 32)) return 1.0;
   const delta = spd - freeMax;
   if (delta > 0) {
     if (mode === 'direct') return 1.0;
     return 1 + (mode === 'low' ? activeWeights.speedLow : activeWeights.speedBalanced) * delta;
   }
-  if (delta === 0) return 1.0;
+  if (delta === 0 || shoulder > 0) return 1.0;
   const belowKey = mode === 'direct'
     ? 'speedBelowDirect'
     : mode === 'low' ? 'speedBelowLow' : 'speedBelowBalanced';
@@ -307,17 +305,7 @@ function modeMult(mode, lvl) {
   /* low */ return lvl === 4 ? activeWeights.lowFail : lvl === 1 ? activeWeights.lowComfy : 1.0;
 }
 
-// These profile-specific caps only influence route choice. They may be lower
-// than the rider's map-verdict rule, never higher: a rider who chooses a
-// stricter map rule keeps that stricter rule everywhere.
-function routingComfortLimit(mode, rules) {
-  const key = mode === 'direct'
-    ? 'routingNoShoulderDirect'
-    : mode === 'low' ? 'routingNoShoulderLow' : 'routingNoShoulderBalanced';
-  return Math.min(rules.freeMaxSpeed, Math.max(15, activeWeights[key]));
-}
-
-function routeLeg(startLL, endLL, rules, routingFreeMaxSpeed, mode, prefDesig, prefResidential,
+function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   startSnap, endSnap, diversityEdges = null, diversityFactor = 1) {
   const t0 = Date.now();
   const s = startSnap || nearestNode(startLL[0], startLL[1], rules);
@@ -380,20 +368,17 @@ function routeLeg(startLL, endLL, rules, routingFreeMaxSpeed, mode, prefDesig, p
       // This setting controls whether a true freeway can be used at all. When it
       // can, its level and cost still make it a route failure and last resort.
       if (!rules.allowFreeways && (fl & 4)) continue;
-      const level = edgeLevel(ei, rules);
+      const lvl = edgeLevel(ei, rules);
       // "Only show fully safe routes": failing roads become impassable in
-      // EVERY mode — it deliberately follows the rider-visible map verdict,
-      // not a stricter routing-only comfort cap.
-      if (rules.requireSafe && level === 4) continue;
-      const routingLevel = routingFreeMaxSpeed === rules.freeMaxSpeed
-        ? level : edgeLevel(ei, rules, routingFreeMaxSpeed);
-      const mult = modeMult(mode, routingLevel);
+      // EVERY mode — the mode then picks among fully-passing routes only.
+      if (rules.requireSafe && lvl === 4) continue;
+      const mult = modeMult(mode, lvl);
       if (mult === Infinity) continue;
       const forward = eA[ei] === u;
       let step = edgeTimeS(ei, forward);
       if ((fl & 32) && nodeHasLand[u]) step += activeWeights.ferryWaitMin * 60; // boarding
       let cost = step * mult;
-      cost *= speedStress(mode, fl, eSpeed[ei], routingFreeMaxSpeed);
+      cost *= speedStress(mode, fl, eSpeed[ei], rules.freeMaxSpeed, eSh[ei]);
       cost *= hazardMult(mode, edgeHazard(ei, forward) || 0);
       cost *= majorRoadMult(ei, mode);
       if (fl & 4) cost *= activeWeights.freeway;
@@ -524,13 +509,12 @@ function routeLeg(startLL, endLL, rules, routingFreeMaxSpeed, mode, prefDesig, p
 
 // Route through an ordered list of points (A -> B -> C ...): one A* per leg,
 // results merged into a single continuous route.
-function route(points, rules, mode, prefDesig, prefResidential,
-  routingFreeMaxSpeed = rules.freeMaxSpeed, snaps,
+function route(points, rules, mode, prefDesig, prefResidential, snaps,
   diversityEdges = null, diversityFactor = 1) {
   const t0 = Date.now();
   const legs = [];
   for (let i = 0; i + 1 < points.length; i++) {
-    const leg = routeLeg(points[i], points[i + 1], rules, routingFreeMaxSpeed, mode, prefDesig, prefResidential,
+    const leg = routeLeg(points[i], points[i + 1], rules, mode, prefDesig, prefResidential,
       snaps?.[i], snaps?.[i + 1], diversityEdges, diversityFactor);
     if (!leg.ok) {
       if (leg.code === 'point-too-far') {
@@ -752,7 +736,6 @@ function publicCandidate(candidate) {
       label: _outcome?.label || _profile.label,
       reason: _outcome?.reason || '',
       mode: _profile.mode,
-      routingNoShoulderSpeed: _profile.routingNoShoulderSpeed,
       prefDesignated: _profile.prefDesig,
       prefResidential: _profile.prefResidential,
       alternativeCorridor: !!_profile.alternativeCorridor,
@@ -770,9 +753,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const raw = [];
   let firstFailure = null;
   for (const profile of profiles) {
-    profile.routingNoShoulderSpeed = routingComfortLimit(profile.mode, rules);
-    const result = route(points, rules, profile.mode, profile.prefDesig, profile.prefResidential,
-      profile.routingNoShoulderSpeed, snaps);
+    const result = route(points, rules, profile.mode, profile.prefDesig, profile.prefResidential, snaps);
     if (!result.ok) {
       if (!firstFailure) firstFailure = result;
       // A bad point or disconnected network is profile-independent.
@@ -812,10 +793,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     for (const probe of probes) {
       const profile = { ...probe, label: 'Alternative corridor', alternativeCorridor: true };
       delete profile.seed; delete profile.factor;
-      profile.routingNoShoulderSpeed = routingComfortLimit(profile.mode, rules);
       const result = route(points, rules, profile.mode, profile.prefDesig,
-        profile.prefResidential, profile.routingNoShoulderSpeed, snaps,
-        new Set(probe.seed.edgeIds), probe.factor);
+        profile.prefResidential, snaps, new Set(probe.seed.edgeIds), probe.factor);
       if (!result.ok) continue;
       result._profile = profile;
       result.aggression = routeAggression(result);
@@ -995,14 +974,10 @@ onmessage = (ev) => {
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const mode = m.mode || 'balanced';
-      const routingNoShoulderSpeed = Number.isFinite(m.routingNoShoulderSpeed)
-        ? Math.min(m.rules.freeMaxSpeed, Math.max(15, m.routingNoShoulderSpeed))
-        : routingComfortLimit(mode, m.rules);
-      const r = route(pts, m.rules, mode, !!m.prefDesignated, !!m.prefResidential,
-        routingNoShoulderSpeed);
+      const r = route(pts, m.rules, mode, !!m.prefDesignated, !!m.prefResidential);
       const profile = {
         id: m.profileId || 'efficient', label: m.profileLabel || 'Selected route',
-        mode, routingNoShoulderSpeed, prefDesig: !!m.prefDesignated,
+        mode, prefDesig: !!m.prefDesignated,
         prefResidential: !!m.prefResidential,
       };
       postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }) });

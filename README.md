@@ -298,16 +298,13 @@ selection also checks detours leg by leg and keeps at most one extreme-detour
 result. This keeps a small concern near one stop from filling the choices with
 large local loops.
 Limited-access roads that meet the rider's speed and shoulder rules remain
-preferable to known rule violations. Roads below the rider's “Max speed without
-shoulder” setting also receive a soft routing preference: modestly in Direct,
-more strongly in Balanced, and strongest in Friendly mode. Settings can force
-the bike-route or residential preference across every candidate.
-
-Advanced routing weights also provide separate **routing no-shoulder max**
-speeds: Direct defaults to the rider's map limit, while Balanced and Friendly
-default to 30 mph and 25 mph. These stricter profile-specific values affect
-only which route is selected; map colors, route safety reporting, and “Only
-show fully safe routes” always use the rider's actual no-shoulder rule.
+preferable to known rule violations. Among roads with a missing or zero
+shoulder, those below the rider's “Max speed without shoulder” setting receive
+a soft routing preference: modestly in Direct, more strongly in Balanced, and
+strongest in Friendly mode. This bonus never changes a road’s safety verdict
+or penalizes an otherwise acceptable road solely because its shoulder is
+unknown. Settings can force the bike-route or residential preference across
+every candidate.
 Results include distance, duration, total climb/descent, and an elevation
 profile. No routing server; works offline once cached.
 
