@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-17.126';
+const APP_VERSION = '2026-07-17.127';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1259,7 +1259,10 @@ function routeSummaryStats(m) {
     if (flags & 32) continue; // ferry is reported separately, not a riding safety level
     const level = s.level || fallbackRouteLevel(s);
     if (level >= 1 && level <= 4) levels[level] += len;
-    if ((flags & (8 | 64)) || (s.facility || 0) >= 2) bikeNetworkM += len;
+    // Physical facilities only (lime on the map) — designation alone can be a
+    // plain road, and Route Details' "Bike network" verdict draws this line
+    // the same way.
+    if ((flags & 8) || (s.facility || 0) >= 2) bikeNetworkM += len;
     if (s.mtb || ((s.official || 0) & 4)) mtbM += len;
     if (flags & 4) freewayM += len;
     else if (flags & 128) limitedAccessM += len;
@@ -1307,11 +1310,29 @@ function optimizationDescription(optimization) {
   if (optimization.reason) return `${optimization.reason} Search method: ${method}${alternative}${discovery}${matching}`;
   return `${method}${alternative}${discovery}${matching}`;
 }
+// Downsampled elevation profile for the Route Details Elevation tab — enough
+// points to draw at dialog width without bloating localStorage.
+function compactRouteProfile(m) {
+  const profile = m.profile || [];
+  if (profile.length < 2) return null;
+  const stride = Math.max(1, Math.ceil(profile.length / 1200));
+  const out = [];
+  for (let i = 0; i < profile.length; i += stride) {
+    out.push([Math.round(profile[i][0]), Math.round(profile[i][1])]);
+  }
+  const last = profile[profile.length - 1];
+  if (out[out.length - 1][0] !== Math.round(last[0])) {
+    out.push([Math.round(last[0]), Math.round(last[1])]);
+  }
+  return out;
+}
+
 function storeRouteDetails(m) {
   if (!m || !m.ok) return;
   try {
     localStorage.setItem(ROUTE_DETAILS_KEY, JSON.stringify({
       savedAt: Date.now(),
+      profile: compactRouteProfile(m),
       mode: routing.mode,
       optimization: m.optimization ? {
         ...m.optimization,
@@ -1874,49 +1895,12 @@ function renderRouteCard(m) {
     <div id="routeControlsSlot"></div>
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi ferry` : ''}</div>
-    <div class="rc-ride-mix" title="Percent of riding distance"><span class="rc-ride-label">Ride</span><span><b>${bikePct}</b> bike</span><i>·</i><span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><b>${failPct}</b> fail</span></div>
+    <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><span><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div>
     ${mtbNotice}
     ${snapNotice}
-    ${legs}
-    <div class="rc-card-actions"><button type="button" class="rc-elevation-button" data-route-action="elevation" title="Open elevation profile"><span aria-hidden="true">⌁</span> Elevation</button></div>`;
+    ${legs}`;
   moveControls();
   refreshNavigationUI();
-}
-
-function drawProfile(profile, distM, canvasId = 'profileCv') {
-  const cv = document.getElementById(canvasId);
-  if (!cv || !profile || profile.length < 2) return;
-  const dpr = window.devicePixelRatio || 1;
-  const w = cv.clientWidth || 280, h = cv.clientHeight || 72;
-  cv.width = w * dpr; cv.height = h * dpr;
-  const ctx = cv.getContext('2d');
-  ctx.scale(dpr, dpr);
-  let lo = Infinity, hi = -Infinity;
-  for (const [, e] of profile) { if (e < lo) lo = e; if (e > hi) hi = e; }
-  if (hi - lo < 30) { const mid = (hi + lo) / 2; lo = mid - 15; hi = mid + 15; }
-  const large = canvasId === 'elevationLargeCanvas';
-  const padT = large ? 24 : 10, padB = large ? 26 : 11, padL = large ? 8 : 2, padR = large ? 8 : 2;
-  const X = (d) => padL + (d / distM) * (w - padL - padR);
-  const Y = (e) => padT + (1 - (e - lo) / (hi - lo)) * (h - padT - padB);
-  ctx.beginPath();
-  ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
-  for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
-  ctx.lineTo(X(profile[profile.length - 1][0]), h - padB);
-  ctx.lineTo(X(profile[0][0]), h - padB);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(44,123,182,0.18)';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
-  for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
-  ctx.strokeStyle = '#2c7bb6';
-  ctx.lineWidth = 1.8;
-  ctx.stroke();
-  ctx.fillStyle = '#98a2ad';
-  ctx.font = `${large ? 13 : 9}px system-ui`;
-  ctx.fillText(`${fmtFt(hi)} ft`, padL + 2, padT - 2);
-  ctx.textBaseline = 'bottom';
-  ctx.fillText(`${fmtFt(lo)} ft`, padL + 2, h - 1);
 }
 
 function showPointTooFarPopup(m) {
@@ -2858,16 +2842,6 @@ function activateRouteOption(option, updateNavigation = false) {
 
 function buildRoutingPanel() {
   const choices = document.getElementById('routeOptions');
-  document.getElementById('routeCard').addEventListener('click', (e) => {
-    if (e.target.closest('[data-route-action="elevation"]') && routing.last?.ok) {
-      const dialog = document.getElementById('elevationDialog');
-      document.getElementById('elevationDialogSummary').textContent =
-        `${fmtMi(routing.last.distM)} mi · ${fmtFt(routing.last.ascentM)} ft climb · ${fmtFt(routing.last.descentM)} ft descent`;
-      dialog.showModal();
-      requestAnimationFrame(() => drawProfile(routing.last.profile, routing.last.distM, 'elevationLargeCanvas'));
-      return;
-    }
-  });
   choices.addEventListener('click', (event) => {
     const button = event.target.closest('[data-route-option]');
     if (!button || button.disabled || turnNav.active || choices.classList.contains('loading')) return;
@@ -3959,7 +3933,12 @@ function buildPresetPanel() {
     const ruleStatement = document.createElement('p');
     ruleStatement.className = 'preset-rule-summary';
     ruleStatement.textContent = preset.outcome;
-    button.addEventListener('click', () => applyRoutingPreset(preset.id));
+    // The whole card is a tap target, not just the title text; the Rules
+    // button inside keeps its own action.
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.preset-info')) return;
+      applyRoutingPreset(preset.id);
+    });
     card.append(head, audience, ruleStatement);
     host.appendChild(card);
   }
@@ -4165,11 +4144,13 @@ function buildLegend() {
   const dash = (c) => `background:repeating-linear-gradient(90deg,${c} 0 4px,transparent 4px 8px)`;
   const trail = `background-color:${BIKE_NETWORK_COLOR};background-image:radial-gradient(circle,#687d00 0 1.2px,transparent 1.45px);background-size:7px 6px;background-repeat:repeat-x;background-position:center`;
   const rows = [
-    [BIKE_NETWORK_COLOR, 'Bike network'],
+    [BIKE_NETWORK_COLOR, 'Bike trails & lanes'],
     ['trail', 'Off-street trails'],
+    ['dashDesig', 'Designated bike route'],
     [COLORS[1], 'Meets safety rules'],
     [COLORS[3], 'Caution — limited-access highway'],
     ['dash4', 'Fails safety rules'],
+    ['ferry', 'Ferry crossing (planned route)'],
   ];
   for (const [color, label] of rows) {
     const item = document.createElement('div');
@@ -4179,6 +4160,10 @@ function buildLegend() {
         ? `<span class="swatch" style="${trail}"></span>`
         : color === 'dash4'
         ? `<span class="swatch" style="${dash(COLORS[4])}"></span>`
+        : color === 'dashDesig'
+        ? `<span class="swatch" style="${dash(COLORS[2])}"></span>`
+        : color === 'ferry'
+        ? `<span class="swatch" style="background:repeating-linear-gradient(90deg,#ffffff 0 4px,#9dbfd8 4px 8px);border:1px solid #c7d7e2"></span>`
         : color === 'dash2'
         ? `<span class="swatch" style="${dash(COLORS[2])}"></span>`
         : color
@@ -4383,7 +4368,10 @@ async function setupAutomaticUpdates() {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') check();
     });
-  } catch (e) { /* service worker unavailable — app still works online */ }
+  } catch (e) {
+    // Service worker unavailable — app still works online.
+    console.warn('Automatic updates unavailable:', e);
+  }
 }
 
 document.getElementById('getUpdateBtn').addEventListener('click', () => {
@@ -4395,6 +4383,43 @@ document.getElementById('updateLaterBtn').addEventListener('click', () => {
   document.getElementById('updatePrompt').hidden = true;
 });
 setupAutomaticUpdates();
+
+// Manual "Check for updates" in the help dialog. Wired independently of
+// setupAutomaticUpdates so a slow or stalled service-worker registration
+// never leaves the button dead.
+document.getElementById('checkUpdatesBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('checkUpdatesBtn');
+  const status = document.getElementById('updateCheckStatus');
+  btn.disabled = true;
+  status.textContent = 'Checking…';
+  try {
+    let reg = await Promise.race([
+      window.__swReady,
+      new Promise((resolve) => setTimeout(resolve, 8000)),
+    ]);
+    // A fresh register() can be slow; any returning device already has a
+    // registration that resolves immediately.
+    if (!reg && navigator.serviceWorker) reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) throw new Error('service worker unavailable');
+    await reg.update();
+    const fresh = reg.waiting || reg.installing;
+    if (fresh) {
+      status.textContent = 'Update found — installing…';
+      if (reg.waiting) offerUpdate(reg.waiting);
+      else fresh.addEventListener('statechange', () => {
+        if (fresh.state === 'installed') offerUpdate(fresh);
+      });
+      // The update prompt renders under this modal dialog; close it so the
+      // "Get update?" banner is visible.
+      document.getElementById('appHelpDialog')?.close();
+    } else {
+      status.textContent = `You have the latest version (v${APP_VERSION}).`;
+    }
+  } catch (e) {
+    status.textContent = 'Could not check right now — make sure you are online and try again.';
+  }
+  btn.disabled = false;
+});
 
 
 

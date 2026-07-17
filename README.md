@@ -294,10 +294,10 @@ five useful alternatives labeled **Route A–E**. Route A is always selected by
 default and is the safest candidate that stays within a practical per-leg
 detour of the quickest result; the other letters are meaningfully different
 options without implying a fixed fastest-to-safest scale. Each selected route
-shows a compact ride mix: the share of riding distance on the bike network
-(designated routes, trails, or bike facilities) and the shares that pass, need
-caution, or fail the current rules. The bike-network share overlaps those
-verdict shares. The letters identify alternatives and are not grades. On routes with stops, candidate
+shows a compact ride mix: the share of riding distance on physical bike
+trails and lanes (lime on the map, with matching legend swatches) and the
+shares that pass, need caution, or fail the current rules. The trails/lanes
+share overlaps those verdict shares. The letters identify alternatives and are not grades. On routes with stops, candidate
 selection also checks detours leg by leg and keeps at most one extreme-detour
 result. This keeps a small concern near one stop from filling the choices with
 large local loops.

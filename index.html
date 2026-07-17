@@ -128,12 +128,6 @@
     <div class="dialog-actions"><button data-close="routeProblemDialog">OK</button></div>
   </dialog>
 
-  <dialog id="elevationDialog" class="elevation-dialog" aria-label="Route elevation profile">
-    <div class="dialog-head"><div><small>Selected route</small><h2>Elevation profile</h2></div><button class="dialog-close" data-close="elevationDialog" aria-label="Close elevation profile">✕</button></div>
-    <div id="elevationDialogSummary" class="elevation-dialog-summary"></div>
-    <canvas id="elevationLargeCanvas"></canvas>
-  </dialog>
-
   <dialog id="weightsDialog" class="full-help-dialog weights-dialog" aria-label="Advanced routing weights">
     <div class="full-help-head"><div><span>Advanced tool</span><h2>Routing weights</h2></div><div class="weights-head-actions"><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button><button class="dialog-close" data-close="weightsDialog" aria-label="Close routing weights">✕</button></div></div>
     <div class="weights-body">
@@ -177,7 +171,11 @@
       <li>Tap <b>Navigate</b> for foreground GPS and voice guidance.</li>
     </ol>
     <p>Map colors and routes update on this device. Always follow signs and current road conditions.</p>
-    <p id="appVersion" class="app-help-version" aria-label="App version"></p>
+    <div class="app-help-update">
+      <p id="appVersion" class="app-help-version" aria-label="App version"></p>
+      <button id="checkUpdatesBtn" type="button">Check for updates</button>
+    </div>
+    <p id="updateCheckStatus" class="app-help-update-status" role="status" aria-live="polite"></p>
   </dialog>
 
   <dialog id="layersHelpDialog" class="full-help-dialog" aria-label="Map data and layers help">

@@ -20,6 +20,7 @@
     <nav class="detail-tabs" aria-label="Route details">
       <button type="button" role="tab" id="tab-concerns" aria-controls="panel-concerns" aria-selected="true" data-detail-tab="concerns">Route concerns</button>
       <button type="button" role="tab" id="tab-steps" aria-controls="panel-steps" aria-selected="false" data-detail-tab="steps">Route steps</button>
+      <button type="button" role="tab" id="tab-elevation" aria-controls="panel-elevation" aria-selected="false" data-detail-tab="elevation">Elevation</button>
       <button type="button" role="tab" id="tab-tips" aria-controls="panel-tips" aria-selected="false" data-detail-tab="tips">Routing tips</button>
     </nav>
 
@@ -30,6 +31,12 @@
 
     <section id="panel-steps" class="detail-panel" role="tabpanel" aria-labelledby="tab-steps" hidden>
       <div id="steps"></div>
+    </section>
+
+    <section id="panel-elevation" class="detail-panel" role="tabpanel" aria-labelledby="tab-elevation" hidden>
+      <div id="elevationSummary" class="elevation-summary" hidden></div>
+      <canvas id="elevationCanvas" hidden></canvas>
+      <div id="elevationEmpty" class="no-route" hidden></div>
     </section>
 
     <section id="panel-tips" class="detail-panel" role="tabpanel" aria-labelledby="tab-tips" hidden>
@@ -43,7 +50,7 @@
       </section>
       <section class="route-help">
         <h2>Understand the map</h2>
-        <p><b>Ride mix</b> reports the percentage of riding distance on a bike facility or designated route and the shares that pass, need caution, or fail your rules. That bike percentage overlaps the verdict percentages. The planned route automatically uses the same symbols as the map. Tap any concern or route step to return to its exact place on the map.</p>
+        <p><b>Ride mix</b> reports the percentage of riding distance on a physical bike trail or lane (lime on the map) and the shares that pass, need caution, or fail your rules; the small swatches match the map legend colors. The trails/lanes percentage overlaps the verdict percentages. The planned route automatically uses the same symbols as the map. Tap any concern or route step to return to its exact place on the map.</p>
       </section>
       <section class="route-help">
         <h2>Read the safety labels</h2>

@@ -296,7 +296,49 @@ function selectDetailTab(tabId) {
   document.querySelectorAll('.detail-panel').forEach((panel) => {
     panel.hidden = panel.id !== `panel-${tabId}`;
   });
+  // The canvas has zero size while its panel is hidden — draw after reveal.
+  if (tabId === 'elevation') requestAnimationFrame(drawElevation);
 }
+
+function drawElevation() {
+  const canvas = document.getElementById('elevationCanvas');
+  const profile = details?.profile;
+  const distM = details?.summary?.distM;
+  if (!canvas || canvas.hidden || !Array.isArray(profile) || profile.length < 2 || !(distM > 0)) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 220;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  let lo = Infinity, hi = -Infinity;
+  for (const [, e] of profile) { if (e < lo) lo = e; if (e > hi) hi = e; }
+  if (hi - lo < 30) { const mid = (hi + lo) / 2; lo = mid - 15; hi = mid + 15; }
+  const padT = 24, padB = 26, padL = 8, padR = 8;
+  const X = (d) => padL + (d / distM) * (w - padL - padR);
+  const Y = (e) => padT + (1 - (e - lo) / (hi - lo)) * (h - padT - padB);
+  ctx.beginPath();
+  ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
+  for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
+  ctx.lineTo(X(profile[profile.length - 1][0]), h - padB);
+  ctx.lineTo(X(profile[0][0]), h - padB);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(44,123,182,0.18)';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
+  for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
+  ctx.strokeStyle = '#2c7bb6';
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+  ctx.fillStyle = '#98a2ad';
+  ctx.font = '13px system-ui';
+  ctx.fillText(`${fmtFt(hi)} ft`, padL + 2, padT - 2);
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`${fmtFt(lo)} ft`, padL + 2, h - 1);
+}
+window.addEventListener('resize', () => {
+  if (!document.getElementById('panel-elevation')?.hidden) drawElevation();
+});
 
 function selectedDetailTab() {
   return document.querySelector('[data-detail-tab][aria-selected="true"]')?.dataset.detailTab || 'concerns';
@@ -316,7 +358,7 @@ function restoreDetailPosition() {
   try {
     const state = JSON.parse(sessionStorage.getItem(ROUTE_DETAILS_POSITION_KEY) || 'null');
     if (!state || state.savedAt !== details.savedAt) return false;
-    if (['concerns', 'steps', 'tips'].includes(state.tab)) selectDetailTab(state.tab);
+    if (['concerns', 'steps', 'elevation', 'tips'].includes(state.tab)) selectDetailTab(state.tab);
     requestAnimationFrame(() => window.scrollTo(0, Math.max(0, Number(state.scrollY) || 0)));
     return true;
   } catch (e) { return false; }
@@ -348,9 +390,28 @@ if (!hasRoute) {
   summary.textContent = 'No current route — start with the routing tips.';
   report.innerHTML = '<div class="no-route">Set a start and destination on the map to see freeways, highways, and any road-rule concerns here.</div>';
   steps.innerHTML = '<div class="no-route">Set a start and destination on the map to see the road-by-road route steps here.</div>';
+  const elevationEmpty = document.getElementById('elevationEmpty');
+  elevationEmpty.hidden = false;
+  elevationEmpty.textContent = 'Set a start and destination on the map to see the elevation profile here.';
   if (!restoreDetailPosition()) selectDetailTab('tips');
 } else {
   const { rules = {}, summary: totals, segs } = details;
+  for (const host of [report, steps]) {
+    const hint = document.createElement('p');
+    hint.className = 'tap-hint';
+    hint.textContent = 'Tap any road below to see it highlighted on the map.';
+    host.before(hint);
+  }
+  if (Array.isArray(details.profile) && details.profile.length >= 2) {
+    const elevationSummary = document.getElementById('elevationSummary');
+    elevationSummary.hidden = false;
+    elevationSummary.textContent = `${fmtMi(totals.distM)} mi · ↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent`;
+    document.getElementById('elevationCanvas').hidden = false;
+  } else {
+    const elevationEmpty = document.getElementById('elevationEmpty');
+    elevationEmpty.hidden = false;
+    elevationEmpty.textContent = 'The elevation profile will appear here after the route is next recalculated.';
+  }
   summary.textContent = `${fmtMi(totals.distM)} mi · ${fmtDur(totals.timeS)} · ${fmtFt(totals.ascentM)} ft climb`;
   if (details.optimization?.description) {
     optimization.hidden = false;
