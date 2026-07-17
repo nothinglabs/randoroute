@@ -62,7 +62,7 @@
     </section>
 
     <section class="tab" id="tab-layers">
-      <div class="layers-intro"><div><strong>Map layers</strong><br><span>Choose the data drawn on the map.</span></div><button type="button" id="layersHelpBtn" class="layers-help-btn" aria-label="Map data and layers help" title="Map data and layers help">?</button></div>
+      <div class="layers-intro"><div><strong>Map layers</strong><br><span>Visibility only — routing still uses all available data.</span></div><button type="button" id="layersHelpBtn" class="layers-help-btn" aria-label="Map data and layers help" title="Map data and layers help">?</button></div>
       <div id="sources"></div>
     </section>
 
@@ -76,16 +76,16 @@
         <button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button>
       </div>
       <div id="settings-presets" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-presets">
-        <p class="settings-summary">Apply a complete routing baseline. Advanced weights stay unchanged.</p>
+        <p class="settings-summary">A preset replaces your active routing rules and preferences; presets do not stack.</p>
         <div id="settingsPresets"></div>
         <p id="settingsPresetStatus" class="preset-status" aria-live="polite"></p>
       </div>
       <div id="settings-limits" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-limits" hidden>
-        <p class="settings-summary">Rules update map colors and your route in real time.</p>
+        <p class="settings-summary">Changing a limit overrides any active preset. Map colors and your route update in real time.</p>
         <div id="settingsSliders"></div>
       </div>
       <div id="settings-options" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-options" hidden>
-        <p class="settings-summary">Preferences and rules update your route in real time.</p>
+        <p class="settings-summary">Changing a riding rule or route preference overrides any active preset.</p>
         <div id="settingsOptions"></div>
       </div>
     </section>
@@ -157,9 +157,15 @@
   <dialog id="settingsHelpDialog" class="map-dialog settings-help-dialog" aria-label="Routing settings help">
     <div class="dialog-head"><h2>Routing settings</h2><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div>
     <section><h3>Limits</h3><p><b>Minimum shoulder</b> is the width required on faster roads. <b>Max acceptable speed without shoulder</b> lets slower roads pass even where shoulder data is missing. <b>Never allow roads faster than</b> makes roads above the selected speed fail; “no cutoff” leaves the shoulder rule in charge.</p></section>
-    <section><h3>Presets</h3><p>Each preset applies a complete baseline for riding rules and route preferences. <b>Randonneur</b> has no speed limit with shoulder and allows 35 mph without one. <b>Weekend Wanderer</b> allows 45 mph with shoulder and 25 mph without one. <b>Casual Cruiser</b> allows 35 mph with shoulder and 25 mph without one. Presets also set designated-route, freeway, and fully-matching-route behavior while leaving advanced weights and navigation settings unchanged.</p></section>
+    <section><h3>Presets</h3><p>Each preset replaces your active routing rules and route preferences; presets do not stack. Use the ⓘ beside a preset for its complete settings. Changing individual controls after choosing one creates custom settings.</p></section>
     <section><h3>Options</h3><p><b>Strongly prefer bike routes for all route options</b> forces every choice to favor bike facilities and designated corridors; physical infrastructure receives the stronger routing benefit. <b>Strongly prefer residential streets for all route options</b> forces every choice to favor streets mapped as residential or living streets. <b>Treat designated bike routes as vetted</b> lets a USBR or regional designation satisfy the shoulder rule; turn it off to evaluate those roads by the same speed and shoulder limits as every other road. <b>Allow mountain bike trails</b> makes OSM paths explicitly tagged for mountain biking available, but still strongly avoided; it is off by default and any use is called out in Route Details. <b>Allow freeway as last resort</b> permits a freeway only as a heavily penalized fallback; it still fails the rules. <b>Only show routes fully matching safety rules</b> limits every option to routes whose segments all match your active safety rules, and reports when none exists. <b>Auto-reroute</b> waits for moving time while you remain off route, then announces and updates the route. <b>Unknown shoulder treated as 0 ft</b> requires faster roads to prove an adequate shoulder.</p></section>
     <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Most riders should not change these.</b> Presets and Limits are the intended controls. Weights expose internal soft costs for testing and fine-tuning; poor combinations can produce long or unintuitive routes. They never override bicycle prohibitions or your hard Limits, and can be restored with <b>Reset all defaults</b>.</p><button id="settingsAdvancedWeightsBtn" type="button">Open advanced weights</button></section>
+  </dialog>
+
+  <dialog id="presetInfoDialog" class="map-dialog preset-info-dialog" aria-labelledby="presetInfoTitle">
+    <div class="dialog-head"><h2 id="presetInfoTitle"></h2><button class="dialog-close" data-close="presetInfoDialog" aria-label="Close">✕</button></div>
+    <p id="presetInfoAudience" class="preset-info-audience"></p>
+    <ul id="presetInfoDetails" class="preset-info-details"></ul>
   </dialog>
 
   <dialog id="appHelpDialog" class="map-dialog app-help-dialog" aria-label="How to use the app">
@@ -177,7 +183,7 @@
   <dialog id="layersHelpDialog" class="full-help-dialog" aria-label="Map data and layers help">
     <div class="full-help-head"><div><span>Help</span><h2>Map data &amp; routing graph</h2></div><button class="dialog-close" data-close="layersHelpDialog" aria-label="Close">✕</button></div>
     <div class="full-help-body">
-      <p class="help-lead">The app combines official Washington data with OpenStreetMap and elevation into one offline, on-device routing graph. Layer switches change what is drawn; they do not remove data from routing.</p>
+      <p class="help-lead">The app combines official Washington data with OpenStreetMap and elevation into one offline, on-device routing graph. Layer switches affect only what is visible; routing still uses all available data.</p>
       <section><h3>Official WSDOT data</h3><p><b>Bicycle Level of Traffic Stress (BLTS)</b> supplies statewide road stress, measured shoulder context, and access-control information. <b>Roadway Characteristic Data</b> supplies legal speeds on state highways. <b>Active Transportation Facilities</b> identifies shared lanes, bike lanes, buffered or separated lanes, and shared-use paths. <b>Permanent bicycle restrictions</b> are hard exclusions: the router never traverses them.</p></section>
       <section><h3>OpenStreetMap data</h3><p>OSM supplies the connected rideable road and bicycle-path network, street names, signed speeds where tagged, road class, one-way rules, shoulders, bicycle access, cycleways, designated national/regional bicycle routes, ferries, and residential streets. Missing speed limits use a documented road-class estimate; the street popup says when speed is estimated. Ways tagged <b>bicycle=no</b> or <b>bicycle=dismount</b> are not part of the riding graph. Paths explicitly tagged <b>mtb:*</b>, or in an OSM <b>route=mtb</b> relation, are hidden and excluded by default; Settings can make them available with a strong penalty.</p></section>
       <section><h3>Elevation &amp; curve cautions</h3><p>AWS Terrarium elevation tiles provide climb/descent and grade-aware travel time. The builder also looks for a tight curve that overlaps an uphill grade on a faster road without a protective facility, then adjusts concern using known shoulder width. This is a <b>possible limited-visibility uphill curve</b>, directional and separately reported. It is a geometry/elevation proxy—not measured sight distance—and does not by itself fail your riding rules.</p></section>

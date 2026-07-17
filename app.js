@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-16.119';
+const APP_VERSION = '2026-07-17.125';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -420,15 +420,17 @@ const DEFAULT_ROUTE_PREFERENCES = Object.freeze({ prefDesig: true, prefResidenti
 const ROUTING_PRESETS = Object.freeze([
   {
     id: 'randonneur',
-    label: 'Randonneur',
-    description: 'No speed limit with shoulder, 35 mph without shoulder, designated routes assumed safe, can use freeways as last resort (where legal).',
+    label: 'The Randonnear',
+    audience: 'For long-distance riders who want the widest practical range of route choices.',
+    outcome: 'Less restrictive rules are less likely to flag routes with safety concerns.',
     rules: Object.freeze({ ...DEFAULT_RULES }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
   {
     id: 'weekend-wanderer',
     label: 'Weekend Wanderer',
-    description: '45 mph with shoulder, 25 mph without shoulder, designated routes must meet the normal rules, no freeways.',
+    audience: 'For day riders who want slower roads with practical flexibility.',
+    outcome: 'Will route more aggressive rides, but safety concerns are clearly marked in pulsing red.',
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
@@ -443,7 +445,8 @@ const ROUTING_PRESETS = Object.freeze([
   {
     id: 'casual-cruiser',
     label: 'Casual Cruiser',
-    description: '35 mph with shoulder, 25 mph without shoulder, designated routes must meet the normal rules, no freeways.',
+    audience: 'For riders who want low-stress routes that fully honor their safety rules.',
+    outcome: "Won't provide routes that break rules.",
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
@@ -3857,9 +3860,10 @@ function syncPresetSelection() {
   const active = activeRoutingPreset();
   document.querySelectorAll('[data-routing-preset]').forEach((button) => {
     const selected = button.dataset.routingPreset === active?.id;
-    button.classList.toggle('active', selected);
+    const card = button.closest('.preset-card');
+    card?.classList.toggle('active', selected);
     button.setAttribute('aria-pressed', String(selected));
-    const badge = button.querySelector('.preset-badge');
+    const badge = card?.querySelector('.preset-badge');
     if (badge) badge.hidden = !selected;
   });
   const status = document.getElementById('settingsPresetStatus');
@@ -3868,40 +3872,96 @@ function syncPresetSelection() {
     : 'Current settings are custom.';
 }
 
+function presetInfoRows(preset) {
+  const presetRules = preset.rules;
+  const preferenceText = [
+    preset.preferences.prefDesig ? 'bike routes' : null,
+    preset.preferences.prefResidential ? 'residential streets' : null,
+  ].filter(Boolean).join(' and ');
+  return [
+    ['Speed with shoulder', presetRules.noUpperLimit ? 'No speed limit.' : `Up to ${presetRules.upperMaxSpeed} mph.`],
+    ['Speed without shoulder', `Up to ${presetRules.freeMaxSpeed} mph.`],
+    ['Minimum shoulder', `${presetRules.minShoulder} ft on faster roads.`],
+    ['Designated bike routes', presetRules.vettedBikeRoutes
+      ? 'Assumed safe.' : 'Must meet the normal speed and shoulder rules.'],
+    ['Freeways', presetRules.allowFreeways
+      ? 'Bike-legal segments may be used only as a last resort.' : 'Not used.'],
+    ['Rule matching', presetRules.requireSafe
+      ? 'Required; no route is shown if every segment cannot match.'
+      : 'Not required; a route may include rule-failing segments to complete it.'],
+    ['Unknown shoulder', presetRules.unknownShoulderZero ? 'Treated as 0 ft.' : 'Left as unknown.'],
+    ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],
+    ['Route preferences', preferenceText ? `Strongly prefer ${preferenceText}.` : 'No additional preference.'],
+  ];
+}
+
+function openPresetInfo(presetId) {
+  const preset = ROUTING_PRESETS.find((item) => item.id === presetId);
+  if (!preset) return;
+  document.getElementById('presetInfoTitle').textContent = preset.label;
+  document.getElementById('presetInfoAudience').textContent = preset.audience;
+  const details = document.getElementById('presetInfoDetails');
+  details.replaceChildren();
+  for (const [label, value] of presetInfoRows(preset)) {
+    const item = document.createElement('li');
+    const heading = document.createElement('strong');
+    heading.textContent = `${label}: `;
+    item.append(heading, value);
+    details.appendChild(item);
+  }
+  const dialog = document.getElementById('presetInfoDialog');
+  if (!dialog.open) dialog.showModal();
+}
+
 function buildPresetPanel() {
   const host = document.getElementById('settingsPresets');
   if (!host) return;
   host.replaceChildren();
   for (const preset of ROUTING_PRESETS) {
+    const card = document.createElement('article');
+    card.className = 'preset-card';
+
+    const head = document.createElement('div');
+    head.className = 'preset-card-head';
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'preset-card';
+    button.className = 'preset-select';
     button.dataset.routingPreset = preset.id;
     button.setAttribute('aria-pressed', 'false');
-
-    const head = document.createElement('span');
-    head.className = 'preset-card-head';
-    const title = document.createElement('span');
-    title.className = 'preset-title';
-    title.textContent = preset.label;
+    button.setAttribute('aria-label', `Apply ${preset.label}`);
     const badge = document.createElement('span');
     badge.className = 'preset-badge';
     badge.textContent = 'Active';
     badge.hidden = true;
-    head.append(title, badge);
+    const title = document.createElement('span');
+    title.className = 'preset-title';
+    title.textContent = preset.label;
+    const titleRow = document.createElement('span');
+    titleRow.className = 'preset-title-row';
+    titleRow.append(title, badge);
+    button.appendChild(titleRow);
 
-    const description = document.createElement('span');
-    description.className = 'preset-description';
-    description.append(document.createTextNode(`${preset.description} `));
-    const ruleStatement = document.createElement('span');
-    const ruleWord = document.createElement('strong');
-    ruleWord.className = 'preset-rule-word';
-    ruleWord.textContent = preset.rules.requireSafe ? 'cannot' : 'can';
-    ruleStatement.append('Rules ', ruleWord, ' be broken to complete route.');
-    description.appendChild(ruleStatement);
-    button.append(head, description);
+    const actions = document.createElement('div');
+    actions.className = 'preset-card-actions';
+    const info = document.createElement('button');
+    info.type = 'button';
+    info.className = 'preset-info';
+    info.setAttribute('aria-label', `${preset.label} rules`);
+    info.title = `${preset.label} rules`;
+    info.textContent = 'Rules';
+    info.addEventListener('click', () => openPresetInfo(preset.id));
+    actions.append(info);
+    head.append(button, actions);
+
+    const audience = document.createElement('p');
+    audience.className = 'preset-audience';
+    audience.textContent = preset.audience;
+    const ruleStatement = document.createElement('p');
+    ruleStatement.className = 'preset-rule-summary';
+    ruleStatement.textContent = preset.outcome;
     button.addEventListener('click', () => applyRoutingPreset(preset.id));
-    host.appendChild(button);
+    card.append(head, audience, ruleStatement);
+    host.appendChild(card);
   }
   syncPresetSelection();
 }
@@ -3909,6 +3969,9 @@ function buildPresetPanel() {
 function applyRoutingPreset(presetId) {
   const preset = ROUTING_PRESETS.find((item) => item.id === presetId);
   if (!preset) return;
+  if (!activeRoutingPreset() && !window.confirm(
+    `Apply ${preset.label}?\n\nThis will replace your custom routing rules and route preferences. Those custom settings will be lost.`
+  )) return;
 
   clearTimeout(_rescoreTimer);
   clearTimeout(_ruleRouteTimer);

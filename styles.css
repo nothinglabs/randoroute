@@ -240,18 +240,22 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }
 .settings-tabs .settings-help-btn { flex: 0 0 30px; padding: 0; border-radius: 50%; font: 800 15px/1 system-ui; }
-.settings-pane { height: 208px; margin-top: 2px; overflow-y: auto; }
-#settings-options, #settings-presets { height: auto; overflow-y: visible; }
+.settings-pane { height: 324px; margin-top: 2px; overflow-y: auto; }
 .settings-summary { margin: 3px 1px 7px; overflow: hidden; color: #667680; font: 600 10.5px/1.25 system-ui; text-overflow: ellipsis; white-space: nowrap; }
 #settingsSliders, #settingsOptions { display: grid; gap: 6px; }
 #settingsPresets { display: grid; gap: 6px; }
-.preset-card { display: block; width: 100%; padding: 8px 10px; border: 1px solid #d6e1e8; border-radius: 9px; background: #fbfcfd; color: #344b59; text-align: left; cursor: pointer; }
+.preset-card { width: 100%; padding: 8px 10px; border: 1px solid #d6e1e8; border-radius: 9px; background: #fbfcfd; color: #344b59; }
 .preset-card:hover { border-color: #a8c4d7; background: #f6fafc; }
 .preset-card.active { border-color: #0a66c2; background: #eef6fc; box-shadow: inset 3px 0 #0a66c2; }
 .preset-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.preset-select { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.preset-select:focus-visible, .preset-info:focus-visible { outline: 2px solid #0a66c2; outline-offset: 2px; }
+.preset-card-actions { display: flex; align-items: center; gap: 5px; }
+.preset-title-row { display: flex; align-items: center; gap: 5px; }
 .preset-title { font: 750 12px/1.2 system-ui; }
-.preset-description { display: block; margin-top: 3px; color: #61747f; font: 550 10.5px/1.3 system-ui; }
-.preset-rule-word { font-weight: 800; }
+.preset-info { flex: 0 0 auto; min-height: 22px; padding: 3px 6px; border: 1px solid #b8cbd8; border-radius: 6px; background: #f7fafb; color: #0a66c2; font: 750 10px/1 system-ui; cursor: pointer; }
+.preset-audience, .preset-rule-summary { margin: 3px 0 0; color: #61747f; font: 550 10.5px/1.3 system-ui; }
+.preset-rule-summary { color: #485f6d; }
 .preset-badge { padding: 2px 6px; border-radius: 999px; background: #0a66c2; color: #fff; font: 750 9px/1.2 system-ui; }
 .preset-status { margin: 6px 1px 0; color: #5b6d78; font: 650 10px/1.25 system-ui; }
 #settingsSliders .rule-card, #settingsOptions .rule-card { margin: 0; padding: 8px 10px; border: 1px solid #dbe5eb; border-radius: 9px; background: #fbfcfd; }
@@ -546,6 +550,10 @@ body.navigation-active #routeBar { display: none; }
 .settings-help-dialog section { margin-top: 12px; }
 .settings-help-dialog h3 { margin: 0 0 4px; color: #2c3e4c; font: 750 13px system-ui; }
 .settings-help-dialog p { margin: 0; color: #52616d; font: 12px/1.42 system-ui; }
+.preset-info-dialog { max-height: min(76dvh, 620px); overflow-y: auto; }
+.preset-info-audience { margin: 10px 0 0; color: #52616d; font: 650 12px/1.4 system-ui; }
+.preset-info-details { display: grid; gap: 6px; margin: 11px 0 0; padding-left: 18px; color: #52616d; font: 12px/1.4 system-ui; }
+.preset-info-details strong { color: #2c3e4c; }
 .settings-advanced-section { padding-top: 10px; border-top: 1px solid #dce5ea; }
 .settings-advanced-section button { margin-top: 8px; padding: 7px 10px; border: 1px solid #bccbd4; border-radius: 8px; background: #f7f9fa; color: #52616d; font: 650 11px system-ui; cursor: pointer; }
 .app-help-dialog ol { display: grid; gap: 7px; margin: 13px 0 10px; padding-left: 21px; color: #405562; font: 12.5px/1.4 system-ui; }
