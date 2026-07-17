@@ -334,7 +334,25 @@ function drawElevation() {
   ctx.font = '13px system-ui';
   ctx.fillText(`${fmtFt(hi)} ft`, padL + 2, padT - 2);
   ctx.textBaseline = 'bottom';
-  ctx.fillText(`${fmtFt(lo)} ft`, padL + 2, h - 1);
+  ctx.fillText(`${fmtFt(lo)} ft`, padL + 2, h - padB - 3);
+  // X axis in miles: pick a tick step that yields a handful of labels.
+  const totalMi = distM / 1609.34;
+  const step = [0.25, 0.5, 1, 2, 5, 10, 20, 50, 100].find((s) => totalMi / s <= 7) || 200;
+  ctx.strokeStyle = 'rgba(120,140,155,0.22)';
+  ctx.lineWidth = 1;
+  ctx.textBaseline = 'bottom';
+  for (let mi = step; mi < totalMi - step * 0.3; mi += step) {
+    const x = X(mi * 1609.34);
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, h - padB);
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.fillText(`${+mi.toFixed(2)}`, x, h - 6);
+  }
+  ctx.textAlign = 'right';
+  ctx.fillText(`${totalMi.toFixed(1)} mi`, w - padR - 2, h - 6);
+  ctx.textAlign = 'left';
 }
 window.addEventListener('resize', () => {
   if (!document.getElementById('panel-elevation')?.hidden) drawElevation();
