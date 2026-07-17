@@ -68,3 +68,5 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .elevation-summary { margin: 0 0 10px; color: #435663; font: 700 14px/1.3 system-ui; }
 #elevationCanvas { display: block; width: 100%; height: min(38vh, 280px); border: 1px solid #dce7ed; border-radius: 11px; background: #fff; }
 #elevationCanvas[hidden] { display: none; }
+
+.snap-note { margin: 0 0 12px; padding: 9px 12px; border-left: 4px solid #d99a27; border-radius: 8px; background: #fdf6e8; color: #7a5410; font: 600 13px/1.4 system-ui; }

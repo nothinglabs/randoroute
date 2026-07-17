@@ -166,7 +166,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-main { font: 700 20px/1.15 system-ui; color: #111; }
 #routeCard .rc-main small { font: 600 15px system-ui; color: #555; }
 #routeCard .rc-sub { margin-top: 3px; font-size: 12px; color: #555; }
-#routeCard .rc-ride-mix { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; min-width: 0; margin-top: 4px; color: #52616b; font: 600 10px/1.2 system-ui; }
+#routeCard .rc-ride-mix { display: flex; flex-wrap: wrap; align-items: baseline; align-content: flex-start; gap: 2px 4px; min-width: 0; min-height: 26px; margin-top: 4px; color: #52616b; font: 600 10px/1.2 system-ui; }
 #routeCard .rc-ride-mix > span { white-space: nowrap; }
 #routeCard .rc-ride-mix b { color: #223c4b; font-weight: 800; }
 #routeCard .rc-ride-mix i { color: #a0aab1; font-style: normal; }

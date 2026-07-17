@@ -487,6 +487,16 @@ if (!hasRoute) {
     }
   }
 
+  const snapNotes = [];
+  if (Number(details.snapStartM) > 80) snapNotes.push(`the start pin connects to the riding network ${fmtDist(details.snapStartM)} away`);
+  if (Number(details.snapEndM) > 80) snapNotes.push(`the destination pin connects to the riding network ${fmtDist(details.snapEndM)} away`);
+  if (snapNotes.length) {
+    const note = document.createElement('p');
+    note.className = 'snap-note';
+    note.textContent = `Heads up: ${snapNotes.join(', and ')}. Move the pin closer to a road if that looks wrong.`;
+    alert.insertAdjacentElement('afterend', note);
+  }
+
   // Put the actionable rule violations first; road-type context follows.
   // A freeway can appear in both sections because one answers “what failed?”
   // while the other answers “what kind of road is this?”.
@@ -499,6 +509,13 @@ if (!hasRoute) {
   if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length && !mountainBike.length
       && !curveHazards.length) {
     report.innerHTML = '<div class="no-route">No freeway, limited-access highway, highway, or rule-failing sections were found on this route.</div>';
+  }
+  if (Array.isArray(details.legs) && details.legs.length > 1) {
+    renderSection(steps, 'Legs', details.legs.map((leg, i) => ({
+      name: `Leg ${i + 1}`,
+      lenM: leg.distM,
+      meta: `${fmtDur(leg.timeS)}${leg.failM > 0 ? ` · ${fmtDist(leg.failM)} fails rules` : ''}`,
+    })), '');
   }
   renderSection(steps, 'Follow these roads in order', routeSteps, 'No street-level steps are available for this route.', '', true);
   if (ferries.length) renderSection(steps, 'Ferry crossings', ferries, '', 'caution', true);

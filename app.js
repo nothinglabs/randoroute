@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-17.135';
+const APP_VERSION = '2026-07-17.136';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1174,6 +1174,17 @@ function showRouteActionToast(text, { busy = false, duration = 2200 } = {}) {
   if (text && duration > 0) routeActionToastTimer = setTimeout(() => { toast.hidden = true; }, duration);
 }
 
+// Off-network start/end pins matter, but not enough to hold route-card space
+// permanently: surface them as a passing toast, with the full note kept in
+// Route Details.
+function notifySnapDistance(m) {
+  if (!m || !m.ok) return;
+  const notes = [];
+  if (Number(m.snapStartM) > 80) notes.push(`Start connects ${fmtDist(m.snapStartM)} away`);
+  if (Number(m.snapEndM) > 80) notes.push(`Destination connects ${fmtDist(m.snapEndM)} away`);
+  if (notes.length) showRouteActionToast(`⚠ ${notes.join(' · ')}`, { duration: 5000 });
+}
+
 function handleRouterFailure(message) {
   const detail = String(message || 'unknown error');
   const reason = `Routing failed (${detail}). Change a route point to try again.`;
@@ -1200,6 +1211,7 @@ async function ensureRouter() {
   routing.loading = true;
   try {
     setRouteStatus('Loading routing data (one-time download)…');
+    showRouteActionToast('Preparing route engine — first run takes a few seconds…', { busy: true, duration: 0 });
     const res = await fetch(`data/graph2.bin.gz?format=${GRAPH_FORMAT_VERSION}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     let buf = await res.arrayBuffer();
@@ -1325,6 +1337,11 @@ function storeRouteDetails(m) {
     localStorage.setItem(ROUTE_DETAILS_KEY, JSON.stringify({
       savedAt: Date.now(),
       profile: compactRouteProfile(m),
+      snapStartM: Number(m.snapStartM) || 0,
+      snapEndM: Number(m.snapEndM) || 0,
+      legs: (m.legs || []).map((l) => ({
+        distM: Number(l.distM) || 0, timeS: Number(l.timeS) || 0, failM: Number(l.failM) || 0,
+      })),
       mode: routing.mode,
       optimization: m.optimization ? {
         ...m.optimization,
@@ -1864,12 +1881,6 @@ function renderRouteCard(m) {
     return;
   }
   const stats = routeSummaryStats(m);
-  const snapNotes = [];
-  if (Number(m.snapStartM) > 80) snapNotes.push(`Start connects ${fmtDist(m.snapStartM)} away`);
-  if (Number(m.snapEndM) > 80) snapNotes.push(`Destination connects ${fmtDist(m.snapEndM)} away`);
-  const snapNotice = snapNotes.length
-    ? `<div class="rc-warn">⚠ ${snapNotes.join(' · ')} — move the marker closer to a road if this looks wrong.</div>`
-    : '';
   const ridingM = Math.max(1, m.distM - (m.ferryM || 0));
   const bikePct = routePercent(stats.bikeNetworkM, ridingM);
   const passPct = routePercent((stats.levels[1] || 0) + (stats.levels[2] || 0), ridingM, true);
@@ -1878,19 +1889,12 @@ function renderRouteCard(m) {
   const mtbNotice = stats.mtbM > 0
     ? `<div class="rc-warn rc-mtb">⚠ ${fmtDist(stats.mtbM)} on mountain-bike trail</div>`
     : '';
-  const legs = m.legs && m.legs.length > 1
-    ? `<div class="rc-legs">${m.legs.map((l, i) =>
-        `<div class="rc-leg">Leg ${i + 1}: <b>${fmtDist(l.distM)}</b> · ${fmtDur(l.timeS)}${
-          l.failM > 0 ? ` · <span class="rc-leg-warn">${fmtDist(l.failM)} fail</span>` : ''}</div>`).join('')}</div>`
-    : '';
   card.innerHTML = `
     <div id="routeControlsSlot"></div>
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi ferry` : ''}</div>
     <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><span><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div>
-    ${mtbNotice}
-    ${snapNotice}
-    ${legs}`;
+    ${mtbNotice}`;
   moveControls();
   refreshNavigationUI();
 }
@@ -1943,6 +1947,7 @@ function onRouterMessage(ev) {
     routing.ready = true;
     routing.loading = false;
     setRouteStatus(routing.start && routing.end ? 'Routing…' : '');
+    if (!(routing.start && routing.end)) showRouteActionToast('');
     renderRouteCard(routing.last);
     computeRoute();
   } else if (m.type === 'route-options') {
@@ -1970,7 +1975,9 @@ function onRouterMessage(ev) {
       return;
     }
     routing.options = m.options;
-    activateRouteOption(refreshedRouteSelection(m.options));
+    const selected = refreshedRouteSelection(m.options);
+    activateRouteOption(selected);
+    notifySnapDistance(selected);
   } else if (m.type === 'route') {
     if (m.id !== routing.reqId) return; // stale reply
     setRouteOptionsLoading(false);
@@ -2005,7 +2012,8 @@ function computeRoute() {
   }
   routing.reqId++;
   setRouteStatus('Routing…');
-  showRouteActionToast('Recalculating route…', { busy: true, duration: 0 });
+  showRouteActionToast(routing.last?.ok ? 'Recalculating route…' : 'Calculating route options…',
+    { busy: true, duration: 0 });
   setRouteOptionsLoading(true);
   saveStateSoon();
   const points = [routing.start, ...(routing.navRejoin ? [routing.navRejoin] : []),
