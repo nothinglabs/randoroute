@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-17.125';
+const APP_VERSION = '2026-07-17.126';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1665,7 +1665,7 @@ function updateTurnNavigation(pos) {
         ? ' If this is your actual location, move the route start to your current location.'
         : '';
       const autoHint = navigationOptions.autoReroute
-        ? ' The route will update automatically in 15 seconds of moving time.'
+        ? ' The route will update automatically in 60 seconds of moving time.'
         : ' You can tap Reroute to make a new route from here.';
       speakNavigation(`You are off route. Return to ${target}.${startHint}${autoHint}`);
       turnNav.offRouteSpokenAt = Date.now();
