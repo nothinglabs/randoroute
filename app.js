@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-17.131';
+const APP_VERSION = '2026-07-17.132';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4032,9 +4032,9 @@ function buildRulesPanel() {
     saveStateSoon();
     computeRoute();
   };
-  check('prefDesig', 'Strongly prefer bike routes for all route options', routing, updateRoutePreference);
-  check('prefResidential', 'Strongly prefer residential streets for all route options', routing, updateRoutePreference);
-  check('vettedBikeRoutes', 'Treat designated bike routes as vetted');
+  check('prefDesig', 'Prefer bike routes & trails', routing, updateRoutePreference);
+  check('prefResidential', 'Prefer residential streets', routing, updateRoutePreference);
+  check('vettedBikeRoutes', 'Trust designated bike routes');
   check('allowFreeways', 'Allow freeway as last resort');
   check('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
     // This option affects both eligibility in the graph and the OSM layer's
@@ -4044,12 +4044,12 @@ function buildRulesPanel() {
     if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
     scheduleRescore();
   });
-  check('requireSafe', 'Only show routes fully matching safety rules');
-  check('autoReroute', 'Auto-reroute after 60 sec off route while moving', navigationOptions, () => {
+  check('requireSafe', 'Require fully-safe routes');
+  check('autoReroute', 'Auto-reroute when off route', navigationOptions, () => {
     saveStateSoon();
     refreshNavigationUI();
   });
-  check('unknownShoulderZero', 'Unknown shoulder treated as 0 ft');
+  check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
   slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');
   slider('freeMaxSpeed', 'Max speed without shoulder', 15, 45, 5, ' mph');
 

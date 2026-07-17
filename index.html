@@ -152,14 +152,14 @@
     <section><h3>Limits</h3><p><b>Minimum shoulder</b> is the width required on faster roads. <b>Max speed without shoulder</b> lets slower roads pass even where shoulder data is missing. <b>Never allow roads faster than</b> makes roads above the selected speed fail; “no cutoff” leaves the shoulder rule in charge.</p></section>
     <section><h3>Presets</h3><p>Each preset replaces your active routing rules and route preferences. Use the <b>Rules</b> button on a preset card to see its complete settings. Changing any individual control afterward switches you to custom rules.</p></section>
     <section><h3>Options</h3><ul class="help-list">
-      <li><b>Strongly prefer bike routes for all route options</b> — every route choice favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
-      <li><b>Strongly prefer residential streets for all route options</b> — every route choice favors streets mapped as residential or living streets.</li>
-      <li><b>Treat designated bike routes as vetted</b> — a USBR or regional designation satisfies the shoulder rule. Turn this off to judge those roads by the same speed and shoulder limits as every other road.</li>
+      <li><b>Prefer bike routes &amp; trails</b> — every route choice favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
+      <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
+      <li><b>Trust designated bike routes</b> — a USBR or regional designation satisfies the shoulder rule. Turn this off to judge those roads by the same speed and shoulder limits as every other road.</li>
       <li><b>Allow freeway as last resort</b> — a freeway is permitted only as a heavily penalized fallback, and it still fails the rules.</li>
       <li><b>Allow mountain bike trails</b> — explicitly MTB-tagged paths become available but stay strongly avoided; any use is called out in Route Details. Off by default.</li>
-      <li><b>Only show routes fully matching safety rules</b> — every option must pass all your rules; the app reports when no such route exists.</li>
-      <li><b>Auto-reroute after 60 sec off route while moving</b> — navigation announces “updating route” and reroutes from your location after 60 seconds of moving time off route.</li>
-      <li><b>Unknown shoulder treated as 0 ft</b> — faster roads must prove an adequate shoulder to pass.</li>
+      <li><b>Require fully-safe routes</b> — every option must pass all your rules; the app reports when no such route exists.</li>
+      <li><b>Auto-reroute when off route</b> — navigation announces “updating route” and reroutes from your location after 60 seconds of moving time off route.</li>
+      <li><b>Unknown shoulder = 0 ft</b> — faster roads must prove an adequate shoulder to pass.</li>
       </ul><p>Place search always keeps offline local results available; the ⌕ button also runs an online lookup.</p></section>
     <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Most riders should not change these.</b> Presets and Limits are the intended controls. Weights expose internal soft costs for testing and fine-tuning; poor combinations can produce long or unintuitive routes. They never override bicycle prohibitions or your hard Limits, and can be restored with <b>Reset all defaults</b>.</p><button id="settingsAdvancedWeightsBtn" type="button">Open advanced weights</button></section>
   </dialog>
