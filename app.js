@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-17.136';
+const APP_VERSION = '2026-07-17.137';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -422,7 +422,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'randonneur',
     label: 'The Randonneur',
     audience: 'For long-distance riders who want the widest range of route choices.',
-    outcome: 'Loose rules flag fewer safety concerns.',
+    blurb: 'Long-distance riders: widest range of choices; loose rules flag fewer concerns.',
     rules: Object.freeze({ ...DEFAULT_RULES }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
@@ -430,7 +430,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'weekend-wanderer',
     label: 'Weekend Wanderer',
     audience: 'For day riders who want slower roads with practical flexibility.',
-    outcome: 'Allows aggressive rides; safety concerns pulse red.',
+    blurb: 'Day riders: slower roads, practical flexibility; safety concerns pulse red.',
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
@@ -446,7 +446,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'casual-cruiser',
     label: 'Casual Cruiser',
     audience: 'For riders who want low-stress routes that fully honor their safety rules.',
-    outcome: "Won't provide routes that break rules.",
+    blurb: "Low-stress riders: won't provide routes that break your rules.",
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
@@ -3930,19 +3930,16 @@ function buildPresetPanel() {
     actions.append(info);
     head.append(button, actions);
 
-    const audience = document.createElement('p');
-    audience.className = 'preset-audience';
-    audience.textContent = preset.audience;
-    const ruleStatement = document.createElement('p');
-    ruleStatement.className = 'preset-rule-summary';
-    ruleStatement.textContent = preset.outcome;
+    const blurb = document.createElement('p');
+    blurb.className = 'preset-audience';
+    blurb.textContent = preset.blurb;
     // The whole card is a tap target, not just the title text; the Rules
     // button inside keeps its own action.
     card.addEventListener('click', (e) => {
       if (e.target.closest('.preset-info')) return;
       applyRoutingPreset(preset.id);
     });
-    card.append(head, audience, ruleStatement);
+    card.append(head, blurb);
     host.appendChild(card);
   }
   syncPresetSelection();
