@@ -813,18 +813,20 @@ function outcomeSnapshot(route) {
   // the riding distance. Remove them before calculating the tooltip summary.
   const passingRideM = Math.max(0,
     (route.levelM?.[1] || 0) + (route.levelM?.[2] || 0) - route.ferryM);
-  const passPct = Math.round(100 * Math.min(ridingM, passingRideM) / ridingM);
+  let passPct = `${Math.round(100 * Math.min(ridingM, passingRideM) / ridingM)}`;
+  // Never let rounding claim a clean 100% when some distance fails.
+  if (route.failM > 0 && passPct === '100') passPct = '99.9';
   const cautionPct = Math.round(100 * (route.levelM?.[3] || 0) / ridingM);
   const bikeNetworkM = (route.segs || []).reduce((sum, seg) => {
     const flags = seg.flags || 0;
-    return sum + (!(flags & 32) && ((flags & (8 | 64)) || (seg.facility || 0) >= 2)
+    return sum + (!(flags & 32) && ((flags & 8) || (seg.facility || 0) >= 2)
       ? Number(seg.lenM) || 0 : 0);
   }, 0);
   const bikePct = Math.round(100 * Math.min(ridingM, bikeNetworkM) / ridingM);
-  const fail = route.failM > 0 ? `${outcomeDistance(route.failM)} fails rules` : 'no rule-failing segments';
-  const details = [fail];
-  if (bikePct > 0) details.push(`${bikePct}% on the bike network`);
-  if (passPct > 0) details.push(`${passPct}% passes`);
+  const details = [];
+  if (route.failM > 0) details.push(`${outcomeDistance(route.failM)} fails rules`);
+  if (bikePct > 0) details.push(`${bikePct}% trails/lanes`);
+  if (Number(passPct) > 0) details.push(`${passPct}% passes`);
   if (cautionPct > 0) details.push(`${cautionPct}% caution`);
   if (route.limitedAccessM > 0) details.push(`${outcomeDistance(route.limitedAccessM)} limited-access caution`);
   if (route.mtbM > 0) details.push(`${outcomeDistance(route.mtbM)} mountain-bike trail`);
@@ -848,8 +850,8 @@ function presentAsLetters(routes, recommended) {
     const route = ordered[i];
     const letter = String.fromCharCode(65 + i);
     const lead = i === 0
-      ? 'Recommended as the strongest safety/practicality balance among the choices.'
-      : 'A meaningfully different alternative with its own measured tradeoffs.';
+      ? 'Recommended — best balance of safety and practicality.'
+      : 'A distinct alternative.';
     route._outcome = {
       label: `Route ${letter}`,
       reason: `${lead} ${outcomeSnapshot(route)}.`,

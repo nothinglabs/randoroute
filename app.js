@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-17.130';
+const APP_VERSION = '2026-07-17.131';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1289,26 +1289,18 @@ function optimizationDescription(optimization) {
   const base = optimization.mode === 'direct'
     ? 'Prioritizes a quicker trip.'
     : optimization.mode === 'low'
-      ? 'Strongly avoids roads that fail your rules, even when that requires a longer ride.'
-      : 'Balances travel time with avoiding roads that fail your rules.';
+      ? 'Strongly avoids roads that fail your rules.'
+      : 'Balances travel time against roads that fail your rules.';
   const preferences = [];
-  if (optimization.prefDesignated) preferences.push('bike routes and trails');
+  if (optimization.prefDesignated) preferences.push('bike routes & trails');
   if (optimization.prefResidential) preferences.push('residential streets');
-  const method = !preferences.length
-    ? `${base} No additional road-type preference was applied.`
-    : `${base} Strongly prefers ${preferences.length === 2
-      ? `${preferences[0]}, plus ${preferences[1]}` : preferences[0]}.`;
-  const alternative = optimization.alternativeCorridor
-    ? ' It was also searched as a distinct alternative to another route.' : '';
+  const method = preferences.length ? `${base} Prefers ${preferences.join(' and ')}.` : base;
   const discovery = optimization.discoveryMaxSpeed
-    ? ` Its geometry was discovered with a ${optimization.discoveryMaxSpeed} mph no-shoulder exploration lens; safety results and map colors still use your setting.`
+    ? ` Found with a ${optimization.discoveryMaxSpeed} mph no-shoulder search; map colors use your settings.`
     : '';
   const matching = optimization.fullyMatchingRules
-    ? ` Every segment matches your active safety rules.${optimization.fullyMatchingProbe
-      ? ' This option was specifically searched with rule-failing segments unavailable.' : ''}`
-    : '';
-  if (optimization.reason) return `${optimization.reason} Search method: ${method}${alternative}${discovery}${matching}`;
-  return `${method}${alternative}${discovery}${matching}`;
+    ? ' Every segment matches your safety rules.' : '';
+  return `${optimization.reason ? `${optimization.reason} ` : ''}${method}${discovery}${matching}`;
 }
 // Downsampled elevation profile for the Route Details Elevation tab — enough
 // points to draw at dialog width without bloating localStorage.
