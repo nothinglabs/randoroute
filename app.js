@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-16.118';
+const APP_VERSION = '2026-07-16.119';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -421,14 +421,14 @@ const ROUTING_PRESETS = Object.freeze([
   {
     id: 'randonneur',
     label: 'Randonneur',
-    description: 'No speed limit with adequate shoulder, 35 mph without shoulder, designated routes assumed safe, can use freeways as last resort (where legal).',
+    description: 'No speed limit with shoulder, 35 mph without shoulder, designated routes assumed safe, can use freeways as last resort (where legal).',
     rules: Object.freeze({ ...DEFAULT_RULES }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
   {
     id: 'weekend-wanderer',
     label: 'Weekend Wanderer',
-    description: '45 mph with adequate shoulder, 25 mph without shoulder, designated routes must meet the normal rules, no freeways.',
+    description: '45 mph with shoulder, 25 mph without shoulder, designated routes must meet the normal rules, no freeways.',
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
@@ -443,7 +443,7 @@ const ROUTING_PRESETS = Object.freeze([
   {
     id: 'casual-cruiser',
     label: 'Casual Cruiser',
-    description: '35 mph with adequate shoulder, 25 mph without shoulder, designated routes must meet the normal rules, no freeways.',
+    description: '35 mph with shoulder, 25 mph without shoulder, designated routes must meet the normal rules, no freeways.',
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
