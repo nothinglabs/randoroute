@@ -237,7 +237,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }
 .settings-tabs .settings-help-btn { flex: 0 0 30px; padding: 0; border-radius: 50%; font: 800 15px/1 system-ui; }
-.settings-pane { height: 324px; margin-top: 2px; overflow-y: auto; }
+.settings-pane { height: auto; max-height: 324px; margin-top: 2px; overflow-y: auto; }
 .settings-summary { margin: 3px 1px 7px; color: #667680; font: 600 10.5px/1.25 system-ui; }
 #settingsSliders, #settingsOptions { display: grid; gap: 6px; }
 #settingsPresets { display: grid; gap: 5px; }
