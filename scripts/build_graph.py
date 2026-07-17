@@ -9,7 +9,8 @@ Included edges:
   - drivable roads (same classes/filters as build_roads.py, with the same
     BNA-style speed inference), excluding bicycle=no/dismount
   - rideable bike infrastructure (same keep logic as build_osm.py classify,
-    excluding prohibited) — flagged infra=1
+    excluding prohibited), including explicitly bike-designated service links
+    closed to public motor traffic — flagged infra=1
 
 One-way streets are honored for bikes (oneway / junction=roundabout, with
 oneway:bicycle=no overriding; oneway=-1 reverses the edge).
@@ -489,12 +490,24 @@ def classify_way(tags):
     # Tracks need explicit bike permission: a bicycle=yes track is often the
     # 70 m link that joins two halves of a rail-trail — dropping it severs
     # the trail and forces highway shoulders (Issaquah-Preston, High Point).
+    # Some trails pass through plazas, transit centers, or maintenance access
+    # links mapped as ``highway=service``. Keep the narrow, unambiguous subset
+    # that is explicitly designated for bikes while public motor traffic is
+    # prohibited. Dropping these short links can sever an otherwise continuous
+    # rail-trail and force a multi-mile street detour.
+    designated_bike_service = (
+        hw == 'service'
+        and bike == 'designated'
+        and (tags.get('motor_vehicle') in ('no', 'private')
+             or tags.get('access') in ('no', 'private'))
+    )
     infra = (
         hw == 'cycleway'
         or (hw == 'path' and bike in ('designated', 'yes'))
         or (hw == 'footway' and bike in ('designated', 'yes'))
         or (hw == 'bridleway' and bike in ('designated', 'yes'))
         or (hw == 'track' and bike in ('designated', 'yes'))
+        or designated_bike_service
     )
     if infra:
         return {'speed': 0, 'est': False, 'facility': FACILITY_PATH, 'lim': False,

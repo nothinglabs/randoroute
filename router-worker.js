@@ -306,7 +306,7 @@ function modeMult(mode, lvl) {
 }
 
 function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
-  startSnap, endSnap, diversityEdges = null, diversityFactor = 1) {
+  startSnap, endSnap, diversityEdges = null, diversityFactor = 1, searchRules = rules) {
   const t0 = Date.now();
   const s = startSnap || nearestNode(startLL[0], startLL[1], rules);
   const t = endSnap || nearestNode(endLL[0], endLL[1], rules);
@@ -331,6 +331,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       ferrySegs: [], desigM: 0, residentialM: 0, freewayM: 0,
       limitedAccessM: 0, facilityM: 0, mtbM: 0, hazardM: 0,
       levelM: [0, 0, 0, 0, 0], edgeIds: [],
+      nodeIds: [s.node],
       segs: [], profile: [[0, nodeEle[s.node]]],
       snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
     };
@@ -368,17 +369,20 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // This setting controls whether a true freeway can be used at all. When it
       // can, its level and cost still make it a route failure and last resort.
       if (!rules.allowFreeways && (fl & 4)) continue;
-      const lvl = edgeLevel(ei, rules);
-      // "Only show fully safe routes": failing roads become impassable in
-      // EVERY mode — the mode then picks among fully-passing routes only.
-      if (rules.requireSafe && lvl === 4) continue;
-      const mult = modeMult(mode, lvl);
+      const actualLevel = edgeLevel(ei, rules);
+      // "Only show routes fully matching safety rules": failing roads become
+      // impassable in EVERY mode, so profiles choose only among matching paths.
+      if (rules.requireSafe && actualLevel === 4) continue;
+      // Discovery lenses may price an otherwise-allowed edge more
+      // conservatively, but they never change legality or reported safety.
+      const searchLevel = edgeLevel(ei, searchRules);
+      const mult = modeMult(mode, searchLevel);
       if (mult === Infinity) continue;
       const forward = eA[ei] === u;
       let step = edgeTimeS(ei, forward);
       if ((fl & 32) && nodeHasLand[u]) step += activeWeights.ferryWaitMin * 60; // boarding
       let cost = step * mult;
-      cost *= speedStress(mode, fl, eSpeed[ei], rules.freeMaxSpeed, eSh[ei]);
+      cost *= speedStress(mode, fl, eSpeed[ei], searchRules.freeMaxSpeed, eSh[ei]);
       cost *= hazardMult(mode, edgeHazard(ei, forward) || 0);
       cost *= majorRoadMult(ei, mode);
       if (fl & 4) cost *= activeWeights.freeway;
@@ -402,11 +406,14 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       if (prefResidential && !(fl & (8 | 32 | 4 | 128)) && isResidential(ei)) {
         cost *= activeWeights.residential;
       }
-      // Alternative-corridor probes softly penalize one already-found path.
-      // This uncovers good parallel streets that ordinary safety profiles all
-      // converge past, without ever making an edge illegal or changing the
-      // route's reported time/safety outcome.
-      if (diversityEdges?.has(ei)) cost *= diversityFactor;
+      // Alternative-corridor probes softly penalize ordinary road edges from
+      // one already-found path. Protected lanes and shared paths may remain a
+      // common trunk: leaving excellent infrastructure merely to be different
+      // creates fussy neighborhood detours instead of a useful alternative.
+      const protectedInfrastructure = (fl & 8) || eFacility[ei] >= 4;
+      if (diversityEdges?.has(ei) && !protectedInfrastructure && !(fl & 32)) {
+        cost *= diversityFactor;
+      }
       const nd = du + cost;
       if (nd < dist[v]) {
         dist[v] = nd;
@@ -420,7 +427,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     return {
       ok: false,
       reason: rules.requireSafe
-        ? 'No fully safe route exists under your rules — relax a rule, or turn off “Only show fully safe routes”.'
+        ? 'No route fully matching your safety rules exists — relax a rule, or turn off “Only show routes fully matching safety rules”.'
         : 'No route exists on the rideable network between these points.',
     };
   }
@@ -435,6 +442,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const ferryRanges = []; // coord index ranges covered by ferry legs
   const segs = [];        // per-edge attrs for the tap-to-inspect route readout
   const edgeIds = [];
+  const nodeIds = edges.length ? [edges[0][1]] : [s.node];
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
@@ -496,13 +504,14 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
         - (forward ? eDes[ei] : eAsc[ei])) / Math.max(1, eLen[ei])) / 10,
       lenM: Math.round(eLen[ei]) });
     const toNode = forward ? eB[ei] : eA[ei];
+    nodeIds.push(toNode);
     profile.push([distM, nodeEle[toNode]]);
   }
   const ferrySegs = ferryRanges.map(([a, b]) => coords.slice(a, b + 1));
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
     desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
-    levelM, edgeIds, segs,
+    levelM, edgeIds, nodeIds, segs,
     profile, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
 }
@@ -510,12 +519,12 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
 // Route through an ordered list of points (A -> B -> C ...): one A* per leg,
 // results merged into a single continuous route.
 function route(points, rules, mode, prefDesig, prefResidential, snaps,
-  diversityEdges = null, diversityFactor = 1) {
+  diversityEdges = null, diversityFactor = 1, searchRules = rules) {
   const t0 = Date.now();
   const legs = [];
   for (let i = 0; i + 1 < points.length; i++) {
     const leg = routeLeg(points[i], points[i + 1], rules, mode, prefDesig, prefResidential,
-      snaps?.[i], snaps?.[i + 1], diversityEdges, diversityFactor);
+      snaps?.[i], snaps?.[i + 1], diversityEdges, diversityFactor, searchRules);
     if (!leg.ok) {
       if (leg.code === 'point-too-far') {
         leg.farPoints = leg.farPoints.map((p) => ({
@@ -541,7 +550,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
     desigM: l.desigM, facilityM: l.facilityM, mtbM: l.mtbM || 0, residentialM: l.residentialM,
     freewayM: l.freewayM, limitedAccessM: l.limitedAccessM, hazardM: l.hazardM || 0,
   }));
-  const edgeIds = [];
+  const edgeIds = [], nodeIds = [];
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
@@ -562,6 +571,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
     residentialM += leg.residentialM; freewayM += leg.freewayM;
     limitedAccessM += leg.limitedAccessM; facilityM += leg.facilityM; mtbM += leg.mtbM || 0;
     hazardM += leg.hazardM || 0; edgeIds.push(...leg.edgeIds);
+    for (let j = nodeIds.length ? 1 : 0; j < leg.nodeIds.length; j++) nodeIds.push(leg.nodeIds[j]);
     for (let level = 1; level <= 4; level++) levelM[level] += leg.levelM[level];
   }
   // Downsample the profile to <= 240 points for the sparkline.
@@ -576,11 +586,129 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
     desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
-    levelM, edgeIds, segs,
+    levelM, edgeIds, nodeIds, segs,
     legs: legSummaries,
     profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
     ms: Date.now() - t0,
   };
+}
+
+// Slice an already-routed edge path without rerunning A*. This is used to
+// preserve structural connectors (especially ferries) while independently
+// exploring the land sections on either side.
+function routeFragment(source, startEdge, endEdge, rules) {
+  if (endEdge <= startEdge) return null;
+  const sourceSegs = source.segs.slice(startEdge, endEdge);
+  const sourceEdgeIds = source.edgeIds.slice(startEdge, endEdge);
+  const nodeIds = source.nodeIds.slice(startEdge, endEdge + 1);
+  const coordStart = sourceSegs[0].c0;
+  const coordEnd = sourceSegs[sourceSegs.length - 1].c1;
+  const coords = source.coords.slice(coordStart, coordEnd + 1);
+  const segs = sourceSegs.map((seg, index) => ({
+    ...seg,
+    c0: seg.c0 - coordStart,
+    c1: seg.c1 - coordStart,
+    hazC0: seg.hazC0 == null ? null : seg.hazC0 - coordStart,
+    hazC1: seg.hazC1 == null ? null : seg.hazC1 - coordStart,
+    level: edgeLevel(sourceEdgeIds[index], rules),
+  }));
+  const ferryRanges = [];
+  const profile = [[0, nodeEle[nodeIds[0]]]];
+  const levelM = [0, 0, 0, 0, 0];
+  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
+  let hazardM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0;
+  for (let index = 0; index < sourceEdgeIds.length; index++) {
+    const ei = sourceEdgeIds[index], fromNode = nodeIds[index];
+    const forward = eA[ei] === fromNode;
+    const seg = segs[index];
+    distM += eLen[ei];
+    timeS += edgeTimeS(ei, forward);
+    if (eFlags[ei] & 32) {
+      if (nodeHasLand[fromNode]) timeS += activeWeights.ferryWaitMin * 60;
+      ferryM += eLen[ei];
+      const last = ferryRanges[ferryRanges.length - 1];
+      if (last && last[1] === seg.c0) last[1] = seg.c1;
+      else ferryRanges.push([seg.c0, seg.c1]);
+    }
+    ascentM += forward ? eAsc[ei] : eDes[ei];
+    descentM += forward ? eDes[ei] : eAsc[ei];
+    if (eFlags[ei] & 64) desigM += eLen[ei];
+    if (eFacility[ei] >= 2) facilityM += eLen[ei];
+    if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
+    if (!(eFlags[ei] & (8 | 32 | 4 | 128)) && isResidential(ei)) residentialM += eLen[ei];
+    if (eFlags[ei] & 4) freewayM += eLen[ei];
+    else if (eFlags[ei] & 128) limitedAccessM += eLen[ei];
+    const level = edgeLevel(ei, rules);
+    levelM[level] += eLen[ei];
+    if (level === 4) failM += eLen[ei];
+    hazardM += Number(seg.hazardLenM) || 0;
+    profile.push([distM, nodeEle[nodeIds[index + 1]]]);
+  }
+  return {
+    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM,
+    ferrySegs: ferryRanges.map(([a, b]) => coords.slice(a, b + 1)),
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
+    levelM, edgeIds: sourceEdgeIds, nodeIds, segs, profile,
+    snapStartM: 0, snapEndM: 0, ms: 0,
+  };
+}
+
+function routeSummary(routeResult) {
+  return {
+    distM: routeResult.distM, timeS: routeResult.timeS, failM: routeResult.failM,
+    desigM: routeResult.desigM, facilityM: routeResult.facilityM,
+    mtbM: routeResult.mtbM || 0, residentialM: routeResult.residentialM,
+    freewayM: routeResult.freewayM, limitedAccessM: routeResult.limitedAccessM,
+    hazardM: routeResult.hazardM || 0,
+  };
+}
+
+// Merge path fragments into one user-facing leg. Unlike route(), these
+// boundaries are automatic discovery anchors, not user-supplied waypoints.
+function mergeRouteParts(parts, snapStartM, snapEndM) {
+  const started = Date.now();
+  const coords = [], segs = [], ferrySegs = [], profile = [];
+  const edgeIds = [], nodeIds = [];
+  const levelM = [0, 0, 0, 0, 0];
+  let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
+  let hazardM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0;
+  for (const part of parts) {
+    const cOff = coords.length ? coords.length - 1 : 0;
+    for (let j = coords.length ? 1 : 0; j < part.coords.length; j++) coords.push(part.coords[j]);
+    for (const seg of part.segs) segs.push({
+      ...seg, c0: seg.c0 + cOff, c1: seg.c1 + cOff,
+      hazC0: seg.hazC0 == null ? null : seg.hazC0 + cOff,
+      hazC1: seg.hazC1 == null ? null : seg.hazC1 + cOff,
+    });
+    ferrySegs.push(...part.ferrySegs);
+    for (let j = profile.length ? 1 : 0; j < part.profile.length; j++) {
+      profile.push([part.profile[j][0] + distM, part.profile[j][1]]);
+    }
+    distM += part.distM; timeS += part.timeS; ascentM += part.ascentM; descentM += part.descentM;
+    failM += part.failM; ferryM += part.ferryM; desigM += part.desigM;
+    residentialM += part.residentialM; freewayM += part.freewayM;
+    limitedAccessM += part.limitedAccessM; facilityM += part.facilityM; mtbM += part.mtbM || 0;
+    hazardM += part.hazardM || 0; edgeIds.push(...part.edgeIds);
+    for (let j = nodeIds.length ? 1 : 0; j < part.nodeIds.length; j++) nodeIds.push(part.nodeIds[j]);
+    for (let level = 1; level <= 4; level++) levelM[level] += part.levelM[level];
+  }
+  let prof = profile;
+  if (prof.length > 240) {
+    const stepN = prof.length / 240, downsampled = [];
+    for (let i = 0; i < prof.length; i += stepN) downsampled.push(prof[Math.floor(i)]);
+    downsampled.push(prof[prof.length - 1]);
+    prof = downsampled;
+  }
+  const merged = {
+    ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
+    levelM, edgeIds, nodeIds, segs, profile: prof, snapStartM, snapEndM,
+    ms: Date.now() - started,
+  };
+  merged.legs = [routeSummary(merged)];
+  return merged;
 }
 
 /* ------------------------------------------ diverse route choices */
@@ -681,7 +809,11 @@ function outcomeDistance(meters) {
 
 function outcomeSnapshot(route) {
   const ridingM = Math.max(1, route.distM - route.ferryM);
-  const passPct = Math.round(100 * ((route.levelM?.[1] || 0) + (route.levelM?.[2] || 0)) / ridingM);
+  // Ferries are level 2 for routing purposes, but percentages describe only
+  // the riding distance. Remove them before calculating the tooltip summary.
+  const passingRideM = Math.max(0,
+    (route.levelM?.[1] || 0) + (route.levelM?.[2] || 0) - route.ferryM);
+  const passPct = Math.round(100 * Math.min(ridingM, passingRideM) / ridingM);
   const cautionPct = Math.round(100 * (route.levelM?.[3] || 0) / ridingM);
   const bikeNetworkM = (route.segs || []).reduce((sum, seg) => {
     const flags = seg.flags || 0;
@@ -728,7 +860,7 @@ function presentAsLetters(routes, recommended) {
 }
 
 function publicCandidate(candidate) {
-  const { edgeIds, _profile, _outcome, ...routeResult } = candidate;
+  const { edgeIds, nodeIds, _profile, _outcome, ...routeResult } = candidate;
   return {
     ...routeResult,
     optimization: {
@@ -739,9 +871,186 @@ function publicCandidate(candidate) {
       prefDesignated: _profile.prefDesig,
       prefResidential: _profile.prefResidential,
       alternativeCorridor: !!_profile.alternativeCorridor,
+      discoveryMaxSpeed: _profile.discoveryMaxSpeed || null,
+      fullyMatchingRules: !!_profile.fullyMatchingRules,
+      fullyMatchingProbe: !!_profile.fullyMatchingProbe,
       recommended: !!_outcome?.recommended,
     },
   };
+}
+
+function conservativeDiscoveryRules(rules) {
+  const current = Number(rules.freeMaxSpeed) || 35;
+  const discoveryMax = Math.max(15, Math.min(30, current - 5));
+  return discoveryMax < current ? { ...rules, freeMaxSpeed: discoveryMax } : null;
+}
+
+// Add a small, bounded set of stricter searches to the candidate pool. These
+// searches only discover geometry; route reconstruction, safety metrics, and
+// map colors continue to use the rider's actual rules.
+function addDiscoveryCandidates(raw, points, rules, forceDesig, forceResidential, snaps) {
+  const searchRules = conservativeDiscoveryRules(rules);
+  if (!searchRules) return null;
+  // Ferry routes are refined section-by-section below. Repeating the same
+  // conservative lens across the entire itinerary is slower and recreates the
+  // all-or-nothing behavior this portfolio is meant to avoid.
+  if (raw.some((candidate) => candidate.ferryM > 0)) return searchRules;
+  const discoveryMaxSpeed = searchRules.freeMaxSpeed;
+  const directProfile = {
+    id: 'discover-quick', label: 'Low-speed discovery', mode: 'direct',
+    prefDesig: forceDesig, prefResidential: forceResidential, order: 0.48,
+    discoveryMaxSpeed,
+  };
+  const direct = route(points, rules, directProfile.mode, directProfile.prefDesig,
+    directProfile.prefResidential, snaps, null, 1, searchRules);
+  if (!direct.ok) return searchRules;
+  direct._profile = directProfile;
+  direct.aggression = routeAggression(direct);
+  raw.push(direct);
+
+  const lowProfile = {
+    id: 'discover-gentle', label: 'Low-speed discovery', mode: 'low',
+    prefDesig: true, prefResidential: true, order: 2.28, discoveryMaxSpeed,
+  };
+  const low = route(points, rules, lowProfile.mode, lowProfile.prefDesig,
+    lowProfile.prefResidential, snaps, null, 1, searchRules);
+  // A discovery lens should uncover a plausible corridor, not reserve a slot
+  // for a statewide loop merely because it eliminates a short failure.
+  if (low.ok && low.timeS <= direct.timeS * 2.2 + 600) {
+    low._profile = lowProfile;
+    low.aggression = routeAggression(low);
+    raw.push(low);
+  }
+
+  const alternativeProfile = {
+    id: 'discover-alternative', label: 'Adaptive low-speed corridor',
+    mode: 'balanced', prefDesig: true, prefResidential: true, order: 1.48,
+    alternativeCorridor: true, discoveryMaxSpeed,
+  };
+  const alternative = route(points, rules, alternativeProfile.mode,
+    alternativeProfile.prefDesig, alternativeProfile.prefResidential, snaps,
+    new Set(direct.edgeIds), activeWeights.diversityBalanced, searchRules);
+  if (alternative.ok) {
+    alternative._profile = alternativeProfile;
+    alternative.aggression = routeAggression(alternative);
+    raw.push(alternative);
+  }
+  return searchRules;
+}
+
+// A normal weighted search may accept a tiny failing segment even when a
+// practical all-matching path exists. Preserve one such option in the
+// portfolio. If no ordinary profile found it, run one bounded direct search
+// with failing edges unavailable; reporting and map colors still use the
+// rider's unchanged rules.
+function ensureFullyMatchingCandidate(raw, points, rules, snaps) {
+  let matching = raw.filter((candidate) => candidate.failM <= 0.5)
+    .reduce((best, candidate) => !best || candidate.timeS < best.timeS ? candidate : best, null);
+  if (matching) {
+    matching._profile = { ...matching._profile, fullyMatchingRules: true };
+    return matching;
+  }
+  if (rules.requireSafe) return null;
+
+  const strictRules = { ...rules, requireSafe: true };
+  const profile = {
+    id: 'fully-matching', label: 'Fully matching safety rules', mode: 'direct',
+    prefDesig: true, prefResidential: true, order: 2.42,
+    fullyMatchingRules: true, fullyMatchingProbe: true,
+  };
+  const result = route(points, strictRules, profile.mode, profile.prefDesig,
+    profile.prefResidential, snaps);
+  if (!result.ok || result.failM > 0.5) return null;
+  result._profile = profile;
+  result.aggression = routeAggression(result);
+  raw.push(result);
+  return result;
+}
+
+function ferryEdgeGroups(routeResult) {
+  const groups = [];
+  for (let index = 0; index < routeResult.edgeIds.length; index++) {
+    if (!(eFlags[routeResult.edgeIds[index]] & 32)) continue;
+    const last = groups[groups.length - 1];
+    if (last && last.end === index) last.end = index + 1;
+    else groups.push({ start: index, end: index + 1 });
+  }
+  return groups;
+}
+
+function ferrySignature(routeResult) {
+  return ferryEdgeGroups(routeResult).map(({ start, end }) =>
+    routeResult.edgeIds.slice(start, end).join(',')).join('|');
+}
+
+// Refine the safest ferry itinerary one land section at a time. A replacement
+// is local: using a conservative lens before one ferry never forces that same
+// lens onto an island or peninsula after the ferry. Terminals come from ferry
+// edges in the graph; no places or coordinates are special-cased.
+function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, searchRules) {
+  if (!searchRules) return;
+  const itinerarySeeds = new Map();
+  for (const candidate of raw) {
+    if (candidate._profile.discoveryMaxSpeed) continue;
+    const signature = ferrySignature(candidate);
+    if (!signature) continue;
+    const current = itinerarySeeds.get(signature);
+    if (!current || compareSafety(candidate, current) < 0) itinerarySeeds.set(signature, candidate);
+  }
+  if (!itinerarySeeds.size) return;
+  const seed = [...itinerarySeeds.values()].reduce((best, candidate) =>
+    compareSafety(candidate, best) < 0 ? candidate : best);
+  const ferryGroups = ferryEdgeGroups(seed);
+  const landRanges = [];
+  const ferryParts = [];
+  let cursor = 0;
+  for (const group of ferryGroups) {
+    landRanges.push({ start: cursor, end: group.start });
+    ferryParts.push(routeFragment(seed, group.start, group.end, rules));
+    cursor = group.end;
+  }
+  landRanges.push({ start: cursor, end: seed.edgeIds.length });
+  const originalLandParts = landRanges.map(({ start, end }) => routeFragment(seed, start, end, rules));
+  const substantialLandSections = originalLandParts.filter((part) => part && part.distM >= 1000).length;
+  if (substantialLandSections < 2) return;
+
+  for (let landIndex = 0; landIndex < landRanges.length; landIndex++) {
+    const range = landRanges[landIndex], original = originalLandParts[landIndex];
+    if (!original || original.distM < 1000) continue;
+    const startNode = seed.nodeIds[range.start], endNode = seed.nodeIds[range.end];
+    const startPoint = [nodeLon[startNode], nodeLat[startNode]];
+    const endPoint = [nodeLon[endNode], nodeLat[endNode]];
+    const startSnap = { node: startNode, distM: 0 }, endSnap = { node: endNode, distM: 0 };
+    const direct = routeLeg(startPoint, endPoint, rules, 'direct', forceDesig, forceResidential,
+      startSnap, endSnap, null, 1, searchRules);
+    if (!direct.ok) continue;
+    const alternative = routeLeg(startPoint, endPoint, rules, 'balanced', true, true,
+      startSnap, endSnap, new Set(direct.edgeIds), activeWeights.diversityBalanced, searchRules);
+    if (!alternative.ok || !meaningfullyDifferent(alternative, original)) continue;
+    const quickest = Math.min(original.timeS, direct.timeS);
+    if (alternative.timeS > quickest * 1.85 + 300
+        && alternative.failM + 80 >= Math.min(original.failM, direct.failM)) continue;
+    const friendlyGain = (alternative.facilityM + alternative.desigM + alternative.residentialM)
+      - (original.facilityM + original.desigM + original.residentialM);
+    if (alternative.failM > original.failM + 80
+        && friendlyGain < Math.max(1600, alternative.distM * 0.08)) continue;
+
+    const parts = [];
+    for (let index = 0; index < landRanges.length; index++) {
+      const landPart = index === landIndex ? alternative : originalLandParts[index];
+      if (landPart) parts.push(landPart);
+      if (index < ferryParts.length && ferryParts[index]) parts.push(ferryParts[index]);
+    }
+    const hybrid = mergeRouteParts(parts, seed.snapStartM, seed.snapEndM);
+    hybrid._profile = {
+      id: 'adaptive-corridor',
+      label: 'Adaptive corridor', mode: 'balanced', prefDesig: true, prefResidential: true,
+      order: seed._profile.order + 0.08 + landIndex * 0.01,
+      alternativeCorridor: true, discoveryMaxSpeed: searchRules.freeMaxSpeed,
+    };
+    hybrid.aggression = routeAggression(hybrid);
+    raw.push(hybrid);
+  }
 }
 
 function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false) {
@@ -802,8 +1111,16 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     }
   }
 
+  const discoveryRules = addDiscoveryCandidates(raw, points, rules,
+    forceDesig, forceResidential, snaps);
+  if (points.length === 2) {
+    addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, discoveryRules);
+  }
+  ensureFullyMatchingCandidate(raw, points, rules, snaps);
+
   const fastest = raw.reduce((best, r) => r.timeS < best.timeS ? r : best, raw[0]);
-  const reasonable = raw.filter((r) => r.timeS <= fastest.timeS * 2.2 + 600
+  const reasonable = raw.filter((r) => r._profile.fullyMatchingRules
+    || r.timeS <= fastest.timeS * 2.2 + 600
     || r.failM + 80 < fastest.failM || r.freewayM + 80 < fastest.freewayM);
 
   // Collapse paths that are not meaningfully different. If one of the equivalent
@@ -815,6 +1132,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (!same) {
       unique.push(candidate);
     } else if (candidate._profile.id === preferredProfileId) {
+      unique[unique.indexOf(same)] = candidate;
+    } else if (candidate._profile.fullyMatchingRules && !same._profile.fullyMatchingRules) {
       unique[unique.indexOf(same)] = candidate;
     } else if (same._profile.id !== preferredProfileId
         && candidate._profile.prefDesig && candidate._profile.prefResidential
@@ -828,7 +1147,11 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
 
   const preferred = unique.find((r) => r._profile.id === preferredProfileId);
   const bothPreferences = unique.find((r) => r._profile.prefDesig && r._profile.prefResidential);
-  const protectedCandidates = new Set([preferred, bothPreferences].filter(Boolean));
+  const fullyMatching = unique.find((r) => r._profile.fullyMatchingRules);
+  const adaptiveCorridor = unique.find((r) => r._profile.id === 'adaptive-corridor');
+  const protectedCandidates = new Set([
+    preferred, bothPreferences, fullyMatching, adaptiveCorridor,
+  ].filter(Boolean));
   const useful = unique.filter((candidate) => protectedCandidates.has(candidate)
     || !unique.some((other) => {
       if (other === candidate) return false;
@@ -866,7 +1189,12 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       return leg.distM <= quickestLeg.distM * 1.35 + 800
         && leg.timeS <= quickestLeg.timeS * 1.4 + 300;
     }));
-  const recommended = practicalChoices.reduce((best, route) =>
+  // The extra strict probe is an availability guarantee, not an instruction
+  // to replace the normal recommendation. An all-matching route found by the
+  // ordinary profiles remains eligible to be recommended as before.
+  const ordinaryPractical = practicalChoices.filter((route) => !route._profile.fullyMatchingProbe);
+  const recommendationPool = ordinaryPractical.length ? ordinaryPractical : practicalChoices;
+  const recommended = recommendationPool.reduce((best, route) =>
     !best || compareSafety(route, best) < 0 ? route : best, null);
   const boundedPreferred = (!hasStops || !preferred || boundedChoices.includes(preferred)
     || preferred === safestOverall) ? preferred : null;
@@ -902,7 +1230,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (selected.every((other) => meaningfullyDifferent(last, other))) selected.push(last);
   }
   const required = [...new Set([recommended, fastestOverall, safestOverall, boundedSafer,
-    boundedBothPreferences, boundedPreferred].filter(Boolean))];
+    boundedBothPreferences, boundedPreferred, fullyMatching, adaptiveCorridor].filter(Boolean))];
   for (const candidate of required) {
     if (selected.includes(candidate)) continue;
     if (selected.length < 5) {
@@ -921,6 +1249,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       unique: unique.map((r) => r._profile.id), useful: useful.map((r) => r._profile.id),
       choices: choices.map((r) => r._profile.id), selected: selected.map((r) => r._profile.id),
       safest: safestOverall._profile.id, boundedSafer: boundedSafer?._profile.id,
+      fullyMatching: fullyMatching?._profile.id, adaptiveCorridor: adaptiveCorridor?._profile.id,
       recommended: recommended?._profile.id,
     } : undefined,
   };

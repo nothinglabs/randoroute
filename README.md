@@ -258,7 +258,11 @@ speed — official WSDOT legal speed, OSM-posted, or class-estimated — typed
 bicycle facility, authoritative-source bits, freeway/limited-access/
 infrastructure flags, shoulder from WSDOT conflation or OSM, and directional
 curve-warning severity/range). Pedestrian-only and `bicycle=dismount` ways are
-not included in the riding graph. A directional
+not included in the riding graph. Short `highway=service` links are treated as
+bike infrastructure only when they are explicitly `bicycle=designated` and
+closed to public motor traffic; this preserves mapped trail links through
+transit centers and maintenance plazas without admitting ordinary driveways.
+A directional
 possible limited-visibility uphill-curve warning is inferred from overlapping
 curve geometry and uphill grade, then adjusted for speed, shoulder, and
 facility; it is explicitly a proxy rather than measured sight distance.

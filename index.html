@@ -69,13 +69,18 @@
     <section class="tab" id="tab-settings">
       <div id="settingsTabs" class="settings-tabs">
         <div class="settings-tab-pair" role="tablist" aria-label="Routing settings">
-          <button id="settings-tab-limits" type="button" role="tab" aria-selected="true" aria-controls="settings-limits" data-settings-pane="limits" class="active">Limits</button>
+          <button id="settings-tab-presets" type="button" role="tab" aria-selected="true" aria-controls="settings-presets" data-settings-pane="presets" class="active">Presets</button>
+          <button id="settings-tab-limits" type="button" role="tab" aria-selected="false" aria-controls="settings-limits" data-settings-pane="limits">Limits</button>
           <button id="settings-tab-options" type="button" role="tab" aria-selected="false" aria-controls="settings-options" data-settings-pane="options">Options</button>
-          <button id="settings-tab-weights" type="button" role="tab" aria-selected="false" aria-controls="weightsDialog">Weights <span>(adv.)</span></button>
         </div>
         <button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button>
       </div>
-      <div id="settings-limits" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-limits">
+      <div id="settings-presets" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-presets">
+        <p class="settings-summary">Apply a complete routing baseline. Advanced weights stay unchanged.</p>
+        <div id="settingsPresets"></div>
+        <p id="settingsPresetStatus" class="preset-status" aria-live="polite"></p>
+      </div>
+      <div id="settings-limits" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-limits" hidden>
         <p class="settings-summary">Rules update map colors and your route in real time.</p>
         <div id="settingsSliders"></div>
       </div>
@@ -132,7 +137,7 @@
   <dialog id="weightsDialog" class="full-help-dialog weights-dialog" aria-label="Advanced routing weights">
     <div class="full-help-head"><div><span>Advanced tool</span><h2>Routing weights</h2></div><div class="weights-head-actions"><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button><button class="dialog-close" data-close="weightsDialog" aria-label="Close routing weights">✕</button></div></div>
     <div class="weights-body">
-      <p class="help-lead">These are soft route-choice costs, not safety rules. Changes recalculate the current route and affect every generated option. Lower than 1 favors a feature; higher than 1 avoids it.</p>
+      <p class="help-lead"><b>Most riders should leave these at their defaults.</b> These are internal soft route-choice costs, not safety rules. Changes recalculate the current route and affect every generated option. Lower than 1 favors a feature; higher than 1 avoids it.</p>
       <div id="routingWeightsEditor" class="weights-groups"></div>
     </div>
   </dialog>
@@ -152,8 +157,9 @@
   <dialog id="settingsHelpDialog" class="map-dialog settings-help-dialog" aria-label="Routing settings help">
     <div class="dialog-head"><h2>Routing settings</h2><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div>
     <section><h3>Limits</h3><p><b>Minimum shoulder</b> is the width required on faster roads. <b>Max acceptable speed without shoulder</b> lets slower roads pass even where shoulder data is missing. <b>Never allow roads faster than</b> makes roads above the selected speed fail; “no cutoff” leaves the shoulder rule in charge.</p></section>
-    <section><h3>Options</h3><p><b>Strongly prefer bike routes for all route options</b> forces every choice to favor bike facilities and designated corridors; physical infrastructure receives the stronger routing benefit. <b>Strongly prefer residential streets for all route options</b> forces every choice to favor streets mapped as residential or living streets. <b>Treat designated bike routes as vetted</b> lets a USBR or regional designation satisfy the shoulder rule; turn it off to evaluate those roads by the same speed and shoulder limits as every other road. <b>Allow mountain bike trails</b> makes OSM paths explicitly tagged for mountain biking available, but still strongly avoided; it is off by default and any use is called out in Route Details. <b>Allow freeway as last resort</b> permits a freeway only as a heavily penalized fallback; it still fails the rules. <b>Only show fully safe routes</b> returns no route instead of showing an unavoidable failing road. <b>Auto-reroute</b> waits for moving time while you remain off route, then announces and updates the route. <b>Unknown shoulder treated as 0 ft</b> requires faster roads to prove an adequate shoulder.</p></section>
-    <section><h3>Weights (advanced)</h3><p>Opens a full-screen tuning tool for soft route-choice costs: route safety, bike facilities, major-road classes, curves, hills, ferries, and alternative-corridor searches. <b>Each mph below comfort without shoulder</b> gives a progressively stronger preference to slower roads only where the shoulder is missing or zero; it never changes a road’s safety verdict or penalizes an otherwise acceptable road for lacking shoulder data. These controls do not override bicycle prohibitions or your hard Limits. Use <b>Reset all defaults</b> to return to the tested setup.</p></section>
+    <section><h3>Presets</h3><p>Each preset applies a complete baseline for riding rules and route preferences. <b>Randonneur</b> has no speed limit with an adequate shoulder and allows 35 mph without one. <b>Weekend Wanderer</b> allows 45 mph with an adequate shoulder and 25 mph without one. <b>Casual Cruiser</b> allows 35 mph with an adequate shoulder and 25 mph without one. Presets also set designated-route, freeway, and fully-matching-route behavior while leaving advanced weights and navigation settings unchanged.</p></section>
+    <section><h3>Options</h3><p><b>Strongly prefer bike routes for all route options</b> forces every choice to favor bike facilities and designated corridors; physical infrastructure receives the stronger routing benefit. <b>Strongly prefer residential streets for all route options</b> forces every choice to favor streets mapped as residential or living streets. <b>Treat designated bike routes as vetted</b> lets a USBR or regional designation satisfy the shoulder rule; turn it off to evaluate those roads by the same speed and shoulder limits as every other road. <b>Allow mountain bike trails</b> makes OSM paths explicitly tagged for mountain biking available, but still strongly avoided; it is off by default and any use is called out in Route Details. <b>Allow freeway as last resort</b> permits a freeway only as a heavily penalized fallback; it still fails the rules. <b>Only show routes fully matching safety rules</b> limits every option to routes whose segments all match your active safety rules, and reports when none exists. <b>Auto-reroute</b> waits for moving time while you remain off route, then announces and updates the route. <b>Unknown shoulder treated as 0 ft</b> requires faster roads to prove an adequate shoulder.</p></section>
+    <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Most riders should not change these.</b> Presets and Limits are the intended controls. Weights expose internal soft costs for testing and fine-tuning; poor combinations can produce long or unintuitive routes. They never override bicycle prohibitions or your hard Limits, and can be restored with <b>Reset all defaults</b>.</p><button id="settingsAdvancedWeightsBtn" type="button">Open advanced weights</button></section>
   </dialog>
 
   <dialog id="appHelpDialog" class="map-dialog app-help-dialog" aria-label="How to use the app">

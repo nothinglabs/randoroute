@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-16.105';
+const APP_VERSION = '2026-07-16.118';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -34,7 +34,7 @@ const COLORS = {
 };
 
 /* ------------------------------------------------- riding-rules state */
-const rules = {
+const DEFAULT_RULES = Object.freeze({
   allowFreeways: true,  // only permit heavily penalized freeway fallback?
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
   vettedBikeRoutes: true, // let designated corridors pass despite missing/narrow shoulder data?
@@ -43,8 +43,9 @@ const rules = {
   freeMaxSpeed: 35,     // mph; at/below this a road passes even without a shoulder
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
-  requireSafe: false,   // error out instead of returning a route with failing roads
-};
+  requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
+});
+const rules = { ...DEFAULT_RULES };
 const RULE_NUMBER_LIMITS = {
   minShoulder: [0, 10],
   freeMaxSpeed: [15, 45],
@@ -167,7 +168,8 @@ function scoreOSM(p) {
   const bike = p.bicycle;
   const hw = p.highway;
   const cw = osmCycleway(p);
-  const bikeish = hw === 'cycleway' || hw === 'path' || hw === 'bridleway' || hw === 'track' || cw != null;
+  const bikeish = hw === 'cycleway' || hw === 'path' || hw === 'bridleway'
+    || hw === 'track' || hw === 'service' || cw != null;
   let base = null;
   let prohibited = false;
   if (hw === 'cycleway' && bike !== 'no' && bike !== 'dismount') base = 1;
@@ -175,6 +177,9 @@ function scoreOSM(p) {
   else if (hw === 'footway' && bike === 'designated') base = 2;
   else if (hw === 'bridleway' && (bike === 'designated' || bike === 'yes')) base = 2;
   else if (hw === 'track' && (bike === 'designated' || bike === 'yes')) base = 2;
+  else if (hw === 'service' && bike === 'designated'
+      && (p.motor_vehicle === 'no' || p.motor_vehicle === 'private'
+        || p.access === 'no' || p.access === 'private')) base = 1;
   else if (OSM_PROTECTED.has(cw)) base = 1;
   else if (OSM_LANE.has(cw)) base = 2;
   else if ((bike === 'no' || bike === 'dismount') && bikeish) { base = 4; prohibited = true; }
@@ -406,9 +411,51 @@ const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 
 // Navigation choices are local device preferences, not part of a shared route.
 // Keep automatic recovery on by default, while still letting a rider opt out.
+const DEFAULT_NAVIGATION_OPTIONS = Object.freeze({ autoReroute: true });
 const navigationOptions = {
-  autoReroute: !savedState || typeof savedState.autoReroute !== 'boolean' ? true : savedState.autoReroute,
+  autoReroute: !savedState || typeof savedState.autoReroute !== 'boolean'
+    ? DEFAULT_NAVIGATION_OPTIONS.autoReroute : savedState.autoReroute,
 };
+const DEFAULT_ROUTE_PREFERENCES = Object.freeze({ prefDesig: true, prefResidential: true });
+const ROUTING_PRESETS = Object.freeze([
+  {
+    id: 'randonneur',
+    label: 'Randonneur',
+    description: 'No speed limit with adequate shoulder, 35 mph without shoulder, designated routes assumed safe, can use freeways as last resort (where legal).',
+    rules: Object.freeze({ ...DEFAULT_RULES }),
+    preferences: DEFAULT_ROUTE_PREFERENCES,
+  },
+  {
+    id: 'weekend-wanderer',
+    label: 'Weekend Wanderer',
+    description: '45 mph with adequate shoulder, 25 mph without shoulder, designated routes must meet the normal rules, no freeways.',
+    rules: Object.freeze({
+      ...DEFAULT_RULES,
+      allowFreeways: false,
+      vettedBikeRoutes: false,
+      freeMaxSpeed: 25,
+      upperMaxSpeed: 45,
+      noUpperLimit: false,
+      requireSafe: false,
+    }),
+    preferences: DEFAULT_ROUTE_PREFERENCES,
+  },
+  {
+    id: 'casual-cruiser',
+    label: 'Casual Cruiser',
+    description: '35 mph with adequate shoulder, 25 mph without shoulder, designated routes must meet the normal rules, no freeways.',
+    rules: Object.freeze({
+      ...DEFAULT_RULES,
+      allowFreeways: false,
+      vettedBikeRoutes: false,
+      freeMaxSpeed: 25,
+      upperMaxSpeed: 35,
+      noUpperLimit: false,
+      requireSafe: true,
+    }),
+    preferences: DEFAULT_ROUTE_PREFERENCES,
+  },
+]);
 
 function validRoutePoint(point) {
   return Array.isArray(point) && point.length === 2
@@ -422,6 +469,8 @@ const ROUTE_PROFILE_IDS = new Set([
   'efficient', 'bike', 'residential', 'bike-residential',
   'gentle', 'gentle-bike', 'gentle-residential', 'friendly',
   'alt-quick', 'alt-balanced', 'alt-safer', 'alt-wide',
+  'discover-quick', 'discover-gentle', 'discover-alternative', 'adaptive-corridor',
+  'fully-matching',
 ]);
 function legacyRouteProfile(mode) {
   if (mode === 'direct') return 'quick';
@@ -678,9 +727,9 @@ const trailId = (src) => src.id + '__trail'; // lime base for off-street OSM bik
 const trailDotsId = (src) => src.id + '__trail-dots'; // fine dotted trail centerline
 const trailHitId = (src) => src.id + '__trail-hit'; // dedicated wide target for dotted trails
 const OSM_TRAIL_EXPR = ['match', ['get', 'highway'],
-  ['cycleway', 'path', 'footway', 'bridleway', 'track'], true, false];
+  ['cycleway', 'path', 'footway', 'bridleway', 'track', 'service'], true, false];
 const OSM_NOT_TRAIL_EXPR = ['match', ['get', 'highway'],
-  ['cycleway', 'path', 'footway', 'bridleway', 'track'], false, true];
+  ['cycleway', 'path', 'footway', 'bridleway', 'track', 'service'], false, true];
 const OSM_NOT_MTB_EXPR = ['!=', ['get', 'mtb'], 1];
 
 // Insert this source's layers below any already-added layers of higher-zRank
@@ -1093,9 +1142,10 @@ const routing = {
     : (ROUTE_PROFILE_IDS.has(savedState?.profileId)
       ? savedState.profileId : legacyRouteProfile(savedState?.mode)),
   prefDesig: sharedRoute?.prefDesig != null ? sharedRoute.prefDesig : savedState && typeof savedState.prefDesig === 'boolean'
-    ? savedState.prefDesig : false, // force this preference across every route option
+    ? savedState.prefDesig : DEFAULT_ROUTE_PREFERENCES.prefDesig, // force this preference across every route option
   prefResidential: sharedRoute?.prefResidential != null ? sharedRoute.prefResidential
-    : savedState && typeof savedState.prefResidential === 'boolean' ? savedState.prefResidential : false,
+    : savedState && typeof savedState.prefResidential === 'boolean'
+      ? savedState.prefResidential : DEFAULT_ROUTE_PREFERENCES.prefResidential,
   reqId: 0,
   compareStartedAt: 0,
   options: [],
@@ -1244,8 +1294,15 @@ function optimizationDescription(optimization) {
       ? `${preferences[0]}, plus ${preferences[1]}` : preferences[0]}.`;
   const alternative = optimization.alternativeCorridor
     ? ' It was also searched as a distinct alternative to another route.' : '';
-  if (optimization.reason) return `${optimization.reason} Search method: ${method}${alternative}`;
-  return `${method}${alternative}`;
+  const discovery = optimization.discoveryMaxSpeed
+    ? ` Its geometry was discovered with a ${optimization.discoveryMaxSpeed} mph no-shoulder exploration lens; safety results and map colors still use your setting.`
+    : '';
+  const matching = optimization.fullyMatchingRules
+    ? ` Every segment matches your active safety rules.${optimization.fullyMatchingProbe
+      ? ' This option was specifically searched with rule-failing segments unavailable.' : ''}`
+    : '';
+  if (optimization.reason) return `${optimization.reason} Search method: ${method}${alternative}${discovery}${matching}`;
+  return `${method}${alternative}${discovery}${matching}`;
 }
 function storeRouteDetails(m) {
   if (!m || !m.ok) return;
@@ -1874,6 +1931,33 @@ function showPointTooFarPopup(m) {
   if (!dialog.open) dialog.showModal();
 }
 
+function refreshedRouteSelection(options) {
+  if (!options.length) return null;
+  const previous = routing.last?.optimization;
+  const profileId = previous?.profileId || routing.profileId;
+  const exact = profileId
+    ? options.find((option) => option.optimization?.profileId === profileId)
+    : null;
+  if (exact || !previous) return exact || options[0];
+
+  // A settings change can legitimately remove the old profile from the
+  // portfolio. In that case, keep the closest search method and preferences
+  // instead of falling all the way back to the newly recommended Route A.
+  const mismatch = (option) => {
+    const next = option.optimization || {};
+    let score = 0;
+    if (next.mode !== previous.mode) score += 8;
+    if (!!next.prefDesignated !== !!previous.prefDesignated) score += 3;
+    if (!!next.prefResidential !== !!previous.prefResidential) score += 3;
+    if (!!next.alternativeCorridor !== !!previous.alternativeCorridor) score += 2;
+    if (!!next.fullyMatchingRules !== !!previous.fullyMatchingRules) score += 2;
+    if ((next.discoveryMaxSpeed || null) !== (previous.discoveryMaxSpeed || null)) score += 1;
+    return score;
+  };
+  return options.reduce((best, option) =>
+    mismatch(option) < mismatch(best) ? option : best, options[0]);
+}
+
 function onRouterMessage(ev) {
   const m = ev.data;
   if (m.type === 'ready') {
@@ -1907,7 +1991,7 @@ function onRouterMessage(ev) {
       return;
     }
     routing.options = m.options;
-    activateRouteOption(m.options[0]);
+    activateRouteOption(refreshedRouteSelection(m.options));
   } else if (m.type === 'route') {
     if (m.id !== routing.reqId) return; // stale reply
     setRouteOptionsLoading(false);
@@ -3762,11 +3846,94 @@ function buildRoutingWeightsEditor() {
   }
 }
 
+function activeRoutingPreset() {
+  return ROUTING_PRESETS.find((preset) =>
+    Object.entries(preset.rules).every(([key, value]) => rules[key] === value)
+    && Object.entries(preset.preferences).every(([key, value]) => routing[key] === value)
+  ) || null;
+}
+
+function syncPresetSelection() {
+  const active = activeRoutingPreset();
+  document.querySelectorAll('[data-routing-preset]').forEach((button) => {
+    const selected = button.dataset.routingPreset === active?.id;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    const badge = button.querySelector('.preset-badge');
+    if (badge) badge.hidden = !selected;
+  });
+  const status = document.getElementById('settingsPresetStatus');
+  if (status) status.textContent = active
+    ? `${active.label} is active.`
+    : 'Current settings are custom.';
+}
+
+function buildPresetPanel() {
+  const host = document.getElementById('settingsPresets');
+  if (!host) return;
+  host.replaceChildren();
+  for (const preset of ROUTING_PRESETS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'preset-card';
+    button.dataset.routingPreset = preset.id;
+    button.setAttribute('aria-pressed', 'false');
+
+    const head = document.createElement('span');
+    head.className = 'preset-card-head';
+    const title = document.createElement('span');
+    title.className = 'preset-title';
+    title.textContent = preset.label;
+    const badge = document.createElement('span');
+    badge.className = 'preset-badge';
+    badge.textContent = 'Active';
+    badge.hidden = true;
+    head.append(title, badge);
+
+    const description = document.createElement('span');
+    description.className = 'preset-description';
+    description.append(document.createTextNode(`${preset.description} `));
+    const ruleStatement = document.createElement('span');
+    const ruleWord = document.createElement('strong');
+    ruleWord.className = 'preset-rule-word';
+    ruleWord.textContent = preset.rules.requireSafe ? 'cannot' : 'can';
+    ruleStatement.append('Rules ', ruleWord, ' be broken to complete route.');
+    description.appendChild(ruleStatement);
+    button.append(head, description);
+    button.addEventListener('click', () => applyRoutingPreset(preset.id));
+    host.appendChild(button);
+  }
+  syncPresetSelection();
+}
+
+function applyRoutingPreset(presetId) {
+  const preset = ROUTING_PRESETS.find((item) => item.id === presetId);
+  if (!preset) return;
+
+  clearTimeout(_rescoreTimer);
+  clearTimeout(_ruleRouteTimer);
+  _rescoreTimer = null;
+  _ruleRouteTimer = null;
+  Object.assign(rules, preset.rules);
+  Object.assign(routing, preset.preferences);
+  clearNavigationRejoin();
+  suppressRoadInfo(900);
+  buildRulesPanel();
+  refreshNavigationUI();
+  rescoreAll(false);
+  const osm = SOURCES.find((source) => source.id === 'osm');
+  if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
+  saveStateSoon();
+  if (routing.ready && routing.start && routing.end) computeRoute();
+  showRouteActionToast(`${preset.label} applied`, { duration: 2200 });
+}
+
 function buildRulesPanel() {
   const slidersHost = document.getElementById('settingsSliders');
   const optionsHost = document.getElementById('settingsOptions');
   slidersHost.replaceChildren();
   optionsHost.replaceChildren();
+  buildPresetPanel();
 
   // Safari can emit a delayed synthetic click after a range-thumb drag. Keep
   // that gesture owned by Settings so it cannot reach the map and dismiss the
@@ -3801,6 +3968,7 @@ function buildRulesPanel() {
       // A delayed synthetic map click after a mobile range drag must never
       // open road info and dismiss the Settings panel.
       suppressRoadInfo(1800);
+      syncPresetSelection();
       scheduleRescore();
     });
   };
@@ -3817,6 +3985,7 @@ function buildRulesPanel() {
     wrap.querySelector('input').addEventListener('change', (e) => {
       state[key] = e.target.checked;
       suppressRoadInfo(900);
+      syncPresetSelection();
       onChange();
     });
   };
@@ -3838,7 +4007,7 @@ function buildRulesPanel() {
     if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
     scheduleRescore();
   });
-  check('requireSafe', 'Only show fully safe routes');
+  check('requireSafe', 'Only show routes fully matching safety rules');
   check('autoReroute', 'Auto-reroute after 15 sec off route while moving', navigationOptions, () => {
     saveStateSoon();
     refreshNavigationUI();
@@ -3876,6 +4045,7 @@ function buildRulesPanel() {
       }
       render(v);
       suppressRoadInfo(1800);
+      syncPresetSelection();
       scheduleRescore();
     });
   }
@@ -3893,6 +4063,7 @@ function buildRulesPanel() {
       document.querySelectorAll('.settings-pane').forEach((panel) => {
         panel.hidden = panel.id !== `settings-${pane}`;
       });
+      if (pane === 'presets') syncPresetSelection();
     };
     paneButtons.forEach((button) => {
       button.addEventListener('click', () => selectSettingsPane(button.dataset.settingsPane));
@@ -3908,8 +4079,9 @@ function buildRulesPanel() {
     });
     document.getElementById('settingsHelpBtn').addEventListener('click', () =>
       document.getElementById('settingsHelpDialog').showModal());
-    const weightsButton = document.getElementById('settings-tab-weights');
-    weightsButton.addEventListener('click', () => {
+    document.getElementById('settingsAdvancedWeightsBtn').addEventListener('click', () => {
+      const helpDialog = document.getElementById('settingsHelpDialog');
+      if (helpDialog.open) helpDialog.close();
       buildRoutingWeightsEditor();
       document.getElementById('weightsDialog').showModal();
     });
@@ -4030,6 +4202,7 @@ function setPanelOpen(open) {
 }
 
 function selectPanelTab(tabId) {
+  document.body.classList.toggle('settings-panel-active', tabId === 'settings');
   document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
     const active = b.dataset.tab === tabId;
     b.classList.toggle('active', active);
