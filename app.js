@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-17.127';
+const APP_VERSION = '2026-07-17.128';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -420,7 +420,7 @@ const DEFAULT_ROUTE_PREFERENCES = Object.freeze({ prefDesig: true, prefResidenti
 const ROUTING_PRESETS = Object.freeze([
   {
     id: 'randonneur',
-    label: 'The Randonnear',
+    label: 'The Randonneur',
     audience: 'For long-distance riders who want the widest practical range of route choices.',
     outcome: 'Less restrictive rules are less likely to flag routes with safety concerns.',
     rules: Object.freeze({ ...DEFAULT_RULES }),
@@ -3841,9 +3841,12 @@ function syncPresetSelection() {
     if (badge) badge.hidden = !selected;
   });
   const status = document.getElementById('settingsPresetStatus');
-  if (status) status.textContent = active
-    ? `${active.label} is active.`
-    : 'Current settings are custom.';
+  if (status) {
+    status.textContent = active
+      ? `${active.label} is active.`
+      : 'Custom rules are being used instead of a preset.';
+    status.classList.toggle('custom', !active);
+  }
 }
 
 function presetInfoRows(preset) {
@@ -4050,7 +4053,7 @@ function buildRulesPanel() {
     scheduleRescore();
   });
   check('requireSafe', 'Only show routes fully matching safety rules');
-  check('autoReroute', 'Auto-reroute after 15 sec off route while moving', navigationOptions, () => {
+  check('autoReroute', 'Auto-reroute after 60 sec off route while moving', navigationOptions, () => {
     saveStateSoon();
     refreshNavigationUI();
   });
