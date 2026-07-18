@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-17.138';
+const APP_VERSION = '2026-07-18.139';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -446,7 +446,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'casual-cruiser',
     label: 'Casual Cruiser',
     audience: 'For riders who want low-stress routes that fully honor their safety rules.',
-    blurb: "Never routes over roads that break your rules.",
+    blurb: "Breaks rules only for short blocks reaching your stops.",
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
@@ -3864,7 +3864,7 @@ function presetInfoRows(preset) {
     ['Freeways', presetRules.allowFreeways
       ? 'Bike-legal segments may be used only as a last resort.' : 'Not used.'],
     ['Rule matching', presetRules.requireSafe
-      ? 'Required; no route is shown if every segment cannot match.'
+      ? 'Required, except short access blocks (~1,000 ft) at your start, stops, and destination; no route is shown otherwise.'
       : 'Not required; a route may include rule-failing segments to complete it.'],
     ['Unknown shoulder', presetRules.unknownShoulderZero ? 'Treated as 0 ft.' : 'Left as unknown.'],
     ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],

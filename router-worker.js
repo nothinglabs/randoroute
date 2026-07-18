@@ -26,6 +26,12 @@ const _dec = new TextDecoder();
 // -128 is reserved by the migration tool for a WSDOT permanent bike
 // restriction. It is a hard graph exclusion, never a routing penalty.
 const PROHIBITED_SHOULDER = -128;
+// "Require fully-safe routes" exemption: the block or two touching a leg's
+// endpoints must stay traversable even when it fails the rules — you have to
+// reach the door somehow. Only edges near a terminus qualify, and only short
+// ones, so the exemption can never leak a failing shortcut into mid-route.
+const ACCESS_RADIUS_M = 300;   // ~1,000 ft around each leg endpoint
+const ACCESS_EDGE_MAX_M = 800; // a qualifying edge must itself be short
 // Bit 4 of the graph's metadata byte marks OSM paths explicitly identified as
 // mountain-bike infrastructure (including mtb:scale:imba). They remain in the
 // graph for the rider-controlled option, but are unavailable by default.
@@ -338,6 +344,12 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   }
 
   const goalLon = nodeLon[t.node], goalLat = nodeLat[t.node];
+  const startLon = nodeLon[s.node], startLat = nodeLat[s.node];
+  const nearTerminal = (n) =>
+    havM(nodeLon[n], nodeLat[n], startLon, startLat) <= ACCESS_RADIUS_M
+    || havM(nodeLon[n], nodeLat[n], goalLon, goalLat) <= ACCESS_RADIUS_M;
+  const terminalAccessEdge = (ei) =>
+    eLen[ei] <= ACCESS_EDGE_MAX_M && (nearTerminal(eA[ei]) || nearTerminal(eB[ei]));
   const dist = new Float64Array(N).fill(Infinity);
   const prevNode = new Int32Array(N).fill(-1);
   const prevEdge = new Int32Array(N).fill(-1);
@@ -371,8 +383,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       if (!rules.allowFreeways && (fl & 4)) continue;
       const actualLevel = edgeLevel(ei, rules);
       // "Only show routes fully matching safety rules": failing roads become
-      // impassable in EVERY mode, so profiles choose only among matching paths.
-      if (rules.requireSafe && actualLevel === 4) continue;
+      // impassable in EVERY mode, so profiles choose only among matching
+      // paths — except the short access blocks at a leg's own endpoints,
+      // which stay usable (and still report/pulse as failing).
+      if (rules.requireSafe && actualLevel === 4 && !terminalAccessEdge(ei)) continue;
+      const requiredSafeAccess = rules.requireSafe && actualLevel === 4;
       // Discovery lenses may price an otherwise-allowed edge more
       // conservatively, but they never change legality or reported safety.
       const searchLevel = edgeLevel(ei, searchRules);
@@ -382,6 +397,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       let step = edgeTimeS(ei, forward);
       if ((fl & 32) && nodeHasLand[u]) step += activeWeights.ferryWaitMin * 60; // boarding
       let cost = step * mult;
+      // An exempted terminal-access block is a last resort, never a shortcut:
+      // any reasonable fully-safe approach must still win.
+      if (requiredSafeAccess) cost *= 30;
       cost *= speedStress(mode, fl, eSpeed[ei], searchRules.freeMaxSpeed, eSh[ei]);
       cost *= hazardMult(mode, edgeHazard(ei, forward) || 0);
       cost *= majorRoadMult(ei, mode);
