@@ -9,7 +9,6 @@
 </head>
 <body>
   <main>
-    <a class="back" href="index.html">← Back to map</a>
     <header>
       <p class="eyebrow">Washington Bike Safety</p>
       <h1>Route details</h1>
@@ -17,12 +16,6 @@
       <p id="optimization" class="route-optimization" hidden></p>
       <p id="mapTapHint" class="tap-hint" hidden>Tap any road, concern, or step to show it on the map.</p>
     </header>
-
-    <nav class="detail-tabs" aria-label="Route details">
-      <button type="button" role="tab" id="tab-concerns" aria-controls="panel-concerns" aria-selected="true" data-detail-tab="concerns">Route concerns</button>
-      <button type="button" role="tab" id="tab-steps" aria-controls="panel-steps" aria-selected="false" data-detail-tab="steps">Route steps</button>
-      <button type="button" role="tab" id="tab-elevation" aria-controls="panel-elevation" aria-selected="false" data-detail-tab="elevation">Elevation</button>
-    </nav>
 
     <section id="panel-concerns" class="detail-panel" role="tabpanel" aria-labelledby="tab-concerns">
       <div id="routeAlert" class="route-alert" hidden></div>
@@ -40,6 +33,14 @@
     </section>
 
   </main>
+  <nav class="detail-bottom-nav" aria-label="Route details navigation">
+    <a class="back" href="index.html">← Back to map</a>
+    <div class="detail-tabs" role="tablist" aria-label="Route details">
+      <button type="button" role="tab" id="tab-concerns" aria-controls="panel-concerns" aria-selected="true" data-detail-tab="concerns">Route concerns</button>
+      <button type="button" role="tab" id="tab-steps" aria-controls="panel-steps" aria-selected="false" data-detail-tab="steps">Route steps</button>
+      <button type="button" role="tab" id="tab-elevation" aria-controls="panel-elevation" aria-selected="false" data-detail-tab="elevation">Elevation</button>
+    </div>
+  </nav>
   <script src="route-details.js"></script>
 </body>
 </html>

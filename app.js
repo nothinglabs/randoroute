@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-18.143';
+const APP_VERSION = '2026-07-18.144';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1860,23 +1860,30 @@ document.addEventListener('visibilitychange', () => {
 function renderRouteCard(m) {
   const card = document.getElementById('routeCard');
   const controls = document.getElementById('routeControls');
+  const details = document.getElementById('routeDetailsBtn');
   const moveControls = () => {
     const slot = card.querySelector('#routeControlsSlot');
     if (slot && controls) slot.replaceWith(controls);
+  };
+  const moveDetails = () => {
+    const slot = card.querySelector('#routeDetailsSlot');
+    if (slot && details) slot.replaceWith(details);
   };
   if (!card) return;
   if (!m) {
     card.innerHTML = `<div id="routeControlsSlot"></div><div class="rc-empty">Use <b>Start</b> on the map bar to
       search for or tap your start point. Use <b>End</b> for the destination. Routes follow your
-      riding rules, entirely on this device. When meaningful alternatives exist, they appear above.</div>`;
+      riding rules, entirely on this device. When meaningful alternatives exist, they appear above.</div><div class="rc-actions"><div id="routeDetailsSlot"></div></div>`;
     moveControls();
+    moveDetails();
     refreshNavigationUI();
     return;
   }
   if (!m.ok) {
-    card.innerHTML = '<div id="routeControlsSlot"></div><div class="rc-empty"></div>';
+    card.innerHTML = '<div id="routeControlsSlot"></div><div class="rc-empty"></div><div class="rc-actions"><div id="routeDetailsSlot"></div></div>';
     card.querySelector('.rc-empty').textContent = String(m.reason || 'No route found.');
     moveControls();
+    moveDetails();
     refreshNavigationUI();
     return;
   }
@@ -1894,8 +1901,9 @@ function renderRouteCard(m) {
     <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
     <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi ferry` : ''}</div>
     <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><span><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div>
-    ${mtbNotice}`;
+    ${mtbNotice}<div class="rc-actions"><div id="routeDetailsSlot"></div></div>`;
   moveControls();
+  moveDetails();
   refreshNavigationUI();
 }
 

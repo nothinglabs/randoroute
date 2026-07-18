@@ -126,7 +126,6 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeControls { margin-top: 6px; padding-top: 5px; border-top: 1px solid #e4e7eb; }
 #routeControls .check-rule { margin: 4px 0 0 !important; min-height: 17px; font-size: 11px; }
 #routeControls .check-rule label { font-weight: 600; }
-#routeControls .mode-row .route-details-btn { flex: 0 0 auto; height: 38px; margin: 0; }
 #routeLibraryBtn { cursor: pointer; }
 .share-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -179,6 +178,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }
 #routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
+#routeCard .rc-actions { display: flex; justify-content: flex-end; margin-top: 7px; padding-top: 6px; border-top: 1px solid #e5eaed; }
 #routeCard canvas { display: block; }
 @media (min-width: 721px) {
   #tabs { gap: 6px; padding: 7px 10px; }
@@ -196,7 +196,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   #routeOptions button { height: 38px; padding: 4px 3px; font-size: 16px; }
 }
 
-.route-details-btn { min-width: 58px; padding: 0 9px; border: 1px solid #78a9cc; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 750 11px/1 system-ui; cursor: pointer; }
+.route-details-btn { min-width: 62px; min-height: 30px; padding: 0 10px; border: 1px solid #78a9cc; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 750 11px/1 system-ui; cursor: pointer; }
 .route-details-btn:disabled { opacity: .45; cursor: default; }
 .route-tips-btn { align-self: center; flex: 0 0 30px; }
 
@@ -523,9 +523,10 @@ body.navigation-active #routeBar { display: none; }
 .map-dialog::backdrop { background: rgba(0,0,0,.25); }
 .route-details-dialog { width: min(96vw, 860px); height: min(92dvh, 860px); max-width: none; max-height: none; margin: auto; padding: 0; overflow: hidden; border: none; border-radius: 16px; background: #f4f7f9; box-shadow: 0 14px 44px rgba(0,0,0,.32); }
 .route-details-dialog::backdrop { background: rgba(18,42,60,.42); }
-.route-details-dialog-head { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 10px 0 16px; border-bottom: 1px solid #dbe4ea; background: #fff; color: #334a58; font: 750 14px system-ui; }
-.route-details-dialog-head button { min-height: 32px; padding: 0 10px; border: 1px solid #b8cbd8; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 700 12px system-ui; cursor: pointer; }
-#routeDetailsFrame { display: block; width: 100%; height: calc(100% - 48px); border: none; background: #f4f7f9; }
+.route-details-dialog-head { display: flex; align-items: center; justify-content: flex-start; height: 42px; padding: 0 16px; border-bottom: 1px solid #dbe4ea; background: #fff; color: #334a58; font: 750 14px system-ui; }
+#routeDetailsFrame { display: block; width: 100%; height: calc(100% - 94px); border: none; background: #f4f7f9; }
+.route-details-dialog-foot { display: flex; align-items: center; justify-content: flex-end; height: 52px; padding: 0 10px; border-top: 1px solid #dbe4ea; background: #fff; }
+.route-details-dialog-foot button { min-height: 32px; padding: 0 10px; border: 1px solid #b8cbd8; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 700 12px system-ui; cursor: pointer; }
 @media (max-width: 720px) {
   .route-details-dialog { width: 100vw; height: var(--app-height, 100dvh); margin: 0; border-radius: 0; }
 }
