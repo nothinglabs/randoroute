@@ -184,7 +184,7 @@ const V_HEUR = 160.0;
 // bonus. A recorded physical bike facility always gets the stronger bonus;
 // designation is useful route context, but is not itself infrastructure.
 const DEFAULT_WEIGHTS = Object.freeze({
-  directFail: 1.3, balancedComfy: 0.92, balancedFail: 6, lowComfy: 0.9, lowFail: 30,
+  directFail: 1.5, balancedComfy: 0.92, balancedFail: 9, lowComfy: 0.9, lowFail: 30,
   designated: 0.94, strongDesignated: 0.86, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
@@ -1225,8 +1225,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       && route.legs.length === fastestOverall.legs.length
       && route.legs.every((leg, index) => {
         const quickestLeg = fastestOverall.legs[index];
-        return leg.distM <= quickestLeg.distM * 1.55 + 1200
-          && leg.timeS <= quickestLeg.timeS * 1.6 + 480;
+        return leg.distM <= quickestLeg.distM * 1.8 + 1600
+          && leg.timeS <= quickestLeg.timeS * 1.85 + 600;
       }));
     const bestMatching = matchingPractical.reduce((best, route) =>
       !best || compareSafety(route, best) < 0 ? route : best, null);
