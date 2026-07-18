@@ -124,7 +124,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 
 .mode-row { display: flex; align-items: stretch; gap: 5px; margin: 0; }
 #routeControls { margin-top: 6px; padding-top: 5px; border-top: 1px solid #e4e7eb; }
-#routeControls .route-chooser-head { display: flex; align-items: center; justify-content: space-between; min-height: 23px; margin: 0 0 4px; }
+#routeControls .route-chooser-head { display: flex; align-items: center; justify-content: space-between; min-height: 26px; margin: 0 0 4px; padding-top: 3px; }
 #routeControls .route-chooser-heading { margin: 0; padding: 0; border: none; color: #40515c; font: 780 13px/1.2 system-ui; }
 #routeControls .check-rule { margin: 4px 0 0 !important; min-height: 17px; font-size: 11px; }
 #routeControls .check-rule label { font-weight: 600; }
@@ -169,7 +169,9 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-summary-content { min-width: 0; }
 #routeCard .rc-details-wrap { display: grid; place-items: center; align-self: stretch; }
 #routeCard .rc-summary-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; }
-#routeCard .rc-main { text-align: right; }
+#routeCard .rc-main { flex: none; text-align: right; white-space: nowrap; }
+#routeCard .rc-climb-stack { display: grid; gap: 1px; color: #555; font: 600 10.5px/1.15 system-ui; text-align: right; }
+#routeCard .rc-climb-stack span { white-space: nowrap; }
 #routeCard .rc-details-hidden { display: none; }
 #routeCard .rc-sub { margin-top: 3px; font-size: 12px; color: #555; }
 #routeCard .rc-ride-mix { display: flex; flex-wrap: wrap; align-items: baseline; align-content: flex-start; justify-content: flex-end; gap: 2px 4px; min-width: 0; min-height: 26px; margin-top: 4px; color: #52616b; font: 600 10px/1.2 system-ui; }
@@ -193,6 +195,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   .tab { padding: 0 12px 10px; }
   #routeCard .rc-main { font-size: 23px; }
   #routeCard .rc-main small { font-size: 16px; }
+  #routeCard .rc-climb-stack { font-size: 12px; }
   #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
   #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }

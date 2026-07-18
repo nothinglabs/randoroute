@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-18.154';
+const APP_VERSION = '2026-07-18.155';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1951,9 +1951,11 @@ function renderRouteCard(m) {
     <div class="rc-route-summary">
       <div class="rc-details-wrap"><div id="routeDetailsSlot"></div></div>
       <div class="rc-summary-content">
-        <div class="rc-summary-row"><div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div></div>
+        <div class="rc-summary-row">
+          <div class="rc-climb-stack"><span>↗ ${fmtFt(m.ascentM)} ft climb</span><span>↘ ${fmtFt(m.descentM)} ft descent</span>${m.ferryM > 0 ? `<span>⛴ ${fmtMi(m.ferryM)} mi ferry</span>` : ''}</div>
+          <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
+        </div>
         ${mtbNotice}<div class="rc-bottom-stats">
-          <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi ferry` : ''}</div>
           <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><span><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div>
         </div>
       </div>
