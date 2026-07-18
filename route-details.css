@@ -3,10 +3,9 @@
 html, body { min-height: 100%; margin: 0; background: #f4f7f9; color: #1d2935; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 body { padding: max(20px, env(safe-area-inset-top)) 16px calc(78px + env(safe-area-inset-bottom)); }
 body.embedded { padding: 16px 16px calc(78px + env(safe-area-inset-bottom)); }
-body.embedded .back { display: none; }
 body.embedded header { margin-top: 0; }
 main { width: min(100%, 760px); margin: 0 auto; }
-.back { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-height: 36px; padding: 0 9px; border: 1px solid #b8cbd8; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 700 12px system-ui; text-decoration: none; white-space: nowrap; }
+.back { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-height: 36px; padding: 0 9px; border: 1px solid #b8cbd8; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 700 12px system-ui; text-decoration: none; white-space: nowrap; cursor: pointer; }
 .back:hover { background: #edf5fa; }
 header { margin: 0 0 14px; }
 .eyebrow { margin: 0 0 4px; color: #667784; font: 700 11px system-ui; letter-spacing: .06em; text-transform: uppercase; }
