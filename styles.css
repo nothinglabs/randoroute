@@ -233,12 +233,12 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .rule label { font-weight: 600; }
 .rule .val { color: #0a66c2; font-variant-numeric: tabular-nums; font-weight: 600; }
 .rule input[type="range"] { width: 100%; }
-.settings-tabs { display: flex; gap: 4px; margin: 6px 0; }
+.settings-tabs { display: flex; gap: 4px; margin: 4px 0; }
 .settings-tabs button { flex: 1; min-height: 30px; padding: 4px 8px; border: 1px solid #d5dfe6; border-radius: 8px; background: #f2f5f7; color: #4c5b66; font: 700 12px system-ui; cursor: pointer; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }
 .settings-tabs .settings-help-btn { flex: 0 0 30px; padding: 0; border-radius: 50%; font: 800 15px/1 system-ui; }
-.settings-pane { display: flex; flex-direction: column; height: 220px; margin-top: 2px; overflow-y: auto; }
+.settings-pane { display: flex; flex-direction: column; height: 184px; margin-top: 2px; overflow-y: auto; }
 .settings-pane[hidden] { display: none; }
 .settings-pane > .settings-summary, .settings-pane > .preset-status { flex: none; }
 #settingsPresets, #settingsSliders, #settingsOptions { flex: 1; align-content: space-between; }
@@ -261,7 +261,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .preset-status { margin: 2px 1px 5px; color: #55676f; font: 650 11px/1.3 system-ui; }
 .preset-status:empty { display: none; }
 .preset-status.custom { color: #203442; font-weight: 800; }
-#settingsSliders .rule-card, #settingsOptions .rule-card { margin: 0; padding: 7px 9px; border: 1px solid #dbe5eb; border-radius: 9px; background: #fbfcfd; }
+#settingsSliders .rule-card, #settingsOptions .rule-card { margin: 0; padding: 6px 9px; border: 1px solid #dbe5eb; border-radius: 9px; background: #fbfcfd; }
 #settingsSliders .rule-head { margin-bottom: 5px; }
 #settingsSliders .rule-card input[type="range"] { display: block; margin: 0; touch-action: pan-y; }
 #settingsOptions .check-rule.rule-card { display: block; }
