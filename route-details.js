@@ -74,21 +74,18 @@ function failReason(seg, rules) {
 
 function failedRoadDetails(seg, rules) {
   const flags = seg.flags || 0;
-  const facts = [];
-  if (seg.mph > 0) {
-    const source = seg.official & 1 ? 'WSDOT' : flags & 1 ? 'estimated' : null;
-    facts.push(`${seg.mph} mph speed limit${source ? ` (${source})` : ''}`);
-  } else {
-    facts.push('speed limit unknown');
-  }
-  facts.push(seg.sh >= 0 ? `${seg.sh} ft shoulder` : 'shoulder unknown');
-  if (FACILITY_NAME[seg.facility]) {
-    facts.push(`${FACILITY_NAME[seg.facility]}${seg.official & 2 ? ' (WSDOT)' : ''}`);
-  }
+  const failsSpeed = !rules.noUpperLimit && seg.mph > rules.upperMaxSpeed;
+  let shoulder = seg.sh;
+  if (shoulder < 0 && rules.unknownShoulderZero) shoulder = 0;
+  const failsShoulder = (seg.facility || 0) < 2 && !(flags & FLAG_DESIGNATED)
+    && shoulder >= 0 && shoulder < rules.minShoulder;
+  const facts = [failReason(seg, rules)];
+  if (seg.mph > 0 && !failsSpeed) facts.push(`${seg.mph} mph`);
+  if (seg.sh >= 0 && !failsShoulder) facts.push(`${seg.sh} ft shoulder`);
+  if (FACILITY_NAME[seg.facility]) facts.push(FACILITY_NAME[seg.facility]);
   if (flags & FLAG_FREEWAY) facts.push('freeway');
-  else if (flags & FLAG_LIMITED_ACCESS) facts.push('limited-access highway');
+  else if (flags & FLAG_LIMITED_ACCESS) facts.push('limited access');
   else if (ROAD_CLASS_NAME[seg.roadClass]) facts.push(ROAD_CLASS_NAME[seg.roadClass]);
-  facts.push(`Fails: ${failReason(seg, rules)}`);
   return facts.join(' · ');
 }
 
@@ -260,7 +257,7 @@ function buildRouteSteps(segs) {
     ...step,
     safetyLabel: safetyVerdict(step).label,
     safetyClass: safetyVerdict(step).className,
-    meta: `${stepMeta(step)} · Tap to show on map`,
+    meta: stepMeta(step),
   }));
 }
 
@@ -376,7 +373,7 @@ function restoreDetailPosition() {
   try {
     const state = JSON.parse(sessionStorage.getItem(ROUTE_DETAILS_POSITION_KEY) || 'null');
     if (!state || state.savedAt !== details.savedAt) return false;
-    if (['concerns', 'steps', 'elevation', 'tips'].includes(state.tab)) selectDetailTab(state.tab);
+    selectDetailTab(['concerns', 'steps', 'elevation'].includes(state.tab) ? state.tab : 'concerns');
     requestAnimationFrame(() => window.scrollTo(0, Math.max(0, Number(state.scrollY) || 0)));
     return true;
   } catch (e) { return false; }
@@ -389,6 +386,7 @@ const steps = document.getElementById('steps');
 const summary = document.getElementById('summary');
 const optimization = document.getElementById('optimization');
 const alert = document.getElementById('routeAlert');
+const mapTapHint = document.getElementById('mapTapHint');
 
 const detailTabs = [...document.querySelectorAll('[data-detail-tab]')];
 detailTabs.forEach((tab) => {
@@ -405,21 +403,16 @@ detailTabs.forEach((tab) => {
 });
 
 if (!hasRoute) {
-  summary.textContent = 'No current route — start with the routing tips.';
+  summary.textContent = 'No current route.';
   report.innerHTML = '<div class="no-route">Set a start and destination on the map to see freeways, highways, and any road-rule concerns here.</div>';
   steps.innerHTML = '<div class="no-route">Set a start and destination on the map to see the road-by-road route steps here.</div>';
   const elevationEmpty = document.getElementById('elevationEmpty');
   elevationEmpty.hidden = false;
   elevationEmpty.textContent = 'Set a start and destination on the map to see the elevation profile here.';
-  if (!restoreDetailPosition()) selectDetailTab('tips');
+  if (!restoreDetailPosition()) selectDetailTab('concerns');
 } else {
   const { rules = {}, summary: totals, segs } = details;
-  for (const host of [report, steps]) {
-    const hint = document.createElement('p');
-    hint.className = 'tap-hint';
-    hint.textContent = 'Tap any road below to see it highlighted on the map.';
-    host.before(hint);
-  }
+  mapTapHint.hidden = false;
   if (Array.isArray(details.profile) && details.profile.length >= 2) {
     const elevationSummary = document.getElementById('elevationSummary');
     elevationSummary.hidden = false;
@@ -449,15 +442,20 @@ if (!hasRoute) {
     meta: s.mph ? `${s.mph} mph highway` : 'Highway',
   }));
   const failing = sections(segs, (s) => s.level === 4, (s) => ({
-    name: roadName(s), meta: `${failedRoadDetails(s, rules)} · Tap to show on map`,
+    name: roadName(s), meta: failedRoadDetails(s, rules),
   }));
   const mountainBike = sections(segs, isMountainBikeTrail, (s) => ({
     name: roadName(s),
-    meta: `Mountain-bike trail · allowed by your Settings option · ${s.mtb ? 'explicit OSM MTB tag' : 'OSM MTB route membership'} · Tap to show on map`,
+    meta: `Allowed mountain-bike trail · ${s.mtb ? 'OSM MTB tag' : 'OSM MTB route'}`,
   }));
   const curveHazards = sections(segs, (s) => !!s.hazard, (s) => ({
     name: roadName(s),
-    meta: `Possible limited-visibility uphill curve · ${s.gradePct > 0 ? `${s.gradePct}% net climb · ` : ''}${s.mph ? `${s.mph} mph · ` : ''}${s.sh >= 0 ? `${s.sh} ft shoulder` : 'shoulder unknown'} · geometry/elevation estimate, not measured sight distance · Tap to show on map`,
+    meta: [
+      'Possible limited-visibility uphill curve',
+      s.gradePct > 0 ? `${s.gradePct}% climb` : null,
+      s.mph ? `${s.mph} mph` : null,
+      s.sh >= 0 ? `${s.sh} ft shoulder` : 'shoulder unknown',
+    ].filter(Boolean).join(' · '),
     coordStart: s.hazC0 ?? s.c0, coordEnd: s.hazC1 ?? s.c1,
     lenM: s.hazardLenM || s.lenM,
   }));

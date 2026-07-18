@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-18.142';
+const APP_VERSION = '2026-07-18.143';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -56,7 +56,7 @@ const RULE_NUMBER_LIMITS = {
 // rider-facing Limits remain the hard safety rules. Kept in one shared shape
 // with router-worker.js so the advanced desktop editor is reproducible.
 const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
-  directFail: 1.15, balancedComfy: 0.92, balancedFail: 3, lowComfy: 0.9, lowFail: 30,
+  directFail: 1.5, balancedComfy: 0.92, balancedFail: 9, lowComfy: 0.9, lowFail: 30,
   designated: 0.94, strongDesignated: 0.86, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
@@ -73,13 +73,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
-const ROUTING_WEIGHTS_VERSION = 5;
-const PREVIOUS_ROUTING_WEIGHT_DEFAULTS = Object.freeze({
-  designated: [0.86, 0.92], strongDesignated: [0.42, 0.76],
-  facilityShared: [0.9], facilityLane: [0.72, 0.68], facilityBuffered: [0.62, 0.58],
-  facilitySeparated: [0.5, 0.46], facilityPath: [0.42, 0.38],
-  speedBelowDirect: [0.003], speedBelowBalanced: [0.01], speedBelowLow: [0.02],
-});
+const ROUTING_WEIGHTS_VERSION = 6;
 function validRoutingWeights(source) {
   const clean = {};
   const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
@@ -400,12 +394,12 @@ if (savedState) {
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
 }
 const savedRoutingWeights = validRoutingWeights(savedState?.weights);
-// Preserve intentional advanced edits, while migrating untouched older
-// defaults to the new hierarchy: a physical facility beats designation alone.
+// Version 6 deliberately replaces every earlier advanced-weight set. The
+// defaults are part of the router's safety behavior, and must match the
+// weights sent to router-worker.js rather than leaving existing devices on
+// the obsolete 1.15× direct / 3× balanced failure penalties.
 if ((savedState?.weightsVersion || 0) < ROUTING_WEIGHTS_VERSION) {
-  for (const [key, oldDefaults] of Object.entries(PREVIOUS_ROUTING_WEIGHT_DEFAULTS)) {
-    if (oldDefaults.includes(savedRoutingWeights[key])) savedRoutingWeights[key] = DEFAULT_ROUTING_WEIGHTS[key];
-  }
+  Object.assign(savedRoutingWeights, DEFAULT_ROUTING_WEIGHTS);
 }
 const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 
@@ -1559,6 +1553,7 @@ function navigationStatusText() {
 }
 
 function openRouteDetails() {
+  if (!routing.last?.ok) return;
   const dialog = document.getElementById('routeDetailsDialog');
   const frame = document.getElementById('routeDetailsFrame');
   if (!dialog || !frame || !dialog.showModal) {
@@ -1568,6 +1563,11 @@ function openRouteDetails() {
   // Reload the embedded report so it always reflects the latest route data.
   frame.src = `route-details.html?embedded=1&t=${Date.now()}`;
   if (!dialog.open) dialog.showModal();
+}
+
+function openRouteTips() {
+  const dialog = document.getElementById('routeTipsDialog');
+  if (dialog?.showModal && !dialog.open) dialog.showModal();
 }
 
 window.addEventListener('message', (event) => {
@@ -2796,6 +2796,8 @@ function setRouteOptionsLoading(loading) {
 function renderRouteOptionControls() {
   const host = document.getElementById('routeOptions');
   if (!host) return;
+  const detailsButton = document.getElementById('routeDetailsBtn');
+  if (detailsButton) detailsButton.disabled = !routing.last?.ok;
   if (!routing.options.length) {
     host.innerHTML = '<span class="route-options-empty">Route choices</span>';
     return;
@@ -2854,16 +2856,8 @@ function buildRoutingPanel() {
   });
   renderRouteOptionControls();
 
-  // Keep Details beside the route choices without adding another row.
-  const details = document.createElement('button');
-  details.type = 'button';
-  details.id = 'routeDetailsBtn';
-  details.className = 'route-details-btn';
-  details.setAttribute('aria-label', 'Open route details and routing tips');
-  details.title = 'Route details and routing tips';
-  details.innerHTML = '<span aria-hidden="true">i</span>';
-  choices.closest('.mode-row').append(details);
-  details.addEventListener('click', openRouteDetails);
+  document.getElementById('routeDetailsBtn').addEventListener('click', openRouteDetails);
+  document.getElementById('routeTipsBtn').addEventListener('click', openRouteTips);
 
   renderRouteCard(null);
 

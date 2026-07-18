@@ -56,7 +56,11 @@
 
     <section class="tab active" id="tab-route">
       <div id="routeControls">
-        <div class="mode-row"><div id="routeOptions" role="group" aria-label="Route options"></div></div>
+        <div class="mode-row">
+          <button id="routeDetailsBtn" class="route-details-btn" type="button" disabled>Details</button>
+          <div id="routeOptions" role="group" aria-label="Route options"></div>
+          <button id="routeTipsBtn" class="tab-help-btn route-tips-btn" type="button" aria-label="Routing tips" title="Routing tips">?</button>
+        </div>
       </div>
       <div id="routeCard"></div>
     </section>
@@ -175,7 +179,7 @@
     <ol>
       <li>Set <b>Start</b> and <b>End</b> by search or by tapping the map.</li>
       <li>Compare the distinct route choices. The planned route uses the same safety colors as the map.</li>
-      <li>Use <b>Settings</b> for your riding rules, <b>Layers</b> to inspect the source data, and <b>ⓘ</b> for route details.</li>
+      <li>Use <b>Settings</b> for your riding rules, <b>Layers</b> to inspect the source data, <b>?</b> for routing tips, and <b>Details</b> for the selected route.</li>
       <li>Tap <b>Navigate</b> for foreground GPS and voice guidance.</li>
     </ol>
     <p>Map colors and routes update on this device. Always follow signs and current road conditions.</p>
@@ -205,12 +209,33 @@
     </div>
   </dialog>
 
+  <dialog id="routeTipsDialog" class="full-help-dialog" aria-labelledby="routeTipsTitle">
+    <div class="full-help-head"><div><span>Route help</span><h2 id="routeTipsTitle">Routing tips</h2></div><button class="dialog-close" data-close="routeTipsDialog" aria-label="Close routing tips">✕</button></div>
+    <div class="full-help-body">
+      <p class="help-lead">Use these tips to set up a route, compare choices, and understand the safety information shown on the map.</p>
+      <section><h3>Plan a route</h3><p>Set <b>Start</b> and <b>End</b> in the map bar, then search or tap the map for each place. After both are set, use <b>+</b> to add a stop.</p></section>
+      <section><h3>Choose a route option</h3><p>The app tests several route searches, removes near-duplicates, and shows up to five alternatives as <b>Route A–E</b>. The letters identify options, not safety grades. Route A is the recommended safety/practicality balance. Compare the ride mix and route concerns to choose the tradeoff you prefer. For routes with stops, every leg is checked for excessive detours.</p></section>
+      <section><h3>Understand the map</h3><p><b>Ride mix</b> reports the share of riding distance on a physical trail or lane, plus the shares that pass, need caution, or fail your rules. The trail/lane share overlaps the verdict shares. The swatches match the map legend, and the planned route uses the same symbols. Tap a concern or route step in Details to show it on the map.</p></section>
+      <section><h3>Read the safety labels</h3><ul>
+        <li><b>Lime — Bike network:</b> a recorded bike facility that passes your rules. Off-street paths and shared-use trails are dotted.</li>
+        <li><b>Dashed blue — Designated route:</b> a signed or mapped bicycle corridor that passes your rules. Designation is context, not a physical bike facility.</li>
+        <li><b>Blue — Passes rules:</b> another road that passes your current shoulder and speed limits.</li>
+        <li><b>Muted purple — Caution:</b> a bike-legal limited-access highway. It may pass your numeric rules but deserves extra judgment.</li>
+        <li><b>Red dashed — Fails rules / unavailable:</b> a known rule conflict, freeway, or permanent bicycle restriction. Failing planned segments pulse; permanent restrictions are never routed.</li>
+        <li><b>Gray — Insufficient data:</b> available road data cannot support a verdict under the current settings.</li>
+        <li><b>Possible limited-visibility uphill curve:</b> a separately reported geometry/elevation estimate, not measured sight distance. Tap it in Details to highlight it.</li>
+      </ul></section>
+      <section><h3>Adjust your rules</h3><p>In <b>Routing Settings</b>, set shoulder and speed requirements. The app avoids roads that fail them unless there is no reasonable alternative. Mountain-bike trails are off by default; enabling them makes explicitly MTB-tagged paths available with a strong penalty.</p></section>
+      <section><h3>Use navigation</h3><p>After making a route, tap <b>Navigate</b> and allow location access. If you leave the route, the navigation banner names the planned street to return to and offers <b>Reroute</b> back to the nearest planned point. Auto-reroute is on by default after 60 seconds of moving off route.</p></section>
+    </div>
+  </dialog>
+
   <dialog id="routeDetailsDialog" class="route-details-dialog" aria-label="Route details">
     <div class="route-details-dialog-head">
       <span>Route details</span>
       <button type="button" data-close="routeDetailsDialog">← Back to map</button>
     </div>
-    <iframe id="routeDetailsFrame" title="Route details and routing tips"></iframe>
+    <iframe id="routeDetailsFrame" title="Route details"></iframe>
   </dialog>
 
   <div class="readout" id="readout"></div>
