@@ -163,8 +163,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 }
 #routeCard > #routeControls { margin-top: 0; padding-top: 0; border-top: none; }
 #routeCard .rc-empty { color: #888; font-size: 12.5px; line-height: 1.5; }
-#routeCard .rc-main { font: 700 20px/1.15 system-ui; color: #111; }
-#routeCard .rc-main small { font: 600 15px system-ui; color: #555; }
+#routeCard .rc-main { font: 700 21px/1.15 system-ui; color: #111; }
+#routeCard .rc-main small { font: 600 15.5px system-ui; color: #555; }
 #routeCard .rc-route-summary { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 6px; }
 #routeCard .rc-summary-content { min-width: 0; }
 #routeCard .rc-details-wrap { display: grid; place-items: center; align-self: stretch; }
@@ -193,8 +193,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   #tabs { gap: 6px; padding: 5px 10px; }
   #tabs button { padding: 5px 0; border-radius: 10px; font-size: 14px; }
   .tab { padding: 0 12px 10px; }
-  #routeCard .rc-main { font-size: 23px; }
-  #routeCard .rc-main small { font-size: 16px; }
+  #routeCard .rc-main { font-size: 24px; }
+  #routeCard .rc-main small { font-size: 16.5px; }
   #routeCard .rc-climb-stack { font-size: 12px; }
   #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
