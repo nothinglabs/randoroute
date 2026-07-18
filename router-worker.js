@@ -73,12 +73,14 @@ function loadGraph(buf) {
   eName = u32(E); nameOff = u32(U + 1);
   gLon = f32(G); gLat = f32(G);
   nameBytes = u8(B);
+  postMessage({ type: 'progress', phase: 'engine', detail: 'Indexing roads, trails, ferries, and restrictions…' });
   // Terminal detection for ferry boarding: a node touching any land edge.
   // (Mid-water junctions where ferry routes cross have only ferry edges.)
   nodeHasLand = new Uint8Array(N);
   for (let i = 0; i < E; i++) {
     if (!(eFlags[i] & 32)) { nodeHasLand[eA[i]] = 1; nodeHasLand[eB[i]] = 1; }
   }
+  postMessage({ type: 'progress', phase: 'engine', detail: 'Connecting the statewide bicycle network…' });
   // The graph contains thousands of tiny disconnected fragments (private
   // loops, orphaned stubs). Snapping to one guarantees "no route", so mark
   // the giant component and snap only within it.
@@ -92,6 +94,7 @@ function loadGraph(buf) {
   for (const [k, v] of compSize) if (v > giantSize) { giantSize = v; giantRoot = k; }
   inGiant = new Uint8Array(N);
   for (let i = 0; i < N; i++) if (find(i) === giantRoot) inGiant[i] = 1;
+  postMessage({ type: 'progress', phase: 'engine', detail: 'Preparing fast start and destination matching…' });
   // Nodes touching at least one LOCAL, bicycle-legal edge (not a true freeway,
   // ferry, or permanent restriction):
   // snapping prefers these so a tap near I-5 does not board it. A bike-legal
@@ -1073,7 +1076,8 @@ function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, se
   }
 }
 
-function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false) {
+function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false,
+    progress = null) {
   const started = Date.now();
   const profiles = candidateProfiles(forceDesig, forceResidential);
   // Snapping scans the statewide node table. Do it once per route point, not
@@ -1094,6 +1098,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     raw.push(result);
   }
   if (!raw.length) return firstFailure || { ok: false, reason: 'No route options were found.' };
+  progress?.('Looking for genuinely different route corridors…');
 
   // Cost profiles can all converge on the same one or two corridors even
   // where a reasonable parallel route exists. If that happens, run a small
@@ -1136,6 +1141,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   if (points.length === 2) {
     addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, discoveryRules);
   }
+  progress?.('Checking for a practical route that fully matches your rules…');
   ensureFullyMatchingCandidate(raw, points, rules, snaps);
 
   const fastest = raw.reduce((best, r) => r.timeS < best.timeS ? r : best, raw[0]);
@@ -1185,6 +1191,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
         && (other.timeS < candidate.timeS - 5 || safety < 0);
     }));
   const choices = useful.length ? useful : unique;
+  progress?.('Comparing safety, travel time, and route variety…');
 
   const fastestOverall = choices.reduce((best, route) => route.timeS < best.timeS ? route : best, choices[0]);
   const safestOverall = choices.reduce((best, route) => compareSafety(route, best) < 0 ? route : best, choices[0]);
@@ -1333,12 +1340,15 @@ onmessage = (ev) => {
   const m = ev.data;
   try {
     if (m.type === 'graph') {
+      postMessage({ type: 'progress', phase: 'engine', detail: 'Reading the statewide routing map…' });
       loadGraph(m.buffer);
       postMessage({ type: 'ready', nodes: N, edges: E });
     } else if (m.type === 'route') {
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const mode = m.mode || 'balanced';
+      postMessage({ type: 'progress', phase: 'reroute', id: m.id,
+        detail: 'Finding a route from your current position…' });
       const r = route(pts, m.rules, mode, !!m.prefDesignated, !!m.prefResidential);
       const profile = {
         id: m.profileId || 'efficient', label: m.profileLabel || 'Selected route',
@@ -1349,8 +1359,10 @@ onmessage = (ev) => {
     } else if (m.type === 'route-options') {
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
+      const progress = (detail) => postMessage({ type: 'progress', phase: 'route', id: m.id, detail });
+      progress('Testing faster, safer, and bike-friendly route profiles…');
       const result = routeOptions(pts, m.rules, !!m.forceDesignated,
-        !!m.forceResidential, m.preferredProfileId, !!m.debug);
+        !!m.forceResidential, m.preferredProfileId, !!m.debug, progress);
       postMessage({ type: 'route-options', id: m.id, ...result });
     }
   } catch (err) {

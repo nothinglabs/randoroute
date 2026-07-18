@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-18.147';
+const APP_VERSION = '2026-07-18.153';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1157,15 +1157,49 @@ function setRouteStatus(t) {
 }
 
 let routeActionToastTimer = null;
-function showRouteActionToast(text, { busy = false, duration = 2200 } = {}) {
+function showRouteActionToast(text, { busy = false, detail = '', duration = 2200 } = {}) {
   const toast = document.getElementById('routeActionToast');
   const label = document.getElementById('routeActionText');
-  if (!toast || !label) return;
+  const detailLabel = document.getElementById('routeActionDetail');
+  if (!toast || !label || !detailLabel) return;
   clearTimeout(routeActionToastTimer);
   label.textContent = text || '';
+  detailLabel.textContent = detail || '';
+  detailLabel.hidden = !detail;
   toast.classList.toggle('busy', busy);
+  toast.classList.toggle('has-detail', !!detail);
   toast.hidden = !text;
   if (text && duration > 0) routeActionToastTimer = setTimeout(() => { toast.hidden = true; }, duration);
+}
+
+function showRouterProgress(detail, title = 'Loading routing engine') {
+  setRouteStatus(detail || title);
+  showRouteActionToast(title, { busy: true, detail, duration: 0 });
+}
+
+async function readRoutingGraphResponse(response) {
+  const total = Number(response.headers.get('content-length')) || 0;
+  if (!response.body?.getReader) return response.arrayBuffer();
+  const reader = response.body.getReader();
+  const chunks = [];
+  let received = 0, announcedPercent = -10;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    if (total > 0) {
+      const percent = Math.min(100, Math.floor((received / total) * 10) * 10);
+      if (percent >= announcedPercent + 10) {
+        announcedPercent = percent;
+        showRouterProgress(`Downloading Washington roads and trails · ${percent}%`);
+      }
+    }
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes.buffer;
 }
 
 // Off-network start/end pins matter, but not enough to hold route-card space
@@ -1204,17 +1238,19 @@ async function ensureRouter() {
   if (routing.ready || routing.loading) return;
   routing.loading = true;
   try {
-    setRouteStatus('Loading routing data (one-time download)…');
-    showRouteActionToast('Preparing route engine — first run takes a few seconds…', { busy: true, duration: 0 });
+    showRouterProgress('Downloading Washington roads, trails, ferries, and elevation data…');
     const res = await fetch(`data/graph2.bin.gz?format=${GRAPH_FORMAT_VERSION}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    let buf = await res.arrayBuffer();
+    let buf = await readRoutingGraphResponse(res);
+    showRouterProgress('Checking and unpacking the routing map…');
     const head = new Uint8Array(buf, 0, 2);
     if (head[0] === 0x1f && head[1] === 0x8b) {
       // Server delivered the gzip container raw — decompress ourselves.
+      showRouterProgress('Unpacking road, trail, ferry, and elevation data…');
       const ds = new DecompressionStream('gzip');
       buf = await new Response(new Blob([buf]).stream().pipeThrough(ds)).arrayBuffer();
     }
+    showRouterProgress('Starting the on-device route engine…');
     routing.worker = new Worker('router-worker.js');
     routing.worker.onmessage = onRouterMessage;
     routing.worker.onerror = (event) => {
@@ -1308,8 +1344,8 @@ function optimizationDescription(optimization) {
     ? ' Every segment matches your safety rules.' : '';
   return `${optimization.reason ? `${optimization.reason} ` : ''}${method}${discovery}${matching}`;
 }
-// Downsampled elevation profile for the Route Details Elevation tab — enough
-// points to draw at dialog width without bloating localStorage.
+// Downsampled elevation profile for the Route Details summary and expanded
+// chart — enough points to draw crisply without bloating localStorage.
 function compactRouteProfile(m) {
   const profile = m.profile || [];
   if (profile.length < 2) return null;
@@ -1956,7 +1992,12 @@ function refreshedRouteSelection(options) {
 
 function onRouterMessage(ev) {
   const m = ev.data;
-  if (m.type === 'ready') {
+  if (m.type === 'progress') {
+    if (m.id != null && m.id !== routing.reqId) return;
+    const title = m.phase === 'engine' ? 'Loading routing engine'
+      : m.phase === 'reroute' ? 'Updating route' : 'Calculating route options';
+    showRouterProgress(m.detail || 'Working…', title);
+  } else if (m.type === 'ready') {
     routing.ready = true;
     routing.loading = false;
     setRouteStatus(routing.start && routing.end ? 'Routing…' : '');
@@ -2025,8 +2066,13 @@ function computeRoute() {
   }
   routing.reqId++;
   setRouteStatus('Routing…');
-  showRouteActionToast(routing.last?.ok ? 'Recalculating route…' : 'Calculating route options…',
-    { busy: true, duration: 0 });
+  showRouteActionToast(routing.last?.ok ? 'Recalculating route' : 'Calculating route options', {
+    busy: true,
+    detail: routing.last?.ok
+      ? 'Reapplying your safety rules and route preferences…'
+      : 'Testing safer, quicker, and bike-friendly alternatives…',
+    duration: 0,
+  });
   setRouteOptionsLoading(true);
   saveStateSoon();
   const points = [routing.start, ...(routing.navRejoin ? [routing.navRejoin] : []),

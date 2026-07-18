@@ -7,6 +7,10 @@ const FLAG_FERRY = 32;
 const FLAG_DESIGNATED = 64;
 const FLAG_LIMITED_ACCESS = 128;
 const OFFICIAL_MTB = 4;
+const BIKE_NETWORK_COLOR = '#9fc400';
+const PASS_COLOR = '#168ad1';
+const CAUTION_COLOR = '#63418f';
+const FAIL_COLOR = '#b2182b';
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 const FACILITY_NAME = {
   1: 'shared lane', 2: 'bike lane', 3: 'buffered bike lane',
@@ -57,6 +61,27 @@ function fmtDist(m) { return m < 160.934 ? `${fmtFt(m)} ft` : `${fmtMi(m)} mi`; 
 function fmtDur(s) {
   const min = Math.round(s / 60);
   return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} m`;
+}
+function routePercent(meters, total, preciseSmall = false) {
+  if (!(meters > 0) || !(total > 0)) return '0%';
+  const pct = Math.min(100, 100 * meters / total);
+  if (preciseSmall && pct < 0.1) return '<0.1%';
+  if (preciseSmall && pct < 1) return `${pct.toFixed(1)}%`;
+  if (preciseSmall && pct > 99 && pct < 100) return `${pct.toFixed(1)}%`;
+  return `${Math.round(pct)}%`;
+}
+function routeSummaryStats(segs) {
+  const levels = [0, 0, 0, 0, 0];
+  let bikeNetworkM = 0;
+  for (const seg of segs || []) {
+    const flags = seg.flags || 0;
+    if (flags & FLAG_FERRY) continue;
+    const len = Number(seg.lenM) || 0;
+    const level = Number(seg.level) || 0;
+    if (level >= 1 && level <= 4) levels[level] += len;
+    if ((flags & FLAG_INFRA) || (seg.facility || 0) >= 2) bikeNetworkM += len;
+  }
+  return { levels, bikeNetworkM };
 }
 function roadName(seg) { return seg.name || 'Unnamed road'; }
 function isHighway(seg) {
@@ -301,24 +326,21 @@ function selectDetailTab(tabId) {
   document.querySelectorAll('.detail-panel').forEach((panel) => {
     panel.hidden = panel.id !== `panel-${tabId}`;
   });
-  // The canvas has zero size while its panel is hidden — draw after reveal.
-  if (tabId === 'elevation') requestAnimationFrame(drawElevation);
 }
 
-function drawElevation() {
-  const canvas = document.getElementById('elevationCanvas');
+function drawElevation(canvas, compact = false) {
   const profile = details?.profile;
   const distM = details?.summary?.distM;
-  if (!canvas || canvas.hidden || !Array.isArray(profile) || profile.length < 2 || !(distM > 0)) return;
+  if (!canvas || !Array.isArray(profile) || profile.length < 2 || !(distM > 0)) return;
   const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 220;
+  const w = canvas.clientWidth || 300, h = canvas.clientHeight || (compact ? 92 : 300);
   canvas.width = w * dpr; canvas.height = h * dpr;
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
   let lo = Infinity, hi = -Infinity;
   for (const [, e] of profile) { if (e < lo) lo = e; if (e > hi) hi = e; }
   if (hi - lo < 30) { const mid = (hi + lo) / 2; lo = mid - 15; hi = mid + 15; }
-  const padT = 24, padB = 26, padL = 8, padR = 8;
+  const padT = compact ? 8 : 24, padB = compact ? 6 : 26, padL = compact ? 4 : 8, padR = compact ? 4 : 8;
   const X = (d) => padL + (d / distM) * (w - padL - padR);
   const Y = (e) => padT + (1 - (e - lo) / (hi - lo)) * (h - padT - padB);
   ctx.beginPath();
@@ -335,6 +357,7 @@ function drawElevation() {
   ctx.strokeStyle = '#2c7bb6';
   ctx.lineWidth = 1.8;
   ctx.stroke();
+  if (compact) return;
   ctx.fillStyle = '#98a2ad';
   ctx.font = '13px system-ui';
   ctx.fillText(`${fmtFt(hi)} ft`, padL + 2, padT - 2);
@@ -360,7 +383,10 @@ function drawElevation() {
   ctx.textAlign = 'left';
 }
 window.addEventListener('resize', () => {
-  if (!document.getElementById('panel-elevation')?.hidden) drawElevation();
+  drawElevation(document.getElementById('elevationPreviewCanvas'), true);
+  if (document.getElementById('elevationDialog')?.open) {
+    drawElevation(document.getElementById('elevationDialogCanvas'));
+  }
 });
 
 function selectedDetailTab() {
@@ -381,7 +407,7 @@ function restoreDetailPosition() {
   try {
     const state = JSON.parse(sessionStorage.getItem(ROUTE_DETAILS_POSITION_KEY) || 'null');
     if (!state || state.savedAt !== details.savedAt) return false;
-    selectDetailTab(['concerns', 'steps', 'elevation'].includes(state.tab) ? state.tab : 'concerns');
+    selectDetailTab(['concerns', 'steps'].includes(state.tab) ? state.tab : 'concerns');
     requestAnimationFrame(() => window.scrollTo(0, Math.max(0, Number(state.scrollY) || 0)));
     return true;
   } catch (e) { return false; }
@@ -392,6 +418,10 @@ const hasRoute = !!(details && details.summary && Array.isArray(details.segs));
 const report = document.getElementById('report');
 const steps = document.getElementById('steps');
 const summary = document.getElementById('summary');
+const summaryCard = document.getElementById('routeSummaryCard');
+const summarySub = document.getElementById('summarySub');
+const summaryMix = document.getElementById('summaryMix');
+const noRouteSummary = document.getElementById('noRouteSummary');
 const optimization = document.getElementById('optimization');
 const alert = document.getElementById('routeAlert');
 const mapTapHint = document.getElementById('mapTapHint');
@@ -411,27 +441,38 @@ detailTabs.forEach((tab) => {
 });
 
 if (!hasRoute) {
-  summary.textContent = 'No current route.';
+  noRouteSummary.hidden = false;
+  noRouteSummary.textContent = 'No current route.';
   report.innerHTML = '<div class="no-route">Set a start and destination on the map to see freeways, highways, and any road-rule concerns here.</div>';
   steps.innerHTML = '<div class="no-route">Set a start and destination on the map to see the road-by-road route steps here.</div>';
-  const elevationEmpty = document.getElementById('elevationEmpty');
-  elevationEmpty.hidden = false;
-  elevationEmpty.textContent = 'Set a start and destination on the map to see the elevation profile here.';
   if (!restoreDetailPosition()) selectDetailTab('concerns');
 } else {
   const { rules = {}, summary: totals, segs } = details;
+  const routeStats = routeSummaryStats(segs);
+  const ridingM = Math.max(1, totals.distM - (totals.ferryM || 0));
+  const bikePct = routePercent(routeStats.bikeNetworkM, ridingM);
+  const passPct = routePercent((routeStats.levels[1] || 0) + (routeStats.levels[2] || 0), ridingM, true);
+  const cautionPct = routePercent(routeStats.levels[3] || 0, ridingM, true);
+  const failPct = routePercent(totals.failM || 0, ridingM, true);
+  summaryCard.hidden = false;
+  summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
+  summarySub.textContent = `↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}`;
+  summaryMix.innerHTML = `<span class="route-summary-label">Ride</span><span><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail</span>`;
   mapTapHint.hidden = false;
   if (Array.isArray(details.profile) && details.profile.length >= 2) {
-    const elevationSummary = document.getElementById('elevationSummary');
-    elevationSummary.hidden = false;
-    elevationSummary.textContent = `${fmtMi(totals.distM)} mi · ↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent`;
-    document.getElementById('elevationCanvas').hidden = false;
+    const elevationPreview = document.getElementById('elevationPreview');
+    const elevationDialog = document.getElementById('elevationDialog');
+    elevationPreview.hidden = false;
+    document.getElementById('elevationDialogSummary').textContent = `${fmtMi(totals.distM)} mi · ↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent`;
+    elevationPreview.addEventListener('click', () => {
+      elevationDialog.showModal();
+      requestAnimationFrame(() => drawElevation(document.getElementById('elevationDialogCanvas')));
+    });
+    document.getElementById('elevationDialogClose').addEventListener('click', () => elevationDialog.close());
+    requestAnimationFrame(() => drawElevation(document.getElementById('elevationPreviewCanvas'), true));
   } else {
-    const elevationEmpty = document.getElementById('elevationEmpty');
-    elevationEmpty.hidden = false;
-    elevationEmpty.textContent = 'The elevation profile will appear here after the route is next recalculated.';
+    document.getElementById('elevationPreviewEmpty').hidden = false;
   }
-  summary.textContent = `${fmtMi(totals.distM)} mi · ${fmtDur(totals.timeS)} · ${fmtFt(totals.ascentM)} ft climb`;
   if (details.optimization?.description) {
     optimization.hidden = false;
     optimization.textContent = `${details.optimization.label || 'Selected option'}: ${details.optimization.description}`;

@@ -33,7 +33,10 @@
       <span id="rb-status"></span>
     </div>
   </div>
-  <div id="routeActionToast" class="route-action-toast" role="status" aria-live="polite" hidden><span class="route-action-spinner" aria-hidden="true"></span><span id="routeActionText"></span></div>
+  <div id="routeActionToast" class="route-action-toast" role="status" aria-live="polite" aria-atomic="true" hidden>
+    <span class="route-action-spinner" aria-hidden="true"></span>
+    <span class="route-action-copy"><strong id="routeActionText"></strong><span id="routeActionDetail" hidden></span></span>
+  </div>
   <div id="mobileNavDock"></div>
   <button id="legendToggle" type="button" aria-expanded="false" aria-controls="legendFlyout" title="Show map legend">
     <svg class="legend-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2" fill="#9fc400"/><path d="M10 6h9M10 12h9M10 18h9"/><circle cx="5" cy="12" r="2" fill="#168ad1"/><circle cx="5" cy="18" r="2" fill="#b2182b"/></svg>
@@ -176,7 +179,7 @@
   </dialog>
 
   <dialog id="appHelpDialog" class="map-dialog app-help-dialog" aria-label="How to use the app">
-    <div class="dialog-head"><h2>Plan a safer bike route</h2><button class="dialog-close" data-close="appHelpDialog" aria-label="Close">✕</button></div>
+    <div class="dialog-head"><h2>Plan your route</h2><button class="dialog-close" data-close="appHelpDialog" aria-label="Close">✕</button></div>
     <ol>
       <li>Set <b>Start</b> and <b>End</b> by search or by tapping the map.</li>
       <li>In <b>Route</b>, compare choices A–E. Route A is the app’s recommendation; the letters are not safety grades. Use <b>Details</b> to inspect the selected route.</li>
@@ -213,7 +216,7 @@
   <dialog id="routeTipsDialog" class="full-help-dialog" aria-labelledby="routeTipsTitle">
     <div class="full-help-head"><div><span>Route help</span><h2 id="routeTipsTitle">Choose and compare routes</h2></div><button class="dialog-close" data-close="routeTipsDialog" aria-label="Close routing tips">✕</button></div>
     <div class="full-help-body">
-      <p class="help-lead">This guide picks up after Start and End are set. It explains how to judge the route choices; use the main map <b>?</b> for the overall app workflow.</p>
+      <p class="help-lead">This guide picks up after Start and End are set and explains how to judge the route choices.</p>
       <section><h3>What the route letters mean</h3><p>The app tries several safety, speed, and road-preference searches, removes near-duplicates, and shows up to five meaningfully different choices as <b>A–E</b>. The letters are not safety grades. Route A is the recommended practical safety balance; the others preserve useful tradeoffs or different corridors.</p></section>
       <section><h3>Compare the summaries</h3><p>Start with distance, time, and climbing, then compare <b>Ride mix</b>. It reports the share on a physical trail or lane and the shares that pass, need caution, or fail your rules. Trail/lane distance overlaps the verdict percentages—it is not an additional category. The swatches match the planned route and map legend.</p></section>
       <section><h3>Use Details before choosing</h3><p><b>Concerns</b> collects rule failures, freeways, limited-access roads, mountain-bike trails, and possible uphill-curve cautions. <b>Steps</b> shows the road-by-road route, and <b>Elevation</b> shows the profile. Tap a concern or step to highlight it on the map.</p></section>
