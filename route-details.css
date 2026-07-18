@@ -30,7 +30,6 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .elevation-preview:hover { border-color: #8eb9d8; background: #f3f9fc; }
 .elevation-preview:focus-visible { outline: 3px solid #0a66c2; outline-offset: 2px; }
 #elevationPreviewCanvas { display: block; width: 100%; height: 100%; }
-.elevation-preview span { position: absolute; right: 7px; bottom: 6px; padding: 3px 6px; border-radius: 999px; background: rgba(255,255,255,.9); color: #32627d; font: 750 9px/1.1 system-ui; box-shadow: 0 1px 3px rgba(18,42,60,.12); }
 .elevation-preview-empty { display: grid; place-items: center; min-height: 88px; margin: 0; padding: 10px; border: 1px dashed #ccd9e1; border-radius: 9px; color: #75838c; font: 650 11px/1.3 system-ui; text-align: center; }
 .detail-bottom-nav { position: fixed; z-index: 4; right: 0; bottom: 0; left: 0; display: flex; align-items: center; gap: 7px; min-height: 64px; padding: 7px 12px max(7px, env(safe-area-inset-bottom)); border-top: 1px solid #d8e2e8; background: rgba(255,255,255,.97); box-shadow: 0 -3px 12px rgba(18,42,60,.08); }
 .detail-tabs { display: flex; flex: 1; gap: 3px; margin: 0; padding: 3px; border: 1px solid #d8e2e8; border-radius: 10px; background: #e8eef2; }

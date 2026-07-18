@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-18.153';
+const APP_VERSION = '2026-07-18.154';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1328,6 +1328,15 @@ function clearStoredRouteDetails() {
 }
 function optimizationDescription(optimization) {
   if (!optimization) return '';
+  const method = optimizationMethodDescription(optimization);
+  const discovery = optimization.discoveryMaxSpeed
+    ? ` Found with a ${optimization.discoveryMaxSpeed} mph no-shoulder search; map colors use your settings.`
+    : '';
+  const matching = optimization.fullyMatchingRules
+    ? ' Every segment matches your safety rules.' : '';
+  return `${optimization.reason ? `${optimization.reason} ` : ''}${method}${discovery}${matching}`;
+}
+function optimizationMethodDescription(optimization) {
   const base = optimization.mode === 'direct'
     ? 'Prioritizes a quicker trip.'
     : optimization.mode === 'low'
@@ -1336,13 +1345,14 @@ function optimizationDescription(optimization) {
   const preferences = [];
   if (optimization.prefDesignated) preferences.push('bike routes & trails');
   if (optimization.prefResidential) preferences.push('residential streets');
-  const method = preferences.length ? `${base} Prefers ${preferences.join(' and ')}.` : base;
+  return preferences.length ? `${base} Prefers ${preferences.join(' and ')}.` : base;
+}
+function routeDetailsOptimizationDescription(optimization) {
+  if (!optimization) return '';
   const discovery = optimization.discoveryMaxSpeed
-    ? ` Found with a ${optimization.discoveryMaxSpeed} mph no-shoulder search; map colors use your settings.`
+    ? ` Found using a ${optimization.discoveryMaxSpeed} mph no-shoulder search; safety results still use your settings.`
     : '';
-  const matching = optimization.fullyMatchingRules
-    ? ' Every segment matches your safety rules.' : '';
-  return `${optimization.reason ? `${optimization.reason} ` : ''}${method}${discovery}${matching}`;
+  return `${optimizationMethodDescription(optimization)}${discovery}`;
 }
 // Downsampled elevation profile for the Route Details summary and expanded
 // chart — enough points to draw crisply without bloating localStorage.
@@ -1375,7 +1385,7 @@ function storeRouteDetails(m) {
       mode: routing.mode,
       optimization: m.optimization ? {
         ...m.optimization,
-        description: optimizationDescription(m.optimization),
+        description: routeDetailsOptimizationDescription(m.optimization),
       } : null,
       rules: { ...rules },
       summary: {
@@ -1938,11 +1948,16 @@ function renderRouteCard(m) {
     : '';
   card.innerHTML = `
     <div id="routeControlsSlot"></div>
-    <div class="rc-summary-row"><div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div></div>
-    ${mtbNotice}<div class="rc-bottom-row"><div id="routeDetailsSlot"></div><div class="rc-bottom-stats">
-      <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi ferry` : ''}</div>
-      <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><span><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div>
-    </div></div>`;
+    <div class="rc-route-summary">
+      <div class="rc-details-wrap"><div id="routeDetailsSlot"></div></div>
+      <div class="rc-summary-content">
+        <div class="rc-summary-row"><div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div></div>
+        ${mtbNotice}<div class="rc-bottom-stats">
+          <div class="rc-sub">↗ ${fmtFt(m.ascentM)} ft climb · ↘ ${fmtFt(m.descentM)} ft descent${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi ferry` : ''}</div>
+          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><span><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div>
+        </div>
+      </div>
+    </div>`;
   moveControls();
   moveDetails();
   refreshNavigationUI();

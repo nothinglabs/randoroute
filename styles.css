@@ -124,7 +124,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 
 .mode-row { display: flex; align-items: stretch; gap: 5px; margin: 0; }
 #routeControls { margin-top: 6px; padding-top: 5px; border-top: 1px solid #e4e7eb; }
-#routeControls .route-chooser-heading { margin: 0 0 4px; padding: 0; border: none; color: #40515c; font: 750 11px/1.2 system-ui; }
+#routeControls .route-chooser-head { display: flex; align-items: center; justify-content: space-between; min-height: 23px; margin: 0 0 4px; }
+#routeControls .route-chooser-heading { margin: 0; padding: 0; border: none; color: #40515c; font: 780 13px/1.2 system-ui; }
 #routeControls .check-rule { margin: 4px 0 0 !important; min-height: 17px; font-size: 11px; }
 #routeControls .check-rule label { font-weight: 600; }
 #routeLibraryBtn { cursor: pointer; }
@@ -164,7 +165,10 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-empty { color: #888; font-size: 12.5px; line-height: 1.5; }
 #routeCard .rc-main { font: 700 20px/1.15 system-ui; color: #111; }
 #routeCard .rc-main small { font: 600 15px system-ui; color: #555; }
-#routeCard .rc-summary-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 7px; }
+#routeCard .rc-route-summary { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 6px; }
+#routeCard .rc-summary-content { min-width: 0; }
+#routeCard .rc-details-wrap { display: grid; place-items: center; align-self: stretch; }
+#routeCard .rc-summary-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; }
 #routeCard .rc-main { text-align: right; }
 #routeCard .rc-details-hidden { display: none; }
 #routeCard .rc-sub { margin-top: 3px; font-size: 12px; color: #555; }
@@ -181,7 +185,6 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }
 #routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
-#routeCard .rc-bottom-row { display: flex; align-items: flex-end; gap: 8px; margin-top: 3px; }
 #routeCard .rc-bottom-stats { flex: 1; min-width: 0; text-align: right; }
 #routeCard canvas { display: block; }
 @media (min-width: 721px) {
@@ -199,9 +202,9 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   #routeOptions button { height: 38px; padding: 4px 3px; font-size: 16px; }
 }
 
-.route-details-btn { min-width: 62px; min-height: 35px; padding: 0 10px; border: 1px solid #78a9cc; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 750 11px/1 system-ui; cursor: pointer; }
+.route-details-btn { min-width: 64px; min-height: 40px; padding: 0 11px; border: 1px solid #78a9cc; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 750 11px/1 system-ui; cursor: pointer; }
 .route-details-btn:disabled { opacity: .45; cursor: default; }
-.route-tips-btn { align-self: center; flex: 0 0 30px; }
+.route-tips-btn { align-self: center; flex: 0 0 23px !important; width: 23px !important; height: 23px !important; font-size: 13px !important; }
 
 .saved-row { display: flex; gap: 6px; margin: 5px 0; }
 .saved-row .saved-load {

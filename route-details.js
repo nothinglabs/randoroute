@@ -340,7 +340,7 @@ function drawElevation(canvas, compact = false) {
   let lo = Infinity, hi = -Infinity;
   for (const [, e] of profile) { if (e < lo) lo = e; if (e > hi) hi = e; }
   if (hi - lo < 30) { const mid = (hi + lo) / 2; lo = mid - 15; hi = mid + 15; }
-  const padT = compact ? 8 : 24, padB = compact ? 6 : 26, padL = compact ? 4 : 8, padR = compact ? 4 : 8;
+  const padT = compact ? 15 : 24, padB = compact ? 15 : 26, padL = compact ? 4 : 8, padR = compact ? 4 : 8;
   const X = (d) => padL + (d / distM) * (w - padL - padR);
   const Y = (e) => padT + (1 - (e - lo) / (hi - lo)) * (h - padT - padB);
   ctx.beginPath();
@@ -357,7 +357,19 @@ function drawElevation(canvas, compact = false) {
   ctx.strokeStyle = '#2c7bb6';
   ctx.lineWidth = 1.8;
   ctx.stroke();
-  if (compact) return;
+  if (compact) {
+    ctx.fillStyle = '#607482';
+    ctx.font = '700 9px system-ui';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`${fmtFt(hi)} ft`, padL + 2, 2);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`${fmtFt(lo)} ft`, padL + 2, h - 2);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${(distM / 1609.34).toFixed(1)} mi`, w - padR - 2, h - 2);
+    ctx.textAlign = 'left';
+    return;
+  }
   ctx.fillStyle = '#98a2ad';
   ctx.font = '13px system-ui';
   ctx.fillText(`${fmtFt(hi)} ft`, padL + 2, padT - 2);
@@ -426,6 +438,23 @@ const optimization = document.getElementById('optimization');
 const alert = document.getElementById('routeAlert');
 const mapTapHint = document.getElementById('mapTapHint');
 
+function routeNatureDescription(optimization) {
+  if (!optimization) return '';
+  const base = optimization.mode === 'direct'
+    ? 'Prioritizes a quicker trip.'
+    : optimization.mode === 'low'
+      ? 'Strongly avoids roads that fail your rules.'
+      : 'Balances travel time against roads that fail your rules.';
+  const preferences = [];
+  if (optimization.prefDesignated) preferences.push('bike routes & trails');
+  if (optimization.prefResidential) preferences.push('residential streets');
+  const method = preferences.length ? `${base} Prefers ${preferences.join(' and ')}.` : base;
+  const discovery = optimization.discoveryMaxSpeed
+    ? ` Found using a ${optimization.discoveryMaxSpeed} mph no-shoulder search; safety results still use your settings.`
+    : '';
+  return `${method}${discovery}`;
+}
+
 const detailTabs = [...document.querySelectorAll('[data-detail-tab]')];
 detailTabs.forEach((tab) => {
   tab.addEventListener('click', () => selectDetailTab(tab.dataset.detailTab));
@@ -473,9 +502,10 @@ if (!hasRoute) {
   } else {
     document.getElementById('elevationPreviewEmpty').hidden = false;
   }
-  if (details.optimization?.description) {
+  const routeNature = routeNatureDescription(details.optimization);
+  if (routeNature) {
     optimization.hidden = false;
-    optimization.textContent = `${details.optimization.label || 'Selected option'}: ${details.optimization.description}`;
+    optimization.textContent = `${details.optimization.label || 'Selected option'}: ${routeNature}`;
   }
   const freeways = sections(segs, (s) => !!(s.flags & FLAG_FREEWAY), (s) => ({
     name: roadName(s),
