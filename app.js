@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-18.139';
+const APP_VERSION = '2026-07-18.140';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -446,7 +446,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'casual-cruiser',
     label: 'Casual Cruiser',
     audience: 'For riders who want low-stress routes that fully honor their safety rules.',
-    blurb: "Breaks rules only for short blocks reaching your stops.",
+    blurb: "Relaxed riding. Routes must follow rules.",
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
@@ -2803,7 +2803,10 @@ function renderRouteOptionControls() {
   host.innerHTML = routing.options.map((option, index) => {
     const optimization = option.optimization || {};
     const label = optimization.label || `Option ${index + 1}`;
-    const shortLabel = /^Route [A-Z]$/.test(label) ? label.slice(-1) : label;
+    const only = routing.options.length === 1;
+    const shortLabel = /^Route [A-Z]$/.test(label)
+      ? (only ? `${label.slice(-1)} (Only route)` : label.slice(-1))
+      : label;
     const active = option === routing.last;
     return `<button type="button" data-route-option="${index}" ${active ? 'class="active"' : ''}
       aria-pressed="${active}" aria-label="Choose route ${index + 1}: ${label}"
