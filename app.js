@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-18.157';
+const APP_VERSION = '2026-07-19.158';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -403,13 +403,6 @@ if ((savedState?.weightsVersion || 0) < ROUTING_WEIGHTS_VERSION) {
 }
 const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 
-// Navigation choices are local device preferences, not part of a shared route.
-// Keep automatic recovery on by default, while still letting a rider opt out.
-const DEFAULT_NAVIGATION_OPTIONS = Object.freeze({ autoReroute: true });
-const navigationOptions = {
-  autoReroute: !savedState || typeof savedState.autoReroute !== 'boolean'
-    ? DEFAULT_NAVIGATION_OPTIONS.autoReroute : savedState.autoReroute,
-};
 const DEFAULT_ROUTE_PREFERENCES = Object.freeze({ prefDesig: true, prefResidential: true });
 const ROUTING_PRESETS = Object.freeze([
   {
@@ -548,7 +541,6 @@ function saveStateNow() {
       rules, passFail: display.passFail,
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
-      autoReroute: navigationOptions.autoReroute,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
@@ -701,7 +693,6 @@ function rescoreAll(recomputeRoute = true) {
 let _rescoreTimer = null;
 let _ruleRouteTimer = null;
 function scheduleRescore() {
-  clearNavigationRejoin();
   saveStateSoon();
   if (_rescoreTimer == null) {
     _rescoreTimer = setTimeout(() => {
@@ -1129,7 +1120,6 @@ const routing = {
   arm: null,                 // 'start' | 'end' — next map tap sets that point
   start: null, end: null,    // [lng, lat]
   vias: [],                  // intermediate stops: { pt: [lng,lat], marker }
-  navRejoin: null,           // transient route point used by turn-by-turn rerouting
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false,
   mode: sharedRoute?.mode || (['direct', 'balanced', 'low'].includes(savedState?.mode)
@@ -1222,7 +1212,6 @@ function handleRouterFailure(message) {
   routing.loading = false;
   if (routing.worker) routing.worker.terminate();
   routing.worker = null;
-  routing.navRejoin = null;
   routing.options = [];
   setRouteOptionsLoading(false);
   renderRouteOptionControls();
@@ -1422,13 +1411,12 @@ const turnNav = {
   nearest: 0,
   routeM: 0,
   message: '',
-  offRouteSpokenAt: 0,
   offRoute: false,
-  offRouteExit: null,
-  offRouteMovingMs: 0,
-  offRouteFix: null,
+  offRouteInfo: null,        // { distM, dir, street } toward the nearest route point
+  offRouteSpokenAt: 0,
+  offRouteApproachSpoken: false,
+  prevFix: null,             // previous GPS fix, for the rider's own heading
   lastPosition: null,
-  rejoinAwaiting: false,
   arrived: false,
 };
 
@@ -1457,13 +1445,19 @@ function navRoadName(name) {
   return value && !/^unnamed|^ferry terminal connector$/i.test(value) ? value : '';
 }
 
-function navTurnText(delta, road) {
+const COMPASS_WORDS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+function compassWord(bearing) {
+  return COMPASS_WORDS[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
+}
+
+function navTurnText(delta, road, heading) {
   const abs = Math.abs(delta);
   const onto = road ? ` onto ${road}` : '';
-  if (abs >= 150) return `Make a U-turn${onto}`;
-  if (abs >= 55) return `Turn ${delta > 0 ? 'right' : 'left'}${onto}`;
-  if (abs >= 20) return `Bear ${delta > 0 ? 'right' : 'left'}${onto}`;
-  return road ? `Continue onto ${road}` : 'Continue';
+  const toward = heading ? `, heading ${heading}` : '';
+  if (abs >= 150) return `Make a U-turn${onto}${toward}`;
+  if (abs >= 55) return `Turn ${delta > 0 ? 'right' : 'left'}${onto}${toward}`;
+  if (abs >= 20) return `Bear ${delta > 0 ? 'right' : 'left'}${onto}${toward}`;
+  return road ? `Continue onto ${road}${toward}` : `Continue${toward}`;
 }
 
 function navDistanceText(m) {
@@ -1498,66 +1492,115 @@ function buildTurnInstructions(m) {
     const distanceM = cumulative[at];
     // Do not speak a chain of tiny graph-edge transitions as separate turns.
     if (distanceM - lastM < 70) continue;
-    instructions.push({ distanceM, coordIndex: at, text: navTurnText(delta, to) });
+    instructions.push({ distanceM, coordIndex: at, text: navTurnText(delta, to, compassWord(outgoing)) });
     lastM = distanceM;
   }
   instructions.sort((a, b) => a.distanceM - b.distanceM);
   return { coords, cumulative, instructions, segs, totalM: cumulative[cumulative.length - 1] || 0 };
 }
 
-const AUTO_REROUTE_AFTER_MS = 60_000;
-const NAV_MOVING_MPS = 0.7;
+// Leaving the route no longer triggers rerouting. The rider gets the
+// distance and compass direction back to the nearest route point, a concrete
+// turn instruction as they close in on it, and normal guidance the moment
+// they rejoin — anywhere along the route, ahead of or behind where they left.
+const OFF_ROUTE_ENTER_M = 100;
+const OFF_ROUTE_REJOIN_M = 60;
+const OFF_ROUTE_APPROACH_M = 130;
+const OFF_ROUTE_RESPEAK_MS = 30_000;
 
 function routeRoadNameAt(index) {
-  for (const seg of turnNav.route?.segs || []) {
-    if (index >= seg.c0 && index <= seg.c1) return navRoadName(seg.name);
+  const segs = turnNav.route?.segs || [];
+  const at = segs.findIndex((seg) => index >= seg.c0 && index <= seg.c1);
+  if (at < 0) return '';
+  // Tiny unnamed graph connectors shouldn't leave guidance nameless — use
+  // the closest named road the route follows around this point.
+  for (let step = 0; step <= 3; step++) {
+    for (const i of step ? [at - step, at + step] : [at]) {
+      const name = navRoadName(segs[i]?.name);
+      if (name) return name;
+    }
   }
   return '';
 }
 
-function clearOffRouteTracking() {
-  turnNav.offRoute = false;
-  turnNav.offRouteExit = null;
-  turnNav.offRouteMovingMs = 0;
-  turnNav.offRouteFix = null;
+// The route's direction of travel where the rider would rejoin it.
+function routeForwardBearing(index) {
+  const coords = turnNav.route.coords;
+  const from = Math.min(index, coords.length - 2);
+  const to = Math.min(from + 2, coords.length - 1);
+  return navBearing(coords[from], coords[to]);
 }
 
-function beginOffRouteTracking(pos, nearest) {
-  const point = [pos.coords.longitude, pos.coords.latitude];
-  const at = Number.isFinite(pos.timestamp) ? pos.timestamp : Date.now();
-  turnNav.offRoute = true;
-  turnNav.offRouteExit = {
-    index: turnNav.nearest,
-    routeM: turnNav.routeM,
-    road: routeRoadNameAt(turnNav.nearest),
+function offRouteDescription(nearest) {
+  return {
+    distM: nearest.offRouteM,
+    dir: compassWord(navBearing(turnNav.lastPosition, turnNav.route.coords[nearest.index])),
+    street: routeRoadNameAt(nearest.index),
+    index: nearest.index,
   };
-  turnNav.offRouteMovingMs = 0;
-  turnNav.offRouteFix = { point, at };
-  turnNav.message = `Off route by ${navDistanceText(nearest.offRouteM)}`;
 }
 
-function trackOffRouteMovingTime(pos) {
-  const point = [pos.coords.longitude, pos.coords.latitude];
-  const at = Number.isFinite(pos.timestamp) ? pos.timestamp : Date.now();
-  const previous = turnNav.offRouteFix;
-  turnNav.offRouteFix = { point, at };
-  if (!previous) return false;
-  const elapsedMs = Math.max(0, Math.min(30_000, at - previous.at));
-  if (!elapsedMs) return false;
-  const distanceM = navDistanceM(previous.point, point);
-  const reportedSpeed = pos.coords.speed == null ? NaN : Number(pos.coords.speed);
-  const derivedSpeed = distanceM / (elapsedMs / 1000);
-  // Browser GPS speed is often null. When it is, require both a plausible
-  // riding speed and enough distance to reject stationary GPS drift.
-  const moving = Number.isFinite(reportedSpeed)
-    ? reportedSpeed >= NAV_MOVING_MPS
-    : distanceM >= 6 && derivedSpeed >= NAV_MOVING_MPS;
-  if (moving) turnNav.offRouteMovingMs += elapsedMs;
-  return moving;
+function offRouteSpeech(info) {
+  return `Off route. Rejoin the route ${navDistanceText(info.distM)} ${info.dir}${
+    info.street ? ` on ${info.street}` : ''}.`;
 }
 
-function offRouteReturnTarget() {
-  return turnNav.offRouteExit?.road || 'your planned route';
+function enterOffRoute(nearest) {
+  turnNav.offRoute = true;
+  turnNav.offRouteApproachSpoken = false;
+  turnNav.offRouteInfo = offRouteDescription(nearest);
+  speakNavigation(offRouteSpeech(turnNav.offRouteInfo));
+  turnNav.offRouteSpokenAt = Date.now();
+}
+
+function updateOffRouteGuidance(nearest, previousFix) {
+  const info = offRouteDescription(nearest);
+  turnNav.offRouteInfo = info;
+  // Wandered away again after an approach announcement: allow a fresh one.
+  if (turnNav.offRouteApproachSpoken && nearest.offRouteM > 250) {
+    turnNav.offRouteApproachSpoken = false;
+  }
+  if (!turnNav.offRouteApproachSpoken && nearest.offRouteM <= OFF_ROUTE_APPROACH_M) {
+    // Close to the route: one concrete instruction for joining it, using the
+    // rider's own recent heading when we have one.
+    const routeBearing = routeForwardBearing(nearest.index);
+    const moved = previousFix
+      && navDistanceM(previousFix.point, turnNav.lastPosition) >= 8;
+    const text = moved
+      ? navTurnText(navDelta(navBearing(previousFix.point, turnNav.lastPosition), routeBearing),
+          info.street || 'the route', compassWord(routeBearing))
+      : `Ahead: rejoin ${info.street || 'the route'}, heading ${compassWord(routeBearing)}`;
+    turnNav.offRouteApproachSpoken = true;
+    speakNavigation(`${text}.`);
+    turnNav.offRouteSpokenAt = Date.now();
+  } else if (Date.now() - turnNav.offRouteSpokenAt >= OFF_ROUTE_RESPEAK_MS) {
+    speakNavigation(offRouteSpeech(info));
+    turnNav.offRouteSpokenAt = Date.now();
+  }
+}
+
+function rejoinRoute(nearest) {
+  turnNav.offRoute = false;
+  turnNav.offRouteInfo = null;
+  turnNav.offRouteApproachSpoken = false;
+  turnNav.nearest = nearest.index;
+  turnNav.routeM = nearest.routeM;
+  turnNav.arrived = false;
+  // Re-aim guidance at the honestly-next maneuver — silently. Rejoining
+  // behind the departure point re-arms the instructions in between.
+  const instructions = turnNav.route.instructions;
+  turnNav.next = 0;
+  while (turnNav.next < instructions.length
+      && instructions[turnNav.next].distanceM < turnNav.routeM - 35) {
+    instructions[turnNav.next].approach = true;
+    instructions[turnNav.next].now = true;
+    turnNav.next++;
+  }
+  for (let i = turnNav.next; i < instructions.length; i++) {
+    instructions[i].approach = false;
+    instructions[i].now = false;
+  }
+  speakNavigation('Back on route.');
 }
 
 function navigationBannerInfo() {
@@ -1570,16 +1613,12 @@ function navigationBannerInfo() {
   const routeMeta = `${navDistanceText(remainingRouteM)} remaining`;
   if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
   if (turnNav.offRoute) {
-    const nearStart = turnNav.offRouteExit?.routeM < 250;
-    const remainingSeconds = Math.max(0, Math.ceil((AUTO_REROUTE_AFTER_MS - turnNav.offRouteMovingMs) / 1000));
-    const meta = navigationOptions.autoReroute
-      ? (nearStart && turnNav.offRouteMovingMs < AUTO_REROUTE_AFTER_MS
-        ? 'Move route start to current location (if that’s accurate)'
-        : `Auto-reroute in ${remainingSeconds} sec of moving time · Tap Reroute now`)
-      : 'Tap Reroute to make a new route from here';
+    const info = turnNav.offRouteInfo;
     return {
-      headline: `Off route — return to ${offRouteReturnTarget()}`,
-      meta,
+      headline: info
+        ? `Off route — rejoin ${navDistanceText(info.distM)} ${info.dir}${info.street ? ` on ${info.street}` : ''}`
+        : 'Off route',
+      meta: 'Guidance resumes when you rejoin the route',
       kicker: 'Off route',
     };
   }
@@ -1648,10 +1687,8 @@ function refreshNavigationUI() {
   const kicker = document.getElementById('navBannerKicker');
   const bannerText = document.getElementById('navBannerText');
   const bannerMeta = document.getElementById('navBannerMeta');
-  const reroute = document.querySelector('[data-nav-action="reroute"]');
   const info = navigationBannerInfo();
   if (banner) banner.hidden = !turnNav.active;
-  if (reroute) reroute.hidden = !(turnNav.active && turnNav.offRoute && turnNav.lastPosition && turnNav.route?.coords?.length);
   if (kicker) kicker.textContent = info.kicker;
   if (bannerText) bannerText.textContent = info.headline;
   if (bannerMeta) bannerMeta.textContent = info.meta;
@@ -1725,48 +1762,43 @@ function updateTurnNavigation(pos) {
       .setLngLat([longitude, latitude]).addTo(map);
   } else turnNav.marker.setLngLat([longitude, latitude]);
 
-  // A reroute is already on its way to the worker. Ignore GPS fixes against
-  // the old geometry until the replacement route arrives.
-  if (turnNav.rejoinAwaiting) {
+  const previousFix = turnNav.prevFix;
+  const fixAt = Number.isFinite(pos.timestamp) ? pos.timestamp : Date.now();
+  turnNav.prevFix = { point: [longitude, latitude], at: fixAt };
+
+  // Off route, the nearest point is searched over the WHOLE route so the
+  // rider can rejoin anywhere — ahead of or behind where they left it.
+  const nearest = nearestNavigationPoint(longitude, latitude, turnNav.offRoute);
+  if (!nearest) return;
+
+  if (!turnNav.offRoute && nearest.offRouteM > OFF_ROUTE_ENTER_M) {
+    enterOffRoute(nearest);
     refreshNavigationUI();
     return;
   }
-
-  const nearest = nearestNavigationPoint(longitude, latitude);
-  if (!nearest) return;
-  turnNav.nearest = Math.max(turnNav.nearest, nearest.index);
-  turnNav.routeM = Math.max(turnNav.routeM, nearest.routeM);
-  if (nearest.offRouteM > 100) {
-    const justLeftRoute = !turnNav.offRoute;
-    if (justLeftRoute) {
-      beginOffRouteTracking(pos, nearest);
-      const target = offRouteReturnTarget();
-      const startHint = turnNav.offRouteExit.routeM < 250
-        ? ' If this is your actual location, move the route start to your current location.'
-        : '';
-      const autoHint = navigationOptions.autoReroute
-        ? ' The route will update automatically in 60 seconds of moving time.'
-        : ' You can tap Reroute to make a new route from here.';
-      speakNavigation(`You are off route. Return to ${target}.${startHint}${autoHint}`);
-      turnNav.offRouteSpokenAt = Date.now();
-    } else {
-      trackOffRouteMovingTime(pos);
-    }
-    if (navigationOptions.autoReroute && turnNav.offRouteMovingMs >= AUTO_REROUTE_AFTER_MS) {
-      rerouteNavigation(true);
+  if (turnNav.offRoute) {
+    if (nearest.offRouteM > OFF_ROUTE_REJOIN_M) {
+      updateOffRouteGuidance(nearest, previousFix);
+      refreshNavigationUI();
       return;
     }
-    refreshNavigationUI();
-    return;
+    rejoinRoute(nearest);
   }
-  clearOffRouteTracking();
+
+  // On-route position follows the nearest point directly — including small
+  // backward corrections; the windowed search bounds any jumps.
+  turnNav.nearest = nearest.index;
+  turnNav.routeM = nearest.routeM;
   turnNav.message = '';
-  const rejoinLegValue = Number(routing.last?.legs?.[0]?.distM);
-  const rejoinLegM = Number.isFinite(rejoinLegValue) ? rejoinLegValue : Infinity;
-  if (routing.navRejoin && !turnNav.rejoinAwaiting && turnNav.routeM >= rejoinLegM - 30) {
-    routing.navRejoin = null;
+  const instructions = turnNav.route.instructions;
+  // Passed maneuvers advance silently; announcing them late is noise.
+  while (turnNav.next < instructions.length
+      && instructions[turnNav.next].distanceM - turnNav.routeM < -35) {
+    instructions[turnNav.next].approach = true;
+    instructions[turnNav.next].now = true;
+    turnNav.next++;
   }
-  const next = turnNav.route.instructions[turnNav.next];
+  const next = instructions[turnNav.next];
   if (!next) {
     if (!turnNav.arrived && turnNav.route.totalM - turnNav.routeM < 55) {
       turnNav.arrived = true;
@@ -1777,18 +1809,15 @@ function updateTurnNavigation(pos) {
     return;
   }
   const remaining = next.distanceM - turnNav.routeM;
-  if (remaining < -35) {
-    turnNav.next++;
-    updateTurnNavigation(pos);
-    return;
-  }
-  if (!next.approach && remaining <= 350) {
+  if (!next.now && remaining <= 70) {
+    // Inside the immediate window: speak only the turn itself, never both
+    // the approach and the turn back-to-back.
+    next.now = true;
+    next.approach = true;
+    speakNavigation(`${next.text}.`);
+  } else if (!next.approach && remaining <= 350) {
     next.approach = true;
     speakNavigation(`In ${navDistanceText(remaining)}, ${next.text.toLowerCase()}.`);
-  }
-  if (!next.now && remaining <= 70) {
-    next.now = true;
-    speakNavigation(`${next.text}.`);
   }
   refreshNavigationUI();
 }
@@ -1820,10 +1849,12 @@ function startTurnNavigation() {
   turnNav.nearest = 0;
   turnNav.routeM = 0;
   turnNav.arrived = false;
+  turnNav.offRoute = false;
+  turnNav.offRouteInfo = null;
+  turnNav.offRouteApproachSpoken = false;
   turnNav.offRouteSpokenAt = 0;
-  clearOffRouteTracking();
+  turnNav.prevFix = null;
   turnNav.lastPosition = null;
-  turnNav.rejoinAwaiting = false;
   turnNav.message = 'Getting your location';
   refreshNavigationUI();
   speakNavigation('Navigation started. Follow the route on the map.');
@@ -1838,55 +1869,8 @@ function startTurnNavigation() {
   requestNavigationWakeLock();
 }
 
-function remainingNavigationVias() {
-  const legs = routing.last?.legs || [];
-  const virtualLegs = routing.navRejoin ? 1 : 0;
-  let distanceM = 0;
-  for (let i = 0; i < virtualLegs; i++) distanceM += Number(legs[i]?.distM) || 0;
-  let completed = 0;
-  for (let i = 0; i < routing.vias.length; i++) {
-    const legM = Number(legs[virtualLegs + i]?.distM);
-    if (!Number.isFinite(legM)) break;
-    distanceM += legM;
-    if (turnNav.routeM >= distanceM - 30) completed++;
-    else break;
-  }
-  for (const via of routing.vias.slice(0, completed)) via.marker.remove();
-  return routing.vias.slice(completed);
-}
-
-function rerouteNavigation(automatic = false) {
-  const position = turnNav.lastPosition;
-  const rejoin = turnNav.route?.coords?.[turnNav.nearest];
-  if (!turnNav.active || !position || !rejoin || !routing.end) {
-    turnNav.message = 'Waiting for a GPS location to reroute';
-    refreshNavigationUI();
-    return;
-  }
-  routing.vias = remainingNavigationVias();
-  routing.start = [...position];
-  routing.navRejoin = [...rejoin];
-  if (routing.startMarker) routing.startMarker.setLngLat({ lng: position[0], lat: position[1] });
-  clearOffRouteTracking();
-  turnNav.rejoinAwaiting = true;
-  if (automatic) speakNavigation('Updating route.');
-  turnNav.message = 'Updating route';
-  setRouteStatus('Rerouting…');
-  updateArmButtons();
-  refreshNavigationUI();
-  computeRoute();
-}
-
-function clearNavigationRejoin() {
-  const hadRejoin = !!routing.navRejoin;
-  routing.navRejoin = null;
-  turnNav.rejoinAwaiting = false;
-  return hadRejoin;
-}
-
 function stopTurnNavigation(announce = true) {
-  const hadRejoin = clearNavigationRejoin();
-  if (!turnNav.active) return hadRejoin;
+  if (!turnNav.active) return;
   if (turnNav.watchId != null) navigator.geolocation?.clearWatch(turnNav.watchId);
   turnNav.watchId = null;
   releaseNavigationWakeLock();
@@ -1894,13 +1878,14 @@ function stopTurnNavigation(announce = true) {
   turnNav.active = false;
   turnNav.route = null;
   turnNav.message = '';
-  clearOffRouteTracking();
+  turnNav.offRoute = false;
+  turnNav.offRouteInfo = null;
+  turnNav.offRouteApproachSpoken = false;
+  turnNav.prevFix = null;
   turnNav.lastPosition = null;
-  turnNav.rejoinAwaiting = false;
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   if (announce) speakNavigation('Navigation stopped.');
   refreshNavigationUI();
-  return hadRejoin;
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -2033,7 +2018,6 @@ function onRouterMessage(ev) {
     if (!m.ok || !Array.isArray(m.options) || !m.options.length) {
       showRouteActionToast('Could not calculate that route', { duration: 2600 });
       routing.options = [];
-      routing.navRejoin = null;
       stopTurnNavigation(false);
       clearStoredRouteDetails();
       const failure = { ...m, ok: false, reason: m.reason || 'No useful route options were found.' };
@@ -2057,7 +2041,6 @@ function onRouterMessage(ev) {
       routing.options = [];
       routing.last = m;
       renderRouteOptionControls();
-      routing.navRejoin = null;
       stopTurnNavigation(false);
       clearStoredRouteDetails();
       renderRouteCard(m);
@@ -2092,10 +2075,9 @@ function computeRoute() {
   });
   setRouteOptionsLoading(true);
   saveStateSoon();
-  const points = [routing.start, ...(routing.navRejoin ? [routing.navRejoin] : []),
-    ...routing.vias.map((v) => v.pt), routing.end];
+  const points = [routing.start, ...routing.vias.map((v) => v.pt), routing.end];
   const selected = routing.last?.optimization;
-  if (turnNav.active || routing.navRejoin) {
+  if (turnNav.active) {
     routing.worker.postMessage({
       type: 'route', id: routing.reqId, points, rules: { ...rules },
       mode: selected?.mode || routing.mode,
@@ -2602,7 +2584,6 @@ function consumePendingRouteStepHighlight() {
 }
 
 function setRoutePoint(kind, lngLat) {
-  clearNavigationRejoin();
   routing[kind] = [lngLat.lng, lngLat.lat];
   const mk = kind + 'Marker';
   if (routing[mk]) routing[mk].setLngLat(lngLat);
@@ -2613,7 +2594,6 @@ function setRoutePoint(kind, lngLat) {
     }).setLngLat(lngLat).addTo(map);
     if (touchEndpoint) enableLongPressEndpointMove(kind, routing[mk]);
     else routing[mk].on('dragend', () => {
-        clearNavigationRejoin();
         const ll = routing[mk].getLngLat();
         routing[kind] = [ll.lng, ll.lat];
         computeRoute();
@@ -2662,7 +2642,6 @@ function enableLongPressEndpointMove(kind, marker) {
     el.classList.remove('endpoint-moving');
     setMapGesturesEnabled(true, finished.mapGestures);
     if (finished.active && commit) {
-      clearNavigationRejoin();
       const ll = marker.getLngLat();
       routing[kind] = [ll.lng, ll.lat];
       setRouteStatus(`${kind === 'start' ? 'Start' : 'Destination'} moved`);
@@ -2733,13 +2712,11 @@ function addVia(lngLat, { allowPastLimit = false } = {}) {
     setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} stops`);
     return false;
   }
-  clearNavigationRejoin();
   const marker = new maplibregl.Marker({ color: '#555555', draggable: true, scale: 0.85 })
     .setLngLat(lngLat).addTo(map);
   const via = { pt: [lngLat.lng, lngLat.lat], marker };
   routing.vias.push(via);
   marker.on('dragend', () => {
-    clearNavigationRejoin();
     const ll = marker.getLngLat();
     via.pt = [ll.lng, ll.lat];
     computeRoute();
@@ -2750,7 +2727,6 @@ function addVia(lngLat, { allowPastLimit = false } = {}) {
 }
 
 function removeLastVia() {
-  clearNavigationRejoin();
   const via = routing.vias.pop();
   if (!via) { showRouteActionToast('No added stops to remove'); return; }
   via.marker.remove();
@@ -2765,7 +2741,6 @@ function reverseRoute() {
   if (!(routing.start && routing.end)) return;
   stopTurnNavigation(false);
   routing.arm = null;
-  routing.navRejoin = null;
   closePlacePicker(false);
 
   const start = routing.start;
@@ -2788,7 +2763,6 @@ function clearRoute() {
   routing.arm = null;
   closePlacePicker(false);
   routing.start = routing.end = null;
-  routing.navRejoin = null;
   routing.reqId++; // a route already being calculated must not reappear after clear
   for (const v of routing.vias) v.marker.remove();
   routing.vias = [];
@@ -2907,8 +2881,9 @@ function activateRouteOption(option, updateNavigation = false) {
     turnNav.nearest = 0;
     turnNav.routeM = 0;
     turnNav.arrived = false;
-    clearOffRouteTracking();
-    turnNav.rejoinAwaiting = false;
+    turnNav.offRoute = false;
+    turnNav.offRouteInfo = null;
+    turnNav.offRouteApproachSpoken = false;
     turnNav.message = 'Route updated';
   }
   renderRouteOptionControls();
@@ -2925,7 +2900,6 @@ function buildRoutingPanel() {
   choices.addEventListener('click', (event) => {
     const button = event.target.closest('[data-route-option]');
     if (!button || button.disabled || turnNav.active || choices.classList.contains('loading')) return;
-    clearNavigationRejoin();
     const option = routing.options[Number(button.dataset.routeOption)];
     if (option && option !== routing.last) activateRouteOption(option);
   });
@@ -2943,17 +2917,10 @@ function buildRoutingPanel() {
   document.getElementById('rb-via-remove').addEventListener('click', removeLastVia);
   document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.getElementById('navStartButton').addEventListener('click', () => {
-    if (turnNav.active) {
-      const routeChanged = stopTurnNavigation();
-      if (routeChanged) computeRoute();
-    }
+    if (turnNav.active) stopTurnNavigation();
     else startTurnNavigation();
   });
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
-  document.getElementById('navBanner').addEventListener('click', (e) => {
-    const action = e.target.closest('[data-nav-action]')?.dataset.navAction;
-    if (action === 'reroute') rerouteNavigation();
-  });
   document.getElementById('confirmClearRoute').addEventListener('click', () => {
     document.getElementById('clearRouteDialog').close();
     clearRoute();
@@ -4030,7 +3997,6 @@ function applyRoutingPreset(presetId) {
   _ruleRouteTimer = null;
   Object.assign(rules, preset.rules);
   Object.assign(routing, preset.preferences);
-  clearNavigationRejoin();
   suppressRoadInfo(900);
   buildRulesPanel();
   refreshNavigationUI();
@@ -4105,7 +4071,6 @@ function buildRulesPanel() {
   };
 
   const updateRoutePreference = () => {
-    clearNavigationRejoin();
     saveStateSoon();
     computeRoute();
   };
@@ -4122,10 +4087,6 @@ function buildRulesPanel() {
     scheduleRescore();
   });
   check('requireSafe', 'Require fully-safe routes');
-  check('autoReroute', 'Auto-reroute when off route', navigationOptions, () => {
-    saveStateSoon();
-    refreshNavigationUI();
-  });
   check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
   slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');
   slider('freeMaxSpeed', 'Max speed without shoulder', 15, 45, 5, ' mph');

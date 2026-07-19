@@ -166,7 +166,6 @@
       <li><b>Allow freeway as last resort</b> — a freeway is permitted only as a heavily penalized fallback, and it still fails the rules.</li>
       <li><b>Allow mountain bike trails</b> — explicitly MTB-tagged paths become available but stay strongly avoided; any use is called out in Route Details. Off by default.</li>
       <li><b>Require fully-safe routes</b> — every option must pass all your rules, except the last ~1,000 ft needed to reach your start, stops, or destination; those short access blocks still show red. The app reports when no such route exists.</li>
-      <li><b>Auto-reroute when off route</b> — navigation announces “updating route” and reroutes from your location after 60 seconds of moving time off route.</li>
       <li><b>Unknown shoulder = 0 ft</b> — faster roads must prove an adequate shoulder to pass.</li>
       </ul><p>Place search always keeps offline local results available; the ⌕ button also runs an online lookup.</p></section>
     <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Most riders should not change these.</b> Presets and Limits are the intended controls. Weights expose internal soft costs for testing and fine-tuning; poor combinations can produce long or unintuitive routes. They never override bicycle prohibitions or your hard Limits, and can be restored with <b>Reset all defaults</b>.</p><button id="settingsAdvancedWeightsBtn" type="button">Open advanced weights</button></section>
@@ -248,7 +247,6 @@
       <strong id="navBannerText"></strong>
       <span id="navBannerMeta"></span>
     </div>
-    <button type="button" data-nav-action="reroute" hidden>Reroute</button>
   </div>
   <div id="updatePrompt" class="update-prompt" hidden>
     <span>New version available</span>
