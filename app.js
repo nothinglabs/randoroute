@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.169';
+const APP_VERSION = '2026-07-19.170';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1423,6 +1423,9 @@ function storeRouteDetails(m) {
 // Pending "route me to my planned route" connector computation.
 let navConnector = null;
 
+// Set by buildRulesPanel; lets navigation force the Turn by Turn pane.
+let settingsPaneSelect = null;
+
 const turnNav = {
   active: false,
   watchId: null,
@@ -2053,6 +2056,7 @@ function startTurnNavigation() {
   turnNav.lastVoiceAt = Date.now();
   updateNavigationProgress();
   turnNav.message = 'Getting your location';
+  settingsPaneSelect?.('voice');
   refreshNavigationUI();
   speakNavigation('Navigation started. Follow the route on the map.');
   turnNav.watchId = navigator.geolocation.watchPosition(
@@ -4388,6 +4392,7 @@ function buildRulesPanel() {
       });
       if (pane === 'presets') syncPresetSelection();
     };
+    settingsPaneSelect = selectSettingsPane;
     const paneLockedByNavigation = (pane) => turnNav.active && pane !== 'voice';
     paneButtons.forEach((button) => {
       button.addEventListener('click', () => {
