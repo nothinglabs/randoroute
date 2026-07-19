@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.163';
+const APP_VERSION = '2026-07-19.164';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1832,7 +1832,17 @@ function updateTurnNavigation(pos) {
   if (!turnNav.marker) {
     const element = document.createElement('div');
     element.className = 'nav-bike-marker';
-    element.textContent = '🚴';
+    // Recumbent rider silhouette (no emoji exists for one).
+    element.innerHTML = `<svg viewBox="0 0 34 22" width="26" height="17" aria-hidden="true">
+      <g fill="none" stroke="#0b3d2e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="15.5" r="4.8"/>
+        <circle cx="26.5" cy="15.5" r="4.8"/>
+        <path d="M8 15.5 L15.5 13 L26.5 15.5"/>
+        <path d="M11.5 6.5 L15.5 12.5 L23 9 M15.5 12.5 L24.5 13.5"/>
+      </g>
+      <circle cx="10" cy="4.5" r="3" fill="#0b3d2e"/>
+      <circle cx="24" cy="10.5" r="1.6" fill="#0b3d2e"/>
+    </svg>`;
     turnNav.marker = new maplibregl.Marker({ element })
       .setLngLat([longitude, latitude]).addTo(map);
   } else turnNav.marker.setLngLat([longitude, latitude]);
