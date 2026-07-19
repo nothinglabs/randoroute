@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.160';
+const APP_VERSION = '2026-07-19.161';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1614,6 +1614,16 @@ function updateOffRouteGuidance(nearest, previousFix) {
   }
 }
 
+function updateNavigationProgress() {
+  const source = map.getSource('route-progress');
+  if (!source) return;
+  const coords = turnNav.active && turnNav.route && turnNav.nearest > 0
+    ? turnNav.route.coords.slice(0, turnNav.nearest + 1)
+    : [];
+  source.setData({ type: 'Feature', properties: {},
+    geometry: { type: 'LineString', coordinates: coords.length >= 2 ? coords : [] } });
+}
+
 function rejoinRoute(nearest) {
   turnNav.offRoute = false;
   turnNav.offRouteInfo = null;
@@ -1645,7 +1655,7 @@ function navigationBannerInfo() {
     kicker: 'Turn-by-turn navigation',
   };
   const remainingRouteM = Math.max(0, (turnNav.route?.totalM || 0) - turnNav.routeM);
-  const routeMeta = `${navDistanceText(remainingRouteM)} remaining`;
+  const routeMeta = `${navDistanceText(Math.max(0, turnNav.routeM))} done · ${navDistanceText(remainingRouteM)} remaining`;
   if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
   if (turnNav.offRoute) {
     const info = turnNav.offRouteInfo;
@@ -1831,6 +1841,7 @@ function updateTurnNavigation(pos) {
   turnNav.nearest = nearest.index;
   turnNav.routeM = nearest.routeM;
   turnNav.message = '';
+  updateNavigationProgress();
   const instructions = turnNav.route.instructions;
   // Passed maneuvers advance silently; announcing them late is noise.
   while (turnNav.next < instructions.length
@@ -1896,6 +1907,7 @@ function startTurnNavigation() {
   turnNav.offRouteSpokenAt = 0;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
+  updateNavigationProgress();
   turnNav.message = 'Getting your location';
   refreshNavigationUI();
   speakNavigation('Navigation started. Follow the route on the map.');
@@ -1924,6 +1936,7 @@ function stopTurnNavigation(announce = true) {
   turnNav.offRouteApproachSpoken = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
+  updateNavigationProgress();
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   if (announce) speakNavigation('Navigation stopped.');
   refreshNavigationUI();
@@ -2309,6 +2322,7 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-highlight-marker').setData(emptyHighlights);
     map.getSource('route-detail-marker').setData(emptyHighlights);
     map.getSource('route-detail-selection').setData(emptyLine);
+    map.getSource('route-progress').setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } });
     setFailPulse(failData.features.length > 0);
     applyDisplayModeAll();
     return;
@@ -2321,6 +2335,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-selection', { type: 'geojson', data: emptyLine });
+  map.addSource('route-progress', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
   map.addLayer({
     id: 'route-shadow', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -2396,6 +2411,12 @@ function drawRoute(coords, ferrySegs, segs) {
              'line-dasharray': [0.6, 1.8] },
   });
   setFailPulse(failData.features.length > 0);
+  // Ridden portion of the route darkens during navigation.
+  map.addLayer({
+    id: 'route-progress', type: 'line', source: 'route-progress',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#17262f', 'line-width': 7.6, 'line-opacity': 0.55 },
+  });
   map.addLayer({
     id: 'route-highlight-halo', type: 'line', source: 'route-seg',
     layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
