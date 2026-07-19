@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.161';
+const APP_VERSION = '2026-07-19.162';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -403,6 +403,14 @@ if ((savedState?.weightsVersion || 0) < ROUTING_WEIGHTS_VERSION) {
 }
 const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 
+// Voice guidance is a local device preference, not part of a shared route.
+const navVoice = {
+  headings: !savedState || typeof savedState.voiceHeadings !== 'boolean'
+    ? true : savedState.voiceHeadings,
+  updateMin: savedState && Number.isFinite(savedState.voiceUpdateMin)
+    ? Math.max(0, Math.min(15, savedState.voiceUpdateMin)) : 0,
+};
+
 const DEFAULT_ROUTE_PREFERENCES = Object.freeze({ prefDesig: true, prefResidential: true });
 const ROUTING_PRESETS = Object.freeze([
   {
@@ -541,6 +549,7 @@ function saveStateNow() {
       rules, passFail: display.passFail,
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
+      voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
@@ -1527,7 +1536,7 @@ function buildTurnInstructions(m) {
     const distanceM = cumulative[at];
     // Do not speak a chain of tiny graph-edge transitions as separate turns.
     if (distanceM - lastM < 70) continue;
-    instructions.push({ distanceM, coordIndex: at, text: navTurnText(delta, to, compassWord(outgoing)) });
+    instructions.push({ distanceM, coordIndex: at, text: navTurnText(delta, to), heading: compassWord(outgoing) });
     lastM = distanceM;
   }
   instructions.sort((a, b) => a.distanceM - b.distanceM);
@@ -1542,6 +1551,11 @@ const OFF_ROUTE_ENTER_M = 100;
 const OFF_ROUTE_REJOIN_M = 60;
 const OFF_ROUTE_APPROACH_M = 130;
 const OFF_ROUTE_RESPEAK_MS = 30_000;
+
+function navInstructionText(instruction) {
+  return `${instruction.text}${navVoice.headings && instruction.heading
+    ? `, heading ${instruction.heading}` : ''}`;
+}
 
 function routeRoadNameAt(index) {
   const segs = turnNav.route?.segs || [];
@@ -1601,10 +1615,11 @@ function updateOffRouteGuidance(nearest, previousFix) {
     const routeBearing = routeForwardBearing(nearest.index);
     const moved = previousFix
       && navDistanceM(previousFix.point, turnNav.lastPosition) >= 8;
+    const routeHeading = navVoice.headings ? compassWord(routeBearing) : null;
     const text = moved
       ? navTurnText(navDelta(navBearing(previousFix.point, turnNav.lastPosition), routeBearing),
-          info.street || 'the route', compassWord(routeBearing))
-      : `Ahead: rejoin ${info.street || 'the route'}, heading ${compassWord(routeBearing)}`;
+          info.street || 'the route', routeHeading)
+      : `Ahead: rejoin ${info.street || 'the route'}${routeHeading ? `, heading ${routeHeading}` : ''}`;
     turnNav.offRouteApproachSpoken = true;
     speakNavigation(`${text}.`);
     turnNav.offRouteSpokenAt = Date.now();
@@ -1672,7 +1687,7 @@ function navigationBannerInfo() {
   if (!next) return { headline: 'Continue to your destination', meta: routeMeta, kicker: 'Turn-by-turn navigation' };
   const remaining = Math.max(0, next.distanceM - turnNav.routeM);
   return {
-    headline: `In ${navDistanceText(remaining)} · ${next.text}`,
+    headline: `In ${navDistanceText(remaining)} · ${navInstructionText(next)}`,
     meta: `${routeMeta} · GPS guidance active`,
     kicker: 'Next maneuver',
   };
@@ -1745,6 +1760,7 @@ function speakNavigation(text) {
     refreshNavigationUI();
     return;
   }
+  turnNav.lastVoiceAt = Date.now();
   try {
     // Let the current prompt finish — cancelling mid-utterance is how turn
     // announcements were getting swallowed. Only clear queued (unstarted)
@@ -1857,6 +1873,7 @@ function updateTurnNavigation(pos) {
       turnNav.message = 'Arrived';
       speakNavigation('You have arrived at your destination.');
     }
+    maybeSpeakPeriodicUpdate(null, Infinity);
     refreshNavigationUI();
     return;
   }
@@ -1866,12 +1883,26 @@ function updateTurnNavigation(pos) {
     // the approach and the turn back-to-back.
     next.now = true;
     next.approach = true;
-    speakNavigation(`${next.text}.`);
+    speakNavigation(`${navInstructionText(next)}.`);
   } else if (!next.approach && remaining <= 350) {
     next.approach = true;
-    speakNavigation(`In ${navDistanceText(remaining)}, ${next.text.toLowerCase()}.`);
+    speakNavigation(`In ${navDistanceText(remaining)}, ${navInstructionText(next).toLowerCase()}.`);
+  } else {
+    maybeSpeakPeriodicUpdate(next, remaining);
   }
   refreshNavigationUI();
+}
+
+// Optional heartbeat when nothing has changed: the rider picks the cadence
+// (never, or every 1-15 minutes) in Settings -> Voice.
+function maybeSpeakPeriodicUpdate(next, remainingToTurnM) {
+  if (!navVoice.updateMin || turnNav.arrived) return;
+  if (Date.now() - (turnNav.lastVoiceAt || 0) < navVoice.updateMin * 60000) return;
+  if (next && remainingToTurnM <= 350) return; // a turn prompt is imminent anyway
+  const remainingRouteM = Math.max(0, (turnNav.route?.totalM || 0) - turnNav.routeM);
+  speakNavigation(next
+    ? `In ${navDistanceText(remainingToTurnM)}, ${navInstructionText(next).toLowerCase()}. ${navDistanceText(remainingRouteM)} remaining.`
+    : `${navDistanceText(remainingRouteM)} remaining to your destination.`);
 }
 
 function handleTurnNavigationLocationError(error) {
@@ -1907,6 +1938,7 @@ function startTurnNavigation() {
   turnNav.offRouteSpokenAt = 0;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
+  turnNav.lastVoiceAt = Date.now();
   updateNavigationProgress();
   turnNav.message = 'Getting your location';
   refreshNavigationUI();
@@ -2296,7 +2328,7 @@ function drawRoute(coords, ferrySegs, segs) {
     properties: { name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
       e: s.flags & 1 ? 1 : 0, fac: s.flags & 2 ? 1 : 0, fw: s.flags & 4 ? 1 : 0,
       lim: s.flags & 128 ? 1 : 0,
-      hazard: s.hazard || 0, gradePct: s.gradePct || 0,
+      hazard: s.hazard || 0, gradePct: s.gradePct || 0, crossing: s.crossing ? 1 : 0,
       infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
       facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
       roadClass: s.roadClass || 0,
@@ -4233,6 +4265,38 @@ function buildRulesPanel() {
   }
 }
 
+function buildVoicePanel() {
+  const host = document.getElementById('settingsVoice');
+  if (!host) return;
+  host.replaceChildren();
+
+  const headings = document.createElement('div');
+  headings.className = 'check-rule rule-card';
+  headings.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceHeadings"
+    ${navVoice.headings ? 'checked' : ''}><span>Speak compass directions (north/south/east/west)</span></label>`;
+  headings.querySelector('input').addEventListener('change', (e) => {
+    navVoice.headings = e.target.checked;
+    saveStateSoon();
+  });
+  host.appendChild(headings);
+
+  const updateLabel = () => navVoice.updateMin === 0 ? 'Never' : `${navVoice.updateMin} min`;
+  const cadence = document.createElement('div');
+  cadence.className = 'rule rule-card';
+  cadence.innerHTML = `
+    <div class="rule-head">
+      <label for="r-voiceUpdate">Status update when nothing changes</label>
+      <span class="val" id="v-voiceUpdate">${updateLabel()}</span>
+    </div>
+    <input type="range" id="r-voiceUpdate" min="0" max="15" step="1" value="${navVoice.updateMin}">`;
+  cadence.querySelector('input').addEventListener('input', (e) => {
+    navVoice.updateMin = Number(e.target.value);
+    document.getElementById('v-voiceUpdate').textContent = updateLabel();
+    saveStateSoon();
+  });
+  host.appendChild(cadence);
+}
+
 function buildLegend() {
   const host = document.getElementById('legend');
   host.innerHTML = '';
@@ -4272,6 +4336,7 @@ function buildLegend() {
 /* ------------------------------------------------------------- boot */
 buildSourcePanel();
 buildRulesPanel();
+buildVoicePanel();
 buildRoutingPanel();
 buildLegend();
 

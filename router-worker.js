@@ -32,6 +32,10 @@ const PROHIBITED_SHOULDER = -128;
 // ones, so the exemption can never leak a failing shortcut into mid-route.
 const ACCESS_RADIUS_M = 300;   // ~1,000 ft around each leg endpoint
 const ACCESS_EDGE_MAX_M = 800; // a qualifying edge must itself be short
+// A failing edge this short, between passing neighbors, is a road CROSSING —
+// the few meters of a busy road's own pavement at a signal or trail crossing —
+// not riding along the failing road. Crossings are never rule violations.
+const CROSSING_MAX_M = 40;
 // Bit 4 of the graph's metadata byte marks OSM paths explicitly identified as
 // mountain-bike infrastructure (including mtb:scale:imba). They remain in the
 // graph for the rider-controlled option, but are unavailable by default.
@@ -389,7 +393,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // impassable in EVERY mode, so profiles choose only among matching
       // paths — except the short access blocks at a leg's own endpoints,
       // which stay usable (and still report/pulse as failing).
-      if (rules.requireSafe && actualLevel === 4 && !terminalAccessEdge(ei)) continue;
+      if (rules.requireSafe && actualLevel === 4 && !terminalAccessEdge(ei)
+          && !(eLen[ei] <= CROSSING_MAX_M && !(fl & 4))) continue;
       const requiredSafeAccess = rules.requireSafe && actualLevel === 4;
       // Discovery lenses may price an otherwise-allowed edge more
       // conservatively, but they never change legality or reported safety.
@@ -528,6 +533,22 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     nodeIds.push(toNode);
     profile.push([distM, nodeEle[toNode]]);
   }
+  // Reclassify isolated short failing hops as crossings: they enter and
+  // leave the busy road immediately, so they don't count against the rules,
+  // don't pulse red, and don't break "Require fully-safe routes".
+  for (let i = 0; i < segs.length; i++) {
+    const seg = segs[i];
+    if (seg.level !== 4 || (seg.flags & 4)) continue;
+    const exactLen = eLen[edgeIds[i]];
+    if (exactLen > CROSSING_MAX_M) continue;
+    if (segs[i - 1]?.level === 4 || segs[i + 1]?.level === 4) continue;
+    seg.level = 2;
+    seg.crossing = 1;
+    levelM[4] -= exactLen;
+    levelM[2] += exactLen;
+    failM -= exactLen;
+  }
+  failM = Math.max(0, failM);
   const ferrySegs = ferryRanges.map(([a, b]) => coords.slice(a, b + 1));
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
