@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.158';
+const APP_VERSION = '2026-07-19.159';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1465,6 +1465,40 @@ function navDistanceText(m) {
   return `${(m / 1609.34).toFixed(m < 1609.34 ? 1 : 1)} miles`;
 }
 
+// Index of the route point at (or just past) a cumulative distance.
+function coordIndexAtDistance(cumulative, m) {
+  let lo = 0, hi = cumulative.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cumulative[mid] < m) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+// Bearings for turn detection are measured over ~20 m of travel, not two
+// raw geometry points: inside a tiny traffic circle the point-to-point
+// bearings swing wildly and produce "turn left" for straight-through.
+const TURN_BEARING_SPAN_M = 20;
+function routeBearingOver(coords, cumulative, fromM, toM) {
+  let i = coordIndexAtDistance(cumulative, Math.min(fromM, toM));
+  let j = coordIndexAtDistance(cumulative, Math.max(fromM, toM));
+  if (j <= i) j = Math.min(cumulative.length - 1, i + 1);
+  if (j <= i) i = Math.max(0, j - 1);
+  return navBearing(coords[i], coords[j]);
+}
+
+// A maneuver onto a short unnamed connector (roundabout arc, crossing
+// stub) should name the road the rider actually ends up on.
+function nextNamedRoad(segs, from) {
+  let skippedM = 0;
+  for (let i = from; i < segs.length && skippedM <= 90; i++) {
+    const name = navRoadName(segs[i].name);
+    if (name) return name;
+    skippedM += Number(segs[i].lenM) || 0;
+  }
+  return '';
+}
+
 function buildTurnInstructions(m) {
   const coords = m.coords || [];
   const cumulative = [0];
@@ -1482,11 +1516,12 @@ function buildTurnInstructions(m) {
   for (let i = 0; i + 1 < segs.length; i++) {
     const current = segs[i], next = segs[i + 1];
     const at = Math.max(1, Math.min(coords.length - 2, next.c0));
-    const incoming = navBearing(coords[Math.max(0, at - 2)], coords[at]);
-    const outgoing = navBearing(coords[at], coords[Math.min(coords.length - 1, at + 2)]);
+    const junctionM = cumulative[at];
+    const incoming = routeBearingOver(coords, cumulative, junctionM - TURN_BEARING_SPAN_M, junctionM);
+    const outgoing = routeBearingOver(coords, cumulative, junctionM, junctionM + TURN_BEARING_SPAN_M);
     const delta = navDelta(incoming, outgoing);
     const from = navRoadName(current.name);
-    const to = navRoadName(next.name);
+    const to = navRoadName(next.name) || nextNamedRoad(segs, i + 1);
     const changedRoad = !!to && to.toLowerCase() !== from.toLowerCase();
     if (!changedRoad && Math.abs(delta) < 40) continue;
     const distanceM = cumulative[at];
@@ -1541,7 +1576,7 @@ function offRouteDescription(nearest) {
 }
 
 function offRouteSpeech(info) {
-  return `Off route. Rejoin the route ${navDistanceText(info.distM)} ${info.dir}${
+  return `Rejoin route ${navDistanceText(info.distM)} ${info.dir}${
     info.street ? ` on ${info.street}` : ''}.`;
 }
 
@@ -1758,7 +1793,10 @@ function updateTurnNavigation(pos) {
   const { longitude, latitude } = pos.coords;
   turnNav.lastPosition = [longitude, latitude];
   if (!turnNav.marker) {
-    turnNav.marker = new maplibregl.Marker({ color: '#00795c', scale: 0.75 })
+    const element = document.createElement('div');
+    element.className = 'nav-bike-marker';
+    element.textContent = '🚴';
+    turnNav.marker = new maplibregl.Marker({ element })
       .setLngLat([longitude, latitude]).addTo(map);
   } else turnNav.marker.setLngLat([longitude, latitude]);
 
