@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.164';
+const APP_VERSION = '2026-07-19.165';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4328,18 +4328,20 @@ function buildVoicePanel() {
   });
   host.appendChild(headings);
 
-  const updateLabel = () => navVoice.updateMin === 0 ? 'Never' : `${navVoice.updateMin} min`;
+  const choices = [[0, 'Never'], [1, 'Every minute'], [2, 'Every 2 minutes'],
+    [3, 'Every 3 minutes'], [5, 'Every 5 minutes'], [10, 'Every 10 minutes'],
+    [15, 'Every 15 minutes']];
+  // Snap any previously stored in-between value onto the closest choice.
+  navVoice.updateMin = choices.reduce((best, [value]) =>
+    Math.abs(value - navVoice.updateMin) < Math.abs(best - navVoice.updateMin) ? value : best, 0);
   const cadence = document.createElement('div');
   cadence.className = 'rule rule-card';
   cadence.innerHTML = `
-    <div class="rule-head">
-      <label for="r-voiceUpdate">Status update when nothing changes</label>
-      <span class="val" id="v-voiceUpdate">${updateLabel()}</span>
-    </div>
-    <input type="range" id="r-voiceUpdate" min="0" max="15" step="1" value="${navVoice.updateMin}">`;
-  cadence.querySelector('input').addEventListener('input', (e) => {
+    <div class="rule-head"><label for="r-voiceUpdate">Status update when nothing changes</label></div>
+    <select id="r-voiceUpdate" class="voice-select">${choices.map(([value, label]) =>
+      `<option value="${value}"${value === navVoice.updateMin ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+  cadence.querySelector('select').addEventListener('change', (e) => {
     navVoice.updateMin = Number(e.target.value);
-    document.getElementById('v-voiceUpdate').textContent = updateLabel();
     saveStateSoon();
   });
   host.appendChild(cadence);
