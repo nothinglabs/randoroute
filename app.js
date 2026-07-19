@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.165';
+const APP_VERSION = '2026-07-19.166';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -408,7 +408,15 @@ const navVoice = {
   headings: !savedState || typeof savedState.voiceHeadings !== 'boolean'
     ? true : savedState.voiceHeadings,
   updateMin: savedState && Number.isFinite(savedState.voiceUpdateMin)
-    ? Math.max(0, Math.min(15, savedState.voiceUpdateMin)) : 0,
+    ? Math.max(0, Math.min(30, savedState.voiceUpdateMin)) : 0,
+  statusRoute: !savedState || typeof savedState.voiceStatusRoute !== 'boolean'
+    ? true : savedState.voiceStatusRoute,
+  statusSpeed: !savedState || typeof savedState.voiceStatusSpeed !== 'boolean'
+    ? true : savedState.voiceStatusSpeed,
+  statusMiles: !savedState || typeof savedState.voiceStatusMiles !== 'boolean'
+    ? true : savedState.voiceStatusMiles,
+  statusEta: !savedState || typeof savedState.voiceStatusEta !== 'boolean'
+    ? true : savedState.voiceStatusEta,
 };
 
 const DEFAULT_ROUTE_PREFERENCES = Object.freeze({ prefDesig: true, prefResidential: true });
@@ -550,6 +558,8 @@ function saveStateNow() {
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
+      voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
+      voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
@@ -1850,6 +1860,13 @@ function updateTurnNavigation(pos) {
   const previousFix = turnNav.prevFix;
   const fixAt = Number.isFinite(pos.timestamp) ? pos.timestamp : Date.now();
   turnNav.prevFix = { point: [longitude, latitude], at: fixAt };
+  const reportedMps = Number(pos.coords.speed);
+  let mps = Number.isFinite(reportedMps) && reportedMps >= 0 ? reportedMps : null;
+  if (mps == null && previousFix) {
+    const dt = (fixAt - previousFix.at) / 1000;
+    if (dt > 0 && dt < 30) mps = navDistanceM(previousFix.point, [longitude, latitude]) / dt;
+  }
+  if (mps != null) turnNav.speedMph = mps * 2.23694;
 
   // Off route, the nearest point is searched over the WHOLE route so the
   // rider can rejoin anywhere — ahead of or behind where they left it.
@@ -1923,16 +1940,37 @@ function updateTurnNavigation(pos) {
   refreshNavigationUI();
 }
 
-// Optional heartbeat when nothing has changed: the rider picks the cadence
-// (never, or every 1-15 minutes) in Settings -> Voice.
+function speakDuration(seconds) {
+  const min = Math.max(1, Math.round(seconds / 60));
+  if (min < 60) return `${min} minute${min === 1 ? '' : 's'}`;
+  const h = Math.floor(min / 60), rest = min % 60;
+  return `${h} hour${h === 1 ? '' : 's'}${rest ? ` ${rest} minutes` : ''}`;
+}
+
+// Optional status update on the rider's cadence (Settings -> Voice): any
+// combination of next maneuver, speed, distance remaining, and time left.
 function maybeSpeakPeriodicUpdate(next, remainingToTurnM) {
   if (!navVoice.updateMin || turnNav.arrived) return;
   if (Date.now() - (turnNav.lastVoiceAt || 0) < navVoice.updateMin * 60000) return;
   if (next && remainingToTurnM <= 350) return; // a turn prompt is imminent anyway
+  const parts = [];
+  if (navVoice.statusRoute) {
+    parts.push(next
+      ? `In ${navDistanceText(remainingToTurnM)}, ${navInstructionText(next).toLowerCase()}`
+      : 'Continue to your destination');
+  }
+  if (navVoice.statusSpeed && Number.isFinite(turnNav.speedMph)) {
+    parts.push(`Speed ${Math.round(turnNav.speedMph)} miles per hour`);
+  }
   const remainingRouteM = Math.max(0, (turnNav.route?.totalM || 0) - turnNav.routeM);
-  speakNavigation(next
-    ? `In ${navDistanceText(remainingToTurnM)}, ${navInstructionText(next).toLowerCase()}. ${navDistanceText(remainingRouteM)} remaining.`
-    : `${navDistanceText(remainingRouteM)} remaining to your destination.`);
+  if (navVoice.statusMiles) parts.push(`${navDistanceText(remainingRouteM)} remaining`);
+  if (navVoice.statusEta) {
+    const totalM = Math.max(1, turnNav.route?.totalM || 1);
+    const totalS = Number(routing.last?.timeS) || 0;
+    const remainS = totalS * remainingRouteM / totalM;
+    if (remainS >= 45) parts.push(`about ${speakDuration(remainS)} left`);
+  }
+  if (parts.length) speakNavigation(`${parts.join('. ')}.`);
 }
 
 function handleTurnNavigationLocationError(error) {
@@ -4330,20 +4368,30 @@ function buildVoicePanel() {
 
   const choices = [[0, 'Never'], [1, 'Every minute'], [2, 'Every 2 minutes'],
     [3, 'Every 3 minutes'], [5, 'Every 5 minutes'], [10, 'Every 10 minutes'],
-    [15, 'Every 15 minutes']];
+    [15, 'Every 15 minutes'], [20, 'Every 20 minutes'], [30, 'Every 30 minutes']];
   // Snap any previously stored in-between value onto the closest choice.
   navVoice.updateMin = choices.reduce((best, [value]) =>
     Math.abs(value - navVoice.updateMin) < Math.abs(best - navVoice.updateMin) ? value : best, 0);
   const cadence = document.createElement('div');
   cadence.className = 'rule rule-card';
+  const items = [['statusRoute', 'Route status'], ['statusSpeed', 'Current speed'],
+    ['statusMiles', 'Miles remaining'], ['statusEta', 'Est. time left']];
   cadence.innerHTML = `
-    <div class="rule-head"><label for="r-voiceUpdate">Status update when nothing changes</label></div>
+    <div class="rule-head"><label for="r-voiceUpdate">Status update</label></div>
     <select id="r-voiceUpdate" class="voice-select">${choices.map(([value, label]) =>
-      `<option value="${value}"${value === navVoice.updateMin ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+      `<option value="${value}"${value === navVoice.updateMin ? ' selected' : ''}>${label}</option>`).join('')}</select>
+    <div class="voice-status-grid">${items.map(([key, label]) =>
+      `<label class="rule-check"><input type="checkbox" data-voice-status="${key}"
+        ${navVoice[key] ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div>`;
   cadence.querySelector('select').addEventListener('change', (e) => {
     navVoice.updateMin = Number(e.target.value);
     saveStateSoon();
   });
+  cadence.querySelectorAll('[data-voice-status]').forEach((input) =>
+    input.addEventListener('change', () => {
+      navVoice[input.dataset.voiceStatus] = input.checked;
+      saveStateSoon();
+    }));
   host.appendChild(cadence);
 }
 

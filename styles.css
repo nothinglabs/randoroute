@@ -246,7 +246,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .settings-tabs button { flex: 1; min-height: 30px; padding: 4px 8px; border: 1px solid #d5dfe6; border-radius: 8px; background: #f2f5f7; color: #4c5b66; font: 700 12px system-ui; cursor: pointer; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }
-.settings-pane { display: flex; flex-direction: column; height: 184px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
+.settings-pane { display: flex; flex-direction: column; height: 196px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
 .settings-pane[hidden] { display: none; }
 .settings-pane > .settings-summary, .settings-pane > .preset-status { flex: none; }
 #settingsPresets, #settingsSliders, #settingsOptions, #settingsVoice { flex: 1; align-content: space-between; }
@@ -623,3 +623,6 @@ body.navigation-active .maplibregl-user-location-dot,
 body.navigation-active .maplibregl-user-location-accuracy-circle { display: none; }
 
 .voice-select { width: 100%; min-width: 0; margin-top: 5px; padding: 8px 10px; border: 1px solid #c9d7e0; border-radius: 8px; background: #fff; color: #2c3e4c; font: 650 12px system-ui; }
+
+.voice-status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-top: 7px; }
+.voice-status-grid .rule-check { font-size: 11px; font-weight: 650; }
