@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.168';
+const APP_VERSION = '2026-07-19.169';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3038,7 +3038,9 @@ function syncRouteOptionControls() {
     const active = Number(button.dataset.routeOption) === routing.options.indexOf(routing.last);
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
-    button.disabled = turnNav.active || busy;
+    button.disabled = busy;
+    button.classList.toggle('nav-locked', turnNav.active);
+    button.setAttribute('aria-disabled', String(turnNav.active || busy));
   });
 }
 
@@ -3079,9 +3081,10 @@ function renderRouteOptionControls() {
       ? (only ? `${label.slice(-1)} (Only route)` : label.slice(-1))
       : label;
     const active = option === routing.last;
-    return `<button type="button" data-route-option="${index}" ${active ? 'class="active"' : ''}
+    const classes = [active ? 'active' : '', turnNav.active ? 'nav-locked' : ''].filter(Boolean).join(' ');
+    return `<button type="button" data-route-option="${index}"${classes ? ` class="${classes}"` : ''}
       aria-pressed="${active}" aria-label="Choose route ${index + 1}: ${label}"
-      title="${optimizationDescription(optimization)}" ${turnNav.active ? 'disabled' : ''}>
+      title="${optimizationDescription(optimization)}"${turnNav.active ? ' aria-disabled="true"' : ''}>
       <span>${shortLabel}</span></button>`;
   }).join('');
 }
@@ -3117,8 +3120,12 @@ function activateRouteOption(option, updateNavigation = false) {
 function buildRoutingPanel() {
   const choices = document.getElementById('routeOptions');
   choices.addEventListener('click', (event) => {
+    if (turnNav.active) {
+      showRouteActionToast('Pause navigation before choosing a different route', { duration: 2600 });
+      return;
+    }
     const button = event.target.closest('[data-route-option]');
-    if (!button || button.disabled || turnNav.active || choices.classList.contains('loading')) return;
+    if (!button || button.disabled || choices.classList.contains('loading')) return;
     const option = routing.options[Number(button.dataset.routeOption)];
     if (option && option !== routing.last) activateRouteOption(option);
   });
@@ -4381,8 +4388,15 @@ function buildRulesPanel() {
       });
       if (pane === 'presets') syncPresetSelection();
     };
+    const paneLockedByNavigation = (pane) => turnNav.active && pane !== 'voice';
     paneButtons.forEach((button) => {
-      button.addEventListener('click', () => selectSettingsPane(button.dataset.settingsPane));
+      button.addEventListener('click', () => {
+        if (paneLockedByNavigation(button.dataset.settingsPane)) {
+          showRouteActionToast('Pause navigation before changing route settings', { duration: 2600 });
+          return;
+        }
+        selectSettingsPane(button.dataset.settingsPane);
+      });
       button.addEventListener('keydown', (event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
@@ -4390,7 +4404,9 @@ function buildRulesPanel() {
         const next = event.key === 'Home' ? 0 : event.key === 'End' ? paneButtons.length - 1
           : (current + (event.key === 'ArrowRight' ? 1 : -1) + paneButtons.length) % paneButtons.length;
         paneButtons[next].focus();
-        selectSettingsPane(paneButtons[next].dataset.settingsPane);
+        if (!paneLockedByNavigation(paneButtons[next].dataset.settingsPane)) {
+          selectSettingsPane(paneButtons[next].dataset.settingsPane);
+        }
       });
     });
     document.getElementById('settingsHelpBtn').addEventListener('click', () =>

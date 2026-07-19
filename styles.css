@@ -626,3 +626,8 @@ body.navigation-active .maplibregl-user-location-accuracy-circle { display: none
 
 .voice-status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-top: 7px; }
 .voice-status-grid .rule-check { font-size: 11px; font-weight: 650; }
+
+/* Navigation locks route-shaping controls; the Navigate pane stays live. */
+#routeOptions button.nav-locked { opacity: .45; }
+#routeOptions button.nav-locked.active { opacity: .7; }
+body.navigation-active .settings-tabs [data-settings-pane]:not([data-settings-pane="voice"]) { opacity: .45; }
