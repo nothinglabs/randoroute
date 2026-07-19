@@ -618,4 +618,6 @@ body.navigation-active #routeBar { display: none; }
   #placeSearch, .save-route-form input, #shareRouteUrl, .import-route-actions input { font-size: 16px; }
 }
 
-.nav-bike-marker { display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid #00795c; border-radius: 50%; background: rgba(255,255,255,.96); box-shadow: 0 2px 8px rgba(0,0,0,.35); font-size: 19px; line-height: 1; }
+.nav-bike-marker { display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid #00795c; border-radius: 50%; background: rgba(255,255,255,.96); box-shadow: 0 2px 8px rgba(0,0,0,.35); font-size: 19px; line-height: 1; z-index: 6; }
+body.navigation-active .maplibregl-user-location-dot,
+body.navigation-active .maplibregl-user-location-accuracy-circle { display: none; }

@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.159';
+const APP_VERSION = '2026-07-19.160';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1736,7 +1736,10 @@ function speakNavigation(text) {
     return;
   }
   try {
-    window.speechSynthesis.cancel();
+    // Let the current prompt finish — cancelling mid-utterance is how turn
+    // announcements were getting swallowed. Only clear queued (unstarted)
+    // prompts, which are stale by definition.
+    if (window.speechSynthesis.pending) window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.05;
     utterance.lang = navigator.language || 'en-US';
@@ -1831,7 +1834,7 @@ function updateTurnNavigation(pos) {
   const instructions = turnNav.route.instructions;
   // Passed maneuvers advance silently; announcing them late is noise.
   while (turnNav.next < instructions.length
-      && instructions[turnNav.next].distanceM - turnNav.routeM < -35) {
+      && instructions[turnNav.next].distanceM - turnNav.routeM < -60) {
     instructions[turnNav.next].approach = true;
     instructions[turnNav.next].now = true;
     turnNav.next++;
@@ -1847,7 +1850,7 @@ function updateTurnNavigation(pos) {
     return;
   }
   const remaining = next.distanceM - turnNav.routeM;
-  if (!next.now && remaining <= 70) {
+  if (!next.now && remaining <= 90) {
     // Inside the immediate window: speak only the turn itself, never both
     // the approach and the turn back-to-back.
     next.now = true;
