@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.166';
+const APP_VERSION = '2026-07-19.167';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2521,7 +2521,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-progress', type: 'line', source: 'route-progress',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#17262f', 'line-width': 7.6, 'line-opacity': 0.55 },
+    paint: { 'line-color': '#17262f', 'line-width': 7.6, 'line-opacity': 0.26 },
   });
   map.addLayer({
     id: 'route-highlight-halo', type: 'line', source: 'route-seg',
