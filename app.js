@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.162';
+const APP_VERSION = '2026-07-19.163';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1639,6 +1639,14 @@ function updateNavigationProgress() {
     geometry: { type: 'LineString', coordinates: coords.length >= 2 ? coords : [] } });
 }
 
+function offerNavStartReroute(startDistM) {
+  const dialog = document.getElementById('navStartDialog');
+  const text = document.getElementById('navStartDialogText');
+  if (!dialog?.showModal || !text) return;
+  text.textContent = `You are ${navDistanceText(startDistM)} from the route's start. Reroute from your current location instead?`;
+  if (!dialog.open) dialog.showModal();
+}
+
 function rejoinRoute(nearest) {
   turnNav.offRoute = false;
   turnNav.offRouteInfo = null;
@@ -1838,6 +1846,18 @@ function updateTurnNavigation(pos) {
   const nearest = nearestNavigationPoint(longitude, latitude, turnNav.offRoute);
   if (!nearest) return;
 
+  // First fix after starting navigation: someone far from the planned start
+  // probably wants the route to come to them instead.
+  if (!turnNav.startChecked) {
+    turnNav.startChecked = true;
+    const startDistM = navDistanceM([longitude, latitude], turnNav.route.coords[0]);
+    if (startDistM > 322 && nearest.offRouteM > OFF_ROUTE_ENTER_M) {
+      offerNavStartReroute(startDistM);
+      refreshNavigationUI();
+      return;
+    }
+  }
+
   if (!turnNav.offRoute && nearest.offRouteM > OFF_ROUTE_ENTER_M) {
     enterOffRoute(nearest);
     refreshNavigationUI();
@@ -1936,6 +1956,7 @@ function startTurnNavigation() {
   turnNav.offRouteInfo = null;
   turnNav.offRouteApproachSpoken = false;
   turnNav.offRouteSpokenAt = 0;
+  turnNav.startChecked = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
   turnNav.lastVoiceAt = Date.now();
@@ -2103,6 +2124,7 @@ function onRouterMessage(ev) {
     setRouteOptionsLoading(false);
     if (!m.ok || !Array.isArray(m.options) || !m.options.length) {
       showRouteActionToast('Could not calculate that route', { duration: 2600 });
+      routing.autoNavOnArrival = false;
       routing.options = [];
       stopTurnNavigation(false);
       clearStoredRouteDetails();
@@ -2119,6 +2141,10 @@ function onRouterMessage(ev) {
     const selected = refreshedRouteSelection(m.options);
     activateRouteOption(selected);
     notifySnapDistance(selected);
+    if (routing.autoNavOnArrival) {
+      routing.autoNavOnArrival = false;
+      if (selected?.ok) startTurnNavigation();
+    }
   } else if (m.type === 'route') {
     if (m.id !== routing.reqId) return; // stale reply
     setRouteOptionsLoading(false);
@@ -2853,6 +2879,7 @@ function reverseRoute() {
 
 function clearRoute() {
   showRouteActionToast('');
+  routing.autoNavOnArrival = false;
   stopTurnNavigation(false);
   routing.arm = null;
   closePlacePicker(false);
@@ -3013,6 +3040,17 @@ function buildRoutingPanel() {
   document.getElementById('navStartButton').addEventListener('click', () => {
     if (turnNav.active) stopTurnNavigation();
     else startTurnNavigation();
+  });
+  document.getElementById('navStartFromHere').addEventListener('click', () => {
+    document.getElementById('navStartDialog').close();
+    const position = turnNav.lastPosition;
+    if (!position) return;
+    stopTurnNavigation(false);
+    routing.autoNavOnArrival = true;
+    routing.start = [...position];
+    routing.startMarker?.setLngLat({ lng: position[0], lat: position[1] });
+    saveStateSoon();
+    computeRoute();
   });
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
   document.getElementById('confirmClearRoute').addEventListener('click', () => {
