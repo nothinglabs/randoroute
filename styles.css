@@ -631,3 +631,5 @@ body.navigation-active .maplibregl-user-location-accuracy-circle { display: none
 #routeOptions button.nav-locked { opacity: .45; }
 #routeOptions button.nav-locked.active { opacity: .7; }
 body.navigation-active .settings-tabs [data-settings-pane]:not([data-settings-pane="voice"]) { opacity: .45; }
+
+#navDetailsBtn { flex: none; align-self: center; margin-left: 4px; padding: 7px 10px; border: 1px solid #74b9a5; border-radius: 9px; background: #fff; color: #00795c; font: 750 11px system-ui; cursor: pointer; }

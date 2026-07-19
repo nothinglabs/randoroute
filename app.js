@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.170';
+const APP_VERSION = '2026-07-19.171';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1734,7 +1734,10 @@ function navigationBannerInfo() {
     kicker: 'Turn-by-turn navigation',
   };
   const remainingRouteM = Math.max(0, (turnNav.route?.totalM || 0) - turnNav.routeM);
-  const routeMeta = `${navDistanceText(Math.max(0, turnNav.routeM))} done · ${navDistanceText(remainingRouteM)} remaining`;
+  const projectedS = (Number(routing.last?.timeS) || 0)
+    * remainingRouteM / Math.max(1, turnNav.route?.totalM || 1);
+  const routeMeta = `${navDistanceText(Math.max(0, turnNav.routeM))} done · ${navDistanceText(remainingRouteM)} to go${
+    projectedS >= 45 ? ` · ~${fmtDur(projectedS)}` : ''}`;
   if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
   if (turnNav.offRoute) {
     const info = turnNav.offRouteInfo;
@@ -1770,7 +1773,14 @@ function openRouteDetails() {
     return;
   }
   // Reload the embedded report so it always reflects the latest route data.
-  frame.src = `route-details.html?embedded=1&t=${Date.now()}`;
+  // During navigation, hand over ride progress (in planned-route meters,
+  // connector lead-in excluded) so the elevation charts can mark it.
+  let progress = '';
+  if (turnNav.active && turnNav.route) {
+    const connectorM = Math.max(0, turnNav.route.totalM - (Number(routing.last?.distM) || turnNav.route.totalM));
+    progress = `&navProgress=${Math.max(0, Math.round(turnNav.routeM - connectorM))}`;
+  }
+  frame.src = `route-details.html?embedded=1&t=${Date.now()}${progress}`;
   if (!dialog.open) dialog.showModal();
 }
 
@@ -2057,6 +2067,7 @@ function startTurnNavigation() {
   updateNavigationProgress();
   turnNav.message = 'Getting your location';
   settingsPaneSelect?.('voice');
+  if (mobileNavMedia.matches) setPanelOpen(false);
   refreshNavigationUI();
   speakNavigation('Navigation started. Follow the route on the map.');
   turnNav.watchId = navigator.geolocation.watchPosition(
@@ -3150,6 +3161,7 @@ function buildRoutingPanel() {
     if (turnNav.active) stopTurnNavigation();
     else startTurnNavigation();
   });
+  document.getElementById('navDetailsBtn').addEventListener('click', openRouteDetails);
   document.getElementById('navStartFromHere').addEventListener('click', () => {
     document.getElementById('navStartDialog').close();
     const position = turnNav.lastPosition;

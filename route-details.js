@@ -328,6 +328,8 @@ function selectDetailTab(tabId) {
   });
 }
 
+const NAV_PROGRESS_M = Number(new URLSearchParams(location.search).get('navProgress'));
+
 function drawElevation(canvas, compact = false) {
   const profile = details?.profile;
   const distM = details?.summary?.distM;
@@ -357,6 +359,21 @@ function drawElevation(canvas, compact = false) {
   ctx.strokeStyle = '#2c7bb6';
   ctx.lineWidth = 1.8;
   ctx.stroke();
+  // Live ride position, when navigation handed one over: see where you are
+  // relative to the climbs ahead.
+  if (Number.isFinite(NAV_PROGRESS_M) && NAV_PROGRESS_M > 0 && NAV_PROGRESS_M < distM) {
+    const x = X(NAV_PROGRESS_M);
+    ctx.beginPath();
+    ctx.moveTo(x, padT - (compact ? 4 : 6));
+    ctx.lineTo(x, h - padB);
+    ctx.strokeStyle = '#00795c';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, padT - (compact ? 4 : 6), compact ? 2.4 : 3.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#00795c';
+    ctx.fill();
+  }
   if (compact) {
     ctx.fillStyle = '#607482';
     ctx.font = '700 9px system-ui';
