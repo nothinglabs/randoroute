@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.167';
+const APP_VERSION = '2026-07-19.168';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1420,6 +1420,9 @@ function storeRouteDetails(m) {
 // This is deliberately a foreground navigation mode. It uses the browser's
 // GPS, speech synthesis, and Screen Wake Lock API while the app is visible.
 // A native iOS wrapper is still required for reliable background navigation.
+// Pending "route me to my planned route" connector computation.
+let navConnector = null;
+
 const turnNav = {
   active: false,
   watchId: null,
@@ -1649,11 +1652,51 @@ function updateNavigationProgress() {
     geometry: { type: 'LineString', coordinates: coords.length >= 2 ? coords : [] } });
 }
 
+function handleNavConnector(m) {
+  const pending = navConnector;
+  navConnector = null;
+  if (!turnNav.active || !pending) return;
+  if (!m.ok || !Array.isArray(m.coords) || m.coords.length < 2) {
+    turnNav.message = 'No route to the route found — follow the rejoin guidance';
+    refreshNavigationUI();
+    return;
+  }
+  const { joinIndex, planned } = pending;
+  const offset = (m.coords.length - 1) - joinIndex;
+  const coords = [...m.coords, ...planned.coords.slice(joinIndex + 1)];
+  const laterSegs = planned.segs.filter((seg) => seg.c1 > joinIndex).map((seg) => ({
+    ...seg,
+    c0: Math.max(joinIndex, seg.c0) + offset,
+    c1: seg.c1 + offset,
+    hazC0: seg.hazC0 == null ? null : Math.max(joinIndex, seg.hazC0) + offset,
+    hazC1: seg.hazC1 == null ? null : seg.hazC1 + offset,
+  }));
+  turnNav.route = buildTurnInstructions({
+    coords, segs: [...m.segs.map((seg) => ({ ...seg })), ...laterSegs] });
+  turnNav.next = 0;
+  turnNav.nearest = 0;
+  turnNav.routeM = 0;
+  turnNav.arrived = false;
+  turnNav.offRoute = false;
+  turnNav.offRouteInfo = null;
+  turnNav.startChecked = true;
+  turnNav.message = '';
+  drawNavConnector(m.coords);
+  updateNavigationProgress();
+  speakNavigation('Routing you to your planned route.');
+  refreshNavigationUI();
+}
+
+function drawNavConnector(coords) {
+  map.getSource('route-connector')?.setData({ type: 'Feature', properties: {},
+    geometry: { type: 'LineString', coordinates: coords || [] } });
+}
+
 function offerNavStartReroute(startDistM) {
   const dialog = document.getElementById('navStartDialog');
   const text = document.getElementById('navStartDialogText');
   if (!dialog?.showModal || !text) return;
-  text.textContent = `You are ${navDistanceText(startDistM)} from the route's start. Reroute from your current location instead?`;
+  text.textContent = `You are ${navDistanceText(startDistM)} from the route's start. Navigate to the nearest point on the route instead?`;
   if (!dialog.open) dialog.showModal();
 }
 
@@ -2037,7 +2080,9 @@ function stopTurnNavigation(announce = true) {
   turnNav.offRouteApproachSpoken = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
+  navConnector = null;
   updateNavigationProgress();
+  drawNavConnector([]);
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   if (announce) speakNavigation('Navigation stopped.');
   refreshNavigationUI();
@@ -2172,7 +2217,6 @@ function onRouterMessage(ev) {
     setRouteOptionsLoading(false);
     if (!m.ok || !Array.isArray(m.options) || !m.options.length) {
       showRouteActionToast('Could not calculate that route', { duration: 2600 });
-      routing.autoNavOnArrival = false;
       routing.options = [];
       stopTurnNavigation(false);
       clearStoredRouteDetails();
@@ -2189,11 +2233,8 @@ function onRouterMessage(ev) {
     const selected = refreshedRouteSelection(m.options);
     activateRouteOption(selected);
     notifySnapDistance(selected);
-    if (routing.autoNavOnArrival) {
-      routing.autoNavOnArrival = false;
-      if (selected?.ok) startTurnNavigation();
-    }
   } else if (m.type === 'route') {
+    if (navConnector && m.id === navConnector.reqId) { handleNavConnector(m); return; }
     if (m.id !== routing.reqId) return; // stale reply
     setRouteOptionsLoading(false);
     if (!m.ok) {
@@ -2225,6 +2266,7 @@ function computeRoute() {
     return;
   }
   routing.reqId++;
+  navConnector = null;
   setRouteStatus('Routing…');
   showRouteActionToast(routing.last?.ok ? 'Recalculating route' : 'Calculating route options', {
     busy: true,
@@ -2429,6 +2471,7 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-detail-marker').setData(emptyHighlights);
     map.getSource('route-detail-selection').setData(emptyLine);
     map.getSource('route-progress').setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } });
+    map.getSource('route-connector').setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } });
     setFailPulse(failData.features.length > 0);
     applyDisplayModeAll();
     return;
@@ -2442,6 +2485,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-selection', { type: 'geojson', data: emptyLine });
   map.addSource('route-progress', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
+  map.addSource('route-connector', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
   map.addLayer({
     id: 'route-shadow', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -2517,6 +2561,13 @@ function drawRoute(coords, ferrySegs, segs) {
              'line-dasharray': [0.6, 1.8] },
   });
   setFailPulse(failData.features.length > 0);
+  // Lead-in from the rider's position to the planned route.
+  map.addLayer({
+    id: 'route-connector', type: 'line', source: 'route-connector',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#00795c', 'line-width': 4.5, 'line-opacity': 0.9,
+             'line-dasharray': [1.4, 1.2] },
+  });
   // Ridden portion of the route darkens during navigation.
   map.addLayer({
     id: 'route-progress', type: 'line', source: 'route-progress',
@@ -2927,7 +2978,6 @@ function reverseRoute() {
 
 function clearRoute() {
   showRouteActionToast('');
-  routing.autoNavOnArrival = false;
   stopTurnNavigation(false);
   routing.arm = null;
   closePlacePicker(false);
@@ -3092,13 +3142,24 @@ function buildRoutingPanel() {
   document.getElementById('navStartFromHere').addEventListener('click', () => {
     document.getElementById('navStartDialog').close();
     const position = turnNav.lastPosition;
-    if (!position) return;
-    stopTurnNavigation(false);
-    routing.autoNavOnArrival = true;
-    routing.start = [...position];
-    routing.startMarker?.setLngLat({ lng: position[0], lat: position[1] });
-    saveStateSoon();
-    computeRoute();
+    if (!position || !turnNav.route || !routing.ready || !routing.worker) return;
+    // The planned route stays exactly as chosen; only a lead-in leg to its
+    // nearest point is computed.
+    const nearest = nearestNavigationPoint(position[0], position[1], true);
+    if (!nearest) return;
+    navConnector = {
+      reqId: ++routing.reqId,
+      joinIndex: nearest.index,
+      planned: { coords: turnNav.route.coords, segs: turnNav.route.segs },
+    };
+    routing.worker.postMessage({
+      type: 'route', id: navConnector.reqId,
+      points: [[...position], [...turnNav.route.coords[nearest.index]]],
+      rules: { ...rules }, mode: routing.mode,
+      prefDesignated: routing.prefDesig, prefResidential: routing.prefResidential,
+    });
+    turnNav.message = 'Routing you to your planned route…';
+    refreshNavigationUI();
   });
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
   document.getElementById('confirmClearRoute').addEventListener('click', () => {
