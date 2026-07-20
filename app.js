@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.171';
+const APP_VERSION = '2026-07-19.174';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -23,12 +23,12 @@ const GRAPH_FORMAT_VERSION = 'bgr7-2';
 /* ---------------------------------------------------------------- palette */
 // One visual verdict system. Internal levels 1 and 2 retain different routing
 // costs but share blue; a passing bike-network edge is promoted to lime.
-// Caution is a muted purple, failure is red, and insufficient data is gray.
+// Caution is amber, failure is red, and insufficient data is gray.
 const BIKE_NETWORK_COLOR = '#9fc400';
 const COLORS = {
   1: '#168ad1', // passes rules
   2: '#168ad1', // passes rules (internal levels remain distinct for routing)
-  3: '#63418f', // caution — dark muted purple, distinct from lime facilities
+  3: '#c46b00', // caution — amber, immediately distinct from blue pass roads
   4: '#b2182b', // fails rules
   0: '#999999', // insufficient data
 };
@@ -71,13 +71,15 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
+  climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
-const ROUTING_WEIGHTS_VERSION = 6;
+const ROUTING_WEIGHTS_VERSION = 7;
 function validRoutingWeights(source) {
   const clean = {};
   const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
-    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM']);
+    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM',
+    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowSecPerM']);
   if (!source || typeof source !== 'object') return clean;
   for (const key of Object.keys(DEFAULT_ROUTING_WEIGHTS)) {
     const value = Number(source[key]);
@@ -1398,6 +1400,7 @@ function storeRouteDetails(m) {
       rules: { ...rules },
       summary: {
         distM: m.distM, timeS: m.timeS, ascentM: m.ascentM, descentM: m.descentM,
+        avgUphillPct: m.avgUphillPct || 0, maxGradePct: m.maxGradePct || 0,
         failM: m.failM, desigM: m.desigM, facilityM: m.facilityM, ferryM: m.ferryM,
         mtbM: m.mtbM || 0, hazardM: m.hazardM || 0,
       },
@@ -1409,7 +1412,7 @@ function storeRouteDetails(m) {
         roadClass: s.roadClass || 0, c0: s.c0, c1: s.c1,
         hazard: s.hazard || 0,
         hazardLenM: s.hazardLenM || 0, hazC0: s.hazC0, hazC1: s.hazC1,
-        gradePct: s.gradePct || 0,
+        gradePct: s.gradePct || 0, timeS: Number(s.timeS) || 0,
         level: s.level || fallbackRouteLevel(s), lenM: Number(s.lenM) || 0,
       })),
     }));
@@ -1425,6 +1428,10 @@ let navConnector = null;
 
 // Set by buildRulesPanel; lets navigation force the Turn by Turn pane.
 let settingsPaneSelect = null;
+// Route Details can open over either the route chooser or active navigation.
+// Restore the mobile panel to its prior state when a detail item returns to
+// the map instead of assuming every Details launch came from the chooser.
+let routeDetailsPanelWasOpen = false;
 
 const turnNav = {
   active: false,
@@ -1432,6 +1439,7 @@ const turnNav = {
   wakeLock: null,
   marker: null,
   route: null,
+  elevationProgress: null,    // connector/profile distance mapping, when applicable
   next: 0,
   nearest: 0,
   routeM: 0,
@@ -1440,9 +1448,15 @@ const turnNav = {
   offRouteInfo: null,        // { distM, dir, street } toward the nearest route point
   offRouteSpokenAt: 0,
   offRouteApproachSpoken: false,
+  offRouteApproachText: '',
   prevFix: null,             // previous GPS fix, for the rider's own heading
   lastPosition: null,
   arrived: false,
+  destinationWasNear: false,
+  lastDestinationM: Infinity,
+  destinationAwayFixes: 0,
+  initialCameraAt: 0,
+  lastCameraAt: 0,
 };
 
 function navDistanceM(a, b) {
@@ -1512,16 +1526,40 @@ function routeBearingOver(coords, cumulative, fromM, toM) {
   return navBearing(coords[i], coords[j]);
 }
 
-// A maneuver onto a short unnamed connector (roundabout arc, crossing
-// stub) should name the road the rider actually ends up on.
-function nextNamedRoad(segs, from) {
-  let skippedM = 0;
-  for (let i = from; i < segs.length && skippedM <= 90; i++) {
-    const name = navRoadName(segs[i].name);
-    if (name) return name;
-    skippedM += Number(segs[i].lenM) || 0;
+function navPathLike(seg) {
+  return !!((Number(seg?.flags) || 0) & 8) || Number(seg?.facility) === 5;
+}
+
+// Resolve the route the rider actually enters after a maneuver, beyond tiny
+// intersection stubs and trail-exit connectors. This is deliberately based on
+// the outbound route, never the inbound name: otherwise a Burke-Gilman exit
+// can be announced as "turn onto Burke-Gilman" even as the rider enters a road.
+function navDestinationSegment(segs, currentIndex) {
+  const current = segs[currentIndex];
+  const incomingName = navRoadName(current?.name).toLowerCase();
+  const leavingPath = navPathLike(current);
+  let traveledM = 0;
+  let fallback = null;
+  for (let i = currentIndex + 1; i < segs.length && traveledM <= 120; i++) {
+    const seg = segs[i];
+    const name = navRoadName(seg?.name);
+    const different = name && name.toLowerCase() !== incomingName;
+    if (!fallback && name) fallback = { index: i, seg, name };
+    if (leavingPath && !navPathLike(seg)) {
+      return { index: i, seg, name: name || 'the road' };
+    }
+    if (different && !leavingPath) return { index: i, seg, name };
+    // On ordinary streets, the immediate genuinely named outbound edge is the
+    // destination. Continue looking only through an unnamed/very short stub.
+    if (!leavingPath && i === currentIndex + 1 && name && (Number(seg.lenM) || 0) > 35) {
+      return { index: i, seg, name };
+    }
+    traveledM += Number(seg?.lenM) || 0;
   }
-  return '';
+  const immediate = segs[currentIndex + 1];
+  return fallback || (immediate
+    ? { index: currentIndex + 1, seg: immediate, name: navRoadName(immediate.name) }
+    : null);
 }
 
 function buildTurnInstructions(m) {
@@ -1546,7 +1584,8 @@ function buildTurnInstructions(m) {
     const outgoing = routeBearingOver(coords, cumulative, junctionM, junctionM + TURN_BEARING_SPAN_M);
     const delta = navDelta(incoming, outgoing);
     const from = navRoadName(current.name);
-    const to = navRoadName(next.name) || nextNamedRoad(segs, i + 1);
+    const destination = navDestinationSegment(segs, i);
+    const to = destination?.name || '';
     const changedRoad = !!to && to.toLowerCase() !== from.toLowerCase();
     if (!changedRoad && Math.abs(delta) < 40) continue;
     const distanceM = cumulative[at];
@@ -1556,7 +1595,12 @@ function buildTurnInstructions(m) {
     lastM = distanceM;
   }
   instructions.sort((a, b) => a.distanceM - b.distanceM);
-  return { coords, cumulative, instructions, segs, totalM: cumulative[cumulative.length - 1] || 0 };
+  const segmentTimeS = segs.reduce((sum, seg) => sum + Math.max(0, Number(seg.timeS) || 0), 0);
+  return {
+    coords, cumulative, instructions, segs,
+    totalM: cumulative[cumulative.length - 1] || 0,
+    totalTimeS: segmentTimeS || Math.max(0, Number(m.timeS) || 0),
+  };
 }
 
 // Leaving the route no longer triggers rerouting. The rider gets the
@@ -1575,17 +1619,19 @@ function navInstructionText(instruction) {
 
 function routeRoadNameAt(index) {
   const segs = turnNav.route?.segs || [];
-  const at = segs.findIndex((seg) => index >= seg.c0 && index <= seg.c1);
+  let at = segs.findIndex((seg) => index >= seg.c0 && index < seg.c1);
+  if (at < 0 && segs.length && index >= segs[segs.length - 1].c1) at = segs.length - 1;
   if (at < 0) return '';
-  // Tiny unnamed graph connectors shouldn't leave guidance nameless — use
-  // the closest named road the route follows around this point.
-  for (let step = 0; step <= 3; step++) {
-    for (const i of step ? [at - step, at + step] : [at]) {
-      const name = navRoadName(segs[i]?.name);
-      if (name) return name;
-    }
+  // Rejoin guidance describes the forward route. Look ahead through tiny
+  // connectors first; only fall back to the containing segment when needed.
+  const current = segs[at];
+  const destination = navDestinationSegment(segs, Math.max(-1, at - 1));
+  if (destination?.name) return destination.name;
+  for (let i = at; i < Math.min(segs.length, at + 4); i++) {
+    const name = navRoadName(segs[i]?.name);
+    if (name) return name;
   }
-  return '';
+  return navRoadName(current?.name);
 }
 
 // The route's direction of travel where the rider would rejoin it.
@@ -1613,6 +1659,7 @@ function offRouteSpeech(info) {
 function enterOffRoute(nearest) {
   turnNav.offRoute = true;
   turnNav.offRouteApproachSpoken = false;
+  turnNav.offRouteApproachText = '';
   turnNav.offRouteInfo = offRouteDescription(nearest);
   speakNavigation(offRouteSpeech(turnNav.offRouteInfo));
   turnNav.offRouteSpokenAt = Date.now();
@@ -1637,6 +1684,7 @@ function updateOffRouteGuidance(nearest, previousFix) {
           info.street || 'the route', routeHeading)
       : `Ahead: rejoin ${info.street || 'the route'}${routeHeading ? `, heading ${routeHeading}` : ''}`;
     turnNav.offRouteApproachSpoken = true;
+    turnNav.offRouteApproachText = text;
     speakNavigation(`${text}.`);
     turnNav.offRouteSpokenAt = Date.now();
   } else if (Date.now() - turnNav.offRouteSpokenAt >= OFF_ROUTE_RESPEAK_MS) {
@@ -1674,12 +1722,21 @@ function handleNavConnector(m) {
     hazC0: seg.hazC0 == null ? null : Math.max(joinIndex, seg.hazC0) + offset,
     hazC1: seg.hazC1 == null ? null : seg.hazC1 + offset,
   }));
-  turnNav.route = buildTurnInstructions({
+  const joinedRoute = buildTurnInstructions({
     coords, segs: [...m.segs.map((seg) => ({ ...seg })), ...laterSegs] });
+  turnNav.route = joinedRoute;
+  turnNav.elevationProgress = {
+    connectorM: joinedRoute.cumulative[m.coords.length - 1] || 0,
+    plannedJoinM: planned.cumulative[joinIndex] || 0,
+    plannedTotalM: planned.totalM || 0,
+  };
   turnNav.next = 0;
   turnNav.nearest = 0;
   turnNav.routeM = 0;
   turnNav.arrived = false;
+  turnNav.destinationWasNear = false;
+  turnNav.lastDestinationM = Infinity;
+  turnNav.destinationAwayFixes = 0;
   turnNav.offRoute = false;
   turnNav.offRouteInfo = null;
   turnNav.startChecked = true;
@@ -1703,7 +1760,7 @@ function offerNavStartReroute(startDistM) {
   if (!dialog.open) dialog.showModal();
 }
 
-function rejoinRoute(nearest) {
+function rejoinRoute(nearest, previousFix) {
   turnNav.offRoute = false;
   turnNav.offRouteInfo = null;
   turnNav.offRouteApproachSpoken = false;
@@ -1724,7 +1781,21 @@ function rejoinRoute(nearest) {
     instructions[i].approach = false;
     instructions[i].now = false;
   }
-  speakNavigation('Back on route.');
+  const road = routeRoadNameAt(nearest.index);
+  const routeBearing = routeForwardBearing(nearest.index);
+  const moved = previousFix
+    && navDistanceM(previousFix.point, turnNav.lastPosition) >= 8;
+  const heading = navVoice.headings ? compassWord(routeBearing) : null;
+  const maneuver = moved
+    ? navTurnText(navDelta(navBearing(previousFix.point, turnNav.lastPosition), routeBearing),
+        road || 'the route', heading)
+    : `Continue on ${road || 'the route'}${heading ? `, heading ${heading}` : ''}`;
+  const alreadyAnnounced = turnNav.offRouteApproachText
+    && maneuver.toLowerCase() === turnNav.offRouteApproachText.toLowerCase();
+  turnNav.offRouteApproachText = '';
+  speakNavigation(alreadyAnnounced
+    ? `Back on route. Continue on ${road || 'the route'}.`
+    : `${maneuver}. Back on route.`);
 }
 
 function navigationBannerInfo() {
@@ -1734,8 +1805,7 @@ function navigationBannerInfo() {
     kicker: 'Turn-by-turn navigation',
   };
   const remainingRouteM = Math.max(0, (turnNav.route?.totalM || 0) - turnNav.routeM);
-  const projectedS = (Number(routing.last?.timeS) || 0)
-    * remainingRouteM / Math.max(1, turnNav.route?.totalM || 1);
+  const projectedS = remainingNavigationTimeS();
   const routeMeta = `${navDistanceText(Math.max(0, turnNav.routeM))} done · ${navDistanceText(remainingRouteM)} to go${
     projectedS >= 45 ? ` · ~${fmtDur(projectedS)}` : ''}`;
   if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
@@ -1764,22 +1834,45 @@ function navigationStatusText() {
   return navigationBannerInfo().headline;
 }
 
+function navigationElevationProgressM() {
+  if (!turnNav.active || !turnNav.route) return null;
+  let plannedM = turnNav.routeM;
+  let plannedTotalM = turnNav.route.totalM;
+  const mapping = turnNav.elevationProgress;
+  if (mapping) {
+    // The elevation profile describes the original planned route, so there is
+    // no honest "you are here" position while the rider is still on the
+    // connector. Once it is complete, resume at the original join distance.
+    if (turnNav.routeM < mapping.connectorM) return null;
+    plannedM = mapping.plannedJoinM + (turnNav.routeM - mapping.connectorM);
+    plannedTotalM = mapping.plannedTotalM;
+  }
+  const profileTotalM = Number(routing.last?.distM) || 0;
+  if (!(plannedTotalM > 0) || !(profileTotalM > 0)) return Math.max(0, plannedM);
+  return Math.max(0, Math.min(profileTotalM, plannedM * profileTotalM / plannedTotalM));
+}
+
 function openRouteDetails() {
   if (!routing.last?.ok) return;
   const dialog = document.getElementById('routeDetailsDialog');
   const frame = document.getElementById('routeDetailsFrame');
+  const routeLabel = routing.last.optimization?.label || 'Route';
+  const dialogTitle = `${routeLabel} Details`;
   if (!dialog || !frame || !dialog.showModal) {
     window.location.href = 'route-details.html';
     return;
   }
+  const title = document.getElementById('routeDetailsDialogTitle');
+  if (title) title.textContent = dialogTitle;
+  frame.title = dialogTitle;
+  routeDetailsPanelWasOpen = mobileNavMedia.matches
+    && document.body.classList.contains('panel-open');
   // Reload the embedded report so it always reflects the latest route data.
-  // During navigation, hand over ride progress (in planned-route meters,
-  // connector lead-in excluded) so the elevation charts can mark it.
+  // During navigation, hand over progress in the original elevation profile's
+  // distance scale. A connector lead-in has no position on that profile.
   let progress = '';
-  if (turnNav.active && turnNav.route) {
-    const connectorM = Math.max(0, turnNav.route.totalM - (Number(routing.last?.distM) || turnNav.route.totalM));
-    progress = `&navProgress=${Math.max(0, Math.round(turnNav.routeM - connectorM))}`;
-  }
+  const progressM = navigationElevationProgressM();
+  if (Number.isFinite(progressM)) progress = `&navProgress=${Math.round(progressM)}`;
   frame.src = `route-details.html?embedded=1&t=${Date.now()}${progress}`;
   if (!dialog.open) dialog.showModal();
 }
@@ -1891,6 +1984,81 @@ function nearestNavigationPoint(lon, lat) {
   return { index: best, offRouteM: bestM, routeM: route.cumulative[best] };
 }
 
+function updateNavigationCamera(point) {
+  if (!turnNav.initialCameraAt) {
+    const plannedStart = routing.last?.coords?.[0] || turnNav.route?.coords?.[0] || point;
+    const bounds = new maplibregl.LngLatBounds(point, point).extend(plannedStart);
+    const mobile = mobileNavMedia.matches;
+    map.fitBounds(bounds, {
+      padding: mobile
+        ? { top: 92, right: 38, bottom: 180, left: 38 }
+        : { top: 90, right: 75, bottom: 125, left: 75 },
+      maxZoom: 15,
+      duration: 800,
+    });
+    turnNav.initialCameraAt = Date.now();
+    turnNav.lastCameraAt = turnNav.initialCameraAt;
+    return;
+  }
+  // Hold the contextual start view briefly, then keep the rider centered as
+  // GPS fixes arrive. The marker remains live during this short hold.
+  if (Date.now() - turnNav.initialCameraAt < 5000
+      || Date.now() - turnNav.lastCameraAt < 900) return;
+  turnNav.lastCameraAt = Date.now();
+  map.easeTo({ center: point, duration: 450, essential: true });
+}
+
+function remainingNavigationTimeS(routeM = turnNav.routeM) {
+  const route = turnNav.route;
+  if (!route) return 0;
+  let remainingS = 0;
+  let hasSegmentTimes = false;
+  for (const seg of route.segs || []) {
+    const segTimeS = Math.max(0, Number(seg.timeS) || 0);
+    if (!segTimeS) continue;
+    hasSegmentTimes = true;
+    const startM = route.cumulative[Math.max(0, seg.c0)] || 0;
+    const endM = route.cumulative[Math.min(route.cumulative.length - 1, seg.c1)] || startM;
+    if (endM <= routeM) continue;
+    const fraction = endM > startM
+      ? (endM - Math.max(startM, routeM)) / (endM - startM) : 1;
+    remainingS += segTimeS * Math.max(0, Math.min(1, fraction));
+  }
+  if (hasSegmentTimes) return remainingS;
+  const remainingM = Math.max(0, route.totalM - routeM);
+  return (Number(route.totalTimeS) || Number(routing.last?.timeS) || 0)
+    * remainingM / Math.max(1, route.totalM);
+}
+
+function navigationHasArrived(point, nearest) {
+  const route = turnNav.route;
+  const destination = route?.coords?.[route.coords.length - 1];
+  if (!destination) return false;
+  const destinationM = navDistanceM(point, destination);
+  const remainingM = Math.max(0, route.totalM - nearest.routeM);
+  const nearRouteEnd = remainingM <= 160;
+  if (nearRouteEnd && destinationM <= 60) turnNav.destinationWasNear = true;
+  if (turnNav.destinationWasNear && nearRouteEnd
+      && destinationM > 70 && destinationM > turnNav.lastDestinationM + 6) {
+    turnNav.destinationAwayFixes++;
+  } else if (destinationM <= turnNav.lastDestinationM + 3) {
+    turnNav.destinationAwayFixes = 0;
+  }
+  turnNav.lastDestinationM = destinationM;
+  return (nearRouteEnd && destinationM <= 45)
+    || (turnNav.destinationWasNear && nearRouteEnd && turnNav.destinationAwayFixes >= 2);
+}
+
+function finishTurnNavigation() {
+  if (!turnNav.active || turnNav.arrived) return;
+  turnNav.arrived = true;
+  stopTurnNavigation(false);
+  turnNav.arrived = true;
+  setRouteStatus('Destination reached — navigation ended');
+  showRouteActionToast('Destination reached · Navigation ended', { duration: 6000 });
+  speakNavigation('You have arrived at your destination. Navigation has ended.');
+}
+
 function updateTurnNavigation(pos) {
   if (!turnNav.active || !turnNav.route) return;
   const { longitude, latitude } = pos.coords;
@@ -1912,6 +2080,7 @@ function updateTurnNavigation(pos) {
     turnNav.marker = new maplibregl.Marker({ element })
       .setLngLat([longitude, latitude]).addTo(map);
   } else turnNav.marker.setLngLat([longitude, latitude]);
+  updateNavigationCamera([longitude, latitude]);
 
   const previousFix = turnNav.prevFix;
   const fixAt = Number.isFinite(pos.timestamp) ? pos.timestamp : Date.now();
@@ -1928,6 +2097,13 @@ function updateTurnNavigation(pos) {
   // rider can rejoin anywhere — ahead of or behind where they left it.
   const nearest = nearestNavigationPoint(longitude, latitude, turnNav.offRoute);
   if (!nearest) return;
+
+  // Arrival is checked before off-route recovery so riding through the
+  // destination cannot trigger guidance back to it.
+  if (navigationHasArrived([longitude, latitude], nearest)) {
+    finishTurnNavigation();
+    return;
+  }
 
   // First fix after starting navigation: someone far from the planned start
   // probably wants the route to come to them instead.
@@ -1952,7 +2128,7 @@ function updateTurnNavigation(pos) {
       refreshNavigationUI();
       return;
     }
-    rejoinRoute(nearest);
+    rejoinRoute(nearest, previousFix);
   }
 
   // On-route position follows the nearest point directly — including small
@@ -1971,11 +2147,6 @@ function updateTurnNavigation(pos) {
   }
   const next = instructions[turnNav.next];
   if (!next) {
-    if (!turnNav.arrived && turnNav.route.totalM - turnNav.routeM < 55) {
-      turnNav.arrived = true;
-      turnNav.message = 'Arrived';
-      speakNavigation('You have arrived at your destination.');
-    }
     maybeSpeakPeriodicUpdate(null, Infinity);
     refreshNavigationUI();
     return;
@@ -2021,9 +2192,7 @@ function maybeSpeakPeriodicUpdate(next, remainingToTurnM) {
   const remainingRouteM = Math.max(0, (turnNav.route?.totalM || 0) - turnNav.routeM);
   if (navVoice.statusMiles) parts.push(`${navDistanceText(remainingRouteM)} remaining`);
   if (navVoice.statusEta) {
-    const totalM = Math.max(1, turnNav.route?.totalM || 1);
-    const totalS = Number(routing.last?.timeS) || 0;
-    const remainS = totalS * remainingRouteM / totalM;
+    const remainS = remainingNavigationTimeS();
     if (remainS >= 45) parts.push(`about ${speakDuration(remainS)} left`);
   }
   if (parts.length) speakNavigation(`${parts.join('. ')}.`);
@@ -2051,6 +2220,7 @@ function startTurnNavigation() {
     return;
   }
   turnNav.route = buildTurnInstructions(routing.last);
+  turnNav.elevationProgress = null;
   turnNav.active = true;
   turnNav.next = 0;
   turnNav.nearest = 0;
@@ -2059,10 +2229,16 @@ function startTurnNavigation() {
   turnNav.offRoute = false;
   turnNav.offRouteInfo = null;
   turnNav.offRouteApproachSpoken = false;
+  turnNav.offRouteApproachText = '';
   turnNav.offRouteSpokenAt = 0;
   turnNav.startChecked = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
+  turnNav.destinationWasNear = false;
+  turnNav.lastDestinationM = Infinity;
+  turnNav.destinationAwayFixes = 0;
+  turnNav.initialCameraAt = 0;
+  turnNav.lastCameraAt = 0;
   turnNav.lastVoiceAt = Date.now();
   updateNavigationProgress();
   turnNav.message = 'Getting your location';
@@ -2089,12 +2265,19 @@ function stopTurnNavigation(announce = true) {
   if (turnNav.marker) { turnNav.marker.remove(); turnNav.marker = null; }
   turnNav.active = false;
   turnNav.route = null;
+  turnNav.elevationProgress = null;
   turnNav.message = '';
   turnNav.offRoute = false;
   turnNav.offRouteInfo = null;
   turnNav.offRouteApproachSpoken = false;
+  turnNav.offRouteApproachText = '';
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
+  turnNav.destinationWasNear = false;
+  turnNav.lastDestinationM = Infinity;
+  turnNav.destinationAwayFixes = 0;
+  turnNav.initialCameraAt = 0;
+  turnNav.lastCameraAt = 0;
   navConnector = null;
   updateNavigationProgress();
   drawNavConnector([]);
@@ -2152,7 +2335,7 @@ function renderRouteCard(m) {
       <div class="rc-details-wrap"><div id="routeDetailsSlot"></div></div>
       <div class="rc-summary-content">
         <div class="rc-summary-row">
-          <div class="rc-climb-stack"><span>↗ ${fmtFt(m.ascentM)} ft climb</span><span>↘ ${fmtFt(m.descentM)} ft descent</span>${m.ferryM > 0 ? `<span>⛴ ${fmtMi(m.ferryM)} mi ferry</span>` : ''}</div>
+          <div class="rc-climb-stack"><span>↗ ${fmtFt(m.ascentM)} ft climb</span><span>↘ ${fmtFt(m.descentM)} ft descent</span><span>△ ${Number(m.avgUphillPct || 0).toFixed(1)}% avg · ${Number(m.maxGradePct || 0).toFixed(1)}% max</span>${m.ferryM > 0 ? `<span>⛴ ${fmtMi(m.ferryM)} mi ferry</span>` : ''}</div>
           <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
         </div>
         ${mtbNotice}<div class="rc-bottom-stats">
@@ -2786,9 +2969,14 @@ function showRouteStepOnMap(startIndex, endIndex, coordStart = null, coordEnd = 
   const dialog = document.getElementById('routeDetailsDialog');
   if (dialog?.open) dialog.close();
   suppressRoadInfo(900);
-  if (mobileNavMedia.matches) setPanelOpen(false);
+  // Restore the panel state from before Details opened. This keeps Choose
+  // Route open during route comparison without opening it over active
+  // navigation when Details came from the navigation banner.
+  if (mobileNavMedia.matches) setPanelOpen(routeDetailsPanelWasOpen);
   if (!selected.length) return;
   requestAnimationFrame(() => {
+    const openPanelHeight = mobileNavMedia.matches && document.body.classList.contains('panel-open')
+      ? Math.ceil(document.getElementById('panel')?.getBoundingClientRect().height || 0) : 0;
     if (selected.length === 1) {
       map.easeTo({ center: selected[0], zoom: Math.max(map.getZoom(), 15), duration: 450 });
       return;
@@ -2797,7 +2985,7 @@ function showRouteStepOnMap(startIndex, endIndex, coordStart = null, coordEnd = 
     for (const coordinate of selected.slice(1)) bounds.extend(coordinate);
     map.fitBounds(bounds, {
       padding: mobileNavMedia.matches
-        ? { top: 90, right: 45, bottom: 90, left: 45 }
+        ? { top: 90, right: 45, bottom: Math.max(90, openPanelHeight + 45), left: 45 }
         : { top: 80, right: 70, bottom: 80, left: 470 },
       maxZoom: 16,
       duration: 500,
@@ -3114,6 +3302,7 @@ function activateRouteOption(option, updateNavigation = false) {
   }
   if (updateNavigation && turnNav.active) {
     turnNav.route = buildTurnInstructions(option);
+    turnNav.elevationProgress = null;
     turnNav.next = 0;
     turnNav.nearest = 0;
     turnNav.routeM = 0;
@@ -3146,7 +3335,7 @@ function buildRoutingPanel() {
   });
   renderRouteOptionControls();
 
-  document.getElementById('routeDetailsBtn').addEventListener('click', openRouteDetails);
+  document.getElementById('routeDetailsBtn').addEventListener('click', () => openRouteDetails());
   document.getElementById('routeTipsBtn').addEventListener('click', openRouteTips);
 
   renderRouteCard(null);
@@ -3161,7 +3350,7 @@ function buildRoutingPanel() {
     if (turnNav.active) stopTurnNavigation();
     else startTurnNavigation();
   });
-  document.getElementById('navDetailsBtn').addEventListener('click', openRouteDetails);
+  document.getElementById('navDetailsBtn').addEventListener('click', () => openRouteDetails());
   document.getElementById('navStartFromHere').addEventListener('click', () => {
     document.getElementById('navStartDialog').close();
     const position = turnNav.lastPosition;
@@ -3173,7 +3362,7 @@ function buildRoutingPanel() {
     navConnector = {
       reqId: ++routing.reqId,
       joinIndex: nearest.index,
-      planned: { coords: turnNav.route.coords, segs: turnNav.route.segs },
+      planned: turnNav.route,
     };
     routing.worker.postMessage({
       type: 'route', id: navConnector.reqId,
@@ -3665,11 +3854,18 @@ const readoutEl = document.getElementById('readout');
 // The road card repeats the one shared map/route verdict vocabulary.
 function readoutVerdict(n, level) {
   if (level === 4) return 'Red dashed — Fails your rules';
-  if (level === 3) return 'Muted purple — Caution (limited-access highway)';
+  if (level === 3) return 'Amber — Caution (limited-access highway)';
   if (level === 0) return 'Gray — Insufficient data';
   if (isBikeNetworkVerdict(n)) return 'Lime — Bike network; passes your rules';
   if (n.desig) return 'Blue dashed — Designated bike route; passes your rules';
   return 'Blue — Passes your rules';
+}
+function readoutVerdictColor(n, level) {
+  if (level === 4) return COLORS[4];
+  if (level === 3) return COLORS[3];
+  if (level === 0) return COLORS[0];
+  if (isBikeNetworkVerdict(n)) return BIKE_NETWORK_COLOR;
+  return COLORS[1];
 }
 const FACILITY_NAME = {
   1: 'Shared lane marking',
@@ -3919,7 +4115,17 @@ function renderReadout(feature, lngLat) {
   close.textContent = '✕';
   const heading = document.createElement('div');
   heading.className = 'rt-title';
-  heading.textContent = title;
+  const swatch = document.createElement('span');
+  swatch.className = 'rt-swatch';
+  swatch.setAttribute('role', 'img');
+  swatch.style.backgroundColor = src.id === 'routes' ? COLORS[1]
+    : src.id === 'restrict' ? COLORS[4]
+      : p.ferry === 1 ? COLORS[0] : readoutVerdictColor(n, lvl);
+  swatch.setAttribute('aria-label', src.id === 'routes'
+    ? 'Designated route map color' : `Map color: ${readoutVerdict(n, lvl)}`);
+  const headingText = document.createElement('span');
+  headingText.textContent = title;
+  heading.append(swatch, headingText);
   const table = document.createElement('table');
   for (const [key, value] of rows) {
     const tr = document.createElement('tr');
@@ -4094,6 +4300,9 @@ const ROUTING_WEIGHT_GROUPS = [
   ['Ride model and alternatives', [
     ['ferryWaitMin', 'Ferry boarding wait (minutes)', 0, 60, 1], ['uphillFactor', 'Uphill effort', 1, 15, .25],
     ['downhillFactor', 'Downhill speed benefit', 0, 5, .1], ['undulationSecPerM', 'Rolling-hill cost (sec/m)', 0, 10, .25],
+    ['climbDirectSecPerM', 'Extra climb preference · direct', 0, 5, .05],
+    ['climbBalancedSecPerM', 'Extra climb preference · balanced', 0, 5, .05],
+    ['climbLowSecPerM', 'Extra climb preference · friendly', 0, 5, .05],
     ['diversityQuick', 'Alternative corridor · quick', 1.05, 3, .05], ['diversityBalanced', 'Alternative corridor · balanced', 1.05, 3, .05],
     ['diversitySafer', 'Alternative corridor · safer', 1.05, 3, .05], ['diversityWide', 'Alternative corridor · wide search', 1.05, 4, .05],
   ]],
@@ -4350,7 +4559,7 @@ function buildRulesPanel() {
     if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
     scheduleRescore();
   });
-  check('requireSafe', 'Require fully-safe routes');
+  check('requireSafe', 'Only show routes fully matching safety rules');
   check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
   slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');
   slider('freeMaxSpeed', 'Max speed without shoulder', 15, 45, 5, ' mph');

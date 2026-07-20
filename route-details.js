@@ -9,7 +9,7 @@ const FLAG_LIMITED_ACCESS = 128;
 const OFFICIAL_MTB = 4;
 const BIKE_NETWORK_COLOR = '#9fc400';
 const PASS_COLOR = '#168ad1';
-const CAUTION_COLOR = '#63418f';
+const CAUTION_COLOR = '#c46b00';
 const FAIL_COLOR = '#b2182b';
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 const FACILITY_NAME = {
@@ -82,6 +82,25 @@ function routeSummaryStats(segs) {
     if ((flags & FLAG_INFRA) || (seg.facility || 0) >= 2) bikeNetworkM += len;
   }
   return { levels, bikeNetworkM };
+}
+function routeGradeStats(segs) {
+  let uphillM = 0;
+  let uphillRiseM = 0;
+  let maxGradePct = 0;
+  for (const seg of segs || []) {
+    if ((seg.flags || 0) & FLAG_FERRY) continue;
+    const grade = Number(seg.gradePct) || 0;
+    const len = Number(seg.lenM) || 0;
+    if (grade > 0.5 && len > 0) {
+      uphillM += len;
+      uphillRiseM += len * grade / 100;
+    }
+    maxGradePct = Math.max(maxGradePct, grade);
+  }
+  return {
+    avgUphillPct: uphillM > 0 ? 100 * uphillRiseM / uphillM : 0,
+    maxGradePct,
+  };
 }
 function roadName(seg) { return seg.name || 'Unnamed road'; }
 function isHighway(seg) {
@@ -495,6 +514,11 @@ if (!hasRoute) {
 } else {
   const { rules = {}, summary: totals, segs } = details;
   const routeStats = routeSummaryStats(segs);
+  const calculatedGrades = routeGradeStats(segs);
+  const avgUphillPct = Number.isFinite(Number(totals.avgUphillPct))
+    ? Number(totals.avgUphillPct) : calculatedGrades.avgUphillPct;
+  const maxGradePct = Number.isFinite(Number(totals.maxGradePct))
+    ? Number(totals.maxGradePct) : calculatedGrades.maxGradePct;
   const ridingM = Math.max(1, totals.distM - (totals.ferryM || 0));
   const bikePct = routePercent(routeStats.bikeNetworkM, ridingM);
   const passPct = routePercent((routeStats.levels[1] || 0) + (routeStats.levels[2] || 0), ridingM, true);
@@ -502,14 +526,14 @@ if (!hasRoute) {
   const failPct = routePercent(totals.failM || 0, ridingM, true);
   summaryCard.hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
-  summarySub.textContent = `↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}`;
+  summarySub.textContent = `↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent · ${avgUphillPct.toFixed(1)}% avg uphill · ${maxGradePct.toFixed(1)}% max${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}`;
   summaryMix.innerHTML = `<span class="route-summary-label">Ride</span><span><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail</span>`;
   mapTapHint.hidden = false;
   if (Array.isArray(details.profile) && details.profile.length >= 2) {
     const elevationPreview = document.getElementById('elevationPreview');
     const elevationDialog = document.getElementById('elevationDialog');
     elevationPreview.hidden = false;
-    document.getElementById('elevationDialogSummary').textContent = `${fmtMi(totals.distM)} mi · ↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent`;
+    document.getElementById('elevationDialogSummary').textContent = `${fmtMi(totals.distM)} mi · ↗ ${fmtFt(totals.ascentM)} ft climb · ${avgUphillPct.toFixed(1)}% avg uphill · ${maxGradePct.toFixed(1)}% max grade`;
     elevationPreview.addEventListener('click', () => {
       elevationDialog.showModal();
       requestAnimationFrame(() => drawElevation(document.getElementById('elevationDialogCanvas')));
@@ -522,7 +546,7 @@ if (!hasRoute) {
   const routeNature = routeNatureDescription(details.optimization);
   if (routeNature) {
     optimization.hidden = false;
-    optimization.textContent = `${details.optimization.label || 'Selected option'}: ${routeNature}`;
+    optimization.textContent = routeNature;
   }
   const freeways = sections(segs, (s) => !!(s.flags & FLAG_FREEWAY), (s) => ({
     name: roadName(s),

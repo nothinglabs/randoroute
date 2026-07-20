@@ -1,0 +1,72 @@
+#!/usr/bin/env node
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const start = app.indexOf('function navDistanceM');
+const end = app.indexOf('// Leaving the route no longer triggers rerouting.');
+assert.ok(start >= 0 && end > start, 'navigation helper source was not found');
+
+const context = {};
+vm.createContext(context);
+vm.runInContext(`${app.slice(start, end)}\nthis.buildTurnInstructions = buildTurnInstructions;`, context);
+
+const coords = [
+  [-122.3500, 47.6700],
+  [-122.3500, 47.6702],
+  [-122.3500, 47.6704],
+  [-122.3499, 47.6704],
+  [-122.3497, 47.6704],
+  [-122.3495, 47.6704],
+];
+
+const trailExit = context.buildTurnInstructions({
+  coords,
+  segs: [
+    { c0: 0, c1: 2, name: 'Burke-Gilman Trail', flags: 8, facility: 5, lenM: 44 },
+    { c0: 2, c1: 3, name: 'Burke-Gilman Trail', flags: 8, facility: 5, lenM: 8 },
+    { c0: 3, c1: 5, name: '24th Avenue Northwest', flags: 0, facility: 0, lenM: 30 },
+  ],
+});
+assert.ok(trailExit.instructions.length > 0, 'trail exit should create a maneuver');
+assert.match(trailExit.instructions[0].text, /24th Avenue Northwest/,
+  'trail exit should name the destination street');
+assert.doesNotMatch(trailExit.instructions[0].text, /onto Burke-Gilman/i,
+  'trail exit must not announce the inbound trail as the destination');
+
+const unnamedConnector = context.buildTurnInstructions({
+  coords,
+  segs: [
+    { c0: 0, c1: 2, name: 'First Avenue', flags: 0, lenM: 44 },
+    { c0: 2, c1: 3, name: '', flags: 0, lenM: 8 },
+    { c0: 3, c1: 5, name: 'Second Avenue', flags: 0, lenM: 30 },
+  ],
+});
+assert.match(unnamedConnector.instructions[0].text, /Second Avenue/,
+  'a short unnamed junction connector should resolve to the outbound road');
+
+const arrivalStart = app.indexOf('function navigationHasArrived');
+const arrivalEnd = app.indexOf('function finishTurnNavigation');
+assert.ok(arrivalStart >= 0 && arrivalEnd > arrivalStart, 'arrival helper source was not found');
+context.turnNav = {
+  route: { coords: [[0, 0], [0.001, 0]], totalM: 111 },
+  destinationWasNear: false,
+  lastDestinationM: Infinity,
+  destinationAwayFixes: 0,
+};
+vm.runInContext(`${app.slice(arrivalStart, arrivalEnd)}\nthis.navigationHasArrived = navigationHasArrived;`, context);
+assert.equal(context.navigationHasArrived([0.00060, 0], { routeM: 70 }), true,
+  'arrival should be detected near the destination and end of the route');
+
+context.turnNav.destinationWasNear = false;
+context.turnNav.lastDestinationM = Infinity;
+context.turnNav.destinationAwayFixes = 0;
+assert.equal(context.navigationHasArrived([0.00050, 0], { routeM: 105 }), false,
+  'a near miss outside the direct arrival radius should arm pass-through detection');
+assert.equal(context.navigationHasArrived([0.00168, 0], { routeM: 111 }), false,
+  'one GPS fix moving away should not end navigation prematurely');
+assert.equal(context.navigationHasArrived([0.00182, 0], { routeM: 111 }), true,
+  'two fixes moving away after passing the destination should end navigation');
+
+console.log('Navigation guidance tests passed.');

@@ -180,10 +180,10 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-ride-mix i { color: #a0aab1; font-style: normal; }
 #routeCard .rc-mix-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
 #routeCard .rc-ride-label { padding: 2px 4px; border-radius: 4px; background: #e7eef3; color: #405866; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-#routeCard .rc-ride-caution, #routeCard .rc-ride-caution b { color: #5f4588; }
+#routeCard .rc-ride-caution, #routeCard .rc-ride-caution b { color: #9a4f00; }
 #routeCard .rc-ride-fail, #routeCard .rc-ride-fail b { color: #b42318; }
 #routeCard .rc-warn { margin-top: 3px; font-size: 12px; color: #b45309; font-weight: 600; }
-#routeCard .rc-caution { margin-top: 3px; font-size: 12px; color: #674b91; font-weight: 600; }
+#routeCard .rc-caution { margin-top: 3px; font-size: 12px; color: #9a4f00; font-weight: 600; }
 #routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }
 #routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
@@ -226,7 +226,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .layers-intro { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 5px 1px 4px; color: #667680; }
 .layers-intro strong { color: #40515c; font: 750 12px/1.2 system-ui; }
 .layers-intro span { font: 600 11px/1.25 system-ui; }
-.tab-help-btn, .layers-help-btn, .settings-tabs .settings-help-btn { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; padding: 0; border: 1px solid #b8cbd8; border-radius: 50%; background: #f7fafb; color: #0a66c2; font: 800 16px/1 system-ui; cursor: pointer; }
+.tab-help-btn, .layers-help-btn, .settings-tabs .settings-help-btn { display: grid; place-items: center; flex: 0 0 23px; width: 23px; height: 23px; min-height: 23px; max-height: 23px; padding: 0; border: 1px solid #b8cbd8; border-radius: 50%; background: #f7fafb; color: #0a66c2; font: 800 13px/1 system-ui; cursor: pointer; }
 .layers-special-note { position: relative; margin: 7px 0 0; padding: 7px 8px 7px 33px; border: 1px solid #c9dce9; border-radius: 8px; background: #f1f7fb; color: #425d70; font: 600 10.5px/1.35 system-ui; }
 .layers-special-note > span { position: absolute; top: 12px; left: 8px; width: 17px; height: 6px; border-radius: 2px; background: repeating-linear-gradient(90deg,#168ad1 0 4px,transparent 4px 7px); }
 .layers-special-note b { color: #195d91; }
@@ -244,6 +244,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .rule input[type="range"] { width: 100%; }
 .settings-tabs { display: flex; gap: 4px; margin: 4px 0; }
 .settings-tabs button { flex: 1; min-height: 30px; padding: 4px 8px; border: 1px solid #d5dfe6; border-radius: 8px; background: #f2f5f7; color: #4c5b66; font: 700 12px system-ui; cursor: pointer; }
+.settings-tabs .settings-help-btn { align-self: center; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }
 .settings-pane { display: flex; flex-direction: column; height: 196px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
@@ -340,7 +341,8 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   .readout { left: 10px; right: 10px; top: calc(env(safe-area-inset-top) + 66px); bottom: auto; max-width: none; max-height: 42vh; }
 }
 .readout.show { display: block; }
-.readout .rt-title { font-weight: 700; margin-bottom: 4px; }
+.readout .rt-title { display: flex; align-items: center; gap: 7px; font-weight: 700; margin-bottom: 4px; }
+.readout .rt-swatch { display: inline-block; flex: 0 0 13px; width: 13px; height: 13px; border: 1px solid rgba(0,0,0,.18); border-radius: 3px; box-shadow: 0 0 0 1px rgba(255,255,255,.65) inset; }
 .readout-close { position: absolute; top: 6px; right: 7px; width: 25px; height: 25px; border: none; border-radius: 7px; background: #eef1f4; color: #555; cursor: pointer; }
 .readout table { border-collapse: collapse; }
 .readout td { padding: 1px 8px 1px 0; vertical-align: top; }

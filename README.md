@@ -38,7 +38,7 @@ python3 scripts/serve.py
     in the readout.
 - One verdict system on the background network and planned route: yellow-lime
   = a physical bike facility that passes, dashed blue = a designated bicycle
-  route that passes, solid blue = another road that passes, orange = bike-legal
+  route that passes, solid blue = another road that passes, amber = bike-legal
   limited-access caution, red **dashed** = fails / unavailable, and gray =
   insufficient data. Off-street paths/trails use a lime line with a fine
   dotted center, while on-street bike accommodations are solid. A failing
@@ -118,7 +118,7 @@ python3 scripts/build_blts.py --src data/BikePedLTS.gdb --out data/blts.geojson
 Source: WSDOT "Bicycle and Pedestrian Level of Traffic Stress (LTS)" (File
 Geodatabase, EPSG:2927 → reprojected to 4326). `LTS_Bicycle` (1–4); `999`/missing
 is no-data. Limited-access segments (`AccessControlTypeCode` F/M/P) are shown
-as an orange caution when their recorded speed and shoulder otherwise meet the
+as an amber caution when their recorded speed and shoulder otherwise meet the
 rider's rules. They are distinct from true OSM motorways/freeways, which drive
 the freeway toggle and remain last-resort route failures.
 

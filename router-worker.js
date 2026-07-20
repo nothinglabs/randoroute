@@ -26,7 +26,7 @@ const _dec = new TextDecoder();
 // -128 is reserved by the migration tool for a WSDOT permanent bike
 // restriction. It is a hard graph exclusion, never a routing penalty.
 const PROHIBITED_SHOULDER = -128;
-// "Require fully-safe routes" exemption: the block or two touching a leg's
+// "Only show routes fully matching safety rules" exemption: the block or two touching a leg's
 // endpoints must stay traversable even when it fails the rules — you have to
 // reach the door somehow. Only edges near a terminus qualify, and only short
 // ones, so the exemption can never leak a failing shortcut into mid-route.
@@ -36,6 +36,11 @@ const ACCESS_EDGE_MAX_M = 800; // a qualifying edge must itself be short
 // the few meters of a busy road's own pavement at a signal or trail crossing —
 // not riding along the failing road. Crossings are never rule violations.
 const CROSSING_MAX_M = 40;
+// A fully-matching search provisionally admits short failing edges because a
+// crossing can span graph fragments. If the reconstructed movement is not a
+// valid crossing, retry with those fragments blocked. Bound the retries so a
+// pathological graph cannot turn one request into an unbounded search loop.
+const CROSSING_RETRY_LIMIT = 8;
 // Bit 4 of the graph's metadata byte marks OSM paths explicitly identified as
 // mountain-bike infrastructure (including mtb:scale:imba). They remain in the
 // graph for the rider-controlled option, but are unavailable by default.
@@ -206,6 +211,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
+  climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
 let activeWeights = { ...DEFAULT_WEIGHTS };
@@ -213,7 +219,8 @@ function useWeights(source) {
   activeWeights = { ...DEFAULT_WEIGHTS };
   if (!source || typeof source !== 'object') return;
   const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
-    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM']);
+    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM',
+    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowSecPerM']);
   for (const key of Object.keys(DEFAULT_WEIGHTS)) {
     const value = Number(source[key]);
     if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) activeWeights[key] = value;
@@ -300,11 +307,48 @@ function edgeTimeS(i, forward) {
   if (g > 0) v = Math.max(vflat * Math.exp(-activeWeights.uphillFactor * g), V_MIN);
   else v = Math.min(vflat * (1 - activeWeights.downhillFactor * g), V_MAX);
   let t = len / v;
-  // Undulation beyond the net climb still costs energy/time (~6 s per meter
+  // Undulation beyond the net climb still costs energy/time (~3 s per meter
   // of extra up-and-down that the net grade doesn't see).
   const extra = asc - Math.max(asc - des, 0);
   t += extra * activeWeights.undulationSecPerM;
   return t;
+}
+
+// Route choice may be more climb-averse than the physical travel-time model.
+// Net climbing receives the full mode-specific cost; extra up-and-down within
+// an edge receives only half, so rolling terrain is discouraged without being
+// treated as harshly as one sustained climb. This affects selection, not ETA.
+function climbPreferenceS(i, forward, mode) {
+  if (eFlags[i] & 32) return 0;
+  const asc = forward ? eAsc[i] : eDes[i];
+  const des = forward ? eDes[i] : eAsc[i];
+  const netAsc = Math.max(0, asc - des);
+  const rollingAsc = Math.max(0, asc - netAsc);
+  const key = mode === 'direct' ? 'climbDirectSecPerM'
+    : mode === 'low' ? 'climbLowSecPerM' : 'climbBalancedSecPerM';
+  const grade = netAsc / Math.max(1, eLen[i]);
+  const steepness = 1 + Math.max(0, grade - 0.04) * 8;
+  return (netAsc * steepness + rollingAsc * 0.5) * activeWeights[key];
+}
+
+function routeGradeStats(segs) {
+  let uphillM = 0;
+  let uphillRiseM = 0;
+  let maxGradePct = 0;
+  for (const seg of segs || []) {
+    if ((seg.flags || 0) & 32) continue;
+    const grade = Number(seg.gradePct) || 0;
+    const len = Number(seg.lenM) || 0;
+    if (grade > 0.5 && len > 0) {
+      uphillM += len;
+      uphillRiseM += len * grade / 100;
+    }
+    maxGradePct = Math.max(maxGradePct, grade);
+  }
+  return {
+    avgUphillPct: uphillM > 0 ? Math.round(10 * 100 * uphillRiseM / uphillM) / 10 : 0,
+    maxGradePct: Math.round(10 * maxGradePct) / 10,
+  };
 }
 
 /* ------------------------------------------------ riding modes */
@@ -319,7 +363,8 @@ function modeMult(mode, lvl) {
 }
 
 function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
-  startSnap, endSnap, diversityEdges = null, diversityFactor = 1, searchRules = rules) {
+  startSnap, endSnap, diversityEdges = null, diversityFactor = 1, searchRules = rules,
+  blockedCrossingEdges = null, crossingRetry = 0) {
   const t0 = Date.now();
   const s = startSnap || nearestNode(startLL[0], startLL[1], rules);
   const t = endSnap || nearestNode(endLL[0], endLL[1], rules);
@@ -393,8 +438,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // impassable in EVERY mode, so profiles choose only among matching
       // paths — except the short access blocks at a leg's own endpoints,
       // which stay usable (and still report/pulse as failing).
+      const provisionalCrossing = eLen[ei] <= CROSSING_MAX_M && !(fl & 4)
+        && !blockedCrossingEdges?.has(ei);
       if (rules.requireSafe && actualLevel === 4 && !terminalAccessEdge(ei)
-          && !(eLen[ei] <= CROSSING_MAX_M && !(fl & 4))) continue;
+          && !provisionalCrossing) continue;
       const requiredSafeAccess = rules.requireSafe && actualLevel === 4;
       // Discovery lenses may price an otherwise-allowed edge more
       // conservatively, but they never change legality or reported safety.
@@ -402,7 +449,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       const mult = modeMult(mode, searchLevel);
       if (mult === Infinity) continue;
       const forward = eA[ei] === u;
-      let step = edgeTimeS(ei, forward);
+      let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode);
       if ((fl & 32) && nodeHasLand[u]) step += activeWeights.ferryWaitMin * 60; // boarding
       let cost = step * mult;
       // An exempted terminal-access block is a last resort, never a shortcut:
@@ -486,14 +533,15 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     if (forward) for (let j = 1; j < cnt; j++) coords.push([gLon[off + j], gLat[off + j]]);
     else for (let j = cnt - 2; j >= 0; j--) coords.push([gLon[off + j], gLat[off + j]]);
     distM += eLen[ei];
-    timeS += edgeTimeS(ei, forward);
+    let segTimeS = edgeTimeS(ei, forward);
     if (eFlags[ei] & 32) {
-      if (nodeHasLand[fromNode]) timeS += activeWeights.ferryWaitMin * 60;
+      if (nodeHasLand[fromNode]) segTimeS += activeWeights.ferryWaitMin * 60;
       ferryM += eLen[ei];
       const last = ferryRanges[ferryRanges.length - 1];
       if (last && last[1] === c0) last[1] = coords.length - 1;
       else ferryRanges.push([c0, coords.length - 1]);
     }
+    timeS += segTimeS;
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (eFlags[ei] & 64) desigM += eLen[ei];
@@ -528,32 +576,72 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: Math.round(10 * 100 * ((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei])) / Math.max(1, eLen[ei])) / 10,
-      lenM: Math.round(eLen[ei]) });
+      lenM: Math.round(eLen[ei]), timeS: Math.round(segTimeS) });
     const toNode = forward ? eB[ei] : eA[ei];
     nodeIds.push(toNode);
     profile.push([distM, nodeEle[toNode]]);
   }
-  // Reclassify isolated short failing hops as crossings: they enter and
-  // leave the busy road immediately, so they don't count against the rules,
-  // don't pulse red, and don't break "Require fully-safe routes".
-  for (let i = 0; i < segs.length; i++) {
-    const seg = segs[i];
-    if (seg.level !== 4 || (seg.flags & 4)) continue;
-    const exactLen = eLen[edgeIds[i]];
-    if (exactLen > CROSSING_MAX_M) continue;
-    if (segs[i - 1]?.level === 4 || segs[i + 1]?.level === 4) continue;
-    seg.level = 2;
-    seg.crossing = 1;
-    levelM[4] -= exactLen;
-    levelM[2] += exactLen;
-    failM -= exactLen;
+  // Reclassify a complete short failing RUN as one crossing. OSM may split a
+  // crosswalk or intersection into several graph edges, so requiring one
+  // isolated edge incorrectly flags legitimate crossings. The complete run
+  // must still be short and bounded on both sides by passing route segments;
+  // otherwise it represents riding along the failing road, not crossing it.
+  const rejectedCrossingEdges = [];
+  for (let i = 0; i < segs.length;) {
+    if (segs[i].level !== 4 || (segs[i].flags & 4)) { i++; continue; }
+    let end = i;
+    let runM = 0;
+    while (end < segs.length && segs[end].level === 4 && !(segs[end].flags & 4)) {
+      runM += eLen[edgeIds[end]];
+      end++;
+    }
+    const boundedByPassing = i > 0 && end < segs.length
+      && segs[i - 1].level !== 4 && segs[end].level !== 4;
+    if (boundedByPassing && runM <= CROSSING_MAX_M) {
+      for (let j = i; j < end; j++) {
+        segs[j].level = 2;
+        segs[j].crossing = 1;
+      }
+      levelM[4] -= runM;
+      levelM[2] += runM;
+      failM -= runM;
+    } else if (rules.requireSafe) {
+      // Only provisionally-admitted edges need blocking. Endpoint-access
+      // exceptions remain available and continue to be reported as failures.
+      const provisional = [];
+      for (let j = i; j < end; j++) {
+        const ei = edgeIds[j];
+        if (!terminalAccessEdge(ei) && eLen[ei] <= CROSSING_MAX_M) {
+          provisional.push(ei);
+        }
+      }
+      // Blocking one fragment is enough to invalidate this exact bad run and
+      // still lets a retry use another fragment as a legitimate crossing from
+      // a different approach. Prefer the longest, least crossing-like piece.
+      if (provisional.length) rejectedCrossingEdges.push(provisional.reduce((longest, ei) =>
+        eLen[ei] > eLen[longest] ? ei : longest));
+    }
+    i = end;
   }
   failM = Math.max(0, failM);
+  if (rules.requireSafe && rejectedCrossingEdges.length) {
+    if (crossingRetry >= CROSSING_RETRY_LIMIT) {
+      return {
+        ok: false,
+        reason: 'No route fully matching your safety rules exists — relax a rule, or turn off “Only show routes fully matching safety rules”.',
+      };
+    }
+    const blocked = new Set(blockedCrossingEdges || []);
+    for (const ei of rejectedCrossingEdges) blocked.add(ei);
+    return routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
+      s, t, diversityEdges, diversityFactor, searchRules, blocked, crossingRetry + 1);
+  }
   const ferrySegs = ferryRanges.map(([a, b]) => coords.slice(a, b + 1));
+  const gradeStats = routeGradeStats(segs);
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
     desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
-    levelM, edgeIds, nodeIds, segs,
+    levelM, edgeIds, nodeIds, segs, ...gradeStats,
     profile, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
 }
@@ -591,6 +679,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
     distM: l.distM, timeS: l.timeS, failM: l.failM,
     desigM: l.desigM, facilityM: l.facilityM, mtbM: l.mtbM || 0, residentialM: l.residentialM,
     freewayM: l.freewayM, limitedAccessM: l.limitedAccessM, hazardM: l.hazardM || 0,
+    avgUphillPct: l.avgUphillPct || 0, maxGradePct: l.maxGradePct || 0,
   }));
   const edgeIds = [], nodeIds = [];
   const levelM = [0, 0, 0, 0, 0];
@@ -625,10 +714,11 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
     ds.push(prof[prof.length - 1]);
     prof = ds;
   }
+  const gradeStats = routeGradeStats(segs);
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
     desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
-    levelM, edgeIds, nodeIds, segs,
+    levelM, edgeIds, nodeIds, segs, ...gradeStats,
     legs: legSummaries,
     profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
     ms: Date.now() - t0,
@@ -665,14 +755,16 @@ function routeFragment(source, startEdge, endEdge, rules) {
     const forward = eA[ei] === fromNode;
     const seg = segs[index];
     distM += eLen[ei];
-    timeS += edgeTimeS(ei, forward);
+    let segTimeS = edgeTimeS(ei, forward);
     if (eFlags[ei] & 32) {
-      if (nodeHasLand[fromNode]) timeS += activeWeights.ferryWaitMin * 60;
+      if (nodeHasLand[fromNode]) segTimeS += activeWeights.ferryWaitMin * 60;
       ferryM += eLen[ei];
       const last = ferryRanges[ferryRanges.length - 1];
       if (last && last[1] === seg.c0) last[1] = seg.c1;
       else ferryRanges.push([seg.c0, seg.c1]);
     }
+    timeS += segTimeS;
+    seg.timeS = Math.round(segTimeS);
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (eFlags[ei] & 64) desigM += eLen[ei];
@@ -687,11 +779,12 @@ function routeFragment(source, startEdge, endEdge, rules) {
     hazardM += Number(seg.hazardLenM) || 0;
     profile.push([distM, nodeEle[nodeIds[index + 1]]]);
   }
+  const gradeStats = routeGradeStats(segs);
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM,
     ferrySegs: ferryRanges.map(([a, b]) => coords.slice(a, b + 1)),
     desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
-    levelM, edgeIds: sourceEdgeIds, nodeIds, segs, profile,
+    levelM, edgeIds: sourceEdgeIds, nodeIds, segs, profile, ...gradeStats,
     snapStartM: 0, snapEndM: 0, ms: 0,
   };
 }
@@ -703,6 +796,8 @@ function routeSummary(routeResult) {
     mtbM: routeResult.mtbM || 0, residentialM: routeResult.residentialM,
     freewayM: routeResult.freewayM, limitedAccessM: routeResult.limitedAccessM,
     hazardM: routeResult.hazardM || 0,
+    avgUphillPct: routeResult.avgUphillPct || 0,
+    maxGradePct: routeResult.maxGradePct || 0,
   };
 }
 
@@ -743,10 +838,11 @@ function mergeRouteParts(parts, snapStartM, snapEndM) {
     downsampled.push(prof[prof.length - 1]);
     prof = downsampled;
   }
+  const gradeStats = routeGradeStats(segs);
   const merged = {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
     desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
-    levelM, edgeIds, nodeIds, segs, profile: prof, snapStartM, snapEndM,
+    levelM, edgeIds, nodeIds, segs, profile: prof, snapStartM, snapEndM, ...gradeStats,
     ms: Date.now() - started,
   };
   merged.legs = [routeSummary(merged)];
