@@ -4,6 +4,10 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+assert.doesNotMatch(app, /navConnector|navStartDialog|navStartFromHere|route-connector/,
+  'navigation should not create a special route-to-route-start connector');
+assert.match(app, /Starting away from the selected route is the same as leaving it later:[\s\S]*?enterOffRoute\(nearest\)/,
+  'a first GPS fix away from the route should use normal off-route guidance');
 const start = app.indexOf('function navDistanceM');
 const end = app.indexOf('// Leaving the route no longer triggers rerouting.');
 assert.ok(start >= 0 && end > start, 'navigation helper source was not found');

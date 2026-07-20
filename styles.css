@@ -304,7 +304,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 #legendToggle .legend-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 #legendFlyout {
-  position: absolute; z-index: 17; top: calc(env(safe-area-inset-top) + 94px); right: 10px;
+  position: absolute; z-index: 17; top: calc(env(safe-area-inset-top) + 136px); right: 10px;
   width: min(238px, calc(100vw - 24px)); padding: 8px 10px 9px;
   border: 1px solid #d4e0e7; border-radius: 11px; background: rgba(255,255,255,.98);
   box-shadow: 0 4px 15px rgba(0,0,0,.2); color: #3e4f59;
@@ -367,8 +367,8 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #topToolbar {
   position: absolute;
   top: calc(env(safe-area-inset-top) + 12px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: 12px;
+  transform: none;
   z-index: 11;
   display: flex;
   align-items: center;
@@ -470,15 +470,15 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #routeBar .route-endpoint.active .endpoint-label,
 #routeBar .route-endpoint.active .endpoint-copy strong { color: #075993; }
 #routeBar button:disabled { opacity: .38; cursor: default; }
-#routeBar #rb-reverse, #routeBar #rb-more { width: 42px; }
-#routeBar #rb-reverse { font-size: 17px; }
+#routeBar #rb-clear, #routeBar #rb-more { width: 42px; }
+#routeBar #rb-clear { color: #9b2836; font-size: 16px; font-weight: 500; }
 #routeBar #rb-more { font-size: 20px; line-height: 1; }
 .route-actions-menu {
   position: absolute;
   z-index: 3;
   top: calc(100% + 7px);
   right: 0;
-  width: 188px;
+  width: 214px;
   padding: 5px;
   border: 1px solid #d7e0e6;
   border-radius: 12px;
@@ -502,7 +502,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #routeBar .route-actions-menu button:focus-visible { background: #edf5fa; }
 #routeBar .route-actions-menu button span { width: 18px; color: #45616f; text-align: center; font-size: 17px; }
 #routeBar .route-actions-menu button strong { font: 700 12px system-ui; }
-#routeBar .route-actions-menu #rb-clear { color: #9b2836; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 .place-results .place-choice {
   display: inline-block; margin: 4px 4px 8px 12px; padding: 7px 11px;
@@ -558,12 +557,12 @@ body.navigation-active #routeBar { display: none; }
     top: calc(env(safe-area-inset-top) + 8px); right: 54px; bottom: auto; left: 122px;
     width: auto; transform: none;
   }
-  body.navigation-active #legendFlyout { top: calc(env(safe-area-inset-top) + 104px); }
+  body.navigation-active #legendFlyout { top: calc(env(safe-area-inset-top) + 136px); }
 }
 
 @media (min-width: 721px) {
   body:not(.navigation-active) #topToolbar {
-    left: calc(68px + var(--desktop-panel-width));
+    left: calc(12px + var(--desktop-panel-width));
     right: 12px;
     transform: none;
     max-width: none;
@@ -572,47 +571,23 @@ body.navigation-active #routeBar { display: none; }
   #rb-status { min-width: 0; }
 }
 
-#appHelpBtn { position: absolute; z-index: 13; top: calc(env(safe-area-inset-top) + 8px); left: 8px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #b8cbd8; border-radius: 50%; background: rgba(255,255,255,.96); box-shadow: 0 2px 9px rgba(0,0,0,.18); color: #0a66c2; font: 800 17px/1 system-ui; cursor: pointer; }
+#appHelpBtn { position: absolute; z-index: 16; top: calc(env(safe-area-inset-top) + 94px); right: 10px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #b8cbd8; border-radius: 9px; background: rgba(255,255,255,.96); box-shadow: 0 2px 9px rgba(0,0,0,.18); color: #0a66c2; font: 800 17px/1 system-ui; cursor: pointer; }
 .app-help-update { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e1e7eb; }
 .app-help-version { margin: 0 !important; color: #56616a; font: 650 12px/1.2 system-ui; }
 #checkUpdatesBtn { flex: none; padding: 6px 11px; border: 1px solid #c9d7e0; border-radius: 8px; background: #f6fafc; color: #0a66c2; font: 700 11px system-ui; cursor: pointer; }
 #checkUpdatesBtn:disabled { color: #9fb2bf; cursor: default; }
 .app-help-update-status { min-height: 0; margin: 6px 0 0 !important; color: #56616a !important; font: 600 11px/1.3 system-ui !important; }
 .app-help-update-status:empty { display: none; }
-@media (min-width: 721px) {
-  #appHelpBtn { left: calc(20px + var(--desktop-panel-width)); top: calc(env(safe-area-inset-top) + 12px); width: 44px; height: 44px; border-radius: 50%; font-size: 20px; }
-}
-
 .place-picker {
-  position: absolute; z-index: 18; top: calc(env(safe-area-inset-top) + 84px); left: 50%;
-  transform: translateX(-50%); width: min(94vw, 440px); padding: 10px;
+  position: absolute; z-index: 18; top: calc(env(safe-area-inset-top) + 84px); left: calc(12px + var(--desktop-panel-width));
+  transform: none; width: min(94vw, 440px); padding: 10px;
   border: 1px solid #e1e5e9; border-radius: 12px; background: rgba(255,255,255,.98);
   box-shadow: 0 5px 18px rgba(0,0,0,.2); color: #222;
 }
 .picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; font-size: 12px; }
 #placePickerClose { flex: 0 0 34px; width: 34px; height: 34px; padding: 0; border: none; border-radius: 9px; background: #eef1f4; color: #555; font: 700 16px/1 system-ui; cursor: pointer; }
-.picker-endpoints { overflow: hidden; border: 1px solid #cbd6de; border-radius: 10px; background: #fff; }
-.picker-endpoints[hidden] { display: none; }
-.picker-endpoint {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  align-items: center;
-  width: 100%;
-  min-height: 38px;
-  padding: 5px 10px;
-  border: 0;
-  background: #fff;
-  color: #25343d;
-  cursor: pointer;
-  text-align: left;
-}
-.picker-endpoint + .picker-endpoint { border-top: 1px solid #e2e8ec; }
-.picker-endpoint-label { color: #667985; font: 700 9px system-ui; letter-spacing: .04em; text-transform: uppercase; }
-.picker-endpoint strong { overflow: hidden; font: 700 12px system-ui; text-overflow: ellipsis; white-space: nowrap; }
-.picker-endpoint.active { background: #e8f3fb; box-shadow: inset 3px 0 #0a66c2; }
-.picker-endpoint.active .picker-endpoint-label,
-.picker-endpoint.active strong { color: #075993; }
-.picker-hint { margin: 7px 2px 6px; color: #667985; font: 600 10.5px/1.25 system-ui; }
+.picker-hint { margin: 5px 2px 9px; color: #536975; font: 600 11.5px/1.35 system-ui; }
+.picker-hint strong { color: #263d49; }
 .picker-search-row { display: flex; gap: 5px; }
 .picker-search-row #placeSearch { flex: 1; min-width: 0; }
 #onlinePlaceSearch, #useLoc { border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; color: #0a66c2; cursor: pointer; }
@@ -626,7 +601,7 @@ body.navigation-active #routeBar { display: none; }
 #getUpdateBtn { padding: 6px 9px; border: none; border-radius: 8px; background: #0a66c2; color: #fff; font: 700 11px system-ui; cursor: pointer; }
 #updateLaterBtn { width: 26px; height: 26px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
 @media (max-width: 720px) {
-  #topToolbar { gap: 4px; max-width: calc(100vw - 12px); }
+  #topToolbar { left: 6px; gap: 4px; max-width: calc(100vw - 12px); }
   .nav-start { min-height: 46px; padding: 0 8px; font-size: 11px; }
   #routeBar { gap: 3px; padding: 5px 6px 5px 5px; max-width: calc(100vw - 12px); }
   #routeBar button { width: 34px; height: 34px; }
@@ -636,8 +611,8 @@ body.navigation-active #routeBar { display: none; }
   .route-endpoint-marker { flex-basis: 10px; width: 10px; height: 10px; }
   .endpoint-copy strong { font-size: 10px; }
   .endpoint-label { font-size: 7.5px; }
-  #routeBar #rb-reverse, #routeBar #rb-more { width: 33px; }
-  .route-actions-menu { right: -1px; width: 184px; }
+  #routeBar #rb-clear, #routeBar #rb-more { width: 33px; }
+  .route-actions-menu { right: -1px; width: 210px; }
   .route-action-toast { top: calc(env(safe-area-inset-top) + 78px); }
   .route-action-toast.has-detail { top: max(calc(env(safe-area-inset-top) + 120px), 24vh); }
   #mobileNavDock { display: block; position: absolute; z-index: 15; left: 66px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
@@ -646,14 +621,16 @@ body.navigation-active #routeBar { display: none; }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 42px; height: 42px; border-radius: 12px; }
   #panelOpen { left: 10px; right: auto; }
   #legendToggle { top: calc(env(safe-area-inset-top) + 58px); width: 42px; height: 42px; border-radius: 12px; }
-  #legendFlyout { top: calc(env(safe-area-inset-top) + 106px); right: 10px; width: min(238px, calc(100vw - 20px)); }
+  #appHelpBtn { top: calc(env(safe-area-inset-top) + 106px); width: 42px; height: 42px; border-radius: 12px; font-size: 18px; }
+  #legendFlyout { top: calc(env(safe-area-inset-top) + 154px); right: 10px; width: min(238px, calc(100vw - 20px)); }
+  .place-picker { left: 8px; width: calc(100vw - 16px); }
   body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
   body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
   body.navigation-active .nav-banner {
     top: calc(env(safe-area-inset-top) + 8px); right: 54px; bottom: auto; left: 10px;
     width: auto; transform: none;
   }
-  body.navigation-active #legendFlyout { top: calc(env(safe-area-inset-top) + 104px); }
+  body.navigation-active #legendFlyout { top: calc(env(safe-area-inset-top) + 154px); }
   body:not(.panel-open) .update-prompt, body.panel-open .update-prompt { left: 112px; right: 10px; width: auto; max-width: none; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; }
   body:not(.panel-open).navigation-active .update-prompt { bottom: calc(126px + env(safe-area-inset-bottom)); }
   body.panel-open .update-prompt { bottom: calc(var(--mobile-panel-height, 0px) + 58px); }

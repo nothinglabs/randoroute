@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.176';
+const APP_VERSION = '2026-07-19.177';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1439,9 +1439,6 @@ function storeRouteDetails(m) {
 // This is deliberately a foreground navigation mode. It uses the browser's
 // GPS, speech synthesis, and Screen Wake Lock API while the app is visible.
 // A native iOS wrapper is still required for reliable background navigation.
-// Pending "route me to my planned route" connector computation.
-let navConnector = null;
-
 // Set by buildRulesPanel; lets navigation force the Turn by Turn pane.
 let settingsPaneSelect = null;
 // Route Details can open over either the route chooser or active navigation.
@@ -1455,7 +1452,6 @@ const turnNav = {
   wakeLock: null,
   marker: null,
   route: null,
-  elevationProgress: null,    // connector/profile distance mapping, when applicable
   next: 0,
   nearest: 0,
   routeM: 0,
@@ -1719,63 +1715,6 @@ function updateNavigationProgress() {
     geometry: { type: 'LineString', coordinates: coords.length >= 2 ? coords : [] } });
 }
 
-function handleNavConnector(m) {
-  const pending = navConnector;
-  navConnector = null;
-  if (!turnNav.active || !pending) return;
-  if (!m.ok || !Array.isArray(m.coords) || m.coords.length < 2) {
-    turnNav.message = 'No route to the route found — follow the rejoin guidance';
-    refreshNavigationUI();
-    return;
-  }
-  const { joinIndex, planned } = pending;
-  const offset = (m.coords.length - 1) - joinIndex;
-  const coords = [...m.coords, ...planned.coords.slice(joinIndex + 1)];
-  const laterSegs = planned.segs.filter((seg) => seg.c1 > joinIndex).map((seg) => ({
-    ...seg,
-    c0: Math.max(joinIndex, seg.c0) + offset,
-    c1: seg.c1 + offset,
-    hazC0: seg.hazC0 == null ? null : Math.max(joinIndex, seg.hazC0) + offset,
-    hazC1: seg.hazC1 == null ? null : seg.hazC1 + offset,
-  }));
-  const joinedRoute = buildTurnInstructions({
-    coords, segs: [...m.segs.map((seg) => ({ ...seg })), ...laterSegs] });
-  turnNav.route = joinedRoute;
-  turnNav.elevationProgress = {
-    connectorM: joinedRoute.cumulative[m.coords.length - 1] || 0,
-    plannedJoinM: planned.cumulative[joinIndex] || 0,
-    plannedTotalM: planned.totalM || 0,
-  };
-  turnNav.next = 0;
-  turnNav.nearest = 0;
-  turnNav.routeM = 0;
-  turnNav.arrived = false;
-  turnNav.destinationWasNear = false;
-  turnNav.lastDestinationM = Infinity;
-  turnNav.destinationAwayFixes = 0;
-  turnNav.offRoute = false;
-  turnNav.offRouteInfo = null;
-  turnNav.startChecked = true;
-  turnNav.message = '';
-  drawNavConnector(m.coords);
-  updateNavigationProgress();
-  speakNavigation('Routing you to your planned route.');
-  refreshNavigationUI();
-}
-
-function drawNavConnector(coords) {
-  map.getSource('route-connector')?.setData({ type: 'Feature', properties: {},
-    geometry: { type: 'LineString', coordinates: coords || [] } });
-}
-
-function offerNavStartReroute(startDistM) {
-  const dialog = document.getElementById('navStartDialog');
-  const text = document.getElementById('navStartDialogText');
-  if (!dialog?.showModal || !text) return;
-  text.textContent = `You are ${navDistanceText(startDistM)} from the route's start. Navigate to the nearest point on the route instead?`;
-  if (!dialog.open) dialog.showModal();
-}
-
 function rejoinRoute(nearest, previousFix) {
   turnNav.offRoute = false;
   turnNav.offRouteInfo = null;
@@ -1852,17 +1791,8 @@ function navigationStatusText() {
 
 function navigationElevationProgressM() {
   if (!turnNav.active || !turnNav.route) return null;
-  let plannedM = turnNav.routeM;
-  let plannedTotalM = turnNav.route.totalM;
-  const mapping = turnNav.elevationProgress;
-  if (mapping) {
-    // The elevation profile describes the original planned route, so there is
-    // no honest "you are here" position while the rider is still on the
-    // connector. Once it is complete, resume at the original join distance.
-    if (turnNav.routeM < mapping.connectorM) return null;
-    plannedM = mapping.plannedJoinM + (turnNav.routeM - mapping.connectorM);
-    plannedTotalM = mapping.plannedTotalM;
-  }
+  const plannedM = turnNav.routeM;
+  const plannedTotalM = turnNav.route.totalM;
   const profileTotalM = Number(routing.last?.distM) || 0;
   if (!(plannedTotalM > 0) || !(profileTotalM > 0)) return Math.max(0, plannedM);
   return Math.max(0, Math.min(profileTotalM, plannedM * profileTotalM / plannedTotalM));
@@ -1885,7 +1815,7 @@ function openRouteDetails() {
     && document.body.classList.contains('panel-open');
   // Reload the embedded report so it always reflects the latest route data.
   // During navigation, hand over progress in the original elevation profile's
-  // distance scale. A connector lead-in has no position on that profile.
+  // distance scale.
   let progress = '';
   const progressM = navigationElevationProgressM();
   if (Number.isFinite(progressM)) progress = `&navProgress=${Math.round(progressM)}`;
@@ -2121,18 +2051,8 @@ function updateTurnNavigation(pos) {
     return;
   }
 
-  // First fix after starting navigation: someone far from the planned start
-  // probably wants the route to come to them instead.
-  if (!turnNav.startChecked) {
-    turnNav.startChecked = true;
-    const startDistM = navDistanceM([longitude, latitude], turnNav.route.coords[0]);
-    if (startDistM > 322 && nearest.offRouteM > OFF_ROUTE_ENTER_M) {
-      offerNavStartReroute(startDistM);
-      refreshNavigationUI();
-      return;
-    }
-  }
-
+  // Starting away from the selected route is the same as leaving it later:
+  // use normal rejoin guidance without calculating or splicing a lead-in.
   if (!turnNav.offRoute && nearest.offRouteM > OFF_ROUTE_ENTER_M) {
     enterOffRoute(nearest);
     refreshNavigationUI();
@@ -2236,7 +2156,6 @@ function startTurnNavigation() {
     return;
   }
   turnNav.route = buildTurnInstructions(routing.last);
-  turnNav.elevationProgress = null;
   turnNav.active = true;
   turnNav.next = 0;
   turnNav.nearest = 0;
@@ -2247,7 +2166,6 @@ function startTurnNavigation() {
   turnNav.offRouteApproachSpoken = false;
   turnNav.offRouteApproachText = '';
   turnNav.offRouteSpokenAt = 0;
-  turnNav.startChecked = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
   turnNav.destinationWasNear = false;
@@ -2281,7 +2199,6 @@ function stopTurnNavigation(announce = true) {
   if (turnNav.marker) { turnNav.marker.remove(); turnNav.marker = null; }
   turnNav.active = false;
   turnNav.route = null;
-  turnNav.elevationProgress = null;
   turnNav.message = '';
   turnNav.offRoute = false;
   turnNav.offRouteInfo = null;
@@ -2294,9 +2211,7 @@ function stopTurnNavigation(announce = true) {
   turnNav.destinationAwayFixes = 0;
   turnNav.initialCameraAt = 0;
   turnNav.lastCameraAt = 0;
-  navConnector = null;
   updateNavigationProgress();
-  drawNavConnector([]);
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   if (announce) speakNavigation('Navigation stopped.');
   refreshNavigationUI();
@@ -2448,7 +2363,6 @@ function onRouterMessage(ev) {
     activateRouteOption(selected);
     notifySnapDistance(selected);
   } else if (m.type === 'route') {
-    if (navConnector && m.id === navConnector.reqId) { handleNavConnector(m); return; }
     if (m.id !== routing.reqId) return; // stale reply
     setRouteOptionsLoading(false);
     if (!m.ok) {
@@ -2480,7 +2394,6 @@ function computeRoute() {
     return;
   }
   routing.reqId++;
-  navConnector = null;
   setRouteStatus('Routing…');
   showRouteActionToast(routing.last?.ok ? 'Recalculating route' : 'Calculating route options', {
     busy: true,
@@ -2685,7 +2598,6 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-detail-marker').setData(emptyHighlights);
     map.getSource('route-detail-selection').setData(emptyLine);
     map.getSource('route-progress').setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } });
-    map.getSource('route-connector').setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } });
     setFailPulse(failData.features.length > 0);
     applyDisplayModeAll();
     return;
@@ -2699,7 +2611,6 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-selection', { type: 'geojson', data: emptyLine });
   map.addSource('route-progress', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
-  map.addSource('route-connector', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
   map.addLayer({
     id: 'route-shadow', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -2775,13 +2686,6 @@ function drawRoute(coords, ferrySegs, segs) {
              'line-dasharray': [0.6, 1.8] },
   });
   setFailPulse(failData.features.length > 0);
-  // Lead-in from the rider's position to the planned route.
-  map.addLayer({
-    id: 'route-connector', type: 'line', source: 'route-connector',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#00795c', 'line-width': 4.5, 'line-opacity': 0.9,
-             'line-dasharray': [1.4, 1.2] },
-  });
   // Ridden portion of the route darkens during navigation.
   map.addLayer({
     id: 'route-progress', type: 'line', source: 'route-progress',
@@ -3162,7 +3066,7 @@ function addVia(lngLat, { allowPastLimit = false } = {}) {
   if (!allowPastLimit && routing.vias.length >= MAX_ROUTE_STOPS) {
     routing.arm = null;
     updateArmButtons();
-    setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} stops`);
+    setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} waypoints`);
     return false;
   }
   const marker = new maplibregl.Marker({ color: '#555555', draggable: true, scale: 0.85 })
@@ -3182,12 +3086,12 @@ function addVia(lngLat, { allowPastLimit = false } = {}) {
 function removeLastVia() {
   setRouteActionsOpen(false);
   const via = routing.vias.pop();
-  if (!via) { showRouteActionToast('No added stops to remove'); return; }
+  if (!via) { showRouteActionToast('No waypoints to remove'); return; }
   via.marker.remove();
   if (routing.arm === 'via') routing.arm = null;
   updateArmButtons();
   computeRoute();
-  showRouteActionToast('Last stop removed · recalculating…', { busy: true, duration: 0 });
+  showRouteActionToast('Last waypoint removed · recalculating…', { busy: true, duration: 0 });
   saveStateSoon();
 }
 
@@ -3277,13 +3181,6 @@ function updateArmButtons() {
     button.setAttribute('aria-label', button.title);
     const value = button.querySelector('[data-endpoint-value]');
     if (value) value.textContent = routeEndpointDisplayName(kind);
-    const pickerButton = document.getElementById(kind === 'start' ? 'pickerStart' : 'pickerEnd');
-    if (pickerButton) {
-      pickerButton.classList.toggle('active', isActive);
-      pickerButton.setAttribute('aria-label', `${isSet ? 'Change' : 'Choose'} ${endpointName}: ${routeEndpointDisplayName(kind)}`);
-      const pickerValue = pickerButton.querySelector(`[data-picker-endpoint-value="${kind}"]`);
-      if (pickerValue) pickerValue.textContent = routeEndpointDisplayName(kind);
-    }
   }
   const add = document.getElementById('rb-via');
   const remove = document.getElementById('rb-via-remove');
@@ -3293,13 +3190,13 @@ function updateArmButtons() {
   if (add) {
     add.disabled = !(routing.start && routing.end) || routing.vias.length >= MAX_ROUTE_STOPS;
     add.title = routing.vias.length >= MAX_ROUTE_STOPS
-      ? `Maximum of ${MAX_ROUTE_STOPS} stops reached` : 'Add a stop';
+      ? `Maximum of ${MAX_ROUTE_STOPS} waypoints reached` : 'Add new waypoint';
   }
   if (remove) remove.disabled = routing.vias.length === 0;
   if (reverse) reverse.disabled = !(routing.start && routing.end);
   if (clear) clear.disabled = !(routing.start || routing.end || routing.vias.length);
   if (more) {
-    more.disabled = !(routing.start || routing.end || routing.vias.length);
+    more.disabled = !(routing.start && routing.end);
     if (more.disabled) setRouteActionsOpen(false);
   }
 }
@@ -3379,7 +3276,6 @@ function activateRouteOption(option, updateNavigation = false) {
   }
   if (updateNavigation && turnNav.active) {
     turnNav.route = buildTurnInstructions(option);
-    turnNav.elevationProgress = null;
     turnNav.next = 0;
     turnNav.nearest = 0;
     turnNav.routeM = 0;
@@ -3432,28 +3328,6 @@ function buildRoutingPanel() {
     else startTurnNavigation();
   });
   document.getElementById('navDetailsBtn').addEventListener('click', () => openRouteDetails());
-  document.getElementById('navStartFromHere').addEventListener('click', () => {
-    document.getElementById('navStartDialog').close();
-    const position = turnNav.lastPosition;
-    if (!position || !turnNav.route || !routing.ready || !routing.worker) return;
-    // The planned route stays exactly as chosen; only a lead-in leg to its
-    // nearest point is computed.
-    const nearest = nearestNavigationPoint(position[0], position[1], true);
-    if (!nearest) return;
-    navConnector = {
-      reqId: ++routing.reqId,
-      joinIndex: nearest.index,
-      planned: turnNav.route,
-    };
-    routing.worker.postMessage({
-      type: 'route', id: navConnector.reqId,
-      points: [[...position], [...turnNav.route.coords[nearest.index]]],
-      rules: { ...rules }, mode: routing.mode,
-      prefDesignated: routing.prefDesig, prefResidential: routing.prefResidential,
-    });
-    turnNav.message = 'Routing you to your planned route…';
-    refreshNavigationUI();
-  });
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
   document.getElementById('confirmClearRoute').addEventListener('click', () => {
     document.getElementById('clearRouteDialog').close();
@@ -3727,6 +3601,8 @@ function ensurePlaces() {
 
 let placeTarget = null;
 let placeSearchRequestId = 0;
+let placePickerViewportRestoreTimers = [];
+let placePickerMapFrameTimer = null;
 const onlinePlaceCache = new Map();
 let onlinePlaceLastRequestAt = 0;
 const ONLINE_PLACE_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
@@ -3763,12 +3639,43 @@ async function searchOnlinePlaces(query) {
   return matches;
 }
 
+function restoreViewportAfterPlacePicker() {
+  for (const timer of placePickerViewportRestoreTimers) clearTimeout(timer);
+  placePickerViewportRestoreTimers = [];
+  const restore = () => {
+    // iOS completes its keyboard/visual-viewport animation after focus is
+    // released. Restore once immediately and again after that animation.
+    window.scrollTo(0, 0);
+    syncVisibleViewport();
+    map.resize();
+  };
+  requestAnimationFrame(restore);
+  placePickerViewportRestoreTimers.push(setTimeout(restore, 180), setTimeout(restore, 480));
+}
+
+function frameMapAfterPlacePicker(lngLat) {
+  clearTimeout(placePickerMapFrameTimer);
+  placePickerMapFrameTimer = setTimeout(() => {
+    map.resize();
+    if (routing.start && routing.end) {
+      fitRouteBounds({
+        s: routing.start,
+        e: routing.end,
+        v: routing.vias.map((via) => via.pt),
+      });
+    } else {
+      map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
+    }
+  }, 500);
+}
+
 function closePlacePicker(cancelArm = false) {
   placeSearchRequestId++;
   const picker = document.getElementById('placePicker');
   if (document.activeElement && picker.contains(document.activeElement)) document.activeElement.blur();
   picker.hidden = true;
   document.body.classList.remove('place-picker-open');
+  restoreViewportAfterPlacePicker();
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   if (cancelArm && (routing.arm === 'start' || routing.arm === 'end' || routing.arm === 'via')) {
@@ -3788,12 +3695,13 @@ function openPlacePicker(kind) {
   updateArmButtons();
   ensureRouter();
   setPanelOpen(false);
-  document.getElementById('placePickerTitle').textContent = kind === 'start' ? 'Choose a start'
-    : kind === 'via' ? 'Add a stop' : 'Choose a destination';
-  document.getElementById('pickerEndpointContext').hidden = kind === 'via';
-  document.getElementById('placePickerHint').textContent = kind === 'via'
-    ? 'Tap the map or search below to add a stop.'
-    : `Tap the map or search below to set ${kind === 'start' ? 'From' : 'To'}.`;
+  document.getElementById('placePickerTitle').textContent = kind === 'start' ? 'Set start'
+    : kind === 'via' ? 'Add new waypoint' : 'Set destination';
+  document.getElementById('placePickerHint').innerHTML = kind === 'start'
+    ? '<strong>Search below</strong> for your start, or <strong>tap the map</strong> to place it directly.'
+    : kind === 'via'
+      ? '<strong>Search below</strong> for a waypoint, or <strong>tap the map</strong> to place it directly.'
+      : '<strong>Search below</strong> for your destination, or <strong>tap the map</strong> to place it directly.';
   document.getElementById('useLoc').hidden = kind !== 'start';
   const onlineButton = document.getElementById('onlinePlaceSearch');
   onlineButton.disabled = false;
@@ -3801,20 +3709,20 @@ function openPlacePicker(kind) {
   const searchInput = document.getElementById('placeSearch');
   searchInput.value = '';
   searchInput.placeholder = kind === 'start' ? 'Search for a start…'
-    : kind === 'via' ? 'Search for a stop…' : 'Search for a destination…';
+    : kind === 'via' ? 'Search for a waypoint…' : 'Search for a destination…';
   searchInput.setAttribute('aria-label', searchInput.placeholder.replace('…', ''));
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   document.getElementById('placePicker').hidden = false;
   document.body.classList.add('place-picker-open');
-  setRouteStatus(kind === 'via' ? 'Tap the map or search to add a STOP'
+  setRouteStatus(kind === 'via' ? 'Search or tap the map to add a WAYPOINT'
     : `Tap the map or search to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
 }
 
 function armRoutePoint(kind) {
   if (kind === 'via' && !(routing.start && routing.end)) return;
   if (kind === 'via' && routing.vias.length >= MAX_ROUTE_STOPS) {
-    setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} stops`);
+    setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} waypoints`);
     return;
   }
   closePlacePicker(false);
@@ -3824,9 +3732,9 @@ function armRoutePoint(kind) {
   ensureRouter();
   if (routing.arm) {
     setPanelOpen(false);
-    setRouteStatus(kind === 'via' ? 'Tap the map to add a stop'
+    setRouteStatus(kind === 'via' ? 'Tap the map to add a waypoint'
       : `Tap the map to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
-    if (kind === 'via') showRouteActionToast('Tap the map to add a stop', { duration: 3200 });
+    if (kind === 'via') showRouteActionToast('Tap the map to add a waypoint', { duration: 3200 });
   } else {
     setRouteStatus('');
   }
@@ -3919,35 +3827,33 @@ function buildPlacePicker() {
     const hit = e.target.closest('.place-hit');
     if (!hit) return;
     const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
-    map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
     if (placeTarget === 'via') addVia(lngLat);
     else setRoutePoint(placeTarget, lngLat, hit.dataset.name);
     routing.arm = null;
     updateArmButtons();
     if (placeTarget === 'via') {
-      setRouteStatus('Stop added');
-      showRouteActionToast('Stop added — route recalculating', { duration: 2200 });
+      setRouteStatus('Waypoint added');
+      showRouteActionToast('Waypoint added — route recalculating', { duration: 2200 });
     } else if (!advanceToMissingEndpoint(placeTarget)) {
       setRouteStatus(placeTarget === 'start' ? 'Start set' : 'Destination set');
     }
     closePlacePicker(false);
+    frameMapAfterPlacePicker(lngLat);
     input.value = '';
     render([]);
   });
 
   document.getElementById('placePickerClose').addEventListener('click', () => closePlacePicker(true));
-  document.getElementById('pickerStart').addEventListener('click', () => openPlacePicker('start'));
-  document.getElementById('pickerEnd').addEventListener('click', () => openPlacePicker('end'));
   document.getElementById('useLoc').addEventListener('click', () => {
     if (!navigator.geolocation) { setStatus('No location access on this device', true); return; }
     setRouteStatus('Locating…');
     navigator.geolocation.getCurrentPosition((pos) => {
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
       setRoutePoint(placeTarget, lngLat, 'My location');
-      map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
       routing.arm = null;
       updateArmButtons();
       closePlacePicker(false);
+      frameMapAfterPlacePicker(lngLat);
       if (!advanceToMissingEndpoint(placeTarget)) setRouteStatus(placeTarget === 'start' ? 'Start set to your location' : 'Destination set');
     }, () => setRouteStatus('Could not get your location'), { enableHighAccuracy: true, timeout: 10000 });
   });
@@ -4281,8 +4187,8 @@ function placeArmedPoint(lngLat) {
   if (kind === 'via') {
     const added = addVia(lngLat);
     if (added) setRouteStatus(routing.vias.length >= MAX_ROUTE_STOPS
-      ? `Stop added — maximum of ${MAX_ROUTE_STOPS} reached`
-      : 'Stop added — tap + to add another');
+      ? `Waypoint added — maximum of ${MAX_ROUTE_STOPS} reached`
+      : 'Waypoint added — use ⋮ to add another');
     return true;
   }
   setRoutePoint(kind, lngLat);
@@ -4480,7 +4386,7 @@ function presetInfoRows(preset) {
     ['Freeways', presetRules.allowFreeways
       ? 'Bike-legal segments may be used only as a last resort.' : 'Not used.'],
     ['Rule matching', presetRules.requireSafe
-      ? 'Required, except short access blocks (~1,000 ft) at your start, stops, and destination; no route is shown otherwise.'
+      ? 'Required, except short access blocks (~1,000 ft) at your start, waypoints, and destination; no route is shown otherwise.'
       : 'Not required; a route may include rule-failing segments to complete it.'],
     ['Unknown shoulder', presetRules.unknownShoulderZero ? 'Treated as 0 ft.' : 'Left as unknown.'],
     ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],
