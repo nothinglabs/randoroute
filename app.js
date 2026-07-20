@@ -1,8 +1,9 @@
 /*
- * Washington Bike Safety Visualizer — Phase 1 (WSDOT BLTS)
+ * Washington Bike Safety Visualizer
  *
- * Visualization only. All data is baked into local static files at build time;
- * the app makes no runtime calls to WSDOT / Overpass / ArcGIS and does no routing.
+ * All road, trail, ferry, restriction, and elevation data is baked into local
+ * static files. Routing runs on-device in a web worker; the only optional
+ * runtime lookup is the rider-initiated online place search.
  *
  * Architecture (built to let Phase 2's OSM source slot in with no rewrite):
  *   - Each data source has its own toggle, its own scorer, and its own layer.
@@ -14,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.187';
+const APP_VERSION = '2026-07-20.188';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1435,6 +1436,7 @@ function storeRouteDetails(m) {
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
         roadClass: s.roadClass || 0, c0: s.c0, c1: s.c1,
+        crossing: s.crossing ? 1 : 0,
         hazard: s.hazard || 0,
         hazardLenM: s.hazardLenM || 0, hazC0: s.hazC0, hazC1: s.hazC1,
         gradePct: s.gradePct || 0, timeS: Number(s.timeS) || 0,
@@ -1463,6 +1465,8 @@ const turnNav = {
   route: null,
   next: 0,
   nearest: 0,
+  nearestSegment: 0,
+  nearestPoint: null,
   routeM: 0,
   message: '',
   offRoute: false,
@@ -1666,7 +1670,7 @@ function routeForwardBearing(index) {
 function offRouteDescription(nearest) {
   return {
     distM: nearest.offRouteM,
-    dir: compassWord(navBearing(turnNav.lastPosition, turnNav.route.coords[nearest.index])),
+    dir: compassWord(navBearing(turnNav.lastPosition, nearest.point || turnNav.route.coords[nearest.index])),
     street: routeRoadNameAt(nearest.index),
     index: nearest.index,
   };
@@ -1717,9 +1721,14 @@ function updateOffRouteGuidance(nearest, previousFix) {
 function updateNavigationProgress() {
   const source = map.getSource('route-progress');
   if (!source) return;
-  const coords = turnNav.active && turnNav.route && turnNav.nearest > 0
-    ? turnNav.route.coords.slice(0, turnNav.nearest + 1)
-    : [];
+  let coords = [];
+  if (turnNav.active && turnNav.route && turnNav.nearestPoint) {
+    const lastComplete = Math.max(0,
+      Math.min(turnNav.route.coords.length - 1, turnNav.nearestSegment));
+    coords = turnNav.route.coords.slice(0, lastComplete + 1);
+    const tail = coords[coords.length - 1];
+    if (!tail || navDistanceM(tail, turnNav.nearestPoint) > 0.25) coords.push(turnNav.nearestPoint);
+  }
   source.setData({ type: 'Feature', properties: {},
     geometry: { type: 'LineString', coordinates: coords.length >= 2 ? coords : [] } });
 }
@@ -1729,6 +1738,8 @@ function rejoinRoute(nearest, previousFix) {
   turnNav.offRouteInfo = null;
   turnNav.offRouteApproachSpoken = false;
   turnNav.nearest = nearest.index;
+  turnNav.nearestSegment = nearest.segmentIndex;
+  turnNav.nearestPoint = nearest.point;
   turnNav.routeM = nearest.routeM;
   turnNav.arrived = false;
   // Re-aim guidance at the honestly-next maneuver — silently. Rejoining
@@ -1915,28 +1926,72 @@ function releaseNavigationWakeLock() {
   if (lock) lock.release().catch(() => {});
 }
 
-function nearestNavigationPoint(lon, lat) {
+// Project a GPS fix onto a route segment in a local meter-scale coordinate
+// system. Navigation previously compared fixes only with route vertices. A
+// long, straight rural edge can have vertices hundreds of meters apart, so a
+// rider directly on that edge could be reported off-route and progress could
+// jump from one endpoint to the other.
+function projectNavigationSegment(point, a, b) {
+  const metersPerDegree = 111_320;
+  const cosLat = Math.cos(point[1] * Math.PI / 180);
+  const ax = (a[0] - point[0]) * cosLat * metersPerDegree;
+  const ay = (a[1] - point[1]) * metersPerDegree;
+  const bx = (b[0] - point[0]) * cosLat * metersPerDegree;
+  const by = (b[1] - point[1]) * metersPerDegree;
+  const dx = bx - ax, dy = by - ay;
+  const denom = dx * dx + dy * dy;
+  const fraction = denom > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / denom)) : 0;
+  const px = ax + fraction * dx, py = ay + fraction * dy;
+  return {
+    fraction,
+    distanceM: Math.hypot(px, py),
+    point: [a[0] + fraction * (b[0] - a[0]), a[1] + fraction * (b[1] - a[1])],
+  };
+}
+
+function nearestNavigationPoint(lon, lat, fullRoute = false) {
   const route = turnNav.route;
   if (!route?.coords?.length) return null;
   const point = [lon, lat];
-  const hasPosition = turnNav.routeM > 0 || turnNav.nearest > 0;
+  if (route.coords.length === 1) {
+    return { index: 0, segmentIndex: 0, point: route.coords[0],
+      offRouteM: navDistanceM(point, route.coords[0]), routeM: 0 };
+  }
+  // While on route, a bounded forward/backward window prevents jumps where a
+  // route crosses itself. Once off route, scan the complete line so the rider
+  // can legitimately rejoin at any later or earlier point.
+  const hasPosition = !fullRoute && (turnNav.routeM > 0 || turnNav.nearest > 0);
   let lo = hasPosition ? Math.max(0, turnNav.nearest - 80) : 0;
-  let hi = hasPosition ? Math.min(route.coords.length - 1, turnNav.nearest + 500) : route.coords.length - 1;
-  let best = lo, bestM = Infinity;
+  let hi = hasPosition ? Math.min(route.coords.length - 2, turnNav.nearest + 500) : route.coords.length - 2;
+  let bestSegment = lo, bestProjection = null;
   for (let i = lo; i <= hi; i++) {
-    const d = navDistanceM(point, route.coords[i]);
-    if (d < bestM) { bestM = d; best = i; }
+    const projection = projectNavigationSegment(point, route.coords[i], route.coords[i + 1]);
+    if (!bestProjection || projection.distanceM < bestProjection.distanceM) {
+      bestProjection = projection;
+      bestSegment = i;
+    }
   }
   // If the rider has jumped well beyond the local search window (for example,
   // restarting navigation farther along the route), do one complete recovery scan.
-  if (hasPosition && bestM > 250) {
-    lo = 0; hi = route.coords.length - 1; bestM = Infinity;
+  if (hasPosition && bestProjection.distanceM > 250) {
+    lo = 0; hi = route.coords.length - 2; bestProjection = null;
     for (let i = lo; i <= hi; i++) {
-      const d = navDistanceM(point, route.coords[i]);
-      if (d < bestM) { bestM = d; best = i; }
+      const projection = projectNavigationSegment(point, route.coords[i], route.coords[i + 1]);
+      if (!bestProjection || projection.distanceM < bestProjection.distanceM) {
+        bestProjection = projection;
+        bestSegment = i;
+      }
     }
   }
-  return { index: best, offRouteM: bestM, routeM: route.cumulative[best] };
+  const startM = route.cumulative[bestSegment] || 0;
+  const endM = route.cumulative[bestSegment + 1] ?? startM;
+  return {
+    index: bestProjection.fraction < 0.5 ? bestSegment : bestSegment + 1,
+    segmentIndex: bestSegment,
+    point: bestProjection.point,
+    offRouteM: bestProjection.distanceM,
+    routeM: startM + bestProjection.fraction * Math.max(0, endM - startM),
+  };
 }
 
 function updateNavigationCamera(point) {
@@ -2079,6 +2134,8 @@ function updateTurnNavigation(pos) {
   // On-route position follows the nearest point directly — including small
   // backward corrections; the windowed search bounds any jumps.
   turnNav.nearest = nearest.index;
+  turnNav.nearestSegment = nearest.segmentIndex;
+  turnNav.nearestPoint = nearest.point;
   turnNav.routeM = nearest.routeM;
   turnNav.message = '';
   updateNavigationProgress();
@@ -2168,6 +2225,8 @@ function startTurnNavigation() {
   turnNav.active = true;
   turnNav.next = 0;
   turnNav.nearest = 0;
+  turnNav.nearestSegment = 0;
+  turnNav.nearestPoint = null;
   turnNav.routeM = 0;
   turnNav.arrived = false;
   turnNav.offRoute = false;
@@ -2215,6 +2274,8 @@ function stopTurnNavigation(announce = true) {
   turnNav.offRouteApproachText = '';
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
+  turnNav.nearestSegment = 0;
+  turnNav.nearestPoint = null;
   turnNav.destinationWasNear = false;
   turnNav.lastDestinationM = Infinity;
   turnNav.destinationAwayFixes = 0;
@@ -2475,6 +2536,11 @@ function scoreRouteSeg(p) {
 // changes.
 function routeVisualStyle(p) {
   if (p.ferry === 1) return null;
+  // The worker has verified this as one short crossing bounded by passing
+  // segments. Preserve that semantic result when the map re-evaluates the
+  // selected route under live rules; otherwise the crossing turns red again
+  // even though route totals and Route Details count it as passing.
+  if (p.crossing === 1) return 'pass';
   if (effectiveLevel(scoreRouteSeg(p)) === 4) return 'fail';
   if (p.level === 3) return 'caution';
   if (p.level === 0) return 'unknown';
@@ -3633,7 +3699,17 @@ async function searchOnlinePlaces(query) {
     // never produce a route, so constrain results to the graph's coverage.
     viewbox: '-124.9,49.1,-116.8,45.5', bounded: '1',
   });
-  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!response.ok) throw new Error(`search failed (${response.status})`);
   const data = await response.json();
   const matches = (Array.isArray(data) ? data : [])
@@ -3756,6 +3832,17 @@ function buildPlacePicker() {
   const TYPE_LABEL = { city: 'city', town: 'town', village: 'village', hamlet: 'hamlet',
     suburb: 'suburb', neighbourhood: 'neighborhood', ferry: 'ferry terminal' };
 
+  const uniqueMatches = (items) => {
+    const unique = [];
+    for (const item of items) {
+      const label = item.name.split(',')[0].trim().toLowerCase();
+      const duplicate = unique.some((prior) => prior.name.split(',')[0].trim().toLowerCase() === label
+        && navDistanceM([prior.lon, prior.lat], [item.lon, item.lat]) < 10_000);
+      if (!duplicate) unique.push(item);
+    }
+    return unique;
+  };
+
   const render = (items) => {
     results.replaceChildren();
     for (const item of items) {
@@ -3803,7 +3890,7 @@ function buildPlacePicker() {
     try {
       const onlineMatches = await searchOnlinePlaces(query);
       if (requestId !== placeSearchRequestId || input.value.trim() !== query) return;
-      render([...onlineMatches, ...localMatches()]);
+      render(uniqueMatches([...onlineMatches, ...localMatches()]));
       if (!onlineMatches.length) setRouteStatus('No online matches — local search is still available');
     } catch (e) {
       if (requestId === placeSearchRequestId) {
@@ -4049,9 +4136,13 @@ function renderReadout(feature, lngLat) {
         ['Speed', p.mph ? `~${p.mph} mph crossing` : null],
       ];
     } else {
+      const routeVerdict = p.crossing === 1 ? [
+        ['Verdict', 'Blue — Intersection crossing'],
+        ['Why', 'Short crossing between passing route segments; treated as crossing the road, not riding along it.'],
+      ] : common;
       rows = [
         ['Name', p.name || '(unnamed road)'],
-        ...common,
+        ...routeVerdict,
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
         ['Speed source', p.official & 1 ? 'WSDOT legal speed' : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],

@@ -73,4 +73,37 @@ assert.equal(context.navigationHasArrived([0.00168, 0], { routeM: 111 }), false,
 assert.equal(context.navigationHasArrived([0.00182, 0], { routeM: 111 }), true,
   'two fixes moving away after passing the destination should end navigation');
 
+const nearestStart = app.indexOf('function projectNavigationSegment');
+const nearestEnd = app.indexOf('function updateNavigationCamera', nearestStart);
+assert.ok(nearestStart >= 0 && nearestEnd > nearestStart,
+  'navigation line-projection helpers were not found');
+context.turnNav = {
+  routeM: 0,
+  nearest: 0,
+  route: {
+    coords: [[0, 0], [0.02, 0]],
+    cumulative: [0, 2226.4],
+  },
+};
+vm.runInContext(`${app.slice(nearestStart, nearestEnd)}\nthis.nearestNavigationPoint = nearestNavigationPoint;`, context);
+const midway = context.nearestNavigationPoint(0.01, 0);
+assert.ok(midway.offRouteM < 0.5,
+  'a rider midway along a long straight edge should remain on route');
+assert.ok(Math.abs(midway.routeM - 1113.2) < 1,
+  'route progress should interpolate along an edge instead of jumping between vertices');
+const offset = context.nearestNavigationPoint(0.01, 0.001);
+assert.ok(offset.offRouteM > 110 && offset.offRouteM < 112,
+  'off-route distance should be measured to the route line');
+assert.ok(Math.abs(offset.point[0] - 0.01) < 1e-6,
+  'rejoin guidance should target the projected point on the route');
+context.turnNav.route = {
+  coords: Array.from({ length: 1202 }, (_, i) => [i * 0.00001, 0]),
+  cumulative: Array.from({ length: 1202 }, (_, i) => i),
+};
+context.turnNav.routeM = 100;
+context.turnNav.nearest = 100;
+const fullRejoin = context.nearestNavigationPoint(0.01, 0, true);
+assert.ok(fullRejoin.index > 950,
+  'off-route recovery should scan the whole route rather than the local progress window');
+
 console.log('Navigation guidance tests passed.');

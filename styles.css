@@ -3,6 +3,10 @@
 html, body { margin: 0; height: 100%; height: 100dvh; height: var(--app-height, 100dvh); overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; touch-action: manipulation; }
 #map { position: absolute; inset: 0; touch-action: manipulation; }
 button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
+:where(button, input, select, a):focus-visible {
+  outline: 3px solid #0a66c2;
+  outline-offset: 2px;
+}
 .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 
 /* ------------------------------------------------------------- panel/sheet */
@@ -65,10 +69,17 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
     height: auto;
     max-height: min(60vh, 520px);
     visibility: hidden;
-    transition: transform 0.2s ease, visibility 0s linear 0.2s;
-    transform: translateY(100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.16s ease, visibility 0s linear 0.16s;
+    transform: none;
   }
-  body.panel-open .panel { visibility: visible; transform: translateY(0); transition-delay: 0s; }
+  body.panel-open .panel {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
   body.settings-panel-active.panel-open .panel { max-height: min(85vh, 700px); }
   body:not(.panel-open) .tab { display: none; }
   #tabs {
@@ -388,7 +399,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   padding: 6px 10px 6px 6px;
   max-width: min(86vw, 680px);
 }
-#routeBar button {
+#routeBar > button {
   width: 44px; height: 44px; flex: none;
   border: none; border-radius: 50%;
   background: #eef1f4;
@@ -426,11 +437,13 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   width: 100%;
   height: 33px;
   padding: 3px 9px 3px 11px;
+  border: none;
   border-radius: 0;
   background: transparent;
   color: #25343d;
   text-align: left;
   font: inherit;
+  cursor: pointer;
 }
 #routeBar .route-endpoint + .route-endpoint { border-top: 1px solid #e2e8ec; }
 .route-endpoint-marker {
@@ -494,10 +507,13 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   width: 100%;
   height: 38px;
   padding: 0 10px;
+  border: none;
   border-radius: 8px;
   background: transparent;
   color: #263944;
+  font: 700 13px system-ui;
   text-align: left;
+  cursor: pointer;
 }
 #routeBar .route-actions-menu button:hover:not(:disabled),
 #routeBar .route-actions-menu button:focus-visible { background: #edf5fa; }
@@ -604,20 +620,20 @@ body.navigation-active #routeBar { display: none; }
 
 .update-prompt { position: absolute; z-index: 30; left: 50%; bottom: calc(68px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 7px; width: max-content; max-width: calc(100vw - 20px); padding: 7px 8px 7px 11px; border: 1px solid #cfd8e0; border-radius: 12px; background: rgba(255,255,255,.98); box-shadow: 0 4px 16px rgba(0,0,0,.24); color: #333; font: 600 11px system-ui; }
 .update-prompt[hidden] { display: none; }
-#getUpdateBtn { padding: 6px 9px; border: none; border-radius: 8px; background: #0a66c2; color: #fff; font: 700 11px system-ui; cursor: pointer; }
-#updateLaterBtn { width: 26px; height: 26px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
+#getUpdateBtn { min-height: 32px; padding: 6px 9px; border: none; border-radius: 8px; background: #0a66c2; color: #fff; font: 700 11px system-ui; cursor: pointer; }
+#updateLaterBtn { width: 32px; height: 32px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
 @media (max-width: 720px) {
   #topToolbar { left: 6px; gap: 4px; max-width: calc(100vw - 12px); }
   .nav-start { min-height: 46px; padding: 0 8px; font-size: 11px; }
   #routeBar { gap: 3px; padding: 5px 6px 5px 5px; max-width: calc(100vw - 12px); }
-  #routeBar button { width: 34px; height: 34px; }
+  #routeBar > button { width: 38px; height: 38px; }
   .route-endpoints { flex-basis: 247px; width: 247px; min-width: 195px; }
-  #routeBar .route-endpoint { height: 29px; gap: 8px; padding: 2px 7px 2px 12px; }
+  #routeBar .route-endpoint { height: 32px; gap: 8px; padding: 2px 7px 2px 12px; }
   .route-endpoints::before { top: 20px; bottom: 20px; left: 17px; }
   .route-endpoint-marker { flex-basis: 10px; width: 10px; height: 10px; }
-  .endpoint-copy strong { font-size: 10.75px; }
-  .endpoint-label { font-size: 8px; }
-  #routeBar #rb-clear, #routeBar #rb-more { width: 33px; }
+  .endpoint-copy strong { font-size: 11.25px; }
+  .endpoint-label { font-size: 8.5px; }
+  #routeBar #rb-clear, #routeBar #rb-more { width: 38px; }
   .route-actions-menu { right: -1px; width: 210px; }
   .route-action-toast { top: calc(env(safe-area-inset-top) + 78px); }
   .route-action-toast.has-detail { top: max(calc(env(safe-area-inset-top) + 120px), 24vh); }

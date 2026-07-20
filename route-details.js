@@ -267,6 +267,7 @@ function buildRouteSteps(segs) {
       last.bikeNetworkAll = last.bikeNetworkAll && isBikeNetwork(seg);
       last.designatedAll = last.designatedAll && isDesignated(seg);
       last.hazard = Math.max(last.hazard || 0, seg.hazard || 0);
+      last.crossingM += seg.crossing ? Number(seg.lenM) || 0 : 0;
       if (seg.level === 4) last.failM += seg.lenM;
     } else {
       out.push({
@@ -282,6 +283,7 @@ function buildRouteSteps(segs) {
         bikeNetworkAll: isBikeNetwork(seg),
         designatedAll: isDesignated(seg),
         hazard: seg.hazard || 0,
+        crossingM: seg.crossing ? Number(seg.lenM) || 0 : 0,
         failM: seg.level === 4 ? seg.lenM : 0,
       });
     }
@@ -308,6 +310,7 @@ function buildRouteSteps(segs) {
       previous.designatedAll = previous.designatedAll
         && bridge.designatedAll && next.designatedAll;
       previous.hazard = Math.max(previous.hazard || 0, bridge.hazard || 0, next.hazard || 0);
+      previous.crossingM += bridge.crossingM + next.crossingM;
       previous.failM += bridge.failM + next.failM;
       out.splice(i, 2);
     } else {
@@ -325,6 +328,7 @@ function buildRouteSteps(segs) {
 function stepMeta(step) {
   const flags = step.flags || 0;
   const bits = [];
+  if (step.crossingM > 0) bits.push(`${fmtDist(step.crossingM)} intersection crossing`);
   if (isMountainBikeTrail(step)) bits.push('mountain-bike trail');
   if (step.hazard) bits.push('possible limited-visibility uphill curve');
   if (step.mph) bits.push(`${step.mph} mph`);

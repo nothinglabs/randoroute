@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Washington Bike Safety Visualizer</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#009E73" />
@@ -43,7 +43,7 @@
       </div>
       <span id="rb-status"></span>
       <div id="placePicker" class="place-picker" role="dialog" aria-modal="false" aria-labelledby="placePickerTitle" hidden>
-        <div class="picker-head"><strong id="placePickerTitle">Choose location</strong><button id="placePickerClose" aria-label="Close location picker">✕</button></div>
+        <div class="picker-head"><strong id="placePickerTitle">Choose location</strong><button id="placePickerClose" type="button" aria-label="Close location picker">✕</button></div>
         <p id="placePickerHint" class="picker-hint"><strong>Search</strong> for a place below, or <strong>tap the map</strong> to set it.</p>
         <div class="picker-search-row">
           <input id="placeSearch" type="search" placeholder="Search places…" aria-label="Search for a place" autocomplete="off">
@@ -70,15 +70,15 @@
     <div class="legend" id="legend"></div>
   </aside>
 
-  <button id="panelOpen" aria-label="Show map controls" title="Show map controls"><span class="panel-control-icon" aria-hidden="true">☰</span><span class="panel-control-label">Menu</span></button>
+  <button id="panelOpen" type="button" aria-label="Show map controls" title="Show map controls"><span class="panel-control-icon" aria-hidden="true">☰</span><span class="panel-control-label">Menu</span></button>
 
   <div class="panel" id="panel" aria-label="Map controls">
     <nav id="tabs">
-      <button id="panelClose" aria-label="Hide map controls" title="Hide map controls"><span class="panel-control-icon" aria-hidden="true">↓</span><span class="panel-control-label">Close</span></button>
-      <button data-tab="route" class="active" aria-pressed="true">Route</button>
-      <button data-tab="layers" aria-pressed="false">Layers</button>
-      <button data-tab="settings" aria-pressed="false">Settings</button>
-      <button id="routeLibraryBtn" title="Save or share routes" aria-label="Save or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0-11 4 4m-4-4-4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button>
+      <button id="panelClose" type="button" aria-label="Hide map controls" title="Hide map controls"><span class="panel-control-icon" aria-hidden="true">↓</span><span class="panel-control-label">Close</span></button>
+      <button type="button" data-tab="route" class="active" aria-pressed="true">Route</button>
+      <button type="button" data-tab="layers" aria-pressed="false">Layers</button>
+      <button type="button" data-tab="settings" aria-pressed="false">Settings</button>
+      <button id="routeLibraryBtn" type="button" title="Save or share routes" aria-label="Save or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0-11 4 4m-4-4-4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button>
     </nav>
 
     <section class="tab active" id="tab-route">
@@ -179,12 +179,12 @@
     <section><h3>Limits</h3><p><b>Minimum shoulder</b> is the width required on faster roads. <b>Max speed without shoulder</b> lets slower roads pass even where shoulder data is missing. <b>Never allow roads faster than</b> makes roads above the selected speed fail; “no cutoff” leaves the shoulder rule in charge.</p></section>
     <section><h3>Presets</h3><p>Each preset replaces your active routing rules and route preferences. Use the <b>Rules</b> button on a preset card to see its complete settings. Changing any individual control afterward switches you to custom rules.</p></section>
     <section><h3>Options</h3><ul class="help-list">
-      <li><b>Prefer bike routes &amp; trails</b> — every route choice favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
+      <li><b>Heavily prefer bike routes &amp; trails</b> — every route choice favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
       <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
       <li><b>Trust designated bike routes</b> — a USBR or regional designation satisfies the shoulder rule. Turn this off to judge those roads by the same speed and shoulder limits as every other road.</li>
       <li><b>Allow freeway as last resort</b> — a freeway is permitted only as a heavily penalized fallback, and it still fails the rules.</li>
       <li><b>Allow mountain bike trails</b> — explicitly MTB-tagged paths become available but stay strongly avoided; any use is called out in Route Details. Off by default.</li>
-      <li><b>Only show routes fully matching safety rules</b> — every option must pass all your rules, except the last ~1,000 ft needed to reach your start, waypoints, or destination; those short access blocks still show red. The app reports when no such route exists.</li>
+      <li><b>Only show routes fully matching safety rules</b> — every option must pass all your rules, except the last ~1,000 ft needed to reach your start, waypoints, or destination; those short access blocks still show red. A very short failing run bounded by passing roads may be classified as an intersection crossing rather than riding along that road. Verify the crossing control on the map; the graph does not yet confirm a signal or crosswalk.</li>
       <li><b>Unknown shoulder = 0 ft</b> — faster roads must prove an adequate shoulder to pass.</li>
       </ul><p>Place search always keeps offline local results available; the ⌕ button also runs an online lookup.</p></section>
     <section><h3>Turn by Turn</h3><p><b>Speak compass directions</b> adds the heading (north, southeast, …) to each spoken turn. <b>Status update</b> speaks on your chosen cadence (Never up to every 30 minutes) with any combination of route status, current speed, miles remaining, and estimated time left.</p></section>
@@ -200,7 +200,7 @@
   <dialog id="appHelpDialog" class="map-dialog app-help-dialog" aria-label="How to use the app">
     <div class="dialog-head"><h2>Plan your route</h2><button class="dialog-close" data-close="appHelpDialog" aria-label="Close">✕</button></div>
     <ol>
-      <li>Set <b>Start</b> and <b>End</b> by search or by tapping the map.</li>
+      <li>Set <b>Start</b> and <b>Destination</b> by search or by tapping the map.</li>
       <li>In <b>Route</b>, compare choices A–E. Route A is the app’s recommendation; the letters are not safety grades. Use <b>Details</b> to inspect the selected route.</li>
       <li>Use <b>Settings</b> for your riding rules and <b>Layers</b> to change map visibility. Each screen’s <b>?</b> explains that part of the app.</li>
       <li>Tap <b>Navigate</b> for foreground GPS and voice guidance.</li>
@@ -228,14 +228,14 @@
         <li><b>Bikes prohibited (WSDOT)</b>: permanent state restriction data for inspection; these graph segments are excluded from routing.</li>
         <li><b>All roads (OSM, est. speeds)</b>: the broader street network, including residential roads; its visibility is reduced when zoomed out to keep the map readable.</li>
       </ul><p>Lime means a physical bike facility passes your rules; a dotted-center lime line is an off-street/shared-use trail. Dashed blue marks a designated bike route, solid blue means another road passes, amber means caution, dark red dashes mean failure, and gray means insufficient data. The planned route uses the same symbols; failing portions pulse. Use the map legend for the exact swatches.</p></section>
-      <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. A missing shoulder, bike facility, traffic volume, surface, or sight-distance measurement is not proof that it is absent. Always use local signs and conditions; the app is a planning aid, not a guarantee of safety.</p></section>
+      <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. A missing shoulder, bike facility, traffic volume, surface, crossing control, or sight-distance measurement is not proof that it is absent. Short intersection crossings are inferred from route geometry; they do not currently confirm a signal or crosswalk. Always use local signs and conditions; the app is a planning aid, not a guarantee of safety.</p></section>
     </div>
   </dialog>
 
   <dialog id="routeTipsDialog" class="full-help-dialog" aria-labelledby="routeTipsTitle">
     <div class="full-help-head"><div><span>Route help</span><h2 id="routeTipsTitle">Choose and compare routes</h2></div><button class="dialog-close" data-close="routeTipsDialog" aria-label="Close routing tips">✕</button></div>
     <div class="full-help-body">
-      <p class="help-lead">This guide picks up after Start and End are set and explains how to judge the route choices.</p>
+      <p class="help-lead">This guide picks up after Start and Destination are set and explains how to judge the route choices.</p>
       <section><h3>What the route letters mean</h3><p>The app tries several safety, speed, and road-preference searches, removes near-duplicates, and shows up to five meaningfully different choices as <b>A–E</b>. The letters are not safety grades. Route A is the recommended practical safety balance; the others preserve useful tradeoffs or different corridors.</p></section>
       <section><h3>Compare the summaries</h3><p>Start with distance, time, and climbing, then compare <b>Ride mix</b>. It reports the share on a physical trail or lane and the shares that pass, need caution, or fail your rules. Trail/lane distance overlaps the verdict percentages—it is not an additional category. The swatches match the planned route and map legend.</p></section>
       <section><h3>Use Details before choosing</h3><p><b>Concerns</b> collects rule failures, freeways, limited-access roads, mountain-bike trails, and possible uphill-curve cautions. <b>All Steps</b> shows the road-by-road route. The elevation profile appears with the route summary; tap it to expand. Tap a concern or step to highlight it on the map.</p></section>
