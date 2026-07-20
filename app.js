@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.178';
+const APP_VERSION = '2026-07-19.179';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -49,7 +49,7 @@ const rules = { ...DEFAULT_RULES };
 const RULE_NUMBER_LIMITS = {
   minShoulder: [0, 10],
   freeMaxSpeed: [15, 45],
-  upperMaxSpeed: [35, 65],
+  upperMaxSpeed: [25, 65],
 };
 
 // Soft route-choice costs. These never make an edge legal or illegal; the
@@ -3197,10 +3197,9 @@ function updateArmButtons() {
   if (remove) remove.disabled = routing.vias.length === 0;
   if (reverse) reverse.disabled = !(routing.start && routing.end);
   if (clear) clear.disabled = !(routing.start || routing.end || routing.vias.length);
-  if (more) {
-    more.disabled = !(routing.start && routing.end);
-    if (more.disabled) setRouteActionsOpen(false);
-  }
+  // Keep the menu discoverable before the route is complete. Its individual
+  // actions remain disabled until their own requirements are met.
+  if (more) more.disabled = false;
 }
 
 function syncRoutePreferenceControls() {
@@ -4560,7 +4559,7 @@ function buildRulesPanel() {
     saveStateSoon();
     computeRoute();
   };
-  check('prefDesig', 'Prefer bike routes & trails', routing, updateRoutePreference);
+  check('prefDesig', 'Heavily prefer bike routes & trails', routing, updateRoutePreference);
   check('prefResidential', 'Prefer residential streets', routing, updateRoutePreference);
   check('vettedBikeRoutes', 'Trust designated bike routes');
   check('allowFreeways', 'Allow freeway as last resort');
@@ -4589,7 +4588,7 @@ function buildRulesPanel() {
         <label for="r-upperMaxSpeed">Never allow roads faster than</label>
         <span class="val" id="v-upperMaxSpeed"></span>
       </div>
-      <input type="range" id="r-upperMaxSpeed" min="35" max="${NONE_AT}" step="5" value="${cur}">`;
+      <input type="range" id="r-upperMaxSpeed" min="25" max="${NONE_AT}" step="5" value="${cur}">`;
     slidersHost.appendChild(wrap);
     const input = wrap.querySelector('input');
     protectSliderGesture(input);

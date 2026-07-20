@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+assert.match(app, /if \(more\) more\.disabled = false;/,
+  'the more-actions menu should remain available before both endpoints are selected');
 const start = app.indexOf('function advanceToMissingEndpoint');
 const end = app.indexOf('function enableLongPressEndpointMove');
 assert.ok(start >= 0 && end > start, 'endpoint-selection helper source was not found');
