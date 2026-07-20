@@ -385,13 +385,38 @@ function turnPreferenceS(incomingEdge, node, outgoingEdge, mode) {
   return base;
 }
 
+// DEM elevations are stored as whole meters, while OSM can split a road into
+// graph fragments only a few meters long. Calculating grade on those tiny
+// fragments turns ordinary one-meter elevation quantization into impossible
+// values (for example, 180%). Report only grades sustained over enough
+// horizontal distance to be meaningful, and reject obvious DEM artifacts.
+const MIN_REPORTED_GRADE_M = 20;
+const MAX_CREDIBLE_GRADE_PCT = 40;
+
+function reportedGradePct(netRiseM, lenM) {
+  const rise = Number(netRiseM);
+  const len = Number(lenM);
+  if (!Number.isFinite(rise) || !Number.isFinite(len) || len < MIN_REPORTED_GRADE_M) return 0;
+  const grade = 100 * rise / len;
+  if (!Number.isFinite(grade) || Math.abs(grade) > MAX_CREDIBLE_GRADE_PCT) return 0;
+  return Math.round(10 * grade) / 10;
+}
+
+function credibleSegmentGradePct(seg) {
+  const grade = Number(seg?.gradePct);
+  const len = Number(seg?.lenM);
+  if (!Number.isFinite(grade) || !Number.isFinite(len)
+      || len < MIN_REPORTED_GRADE_M || Math.abs(grade) > MAX_CREDIBLE_GRADE_PCT) return 0;
+  return grade;
+}
+
 function routeGradeStats(segs) {
   let uphillM = 0;
   let uphillRiseM = 0;
   let maxGradePct = 0;
   for (const seg of segs || []) {
     if ((seg.flags || 0) & 32) continue;
-    const grade = Number(seg.gradePct) || 0;
+    const grade = credibleSegmentGradePct(seg);
     const len = Number(seg.lenM) || 0;
     if (grade > 0.5 && len > 0) {
       uphillM += len;
@@ -647,8 +672,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], roadClass: eClass[ei],
       facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB), level,
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
-      gradePct: Math.round(10 * 100 * ((forward ? eAsc[ei] : eDes[ei])
-        - (forward ? eDes[ei] : eAsc[ei])) / Math.max(1, eLen[ei])) / 10,
+      gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
+        - (forward ? eDes[ei] : eAsc[ei]), eLen[ei]),
       lenM: Math.round(eLen[ei]), timeS: Math.round(segTimeS) });
     const toNode = forward ? eB[ei] : eA[ei];
     nodeIds.push(toNode);

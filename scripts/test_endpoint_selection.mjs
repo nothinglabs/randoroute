@@ -6,6 +6,10 @@ import vm from 'node:vm';
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 assert.match(app, /if \(more\) more\.disabled = false;/,
   'the more-actions menu should remain available before both endpoints are selected');
+assert.match(app, /searchInput\.value = currentEndpointName;/,
+  'the search field should preview the current endpoint name when replacing it');
+assert.match(app, /input\.classList\.contains\('current-endpoint-preview'\)[\s\S]*?input\.value = '';/,
+  'focusing the search field should clear the muted current-endpoint preview');
 const start = app.indexOf('function advanceToMissingEndpoint');
 const end = app.indexOf('function enableLongPressEndpointMove');
 assert.ok(start >= 0 && end > start, 'endpoint-selection helper source was not found');

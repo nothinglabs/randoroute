@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.180';
+const APP_VERSION = '2026-07-19.184';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3713,9 +3713,12 @@ function openPlacePicker(kind) {
   onlineButton.disabled = false;
   onlineButton.classList.remove('searching');
   const searchInput = document.getElementById('placeSearch');
-  searchInput.value = '';
   searchInput.placeholder = kind === 'start' ? 'Search for a start…'
     : kind === 'via' ? 'Search for a waypoint…' : 'Search for a destination…';
+  const currentEndpointName = kind !== 'via' && routing[kind]
+    ? (normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map') : '';
+  searchInput.value = currentEndpointName;
+  searchInput.classList.toggle('current-endpoint-preview', Boolean(currentEndpointName));
   searchInput.setAttribute('aria-label', searchInput.placeholder.replace('…', ''));
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
@@ -3815,8 +3818,15 @@ function buildPlacePicker() {
     }
   };
 
-  input.addEventListener('focus', ensurePlaces);
+  input.addEventListener('focus', () => {
+    ensurePlaces();
+    if (input.classList.contains('current-endpoint-preview')) {
+      input.value = '';
+      input.classList.remove('current-endpoint-preview');
+    }
+  });
   input.addEventListener('input', () => {
+    input.classList.remove('current-endpoint-preview');
     placeSearchRequestId++;
     const query = input.value;
     ensurePlaces().then(() => { if (input.value === query) showLocalMatches(); });

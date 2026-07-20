@@ -11,6 +11,8 @@ const BIKE_NETWORK_COLOR = '#9fc400';
 const PASS_COLOR = '#168ad1';
 const CAUTION_COLOR = '#c46b00';
 const FAIL_COLOR = '#b2182b';
+const MIN_REPORTED_GRADE_M = 20;
+const MAX_CREDIBLE_GRADE_PCT = 40;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 const FACILITY_NAME = {
   1: 'shared lane', 2: 'bike lane', 3: 'buffered bike lane',
@@ -83,13 +85,20 @@ function routeSummaryStats(segs) {
   }
   return { levels, bikeNetworkM };
 }
+function credibleSegmentGradePct(seg) {
+  const grade = Number(seg?.gradePct);
+  const len = Number(seg?.lenM);
+  if (!Number.isFinite(grade) || !Number.isFinite(len)
+      || len < MIN_REPORTED_GRADE_M || Math.abs(grade) > MAX_CREDIBLE_GRADE_PCT) return 0;
+  return grade;
+}
 function routeGradeStats(segs) {
   let uphillM = 0;
   let uphillRiseM = 0;
   let maxGradePct = 0;
   for (const seg of segs || []) {
     if ((seg.flags || 0) & FLAG_FERRY) continue;
-    const grade = Number(seg.gradePct) || 0;
+    const grade = credibleSegmentGradePct(seg);
     const len = Number(seg.lenM) || 0;
     if (grade > 0.5 && len > 0) {
       uphillM += len;
@@ -515,10 +524,14 @@ if (!hasRoute) {
   const { rules = {}, summary: totals, segs } = details;
   const routeStats = routeSummaryStats(segs);
   const calculatedGrades = routeGradeStats(segs);
-  const avgUphillPct = Number.isFinite(Number(totals.avgUphillPct))
-    ? Number(totals.avgUphillPct) : calculatedGrades.avgUphillPct;
-  const maxGradePct = Number.isFinite(Number(totals.maxGradePct))
-    ? Number(totals.maxGradePct) : calculatedGrades.maxGradePct;
+  const storedAvgUphillPct = Number(totals.avgUphillPct);
+  const storedMaxGradePct = Number(totals.maxGradePct);
+  const avgUphillPct = Number.isFinite(storedAvgUphillPct)
+      && storedAvgUphillPct >= 0 && storedAvgUphillPct <= MAX_CREDIBLE_GRADE_PCT
+    ? storedAvgUphillPct : calculatedGrades.avgUphillPct;
+  const maxGradePct = Number.isFinite(storedMaxGradePct)
+      && storedMaxGradePct >= 0 && storedMaxGradePct <= MAX_CREDIBLE_GRADE_PCT
+    ? storedMaxGradePct : calculatedGrades.maxGradePct;
   const ridingM = Math.max(1, totals.distM - (totals.ferryM || 0));
   const bikePct = routePercent(routeStats.bikeNetworkM, ridingM);
   const passPct = routePercent((routeStats.levels[1] || 0) + (routeStats.levels[2] || 0), ridingM, true);
@@ -572,7 +585,7 @@ if (!hasRoute) {
     name: roadName(s),
     meta: [
       'Possible limited-visibility uphill curve',
-      s.gradePct > 0 ? `${s.gradePct}% climb` : null,
+      credibleSegmentGradePct(s) > 0 ? `${credibleSegmentGradePct(s)}% climb` : null,
       s.mph ? `${s.mph} mph` : null,
       s.sh >= 0 ? `${s.sh} ft shoulder` : 'shoulder unknown',
     ].filter(Boolean).join(' · '),
