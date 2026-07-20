@@ -19,7 +19,7 @@ const APP_VERSION = '2026-07-20.198';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
-const GRAPH_FORMAT_VERSION = 'bgr7-2';
+const GRAPH_FORMAT_VERSION = 'bgr7-3';
 
 /* ---------------------------------------------------------------- palette */
 // One visual verdict system. Internal levels 1 and 2 retain different routing
@@ -2565,10 +2565,22 @@ function updateTurnNavigation(pos) {
   // Declining the connector—or leaving either route later—uses ordinary
   // nearest-point guidance, including compass direction and road/path name.
   if (!turnNav.offRoute && nearest.offRouteM > OFF_ROUTE_ENTER_M) {
+    // A single noisy or coarse fix must not announce off-route. A low-accuracy
+    // fix is ignored outright; otherwise two consecutive over-threshold fixes
+    // are required before declaring the rider has actually left the route.
+    const accuracy = Number(pos.coords.accuracy);
+    if (Number.isFinite(accuracy) && accuracy > 60) { refreshNavigationUI(); return; }
+    if (!(turnNav.offRouteCandidateAt && fixAt - turnNav.offRouteCandidateAt <= 25000)) {
+      turnNav.offRouteCandidateAt = fixAt;
+      refreshNavigationUI();
+      return;
+    }
+    turnNav.offRouteCandidateAt = 0;
     enterOffRoute(nearest);
     refreshNavigationUI();
     return;
   }
+  turnNav.offRouteCandidateAt = 0;
   if (turnNav.offRoute) {
     if (nearest.offRouteM > OFF_ROUTE_REJOIN_M) {
       updateOffRouteGuidance(nearest, previousFix);
@@ -2693,6 +2705,7 @@ function startTurnNavigation() {
   turnNav.offRouteApproachText = '';
   turnNav.offRouteSpokenAt = 0;
   turnNav.offRouteSince = 0;
+  turnNav.offRouteCandidateAt = 0;
   turnNav.autoRecoveryAttempted = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
