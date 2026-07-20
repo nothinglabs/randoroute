@@ -8,6 +8,49 @@ const css = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 
 assert.match(css, /\.readout-close\s*\{[^}]*width:\s*34px[^}]*height:\s*34px[^}]*font:\s*750 17px/,
   'the road-information close control should have a larger icon and hit target');
+assert.match(css, /\.readout\.near-tap\s*\{[^}]*right:\s*auto[^}]*bottom:\s*auto/,
+  'a tapped road-information card should override its fixed corner placement');
+
+const positionStart = app.indexOf('function resetRoadInfoPosition()');
+const positionEnd = app.indexOf('function renderReadout(', positionStart);
+assert.ok(positionStart >= 0 && positionEnd > positionStart,
+  'road-information positioning helpers were not found');
+
+const inlineStyles = new Map();
+const classNames = new Set();
+const readoutForPosition = {
+  classList: {
+    add(name) { classNames.add(name); },
+    remove(name) { classNames.delete(name); },
+  },
+  style: {
+    set left(value) { inlineStyles.set('left', value); },
+    set right(value) { inlineStyles.set('right', value); },
+    set top(value) { inlineStyles.set('top', value); },
+    set bottom(value) { inlineStyles.set('bottom', value); },
+    removeProperty(name) { inlineStyles.delete(name); },
+  },
+  offsetParent: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+  getBoundingClientRect: () => ({ width: 300, height: 200 }),
+};
+const positionContext = vm.createContext({
+  readoutEl: readoutForPosition,
+  map: { getContainer: () => ({
+    getBoundingClientRect: () => ({ left: 0, top: 0, right: 390, bottom: 844 }),
+  }) },
+  Math,
+});
+vm.runInContext(app.slice(positionStart, positionEnd), positionContext);
+vm.runInContext('positionRoadInfoNear({ x: 195, y: 422 })', positionContext);
+assert.equal(inlineStyles.get('left'), '45px', 'a centered tap should center the card horizontally');
+assert.equal(inlineStyles.get('top'), '322px', 'a centered tap should center the card vertically');
+assert.ok(classNames.has('near-tap'), 'a tapped card should use dynamic placement styling');
+vm.runInContext('positionRoadInfoNear({ x: 2, y: 840 })', positionContext);
+assert.equal(inlineStyles.get('left'), '10px', 'a card should stay inside the left display edge');
+assert.equal(inlineStyles.get('top'), '634px', 'a card should stay inside the bottom display edge');
+vm.runInContext('resetRoadInfoPosition()', positionContext);
+assert.equal(inlineStyles.size, 0, 'hover previews should clear tapped-card inline positioning');
+assert.ok(!classNames.has('near-tap'), 'hover previews should return to stable corner placement');
 
 const roadInfoSection = app.indexOf('// A pinned road card belongs to the map inspection interaction.');
 const listenerStart = app.indexOf("document.addEventListener('click'", roadInfoSection);

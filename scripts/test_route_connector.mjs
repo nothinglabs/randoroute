@@ -45,7 +45,7 @@ assert.equal(result.optimization.prefResidential, true,
 messages.length = 0;
 context.onmessage({ data: {
   type: 'navigation-new-route', id: 72,
-  points: [[-122.391, 47.689], [-122.350, 47.673]],
+  points: [[-122.391, 47.689], [-122.370, 47.680], [-122.350, 47.673]],
   rules: {
     allowFreeways: false, allowMtbTrails: false, vettedBikeRoutes: true,
     minShoulder: 4, unknownShoulderZero: true, freeMaxSpeed: 35,
@@ -66,5 +66,7 @@ assert.equal(replacement.optimization.prefResidential, false,
   'new route should retain the current residential preference');
 assert.equal(replacement.optimization.label, 'Route A',
   'a sole replacement route should restart the route labels at A');
+assert.equal(replacement.legs?.length, 2,
+  'a replacement route should preserve its ordered waypoint as two routed legs');
 
 console.log('Route connector tests passed.');

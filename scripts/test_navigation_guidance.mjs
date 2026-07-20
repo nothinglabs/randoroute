@@ -12,6 +12,8 @@ assert.match(html, /class="nav-banner-main"[\s\S]*?class="nav-banner-copy"[\s\S]
   'the off-route action should sit below the preserved navigation information');
 assert.match(html, /New Route From Current Location[\s\S]*?Route back to current route[\s\S]*?Keep current route/,
   'off-route recovery dialog should present all three explicit choices');
+assert.match(html, /New Route From Current Location[\s\S]*?through remaining waypoints to the destination/,
+  'manual dynamic rerouting should also promise to preserve remaining waypoints');
 assert.match(css, /\.nav-banner\.off-route-action-visible\s*\{[^}]*flex-direction:\s*column[\s\S]*?\.nav-off-route-action\s*\{[^}]*border-radius:\s*9px[^}]*background:\s*#b42318/,
   'off-route action should be a distinct conventional button below the navigation information');
 assert.doesNotMatch(css, /off-route-action-visible[^}]*[\s\S]{0,100}nav-banner-copy[^}]*display:\s*none/,
@@ -37,17 +39,37 @@ assert.match(app, /\['guidance', 'Guidance only'[\s\S]*?\['return', 'Automatic r
 const voicePanelSource = app.slice(app.indexOf('function buildVoicePanel'), app.indexOf('function buildLegend'));
 assert.doesNotMatch(voicePanelSource, /violet/i,
   'Voice-Nav settings should describe behavior without naming a route color');
-assert.match(voicePanelSource, /Dynamic routing may replace the rest of your route, including planned roads and waypoints/,
-  'dynamic routing should warn that it can alter the rest of the trip');
+assert.match(voicePanelSource, /Dynamic routing may change the roads used for the rest of your trip\. Remaining waypoints and your destination stay in place/,
+  'dynamic routing should explain that remaining waypoints are preserved');
 assert.match(app, /function activateNewRouteFromCurrentLocation[\s\S]*?if \(!result\.ok[\s\S]*?return;[\s\S]*?routing\.start = start/,
   'a failed current-location calculation must return before replacing the planned route');
 assert.match(app, /type:\s*'navigation-new-route'[\s\S]*?prefDesignated:\s*routing\.prefDesig,[\s\S]*?prefResidential:\s*routing\.prefResidential/,
   'a current-location route should use the live preference toggles exactly');
+const waypointStart = app.indexOf('const PASSED_WAYPOINT_TOLERANCE_M');
 const newRouteStart = app.indexOf('function requestNewRouteFromCurrentLocation');
 const newRouteEnd = app.indexOf('function activateNewRouteFromCurrentLocation', newRouteStart);
-assert.ok(newRouteStart >= 0 && newRouteEnd > newRouteStart,
-  'new-route request helper source was not found');
+assert.ok(waypointStart >= 0 && newRouteStart > waypointStart && newRouteEnd > newRouteStart,
+  'new-route waypoint/request helpers were not found');
+const viaA = { id: 'A', pt: [-122.34, 47.70] };
+const viaB = { id: 'B', pt: [-122.32, 47.80] };
+const waypointContext = vm.createContext({
+  routing: {
+    vias: [viaA, viaB],
+    last: { distM: 3000, legs: [{ distM: 1000 }, { distM: 1000 }, { distM: 1000 }] },
+  },
+  turnNav: { routeM: 0, offRouteInfo: null, plannedRoute: { totalM: 3000 } },
+});
+vm.runInContext(`${app.slice(waypointStart, newRouteStart)}
+  this.remainingNavigationVias = remainingNavigationVias;`, waypointContext);
+assert.equal(waypointContext.remainingNavigationVias(undefined, 500).map((via) => via.id).join(','), 'A,B',
+  'dynamic routing should retain every waypoint still ahead');
+assert.equal(waypointContext.remainingNavigationVias(undefined, 1200).map((via) => via.id).join(','), 'B',
+  'dynamic routing should not send the rider back through a waypoint already passed');
+waypointContext.routing.last = { distM: 3000 };
+assert.equal(waypointContext.remainingNavigationVias(undefined, 2200).map((via) => via.id).join(','), 'A,B',
+  'without trustworthy leg boundaries dynamic routing should preserve all waypoints');
 const newRouteMessages = [];
+const remainingVia = { id: 'remaining', pt: [-122.32, 47.80] };
 const newRouteContext = vm.createContext({
   navigationNewRouteRequestId: 0,
   turnNav: {
@@ -60,6 +82,7 @@ const newRouteContext = vm.createContext({
     worker: { postMessage(message) { newRouteMessages.push(message); } },
   },
   rules: {}, routingWeights: {},
+  remainingNavigationVias() { return [remainingVia]; },
   document: { getElementById() { return { open: false, close() {} }; } },
   showRouteActionToast(title) { newRouteMessages.push({ toast: title }); },
   refreshNavigationUI() {},
@@ -75,6 +98,13 @@ assert.equal(newRouteMessages[1].type, 'navigation-new-route',
   'dynamic routing should request a replacement route');
 assert.equal(newRouteMessages[1].points[0][0], -122.35,
   'dynamic routing should start at the rider current location');
+assert.equal(newRouteMessages[1].points[1][0], remainingVia.pt[0],
+  'dynamic routing should include remaining waypoints before the destination');
+const activationSource = app.slice(newRouteEnd, app.indexOf('function automaticOffRouteModeDue', newRouteEnd));
+assert.match(activationSource, /routing\.vias = remainingVias/,
+  'a successful replacement route should keep its remaining waypoint objects and markers');
+assert.doesNotMatch(activationSource, /routing\.vias\s*=\s*\[\]/,
+  'a successful replacement route must not clear all waypoints');
 const start = app.indexOf('function navDistanceM');
 const end = app.indexOf('// Leaving the route no longer triggers rerouting.');
 assert.ok(start >= 0 && end > start, 'navigation helper source was not found');

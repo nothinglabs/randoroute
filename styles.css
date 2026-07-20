@@ -355,6 +355,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   .readout { left: 10px; right: 10px; top: calc(env(safe-area-inset-top) + 66px); bottom: auto; max-width: none; max-height: 42vh; }
 }
 .readout.show { display: block; }
+.readout.near-tap { right: auto; bottom: auto; }
 .readout .rt-title { display: flex; align-items: center; gap: 7px; font-weight: 700; margin-bottom: 4px; }
 .readout .rt-swatch { display: inline-block; flex: 0 0 13px; width: 13px; height: 13px; border: 1px solid rgba(0,0,0,.18); border-radius: 3px; box-shadow: 0 0 0 1px rgba(255,255,255,.65) inset; }
 .readout-close { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: none; border-radius: 8px; background: #eef1f4; color: #4b5961; font: 750 17px/1 system-ui; cursor: pointer; }

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.196';
+const APP_VERSION = '2026-07-20.198';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1491,6 +1491,7 @@ const turnNav = {
   connectorPurpose: 'start',
   newRouteRequestId: null,
   newRouteStart: null,
+  newRouteVias: null,
   next: 0,
   nearest: 0,
   nearestSegment: 0,
@@ -1713,6 +1714,7 @@ function offRouteDescription(nearest) {
     dir: compassWord(navBearing(turnNav.lastPosition, nearest.point || turnNav.route.coords[nearest.index])),
     street: routeRoadNameAt(nearest.index),
     index: nearest.index,
+    routeM: nearest.routeM,
   };
 }
 
@@ -2280,6 +2282,25 @@ function openOffRouteDialog() {
   if (!dialog.open) dialog.showModal();
 }
 
+const PASSED_WAYPOINT_TOLERANCE_M = 25;
+function remainingNavigationVias(route = routing.last,
+  progressM = turnNav.offRouteInfo?.routeM ?? turnNav.routeM) {
+  if (!routing.vias.length) return [];
+  const legs = route?.legs;
+  // If an older stored/shared result lacks leg boundaries, preserving every
+  // waypoint is safer than silently deleting one or guessing it was passed.
+  if (!Array.isArray(legs) || legs.length !== routing.vias.length + 1) return [...routing.vias];
+  const routeTotalM = legs.reduce((sum, leg) => sum + (Number(leg.distM) || 0), 0);
+  const navigationTotalM = Number(turnNav.plannedRoute?.totalM) || Number(route?.distM) || routeTotalM;
+  const scaledProgressM = navigationTotalM > 0
+    ? Math.max(0, Number(progressM) || 0) * routeTotalM / navigationTotalM : 0;
+  let boundaryM = 0;
+  return routing.vias.filter((via, index) => {
+    boundaryM += Number(legs[index]?.distM) || 0;
+    return scaledProgressM < boundaryM + PASSED_WAYPOINT_TOLERANCE_M;
+  });
+}
+
 function requestNewRouteFromCurrentLocation({ automatic = false } = {}) {
   if (!turnNav.active || !turnNav.lastPosition || !routing.end
       || turnNav.newRouteRequestId != null || turnNav.connectorRequestId != null) return;
@@ -2293,16 +2314,18 @@ function requestNewRouteFromCurrentLocation({ automatic = false } = {}) {
     return;
   }
   const selected = routing.last?.optimization || {};
+  const remainingVias = remainingNavigationVias();
   const id = ++navigationNewRouteRequestId;
   turnNav.newRouteRequestId = id;
   turnNav.newRouteStart = [...turnNav.lastPosition];
+  turnNav.newRouteVias = remainingVias;
   showRouteActionToast(automatic ? 'Automatically creating a new route' : 'Finding a new route', {
     busy: true, detail: 'Using your current location, safety rules, and route preferences…', duration: 0,
   });
   refreshNavigationUI();
   routing.worker.postMessage({
     type: 'navigation-new-route', id,
-    points: [turnNav.newRouteStart, routing.end],
+    points: [turnNav.newRouteStart, ...remainingVias.map((via) => via.pt), routing.end],
     rules: { ...rules }, mode: selected.mode || routing.mode,
     profileId: selected.profileId || routing.profileId,
     profileLabel: 'Route A',
@@ -2315,8 +2338,10 @@ function requestNewRouteFromCurrentLocation({ automatic = false } = {}) {
 function activateNewRouteFromCurrentLocation(result) {
   if (!turnNav.active || result.id !== turnNav.newRouteRequestId) return;
   const start = turnNav.newRouteStart;
+  const remainingVias = turnNav.newRouteVias || [...routing.vias];
   turnNav.newRouteRequestId = null;
   turnNav.newRouteStart = null;
+  turnNav.newRouteVias = null;
   if (!result.ok || !Array.isArray(result.coords) || result.coords.length < 2) {
     showRouteActionToast('Could not calculate a new route', {
       detail: `${result.reason || 'No connected route was available.'} Your current route is unchanged.`,
@@ -2329,8 +2354,10 @@ function activateNewRouteFromCurrentLocation(result) {
   routing.startName = 'Current location';
   routing.arm = null;
   routing.startMarker?.setLngLat(start);
-  for (const via of routing.vias) via.marker.remove();
-  routing.vias = [];
+  for (const via of routing.vias) {
+    if (!remainingVias.includes(via)) via.marker.remove();
+  }
+  routing.vias = remainingVias;
   routing.options = [result];
   turnNav.followingConnector = false;
   turnNav.connectorRoute = null;
@@ -2652,6 +2679,7 @@ function startTurnNavigation() {
   turnNav.connectorPurpose = 'start';
   turnNav.newRouteRequestId = null;
   turnNav.newRouteStart = null;
+  turnNav.newRouteVias = null;
   turnNav.active = true;
   turnNav.next = 0;
   turnNav.nearest = 0;
@@ -2709,6 +2737,7 @@ function stopTurnNavigation(announce = true) {
   turnNav.connectorPurpose = 'start';
   turnNav.newRouteRequestId = null;
   turnNav.newRouteStart = null;
+  turnNav.newRouteVias = null;
   turnNav.message = '';
   turnNav.offRoute = false;
   turnNav.offRouteInfo = null;
@@ -4648,7 +4677,43 @@ function routeBadgeAt(point) {
   return labels.size ? [...labels].join(' · ') : null;
 }
 
-function renderReadout(feature, lngLat) {
+function resetRoadInfoPosition() {
+  readoutEl.classList.remove('near-tap');
+  for (const property of ['left', 'right', 'top', 'bottom']) {
+    readoutEl.style.removeProperty(property);
+  }
+}
+
+// Put a tapped road card around the tap instead of always sending it to the
+// top of the screen. Work in viewport coordinates for clamping, then convert
+// back to the card's offset-parent coordinates for its absolute positioning.
+function positionRoadInfoNear(point) {
+  const edgeGap = 10;
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const parentRect = readoutEl.offsetParent?.getBoundingClientRect() || { left: 0, top: 0 };
+  readoutEl.classList.add('near-tap');
+  readoutEl.style.left = '0px';
+  readoutEl.style.right = 'auto';
+  readoutEl.style.top = '0px';
+  readoutEl.style.bottom = 'auto';
+
+  // Reading the dimensions after showing the card forces one layout pass and
+  // lets the final placement account for the actual amount of road data.
+  const cardRect = readoutEl.getBoundingClientRect();
+  const minLeft = mapRect.left + edgeGap;
+  const minTop = mapRect.top + edgeGap;
+  const maxLeft = Math.max(minLeft, mapRect.right - edgeGap - cardRect.width);
+  const maxTop = Math.max(minTop, mapRect.bottom - edgeGap - cardRect.height);
+  const tapX = mapRect.left + point.x;
+  const tapY = mapRect.top + point.y;
+  const viewportLeft = Math.min(maxLeft, Math.max(minLeft, tapX - cardRect.width / 2));
+  const viewportTop = Math.min(maxTop, Math.max(minTop, tapY - cardRect.height / 2));
+  readoutEl.style.left = `${Math.round(viewportLeft - parentRect.left)}px`;
+  readoutEl.style.top = `${Math.round(viewportTop - parentRect.top)}px`;
+}
+
+function renderReadout(feature, lngLat, anchorPoint = null) {
+  resetRoadInfoPosition();
   const src = HIT_SRC[feature.layer.id];
   const p = feature.properties;
   const n = src.scorer(p);            // recompute normalized props from this feature
@@ -4794,6 +4859,7 @@ function renderReadout(feature, lngLat) {
   streetViewLink.textContent = 'Open Street View ↗';
   readoutEl.append(close, heading, table, streetViewLink);
   readoutEl.classList.add('show');
+  if (anchorPoint) positionRoadInfoNear(anchorPoint);
 }
 
 readoutEl.addEventListener('click', (e) => {
@@ -4886,7 +4952,7 @@ map.on('click', (e) => {
   const f = featureAt(e.point);
   if (f) {
     if (window.matchMedia('(max-width: 720px)').matches) setPanelOpen(false);
-    renderReadout(f, e.lngLat);
+    renderReadout(f, e.lngLat, e.point);
     readoutPinned = true;
   } else {
     dismissRoadInfo();
@@ -5332,14 +5398,14 @@ function buildVoicePanel() {
   const offRouteChoices = [
     ['guidance', 'Guidance only', 'Default. Shows the direction and distance back to your route.'],
     ['return', 'Automatic return to route', 'After 60 seconds, creates a temporary route to the nearest point on your current route.'],
-    ['dynamic', 'Dynamic routing', 'After 60 seconds, creates a new route from your location to the destination.'],
+    ['dynamic', 'Dynamic routing', 'After 60 seconds, creates a new route through remaining waypoints to the destination.'],
   ];
   offRoute.innerHTML = `<legend>Off-route behavior</legend>
     ${offRouteChoices.map(([value, label, description]) => `<label class="off-route-choice">
       <input type="radio" name="off-route-mode" value="${value}"${navVoice.offRouteMode === value ? ' checked' : ''}>
       <span><strong>${label}</strong><small>${description}</small></span>
     </label>`).join('')}
-    <p class="off-route-warning"><strong>Dynamic routing may replace the rest of your route, including planned roads and waypoints.</strong></p>`;
+    <p class="off-route-warning"><strong>Dynamic routing may change the roads used for the rest of your trip. Remaining waypoints and your destination stay in place.</strong></p>`;
   offRoute.addEventListener('change', (e) => {
     const input = e.target.closest('input[name="off-route-mode"]');
     if (!input) return;
