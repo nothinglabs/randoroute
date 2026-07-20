@@ -10,6 +10,50 @@ assert.match(css, /\.readout-close\s*\{[^}]*width:\s*34px[^}]*height:\s*34px[^}]
   'the road-information close control should have a larger icon and hit target');
 assert.match(css, /\.readout\.near-tap\s*\{[^}]*right:\s*auto[^}]*bottom:\s*auto/,
   'a tapped road-information card should override its fixed corner placement');
+assert.match(css, /@media \(max-width: 720px\)[\s\S]*?\.readout\s*\{[^}]*width:\s*min\(310px, calc\(100vw - 20px\)\)/,
+  'the mobile road-information card should use a compact content width');
+assert.match(css, /\.readout td\.k\s*\{[^}]*white-space:\s*nowrap/,
+  'road-information labels should stay on one line to reduce card height');
+assert.match(app, /roadInfoHoverMedia\s*=\s*window\.matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)[\s\S]*?if \(!roadInfoHoverMedia\.matches\) return/,
+  'touch-generated mouse movement must not open the fixed hover preview');
+assert.match(app, /canvas\.addEventListener\('touchend'[\s\S]*?inspectRoadAt\(point, lngLat\)[\s\S]*?lastRoadInfoTouchAt = Date\.now\(\)/,
+  'a deliberate map touch should directly open and position pinned road information');
+
+const touchBlockStart = app.indexOf('(() => {', app.indexOf('// Handle deliberate taps directly'));
+const touchBlockEnd = app.indexOf("map.on('click'", touchBlockStart);
+assert.ok(touchBlockStart >= 0 && touchBlockEnd > touchBlockStart,
+  'touch road-inspection handler was not found');
+const touchHandlers = {};
+const inspectedTouches = [];
+const touchContext = vm.createContext({
+  Date: { now: () => 2468 },
+  Math,
+  routing: { arm: null },
+  map: {
+    getCanvasContainer: () => ({
+      addEventListener(type, handler) { touchHandlers[type] = handler; },
+    }),
+    getCanvas: () => ({ getBoundingClientRect: () => ({ left: 10, top: 20 }) }),
+    unproject: ([x, y]) => ({ lng: x, lat: y }),
+  },
+  inspectRoadAt(point, lngLat) { inspectedTouches.push({ point, lngLat }); return true; },
+  placeArmedPoint() { throw new Error('an unarmed inspection tap must not place an endpoint'); },
+});
+vm.runInContext(`let lastRoadInfoTouchAt = 0; ${app.slice(touchBlockStart, touchBlockEnd)}`, touchContext);
+touchHandlers.touchstart({ touches: [{ clientX: 100, clientY: 140 }] });
+let touchPrevented = false;
+let touchStopped = false;
+touchHandlers.touchend({
+  changedTouches: [{ clientX: 100, clientY: 140 }],
+  preventDefault() { touchPrevented = true; },
+  stopPropagation() { touchStopped = true; },
+});
+assert.equal(inspectedTouches[0].point.x, 90,
+  'touch inspection should anchor the card at the tap longitude-axis position');
+assert.equal(inspectedTouches[0].point.y, 120,
+  'touch inspection should anchor the card at the tap latitude-axis position');
+assert.equal(touchPrevented, true, 'a handled road tap should suppress the stale synthetic click');
+assert.equal(touchStopped, true, 'a handled road tap should not bubble into competing touch logic');
 
 const positionStart = app.indexOf('function resetRoadInfoPosition()');
 const positionEnd = app.indexOf('function renderReadout(', positionStart);

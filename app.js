@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.198';
+const APP_VERSION = '2026-07-20.199';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4536,12 +4536,12 @@ function buildPlacePicker() {
 const readoutEl = document.getElementById('readout');
 // The road card repeats the one shared map/route verdict vocabulary.
 function readoutVerdict(n, level) {
-  if (level === 4) return 'Red dashed — Fails your rules';
-  if (level === 3) return 'Amber — Caution (limited-access highway)';
-  if (level === 0) return 'Gray — Insufficient data';
-  if (isBikeNetworkVerdict(n)) return 'Lime — Bike network; passes your rules';
-  if (n.desig) return 'Blue dashed — Designated bike route; passes your rules';
-  return 'Blue — Passes your rules';
+  if (level === 4) return 'Fails your rules';
+  if (level === 3) return 'Caution — limited-access highway';
+  if (level === 0) return 'Insufficient data';
+  if (isBikeNetworkVerdict(n)) return 'Bike network — passes your rules';
+  if (n.desig) return 'Designated bike route — passes your rules';
+  return 'Passes your rules';
 }
 function readoutVerdictColor(n, level) {
   if (level === 4) return COLORS[4];
@@ -4631,7 +4631,7 @@ function explainLevel(n) {
         ? `${spdTxt} — no speed cutoff set`
         : `${spdTxt} within your ${rules.upperMaxSpeed} mph max`
     );
-  return `Passes your rules — ${met.join(', ')}.`;
+  return `${met.join('; ')}.`;
 }
 
 const HIT_LAYERS = [];  // hit-layer ids, registered as sources attach
@@ -4890,7 +4890,12 @@ document.addEventListener('click', (e) => {
 });
 
 // ONE global handler pair (per-layer handlers raced where layers overlap).
+const roadInfoHoverMedia = window.matchMedia('(hover: hover) and (pointer: fine)');
 map.on('mousemove', (e) => {
+  // iOS synthesizes mouse movement while tapping. Let the touch-end handler
+  // below open and pin the card; otherwise this hover preview wins first and
+  // leaves the card in its fixed fallback position.
+  if (!roadInfoHoverMedia.matches) return;
   if (routing.arm || Date.now() < roadInfoSuppressedUntil) {
     readoutEl.classList.remove('show');
     return;
@@ -4902,6 +4907,21 @@ map.on('mousemove', (e) => {
   else readoutEl.classList.remove('show');
 });
 let lastPlacementTs = 0;
+let lastRoadInfoTouchAt = 0;
+
+function inspectRoadAt(point, lngLat = null) {
+  if (Date.now() < roadInfoSuppressedUntil) return false;
+  const feature = featureAt(point);
+  if (!feature) {
+    dismissRoadInfo();
+    return false;
+  }
+  if (window.matchMedia('(max-width: 720px)').matches) setPanelOpen(false);
+  renderReadout(feature, lngLat || map.unproject([point.x, point.y]), point);
+  readoutPinned = true;
+  return true;
+}
+
 function placeArmedPoint(lngLat) {
   const kind = routing.arm;
   if (!kind) return false;
@@ -4927,31 +4947,39 @@ function placeArmedPoint(lngLat) {
   return true;
 }
 
-// Robust armed-tap on touch devices: a tap during map momentum doesn't always
-// produce a MapLibre 'click', so track touches on the canvas directly and
-// place the point on any short, still touch while armed.
+// Handle deliberate taps directly on touch devices. A tap during map momentum
+// does not always produce MapLibre's later `click`, so this is the dependable
+// path for both endpoint placement and pinned road information.
 (() => {
   const canvas = map.getCanvasContainer();
   let t0 = null;
   canvas.addEventListener('touchstart', (e) => {
-    if (!routing.arm || e.touches.length !== 1) { t0 = null; return; }
+    if (e.touches.length !== 1) { t0 = null; return; }
     const t = e.touches[0];
     t0 = { x: t.clientX, y: t.clientY, ts: Date.now() };
   }, { passive: true });
   canvas.addEventListener('touchend', (e) => {
-    if (!routing.arm || !t0) return;
+    if (!t0) return;
     const t = e.changedTouches[0];
     const moved = Math.hypot(t.clientX - t0.x, t.clientY - t0.y);
     const dur = Date.now() - t0.ts;
     t0 = null;
-    if (moved < 12 && dur < 700) {
+    if (moved >= 12 || dur >= 700) return;
+    const rect = map.getCanvas().getBoundingClientRect();
+    const point = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+    const lngLat = map.unproject([point.x, point.y]);
+    if (routing.arm) {
       // Consume the placement tap. Otherwise iOS/MapLibre can emit a later
       // synthetic click that opens the road-information card underneath it.
       e.preventDefault();
       e.stopPropagation();
-      const rect = map.getCanvas().getBoundingClientRect();
-      const lngLat = map.unproject([t.clientX - rect.left, t.clientY - rect.top]);
       placeArmedPoint(lngLat);
+      return;
+    }
+    if (inspectRoadAt(point, lngLat)) {
+      lastRoadInfoTouchAt = Date.now();
+      e.preventDefault();
+      e.stopPropagation();
     }
   }, { passive: false });
 })();
@@ -4961,15 +4989,10 @@ map.on('click', (e) => {
     placeArmedPoint(e.lngLat);
     return;
   }
-  if (Date.now() < roadInfoSuppressedUntil || Date.now() - lastPlacementTs < 600) return;
-  const f = featureAt(e.point);
-  if (f) {
-    if (window.matchMedia('(max-width: 720px)').matches) setPanelOpen(false);
-    renderReadout(f, e.lngLat, e.point);
-    readoutPinned = true;
-  } else {
-    dismissRoadInfo();
-  }
+  if (Date.now() < roadInfoSuppressedUntil
+      || Date.now() - lastPlacementTs < 600
+      || Date.now() - lastRoadInfoTouchAt < 600) return;
+  inspectRoadAt(e.point, e.lngLat);
 });
 
 /* ----------------------------------------------------- build panels */
