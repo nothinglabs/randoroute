@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.174';
+const APP_VERSION = '2026-07-19.175';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2304,8 +2304,8 @@ function renderRouteCard(m) {
   };
   if (!card) return;
   if (!m) {
-    card.innerHTML = `<div id="routeControlsSlot"></div><div class="rc-empty">Use <b>Start</b> on the map bar to
-      search for or tap your start point. Use <b>End</b> for the destination. Routes follow your
+    card.innerHTML = `<div id="routeControlsSlot"></div><div class="rc-empty">Choose either <b>From</b> or <b>To</b>
+      first, then search or tap the map. Routes follow your
       riding rules, entirely on this device. When meaningful alternatives exist, they appear above.</div><div class="rc-details-hidden"><div id="routeDetailsSlot"></div></div>`;
     moveControls();
     moveDetails();
@@ -3025,12 +3025,17 @@ function setRoutePoint(kind, lngLat) {
   updateArmButtons();
 }
 
-function advanceToEndAfterStart(kind) {
-  if (kind !== 'start' || routing.end) return false;
-  routing.arm = 'end';
+function advanceToMissingEndpoint(kind) {
+  const next = kind === 'start' && !routing.end ? 'end'
+    : kind === 'end' && !routing.start ? 'start' : null;
+  if (!next) return false;
+  routing.arm = next;
   suppressRoadInfo();
   updateArmButtons();
-  setRouteStatus('Start set — tap the map or choose End to search');
+  const placedLabel = kind === 'start' ? 'Start' : 'Destination';
+  const nextLabel = next === 'start' ? 'Start' : 'End';
+  setRouteStatus(`${placedLabel} set — tap the map or choose ${nextLabel} to search`);
+  showRouteActionToast(`${placedLabel} set · Now choose ${nextLabel}`, { duration: 3200 });
   return true;
 }
 
@@ -3214,6 +3219,23 @@ function updateArmButtons() {
       const b = document.getElementById(prefix + kind);
       if (b) b.classList.toggle('active', routing.arm === kind);
     }
+  }
+  for (const kind of ['start', 'end']) {
+    const button = document.getElementById(`rb-${kind}`);
+    if (!button) continue;
+    const isSet = Boolean(routing[kind]);
+    const isActive = routing.arm === kind;
+    const endpointName = kind === 'start' ? 'start' : 'destination';
+    button.classList.toggle('set', isSet);
+    if (isActive) button.setAttribute('aria-current', 'step');
+    else button.removeAttribute('aria-current');
+    button.title = isActive ? `Choosing ${endpointName} — tap the map or search`
+      : `${isSet ? 'Change' : 'Set'} ${endpointName}`;
+    button.setAttribute('aria-label', button.title);
+    const value = button.querySelector('[data-endpoint-value]');
+    if (value) value.textContent = isSet
+      ? (kind === 'start' ? 'Start selected' : 'Destination selected')
+      : (kind === 'start' ? 'Choose start' : 'Choose destination');
   }
   const add = document.getElementById('rb-via');
   const remove = document.getElementById('rb-via-remove');
@@ -3696,13 +3718,17 @@ function openPlacePicker(kind) {
   updateArmButtons();
   ensureRouter();
   setPanelOpen(false);
-  document.getElementById('placePickerTitle').textContent =
-    (kind === 'start' ? 'Set start' : kind === 'via' ? 'Add a stop' : 'Set destination') + ' — tap map or search';
+  document.getElementById('placePickerTitle').textContent = kind === 'start' ? 'Choose a start'
+    : kind === 'via' ? 'Add a stop' : 'Choose a destination';
   document.getElementById('useLoc').hidden = kind !== 'start';
   const onlineButton = document.getElementById('onlinePlaceSearch');
   onlineButton.disabled = false;
   onlineButton.textContent = '⌕';
-  document.getElementById('placeSearch').value = '';
+  const searchInput = document.getElementById('placeSearch');
+  searchInput.value = '';
+  searchInput.placeholder = kind === 'start' ? 'Search for a start…'
+    : kind === 'via' ? 'Search for a stop…' : 'Search for a destination…';
+  searchInput.setAttribute('aria-label', searchInput.placeholder.replace('…', ''));
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   document.getElementById('placePicker').hidden = false;
@@ -3825,7 +3851,7 @@ function buildPlacePicker() {
     if (placeTarget === 'via') {
       setRouteStatus('Stop added');
       showRouteActionToast('Stop added — route recalculating', { duration: 2200 });
-    } else if (!advanceToEndAfterStart(placeTarget)) {
+    } else if (!advanceToMissingEndpoint(placeTarget)) {
       setRouteStatus(placeTarget === 'start' ? 'Start set' : 'Destination set');
     }
     closePlacePicker(false);
@@ -3844,7 +3870,7 @@ function buildPlacePicker() {
       routing.arm = null;
       updateArmButtons();
       closePlacePicker(false);
-      if (!advanceToEndAfterStart(placeTarget)) setRouteStatus(placeTarget === 'start' ? 'Start set to your location' : 'Destination set');
+      if (!advanceToMissingEndpoint(placeTarget)) setRouteStatus(placeTarget === 'start' ? 'Start set to your location' : 'Destination set');
     }, () => setRouteStatus('Could not get your location'), { enableHighAccuracy: true, timeout: 10000 });
   });
 }
@@ -4182,7 +4208,7 @@ function placeArmedPoint(lngLat) {
     return true;
   }
   setRoutePoint(kind, lngLat);
-  if (advanceToEndAfterStart(kind)) return true;
+  if (advanceToMissingEndpoint(kind)) return true;
   if (!(routing.start && routing.end)) {
     // confirm the placement; with only one point there's no route yet
     setRouteStatus(kind === 'start' ? 'Start set — now set the destination'

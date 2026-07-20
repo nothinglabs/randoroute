@@ -24,8 +24,16 @@
       <span id="navStartIcon" aria-hidden="true">▶</span> <span id="navStartLabel">Navigate</span>
     </button>
     <div id="routeBar">
-      <button id="rb-start" class="rb-pill rb-pill-start" title="Set start">Start</button>
-      <button id="rb-end" class="rb-pill rb-pill-end" title="Set destination">End</button>
+      <div class="route-endpoints" role="group" aria-label="Route endpoints">
+        <button id="rb-start" class="route-endpoint route-endpoint-start" type="button" title="Set start">
+          <span class="endpoint-marker" aria-hidden="true"></span>
+          <span class="endpoint-copy"><span class="endpoint-label">From</span><strong data-endpoint-value>Choose start</strong></span>
+        </button>
+        <button id="rb-end" class="route-endpoint route-endpoint-end" type="button" title="Set destination">
+          <span class="endpoint-marker" aria-hidden="true"></span>
+          <span class="endpoint-copy"><span class="endpoint-label">To</span><strong data-endpoint-value>Choose destination</strong></span>
+        </button>
+      </div>
       <button id="rb-reverse" title="Reverse route" aria-label="Reverse route" disabled>⇄</button>
       <button id="rb-via" title="Add a stop" aria-label="Add a stop">+</button>
       <button id="rb-via-remove" title="Remove last stop" aria-label="Remove last stop">−</button>
