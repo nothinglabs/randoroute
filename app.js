@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.177';
+const APP_VERSION = '2026-07-19.178';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -72,6 +72,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
+  turnDirectSec: 12, turnBalancedSec: 22, turnLowSec: 30,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
 const ROUTING_WEIGHTS_VERSION = 7;
@@ -79,7 +80,8 @@ function validRoutingWeights(source) {
   const clean = {};
   const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
     'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM',
-    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowSecPerM']);
+    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowSecPerM',
+    'turnDirectSec', 'turnBalancedSec', 'turnLowSec']);
   if (!source || typeof source !== 'object') return clean;
   for (const key of Object.keys(DEFAULT_ROUTING_WEIGHTS)) {
     const value = Number(source[key]);
@@ -2961,7 +2963,7 @@ function advanceToMissingEndpoint(kind) {
   suppressRoadInfo();
   updateArmButtons();
   const placedLabel = kind === 'start' ? 'Start' : 'Destination';
-  const nextLabel = next === 'start' ? 'Start' : 'End';
+  const nextLabel = next === 'start' ? 'start' : 'destination';
   setRouteStatus(`${placedLabel} set — tap the map or choose ${nextLabel} to search`);
   showRouteActionToast(`${placedLabel} set · Now choose ${nextLabel}`, { duration: 3200 });
   return true;
@@ -3695,13 +3697,11 @@ function openPlacePicker(kind) {
   updateArmButtons();
   ensureRouter();
   setPanelOpen(false);
-  document.getElementById('placePickerTitle').textContent = kind === 'start' ? 'Set start'
-    : kind === 'via' ? 'Add new waypoint' : 'Set destination';
-  document.getElementById('placePickerHint').innerHTML = kind === 'start'
-    ? '<strong>Search below</strong> for your start, or <strong>tap the map</strong> to place it directly.'
-    : kind === 'via'
-      ? '<strong>Search below</strong> for a waypoint, or <strong>tap the map</strong> to place it directly.'
-      : '<strong>Search below</strong> for your destination, or <strong>tap the map</strong> to place it directly.';
+  document.getElementById('placePickerTitle').textContent = kind === 'start' ? 'Choose start'
+    : kind === 'via' ? 'Add new waypoint' : 'Choose destination';
+  document.getElementById('placePickerHint').innerHTML = kind === 'via'
+    ? '<strong>Search</strong> for a place below, or <strong>tap the map</strong> to add it.'
+    : '<strong>Search</strong> for a place below, or <strong>tap the map</strong> to set it.';
   document.getElementById('useLoc').hidden = kind !== 'start';
   const onlineButton = document.getElementById('onlinePlaceSearch');
   onlineButton.disabled = false;
@@ -4313,6 +4313,9 @@ const ROUTING_WEIGHT_GROUPS = [
     ['climbDirectSecPerM', 'Extra climb preference · direct', 0, 5, .05],
     ['climbBalancedSecPerM', 'Extra climb preference · balanced', 0, 5, .05],
     ['climbLowSecPerM', 'Extra climb preference · friendly', 0, 5, .05],
+    ['turnDirectSec', 'Turn cost · direct (seconds)', 0, 90, 1],
+    ['turnBalancedSec', 'Turn cost · balanced (seconds)', 0, 90, 1],
+    ['turnLowSec', 'Turn cost · friendly (seconds)', 0, 90, 1],
     ['diversityQuick', 'Alternative corridor · quick', 1.05, 3, .05], ['diversityBalanced', 'Alternative corridor · balanced', 1.05, 3, .05],
     ['diversitySafer', 'Alternative corridor · safer', 1.05, 3, .05], ['diversityWide', 'Alternative corridor · wide search', 1.05, 4, .05],
   ]],

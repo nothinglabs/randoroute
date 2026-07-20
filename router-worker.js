@@ -17,6 +17,8 @@ let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass, eFacility, eOfficial;
 let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
+let eBearingA, eBearingB;
+let searchDist, searchPrevArc, searchStamp, searchGeneration = 0;
 let nodeHasLand;
 let inGiant;
 let nodeLocal, nodeNonMtb;
@@ -48,6 +50,14 @@ const EDGE_MTB = 4;
 function edgeName(i) {
   const id = eName[i];
   return _dec.decode(nameBytes.subarray(nameOff[id], nameOff[id + 1]));
+}
+
+function bearingDeg(fromLon, fromLat, toLon, toLat) {
+  const p1 = fromLat * Math.PI / 180, p2 = toLat * Math.PI / 180;
+  const dl = (toLon - fromLon) * Math.PI / 180;
+  const y = Math.sin(dl) * Math.cos(p2);
+  const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
 function loadGraph(buf) {
@@ -83,6 +93,25 @@ function loadGraph(buf) {
   gLon = f32(G); gLat = f32(G);
   nameBytes = u8(B);
   postMessage({ type: 'progress', phase: 'engine', detail: 'Indexing roads, trails, ferries, and restrictions…' });
+  // Outbound bearings at each end let A* price real intersection turns. Use
+  // the first non-duplicate geometry point so a straight road split into many
+  // graph edges does not acquire an artificial turn cost.
+  eBearingA = new Float32Array(E);
+  eBearingB = new Float32Array(E);
+  for (let i = 0; i < E; i++) {
+    const off = eOff[i], end = off + eCnt[i] - 1;
+    let aNext = Math.min(end, off + 1);
+    while (aNext < end && gLon[aNext] === gLon[off] && gLat[aNext] === gLat[off]) aNext++;
+    let bNext = Math.max(off, end - 1);
+    while (bNext > off && gLon[bNext] === gLon[end] && gLat[bNext] === gLat[end]) bNext--;
+    eBearingA[i] = bearingDeg(gLon[off], gLat[off], gLon[aNext], gLat[aNext]);
+    eBearingB[i] = bearingDeg(gLon[end], gLat[end], gLon[bNext], gLat[bNext]);
+  }
+  // Reuse the large edge-state workspace across the many profile searches in
+  // one request. Generation stamps avoid clearing 1M+ entries each time.
+  searchDist = new Float64Array(D);
+  searchPrevArc = new Int32Array(D);
+  searchStamp = new Int32Array(D);
   // Terminal detection for ferry boarding: a node touching any land edge.
   // (Mid-water junctions where ferry routes cross have only ferry edges.)
   nodeHasLand = new Uint8Array(N);
@@ -212,6 +241,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
+  turnDirectSec: 12, turnBalancedSec: 22, turnLowSec: 30,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
 let activeWeights = { ...DEFAULT_WEIGHTS };
@@ -220,7 +250,8 @@ function useWeights(source) {
   if (!source || typeof source !== 'object') return;
   const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
     'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM',
-    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowSecPerM']);
+    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowSecPerM',
+    'turnDirectSec', 'turnBalancedSec', 'turnLowSec']);
   for (const key of Object.keys(DEFAULT_WEIGHTS)) {
     const value = Number(source[key]);
     if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) activeWeights[key] = value;
@@ -331,6 +362,29 @@ function climbPreferenceS(i, forward, mode) {
   return (netAsc * steepness + rollingAsc * 0.5) * activeWeights[key];
 }
 
+// Fixed intersection friction discourages routes that zigzag block by block.
+// It is deliberately moderate: a safer or substantially quicker corridor can
+// still win, but ten unnecessary turns cost roughly 2–5 minutes depending on
+// the profile. Straight continuations and ordinary bends on the same named
+// road are free, while sharp reversals cost extra.
+function turnPreferenceS(incomingEdge, node, outgoingEdge, mode) {
+  if (incomingEdge < 0 || incomingEdge === outgoingEdge) return 0;
+  const inboundAway = eA[incomingEdge] === node ? eBearingA[incomingEdge] : eBearingB[incomingEdge];
+  const outgoing = eA[outgoingEdge] === node ? eBearingA[outgoingEdge] : eBearingB[outgoingEdge];
+  const inbound = (inboundAway + 180) % 360;
+  const delta = Math.abs((outgoing - inbound + 540) % 360 - 180);
+  const incomingName = eName[incomingEdge];
+  const sameRoad = incomingName === eName[outgoingEdge]
+    && nameOff[incomingName + 1] > nameOff[incomingName];
+  if (delta < 30 || (sameRoad && delta < 70)) return 0;
+  const key = mode === 'direct' ? 'turnDirectSec'
+    : mode === 'low' ? 'turnLowSec' : 'turnBalancedSec';
+  const base = activeWeights[key];
+  if (delta >= 150) return base * 2;
+  if (delta < 55) return base * 0.65;
+  return base;
+}
+
 function routeGradeStats(segs) {
   let uphillM = 0;
   let uphillRiseM = 0;
@@ -402,26 +456,37 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     || havM(nodeLon[n], nodeLat[n], goalLon, goalLat) <= ACCESS_RADIUS_M;
   const terminalAccessEdge = (ei) =>
     eLen[ei] <= ACCESS_EDGE_MAX_M && (nearTerminal(eA[ei]) || nearTerminal(eB[ei]));
-  const dist = new Float64Array(N).fill(Infinity);
-  const prevNode = new Int32Array(N).fill(-1);
-  const prevEdge = new Int32Array(N).fill(-1);
-  const done = new Uint8Array(N);
+  // Turn costs depend on how the rider arrived at an intersection, so search
+  // directed-edge states rather than collapsing every arrival into one node.
+  // This preserves optimal A* behavior while allowing a simpler route to beat
+  // a marginally faster residential zigzag.
+  searchGeneration++;
+  if (searchGeneration >= 0x7fffffff) {
+    searchStamp.fill(0);
+    searchGeneration = 1;
+  }
+  const generation = searchGeneration;
   const heap = makeHeap(4096);
   const h = (n) => havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / V_HEUR;
-  dist[s.node] = 0;
-  heap.push(h(s.node), s.node);
+  const START_ARC = -1;
+  heap.push(h(s.node), START_ARC);
 
-  let found = false;
+  let foundArc = -1;
   while (heap.size) {
-    const u = heap.pop();
-    if (done[u]) continue;
-    done[u] = 1;
-    if (u === t.node) { found = true; break; }
-    const du = dist[u];
+    const incomingArc = heap.pop();
+    if (incomingArc !== START_ARC && searchStamp[incomingArc] === -generation) continue;
+    if (incomingArc !== START_ARC) searchStamp[incomingArc] = -generation;
+    const u = incomingArc === START_ARC ? s.node : outTarget[incomingArc];
+    if (u === t.node) { foundArc = incomingArc; break; }
+    const du = incomingArc === START_ARC ? 0 : searchDist[incomingArc];
+    const incomingEdge = incomingArc === START_ARC ? -1 : outEdge[incomingArc];
     for (let a = outStart[u]; a < outStart[u + 1]; a++) {
       const v = outTarget[a];
-      if (done[v]) continue;
+      if (searchStamp[a] === -generation) continue;
       const ei = outEdge[a];
+      // An immediate reversal can never improve a positive-cost route and
+      // dramatically enlarges an edge-state search at dead ends.
+      if (ei === incomingEdge) continue;
       const fl = eFlags[ei];
       // Permanent WSDOT bike restriction: never traverse it, in any mode or
       // with any setting. This is intentionally before all cost/rules logic.
@@ -487,16 +552,19 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       if (diversityEdges?.has(ei) && !protectedInfrastructure && !(fl & 32)) {
         cost *= diversityFactor;
       }
+      // Turn friction is independent of the road entered: a bike facility or
+      // residential bonus should not make repeated intersection turns free.
+      cost += turnPreferenceS(incomingEdge, u, ei, mode);
       const nd = du + cost;
-      if (nd < dist[v]) {
-        dist[v] = nd;
-        prevNode[v] = u;
-        prevEdge[v] = ei;
-        heap.push(nd + h(v), v);
+      if (Math.abs(searchStamp[a]) !== generation || nd < searchDist[a]) {
+        searchStamp[a] = generation;
+        searchDist[a] = nd;
+        searchPrevArc[a] = incomingArc;
+        heap.push(nd + h(v), a);
       }
     }
   }
-  if (!found) {
+  if (foundArc < 0) {
     return {
       ok: false,
       reason: rules.requireSafe
@@ -506,9 +574,14 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   }
 
   // Reconstruct (goal -> start), then emit forward.
+  const arcs = [];
+  for (let a = foundArc; a !== START_ARC; a = searchPrevArc[a]) arcs.push(a);
+  arcs.reverse();
   const edges = [];
-  for (let v = t.node; v !== s.node; v = prevNode[v]) edges.push([prevEdge[v], prevNode[v]]);
-  edges.reverse();
+  for (const a of arcs) {
+    const ei = outEdge[a], toNode = outTarget[a];
+    edges.push([ei, eA[ei] === toNode ? eB[ei] : eA[ei]]);
+  }
 
   const coords = [];
   const profile = []; // [cumulative meters, elevation m] per node along the route

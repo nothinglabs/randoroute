@@ -20,7 +20,7 @@ vm.runInContext(`${app.slice(start, end)}\nthis.advance = advanceToMissingEndpoi
 
 assert.equal(context.advance('end'), true, 'destination-first should advance automatically');
 assert.equal(context.routing.arm, 'start', 'destination-first should arm the start point');
-assert.match(messages.at(-2)[1], /Destination set.*choose Start/,
+assert.match(messages.at(-2)[1], /Destination set.*choose start/,
   'destination-first status should explain the next action');
 
 messages.length = 0;
@@ -29,8 +29,10 @@ context.routing.end = null;
 context.routing.arm = null;
 assert.equal(context.advance('start'), true, 'start-first should advance automatically');
 assert.equal(context.routing.arm, 'end', 'start-first should arm the destination');
-assert.match(messages.at(-1)[1], /Start set.*choose End/,
-  'start-first toast should explain the next action');
+assert.match(messages.at(-1)[1], /Start set.*Now choose destination/,
+  'start-first toast should consistently call the endpoint the destination');
+assert.doesNotMatch(messages.at(-1)[1], /choose end/i,
+  'endpoint prompts should not switch terminology from destination to end');
 
 context.routing.end = [-122.3, 47.9];
 context.routing.arm = null;
