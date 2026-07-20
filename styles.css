@@ -115,12 +115,12 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
 }
 .place-results.show { display: block; }
-.place-results .place-hit {
-  display: block; width: 100%; text-align: left;
+#routeBar .place-results .place-hit {
+  display: block; flex: none; width: 100%; height: auto; min-height: 0; border-radius: 0; text-align: left;
   padding: 9px 12px; border: none; border-bottom: 1px solid #f0f0f0;
   background: #fff; font: 500 13px system-ui; color: #222; cursor: pointer;
 }
-.place-results .place-hit:last-child { border-bottom: none; }
+#routeBar .place-results .place-hit:last-child { border-bottom: none; }
 .place-results .place-hit small { color: #667784; font-weight: 400; margin-left: 6px; }
 
 .mode-row { display: flex; align-items: stretch; gap: 5px; margin: 0; }
