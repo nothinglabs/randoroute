@@ -121,7 +121,7 @@
         <div id="settingsOptions"></div>
       </div>
       <div id="settings-voice" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-voice" hidden>
-        <p class="settings-summary">Voice guidance preferences for turn-by-turn navigation.</p>
+        <p class="settings-summary">Navigation and voice guidance preferences for turn-by-turn navigation.</p>
         <div id="settingsVoice"></div>
       </div>
     </section>
@@ -152,6 +152,27 @@
     <div class="dialog-head"><h2>Point is outside the routing network</h2><button class="dialog-close" data-close="routeProblemDialog" aria-label="Close">✕</button></div>
     <p id="routeProblemText"></p>
     <div class="dialog-actions"><button data-close="routeProblemDialog">OK</button></div>
+  </dialog>
+
+  <dialog id="routeStartDialog" class="map-dialog route-start-dialog" aria-labelledby="routeStartDialogTitle">
+    <div class="dialog-head"><h2 id="routeStartDialogTitle">Join the planned route</h2></div>
+    <p id="routeStartDialogText"></p>
+    <p class="route-start-color"><span aria-hidden="true"></span>The temporary route to the start will appear in violet.</p>
+    <p id="routeStartDialogStatus" class="route-start-status" role="status" aria-live="polite"></p>
+    <div class="dialog-actions">
+      <button id="navUseNearestBtn" type="button">Guide to nearest point</button>
+      <button id="navRouteToStartBtn" class="route-start-primary" type="button">Route to start</button>
+    </div>
+  </dialog>
+
+  <dialog id="offRouteDialog" class="map-dialog off-route-dialog" aria-labelledby="offRouteDialogTitle">
+    <div class="dialog-head"><h2 id="offRouteDialogTitle">You are off route</h2><button class="dialog-close" data-close="offRouteDialog" aria-label="Close">✕</button></div>
+    <p id="offRouteDialogText">Choose how navigation should continue.</p>
+    <div class="off-route-actions">
+      <button id="navNewRouteBtn" type="button"><strong>New Route From Current Location</strong><span>Replace this route with a new route to the destination.</span></button>
+      <button id="navRouteBackBtn" type="button"><strong>Route back to current route</strong><span>Follow a violet connector to the nearest point on this route.</span></button>
+      <button id="navKeepRouteBtn" type="button"><strong>Keep current route</strong><span>Continue showing the direction to the nearest route point.</span></button>
+    </div>
   </dialog>
 
   <dialog id="weightsDialog" class="full-help-dialog weights-dialog" aria-label="Advanced routing weights">
@@ -262,6 +283,7 @@
   <div class="status" id="status">Loading…</div>
   <div id="route-status" class="sr-only" role="status" aria-live="polite"></div>
   <div id="navBanner" class="nav-banner" role="status" aria-live="polite" hidden>
+    <button type="button" id="navOffRouteBtn" class="nav-off-route-action" hidden>Off-route: Tap to Re-route</button>
     <div class="nav-banner-copy">
       <span id="navBannerKicker">Turn-by-turn navigation</span>
       <strong id="navBannerText"></strong>

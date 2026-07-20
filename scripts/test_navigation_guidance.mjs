@@ -4,10 +4,28 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
-assert.doesNotMatch(app, /navConnector|navStartDialog|navStartFromHere|route-connector/,
-  'navigation should not create a special route-to-route-start connector');
-assert.match(app, /Starting away from the selected route is the same as leaving it later:[\s\S]*?enterOffRoute\(nearest\)/,
-  'a first GPS fix away from the route should use normal off-route guidance');
+const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const css = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+assert.match(html, /id="navOffRouteBtn"[^>]*>Off-route: Tap to Re-route</,
+  'off-route navigation should expose the full-width reroute action');
+assert.match(html, /New Route From Current Location[\s\S]*?Route back to current route[\s\S]*?Keep current route/,
+  'off-route recovery dialog should present all three explicit choices');
+assert.match(css, /#navBanner\.off-route-action-visible[\s\S]*?\.nav-off-route-action[\s\S]*?width:\s*100%/,
+  'off-route action should fill the navigation banner');
+assert.match(app, /ROUTE_START_OFFER_M\s*=\s*160\.934/,
+  'route-to-start should be offered at one tenth of a mile');
+assert.match(app, /type:\s*'route-connector'/,
+  'navigation should request a separate route-to-start connector');
+assert.match(app, /id:\s*'route-connector'/,
+  'the connector should have its own visible map layer');
+assert.match(app, /AUTO_REROUTE_DELAY_MS\s*=\s*60_000/,
+  'automatic rerouting should wait for 60 continuous seconds off route');
+assert.match(app, /function requestRouteBackToCurrentRoute[\s\S]*?nearestNavigationPoint\([\s\S]*?turnNav\.plannedRoute\)/,
+  'route-back should target the nearest point on the original planned route');
+assert.match(app, /type:\s*'navigation-new-route'/,
+  'the off-route menu should support a new route from the live location');
+assert.match(app, /navVoice\.autoReroute[\s\S]*?maybeAutomaticallyReroute/,
+  'the turn-by-turn automatic-rerouting preference should drive recovery');
 const start = app.indexOf('function navDistanceM');
 const end = app.indexOf('// Leaving the route no longer triggers rerouting.');
 assert.ok(start >= 0 && end > start, 'navigation helper source was not found');
@@ -15,6 +33,19 @@ assert.ok(start >= 0 && end > start, 'navigation helper source was not found');
 const context = {};
 vm.createContext(context);
 vm.runInContext(`${app.slice(start, end)}\nthis.buildTurnInstructions = buildTurnInstructions;`, context);
+
+const offerStart = app.indexOf('const OFF_ROUTE_ENTER_M');
+const offerEnd = app.indexOf('function navInstructionText', offerStart);
+assert.ok(offerStart >= 0 && offerEnd > offerStart, 'route-start offer helper was not found');
+vm.runInContext(`${app.slice(offerStart, offerEnd)}\nthis.shouldOfferRouteStartConnector = shouldOfferRouteStartConnector;`, context);
+assert.equal(context.shouldOfferRouteStartConnector(800, 0), false,
+  'a rider already on the route must not be sent back to its original start');
+assert.equal(context.shouldOfferRouteStartConnector(800, 220), true,
+  'a rider at least 0.1 mile from the start and off route should get the connector offer');
+assert.equal(context.shouldOfferRouteStartConnector(800, 80), true,
+  'a rider beyond the rejoin tolerance is off route even when under the ordinary alert threshold');
+assert.equal(context.shouldOfferRouteStartConnector(120, 220), false,
+  'ordinary nearest-route guidance should handle a rider within 0.1 mile of the start');
 
 const coords = [
   [-122.3500, 47.6700],

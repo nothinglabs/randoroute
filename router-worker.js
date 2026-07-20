@@ -1579,8 +1579,42 @@ onmessage = (ev) => {
       const result = routeOptions(pts, m.rules, !!m.forceDesignated,
         !!m.forceResidential, m.preferredProfileId, !!m.debug, progress);
       postMessage({ type: 'route-options', id: m.id, ...result });
+    } else if (m.type === 'route-connector') {
+      useWeights(m.weights);
+      const points = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
+      // A connector is deliberately a single balanced search. Current rider
+      // rules still score every edge, while requireSafe is relaxed so the
+      // temporary route can try to reach the planned start when a perfect
+      // match is unavailable. Designated/residential preferences remain soft.
+      const connectorRules = { ...m.rules, requireSafe: false };
+      const r = route(points, connectorRules, 'balanced',
+        !!m.prefDesignated, !!m.prefResidential);
+      const profile = {
+        id: 'route-start', label: 'Route to start', mode: 'balanced',
+        prefDesig: !!m.prefDesignated,
+        prefResidential: !!m.prefResidential,
+      };
+      postMessage({ type: 'route-connector', id: m.id,
+        ...publicCandidate({ ...r, _profile: profile }) });
+    } else if (m.type === 'navigation-new-route') {
+      useWeights(m.weights);
+      const points = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
+      const mode = m.mode || 'balanced';
+      const r = route(points, m.rules, mode, !!m.prefDesignated, !!m.prefResidential);
+      const profile = {
+        id: m.profileId || 'efficient', label: m.profileLabel || 'Route A',
+        mode, prefDesig: !!m.prefDesignated,
+        prefResidential: !!m.prefResidential,
+      };
+      postMessage({ type: 'navigation-new-route', id: m.id,
+        ...publicCandidate({ ...r, _profile: profile }) });
     }
   } catch (err) {
-    postMessage({ type: 'error', id: m.id, message: String(err && err.message || err) });
+    const message = String(err && err.message || err);
+    if (m.type === 'route-connector' || m.type === 'navigation-new-route') {
+      postMessage({ type: m.type, id: m.id, ok: false, reason: message });
+    } else {
+      postMessage({ type: 'error', id: m.id, message });
+    }
   }
 };

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.188';
+const APP_VERSION = '2026-07-20.190';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -429,6 +429,7 @@ const navVoice = {
     ? true : savedState.voiceStatusMiles,
   statusEta: !savedState || typeof savedState.voiceStatusEta !== 'boolean'
     ? true : savedState.voiceStatusEta,
+  autoReroute: !!savedState?.navigationAutoReroute,
 };
 
 const DEFAULT_ROUTE_PREFERENCES = Object.freeze({ prefDesig: true, prefResidential: true });
@@ -584,6 +585,7 @@ function saveStateNow() {
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
+      navigationAutoReroute: navVoice.autoReroute,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
@@ -1463,6 +1465,15 @@ const turnNav = {
   wakeLock: null,
   marker: null,
   route: null,
+  plannedRoute: null,
+  connectorRoute: null,
+  followingConnector: false,
+  joinDecision: 'pending',
+  joinFix: null,
+  connectorRequestId: null,
+  connectorPurpose: 'start',
+  newRouteRequestId: null,
+  newRouteStart: null,
   next: 0,
   nearest: 0,
   nearestSegment: 0,
@@ -1474,6 +1485,8 @@ const turnNav = {
   offRouteSpokenAt: 0,
   offRouteApproachSpoken: false,
   offRouteApproachText: '',
+  offRouteSince: 0,
+  autoRerouteAttempted: false,
   prevFix: null,             // previous GPS fix, for the rider's own heading
   lastPosition: null,
   arrived: false,
@@ -1636,6 +1649,16 @@ const OFF_ROUTE_ENTER_M = 100;
 const OFF_ROUTE_REJOIN_M = 60;
 const OFF_ROUTE_APPROACH_M = 130;
 const OFF_ROUTE_RESPEAK_MS = 30_000;
+const ROUTE_START_OFFER_M = 160.934; // 0.1 mile
+const AUTO_REROUTE_DELAY_MS = 60_000;
+let navigationConnectorRequestId = 0;
+let navigationNewRouteRequestId = 0;
+
+function shouldOfferRouteStartConnector(startDistanceM, offRouteM) {
+  // Distance from the original start alone is not enough: a rider already on
+  // any later portion of the route should begin there without an interruption.
+  return startDistanceM >= ROUTE_START_OFFER_M && offRouteM > OFF_ROUTE_REJOIN_M;
+}
 
 function navInstructionText(instruction) {
   return `${instruction.text}${navVoice.headings && instruction.heading
@@ -1682,6 +1705,10 @@ function offRouteSpeech(info) {
 }
 
 function enterOffRoute(nearest) {
+  if (!turnNav.offRouteSince) {
+    turnNav.offRouteSince = Date.now();
+    turnNav.autoRerouteAttempted = false;
+  }
   turnNav.offRoute = true;
   turnNav.offRouteApproachSpoken = false;
   turnNav.offRouteApproachText = '';
@@ -1733,8 +1760,10 @@ function updateNavigationProgress() {
     geometry: { type: 'LineString', coordinates: coords.length >= 2 ? coords : [] } });
 }
 
-function rejoinRoute(nearest, previousFix) {
+function rejoinRoute(nearest, previousFix, reachedText = 'Back on route') {
   turnNav.offRoute = false;
+  turnNav.offRouteSince = 0;
+  turnNav.autoRerouteAttempted = false;
   turnNav.offRouteInfo = null;
   turnNav.offRouteApproachSpoken = false;
   turnNav.nearest = nearest.index;
@@ -1768,9 +1797,13 @@ function rejoinRoute(nearest, previousFix) {
   const alreadyAnnounced = turnNav.offRouteApproachText
     && maneuver.toLowerCase() === turnNav.offRouteApproachText.toLowerCase();
   turnNav.offRouteApproachText = '';
-  speakNavigation(alreadyAnnounced
-    ? `Back on route. Continue on ${road || 'the route'}.`
-    : `${maneuver}. Back on route.`);
+  if (reachedText !== 'Back on route') {
+    speakNavigation(`${reachedText}. ${maneuver}.`);
+  } else {
+    speakNavigation(alreadyAnnounced
+      ? `Back on route. Continue on ${road || 'the route'}.`
+      : `${maneuver}. Back on route.`);
+  }
 }
 
 function navigationBannerInfo() {
@@ -1784,6 +1817,23 @@ function navigationBannerInfo() {
   const routeMeta = `${navDistanceText(Math.max(0, turnNav.routeM))} done · ${navDistanceText(remainingRouteM)} to go${
     projectedS >= 45 ? ` · ~${fmtDur(projectedS)}` : ''}`;
   if (turnNav.arrived) return { headline: 'You have arrived', meta: routeMeta, kicker: 'Destination reached' };
+  if (turnNav.newRouteRequestId != null) return {
+    headline: 'Finding a new route from your current location…',
+    meta: 'Your current route stays active unless a replacement is found',
+    kicker: 'Re-routing',
+  };
+  if (turnNav.joinDecision === 'offered') return {
+    headline: 'Choose how to join the planned route',
+    meta: 'Route to its start, or get directions toward the nearest point',
+    kicker: 'Join route',
+  };
+  if (turnNav.joinDecision === 'loading') return {
+    headline: turnNav.connectorPurpose === 'rejoin'
+      ? 'Finding a route back to your current route…'
+      : 'Finding a route to the planned start…',
+    meta: 'Trying your safety rules and route preferences',
+    kicker: 'Join route',
+  };
   if (turnNav.offRoute) {
     const info = turnNav.offRouteInfo;
     return {
@@ -1795,13 +1845,29 @@ function navigationBannerInfo() {
     };
   }
   const next = turnNav.route?.instructions[turnNav.next];
-  if (turnNav.message) return { headline: turnNav.message, meta: routeMeta, kicker: 'Turn-by-turn navigation' };
-  if (!next) return { headline: 'Continue to your destination', meta: routeMeta, kicker: 'Turn-by-turn navigation' };
+  if (turnNav.message) return {
+    headline: turnNav.message,
+    meta: turnNav.followingConnector ? `${routeMeta} · Violet route joins the current route` : routeMeta,
+    kicker: turnNav.followingConnector
+      ? (turnNav.connectorPurpose === 'rejoin' ? 'Back to route' : 'To route start')
+      : 'Turn-by-turn navigation',
+  };
+  if (!next) return {
+    headline: turnNav.followingConnector
+      ? (turnNav.connectorPurpose === 'rejoin' ? 'Continue back to your current route' : 'Continue to the planned route start')
+      : 'Continue to your destination',
+    meta: routeMeta,
+    kicker: turnNav.followingConnector
+      ? (turnNav.connectorPurpose === 'rejoin' ? 'Back to route' : 'To route start')
+      : 'Turn-by-turn navigation',
+  };
   const remaining = Math.max(0, next.distanceM - turnNav.routeM);
   return {
     headline: `In ${navDistanceText(remaining)} · ${navInstructionText(next)}`,
-    meta: `${routeMeta} · GPS guidance active`,
-    kicker: 'Next maneuver',
+    meta: `${routeMeta} · ${turnNav.followingConnector ? 'Violet route joins the current route' : 'GPS guidance active'}`,
+    kicker: turnNav.followingConnector
+      ? (turnNav.connectorPurpose === 'rejoin' ? 'Back to route' : 'To route start')
+      : 'Next maneuver',
   };
 }
 
@@ -1811,6 +1877,7 @@ function navigationStatusText() {
 
 function navigationElevationProgressM() {
   if (!turnNav.active || !turnNav.route) return null;
+  if (turnNav.followingConnector) return 0;
   const plannedM = turnNav.routeM;
   const plannedTotalM = turnNav.route.totalM;
   const profileTotalM = Number(routing.last?.distM) || 0;
@@ -1880,8 +1947,13 @@ function refreshNavigationUI() {
   const kicker = document.getElementById('navBannerKicker');
   const bannerText = document.getElementById('navBannerText');
   const bannerMeta = document.getElementById('navBannerMeta');
+  const offRouteButton = document.getElementById('navOffRouteBtn');
   const info = navigationBannerInfo();
+  const showOffRouteAction = !!(turnNav.active && turnNav.offRoute
+    && turnNav.connectorRequestId == null && turnNav.newRouteRequestId == null);
   if (banner) banner.hidden = !turnNav.active;
+  if (banner) banner.classList.toggle('off-route-action-visible', showOffRouteAction);
+  if (offRouteButton) offRouteButton.hidden = !showOffRouteAction;
   if (kicker) kicker.textContent = info.kicker;
   if (bannerText) bannerText.textContent = info.headline;
   if (bannerMeta) bannerMeta.textContent = info.meta;
@@ -1949,8 +2021,8 @@ function projectNavigationSegment(point, a, b) {
   };
 }
 
-function nearestNavigationPoint(lon, lat, fullRoute = false) {
-  const route = turnNav.route;
+function nearestNavigationPoint(lon, lat, fullRoute = false, routeOverride = null) {
+  const route = routeOverride || turnNav.route;
   if (!route?.coords?.length) return null;
   const point = [lon, lat];
   if (route.coords.length === 1) {
@@ -1960,7 +2032,7 @@ function nearestNavigationPoint(lon, lat, fullRoute = false) {
   // While on route, a bounded forward/backward window prevents jumps where a
   // route crosses itself. Once off route, scan the complete line so the rider
   // can legitimately rejoin at any later or earlier point.
-  const hasPosition = !fullRoute && (turnNav.routeM > 0 || turnNav.nearest > 0);
+  const hasPosition = !routeOverride && !fullRoute && (turnNav.routeM > 0 || turnNav.nearest > 0);
   let lo = hasPosition ? Math.max(0, turnNav.nearest - 80) : 0;
   let hi = hasPosition ? Math.min(route.coords.length - 2, turnNav.nearest + 500) : route.coords.length - 2;
   let bestSegment = lo, bestProjection = null;
@@ -1992,6 +2064,299 @@ function nearestNavigationPoint(lon, lat, fullRoute = false) {
     offRouteM: bestProjection.distanceM,
     routeM: startM + bestProjection.fraction * Math.max(0, endM - startM),
   };
+}
+
+function setRouteStartDialogBusy(busy, status = '') {
+  const routeButton = document.getElementById('navRouteToStartBtn');
+  const nearestButton = document.getElementById('navUseNearestBtn');
+  const statusElement = document.getElementById('routeStartDialogStatus');
+  if (routeButton) routeButton.disabled = busy;
+  if (nearestButton) nearestButton.disabled = busy;
+  if (statusElement) statusElement.textContent = status;
+}
+
+function showRouteStartOffer(startDistanceM) {
+  const dialog = document.getElementById('routeStartDialog');
+  const text = document.getElementById('routeStartDialogText');
+  if (!dialog?.showModal || !text) return false;
+  text.textContent = `You are ${navDistanceText(startDistanceM)} from the planned route start. `
+    + 'Would you like a bike route there first? You can also continue from here and receive directions toward the nearest point on the planned route.';
+  setRouteStartDialogBusy(false);
+  if (!dialog.open) dialog.showModal();
+  return true;
+}
+
+function closeRouteStartDialog() {
+  const dialog = document.getElementById('routeStartDialog');
+  if (dialog?.open) dialog.close();
+  setRouteStartDialogBusy(false);
+}
+
+function drawNavigationConnector(coords = []) {
+  const source = map.getSource('route-connector');
+  if (!source) return;
+  source.setData({
+    type: 'Feature', properties: {},
+    geometry: { type: 'LineString', coordinates: coords.length >= 2 ? coords : [] },
+  });
+}
+
+function useNearestPlannedRoute(reason = '', purpose = turnNav.connectorPurpose) {
+  if (!turnNav.active || !turnNav.plannedRoute) return;
+  closeRouteStartDialog();
+  const offRouteDialog = document.getElementById('offRouteDialog');
+  if (offRouteDialog?.open) offRouteDialog.close();
+  turnNav.connectorRequestId = null;
+  turnNav.joinDecision = 'nearest';
+  turnNav.message = '';
+  turnNav.route = turnNav.plannedRoute;
+  turnNav.followingConnector = false;
+  turnNav.connectorRoute = null;
+  drawNavigationConnector([]);
+  const point = turnNav.lastPosition;
+  const nearest = point ? nearestNavigationPoint(point[0], point[1], true) : null;
+  if (nearest?.offRouteM > OFF_ROUTE_REJOIN_M) enterOffRoute(nearest);
+  if (reason) {
+    const target = purpose === 'rejoin' ? 'current route' : 'planned start';
+    setRouteStatus(`No route to the ${target} was found; using nearest-route guidance.`);
+    showRouteActionToast(`Could not route to the ${target}`, {
+      detail: `${reason} Guidance will point toward the nearest place on the planned route.`,
+      duration: 8000,
+    });
+  }
+  refreshNavigationUI();
+}
+
+function requestNavigationConnector(target, purpose = 'start', automatic = false) {
+  if (!turnNav.active || !turnNav.lastPosition || !turnNav.plannedRoute
+      || turnNav.connectorRequestId != null || turnNav.newRouteRequestId != null) return;
+  if (!routing.worker) {
+    useNearestPlannedRoute('The routing engine is unavailable.', purpose);
+    return;
+  }
+  const id = ++navigationConnectorRequestId;
+  turnNav.connectorRequestId = id;
+  turnNav.connectorPurpose = purpose;
+  turnNav.joinDecision = 'loading';
+  turnNav.message = '';
+  if (purpose === 'start') {
+    setRouteStartDialogBusy(true, 'Finding a bike route to the planned start…');
+  } else {
+    closeRouteStartDialog();
+    const offRouteDialog = document.getElementById('offRouteDialog');
+    if (offRouteDialog?.open) offRouteDialog.close();
+    showRouteActionToast(automatic ? 'Automatically routing back' : 'Finding a route back', {
+      busy: true,
+      detail: 'Trying your safety rules and route preferences…',
+      duration: 0,
+    });
+  }
+  refreshNavigationUI();
+  routing.worker.postMessage({
+    type: 'route-connector', id,
+    points: [turnNav.lastPosition, target],
+    rules: { ...rules, requireSafe: false },
+    prefDesignated: routing.prefDesig,
+    prefResidential: routing.prefResidential,
+    weights: { ...routingWeights },
+  });
+}
+
+function requestRouteStartConnector() {
+  if (turnNav.joinDecision !== 'offered' || !turnNav.plannedRoute) return;
+  requestNavigationConnector(turnNav.plannedRoute.coords[0], 'start');
+}
+
+function requestRouteBackToCurrentRoute({ automatic = false } = {}) {
+  if (!turnNav.active || !turnNav.lastPosition || !turnNav.plannedRoute) return;
+  const nearest = nearestNavigationPoint(
+    turnNav.lastPosition[0], turnNav.lastPosition[1], true, turnNav.plannedRoute);
+  if (!nearest) {
+    showRouteActionToast('Could not locate the current route', { duration: 5000 });
+    return;
+  }
+  turnNav.autoRerouteAttempted = true;
+  requestNavigationConnector(nearest.point, 'rejoin', automatic);
+}
+
+function activateNavigationConnector(result) {
+  if (!turnNav.active || result.id !== turnNav.connectorRequestId) return;
+  if (!result.ok || !Array.isArray(result.coords) || result.coords.length < 2) {
+    useNearestPlannedRoute(result.reason || 'No connected bike route was available.', turnNav.connectorPurpose);
+    return;
+  }
+  const purpose = turnNav.connectorPurpose;
+  closeRouteStartDialog();
+  const offRouteDialog = document.getElementById('offRouteDialog');
+  if (offRouteDialog?.open) offRouteDialog.close();
+  turnNav.connectorRequestId = null;
+  turnNav.connectorRoute = buildTurnInstructions(result);
+  turnNav.route = turnNav.connectorRoute;
+  turnNav.followingConnector = true;
+  turnNav.joinDecision = 'connector';
+  turnNav.next = 0;
+  turnNav.nearest = 0;
+  turnNav.nearestSegment = 0;
+  turnNav.nearestPoint = null;
+  turnNav.routeM = 0;
+  turnNav.offRoute = false;
+  turnNav.offRouteSince = 0;
+  turnNav.offRouteInfo = null;
+  turnNav.offRouteApproachSpoken = false;
+  turnNav.offRouteApproachText = '';
+  turnNav.destinationWasNear = false;
+  turnNav.lastDestinationM = Infinity;
+  turnNav.destinationAwayFixes = 0;
+  turnNav.message = purpose === 'rejoin'
+    ? 'Follow the violet route back to your current route'
+    : 'Follow the violet route to the planned start';
+  drawNavigationConnector(result.coords);
+  updateNavigationProgress();
+  showRouteActionToast(purpose === 'rejoin' ? 'Routing back to the current route' : 'Routing to the planned start', {
+    detail: 'Follow the violet line; your planned route remains unchanged.',
+    duration: 5000,
+  });
+  speakNavigation(purpose === 'rejoin'
+    ? 'Follow the violet route back to your current route.'
+    : 'Follow the violet route to the planned start.');
+  refreshNavigationUI();
+}
+
+function finishNavigationConnector(point, previousFix) {
+  if (!turnNav.plannedRoute) return;
+  const purpose = turnNav.connectorPurpose;
+  turnNav.route = turnNav.plannedRoute;
+  turnNav.connectorRoute = null;
+  turnNav.followingConnector = false;
+  turnNav.joinDecision = 'nearest';
+  turnNav.joinFix = null;
+  turnNav.nearest = 0;
+  turnNav.nearestSegment = 0;
+  turnNav.nearestPoint = null;
+  turnNav.routeM = 0;
+  turnNav.destinationWasNear = false;
+  turnNav.lastDestinationM = Infinity;
+  turnNav.destinationAwayFixes = 0;
+  drawNavigationConnector([]);
+  const nearest = nearestNavigationPoint(point[0], point[1], true);
+  if (nearest && nearest.offRouteM <= OFF_ROUTE_REJOIN_M) {
+    turnNav.offRoute = true;
+    rejoinRoute(nearest, previousFix,
+      purpose === 'rejoin' ? 'Current route reached' : 'Route start reached');
+  } else if (nearest) {
+    enterOffRoute(nearest);
+  }
+  showRouteActionToast(purpose === 'rejoin' ? 'Current route reached' : 'Planned route reached', { duration: 3500 });
+  updateNavigationProgress();
+  refreshNavigationUI();
+}
+
+function openOffRouteDialog() {
+  if (!turnNav.active || !turnNav.offRoute) return;
+  const dialog = document.getElementById('offRouteDialog');
+  const text = document.getElementById('offRouteDialogText');
+  if (!dialog?.showModal || !text) return;
+  const info = turnNav.offRouteInfo;
+  text.textContent = info
+    ? `The nearest point on your current route is ${navDistanceText(info.distM)} ${info.dir}${info.street ? ` on ${info.street}` : ''}. Choose how navigation should continue.`
+    : 'Choose how navigation should continue.';
+  if (!dialog.open) dialog.showModal();
+}
+
+function requestNewRouteFromCurrentLocation() {
+  if (!turnNav.active || !turnNav.lastPosition || !routing.end
+      || turnNav.newRouteRequestId != null || turnNav.connectorRequestId != null) return;
+  const offRouteDialog = document.getElementById('offRouteDialog');
+  if (offRouteDialog?.open) offRouteDialog.close();
+  if (!routing.worker) {
+    showRouteActionToast('Could not calculate a new route', {
+      detail: 'The routing engine is unavailable. Your current route is unchanged.', duration: 7000,
+    });
+    return;
+  }
+  const selected = routing.last?.optimization || {};
+  const id = ++navigationNewRouteRequestId;
+  turnNav.newRouteRequestId = id;
+  turnNav.newRouteStart = [...turnNav.lastPosition];
+  showRouteActionToast('Finding a new route', {
+    busy: true, detail: 'Using your current location, safety rules, and route preferences…', duration: 0,
+  });
+  refreshNavigationUI();
+  routing.worker.postMessage({
+    type: 'navigation-new-route', id,
+    points: [turnNav.newRouteStart, routing.end],
+    rules: { ...rules }, mode: selected.mode || routing.mode,
+    profileId: selected.profileId || routing.profileId,
+    profileLabel: selected.label || 'Route A',
+    prefDesignated: routing.prefDesig,
+    prefResidential: routing.prefResidential,
+    weights: { ...routingWeights },
+  });
+}
+
+function activateNewRouteFromCurrentLocation(result) {
+  if (!turnNav.active || result.id !== turnNav.newRouteRequestId) return;
+  const start = turnNav.newRouteStart;
+  turnNav.newRouteRequestId = null;
+  turnNav.newRouteStart = null;
+  if (!result.ok || !Array.isArray(result.coords) || result.coords.length < 2) {
+    showRouteActionToast('Could not calculate a new route', {
+      detail: `${result.reason || 'No connected route was available.'} Your current route is unchanged.`,
+      duration: 8000,
+    });
+    refreshNavigationUI();
+    return;
+  }
+  routing.start = start;
+  routing.startName = 'Current location';
+  routing.startMarker?.setLngLat(start);
+  for (const via of routing.vias) via.marker.remove();
+  routing.vias = [];
+  routing.options = [result];
+  turnNav.followingConnector = false;
+  turnNav.connectorRoute = null;
+  turnNav.connectorRequestId = null;
+  turnNav.connectorPurpose = 'start';
+  turnNav.joinDecision = 'nearest';
+  turnNav.offRoute = false;
+  turnNav.offRouteSince = 0;
+  turnNav.autoRerouteAttempted = false;
+  drawNavigationConnector([]);
+  activateRouteOption(result);
+  turnNav.plannedRoute = buildTurnInstructions(result);
+  turnNav.route = turnNav.plannedRoute;
+  turnNav.next = 0;
+  turnNav.nearest = 0;
+  turnNav.nearestSegment = 0;
+  turnNav.nearestPoint = null;
+  turnNav.routeM = 0;
+  turnNav.destinationWasNear = false;
+  turnNav.lastDestinationM = Infinity;
+  turnNav.destinationAwayFixes = 0;
+  const nearest = nearestNavigationPoint(start[0], start[1], true);
+  if (nearest) {
+    turnNav.nearest = nearest.index;
+    turnNav.nearestSegment = nearest.segmentIndex;
+    turnNav.nearestPoint = nearest.point;
+    turnNav.routeM = nearest.routeM;
+  }
+  updateArmButtons();
+  updateNavigationProgress();
+  saveStateSoon();
+  showRouteActionToast('New route ready', {
+    detail: 'Navigation now starts from your current location.', duration: 5000,
+  });
+  speakNavigation('New route ready. Continue to your destination.');
+  refreshNavigationUI();
+}
+
+function maybeAutomaticallyReroute() {
+  if (!navVoice.autoReroute || !turnNav.active || !turnNav.offRoute
+      || turnNav.followingConnector || turnNav.autoRerouteAttempted
+      || turnNav.connectorRequestId != null || turnNav.newRouteRequestId != null
+      || !turnNav.offRouteSince
+      || Date.now() - turnNav.offRouteSince < AUTO_REROUTE_DELAY_MS) return;
+  requestRouteBackToCurrentRoute({ automatic: true });
 }
 
 function updateNavigationCamera(point) {
@@ -2111,12 +2476,36 @@ function updateTurnNavigation(pos) {
   // Arrival is checked before off-route recovery so riding through the
   // destination cannot trigger guidance back to it.
   if (navigationHasArrived([longitude, latitude], nearest)) {
+    if (turnNav.followingConnector) {
+      finishNavigationConnector([longitude, latitude], previousFix);
+      return;
+    }
     finishTurnNavigation();
     return;
   }
 
-  // Starting away from the selected route is the same as leaving it later:
-  // use normal rejoin guidance without calculating or splicing a lead-in.
+  // On the first fix, offer a temporary route to the original start only when
+  // the rider is both at least 0.1 mi from that start AND off the planned route.
+  // Someone already on the route—at any point along it—starts right there.
+  if (turnNav.joinDecision === 'pending') {
+    const startDistanceM = navDistanceM([longitude, latitude], turnNav.plannedRoute.coords[0]);
+    if (shouldOfferRouteStartConnector(startDistanceM, nearest.offRouteM)) {
+      turnNav.joinDecision = 'offered';
+      turnNav.joinFix = { point: [longitude, latitude], nearest, startDistanceM };
+      turnNav.message = '';
+      if (!showRouteStartOffer(startDistanceM)) useNearestPlannedRoute();
+      refreshNavigationUI();
+      return;
+    }
+    turnNav.joinDecision = 'nearest';
+  } else if (turnNav.joinDecision === 'offered' || turnNav.joinDecision === 'loading') {
+    const startDistanceM = navDistanceM([longitude, latitude], turnNav.plannedRoute.coords[0]);
+    turnNav.joinFix = { point: [longitude, latitude], nearest, startDistanceM };
+    return;
+  }
+
+  // Declining the connector—or leaving either route later—uses ordinary
+  // nearest-point guidance, including compass direction and road/path name.
   if (!turnNav.offRoute && nearest.offRouteM > OFF_ROUTE_ENTER_M) {
     enterOffRoute(nearest);
     refreshNavigationUI();
@@ -2125,6 +2514,7 @@ function updateTurnNavigation(pos) {
   if (turnNav.offRoute) {
     if (nearest.offRouteM > OFF_ROUTE_REJOIN_M) {
       updateOffRouteGuidance(nearest, previousFix);
+      maybeAutomaticallyReroute();
       refreshNavigationUI();
       return;
     }
@@ -2221,7 +2611,16 @@ function startTurnNavigation() {
     setStatus('Set a route and allow location access to start navigation.', true);
     return;
   }
-  turnNav.route = buildTurnInstructions(routing.last);
+  turnNav.plannedRoute = buildTurnInstructions(routing.last);
+  turnNav.route = turnNav.plannedRoute;
+  turnNav.connectorRoute = null;
+  turnNav.followingConnector = false;
+  turnNav.joinDecision = 'pending';
+  turnNav.joinFix = null;
+  turnNav.connectorRequestId = null;
+  turnNav.connectorPurpose = 'start';
+  turnNav.newRouteRequestId = null;
+  turnNav.newRouteStart = null;
   turnNav.active = true;
   turnNav.next = 0;
   turnNav.nearest = 0;
@@ -2234,6 +2633,8 @@ function startTurnNavigation() {
   turnNav.offRouteApproachSpoken = false;
   turnNav.offRouteApproachText = '';
   turnNav.offRouteSpokenAt = 0;
+  turnNav.offRouteSince = 0;
+  turnNav.autoRerouteAttempted = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
   turnNav.destinationWasNear = false;
@@ -2242,12 +2643,13 @@ function startTurnNavigation() {
   turnNav.initialCameraAt = 0;
   turnNav.lastCameraAt = 0;
   turnNav.lastVoiceAt = Date.now();
+  drawNavigationConnector([]);
   updateNavigationProgress();
   turnNav.message = 'Getting your location';
   settingsPaneSelect?.('voice');
   if (mobileNavMedia.matches) setPanelOpen(false);
   refreshNavigationUI();
-  speakNavigation('Navigation started. Follow the route on the map.');
+  speakNavigation('Navigation started. Getting your location.');
   turnNav.watchId = navigator.geolocation.watchPosition(
     updateTurnNavigation,
     handleTurnNavigationLocationError,
@@ -2267,11 +2669,22 @@ function stopTurnNavigation(announce = true) {
   if (turnNav.marker) { turnNav.marker.remove(); turnNav.marker = null; }
   turnNav.active = false;
   turnNav.route = null;
+  turnNav.plannedRoute = null;
+  turnNav.connectorRoute = null;
+  turnNav.followingConnector = false;
+  turnNav.joinDecision = 'pending';
+  turnNav.joinFix = null;
+  turnNav.connectorRequestId = null;
+  turnNav.connectorPurpose = 'start';
+  turnNav.newRouteRequestId = null;
+  turnNav.newRouteStart = null;
   turnNav.message = '';
   turnNav.offRoute = false;
   turnNav.offRouteInfo = null;
   turnNav.offRouteApproachSpoken = false;
   turnNav.offRouteApproachText = '';
+  turnNav.offRouteSince = 0;
+  turnNav.autoRerouteAttempted = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
   turnNav.nearestSegment = 0;
@@ -2281,6 +2694,10 @@ function stopTurnNavigation(announce = true) {
   turnNav.destinationAwayFixes = 0;
   turnNav.initialCameraAt = 0;
   turnNav.lastCameraAt = 0;
+  closeRouteStartDialog();
+  const offRouteDialog = document.getElementById('offRouteDialog');
+  if (offRouteDialog?.open) offRouteDialog.close();
+  drawNavigationConnector([]);
   updateNavigationProgress();
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   if (announce) speakNavigation('Navigation stopped.');
@@ -2393,7 +2810,11 @@ function refreshedRouteSelection(options) {
 
 function onRouterMessage(ev) {
   const m = ev.data;
-  if (m.type === 'progress') {
+  if (m.type === 'route-connector') {
+    activateNavigationConnector(m);
+  } else if (m.type === 'navigation-new-route') {
+    activateNewRouteFromCurrentLocation(m);
+  } else if (m.type === 'progress') {
     if (m.id != null && m.id !== routing.reqId) return;
     const title = m.phase === 'engine' ? 'Loading routing engine'
       : m.phase === 'reroute' ? 'Updating route' : 'Calculating route options';
@@ -2685,7 +3106,24 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-selection', { type: 'geojson', data: emptyLine });
+  map.addSource('route-connector', { type: 'geojson', data: {
+    type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] },
+  } });
   map.addSource('route-progress', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
+  // The optional route-to-start remains a separate violet line. It sits under
+  // the planned route so their meeting point reads as a clean handoff rather
+  // than changing the planned route's safety colors.
+  map.addLayer({
+    id: 'route-connector-casing', type: 'line', source: 'route-connector',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': 10, 'line-opacity': 0.96 },
+  });
+  map.addLayer({
+    id: 'route-connector', type: 'line', source: 'route-connector',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#7b2cbf', 'line-width': 6, 'line-opacity': 1,
+             'line-dasharray': [2.2, 1.15] },
+  });
   map.addLayer({
     id: 'route-shadow', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -3349,15 +3787,18 @@ function activateRouteOption(option, updateNavigation = false) {
     routing.mode = option.optimization.mode || routing.mode;
   }
   if (updateNavigation && turnNav.active) {
-    turnNav.route = buildTurnInstructions(option);
-    turnNav.next = 0;
-    turnNav.nearest = 0;
-    turnNav.routeM = 0;
-    turnNav.arrived = false;
-    turnNav.offRoute = false;
-    turnNav.offRouteInfo = null;
-    turnNav.offRouteApproachSpoken = false;
-    turnNav.message = 'Route updated';
+    turnNav.plannedRoute = buildTurnInstructions(option);
+    if (!turnNav.followingConnector) {
+      turnNav.route = turnNav.plannedRoute;
+      turnNav.next = 0;
+      turnNav.nearest = 0;
+      turnNav.routeM = 0;
+      turnNav.arrived = false;
+      turnNav.offRoute = false;
+      turnNav.offRouteInfo = null;
+      turnNav.offRouteApproachSpoken = false;
+      turnNav.message = 'Route updated';
+    }
   }
   renderRouteOptionControls();
   renderRouteCard(option);
@@ -3402,6 +3843,17 @@ function buildRoutingPanel() {
     else startTurnNavigation();
   });
   document.getElementById('navDetailsBtn').addEventListener('click', () => openRouteDetails());
+  document.getElementById('navUseNearestBtn').addEventListener('click', () => useNearestPlannedRoute());
+  document.getElementById('navRouteToStartBtn').addEventListener('click', requestRouteStartConnector);
+  document.getElementById('routeStartDialog').addEventListener('cancel', (event) => {
+    event.preventDefault();
+    useNearestPlannedRoute();
+  });
+  document.getElementById('navOffRouteBtn').addEventListener('click', openOffRouteDialog);
+  document.getElementById('navNewRouteBtn').addEventListener('click', requestNewRouteFromCurrentLocation);
+  document.getElementById('navRouteBackBtn').addEventListener('click', () => requestRouteBackToCurrentRoute());
+  document.getElementById('navKeepRouteBtn').addEventListener('click', () =>
+    document.getElementById('offRouteDialog').close());
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
   document.getElementById('confirmClearRoute').addEventListener('click', () => {
     document.getElementById('clearRouteDialog').close();
@@ -4788,6 +5240,18 @@ function buildVoicePanel() {
     saveStateSoon();
   });
   host.appendChild(headings);
+
+  const automatic = document.createElement('div');
+  automatic.className = 'check-rule rule-card';
+  automatic.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-autoReroute"
+    ${navVoice.autoReroute ? 'checked' : ''}><span>Automatic rerouting after 60 seconds off route</span></label>
+    <p class="setting-note">Finds a temporary violet route back to the nearest point on your current route.</p>`;
+  automatic.querySelector('input').addEventListener('change', (e) => {
+    navVoice.autoReroute = e.target.checked;
+    saveStateSoon();
+    if (navVoice.autoReroute) maybeAutomaticallyReroute();
+  });
+  host.appendChild(automatic);
 
   const choices = [[0, 'Never'], [1, 'Every minute'], [2, 'Every 2 minutes'],
     [3, 'Every 3 minutes'], [5, 'Every 5 minutes'], [10, 'Every 10 minutes'],
