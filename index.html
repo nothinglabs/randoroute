@@ -26,18 +26,21 @@
     <div id="routeBar">
       <div class="route-endpoints" role="group" aria-label="Route endpoints">
         <button id="rb-start" class="route-endpoint route-endpoint-start" type="button" title="Set start">
-          <span class="endpoint-marker" aria-hidden="true"></span>
+          <span class="route-endpoint-marker" aria-hidden="true"></span>
           <span class="endpoint-copy"><span class="endpoint-label">From</span><strong data-endpoint-value>Choose start</strong></span>
         </button>
         <button id="rb-end" class="route-endpoint route-endpoint-end" type="button" title="Set destination">
-          <span class="endpoint-marker" aria-hidden="true"></span>
+          <span class="route-endpoint-marker" aria-hidden="true"></span>
           <span class="endpoint-copy"><span class="endpoint-label">To</span><strong data-endpoint-value>Choose destination</strong></span>
         </button>
       </div>
       <button id="rb-reverse" title="Reverse route" aria-label="Reverse route" disabled>⇄</button>
-      <button id="rb-via" title="Add a stop" aria-label="Add a stop">+</button>
-      <button id="rb-via-remove" title="Remove last stop" aria-label="Remove last stop">−</button>
-      <button id="rb-clear" title="Clear route" aria-label="Clear route">✕</button>
+      <button id="rb-more" type="button" title="More route actions" aria-label="More route actions" aria-expanded="false" aria-controls="routeActionsMenu">⋮</button>
+      <div id="routeActionsMenu" class="route-actions-menu" role="menu" hidden>
+        <button id="rb-via" type="button" role="menuitem" title="Add a stop"><span aria-hidden="true">＋</span><strong>Add a stop</strong></button>
+        <button id="rb-via-remove" type="button" role="menuitem" title="Remove last stop"><span aria-hidden="true">−</span><strong>Remove last stop</strong></button>
+        <button id="rb-clear" type="button" role="menuitem" title="Clear route"><span aria-hidden="true">✕</span><strong>Clear route</strong></button>
+      </div>
       <span id="rb-status"></span>
     </div>
   </div>
@@ -113,6 +116,15 @@
 
   <div id="placePicker" class="place-picker" role="dialog" aria-modal="false" aria-labelledby="placePickerTitle" hidden>
     <div class="picker-head"><strong id="placePickerTitle">Set location — tap map or search</strong><button id="placePickerClose" aria-label="Close location picker">✕</button></div>
+    <div id="pickerEndpointContext" class="picker-endpoints" role="group" aria-label="Choose route endpoint">
+      <button id="pickerStart" class="picker-endpoint picker-endpoint-start" type="button">
+        <span class="picker-endpoint-label">From</span><strong data-picker-endpoint-value="start">Choose start</strong>
+      </button>
+      <button id="pickerEnd" class="picker-endpoint picker-endpoint-end" type="button">
+        <span class="picker-endpoint-label">To</span><strong data-picker-endpoint-value="end">Choose destination</strong>
+      </button>
+    </div>
+    <p id="placePickerHint" class="picker-hint">Tap the map or search below.</p>
     <div class="picker-search-row">
       <input id="placeSearch" type="search" placeholder="Search places…" aria-label="Search for a place" autocomplete="off">
       <button id="onlinePlaceSearch" aria-label="Search online for places" title="Search online for places">⌕</button>

@@ -376,6 +376,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   max-width: calc(100vw - 16px);
 }
 #routeBar {
+  position: relative;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -384,7 +385,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   border-radius: 18px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   padding: 6px 10px 6px 6px;
-  max-width: min(82vw, 540px);
+  max-width: min(86vw, 680px);
 }
 #routeBar button {
   width: 44px; height: 44px; flex: none;
@@ -396,9 +397,9 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .route-endpoints {
   position: relative;
-  flex: 0 1 178px;
-  width: 178px;
-  min-width: 142px;
+  flex: 0 1 280px;
+  width: 280px;
+  min-width: 210px;
   overflow: hidden;
   border: 1px solid #cbd6de;
   border-radius: 12px;
@@ -431,7 +432,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   font: inherit;
 }
 #routeBar .route-endpoint + .route-endpoint { border-top: 1px solid #e2e8ec; }
-.endpoint-marker {
+.route-endpoint-marker {
   flex: 0 0 11px;
   width: 11px;
   height: 11px;
@@ -439,7 +440,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   border-radius: 50%;
   background: #fff;
 }
-.route-endpoint-end .endpoint-marker {
+.route-endpoint-end .route-endpoint-marker {
   border: 2px solid #d55e00;
   border-radius: 2px;
 }
@@ -468,17 +469,46 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 #routeBar .route-endpoint.active .endpoint-label,
 #routeBar .route-endpoint.active .endpoint-copy strong { color: #075993; }
-#routeBar #rb-via.active { background: #0a66c2; color: #fff; }
 #routeBar button:disabled { opacity: .38; cursor: default; }
-#routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 42px; }
+#routeBar #rb-reverse, #routeBar #rb-more { width: 42px; }
 #routeBar #rb-reverse { font-size: 17px; }
+#routeBar #rb-more { font-size: 20px; line-height: 1; }
+.route-actions-menu {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 7px);
+  right: 0;
+  width: 188px;
+  padding: 5px;
+  border: 1px solid #d7e0e6;
+  border-radius: 12px;
+  background: rgba(255,255,255,.99);
+  box-shadow: 0 5px 18px rgba(0,0,0,.22);
+}
+.route-actions-menu[hidden] { display: none; }
+#routeBar .route-actions-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: #263944;
+  text-align: left;
+}
+#routeBar .route-actions-menu button:hover:not(:disabled),
+#routeBar .route-actions-menu button:focus-visible { background: #edf5fa; }
+#routeBar .route-actions-menu button span { width: 18px; color: #45616f; text-align: center; font-size: 17px; }
+#routeBar .route-actions-menu button strong { font: 700 12px system-ui; }
+#routeBar .route-actions-menu #rb-clear { color: #9b2836; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 .place-results .place-choice {
   display: inline-block; margin: 4px 4px 8px 12px; padding: 7px 11px;
   border: 1px solid #d5d5d5; border-radius: 8px; background: #fff;
   font: 600 12px system-ui; color: #0a66c2; cursor: pointer;
 }
-#routeBar #rb-clear { font-weight: 400; }
 #rb-status {
   font: 600 12px system-ui; color: #222;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -486,6 +516,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .route-action-toast { position: absolute; z-index: 19; top: calc(env(safe-area-inset-top) + 72px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px); padding: 8px 12px; border: 1px solid #9fc8df; border-radius: 999px; background: rgba(247,252,255,.98); box-shadow: 0 3px 14px rgba(0,0,0,.2); color: #22485e; pointer-events: none; }
 .route-action-toast[hidden] { display: none; }
 .route-action-toast.has-detail { top: max(calc(env(safe-area-inset-top) + 120px), 24vh); align-items: flex-start; width: min(420px, calc(100vw - 24px)); padding: 10px 13px; border-radius: 14px; }
+.place-picker-open .route-action-toast.has-detail { top: max(calc(env(safe-area-inset-top) + 330px), 55vh); }
 .route-action-copy { display: grid; min-width: 0; gap: 2px; }
 #routeActionText { font: 750 12px/1.25 system-ui; }
 #routeActionDetail { color: #527084; font: 600 10.5px/1.3 system-ui; }
@@ -554,12 +585,34 @@ body.navigation-active #routeBar { display: none; }
 
 .place-picker {
   position: absolute; z-index: 18; top: calc(env(safe-area-inset-top) + 84px); left: 50%;
-  transform: translateX(-50%); width: min(92vw, 340px); padding: 8px;
+  transform: translateX(-50%); width: min(94vw, 440px); padding: 10px;
   border: 1px solid #e1e5e9; border-radius: 12px; background: rgba(255,255,255,.98);
   box-shadow: 0 5px 18px rgba(0,0,0,.2); color: #222;
 }
-.picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 5px; font-size: 12px; }
+.picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; font-size: 12px; }
 #placePickerClose { flex: 0 0 34px; width: 34px; height: 34px; padding: 0; border: none; border-radius: 9px; background: #eef1f4; color: #555; font: 700 16px/1 system-ui; cursor: pointer; }
+.picker-endpoints { overflow: hidden; border: 1px solid #cbd6de; border-radius: 10px; background: #fff; }
+.picker-endpoints[hidden] { display: none; }
+.picker-endpoint {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  padding: 5px 10px;
+  border: 0;
+  background: #fff;
+  color: #25343d;
+  cursor: pointer;
+  text-align: left;
+}
+.picker-endpoint + .picker-endpoint { border-top: 1px solid #e2e8ec; }
+.picker-endpoint-label { color: #667985; font: 700 9px system-ui; letter-spacing: .04em; text-transform: uppercase; }
+.picker-endpoint strong { overflow: hidden; font: 700 12px system-ui; text-overflow: ellipsis; white-space: nowrap; }
+.picker-endpoint.active { background: #e8f3fb; box-shadow: inset 3px 0 #0a66c2; }
+.picker-endpoint.active .picker-endpoint-label,
+.picker-endpoint.active strong { color: #075993; }
+.picker-hint { margin: 7px 2px 6px; color: #667985; font: 600 10.5px/1.25 system-ui; }
 .picker-search-row { display: flex; gap: 5px; }
 .picker-search-row #placeSearch { flex: 1; min-width: 0; }
 #onlinePlaceSearch, #useLoc { border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; color: #0a66c2; cursor: pointer; }
@@ -577,13 +630,14 @@ body.navigation-active #routeBar { display: none; }
   .nav-start { min-height: 46px; padding: 0 8px; font-size: 11px; }
   #routeBar { gap: 3px; padding: 5px 6px 5px 5px; max-width: calc(100vw - 12px); }
   #routeBar button { width: 34px; height: 34px; }
-  .route-endpoints { flex-basis: 132px; width: 132px; min-width: 112px; }
+  .route-endpoints { flex-basis: 236px; width: 236px; min-width: 184px; }
   #routeBar .route-endpoint { height: 27px; gap: 7px; padding: 2px 6px 2px 8px; }
   .route-endpoints::before { top: 19px; bottom: 19px; left: 13px; }
-  .endpoint-marker { flex-basis: 10px; width: 10px; height: 10px; }
+  .route-endpoint-marker { flex-basis: 10px; width: 10px; height: 10px; }
   .endpoint-copy strong { font-size: 10px; }
   .endpoint-label { font-size: 7.5px; }
-  #routeBar #rb-reverse, #routeBar #rb-via, #routeBar #rb-via-remove { width: 33px; }
+  #routeBar #rb-reverse, #routeBar #rb-more { width: 33px; }
+  .route-actions-menu { right: -1px; width: 184px; }
   .route-action-toast { top: calc(env(safe-area-inset-top) + 78px); }
   .route-action-toast.has-detail { top: max(calc(env(safe-area-inset-top) + 120px), 24vh); }
   #mobileNavDock { display: block; position: absolute; z-index: 15; left: 66px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
