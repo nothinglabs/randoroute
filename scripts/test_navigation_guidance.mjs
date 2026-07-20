@@ -8,12 +8,12 @@ const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 assert.match(html, /id="navOffRouteBtn"[^>]*>Off-route: Tap to Re-route</,
   'off-route navigation should expose the full-width reroute action');
-assert.match(html, /class="nav-banner-copy"[\s\S]*?id="navDetailsBtn"[\s\S]*?id="navOffRouteBtn"/,
+assert.match(html, /class="nav-banner-main"[\s\S]*?class="nav-banner-copy"[\s\S]*?id="navDetailsBtn"[\s\S]*?id="navOffRouteBtn"/,
   'the off-route action should sit below the preserved navigation information');
 assert.match(html, /New Route From Current Location[\s\S]*?Route back to current route[\s\S]*?Keep current route/,
   'off-route recovery dialog should present all three explicit choices');
-assert.match(css, /\.nav-banner\.off-route-action-visible\s*\{[^}]*display:\s*grid[\s\S]*?\.nav-off-route-action\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/,
-  'off-route action should span a bottom row across the navigation banner');
+assert.match(css, /\.nav-banner\.off-route-action-visible\s*\{[^}]*flex-direction:\s*column[\s\S]*?\.nav-off-route-action\s*\{[^}]*width:\s*100%/,
+  'off-route action should span a dedicated bottom row across the navigation banner');
 assert.doesNotMatch(css, /off-route-action-visible[^}]*[\s\S]{0,100}nav-banner-copy[^}]*display:\s*none/,
   'off-route state must preserve the maneuver information');
 assert.match(app, /ROUTE_START_OFFER_M\s*=\s*160\.934/,

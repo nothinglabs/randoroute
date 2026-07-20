@@ -32,6 +32,46 @@ assert.equal(onlineNameContext.onlinePlaceResultName({
 assert.equal(onlineNameContext.onlinePlaceResultName({
   name: 'Everett', display_name: 'Everett, Snohomish County', address: { city: 'Everett' },
 }), 'Everett, Washington', 'a city result should not repeat its city and should still show the state');
+
+const computeStart = app.indexOf('function computeRoute()');
+const computeEnd = app.indexOf('// Pseudo-source for tapping the route line itself', computeStart);
+assert.ok(computeStart >= 0 && computeEnd > computeStart, 'route-computation helper source was not found');
+const readinessCalls = [];
+const readinessContext = vm.createContext({
+  routing: { start: [-122.35, 47.67], end: [-122.30, 47.90], ready: false, pendingRoute: false },
+  setRouteOptionsLoading(value) { readinessCalls.push(['loading', value]); },
+  ensureRouter() { readinessCalls.push(['ensure']); },
+  showRouterProgress(detail, title) { readinessCalls.push(['progress', detail, title]); },
+});
+vm.runInContext(`${app.slice(computeStart, computeEnd)}\nthis.computeRoute = computeRoute;`, readinessContext);
+readinessContext.computeRoute();
+assert.equal(readinessContext.routing.pendingRoute, true,
+  'a complete route should stay queued until the routing graph is ready');
+assert.deepEqual(readinessCalls.map((call) => call[0]), ['loading', 'ensure', 'progress'],
+  'a queued route should show loading, prepare the graph, and explain that it will start automatically');
+
+const failureStart = app.indexOf('function handleRouterFailure');
+const failureEnd = app.indexOf('async function ensureRouter', failureStart);
+assert.ok(failureStart >= 0 && failureEnd > failureStart, 'router-failure helper source was not found');
+const preloadRouting = {
+  start: null, end: null, pendingRoute: false, routeRequestActive: false,
+  reqId: 0, ready: false, loading: true, worker: null, options: [], last: { ok: true },
+};
+const failureCalls = [];
+const failureContext = vm.createContext({
+  routing: preloadRouting,
+  map: { isStyleLoaded: () => true },
+  showRouteActionToast() {}, setRouteOptionsLoading() {}, setRouteStatus() {},
+  renderRouteOptionControls() { failureCalls.push('options'); },
+  stopTurnNavigation() { failureCalls.push('navigation'); },
+  clearStoredRouteDetails() { failureCalls.push('details'); },
+  renderRouteCard() { failureCalls.push('card'); }, drawRoute() { failureCalls.push('draw'); },
+});
+vm.runInContext(`${app.slice(failureStart, failureEnd)}\nthis.handleRouterFailure = handleRouterFailure;`, failureContext);
+failureContext.handleRouterFailure('preload interrupted');
+assert.equal(preloadRouting.last.ok, true,
+  'a background graph preload failure must not replace the current route with a failure');
+assert.deepEqual(failureCalls, [], 'a background preload failure must not tear down route UI or navigation');
 const start = app.indexOf('function advanceToMissingEndpoint');
 const end = app.indexOf('function enableLongPressEndpointMove');
 assert.ok(start >= 0 && end > start, 'endpoint-selection helper source was not found');

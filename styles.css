@@ -559,14 +559,16 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   box-shadow: 0 3px 14px rgba(0, 0, 0, .2); color: #174f44;
 }
 .nav-banner[hidden] { display: none; }
+#navBanner .nav-banner-main { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; width: 100%; }
 #navBanner .nav-banner-copy { flex: 1; min-width: 0; display: grid; gap: 1px; }
 #navBannerKicker { color: #528075; font: 750 9.5px/1.1 system-ui; letter-spacing: .04em; text-transform: uppercase; }
 #navBannerText { min-width: 0; font: 750 13px/1.2 system-ui; }
 #navBannerMeta { min-width: 0; color: #4f6f68; font: 600 10.5px/1.25 system-ui; }
 .nav-banner button { flex: none; min-height: 29px; border: 1px solid #b8c9d2; border-radius: 8px; padding: 4px 7px; background: #fff; color: #235064; font: 700 11px system-ui; cursor: pointer; }
 .nav-banner button[data-nav-action="reroute"] { min-height: 38px; border-color: #bb7b00; background: #f2a900; color: #2e2400; }
-.nav-banner.off-route-action-visible { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; min-height: 88px; padding: 7px 7px 0 12px; overflow: hidden; border-color: #b42318; background: rgba(255,248,247,.98); }
-.nav-banner .nav-off-route-action { grid-column: 1 / -1; width: calc(100% + 19px); min-height: 34px; margin-left: -12px; border: none; border-radius: 0; padding: 7px 14px; background: #b42318; color: #fff; font: 800 13px/1.2 system-ui; letter-spacing: .01em; }
+.nav-banner.off-route-action-visible { flex-direction: column; align-items: stretch; gap: 6px; min-height: 88px; padding: 7px 0 0; overflow: hidden; border-color: #b42318; background: rgba(255,248,247,.98); }
+#navBanner.off-route-action-visible .nav-banner-main { flex: none; padding: 0 7px 0 12px; }
+.nav-banner .nav-off-route-action { flex: none; width: 100%; min-height: 34px; margin: 0; border: none; border-radius: 0 0 11px 11px; padding: 7px 14px; background: #b42318; color: #fff; font: 800 13px/1.2 system-ui; letter-spacing: .01em; }
 .nav-banner .nav-off-route-action[hidden] { display: none; }
 .navigation-active .update-prompt { bottom: calc(128px + env(safe-area-inset-bottom)); }
 
