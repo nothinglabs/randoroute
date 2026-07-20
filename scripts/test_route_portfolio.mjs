@@ -28,7 +28,10 @@ const scenarios = [
     expectFullyMatching: true,
     expectAny: {
       maxDistanceMi: 50, maxFailM: 600, ferries: twoFerries,
-      landMinMi: [0, 32, 0], landMaxMi: [1, 38, 1],
+      // Whidbey middle crossing floor is 31 (not 32): the ferry-access patch
+      // makes terminal approaches two-way for bikes, shaving ~0.3 mi off the
+      // Clinton/Coupeville approach without changing the route's character.
+      landMinMi: [0, 31, 0], landMaxMi: [1, 38, 1],
     },
   },
   {
@@ -39,7 +42,8 @@ const scenarios = [
     expectAny: {
       minDistanceMi: 70, maxDistanceMi: 80, minFacilityMi: 22,
       maxFailM: 500, discoveryMaxSpeed: 30, ferries: twoFerries,
-      landMinMi: [30, 32, 0], landMaxMi: [34, 38, 1],
+      // Whidbey crossing floor 31 (see note above): two-way ferry approaches.
+      landMinMi: [30, 31, 0], landMaxMi: [34, 38, 1],
     },
   },
 ];
