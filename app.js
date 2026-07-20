@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.194';
+const APP_VERSION = '2026-07-20.195';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -416,6 +416,10 @@ if (savedWeightsVersion < 7) {
 const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 
 // Voice guidance is a local device preference, not part of a shared route.
+const OFF_ROUTE_RECOVERY_MODES = new Set(['guidance', 'return', 'dynamic']);
+const savedOffRouteRecoveryMode = OFF_ROUTE_RECOVERY_MODES.has(savedState?.navigationOffRouteMode)
+  ? savedState.navigationOffRouteMode
+  : savedState?.navigationAutoReroute ? 'return' : 'guidance';
 const navVoice = {
   headings: !savedState || typeof savedState.voiceHeadings !== 'boolean'
     ? true : savedState.voiceHeadings,
@@ -429,7 +433,7 @@ const navVoice = {
     ? true : savedState.voiceStatusMiles,
   statusEta: !savedState || typeof savedState.voiceStatusEta !== 'boolean'
     ? true : savedState.voiceStatusEta,
-  autoReroute: !!savedState?.navigationAutoReroute,
+  offRouteMode: savedOffRouteRecoveryMode,
 };
 
 const DEFAULT_ROUTE_PREFERENCES = Object.freeze({ prefDesig: true, prefResidential: true });
@@ -585,7 +589,7 @@ function saveStateNow() {
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
-      navigationAutoReroute: navVoice.autoReroute,
+      navigationOffRouteMode: navVoice.offRouteMode,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
@@ -1499,7 +1503,7 @@ const turnNav = {
   offRouteApproachSpoken: false,
   offRouteApproachText: '',
   offRouteSince: 0,
-  autoRerouteAttempted: false,
+  autoRecoveryAttempted: false,
   prevFix: null,             // previous GPS fix, for the rider's own heading
   lastPosition: null,
   arrived: false,
@@ -1663,7 +1667,7 @@ const OFF_ROUTE_REJOIN_M = 60;
 const OFF_ROUTE_APPROACH_M = 130;
 const OFF_ROUTE_RESPEAK_MS = 30_000;
 const ROUTE_START_OFFER_M = 160.934; // 0.1 mile
-const AUTO_REROUTE_DELAY_MS = 60_000;
+const AUTO_OFF_ROUTE_DELAY_MS = 60_000;
 let navigationConnectorRequestId = 0;
 let navigationNewRouteRequestId = 0;
 
@@ -1720,7 +1724,7 @@ function offRouteSpeech(info) {
 function enterOffRoute(nearest) {
   if (!turnNav.offRouteSince) {
     turnNav.offRouteSince = Date.now();
-    turnNav.autoRerouteAttempted = false;
+    turnNav.autoRecoveryAttempted = false;
   }
   turnNav.offRoute = true;
   turnNav.offRouteApproachSpoken = false;
@@ -1776,7 +1780,7 @@ function updateNavigationProgress() {
 function rejoinRoute(nearest, previousFix, reachedText = 'Back on route') {
   turnNav.offRoute = false;
   turnNav.offRouteSince = 0;
-  turnNav.autoRerouteAttempted = false;
+  turnNav.autoRecoveryAttempted = false;
   turnNav.offRouteInfo = null;
   turnNav.offRouteApproachSpoken = false;
   turnNav.nearest = nearest.index;
@@ -2188,7 +2192,7 @@ function requestRouteBackToCurrentRoute({ automatic = false } = {}) {
     showRouteActionToast('Could not locate the current route', { duration: 5000 });
     return;
   }
-  turnNav.autoRerouteAttempted = true;
+  turnNav.autoRecoveryAttempted = true;
   requestNavigationConnector(nearest.point, 'rejoin', automatic);
 }
 
@@ -2276,11 +2280,12 @@ function openOffRouteDialog() {
   if (!dialog.open) dialog.showModal();
 }
 
-function requestNewRouteFromCurrentLocation() {
+function requestNewRouteFromCurrentLocation({ automatic = false } = {}) {
   if (!turnNav.active || !turnNav.lastPosition || !routing.end
       || turnNav.newRouteRequestId != null || turnNav.connectorRequestId != null) return;
   const offRouteDialog = document.getElementById('offRouteDialog');
   if (offRouteDialog?.open) offRouteDialog.close();
+  turnNav.autoRecoveryAttempted = true;
   if (!routing.worker) {
     showRouteActionToast('Could not calculate a new route', {
       detail: 'The routing engine is unavailable. Your current route is unchanged.', duration: 7000,
@@ -2291,7 +2296,7 @@ function requestNewRouteFromCurrentLocation() {
   const id = ++navigationNewRouteRequestId;
   turnNav.newRouteRequestId = id;
   turnNav.newRouteStart = [...turnNav.lastPosition];
-  showRouteActionToast('Finding a new route', {
+  showRouteActionToast(automatic ? 'Automatically creating a new route' : 'Finding a new route', {
     busy: true, detail: 'Using your current location, safety rules, and route preferences…', duration: 0,
   });
   refreshNavigationUI();
@@ -2338,7 +2343,7 @@ function activateNewRouteFromCurrentLocation(result) {
   turnNav.offRouteApproachText = '';
   turnNav.offRouteSpokenAt = 0;
   turnNav.offRouteSince = 0;
-  turnNav.autoRerouteAttempted = false;
+  turnNav.autoRecoveryAttempted = false;
   turnNav.message = '';
   drawNavigationConnector([]);
   activateRouteOption(result);
@@ -2369,17 +2374,20 @@ function activateNewRouteFromCurrentLocation(result) {
   refreshNavigationUI();
 }
 
-function automaticRerouteIsDue(now = Date.now()) {
-  return !!(navVoice.autoReroute && turnNav.active && turnNav.offRoute
-    && !turnNav.followingConnector && !turnNav.autoRerouteAttempted
+function automaticOffRouteModeDue(now = Date.now()) {
+  const mode = navVoice.offRouteMode;
+  if (mode !== 'return' && mode !== 'dynamic') return null;
+  return turnNav.active && turnNav.offRoute
+    && !turnNav.followingConnector && !turnNav.autoRecoveryAttempted
     && turnNav.connectorRequestId == null && turnNav.newRouteRequestId == null
     && turnNav.offRouteSince
-    && now - turnNav.offRouteSince >= AUTO_REROUTE_DELAY_MS);
+    && now - turnNav.offRouteSince >= AUTO_OFF_ROUTE_DELAY_MS ? mode : null;
 }
 
-function maybeAutomaticallyReroute() {
-  if (!automaticRerouteIsDue()) return;
-  requestRouteBackToCurrentRoute({ automatic: true });
+function maybeAutomaticallyRecoverOffRoute() {
+  const mode = automaticOffRouteModeDue();
+  if (mode === 'return') requestRouteBackToCurrentRoute({ automatic: true });
+  else if (mode === 'dynamic') requestNewRouteFromCurrentLocation({ automatic: true });
 }
 
 function updateNavigationCamera(point) {
@@ -2537,7 +2545,7 @@ function updateTurnNavigation(pos) {
   if (turnNav.offRoute) {
     if (nearest.offRouteM > OFF_ROUTE_REJOIN_M) {
       updateOffRouteGuidance(nearest, previousFix);
-      maybeAutomaticallyReroute();
+      maybeAutomaticallyRecoverOffRoute();
       refreshNavigationUI();
       return;
     }
@@ -2657,7 +2665,7 @@ function startTurnNavigation() {
   turnNav.offRouteApproachText = '';
   turnNav.offRouteSpokenAt = 0;
   turnNav.offRouteSince = 0;
-  turnNav.autoRerouteAttempted = false;
+  turnNav.autoRecoveryAttempted = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
   turnNav.destinationWasNear = false;
@@ -2707,7 +2715,7 @@ function stopTurnNavigation(announce = true) {
   turnNav.offRouteApproachSpoken = false;
   turnNav.offRouteApproachText = '';
   turnNav.offRouteSince = 0;
-  turnNav.autoRerouteAttempted = false;
+  turnNav.autoRecoveryAttempted = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
   turnNav.nearestSegment = 0;
@@ -3886,7 +3894,7 @@ function buildRoutingPanel() {
     useNearestPlannedRoute();
   });
   document.getElementById('navOffRouteBtn').addEventListener('click', openOffRouteDialog);
-  document.getElementById('navNewRouteBtn').addEventListener('click', requestNewRouteFromCurrentLocation);
+  document.getElementById('navNewRouteBtn').addEventListener('click', () => requestNewRouteFromCurrentLocation());
   document.getElementById('navRouteBackBtn').addEventListener('click', () => requestRouteBackToCurrentRoute());
   document.getElementById('navKeepRouteBtn').addEventListener('click', () =>
     document.getElementById('offRouteDialog').close());
@@ -5307,24 +5315,32 @@ function buildVoicePanel() {
     navVoice.headings = e.target.checked;
     saveStateSoon();
   });
-  host.appendChild(headings);
 
-  const automatic = document.createElement('div');
-  automatic.className = 'check-rule rule-card';
-  automatic.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-autoReroute"
-    ${navVoice.autoReroute ? 'checked' : ''}><span>Automatic rerouting after 60 seconds off route</span></label>
-    <p class="setting-note">Finds a temporary violet route back to the nearest point on your current route.</p>`;
-  automatic.querySelector('input').addEventListener('change', (e) => {
-    navVoice.autoReroute = e.target.checked;
+  const offRoute = document.createElement('fieldset');
+  offRoute.className = 'rule-card off-route-mode';
+  const offRouteChoices = [
+    ['guidance', 'Guidance only', 'Default. Shows the direction and distance back to your route.'],
+    ['return', 'Automatic return to route', 'After 60 seconds, creates a temporary route to the nearest point on your current route.'],
+    ['dynamic', 'Dynamic routing', 'After 60 seconds, creates a new route from your location to the destination.'],
+  ];
+  offRoute.innerHTML = `<legend>Off-route behavior</legend>
+    ${offRouteChoices.map(([value, label, description]) => `<label class="off-route-choice">
+      <input type="radio" name="off-route-mode" value="${value}"${navVoice.offRouteMode === value ? ' checked' : ''}>
+      <span><strong>${label}</strong><small>${description}</small></span>
+    </label>`).join('')}
+    <p class="off-route-warning"><strong>Dynamic routing may replace the rest of your route, including planned roads and waypoints.</strong></p>`;
+  offRoute.addEventListener('change', (e) => {
+    const input = e.target.closest('input[name="off-route-mode"]');
+    if (!input) return;
+    navVoice.offRouteMode = input.value;
+    // Choosing an automatic mode is an explicit request to try it, even if a
+    // prior recovery attempt during this off-route interval could not finish.
+    turnNav.autoRecoveryAttempted = false;
     saveStateSoon();
-    if (navVoice.autoReroute) {
-      // Turning the preference back on is an explicit request to try again,
-      // even if an earlier manual or automatic connector could not be found.
-      turnNav.autoRerouteAttempted = false;
-      maybeAutomaticallyReroute();
-    }
+    maybeAutomaticallyRecoverOffRoute();
   });
-  host.appendChild(automatic);
+  host.appendChild(offRoute);
+  host.appendChild(headings);
 
   const choices = [[0, 'Never'], [1, 'Every minute'], [2, 'Every 2 minutes'],
     [3, 'Every 3 minutes'], [5, 'Every 5 minutes'], [10, 'Every 10 minutes'],

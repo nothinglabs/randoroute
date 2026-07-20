@@ -566,9 +566,9 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #navBannerMeta { min-width: 0; color: #4f6f68; font: 600 10.5px/1.25 system-ui; }
 .nav-banner button { flex: none; min-height: 29px; border: 1px solid #b8c9d2; border-radius: 8px; padding: 4px 7px; background: #fff; color: #235064; font: 700 11px system-ui; cursor: pointer; }
 .nav-banner button[data-nav-action="reroute"] { min-height: 38px; border-color: #bb7b00; background: #f2a900; color: #2e2400; }
-.nav-banner.off-route-action-visible { flex-direction: column; align-items: stretch; gap: 6px; min-height: 88px; padding: 7px 0 0; overflow: hidden; border-color: #b42318; background: rgba(255,248,247,.98); }
+.nav-banner.off-route-action-visible { flex-direction: column; align-items: stretch; gap: 7px; min-height: 94px; padding: 7px 0 0; overflow: hidden; border-color: #b42318; background: rgba(255,248,247,.98); }
 #navBanner.off-route-action-visible .nav-banner-main { flex: none; padding: 0 7px 0 12px; }
-.nav-banner .nav-off-route-action { flex: none; width: 100%; min-height: 34px; margin: 0; border: none; border-radius: 0 0 11px 11px; padding: 7px 14px; background: #b42318; color: #fff; font: 800 13px/1.2 system-ui; letter-spacing: .01em; }
+.nav-banner .nav-off-route-action { align-self: stretch; flex: none; width: auto; min-height: 36px; margin: 0 7px 7px; border: 1px solid #8f1a11; border-radius: 9px; padding: 7px 14px; background: #b42318; box-shadow: 0 1px 2px rgba(92,15,10,.24); color: #fff; font: 800 13px/1.2 system-ui; letter-spacing: .01em; }
 .nav-banner .nav-off-route-action[hidden] { display: none; }
 .navigation-active .update-prompt { bottom: calc(128px + env(safe-area-inset-bottom)); }
 
@@ -773,9 +773,18 @@ body.navigation-active .maplibregl-user-location-accuracy-circle { display: none
 
 .voice-select { width: 100%; min-width: 0; margin-top: 5px; padding: 8px 10px; border: 1px solid #c9d7e0; border-radius: 8px; background: #fff; color: #2c3e4c; font: 650 12px system-ui; }
 
+.off-route-mode { min-width: 0; border: 1px solid #dbe5eb; }
+.off-route-mode legend { padding: 0 4px; color: #324b59; font: 750 11.5px/1.2 system-ui; }
+.off-route-choice { display: grid; grid-template-columns: 17px minmax(0, 1fr); align-items: start; gap: 7px; padding: 5px 2px; cursor: pointer; }
+.off-route-choice + .off-route-choice { border-top: 1px solid #edf1f3; }
+.off-route-choice input { width: 16px; height: 16px; margin: 1px 0 0; }
+.off-route-choice span { display: grid; gap: 1px; min-width: 0; }
+.off-route-choice strong { color: #2d4654; font: 730 11px/1.25 system-ui; }
+.off-route-choice small { color: #657985; font: 570 9.75px/1.3 system-ui; }
+.off-route-warning { margin: 4px 1px 0 24px; color: #85510a; font: 600 9.75px/1.3 system-ui; }
+
 .voice-status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-top: 7px; }
 .voice-status-grid .rule-check { font-size: 11px; font-weight: 650; }
-.setting-note { margin: 5px 0 0 23px; color: #657985; font: 600 10.5px/1.3 system-ui; }
 
 /* Navigation locks route-shaping controls; the Navigate pane stays live. */
 #routeOptions button.nav-locked { opacity: .45; }

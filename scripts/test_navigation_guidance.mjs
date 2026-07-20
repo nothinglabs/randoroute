@@ -6,14 +6,14 @@ import vm from 'node:vm';
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
-assert.match(html, /id="navOffRouteBtn"[^>]*>Off-route: Tap to Re-route</,
-  'off-route navigation should expose the full-width reroute action');
+assert.match(html, /id="navOffRouteBtn"[^>]*>Re-route</,
+  'off-route navigation should expose a conventional reroute button');
 assert.match(html, /class="nav-banner-main"[\s\S]*?class="nav-banner-copy"[\s\S]*?id="navDetailsBtn"[\s\S]*?id="navOffRouteBtn"/,
   'the off-route action should sit below the preserved navigation information');
 assert.match(html, /New Route From Current Location[\s\S]*?Route back to current route[\s\S]*?Keep current route/,
   'off-route recovery dialog should present all three explicit choices');
-assert.match(css, /\.nav-banner\.off-route-action-visible\s*\{[^}]*flex-direction:\s*column[\s\S]*?\.nav-off-route-action\s*\{[^}]*width:\s*100%/,
-  'off-route action should span a dedicated bottom row across the navigation banner');
+assert.match(css, /\.nav-banner\.off-route-action-visible\s*\{[^}]*flex-direction:\s*column[\s\S]*?\.nav-off-route-action\s*\{[^}]*border-radius:\s*9px[^}]*background:\s*#b42318/,
+  'off-route action should be a distinct conventional button below the navigation information');
 assert.doesNotMatch(css, /off-route-action-visible[^}]*[\s\S]{0,100}nav-banner-copy[^}]*display:\s*none/,
   'off-route state must preserve the maneuver information');
 assert.match(app, /ROUTE_START_OFFER_M\s*=\s*160\.934/,
@@ -22,18 +22,59 @@ assert.match(app, /type:\s*'route-connector'/,
   'navigation should request a separate route-to-start connector');
 assert.match(app, /id:\s*'route-connector'/,
   'the connector should have its own visible map layer');
-assert.match(app, /AUTO_REROUTE_DELAY_MS\s*=\s*60_000/,
-  'automatic rerouting should wait for 60 continuous seconds off route');
+assert.match(app, /AUTO_OFF_ROUTE_DELAY_MS\s*=\s*60_000/,
+  'automatic off-route actions should wait for 60 continuous seconds');
 assert.match(app, /function requestRouteBackToCurrentRoute[\s\S]*?nearestNavigationPoint\([\s\S]*?turnNav\.plannedRoute\)/,
   'route-back should target the nearest point on the original planned route');
 assert.match(app, /type:\s*'navigation-new-route'/,
   'the off-route menu should support a new route from the live location');
-assert.match(app, /navVoice\.autoReroute[\s\S]*?maybeAutomaticallyReroute/,
-  'the turn-by-turn automatic-rerouting preference should drive recovery');
+assert.match(app, /navigationOffRouteMode:\s*navVoice\.offRouteMode/,
+  'the exclusive off-route behavior mode should persist');
+assert.match(app, /navigationAutoReroute\s*\?\s*'return'\s*:\s*'guidance'/,
+  'the former automatic-rerouting checkbox should migrate to automatic return mode');
+assert.match(app, /\['guidance', 'Guidance only'[\s\S]*?\['return', 'Automatic return to route'[\s\S]*?\['dynamic', 'Dynamic routing'/,
+  'Voice-Nav settings should expose all three off-route modes');
+const voicePanelSource = app.slice(app.indexOf('function buildVoicePanel'), app.indexOf('function buildLegend'));
+assert.doesNotMatch(voicePanelSource, /violet/i,
+  'Voice-Nav settings should describe behavior without naming a route color');
+assert.match(voicePanelSource, /Dynamic routing may replace the rest of your route, including planned roads and waypoints/,
+  'dynamic routing should warn that it can alter the rest of the trip');
 assert.match(app, /function activateNewRouteFromCurrentLocation[\s\S]*?if \(!result\.ok[\s\S]*?return;[\s\S]*?routing\.start = start/,
   'a failed current-location calculation must return before replacing the planned route');
 assert.match(app, /type:\s*'navigation-new-route'[\s\S]*?prefDesignated:\s*routing\.prefDesig,[\s\S]*?prefResidential:\s*routing\.prefResidential/,
   'a current-location route should use the live preference toggles exactly');
+const newRouteStart = app.indexOf('function requestNewRouteFromCurrentLocation');
+const newRouteEnd = app.indexOf('function activateNewRouteFromCurrentLocation', newRouteStart);
+assert.ok(newRouteStart >= 0 && newRouteEnd > newRouteStart,
+  'new-route request helper source was not found');
+const newRouteMessages = [];
+const newRouteContext = vm.createContext({
+  navigationNewRouteRequestId: 0,
+  turnNav: {
+    active: true, lastPosition: [-122.35, 47.67], newRouteRequestId: null,
+    connectorRequestId: null, autoRecoveryAttempted: false, newRouteStart: null,
+  },
+  routing: {
+    end: [-122.30, 47.90], last: { optimization: { mode: 'balanced', profileId: 'efficient' } },
+    mode: 'balanced', profileId: 'efficient', prefDesig: true, prefResidential: true,
+    worker: { postMessage(message) { newRouteMessages.push(message); } },
+  },
+  rules: {}, routingWeights: {},
+  document: { getElementById() { return { open: false, close() {} }; } },
+  showRouteActionToast(title) { newRouteMessages.push({ toast: title }); },
+  refreshNavigationUI() {},
+});
+vm.runInContext(`${app.slice(newRouteStart, newRouteEnd)}
+  this.requestNewRouteFromCurrentLocation = requestNewRouteFromCurrentLocation;`, newRouteContext);
+newRouteContext.requestNewRouteFromCurrentLocation({ automatic: true });
+assert.equal(newRouteContext.turnNav.autoRecoveryAttempted, true,
+  'an automatic dynamic-route attempt should run only once per off-route interval');
+assert.equal(newRouteMessages[0].toast, 'Automatically creating a new route',
+  'automatic dynamic routing should explain what it is doing');
+assert.equal(newRouteMessages[1].type, 'navigation-new-route',
+  'dynamic routing should request a replacement route');
+assert.equal(newRouteMessages[1].points[0][0], -122.35,
+  'dynamic routing should start at the rider current location');
 const start = app.indexOf('function navDistanceM');
 const end = app.indexOf('// Leaving the route no longer triggers rerouting.');
 assert.ok(start >= 0 && end > start, 'navigation helper source was not found');
@@ -55,30 +96,54 @@ assert.equal(context.shouldOfferRouteStartConnector(800, 80), true,
 assert.equal(context.shouldOfferRouteStartConnector(120, 220), false,
   'ordinary nearest-route guidance should handle a rider within 0.1 mile of the start');
 
-const automaticStart = app.indexOf('function automaticRerouteIsDue');
-const automaticEnd = app.indexOf('function maybeAutomaticallyReroute', automaticStart);
+const automaticStart = app.indexOf('function automaticOffRouteModeDue');
+const automaticEnd = app.indexOf('function updateNavigationCamera', automaticStart);
 assert.ok(automaticStart >= 0 && automaticEnd > automaticStart,
-  'automatic-reroute timing helper was not found');
+  'automatic off-route mode helpers were not found');
+const automaticActions = [];
 const autoContext = vm.createContext({
-  navVoice: { autoReroute: true },
+  Date: { now: () => 70_000 },
+  navVoice: { offRouteMode: 'return' },
   turnNav: {
     active: true, offRoute: true, followingConnector: false,
-    autoRerouteAttempted: false, connectorRequestId: null, newRouteRequestId: null,
+    autoRecoveryAttempted: false, connectorRequestId: null, newRouteRequestId: null,
     offRouteSince: 10_000,
   },
+  requestRouteBackToCurrentRoute(options) { automaticActions.push(['return', options]); },
+  requestNewRouteFromCurrentLocation(options) { automaticActions.push(['dynamic', options]); },
 });
-vm.runInContext(`const AUTO_REROUTE_DELAY_MS = 60_000; ${app.slice(automaticStart, automaticEnd)}
-  this.automaticRerouteIsDue = automaticRerouteIsDue;`, autoContext);
-assert.equal(autoContext.automaticRerouteIsDue(69_999), false,
-  'automatic rerouting must not fire before 60 continuous seconds');
-assert.equal(autoContext.automaticRerouteIsDue(70_000), true,
-  'automatic rerouting should become due at 60 continuous seconds');
-autoContext.turnNav.autoRerouteAttempted = true;
-assert.equal(autoContext.automaticRerouteIsDue(80_000), false,
+vm.runInContext(`const AUTO_OFF_ROUTE_DELAY_MS = 60_000; ${app.slice(automaticStart, automaticEnd)}
+  this.automaticOffRouteModeDue = automaticOffRouteModeDue;
+  this.maybeAutomaticallyRecoverOffRoute = maybeAutomaticallyRecoverOffRoute;`, autoContext);
+assert.equal(autoContext.automaticOffRouteModeDue(69_999), null,
+  'automatic recovery must not fire before 60 continuous seconds');
+assert.equal(autoContext.automaticOffRouteModeDue(70_000), 'return',
+  'automatic return should become due at 60 continuous seconds');
+autoContext.maybeAutomaticallyRecoverOffRoute();
+let automaticAction = automaticActions.shift();
+assert.equal(automaticAction[0], 'return',
+  'automatic return mode should request a connector to the current route');
+assert.equal(automaticAction[1].automatic, true, 'automatic return should identify itself as automatic');
+autoContext.navVoice.offRouteMode = 'dynamic';
+assert.equal(autoContext.automaticOffRouteModeDue(70_000), 'dynamic',
+  'dynamic routing should become due on the same 60-second timer');
+autoContext.maybeAutomaticallyRecoverOffRoute();
+automaticAction = automaticActions.shift();
+assert.equal(automaticAction[0], 'dynamic',
+  'dynamic mode should request a replacement route from the live location');
+assert.equal(automaticAction[1].automatic, true, 'dynamic rerouting should identify itself as automatic');
+autoContext.navVoice.offRouteMode = 'guidance';
+assert.equal(autoContext.automaticOffRouteModeDue(80_000), null,
+  'guidance-only mode must never launch an automatic route');
+autoContext.maybeAutomaticallyRecoverOffRoute();
+assert.equal(automaticActions.length, 0, 'guidance-only mode should only provide guidance');
+autoContext.navVoice.offRouteMode = 'return';
+autoContext.turnNav.autoRecoveryAttempted = true;
+assert.equal(autoContext.automaticOffRouteModeDue(80_000), null,
   'one off-route interval should not repeatedly launch automatic routes');
-autoContext.turnNav.autoRerouteAttempted = false;
+autoContext.turnNav.autoRecoveryAttempted = false;
 autoContext.turnNav.followingConnector = true;
-assert.equal(autoContext.automaticRerouteIsDue(80_000), false,
+assert.equal(autoContext.automaticOffRouteModeDue(80_000), null,
   'a rider already following a connector should not be rerouted again');
 
 const coords = [

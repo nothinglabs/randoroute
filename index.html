@@ -208,7 +208,7 @@
       <li><b>Only show routes fully matching safety rules</b> — every option must pass all your rules, except the last ~1,000 ft needed to reach your start, waypoints, or destination; those short access blocks still show red. A very short failing run bounded by passing roads may be classified as an intersection crossing rather than riding along that road. Verify the crossing control on the map; the graph does not yet confirm a signal or crosswalk.</li>
       <li><b>Unknown shoulder = 0 ft</b> — faster roads must prove an adequate shoulder to pass.</li>
       </ul><p>Place search always keeps offline local results available; the ⌕ button also runs an online lookup.</p></section>
-    <section><h3>Turn by Turn</h3><p><b>Speak compass directions</b> adds the heading (north, southeast, …) to each spoken turn. <b>Status update</b> speaks on your chosen cadence (Never up to every 30 minutes) with any combination of route status, current speed, miles remaining, and estimated time left.</p></section>
+    <section><h3>Voice navigation</h3><p><b>Off-route behavior</b> chooses between direction-and-distance guidance, an automatic temporary return to the current route, or automatic generation of a replacement route after 60 seconds. Dynamic routing can change the remainder of the trip. <b>Speak compass directions</b> adds the heading (north, southeast, …) to each spoken turn. <b>Status update</b> speaks on your chosen cadence.</p></section>
     <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Most riders should not change these.</b> Presets and Limits are the intended controls. Weights expose internal soft costs for testing and fine-tuning; poor combinations can produce long or unintuitive routes. They never override bicycle prohibitions or your hard Limits, and can be restored with <b>Reset all defaults</b>.</p><button id="settingsAdvancedWeightsBtn" type="button">Open advanced weights</button></section>
   </dialog>
 
@@ -291,7 +291,7 @@
       </div>
       <button type="button" id="navDetailsBtn">Details</button>
     </div>
-    <button type="button" id="navOffRouteBtn" class="nav-off-route-action" hidden>Off-route: Tap to Re-route</button>
+    <button type="button" id="navOffRouteBtn" class="nav-off-route-action" aria-label="Off route: choose re-routing options" hidden>Re-route</button>
   </div>
   <div id="updatePrompt" class="update-prompt" hidden>
     <span>New version available</span>
