@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.195';
+const APP_VERSION = '2026-07-20.196';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4599,10 +4599,14 @@ const HIT_SRC = {};     // hit-layer id -> its source
 let readoutPinned = false;
 let roadInfoSuppressedUntil = 0;
 
-function suppressRoadInfo(ms = 1200) {
-  roadInfoSuppressedUntil = Math.max(roadInfoSuppressedUntil, Date.now() + ms);
+function dismissRoadInfo() {
   readoutPinned = false;
   readoutEl.classList.remove('show');
+}
+
+function suppressRoadInfo(ms = 1200) {
+  roadInfoSuppressedUntil = Math.max(roadInfoSuppressedUntil, Date.now() + ms);
+  dismissRoadInfo();
 }
 
 function attachHover(src, layerId) {
@@ -4794,8 +4798,16 @@ function renderReadout(feature, lngLat) {
 
 readoutEl.addEventListener('click', (e) => {
   if (!e.target.closest('.readout-close')) return;
-  readoutPinned = false;
-  readoutEl.classList.remove('show');
+  dismissRoadInfo();
+});
+
+// A pinned road card belongs to the map inspection interaction. Any click on
+// the app UI outside the map dismisses it, while clicks on the map can inspect
+// another road and clicks inside the card can still use Street View or Close.
+document.addEventListener('click', (e) => {
+  if (!readoutEl.classList.contains('show')) return;
+  if (e.target.closest('#map') || e.target.closest('#readout')) return;
+  dismissRoadInfo();
 });
 
 // ONE global handler pair (per-layer handlers raced where layers overlap).
@@ -4877,8 +4889,7 @@ map.on('click', (e) => {
     renderReadout(f, e.lngLat);
     readoutPinned = true;
   } else {
-    readoutPinned = false;
-    readoutEl.classList.remove('show');
+    dismissRoadInfo();
   }
 });
 
@@ -5508,8 +5519,7 @@ document.getElementById('panelClose').addEventListener('click', () => {
 });
 document.getElementById('panelOpen').addEventListener('click', () => {
   closePlacePicker(true);
-  readoutPinned = false;
-  readoutEl.classList.remove('show');
+  dismissRoadInfo();
   selectPanelTab('route');
   setPanelOpen(true);
   document.getElementById('panelClose').focus({ preventScroll: true });
