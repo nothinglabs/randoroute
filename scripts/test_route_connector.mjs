@@ -51,7 +51,7 @@ context.onmessage({ data: {
     minShoulder: 4, unknownShoulderZero: true, freeMaxSpeed: 35,
     upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
   },
-  mode: 'low', profileId: 'gentle', profileLabel: 'Route C',
+  mode: 'low', profileId: 'gentle', profileLabel: 'Route A',
   prefDesignated: true, prefResidential: false,
 } });
 const replacement = messages.at(-1);
@@ -64,7 +64,7 @@ assert.equal(replacement.optimization.prefDesignated, true,
   'new route should retain the current bike-route preference');
 assert.equal(replacement.optimization.prefResidential, false,
   'new route should retain the current residential preference');
-assert.equal(replacement.optimization.label, 'Route C',
-  'new route should keep the selected route label');
+assert.equal(replacement.optimization.label, 'Route A',
+  'a sole replacement route should restart the route labels at A');
 
 console.log('Route connector tests passed.');

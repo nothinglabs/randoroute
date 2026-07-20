@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.190';
+const APP_VERSION = '2026-07-20.191';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2287,7 +2287,7 @@ function requestNewRouteFromCurrentLocation() {
     points: [turnNav.newRouteStart, routing.end],
     rules: { ...rules }, mode: selected.mode || routing.mode,
     profileId: selected.profileId || routing.profileId,
-    profileLabel: selected.label || 'Route A',
+    profileLabel: 'Route A',
     prefDesignated: routing.prefDesig,
     prefResidential: routing.prefResidential,
     weights: { ...routingWeights },
@@ -2309,6 +2309,7 @@ function activateNewRouteFromCurrentLocation(result) {
   }
   routing.start = start;
   routing.startName = 'Current location';
+  routing.arm = null;
   routing.startMarker?.setLngLat(start);
   for (const via of routing.vias) via.marker.remove();
   routing.vias = [];
@@ -2319,8 +2320,13 @@ function activateNewRouteFromCurrentLocation(result) {
   turnNav.connectorPurpose = 'start';
   turnNav.joinDecision = 'nearest';
   turnNav.offRoute = false;
+  turnNav.offRouteInfo = null;
+  turnNav.offRouteApproachSpoken = false;
+  turnNav.offRouteApproachText = '';
+  turnNav.offRouteSpokenAt = 0;
   turnNav.offRouteSince = 0;
   turnNav.autoRerouteAttempted = false;
+  turnNav.message = '';
   drawNavigationConnector([]);
   activateRouteOption(result);
   turnNav.plannedRoute = buildTurnInstructions(result);
@@ -2350,12 +2356,16 @@ function activateNewRouteFromCurrentLocation(result) {
   refreshNavigationUI();
 }
 
+function automaticRerouteIsDue(now = Date.now()) {
+  return !!(navVoice.autoReroute && turnNav.active && turnNav.offRoute
+    && !turnNav.followingConnector && !turnNav.autoRerouteAttempted
+    && turnNav.connectorRequestId == null && turnNav.newRouteRequestId == null
+    && turnNav.offRouteSince
+    && now - turnNav.offRouteSince >= AUTO_REROUTE_DELAY_MS);
+}
+
 function maybeAutomaticallyReroute() {
-  if (!navVoice.autoReroute || !turnNav.active || !turnNav.offRoute
-      || turnNav.followingConnector || turnNav.autoRerouteAttempted
-      || turnNav.connectorRequestId != null || turnNav.newRouteRequestId != null
-      || !turnNav.offRouteSince
-      || Date.now() - turnNav.offRouteSince < AUTO_REROUTE_DELAY_MS) return;
+  if (!automaticRerouteIsDue()) return;
   requestRouteBackToCurrentRoute({ automatic: true });
 }
 
@@ -5249,7 +5259,12 @@ function buildVoicePanel() {
   automatic.querySelector('input').addEventListener('change', (e) => {
     navVoice.autoReroute = e.target.checked;
     saveStateSoon();
-    if (navVoice.autoReroute) maybeAutomaticallyReroute();
+    if (navVoice.autoReroute) {
+      // Turning the preference back on is an explicit request to try again,
+      // even if an earlier manual or automatic connector could not be found.
+      turnNav.autoRerouteAttempted = false;
+      maybeAutomaticallyReroute();
+    }
   });
   host.appendChild(automatic);
 

@@ -26,6 +26,10 @@ assert.match(app, /type:\s*'navigation-new-route'/,
   'the off-route menu should support a new route from the live location');
 assert.match(app, /navVoice\.autoReroute[\s\S]*?maybeAutomaticallyReroute/,
   'the turn-by-turn automatic-rerouting preference should drive recovery');
+assert.match(app, /function activateNewRouteFromCurrentLocation[\s\S]*?if \(!result\.ok[\s\S]*?return;[\s\S]*?routing\.start = start/,
+  'a failed current-location calculation must return before replacing the planned route');
+assert.match(app, /type:\s*'navigation-new-route'[\s\S]*?prefDesignated:\s*routing\.prefDesig,[\s\S]*?prefResidential:\s*routing\.prefResidential/,
+  'a current-location route should use the live preference toggles exactly');
 const start = app.indexOf('function navDistanceM');
 const end = app.indexOf('// Leaving the route no longer triggers rerouting.');
 assert.ok(start >= 0 && end > start, 'navigation helper source was not found');
@@ -46,6 +50,32 @@ assert.equal(context.shouldOfferRouteStartConnector(800, 80), true,
   'a rider beyond the rejoin tolerance is off route even when under the ordinary alert threshold');
 assert.equal(context.shouldOfferRouteStartConnector(120, 220), false,
   'ordinary nearest-route guidance should handle a rider within 0.1 mile of the start');
+
+const automaticStart = app.indexOf('function automaticRerouteIsDue');
+const automaticEnd = app.indexOf('function maybeAutomaticallyReroute', automaticStart);
+assert.ok(automaticStart >= 0 && automaticEnd > automaticStart,
+  'automatic-reroute timing helper was not found');
+const autoContext = vm.createContext({
+  navVoice: { autoReroute: true },
+  turnNav: {
+    active: true, offRoute: true, followingConnector: false,
+    autoRerouteAttempted: false, connectorRequestId: null, newRouteRequestId: null,
+    offRouteSince: 10_000,
+  },
+});
+vm.runInContext(`const AUTO_REROUTE_DELAY_MS = 60_000; ${app.slice(automaticStart, automaticEnd)}
+  this.automaticRerouteIsDue = automaticRerouteIsDue;`, autoContext);
+assert.equal(autoContext.automaticRerouteIsDue(69_999), false,
+  'automatic rerouting must not fire before 60 continuous seconds');
+assert.equal(autoContext.automaticRerouteIsDue(70_000), true,
+  'automatic rerouting should become due at 60 continuous seconds');
+autoContext.turnNav.autoRerouteAttempted = true;
+assert.equal(autoContext.automaticRerouteIsDue(80_000), false,
+  'one off-route interval should not repeatedly launch automatic routes');
+autoContext.turnNav.autoRerouteAttempted = false;
+autoContext.turnNav.followingConnector = true;
+assert.equal(autoContext.automaticRerouteIsDue(80_000), false,
+  'a rider already following a connector should not be rerouted again');
 
 const coords = [
   [-122.3500, 47.6700],
