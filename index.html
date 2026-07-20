@@ -117,10 +117,13 @@
   <div id="placePicker" class="place-picker" role="dialog" aria-modal="false" aria-labelledby="placePickerTitle" hidden>
     <div class="picker-head"><strong id="placePickerTitle">Choose location</strong><button id="placePickerClose" aria-label="Close location picker">✕</button></div>
     <p id="placePickerHint" class="picker-hint"><strong>Search</strong> for a place below, or <strong>tap the map</strong> to set it.</p>
+    <button id="useLoc" type="button" aria-label="Use my current location" title="Use my current location"><span aria-hidden="true">⌖</span> Use my current location</button>
     <div class="picker-search-row">
       <input id="placeSearch" type="search" placeholder="Search places…" aria-label="Search for a place" autocomplete="off">
-      <button id="onlinePlaceSearch" aria-label="Search online for places" title="Search online for places">⌕</button>
-      <button id="useLoc" aria-label="Use my current location" title="Use my current location"><span aria-hidden="true">⌖</span> Use my location</button>
+      <button id="onlinePlaceSearch" type="button" aria-label="Search the internet for places" title="Search the internet for places">
+        <span class="online-search-ready" aria-hidden="true"><svg class="online-search-icon" viewBox="0 0 24 24"><circle cx="9.5" cy="9.5" r="6.5"></circle><path d="M3 9.5h13M9.5 3c2.2 2.2 2.2 10.8 0 13M9.5 3c-2.2 2.2-2.2 10.8 0 13M14.2 14.2 20 20"></path></svg>Web</span>
+        <span class="online-search-busy" aria-hidden="true">…</span>
+      </button>
     </div>
     <div id="placeResults" class="place-results"></div>
   </div>

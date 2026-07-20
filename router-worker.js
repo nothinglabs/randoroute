@@ -241,7 +241,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
-  turnDirectSec: 12, turnBalancedSec: 22, turnLowSec: 30,
+  turnDirectSec: 6, turnBalancedSec: 11, turnLowSec: 15,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
 let activeWeights = { ...DEFAULT_WEIGHTS };

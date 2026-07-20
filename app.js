@@ -14,7 +14,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-19.179';
+const APP_VERSION = '2026-07-19.180';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -72,10 +72,10 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
-  turnDirectSec: 12, turnBalancedSec: 22, turnLowSec: 30,
+  turnDirectSec: 6, turnBalancedSec: 11, turnLowSec: 15,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
-const ROUTING_WEIGHTS_VERSION = 7;
+const ROUTING_WEIGHTS_VERSION = 8;
 function validRoutingWeights(source) {
   const clean = {};
   const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
@@ -398,12 +398,19 @@ if (savedState) {
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
 }
 const savedRoutingWeights = validRoutingWeights(savedState?.weights);
-// Version 6 deliberately replaces every earlier advanced-weight set. The
-// defaults are part of the router's safety behavior, and must match the
-// weights sent to router-worker.js rather than leaving existing devices on
-// the obsolete 1.15× direct / 3× balanced failure penalties.
-if ((savedState?.weightsVersion || 0) < ROUTING_WEIGHTS_VERSION) {
+const savedWeightsVersion = savedState?.weightsVersion || 0;
+// Version 7 deliberately replaced every earlier advanced-weight set so the
+// app and worker used the same safety defaults. Version 8 only softens the
+// former default turn costs; preserve a rider's genuinely custom values.
+if (savedWeightsVersion < 7) {
   Object.assign(savedRoutingWeights, DEFAULT_ROUTING_WEIGHTS);
+} else if (savedWeightsVersion < 8) {
+  const priorTurnDefaults = { turnDirectSec: 12, turnBalancedSec: 22, turnLowSec: 30 };
+  for (const key of Object.keys(priorTurnDefaults)) {
+    if (savedRoutingWeights[key] == null || savedRoutingWeights[key] === priorTurnDefaults[key]) {
+      savedRoutingWeights[key] = DEFAULT_ROUTING_WEIGHTS[key];
+    }
+  }
 }
 const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 
@@ -3704,7 +3711,7 @@ function openPlacePicker(kind) {
   document.getElementById('useLoc').hidden = kind !== 'start';
   const onlineButton = document.getElementById('onlinePlaceSearch');
   onlineButton.disabled = false;
-  onlineButton.textContent = '⌕';
+  onlineButton.classList.remove('searching');
   const searchInput = document.getElementById('placeSearch');
   searchInput.value = '';
   searchInput.placeholder = kind === 'start' ? 'Search for a start…'
@@ -3788,7 +3795,7 @@ function buildPlacePicker() {
     }
     const requestId = ++placeSearchRequestId;
     onlineButton.disabled = true;
-    onlineButton.textContent = '…';
+    onlineButton.classList.add('searching');
     showLocalMatches();
     try {
       const onlineMatches = await searchOnlinePlaces(query);
@@ -3803,7 +3810,7 @@ function buildPlacePicker() {
     } finally {
       if (requestId === placeSearchRequestId) {
         onlineButton.disabled = false;
-        onlineButton.textContent = '⌕';
+        onlineButton.classList.remove('searching');
       }
     }
   };

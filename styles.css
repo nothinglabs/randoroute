@@ -591,10 +591,15 @@ body.navigation-active #routeBar { display: none; }
 .picker-search-row { display: flex; gap: 5px; }
 .picker-search-row #placeSearch { flex: 1; min-width: 0; }
 #onlinePlaceSearch, #useLoc { border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; color: #0a66c2; cursor: pointer; }
-#onlinePlaceSearch { flex: 0 0 36px; width: 36px; font: 700 18px system-ui; }
-#useLoc { flex: 0 0 auto; padding: 0 9px; white-space: nowrap; font: 700 11px system-ui; }
-#useLoc span { margin-right: 2px; font-size: 16px; vertical-align: -1px; }
-#onlinePlaceSearch { color: #405d77; }
+#useLoc { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 34px; margin: 0 0 7px; padding: 5px 10px; white-space: nowrap; font: 750 11.5px system-ui; }
+#useLoc[hidden] { display: none; }
+#useLoc span { font-size: 17px; line-height: 1; }
+#onlinePlaceSearch { display: flex; align-items: center; justify-content: center; flex: 0 0 62px; width: 62px; color: #405d77; font: 750 10.5px system-ui; }
+.online-search-ready { display: flex; align-items: center; gap: 3px; }
+.online-search-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.online-search-busy { display: none; font: 800 17px/1 system-ui; }
+#onlinePlaceSearch.searching .online-search-ready { display: none; }
+#onlinePlaceSearch.searching .online-search-busy { display: inline; }
 
 .update-prompt { position: absolute; z-index: 30; left: 50%; bottom: calc(68px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 7px; width: max-content; max-width: calc(100vw - 20px); padding: 7px 8px 7px 11px; border: 1px solid #cfd8e0; border-radius: 12px; background: rgba(255,255,255,.98); box-shadow: 0 4px 16px rgba(0,0,0,.24); color: #333; font: 600 11px system-ui; }
 .update-prompt[hidden] { display: none; }
