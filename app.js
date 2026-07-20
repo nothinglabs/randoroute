@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.192';
+const APP_VERSION = '2026-07-20.193';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1170,7 +1170,7 @@ const routing = {
   startName: null, endName: null,
   vias: [],                  // intermediate stops: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
-  worker: null, ready: false, loading: false,
+  worker: null, ready: false, loading: false, pendingRoute: false, routeRequestActive: false,
   mode: sharedRoute?.mode || (['direct', 'balanced', 'low'].includes(savedState?.mode)
     ? savedState.mode : 'balanced'), // 'direct' | 'balanced' | 'low'
   profileId: sharedRoute
@@ -1254,21 +1254,34 @@ function notifySnapDistance(m) {
 
 function handleRouterFailure(message) {
   const detail = String(message || 'unknown error');
-  const reason = `Routing failed (${detail}). Change a route point to try again.`;
-  showRouteActionToast('Routing failed', { duration: 2600 });
+  const routeWasRequested = (routing.pendingRoute || routing.routeRequestActive)
+    && routing.start && routing.end;
+  const reason = routeWasRequested
+    ? `Routing map could not load (${detail}). Tap a route point to try again.`
+    : `Routing map could not load (${detail}). It will retry when you request a route.`;
+  showRouteActionToast('Routing map could not load', {
+    detail: routeWasRequested
+      ? 'Your points are still set. Tap either one to retry after checking your connection.'
+      : 'No route was attempted. The app will try again when both route points are set.',
+    duration: 7000,
+  });
   routing.reqId++; // invalidate any reply still queued by the failed worker
   routing.ready = false;
   routing.loading = false;
+  routing.pendingRoute = false;
+  routing.routeRequestActive = false;
   if (routing.worker) routing.worker.terminate();
   routing.worker = null;
-  routing.options = [];
   setRouteOptionsLoading(false);
-  renderRouteOptionControls();
-  stopTurnNavigation(false);
-  routing.last = { ok: false, code: 'router-error', reason };
-  clearStoredRouteDetails();
-  renderRouteCard(routing.last);
-  if (map.isStyleLoaded()) drawRoute([]);
+  if (routeWasRequested) {
+    routing.options = [];
+    renderRouteOptionControls();
+    stopTurnNavigation(false);
+    routing.last = { ok: false, code: 'router-error', reason };
+    clearStoredRouteDetails();
+    renderRouteCard(routing.last);
+    if (map.isStyleLoaded()) drawRoute([]);
+  }
   setRouteStatus(reason);
 }
 
@@ -2832,8 +2845,12 @@ function onRouterMessage(ev) {
   } else if (m.type === 'ready') {
     routing.ready = true;
     routing.loading = false;
+    routing.pendingRoute = false;
     setRouteStatus(routing.start && routing.end ? 'Routing…' : '');
-    if (!(routing.start && routing.end)) showRouteActionToast('');
+    if (!(routing.start && routing.end)) {
+      setRouteOptionsLoading(false);
+      showRouteActionToast('');
+    }
     renderRouteCard(routing.last);
     computeRoute();
   } else if (m.type === 'route-options') {
@@ -2843,6 +2860,7 @@ function onRouterMessage(ev) {
       setTimeout(() => onRouterMessage({ data: { ...m, displayDelayApplied: true } }), remaining);
       return;
     }
+    routing.routeRequestActive = false;
     document.body.dataset.routeOptionsMs = String(Math.round(Number(m.ms) || 0));
     setRouteOptionsLoading(false);
     if (!m.ok || !Array.isArray(m.options) || !m.options.length) {
@@ -2865,6 +2883,7 @@ function onRouterMessage(ev) {
     notifySnapDistance(selected);
   } else if (m.type === 'route') {
     if (m.id !== routing.reqId) return; // stale reply
+    routing.routeRequestActive = false;
     setRouteOptionsLoading(false);
     if (!m.ok) {
       showRouteActionToast('Could not calculate that route', { duration: 2600 });
@@ -2890,10 +2909,15 @@ function onRouterMessage(ev) {
 function computeRoute() {
   if (!routing.start || !routing.end) return;
   if (!routing.ready) { // re-runs once the graph is ready
+    routing.pendingRoute = true;
+    setRouteOptionsLoading(true);
     ensureRouter();
-    setRouteStatus('Loading routing data…');
+    showRouterProgress('Finishing the statewide routing map; your route will start automatically…',
+      'Preparing route');
     return;
   }
+  routing.pendingRoute = false;
+  routing.routeRequestActive = true;
   routing.reqId++;
   setRouteStatus('Routing…');
   showRouteActionToast(routing.last?.ok ? 'Recalculating route' : 'Calculating route options', {
@@ -3650,6 +3674,8 @@ function clearRoute() {
   setRouteActionsOpen(false);
   routing.start = routing.end = null;
   routing.startName = routing.endName = null;
+  routing.pendingRoute = false;
+  routing.routeRequestActive = false;
   routing.reqId++; // a route already being calculated must not reappear after clear
   for (const v of routing.vias) v.marker.remove();
   routing.vias = [];
@@ -4156,7 +4182,7 @@ async function searchOnlinePlaces(query) {
 
   const url = new URL(ONLINE_PLACE_SEARCH_ENDPOINT);
   url.search = new URLSearchParams({
-    format: 'jsonv2', q: query.trim(), limit: '5', countrycodes: 'us', addressdetails: '0',
+    format: 'jsonv2', q: query.trim(), limit: '5', countrycodes: 'us', addressdetails: '1',
     // This router only contains Washington. Out-of-state search hits can
     // never produce a route, so constrain results to the graph's coverage.
     viewbox: '-124.9,49.1,-116.8,45.5', bounded: '1',
@@ -4176,13 +4202,26 @@ async function searchOnlinePlaces(query) {
   const data = await response.json();
   const matches = (Array.isArray(data) ? data : [])
     .map((item) => ({
-      name: String(item.display_name || '').trim().slice(0, 180),
+      name: onlinePlaceResultName(item),
       lon: Number(item.lon), lat: Number(item.lat), source: 'online',
     }))
     .filter((item) => item.name && Number.isFinite(item.lon) && Number.isFinite(item.lat));
   if (onlinePlaceCache.size >= 50) onlinePlaceCache.delete(onlinePlaceCache.keys().next().value);
   onlinePlaceCache.set(normalized, matches);
   return matches;
+}
+
+function onlinePlaceResultName(item) {
+  const address = item?.address || {};
+  const displayParts = String(item?.display_name || '').split(',').map((part) => part.trim()).filter(Boolean);
+  const primary = String(item?.name || displayParts[0] || '').trim();
+  const city = String(address.city || address.town || address.village || address.municipality
+    || address.hamlet || '').trim();
+  const state = String(address.state || 'Washington').trim();
+  const parts = [primary];
+  if (city && city.toLowerCase() !== primary.toLowerCase()) parts.push(city);
+  if (state && !parts.some((part) => part.toLowerCase() === state.toLowerCase())) parts.push(state);
+  return parts.filter(Boolean).join(', ').slice(0, 180);
 }
 
 function restoreViewportAfterPlacePicker() {
@@ -4305,8 +4344,15 @@ function buildPlacePicker() {
     return unique;
   };
 
-  const render = (items) => {
+  const render = (items, message = '') => {
     results.replaceChildren();
+    if (message) {
+      const notice = document.createElement('p');
+      notice.className = 'place-results-message';
+      notice.setAttribute('role', 'status');
+      notice.textContent = message;
+      results.append(notice);
+    }
     for (const item of items) {
       const hit = document.createElement('button');
       hit.className = 'place-hit';
@@ -4321,7 +4367,7 @@ function buildPlacePicker() {
       hit.append(detail);
       results.append(hit);
     }
-    results.classList.toggle('show', items.length > 0);
+    results.classList.toggle('show', items.length > 0 || Boolean(message));
   };
 
   const localMatches = () => {
@@ -4352,11 +4398,23 @@ function buildPlacePicker() {
     try {
       const onlineMatches = await searchOnlinePlaces(query);
       if (requestId !== placeSearchRequestId || input.value.trim() !== query) return;
-      render(uniqueMatches([...onlineMatches, ...localMatches()]));
-      if (!onlineMatches.length) setRouteStatus('No online matches — local search is still available');
+      const local = localMatches();
+      const combined = uniqueMatches([...onlineMatches, ...local]);
+      const noNetMessage = !onlineMatches.length
+        ? (local.length
+          ? `No Net results for “${query}”. Showing offline place matches.`
+          : `No Net results for “${query}”. Try a city, address, or landmark.`)
+        : '';
+      render(combined, noNetMessage);
+      setRouteStatus(onlineMatches.length
+        ? `${onlineMatches.length} Net ${onlineMatches.length === 1 ? 'result' : 'results'} found`
+        : 'No Net search results');
     } catch (e) {
       if (requestId === placeSearchRequestId) {
-        showLocalMatches();
+        const local = localMatches();
+        render(local, local.length
+          ? 'Net search is unavailable. Showing offline place matches.'
+          : 'Net search is unavailable, and there are no offline matches.');
         setRouteStatus('Online search unavailable — showing local places');
       }
     } finally {

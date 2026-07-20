@@ -133,6 +133,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 }
 #routeBar .place-results .place-hit:last-child { border-bottom: none; }
 .place-results .place-hit small { color: #667784; font-weight: 400; margin-left: 6px; }
+.place-results-message { margin: 0; padding: 9px 11px; border-bottom: 1px solid #edf0f2; background: #f7fafc; color: #405967; font: 650 11px/1.35 system-ui; }
+.place-results-message:last-child { border-bottom: none; }
 
 .mode-row { display: flex; align-items: stretch; gap: 5px; margin: 0; }
 #routeControls { margin-top: 6px; padding-top: 5px; border-top: 1px solid #e4e7eb; }
@@ -563,10 +565,8 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #navBannerMeta { min-width: 0; color: #4f6f68; font: 600 10.5px/1.25 system-ui; }
 .nav-banner button { flex: none; min-height: 29px; border: 1px solid #b8c9d2; border-radius: 8px; padding: 4px 7px; background: #fff; color: #235064; font: 700 11px system-ui; cursor: pointer; }
 .nav-banner button[data-nav-action="reroute"] { min-height: 38px; border-color: #bb7b00; background: #f2a900; color: #2e2400; }
-.nav-banner.off-route-action-visible { min-height: 58px; padding: 0; overflow: hidden; border-color: #b42318; background: rgba(255,248,247,.98); }
-#navBanner.off-route-action-visible .nav-banner-copy,
-#navBanner.off-route-action-visible #navDetailsBtn { display: none; }
-.nav-banner .nav-off-route-action { align-self: stretch; flex: 1; width: 100%; min-height: 56px; border: none; border-radius: 11px; padding: 8px 14px; background: #b42318; color: #fff; font: 800 14px/1.2 system-ui; letter-spacing: .01em; }
+.nav-banner.off-route-action-visible { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; min-height: 88px; padding: 7px 7px 0 12px; overflow: hidden; border-color: #b42318; background: rgba(255,248,247,.98); }
+.nav-banner .nav-off-route-action { grid-column: 1 / -1; width: calc(100% + 19px); min-height: 34px; margin-left: -12px; border: none; border-radius: 0; padding: 7px 14px; background: #b42318; color: #fff; font: 800 13px/1.2 system-ui; letter-spacing: .01em; }
 .nav-banner .nav-off-route-action[hidden] { display: none; }
 .navigation-active .update-prompt { bottom: calc(128px + env(safe-area-inset-bottom)); }
 
