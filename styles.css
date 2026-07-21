@@ -202,8 +202,9 @@ body.navigation-active #routeCard, body.navigation-active #routeControls { displ
 body:not(.navigation-active) #navCard { display: none; }
 .nav-card { display: flex; flex-direction: column; gap: 6px; padding: 2px 1px 5px; }
 .nav-card[hidden] { display: none; }
-.nav-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #40515c; font: 780 13px/1.2 system-ui; }
-#navCard .nav-card-details { flex: none; width: auto; min-width: 0; min-height: 26px; padding: 3px 10px; font-size: 10.5px; }
+.nav-card-head { color: #40515c; font: 780 13px/1.2 system-ui; }
+.nav-card-foot { display: flex; justify-content: flex-start; margin-top: 1px; }
+#navCard .nav-card-details { width: auto; min-width: 72px; min-height: 34px; }
 .nav-dest { color: #223c4b; font: 750 12px/1.25 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-progress { display: flex; flex-direction: column; gap: 4px; }
 .nav-progress-track { position: relative; height: 8px; border-radius: 999px; background: #e5edf2; overflow: hidden; }
@@ -573,11 +574,14 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #rb-status:empty { display: none; }
 
 .nav-start {
-  flex: none; min-height: 44px; padding: 0 13px; border: 1px solid #057861;
+  flex: none; min-width: 112px; min-height: 44px; padding: 0 13px; border: 1px solid #057861;
   border-radius: 20px; background: #008b73; box-shadow: 0 2px 9px rgba(0, 0, 0, .2);
   color: #fff; font: 750 12px system-ui; cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
 }
 .nav-start:disabled { border-color: #c1ccd2; background: #e3eaed; box-shadow: none; color: #78868d; cursor: default; }
+/* Amber while navigating — green reads as "go", so the pause action isn't green. */
+.nav-start.navigating { border-color: #b5621a; background: #dd7f2e; }
 
 .nav-banner {
   position: absolute; z-index: 14; left: 50%; bottom: calc(60px + env(safe-area-inset-bottom));
@@ -659,7 +663,7 @@ body.navigation-active #routeBar { display: none; }
 #updateLaterBtn { width: 32px; height: 32px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
 @media (max-width: 720px) {
   #topToolbar { left: 6px; gap: 4px; max-width: calc(100vw - 12px); }
-  .nav-start { min-height: 46px; padding: 0 8px; font-size: 11px; }
+  .nav-start { min-width: 100px; min-height: 46px; padding: 0 8px; font-size: 11px; }
   #routeBar { gap: 3px; padding: 5px 6px 5px 5px; max-width: calc(100vw - 12px); }
   #routeBar > button { width: 38px; height: 38px; }
   .route-endpoints { flex-basis: 247px; width: 247px; min-width: 195px; }

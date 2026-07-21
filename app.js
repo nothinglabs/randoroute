@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.206';
+const APP_VERSION = '2026-07-20.207';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1968,6 +1968,7 @@ function refreshNavigationUI() {
       ? 'Set a route to navigate'
       : turnNav.active ? 'Pause navigation' : 'Start turn-by-turn navigation';
     startButton.setAttribute('aria-pressed', String(turnNav.active));
+    startButton.classList.toggle('navigating', turnNav.active);
   }
   const startLabel = document.getElementById('navStartLabel');
   if (startLabel) startLabel.textContent = turnNav.active ? 'Pause' : 'Navigate';

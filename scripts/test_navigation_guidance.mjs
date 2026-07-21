@@ -31,6 +31,15 @@ assert.match(app, /function navSegmentClassLabel\([\s\S]*?ROAD_CLASS_NAME/,
   'the current segment reports a general road class');
 assert.match(app, /function navShoulderText\(/,
   'the current segment reports shoulder width');
+assert.match(html, /class="nav-card-foot"><button id="navCardDetailsBtn"/,
+  'the Details button sits in the panel\'s lower-left footer');
+// The Navigate/Pause button keeps one width and turns amber (not green) while navigating.
+assert.match(css, /\.nav-start\s*\{[^}]*min-width:\s*\d/,
+  'the Navigate/Pause button has a fixed width so it does not resize');
+assert.match(css, /\.nav-start\.navigating\s*\{[^}]*background:/,
+  'the pause state uses a non-green color');
+assert.match(app, /classList\.toggle\('navigating', turnNav\.active\)/,
+  'the button flips to its navigating state while active');
 // The app is renamed and no longer closes the panel when navigation starts.
 assert.match(html, /<title>Just Rolling Along<\/title>/,
   'the app is titled Just Rolling Along');
