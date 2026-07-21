@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.212';
+const APP_VERSION = '2026-07-20.213';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -991,10 +991,10 @@ function applyDisplayMode(src) {
     map.setPaintProperty(src.id, 'line-color', COLORS[2]);
     map.setPaintProperty(src.id, 'line-width',
       ['interpolate', ['linear'], ['zoom'],
-        6, ['match', ['get', 't'], 'ncn', 2.6, 1.6],
-        10, ['match', ['get', 't'], 'ncn', 5, 3],
-        14, ['match', ['get', 't'], 'ncn', 9, 5.5]]);
-    map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.42));
+        6, ['match', ['get', 't'], 'ncn', 3.6, 2.3],
+        10, ['match', ['get', 't'], 'ncn', 7, 4.3],
+        14, ['match', ['get', 't'], 'ncn', 12, 7.5]]);
+    map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.3));
     map.setPaintProperty(src.id, 'line-dasharray', [2, 1.4]);
     if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
     if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
