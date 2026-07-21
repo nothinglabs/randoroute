@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.216';
+const APP_VERSION = '2026-07-20.217';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4565,7 +4565,15 @@ async function searchOnlinePlaces(query) {
 function onlinePlaceResultName(item) {
   const address = item?.address || {};
   const displayParts = String(item?.display_name || '').split(',').map((part) => part.trim()).filter(Boolean);
-  const primary = String(item?.name || displayParts[0] || '').trim();
+  const houseNumber = String(address.house_number || '').trim();
+  const road = String(address.road || address.pedestrian || address.footway || address.path || '').trim();
+  const streetAddress = [houseNumber, road].filter(Boolean).join(' ');
+  // A named POI keeps its name. For a plain street address Nominatim sets
+  // `name` to just the house number and puts the street only in display_name,
+  // so "520 N 61st St" would collapse to "520" — rebuild it from house number
+  // plus road instead. Fall back to the first display_name part.
+  let primary = String(item?.name || '').trim();
+  if (!primary || primary === houseNumber) primary = streetAddress || displayParts[0] || '';
   const city = String(address.city || address.town || address.village || address.municipality
     || address.hamlet || '').trim();
   const state = String(address.state || 'Washington').trim();
