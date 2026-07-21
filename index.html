@@ -205,6 +205,12 @@
     <div class="dialog-actions"><button data-close="clearRouteDialog">Keep route</button><button id="confirmClearRoute" class="danger">Clear route</button></div>
   </dialog>
 
+  <dialog id="sharedSwitchDialog" class="map-dialog" aria-labelledby="sharedSwitchTitle">
+    <div class="dialog-head"><h2 id="sharedSwitchTitle">Leave the shared route?</h2><button class="dialog-close" data-close="sharedSwitchDialog" aria-label="Close">✕</button></div>
+    <p>Choosing a different route uses <b>your</b> settings, so it may not match the shared route exactly.</p>
+    <div class="dialog-actions"><button data-close="sharedSwitchDialog">Keep shared</button><button id="confirmSharedSwitch" class="dialog-primary">Use my settings</button></div>
+  </dialog>
+
   <dialog id="sharedRouteTip" class="map-dialog shared-route-tip" aria-label="Best on your Home Screen">
     <div class="dialog-head"><h2>Best on your Home Screen</h2><button class="dialog-close" data-close="sharedRouteTip" aria-label="Close">✕</button></div>
     <p>This shared route opened in your browser. For the full-screen map, open Just Rolling Along from your Home Screen. To move it there, open the share dialog here and copy the route link; then open Just Rolling Along and paste it under “Load a shared route.”</p>

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.209';
+const APP_VERSION = '2026-07-20.210';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -543,6 +543,7 @@ function decodeSharedRouteToken(token) {
       prefDesig: typeof data.p === 'boolean' ? data.p : null,
       prefResidential: typeof data.q === 'boolean' ? data.q : null,
       rules: sharedRules,
+      weights: data.w && typeof data.w === 'object' && !Array.isArray(data.w) ? data.w : null,
     };
   } catch (e) {
     return null;
@@ -571,7 +572,8 @@ function consumeSharedRouteHash() {
 }
 
 const sharedRoute = readSharedRoute();
-if (sharedRoute) Object.assign(rules, sharedRoute.rules);
+// A shared link no longer overwrites the receiver's settings. Its recipe is
+// kept aside and used only to rebuild the sender's exact route ("As Shared").
 
 let saveTimer = null;
 let stateDirty = false;
@@ -1191,21 +1193,30 @@ const routing = {
   vias: [],                  // intermediate stops: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false, pendingRoute: false, routeRequestActive: false,
-  mode: sharedRoute?.mode || (['direct', 'balanced', 'low'].includes(savedState?.mode)
-    ? savedState.mode : 'balanced'), // 'direct' | 'balanced' | 'low'
-  profileId: sharedRoute
-    ? (sharedRoute.profileId || legacyRouteProfile(sharedRoute.mode))
-    : (ROUTE_PROFILE_IDS.has(savedState?.profileId)
-      ? savedState.profileId : legacyRouteProfile(savedState?.mode)),
-  prefDesig: sharedRoute?.prefDesig != null ? sharedRoute.prefDesig : savedState && typeof savedState.prefDesig === 'boolean'
+  mode: ['direct', 'balanced', 'low'].includes(savedState?.mode)
+    ? savedState.mode : 'balanced', // 'direct' | 'balanced' | 'low'
+  profileId: ROUTE_PROFILE_IDS.has(savedState?.profileId)
+    ? savedState.profileId : legacyRouteProfile(savedState?.mode),
+  prefDesig: savedState && typeof savedState.prefDesig === 'boolean'
     ? savedState.prefDesig : DEFAULT_ROUTE_PREFERENCES.prefDesig, // force this preference across every route option
-  prefResidential: sharedRoute?.prefResidential != null ? sharedRoute.prefResidential
-    : savedState && typeof savedState.prefResidential === 'boolean'
-      ? savedState.prefResidential : DEFAULT_ROUTE_PREFERENCES.prefResidential,
+  prefResidential: savedState && typeof savedState.prefResidential === 'boolean'
+    ? savedState.prefResidential : DEFAULT_ROUTE_PREFERENCES.prefResidential,
   reqId: 0,
   compareStartedAt: 0,
   options: [],
   last: null, // last successful result (for redraws)
+  // Shared-route ("As Shared") state — the sender's recipe and whether the
+  // shared route is currently the active option.
+  sharedRecipe: sharedRoute ? {
+    mode: sharedRoute.mode,
+    profileId: sharedRoute.profileId || legacyRouteProfile(sharedRoute.mode),
+    prefDesig: sharedRoute.prefDesig,
+    prefResidential: sharedRoute.prefResidential,
+    weights: sharedRoute.weights,
+    rules: sharedRoute.rules,
+  } : null,
+  sharedActive: false,
+  sharedLoading: false,
 };
 
 function setRouteStatus(t) {
@@ -1967,14 +1978,14 @@ function refreshNavigationUI() {
     startButton.disabled = !routeAvailable;
     startButton.title = !routeAvailable
       ? 'Set a route to navigate'
-      : turnNav.active ? 'Pause navigation' : 'Start turn-by-turn navigation';
+      : turnNav.active ? 'Stop navigation' : 'Start turn-by-turn navigation';
     startButton.setAttribute('aria-pressed', String(turnNav.active));
     startButton.classList.toggle('navigating', turnNav.active);
   }
   const startLabel = document.getElementById('navStartLabel');
-  if (startLabel) startLabel.textContent = turnNav.active ? 'Pause' : 'Navigate';
+  if (startLabel) startLabel.textContent = turnNav.active ? 'Stop' : 'Navigate';
   const startIcon = document.getElementById('navStartIcon');
-  if (startIcon) startIcon.textContent = turnNav.active ? 'Ⅱ' : '▶';
+  if (startIcon) startIcon.textContent = turnNav.active ? '■' : '▶';
   syncRouteOptionControls();
   const banner = document.getElementById('navBanner');
   const kicker = document.getElementById('navBannerKicker');
@@ -2077,11 +2088,11 @@ function navSegmentClassLabel(seg) {
 }
 
 function navShoulderText(seg) {
-  if ((seg.flags || 0) & 8) return 'off-street'; // shoulder is meaningless on a path
+  if ((seg.flags || 0) & 8) return 'Shoulder: n/a'; // shoulder is meaningless on a path
   const sh = seg.sh;
-  if (sh == null || sh < 0) return 'shoulder n/a';
-  if (sh < 0.5) return 'no shoulder';
-  return `${+Number(sh).toFixed(1)} ft shoulder`;
+  if (sh == null || sh < 0) return 'Shoulder: n/a';
+  if (sh < 0.5) return 'Shoulder: none';
+  return `Shoulder: ${+Number(sh).toFixed(1)} ft`;
 }
 
 function navSegInfoHTML() {
@@ -2122,7 +2133,7 @@ function updateNavCard() {
   const destEl = document.getElementById('navDest');
   if (destEl && navCardStatsFor !== m) {
     const name = (routing.endName && routing.endName.trim()) || 'your destination';
-    destEl.textContent = `To ${name}`;
+    destEl.textContent = `To: ${name}`;
     navCardStatsFor = m;
   }
   const segEl = document.getElementById('navSegInfo');
@@ -3101,7 +3112,15 @@ function onRouterMessage(ev) {
       return;
     }
     routing.options = m.options;
-    const selected = refreshedRouteSelection(m.options);
+    let selected;
+    if (routing.sharedActive) {
+      // The sender's exact route is the option matching their profile.
+      const sp = routing.sharedRecipe?.profileId;
+      selected = (sp && m.options.find((o) => o.optimization?.profileId === sp)) || m.options[0];
+      selected.asShared = true;
+    } else {
+      selected = refreshedRouteSelection(m.options);
+    }
     activateRouteOption(selected);
     notifySnapDistance(selected);
   } else if (m.type === 'route') {
@@ -3166,12 +3185,17 @@ function computeRoute() {
     });
   } else {
     routing.compareStartedAt = performance.now();
+    // While the shared route is active, search with the SENDER's recipe so the
+    // path reproduces exactly. The map still colors it with the receiver's
+    // current rules (colors are re-scored client-side).
+    const rec = routing.sharedActive ? routing.sharedRecipe : null;
     routing.worker.postMessage({
-      type: 'route-options', id: routing.reqId, points, rules: { ...rules },
-      forceDesignated: routing.prefDesig,
-      forceResidential: routing.prefResidential,
-      preferredProfileId: routing.profileId,
-      weights: { ...routingWeights },
+      type: 'route-options', id: routing.reqId, points,
+      rules: { ...(rec?.rules || rules) },
+      forceDesignated: rec ? !!rec.prefDesig : routing.prefDesig,
+      forceResidential: rec ? !!rec.prefResidential : routing.prefResidential,
+      preferredProfileId: rec ? (rec.profileId || routing.profileId) : routing.profileId,
+      weights: { ...(rec?.weights || routingWeights) },
     });
   }
 }
@@ -3701,6 +3725,7 @@ function routeEndpointDisplayName(kind) {
 }
 
 function setRoutePoint(kind, lngLat, name = 'Point on map') {
+  exitSharedRoute();
   routing[kind] = [lngLat.lng, lngLat.lat];
   routing[`${kind}Name`] = normalizeEndpointName(name) || 'Point on map';
   const mk = kind + 'Marker';
@@ -3833,6 +3858,7 @@ function enableLongPressEndpointMove(kind, marker) {
 }
 
 function addVia(lngLat, { allowPastLimit = false } = {}) {
+  exitSharedRoute();
   if (!allowPastLimit && routing.vias.length >= MAX_ROUTE_STOPS) {
     routing.arm = null;
     updateArmButtons();
@@ -3867,6 +3893,7 @@ function removeLastVia() {
 
 function reverseRoute() {
   if (!(routing.start && routing.end)) return;
+  exitSharedRoute();
   stopTurnNavigation(false);
   routing.arm = null;
   closePlacePicker(false);
@@ -3890,6 +3917,7 @@ function reverseRoute() {
 }
 
 function clearRoute() {
+  exitSharedRoute();
   showRouteActionToast('');
   stopTurnNavigation(false);
   routing.arm = null;
@@ -4023,16 +4051,21 @@ function renderRouteOptionControls() {
   }
   host.innerHTML = routing.options.map((option, index) => {
     const optimization = option.optimization || {};
-    const label = optimization.label || `Option ${index + 1}`;
+    const label = option.asShared ? 'As Shared' : (optimization.label || `Option ${index + 1}`);
     const only = routing.options.length === 1;
-    const shortLabel = /^Route [A-Z]$/.test(label)
-      ? (only ? `${label.slice(-1)} (Only route)` : label.slice(-1))
-      : label;
+    const shortLabel = option.asShared ? 'As Shared'
+      : /^Route [A-Z]$/.test(label)
+        ? (only ? `${label.slice(-1)} (Only route)` : label.slice(-1))
+        : label;
     const active = option === routing.last;
-    const classes = [active ? 'active' : '', turnNav.active ? 'nav-locked' : ''].filter(Boolean).join(' ');
+    const classes = [active ? 'active' : '', option.asShared ? 'route-option-shared' : '',
+      turnNav.active ? 'nav-locked' : ''].filter(Boolean).join(' ');
+    const title = option.asShared
+      ? 'The route exactly as shared. Colors use your settings; switching routes uses your settings.'
+      : optimizationDescription(optimization);
     return `<button type="button" data-route-option="${index}"${classes ? ` class="${classes}"` : ''}
-      aria-pressed="${active}" aria-label="Choose route ${index + 1}: ${label}"
-      title="${optimizationDescription(optimization)}"${turnNav.active ? ' aria-disabled="true"' : ''}>
+      aria-pressed="${active}" aria-label="${option.asShared ? 'Shared route' : `Choose route ${index + 1}: ${label}`}"
+      title="${title}"${turnNav.active ? ' aria-disabled="true"' : ''}>
       <span>${shortLabel}</span></button>`;
   }).join('');
 }
@@ -4041,7 +4074,8 @@ function activateRouteOption(option, updateNavigation = false) {
   if (!option?.ok) return;
   showRouteActionToast('');
   routing.last = option;
-  if (option.optimization) {
+  // The shared route must not push the sender's profile onto the receiver.
+  if (option.optimization && !option.asShared) {
     routing.profileId = option.optimization.profileId || routing.profileId;
     routing.mode = option.optimization.mode || routing.mode;
   }
@@ -4078,7 +4112,10 @@ function buildRoutingPanel() {
     const button = event.target.closest('[data-route-option]');
     if (!button || button.disabled || choices.classList.contains('loading')) return;
     const option = routing.options[Number(button.dataset.routeOption)];
-    if (option && option !== routing.last) activateRouteOption(option);
+    if (!option || option === routing.last) return;
+    // Leaving the shared route recomputes with the receiver's own settings.
+    if (routing.sharedActive && !option.asShared) { openSharedSwitchDialog(); return; }
+    activateRouteOption(option);
   });
   renderRouteOptionControls();
 
@@ -4118,6 +4155,7 @@ function buildRoutingPanel() {
     document.getElementById('clearRouteDialog').close();
     clearRoute();
   });
+  document.getElementById('confirmSharedSwitch').addEventListener('click', () => confirmSharedSwitch());
   document.addEventListener('click', (event) => {
     if (!document.getElementById('routeBar').contains(event.target)) setRouteActionsOpen(false);
   });
@@ -4131,9 +4169,12 @@ function buildRoutingPanel() {
   // A shared link wins over the receiver's locally persisted route.
   if (sharedRoute) {
     const rt = sharedRoute.route;
+    routing.sharedLoading = true;         // suppress the exit-shared hooks below
+    routing.sharedActive = !!routing.sharedRecipe;
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn);
     for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
+    routing.sharedLoading = false;
     fitRouteBounds(rt);
     setStatus('Shared route loaded');
     // The route is now persisted like any other plan. Removing the consumed
@@ -4164,6 +4205,7 @@ function shareRouteUrl() {
     p: routing.prefDesig,
     q: routing.prefResidential,
     r: { ...rules },
+    w: { ...routingWeights },
   };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   let binary = '';
@@ -4184,23 +4226,50 @@ function fitRouteBounds(route) {
 
 function loadSharedRouteIntoPlanner(shared) {
   if (!shared || !shared.route) return false;
+  routing.sharedLoading = true;           // keep the exit-shared hooks quiet during load
   clearRoute();
-  Object.assign(rules, shared.rules || {});
-  buildRulesPanel();
-  rescoreAll();
-  if (shared.mode) routing.mode = shared.mode;
-  routing.profileId = shared.profileId || legacyRouteProfile(shared.mode || routing.mode);
-  if (shared.prefDesig != null) routing.prefDesig = shared.prefDesig;
-  if (shared.prefResidential != null) routing.prefResidential = shared.prefResidential;
-  renderRouteOptionControls();
-  syncRoutePreferenceControls();
+  // The receiver's own settings stay untouched; the sender's recipe is kept
+  // aside and used only to rebuild the exact shared route.
+  routing.sharedRecipe = {
+    mode: shared.mode,
+    profileId: shared.profileId || legacyRouteProfile(shared.mode),
+    prefDesig: shared.prefDesig,
+    prefResidential: shared.prefResidential,
+    weights: shared.weights,
+    rules: shared.rules,
+  };
+  routing.sharedActive = true;
   const route = shared.route;
   setRoutePoint('start', { lng: route.s[0], lat: route.s[1] }, route.sn);
   for (const p of route.v || []) addVia({ lng: p[0], lat: p[1] });
   setRoutePoint('end', { lng: route.e[0], lat: route.e[1] }, route.en);
+  routing.sharedLoading = false;
   fitRouteBounds(route);
   saveStateSoon();
   return true;
+}
+
+// Leaving the shared route (an endpoint edit, a new route, or confirming the
+// switch dialog) drops "As Shared" so the rider's own settings take over.
+function exitSharedRoute() {
+  if (routing.sharedLoading || !routing.sharedActive) return;
+  routing.sharedActive = false;
+  routing.sharedRecipe = null;
+  routing.options.forEach((o) => { o.asShared = false; });
+}
+
+function openSharedSwitchDialog() {
+  const dialog = document.getElementById('sharedSwitchDialog');
+  if (dialog?.showModal) { if (!dialog.open) dialog.showModal(); return; }
+  if (confirm('Switching routes uses your own settings and may not match the shared route exactly. Continue?')) confirmSharedSwitch();
+}
+
+function confirmSharedSwitch() {
+  document.getElementById('sharedSwitchDialog')?.close();
+  routing.sharedActive = false;
+  routing.sharedRecipe = null;
+  routing.options.forEach((o) => { o.asShared = false; });
+  computeRoute(); // rebuild with the receiver's own settings
 }
 
 function loadSavedRoutes() {

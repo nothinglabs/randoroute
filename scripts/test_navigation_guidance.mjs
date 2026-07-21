@@ -48,6 +48,25 @@ assert.doesNotMatch(inspectBody, /setPanelOpen/,
 // Route details title drops the option label while navigating, keeps it otherwise.
 assert.match(app, /turnNav\.active \? 'Route Details' : `\$\{routeLabel\} Details`/,
   'the route details title is just "Route Details" during navigation');
+// Panel copy tweaks and the Stop button.
+assert.match(app, /`To: \$\{name\}`/, 'destination is prefixed "To:"');
+assert.match(app, /return `Shoulder: \$\{\+Number\(sh\)\.toFixed\(1\)\} ft`/,
+  'the current segment reports "Shoulder: N ft"');
+assert.match(app, /startLabel\.textContent = turnNav\.active \? 'Stop' : 'Navigate'/,
+  'the navigation button says Stop, not Pause');
+assert.match(css, /#tab-route \{ min-height:/,
+  'the Route tab has a pinned height so it does not bounce on Navigate');
+// Exact-route sharing: recipe carries weights, never resets the receiver's
+// settings, and the shared route is offered as "As Shared".
+assert.match(app, /w: \{ \.\.\.routingWeights \}/, 'share link includes the routing weights');
+assert.doesNotMatch(app, /Object\.assign\(rules, sharedRoute\.rules\)/,
+  'a shared link must not overwrite the receiver\'s safety rules');
+assert.match(app, /sharedActive \? routing\.sharedRecipe/,
+  'the shared route is rebuilt with the sender\'s recipe');
+assert.match(app, /function exitSharedRoute\(\)/,
+  'leaving the shared route drops the As Shared state');
+assert.match(html, /id="sharedSwitchDialog"/,
+  'switching away from the shared route confirms via a dialog');
 // The app is renamed and no longer closes the panel when navigation starts.
 assert.match(html, /<title>Just Rolling Along<\/title>/,
   'the app is titled Just Rolling Along');
