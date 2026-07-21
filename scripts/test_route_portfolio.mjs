@@ -17,8 +17,14 @@ const scenarios = [
     points: [phinney, mukilteo],
     expectFullyMatching: true,
     expectAny: {
-      minDistanceMi: 30, maxDistanceMi: 33, minFacilityMi: 22,
-      maxFailM: 400, discoveryMaxSpeed: 30,
+      // Rebuilt against a fresh WSDOT speed/facility snapshot (2026-07): the
+      // scenic ~30 mi, 27 mi-facility corridor is now surfaced by a balanced
+      // profile rather than the 30 mph-capped discovery profile, and measures
+      // 29.97 mi. High facility mileage (not the discovery label) pins the
+      // scenic corridor; the standalone discovery option is a shorter 22.7 mi
+      // route on this refreshed data.
+      minDistanceMi: 29.5, maxDistanceMi: 33, minFacilityMi: 22,
+      maxFailM: 400,
     },
   },
   {
@@ -43,7 +49,10 @@ const scenarios = [
       minDistanceMi: 70, maxDistanceMi: 80, minFacilityMi: 22,
       maxFailM: 500, discoveryMaxSpeed: 30, ferries: twoFerries,
       // Whidbey crossing floor 31 (see note above): two-way ferry approaches.
-      landMinMi: [30, 31, 0], landMaxMi: [34, 38, 1],
+      // On the full trip the discovery profile does take the scenic first leg;
+      // it measures 29.97 mi on the 2026-07 WSDOT rebuild (was ~30), so the
+      // first-leg floor is 29.5.
+      landMinMi: [29.5, 31, 0], landMaxMi: [34, 38, 1],
     },
   },
 ];
