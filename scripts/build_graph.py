@@ -491,10 +491,14 @@ def classify_way(tags):
         return None  # not rideable; pedestrian/dismount fallbacks are not in this graph
     # access=no/private is a blanket default that mode-specific tags override:
     # e.g. the SR 520 Trail bridge is access=no + bicycle=designated (closed to
-    # general traffic, explicitly open to bikes).
+    # general traffic, explicitly open to bikes). A numbered state/US/Interstate
+    # route is public by definition, so an access=private/no tag on one is a
+    # mapping error (e.g. the WA 507 bridge over the Nisqually was tagged
+    # access=private, which severed the highway); keep those regardless.
     if (tags.get('access') in ('private', 'no')
             and bike not in ('yes', 'designated', 'permissive')
-            and foot not in ('yes', 'designated', 'permissive')):
+            and foot not in ('yes', 'designated', 'permissive')
+            and not (tags.get('ref') and REF_STATE.search(tags.get('ref') or ''))):
         return None
 
     # Ferries (route=ferry, no highway tag): routable crossings for bikes.
