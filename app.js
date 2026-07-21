@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.204';
+const APP_VERSION = '2026-07-20.205';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2051,16 +2051,18 @@ function drawNavElevation(canvas, profile, distM, progressM) {
   ctx.textAlign = 'left';
 }
 
-function navTripStatsHTML(m) {
+function navStatsRowHTML(m) {
+  return `↗ ${fmtFt(m.ascentM)} ↘ ${fmtFt(m.descentM)} ft · △ ${Number(m.maxGradePct || 0).toFixed(1)}%${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi` : ''}`;
+}
+
+function navRideMixHTML(m) {
   const stats = routeSummaryStats(m);
   const ridingM = Math.max(1, m.distM - (m.ferryM || 0));
   const bikePct = routePercent(stats.bikeNetworkM, ridingM);
   const passPct = routePercent((stats.levels[1] || 0) + (stats.levels[2] || 0), ridingM, true);
   const cautionPct = routePercent(stats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(m.failM || 0, ridingM, true);
-  return `
-    <div class="nav-stats-row"><span>↗ ${fmtFt(m.ascentM)} ft climb</span><span>↘ ${fmtFt(m.descentM)} ft</span><span>△ ${Number(m.maxGradePct || 0).toFixed(1)}% max</span>${m.ferryM > 0 ? `<span>⛴ ${fmtMi(m.ferryM)} mi ferry</span>` : ''}</div>
-    <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><span><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div>`;
+  return `<div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><span><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div>`;
 }
 
 function updateNavCard() {
@@ -2076,19 +2078,24 @@ function updateNavCard() {
   const fill = document.getElementById('navProgressFill');
   if (fill) fill.style.width = `${pct}%`;
   const pctEl = document.getElementById('navProgressPct');
-  if (pctEl) pctEl.textContent = `${pct}%`;
   const remainingS = remainingNavigationTimeS();
   const etaEl = document.getElementById('navProgressEta');
   if (etaEl) {
-    if (turnNav.arrived) etaEl.textContent = 'Arrived';
+    if (turnNav.arrived) { etaEl.textContent = 'Arrived'; if (pctEl) pctEl.textContent = ''; }
     else if (remainingS >= 30) {
       const eta = new Date(Date.now() + remainingS * 1000);
-      etaEl.textContent = `ETA ${eta.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${fmtDur(remainingS)} left`;
-    } else etaEl.textContent = `${navDistanceText(remainingM)} to go`;
+      etaEl.textContent = `ETA ${eta.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+      if (pctEl) pctEl.textContent = `${fmtDur(remainingS)} · ${pct}%`;
+    } else {
+      etaEl.textContent = `${navDistanceText(remainingM)} to go`;
+      if (pctEl) pctEl.textContent = `${pct}%`;
+    }
   }
   const statsEl = document.getElementById('navTripStats');
-  if (statsEl && m?.ok && navCardStatsFor !== m) {
-    statsEl.innerHTML = navTripStatsHTML(m);
+  const mixEl = document.getElementById('navRideMix');
+  if (m?.ok && navCardStatsFor !== m) {
+    if (statsEl) statsEl.innerHTML = navStatsRowHTML(m);
+    if (mixEl) mixEl.innerHTML = navRideMixHTML(m);
     navCardStatsFor = m;
   }
   const canvas = document.getElementById('navElevationCanvas');

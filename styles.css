@@ -200,21 +200,24 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 /* ---- Navigating Route panel: the Route tab while turn-by-turn is active. ---- */
 body.navigation-active #routeCard, body.navigation-active #routeControls { display: none; }
 body:not(.navigation-active) #navCard { display: none; }
-.nav-card { display: flex; flex-direction: column; gap: 9px; padding: 2px 1px 6px; }
+.nav-card { display: flex; flex-direction: column; gap: 6px; padding: 2px 1px 5px; }
 .nav-card[hidden] { display: none; }
-.nav-card-head { color: #40515c; font: 780 14px/1.2 system-ui; }
-.nav-progress { display: flex; flex-direction: column; gap: 5px; }
+.nav-card-head { color: #40515c; font: 780 13px/1.2 system-ui; }
+/* Elevation chart at half width, progress + stats stacked alongside it. */
+.nav-card-body { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; align-items: stretch; }
+.nav-card-info { display: flex; flex-direction: column; justify-content: space-between; gap: 6px; min-width: 0; }
+.nav-progress { display: flex; flex-direction: column; gap: 4px; }
 .nav-progress-track { position: relative; height: 8px; border-radius: 999px; background: #e5edf2; overflow: hidden; }
 #navProgressFill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 999px; background: linear-gradient(90deg, #00795c, #12a37c); transition: width .4s ease; }
-.nav-progress-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.nav-progress-meta strong { color: #223c4b; font: 800 13px/1.2 system-ui; }
-.nav-progress-meta span { color: #6a7a84; font: 800 12px/1.2 system-ui; }
+.nav-progress-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 6px; }
+.nav-progress-meta strong { color: #223c4b; font: 800 12px/1.25 system-ui; }
+.nav-progress-meta span { color: #6a7a84; font: 800 11.5px/1.2 system-ui; }
 .nav-elevation-wrap { border: 1px solid #e2e9ee; border-radius: 9px; background: #fbfcfd; padding: 2px; }
-.nav-elevation { display: block; width: 100%; height: 74px; }
-.nav-trip-stats { display: flex; flex-direction: column; gap: 4px; }
-.nav-stats-row { display: flex; flex-wrap: wrap; gap: 2px 12px; color: #52616b; font: 650 12px/1.3 system-ui; }
-.nav-card-details { width: 100%; margin-top: 1px; }
-#navCard .rc-ride-mix { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 2px 5px; min-width: 0; color: #52616b; font: 600 11px/1.2 system-ui; }
+.nav-elevation { display: block; width: 100%; height: 62px; }
+.nav-trip-stats { color: #52616b; font: 650 11.5px/1.35 system-ui; }
+.nav-ride-mix { margin-top: -1px; }
+#navCard .nav-card-details { width: 100%; min-height: 32px; margin-top: 1px; }
+#navCard .rc-ride-mix { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 2px 5px; min-width: 0; color: #52616b; font: 600 11px/1.3 system-ui; }
 #navCard .rc-ride-mix > span { white-space: nowrap; }
 #navCard .rc-ride-mix b { color: #223c4b; font-weight: 800; }
 #navCard .rc-ride-mix i { color: #a0aab1; font-style: normal; }
