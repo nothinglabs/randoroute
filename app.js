@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.220';
+const APP_VERSION = '2026-07-20.221';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5190,11 +5190,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
     if (badge) rows.push(['Bike route', badge]);
   }
   rows = rows.filter(([, v]) => v != null && v !== '');
-  // Maps URLs need no API key. Street View opens the panorama nearest the
-  // tapped coordinates; Google Maps falls back gracefully where coverage is
-  // unavailable.
-  const streetView = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${
-    lngLat.lat.toFixed(6)},${lngLat.lng.toFixed(6)}`;
+  const svLat = lngLat.lat, svLng = lngLat.lng;
   readoutEl.replaceChildren();
   const close = document.createElement('button');
   close.className = 'readout-close';
@@ -5224,13 +5220,12 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
     tr.append(keyCell, valueCell);
     table.appendChild(tr);
   }
-  const streetViewLink = document.createElement('a');
-  streetViewLink.className = 'gmap';
-  streetViewLink.href = streetView;
-  streetViewLink.target = '_blank';
-  streetViewLink.rel = 'noopener';
-  streetViewLink.textContent = 'Open Street View ↗';
-  readoutEl.append(close, heading, table, streetViewLink);
+  const streetViewBtn = document.createElement('button');
+  streetViewBtn.type = 'button';
+  streetViewBtn.className = 'gmap';
+  streetViewBtn.textContent = GOOGLE_MAPS_EMBED_KEY ? 'Street View' : 'Open Street View ↗';
+  streetViewBtn.addEventListener('click', () => openStreetView(svLat, svLng));
+  readoutEl.append(close, heading, table, streetViewBtn);
   readoutEl.classList.add('show');
   if (anchorPoint) positionRoadInfoNear(anchorPoint);
 }
@@ -5238,6 +5233,31 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
 readoutEl.addEventListener('click', (e) => {
   if (!e.target.closest('.readout-close')) return;
   dismissRoadInfo();
+});
+
+// In-app Street View. With a Google Maps Embed API key the panorama opens in a
+// dialog iframe so the PWA is never left; without one it opens Google Maps in a
+// new tab as before. The key is a public, HTTP-referrer-restricted Embed API
+// key (that API has no usage charges); set it here to enable the in-app view.
+const GOOGLE_MAPS_EMBED_KEY = '';
+
+function openStreetView(lat, lng) {
+  const external = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}`;
+  if (!GOOGLE_MAPS_EMBED_KEY) {
+    window.open(external, '_blank', 'noopener');
+    return;
+  }
+  const dialog = document.getElementById('streetViewDialog');
+  const frame = document.getElementById('streetViewFrame');
+  const externalLink = document.getElementById('streetViewExternal');
+  if (externalLink) externalLink.href = external;
+  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&fov=90`;
+  if (!dialog.open) dialog.showModal();
+}
+
+// Stop the panorama streaming (and free the connection) when the dialog closes.
+document.getElementById('streetViewDialog').addEventListener('close', () => {
+  document.getElementById('streetViewFrame').src = 'about:blank';
 });
 
 // A pinned road card belongs to the map inspection interaction. Any click on

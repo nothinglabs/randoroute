@@ -199,6 +199,11 @@
     </div>
   </dialog>
 
+  <dialog id="streetViewDialog" class="full-help-dialog sv-dialog" aria-label="Street View">
+    <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Open in Google Maps ↗</a><button class="dialog-close" data-close="streetViewDialog" aria-label="Close Street View">✕</button></div></div>
+    <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade" loading="lazy"></iframe></div>
+  </dialog>
+
   <dialog id="clearRouteDialog" class="map-dialog clear-route-dialog" aria-label="Clear this route">
     <div class="dialog-head"><h2>Clear this route?</h2><button class="dialog-close" data-close="clearRouteDialog" aria-label="Close">✕</button></div>
     <p>Start, destination, and any waypoints will be removed.</p>
