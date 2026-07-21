@@ -214,6 +214,7 @@ def load_blts_index(path):
                 'spd': p.get('SpeedLimit'),
                 'prohibited': p.get('Prohibited') == 1,
                 'limited': p.get('LimitedAccess') == 1,
+                'route': _route_number(p.get('RouteIdentifier')),
             })
     print(f'  WSDOT index: {len(geoms):,} segments', flush=True)
     return STRtree(geoms), geoms, attrs
@@ -334,6 +335,40 @@ def is_restricted_edge(coords, tags, index):
             if distance <= WSDOT_MATCH_DEG and routes[gi] in edge_routes:
                 return True
     return False
+
+
+def blts_match(coords, tags, index):
+    """Best WSDOT BLTS segment for an edge, guarding against mere crossings.
+
+    Same discipline as official_match/is_restricted_edge: a shared route
+    number permits the normal WSDOT/OSM centerline offset; otherwise at least
+    two interior samples must fall within the strict tolerance. A bicycle-legal
+    surface street that only passes *under* a prohibited freeway (or runs a few
+    metres beside a limited-access ramp) is therefore never handed that
+    freeway's prohibition, limited-access caution, shoulder, or speed. The old
+    single-midpoint match at WSDOT_MATCH_DEG conflated exactly those crossings,
+    which severed continuous bike routes like NE Ravenna Blvd under I-5.
+    """
+    tree, geoms, attrs = index
+    points = sampled_points(coords)
+    if not points:
+        return None
+    edge_routes = _route_numbers(tags.get('ref'))
+    best = None
+    candidates = set()
+    for point in points:
+        candidates.update(int(i) for i in tree.query(point.buffer(WSDOT_MATCH_DEG)))
+    for gi in candidates:
+        distances = [geoms[gi].distance(point) for point in points]
+        same_route = attrs[gi]['route'] is not None and attrs[gi]['route'] in edge_routes
+        close_count = sum(distance <= (WSDOT_MATCH_DEG if same_route else WSDOT_STRICT_DEG)
+                          for distance in distances)
+        if close_count < 2:
+            continue
+        score = sum(sorted(distances)[:2])
+        if best is None or score < best[0]:
+            best = (score, attrs[gi])
+    return best[1] if best else None
 
 
 def parse_mph(v):
@@ -861,13 +896,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 seg = [p]
                                 continue  # WSDOT permanent bike restriction
                             if wsdot_candidate:
-                                tree, geoms, wattrs = wsdot
-                                mid = Point(coords[len(coords) // 2])
-                                best, bestd = None, WSDOT_MATCH_DEG
-                                for gi in tree.query(mid.buffer(WSDOT_MATCH_DEG)):
-                                    d = geoms[gi].distance(mid)
-                                    if d < bestd:
-                                        bestd, best = d, wattrs[gi]
+                                best = blts_match(coords, tags, wsdot)
                                 if best is not None:
                                     if best['prohibited']:
                                         seg = [p]
