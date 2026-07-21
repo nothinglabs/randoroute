@@ -1,6 +1,6 @@
 {
-  "name": "WA Bike Safety",
-  "short_name": "BikeSafety",
+  "name": "Just Rolling Along",
+  "short_name": "JRA",
   "description": "Washington roads colored by bicycle level of traffic stress. Visualization only.",
   "start_url": "./",
   "scope": "./",

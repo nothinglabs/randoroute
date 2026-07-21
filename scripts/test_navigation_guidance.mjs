@@ -19,6 +19,23 @@ assert.match(app, /function drawNavElevation\([\s\S]*?ctx\.clip\(\)[\s\S]*?NAV_E
   'the navigating elevation chart should shade the ridden portion');
 assert.match(app, /function updateNavCard\([\s\S]*?navigationElevationProgressM\(\)/,
   'the navigating panel should track the live position on its elevation chart');
+// Panel content: destination, miles done/left, and current-segment facts;
+// the route-segment percentages are gone.
+assert.match(html, /id="navDest"[\s\S]*?id="navProgressDist"[\s\S]*?id="navSegInfo"/,
+  'the panel shows destination, miles done/left, and current-segment info');
+assert.doesNotMatch(html, /id="navRideMix"|id="navTripStats"/,
+  'the route-segment ride-mix percentages are removed from the panel');
+assert.match(app, /function navCurrentSegment\(\)[\s\S]*?nearestSegment/,
+  'the current segment is resolved from the live position');
+assert.match(app, /function navSegmentClassLabel\([\s\S]*?ROAD_CLASS_NAME/,
+  'the current segment reports a general road class');
+assert.match(app, /function navShoulderText\(/,
+  'the current segment reports shoulder width');
+// The app is renamed and no longer closes the panel when navigation starts.
+assert.match(html, /<title>Just Rolling Along<\/title>/,
+  'the app is titled Just Rolling Along');
+assert.doesNotMatch(app, /startTurnNavigation[\s\S]*?mobileNavMedia\.matches\) setPanelOpen\(false\)/,
+  'starting navigation should leave the panel open');
 assert.match(html, /id="navRouteBackBtn"[\s\S]*?Route to the nearest point[\s\S]*?id="navKeepRouteBtn"[\s\S]*?I'll find my own way[\s\S]*?id="navNewRouteBtn"[\s\S]*?New route to destination/,
   'off-route recovery dialog should present all three explicit choices');
 assert.match(html, /id="navNewRouteBtn"[\s\S]*?fresh route from here through any remaining stops/,

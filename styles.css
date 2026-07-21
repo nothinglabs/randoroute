@@ -202,29 +202,23 @@ body.navigation-active #routeCard, body.navigation-active #routeControls { displ
 body:not(.navigation-active) #navCard { display: none; }
 .nav-card { display: flex; flex-direction: column; gap: 6px; padding: 2px 1px 5px; }
 .nav-card[hidden] { display: none; }
-.nav-card-head { color: #40515c; font: 780 13px/1.2 system-ui; }
-/* Elevation chart at half width, progress + stats stacked alongside it. */
-.nav-card-body { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; align-items: stretch; }
-.nav-card-info { display: flex; flex-direction: column; justify-content: space-between; gap: 6px; min-width: 0; }
+.nav-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #40515c; font: 780 13px/1.2 system-ui; }
+#navCard .nav-card-details { flex: none; width: auto; min-width: 0; min-height: 26px; padding: 3px 10px; font-size: 10.5px; }
+.nav-dest { color: #223c4b; font: 750 12px/1.25 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-progress { display: flex; flex-direction: column; gap: 4px; }
 .nav-progress-track { position: relative; height: 8px; border-radius: 999px; background: #e5edf2; overflow: hidden; }
 #navProgressFill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 999px; background: linear-gradient(90deg, #00795c, #12a37c); transition: width .4s ease; }
-.nav-progress-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 6px; }
-.nav-progress-meta strong { color: #223c4b; font: 800 12px/1.25 system-ui; }
+.nav-progress-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 1px 8px; }
 .nav-progress-meta span { color: #6a7a84; font: 800 11.5px/1.2 system-ui; }
+.nav-progress-meta strong { color: #223c4b; font: 800 12px/1.25 system-ui; }
+/* Elevation chart at half width, current-segment facts alongside it. */
+.nav-card-body { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; align-items: stretch; }
 .nav-elevation-wrap { border: 1px solid #e2e9ee; border-radius: 9px; background: #fbfcfd; padding: 2px; }
-.nav-elevation { display: block; width: 100%; height: 62px; }
-.nav-trip-stats { color: #52616b; font: 650 11.5px/1.35 system-ui; }
-.nav-ride-mix { margin-top: -1px; }
-#navCard .nav-card-details { width: 100%; min-height: 32px; margin-top: 1px; }
-#navCard .rc-ride-mix { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 2px 5px; min-width: 0; color: #52616b; font: 600 11px/1.3 system-ui; }
-#navCard .rc-ride-mix > span { white-space: nowrap; }
-#navCard .rc-ride-mix b { color: #223c4b; font-weight: 800; }
-#navCard .rc-ride-mix i { color: #a0aab1; font-style: normal; }
-#navCard .rc-mix-swatch { display: inline-block; width: 9px; height: 9px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
-#navCard .rc-ride-label { padding: 2px 4px; border-radius: 4px; background: #e7eef3; color: #405866; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-#navCard .rc-ride-caution, #navCard .rc-ride-caution b { color: #9a4f00; }
-#navCard .rc-ride-fail, #navCard .rc-ride-fail b { color: #b42318; }
+.nav-elevation { display: block; width: 100%; height: 58px; }
+.nav-seg-info { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; }
+.nav-seg-label { color: #7c8b95; font: 800 8px/1.2 system-ui; letter-spacing: .05em; text-transform: uppercase; }
+.nav-seg-name { color: #223c4b; font: 800 12.5px/1.2 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-seg-line { color: #52616b; font: 620 11px/1.3 system-ui; }
 #routeCard .rc-warn { margin-top: 3px; font-size: 12px; color: #b45309; font-weight: 600; }
 #routeCard .rc-caution { margin-top: 3px; font-size: 12px; color: #9a4f00; font-weight: 600; }
 #routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }

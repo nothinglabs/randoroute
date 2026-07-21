@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Washington Bike Safety Visualizer</title>
+  <title>Just Rolling Along</title>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#009E73" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="BikeSafety" />
+  <meta name="apple-mobile-web-app-title" content="JRA" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
@@ -92,19 +92,16 @@
       <div id="routeDetailsStash" hidden><button id="routeDetailsBtn" class="route-details-btn" type="button" disabled>Details</button></div>
       <div id="routeCard"></div>
       <div id="navCard" class="nav-card" hidden>
-        <div class="nav-card-head">Navigating Route</div>
+        <div class="nav-card-head">Navigating Route<button id="navCardDetailsBtn" class="route-details-btn nav-card-details" type="button">Details</button></div>
+        <div id="navDest" class="nav-dest"></div>
+        <div class="nav-progress">
+          <div class="nav-progress-track"><span id="navProgressFill"></span></div>
+          <div class="nav-progress-meta"><span id="navProgressDist"></span><strong id="navProgressEta"></strong></div>
+        </div>
         <div class="nav-card-body">
           <div class="nav-elevation-wrap"><canvas id="navElevationCanvas" class="nav-elevation" aria-label="Route elevation with your current position"></canvas></div>
-          <div class="nav-card-info">
-            <div class="nav-progress">
-              <div class="nav-progress-track"><span id="navProgressFill"></span></div>
-              <div class="nav-progress-meta"><strong id="navProgressEta"></strong><span id="navProgressPct"></span></div>
-            </div>
-            <div id="navTripStats" class="nav-trip-stats"></div>
-          </div>
+          <div id="navSegInfo" class="nav-seg-info"></div>
         </div>
-        <div id="navRideMix" class="nav-ride-mix"></div>
-        <button id="navCardDetailsBtn" class="route-details-btn nav-card-details" type="button">Route details</button>
       </div>
     </section>
 
@@ -205,7 +202,7 @@
 
   <dialog id="sharedRouteTip" class="map-dialog shared-route-tip" aria-label="Best on your Home Screen">
     <div class="dialog-head"><h2>Best on your Home Screen</h2><button class="dialog-close" data-close="sharedRouteTip" aria-label="Close">✕</button></div>
-    <p>This shared route opened in your browser. For the full-screen map, open BikeSafety from your Home Screen. To move it there, open the share dialog here and copy the route link; then open BikeSafety and paste it under “Load a shared route.”</p>
+    <p>This shared route opened in your browser. For the full-screen map, open Just Rolling Along from your Home Screen. To move it there, open the share dialog here and copy the route link; then open Just Rolling Along and paste it under “Load a shared route.”</p>
     <div class="dialog-actions"><button data-close="sharedRouteTip">Got it</button></div>
   </dialog>
 

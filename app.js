@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.205';
+const APP_VERSION = '2026-07-20.206';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2051,18 +2051,46 @@ function drawNavElevation(canvas, profile, distM, progressM) {
   ctx.textAlign = 'left';
 }
 
-function navStatsRowHTML(m) {
-  return `↗ ${fmtFt(m.ascentM)} ↘ ${fmtFt(m.descentM)} ft · △ ${Number(m.maxGradePct || 0).toFixed(1)}%${m.ferryM > 0 ? ` · ⛴ ${fmtMi(m.ferryM)} mi` : ''}`;
+function navEscHTML(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-function navRideMixHTML(m) {
-  const stats = routeSummaryStats(m);
-  const ridingM = Math.max(1, m.distM - (m.ferryM || 0));
-  const bikePct = routePercent(stats.bikeNetworkM, ridingM);
-  const passPct = routePercent((stats.levels[1] || 0) + (stats.levels[2] || 0), ridingM, true);
-  const cautionPct = routePercent(stats.levels[3] || 0, ridingM, true);
-  const failPct = routePercent(m.failM || 0, ridingM, true);
-  return `<div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><span><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div>`;
+// The route segment the rider is currently on, located by the live coordinate
+// index (segments carry their coord range as [c0, c1)).
+function navCurrentSegment() {
+  const segs = turnNav.route?.segs || [];
+  if (!segs.length) return null;
+  const idx = turnNav.nearestSegment || 0;
+  const seg = segs.find((s) => idx >= s.c0 && idx < s.c1);
+  if (seg) return seg;
+  return idx >= segs[segs.length - 1].c1 ? segs[segs.length - 1] : segs[0];
+}
+
+function navSegmentClassLabel(seg) {
+  const flags = seg.flags || 0;
+  if (flags & 32) return 'Ferry';
+  if ((seg.facility || 0) >= 2) return FACILITY_NAME[seg.facility] || 'Bike facility';
+  if (flags & 8) return 'Off-street path';
+  return ROAD_CLASS_NAME[seg.roadClass] || 'Road';
+}
+
+function navShoulderText(seg) {
+  if ((seg.flags || 0) & 8) return 'off-street'; // shoulder is meaningless on a path
+  const sh = seg.sh;
+  if (sh == null || sh < 0) return 'shoulder n/a';
+  if (sh < 0.5) return 'no shoulder';
+  return `${+Number(sh).toFixed(1)} ft shoulder`;
+}
+
+function navSegInfoHTML() {
+  const seg = navCurrentSegment();
+  if (!seg) return '';
+  const name = navRoadName(seg.name) || 'Unnamed road';
+  const cls = navSegmentClassLabel(seg);
+  const speed = seg.mph ? `${seg.mph} mph` : '';
+  const line2 = [cls, speed].filter(Boolean).join(' · ');
+  const line3 = [navShoulderText(seg), `${fmtDist(seg.lenM)} segment`].filter(Boolean).join(' · ');
+  return `<span class="nav-seg-label">On now</span><strong class="nav-seg-name">${navEscHTML(name)}</strong><span class="nav-seg-line">${navEscHTML(line2)}</span><span class="nav-seg-line">${navEscHTML(line3)}</span>`;
 }
 
 function updateNavCard() {
@@ -2077,27 +2105,26 @@ function updateNavCard() {
   const pct = totalM > 0 ? Math.round(100 * doneM / totalM) : 0;
   const fill = document.getElementById('navProgressFill');
   if (fill) fill.style.width = `${pct}%`;
-  const pctEl = document.getElementById('navProgressPct');
+  const distEl = document.getElementById('navProgressDist');
+  if (distEl) distEl.textContent = `${fmtMi(doneM)} mi done · ${fmtMi(remainingM)} mi left`;
   const remainingS = remainingNavigationTimeS();
   const etaEl = document.getElementById('navProgressEta');
   if (etaEl) {
-    if (turnNav.arrived) { etaEl.textContent = 'Arrived'; if (pctEl) pctEl.textContent = ''; }
+    if (turnNav.arrived) etaEl.textContent = 'Arrived';
     else if (remainingS >= 30) {
       const eta = new Date(Date.now() + remainingS * 1000);
       etaEl.textContent = `ETA ${eta.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-      if (pctEl) pctEl.textContent = `${fmtDur(remainingS)} · ${pct}%`;
-    } else {
-      etaEl.textContent = `${navDistanceText(remainingM)} to go`;
-      if (pctEl) pctEl.textContent = `${pct}%`;
-    }
+    } else etaEl.textContent = 'Almost there';
   }
-  const statsEl = document.getElementById('navTripStats');
-  const mixEl = document.getElementById('navRideMix');
-  if (m?.ok && navCardStatsFor !== m) {
-    if (statsEl) statsEl.innerHTML = navStatsRowHTML(m);
-    if (mixEl) mixEl.innerHTML = navRideMixHTML(m);
+  // Destination stays fixed for the route; refresh it only when the route changes.
+  const destEl = document.getElementById('navDest');
+  if (destEl && navCardStatsFor !== m) {
+    const name = (routing.endName && routing.endName.trim()) || 'your destination';
+    destEl.textContent = `To ${name}`;
     navCardStatsFor = m;
   }
+  const segEl = document.getElementById('navSegInfo');
+  if (segEl) segEl.innerHTML = navSegInfoHTML();
   const canvas = document.getElementById('navElevationCanvas');
   if (canvas && m?.ok) {
     drawNavElevation(canvas, compactRouteProfile(m), Number(m.distM) || 0, navigationElevationProgressM());
@@ -2864,7 +2891,6 @@ function startTurnNavigation() {
   updateNavigationProgress();
   turnNav.message = 'Getting your location';
   settingsPaneSelect?.('voice');
-  if (mobileNavMedia.matches) setPanelOpen(false);
   refreshNavigationUI();
   speakNavigation('Navigation started. Getting your location.');
   turnNav.watchId = navigator.geolocation.watchPosition(
@@ -4299,8 +4325,8 @@ function buildSavedRoutes() {
     if (!url || !navigator.share) return;
     try {
       await navigator.share({
-        title: 'Washington bike route',
-        text: 'Open this bike route in Washington Bike Safety Visualizer.',
+        title: 'Bike route',
+        text: 'Open this bike route in Just Rolling Along.',
         url,
       });
       shareStatus.textContent = 'Share link sent.';
@@ -4311,7 +4337,7 @@ function buildSavedRoutes() {
   const importSharedRoute = () => {
     const shared = readSharedRoute(importUrlInput.value);
     if (!shared) {
-      importStatus.textContent = 'That does not look like a valid shared BikeSafety route link.';
+      importStatus.textContent = 'That does not look like a valid shared Just Rolling Along route link.';
       return;
     }
     loadSharedRouteIntoPlanner(shared);
