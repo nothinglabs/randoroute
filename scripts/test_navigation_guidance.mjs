@@ -21,8 +21,8 @@ assert.match(app, /function updateNavCard\([\s\S]*?navigationElevationProgressM\
   'the navigating panel should track the live position on its elevation chart');
 // Panel content: destination, miles done/left, and current-segment facts;
 // the route-segment percentages are gone.
-assert.match(html, /id="navDest"[\s\S]*?id="navProgressDist"[\s\S]*?id="navSegInfo"/,
-  'the panel shows destination, miles done/left, and current-segment info');
+assert.match(html, /id="navDest"[\s\S]*?id="navSegInfo"[\s\S]*?id="navProgressDist"/,
+  'the panel shows destination and current-segment info, then miles done/left in the footer');
 assert.doesNotMatch(html, /id="navRideMix"|id="navTripStats"/,
   'the route-segment ride-mix percentages are removed from the panel');
 assert.match(app, /function navCurrentSegment\(\)[\s\S]*?nearestSegment/,
@@ -31,8 +31,8 @@ assert.match(app, /function navSegmentClassLabel\([\s\S]*?ROAD_CLASS_NAME/,
   'the current segment reports a general road class');
 assert.match(app, /function navShoulderText\(/,
   'the current segment reports shoulder width');
-assert.match(html, /class="nav-card-foot"><button id="navCardDetailsBtn"/,
-  'the Details button sits in the panel\'s lower-left footer');
+assert.match(html, /class="nav-card-foot">\s*<button id="navCardDetailsBtn"[\s\S]*?id="navProgressFill"/,
+  'the footer holds the Details button beside the progress bar');
 // The Navigate/Pause button keeps one width and turns amber (not green) while navigating.
 assert.match(css, /\.nav-start\s*\{[^}]*min-width:\s*\d/,
   'the Navigate/Pause button has a fixed width so it does not resize');

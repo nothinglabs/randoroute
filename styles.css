@@ -203,20 +203,24 @@ body:not(.navigation-active) #navCard { display: none; }
 .nav-card { display: flex; flex-direction: column; gap: 6px; padding: 2px 1px 5px; }
 .nav-card[hidden] { display: none; }
 .nav-card-head { color: #40515c; font: 780 13px/1.2 system-ui; }
-.nav-card-foot { display: flex; justify-content: flex-start; margin-top: 1px; }
-#navCard .nav-card-details { width: auto; min-width: 72px; min-height: 34px; }
-.nav-dest { color: #223c4b; font: 750 12px/1.25 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-progress { display: flex; flex-direction: column; gap: 4px; }
+/* Footer packs the Details button and the progress bar onto one row so the
+   bar's short height stops wasting a whole band. */
+.nav-card-foot { display: flex; align-items: center; gap: 10px; margin-top: 1px; }
+#navCard .nav-card-details { flex: none; width: auto; min-width: 68px; min-height: 36px; }
+.nav-progress { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .nav-progress-track { position: relative; height: 8px; border-radius: 999px; background: #e5edf2; overflow: hidden; }
 #navProgressFill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 999px; background: linear-gradient(90deg, #00795c, #12a37c); transition: width .4s ease; }
 .nav-progress-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 1px 8px; }
 .nav-progress-meta span { color: #6a7a84; font: 800 11.5px/1.2 system-ui; }
 .nav-progress-meta strong { color: #223c4b; font: 800 12px/1.25 system-ui; }
-/* Elevation chart at half width, current-segment facts alongside it. */
+/* Elevation chart at half width; destination + current-segment facts fill the
+   other half so neither column carries dead space. */
 .nav-card-body { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; align-items: stretch; }
+.nav-card-info { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 0; }
+.nav-dest { color: #223c4b; font: 750 12px/1.25 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-elevation-wrap { border: 1px solid #e2e9ee; border-radius: 9px; background: #fbfcfd; padding: 2px; }
-.nav-elevation { display: block; width: 100%; height: 58px; }
-.nav-seg-info { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; }
+.nav-elevation { display: block; width: 100%; height: 74px; }
+.nav-seg-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .nav-seg-label { color: #7c8b95; font: 800 8px/1.2 system-ui; letter-spacing: .05em; text-transform: uppercase; }
 .nav-seg-name { color: #223c4b; font: 800 12.5px/1.2 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-seg-line { color: #52616b; font: 620 11px/1.3 system-ui; }
