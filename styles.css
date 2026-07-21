@@ -188,8 +188,10 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-details-wrap { display: grid; place-items: center; align-self: stretch; }
 #routeCard .rc-summary-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; }
 #routeCard .rc-main { flex: none; text-align: right; white-space: nowrap; }
-#routeCard .rc-climb-stack { display: grid; gap: 1px; color: #555; font: 600 10.5px/1.15 system-ui; text-align: right; }
-#routeCard .rc-climb-stack span { white-space: nowrap; }
+/* Tiny elevation sparkline occupies the slot the climb text used, so the card
+   height and the Details button position are unchanged. */
+#routeCard .rc-elev-wrap { flex: 1 1 auto; min-width: 0; max-width: 220px; height: 38px; border: 1px solid #e4ebf0; border-radius: 7px; background: #fbfcfd; overflow: hidden; }
+#routeCard .rc-elev-canvas { display: block; width: 100%; height: 100%; }
 #routeCard .rc-details-hidden { display: none; }
 #routeCard .rc-sub { margin-top: 3px; font-size: 12px; color: #555; }
 #routeCard .rc-ride-mix { display: flex; flex-wrap: wrap; align-items: baseline; align-content: flex-start; justify-content: flex-end; gap: 2px 4px; min-width: 0; min-height: 26px; margin-top: 4px; color: #52616b; font: 600 10px/1.2 system-ui; }
@@ -244,7 +246,7 @@ body:not(.navigation-active) #navCard { display: none; }
   .tab { padding: 0 12px 10px; }
   #routeCard .rc-main { font-size: 24px; }
   #routeCard .rc-main small { font-size: 16.5px; }
-  #routeCard .rc-climb-stack { font-size: 12px; }
+  #routeCard .rc-elev-wrap { max-width: 300px; }
   #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
   #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }

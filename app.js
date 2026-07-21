@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.217';
+const APP_VERSION = '2026-07-20.218';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2081,6 +2081,54 @@ function drawNavElevation(canvas, profile, distM, progressM) {
   ctx.textAlign = 'left';
 }
 
+// Tiny elevation sparkline for the route-selection card: the profile shape
+// plus two glanceable labels — peak elevation (max footage) and total climb —
+// with no axis clutter. Fits the footprint the climb text used, so the card
+// height and the Details button stay put.
+function drawMiniElevation(canvas, profile, distM, ascentM) {
+  if (!canvas) return;
+  const w = canvas.clientWidth || 0, h = canvas.clientHeight || 36;
+  if (w < 2 || !Array.isArray(profile) || profile.length < 2 || !(distM > 0)) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  let lo = Infinity, hi = -Infinity;
+  for (const [, e] of profile) { if (e < lo) lo = e; if (e > hi) hi = e; }
+  if (hi - lo < 30) { const mid = (hi + lo) / 2; lo = mid - 15; hi = mid + 15; }
+  const padT = 12, padB = 2, padL = 3, padR = 3;
+  const X = (d) => padL + (d / distM) * (w - padL - padR);
+  const Y = (e) => padT + (1 - (e - lo) / (hi - lo)) * (h - padT - padB);
+  ctx.beginPath();
+  ctx.moveTo(X(profile[0][0]), h - padB);
+  for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
+  ctx.lineTo(X(profile[profile.length - 1][0]), h - padB);
+  ctx.closePath();
+  ctx.fillStyle = NAV_ELEV_AHEAD; ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
+  for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
+  ctx.strokeStyle = NAV_ELEV_LINE; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.font = '800 9.5px system-ui';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#607482';
+  ctx.textAlign = 'left';
+  ctx.fillText(`▲ ${fmtFt(hi)} ft`, padL + 1, 0);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#8a5a1a';
+  ctx.fillText(`↗ ${fmtFt(ascentM)} ft`, w - padR - 1, 0);
+  ctx.textAlign = 'left';
+}
+
+function drawRouteCardElevation() {
+  const canvas = document.getElementById('rcElevCanvas');
+  const m = routing.last;
+  if (canvas && m && m.ok) {
+    drawMiniElevation(canvas, compactRouteProfile(m), Number(m.distM) || 0, Number(m.ascentM) || 0);
+  }
+}
+
 function navEscHTML(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
@@ -3040,7 +3088,7 @@ function renderRouteCard(m) {
       <div class="rc-details-wrap"><div id="routeDetailsSlot"></div></div>
       <div class="rc-summary-content">
         <div class="rc-summary-row">
-          <div class="rc-climb-stack"><span>↗ ${fmtFt(m.ascentM)} ft climb</span><span>↘ ${fmtFt(m.descentM)} ft descent</span><span>△ ${Number(m.avgUphillPct || 0).toFixed(1)}% avg · ${Number(m.maxGradePct || 0).toFixed(1)}% max</span>${m.ferryM > 0 ? `<span>⛴ ${fmtMi(m.ferryM)} mi ferry</span>` : ''}</div>
+          <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas></div>
           <div class="rc-main">${fmtMi(m.distM)} mi <small>· ${fmtDur(m.timeS)}</small></div>
         </div>
         ${mtbNotice}<div class="rc-bottom-stats">
@@ -3051,6 +3099,7 @@ function renderRouteCard(m) {
   moveControls();
   moveDetails();
   refreshNavigationUI();
+  drawRouteCardElevation();
 }
 
 function showPointTooFarPopup(m) {
@@ -5943,7 +5992,7 @@ function selectPanelTab(tabId) {
   document.querySelectorAll('.tab').forEach((t) =>
     t.classList.toggle('active', t.id === 'tab-' + tabId));
   scheduleMobileNavDock();
-  if (tabId === 'route') updateNavCard(); // redraw the elevation once visible
+  if (tabId === 'route') { updateNavCard(); drawRouteCardElevation(); } // redraw elevation once visible
 }
 
 document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
@@ -5997,6 +6046,7 @@ window.visualViewport?.addEventListener('resize', syncVisibleViewport);
 window.visualViewport?.addEventListener('scroll', syncVisibleViewport);
 window.addEventListener('resize', syncVisibleViewport);
 window.addEventListener('resize', scheduleMobileNavDock);
+window.addEventListener('resize', drawRouteCardElevation);
 
 function offerSharedRouteTip() {
   if (!sharedRoute || isStandaloneApp() || !window.matchMedia('(pointer: coarse)').matches) return;
