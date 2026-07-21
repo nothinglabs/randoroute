@@ -783,7 +783,8 @@ body.navigation-active .maplibregl-user-location-accuracy-circle { display: none
 .voice-inline-head label { color: #324b59; font: 750 11.5px/1.2 system-ui; }
 .voice-select-inline { width: auto; min-width: 148px; max-width: 64%; margin-top: 0; padding: 6px 9px; }
 .voice-hint { margin: 3px 1px 0; color: #657985; font: 570 9.75px/1.25 system-ui; }
-.voice-hint-warn { color: #85510a; font-weight: 650; }
+.voice-hint-warn { color: #85510a; }
+.voice-hint-warn strong { font-weight: 800; }
 
 .voice-status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin-top: 3px; }
 .voice-status-grid .rule-check { font-size: 11px; font-weight: 650; }

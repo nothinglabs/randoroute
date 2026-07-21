@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.201';
+const APP_VERSION = '2026-07-20.202';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5469,10 +5469,12 @@ function buildVoicePanel() {
   // Off-route behavior: a dropdown plus one live description line. The three
   // described radio cards it replaces forced the whole pane to scroll; a select
   // keeps every voice control on one sheet without shrinking anything else.
+  // Descriptions are static literals (no user input), so innerHTML is safe and
+  // lets the dynamic-mode caution render in bold.
   const offRouteChoices = [
-    ['guidance', 'Guidance only', 'Shows the direction and distance back to your route.'],
-    ['return', 'Automatic return to route', 'After 60 s, routes to the nearest point on your route.'],
-    ['dynamic', 'Dynamic routing', 'After 60 s, re-routes through your remaining stops; only the roads ahead may change.'],
+    ['guidance', 'Notify only', 'Shows the direction and distance back to your route.'],
+    ['return', 'Route back to route', 'Automatically routes you back to the nearest point on your route.'],
+    ['dynamic', 'Dynamic re-routing', 'Generates a new route automatically each time you go off course. <strong>Caution: remaining route may change!</strong>'],
   ];
   const offRoute = document.createElement('div');
   offRoute.className = 'rule rule-card voice-offroute';
@@ -5484,7 +5486,7 @@ function buildVoicePanel() {
   const offRouteDesc = offRoute.querySelector('#v-offRouteDesc');
   const syncOffRouteDesc = () => {
     const choice = offRouteChoices.find(([value]) => value === navVoice.offRouteMode);
-    offRouteDesc.textContent = choice ? choice[2] : '';
+    offRouteDesc.innerHTML = choice ? choice[2] : '';
     offRouteDesc.classList.toggle('voice-hint-warn', navVoice.offRouteMode === 'dynamic');
   };
   syncOffRouteDesc();

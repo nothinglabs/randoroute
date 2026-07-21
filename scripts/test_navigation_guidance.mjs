@@ -47,13 +47,13 @@ assert.match(app, /navigationOffRouteMode:\s*navVoice\.offRouteMode/,
   'the exclusive off-route behavior mode should persist');
 assert.match(app, /navigationAutoReroute\s*\?\s*'return'\s*:\s*'guidance'/,
   'the former automatic-rerouting checkbox should migrate to automatic return mode');
-assert.match(app, /\['guidance', 'Guidance only'[\s\S]*?\['return', 'Automatic return to route'[\s\S]*?\['dynamic', 'Dynamic routing'/,
+assert.match(app, /\['guidance', 'Notify only'[\s\S]*?\['return', 'Route back to route'[\s\S]*?\['dynamic', 'Dynamic re-routing'/,
   'Voice-Nav settings should expose all three off-route modes');
 const voicePanelSource = app.slice(app.indexOf('function buildVoicePanel'), app.indexOf('function buildLegend'));
 assert.doesNotMatch(voicePanelSource, /violet/i,
   'Voice-Nav settings should describe behavior without naming a route color');
-assert.match(voicePanelSource, /re-routes through your remaining stops; only the roads ahead may change/,
-  'dynamic routing should explain that remaining stops are preserved and only the road choices change');
+assert.match(voicePanelSource, /Generates a new route automatically each time you go off course\. <strong>Caution: remaining route may change!<\/strong>/,
+  'dynamic re-routing should warn in bold that the remaining route may change');
 // The Voice-Nav pane must fit on one sheet: off-route mode is a dropdown with a
 // live description, not three tall described radio cards.
 assert.match(voicePanelSource, /id="v-offRouteMode" class="voice-select voice-select-inline"/,
