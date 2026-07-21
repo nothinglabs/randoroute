@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.211';
+const APP_VERSION = '2026-07-20.212';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3119,7 +3119,8 @@ function onRouterMessage(ev) {
       const sp = routing.sharedRecipe?.profileId;
       selected = (sp && m.options.find((o) => o.optimization?.profileId === sp)) || m.options[0];
       selected.asShared = true;
-      routing.options = [selected, ...m.options.filter((o) => o !== selected)];
+      // "As Shared" gets its own dedicated slot after the lettered options.
+      routing.options = [...m.options.filter((o) => o !== selected), selected];
     } else {
       selected = refreshedRouteSelection(m.options);
     }
@@ -4051,9 +4052,9 @@ function renderRouteOptionControls() {
     host.innerHTML = '<span class="route-options-empty">Route choices</span>';
     return;
   }
-  // With the shared route in the A slot, the remaining buttons read B, C, D…
-  // by position so the row stays sequential rather than skipping a letter.
-  const sharedInPlay = !!routing.options[0]?.asShared;
+  // The shared route sits in its own slot after the lettered options, which
+  // stay sequential A, B, C, D… by position.
+  const sharedInPlay = routing.options.some((o) => o.asShared);
   host.innerHTML = routing.options.map((option, index) => {
     const optimization = option.optimization || {};
     const label = option.asShared ? 'As Shared' : (optimization.label || `Option ${index + 1}`);
