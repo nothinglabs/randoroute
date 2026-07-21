@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.214';
+const APP_VERSION = '2026-07-20.215';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1603,12 +1603,27 @@ function coordIndexAtDistance(cumulative, m) {
 // raw geometry points: inside a tiny traffic circle the point-to-point
 // bearings swing wildly and produce "turn left" for straight-through.
 const TURN_BEARING_SPAN_M = 20;
+// Interpolated position at a distance along the polyline. Snapping to the
+// nearest vertex (the old approach) collapsed short edges: a turn's "incoming"
+// window could land entirely on the post-turn segment, reporting a 0° delta and
+// hiding a real turn. Interpolation measures the true direction over the window.
+function pointAtDistanceAlong(coords, cumulative, d) {
+  const lastIdx = coords.length - 1;
+  if (!(d > 0)) return coords[0];
+  if (d >= cumulative[lastIdx]) return coords[lastIdx];
+  let i = 0;
+  while (i + 1 < cumulative.length && cumulative[i + 1] <= d) i++;
+  const segLen = cumulative[i + 1] - cumulative[i];
+  const f = segLen > 0 ? (d - cumulative[i]) / segLen : 0;
+  const a = coords[i], b = coords[i + 1];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+
 function routeBearingOver(coords, cumulative, fromM, toM) {
-  let i = coordIndexAtDistance(cumulative, Math.min(fromM, toM));
-  let j = coordIndexAtDistance(cumulative, Math.max(fromM, toM));
-  if (j <= i) j = Math.min(cumulative.length - 1, i + 1);
-  if (j <= i) i = Math.max(0, j - 1);
-  return navBearing(coords[i], coords[j]);
+  const lo = Math.max(0, Math.min(fromM, toM));
+  const hi = Math.max(fromM, toM);
+  return navBearing(pointAtDistanceAlong(coords, cumulative, lo),
+    pointAtDistanceAlong(coords, cumulative, hi));
 }
 
 function navPathLike(seg) {
@@ -1662,17 +1677,19 @@ function buildTurnInstructions(m) {
     }
   }
   for (let i = 0; i + 1 < segs.length; i++) {
-    const current = segs[i], next = segs[i + 1];
+    const next = segs[i + 1];
     const at = Math.max(1, Math.min(coords.length - 2, next.c0));
     const junctionM = cumulative[at];
     const incoming = routeBearingOver(coords, cumulative, junctionM - TURN_BEARING_SPAN_M, junctionM);
     const outgoing = routeBearingOver(coords, cumulative, junctionM, junctionM + TURN_BEARING_SPAN_M);
     const delta = navDelta(incoming, outgoing);
-    const from = navRoadName(current.name);
     const destination = navDestinationSegment(segs, i);
     const to = destination?.name || '';
-    const changedRoad = !!to && to.toLowerCase() !== from.toLowerCase();
-    if (!changedRoad && Math.abs(delta) < 40) continue;
+    // Only announce an actual bend or turn. A road merely changing name while
+    // the rider continues straight used to emit a "Continue onto X" prompt at
+    // every name change; that flooded the voice guidance, interrupted itself,
+    // and buried the real turns. Below ~20° there is no maneuver to call.
+    if (Math.abs(delta) < 20) continue;
     const distanceM = cumulative[at];
     // Do not speak a chain of tiny graph-edge transitions as separate turns.
     if (distanceM - lastM < 70) continue;
@@ -2144,22 +2161,35 @@ function updateNavCard() {
   }
 }
 
+let lastSpokenText = '';
+let lastSpokenAt = 0;
 function speakNavigation(text) {
+  if (!text) return;
   if (!('speechSynthesis' in window)) {
     turnNav.message = 'Voice is unavailable in this browser';
     refreshNavigationUI();
     return;
   }
-  turnNav.lastVoiceAt = Date.now();
+  const now = Date.now();
+  // Guard against re-speaking the same phrase on back-to-back GPS fixes (the
+  // announcement window spans several fixes), which otherwise stutters and can
+  // starve the next real maneuver.
+  if (text === lastSpokenText && now - lastSpokenAt < 5000) return;
+  lastSpokenText = text;
+  lastSpokenAt = now;
+  turnNav.lastVoiceAt = now;
   try {
-    // Let the current prompt finish — cancelling mid-utterance is how turn
-    // announcements were getting swallowed. Only clear queued (unstarted)
-    // prompts, which are stale by definition.
-    if (window.speechSynthesis.pending) window.speechSynthesis.cancel();
+    const synth = window.speechSynthesis;
+    // Latest-wins: a new maneuver supersedes whatever is queued or mid-word, so
+    // cancel unconditionally. Only clearing `pending` left started utterances
+    // running and swallowed the fresh prompt. resume() works around the mobile
+    // Safari/Chrome bug where the queue silently pauses.
+    synth.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.05;
     utterance.lang = navigator.language || 'en-US';
-    window.speechSynthesis.speak(utterance);
+    synth.speak(utterance);
+    synth.resume();
   } catch (e) { /* the status line remains useful without speech */ }
 }
 
