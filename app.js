@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.221';
+const APP_VERSION = '2026-07-20.222';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5244,7 +5244,16 @@ const GOOGLE_MAPS_EMBED_KEY = '';
 function openStreetView(lat, lng) {
   const external = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}`;
   if (!GOOGLE_MAPS_EMBED_KEY) {
-    window.open(external, '_blank', 'noopener');
+    // A real link click (not window.open with a features string, which iOS
+    // turns into a chrome-laden popup window) so the OS opens its clean in-app
+    // browser — on an installed PWA that comes with a Done button back to here.
+    const a = document.createElement('a');
+    a.href = external;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
     return;
   }
   const dialog = document.getElementById('streetViewDialog');
