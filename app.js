@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.208';
+const APP_VERSION = '2026-07-20.209';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1920,8 +1920,9 @@ function openRouteDetails() {
   if (!routing.last?.ok) return;
   const dialog = document.getElementById('routeDetailsDialog');
   const frame = document.getElementById('routeDetailsFrame');
+  // While navigating there is only one active route, so drop the option label.
   const routeLabel = routing.last.optimization?.label || 'Route';
-  const dialogTitle = `${routeLabel} Details`;
+  const dialogTitle = turnNav.active ? 'Route Details' : `${routeLabel} Details`;
   if (!dialog || !frame || !dialog.showModal) {
     window.location.href = 'route-details.html';
     return;
@@ -5088,7 +5089,8 @@ function inspectRoadAt(point, lngLat = null) {
     dismissRoadInfo();
     return false;
   }
-  if (window.matchMedia('(max-width: 720px)').matches) setPanelOpen(false);
+  // The road readout sits at the top of the screen, clear of the bottom panel,
+  // so tapping a road no longer dismisses an open menu.
   renderReadout(feature, lngLat || map.unproject([point.x, point.y]), point);
   readoutPinned = true;
   return true;

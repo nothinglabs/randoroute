@@ -40,6 +40,14 @@ assert.match(css, /\.nav-start\.navigating\s*\{[^}]*background:/,
   'the pause state uses a non-green color');
 assert.match(app, /classList\.toggle\('navigating', turnNav\.active\)/,
   'the button flips to its navigating state while active');
+// Tapping a road no longer dismisses the panel.
+const inspectBody = app.slice(app.indexOf('function inspectRoadAt'),
+  app.indexOf('\nfunction ', app.indexOf('function inspectRoadAt') + 1));
+assert.doesNotMatch(inspectBody, /setPanelOpen/,
+  'tapping a road should not close the open panel');
+// Route details title drops the option label while navigating, keeps it otherwise.
+assert.match(app, /turnNav\.active \? 'Route Details' : `\$\{routeLabel\} Details`/,
+  'the route details title is just "Route Details" during navigation');
 // The app is renamed and no longer closes the panel when navigation starts.
 assert.match(html, /<title>Just Rolling Along<\/title>/,
   'the app is titled Just Rolling Along');
