@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.202';
+const APP_VERSION = '2026-07-20.203';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5472,7 +5472,7 @@ function buildVoicePanel() {
   // Descriptions are static literals (no user input), so innerHTML is safe and
   // lets the dynamic-mode caution render in bold.
   const offRouteChoices = [
-    ['guidance', 'Notify only', 'Shows the direction and distance back to your route.'],
+    ['guidance', 'Notify only', 'Gives the direction and distance back to your route.'],
     ['return', 'Route back to route', 'Automatically routes you back to the nearest point on your route.'],
     ['dynamic', 'Dynamic re-routing', 'Generates a new route automatically each time you go off course. <strong>Caution: remaining route may change!</strong>'],
   ];

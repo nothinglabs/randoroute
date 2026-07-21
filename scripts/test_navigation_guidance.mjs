@@ -64,8 +64,8 @@ assert.match(voicePanelSource, /class="voice-hint" id="v-offRouteDesc"/,
   'the selected off-route mode should show a live description line');
 // The route-settings lock during navigation surfaces inline above the panes
 // (where the rider is looking), not as a top-of-screen toast.
-assert.match(html, /id="settingsTabs"[\s\S]*?id="settingsNavLockNotice"[\s\S]*?class="settings-nav-lock"[\s\S]*?id="settings-presets"/,
-  'the navigation lock notice should sit between the settings tabs and the panes');
+assert.match(html, /id="tab-settings"[\s\S]*?id="settingsNavLockNotice"[^>]*class="settings-nav-lock"[\s\S]*?id="settingsTabs"/,
+  'the navigation lock notice should sit above the settings tab toolbar');
 assert.match(app, /paneLockedByNavigation\(button\.dataset\.settingsPane\)\)\s*\{\s*flashSettingsNavLock\(\);/,
   'tapping a locked settings tab should flash the inline lock notice');
 assert.match(app, /function flashSettingsNavLock\(\)[\s\S]*?settingsNavLockNotice/,

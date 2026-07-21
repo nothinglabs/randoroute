@@ -776,24 +776,22 @@ body.navigation-active #routeBar { display: none; }
 body.navigation-active .maplibregl-user-location-dot,
 body.navigation-active .maplibregl-user-location-accuracy-circle { display: none; }
 
-.voice-select { width: 100%; min-width: 0; margin-top: 5px; padding: 8px 10px; border: 1px solid #c9d7e0; border-radius: 8px; background: #fff; color: #2c3e4c; font: 650 12px system-ui; }
+.voice-select { width: 100%; min-width: 0; margin-top: 5px; padding: 8px 10px; border: 1px solid #c9d7e0; border-radius: 8px; background: #fff; color: #2c3e4c; font: 650 12.5px system-ui; }
 
 /* Label and dropdown share one row so each voice control stays a single band. */
 .voice-inline-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.voice-inline-head label { color: #324b59; font: 750 11.5px/1.2 system-ui; }
-.voice-select-inline { width: auto; min-width: 148px; max-width: 64%; margin-top: 0; padding: 6px 9px; }
-.voice-hint { margin: 3px 1px 0; color: #657985; font: 570 9.75px/1.25 system-ui; }
+.voice-inline-head label { color: #324b59; font: 750 12px/1.2 system-ui; }
+.voice-select-inline { width: auto; min-width: 150px; max-width: 64%; margin-top: 0; padding: 5px 9px; }
+.voice-hint { margin: 3px 1px 0; color: #657985; font: 570 10px/1.25 system-ui; }
 .voice-hint-warn { color: #85510a; }
 .voice-hint-warn strong { font-weight: 800; }
 
 .voice-status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin-top: 3px; }
-.voice-status-grid .rule-check { font-size: 11px; font-weight: 650; }
-/* Voice controls run tighter than the other settings panes so all three fit
-   one sheet — including the two-line dynamic-routing description on narrow
-   phones. */
+.voice-status-grid .rule-check { font-size: 11.5px; font-weight: 650; }
+/* The pane is a grid with align-content: space-between, so a modest font bump
+   just tightens the auto gaps — everything still fits one sheet down to 360px. */
 #settingsVoice .rule-card { padding: 3px 9px; }
-#settingsVoice .voice-select-inline { padding: 4px 9px; }
-#settingsVoice .voice-status-grid .rule-check { line-height: 1.15; }
+#settingsVoice .voice-status-grid .rule-check { line-height: 1.2; }
 #settingsVoice .voice-inline-head { min-height: 24px; }
 
 /* Navigation locks route-shaping controls; the Navigate pane stays live. */
