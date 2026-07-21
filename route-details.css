@@ -12,7 +12,7 @@ header { margin: 0 0 14px; }
 .eyebrow { margin: 0 0 4px; color: #667784; font: 700 11px system-ui; letter-spacing: .06em; text-transform: uppercase; }
 h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .summary { margin: 7px 0 0; color: #52616d; font: 500 15px/1.45 system-ui; }
-.route-summary-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(145px, 46%); align-items: stretch; gap: 10px; margin-top: 10px; padding: 11px 12px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
+.route-summary-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(145px, 46%); align-items: center; gap: 10px; margin-top: 10px; padding: 11px 12px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
 .route-summary-card[hidden], .elevation-preview[hidden], .elevation-preview-empty[hidden] { display: none; }
 .route-summary-info { min-width: 0; }
 .route-summary-main { color: #111; font: 700 20px/1.15 system-ui; }
@@ -27,11 +27,13 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
 .route-summary-label { padding: 2px 4px; border-radius: 4px; background: #e7eef3; color: #405866; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .route-optimization { margin: 9px 0 0; padding: 9px 11px; border-left: 3px solid #0a66c2; border-radius: 7px; background: #eaf3fa; color: #29495e; font: 600 12.5px/1.4 system-ui; }
-.elevation-preview { position: relative; display: block; width: 100%; min-height: 88px; height: 100%; margin: 0; padding: 0; overflow: hidden; border: 1px solid #d3e1e9; border-radius: 10px; background: #f8fbfd; cursor: pointer; text-align: left; }
+/* Fixed, wide-aspect height (rather than stretching to the taller text column)
+   so this preview matches the route-selection card's elevation sparkline. */
+.elevation-preview { position: relative; display: block; width: 100%; height: 72px; margin: 0; padding: 0; overflow: hidden; border: 1px solid #d3e1e9; border-radius: 10px; background: #f8fbfd; cursor: pointer; text-align: left; }
 .elevation-preview:hover { border-color: #8eb9d8; background: #f3f9fc; }
 .elevation-preview:focus-visible { outline: 3px solid #0a66c2; outline-offset: 2px; }
 #elevationPreviewCanvas { display: block; width: 100%; height: 100%; }
-.elevation-preview-empty { display: grid; place-items: center; min-height: 88px; margin: 0; padding: 10px; border: 1px dashed #ccd9e1; border-radius: 9px; color: #75838c; font: 650 11px/1.3 system-ui; text-align: center; }
+.elevation-preview-empty { display: grid; place-items: center; min-height: 70px; margin: 0; padding: 10px; border: 1px dashed #ccd9e1; border-radius: 9px; color: #75838c; font: 650 11px/1.3 system-ui; text-align: center; }
 .detail-bottom-nav { position: fixed; z-index: 4; right: 0; bottom: 0; left: 0; display: flex; align-items: center; gap: 7px; min-height: 64px; padding: 7px 12px max(7px, env(safe-area-inset-bottom)); border-top: 1px solid #d8e2e8; background: rgba(255,255,255,.97); box-shadow: 0 -3px 12px rgba(18,42,60,.08); }
 .detail-tabs { display: flex; flex: 1; gap: 3px; margin: 0; padding: 3px; border: 1px solid #d8e2e8; border-radius: 10px; background: #e8eef2; }
 .detail-tabs button { flex: 1; min-width: 0; min-height: 42px; padding: 8px 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #586975; font: 700 12px/1.15 system-ui; cursor: pointer; }
@@ -85,7 +87,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
   .route-summary-main { font-size: 23px; }
   .route-summary-main small { font-size: 16px; }
   .route-summary-sub { font-size: 13px; }
-  .elevation-preview { min-height: 104px; }
+  .elevation-preview { height: 84px; }
 }
 
 .tap-hint { margin: 10px 0 0; padding: 8px 10px; border-left: 3px solid #0a66c2; border-radius: 7px; background: #eaf3fa; color: #3d5b6c; font: 650 12px/1.35 system-ui; }

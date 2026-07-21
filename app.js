@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.218';
+const APP_VERSION = '2026-07-20.219';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2114,7 +2114,7 @@ function drawMiniElevation(canvas, profile, distM, ascentM) {
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#607482';
   ctx.textAlign = 'left';
-  ctx.fillText(`▲ ${fmtFt(hi)} ft`, padL + 1, 0);
+  ctx.fillText(`${fmtFt(hi)} ft`, padL + 1, 0);
   ctx.textAlign = 'right';
   ctx.fillStyle = '#8a5a1a';
   ctx.fillText(`↗ ${fmtFt(ascentM)} ft`, w - padR - 1, 0);
@@ -5980,6 +5980,10 @@ function setPanelOpen(open) {
   syncPanelInteractivity();
   refreshNavigationUI();
   scheduleMobileNavDock();
+  // The route tab is display:none while the panel is closed, so its elevation
+  // canvas has no width to draw into. Redraw once the panel (and the canvas)
+  // is laid out, otherwise the chart stays blank until the next route render.
+  if (open) requestAnimationFrame(drawRouteCardElevation);
 }
 
 function selectPanelTab(tabId) {
