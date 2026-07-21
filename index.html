@@ -154,24 +154,23 @@
     <div class="dialog-actions"><button data-close="routeProblemDialog">OK</button></div>
   </dialog>
 
-  <dialog id="routeStartDialog" class="map-dialog route-start-dialog" aria-labelledby="routeStartDialogTitle">
-    <div class="dialog-head"><h2 id="routeStartDialogTitle">Join the planned route</h2></div>
+  <dialog id="routeStartDialog" class="map-dialog off-route-dialog" aria-labelledby="routeStartDialogTitle">
+    <div class="dialog-head"><h2 id="routeStartDialogTitle">You're not on your route yet</h2></div>
     <p id="routeStartDialogText"></p>
-    <p class="route-start-color"><span aria-hidden="true"></span>The temporary route to the start will appear in violet.</p>
     <p id="routeStartDialogStatus" class="route-start-status" role="status" aria-live="polite"></p>
-    <div class="dialog-actions">
-      <button id="navUseNearestBtn" type="button">Guide to nearest point</button>
-      <button id="navRouteToStartBtn" class="route-start-primary" type="button">Route to start</button>
+    <div class="off-route-actions">
+      <button id="navRouteToStartBtn" type="button"><strong>Route to the nearest point</strong><span>Turn-by-turn directions onto your planned route.</span></button>
+      <button id="navUseNearestBtn" type="button"><strong>I'll find my own way</strong><span>Distance and direction only — guidance resumes automatically when you reach the route.</span></button>
     </div>
   </dialog>
 
   <dialog id="offRouteDialog" class="map-dialog off-route-dialog" aria-labelledby="offRouteDialogTitle">
-    <div class="dialog-head"><h2 id="offRouteDialogTitle">You are off route</h2><button class="dialog-close" data-close="offRouteDialog" aria-label="Close">✕</button></div>
+    <div class="dialog-head"><h2 id="offRouteDialogTitle">You've left your route</h2><button class="dialog-close" data-close="offRouteDialog" aria-label="Close">✕</button></div>
     <p id="offRouteDialogText">Choose how navigation should continue.</p>
     <div class="off-route-actions">
-      <button id="navNewRouteBtn" type="button"><strong>New Route From Current Location</strong><span>Create a new route through remaining waypoints to the destination.</span></button>
-      <button id="navRouteBackBtn" type="button"><strong>Route back to current route</strong><span>Follow a violet connector to the nearest point on this route.</span></button>
-      <button id="navKeepRouteBtn" type="button"><strong>Keep current route</strong><span>Continue showing the direction to the nearest route point.</span></button>
+      <button id="navRouteBackBtn" type="button"><strong>Route to the nearest point</strong><span>Turn-by-turn directions via a short connector onto your route.</span></button>
+      <button id="navKeepRouteBtn" type="button"><strong>I'll find my own way</strong><span>Distance and direction only — guidance resumes automatically when you reach the route.</span></button>
+      <button id="navNewRouteBtn" type="button"><strong>New route to destination</strong><span>Replace the plan with a fresh route from here through any remaining stops.</span></button>
     </div>
   </dialog>
 

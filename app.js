@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.199';
+const APP_VERSION = '2026-07-20.200';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -665,6 +665,22 @@ map.addControl(
   'top-right'
 );
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
+
+// A user-initiated pan/zoom (originalEvent present) suspends navigation
+// auto-follow; our own programmatic camera moves have no originalEvent.
+map.on('movestart', (e) => { if (turnNav.active && e.originalEvent) turnNav.cameraFollow = false; });
+map.on('moveend', (e) => { if (turnNav.active && e.originalEvent) scheduleNavigationFollowResume(); });
+// While navigating and panned away, the geolocate control re-centers on the
+// rider first instead of toggling tracking off. Capture on the map container
+// preempts the control's own click handler.
+map.getContainer().addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('.maplibregl-ctrl-geolocate');
+  if (btn && turnNav.active && !turnNav.cameraFollow) {
+    e.stopPropagation();
+    e.preventDefault();
+    recenterNavigationOnRider();
+  }
+}, true);
 
 function bikeNetworkExpr(src) {
   if (src.id === 'osm') return ['boolean', true];
@@ -1513,6 +1529,8 @@ const turnNav = {
   destinationAwayFixes: 0,
   initialCameraAt: 0,
   lastCameraAt: 0,
+  cameraFollow: true,
+  followResumeTimer: null,
 };
 
 function navDistanceM(a, b) {
@@ -1866,27 +1884,21 @@ function navigationBannerInfo() {
   const next = turnNav.route?.instructions[turnNav.next];
   if (turnNav.message) return {
     headline: turnNav.message,
-    meta: turnNav.followingConnector ? `${routeMeta} · Violet route joins the current route` : routeMeta,
-    kicker: turnNav.followingConnector
-      ? (turnNav.connectorPurpose === 'rejoin' ? 'Back to route' : 'To route start')
-      : 'Turn-by-turn navigation',
+    meta: turnNav.followingConnector ? `${routeMeta} · Connector onto your route` : routeMeta,
+    kicker: turnNav.followingConnector ? 'To your route' : 'Turn-by-turn navigation',
   };
   if (!next) return {
     headline: turnNav.followingConnector
-      ? (turnNav.connectorPurpose === 'rejoin' ? 'Continue back to your current route' : 'Continue to the planned route start')
+      ? 'Continue to your route'
       : 'Continue to your destination',
     meta: routeMeta,
-    kicker: turnNav.followingConnector
-      ? (turnNav.connectorPurpose === 'rejoin' ? 'Back to route' : 'To route start')
-      : 'Turn-by-turn navigation',
+    kicker: turnNav.followingConnector ? 'To your route' : 'Turn-by-turn navigation',
   };
   const remaining = Math.max(0, next.distanceM - turnNav.routeM);
   return {
     headline: `In ${navDistanceText(remaining)} · ${navInstructionText(next)}`,
-    meta: `${routeMeta} · ${turnNav.followingConnector ? 'Violet route joins the current route' : 'GPS guidance active'}`,
-    kicker: turnNav.followingConnector
-      ? (turnNav.connectorPurpose === 'rejoin' ? 'Back to route' : 'To route start')
-      : 'Next maneuver',
+    meta: `${routeMeta} · ${turnNav.followingConnector ? 'Connector onto your route' : 'GPS guidance active'}`,
+    kicker: turnNav.followingConnector ? 'To your route' : 'Next maneuver',
   };
 }
 
@@ -2098,8 +2110,8 @@ function showRouteStartOffer(startDistanceM) {
   const dialog = document.getElementById('routeStartDialog');
   const text = document.getElementById('routeStartDialogText');
   if (!dialog?.showModal || !text) return false;
-  text.textContent = `You are ${navDistanceText(startDistanceM)} from the planned route start. `
-    + 'Would you like a bike route there first? You can also continue from here and receive directions toward the nearest point on the planned route.';
+  text.textContent = `You're ${navDistanceText(startDistanceM)} from your planned route. `
+    + 'Choose how to get onto it.';
   setRouteStartDialogBusy(false);
   if (!dialog.open) dialog.showModal();
   return true;
@@ -2226,18 +2238,14 @@ function activateNavigationConnector(result) {
   turnNav.destinationWasNear = false;
   turnNav.lastDestinationM = Infinity;
   turnNav.destinationAwayFixes = 0;
-  turnNav.message = purpose === 'rejoin'
-    ? 'Follow the violet route back to your current route'
-    : 'Follow the violet route to the planned start';
+  turnNav.message = 'Follow the connector onto your route';
   drawNavigationConnector(result.coords);
   updateNavigationProgress();
-  showRouteActionToast(purpose === 'rejoin' ? 'Routing back to the current route' : 'Routing to the planned start', {
-    detail: 'Follow the violet line; your planned route remains unchanged.',
+  showRouteActionToast('Routing you onto your route', {
+    detail: 'Follow the connector; your planned route stays unchanged.',
     duration: 5000,
   });
-  speakNavigation(purpose === 'rejoin'
-    ? 'Follow the violet route back to your current route.'
-    : 'Follow the violet route to the planned start.');
+  speakNavigation('Follow the connector onto your route.');
   refreshNavigationUI();
 }
 
@@ -2260,12 +2268,11 @@ function finishNavigationConnector(point, previousFix) {
   const nearest = nearestNavigationPoint(point[0], point[1], true);
   if (nearest && nearest.offRouteM <= OFF_ROUTE_REJOIN_M) {
     turnNav.offRoute = true;
-    rejoinRoute(nearest, previousFix,
-      purpose === 'rejoin' ? 'Current route reached' : 'Route start reached');
+    rejoinRoute(nearest, previousFix, 'On your route');
   } else if (nearest) {
     enterOffRoute(nearest);
   }
-  showRouteActionToast(purpose === 'rejoin' ? 'Current route reached' : 'Planned route reached', { duration: 3500 });
+  showRouteActionToast('You are on your route', { duration: 3500 });
   updateNavigationProgress();
   refreshNavigationUI();
 }
@@ -2433,12 +2440,36 @@ function updateNavigationCamera(point) {
     turnNav.lastCameraAt = turnNav.initialCameraAt;
     return;
   }
+  // Suspended while the rider is panning to look around (auto-resumes 30 s
+  // after they stop touching the map).
+  if (!turnNav.cameraFollow) return;
   // Hold the contextual start view briefly, then keep the rider centered as
   // GPS fixes arrive. The marker remains live during this short hold.
   if (Date.now() - turnNav.initialCameraAt < 5000
       || Date.now() - turnNav.lastCameraAt < 900) return;
   turnNav.lastCameraAt = Date.now();
   map.easeTo({ center: point, duration: 450, essential: true });
+}
+
+// The rider may pan/zoom freely during navigation; auto-follow pauses while
+// they interact and eases back onto the rider 30 s after they stop.
+const CAMERA_RESUME_MS = 30000;
+function scheduleNavigationFollowResume() {
+  clearTimeout(turnNav.followResumeTimer);
+  turnNav.followResumeTimer = setTimeout(() => {
+    if (!turnNav.active) return;
+    turnNav.cameraFollow = true;
+    turnNav.lastCameraAt = 0;
+    if (turnNav.lastPosition) map.easeTo({ center: turnNav.lastPosition, duration: 550, essential: true });
+    refreshNavigationUI();
+  }, CAMERA_RESUME_MS);
+}
+function recenterNavigationOnRider() {
+  clearTimeout(turnNav.followResumeTimer);
+  turnNav.cameraFollow = true;
+  turnNav.lastCameraAt = 0;
+  if (turnNav.lastPosition) map.easeTo({ center: turnNav.lastPosition, duration: 450, essential: true });
+  refreshNavigationUI();
 }
 
 function remainingNavigationTimeS(routeM = turnNav.routeM) {
@@ -3930,7 +3961,7 @@ function buildRoutingPanel() {
   });
   document.getElementById('navDetailsBtn').addEventListener('click', () => openRouteDetails());
   document.getElementById('navUseNearestBtn').addEventListener('click', () => useNearestPlannedRoute());
-  document.getElementById('navRouteToStartBtn').addEventListener('click', requestRouteStartConnector);
+  document.getElementById('navRouteToStartBtn').addEventListener('click', () => requestRouteBackToCurrentRoute());
   document.getElementById('routeStartDialog').addEventListener('cancel', (event) => {
     event.preventDefault();
     useNearestPlannedRoute();

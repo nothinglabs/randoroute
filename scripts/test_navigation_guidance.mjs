@@ -10,16 +10,29 @@ assert.match(html, /id="navOffRouteBtn"[^>]*>Re-route</,
   'off-route navigation should expose a conventional reroute button');
 assert.match(html, /class="nav-banner-main"[\s\S]*?class="nav-banner-copy"[\s\S]*?id="navDetailsBtn"[\s\S]*?id="navOffRouteBtn"/,
   'the off-route action should sit below the preserved navigation information');
-assert.match(html, /New Route From Current Location[\s\S]*?Route back to current route[\s\S]*?Keep current route/,
+assert.match(html, /id="navRouteBackBtn"[\s\S]*?Route to the nearest point[\s\S]*?id="navKeepRouteBtn"[\s\S]*?I'll find my own way[\s\S]*?id="navNewRouteBtn"[\s\S]*?New route to destination/,
   'off-route recovery dialog should present all three explicit choices');
-assert.match(html, /New Route From Current Location[\s\S]*?through remaining waypoints to the destination/,
-  'manual dynamic rerouting should also promise to preserve remaining waypoints');
+assert.match(html, /id="navNewRouteBtn"[\s\S]*?fresh route from here through any remaining stops/,
+  'manual dynamic rerouting should also promise to preserve remaining stops');
 assert.match(css, /\.nav-banner\.off-route-action-visible\s*\{[^}]*flex-direction:\s*column[\s\S]*?\.nav-off-route-action\s*\{[^}]*border-radius:\s*9px[^}]*background:\s*#b42318/,
   'off-route action should be a distinct conventional button below the navigation information');
 assert.doesNotMatch(css, /off-route-action-visible[^}]*[\s\S]{0,100}nav-banner-copy[^}]*display:\s*none/,
   'off-route state must preserve the maneuver information');
 assert.match(app, /ROUTE_START_OFFER_M\s*=\s*160\.934/,
   'route-to-start should be offered at one tenth of a mile');
+// Free-panning during navigation: a user gesture suspends auto-follow, which
+// eases back onto the rider ~30 s after they stop, and the geolocate control
+// re-centers (rather than disabling tracking) on the first tap after panning.
+assert.match(app, /movestart'[\s\S]{0,80}turnNav\.active && e\.originalEvent[\s\S]{0,40}cameraFollow = false/,
+  'a user pan during navigation should suspend camera auto-follow');
+assert.match(app, /moveend'[\s\S]{0,80}turnNav\.active && e\.originalEvent[\s\S]{0,40}scheduleNavigationFollowResume/,
+  'ending a user pan should schedule the auto-follow resume');
+assert.match(app, /CAMERA_RESUME_MS\s*=\s*30000/,
+  'auto-follow should resume 30 s after the rider stops panning');
+assert.match(app, /if \(!turnNav\.cameraFollow\) return;/,
+  'the follow camera must not fight the rider while they are panning');
+assert.match(app, /maplibregl-ctrl-geolocate[\s\S]{0,140}!turnNav\.cameraFollow[\s\S]{0,120}recenterNavigationOnRider/,
+  'the geolocate control should re-center on the rider on the first tap after panning');
 assert.match(app, /type:\s*'route-connector'/,
   'navigation should request a separate route-to-start connector');
 assert.match(app, /id:\s*'route-connector'/,
