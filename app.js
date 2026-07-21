@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.213';
+const APP_VERSION = '2026-07-20.214';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4468,46 +4468,68 @@ const onlinePlaceCache = new Map();
 let onlinePlaceLastRequestAt = 0;
 const ONLINE_PLACE_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 const ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS = 1100;
+const ONLINE_PLACE_RESULT_LIMIT = 6;
+// The router only covers Washington; drop any hit outside it so a route is
+// always possible.
+const WA_BBOX = { minLon: -124.9, maxLon: -116.8, minLat: 45.5, maxLat: 49.1 };
+const inWashington = (lon, lat) => lon >= WA_BBOX.minLon && lon <= WA_BBOX.maxLon
+  && lat >= WA_BBOX.minLat && lat <= WA_BBOX.maxLat;
+
+// Bias the search toward wherever the map is currently looking so a generic
+// query ("Fred Meyer", "hardware store") returns nearby matches rather than
+// the most "important" ones statewide.
+function placeSearchReference() {
+  const c = map.getCenter();
+  return [c.lng, c.lat];
+}
 
 async function searchOnlinePlaces(query) {
   const normalized = query.trim().replace(/\s+/g, ' ').toLowerCase();
   if (normalized.length < 2) return [];
-  if (onlinePlaceCache.has(normalized)) return onlinePlaceCache.get(normalized);
-  if (navigator.onLine === false) throw new Error('offline');
+  const [refLon, refLat] = placeSearchReference();
 
-  const waitMs = Math.max(0, ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS - (Date.now() - onlinePlaceLastRequestAt));
-  if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
-  onlinePlaceLastRequestAt = Date.now();
+  let matches = onlinePlaceCache.get(normalized);
+  if (!matches) {
+    if (navigator.onLine === false) throw new Error('offline');
+    const waitMs = Math.max(0, ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS - (Date.now() - onlinePlaceLastRequestAt));
+    if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
+    onlinePlaceLastRequestAt = Date.now();
 
-  const url = new URL(ONLINE_PLACE_SEARCH_ENDPOINT);
-  url.search = new URLSearchParams({
-    format: 'jsonv2', q: query.trim(), limit: '5', countrycodes: 'us', addressdetails: '1',
-    // This router only contains Washington. Out-of-state search hits can
-    // never produce a route, so constrain results to the graph's coverage.
-    viewbox: '-124.9,49.1,-116.8,45.5', bounded: '1',
-  });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  let response;
-  try {
-    response = await fetch(url, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
+    const url = new URL(ONLINE_PLACE_SEARCH_ENDPOINT);
+    // A local viewbox biases results toward the current view; it is not a hard
+    // bound (so a store a bit farther out still comes back), and we then keep
+    // only Washington hits ourselves.
+    const halfLon = 1.1, halfLat = 0.7;
+    url.search = new URLSearchParams({
+      format: 'jsonv2', q: query.trim(), limit: '30', countrycodes: 'us', addressdetails: '1',
+      viewbox: `${refLon - halfLon},${refLat + halfLat},${refLon + halfLon},${refLat - halfLat}`,
     });
-  } finally {
-    clearTimeout(timeout);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    let response;
+    try {
+      response = await fetch(url, { headers: { Accept: 'application/json' }, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!response.ok) throw new Error(`search failed (${response.status})`);
+    const data = await response.json();
+    matches = (Array.isArray(data) ? data : [])
+      .map((item) => ({
+        name: onlinePlaceResultName(item),
+        lon: Number(item.lon), lat: Number(item.lat), source: 'online',
+      }))
+      .filter((item) => item.name && Number.isFinite(item.lon) && Number.isFinite(item.lat))
+      .filter((item) => inWashington(item.lon, item.lat));
+    if (onlinePlaceCache.size >= 50) onlinePlaceCache.delete(onlinePlaceCache.keys().next().value);
+    onlinePlaceCache.set(normalized, matches);
   }
-  if (!response.ok) throw new Error(`search failed (${response.status})`);
-  const data = await response.json();
-  const matches = (Array.isArray(data) ? data : [])
-    .map((item) => ({
-      name: onlinePlaceResultName(item),
-      lon: Number(item.lon), lat: Number(item.lat), source: 'online',
-    }))
-    .filter((item) => item.name && Number.isFinite(item.lon) && Number.isFinite(item.lat));
-  if (onlinePlaceCache.size >= 50) onlinePlaceCache.delete(onlinePlaceCache.keys().next().value);
-  onlinePlaceCache.set(normalized, matches);
-  return matches;
+
+  // Sort by distance from the current view and keep the nearest handful.
+  return matches
+    .map((m) => ({ ...m, distanceM: navDistanceM([refLon, refLat], [m.lon, m.lat]) }))
+    .sort((a, b) => a.distanceM - b.distanceM)
+    .slice(0, ONLINE_PLACE_RESULT_LIMIT);
 }
 
 function onlinePlaceResultName(item) {
@@ -4661,7 +4683,9 @@ function buildPlacePicker() {
       hit.append(document.createTextNode(item.name + ' '));
       const detail = document.createElement('small');
       detail.textContent = item.source === 'online'
-        ? 'online · OpenStreetMap'
+        ? (Number.isFinite(item.distanceM)
+          ? `${fmtMi(item.distanceM)} mi from map center · online`
+          : 'online · OpenStreetMap')
         : (TYPE_LABEL[item.type] || item.type || 'place');
       hit.append(detail);
       results.append(hit);
