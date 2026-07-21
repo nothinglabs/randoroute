@@ -52,8 +52,24 @@ assert.match(app, /\['guidance', 'Guidance only'[\s\S]*?\['return', 'Automatic r
 const voicePanelSource = app.slice(app.indexOf('function buildVoicePanel'), app.indexOf('function buildLegend'));
 assert.doesNotMatch(voicePanelSource, /violet/i,
   'Voice-Nav settings should describe behavior without naming a route color');
-assert.match(voicePanelSource, /Dynamic routing may change the roads used for the rest of your trip\. Remaining waypoints and your destination stay in place/,
-  'dynamic routing should explain that remaining waypoints are preserved');
+assert.match(voicePanelSource, /re-routes through your remaining stops; only the roads ahead may change/,
+  'dynamic routing should explain that remaining stops are preserved and only the road choices change');
+// The Voice-Nav pane must fit on one sheet: off-route mode is a dropdown with a
+// live description, not three tall described radio cards.
+assert.match(voicePanelSource, /id="v-offRouteMode" class="voice-select voice-select-inline"/,
+  'off-route behavior should be a compact inline dropdown');
+assert.doesNotMatch(voicePanelSource, /name="off-route-mode"/,
+  'the described-radio off-route control should be gone');
+assert.match(voicePanelSource, /class="voice-hint" id="v-offRouteDesc"/,
+  'the selected off-route mode should show a live description line');
+// The route-settings lock during navigation surfaces inline above the panes
+// (where the rider is looking), not as a top-of-screen toast.
+assert.match(html, /id="settingsTabs"[\s\S]*?id="settingsNavLockNotice"[\s\S]*?class="settings-nav-lock"[\s\S]*?id="settings-presets"/,
+  'the navigation lock notice should sit between the settings tabs and the panes');
+assert.match(app, /paneLockedByNavigation\(button\.dataset\.settingsPane\)\)\s*\{\s*flashSettingsNavLock\(\);/,
+  'tapping a locked settings tab should flash the inline lock notice');
+assert.match(app, /function flashSettingsNavLock\(\)[\s\S]*?settingsNavLockNotice/,
+  'the inline lock notice helper should target the notice element');
 assert.match(app, /function activateNewRouteFromCurrentLocation[\s\S]*?if \(!result\.ok[\s\S]*?return;[\s\S]*?routing\.start = start/,
   'a failed current-location calculation must return before replacing the planned route');
 assert.match(app, /type:\s*'navigation-new-route'[\s\S]*?prefDesignated:\s*routing\.prefDesig,[\s\S]*?prefResidential:\s*routing\.prefResidential/,

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.200';
+const APP_VERSION = '2026-07-20.201';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5410,7 +5410,7 @@ function buildRulesPanel() {
     paneButtons.forEach((button) => {
       button.addEventListener('click', () => {
         if (paneLockedByNavigation(button.dataset.settingsPane)) {
-          showRouteActionToast('Pause navigation before changing route settings', { duration: 2600 });
+          flashSettingsNavLock();
           return;
         }
         selectSettingsPane(button.dataset.settingsPane);
@@ -5446,44 +5446,67 @@ function buildRulesPanel() {
   }
 }
 
+// Placed just above the settings panes (not as a top-of-screen toast) so a
+// rider who taps a route-settings tab during navigation sees why it is locked
+// right where they are looking. Re-flashes on every tap.
+let settingsNavLockTimer = null;
+function flashSettingsNavLock() {
+  const note = document.getElementById('settingsNavLockNotice');
+  if (!note) return;
+  note.hidden = false;
+  note.classList.remove('flash');
+  void note.offsetWidth; // restart the flash animation on repeat taps
+  note.classList.add('flash');
+  clearTimeout(settingsNavLockTimer);
+  settingsNavLockTimer = setTimeout(() => { note.hidden = true; }, 4200);
+}
+
 function buildVoicePanel() {
   const host = document.getElementById('settingsVoice');
   if (!host) return;
   host.replaceChildren();
 
-  const headings = document.createElement('div');
-  headings.className = 'check-rule rule-card';
-  headings.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceHeadings"
-    ${navVoice.headings ? 'checked' : ''}><span>Speak compass directions (north/south/east/west)</span></label>`;
-  headings.querySelector('input').addEventListener('change', (e) => {
-    navVoice.headings = e.target.checked;
-    saveStateSoon();
-  });
-
-  const offRoute = document.createElement('fieldset');
-  offRoute.className = 'rule-card off-route-mode';
+  // Off-route behavior: a dropdown plus one live description line. The three
+  // described radio cards it replaces forced the whole pane to scroll; a select
+  // keeps every voice control on one sheet without shrinking anything else.
   const offRouteChoices = [
-    ['guidance', 'Guidance only', 'Default. Shows the direction and distance back to your route.'],
-    ['return', 'Automatic return to route', 'After 60 seconds, creates a temporary route to the nearest point on your current route.'],
-    ['dynamic', 'Dynamic routing', 'After 60 seconds, creates a new route through remaining waypoints to the destination.'],
+    ['guidance', 'Guidance only', 'Shows the direction and distance back to your route.'],
+    ['return', 'Automatic return to route', 'After 60 s, routes to the nearest point on your route.'],
+    ['dynamic', 'Dynamic routing', 'After 60 s, re-routes through your remaining stops; only the roads ahead may change.'],
   ];
-  offRoute.innerHTML = `<legend>Off-route behavior</legend>
-    ${offRouteChoices.map(([value, label, description]) => `<label class="off-route-choice">
-      <input type="radio" name="off-route-mode" value="${value}"${navVoice.offRouteMode === value ? ' checked' : ''}>
-      <span><strong>${label}</strong><small>${description}</small></span>
-    </label>`).join('')}
-    <p class="off-route-warning"><strong>Dynamic routing may change the roads used for the rest of your trip. Remaining waypoints and your destination stay in place.</strong></p>`;
-  offRoute.addEventListener('change', (e) => {
-    const input = e.target.closest('input[name="off-route-mode"]');
-    if (!input) return;
-    navVoice.offRouteMode = input.value;
+  const offRoute = document.createElement('div');
+  offRoute.className = 'rule rule-card voice-offroute';
+  offRoute.innerHTML = `
+    <div class="rule-head voice-inline-head"><label for="v-offRouteMode">Off-route behavior</label>
+      <select id="v-offRouteMode" class="voice-select voice-select-inline">${offRouteChoices.map(([value, label]) =>
+        `<option value="${value}"${navVoice.offRouteMode === value ? ' selected' : ''}>${label}</option>`).join('')}</select></div>
+    <p class="voice-hint" id="v-offRouteDesc"></p>`;
+  const offRouteDesc = offRoute.querySelector('#v-offRouteDesc');
+  const syncOffRouteDesc = () => {
+    const choice = offRouteChoices.find(([value]) => value === navVoice.offRouteMode);
+    offRouteDesc.textContent = choice ? choice[2] : '';
+    offRouteDesc.classList.toggle('voice-hint-warn', navVoice.offRouteMode === 'dynamic');
+  };
+  syncOffRouteDesc();
+  offRoute.querySelector('select').addEventListener('change', (e) => {
+    navVoice.offRouteMode = e.target.value;
     // Choosing an automatic mode is an explicit request to try it, even if a
     // prior recovery attempt during this off-route interval could not finish.
     turnNav.autoRecoveryAttempted = false;
+    syncOffRouteDesc();
     saveStateSoon();
     maybeAutomaticallyRecoverOffRoute();
   });
   host.appendChild(offRoute);
+
+  const headings = document.createElement('div');
+  headings.className = 'check-rule rule-card';
+  headings.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceHeadings"
+    ${navVoice.headings ? 'checked' : ''}><span>Speak compass directions (N/S/E/W)</span></label>`;
+  headings.querySelector('input').addEventListener('change', (e) => {
+    navVoice.headings = e.target.checked;
+    saveStateSoon();
+  });
   host.appendChild(headings);
 
   const choices = [[0, 'Never'], [1, 'Every minute'], [2, 'Every 2 minutes'],
@@ -5497,9 +5520,9 @@ function buildVoicePanel() {
   const items = [['statusRoute', 'Route status'], ['statusSpeed', 'Current speed'],
     ['statusMiles', 'Miles remaining'], ['statusEta', 'Est. time left']];
   cadence.innerHTML = `
-    <div class="rule-head"><label for="r-voiceUpdate">Status update</label></div>
-    <select id="r-voiceUpdate" class="voice-select">${choices.map(([value, label]) =>
-      `<option value="${value}"${value === navVoice.updateMin ? ' selected' : ''}>${label}</option>`).join('')}</select>
+    <div class="rule-head voice-inline-head"><label for="r-voiceUpdate">Status update</label>
+      <select id="r-voiceUpdate" class="voice-select voice-select-inline">${choices.map(([value, label]) =>
+        `<option value="${value}"${value === navVoice.updateMin ? ' selected' : ''}>${label}</option>`).join('')}</select></div>
     <div class="voice-status-grid">${items.map(([key, label]) =>
       `<label class="rule-check"><input type="checkbox" data-voice-status="${key}"
         ${navVoice[key] ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div>`;

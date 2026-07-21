@@ -778,22 +778,32 @@ body.navigation-active .maplibregl-user-location-accuracy-circle { display: none
 
 .voice-select { width: 100%; min-width: 0; margin-top: 5px; padding: 8px 10px; border: 1px solid #c9d7e0; border-radius: 8px; background: #fff; color: #2c3e4c; font: 650 12px system-ui; }
 
-.off-route-mode { min-width: 0; border: 1px solid #dbe5eb; }
-.off-route-mode legend { padding: 0 4px; color: #324b59; font: 750 11.5px/1.2 system-ui; }
-.off-route-choice { display: grid; grid-template-columns: 17px minmax(0, 1fr); align-items: start; gap: 7px; padding: 5px 2px; cursor: pointer; }
-.off-route-choice + .off-route-choice { border-top: 1px solid #edf1f3; }
-.off-route-choice input { width: 16px; height: 16px; margin: 1px 0 0; }
-.off-route-choice span { display: grid; gap: 1px; min-width: 0; }
-.off-route-choice strong { color: #2d4654; font: 730 11px/1.25 system-ui; }
-.off-route-choice small { color: #657985; font: 570 9.75px/1.3 system-ui; }
-.off-route-warning { margin: 4px 1px 0 24px; color: #85510a; font: 600 9.75px/1.3 system-ui; }
+/* Label and dropdown share one row so each voice control stays a single band. */
+.voice-inline-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.voice-inline-head label { color: #324b59; font: 750 11.5px/1.2 system-ui; }
+.voice-select-inline { width: auto; min-width: 148px; max-width: 64%; margin-top: 0; padding: 6px 9px; }
+.voice-hint { margin: 3px 1px 0; color: #657985; font: 570 9.75px/1.25 system-ui; }
+.voice-hint-warn { color: #85510a; font-weight: 650; }
 
-.voice-status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-top: 7px; }
+.voice-status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin-top: 3px; }
 .voice-status-grid .rule-check { font-size: 11px; font-weight: 650; }
+/* Voice controls run tighter than the other settings panes so all three fit
+   one sheet — including the two-line dynamic-routing description on narrow
+   phones. */
+#settingsVoice .rule-card { padding: 3px 9px; }
+#settingsVoice .voice-select-inline { padding: 4px 9px; }
+#settingsVoice .voice-status-grid .rule-check { line-height: 1.15; }
+#settingsVoice .voice-inline-head { min-height: 24px; }
 
 /* Navigation locks route-shaping controls; the Navigate pane stays live. */
 #routeOptions button.nav-locked { opacity: .45; }
 #routeOptions button.nav-locked.active { opacity: .7; }
 body.navigation-active .settings-tabs [data-settings-pane]:not([data-settings-pane="voice"]) { opacity: .45; }
+/* Shown just above the settings panes (not as a top-screen toast) when a rider
+   taps a locked route-settings tab during navigation, so it lands in view. */
+.settings-nav-lock { margin: 4px 1px 3px; padding: 7px 10px; border: 1px solid #e6b64c; border-radius: 8px; background: #fff6e2; color: #7a4e07; font: 750 11.5px/1.3 system-ui; }
+.settings-nav-lock[hidden] { display: none; }
+.settings-nav-lock.flash { animation: navLockFlash .55s ease; }
+@keyframes navLockFlash { 0% { background: #ffdd82; } 100% { background: #fff6e2; } }
 
 #navDetailsBtn { flex: none; align-self: center; margin-left: 4px; padding: 7px 10px; border: 1px solid #74b9a5; border-radius: 9px; background: #fff; color: #00795c; font: 750 11px system-ui; cursor: pointer; }
