@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.210';
+const APP_VERSION = '2026-07-20.211';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3114,10 +3114,12 @@ function onRouterMessage(ev) {
     routing.options = m.options;
     let selected;
     if (routing.sharedActive) {
-      // The sender's exact route is the option matching their profile.
+      // The sender's exact route is the option matching their profile; it goes
+      // in the first (A) slot, relabeled "As Shared".
       const sp = routing.sharedRecipe?.profileId;
       selected = (sp && m.options.find((o) => o.optimization?.profileId === sp)) || m.options[0];
       selected.asShared = true;
+      routing.options = [selected, ...m.options.filter((o) => o !== selected)];
     } else {
       selected = refreshedRouteSelection(m.options);
     }
@@ -4049,11 +4051,15 @@ function renderRouteOptionControls() {
     host.innerHTML = '<span class="route-options-empty">Route choices</span>';
     return;
   }
+  // With the shared route in the A slot, the remaining buttons read B, C, D…
+  // by position so the row stays sequential rather than skipping a letter.
+  const sharedInPlay = !!routing.options[0]?.asShared;
   host.innerHTML = routing.options.map((option, index) => {
     const optimization = option.optimization || {};
     const label = option.asShared ? 'As Shared' : (optimization.label || `Option ${index + 1}`);
     const only = routing.options.length === 1;
     const shortLabel = option.asShared ? 'As Shared'
+      : sharedInPlay ? String.fromCharCode(65 + index)
       : /^Route [A-Z]$/.test(label)
         ? (only ? `${label.slice(-1)} (Only route)` : label.slice(-1))
         : label;
