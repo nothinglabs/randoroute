@@ -8,8 +8,17 @@ const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 assert.match(html, /id="navOffRouteBtn"[^>]*>Re-route</,
   'off-route navigation should expose a conventional reroute button');
-assert.match(html, /class="nav-banner-main"[\s\S]*?class="nav-banner-copy"[\s\S]*?id="navDetailsBtn"[\s\S]*?id="navOffRouteBtn"/,
+assert.match(html, /class="nav-banner-main"[\s\S]*?class="nav-banner-copy"[\s\S]*?<\/div>[\s\S]*?id="navOffRouteBtn"/,
   'the off-route action should sit below the preserved navigation information');
+assert.doesNotMatch(html, /id="navDetailsBtn"/,
+  'the top navigation window should no longer carry a Details button');
+// Route details live on the Navigating Route panel now.
+assert.match(html, /id="navCard"[\s\S]*?id="navCardDetailsBtn"/,
+  'the Navigating Route panel should host the elevation chart and a details button');
+assert.match(app, /function drawNavElevation\([\s\S]*?ctx\.clip\(\)[\s\S]*?NAV_ELEV_DONE/,
+  'the navigating elevation chart should shade the ridden portion');
+assert.match(app, /function updateNavCard\([\s\S]*?navigationElevationProgressM\(\)/,
+  'the navigating panel should track the live position on its elevation chart');
 assert.match(html, /id="navRouteBackBtn"[\s\S]*?Route to the nearest point[\s\S]*?id="navKeepRouteBtn"[\s\S]*?I'll find my own way[\s\S]*?id="navNewRouteBtn"[\s\S]*?New route to destination/,
   'off-route recovery dialog should present all three explicit choices');
 assert.match(html, /id="navNewRouteBtn"[\s\S]*?fresh route from here through any remaining stops/,

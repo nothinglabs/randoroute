@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.203';
+const APP_VERSION = '2026-07-20.204';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1897,7 +1897,7 @@ function navigationBannerInfo() {
   const remaining = Math.max(0, next.distanceM - turnNav.routeM);
   return {
     headline: `In ${navDistanceText(remaining)} · ${navInstructionText(next)}`,
-    meta: `${routeMeta} · ${turnNav.followingConnector ? 'Connector onto your route' : 'GPS guidance active'}`,
+    meta: turnNav.followingConnector ? `${routeMeta} · Connector onto your route` : routeMeta,
     kicker: turnNav.followingConnector ? 'To your route' : 'Next maneuver',
   };
 }
@@ -1988,6 +1988,113 @@ function refreshNavigationUI() {
   if (kicker) kicker.textContent = info.kicker;
   if (bannerText) bannerText.textContent = info.headline;
   if (bannerMeta) bannerMeta.textContent = info.meta;
+  updateNavCard();
+}
+
+// ---- Navigating Route panel (the Route tab, while turn-by-turn is active) ----
+// The ridden portion is shaded green to echo the map's darkening of the route
+// already covered; the remainder keeps the light-blue elevation fill.
+const NAV_ELEV_DONE = 'rgba(0,121,92,0.30)';
+const NAV_ELEV_AHEAD = 'rgba(44,123,182,0.18)';
+const NAV_ELEV_LINE = '#2c7bb6';
+const NAV_ELEV_POSITION = '#00795c';
+let navCardStatsFor = null;
+
+function drawNavElevation(canvas, profile, distM, progressM) {
+  if (!canvas || !Array.isArray(profile) || profile.length < 2 || !(distM > 0)) return;
+  const w = canvas.clientWidth || 0, h = canvas.clientHeight || 74;
+  if (w < 2) return; // hidden panel: redraw once it becomes visible
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  let lo = Infinity, hi = -Infinity;
+  for (const [, e] of profile) { if (e < lo) lo = e; if (e > hi) hi = e; }
+  if (hi - lo < 30) { const mid = (hi + lo) / 2; lo = mid - 15; hi = mid + 15; }
+  const padT = 12, padB = 13, padL = 4, padR = 4;
+  const X = (d) => padL + (d / distM) * (w - padL - padR);
+  const Y = (e) => padT + (1 - (e - lo) / (hi - lo)) * (h - padT - padB);
+  const areaPath = () => {
+    ctx.beginPath();
+    ctx.moveTo(X(profile[0][0]), h - padB);
+    for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
+    ctx.lineTo(X(profile[profile.length - 1][0]), h - padB);
+    ctx.closePath();
+  };
+  areaPath(); ctx.fillStyle = NAV_ELEV_AHEAD; ctx.fill();
+  const hasPos = Number.isFinite(progressM) && progressM > 0 && progressM < distM;
+  if (hasPos) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, X(progressM), h); ctx.clip();
+    areaPath(); ctx.fillStyle = NAV_ELEV_DONE; ctx.fill();
+    ctx.restore();
+  }
+  ctx.beginPath();
+  ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
+  for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
+  ctx.strokeStyle = NAV_ELEV_LINE; ctx.lineWidth = 1.6; ctx.stroke();
+  if (hasPos) {
+    const px = X(progressM);
+    ctx.beginPath(); ctx.moveTo(px, padT - 4); ctx.lineTo(px, h - padB);
+    ctx.strokeStyle = NAV_ELEV_POSITION; ctx.lineWidth = 2.2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(px, padT - 4, 2.6, 0, Math.PI * 2);
+    ctx.fillStyle = NAV_ELEV_POSITION; ctx.fill();
+  }
+  ctx.fillStyle = '#607482'; ctx.font = '700 9px system-ui';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText(`${fmtFt(hi)} ft`, padL + 2, 1);
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`${fmtFt(lo)} ft`, padL + 2, h - 1);
+  ctx.textAlign = 'right';
+  ctx.fillText(`${fmtMi(distM)} mi`, w - padR - 2, h - 1);
+  ctx.textAlign = 'left';
+}
+
+function navTripStatsHTML(m) {
+  const stats = routeSummaryStats(m);
+  const ridingM = Math.max(1, m.distM - (m.ferryM || 0));
+  const bikePct = routePercent(stats.bikeNetworkM, ridingM);
+  const passPct = routePercent((stats.levels[1] || 0) + (stats.levels[2] || 0), ridingM, true);
+  const cautionPct = routePercent(stats.levels[3] || 0, ridingM, true);
+  const failPct = routePercent(m.failM || 0, ridingM, true);
+  return `
+    <div class="nav-stats-row"><span>↗ ${fmtFt(m.ascentM)} ft climb</span><span>↘ ${fmtFt(m.descentM)} ft</span><span>△ ${Number(m.maxGradePct || 0).toFixed(1)}% max</span>${m.ferryM > 0 ? `<span>⛴ ${fmtMi(m.ferryM)} mi ferry</span>` : ''}</div>
+    <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><span><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div>`;
+}
+
+function updateNavCard() {
+  const card = document.getElementById('navCard');
+  if (!card) return;
+  if (!turnNav.active) { card.hidden = true; navCardStatsFor = null; return; }
+  card.hidden = false;
+  const m = routing.last;
+  const totalM = turnNav.route?.totalM || 0;
+  const doneM = Math.max(0, Math.min(totalM, turnNav.routeM));
+  const remainingM = Math.max(0, totalM - doneM);
+  const pct = totalM > 0 ? Math.round(100 * doneM / totalM) : 0;
+  const fill = document.getElementById('navProgressFill');
+  if (fill) fill.style.width = `${pct}%`;
+  const pctEl = document.getElementById('navProgressPct');
+  if (pctEl) pctEl.textContent = `${pct}%`;
+  const remainingS = remainingNavigationTimeS();
+  const etaEl = document.getElementById('navProgressEta');
+  if (etaEl) {
+    if (turnNav.arrived) etaEl.textContent = 'Arrived';
+    else if (remainingS >= 30) {
+      const eta = new Date(Date.now() + remainingS * 1000);
+      etaEl.textContent = `ETA ${eta.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · ${fmtDur(remainingS)} left`;
+    } else etaEl.textContent = `${navDistanceText(remainingM)} to go`;
+  }
+  const statsEl = document.getElementById('navTripStats');
+  if (statsEl && m?.ok && navCardStatsFor !== m) {
+    statsEl.innerHTML = navTripStatsHTML(m);
+    navCardStatsFor = m;
+  }
+  const canvas = document.getElementById('navElevationCanvas');
+  if (canvas && m?.ok) {
+    drawNavElevation(canvas, compactRouteProfile(m), Number(m.distM) || 0, navigationElevationProgressM());
+  }
 }
 
 function speakNavigation(text) {
@@ -3959,7 +4066,7 @@ function buildRoutingPanel() {
     if (turnNav.active) stopTurnNavigation();
     else startTurnNavigation();
   });
-  document.getElementById('navDetailsBtn').addEventListener('click', () => openRouteDetails());
+  document.getElementById('navCardDetailsBtn').addEventListener('click', () => openRouteDetails());
   document.getElementById('navUseNearestBtn').addEventListener('click', () => useNearestPlannedRoute());
   document.getElementById('navRouteToStartBtn').addEventListener('click', () => requestRouteBackToCurrentRoute());
   document.getElementById('routeStartDialog').addEventListener('cancel', (event) => {
@@ -5662,6 +5769,7 @@ function selectPanelTab(tabId) {
   document.querySelectorAll('.tab').forEach((t) =>
     t.classList.toggle('active', t.id === 'tab-' + tabId));
   scheduleMobileNavDock();
+  if (tabId === 'route') updateNavCard(); // redraw the elevation once visible
 }
 
 document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {

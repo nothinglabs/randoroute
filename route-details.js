@@ -385,6 +385,21 @@ function drawElevation(canvas, compact = false) {
   ctx.closePath();
   ctx.fillStyle = 'rgba(44,123,182,0.18)';
   ctx.fill();
+  // Ridden portion shaded green — matches the app's Navigating Route view and
+  // the map's darkening of the route already covered.
+  if (Number.isFinite(NAV_PROGRESS_M) && NAV_PROGRESS_M > 0 && NAV_PROGRESS_M < distM) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, X(NAV_PROGRESS_M), h); ctx.clip();
+    ctx.beginPath();
+    ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
+    for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
+    ctx.lineTo(X(profile[profile.length - 1][0]), h - padB);
+    ctx.lineTo(X(profile[0][0]), h - padB);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(0,121,92,0.28)';
+    ctx.fill();
+    ctx.restore();
+  }
   ctx.beginPath();
   ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
   for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));

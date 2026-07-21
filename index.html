@@ -91,6 +91,16 @@
       </div>
       <div id="routeDetailsStash" hidden><button id="routeDetailsBtn" class="route-details-btn" type="button" disabled>Details</button></div>
       <div id="routeCard"></div>
+      <div id="navCard" class="nav-card" hidden>
+        <div class="nav-card-head">Navigating Route</div>
+        <div class="nav-progress">
+          <div class="nav-progress-track"><span id="navProgressFill"></span></div>
+          <div class="nav-progress-meta"><strong id="navProgressEta"></strong><span id="navProgressPct"></span></div>
+        </div>
+        <div class="nav-elevation-wrap"><canvas id="navElevationCanvas" class="nav-elevation" aria-label="Route elevation with your current position"></canvas></div>
+        <div id="navTripStats" class="nav-trip-stats"></div>
+        <button id="navCardDetailsBtn" class="route-details-btn nav-card-details" type="button">Route details</button>
+      </div>
     </section>
 
     <section class="tab" id="tab-layers">
@@ -288,7 +298,6 @@
         <strong id="navBannerText"></strong>
         <span id="navBannerMeta"></span>
       </div>
-      <button type="button" id="navDetailsBtn">Details</button>
     </div>
     <button type="button" id="navOffRouteBtn" class="nav-off-route-action" aria-label="Off route: choose re-routing options" hidden>Re-route</button>
   </div>
