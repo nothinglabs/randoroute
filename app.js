@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.227';
+const APP_VERSION = '2026-07-20.228';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5297,7 +5297,7 @@ readoutEl.addEventListener('click', (e) => {
 // dialog iframe so the PWA is never left; without one it opens Google Maps in a
 // new tab as before. The key is a public, HTTP-referrer-restricted Embed API
 // key (that API has no usage charges); set it here to enable the in-app view.
-const GOOGLE_MAPS_EMBED_KEY = '';
+const GOOGLE_MAPS_EMBED_KEY = 'AIzaSyBQZNQ4jPILjOH3efOD228wOjayupCfa6Y';
 
 function openStreetView(lat, lng) {
   const external = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}`;
