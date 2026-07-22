@@ -65,4 +65,29 @@ assert.ok(replacementRouteA, 'the replacement portfolio should include Route A')
 assert.equal(replacementRouteA.legs?.length, 2,
   'the Route A replacement should preserve its ordered waypoint as two routed legs');
 
+// A portfolio is useful after the rider stops, but it must never prevent a
+// proven single-route recovery from getting an off-route rider moving again.
+const actualRouteOptions = context.routeOptions;
+context.routeOptions = () => ({ ok: false, reason: 'No alternatives available' });
+messages.length = 0;
+context.onmessage({ data: {
+  type: 'navigation-new-route', id: 73,
+  points: [[-122.391, 47.689], [-122.350, 47.673]],
+  rules: {
+    allowFreeways: false, allowMtbTrails: false, vettedBikeRoutes: true,
+    minShoulder: 4, unknownShoulderZero: true, freeMaxSpeed: 35,
+    upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
+  },
+  mode: 'balanced', profileId: 'efficient', profileLabel: 'Route A',
+  prefDesignated: true, prefResidential: false,
+} });
+context.routeOptions = actualRouteOptions;
+const fallbackReplacement = messages.at(-1);
+assert.equal(fallbackReplacement?.ok, true,
+  'a usable current-location recovery must survive a failed alternatives search');
+assert.equal(fallbackReplacement?.options?.length, 1,
+  'a failed alternatives search should retain the working recovery route as Route A');
+assert.equal(fallbackReplacement.options[0].optimization?.label, 'Route A',
+  'the fallback recovery route should remain selectable as Route A');
+
 console.log('Route connector tests passed.');

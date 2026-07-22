@@ -199,8 +199,8 @@ assert.doesNotMatch(activationSource, /routing\.vias\s*=\s*\[\]/,
   'a successful replacement route must not clear all waypoints');
 assert.match(activationSource, /const options = Array\.isArray\(result\.options\)[\s\S]*?routing\.options = options[\s\S]*?activateRouteOption\(selected\)/,
   'an off-route replacement should keep every generated option while navigating Route A');
-assert.match(worker, /m\.type === 'navigation-new-route'[\s\S]*?const result = routeOptions\(points, m\.rules, !!m\.prefDesignated,[\s\S]*?postMessage\(\{ type: 'navigation-new-route', id: m\.id, \.\.\.result \}\)/,
-  'the worker should run the full alternatives search for a current-location replacement');
+assert.match(worker, /m\.type === 'navigation-new-route'[\s\S]*?const primary = route\(points, m\.rules, mode, !!m\.prefDesignated, !!m\.prefResidential\)[\s\S]*?if \(!primary\.ok\)[\s\S]*?const options = portfolio\?\.ok[\s\S]*?publicCandidate\(\{ \.\.\.primary, _profile: primaryProfile \}\)/,
+  'a current-location replacement should preserve a usable Route A when alternatives fail');
 const start = app.indexOf('function navDistanceM');
 const end = app.indexOf('// Leaving the route no longer triggers rerouting.');
 assert.ok(start >= 0 && end > start, 'navigation helper source was not found');

@@ -1599,12 +1599,30 @@ onmessage = (ev) => {
     } else if (m.type === 'navigation-new-route') {
       useWeights(m.weights);
       const points = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
-      // Use the normal portfolio search here too. Navigation takes Route A
-      // immediately, while the remaining choices stay available when the
-      // rider stops and returns to the Route panel.
-      const result = routeOptions(points, m.rules, !!m.prefDesignated,
-        !!m.prefResidential, m.profileId);
-      postMessage({ type: 'navigation-new-route', id: m.id, ...result });
+      // First preserve the exact single-route behavior that gets a rider
+      // moving again when they are off course. The broader portfolio is a
+      // convenience for after navigation stops, never a reason to reject a
+      // usable recovery route.
+      const mode = m.mode || 'balanced';
+      const primary = route(points, m.rules, mode, !!m.prefDesignated, !!m.prefResidential);
+      if (!primary.ok) {
+        postMessage({ type: 'navigation-new-route', id: m.id, ...primary });
+        return;
+      }
+      const primaryProfile = {
+        id: m.profileId || 'efficient', label: m.profileLabel || 'Route A',
+        mode, prefDesig: !!m.prefDesignated,
+        prefResidential: !!m.prefResidential,
+      };
+      let portfolio = null;
+      try {
+        portfolio = routeOptions(points, m.rules, !!m.prefDesignated,
+          !!m.prefResidential, m.profileId);
+      } catch (e) { /* Keep the working recovery route if comparison fails. */ }
+      const options = portfolio?.ok && Array.isArray(portfolio.options) && portfolio.options.length
+        ? portfolio.options : [publicCandidate({ ...primary, _profile: primaryProfile })];
+      postMessage({ type: 'navigation-new-route', id: m.id, ok: true, options,
+        ms: portfolio?.ms || primary.ms });
     }
   } catch (err) {
     const message = String(err && err.message || err);
