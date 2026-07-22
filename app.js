@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.247';
+const APP_VERSION = '2026-07-20.248';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6216,6 +6216,10 @@ document.getElementById('appHelpBtn').addEventListener('click', () =>
   document.getElementById('appHelpDialog').showModal());
 document.getElementById('layersHelpBtn').addEventListener('click', () =>
   document.getElementById('layersHelpDialog').showModal());
+document.getElementById('routesHelpBtn').addEventListener('click', () => {
+  document.getElementById('routesDialog').close();
+  document.getElementById('routesHelpDialog').showModal();
+});
 
 function isStandaloneApp() {
   return window.matchMedia('(display-mode: standalone)').matches

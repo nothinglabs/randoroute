@@ -7,6 +7,8 @@ const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 
 assert.match(html, /id="appHelpDialog"[\s\S]*?The letters identify routes; they are not safety grades[\s\S]*?Layers<\/b> changes only what you see/,
   'quick-start help should be concise and distinguish route choices from layer visibility');
+assert.match(html, /id="routesHelpDialog"[\s\S]*?Save on this device[\s\S]*?They stay in this browser on this device[\s\S]*?Share a link[\s\S]*?Anyone with the link can open it[\s\S]*?Open a shared route[\s\S]*?without changing your own saved settings/,
+  'save-and-share help should cover local storage, share-link scope, and shared-route loading');
 assert.match(html, /id="settingsHelpDialog"[\s\S]*?dedicated bike infrastructure is exempt[\s\S]*?Trust designated bike routes[\s\S]*?Speed limits and access restrictions still apply[\s\S]*?Only show routes fully matching safety rules[\s\S]*?Minor exception: a short access link near a pin may remain and appear red/,
   'settings help should state the pin-access exception next to the strict route filter');
 assert.match(html, /<h3>Limits<\/h3><ul class="help-list">[\s\S]*?Minimum shoulder[\s\S]*?Max speed without shoulder[\s\S]*?Never allow roads faster than[\s\S]*?No cutoff[\s\S]*?<\/ul>/,
@@ -16,7 +18,7 @@ assert.match(html, /id="layersHelpDialog"[\s\S]*?Technical data notes[\s\S]*?pla
 const layersHelp = html.match(/<dialog id="layersHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
 assert.doesNotMatch(layersHelp, /lime|blue|amber|red fails|gray lacks enough data/i,
   'map-layers help should not duplicate the route color legend');
-assert.match(html, /id="routeTipsDialog"[\s\S]*?Route information[\s\S]*?Route cards show distance, estimated time, elevation[\s\S]*?Open <b>Details<\/b>[\s\S]*?route context, not automatically a trail or bike facility/,
+assert.match(html, /id="routeTipsDialog"[\s\S]*?Route information[\s\S]*?Route cards show distance, estimated time, elevation[\s\S]*?<h3>Details<\/h3>[\s\S]*?Concerns:[\s\S]*?All Steps:[\s\S]*?Safety ratings &amp; map colors[\s\S]*?route context, not automatically a trail or bike facility/,
   'route help should focus on the information and inspection tools the app provides');
 assert.doesNotMatch(html, /recommended balance|Ride mix|Compare the summaries/,
   'route help should not introduce unused labels or prescribe a route choice');
