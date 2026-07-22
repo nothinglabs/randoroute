@@ -9,7 +9,7 @@
 </head>
 <body>
   <main>
-    <header>
+    <section id="panel-stats" class="detail-panel detail-stats" role="tabpanel" aria-labelledby="tab-stats">
       <div id="routeSummaryCard" class="route-summary-card" aria-label="Selected route summary" hidden>
         <div class="route-summary-info">
           <div id="summary" class="route-summary-main"></div>
@@ -25,12 +25,12 @@
       <section id="speedProfile" class="speed-profile" aria-labelledby="speedProfileTitle" hidden>
         <div class="speed-profile-head"><div><h2 id="speedProfileTitle">Speed limits</h2><p>Along the route · bike paths shown as 15 mph</p></div></div>
         <canvas id="speedProfileCanvas" role="img" aria-label="Speed limits along the route"></canvas>
-        <div class="speed-profile-legend" aria-label="Speed profile colors"><span><i class="speed-profile-swatch bike"></i>Bike lane or trail</span><span><i class="speed-profile-swatch shoulder-fail"></i>Fails shoulder rule</span><span><i class="speed-profile-swatch road"></i>Other road</span></div>
+        <div class="speed-profile-legend" aria-label="Speed profile colors"><span><i class="speed-profile-swatch bike"></i>Bike facility or trail</span><span><i class="speed-profile-swatch pass"></i>Meets safety rules</span><span><i class="speed-profile-swatch caution"></i>Caution</span><span><i class="speed-profile-swatch fail"></i>Fails safety rules</span></div>
       </section>
       <p id="noRouteSummary" class="summary" hidden></p>
-    </header>
+    </section>
 
-    <section id="panel-concerns" class="detail-panel" role="tabpanel" aria-labelledby="tab-concerns">
+    <section id="panel-concerns" class="detail-panel" role="tabpanel" aria-labelledby="tab-concerns" hidden>
       <div id="routeAlert" class="route-alert" hidden></div>
       <div id="report"></div>
     </section>
@@ -43,7 +43,8 @@
   <nav class="detail-bottom-nav" aria-label="Route details navigation">
     <button id="backToMap" class="back" type="button">← Back</button>
     <div class="detail-tabs" role="tablist" aria-label="Route details">
-      <button type="button" role="tab" id="tab-concerns" aria-controls="panel-concerns" aria-selected="true" data-detail-tab="concerns">Concerns</button>
+      <button type="button" role="tab" id="tab-stats" aria-controls="panel-stats" aria-selected="true" data-detail-tab="stats">Stats</button>
+      <button type="button" role="tab" id="tab-concerns" aria-controls="panel-concerns" aria-selected="false" data-detail-tab="concerns">Concerns</button>
       <button type="button" role="tab" id="tab-steps" aria-controls="panel-steps" aria-selected="false" data-detail-tab="steps">All Steps</button>
     </div>
   </nav>

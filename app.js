@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.257';
+const APP_VERSION = '2026-07-22.258';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1377,7 +1377,7 @@ function isHighwaySegment(s) {
 function routeSummaryStats(m) {
   const levels = [0, 0, 0, 0, 0];
   let highwayM = 0, freewayM = 0, limitedAccessM = 0, bikeNetworkM = 0, mtbM = 0;
-  let ordinaryRoadM = 0, ordinaryRoadSpeedM = 0;
+  let roadM = 0, roadSpeedM = 0;
   for (const s of m.segs || []) {
     const flags = s.flags || 0;
     const len = Number(s.lenM) || 0;
@@ -1388,12 +1388,12 @@ function routeSummaryStats(m) {
     // plain road, and Route Details' "Bike network" verdict draws this line
     // the same way.
     if ((flags & 8) || (s.facility || 0) >= 2) bikeNetworkM += len;
-    // Include ordinary roads regardless of shoulder width, but leave out bike
-    // infrastructure, bike lanes, shared-use paths, and ferries.
+    // Include every road speed, including roads with bike lanes. Dedicated
+    // paths carry no motor-vehicle speed and are not part of this road average.
     const mph = Number(s.mph);
-    if (!(flags & 8) && (s.facility || 0) < 2 && Number.isFinite(mph) && mph > 0) {
-      ordinaryRoadM += len;
-      ordinaryRoadSpeedM += mph * len;
+    if (!(flags & 8) && Number.isFinite(mph) && mph > 0) {
+      roadM += len;
+      roadSpeedM += mph * len;
     }
     if (s.mtb || ((s.official || 0) & 4)) mtbM += len;
     if (flags & 4) freewayM += len;
@@ -1402,7 +1402,7 @@ function routeSummaryStats(m) {
   }
   return {
     levels, highwayM, freewayM, limitedAccessM, bikeNetworkM, mtbM,
-    avgRoadSpeedMph: ordinaryRoadM > 0 ? Math.round(ordinaryRoadSpeedM / ordinaryRoadM) : null,
+    avgRoadSpeedMph: roadM > 0 ? Math.round(roadSpeedM / roadM) : null,
   };
 }
 
