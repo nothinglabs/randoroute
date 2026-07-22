@@ -5,8 +5,10 @@ import fs from 'node:fs';
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 
-assert.match(html, /id="appHelpDialog"[\s\S]*?The letters identify routes; they are not safety grades[\s\S]*?Layers<\/b> changes only what you see/,
-  'quick-start help should be concise and distinguish route choices from layer visibility');
+assert.match(html, /id="legendFlyout"[\s\S]*?id="legend"[\s\S]*?Tap any path to get details\./,
+  'the map legend should end with a compact path-details tip');
+assert.match(html, /id="appHelpDialog"[\s\S]*?The letters identify routes; they are not safety grades[\s\S]*?Layers<\/b> changes only what you see[\s\S]*?Tap any road or trail to get more information or access <b>Google Street View<\/b>/,
+  'quick-start help should distinguish route choices, layer visibility, and road-information access');
 assert.match(html, /id="routesHelpDialog"[\s\S]*?Save on this device[\s\S]*?They stay in this browser on this device[\s\S]*?Share a link[\s\S]*?Anyone with the link can open it[\s\S]*?Open a shared route[\s\S]*?without changing your own saved settings[\s\S]*?intended to reproduce the original path[\s\S]*?routing-data updates can produce a different result/,
   'save-and-share help should cover local storage, share-link scope, and shared-route loading');
 const routesHelp = html.match(/<dialog id="routesHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
@@ -42,6 +44,8 @@ assert.match(routeHelp, /<h3>Choose Route<\/h3>[\s\S]*?Tap A–E[\s\S]*?Click <b
   'route help should explain the route picker, details tools, and active safety labels');
 assert.doesNotMatch(routeHelp, /Gray — Insufficient data|Possible limited-visibility uphill curve/,
   'route help should omit the removed safety-label entries');
+assert.match(routeHelp, /<b>Failing lane segments pulse\.<\/b>/,
+  'route help should emphasize that failing lane segments pulse');
 assert.doesNotMatch(html, /recommended balance|Ride mix|Compare the summaries/,
   'route help should not introduce unused labels or prescribe a route choice');
 assert.match(html, /No view within 200 m\? Try <b>Open in Google Maps<\/b>\./,

@@ -349,6 +349,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .legend { margin-top: 5px; }
 .legend .item { display: flex; align-items: center; gap: 8px; margin: 5px 0; font: 600 11px/1.25 system-ui; }
 .legend .swatch { width: 22px; height: 6px; border-radius: 3px; flex: none; }
+.legend-note { margin: 7px 0 0; padding-top: 6px; border-top: 1px solid #e2eaee; color: #6b7d88; font: 600 10px/1.35 system-ui; }
 
 #legendToggle {
   position: absolute; z-index: 16; top: calc(env(safe-area-inset-top) + 52px); right: 10px;
@@ -785,6 +786,7 @@ body.navigation-active #routeBar { display: none; }
 .settings-advanced-section button { margin-top: 8px; padding: 7px 10px; border: 1px solid #bccbd4; border-radius: 8px; background: #f7f9fa; color: #52616d; font: 650 11px system-ui; cursor: pointer; }
 .app-help-dialog ol { display: grid; gap: 7px; margin: 13px 0 10px; padding-left: 21px; color: #405562; font: 12.5px/1.4 system-ui; }
 .app-help-dialog p { margin: 0; color: #667784; font: 11.5px/1.4 system-ui; }
+.app-help-dialog .app-help-note { margin: 10px 0 5px; color: #405562; }
 .full-help-dialog { width: 100vw; height: var(--app-height, 100dvh); max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: #f4f7f9; color: #1d2935; }
 .full-help-dialog::backdrop { background: rgba(18,42,60,.42); }
 .full-help-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: max(10px, env(safe-area-inset-top)) 18px 10px; border-bottom: 1px solid #d8e2e8; background: rgba(255,255,255,.96); }
