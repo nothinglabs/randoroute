@@ -11,11 +11,15 @@ assert.match(html, /id="legendFlyout"[\s\S]*?id="legend"[\s\S]*?Tap any path on 
 assert.match(html, /id="appHelpDialog"[\s\S]*?The letters identify routes; they are not safety grades[\s\S]*?Tap <b>Navigate<\/b> for GPS and voice guidance[\s\S]*?Tap any road or trail to get more information or access <b>Google Street View<\/b>/,
   'quick-start help should distinguish route choices, navigation, and road-information access');
 const quickStartHelp = html.match(/<dialog id="appHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
+assert.match(quickStartHelp, /<b>⋮<\/b> to add a waypoint \(route through a point\) or road block \(avoid roads near a point\)/,
+  'quick-start help should explain the two route constraints under the overflow menu');
 assert.doesNotMatch(quickStartHelp, /Layers<\/b> changes only what you see|Routing and safety colors update on this device/,
   'quick-start help should omit the removed layers and disclaimer copy');
 assert.match(html, /id="routesHelpDialog"[\s\S]*?Save on this device[\s\S]*?They stay in this browser on this device[\s\S]*?Share a link[\s\S]*?Anyone with the link can open it[\s\S]*?Open a shared route[\s\S]*?without changing your own saved settings[\s\S]*?intended to reproduce the original path[\s\S]*?routing-data updates can produce a different result/,
   'save-and-share help should cover local storage, share-link scope, and shared-route loading');
 const routesHelp = html.match(/<dialog id="routesHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
+assert.match(routesHelp, /waypoints, road blocks, and routing setup/,
+  'save-and-share help should explicitly state that road blocks travel in shared links');
 const sharedRouteTip = html.match(/<dialog id="sharedRouteTip"[\s\S]*?<\/dialog>/)?.[0] || '';
 assert.doesNotMatch(routesHelp + sharedRouteTip, /Just Rolling Along/,
   'help copy should not depend on the app name');
@@ -45,6 +49,8 @@ assert.match(layersHelp, /Toggling layers only adjusts visibility\. All data is 
   'map-data help should state that layer toggles do not change routing before its data sources');
 assert.match(layersHelp, /All roads \(OpenStreetMap, estimated speeds\)/,
   'map-data help should spell out OpenStreetMap in its data sources');
+assert.match(layersHelp, /try to avoid any climbs over 12%, but steep segments remain routable/,
+  'map-data help should describe the bounded steep-grade routing preference');
 assert.doesNotMatch(layersHelp, /The router combines Washington road data, OpenStreetMap, and elevation/,
   'map-data help should omit its removed introductory sentence');
 assert.doesNotMatch(layersHelp, /lime|blue|amber|red fails|gray lacks enough data/i,
@@ -58,7 +64,7 @@ assert.match(css, /\.route-tips-btn\s*\{[^}]*flex:\s*0 0 34px[^}]*min-height:\s*
   'the Help button should sit beside the selector and its dialog should be slightly shorter than full screen');
 assert.match(css, /#routeCard > #routeControls\s*\{[^}]*margin:\s*5px -6px 0/,
   'the main route selector should gain a little top breathing room and extend closer to the panel edges');
-assert.match(routeHelp, /<h3>Choose Route<\/h3>[\s\S]*?Tap A–E[\s\S]*?Click <b>Details<\/b>[\s\S]*?<h3>Details<\/h3>[\s\S]*?Concerns:[\s\S]*?All Steps:[\s\S]*?Tap buttons in route segments[\s\S]*?Google Street View[\s\S]*?Safety ratings &amp; map colors[\s\S]*?<b>Lime<\/b> —[\s\S]*?<b>Dotted lime<\/b> —[\s\S]*?<b>Blue<\/b> —[\s\S]*?<b>Red dashed<\/b> — Road that fails rules\.[\s\S]*?<b>Amber<\/b> — Caution:[\s\S]*?<b>Dashed light blue<\/b> — Designated bike route/,
+assert.match(routeHelp, /<h3>Choose Route<\/h3>[\s\S]*?Tap A–E[\s\S]*?Tap <b>Details<\/b>[\s\S]*?<h3>Details<\/h3>[\s\S]*?Stats:[\s\S]*?Concerns:[\s\S]*?steep uphill grades[\s\S]*?All Steps:[\s\S]*?Tap buttons in route segments[\s\S]*?Google Street View[\s\S]*?Safety ratings &amp; map colors[\s\S]*?<b>Lime<\/b> —[\s\S]*?<b>Dotted lime<\/b> —[\s\S]*?<b>Blue<\/b> —[\s\S]*?<b>Red dashed<\/b> — Road that fails rules\.[\s\S]*?<b>Amber<\/b> — Caution:[\s\S]*?<b>Dashed light blue<\/b> — Designated bike route/,
   'route help should explain the route picker, details tools, and active safety labels');
 assert.doesNotMatch(routeHelp, /Gray — Insufficient data|Possible limited-visibility uphill curve/,
   'route help should omit the removed safety-label entries');
