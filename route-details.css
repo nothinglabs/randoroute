@@ -16,11 +16,14 @@ main { width: min(100%, 760px); margin: 0 auto; }
 .eyebrow { margin: 0 0 4px; color: #667784; font: 700 11px system-ui; letter-spacing: .06em; text-transform: uppercase; }
 h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .summary { margin: 7px 0 0; color: #52616d; font: 500 15px/1.45 system-ui; }
+.route-quick-summary { display: grid; gap: 8px; margin: 0 0 13px; padding: 11px 12px; border: 1px solid #cddde7; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.05); }
+.route-quick-summary[hidden] { display: none; }
 .route-summary-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(145px, 46%); align-items: stretch; gap: 8px 10px; margin-top: 10px; padding: 11px 12px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
 .route-summary-card[hidden], .elevation-preview[hidden], .elevation-preview-empty[hidden] { display: none; }
 .route-summary-info { min-width: 0; }
 .route-summary-main { color: #111; font: 700 20px/1.15 system-ui; }
 .route-summary-main small { color: #555; font: 600 15px system-ui; }
+.route-summary-title { margin: 0 0 5px; color: #2c3e4c; font: 750 13px/1.2 system-ui; }
 .route-summary-sub { margin-top: 4px; color: #555; font: 12px system-ui; }
 .route-summary-road-speed { margin-top: 4px; color: #405866; font: 750 11.5px/1.25 system-ui; }
 /* Each ride class gets an equal share of the available width instead of
@@ -32,17 +35,17 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-mix .mix-caution, .route-summary-mix .mix-caution b { color: #9a4f00; }
 .route-summary-mix .mix-fail, .route-summary-mix .mix-fail b { color: #b42318; }
 .route-summary-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
-.route-safety-summary { margin: 0; padding: 11px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
-.route-safety-summary[hidden] { display: none; }
-.route-safety-summary-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-.route-safety-summary-head h2 { margin: 0; color: #2c3e4c; font: 750 13px/1.2 system-ui; }
-.route-safety-summary .route-summary-road-speed { margin: 0; color: #405866; font: 750 11.5px/1.25 system-ui; text-align: right; }
+.route-road-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0; padding: 11px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
+.route-road-summary[hidden] { display: none; }
+.route-road-summary h2 { margin: 0; color: #2c3e4c; font: 750 13px/1.2 system-ui; }
+.route-road-summary .route-summary-road-speed { margin: 0; color: #405866; font: 750 11.5px/1.25 system-ui; text-align: right; }
 .route-preview { margin: 0; padding: 10px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
 .route-preview[hidden] { display: none; }
 .route-preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
 .route-preview-head h2 { margin: 0; color: #2c3e4c; font: 750 13px/1.2 system-ui; }
 .route-preview-head p { margin: 0; color: #6b7d89; font: 650 10.5px/1.2 system-ui; }
-#routePreviewCanvas { display: block; width: 100%; height: 116px; border: 1px solid #d7e4e8; border-radius: 9px; background: #edf4f0; }
+.route-preview-map { width: 100%; height: 152px; overflow: hidden; border: 1px solid #d7e4e8; border-radius: 9px; background: #edf4f0; }
+.route-preview-map .maplibregl-ctrl-attrib { font-size: 8px; }
 /* The speed profile is specific to Route Details. Its route-distance trace
    uses the same lime/blue/amber/red meanings as the safety-colored route. */
 .speed-profile { margin-top: 10px; padding: 10px 12px 9px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
@@ -74,8 +77,8 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 #panel-stats { display: grid; gap: 13px; margin: 0; }
 #panel-stats .route-summary-card { margin: 0; padding: 14px; }
 #panel-stats .route-summary-sub { font-size: 12.5px; line-height: 1.35; }
-#panel-stats .route-safety-summary { margin: 0; padding: 13px; }
-#panel-stats .route-safety-summary .route-summary-road-speed { font-size: 12px; }
+#panel-stats .route-road-summary { margin: 0; padding: 13px; }
+#panel-stats .route-road-summary .route-summary-road-speed { font-size: 12px; }
 #panel-stats .elevation-preview, #panel-stats .elevation-preview-empty { min-height: 112px; }
 #panel-stats .speed-profile { margin: 0; padding: 13px; }
 #panel-stats #speedProfileCanvas { height: 108px; }
@@ -127,7 +130,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
   .route-summary-sub { font-size: 13px; }
   .elevation-preview { min-height: 104px; }
   #panel-stats .elevation-preview, #panel-stats .elevation-preview-empty { min-height: 128px; }
-  #routePreviewCanvas { height: 132px; }
+  .route-preview-map { height: 174px; }
   #panel-stats #speedProfileCanvas { height: 124px; }
 }
 @media (max-width: 460px) {

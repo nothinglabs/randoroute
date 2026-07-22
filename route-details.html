@@ -5,15 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#009E73" />
   <title>Route details · Just Rolling Along</title>
+  <link rel="stylesheet" href="vendor/maplibre-gl.css" />
   <link rel="stylesheet" href="route-details.css" />
 </head>
 <body>
   <main>
     <nav id="routeOptionTabs" class="route-option-tabs" role="tablist" aria-label="Route choices" hidden></nav>
+    <section id="routeQuickSummary" class="route-quick-summary" aria-label="Route summary" hidden>
+      <div id="summary" class="route-summary-main"></div>
+      <div id="summaryMix" class="route-summary-mix" title="Percent of riding distance; colors match the map legend"></div>
+    </section>
     <section id="panel-stats" class="detail-panel detail-stats" role="tabpanel" aria-labelledby="tab-stats">
-      <div id="routeSummaryCard" class="route-summary-card" aria-label="Selected route summary" hidden>
+      <div id="routeSummaryCard" class="route-summary-card" aria-label="Route elevation summary" hidden>
         <div class="route-summary-info">
-          <div id="summary" class="route-summary-main"></div>
+          <h2 class="route-summary-title">Elevation</h2>
           <div id="summarySub" class="route-summary-sub"></div>
         </div>
         <button id="elevationPreview" class="elevation-preview" type="button" aria-label="Expand elevation chart" hidden>
@@ -21,13 +26,13 @@
         </button>
         <div id="elevationPreviewEmpty" class="elevation-preview-empty" hidden>Elevation profile unavailable</div>
       </div>
-      <section id="routeSafetySummary" class="route-safety-summary" aria-labelledby="routeSafetySummaryTitle" hidden>
-        <div class="route-safety-summary-head"><h2 id="routeSafetySummaryTitle">Roads &amp; safety</h2><div id="summaryRoadSpeed" class="route-summary-road-speed"></div></div>
-        <div id="summaryMix" class="route-summary-mix" title="Percent of riding distance; colors match the map legend"></div>
+      <section id="routeRoadSummary" class="route-road-summary" aria-labelledby="routeRoadSummaryTitle" hidden>
+        <h2 id="routeRoadSummaryTitle">Road speed</h2>
+        <div id="summaryRoadSpeed" class="route-summary-road-speed"></div>
       </section>
       <section id="routePreview" class="route-preview" aria-labelledby="routePreviewTitle" hidden>
-        <div class="route-preview-head"><h2 id="routePreviewTitle">Route preview</h2><p>Selected route</p></div>
-        <canvas id="routePreviewCanvas" role="img" aria-label="Selected route map preview"></canvas>
+        <div class="route-preview-head"><h2 id="routePreviewTitle">Route map</h2><p>Selected route</p></div>
+        <div id="routePreviewMap" class="route-preview-map" aria-label="Selected route map preview"></div>
       </section>
       <section id="speedProfile" class="speed-profile" aria-labelledby="speedProfileTitle" hidden>
         <div class="speed-profile-head"><div><h2 id="speedProfileTitle">Speed limits</h2><p>Along the route · bike paths shown as 15 mph</p></div></div>
@@ -62,6 +67,7 @@
       <canvas id="elevationDialogCanvas"></canvas>
     </div>
   </dialog>
+  <script src="vendor/maplibre-gl.js"></script>
   <script src="route-details.js"></script>
 </body>
 </html>

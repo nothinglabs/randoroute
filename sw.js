@@ -10,7 +10,7 @@
  *  - Basemap tiles (CARTO): CACHE-FIRST — areas you've viewed keep working
  *    offline. Statewide coverage is never fully cached, only what you browse.
  */
-const VERSION = 'v263'; // bump when app shell or data files change so installed clients refetch
+const VERSION = 'v264'; // bump when app shell or data files change so installed clients refetch
 const SHELL_CACHE = `shell-${VERSION}`;
 const DATA_CACHE = `data-${VERSION}`;
 // Keep viewed basemap tiles across ordinary app-shell releases. The provider

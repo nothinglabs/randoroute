@@ -46,9 +46,9 @@ const inspectBody = app.slice(app.indexOf('function inspectRoadAt'),
   app.indexOf('\nfunction ', app.indexOf('function inspectRoadAt') + 1));
 assert.doesNotMatch(inspectBody, /setPanelOpen/,
   'tapping a road should not close the open panel');
-// Route details title drops the option label while navigating, keeps it otherwise.
-assert.match(app, /turnNav\.active \? 'Route Details' : `\$\{routeLabel\} Details`/,
-  'the route details title is just "Route Details" during navigation');
+// Route details identifies the active route while navigating, keeps the option label otherwise.
+assert.match(app, /turnNav\.active \? 'Active Route Details' : `\$\{routeLabel\} Details`/,
+  'the route details title identifies the active route during navigation');
 // Panel copy tweaks and the Stop button.
 assert.match(app, /`To: \$\{name\}`/, 'destination is prefixed "To:"');
 assert.match(app, /return `Shoulder: \$\{\+Number\(sh\)\.toFixed\(1\)\} ft`/,

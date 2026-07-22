@@ -11,6 +11,7 @@ const BIKE_NETWORK_COLOR = '#9fc400';
 const PASS_COLOR = '#168ad1';
 const CAUTION_COLOR = '#c46b00';
 const FAIL_COLOR = '#b2182b';
+let routePreviewMap = null;
 const MIN_REPORTED_GRADE_M = 20;
 const MAX_CREDIBLE_GRADE_PCT = 40;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
@@ -638,7 +639,7 @@ function drawElevation(canvas, compact = false) {
 window.addEventListener('resize', () => {
   drawElevation(document.getElementById('elevationPreviewCanvas'), true);
   drawSpeedProfile(document.getElementById('speedProfileCanvas'));
-  drawRoutePreview(document.getElementById('routePreviewCanvas'));
+  routePreviewMap?.resize();
   if (document.getElementById('elevationDialog')?.open) {
     drawElevation(document.getElementById('elevationDialogCanvas'));
   }
@@ -719,89 +720,111 @@ function routePreviewPoints() {
   }).filter(Boolean);
 }
 
-function routePreviewColor(seg) {
-  if (!seg) return PASS_COLOR;
-  if (seg.crossing === 1) return PASS_COLOR;
-  if (Number(seg.level) === 4) return FAIL_COLOR;
-  if (Number(seg.level) === 3 || isMountainBikeTrail(seg)) return CAUTION_COLOR;
-  if (!Number(seg.level)) return '#98a2ad';
-  return isBikeNetwork(seg) ? BIKE_NETWORK_COLOR : PASS_COLOR;
+const ROUTE_PREVIEW_STYLES = {
+  pass: PASS_COLOR, designated: PASS_COLOR, bike: BIKE_NETWORK_COLOR,
+  trail: BIKE_NETWORK_COLOR, caution: CAUTION_COLOR, fail: FAIL_COLOR,
+  unknown: '#98a2ad',
+};
+
+function routePreviewStyle(seg) {
+  if (!seg || seg.crossing === 1) return 'pass';
+  if (Number(seg.level) === 4) return 'fail';
+  if (Number(seg.level) === 3 || isMountainBikeTrail(seg)) return 'caution';
+  if (!Number(seg.level)) return 'unknown';
+  if (isBikeNetwork(seg)) return Number(seg.facility) === 5 ? 'trail' : 'bike';
+  return isDesignated(seg) ? 'designated' : 'pass';
 }
 
-function routePreviewEdgeColors(points) {
+function routePreviewColor(seg) {
+  return ROUTE_PREVIEW_STYLES[routePreviewStyle(seg)];
+}
+
+function routePreviewEdgeStyles(points) {
   const segs = details?.segs || [];
   let segmentAt = 0;
   return points.slice(0, -1).map((point, index) => {
     const routeIndex = (point.routeIndex + points[index + 1].routeIndex) / 2;
     while (segmentAt + 1 < segs.length && routeIndex >= Number(segs[segmentAt]?.c1)) segmentAt++;
-    return routePreviewColor(segs[segmentAt]);
+    return routePreviewStyle(segs[segmentAt]);
   });
 }
 
-function drawRoutePreview(canvas) {
-  const pointData = routePreviewPoints();
-  if (!canvas || pointData.length < 2) return;
-  const points = pointData.map((entry) => entry.point);
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 116;
-  canvas.width = w * dpr; canvas.height = h * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  ctx.fillStyle = '#edf4f0';
-  ctx.fillRect(0, 0, w, h);
-  // A subtle, map-like grid gives the lightweight geometry context without
-  // fetching a second map or tiles inside the Details frame.
-  ctx.strokeStyle = 'rgba(93,132,148,.12)';
-  ctx.lineWidth = 1;
-  for (let x = 18; x < w; x += 28) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
-  for (let y = 14; y < h; y += 28) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+function routePreviewEdgeColors(points) {
+  return routePreviewEdgeStyles(points).map((style) => ROUTE_PREVIEW_STYLES[style]);
+}
 
-  const latMid = points.reduce((sum, point) => sum + point[1], 0) / points.length;
-  const lngScale = Math.max(.01, Math.cos(latMid * Math.PI / 180));
-  const projected = points.map(([lng, lat]) => [lng * lngScale, lat]);
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const [x, y] of projected) {
-    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+function routePreviewRenderData() {
+  const pointData = routePreviewPoints();
+  const points = pointData.map((entry) => entry.point);
+  const edgeStyles = routePreviewEdgeStyles(pointData);
+  const features = [];
+  let start = 0, style = edgeStyles[0];
+  for (let edge = 1; edge < edgeStyles.length; edge++) {
+    if (edgeStyles[edge] === style) continue;
+    features.push({ type: 'Feature', properties: { style },
+      geometry: { type: 'LineString', coordinates: points.slice(start, edge + 1) } });
+    start = edge;
+    style = edgeStyles[edge];
   }
-  const pad = 14;
-  const spanX = Math.max((maxX - minX), 0.00001);
-  const spanY = Math.max((maxY - minY), 0.00001);
-  const scale = Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY);
-  const offsetX = (w - spanX * scale) / 2 - minX * scale;
-  const offsetY = (h - spanY * scale) / 2 + maxY * scale;
-  const pointAt = ([x, y]) => [offsetX + x * scale, offsetY - y * scale];
-  const drawLine = (color, width, start = 0, end = projected.length - 1) => {
-    ctx.beginPath();
-    for (let index = start; index <= end; index++) {
-      const [x, y] = pointAt(projected[index]);
-      if (index > start) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-    }
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.stroke();
-  };
-  drawLine('rgba(255,255,255,.95)', 8);
-  const edgeColors = routePreviewEdgeColors(pointData);
-  let runStart = 0, color = edgeColors[0];
-  for (let edge = 1; edge < edgeColors.length; edge++) {
-    if (edgeColors[edge] === color) continue;
-    drawLine(color, 4.5, runStart, edge);
-    runStart = edge;
-    color = edgeColors[edge];
-  }
-  drawLine(color, 4.5, runStart);
-  const marker = (point, color) => {
-    const [x, y] = pointAt(point);
-    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#fff'; ctx.fill();
-    ctx.beginPath(); ctx.arc(x, y, 3.3, 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.fill();
-  };
-  marker(projected[0], '#00795c');
-  marker(projected[projected.length - 1], '#e87817');
+  if (points.length >= 2) features.push({ type: 'Feature', properties: { style },
+    geometry: { type: 'LineString', coordinates: points.slice(start) } });
+  return { points, colored: { type: 'FeatureCollection', features } };
+}
+
+function initializeRoutePreviewMap() {
+  const host = document.getElementById('routePreviewMap');
+  const preview = routePreviewRenderData();
+  if (!host || preview.points.length < 2 || !window.maplibregl) return false;
+  if (routePreviewMap) { routePreviewMap.resize(); return true; }
+  routePreviewMap = new maplibregl.Map({
+    container: host,
+    interactive: false,
+    attributionControl: true,
+    style: {
+      version: 8,
+      sources: { positron: { type: 'raster', tiles: [
+        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      ], tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' } },
+      layers: [{ id: 'positron', type: 'raster', source: 'positron' }],
+    },
+    center: preview.points[0], zoom: 13, maxZoom: 17, maxPitch: 0,
+  });
+  routePreviewMap.on('load', () => {
+    routePreviewMap.addSource('route-preview-all', { type: 'geojson', data: {
+      type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: preview.points },
+    } });
+    routePreviewMap.addSource('route-preview-colored', { type: 'geojson', data: preview.colored });
+    routePreviewMap.addSource('route-preview-markers', { type: 'geojson', data: {
+      type: 'FeatureCollection', features: [
+        { type: 'Feature', properties: { marker: 'start' }, geometry: { type: 'Point', coordinates: preview.points[0] } },
+        { type: 'Feature', properties: { marker: 'end' }, geometry: { type: 'Point', coordinates: preview.points.at(-1) } },
+      ],
+    } });
+    routePreviewMap.addLayer({ id: 'route-preview-casing', type: 'line', source: 'route-preview-all',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#fff', 'line-width': 8, 'line-opacity': .96 } });
+    const addRouteLayer = (style, paint) => routePreviewMap.addLayer({
+      id: `route-preview-${style}`, type: 'line', source: 'route-preview-colored',
+      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint,
+      filter: ['==', ['get', 'style'], style],
+    });
+    addRouteLayer('pass', { 'line-color': PASS_COLOR, 'line-width': 4.8 });
+    addRouteLayer('designated', { 'line-color': PASS_COLOR, 'line-width': 5.2, 'line-dasharray': [1.6, 1.15] });
+    addRouteLayer('bike', { 'line-color': BIKE_NETWORK_COLOR, 'line-width': 4.8 });
+    addRouteLayer('trail', { 'line-color': BIKE_NETWORK_COLOR, 'line-width': 5.2, 'line-dasharray': [.3, 1.1] });
+    addRouteLayer('caution', { 'line-color': CAUTION_COLOR, 'line-width': 4.8 });
+    addRouteLayer('fail', { 'line-color': FAIL_COLOR, 'line-width': 4.8, 'line-dasharray': [1.5, 1] });
+    addRouteLayer('unknown', { 'line-color': '#98a2ad', 'line-width': 4.8 });
+    routePreviewMap.addLayer({ id: 'route-preview-markers', type: 'circle', source: 'route-preview-markers',
+      paint: { 'circle-radius': 5, 'circle-color': ['match', ['get', 'marker'], 'start', '#00795c', '#e87817'],
+        'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+    const bounds = preview.points.reduce((bounds, point) => bounds.extend(point),
+      new maplibregl.LngLatBounds(preview.points[0], preview.points[0]));
+    routePreviewMap.fitBounds(bounds, { padding: 22, duration: 0, maxZoom: 15 });
+  });
+  return true;
 }
 
 renderRouteOptionTabs();
@@ -843,8 +866,9 @@ if (!hasRoute) {
   const passPct = routePercent((routeStats.levels[1] || 0) + (routeStats.levels[2] || 0), ridingM, true);
   const cautionPct = routePercent(routeStats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(totals.failM || 0, ridingM, true);
+  document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
-  document.getElementById('routeSafetySummary').hidden = false;
+  document.getElementById('routeRoadSummary').hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
   summarySub.textContent = `↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent · ${avgUphillPct.toFixed(1)}% avg uphill · ${maxGradePct.toFixed(1)}% max${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}`;
   summaryRoadSpeed.textContent = `Avg. road speed limit: ${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`} (all roads)`;
@@ -859,7 +883,7 @@ if (!hasRoute) {
   }
   const routePreview = document.getElementById('routePreview');
   routePreview.hidden = routePreviewPoints().length < 2;
-  if (!routePreview.hidden) requestAnimationFrame(() => drawRoutePreview(document.getElementById('routePreviewCanvas')));
+  if (!routePreview.hidden) requestAnimationFrame(initializeRoutePreviewMap);
   if (Array.isArray(details.profile) && details.profile.length >= 2) {
     const elevationPreview = document.getElementById('elevationPreview');
     const elevationDialog = document.getElementById('elevationDialog');
