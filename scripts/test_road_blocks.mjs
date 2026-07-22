@@ -23,9 +23,13 @@ assert.match(css, /\.route-constraint-marker\s*\{[^}]*width:\s*56px[^}]*height:\
   'waypoint and road-block markers should be true phone-sized touch controls');
 assert.match(css, /\.waypoint-marker svg\s*\{[^}]*width:\s*26px[^}]*height:\s*40px[\s\S]*?\.road-block-icon\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/,
   'large marker hit areas should preserve compact waypoint and road-block visuals');
+assert.match(css, /@media \(max-width: 720px\)[\s\S]*?\.route-endpoints\s*\{[^}]*flex-basis:\s*267px[^}]*width:\s*267px/,
+  'the mobile endpoint bar should use the recovered clear-button space evenly');
 
 assert.match(app, /function bindRouteConstraintMarker\([\s\S]*?Math\.hypot\([\s\S]*?> 12[\s\S]*?pointerup[\s\S]*?suppressClickUntil[\s\S]*?prompt\(event\)/,
   'waypoint and road-block markers should directly prompt on a forgiving release tap while preserving drag');
+assert.match(app, /function bindRouteConstraintMarker\([\s\S]*?suppressRoadInfo\(1000\)[\s\S]*?touchstart[\s\S]*?stopMarkerTouch[\s\S]*?touchend/,
+  'marker taps should suppress the underlying road-information inspector');
 assert.match(app, /function waypointMarkerElement\([\s\S]*?<svg viewBox=[\s\S]*?function addVia\([\s\S]*?element: waypointMarkerElement\(\), anchor: 'bottom'[\s\S]*?bindRouteConstraintMarker\(marker, 'via', via\)/,
   'each waypoint should use a large anchored touch control around its compact pin');
 assert.match(app, /function addRoadBlock\([\s\S]*?roadBlockMarkerElement\(\)[\s\S]*?bindRouteConstraintMarker\(marker, 'block', block\)/,
@@ -34,6 +38,8 @@ assert.match(app, /function openPlacePicker\(kind\) \{[\s\S]*?if \(kind === 'blo
   'road blocks should bypass the search picker and immediately enter map-pick mode');
 assert.match(app, /document\.getElementById\('rb-road-block'\)\.addEventListener\('click', \(\) => armRoutePoint\('block'\)\)/,
   'the road-block action should immediately ask the rider to pick a map location');
+assert.match(app, /function armRoutePoint\(kind\) \{[\s\S]*?setRouteActionsOpen\(false\)[\s\S]*?closePlacePicker\(false\)/,
+  'choosing a map constraint should close the overflow menu before map placement');
 assert.match(app, /blocks: routing\.blocks\?\.map\(\(block\) => block\.pt\) \|\| \[\]/,
   'all route requests should send road-block locations to the routing worker');
 assert.match(app, /b: routing\.blocks\.map\(\(x\) => x\.pt\)/,

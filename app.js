@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.292';
+const APP_VERSION = '2026-07-22.293';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4132,6 +4132,10 @@ function bindRouteConstraintMarker(marker, kind, item) {
   el.tabIndex = 0;
   el.setAttribute('aria-label', `Remove ${label}`);
   const prompt = (event) => {
+    // A marker sits over the map canvas. Suppress the road inspector before
+    // opening its confirmation so the same tap cannot also inspect the road
+    // beneath it.
+    suppressRoadInfo(1000);
     event.preventDefault();
     event.stopPropagation();
     promptRemoveRouteMarker(kind, item);
@@ -4140,6 +4144,7 @@ function bindRouteConstraintMarker(marker, kind, item) {
   let suppressClickUntil = 0;
   el.addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (event.pointerType === 'touch') suppressRoadInfo(1000);
     press = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
   }, { capture: true });
   el.addEventListener('pointermove', (event) => {
@@ -4158,6 +4163,15 @@ function bindRouteConstraintMarker(marker, kind, item) {
   }, { capture: true });
   el.addEventListener('pointercancel', () => { press = null; }, { capture: true });
   el.addEventListener('lostpointercapture', () => { press = null; }, { capture: true });
+  // Prevent the canvas's touch handler from seeing the same marker gesture.
+  // This is intentionally not preventDefault(), so MapLibre can still drag a
+  // marker when the rider moves it deliberately.
+  const stopMarkerTouch = (event) => {
+    suppressRoadInfo(1000);
+    event.stopPropagation();
+  };
+  el.addEventListener('touchstart', stopMarkerTouch, { passive: true });
+  el.addEventListener('touchend', stopMarkerTouch, { passive: true });
   el.addEventListener('click', (event) => {
     if (Date.now() < suppressClickUntil) {
       event.preventDefault();
@@ -5063,6 +5077,9 @@ function armRoutePoint(kind) {
     setRouteStatus(`A route can have up to ${MAX_ROAD_BLOCKS} road blocks`);
     return;
   }
+  // Constraint actions begin directly on the map, so collapse the overflow
+  // menu before the rider chooses a point.
+  setRouteActionsOpen(false);
   closePlacePicker(false);
   routing.arm = routing.arm === kind ? null : kind;
   if (routing.arm) suppressRoadInfo();
