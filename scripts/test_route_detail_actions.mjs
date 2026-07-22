@@ -16,6 +16,8 @@ assert.match(app, /function openRouteDetails\(detailTab = null\) \{[\s\S]*?store
   'opening Details should refresh an already-drawn route with its segment locations');
 assert.match(app, /function compactRouteCoords\(m, includeIndices = false\)[\s\S]*?Math\.ceil\(coords\.length \/ 600\)[\s\S]*?const routePreview = compactRouteCoords\(m, true\);[\s\S]*?routeCoords: routePreview\?\.coords \|\| null,[\s\S]*?routeCoordIndices: routePreview\?\.indices \|\| null,[\s\S]*?routeOptions: routeDetailsOptionTabs\(m\)/,
   'Route Details should retain compact preview geometry with the source indexes needed for map colors');
+assert.doesNotMatch(detailsHtml, /routePreviewTitle|>Route map<|>Selected route</,
+  'the compact route preview should not repeat a visible title or selection label');
 assert.match(app, /function selectRouteDetailsOption\(index, detailTab = null\)[\s\S]*?if \(turnNav\.active\) return;[\s\S]*?activateRouteOption\(option\);[\s\S]*?openRouteDetails\(detailTab\);/,
   'choosing a route in Details should update the map selection while preserving the current Details tab');
 assert.match(app, /event\.data\?\.type === 'select-route-details-option'[\s\S]*?selectRouteDetailsOption\(event\.data\.index, event\.data\.tab\)/,
@@ -32,7 +34,7 @@ assert.match(app, /class="rc-details-wrap">[\s\S]*?class="rc-speed-limit"><b>\$\
   'the route-choice card should place the number above its average road speed limit label and Details');
 assert.match(app, /const hasSteepGradeWarning = Number\(m\.maxGradePct\) > 18;[\s\S]*?id="rcElevGradeWarning"[\s\S]*?<span aria-hidden="true">!<\/span> See Details[\s\S]*?openRouteDetails\('concerns'\)/,
   'the route-card elevation chart should flag sustained grades above 18% and open the relevant Details tab');
-assert.match(appCss, /\.rc-elev-wrap\s*\{[^}]*position:\s*relative[\s\S]*?\.rc-elev-grade-warning\s*\{[^}]*position:\s*absolute[^}]*color:\s*#b42318/,
+assert.match(appCss, /\.rc-elev-wrap\s*\{[^}]*position:\s*relative[\s\S]*?\.rc-elev-grade-warning\s*\{[^}]*position:\s*absolute[^}]*min-height:\s*22px[^}]*color:\s*#b42318[^}]*font:\s*850 10px\/1 system-ui/,
   'the route-card steep-grade warning should overlay the elevation chart in red');
 assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textContent = 'View'[\s\S]*?mapButton\.className = 'segment-map-button'[\s\S]*?mapLabel\.textContent = 'Map'[\s\S]*?mapIcon\.textContent = '⌖'[\s\S]*?mapButton\.append\(mapLabel, mapIcon\)[\s\S]*?actions\.append\(mapButton, streetView\)/,
   'each route-detail item should put an in-app Map button before its stacked Street View button');
@@ -42,8 +44,8 @@ assert.match(details, /function scrollToConcernSection\(sectionId\)[\s\S]*?scrol
   'Concerns should offer compact category shortcuts that scroll to the matching section');
 assert.match(details, /renderConcernShortcuts\(report, \[[\s\S]*?Fails rules[\s\S]*?Steep grades[\s\S]*?Limited access/,
   'the shortcut row should include every available concern type');
-assert.match(css, /\.concern-shortcuts\s*\{[^}]*overflow:\s*hidden[\s\S]*?\.concern-shortcuts button\s*\{[^}]*flex:\s*1 1 0[^}]*text-overflow:\s*ellipsis/,
-  'concern shortcuts should fit in a compact row instead of horizontally scrolling');
+assert.match(css, /\.concern-shortcuts\s*\{[^}]*overflow:\s*hidden[\s\S]*?\.concern-shortcuts button\s*\{[^}]*flex:\s*1 1 0[^}]*font:\s*800 9\.5px\/1\.1 system-ui[^}]*text-overflow:\s*ellipsis/,
+  'concern shortcuts should fit in a larger, compact row instead of horizontally scrolling');
 assert.match(app, /event\.data\?\.type === 'open-street-view'[\s\S]*?openStreetView\(lat, lng/,
   'the app should accept Street View requests from its Route Details frame');
 assert.doesNotMatch(app, /highlight-route-concern|showRouteConcernOnMap/,
@@ -207,8 +209,8 @@ assert.match(detailsHtml, /vendor\/maplibre-gl\.css[\s\S]*?id="routePreviewMap"[
   'Route Details should load MapLibre with compact, always-visible map attribution');
 assert.match(details, /attributionControl:\s*false/,
   'the map library’s expandable attribution control should be replaced by the compact static credit');
-assert.match(css, /\.route-option-tabs\s*\{[^}]*position:\s*sticky[^}]*flex-wrap:\s*wrap[\s\S]*?\.route-option-tabs::before\s*\{[^}]*content:\s*'Choose route'[\s\S]*?\.route-preview-map\s*\{[^}]*height:\s*122px/,
-  'route choices should remain visible with a clear title, and the route map should be reduced by about one fifth');
+assert.match(css, /\.route-option-tabs\s*\{[^}]*position:\s*sticky[^}]*flex-wrap:\s*wrap[^}]*padding:\s*3px[\s\S]*?\.route-option-tabs::before\s*\{[^}]*content:\s*'Choose route'[^}]*font:\s*800 9\.5px\/1\.05 system-ui[\s\S]*?\.route-option-tabs button\s*\{[^}]*min-height:\s*34px[\s\S]*?\.route-preview-map\s*\{[^}]*height:\s*122px/,
+  'route choices should remain visibly titled but vertically compact, and the route map should be reduced by about one fifth');
 assert.match(css, /\.detail-panel\[hidden\]\s*\{\s*display:\s*none !important;/,
   'only the selected Route Details panel should be visible');
 assert.match(detailsHtml, /id="tab-stats"[\s\S]*?data-detail-tab="stats">Stats<\/button>[\s\S]*?id="tab-concerns"[\s\S]*?id="tab-steps"/,
@@ -233,7 +235,7 @@ assert.match(css, /#elevationDialogCanvas, #speedDialogCanvas\s*\{[^}]*aspect-ra
   'both enlarged charts should use a similar compact aspect ratio');
 assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>[\s\S]*?<b>10%\+ uphill<\/b>[\s\S]*?fmtMi\(steepUphillM\)/,
   'elevation metrics should include the mileage of sustained uphill grade over 10%');
-assert.match(detailsHtml, /id="elevationSteepWarning"[\s\S]*?may be impassable by bike[\s\S]*?Steep Grades[\s\S]*?Concerns tab/,
+assert.match(detailsHtml, /id="elevationSteepWarning"[\s\S]*?grades that may be impassable[\s\S]*?Review[\s\S]*?Grades[\s\S]*?under Concerns!/,
   'the elevation card should clearly explain the steep-grade route warning');
 assert.match(details, /elevationSteepWarning\.hidden = !\(maxGradePct > 18\)/,
   'the steep-grade elevation warning should appear only above 18%');

@@ -7,10 +7,10 @@ body.embedded { padding: 16px 16px calc(78px + env(safe-area-inset-bottom)); }
 body.embedded #panel-stats { margin-top: 0; }
 .detail-panel[hidden] { display: none !important; }
 main { width: min(100%, 760px); margin: 0 auto; }
-.route-option-tabs { position: sticky; z-index: 3; top: 0; display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 12px; padding: 4px; border: 1px solid #cddde7; border-radius: 11px; background: rgba(248,251,253,.97); box-shadow: 0 2px 6px rgba(18,42,60,.07); backdrop-filter: blur(8px); }
+.route-option-tabs { position: sticky; z-index: 3; top: 0; display: flex; flex-wrap: wrap; gap: 3px; margin: 0 0 9px; padding: 3px; border: 1px solid #cddde7; border-radius: 10px; background: rgba(248,251,253,.97); box-shadow: 0 2px 6px rgba(18,42,60,.07); backdrop-filter: blur(8px); }
 .route-option-tabs[hidden] { display: none; }
-.route-option-tabs::before { flex: 1 0 100%; padding: 1px 4px 0; color: #526b7a; content: 'Choose route'; font: 800 10px/1.15 system-ui; letter-spacing: .04em; text-transform: uppercase; }
-.route-option-tabs button { flex: 1 1 0; min-width: 0; min-height: 38px; padding: 6px 4px; overflow: hidden; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #526b7a; font: 800 13px/1 system-ui; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.route-option-tabs::before { flex: 1 0 100%; padding: 0 3px; color: #526b7a; content: 'Choose route'; font: 800 9.5px/1.05 system-ui; letter-spacing: .04em; text-transform: uppercase; }
+.route-option-tabs button { flex: 1 1 0; min-width: 0; min-height: 34px; padding: 4px 3px; overflow: hidden; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #526b7a; font: 800 13px/1 system-ui; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .route-option-tabs button[aria-selected="true"] { border-color: #8dc2e5; background: #0a66c2; color: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.16); }
 .back { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-height: 42px; padding: 0 11px; border: 1px solid #b8cbd8; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 700 12px system-ui; text-decoration: none; white-space: nowrap; cursor: pointer; }
 .back:hover { background: #edf5fa; }
@@ -39,9 +39,6 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
 .route-preview { margin: 0; padding: 10px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
 .route-preview[hidden] { display: none; }
-.route-preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
-.route-preview-head h2 { margin: 0; color: #2c3e4c; font: 750 13px/1.2 system-ui; }
-.route-preview-head p { margin: 0; color: #6b7d89; font: 650 10.5px/1.2 system-ui; }
 .route-preview-map-wrap { position: relative; }
 .route-preview-map { width: 100%; height: 122px; overflow: hidden; border: 1px solid #d7e4e8; border-radius: 9px; background: #edf4f0; }
 .route-preview-attribution { position: absolute; z-index: 1; right: 4px; bottom: 4px; padding: 1px 3px; border-radius: 3px; background: rgba(255,255,255,.84); color: #51636f; font: 600 7px/1.15 system-ui; pointer-events: auto; }
@@ -83,7 +80,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-alert.good { border-left-color: #008b68; background: #edf9f5; color: #00664d; }
 .route-alert.caution { border-left-color: #c46b00; background: #fff5e8; color: #753c00; }
 .concern-shortcuts { display: flex; align-items: center; flex-wrap: nowrap; gap: 3px; margin: 0 0 11px; padding: 6px; overflow: hidden; border: 1px solid #dce5ea; border-radius: 11px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
-.concern-shortcuts button { flex: 1 1 0; min-width: 0; min-height: 27px; padding: 5px 2px; overflow: hidden; border: 1px solid #aac8dc; border-radius: 999px; background: #edf6fc; color: #075b9f; font: 800 8.5px/1.1 system-ui; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.concern-shortcuts button { flex: 1 1 0; min-width: 0; min-height: 28px; padding: 5px 2px; overflow: hidden; border: 1px solid #aac8dc; border-radius: 999px; background: #edf6fc; color: #075b9f; font: 800 9.5px/1.1 system-ui; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .concern-shortcuts button:hover { border-color: #0a66c2; background: #e0f0fa; }
 #panel-concerns .detail-section { scroll-margin-top: 58px; }
 .detail-section:focus { outline: 3px solid rgba(10,102,194,.32); outline-offset: 3px; }
