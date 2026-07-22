@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.224';
+const APP_VERSION = '2026-07-20.225';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4273,6 +4273,15 @@ function buildRoutingPanel() {
   document.getElementById('navRouteBackBtn').addEventListener('click', () => requestRouteBackToCurrentRoute());
   document.getElementById('navKeepRouteBtn').addEventListener('click', () =>
     document.getElementById('offRouteDialog').close());
+  // Tapping outside either "how to join" dialog closes it defaulting to the
+  // non-intrusive "I'll find my own way" (for the off-route dialog, closing is
+  // that same keep-going choice).
+  document.getElementById('routeStartDialog').addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) useNearestPlannedRoute();
+  });
+  document.getElementById('offRouteDialog').addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) event.currentTarget.close();
+  });
   document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
   document.getElementById('confirmClearRoute').addEventListener('click', () => {
     document.getElementById('clearRouteDialog').close();
