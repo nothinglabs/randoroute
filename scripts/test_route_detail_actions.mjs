@@ -34,14 +34,14 @@ assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textC
   'each route-detail item should put an in-app Map button before its stacked Street View button');
 assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view', lat, lng, heading \}, window\.location\.origin\)/,
   'embedded Details should ask the app to open its Street View dialog');
-assert.match(details, /function showRouteConcern\(items\)[\s\S]*?type: 'highlight-route-concern'[\s\S]*?function renderConcernShortcuts\(host, groups\)[\s\S]*?Show on map:/,
-  'Concerns should offer compact category shortcuts that hand selected ranges back to the map');
+assert.match(details, /function scrollToConcernSection\(sectionId\)[\s\S]*?scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)[\s\S]*?function renderConcernShortcuts\(host, groups\)[\s\S]*?Jump to a concern type/,
+  'Concerns should offer compact category shortcuts that scroll to the matching section');
 assert.match(details, /renderConcernShortcuts\(report, \[[\s\S]*?Fails rules[\s\S]*?Steep grades[\s\S]*?Limited access/,
   'the shortcut row should include every available concern type');
 assert.match(app, /event\.data\?\.type === 'open-street-view'[\s\S]*?openStreetView\(lat, lng/,
   'the app should accept Street View requests from its Route Details frame');
-assert.match(app, /event\.data\?\.type === 'highlight-route-concern'[\s\S]*?showRouteConcernOnMap\(event\.data\.ranges\)[\s\S]*?function showRouteConcernOnMap\(ranges\)[\s\S]*?route-detail-selection[\s\S]*?type: 'FeatureCollection'[\s\S]*?map\.fitBounds/,
-  'a concern shortcut should highlight every selected category segment and fit the map to them');
+assert.doesNotMatch(app, /highlight-route-concern|showRouteConcernOnMap/,
+  'concern shortcuts should stay within the Details page rather than alter the map');
 assert.match(css, /\.segment-actions\s*\{[^}]*margin-left:\s*auto[\s\S]*?\.segment-streetview\s*\{[^}]*width:\s*42px[^}]*min-height:\s*38px[\s\S]*?\.segment-map-button\s*\{[^}]*display:\s*grid[^}]*width:\s*42px[^}]*min-height:\s*38px/,
   'the equal-sized, stacked Map and Street View controls should align at the card right edge');
 assert.match(html, /class="dialog-close streetview-close"[\s\S]*?<span>Close<\/span>/,
@@ -58,8 +58,8 @@ assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summa
   'Route Details should group its ride classes into equal-width items');
 assert.doesNotMatch(details, /class="route-summary-label">Ride<\//,
   'Route Details should not show an unexplained Ride label above its class metrics');
-assert.match(details, /function routeSummaryStats\(segs\)[\s\S]*?\!\(flags & FLAG_INFRA\)[\s\S]*?avgRoadSpeedMph: roadM > 0 \? Math\.round\(roadSpeedM \/ roadM\) : null[\s\S]*?summaryRoadSpeed\.innerHTML = `<b>\$\{routeStats\.avgRoadSpeedMph == null \? 'N\/A'/,
-  'Route Details should show the all-road average speed limit and report unavailable source data as N/A');
+assert.match(details, /function routeSummaryStats\(segs, minShoulderFt = 4\)[\s\S]*?maxRoadSpeedMph[\s\S]*?roadAtOrAbove45M[\s\S]*?noBikeAccommodationOrShoulderM[\s\S]*?summaryRoadSpeed\.innerHTML = `<span class="speed-limit-metric">[\s\S]*?At least 45 mph[\s\S]*?summaryShoulderNote\.innerHTML/,
+  'Route Details should report average and maximum road speeds, high-speed mileage, and the shoulder/accommodation mileage');
 assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.rc-ride-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
   'the route-card ride classes should balance into two equal columns on narrow phones');
 assert.match(appCss, /\.rc-details-wrap\s*\{[^}]*flex-direction:\s*column[^}]*justify-content:\s*flex-end[\s\S]*?\.rc-speed-limit\s*\{[^}]*text-align:\s*center/,
@@ -107,6 +107,34 @@ assert.equal(vm.runInContext(`routeSummaryStats([
   { lenM: 100, mph: 0 }
 ]).avgRoadSpeedMph`, statsContext), 40,
   'average speed should be distance-weighted across all road types, including bike lanes but excluding paths, ferries, and missing speeds');
+assert.equal(vm.runInContext(`routeSummaryStats([
+  { lenM: 1609.34, mph: 45, sh: 2 },
+  { lenM: 804.67, mph: 35, sh: 4 },
+  { lenM: 804.67, mph: 50, facility: 2, sh: 0 },
+  { lenM: 804.67, mph: 20, flags: 8 }
+]).maxRoadSpeedMph`, statsContext), 50,
+  'the speed summary should report the maximum legal road speed');
+assert.equal(vm.runInContext(`routeSummaryStats([
+  { lenM: 1609.34, mph: 45, sh: 2 },
+  { lenM: 804.67, mph: 35, sh: 4 },
+  { lenM: 804.67, mph: 50, facility: 2, sh: 0 },
+  { lenM: 804.67, mph: 20, flags: 8 }
+]).avgRoadSpeedMph`, statsContext), 44,
+  'the expanded speed metrics should preserve the distance-weighted average');
+assert.ok(Math.abs(vm.runInContext(`routeSummaryStats([
+  { lenM: 1609.34, mph: 45, sh: 2 },
+  { lenM: 804.67, mph: 35, sh: 4 },
+  { lenM: 804.67, mph: 50, facility: 2, sh: 0 },
+  { lenM: 804.67, mph: 20, flags: 8 }
+]).roadAtOrAbove45M`, statsContext) - 2414.01) < .001,
+  'the 45 mph metric should count every road segment at or above that limit');
+assert.equal(vm.runInContext(`routeSummaryStats([
+  { lenM: 1609.34, mph: 45, sh: 2 },
+  { lenM: 804.67, mph: 35, sh: 4 },
+  { lenM: 804.67, mph: 50, facility: 2, sh: 0 },
+  { lenM: 804.67, mph: 20, flags: 8 }
+]).noBikeAccommodationOrShoulderM`, statsContext), 1609.34,
+  'the shoulder metric should exclude bike accommodation and retain unknown or narrow shoulders');
 
 const speedStart = details.indexOf('function speedProfileSegments(');
 const speedEnd = details.indexOf('function drawElevation(', speedStart);
@@ -193,7 +221,7 @@ assert.match(css, /#elevationDialogCanvas, #speedDialogCanvas\s*\{[^}]*aspect-ra
   'both enlarged charts should use a similar compact aspect ratio');
 assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>/,
   'elevation metrics should use separate, stable average- and maximum-grade rows');
-assert.match(details, /function sustainedUphillGradeSamples\(segs\)[\s\S]*?SUSTAINED_GRADE_WINDOW_M[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = 12\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep grade segments \(over 12%\)', steepGrades, '', 'caution'\)/,
+assert.match(details, /function sustainedUphillGradeSamples\(segs\)[\s\S]*?SUSTAINED_GRADE_WINDOW_M[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = 12\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep grade segments \(over 12%\)', steepGrades, '', 'caution', false, 'concern-steep-grades'\)/,
   'Concerns should list only sustained uphill segments whose grade exceeds 12%');
 assert.match(details, /const minSpeed = 10;[\s\S]*?Math\.min\(maxSpeed - minSpeed, Math\.max\(0, mph - minSpeed\)\)/,
   'the speed chart should use a 10 mph baseline to keep its trace vertically centered');

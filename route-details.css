@@ -36,6 +36,8 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-mix .mix-caution, .route-summary-mix .mix-caution b { color: #9a4f00; }
 .route-summary-mix .mix-fail, .route-summary-mix .mix-fail b { color: #b42318; }
 .route-summary-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
+.route-summary-shoulder-note { flex: 1 0 100%; margin: 1px 0 0; color: #607482; font: 650 10px/1.25 system-ui; }
+.route-summary-shoulder-note b { color: #344d5b; font-weight: 800; }
 .route-preview { margin: 0; padding: 10px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
 .route-preview[hidden] { display: none; }
 .route-preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
@@ -52,8 +54,10 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .speed-profile[hidden] { display: none; }
 .speed-profile-info { min-width: 0; }
 .speed-profile-info h2 { margin: 0 0 4px; color: #2c3e4c; font: 750 12px/1.2 system-ui; }
-.speed-profile-average { display: grid; gap: 1px; color: #405866; font: 650 10px/1.2 system-ui; }
-.speed-profile-average b { color: #294655; font: 800 17px/1 system-ui; }
+.speed-profile-average { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; color: #405866; }
+.speed-limit-metric { display: grid; gap: 1px; min-width: 0; }
+.speed-limit-metric b { overflow: hidden; color: #294655; font: 800 15px/1.05 system-ui; text-overflow: ellipsis; white-space: nowrap; }
+.speed-limit-metric span { color: #607482; font: 750 8.5px/1.15 system-ui; letter-spacing: .025em; text-transform: uppercase; }
 .speed-profile-preview { display: block; width: 100%; min-height: 86px; height: 100%; margin: 0; padding: 0; overflow: hidden; border: 1px solid #e0e9ee; border-radius: 8px; background: #fbfcfd; cursor: pointer; }
 .speed-profile-preview:hover { border-color: #8eb9d8; background: #f3f9fc; }
 .speed-profile-preview:focus-visible { outline: 3px solid #0a66c2; outline-offset: 2px; }
@@ -73,10 +77,11 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-alert { margin: 0 0 14px; padding: 11px 13px; border-left: 4px solid #c33327; border-radius: 8px; background: #fff3f0; color: #812218; font: 650 14px/1.4 system-ui; }
 .route-alert.good { border-left-color: #008b68; background: #edf9f5; color: #00664d; }
 .route-alert.caution { border-left-color: #c46b00; background: #fff5e8; color: #753c00; }
-.concern-shortcuts { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 0 0 11px; padding: 8px 10px; border: 1px solid #dce5ea; border-radius: 11px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
-.concern-shortcuts-label { margin-right: 2px; color: #52616d; font: 750 10px/1.2 system-ui; text-transform: uppercase; letter-spacing: .04em; }
-.concern-shortcuts button { min-height: 29px; padding: 5px 8px; border: 1px solid #aac8dc; border-radius: 999px; background: #edf6fc; color: #075b9f; font: 750 10.5px/1.1 system-ui; cursor: pointer; }
+.concern-shortcuts { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px; margin: 0 0 11px; padding: 7px 8px; overflow-x: auto; overscroll-behavior-inline: contain; border: 1px solid #dce5ea; border-radius: 11px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); scrollbar-width: thin; }
+.concern-shortcuts button { flex: 0 0 auto; min-height: 28px; padding: 5px 7px; border: 1px solid #aac8dc; border-radius: 999px; background: #edf6fc; color: #075b9f; font: 750 10px/1.1 system-ui; white-space: nowrap; cursor: pointer; }
 .concern-shortcuts button:hover { border-color: #0a66c2; background: #e0f0fa; }
+#panel-concerns .detail-section { scroll-margin-top: 58px; }
+.detail-section:focus { outline: 3px solid rgba(10,102,194,.32); outline-offset: 3px; }
 .route-help { margin: 0 0 10px; padding: 12px 13px; border: 1px solid #dce5ea; border-radius: 11px; background: #fff; color: #52616d; }
 .route-help h2 { margin: 0 0 5px; color: #2c3e4c; font: 750 14px/1.2 system-ui; }
 .route-help p { margin: 0; font: 12.5px/1.4 system-ui; }

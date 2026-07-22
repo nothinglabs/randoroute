@@ -119,9 +119,13 @@ function routePercent(meters, total, preciseSmall = false) {
   if (preciseSmall && pct > 99 && pct < 100) return `${pct.toFixed(1)}%`;
   return `${Math.round(pct)}%`;
 }
-function routeSummaryStats(segs) {
+function routeSummaryStats(segs, minShoulderFt = 4) {
   const levels = [0, 0, 0, 0, 0];
   let bikeNetworkM = 0, roadM = 0, roadSpeedM = 0;
+  let maxRoadSpeedMph = 0, roadAtOrAbove45M = 0, roadAtOrAbove35M = 0;
+  let noBikeAccommodationOrShoulderM = 0;
+  minShoulderFt = Number.isFinite(Number(minShoulderFt))
+    ? Math.max(0, Number(minShoulderFt)) : 4;
   for (const seg of segs || []) {
     const flags = seg.flags || 0;
     if (flags & FLAG_FERRY) continue;
@@ -131,15 +135,27 @@ function routeSummaryStats(segs) {
     if ((flags & FLAG_INFRA) || (seg.facility || 0) >= 2) bikeNetworkM += len;
     // Every road speed counts here, including roads with bike lanes. Dedicated
     // paths have no motor-vehicle speed in the graph and are not road speeds.
+    const hasBikeAccommodation = (flags & FLAG_INFRA) || (seg.facility || 0) >= 2;
+    const shoulderFt = Number(seg.sh);
+    if (!hasBikeAccommodation
+        && !(Number.isFinite(shoulderFt) && shoulderFt >= minShoulderFt)) {
+      noBikeAccommodationOrShoulderM += len;
+    }
     const mph = Number(seg.mph);
     if (!(flags & FLAG_INFRA) && Number.isFinite(mph) && mph > 0) {
       roadM += len;
       roadSpeedM += mph * len;
+      maxRoadSpeedMph = Math.max(maxRoadSpeedMph, mph);
+      if (mph >= 45) roadAtOrAbove45M += len;
+      if (mph >= 35) roadAtOrAbove35M += len;
     }
   }
   return {
     levels, bikeNetworkM,
     avgRoadSpeedMph: roadM > 0 ? Math.round(roadSpeedM / roadM) : null,
+    maxRoadSpeedMph: roadM > 0 ? Math.round(maxRoadSpeedMph) : null,
+    roadAtOrAbove45M, roadAtOrAbove35M, noBikeAccommodationOrShoulderM,
+    minShoulderFt,
   };
 }
 function credibleSegmentGradePct(seg) {
@@ -304,10 +320,14 @@ function sections(segs, include, describe) {
   return out;
 }
 
-function renderSection(host, title, items, emptyText, cls = '', numbered = false) {
+function renderSection(host, title, items, emptyText, cls = '', numbered = false, sectionId = '') {
   const total = items.reduce((sum, item) => sum + item.lenM, 0);
   const section = document.createElement('section');
   section.className = `detail-section ${cls}`;
+  if (sectionId) {
+    section.id = sectionId;
+    section.tabIndex = -1;
+  }
   const heading = document.createElement('h2');
   heading.append(document.createTextNode(title));
   const totalLabel = document.createElement('span');
@@ -409,22 +429,12 @@ function showRouteStep(step) {
   window.location.href = 'index.html';
 }
 
-function showRouteConcern(items) {
-  const ranges = (items || []).map((item) => ({
-    startIndex: item.startIndex,
-    endIndex: item.endIndex,
-    coordStart: item.coordStart,
-    coordEnd: item.coordEnd,
-  })).filter((item) => Number.isFinite(Number(item.startIndex)) && Number.isFinite(Number(item.endIndex)));
-  if (!ranges.length) return;
-  saveDetailPosition();
-  const message = { type: 'highlight-route-concern', ranges };
-  if (window.self !== window.top) {
-    window.parent.postMessage(message, window.location.origin);
-    return;
-  }
-  try { sessionStorage.setItem('wa-bike-step-highlight', JSON.stringify(message)); } catch (e) { /* nonfatal */ }
-  window.location.href = 'index.html';
+function scrollToConcernSection(sectionId) {
+  const section = document.getElementById(sectionId);
+  if (!section) return;
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Preserve keyboard context after the animation without causing a second jump.
+  requestAnimationFrame(() => section.focus({ preventScroll: true }));
 }
 
 function renderConcernShortcuts(host, groups) {
@@ -432,17 +442,13 @@ function renderConcernShortcuts(host, groups) {
   if (!available.length) return;
   const nav = document.createElement('nav');
   nav.className = 'concern-shortcuts';
-  nav.setAttribute('aria-label', 'Show concern types on map');
-  const label = document.createElement('span');
-  label.className = 'concern-shortcuts-label';
-  label.textContent = 'Show on map:';
-  nav.appendChild(label);
+  nav.setAttribute('aria-label', 'Jump to a concern type');
   for (const group of available) {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = group.label;
-    button.setAttribute('aria-label', `Show all ${group.label.toLowerCase()} on the map`);
-    button.addEventListener('click', () => showRouteConcern(group.items));
+    button.setAttribute('aria-label', `Jump to ${group.label.toLowerCase()} concerns`);
+    button.addEventListener('click', () => scrollToConcernSection(group.sectionId));
     nav.appendChild(button);
   }
   host.appendChild(nav);
@@ -800,6 +806,7 @@ const summaryCard = document.getElementById('routeSummaryCard');
 const summarySub = document.getElementById('summarySub');
 const summaryRoadSpeed = document.getElementById('summaryRoadSpeed');
 const summaryMix = document.getElementById('summaryMix');
+const summaryShoulderNote = document.getElementById('summaryShoulderNote');
 const noRouteSummary = document.getElementById('noRouteSummary');
 const alert = document.getElementById('routeAlert');
 
@@ -994,7 +1001,7 @@ if (!hasRoute) {
   restoreInitialDetailTab();
 } else {
   const { rules = {}, summary: totals, segs } = details;
-  const routeStats = routeSummaryStats(segs);
+  const routeStats = routeSummaryStats(segs, rules.minShoulder);
   const calculatedGrades = routeGradeStats(segs);
   const storedAvgUphillPct = Number(totals.avgUphillPct);
   const avgUphillPct = Number.isFinite(storedAvgUphillPct)
@@ -1012,8 +1019,12 @@ if (!hasRoute) {
   summaryCard.hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
   summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span>${totals.ferryM > 0 ? `<span class="elevation-metric"><b>Ferry</b><strong>⛴ ${fmtMi(totals.ferryM)} mi</strong></span>` : ''}`;
-  summaryRoadSpeed.innerHTML = `<b>${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`}</b><span>Avg. road speed<br>limit</span>`;
+  const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
+  const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
+  summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b><span>Avg. limit</span></span><span class="speed-limit-metric"><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b><span>Max limit</span></span><span class="speed-limit-metric"><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b><span>At least 45 mph</span></span><span class="speed-limit-metric"><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b><span>At least 35 mph</span></span>`;
   summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
+  summaryShoulderNote.hidden = false;
+  summaryShoulderNote.innerHTML = `<b>${fmtMi(routeStats.noBikeAccommodationOrShoulderM)} mi</b> without bike accommodation or a confirmed ≥${routeStats.minShoulderFt} ft shoulder`;
   const speedProfile = document.getElementById('speedProfile');
   const speedSegments = speedProfileSegments(segs);
   speedProfile.hidden = !speedSegments.length;
@@ -1120,21 +1131,21 @@ if (!hasRoute) {
   // A freeway can appear in both sections because one answers “what failed?”
   // while the other answers “what kind of road is this?”.
   renderConcernShortcuts(report, [
-    { label: 'Fails rules', items: failing },
-    { label: 'Mountain-bike', items: mountainBike },
-    { label: 'Uphill curves', items: curveHazards },
-    { label: 'Steep grades', items: steepGrades },
-    { label: 'Freeways', items: freeways },
-    { label: 'Limited access', items: limitedAccess },
-    { label: 'Highways', items: highways },
+    { label: 'Fails rules', items: failing, sectionId: 'concern-fails' },
+    { label: 'Mountain-bike', items: mountainBike, sectionId: 'concern-mountain-bike' },
+    { label: 'Uphill curves', items: curveHazards, sectionId: 'concern-uphill-curves' },
+    { label: 'Steep grades', items: steepGrades, sectionId: 'concern-steep-grades' },
+    { label: 'Freeways', items: freeways, sectionId: 'concern-freeways' },
+    { label: 'Limited access', items: limitedAccess, sectionId: 'concern-limited-access' },
+    { label: 'Highways', items: highways, sectionId: 'concern-highways' },
   ]);
-  if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail');
-  if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution');
-  if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution');
-  if (steepGrades.length) renderSection(report, 'Steep grade segments (over 12%)', steepGrades, '', 'caution');
-  if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway');
-  if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution');
-  if (highways.length) renderSection(report, 'Highways', highways, '');
+  if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails');
+  if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike');
+  if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution', false, 'concern-uphill-curves');
+  if (steepGrades.length) renderSection(report, 'Steep grade segments (over 12%)', steepGrades, '', 'caution', false, 'concern-steep-grades');
+  if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway', false, 'concern-freeways');
+  if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution', false, 'concern-limited-access');
+  if (highways.length) renderSection(report, 'Highways', highways, '', '', false, 'concern-highways');
   if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length && !mountainBike.length
       && !curveHazards.length && !steepGrades.length) {
     report.innerHTML = '<div class="no-route">No freeway, limited-access highway, highway, steep-grade, or rule-failing sections were found on this route.</div>';
