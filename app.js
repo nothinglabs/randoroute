@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.267';
+const APP_VERSION = '2026-07-22.270';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2098,6 +2098,10 @@ window.addEventListener('message', (event) => {
   if (event.data?.type === 'highlight-route-step') {
     showRouteStepOnMap(event.data.startIndex, event.data.endIndex,
       event.data.coordStart, event.data.coordEnd);
+    return;
+  }
+  if (event.data?.type === 'highlight-route-concern') {
+    showRouteConcernOnMap(event.data.ranges);
   }
 });
 
@@ -3949,6 +3953,71 @@ function showRouteStepOnMap(startIndex, endIndex, coordStart = null, coordEnd = 
   });
 }
 
+function showRouteConcernOnMap(ranges) {
+  const route = routing.last;
+  if (!route?.ok || !route.segs?.length || !map.getLayer('route-highlight')) return;
+  const selectedRanges = [];
+  for (const range of Array.isArray(ranges) ? ranges : []) {
+    let startIndex = Math.trunc(Number(range?.startIndex));
+    let endIndex = Math.trunc(Number(range?.endIndex));
+    if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex)) continue;
+    startIndex = Math.max(0, Math.min(startIndex, route.segs.length - 1));
+    endIndex = Math.max(startIndex, Math.min(endIndex, route.segs.length - 1));
+    const first = route.segs[startIndex];
+    const last = route.segs[endIndex];
+    const suppliedStart = range?.coordStart != null && range.coordStart !== ''
+      && Number.isFinite(Number(range.coordStart));
+    const suppliedEnd = range?.coordEnd != null && range.coordEnd !== ''
+      && Number.isFinite(Number(range.coordEnd));
+    let coordStart = suppliedStart ? Math.trunc(Number(range.coordStart)) : first.c0;
+    let coordEnd = suppliedEnd ? Math.trunc(Number(range.coordEnd)) : last.c1;
+    coordStart = Math.max(0, Math.min(coordStart, route.coords.length - 1));
+    coordEnd = Math.max(coordStart, Math.min(coordEnd, route.coords.length - 1));
+    if (coordEnd === coordStart && route.coords.length > 1) {
+      if (coordEnd < route.coords.length - 1) coordEnd++;
+      else coordStart--;
+    }
+    const coords = route.coords.slice(coordStart, coordEnd + 1);
+    if (coords.length >= 2) selectedRanges.push(coords);
+  }
+  if (!selectedRanges.length) return;
+  clearRouteHighlight();
+  routeHighlightKey = `concern:${selectedRanges.length}`;
+  const selectionSource = map.getSource('route-detail-selection');
+  if (selectionSource) selectionSource.setData({ type: 'FeatureCollection', features: selectedRanges.map((coords) => ({
+    type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords },
+  })) });
+  for (const id of ['route-detail-highlight-halo', 'route-detail-highlight']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
+  }
+  const markerFeatures = selectedRanges.map((coords) => ({ type: 'Feature', properties: {},
+    geometry: { type: 'Point', coordinates: coords[Math.floor(coords.length / 2)] } }));
+  const markerSource = map.getSource('route-detail-marker');
+  if (markerSource) markerSource.setData({ type: 'FeatureCollection', features: markerFeatures });
+  for (const id of ['route-detail-marker-halo', 'route-detail-marker']) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
+  }
+  setDetailSelectionPulse(true);
+  const dialog = document.getElementById('routeDetailsDialog');
+  if (dialog?.open) dialog.close();
+  suppressRoadInfo(900);
+  if (mobileNavMedia.matches) setPanelOpen(routeDetailsPanelWasOpen);
+  requestAnimationFrame(() => {
+    const allCoords = selectedRanges.flat();
+    const bounds = new maplibregl.LngLatBounds(allCoords[0], allCoords[0]);
+    for (const coordinate of allCoords.slice(1)) bounds.extend(coordinate);
+    const openPanelHeight = mobileNavMedia.matches && document.body.classList.contains('panel-open')
+      ? Math.ceil(document.getElementById('panel')?.getBoundingClientRect().height || 0) : 0;
+    map.fitBounds(bounds, {
+      padding: mobileNavMedia.matches
+        ? { top: 90, right: 45, bottom: Math.max(90, openPanelHeight + 45), left: 45 }
+        : { top: 80, right: 70, bottom: 80, left: 470 },
+      maxZoom: 16,
+      duration: 500,
+    });
+  });
+}
+
 function consumePendingRouteStepHighlight() {
   let pending = null;
   try {
@@ -3958,6 +4027,8 @@ function consumePendingRouteStepHighlight() {
   if (pending?.type === 'highlight-route-step') {
     requestAnimationFrame(() => showRouteStepOnMap(pending.startIndex, pending.endIndex,
       pending.coordStart, pending.coordEnd));
+  } else if (pending?.type === 'highlight-route-concern') {
+    requestAnimationFrame(() => showRouteConcernOnMap(pending.ranges));
   }
 }
 

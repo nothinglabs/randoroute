@@ -392,6 +392,9 @@ function turnPreferenceS(incomingEdge, node, outgoingEdge, mode) {
 // horizontal distance to be meaningful, and reject obvious DEM artifacts.
 const MIN_REPORTED_GRADE_M = 20;
 const MAX_CREDIBLE_GRADE_PCT = 40;
+// A single 20 m graph edge can still reflect a small DEM step. Route maxima
+// therefore use the steepest sustained 100 m of riding instead.
+const SUSTAINED_GRADE_WINDOW_M = 100;
 
 function reportedGradePct(netRiseM, lenM) {
   const rise = Number(netRiseM);
@@ -410,10 +413,44 @@ function credibleSegmentGradePct(seg) {
   return grade;
 }
 
+function sustainedUphillGradeSamples(segs) {
+  const samples = [];
+  const window = [];
+  let windowM = 0;
+  let windowRiseM = 0;
+  for (let index = 0; index < (segs || []).length; index++) {
+    const seg = segs[index];
+    if ((seg.flags || 0) & 32) {
+      window.length = 0;
+      windowM = 0;
+      windowRiseM = 0;
+      continue;
+    }
+    const lenM = Number(seg.lenM) || 0;
+    if (!(lenM > 0)) continue;
+    const gradePct = credibleSegmentGradePct(seg);
+    window.push({ index, lenM, gradePct });
+    windowM += lenM;
+    windowRiseM += lenM * gradePct / 100;
+    while (windowM > SUSTAINED_GRADE_WINDOW_M && window.length) {
+      const first = window[0];
+      const trimM = Math.min(windowM - SUSTAINED_GRADE_WINDOW_M, first.lenM);
+      first.lenM -= trimM;
+      windowM -= trimM;
+      windowRiseM -= trimM * first.gradePct / 100;
+      if (first.lenM <= .001) window.shift();
+    }
+    if (windowM >= SUSTAINED_GRADE_WINDOW_M && window.length) {
+      samples.push({ startIndex: window[0].index, endIndex: index,
+        gradePct: 100 * windowRiseM / windowM, lenM: windowM });
+    }
+  }
+  return samples;
+}
+
 function routeGradeStats(segs) {
   let uphillM = 0;
   let uphillRiseM = 0;
-  let maxGradePct = 0;
   for (const seg of segs || []) {
     if ((seg.flags || 0) & 32) continue;
     const grade = credibleSegmentGradePct(seg);
@@ -422,8 +459,9 @@ function routeGradeStats(segs) {
       uphillM += len;
       uphillRiseM += len * grade / 100;
     }
-    maxGradePct = Math.max(maxGradePct, grade);
   }
+  const maxGradePct = sustainedUphillGradeSamples(segs)
+    .reduce((max, sample) => Math.max(max, sample.gradePct), 0);
   return {
     avgUphillPct: uphillM > 0 ? Math.round(10 * 100 * uphillRiseM / uphillM) / 10 : 0,
     maxGradePct: Math.round(10 * maxGradePct) / 10,

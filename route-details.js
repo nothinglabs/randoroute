@@ -16,6 +16,7 @@ let routePreviewFailPulseTimer = null;
 const REQUESTED_DETAIL_TAB = new URLSearchParams(window.location.search).get('tab');
 const MIN_REPORTED_GRADE_M = 20;
 const MAX_CREDIBLE_GRADE_PCT = 40;
+const SUSTAINED_GRADE_WINDOW_M = 100;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 const FACILITY_NAME = {
   1: 'shared lane', 2: 'bike lane', 3: 'buffered bike lane',
@@ -148,10 +149,45 @@ function credibleSegmentGradePct(seg) {
       || len < MIN_REPORTED_GRADE_M || Math.abs(grade) > MAX_CREDIBLE_GRADE_PCT) return 0;
   return grade;
 }
+
+function sustainedUphillGradeSamples(segs) {
+  const samples = [];
+  const window = [];
+  let windowM = 0;
+  let windowRiseM = 0;
+  for (let index = 0; index < (segs || []).length; index++) {
+    const seg = segs[index];
+    if ((seg.flags || 0) & FLAG_FERRY) {
+      window.length = 0;
+      windowM = 0;
+      windowRiseM = 0;
+      continue;
+    }
+    const lenM = Number(seg.lenM) || 0;
+    if (!(lenM > 0)) continue;
+    const gradePct = credibleSegmentGradePct(seg);
+    window.push({ index, lenM, gradePct });
+    windowM += lenM;
+    windowRiseM += lenM * gradePct / 100;
+    while (windowM > SUSTAINED_GRADE_WINDOW_M && window.length) {
+      const first = window[0];
+      const trimM = Math.min(windowM - SUSTAINED_GRADE_WINDOW_M, first.lenM);
+      first.lenM -= trimM;
+      windowM -= trimM;
+      windowRiseM -= trimM * first.gradePct / 100;
+      if (first.lenM <= .001) window.shift();
+    }
+    if (windowM >= SUSTAINED_GRADE_WINDOW_M && window.length) {
+      samples.push({ startIndex: window[0].index, endIndex: index,
+        gradePct: 100 * windowRiseM / windowM, lenM: windowM });
+    }
+  }
+  return samples;
+}
+
 function routeGradeStats(segs) {
   let uphillM = 0;
   let uphillRiseM = 0;
-  let maxGradePct = 0;
   for (const seg of segs || []) {
     if ((seg.flags || 0) & FLAG_FERRY) continue;
     const grade = credibleSegmentGradePct(seg);
@@ -160,12 +196,47 @@ function routeGradeStats(segs) {
       uphillM += len;
       uphillRiseM += len * grade / 100;
     }
-    maxGradePct = Math.max(maxGradePct, grade);
   }
+  const maxGradePct = sustainedUphillGradeSamples(segs)
+    .reduce((max, sample) => Math.max(max, sample.gradePct), 0);
   return {
     avgUphillPct: uphillM > 0 ? 100 * uphillRiseM / uphillM : 0,
     maxGradePct,
   };
+}
+
+function sustainedUphillGradeConcerns(segs, thresholdPct = 12) {
+  const concerns = [];
+  for (const sample of sustainedUphillGradeSamples(segs)) {
+    if (!(sample.gradePct > thresholdPct)) continue;
+    const start = segs[sample.startIndex];
+    const end = segs[sample.endIndex];
+    if (!start || !end) continue;
+    const name = roadName(end);
+    const previous = concerns[concerns.length - 1];
+    if (previous && previous.name === name && sample.startIndex <= previous.endIndex + 1) {
+      previous.endIndex = sample.endIndex;
+      previous.coordEnd = end.c1;
+      previous.locationEnd = end.locationEnd;
+      previous.lenM += Number(end.lenM) || 0;
+      previous.maxGradePct = Math.max(previous.maxGradePct, sample.gradePct);
+      previous.meta = `${previous.maxGradePct.toFixed(1)}% sustained uphill`;
+      continue;
+    }
+    concerns.push({
+      name,
+      meta: `${sample.gradePct.toFixed(1)}% sustained uphill`,
+      lenM: sample.lenM,
+      startIndex: sample.startIndex,
+      endIndex: sample.endIndex,
+      coordStart: start.c0,
+      coordEnd: end.c1,
+      locationStart: start.locationStart,
+      locationEnd: end.locationEnd,
+      maxGradePct: sample.gradePct,
+    });
+  }
+  return concerns;
 }
 function roadName(seg) { return seg.name || 'Unnamed road'; }
 function isHighway(seg) {
@@ -336,6 +407,45 @@ function showRouteStep(step) {
   // to the map; the app consumes this once its saved route is redrawn.
   try { sessionStorage.setItem('wa-bike-step-highlight', JSON.stringify(message)); } catch (e) { /* nonfatal */ }
   window.location.href = 'index.html';
+}
+
+function showRouteConcern(items) {
+  const ranges = (items || []).map((item) => ({
+    startIndex: item.startIndex,
+    endIndex: item.endIndex,
+    coordStart: item.coordStart,
+    coordEnd: item.coordEnd,
+  })).filter((item) => Number.isFinite(Number(item.startIndex)) && Number.isFinite(Number(item.endIndex)));
+  if (!ranges.length) return;
+  saveDetailPosition();
+  const message = { type: 'highlight-route-concern', ranges };
+  if (window.self !== window.top) {
+    window.parent.postMessage(message, window.location.origin);
+    return;
+  }
+  try { sessionStorage.setItem('wa-bike-step-highlight', JSON.stringify(message)); } catch (e) { /* nonfatal */ }
+  window.location.href = 'index.html';
+}
+
+function renderConcernShortcuts(host, groups) {
+  const available = (groups || []).filter((group) => group.items?.length);
+  if (!available.length) return;
+  const nav = document.createElement('nav');
+  nav.className = 'concern-shortcuts';
+  nav.setAttribute('aria-label', 'Show concern types on map');
+  const label = document.createElement('span');
+  label.className = 'concern-shortcuts-label';
+  label.textContent = 'Show on map:';
+  nav.appendChild(label);
+  for (const group of available) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = group.label;
+    button.setAttribute('aria-label', `Show all ${group.label.toLowerCase()} on the map`);
+    button.addEventListener('click', () => showRouteConcern(group.items));
+    nav.appendChild(button);
+  }
+  host.appendChild(nav);
 }
 
 function buildRouteSteps(segs) {
@@ -887,13 +997,12 @@ if (!hasRoute) {
   const routeStats = routeSummaryStats(segs);
   const calculatedGrades = routeGradeStats(segs);
   const storedAvgUphillPct = Number(totals.avgUphillPct);
-  const storedMaxGradePct = Number(totals.maxGradePct);
   const avgUphillPct = Number.isFinite(storedAvgUphillPct)
       && storedAvgUphillPct >= 0 && storedAvgUphillPct <= MAX_CREDIBLE_GRADE_PCT
     ? storedAvgUphillPct : calculatedGrades.avgUphillPct;
-  const maxGradePct = Number.isFinite(storedMaxGradePct)
-      && storedMaxGradePct >= 0 && storedMaxGradePct <= MAX_CREDIBLE_GRADE_PCT
-    ? storedMaxGradePct : calculatedGrades.maxGradePct;
+  // Recalculate from stored segments so an already-open route benefits from
+  // the sustained-grade method without requiring another route search.
+  const maxGradePct = calculatedGrades.maxGradePct;
   const ridingM = Math.max(1, totals.distM - (totals.ferryM || 0));
   const bikePct = routePercent(routeStats.bikeNetworkM, ridingM);
   const passPct = routePercent((routeStats.levels[1] || 0) + (routeStats.levels[2] || 0), ridingM, true);
@@ -970,14 +1079,7 @@ if (!hasRoute) {
     locationEnd: s.hazardLocationEnd ?? s.locationEnd,
     lenM: s.hazardLenM || s.lenM,
   }));
-  const steepGrades = sections(segs, (s) => Math.abs(credibleSegmentGradePct(s)) > 12, (s) => {
-    const grade = credibleSegmentGradePct(s);
-    return {
-      name: roadName(s),
-      meta: [`${Math.abs(grade).toFixed(1)}% ${grade > 0 ? 'uphill' : 'downhill'}`,
-        s.mph ? `${s.mph} mph` : null].filter(Boolean).join(' · '),
-    };
-  });
+  const steepGrades = sustainedUphillGradeConcerns(segs);
   const routeSteps = buildRouteSteps(segs);
   const ferries = sections(segs, (s) => !!(s.flags & FLAG_FERRY), () => ({
     name: 'Ferry crossing', meta: 'Ferry segment',
@@ -1017,6 +1119,15 @@ if (!hasRoute) {
   // Put the actionable rule violations first; road-type context follows.
   // A freeway can appear in both sections because one answers “what failed?”
   // while the other answers “what kind of road is this?”.
+  renderConcernShortcuts(report, [
+    { label: 'Fails rules', items: failing },
+    { label: 'Mountain-bike', items: mountainBike },
+    { label: 'Uphill curves', items: curveHazards },
+    { label: 'Steep grades', items: steepGrades },
+    { label: 'Freeways', items: freeways },
+    { label: 'Limited access', items: limitedAccess },
+    { label: 'Highways', items: highways },
+  ]);
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail');
   if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution');
   if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution');

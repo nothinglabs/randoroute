@@ -21,12 +21,26 @@ assert.equal(context.reportedGradePct(50, 100), 0,
 
 const stats = context.routeGradeStats([
   { lenM: 1, gradePct: 180, flags: 0 },
-  { lenM: 100, gradePct: 8, flags: 0 },
+  { lenM: 120, gradePct: 8, flags: 0 },
   { lenM: 100, gradePct: 12, flags: 32 },
 ]);
 assert.equal(stats.maxGradePct, 8,
-  'the route maximum should ignore tiny-edge artifacts and ferries');
+  'the sustained route maximum should ignore tiny-edge artifacts and ferries');
 assert.equal(stats.avgUphillPct, 8,
   'the average uphill grade should use credible riding segments');
+
+const spike = context.routeGradeStats([
+  { lenM: 20, gradePct: 30, flags: 0 },
+  { lenM: 80, gradePct: 0, flags: 0 },
+  { lenM: 100, gradePct: 8, flags: 0 },
+]);
+assert.equal(spike.maxGradePct, 8,
+  'a 20 m steep spike should not exceed a longer sustained climb');
+
+const sustained = context.routeGradeStats([
+  { lenM: 100, gradePct: 14, flags: 0 },
+]);
+assert.equal(sustained.maxGradePct, 14,
+  'a full 100 m uphill should retain its sustained grade');
 
 console.log('Grade reporting tests passed.');

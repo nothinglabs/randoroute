@@ -34,8 +34,14 @@ assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textC
   'each route-detail item should put an in-app Map button before its stacked Street View button');
 assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view', lat, lng, heading \}, window\.location\.origin\)/,
   'embedded Details should ask the app to open its Street View dialog');
+assert.match(details, /function showRouteConcern\(items\)[\s\S]*?type: 'highlight-route-concern'[\s\S]*?function renderConcernShortcuts\(host, groups\)[\s\S]*?Show on map:/,
+  'Concerns should offer compact category shortcuts that hand selected ranges back to the map');
+assert.match(details, /renderConcernShortcuts\(report, \[[\s\S]*?Fails rules[\s\S]*?Steep grades[\s\S]*?Limited access/,
+  'the shortcut row should include every available concern type');
 assert.match(app, /event\.data\?\.type === 'open-street-view'[\s\S]*?openStreetView\(lat, lng/,
   'the app should accept Street View requests from its Route Details frame');
+assert.match(app, /event\.data\?\.type === 'highlight-route-concern'[\s\S]*?showRouteConcernOnMap\(event\.data\.ranges\)[\s\S]*?function showRouteConcernOnMap\(ranges\)[\s\S]*?route-detail-selection[\s\S]*?type: 'FeatureCollection'[\s\S]*?map\.fitBounds/,
+  'a concern shortcut should highlight every selected category segment and fit the map to them');
 assert.match(css, /\.segment-actions\s*\{[^}]*margin-left:\s*auto[\s\S]*?\.segment-streetview\s*\{[^}]*width:\s*42px[^}]*min-height:\s*38px[\s\S]*?\.segment-map-button\s*\{[^}]*display:\s*grid[^}]*width:\s*42px[^}]*min-height:\s*38px/,
   'the equal-sized, stacked Map and Street View controls should align at the card right edge');
 assert.match(html, /class="dialog-close streetview-close"[\s\S]*?<span>Close<\/span>/,
@@ -177,8 +183,8 @@ assert.doesNotMatch(detailsHtml, /speed-profile-legend|speed-profile-swatch/,
   'the speed-profile color legend should be removed');
 assert.match(detailsHtml, /id="speedProfile"[\s\S]*?class="speed-profile-info"[\s\S]*?id="summaryRoadSpeed"/,
   'average road speed should appear with the speed-limit chart');
-assert.match(css, /\.speed-profile\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(132px, 43%\)[\s\S]*?\.speed-profile-preview\s*\{[^}]*cursor:\s*pointer/,
-  'the tighter speed card should keep text left and a tappable chart preview on the right');
+assert.match(css, /\.speed-profile\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(136px, 45%\)[\s\S]*?\.speed-profile-preview\s*\{[^}]*cursor:\s*pointer[\s\S]*?#panel-stats \.speed-profile-preview\s*\{[^}]*min-height:\s*100px/,
+  'the speed card should keep text left while giving its tappable chart a little more room');
 assert.match(detailsHtml, /id="speedProfilePreview"[\s\S]*?id="speedProfileCanvas"[\s\S]*?id="speedDialog"[\s\S]*?id="speedDialogCanvas"/,
   'the speed chart should offer an enlarged dialog view');
 assert.match(details, /speedPreview\.addEventListener\('click',[\s\S]*?speedDialog\.showModal\(\)[\s\S]*?drawSpeedProfile\(document\.getElementById\('speedDialogCanvas'\)\)/,
@@ -187,8 +193,8 @@ assert.match(css, /#elevationDialogCanvas, #speedDialogCanvas\s*\{[^}]*aspect-ra
   'both enlarged charts should use a similar compact aspect ratio');
 assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>/,
   'elevation metrics should use separate, stable average- and maximum-grade rows');
-assert.match(details, /const steepGrades = sections\(segs, \(s\) => Math\.abs\(credibleSegmentGradePct\(s\)\) > 12[\s\S]*?renderSection\(report, 'Steep grade segments \(over 12%\)', steepGrades, '', 'caution'\)/,
-  'Concerns should list route segments whose credible grade exceeds 12%');
+assert.match(details, /function sustainedUphillGradeSamples\(segs\)[\s\S]*?SUSTAINED_GRADE_WINDOW_M[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = 12\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep grade segments \(over 12%\)', steepGrades, '', 'caution'\)/,
+  'Concerns should list only sustained uphill segments whose grade exceeds 12%');
 assert.match(details, /const minSpeed = 10;[\s\S]*?Math\.min\(maxSpeed - minSpeed, Math\.max\(0, mph - minSpeed\)\)/,
   'the speed chart should use a 10 mph baseline to keep its trace vertically centered');
 const speedDrawStart = details.indexOf('function drawSpeedProfile(');
