@@ -200,8 +200,8 @@
   </dialog>
 
   <dialog id="streetViewDialog" class="full-help-dialog sv-dialog" aria-label="Street View">
-    <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Open in Google Maps ↗</a><button class="dialog-close" data-close="streetViewDialog" aria-label="Close Street View">✕</button></div></div>
-    <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade" loading="lazy"></iframe></div>
+    <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Open in Google Maps ↗</a><button class="dialog-close streetview-close" data-close="streetViewDialog" aria-label="Close Street View"><span aria-hidden="true">✕</span><span>Close</span></button></div></div>
+    <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade" loading="lazy"></iframe><p class="sv-coverage-note"><b>No panorama showing?</b> Street View searched up to 150 m from this road. Use <b>Open in Google Maps</b> above to browse nearby coverage.</p></div>
   </dialog>
 
   <dialog id="clearRouteDialog" class="map-dialog clear-route-dialog" aria-label="Clear this route">

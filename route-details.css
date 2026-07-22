@@ -70,6 +70,11 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .step-button:hover { background: rgba(44,123,182,.07); }
 .step-button:focus-visible { outline: 3px solid #0a66c2; outline-offset: -3px; }
 .step-button .line > span:first-child { min-width: 0; }
+.segment-actions { display: flex; align-items: center; gap: 8px; padding: 0 10px 9px; }
+.segment-streetview { min-height: 28px; padding: 4px 7px; border: 1px solid #7aaed5; border-radius: 6px; background: #edf6fc; color: #075b9f; font: 750 10.5px/1 system-ui; cursor: pointer; }
+.segment-streetview:hover { border-color: #0a66c2; background: #e1f0fa; }
+.segment-map-link { color: #0a66c2; font: 750 10.5px/1 system-ui; text-decoration: none; white-space: nowrap; }
+.segment-map-link:hover { text-decoration: underline; }
 .step-safety { display: inline-block; margin-right: 7px; padding: 2px 6px; border-radius: 999px; color: #fff; font: 750 10px/1.25 system-ui; vertical-align: 1px; white-space: nowrap; }
 .safety-bike .step-safety { background: #728e00; }
 .safety-designated .step-safety { border: 1px dashed #168ad1; background: #eef7fd; color: #0c6099; }

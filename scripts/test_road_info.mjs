@@ -14,10 +14,12 @@ assert.match(css, /@media \(max-width: 720px\)[\s\S]*?\.readout\s*\{[^}]*width:\
   'the mobile road-information card should use a compact content width');
 assert.match(css, /\.readout td\.k\s*\{[^}]*white-space:\s*nowrap/,
   'road-information labels should stay on one line to reduce card height');
-assert.match(css, /\.streetview-launch\s*\{[^}]*min-height:\s*49px/,
-  'Street View should be a prominent full-width road-card action');
-assert.match(app, /googleMapsPointUrl\(svLat, svLng\)[\s\S]*?googleStreetViewUrl\(svLat, svLng, svHeading\)/,
-  'every road-information card should offer direct Google Map and Street View links');
+assert.match(css, /\.streetview-launch\s*\{[^}]*min-height:\s*34px/,
+  'the road-card Street View action should be compact');
+assert.match(app, /streetViewBtn\.textContent\s*=\s*'Google Street View'[\s\S]*?mapLink\.textContent\s*=\s*'Google Maps ↗'/,
+  'the road card should use the requested Google Street View label and retain a Google Maps link');
+assert.match(app, /readoutEl\.append\(close, heading, table, mapActions\)/,
+  'the compact road-card actions should appear below the road details');
 assert.match(app, /roadInfoHoverMedia\s*=\s*window\.matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)[\s\S]*?if \(!roadInfoHoverMedia\.matches\) return/,
   'touch-generated mouse movement must not open the fixed hover preview');
 assert.match(app, /canvas\.addEventListener\('touchend'[\s\S]*?inspectRoadAt\(point, lngLat\)[\s\S]*?lastRoadInfoTouchAt = Date\.now\(\)/,
@@ -127,6 +129,8 @@ assert.match(mapUrl, /maps\/search\/\?api=1&query=47\.600000,-122\.100000/,
   'the Google Map link should open the selected coordinates');
 assert.match(streetViewUrl, /map_action=pano[\s\S]*?heading=90/,
   'the direct Google Street View link should preserve the road-aligned heading');
+assert.match(app, /&radius=150\$\{headingParam\}/,
+  'the embedded Street View search should look up to 150 meters from the selected road');
 
 const roadInfoSection = app.indexOf('// A pinned road card belongs to the map inspection interaction.');
 const listenerStart = app.indexOf("document.addEventListener('click'", roadInfoSection);

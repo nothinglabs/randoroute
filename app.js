@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.231';
+const APP_VERSION = '2026-07-20.233';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1456,6 +1456,15 @@ function compactRouteProfile(m) {
 function storeRouteDetails(m) {
   if (!m || !m.ok) return;
   try {
+    const routeCoords = Array.isArray(m.coords) ? m.coords : [];
+    // Route Details needs a real on-road point for its Google Maps and Street
+    // View actions, but not the complete (potentially large) route geometry.
+    const locationAt = (index) => {
+      const point = routeCoords[Math.trunc(Number(index))];
+      if (!Array.isArray(point) || point.length < 2) return null;
+      const lng = Number(point[0]), lat = Number(point[1]);
+      return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null;
+    };
     localStorage.setItem(ROUTE_DETAILS_KEY, JSON.stringify({
       savedAt: Date.now(),
       profile: compactRouteProfile(m),
@@ -1482,9 +1491,11 @@ function storeRouteDetails(m) {
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
         roadClass: s.roadClass || 0, c0: s.c0, c1: s.c1,
+        locationStart: locationAt(s.c0), locationEnd: locationAt(s.c1),
         crossing: s.crossing ? 1 : 0,
         hazard: s.hazard || 0,
         hazardLenM: s.hazardLenM || 0, hazC0: s.hazC0, hazC1: s.hazC1,
+        hazardLocationStart: locationAt(s.hazC0), hazardLocationEnd: locationAt(s.hazC1),
         gradePct: s.gradePct || 0, timeS: Number(s.timeS) || 0,
         level: s.level || fallbackRouteLevel(s), lenM: Number(s.lenM) || 0,
       })),
@@ -1955,6 +1966,10 @@ function navigationElevationProgressM() {
 
 function openRouteDetails() {
   if (!routing.last?.ok) return;
+  // Refresh the compact report before loading it. This lets an already-drawn
+  // route gain its per-segment Google Maps and Street View locations as soon
+  // as the app updates, without making the rider recalculate.
+  storeRouteDetails(routing.last);
   const dialog = document.getElementById('routeDetailsDialog');
   const frame = document.getElementById('routeDetailsFrame');
   // While navigating there is only one active route, so drop the option label.
@@ -1991,9 +2006,18 @@ window.addEventListener('message', (event) => {
     document.getElementById('routeDetailsDialog')?.close();
     return;
   }
-  if (event.data?.type !== 'highlight-route-step') return;
-  showRouteStepOnMap(event.data.startIndex, event.data.endIndex,
-    event.data.coordStart, event.data.coordEnd);
+  if (event.data?.type === 'open-street-view') {
+    const lat = Number(event.data.lat), lng = Number(event.data.lng);
+    const heading = Number(event.data.heading);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      openStreetView(lat, lng, Number.isFinite(heading) ? heading : null);
+    }
+    return;
+  }
+  if (event.data?.type === 'highlight-route-step') {
+    showRouteStepOnMap(event.data.startIndex, event.data.endIndex,
+      event.data.coordStart, event.data.coordEnd);
+  }
 });
 
 function refreshNavigationUI() {
@@ -5334,38 +5358,18 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   streetViewBtn.className = 'streetview-launch';
   streetViewBtn.setAttribute('aria-label', GOOGLE_MAPS_EMBED_KEY
     ? 'Open Street View in this app' : 'Open Street View in Google Maps');
-  const streetViewIcon = document.createElement('span');
-  streetViewIcon.className = 'streetview-launch-icon';
-  streetViewIcon.setAttribute('aria-hidden', 'true');
-  streetViewIcon.textContent = '◉';
-  const streetViewCopy = document.createElement('span');
-  const streetViewLabel = document.createElement('strong');
-  streetViewLabel.textContent = GOOGLE_MAPS_EMBED_KEY ? 'Street View' : 'Open Street View';
-  const streetViewHint = document.createElement('small');
-  streetViewHint.textContent = 'Look along this road';
-  streetViewCopy.append(streetViewLabel, streetViewHint);
-  streetViewBtn.append(streetViewIcon, streetViewCopy);
+  streetViewBtn.textContent = 'Google Street View';
   streetViewBtn.addEventListener('click', () => openStreetView(svLat, svLng, svHeading));
 
-  const externalLinks = document.createElement('div');
-  externalLinks.className = 'road-external-links';
-  const externalLabel = document.createElement('span');
-  externalLabel.textContent = 'Open in Google:';
   const mapLink = document.createElement('a');
   mapLink.href = googleMapsPointUrl(svLat, svLng);
   mapLink.target = '_blank';
   mapLink.rel = 'noopener';
-  mapLink.textContent = 'Map ↗';
+  mapLink.className = 'road-map-link';
+  mapLink.textContent = 'Google Maps ↗';
   mapLink.setAttribute('aria-label', 'Open this location in Google Maps');
-  const streetViewLink = document.createElement('a');
-  streetViewLink.href = googleStreetViewUrl(svLat, svLng, svHeading);
-  streetViewLink.target = '_blank';
-  streetViewLink.rel = 'noopener';
-  streetViewLink.textContent = 'Street View ↗';
-  streetViewLink.setAttribute('aria-label', 'Open this location in Google Street View');
-  externalLinks.append(externalLabel, mapLink, streetViewLink);
-  mapActions.append(streetViewBtn, externalLinks);
-  readoutEl.append(close, heading, mapActions, table);
+  mapActions.append(streetViewBtn, mapLink);
+  readoutEl.append(close, heading, table, mapActions);
   readoutEl.classList.add('show');
   if (anchorPoint) positionRoadInfoNear(anchorPoint);
 }
@@ -5410,7 +5414,7 @@ function openStreetView(lat, lng, heading = null) {
   const externalLink = document.getElementById('streetViewExternal');
   if (externalLink) externalLink.href = external;
   const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
-  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=100${headingParam}&fov=90`;
+  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=150${headingParam}&fov=90`;
   if (!dialog.open) dialog.showModal();
 }
 

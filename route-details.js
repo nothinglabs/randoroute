@@ -64,6 +64,51 @@ function fmtDur(s) {
   const min = Math.round(s / 60);
   return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} m`;
 }
+function lngLat(point) {
+  if (!Array.isArray(point) || point.length < 2) return null;
+  const lng = Number(point[0]), lat = Number(point[1]);
+  return Number.isFinite(lng) && Number.isFinite(lat)
+    && lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90 ? [lng, lat] : null;
+}
+function itemLocation(item) {
+  return lngLat(item.locationStart) || lngLat(item.locationEnd);
+}
+function itemStreetViewHeading(item) {
+  const start = lngLat(item.locationStart);
+  const end = lngLat(item.locationEnd);
+  if (!start || !end || (start[0] === end[0] && start[1] === end[1])) return null;
+  const toRad = (value) => value * Math.PI / 180;
+  const lat1 = toRad(start[1]), lat2 = toRad(end[1]);
+  const deltaLng = toRad(end[0] - start[0]);
+  const y = Math.sin(deltaLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2)
+    - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+function googleMapUrl([lng, lat]) {
+  return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
+}
+function googleStreetViewUrl([lng, lat], heading = null) {
+  const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
+  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}${headingParam}`;
+}
+function openItemStreetView(item) {
+  const location = itemLocation(item);
+  if (!location) return;
+  const [lng, lat] = location;
+  const heading = itemStreetViewHeading(item);
+  if (window.self !== window.top) {
+    window.parent.postMessage({ type: 'open-street-view', lat, lng, heading }, window.location.origin);
+    return;
+  }
+  const link = document.createElement('a');
+  link.href = googleStreetViewUrl(location, heading);
+  link.target = '_blank';
+  link.rel = 'noopener';
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
 function routePercent(meters, total, preciseSmall = false) {
   if (!(meters > 0) || !(total > 0)) return '0%';
   const pct = Math.min(100, 100 * meters / total);
@@ -161,12 +206,16 @@ function sections(segs, include, describe) {
     const key = `${info.name}\u0000${info.meta}`;
     const last = out[out.length - 1];
     const itemLenM = Number(info.lenM ?? seg.lenM) || 0;
+    const locationStart = info.locationStart ?? seg.locationStart;
+    const locationEnd = info.locationEnd ?? seg.locationEnd;
     if (last && previousIndex === i - 1 && last.key === key) {
       last.lenM += itemLenM;
       last.endIndex = i;
       if (info.coordEnd != null) last.coordEnd = info.coordEnd;
+      if (locationEnd != null) last.locationEnd = locationEnd;
     } else out.push({ key, name: info.name, meta: info.meta, lenM: itemLenM,
       startIndex: i, endIndex: i, coordStart: info.coordStart, coordEnd: info.coordEnd,
+      locationStart, locationEnd,
       safetyLabel: info.safetyLabel || '', safetyClass: info.safetyClass || '' });
     previousIndex = i;
   }
@@ -222,6 +271,26 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
       meta.textContent = item.meta;
       content.append(line, meta);
       if (content !== li) li.appendChild(content);
+      const location = itemLocation(item);
+      if (location) {
+        const actions = document.createElement('div');
+        actions.className = 'segment-actions';
+        const streetView = document.createElement('button');
+        streetView.type = 'button';
+        streetView.className = 'segment-streetview';
+        streetView.textContent = 'Street View';
+        streetView.setAttribute('aria-label', `Open ${item.name} in Google Street View`);
+        streetView.addEventListener('click', () => openItemStreetView(item));
+        const mapLink = document.createElement('a');
+        mapLink.className = 'segment-map-link';
+        mapLink.href = googleMapUrl(location);
+        mapLink.target = '_blank';
+        mapLink.rel = 'noopener';
+        mapLink.textContent = 'Map ↗';
+        mapLink.setAttribute('aria-label', `Open ${item.name} in Google Maps`);
+        actions.append(streetView, mapLink);
+        li.appendChild(actions);
+      }
       list.appendChild(li);
     }
     section.appendChild(list);
@@ -259,6 +328,8 @@ function buildRouteSteps(segs) {
     if (last && last.endIndex === index - 1 && last.name === name) {
       last.lenM += seg.lenM;
       last.endIndex = index;
+      last.coordEnd = seg.c1;
+      last.locationEnd = seg.locationEnd;
       last.flags |= seg.flags || 0;
       last.facility = Math.max(last.facility || 0, seg.facility || 0);
       last.official |= seg.official || 0;
@@ -274,6 +345,10 @@ function buildRouteSteps(segs) {
         name,
         startIndex: index,
         endIndex: index,
+        coordStart: seg.c0,
+        coordEnd: seg.c1,
+        locationStart: seg.locationStart,
+        locationEnd: seg.locationEnd,
         lenM: seg.lenM,
         flags: seg.flags || 0,
         facility: seg.facility || 0,
@@ -301,6 +376,8 @@ function buildRouteSteps(segs) {
       previous.lenM += bridge.lenM + next.lenM;
       previous.flags |= bridge.flags | next.flags;
       previous.endIndex = next.endIndex;
+      previous.coordEnd = next.coordEnd;
+      previous.locationEnd = next.locationEnd;
       previous.facility = Math.max(previous.facility || 0, bridge.facility || 0, next.facility || 0);
       previous.official |= (bridge.official || 0) | (next.official || 0);
       previous.mph = Math.max(previous.mph, bridge.mph, next.mph);
@@ -609,6 +686,8 @@ if (!hasRoute) {
       s.sh >= 0 ? `${s.sh} ft shoulder` : 'shoulder unknown',
     ].filter(Boolean).join(' · '),
     coordStart: s.hazC0 ?? s.c0, coordEnd: s.hazC1 ?? s.c1,
+    locationStart: s.hazardLocationStart ?? s.locationStart,
+    locationEnd: s.hazardLocationEnd ?? s.locationEnd,
     lenM: s.hazardLenM || s.lenM,
   }));
   const routeSteps = buildRouteSteps(segs);

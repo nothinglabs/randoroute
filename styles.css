@@ -403,22 +403,15 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout table { border-collapse: collapse; width: 100%; }
 .readout td { padding: 0 5px 1px 0; line-height: 1.18; vertical-align: top; }
 .readout td.k { width: 1%; padding-right: 8px; color: #777; white-space: nowrap; }
-.road-map-actions { margin: 7px 0 6px; }
+.road-map-actions { display: flex; align-items: center; gap: 9px; margin: 7px 0 0; }
 .streetview-launch {
-  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 49px;
-  padding: 8px 10px; border: 1px solid #07549f; border-radius: 9px;
-  background: linear-gradient(135deg, #0874d1, #075ba9); color: #fff;
-  text-align: left; box-shadow: 0 2px 5px rgba(7, 91, 169, .23); cursor: pointer;
+  min-height: 34px; padding: 6px 9px; border: 1px solid #0a66c2; border-radius: 7px;
+  background: #0a66c2; color: #fff; font: 750 11.5px/1 system-ui; cursor: pointer;
 }
-.streetview-launch:hover { background: linear-gradient(135deg, #0a7ddf, #0762b7); }
+.streetview-launch:hover { background: #075aa9; }
 .streetview-launch:focus-visible { outline: 3px solid #75bdf4; outline-offset: 2px; }
-.streetview-launch-icon { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid rgba(255,255,255,.48); border-radius: 50%; font: 800 19px/1 system-ui; }
-.streetview-launch > span:last-child { display: grid; gap: 1px; min-width: 0; }
-.streetview-launch strong { font: 800 14px/1.05 system-ui; }
-.streetview-launch small { color: rgba(255,255,255,.86); font: 600 10.5px/1.1 system-ui; }
-.road-external-links { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; margin: 5px 1px 0; color: #657681; font: 600 10.5px/1.25 system-ui; }
-.road-external-links a { color: #0a66c2; font-weight: 750; text-decoration: none; }
-.road-external-links a:hover { text-decoration: underline; }
+.road-map-link { color: #0a66c2; font: 750 11.5px/1 system-ui; text-decoration: none; white-space: nowrap; }
+.road-map-link:hover { text-decoration: underline; }
 
 .status {
   position: absolute; top: calc(env(safe-area-inset-top) + 60px); right: 58px; z-index: 10;
@@ -807,8 +800,12 @@ body.navigation-active #routeBar { display: none; }
 .sv-head-actions { display: flex; align-items: center; gap: 10px; }
 .sv-external { color: #0a66c2; font: 700 12.5px system-ui; text-decoration: none; white-space: nowrap; }
 .sv-external:hover { text-decoration: underline; }
-.sv-body { width: 100%; height: calc(var(--app-height, 100dvh) - 65px); background: #0b0f13; }
+.full-help-head .streetview-close { display: inline-flex; align-items: center; gap: 5px; width: auto; min-height: 42px; padding: 0 11px; border: 1px solid #b9382f; border-radius: 9px; background: #fff3f1; color: #a32820; font: 800 12px/1 system-ui; }
+.streetview-close span:first-child { color: currentColor; font-size: 16px; line-height: 1; }
+.sv-body { position: relative; width: 100%; height: calc(var(--app-height, 100dvh) - 65px); background: #0b0f13; }
 #streetViewFrame { display: block; width: 100%; height: 100%; border: 0; }
+.sv-coverage-note { position: absolute; right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); left: 14px; margin: 0; padding: 8px 10px; border: 1px solid rgba(255,255,255,.32); border-radius: 9px; background: rgba(16,27,35,.86); color: #f6fafc; font: 600 11px/1.35 system-ui; text-align: center; pointer-events: none; }
+.sv-coverage-note b { color: #fff; }
 .weights-reset { min-height: 38px; padding: 0 15px; border: 1px solid #b34b3f; border-radius: 9px; background: #fff4f2; color: #9f352a; font: 750 12px system-ui; cursor: pointer; }
 .weights-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 18px 0 max(34px, env(safe-area-inset-bottom)); }
 .weights-body > .help-lead { max-width: 850px; margin: 0 0 14px; color: #435967; font: 650 13px/1.45 system-ui; }
