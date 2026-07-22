@@ -11,10 +11,12 @@ assert.match(html, /id="routesHelpDialog"[\s\S]*?Save on this device[\s\S]*?They
   'save-and-share help should cover local storage, share-link scope, and shared-route loading');
 assert.match(html, /id="settingsHelpDialog"[\s\S]*?dedicated bike infrastructure is exempt[\s\S]*?Trust designated bike routes[\s\S]*?Speed limits and access restrictions still apply[\s\S]*?Only show routes fully matching safety rules[\s\S]*?Minor exception: a short access link near a pin may remain and appear red/,
   'settings help should state the pin-access exception next to the strict route filter');
+assert.match(html, /id="settingsHelpDialog"[\s\S]*?<h3>Presets<\/h3>[\s\S]*?<h3>Limits<\/h3>/,
+  'settings help should introduce presets before individual routing limits');
 assert.match(html, /<h3>Limits<\/h3><ul class="help-list">[\s\S]*?Minimum shoulder[\s\S]*?Max speed without shoulder[\s\S]*?Never allow roads faster than[\s\S]*?No cutoff[\s\S]*?<\/ul>/,
   'settings help should describe each routing limit as a separate, scannable item');
-assert.match(html, /id="layersHelpDialog"[\s\S]*?Technical data notes[\s\S]*?planning aid, not a guarantee of safety/,
-  'map-data help should keep technical context and state its limits');
+assert.match(html, /id="layersHelpDialog"[\s\S]*?<h3>Data sources<\/h3>[\s\S]*?WSDOT BLTS[\s\S]*?OSM bike infrastructure[\s\S]*?All roads[\s\S]*?Elevation &amp; cautions[\s\S]*?Technical data notes[\s\S]*?planning aid, not a guarantee of safety/,
+  'map-data help should lead with its data sources, then keep technical context and state its limits');
 const layersHelp = html.match(/<dialog id="layersHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
 assert.doesNotMatch(layersHelp, /lime|blue|amber|red fails|gray lacks enough data/i,
   'map-layers help should not duplicate the route color legend');

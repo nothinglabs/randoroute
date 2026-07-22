@@ -231,13 +231,13 @@
 
   <dialog id="settingsHelpDialog" class="map-dialog settings-help-dialog" aria-label="Routing settings help">
     <div class="dialog-head"><h2>Routing settings</h2><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div>
+    <section><h3>Presets</h3><p>A preset replaces your active rules and route preferences. Use its <b>Rules</b> button to review the full setup. Adjusting any control switches to custom rules.</p></section>
     <section><h3>Limits</h3><ul class="help-list">
       <li><b>Minimum shoulder</b> — the shoulder width required on faster roads.</li>
       <li><b>Max speed without shoulder</b> — roads at or below this speed can pass when shoulder data is missing.</li>
       <li><b>Never allow roads faster than</b> — faster ordinary roads fail; dedicated bike infrastructure is exempt.</li>
       <li><b>No cutoff</b> — disables the speed cap and leaves the shoulder rule in charge.</li>
     </ul></section>
-    <section><h3>Presets</h3><p>A preset replaces your active rules and route preferences. Use its <b>Rules</b> button to review the full setup. Adjusting any control switches to custom rules.</p></section>
     <section><h3>Options</h3><ul class="help-list">
       <li><b>Heavily prefer bike routes &amp; trails</b> — favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
       <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
@@ -277,16 +277,15 @@
     <div class="full-help-head"><div><span>Help</span><h2>Map layers &amp; data</h2></div><button class="dialog-close" data-close="layersHelpDialog" aria-label="Close">✕</button></div>
     <div class="full-help-body">
       <p class="help-lead">The router combines Washington road data, OpenStreetMap, and elevation. Layer switches change only what is visible; routing still uses every available source.</p>
-      <section><h3>What powers the routes</h3><p><b>WSDOT</b> contributes state-road stress, shoulder and access context, legal highway speeds, bike facilities, and permanent bicycle restrictions. <b>OpenStreetMap</b> supplies the connected road and path network, names, direction, bicycle access, cycleways, designated routes, ferries, and residential streets. Permanent bicycle restrictions are never routed.</p></section>
+      <section><h3>Data sources</h3><ul>
+        <li><b>Designated routes (USBR &amp; regional)</b>: mapped bicycle-route relationships from OpenStreetMap. They provide route context, not proof of a bike facility.</li>
+        <li><b>WSDOT BLTS (state highways)</b>: official state-road stress, shoulder and access context, legal speeds, and bike-facility data.</li>
+        <li><b>OSM bike infrastructure</b>: mapped bike lanes, cycle tracks, shared-use paths, and other bicycle facilities. It distinguishes off-street paths from on-street facilities.</li>
+        <li><b>Bikes prohibited (WSDOT)</b>: permanent state restriction data. These graph segments are excluded from routing.</li>
+        <li><b>All roads (OSM, est. speeds)</b>: the connected road and path network, including names, direction, bicycle access, ferries, and residential streets. Missing legal speeds use an estimate.</li>
+      </ul></section>
       <section><h3>Elevation &amp; cautions</h3><p>Elevation supplies climb, descent, grade, and travel-time estimates. The app also flags a <b>possible limited-visibility uphill curve</b> when road geometry, grade, speed, and facility data suggest extra care. It is a directional planning cue—not measured sight distance—and does not itself fail your rules.</p></section>
       <section><h3>How choices are made</h3><p>The app tests several time, safety, and road-preference combinations, removes near-duplicates, and shows up to five meaningfully different routes. Freeways are a last resort, legal limited-access highways are cautions, and permanent bicycle restrictions are impassable. A physical bike facility gets a stronger routing benefit than designation alone.</p><details class="technical-note"><summary>Technical data notes</summary><p>Missing speed limits use a road-class estimate, and the street popup identifies estimates. Roads tagged <b>bicycle=no</b> or <b>bicycle=dismount</b> are excluded. Explicit MTB paths are excluded by default and can be enabled with a strong penalty. Higher OSM road classes add soft costs when no bike facility is recorded; this is a traffic-volume proxy, not a rule failure.</p></details></section>
-      <section><h3>What each map layer means</h3><ul>
-        <li><b>Designated routes (USBR &amp; regional)</b>: mapped bicycle-route relationships. They provide route context, not proof of a bike facility.</li>
-        <li><b>WSDOT BLTS (state highways)</b>: official state-road stress and shoulder/access context.</li>
-        <li><b>OSM bike infrastructure</b>: mapped bike lanes, cycle tracks, shared-use paths, and other bicycle facilities. It distinguishes off-street paths from on-street facilities.</li>
-        <li><b>Bikes prohibited (WSDOT)</b>: permanent state restriction data for inspection; these graph segments are excluded from routing.</li>
-        <li><b>All roads (OSM, est. speeds)</b>: the broader street network, including residential roads; its visibility is reduced when zoomed out to keep the map readable.</li>
-      </ul></section>
       <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. Missing data is not proof that a shoulder, facility, traffic condition, surface, crossing control, or sight line is absent. Short crossings are inferred from route geometry and do not confirm a signal or crosswalk. Use local signs and conditions; this is a planning aid, not a guarantee of safety.</p></section>
     </div>
   </dialog>
