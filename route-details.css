@@ -18,6 +18,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-main { color: #111; font: 700 20px/1.15 system-ui; }
 .route-summary-main small { color: #555; font: 600 15px system-ui; }
 .route-summary-sub { margin-top: 4px; color: #555; font: 12px system-ui; }
+.route-summary-road-speed { margin-top: 4px; color: #405866; font: 750 11.5px/1.25 system-ui; }
 /* Full-width row beneath the stats + chart. Each ride class gets an equal
    share of the available width instead of wrapping as an uneven sentence. */
 .route-summary-mix { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; min-height: 20px; margin-top: 2px; color: #52616b; font: 600 10.5px/1.2 system-ui; }

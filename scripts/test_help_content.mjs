@@ -40,6 +40,8 @@ assert.match(html, /<h3>Voice navigation<\/h3><ul class="help-list">[\s\S]*?Noti
 assert.match(html, /id="layersHelpDialog"[\s\S]*?<h3>Data sources<\/h3>[\s\S]*?WSDOT BLTS[\s\S]*?OSM bike infrastructure[\s\S]*?All roads[\s\S]*?Elevation &amp; cautions[\s\S]*?Technical data notes[\s\S]*?planning aid, not a guarantee of safety/,
   'map-data help should lead with its data sources, then keep technical context and state its limits');
 const layersHelp = html.match(/<dialog id="layersHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
+assert.match(layersHelp, /Toggling layers only adjusts visibility\. All data is always used for routing\.[\s\S]*?<h3>Data sources<\/h3>/,
+  'map-data help should state that layer toggles do not change routing before its data sources');
 assert.match(layersHelp, /All roads \(OpenStreetMap, estimated speeds\)/,
   'map-data help should spell out OpenStreetMap in its data sources');
 assert.doesNotMatch(layersHelp, /The router combines Washington road data, OpenStreetMap, and elevation/,

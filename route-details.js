@@ -116,7 +116,7 @@ function routePercent(meters, total, preciseSmall = false) {
 }
 function routeSummaryStats(segs) {
   const levels = [0, 0, 0, 0, 0];
-  let bikeNetworkM = 0;
+  let bikeNetworkM = 0, ordinaryRoadM = 0, ordinaryRoadSpeedM = 0;
   for (const seg of segs || []) {
     const flags = seg.flags || 0;
     if (flags & FLAG_FERRY) continue;
@@ -124,8 +124,17 @@ function routeSummaryStats(segs) {
     const level = Number(seg.level) || 0;
     if (level >= 1 && level <= 4) levels[level] += len;
     if ((flags & FLAG_INFRA) || (seg.facility || 0) >= 2) bikeNetworkM += len;
+    // Shoulder width intentionally does not affect this average.
+    const mph = Number(seg.mph);
+    if (!isBikeNetwork(seg) && Number.isFinite(mph) && mph > 0) {
+      ordinaryRoadM += len;
+      ordinaryRoadSpeedM += mph * len;
+    }
   }
-  return { levels, bikeNetworkM };
+  return {
+    levels, bikeNetworkM,
+    avgRoadSpeedMph: ordinaryRoadM > 0 ? Math.round(ordinaryRoadSpeedM / ordinaryRoadM) : null,
+  };
 }
 function credibleSegmentGradePct(seg) {
   const grade = Number(seg?.gradePct);
@@ -579,6 +588,7 @@ const steps = document.getElementById('steps');
 const summary = document.getElementById('summary');
 const summaryCard = document.getElementById('routeSummaryCard');
 const summarySub = document.getElementById('summarySub');
+const summaryRoadSpeed = document.getElementById('summaryRoadSpeed');
 const summaryMix = document.getElementById('summaryMix');
 const noRouteSummary = document.getElementById('noRouteSummary');
 const alert = document.getElementById('routeAlert');
@@ -623,6 +633,7 @@ if (!hasRoute) {
   summaryCard.hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
   summarySub.textContent = `↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent · ${avgUphillPct.toFixed(1)}% avg uphill · ${maxGradePct.toFixed(1)}% max${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}`;
+  summaryRoadSpeed.textContent = `Avg. speed limit: ${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`} (roads without bike lanes)`;
   summaryMix.innerHTML = `<span class="route-summary-label">Ride</span><div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
   if (Array.isArray(details.profile) && details.profile.length >= 2) {
     const elevationPreview = document.getElementById('elevationPreview');

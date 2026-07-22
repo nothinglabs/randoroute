@@ -187,7 +187,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-route-summary { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: stretch; gap: 10px; margin-top: 6px; }
 #routeCard .rc-summary-content { min-width: 0; }
 #routeCard .rc-details-wrap { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end; gap: 5px; align-self: stretch; }
-#routeCard .rc-speed-limit { display: grid; gap: 1px; color: #667782; font: 750 9px/1.1 system-ui; text-align: center; white-space: nowrap; }
+#routeCard .rc-speed-limit { display: grid; width: 64px; gap: 1px; color: #667782; font: 750 9px/1.1 system-ui; text-align: center; }
 #routeCard .rc-speed-limit b { color: #223c4b; font: 800 13px/1.1 system-ui; }
 #routeCard .rc-summary-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; }
 #routeCard .rc-main { flex: none; text-align: right; white-space: nowrap; }

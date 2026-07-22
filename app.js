@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.254';
+const APP_VERSION = '2026-07-20.255';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3165,7 +3165,7 @@ function renderRouteCard(m) {
   const passPct = routePercent((stats.levels[1] || 0) + (stats.levels[2] || 0), ridingM, true);
   const cautionPct = routePercent(stats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(m.failM || 0, ridingM, true);
-  const averageSpeedLimit = stats.avgRoadSpeedMph == null ? '—' : `${stats.avgRoadSpeedMph} mph`;
+  const averageSpeedLimit = stats.avgRoadSpeedMph == null ? 'N/A' : `${stats.avgRoadSpeedMph} mph`;
   const mtbNotice = stats.mtbM > 0
     ? `<div class="rc-warn rc-mtb">⚠ ${fmtDist(stats.mtbM)} on mountain-bike trail</div>`
     : '';
@@ -3173,7 +3173,7 @@ function renderRouteCard(m) {
     <div id="routeControlsSlot"></div>
     <div class="rc-route-summary">
       <div class="rc-details-wrap">
-        <div class="rc-speed-limit"><span>Avg. speed limit</span><b>${averageSpeedLimit}</b></div>
+        <div class="rc-speed-limit"><b>${averageSpeedLimit}</b><span>Avg. Road<br>Speed Limit</span></div>
         <div id="routeDetailsSlot"></div>
       </div>
       <div class="rc-summary-content">
