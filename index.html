@@ -169,7 +169,7 @@
     <div class="dialog-head"><h2>Save &amp; share routes</h2><button class="dialog-close" data-close="routesHelpDialog" aria-label="Close">✕</button></div>
     <section><h3>Save on this device</h3><p>Name the current route and tap <b>Save</b>. Saved routes appear below; tap one to reopen it. They stay in this browser on this device.</p></section>
     <section><h3>Share a link</h3><p><b>Copy share link</b> or <b>Share</b> sends the route’s pins, stops, and routing setup in the link. Anyone with the link can open it.</p></section>
-    <section><h3>Open a shared route</h3><p>Paste a shared route link and tap <b>Load</b>. It appears as <b>As Shared</b> without changing your own saved settings.</p></section>
+    <section><h3>Open a shared route</h3><p>Paste a shared route link and tap <b>Load</b>. It appears as <b>As Shared</b> without changing your own saved settings. Shared links are intended to reproduce the original path, but map or routing-data updates can produce a different result.</p></section>
   </dialog>
 
   <dialog id="routeProblemDialog" class="map-dialog route-problem-dialog" aria-label="Point is outside the routing network">
@@ -229,10 +229,11 @@
     <div class="dialog-actions"><button data-close="sharedRouteTip">Got it</button></div>
   </dialog>
 
-  <dialog id="settingsHelpDialog" class="map-dialog settings-help-dialog" aria-label="Routing settings help">
-    <div class="dialog-head"><h2>Routing settings</h2><div class="dialog-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div></div>
+  <dialog id="settingsHelpDialog" class="full-help-dialog settings-help-dialog" aria-label="Routing settings help">
+    <div class="full-help-head"><div><span>Help</span><h2>Routing settings</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div></div>
+    <div class="full-help-body">
     <section><h3>Presets</h3><p>A preset replaces your active rules and route preferences. Use its <b>Rules</b> button to review the full setup. Adjusting any control switches to custom rules.</p><ul class="help-list">
-      <li><b>The Randonneur</b> — widest choice of routes; loose rules and fewer flags.</li>
+      <li><b>The Randonneur</b> — widest choice of routes; looser rules and fewer roads flagged as failing.</li>
       <li><b>Weekend Wanderer</b> — slower roads with practical flexibility; concerns pulse red.</li>
       <li><b>Casual Cruiser</b> — low-stress riding; routes must fully follow your safety rules.</li>
     </ul></section>
@@ -249,7 +250,7 @@
       <li><b>Allow freeway as last resort</b> — a freeway is permitted only as a heavily penalized fallback, and it still fails the rules.</li>
       <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided. Any use appears in Route Details.</li>
       <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
-      <li><b>Unknown shoulder = 0 ft</b> — faster roads must prove an adequate shoulder to pass.</li>
+      <li><b>Unknown shoulder = 0 ft</b> — if shoulder data is missing, treat it as 0 ft for rules purposes.</li>
       </ul><p>Search always includes local offline results; the ⌕ button also tries an online lookup.</p></section>
     <section><h3>Voice navigation</h3><ul class="help-list">
       <li><b>Off-route: Notify only</b> — gives direction and distance back to your route.</li>
@@ -259,10 +260,11 @@
       <li><b>Status update</b> — choose how often it speaks, and whether it includes route status, current speed, miles remaining, and estimated time left.</li>
     </ul></section>
     <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Usually leave these alone.</b> Presets and Limits are the intended controls. Weights are soft preferences for testing and fine-tuning; unusual values can create long or unintuitive routes. They never override bicycle prohibitions or hard Limits, and <b>Reset all defaults</b> restores them.</p><button id="settingsAdvancedWeightsBtn" type="button">Open advanced weights</button></section>
+    </div>
   </dialog>
 
   <dialog id="presetInfoDialog" class="map-dialog preset-info-dialog" aria-labelledby="presetInfoTitle">
-    <div class="dialog-head"><h2 id="presetInfoTitle"></h2><div class="dialog-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="presetInfoDialog" aria-label="Close">✕</button></div></div>
+    <div class="dialog-head"><h2 id="presetInfoTitle"></h2><button class="dialog-close" data-close="presetInfoDialog" aria-label="Close">✕</button></div>
     <p id="presetInfoAudience" class="preset-info-audience"></p>
     <ul id="presetInfoDetails" class="preset-info-details"></ul>
   </dialog>
@@ -310,15 +312,15 @@
       </ul></section>
       <section><h3>Details</h3><ul>
         <li><b>Concerns:</b> shows steps with rule failures, freeways, limited-access roads, mountain-bike trails, and uphill-curve cautions.</li>
-        <li><b>All Steps:</b> every road in order.</li>
+        <li><b>All Steps:</b> every route segment in order.</li>
         <li>Tap any route segment to view it on the map or with <b>Google Street View</b>.</li>
       </ul></section>
       <section><h3>Safety ratings &amp; map colors</h3><ul>
         <li><b>Lime — Bike network:</b> a recorded bike facility (bike lane, etc.).</li>
         <li><b>Dotted lime:</b> off-street paths and shared-use trails.</li>
         <li><b>Blue:</b> road that passes rules (speed and shoulder requirements).</li>
+        <li><b>Red dashed — Road that fails rules.</b> A known rule conflict, freeway, or permanent bicycle restriction. Failing planned segments pulse; permanent restrictions are never routed.</li>
         <li><b>Amber — Caution:</b> a bike-legal limited-access highway or allowed mountain-bike trail. It deserves extra judgment.</li>
-        <li><b>Red dashed — Fails rules / unavailable:</b> a known rule conflict, freeway, or permanent bicycle restriction. Failing planned segments pulse; permanent restrictions are never routed.</li>
         <li><b>Dashed light blue — Designated bike route:</b> a signed or mapped bicycle corridor. This is an additional overlay; it does not indicate a safety level.</li>
       </ul></section>
     </div>

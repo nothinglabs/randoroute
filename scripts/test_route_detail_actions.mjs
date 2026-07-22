@@ -34,9 +34,9 @@ assert.match(appCss, /\.full-help-head \.streetview-close\s*\{[^}]*min-height:\s
   'the embedded Street View close control should have a clear hit target');
 assert.match(appCss, /\.sv-coverage-note\s*\{[^}]*position:\s*absolute/,
   'the coverage fallback should remain visible over an unavailable panorama');
-assert.match(app, /class="rc-ride-items"[\s\S]*?class="rc-ride-item"[\s\S]*?trails\/lanes[\s\S]*?rc-ride-fail/,
+assert.match(app, /class="rc-ride-items"[\s\S]*?class="rc-ride-item"[\s\S]*?trails \/ bike lanes[\s\S]*?pass rules[\s\S]*?rc-ride-fail[\s\S]*?fail rules/,
   'the route card should group its ride classes into equal-width items');
-assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summary-mix-item"[\s\S]*?trails\/lanes[\s\S]*?mix-fail/,
+assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summary-mix-item"[\s\S]*?trails \/ bike lanes[\s\S]*?pass rules[\s\S]*?mix-fail[\s\S]*?fail rules/,
   'Route Details should group its ride classes into equal-width items');
 assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.rc-ride-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
   'the route-card ride classes should balance into two equal columns on narrow phones');

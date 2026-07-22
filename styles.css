@@ -771,12 +771,6 @@ body.navigation-active #routeBar { display: none; }
 .clear-route-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .shared-route-tip { border-top: 4px solid #0a66c2; }
 .shared-route-tip p { margin: 12px 0 2px; font: 13px/1.45 system-ui; color: #444; }
-.settings-help-dialog { max-height: min(76dvh, 620px); overflow-y: auto; }
-.settings-help-dialog section { margin-top: 12px; }
-.settings-help-dialog h3 { margin: 0 0 4px; color: #2c3e4c; font: 750 13px system-ui; }
-.settings-help-dialog p { margin: 0; color: #52616d; font: 12px/1.42 system-ui; }
-.settings-help-dialog .help-list { display: grid; gap: 7px; margin: 2px 0 8px; padding-left: 17px; color: #52616d; font: 12px/1.42 system-ui; }
-.settings-help-dialog .help-list b { color: #2c3e4c; }
 .routes-help-dialog section { margin-top: 12px; }
 .routes-help-dialog h3 { margin: 0 0 4px; color: #2c3e4c; font: 750 13px system-ui; }
 .routes-help-dialog p { margin: 0; color: #52616d; font: 12px/1.42 system-ui; }
