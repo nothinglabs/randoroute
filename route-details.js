@@ -493,17 +493,18 @@ function drawSpeedProfile(canvas) {
   canvas.width = w * dpr; canvas.height = h * dpr;
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
-  const maxSpeed = Math.max(20, Math.ceil(Math.max(...segments.map((seg) => seg.mph)) / 10) * 10);
+  const minSpeed = 10;
+  const maxSpeed = Math.max(minSpeed + 10, Math.ceil(Math.max(...segments.map((seg) => seg.mph)) / 10) * 10);
   const padT = 10, padB = 18, padL = 6, padR = 6;
   const X = (distance) => padL + Math.min(1, Math.max(0, distance / distM)) * (w - padL - padR);
-  const Y = (mph) => padT + (1 - Math.min(maxSpeed, mph) / maxSpeed) * (h - padT - padB);
+  const Y = (mph) => padT + (1 - Math.min(maxSpeed - minSpeed, Math.max(0, mph - minSpeed)) / (maxSpeed - minSpeed)) * (h - padT - padB);
   // Light horizontal guides make the speed scale readable without competing
   // with the lime and red route overlays.
   ctx.strokeStyle = 'rgba(120,140,155,.18)';
   ctx.fillStyle = '#71818c';
   ctx.font = '700 9px system-ui';
   ctx.textBaseline = 'middle';
-  for (let mph = 10; mph < maxSpeed; mph += 10) {
+  for (let mph = minSpeed; mph < maxSpeed; mph += 10) {
     const y = Y(mph);
     ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
     if (mph === 10 || mph % 20 === 0) ctx.fillText(`${mph}`, padL + 3, y - 5);
@@ -901,8 +902,8 @@ if (!hasRoute) {
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
-  summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Grade</b><strong>${avgUphillPct.toFixed(1)}% avg · ${maxGradePct.toFixed(1)}% max</strong></span>${totals.ferryM > 0 ? `<span class="elevation-metric"><b>Ferry</b><strong>⛴ ${fmtMi(totals.ferryM)} mi</strong></span>` : ''}`;
-  summaryRoadSpeed.innerHTML = `<b>${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`}</b><span>Avg. road speed<br>limit · all roads</span>`;
+  summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span>${totals.ferryM > 0 ? `<span class="elevation-metric"><b>Ferry</b><strong>⛴ ${fmtMi(totals.ferryM)} mi</strong></span>` : ''}`;
+  summaryRoadSpeed.innerHTML = `<b>${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`}</b><span>Avg. road speed<br>limit</span>`;
   summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
   const speedProfile = document.getElementById('speedProfile');
   const speedSegments = speedProfileSegments(segs);
@@ -969,6 +970,14 @@ if (!hasRoute) {
     locationEnd: s.hazardLocationEnd ?? s.locationEnd,
     lenM: s.hazardLenM || s.lenM,
   }));
+  const steepGrades = sections(segs, (s) => Math.abs(credibleSegmentGradePct(s)) > 12, (s) => {
+    const grade = credibleSegmentGradePct(s);
+    return {
+      name: roadName(s),
+      meta: [`${Math.abs(grade).toFixed(1)}% ${grade > 0 ? 'uphill' : 'downhill'}`,
+        s.mph ? `${s.mph} mph` : null].filter(Boolean).join(' · '),
+    };
+  });
   const routeSteps = buildRouteSteps(segs);
   const ferries = sections(segs, (s) => !!(s.flags & FLAG_FERRY), () => ({
     name: 'Ferry crossing', meta: 'Ferry segment',
@@ -979,7 +988,7 @@ if (!hasRoute) {
     alert.hidden = true;
   } else {
     alert.hidden = false;
-    if (mountainBike.length || limitedAccess.length || curveHazards.length) {
+    if (mountainBike.length || limitedAccess.length || curveHazards.length || steepGrades.length) {
       const limitedM = limitedAccess.reduce((sum, item) => sum + item.lenM, 0);
       const mountainBikeM = mountainBike.reduce((sum, item) => sum + item.lenM, 0);
       alert.classList.add('caution');
@@ -987,6 +996,7 @@ if (!hasRoute) {
       if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} on mountain-bike trail`);
       if (limitedM) notes.push(`${fmtDist(limitedM)} on a limited-access highway`);
       if (curveHazards.length) notes.push(`${fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0))} with a possible uphill-curve visibility caution`);
+      if (steepGrades.length) notes.push(`${fmtDist(steepGrades.reduce((sum, item) => sum + item.lenM, 0))} over 12% grade`);
       alert.textContent = `${notes.join(' · ')}. These are called out for judgment but are not road-rule failures.`;
     } else {
       alert.classList.add('good');
@@ -1010,12 +1020,13 @@ if (!hasRoute) {
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail');
   if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution');
   if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution');
+  if (steepGrades.length) renderSection(report, 'Steep grade segments (over 12%)', steepGrades, '', 'caution');
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway');
   if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution');
   if (highways.length) renderSection(report, 'Highways', highways, '');
   if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length && !mountainBike.length
-      && !curveHazards.length) {
-    report.innerHTML = '<div class="no-route">No freeway, limited-access highway, highway, or rule-failing sections were found on this route.</div>';
+      && !curveHazards.length && !steepGrades.length) {
+    report.innerHTML = '<div class="no-route">No freeway, limited-access highway, highway, steep-grade, or rule-failing sections were found on this route.</div>';
   }
   if (Array.isArray(details.legs) && details.legs.length > 1) {
     renderSection(steps, 'Legs', details.legs.map((leg, i) => ({

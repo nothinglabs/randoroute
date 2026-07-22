@@ -169,8 +169,10 @@ assert.match(css, /\.detail-panel\[hidden\]\s*\{\s*display:\s*none !important;/,
   'only the selected Route Details panel should be visible');
 assert.match(detailsHtml, /id="tab-stats"[\s\S]*?data-detail-tab="stats">Stats<\/button>[\s\S]*?id="tab-concerns"[\s\S]*?id="tab-steps"/,
   'Route Details should present Stats as the first of its three tabs');
-assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?Bike paths shown as 15 mph/,
+assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?id="speedProfilePreview"/,
   'Route Details should retain its speed-profile graph');
+assert.doesNotMatch(detailsHtml, /Bike paths shown as 15 mph|Bike paths are shown as 15 mph/,
+  'the speed-limit cards should not repeat the bike-path display note');
 assert.doesNotMatch(detailsHtml, /speed-profile-legend|speed-profile-swatch/,
   'the speed-profile color legend should be removed');
 assert.match(detailsHtml, /id="speedProfile"[\s\S]*?class="speed-profile-info"[\s\S]*?id="summaryRoadSpeed"/,
@@ -183,8 +185,12 @@ assert.match(details, /speedPreview\.addEventListener\('click',[\s\S]*?speedDial
   'tapping the speed preview should render its enlarged chart');
 assert.match(css, /#elevationDialogCanvas, #speedDialogCanvas\s*\{[^}]*aspect-ratio:\s*1\.45 \/ 1/,
   'both enlarged charts should use a similar compact aspect ratio');
-assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Grade<\/b>/,
-  'elevation metrics should use stable label-and-value rows rather than uneven inline wrapping');
+assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>/,
+  'elevation metrics should use separate, stable average- and maximum-grade rows');
+assert.match(details, /const steepGrades = sections\(segs, \(s\) => Math\.abs\(credibleSegmentGradePct\(s\)\) > 12[\s\S]*?renderSection\(report, 'Steep grade segments \(over 12%\)', steepGrades, '', 'caution'\)/,
+  'Concerns should list route segments whose credible grade exceeds 12%');
+assert.match(details, /const minSpeed = 10;[\s\S]*?Math\.min\(maxSpeed - minSpeed, Math\.max\(0, mph - minSpeed\)\)/,
+  'the speed chart should use a 10 mph baseline to keep its trace vertically centered');
 const speedDrawStart = details.indexOf('function drawSpeedProfile(');
 const speedDrawEnd = details.indexOf('function drawElevation(', speedDrawStart);
 assert.ok(speedDrawStart >= 0 && speedDrawEnd > speedDrawStart, 'speed-profile chart renderer was not found');

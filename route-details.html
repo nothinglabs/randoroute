@@ -34,7 +34,7 @@
         <div id="elevationPreviewEmpty" class="elevation-preview-empty" hidden>Elevation profile unavailable</div>
       </div>
       <section id="speedProfile" class="speed-profile" aria-labelledby="speedProfileTitle" hidden>
-        <div class="speed-profile-info"><h2 id="speedProfileTitle">Speed limits</h2><div id="summaryRoadSpeed" class="speed-profile-average"></div><p>Bike paths shown as 15 mph</p></div>
+        <div class="speed-profile-info"><h2 id="speedProfileTitle">Speed limits</h2><div id="summaryRoadSpeed" class="speed-profile-average"></div></div>
         <button id="speedProfilePreview" class="speed-profile-preview" type="button" aria-label="Expand speed-limit chart"><canvas id="speedProfileCanvas" role="img" aria-label="Speed limits along the route"></canvas></button>
       </section>
       <p id="noRouteSummary" class="summary" hidden></p>
@@ -69,7 +69,7 @@
   <dialog id="speedDialog" class="elevation-dialog speed-dialog" aria-labelledby="speedDialogTitle">
     <div class="elevation-dialog-head"><h2 id="speedDialogTitle">Speed limits</h2><button id="speedDialogClose" type="button" aria-label="Close speed-limit chart">✕</button></div>
     <div class="elevation-dialog-body">
-      <p id="speedDialogSummary">Bike paths are shown as 15 mph.</p>
+      <p id="speedDialogSummary">Speed-limit profile for the selected route.</p>
       <canvas id="speedDialogCanvas"></canvas>
     </div>
   </dialog>
