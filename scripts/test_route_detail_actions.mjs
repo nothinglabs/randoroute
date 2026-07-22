@@ -157,6 +157,8 @@ assert.match(details, /const REQUESTED_DETAIL_TAB[\s\S]*?function restoreInitial
   'the reloaded report should restore the requested Details tab before showing the new route');
 assert.match(details, /function routePreviewStyle\(seg\)[\s\S]*?Number\(seg\.facility\) === 5 \? 'trail' : 'bike'[\s\S]*?isDesignated\(seg\) \? 'designated' : 'pass'[\s\S]*?function initializeRoutePreviewMap\(\)[\s\S]*?new maplibregl\.Map\([\s\S]*?route-preview-colored[\s\S]*?routePreviewMap\.fitBounds/,
   'the Stats preview should be a real map with the same route safety styles');
+assert.match(details, /function setRoutePreviewFailPulse\(on\)[\s\S]*?route-preview-fail[\s\S]*?line-opacity[\s\S]*?line-width[\s\S]*?setRoutePreviewFailPulse\(preview\.colored\.features\.some\(\(feature\) => feature\.properties\.style === 'fail'\)\)/,
+  'failing route portions should pulse in the Details map preview');
 assert.match(detailsHtml, /vendor\/maplibre-gl\.css[\s\S]*?id="routePreviewMap"[\s\S]*?route-preview-attribution[\s\S]*?© OpenStreetMap contributors[\s\S]*?© CARTO[\s\S]*?vendor\/maplibre-gl\.js/,
   'Route Details should load MapLibre with compact, always-visible map attribution');
 assert.match(details, /attributionControl:\s*false/,
@@ -173,8 +175,16 @@ assert.doesNotMatch(detailsHtml, /speed-profile-legend|speed-profile-swatch/,
   'the speed-profile color legend should be removed');
 assert.match(detailsHtml, /id="speedProfile"[\s\S]*?class="speed-profile-info"[\s\S]*?id="summaryRoadSpeed"/,
   'average road speed should appear with the speed-limit chart');
-assert.match(css, /\.speed-profile\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(145px, 46%\)/,
-  'the speed chart should use the same text-and-chart card layout as elevation');
+assert.match(css, /\.speed-profile\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(132px, 43%\)[\s\S]*?\.speed-profile-preview\s*\{[^}]*cursor:\s*pointer/,
+  'the tighter speed card should keep text left and a tappable chart preview on the right');
+assert.match(detailsHtml, /id="speedProfilePreview"[\s\S]*?id="speedProfileCanvas"[\s\S]*?id="speedDialog"[\s\S]*?id="speedDialogCanvas"/,
+  'the speed chart should offer an enlarged dialog view');
+assert.match(details, /speedPreview\.addEventListener\('click',[\s\S]*?speedDialog\.showModal\(\)[\s\S]*?drawSpeedProfile\(document\.getElementById\('speedDialogCanvas'\)\)/,
+  'tapping the speed preview should render its enlarged chart');
+assert.match(css, /#elevationDialogCanvas, #speedDialogCanvas\s*\{[^}]*aspect-ratio:\s*1\.45 \/ 1/,
+  'both enlarged charts should use a similar compact aspect ratio');
+assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Grade<\/b>/,
+  'elevation metrics should use stable label-and-value rows rather than uneven inline wrapping');
 const speedDrawStart = details.indexOf('function drawSpeedProfile(');
 const speedDrawEnd = details.indexOf('function drawElevation(', speedDrawStart);
 assert.ok(speedDrawStart >= 0 && speedDrawEnd > speedDrawStart, 'speed-profile chart renderer was not found');

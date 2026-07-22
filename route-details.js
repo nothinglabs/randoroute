@@ -12,6 +12,7 @@ const PASS_COLOR = '#168ad1';
 const CAUTION_COLOR = '#c46b00';
 const FAIL_COLOR = '#b2182b';
 let routePreviewMap = null;
+let routePreviewFailPulseTimer = null;
 const REQUESTED_DETAIL_TAB = new URLSearchParams(window.location.search).get('tab');
 const MIN_REPORTED_GRADE_M = 20;
 const MAX_CREDIBLE_GRADE_PCT = 40;
@@ -642,6 +643,9 @@ window.addEventListener('resize', () => {
   if (document.getElementById('elevationDialog')?.open) {
     drawElevation(document.getElementById('elevationDialogCanvas'));
   }
+  if (document.getElementById('speedDialog')?.open) {
+    drawSpeedProfile(document.getElementById('speedDialogCanvas'));
+  }
 });
 
 function selectedDetailTab() {
@@ -780,6 +784,24 @@ function routePreviewRenderData() {
   return { points, colored: { type: 'FeatureCollection', features } };
 }
 
+function setRoutePreviewFailPulse(on) {
+  if (on && !routePreviewFailPulseTimer) {
+    let t = 0;
+    routePreviewFailPulseTimer = setInterval(() => {
+      if (!routePreviewMap?.getLayer('route-preview-fail')) return;
+      t += 0.11;
+      const pulse = Math.abs(Math.sin(t));
+      routePreviewMap.setPaintProperty('route-preview-fail', 'line-opacity', 0.55 + 0.45 * pulse);
+      routePreviewMap.setPaintProperty('route-preview-fail', 'line-width', 4.4 + 2.6 * pulse);
+    }, 80);
+  } else if (!on && routePreviewFailPulseTimer) {
+    clearInterval(routePreviewFailPulseTimer);
+    routePreviewFailPulseTimer = null;
+  }
+}
+
+window.addEventListener('pagehide', () => setRoutePreviewFailPulse(false));
+
 function initializeRoutePreviewMap() {
   const host = document.getElementById('routePreviewMap');
   const preview = routePreviewRenderData();
@@ -826,6 +848,7 @@ function initializeRoutePreviewMap() {
     addRouteLayer('caution', { 'line-color': CAUTION_COLOR, 'line-width': 4.8 });
     addRouteLayer('fail', { 'line-color': FAIL_COLOR, 'line-width': 4.8, 'line-dasharray': [1.5, 1] });
     addRouteLayer('unknown', { 'line-color': '#98a2ad', 'line-width': 4.8 });
+    setRoutePreviewFailPulse(preview.colored.features.some((feature) => feature.properties.style === 'fail'));
     routePreviewMap.addLayer({ id: 'route-preview-markers', type: 'circle', source: 'route-preview-markers',
       paint: { 'circle-radius': 5, 'circle-color': ['match', ['get', 'marker'], 'start', '#00795c', '#e87817'],
         'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
@@ -878,15 +901,22 @@ if (!hasRoute) {
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
-  summarySub.innerHTML = `<span><b>Climb:</b> ↗ ${fmtFt(totals.ascentM)} ft</span><span><b>Descent:</b> ↘ ${fmtFt(totals.descentM)} ft</span><span><b>Grades:</b> ${avgUphillPct.toFixed(1)}% avg · ${maxGradePct.toFixed(1)}% max${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}</span>`;
-  summaryRoadSpeed.innerHTML = `<b>${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`}</b><span>avg. road speed limit<br>all roads</span>`;
+  summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Grade</b><strong>${avgUphillPct.toFixed(1)}% avg · ${maxGradePct.toFixed(1)}% max</strong></span>${totals.ferryM > 0 ? `<span class="elevation-metric"><b>Ferry</b><strong>⛴ ${fmtMi(totals.ferryM)} mi</strong></span>` : ''}`;
+  summaryRoadSpeed.innerHTML = `<b>${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`}</b><span>Avg. road speed<br>limit · all roads</span>`;
   summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
   const speedProfile = document.getElementById('speedProfile');
   const speedSegments = speedProfileSegments(segs);
   speedProfile.hidden = !speedSegments.length;
   if (speedSegments.length) {
+    const speedPreview = document.getElementById('speedProfilePreview');
+    const speedDialog = document.getElementById('speedDialog');
     document.getElementById('speedProfileCanvas').setAttribute('aria-label',
       `Speed limits along ${fmtMi(totals.distM)} miles. Bike facilities and trails are lime, passing roads blue, cautions amber, and failing roads red.`);
+    speedPreview.addEventListener('click', () => {
+      speedDialog.showModal();
+      requestAnimationFrame(() => drawSpeedProfile(document.getElementById('speedDialogCanvas')));
+    });
+    document.getElementById('speedDialogClose').addEventListener('click', () => speedDialog.close());
     requestAnimationFrame(() => drawSpeedProfile(document.getElementById('speedProfileCanvas')));
   }
   const routePreview = document.getElementById('routePreview');
