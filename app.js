@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.272';
+const APP_VERSION = '2026-07-22.278';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3967,8 +3967,20 @@ function routeEndpointDisplayName(kind) {
   return normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map';
 }
 
+function clearWaypointsForEndpointChange(kind, lngLat) {
+  const previous = routing[kind];
+  const changed = Array.isArray(previous)
+    && (previous[0] !== lngLat.lng || previous[1] !== lngLat.lat);
+  if (!changed || !routing.vias.length) return false;
+  for (const via of routing.vias) via.marker.remove();
+  routing.vias = [];
+  if (routing.arm === 'via') routing.arm = null;
+  return true;
+}
+
 function setRoutePoint(kind, lngLat, name = 'Point on map') {
   exitSharedRoute();
+  clearWaypointsForEndpointChange(kind, lngLat);
   routing[kind] = [lngLat.lng, lngLat.lat];
   routing[`${kind}Name`] = normalizeEndpointName(name) || 'Point on map';
   const mk = kind + 'Marker';
@@ -3981,10 +3993,7 @@ function setRoutePoint(kind, lngLat, name = 'Point on map') {
     if (touchEndpoint) enableLongPressEndpointMove(kind, routing[mk]);
     else routing[mk].on('dragend', () => {
         const ll = routing[mk].getLngLat();
-        routing[kind] = [ll.lng, ll.lat];
-        routing[`${kind}Name`] = 'Point on map';
-        updateArmButtons();
-        computeRoute();
+        setRoutePoint(kind, ll);
       });
   }
   computeRoute();
@@ -4022,11 +4031,8 @@ function enableLongPressEndpointMove(kind, marker) {
     setMapGesturesEnabled(true, finished.mapGestures);
     if (finished.active && commit) {
       const ll = marker.getLngLat();
-      routing[kind] = [ll.lng, ll.lat];
-      routing[`${kind}Name`] = 'Point on map';
-      updateArmButtons();
+      setRoutePoint(kind, ll);
       setRouteStatus(`${kind === 'start' ? 'Start' : 'Destination'} moved`);
-      computeRoute();
       saveStateSoon();
     } else if (finished.active) {
       marker.setLngLat(finished.original);

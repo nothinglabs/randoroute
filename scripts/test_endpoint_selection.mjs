@@ -78,9 +78,36 @@ assert.doesNotMatch(app, /Now choose (?:start|destination)|now set the (?:start|
   'endpoint placement should not prompt riders to choose the other endpoint');
 assert.match(app, /setRoutePoint\(kind, lngLat\);[\s\S]*?setRouteStatus\(kind === 'start' \? 'Start set' : 'Destination set'\);/,
   'placing a lone endpoint on the map should simply confirm that placement');
+assert.match(app, /function clearWaypointsForEndpointChange\(kind, lngLat\)[\s\S]*?previous\[0\] !== lngLat\.lng[\s\S]*?for \(const via of routing\.vias\) via\.marker\.remove\(\);[\s\S]*?routing\.vias = \[\];[\s\S]*?function setRoutePoint\(kind, lngLat, name = 'Point on map'\) \{[\s\S]*?clearWaypointsForEndpointChange\(kind, lngLat\);/,
+  'changing either endpoint should remove every waypoint before recalculating');
+assert.match(app, /routing\[mk\]\.on\('dragend', \(\) => \{[\s\S]*?setRoutePoint\(kind, ll\);[\s\S]*?finished\.active && commit\) \{[\s\S]*?setRoutePoint\(kind, ll\);/,
+  'desktop and touch marker moves should use the same waypoint-clearing endpoint update');
 assert.match(app, /else \{\s*setRouteStatus\(placeTarget === 'start' \? 'Start set' : 'Destination set'\);\s*\}/,
   'selecting a place-search result should simply confirm the selected endpoint');
 assert.match(app, /dialog\.showModal\(\);[\s\S]*?dialog\.focus\(\{ preventScroll: true \}\);/,
   'opening Save & Share should focus its dialog rather than preselecting the help button');
+
+const waypointStart = app.indexOf('function clearWaypointsForEndpointChange');
+const waypointEnd = app.indexOf('function setRoutePoint', waypointStart);
+assert.ok(waypointStart >= 0 && waypointEnd > waypointStart,
+  'endpoint waypoint-clearing helper source was not found');
+const removedMarkers = [];
+const waypointContext = vm.createContext({
+  routing: {
+    start: [-122.3, 47.6], end: [-122.2, 47.7], arm: 'via',
+    vias: [
+      { marker: { remove: () => removedMarkers.push('one') } },
+      { marker: { remove: () => removedMarkers.push('two') } },
+    ],
+  },
+});
+vm.runInContext(`${app.slice(waypointStart, waypointEnd)}\nthis.clearWaypointsForEndpointChange = clearWaypointsForEndpointChange;`, waypointContext);
+assert.equal(waypointContext.clearWaypointsForEndpointChange('start', { lng: -122.31, lat: 47.6 }), true,
+  'moving an existing endpoint should report that it cleared waypoints');
+assert.deepEqual(removedMarkers, ['one', 'two'], 'endpoint changes should remove every waypoint marker');
+assert.equal(waypointContext.routing.vias.length, 0, 'endpoint changes should clear every waypoint coordinate');
+assert.equal(waypointContext.routing.arm, null, 'endpoint changes should disarm waypoint placement');
+assert.equal(waypointContext.clearWaypointsForEndpointChange('end', { lng: -122.2, lat: 47.7 }), false,
+  'an unchanged endpoint should not clear waypoints');
 
 console.log('Endpoint selection tests passed.');

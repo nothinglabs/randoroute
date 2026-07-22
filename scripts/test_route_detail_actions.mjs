@@ -58,9 +58,9 @@ assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summa
   'Route Details should group its ride classes into equal-width items');
 assert.doesNotMatch(details, /class="route-summary-label">Ride<\//,
   'Route Details should not show an unexplained Ride label above its class metrics');
-assert.match(details, /function routeSummaryStats\(segs, minShoulderFt = 4\)[\s\S]*?maxRoadSpeedMph[\s\S]*?roadAtOrAbove45M[\s\S]*?noBikeAccommodationOrShoulderM[\s\S]*?summaryRoadSpeed\.innerHTML = `<span class="speed-limit-metric">[\s\S]*?At least 45 mph[\s\S]*?summaryShoulderNote\.innerHTML/,
-  'Route Details should report average and maximum road speeds, high-speed mileage, and the shoulder/accommodation mileage');
-assert.match(css, /\.speed-profile-average\s*\{[^}]*display:\s*grid[^}]*gap:\s*4px[\s\S]*?\.speed-limit-metric\s*\{[^}]*grid-template-columns:\s*74px minmax\(0, 1fr\)/,
+assert.match(details, /function routeSummaryStats\(segs, minShoulderFt = 4\)[\s\S]*?maxRoadSpeedMph[\s\S]*?roadAtOrAbove45M[\s\S]*?highSpeedNoBikeAccommodationOrShoulderM[\s\S]*?mph >= 30[\s\S]*?summaryRoadSpeed\.innerHTML = `<span class="speed-limit-metric">[\s\S]*?At least 45 mph[\s\S]*?speedShoulderNote\.innerHTML[\s\S]*?≥30 mph roads/,
+  'Route Details should report average and maximum road speeds, high-speed mileage, and a 30+ mph shoulder/accommodation mileage');
+assert.match(css, /\.speed-profile-average\s*\{[^}]*display:\s*grid[^}]*gap:\s*4px[\s\S]*?\.speed-limit-metric\s*\{[^}]*grid-template-columns:\s*84px minmax\(0, 1fr\)[\s\S]*?\.speed-limit-metric span\s*\{[^}]*white-space:\s*nowrap/,
   'speed-limit metrics should use a compact vertical label/value list like Elevation');
 assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.rc-ride-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
   'the route-card ride classes should balance into two equal columns on narrow phones');
@@ -135,8 +135,8 @@ assert.equal(vm.runInContext(`routeSummaryStats([
   { lenM: 804.67, mph: 35, sh: 4 },
   { lenM: 804.67, mph: 50, facility: 2, sh: 0 },
   { lenM: 804.67, mph: 20, flags: 8 }
-]).noBikeAccommodationOrShoulderM`, statsContext), 1609.34,
-  'the shoulder metric should exclude bike accommodation and retain unknown or narrow shoulders');
+]).highSpeedNoBikeAccommodationOrShoulderM`, statsContext), 1609.34,
+  'the shoulder metric should exclude bike accommodation and retain unknown or narrow shoulders on 30+ mph roads');
 
 const speedStart = details.indexOf('function speedProfileSegments(');
 const speedEnd = details.indexOf('function drawElevation(', speedStart);
@@ -205,7 +205,7 @@ assert.match(css, /\.detail-panel\[hidden\]\s*\{\s*display:\s*none !important;/,
   'only the selected Route Details panel should be visible');
 assert.match(detailsHtml, /id="tab-stats"[\s\S]*?data-detail-tab="stats">Stats<\/button>[\s\S]*?id="tab-concerns"[\s\S]*?id="tab-steps"/,
   'Route Details should present Stats as the first of its three tabs');
-assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?id="speedProfilePreview"/,
+assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed Limits \(Roads Only\)[\s\S]*?id="speedProfilePreview"/,
   'Route Details should retain its speed-profile graph');
 assert.doesNotMatch(detailsHtml, /Bike paths shown as 15 mph|Bike paths are shown as 15 mph/,
   'the speed-limit cards should not repeat the bike-path display note');
@@ -217,14 +217,16 @@ assert.match(css, /\.speed-profile\s*\{[^}]*display:\s*grid[^}]*grid-template-co
   'the speed card should keep text left while giving its tappable chart a little more room');
 assert.match(detailsHtml, /id="speedProfilePreview"[\s\S]*?id="speedProfileCanvas"[\s\S]*?id="speedDialog"[\s\S]*?id="speedDialogCanvas"/,
   'the speed chart should offer an enlarged dialog view');
+assert.match(detailsHtml, /id="elevationPreview"[\s\S]*?class="chart-expand-note"[\s\S]*?Tap to expand[\s\S]*?id="speedProfilePreview"[\s\S]*?class="chart-expand-note"/,
+  'both compact charts should explain that they can be expanded');
 assert.match(details, /speedPreview\.addEventListener\('click',[\s\S]*?speedDialog\.showModal\(\)[\s\S]*?drawSpeedProfile\(document\.getElementById\('speedDialogCanvas'\)\)/,
   'tapping the speed preview should render its enlarged chart');
 assert.match(css, /#elevationDialogCanvas, #speedDialogCanvas\s*\{[^}]*aspect-ratio:\s*1\.45 \/ 1/,
   'both enlarged charts should use a similar compact aspect ratio');
 assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>[\s\S]*?<b>10%\+ uphill<\/b>[\s\S]*?fmtMi\(steepUphillM\)/,
   'elevation metrics should include the mileage of sustained uphill grade over 10%');
-assert.match(details, /const STEEP_UPHILL_CONCERN_PCT = 10;[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = STEEP_UPHILL_CONCERN_PCT\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep uphill grade segments \(over 10%\)', steepGrades, '', 'caution', false, 'concern-steep-grades'\)/,
-  'Concerns should list only sustained uphill segments whose grade exceeds 10%');
+assert.match(details, /const STEEP_UPHILL_CONCERN_PCT = 10;[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = STEEP_UPHILL_CONCERN_PCT\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep uphill grade segments \(over 10%\)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality\.'\)/,
+  'Concerns should list only sustained uphill segments whose grade exceeds 10% and disclose data quality limits');
 assert.match(details, /const minSpeed = 10;[\s\S]*?Math\.min\(maxSpeed - minSpeed, Math\.max\(0, mph - minSpeed\)\)/,
   'the speed chart should use a 10 mph baseline to keep its trace vertically centered');
 const speedDrawStart = details.indexOf('function drawSpeedProfile(');

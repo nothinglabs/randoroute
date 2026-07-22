@@ -124,7 +124,7 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
   const levels = [0, 0, 0, 0, 0];
   let bikeNetworkM = 0, roadM = 0, roadSpeedM = 0;
   let maxRoadSpeedMph = 0, roadAtOrAbove45M = 0, roadAtOrAbove35M = 0;
-  let noBikeAccommodationOrShoulderM = 0;
+  let highSpeedNoBikeAccommodationOrShoulderM = 0;
   minShoulderFt = Number.isFinite(Number(minShoulderFt))
     ? Math.max(0, Number(minShoulderFt)) : 4;
   for (const seg of segs || []) {
@@ -136,12 +136,6 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
     if ((flags & FLAG_INFRA) || (seg.facility || 0) >= 2) bikeNetworkM += len;
     // Every road speed counts here, including roads with bike lanes. Dedicated
     // paths have no motor-vehicle speed in the graph and are not road speeds.
-    const hasBikeAccommodation = (flags & FLAG_INFRA) || (seg.facility || 0) >= 2;
-    const shoulderFt = Number(seg.sh);
-    if (!hasBikeAccommodation
-        && !(Number.isFinite(shoulderFt) && shoulderFt >= minShoulderFt)) {
-      noBikeAccommodationOrShoulderM += len;
-    }
     const mph = Number(seg.mph);
     if (!(flags & FLAG_INFRA) && Number.isFinite(mph) && mph > 0) {
       roadM += len;
@@ -149,13 +143,19 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
       maxRoadSpeedMph = Math.max(maxRoadSpeedMph, mph);
       if (mph >= 45) roadAtOrAbove45M += len;
       if (mph >= 35) roadAtOrAbove35M += len;
+      const hasBikeAccommodation = (seg.facility || 0) >= 2;
+      const shoulderFt = Number(seg.sh);
+      if (mph >= 30 && !hasBikeAccommodation
+          && !(Number.isFinite(shoulderFt) && shoulderFt >= minShoulderFt)) {
+        highSpeedNoBikeAccommodationOrShoulderM += len;
+      }
     }
   }
   return {
     levels, bikeNetworkM,
     avgRoadSpeedMph: roadM > 0 ? Math.round(roadSpeedM / roadM) : null,
     maxRoadSpeedMph: roadM > 0 ? Math.round(maxRoadSpeedMph) : null,
-    roadAtOrAbove45M, roadAtOrAbove35M, noBikeAccommodationOrShoulderM,
+    roadAtOrAbove45M, roadAtOrAbove35M, highSpeedNoBikeAccommodationOrShoulderM,
     minShoulderFt,
   };
 }
@@ -321,7 +321,7 @@ function sections(segs, include, describe) {
   return out;
 }
 
-function renderSection(host, title, items, emptyText, cls = '', numbered = false, sectionId = '') {
+function renderSection(host, title, items, emptyText, cls = '', numbered = false, sectionId = '', note = '') {
   const total = items.reduce((sum, item) => sum + item.lenM, 0);
   const section = document.createElement('section');
   section.className = `detail-section ${cls}`;
@@ -406,6 +406,12 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
       list.appendChild(li);
     }
     section.appendChild(list);
+  }
+  if (note) {
+    const sectionNote = document.createElement('p');
+    sectionNote.className = 'detail-note';
+    sectionNote.textContent = note;
+    section.appendChild(sectionNote);
   }
   host.appendChild(section);
 }
@@ -807,7 +813,7 @@ const summaryCard = document.getElementById('routeSummaryCard');
 const summarySub = document.getElementById('summarySub');
 const summaryRoadSpeed = document.getElementById('summaryRoadSpeed');
 const summaryMix = document.getElementById('summaryMix');
-const summaryShoulderNote = document.getElementById('summaryShoulderNote');
+const speedShoulderNote = document.getElementById('speedShoulderNote');
 const noRouteSummary = document.getElementById('noRouteSummary');
 const alert = document.getElementById('routeAlert');
 
@@ -1024,10 +1030,10 @@ if (!hasRoute) {
   summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span><span class="elevation-metric"><b>10%+ uphill</b><strong>${fmtMi(steepUphillM)} mi</strong></span>${totals.ferryM > 0 ? `<span class="elevation-metric"><b>Ferry</b><strong>⛴ ${fmtMi(totals.ferryM)} mi</strong></span>` : ''}`;
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
-  summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>Avg. limit</span><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>Max limit</span><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>At least 45 mph</span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span><span class="speed-limit-metric"><span>At least 35 mph</span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span>`;
+  summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>Avg. limit</span><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>Max limit</span><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>At least 35 mph</span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span><span class="speed-limit-metric"><span>At least 45 mph</span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span>`;
   summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
-  summaryShoulderNote.hidden = false;
-  summaryShoulderNote.innerHTML = `<b>${fmtMi(routeStats.noBikeAccommodationOrShoulderM)} mi</b> without bike accommodation or a confirmed ≥${routeStats.minShoulderFt} ft shoulder`;
+  speedShoulderNote.hidden = false;
+  speedShoulderNote.innerHTML = `<b>${speedMiles(routeStats.highSpeedNoBikeAccommodationOrShoulderM)}</b> on ≥30 mph roads without bike accommodation or a confirmed ≥${routeStats.minShoulderFt} ft shoulder`;
   const speedProfile = document.getElementById('speedProfile');
   const speedSegments = speedProfileSegments(segs);
   speedProfile.hidden = !speedSegments.length;
@@ -1144,7 +1150,7 @@ if (!hasRoute) {
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails');
   if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike');
   if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution', false, 'concern-uphill-curves');
-  if (steepGrades.length) renderSection(report, 'Steep uphill grade segments (over 10%)', steepGrades, '', 'caution', false, 'concern-steep-grades');
+  if (steepGrades.length) renderSection(report, 'Steep uphill grade segments (over 10%)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality.');
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway', false, 'concern-freeways');
   if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution', false, 'concern-limited-access');
   if (highways.length) renderSection(report, 'Highways', highways, '', '', false, 'concern-highways');

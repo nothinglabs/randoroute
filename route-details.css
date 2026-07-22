@@ -36,8 +36,6 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-mix .mix-caution, .route-summary-mix .mix-caution b { color: #9a4f00; }
 .route-summary-mix .mix-fail, .route-summary-mix .mix-fail b { color: #b42318; }
 .route-summary-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
-.route-summary-shoulder-note { flex: 1 0 100%; margin: 1px 0 0; color: #607482; font: 650 10px/1.25 system-ui; }
-.route-summary-shoulder-note b { color: #344d5b; font-weight: 800; }
 .route-preview { margin: 0; padding: 10px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
 .route-preview[hidden] { display: none; }
 .route-preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
@@ -55,20 +53,23 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .speed-profile-info { min-width: 0; }
 .speed-profile-info h2 { margin: 0 0 4px; color: #2c3e4c; font: 750 12px/1.2 system-ui; }
 .speed-profile-average { display: grid; gap: 4px; color: #405866; }
-.speed-limit-metric { display: grid; grid-template-columns: 74px minmax(0, 1fr); align-items: center; gap: 5px; min-width: 0; }
+.speed-limit-metric { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 5px; min-width: 0; }
 .speed-limit-metric b { overflow: hidden; color: #294655; font: 800 13px/1.1 system-ui; text-overflow: ellipsis; white-space: nowrap; }
-.speed-limit-metric span { color: #607482; font: 800 8.5px/1.15 system-ui; letter-spacing: .025em; text-transform: uppercase; }
-.speed-profile-preview { display: block; width: 100%; min-height: 86px; height: 100%; margin: 0; padding: 0; overflow: hidden; border: 1px solid #e0e9ee; border-radius: 8px; background: #fbfcfd; cursor: pointer; }
+.speed-limit-metric span { color: #607482; font: 800 8.5px/1.15 system-ui; letter-spacing: .025em; text-transform: uppercase; white-space: nowrap; }
+.speed-shoulder-note { grid-column: 1 / -1; margin: 1px 0 0; padding-top: 7px; border-top: 1px solid #e1e9ed; color: #536974; font: 650 11.5px/1.3 system-ui; }
+.speed-shoulder-note b { color: #294655; font-weight: 800; }
+.speed-profile-preview { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 2px; width: 100%; min-height: 86px; height: 100%; margin: 0; padding: 0 4px 3px; overflow: hidden; border: 1px solid #e0e9ee; border-radius: 8px; background: #fbfcfd; cursor: pointer; }
 .speed-profile-preview:hover { border-color: #8eb9d8; background: #f3f9fc; }
 .speed-profile-preview:focus-visible { outline: 3px solid #0a66c2; outline-offset: 2px; }
-#speedProfileCanvas { display: block; width: 100%; height: 100%; }
+#speedProfileCanvas { display: block; width: 100%; height: 100%; min-height: 0; }
 /* The left column now holds only the distance + climb text, so the chart
    stretches to that short height plus a min-height floor — bigger than before
    and no longer near-square, matching the route-selection card's sparkline. */
-.elevation-preview { position: relative; display: block; width: 100%; min-height: 84px; height: 100%; margin: 0; padding: 0; overflow: hidden; border: 1px solid #d3e1e9; border-radius: 10px; background: #f8fbfd; cursor: pointer; text-align: left; }
+.elevation-preview { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 2px; width: 100%; min-height: 84px; height: 100%; margin: 0; padding: 0 4px 3px; overflow: hidden; border: 1px solid #d3e1e9; border-radius: 10px; background: #f8fbfd; cursor: pointer; text-align: left; }
 .elevation-preview:hover { border-color: #8eb9d8; background: #f3f9fc; }
 .elevation-preview:focus-visible { outline: 3px solid #0a66c2; outline-offset: 2px; }
-#elevationPreviewCanvas { display: block; width: 100%; height: 100%; }
+#elevationPreviewCanvas { display: block; width: 100%; height: 100%; min-height: 0; }
+.chart-expand-note { color: #72838d; font: 750 8px/1 system-ui; letter-spacing: .025em; text-align: center; text-transform: uppercase; }
 .elevation-preview-empty { display: grid; place-items: center; min-height: 84px; margin: 0; padding: 10px; border: 1px dashed #ccd9e1; border-radius: 9px; color: #75838c; font: 650 11px/1.3 system-ui; text-align: center; }
 .detail-bottom-nav { position: fixed; z-index: 4; right: 0; bottom: 0; left: 0; display: flex; align-items: center; gap: 7px; min-height: 64px; padding: 7px 12px max(7px, env(safe-area-inset-bottom)); border-top: 1px solid #d8e2e8; background: rgba(255,255,255,.97); box-shadow: 0 -3px 12px rgba(18,42,60,.08); }
 .detail-tabs { display: flex; flex: 1; gap: 3px; margin: 0; padding: 3px; border: 1px solid #d8e2e8; border-radius: 10px; background: #e8eef2; }
@@ -130,6 +131,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .detail-item .line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font: 700 14px/1.25 system-ui; }
 .detail-item .distance { color: #43515d; white-space: nowrap; }
 .detail-item .meta { margin-top: 3px; color: #667784; font: 13px/1.35 system-ui; }
+.detail-note { margin: 9px 0 0; color: #667784; font: 600 11px/1.35 system-ui; font-style: italic; }
 .empty { margin: 0; color: #687783; font: 14px/1.45 system-ui; }
 .no-route { margin-top: 2px; padding: 18px; border-radius: 13px; background: #fff; border: 1px solid #dde5ea; color: #52616d; font: 15px/1.45 system-ui; }
 @media (min-width: 721px) {
