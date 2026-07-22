@@ -435,29 +435,34 @@ function climbPreferenceS(i, forward, mode) {
   return (netAsc * steepness + rollingAsc * 0.5) * activeWeights[key];
 }
 
-// Ordinary 9–10% climbs remain available; the ride-time model already treats
-// them as slower. Above 12%, add a growing *route-choice* cost so the router
-// looks for a gentler option first. It is deliberately bounded rather than a
-// prohibition: even a 14%+ stretch can be walked, and one short steep segment
-// must not erase an otherwise useful route or its alternatives. Require a
-// meaningful edge length to avoid turning a one-cell DEM step into a detour.
+// Ordinary 9–10% climbs remain available, but a run of them is meaningfully
+// tiring. Add a light route-choice cost above 9%, then a much stronger one
+// above 12%. The cost is intentionally bounded rather than a prohibition:
+// even a 14%+ stretch can be walked, and one short steep segment must not
+// erase an otherwise useful route or its alternatives. Because the cost is
+// added per edge, repeated steep climbing naturally becomes much less
+// attractive without classifying or excluding any OSM bicycle route.
+const GRADUAL_UPHILL_AVOID_PCT = 9;
 const STEEP_UPHILL_AVOID_PCT = 12;
 const MIN_STEEP_AVOID_EDGE_M = 20;
-const MAX_STEEP_UPHILL_AVOID_S = 180;
+const MAX_STEEP_UPHILL_AVOID_S = 2400;
 function steepUphillAvoidanceS(i, forward, mode) {
   if ((eFlags[i] & 32) || eLen[i] < MIN_STEEP_AVOID_EDGE_M) return 0;
   const asc = forward ? eAsc[i] : eDes[i];
   const des = forward ? eDes[i] : eAsc[i];
   const gradePct = 100 * Math.max(0, asc - des) / Math.max(eLen[i], 1);
-  const excessPct = gradePct - STEEP_UPHILL_AVOID_PCT;
-  if (excessPct <= 0) return 0;
-  // The added cost is modest just over 12%, firm by 14%, and capped at three
-  // minutes per edge. Friendly routes are most averse, but every profile can
-  // still choose a steep segment when it avoids a material detour.
-  const modeFactor = mode === 'low' ? 1.35 : mode === 'direct' ? 0.7 : 1;
+  if (gradePct <= GRADUAL_UPHILL_AVOID_PCT) return 0;
+  // 9–12% has a modest cumulative cost. Above 12%, cost rises sharply so
+  // sustained 12–14% climbing outweighs a bike-facility bonus. Friendly
+  // routes are most averse; direct routing does not discount this physical
+  // limit, but every profile can still use a steep segment where the
+  // alternative is a material detour.
+  const gradualExcess = Math.min(gradePct, STEEP_UPHILL_AVOID_PCT) - GRADUAL_UPHILL_AVOID_PCT;
+  const steepExcess = Math.max(0, gradePct - STEEP_UPHILL_AVOID_PCT);
+  const modeFactor = mode === 'low' ? 1.35 : 1;
   const lengthFactor = Math.min(1, eLen[i] / 100);
   return Math.min(MAX_STEEP_UPHILL_AVOID_S,
-    lengthFactor * 30 * excessPct * excessPct * modeFactor);
+    lengthFactor * modeFactor * (5 * gradualExcess * gradualExcess + 400 * steepExcess * steepExcess));
 }
 
 // Fixed intersection friction discourages routes that zigzag block by block.
