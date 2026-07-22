@@ -138,39 +138,39 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 
 .mode-row { display: flex; align-items: stretch; gap: 5px; margin: 0; }
 #routeControls { margin-top: 6px; padding-top: 5px; border-top: 1px solid #e4e7eb; }
-#routeControls .route-chooser-head { display: flex; align-items: center; justify-content: space-between; min-height: 26px; margin: 0 0 4px; padding-top: 3px; }
-#routeControls .route-chooser-heading { margin: 0; padding: 0; border: none; color: #40515c; font: 780 13px/1.2 system-ui; }
+#routeControls .route-chooser-row { display: flex; align-items: stretch; gap: 6px; }
 #routeControls .check-rule { margin: 4px 0 0 !important; min-height: 17px; font-size: 11px; }
 #routeControls .check-rule label { font-weight: 600; }
 #routeLibraryBtn { cursor: pointer; }
 .share-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-#routeOptions { position: relative; display: flex; flex: 1; min-width: 0; gap: 3px; margin: 0; }
+#routeOptions { position: relative; display: flex; flex: 1; min-width: 0; gap: 3px; margin: 0; padding: 3px; border: 1px solid #cddde7; border-radius: 10px; background: rgba(248,251,253,.97); box-shadow: 0 2px 6px rgba(18,42,60,.07); }
+#routeOptions::before { flex: 0 0 auto; align-self: center; padding: 0 3px; color: #526b7a; content: 'Choose route'; font: 800 8.5px/1.05 system-ui; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
 #routeOptions button {
   flex: 1 1 0;
   min-width: 0;
-  height: 38px;
-  padding: 3px 2px;
-  border: 1.5px solid #d5d5d5;
-  border-radius: 8px;
-  background: #fff;
-  font: 800 15px/1 system-ui;
-  color: #333;
+  min-height: 32px;
+  padding: 4px 2px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  font: 800 13px/1 system-ui;
+  color: #526b7a;
   cursor: pointer;
   overflow: hidden;
 }
 #routeOptions button span:last-child { display: block; overflow-wrap: anywhere; }
 /* The shared route's button carries a word, so it needs more room and a
    smaller, distinctive style. */
-#routeOptions button.route-option-shared { flex: 2.4 1 0; font: 800 11px/1.05 system-ui; letter-spacing: -.1px; }
+#routeOptions button.route-option-shared { flex: 2.4 1 0; font: 800 10px/1.05 system-ui; letter-spacing: -.1px; }
 #routeOptions button.route-option-shared.active { border-color: #7b2cbf; background: #f2e9fb; color: #6a1fb0; }
-#routeOptions button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
+#routeOptions button.active { border-color: #8dc2e5; background: #0a66c2; color: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.16); }
 #routeOptions button:disabled { cursor: default; opacity: .64; }
 .route-options-loading { position: absolute; z-index: 2; inset: 0; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1.5px solid #8eb9d8; border-radius: 8px; background: rgba(245,250,254,.97); color: #0a66c2; font: 700 11px system-ui; }
 .route-options-loading > span { width: 12px; height: 12px; border: 2px solid #bad3e6; border-top-color: #0a66c2; border-radius: 50%; animation: route-options-spin .7s linear infinite; }
 @keyframes route-options-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .route-options-loading > span { animation: none; border-top-color: #bad3e6; background: #0a66c2; } }
-.route-options-empty { display: grid; place-items: center; flex: 1; height: 38px; border: 1px dashed #ccd6dd; border-radius: 9px; color: #7a8790; font: 650 11px system-ui; }
+.route-options-empty { display: grid; place-items: center; flex: 1; min-height: 32px; border: 1px dashed #ccd6dd; border-radius: 7px; color: #7a8790; font: 650 11px system-ui; }
 
 #routeCard {
   border: none;
@@ -261,13 +261,13 @@ body:not(.navigation-active) #navCard { display: none; }
   #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }
   #tabs #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; }
   #tabs #routeLibraryBtn .share-icon { width: 19px; height: 19px; }
-  #routeOptions { gap: 5px; }
-  #routeOptions button { height: 38px; padding: 4px 3px; font-size: 16px; }
+  #routeOptions { gap: 4px; }
+  #routeOptions button { min-height: 34px; padding: 4px 3px; font-size: 14px; }
 }
 
 .route-details-btn { min-width: 64px; min-height: 40px; padding: 0 11px; border: 1px solid #78a9cc; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 750 11px/1 system-ui; cursor: pointer; }
 .route-details-btn:disabled { opacity: .45; cursor: default; }
-.route-tips-btn { align-self: center; flex: 0 0 23px !important; width: 23px !important; height: 23px !important; font-size: 13px !important; }
+.route-tips-btn { align-self: stretch; flex: 0 0 34px !important; width: 34px !important; min-height: 34px !important; max-height: none !important; height: auto !important; border-radius: 10px !important; font-size: 15px !important; }
 
 .saved-row { display: flex; gap: 6px; margin: 5px 0; }
 .saved-row .saved-load {
@@ -799,6 +799,7 @@ body.navigation-active #routeBar { display: none; }
 .app-help-dialog p { margin: 0; color: #667784; font: 11.5px/1.4 system-ui; }
 .app-help-dialog .app-help-note { margin: 10px 0 5px; color: #405562; }
 .full-help-dialog { width: 100vw; height: var(--app-height, 100dvh); max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: #f4f7f9; color: #1d2935; }
+#routeTipsDialog { width: min(calc(100vw - 20px), 760px); height: min(90dvh, 780px); max-height: calc(100dvh - 20px); margin: auto; border: 1px solid #d8e2e8; border-radius: 16px; box-shadow: 0 16px 48px rgba(18,42,60,.28); }
 .full-help-dialog::backdrop { background: rgba(18,42,60,.42); }
 .full-help-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: max(10px, env(safe-area-inset-top)) 18px 10px; border-bottom: 1px solid #d8e2e8; background: rgba(255,255,255,.96); }
 .full-help-head span { display: block; color: #667784; font: 700 10px/1.2 system-ui; letter-spacing: .08em; text-transform: uppercase; }

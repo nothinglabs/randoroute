@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const css = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 
 assert.match(html, /id="legendFlyout"[\s\S]*?id="legend"[\s\S]*?Tap any path on map to get details\./,
   'the map legend should end with a compact path-details tip');
@@ -49,6 +50,12 @@ assert.doesNotMatch(layersHelp, /The router combines Washington road data, OpenS
 assert.doesNotMatch(layersHelp, /lime|blue|amber|red fails|gray lacks enough data/i,
   'map-layers help should not duplicate the route color legend');
 const routeHelp = html.match(/<dialog id="routeTipsDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
+assert.match(html, /id="routeControls"[\s\S]*?class="route-chooser-row"[\s\S]*?id="routeOptions"[\s\S]*?id="routeTipsBtn"/,
+  'the main map route picker should keep its selector and Help button on one row');
+assert.match(css, /#routeOptions\s*\{[^}]*padding:\s*3px[^}]*border:\s*1px solid #cddde7[\s\S]*?#routeOptions::before\s*\{[^}]*content:\s*'Choose route'[\s\S]*?#routeOptions button\.active\s*\{[^}]*background:\s*#0a66c2/,
+  'the main map selector should use the same compact Choose route treatment as Details');
+assert.match(css, /\.route-tips-btn\s*\{[^}]*flex:\s*0 0 34px[^}]*min-height:\s*34px[\s\S]*?#routeTipsDialog\s*\{[^}]*height:\s*min\(90dvh, 780px\)/,
+  'the Help button should sit beside the selector and its dialog should be slightly shorter than full screen');
 assert.match(routeHelp, /<h3>Choose Route<\/h3>[\s\S]*?Tap A–E[\s\S]*?Click <b>Details<\/b>[\s\S]*?<h3>Details<\/h3>[\s\S]*?Concerns:[\s\S]*?All Steps:[\s\S]*?Tap buttons in route segments[\s\S]*?Google Street View[\s\S]*?Safety ratings &amp; map colors[\s\S]*?<b>Lime<\/b> —[\s\S]*?<b>Dotted lime<\/b> —[\s\S]*?<b>Blue<\/b> —[\s\S]*?<b>Red dashed<\/b> — Road that fails rules\.[\s\S]*?<b>Amber<\/b> — Caution:[\s\S]*?<b>Dashed light blue<\/b> — Designated bike route/,
   'route help should explain the route picker, details tools, and active safety labels');
 assert.doesNotMatch(routeHelp, /Gray — Insufficient data|Possible limited-visibility uphill curve/,
