@@ -14,8 +14,8 @@ assert.match(app, /locationStart: locationAt\(s\.c0\), locationEnd: locationAt\(
   'stored route details should retain a compact on-road point for each segment');
 assert.match(app, /function openRouteDetails\(\) \{[\s\S]*?storeRouteDetails\(routing\.last\)/,
   'opening Details should refresh an already-drawn route with its segment locations');
-assert.match(app, /function compactRouteCoords\(m\)[\s\S]*?Math\.ceil\(coords\.length \/ 600\)[\s\S]*?routeCoords: compactRouteCoords\(m\),[\s\S]*?routeOptions: routeDetailsOptionTabs\(m\)/,
-  'Route Details should retain a compact preview line and selectable route metadata');
+assert.match(app, /function compactRouteCoords\(m, includeIndices = false\)[\s\S]*?Math\.ceil\(coords\.length \/ 600\)[\s\S]*?const routePreview = compactRouteCoords\(m, true\);[\s\S]*?routeCoords: routePreview\?\.coords \|\| null,[\s\S]*?routeCoordIndices: routePreview\?\.indices \|\| null,[\s\S]*?routeOptions: routeDetailsOptionTabs\(m\)/,
+  'Route Details should retain compact preview geometry with the source indexes needed for map colors');
 assert.match(app, /function selectRouteDetailsOption\(index\)[\s\S]*?if \(turnNav\.active\) return;[\s\S]*?activateRouteOption\(option\);[\s\S]*?openRouteDetails\(\);/,
   'choosing a route in Details should update the map selection and refresh its preview');
 assert.match(app, /event\.data\?\.type === 'select-route-details-option'[\s\S]*?selectRouteDetailsOption\(event\.data\.index\)/,
@@ -118,22 +118,50 @@ assert.equal(vm.runInContext(`speedProfileSegments([
   .map((seg) => seg.color + ':' + seg.mph).join('|')`, speedContext),
   'fail:35|bike:30|bike:15|pass:25|caution:45',
   'the speed profile should infer bike paths at 15 mph and use the route safety colors for facilities, passing roads, cautions, and failures');
+
+const previewStart = details.indexOf('function routePreviewPoints(');
+const previewEnd = details.indexOf('function drawRoutePreview(', previewStart);
+assert.ok(previewStart >= 0 && previewEnd > previewStart, 'route-preview color helpers were not found');
+const previewContext = vm.createContext({
+  Math, Number,
+  details: {
+    segs: [
+      { c0: 0, c1: 10, flags: 8, facility: 5, level: 1 },
+      { c0: 10, c1: 20, level: 4 },
+      { c0: 20, c1: 30, level: 3 },
+      { c0: 30, c1: 40, level: 1 },
+    ],
+  },
+  BIKE_NETWORK_COLOR: '#9fc400', PASS_COLOR: '#168ad1', CAUTION_COLOR: '#c46b00', FAIL_COLOR: '#b2182b',
+  isBikeNetwork: (seg) => !!((seg.flags || 0) & 8) || (seg.facility || 0) >= 2,
+  isMountainBikeTrail: () => false,
+});
+vm.runInContext(details.slice(previewStart, previewEnd), previewContext);
+assert.equal(vm.runInContext(`routePreviewEdgeColors([
+  { routeIndex: 0 }, { routeIndex: 10 }, { routeIndex: 20 }, { routeIndex: 30 }, { routeIndex: 40 },
+]).join('|')`, previewContext), '#9fc400|#b2182b|#c46b00|#168ad1',
+  'the route preview should use the same bike, fail, caution, and pass colors as the map');
+
 assert.match(detailsHtml, /id="panel-stats"[\s\S]*?id="routeSummaryCard"[\s\S]*?id="speedProfile"[\s\S]*?id="panel-concerns"[\s\S]*?id="panel-steps"/,
   'Route Details should keep its shared route statistics and speed chart in the dedicated Stats panel');
-assert.match(detailsHtml, /id="routeOptionTabs"[\s\S]*?id="panel-stats"[\s\S]*?id="routePreview"[\s\S]*?id="panel-concerns"/,
-  'Route Details should place its route chooser above the tabs and its map preview only on Stats');
+assert.match(detailsHtml, /id="routeOptionTabs"[\s\S]*?id="panel-stats"[\s\S]*?id="routeSafetySummary"[\s\S]*?id="routePreview"[\s\S]*?id="panel-concerns"/,
+  'Route Details should keep road/safety stats and its map preview only on Stats');
 assert.match(details, /const embeddedDetails = window\.self !== window\.top;[\s\S]*?function renderRouteOptionTabs\(\)[\s\S]*?host\.hidden = !embeddedDetails \|\| options\.length < 2;[\s\S]*?type: 'select-route-details-option'/,
   'only non-navigating embedded Details should offer route switching back to the map');
-assert.match(details, /function drawRoutePreview\(canvas\)[\s\S]*?drawLine\('#0a66c2', 4\.5\)[\s\S]*?marker\(projected\[0\], '#00795c'\)[\s\S]*?marker\(projected\[projected\.length - 1\], '#e87817'\)/,
-  'the Stats route preview should show the selected path and start/end markers');
+assert.match(details, /function routePreviewColor\(seg\)[\s\S]*?seg\.crossing === 1[\s\S]*?Number\(seg\.level\) === 4[\s\S]*?isBikeNetwork\(seg\) \? BIKE_NETWORK_COLOR : PASS_COLOR[\s\S]*?function drawRoutePreview\(canvas\)[\s\S]*?routePreviewEdgeColors\(pointData\)[\s\S]*?marker\(projected\[0\], '#00795c'\)[\s\S]*?marker\(projected\[projected\.length - 1\], '#e87817'\)/,
+  'the Stats route preview should use the map safety colors and start/end markers');
 assert.match(css, /\.route-option-tabs\s*\{[^}]*position:\s*sticky[\s\S]*?#routePreviewCanvas\s*\{[^}]*height:\s*116px/,
   'route choices should remain visible at the top and the Stats preview should stay compact');
 assert.match(css, /\.detail-panel\[hidden\]\s*\{\s*display:\s*none !important;/,
   'only the selected Route Details panel should be visible');
 assert.match(detailsHtml, /id="tab-stats"[\s\S]*?data-detail-tab="stats">Stats<\/button>[\s\S]*?id="tab-concerns"[\s\S]*?id="tab-steps"/,
   'Route Details should present Stats as the first of its three tabs');
-assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?bike paths shown as 15 mph[\s\S]*?Bike facility or trail[\s\S]*?Meets safety rules[\s\S]*?Caution[\s\S]*?Fails safety rules/,
-  'Route Details should include a clear speed-profile graph and the normal route safety colors');
+assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?bike paths shown as 15 mph/,
+  'Route Details should retain its speed-profile graph');
+assert.doesNotMatch(detailsHtml, /speed-profile-legend|speed-profile-swatch/,
+  'the speed-profile color legend should be removed');
+assert.match(detailsHtml, /id="routeSafetySummary"[\s\S]*?Roads &amp; safety[\s\S]*?id="summaryRoadSpeed"[\s\S]*?id="summaryMix"/,
+  'average road speed and safety percentages should share their own Stats section');
 
 const coordsStart = app.indexOf('function compactRouteCoords(');
 const coordsEnd = app.indexOf('function routeDetailsOptionTabs(', coordsStart);

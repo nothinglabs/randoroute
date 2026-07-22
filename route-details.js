@@ -702,12 +702,46 @@ function renderRouteOptionTabs() {
 }
 
 function routePreviewPoints() {
-  return (details?.routeCoords || []).map(lngLat).filter(Boolean);
+  const coords = Array.isArray(details?.routeCoords) ? details.routeCoords : [];
+  const indices = Array.isArray(details?.routeCoordIndices) ? details.routeCoordIndices : [];
+  const maxIndex = Math.max(1, ...(details?.segs || []).map((seg) => Number(seg?.c1) || 0));
+  return coords.map((coord, position) => {
+    const point = lngLat(coord);
+    if (!point) return null;
+    const storedIndex = Number(indices[position]);
+    return {
+      point,
+      // Old saved routes lacked source indexes. Spread those points over the
+      // route as a graceful fallback until Details is next refreshed.
+      routeIndex: Number.isFinite(storedIndex)
+        ? storedIndex : maxIndex * position / Math.max(1, coords.length - 1),
+    };
+  }).filter(Boolean);
+}
+
+function routePreviewColor(seg) {
+  if (!seg) return PASS_COLOR;
+  if (seg.crossing === 1) return PASS_COLOR;
+  if (Number(seg.level) === 4) return FAIL_COLOR;
+  if (Number(seg.level) === 3 || isMountainBikeTrail(seg)) return CAUTION_COLOR;
+  if (!Number(seg.level)) return '#98a2ad';
+  return isBikeNetwork(seg) ? BIKE_NETWORK_COLOR : PASS_COLOR;
+}
+
+function routePreviewEdgeColors(points) {
+  const segs = details?.segs || [];
+  let segmentAt = 0;
+  return points.slice(0, -1).map((point, index) => {
+    const routeIndex = (point.routeIndex + points[index + 1].routeIndex) / 2;
+    while (segmentAt + 1 < segs.length && routeIndex >= Number(segs[segmentAt]?.c1)) segmentAt++;
+    return routePreviewColor(segs[segmentAt]);
+  });
 }
 
 function drawRoutePreview(canvas) {
-  const points = routePreviewPoints();
-  if (!canvas || points.length < 2) return;
+  const pointData = routePreviewPoints();
+  if (!canvas || pointData.length < 2) return;
+  const points = pointData.map((entry) => entry.point);
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth || 300, h = canvas.clientHeight || 116;
   canvas.width = w * dpr; canvas.height = h * dpr;
@@ -737,12 +771,12 @@ function drawRoutePreview(canvas) {
   const offsetX = (w - spanX * scale) / 2 - minX * scale;
   const offsetY = (h - spanY * scale) / 2 + maxY * scale;
   const pointAt = ([x, y]) => [offsetX + x * scale, offsetY - y * scale];
-  const drawLine = (color, width) => {
+  const drawLine = (color, width, start = 0, end = projected.length - 1) => {
     ctx.beginPath();
-    projected.forEach((point, index) => {
-      const [x, y] = pointAt(point);
-      if (index) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-    });
+    for (let index = start; index <= end; index++) {
+      const [x, y] = pointAt(projected[index]);
+      if (index > start) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    }
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
     ctx.lineJoin = 'round';
@@ -750,7 +784,15 @@ function drawRoutePreview(canvas) {
     ctx.stroke();
   };
   drawLine('rgba(255,255,255,.95)', 8);
-  drawLine('#0a66c2', 4.5);
+  const edgeColors = routePreviewEdgeColors(pointData);
+  let runStart = 0, color = edgeColors[0];
+  for (let edge = 1; edge < edgeColors.length; edge++) {
+    if (edgeColors[edge] === color) continue;
+    drawLine(color, 4.5, runStart, edge);
+    runStart = edge;
+    color = edgeColors[edge];
+  }
+  drawLine(color, 4.5, runStart);
   const marker = (point, color) => {
     const [x, y] = pointAt(point);
     ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
@@ -802,6 +844,7 @@ if (!hasRoute) {
   const cautionPct = routePercent(routeStats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(totals.failM || 0, ridingM, true);
   summaryCard.hidden = false;
+  document.getElementById('routeSafetySummary').hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
   summarySub.textContent = `↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent · ${avgUphillPct.toFixed(1)}% avg uphill · ${maxGradePct.toFixed(1)}% max${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}`;
   summaryRoadSpeed.textContent = `Avg. road speed limit: ${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`} (all roads)`;

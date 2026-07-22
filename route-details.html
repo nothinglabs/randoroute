@@ -15,14 +15,16 @@
         <div class="route-summary-info">
           <div id="summary" class="route-summary-main"></div>
           <div id="summarySub" class="route-summary-sub"></div>
-          <div id="summaryRoadSpeed" class="route-summary-road-speed"></div>
         </div>
         <button id="elevationPreview" class="elevation-preview" type="button" aria-label="Expand elevation chart" hidden>
           <canvas id="elevationPreviewCanvas"></canvas>
         </button>
         <div id="elevationPreviewEmpty" class="elevation-preview-empty" hidden>Elevation profile unavailable</div>
-        <div id="summaryMix" class="route-summary-mix" title="Percent of riding distance; colors match the map legend"></div>
       </div>
+      <section id="routeSafetySummary" class="route-safety-summary" aria-labelledby="routeSafetySummaryTitle" hidden>
+        <div class="route-safety-summary-head"><h2 id="routeSafetySummaryTitle">Roads &amp; safety</h2><div id="summaryRoadSpeed" class="route-summary-road-speed"></div></div>
+        <div id="summaryMix" class="route-summary-mix" title="Percent of riding distance; colors match the map legend"></div>
+      </section>
       <section id="routePreview" class="route-preview" aria-labelledby="routePreviewTitle" hidden>
         <div class="route-preview-head"><h2 id="routePreviewTitle">Route preview</h2><p>Selected route</p></div>
         <canvas id="routePreviewCanvas" role="img" aria-label="Selected route map preview"></canvas>
@@ -30,7 +32,6 @@
       <section id="speedProfile" class="speed-profile" aria-labelledby="speedProfileTitle" hidden>
         <div class="speed-profile-head"><div><h2 id="speedProfileTitle">Speed limits</h2><p>Along the route · bike paths shown as 15 mph</p></div></div>
         <canvas id="speedProfileCanvas" role="img" aria-label="Speed limits along the route"></canvas>
-        <div class="speed-profile-legend" aria-label="Speed profile colors"><span><i class="speed-profile-swatch bike"></i>Bike facility or trail</span><span><i class="speed-profile-swatch pass"></i>Meets safety rules</span><span><i class="speed-profile-swatch caution"></i>Caution</span><span><i class="speed-profile-swatch fail"></i>Fails safety rules</span></div>
       </section>
       <p id="noRouteSummary" class="summary" hidden></p>
     </section>

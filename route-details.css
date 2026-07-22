@@ -23,15 +23,20 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-main small { color: #555; font: 600 15px system-ui; }
 .route-summary-sub { margin-top: 4px; color: #555; font: 12px system-ui; }
 .route-summary-road-speed { margin-top: 4px; color: #405866; font: 750 11.5px/1.25 system-ui; }
-/* Full-width row beneath the stats + chart. Each ride class gets an equal
-   share of the available width instead of wrapping as an uneven sentence. */
-.route-summary-mix { grid-column: 1 / -1; min-height: 20px; margin-top: 2px; color: #52616b; font: 600 10.5px/1.2 system-ui; }
+/* Each ride class gets an equal share of the available width instead of
+   wrapping as an uneven sentence. */
+.route-summary-mix { min-height: 20px; color: #52616b; font: 600 10.5px/1.2 system-ui; }
 .route-summary-mix-items { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; gap: 4px 8px; min-width: 0; }
 .route-summary-mix-item { min-width: 0; white-space: nowrap; text-align: center; }
 .route-summary-mix b { color: #223c4b; font-weight: 800; }
 .route-summary-mix .mix-caution, .route-summary-mix .mix-caution b { color: #9a4f00; }
 .route-summary-mix .mix-fail, .route-summary-mix .mix-fail b { color: #b42318; }
 .route-summary-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
+.route-safety-summary { margin: 0; padding: 11px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
+.route-safety-summary[hidden] { display: none; }
+.route-safety-summary-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.route-safety-summary-head h2 { margin: 0; color: #2c3e4c; font: 750 13px/1.2 system-ui; }
+.route-safety-summary .route-summary-road-speed { margin: 0; color: #405866; font: 750 11.5px/1.25 system-ui; text-align: right; }
 .route-preview { margin: 0; padding: 10px 12px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
 .route-preview[hidden] { display: none; }
 .route-preview-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
@@ -45,13 +50,6 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .speed-profile-head h2 { margin: 0; color: #2c3e4c; font: 750 13px/1.2 system-ui; }
 .speed-profile-head p { margin: 2px 0 6px; color: #667784; font: 600 10.5px/1.25 system-ui; }
 #speedProfileCanvas { display: block; width: 100%; height: 88px; border: 1px solid #e0e9ee; border-radius: 8px; background: #fbfcfd; }
-.speed-profile-legend { display: flex; flex-wrap: wrap; gap: 4px 11px; margin-top: 6px; color: #5b6d78; font: 650 10px/1.2 system-ui; }
-.speed-profile-legend span { display: inline-flex; align-items: center; gap: 4px; }
-.speed-profile-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
-.speed-profile-swatch.bike { background: #9fc400; }
-.speed-profile-swatch.pass { background: #168ad1; }
-.speed-profile-swatch.caution { background: #c46b00; }
-.speed-profile-swatch.fail { background: #b2182b; }
 /* The left column now holds only the distance + climb text, so the chart
    stretches to that short height plus a min-height floor — bigger than before
    and no longer near-square, matching the route-selection card's sparkline. */
@@ -76,11 +74,11 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 #panel-stats { display: grid; gap: 13px; margin: 0; }
 #panel-stats .route-summary-card { margin: 0; padding: 14px; }
 #panel-stats .route-summary-sub { font-size: 12.5px; line-height: 1.35; }
-#panel-stats .route-summary-road-speed { margin-top: 6px; font-size: 12px; }
+#panel-stats .route-safety-summary { margin: 0; padding: 13px; }
+#panel-stats .route-safety-summary .route-summary-road-speed { font-size: 12px; }
 #panel-stats .elevation-preview, #panel-stats .elevation-preview-empty { min-height: 112px; }
 #panel-stats .speed-profile { margin: 0; padding: 13px; }
 #panel-stats #speedProfileCanvas { height: 108px; }
-#panel-stats .speed-profile-legend { justify-content: space-between; gap: 7px 12px; font-size: 10.5px; }
 .detail-section { margin: 12px 0; padding: 14px; border: 1px solid #dde5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
 .detail-section h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 10px; font: 750 18px/1.2 system-ui; }
 .detail-section h2 span { color: #52616d; font: 700 13px system-ui; white-space: nowrap; }

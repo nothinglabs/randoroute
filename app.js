@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.261';
+const APP_VERSION = '2026-07-22.262';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1467,23 +1467,28 @@ function compactRouteProfile(m) {
 // Route Details also gets a lightweight map preview. Keep enough of the route
 // shape to be recognizable without copying the full routing geometry into
 // localStorage for every option.
-function compactRouteCoords(m) {
+function compactRouteCoords(m, includeIndices = false) {
   const coords = Array.isArray(m?.coords) ? m.coords : [];
   if (coords.length < 2) return null;
   const stride = Math.max(1, Math.ceil(coords.length / 600));
-  const out = [];
-  for (let i = 0; i < coords.length; i += stride) {
-    const point = coords[i];
+  const out = [], indices = [];
+  const addPoint = (point, index) => {
     const lng = Number(point?.[0]), lat = Number(point?.[1]);
-    if (Number.isFinite(lng) && Number.isFinite(lat)) out.push([+lng.toFixed(6), +lat.toFixed(6)]);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+    out.push([+lng.toFixed(6), +lat.toFixed(6)]);
+    indices.push(index);
+  };
+  for (let i = 0; i < coords.length; i += stride) {
+    addPoint(coords[i], i);
   }
   const last = coords[coords.length - 1];
   const lng = Number(last?.[0]), lat = Number(last?.[1]);
   if (Number.isFinite(lng) && Number.isFinite(lat)
       && (!out.length || out[out.length - 1][0] !== +lng.toFixed(6) || out[out.length - 1][1] !== +lat.toFixed(6))) {
-    out.push([+lng.toFixed(6), +lat.toFixed(6)]);
+    addPoint(last, coords.length - 1);
   }
-  return out.length >= 2 ? out : null;
+  if (out.length < 2) return null;
+  return includeIndices ? { coords: out, indices } : out;
 }
 
 function routeDetailsOptionTabs(selected) {
@@ -1503,6 +1508,7 @@ function storeRouteDetails(m) {
   if (!m || !m.ok) return;
   try {
     const routeCoords = Array.isArray(m.coords) ? m.coords : [];
+    const routePreview = compactRouteCoords(m, true);
     // Route Details needs a real on-road point for its Google Maps and Street
     // View actions, but not the complete (potentially large) route geometry.
     const locationAt = (index) => {
@@ -1514,7 +1520,8 @@ function storeRouteDetails(m) {
     localStorage.setItem(ROUTE_DETAILS_KEY, JSON.stringify({
       savedAt: Date.now(),
       profile: compactRouteProfile(m),
-      routeCoords: compactRouteCoords(m),
+      routeCoords: routePreview?.coords || null,
+      routeCoordIndices: routePreview?.indices || null,
       routeOptions: routeDetailsOptionTabs(m),
       snapStartM: Number(m.snapStartM) || 0,
       snapEndM: Number(m.snapEndM) || 0,
