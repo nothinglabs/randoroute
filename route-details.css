@@ -28,7 +28,6 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-mix .mix-fail, .route-summary-mix .mix-fail b { color: #b42318; }
 .route-summary-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
 .route-summary-label { padding: 2px 4px; border-radius: 4px; background: #e7eef3; color: #405866; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-.route-optimization { margin: 9px 0 0; padding: 9px 11px; border-left: 3px solid #0a66c2; border-radius: 7px; background: #eaf3fa; color: #29495e; font: 600 12.5px/1.4 system-ui; }
 /* The left column now holds only the distance + climb text, so the chart
    stretches to that short height plus a min-height floor — bigger than before
    and no longer near-square, matching the route-selection card's sparkline. */
@@ -73,9 +72,9 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .segment-actions { display: flex; flex: 0 0 auto; align-items: center; align-self: stretch; gap: 4px; margin-left: auto; padding: 5px 6px 5px 3px; }
 .segment-streetview { display: grid; place-content: center; gap: 1px; width: 42px; min-height: 38px; padding: 3px; border: 1px solid #7aaed5; border-radius: 7px; background: #edf6fc; color: #075b9f; font: 800 9px/1 system-ui; text-align: center; cursor: pointer; }
 .segment-streetview:hover { border-color: #0a66c2; background: #e1f0fa; }
-.segment-map-button { display: inline-flex; align-items: center; gap: 3px; min-height: 32px; padding: 4px 7px; border: 1px solid #b6d2e5; border-radius: 7px; background: #fff; color: #0a66c2; font: 800 10px/1 system-ui; white-space: nowrap; cursor: pointer; }
+.segment-map-button { display: grid; place-content: center; gap: 1px; width: 42px; min-height: 38px; padding: 3px; border: 1px solid #b6d2e5; border-radius: 7px; background: #fff; color: #0a66c2; font: 800 9px/1 system-ui; text-align: center; cursor: pointer; }
 .segment-map-button:hover { border-color: #0a66c2; background: #edf6fc; }
-.segment-map-icon { display: grid; place-items: center; width: 13px; height: 13px; color: #075b9f; font: 800 15px/1 system-ui; }
+.segment-map-icon { display: grid; place-items: center; width: 100%; height: 13px; color: #075b9f; font: 800 15px/1 system-ui; }
 .step-safety { display: inline-block; margin-right: 7px; padding: 2px 6px; border-radius: 999px; color: #fff; font: 750 10px/1.25 system-ui; vertical-align: 1px; white-space: nowrap; }
 .safety-bike .step-safety { background: #728e00; }
 .safety-designated .step-safety { border: 1px dashed #168ad1; background: #eef7fd; color: #0c6099; }
@@ -99,7 +98,6 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
   .elevation-preview { min-height: 104px; }
 }
 
-.tap-hint { margin: 10px 0 0; padding: 8px 10px; border-left: 3px solid #0a66c2; border-radius: 7px; background: #eaf3fa; color: #3d5b6c; font: 650 12px/1.35 system-ui; }
 .elevation-dialog { width: min(94vw, 780px); max-width: none; padding: 0; overflow: hidden; border: 0; border-radius: 15px; background: #f4f7f9; box-shadow: 0 14px 44px rgba(0,0,0,.32); }
 .elevation-dialog::backdrop { background: rgba(18,42,60,.52); }
 .elevation-dialog-head { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 7px 10px 7px 15px; border-bottom: 1px solid #d8e2e8; background: #fff; }

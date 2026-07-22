@@ -285,13 +285,13 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
         const mapButton = document.createElement('button');
         mapButton.type = 'button';
         mapButton.className = 'segment-map-button';
+        const mapLabel = document.createElement('span');
+        mapLabel.textContent = 'Map';
         const mapIcon = document.createElement('span');
         mapIcon.className = 'segment-map-icon';
         mapIcon.setAttribute('aria-hidden', 'true');
         mapIcon.textContent = '⌖';
-        const mapLabel = document.createElement('span');
-        mapLabel.textContent = 'Map';
-        mapButton.append(mapIcon, mapLabel);
+        mapButton.append(mapLabel, mapIcon);
         mapButton.setAttribute('aria-label', `Show ${item.name} on the route map`);
         mapButton.addEventListener('click', () => showRouteStep(item));
         actions.append(mapButton, streetView);
@@ -581,26 +581,7 @@ const summaryCard = document.getElementById('routeSummaryCard');
 const summarySub = document.getElementById('summarySub');
 const summaryMix = document.getElementById('summaryMix');
 const noRouteSummary = document.getElementById('noRouteSummary');
-const optimization = document.getElementById('optimization');
 const alert = document.getElementById('routeAlert');
-const mapTapHint = document.getElementById('mapTapHint');
-
-function routeNatureDescription(optimization) {
-  if (!optimization) return '';
-  const base = optimization.mode === 'direct'
-    ? 'Prioritizes a quicker trip.'
-    : optimization.mode === 'low'
-      ? 'Strongly avoids roads that fail your rules.'
-      : 'Balances travel time against roads that fail your rules.';
-  const preferences = [];
-  if (optimization.prefDesignated) preferences.push('bike routes & trails');
-  if (optimization.prefResidential) preferences.push('residential streets');
-  const method = preferences.length ? `${base} Prefers ${preferences.join(' and ')}.` : base;
-  const discovery = optimization.discoveryMaxSpeed
-    ? ` Found using a ${optimization.discoveryMaxSpeed} mph no-shoulder search; safety results still use your settings.`
-    : '';
-  return `${method}${discovery}`;
-}
 
 const detailTabs = [...document.querySelectorAll('[data-detail-tab]')];
 detailTabs.forEach((tab) => {
@@ -643,7 +624,6 @@ if (!hasRoute) {
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
   summarySub.textContent = `↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent · ${avgUphillPct.toFixed(1)}% avg uphill · ${maxGradePct.toFixed(1)}% max${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}`;
   summaryMix.innerHTML = `<span class="route-summary-label">Ride</span><span><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail</span>`;
-  mapTapHint.hidden = false;
   if (Array.isArray(details.profile) && details.profile.length >= 2) {
     const elevationPreview = document.getElementById('elevationPreview');
     const elevationDialog = document.getElementById('elevationDialog');
@@ -657,11 +637,6 @@ if (!hasRoute) {
     requestAnimationFrame(() => drawElevation(document.getElementById('elevationPreviewCanvas'), true));
   } else {
     document.getElementById('elevationPreviewEmpty').hidden = false;
-  }
-  const routeNature = routeNatureDescription(details.optimization);
-  if (routeNature) {
-    optimization.hidden = false;
-    optimization.textContent = routeNature;
   }
   const freeways = sections(segs, (s) => !!(s.flags & FLAG_FREEWAY), (s) => ({
     name: roadName(s),
@@ -702,9 +677,8 @@ if (!hasRoute) {
   }));
 
   if (totals.failM > 0) {
-    alert.hidden = false;
-    const freewayM = freeways.reduce((sum, item) => sum + item.lenM, 0);
-    alert.textContent = `${freewayM ? `${fmtDist(freewayM)} on a freeway. ` : ''}${fmtDist(totals.failM)} of this route does not meet your riding rules.`;
+    // The detailed concerns immediately below state the failing distance and roads.
+    alert.hidden = true;
   } else {
     alert.hidden = false;
     if (mountainBike.length || limitedAccess.length || curveHazards.length) {
@@ -723,12 +697,12 @@ if (!hasRoute) {
   }
 
   const snapNotes = [];
-  if (Number(details.snapStartM) > 80) snapNotes.push(`the start pin connects to the riding network ${fmtDist(details.snapStartM)} away`);
-  if (Number(details.snapEndM) > 80) snapNotes.push(`the destination pin connects to the riding network ${fmtDist(details.snapEndM)} away`);
+  if (Number(details.snapStartM) > 80) snapNotes.push(`start ${fmtDist(details.snapStartM)}`);
+  if (Number(details.snapEndM) > 80) snapNotes.push(`destination ${fmtDist(details.snapEndM)}`);
   if (snapNotes.length) {
     const note = document.createElement('p');
     note.className = 'snap-note';
-    note.textContent = `Heads up: ${snapNotes.join(', and ')}. Move the pin closer to a road if that looks wrong.`;
+    note.textContent = `Pins off road: ${snapNotes.join(' · ')}.`;
     alert.insertAdjacentElement('afterend', note);
   }
 

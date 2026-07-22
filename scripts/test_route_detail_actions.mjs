@@ -8,19 +8,20 @@ const details = fs.readFileSync(new URL('../route-details.js', import.meta.url),
 const css = fs.readFileSync(new URL('../route-details.css', import.meta.url), 'utf8');
 const appCss = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const detailsHtml = fs.readFileSync(new URL('../route-details.html', import.meta.url), 'utf8');
 
 assert.match(app, /locationStart: locationAt\(s\.c0\), locationEnd: locationAt\(s\.c1\)/,
   'stored route details should retain a compact on-road point for each segment');
 assert.match(app, /function openRouteDetails\(\) \{[\s\S]*?storeRouteDetails\(routing\.last\)/,
   'opening Details should refresh an already-drawn route with its segment locations');
-assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textContent = 'View'[\s\S]*?mapButton\.className = 'segment-map-button'[\s\S]*?mapIcon\.textContent = '⌖'[\s\S]*?actions\.append\(mapButton, streetView\)/,
+assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textContent = 'View'[\s\S]*?mapButton\.className = 'segment-map-button'[\s\S]*?mapLabel\.textContent = 'Map'[\s\S]*?mapIcon\.textContent = '⌖'[\s\S]*?mapButton\.append\(mapLabel, mapIcon\)[\s\S]*?actions\.append\(mapButton, streetView\)/,
   'each route-detail item should put an in-app Map button before its stacked Street View button');
 assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view', lat, lng, heading \}, window\.location\.origin\)/,
   'embedded Details should ask the app to open its Street View dialog');
 assert.match(app, /event\.data\?\.type === 'open-street-view'[\s\S]*?openStreetView\(lat, lng/,
   'the app should accept Street View requests from its Route Details frame');
-assert.match(css, /\.segment-actions\s*\{[^}]*margin-left:\s*auto[\s\S]*?\.segment-streetview\s*\{[^}]*width:\s*42px[^}]*min-height:\s*38px[\s\S]*?\.segment-map-button\s*\{[^}]*display:\s*inline-flex/,
-  'the compact Map and stacked Street View controls should align at the card right edge');
+assert.match(css, /\.segment-actions\s*\{[^}]*margin-left:\s*auto[\s\S]*?\.segment-streetview\s*\{[^}]*width:\s*42px[^}]*min-height:\s*38px[\s\S]*?\.segment-map-button\s*\{[^}]*display:\s*grid[^}]*width:\s*42px[^}]*min-height:\s*38px/,
+  'the equal-sized, stacked Map and Street View controls should align at the card right edge');
 assert.match(html, /class="dialog-close streetview-close"[\s\S]*?<span>Close<\/span>/,
   'the embedded Street View close control should have a visible Close label');
 assert.match(html, /No panorama showing\?[\s\S]*?searched up to 150 m[\s\S]*?Open in Google Maps/,
@@ -29,6 +30,16 @@ assert.match(appCss, /\.full-help-head \.streetview-close\s*\{[^}]*min-height:\s
   'the embedded Street View close control should have a clear hit target');
 assert.match(appCss, /\.sv-coverage-note\s*\{[^}]*position:\s*absolute/,
   'the coverage fallback should remain visible over an unavailable panorama');
+assert.match(app, /description: routeDetailsOptimizationDescription\(m\.optimization\)/,
+  'route-search rationale should remain stored for future Route Details rendering');
+assert.doesNotMatch(detailsHtml, /Tap any road, concern, or step/,
+  'Route Details should not repeat the map-tapping instruction');
+assert.doesNotMatch(detailsHtml, /id="optimization"/,
+  'Route Details should not display the route-search rationale');
+assert.doesNotMatch(details, /of this route does not meet your riding rules/,
+  'Route Details should not repeat the failing-route distance above its concerns');
+assert.match(details, /note\.textContent = `Pins off road: \$\{snapNotes\.join\(' · '\)\}\.`/,
+  'long pin warnings should be reduced to a compact distance note');
 
 const helperStart = details.indexOf('function lngLat(');
 const helperEnd = details.indexOf('function routePercent(', helperStart);
