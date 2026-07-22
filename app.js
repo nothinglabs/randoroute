@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.223';
+const APP_VERSION = '2026-07-20.224';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2330,12 +2330,41 @@ function nearestNavigationPoint(lon, lat, fullRoute = false, routeOverride = nul
 }
 
 function setRouteStartDialogBusy(busy, status = '') {
+  if (busy) stopRouteStartCountdown(); // the rider chose an option; stop auto-dismiss
   const routeButton = document.getElementById('navRouteToStartBtn');
   const nearestButton = document.getElementById('navUseNearestBtn');
   const statusElement = document.getElementById('routeStartDialogStatus');
   if (routeButton) routeButton.disabled = busy;
   if (nearestButton) nearestButton.disabled = busy;
   if (statusElement) statusElement.textContent = status;
+}
+
+// If the rider ignores the "how to join" offer, default to letting them find
+// their own way (distance/direction only, guidance resumes automatically) after
+// a short countdown rather than blocking navigation on a modal.
+const ROUTE_START_AUTO_DISMISS_S = 15;
+let routeStartCountdownTimer = null;
+
+function stopRouteStartCountdown() {
+  if (routeStartCountdownTimer) { clearInterval(routeStartCountdownTimer); routeStartCountdownTimer = null; }
+  const el = document.getElementById('routeStartCountdown');
+  if (el) el.textContent = '';
+}
+
+function startRouteStartCountdown() {
+  stopRouteStartCountdown();
+  let remaining = ROUTE_START_AUTO_DISMISS_S;
+  const el = document.getElementById('routeStartCountdown');
+  if (el) el.textContent = `${remaining}s`;
+  routeStartCountdownTimer = setInterval(() => {
+    remaining -= 1;
+    const node = document.getElementById('routeStartCountdown');
+    if (node) node.textContent = `${Math.max(0, remaining)}s`;
+    if (remaining <= 0) {
+      stopRouteStartCountdown();
+      useNearestPlannedRoute(); // the "I'll find my own way" default
+    }
+  }, 1000);
 }
 
 function showRouteStartOffer(startDistanceM) {
@@ -2346,10 +2375,15 @@ function showRouteStartOffer(startDistanceM) {
     + 'Choose how to get onto it.';
   setRouteStartDialogBusy(false);
   if (!dialog.open) dialog.showModal();
+  // Default the selection to "I'll find my own way" so Enter (and the timeout)
+  // pick the non-intrusive option.
+  document.getElementById('navUseNearestBtn')?.focus();
+  startRouteStartCountdown();
   return true;
 }
 
 function closeRouteStartDialog() {
+  stopRouteStartCountdown();
   const dialog = document.getElementById('routeStartDialog');
   if (dialog?.open) dialog.close();
   setRouteStartDialogBusy(false);
@@ -4226,7 +4260,10 @@ function buildRoutingPanel() {
   });
   document.getElementById('navCardDetailsBtn').addEventListener('click', () => openRouteDetails());
   document.getElementById('navUseNearestBtn').addEventListener('click', () => useNearestPlannedRoute());
-  document.getElementById('navRouteToStartBtn').addEventListener('click', () => requestRouteBackToCurrentRoute());
+  document.getElementById('navRouteToStartBtn').addEventListener('click', () => {
+    stopRouteStartCountdown();
+    requestRouteBackToCurrentRoute();
+  });
   document.getElementById('routeStartDialog').addEventListener('cancel', (event) => {
     event.preventDefault();
     useNearestPlannedRoute();

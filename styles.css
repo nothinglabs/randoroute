@@ -729,6 +729,10 @@ body.navigation-active #routeBar { display: none; }
 }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dialog-head h2 { margin: 0; border: none; padding: 0; font-size: 14px; color: #222; text-transform: none; letter-spacing: 0; }
+/* Auto-dismiss countdown: a small "12s" that ticks down before the offer
+   defaults to "I'll find my own way". */
+.dialog-countdown { flex: none; min-width: 26px; padding: 2px 7px; border-radius: 999px; background: #eef2f5; color: #6a7c88; font: 700 11px/1.3 system-ui; text-align: center; font-variant-numeric: tabular-nums; }
+.dialog-countdown:empty { display: none; }
 .dialog-close { width: 28px; height: 28px; border: none; border-radius: 7px; background: #eef1f4; cursor: pointer; }
 .dialog-actions, .save-route-form { display: flex; gap: 7px; margin-top: 10px; }
 .dialog-actions button, .save-route-form button { flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; font: 600 12px system-ui; cursor: pointer; }
