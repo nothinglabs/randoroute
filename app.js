@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.229';
+const APP_VERSION = '2026-07-20.230';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5318,7 +5318,7 @@ function openStreetView(lat, lng) {
   const frame = document.getElementById('streetViewFrame');
   const externalLink = document.getElementById('streetViewExternal');
   if (externalLink) externalLink.href = external;
-  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&fov=90`;
+  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=100&fov=90`;
   if (!dialog.open) dialog.showModal();
 }
 
