@@ -131,6 +131,8 @@ assert.match(streetViewUrl, /map_action=pano[\s\S]*?heading=90/,
   'the direct Google Street View link should preserve the road-aligned heading');
 assert.match(app, /&radius=150\$\{headingParam\}/,
   'the embedded Street View search should look up to 150 meters from the selected road');
+assert.match(app, /const externalLink = document\.getElementById\('streetViewExternal'\);[\s\S]*?externalLink\.href = googleMapsPointUrl\(lat, lng\)/,
+  'the Street View header Google Maps link should open the normal map, not panorama mode');
 
 const roadInfoSection = app.indexOf('// A pinned road card belongs to the map inspection interaction.');
 const listenerStart = app.indexOf("document.addEventListener('click'", roadInfoSection);

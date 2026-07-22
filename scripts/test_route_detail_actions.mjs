@@ -13,13 +13,13 @@ assert.match(app, /locationStart: locationAt\(s\.c0\), locationEnd: locationAt\(
   'stored route details should retain a compact on-road point for each segment');
 assert.match(app, /function openRouteDetails\(\) \{[\s\S]*?storeRouteDetails\(routing\.last\)/,
   'opening Details should refresh an already-drawn route with its segment locations');
-assert.match(details, /streetView\.textContent = 'Street View'[\s\S]*?mapLink\.textContent = 'Map ↗'/,
-  'each route-detail item should expose compact Street View and map actions');
+assert.match(details, /streetView\.textContent = 'Street View'[\s\S]*?mapButton\.textContent = 'Map'[\s\S]*?showRouteStep\(item\)/,
+  'each route-detail item should expose compact Street View and an in-app map action');
 assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view', lat, lng, heading \}, window\.location\.origin\)/,
   'embedded Details should ask the app to open its Street View dialog');
 assert.match(app, /event\.data\?\.type === 'open-street-view'[\s\S]*?openStreetView\(lat, lng/,
   'the app should accept Street View requests from its Route Details frame');
-assert.match(css, /\.segment-streetview\s*\{[^}]*min-height:\s*28px/,
+assert.match(css, /\.detail-item\.clickable\s*\{[^}]*display:\s*flex[\s\S]*?\.segment-streetview\s*\{[^}]*min-height:\s*26px/,
   'per-segment Street View actions should stay compact');
 assert.match(html, /class="dialog-close streetview-close"[\s\S]*?<span>Close<\/span>/,
   'the embedded Street View close control should have a visible Close label');
@@ -40,8 +40,4 @@ assert.equal(vm.runInContext('itemLocation({ locationStart: [-122.1, 47.6] }).jo
 const eastHeading = vm.runInContext('itemStreetViewHeading({ locationStart: [-122.1, 47.6], locationEnd: [-122.09, 47.6] })', context);
 assert.ok(Math.abs(eastHeading - 90) < 1,
   'a route-detail Street View action should face along an east-west road');
-const mapUrl = vm.runInContext('googleMapUrl([-122.1, 47.6])', context);
-assert.match(mapUrl, /query=47\.600000,-122\.100000/,
-  'a route-detail map link should open the segment location');
-
 console.log('Route detail action tests passed.');

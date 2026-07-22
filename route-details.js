@@ -85,9 +85,6 @@ function itemStreetViewHeading(item) {
     - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
-function googleMapUrl([lng, lat]) {
-  return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
-}
 function googleStreetViewUrl([lng, lat], heading = null) {
   const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}${headingParam}`;
@@ -281,14 +278,13 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
         streetView.textContent = 'Street View';
         streetView.setAttribute('aria-label', `Open ${item.name} in Google Street View`);
         streetView.addEventListener('click', () => openItemStreetView(item));
-        const mapLink = document.createElement('a');
-        mapLink.className = 'segment-map-link';
-        mapLink.href = googleMapUrl(location);
-        mapLink.target = '_blank';
-        mapLink.rel = 'noopener';
-        mapLink.textContent = 'Map ↗';
-        mapLink.setAttribute('aria-label', `Open ${item.name} in Google Maps`);
-        actions.append(streetView, mapLink);
+        const mapButton = document.createElement('button');
+        mapButton.type = 'button';
+        mapButton.className = 'segment-map-link';
+        mapButton.textContent = 'Map';
+        mapButton.setAttribute('aria-label', `Show ${item.name} on the route map`);
+        mapButton.addEventListener('click', () => showRouteStep(item));
+        actions.append(streetView, mapButton);
         li.appendChild(actions);
       }
       list.appendChild(li);

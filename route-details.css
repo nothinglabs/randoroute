@@ -57,7 +57,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .detail-list.numbered { padding-left: 25px; list-style: decimal; }
 .detail-list.numbered .detail-item { padding: 0; overflow: hidden; }
 .detail-item { padding: 9px 10px; border-radius: 9px; background: #f6f8fa; }
-.detail-item.clickable { padding: 0; overflow: hidden; }
+.detail-item.clickable { display: flex; align-items: stretch; padding: 0; overflow: hidden; }
 .detail-item.fail { background: #fff3f0; }
 .detail-item.caution { background: #fff5e8; }
 .detail-item.safety-bike { border-left: 5px solid #9fc400; }
@@ -66,14 +66,14 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .detail-item.safety-caution { border-left: 5px solid #c46b00; }
 .detail-item.safety-fail { border-left: 5px solid #b2182b; background: #fff3f0; }
 .detail-item.safety-unknown { border-left: 5px solid #999; }
-.step-button { display: block; width: 100%; padding: 9px 10px; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; touch-action: manipulation; }
+.step-button { display: block; flex: 1 1 auto; min-width: 0; width: 100%; padding: 9px 5px 9px 10px; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; touch-action: manipulation; }
 .step-button:hover { background: rgba(44,123,182,.07); }
 .step-button:focus-visible { outline: 3px solid #0a66c2; outline-offset: -3px; }
 .step-button .line > span:first-child { min-width: 0; }
-.segment-actions { display: flex; align-items: center; gap: 8px; padding: 0 10px 9px; }
-.segment-streetview { min-height: 28px; padding: 4px 7px; border: 1px solid #7aaed5; border-radius: 6px; background: #edf6fc; color: #075b9f; font: 750 10.5px/1 system-ui; cursor: pointer; }
+.segment-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 7px 7px 7px 3px; }
+.segment-streetview { min-height: 26px; padding: 4px 5px; border: 1px solid #7aaed5; border-radius: 6px; background: #edf6fc; color: #075b9f; font: 750 9.5px/1 system-ui; white-space: nowrap; cursor: pointer; }
 .segment-streetview:hover { border-color: #0a66c2; background: #e1f0fa; }
-.segment-map-link { color: #0a66c2; font: 750 10.5px/1 system-ui; text-decoration: none; white-space: nowrap; }
+.segment-map-link { min-height: 26px; padding: 4px 3px; border: 0; background: transparent; color: #0a66c2; font: 750 9.5px/1 system-ui; white-space: nowrap; cursor: pointer; }
 .segment-map-link:hover { text-decoration: underline; }
 .step-safety { display: inline-block; margin-right: 7px; padding: 2px 6px; border-radius: 999px; color: #fff; font: 750 10px/1.25 system-ui; vertical-align: 1px; white-space: nowrap; }
 .safety-bike .step-safety { background: #728e00; }
