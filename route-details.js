@@ -819,6 +819,11 @@ const elevationSteepWarning = document.getElementById('elevationSteepWarning');
 const noRouteSummary = document.getElementById('noRouteSummary');
 const alert = document.getElementById('routeAlert');
 
+elevationSteepWarning.addEventListener('click', () => {
+  selectDetailTab('concerns');
+  requestAnimationFrame(() => scrollToConcernSection('concern-steep-grades'));
+});
+
 function renderRouteOptionTabs() {
   const host = document.getElementById('routeOptionTabs');
   const options = Array.isArray(details?.routeOptions) ? details.routeOptions : [];

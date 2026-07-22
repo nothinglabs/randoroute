@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.285';
+const APP_VERSION = '2026-07-22.286';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3250,7 +3250,7 @@ function renderRouteCard(m) {
       </div>
       <div class="rc-summary-content">
         <div class="rc-summary-row">
-          <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas><button id="rcElevGradeWarning" class="rc-elev-grade-warning" type="button" aria-label="Route has a sustained grade over 18 percent. View Steep Grades in route details." ${hasSteepGradeWarning ? '' : 'hidden'}><span aria-hidden="true">!</span> See Details</button></div>
+          <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas><button id="rcElevGradeWarning" class="rc-elev-grade-warning" type="button" aria-label="Route has a sustained grade over 18 percent. View route details." ${hasSteepGradeWarning ? '' : 'hidden'}><span aria-hidden="true">!</span> See Details</button></div>
           <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
         </div>
         ${mtbNotice}<div class="rc-bottom-stats">
@@ -3260,7 +3260,7 @@ function renderRouteCard(m) {
     </div>`;
   moveControls();
   moveDetails();
-  document.getElementById('rcElevGradeWarning')?.addEventListener('click', () => openRouteDetails('concerns'));
+  document.getElementById('rcElevGradeWarning')?.addEventListener('click', () => openRouteDetails('stats'));
   refreshNavigationUI();
   drawRouteCardElevation();
 }
