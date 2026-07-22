@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.289';
+const APP_VERSION = '2026-07-22.290';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4325,7 +4325,7 @@ function updateArmButtons() {
   if (add) {
     add.disabled = !(routing.start && routing.end) || routing.vias.length >= MAX_ROUTE_STOPS;
     add.title = routing.vias.length >= MAX_ROUTE_STOPS
-      ? `Maximum of ${MAX_ROUTE_STOPS} waypoints reached` : 'Add new waypoint';
+      ? `Maximum of ${MAX_ROUTE_STOPS} waypoints reached` : 'Add waypoint';
   }
   if (block) {
     block.disabled = !(routing.start && routing.end) || routing.blocks.length >= MAX_ROAD_BLOCKS;
@@ -4980,7 +4980,7 @@ function openPlacePicker(kind) {
   ensureRouter();
   setPanelOpen(false);
   document.getElementById('placePickerTitle').textContent = kind === 'start' ? 'Choose start'
-    : kind === 'via' ? 'Add new waypoint'
+    : kind === 'via' ? 'Add waypoint'
       : kind === 'block' ? 'Add road block' : 'Choose destination';
   document.getElementById('placePickerHint').innerHTML = kind === 'via'
     ? '<strong>Search</strong> for a place below, or <strong>tap the map</strong> to add it.'

@@ -853,6 +853,10 @@ body.navigation-active #routeBar { display: none; }
 
 .nav-bike-marker { display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid #00795c; border-radius: 50%; background: rgba(255,255,255,.96); box-shadow: 0 2px 8px rgba(0,0,0,.35); font-size: 19px; line-height: 1; z-index: 6; }
 .route-constraint-marker { cursor: pointer; }
+/* Keep the pin's visual size, but give it a forgiving phone-sized hit area.
+   The transparent pseudo-element still bubbles taps and drags to MapLibre's
+   marker element. */
+.route-constraint-marker::before { position: absolute; inset: -10px -12px; content: ''; }
 .route-constraint-marker:focus-visible { outline: 3px solid #0072b2; outline-offset: 3px; }
 .road-block-marker { display: grid; place-items: center; width: 32px; height: 32px; border: 2px solid #a63a16; border-radius: 8px; background: #fff8e8; box-shadow: 0 2px 8px rgba(0,0,0,.35); color: #a63a16; font: 24px/1 system-ui; cursor: pointer; }
 .road-block-marker:hover { transform: scale(1.08); }

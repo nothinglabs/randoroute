@@ -186,25 +186,69 @@ function nearestNode(lon, lat, rules = null) {
   return { node: best, distM: havM(lon, lat, nodeLon[best], nodeLat[best]) };
 }
 
-function roadBlockEdgeSet(points, rules) {
+const ROAD_BLOCK_NEARBY_M = 16;
+
+function roadBlockEdgeSet(points) {
   if (!Array.isArray(points) || !points.length) return null;
-  const blocked = new Set();
+  const blocks = [];
   for (const point of points) {
     if (!Array.isArray(point) || point.length < 2) continue;
     const lon = Number(point[0]), lat = Number(point[1]);
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-    const snap = nearestNode(lon, lat, rules);
-    if (!Number.isInteger(snap?.node) || snap.node < 0) continue;
-    for (let arc = outStart[snap.node]; arc < outStart[snap.node + 1]; arc++) {
-      blocked.add(outEdge[arc]);
+    blocks.push({ lon, lat, metersPerLon: 111_320 * Math.cos(lat * Math.PI / 180) });
+  }
+  if (!blocks.length) return null;
+
+  // A graph edge can span an entire block, or a long stretch of trail. Snapping
+  // only to its nearest endpoint can therefore block the wrong road—or none of
+  // the road the rider touched. Match against the stored edge geometry instead.
+  const closestEdge = new Int32Array(blocks.length);
+  closestEdge.fill(-1);
+  const closestDistSq = new Float64Array(blocks.length);
+  closestDistSq.fill(Infinity);
+  const nearby = blocks.map(() => new Set());
+  const nearbySq = ROAD_BLOCK_NEARBY_M ** 2;
+
+  for (let edge = 0; edge < E; edge++) {
+    const start = eOff[edge];
+    const end = start + eCnt[edge] - 1;
+    for (let i = start; i < end; i++) {
+      const lon0 = gLon[i], lat0 = gLat[i];
+      const lon1 = gLon[i + 1], lat1 = gLat[i + 1];
+      for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+        const block = blocks[blockIndex];
+        const ax = (lon0 - block.lon) * block.metersPerLon;
+        const ay = (lat0 - block.lat) * 110_540;
+        const bx = (lon1 - block.lon) * block.metersPerLon;
+        const by = (lat1 - block.lat) * 110_540;
+        const dx = bx - ax, dy = by - ay;
+        const spanSq = dx * dx + dy * dy;
+        const t = spanSq ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / spanSq)) : 0;
+        const px = ax + t * dx, py = ay + t * dy;
+        const distSq = px * px + py * py;
+        if (distSq < closestDistSq[blockIndex]) {
+          closestDistSq[blockIndex] = distSq;
+          closestEdge[blockIndex] = edge;
+        }
+        if (distSq <= nearbySq) nearby[blockIndex].add(edge);
+      }
     }
+  }
+
+  const blocked = new Set();
+  for (let i = 0; i < blocks.length; i++) {
+    // Small road offsets often represent the opposite carriageway; include
+    // them too. At an intersection this intentionally treats the location as
+    // closed, instead of letting the route slip across the marker.
+    if (nearby[i].size) for (const edge of nearby[i]) blocked.add(edge);
+    else if (closestEdge[i] >= 0) blocked.add(closestEdge[i]);
   }
   return blocked.size ? blocked : null;
 }
 
 function withRoadBlocks(points, rules, work) {
   const prior = activeRoadBlockEdges;
-  activeRoadBlockEdges = roadBlockEdgeSet(points, rules);
+  activeRoadBlockEdges = roadBlockEdgeSet(points);
   try {
     return work();
   } finally {
