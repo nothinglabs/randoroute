@@ -57,12 +57,12 @@ assert.match(routeHelp, /<b>Failing lane segments pulse\.<\/b>/,
   'route help should emphasize that failing lane segments pulse');
 assert.doesNotMatch(html, /recommended balance|Ride mix|Compare the summaries/,
   'route help should not introduce unused labels or prescribe a route choice');
-assert.match(html, /No view within 200 m\? Try <b>Open in Google Maps<\/b>\./,
-  'Street View fallback copy should be compact and match the configured radius');
+assert.match(html, /Street View location may not be exact\. No view within 250 m\? Try <b>Open in Google Maps<\/b>\./,
+  'Street View fallback copy should explain the possible offset and match the configured radius');
 assert.doesNotMatch(html, /Street View searched up to|Assumed safe\./,
   'obsolete verbose or overbroad help claims should not remain');
-assert.match(app, /&radius=200\$\{headingParam\}/,
-  'the Street View request should match its documented 200-meter search radius');
+assert.match(app, /&radius=250\$\{headingParam\}/,
+  'the Street View request should match its documented 250-meter search radius');
 assert.match(app, /Ordinary roads over \$\{presetRules\.upperMaxSpeed\} mph fail; dedicated bike infrastructure is exempt\.[\s\S]*?Can satisfy the shoulder rule; speed and access limits still apply\./,
   'preset help should describe speed and designated-route behavior accurately');
 

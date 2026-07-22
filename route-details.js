@@ -335,6 +335,12 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
   totalLabel.textContent = items.length ? fmtDist(total) : 'None';
   heading.appendChild(totalLabel);
   section.appendChild(heading);
+  if (note) {
+    const sectionNote = document.createElement('p');
+    sectionNote.className = 'detail-note';
+    sectionNote.textContent = note;
+    section.appendChild(sectionNote);
+  }
   if (!items.length) {
     const empty = document.createElement('p');
     empty.className = 'empty';
@@ -407,12 +413,6 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
     }
     section.appendChild(list);
   }
-  if (note) {
-    const sectionNote = document.createElement('p');
-    sectionNote.className = 'detail-note';
-    sectionNote.textContent = note;
-    section.appendChild(sectionNote);
-  }
   host.appendChild(section);
 }
 
@@ -453,7 +453,7 @@ function renderConcernShortcuts(host, groups) {
   for (const group of available) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = group.label;
+    button.textContent = group.shortLabel || group.label;
     button.setAttribute('aria-label', `Jump to ${group.label.toLowerCase()} concerns`);
     button.addEventListener('click', () => scrollToConcernSection(group.sectionId));
     nav.appendChild(button);
@@ -630,7 +630,8 @@ function drawSpeedProfile(canvas) {
   for (let mph = minSpeed; mph < maxSpeed; mph += 10) {
     const y = Y(mph);
     ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
-    if (mph === 10 || mph % 20 === 0) ctx.fillText(`${mph}`, padL + 3, y - 5);
+    if (mph === minSpeed) ctx.fillText(`${mph} mph`, padL + 3, y - 5);
+    else if (mph % 20 === 0) ctx.fillText(`${mph}`, padL + 3, y - 5);
   }
   const colors = {
     bike: BIKE_NETWORK_COLOR, pass: PASS_COLOR, caution: CAUTION_COLOR,
@@ -814,6 +815,7 @@ const summarySub = document.getElementById('summarySub');
 const summaryRoadSpeed = document.getElementById('summaryRoadSpeed');
 const summaryMix = document.getElementById('summaryMix');
 const speedShoulderNote = document.getElementById('speedShoulderNote');
+const elevationSteepWarning = document.getElementById('elevationSteepWarning');
 const noRouteSummary = document.getElementById('noRouteSummary');
 const alert = document.getElementById('routeAlert');
 
@@ -1028,6 +1030,7 @@ if (!hasRoute) {
   summaryCard.hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
   summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span><span class="elevation-metric"><b>10%+ uphill</b><strong>${fmtMi(steepUphillM)} mi</strong></span>${totals.ferryM > 0 ? `<span class="elevation-metric"><b>Ferry</b><strong>⛴ ${fmtMi(totals.ferryM)} mi</strong></span>` : ''}`;
+  elevationSteepWarning.hidden = !(maxGradePct > 18);
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
   summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>Avg. limit</span><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>Max limit</span><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>At least 35 mph</span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span><span class="speed-limit-metric"><span>At least 45 mph</span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span>`;
@@ -1139,13 +1142,13 @@ if (!hasRoute) {
   // A freeway can appear in both sections because one answers “what failed?”
   // while the other answers “what kind of road is this?”.
   renderConcernShortcuts(report, [
-    { label: 'Fails rules', items: failing, sectionId: 'concern-fails' },
-    { label: 'Mountain-bike', items: mountainBike, sectionId: 'concern-mountain-bike' },
-    { label: 'Uphill curves', items: curveHazards, sectionId: 'concern-uphill-curves' },
-    { label: 'Steep grades', items: steepGrades, sectionId: 'concern-steep-grades' },
-    { label: 'Freeways', items: freeways, sectionId: 'concern-freeways' },
-    { label: 'Limited access', items: limitedAccess, sectionId: 'concern-limited-access' },
-    { label: 'Highways', items: highways, sectionId: 'concern-highways' },
+    { label: 'Fails rules', shortLabel: 'Fail', items: failing, sectionId: 'concern-fails' },
+    { label: 'Mountain-bike', shortLabel: 'MTB', items: mountainBike, sectionId: 'concern-mountain-bike' },
+    { label: 'Uphill curves', shortLabel: 'Curves', items: curveHazards, sectionId: 'concern-uphill-curves' },
+    { label: 'Steep grades', shortLabel: 'Grades', items: steepGrades, sectionId: 'concern-steep-grades' },
+    { label: 'Freeways', shortLabel: 'Fwy', items: freeways, sectionId: 'concern-freeways' },
+    { label: 'Limited access', shortLabel: 'Access', items: limitedAccess, sectionId: 'concern-limited-access' },
+    { label: 'Highways', shortLabel: 'Hwys', items: highways, sectionId: 'concern-highways' },
   ]);
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails');
   if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike');

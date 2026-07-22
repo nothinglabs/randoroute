@@ -30,6 +30,10 @@ assert.match(app, /let roadM = 0, roadSpeedM = 0;[\s\S]*?\!\(flags & 8\)[\s\S]*?
   'the average speed limit should be distance-weighted across all road segments, including bike lanes');
 assert.match(app, /class="rc-details-wrap">[\s\S]*?class="rc-speed-limit"><b>\$\{averageSpeedLimit\}<\/b><span>Avg\. Road<br>Speed Limit<\/span>[\s\S]*?id="routeDetailsSlot"/,
   'the route-choice card should place the number above its average road speed limit label and Details');
+assert.match(app, /const hasSteepGradeWarning = Number\(m\.maxGradePct\) > 18;[\s\S]*?id="rcElevGradeWarning"[\s\S]*?<span aria-hidden="true">!<\/span> See Details[\s\S]*?openRouteDetails\('concerns'\)/,
+  'the route-card elevation chart should flag sustained grades above 18% and open the relevant Details tab');
+assert.match(appCss, /\.rc-elev-wrap\s*\{[^}]*position:\s*relative[\s\S]*?\.rc-elev-grade-warning\s*\{[^}]*position:\s*absolute[^}]*color:\s*#b42318/,
+  'the route-card steep-grade warning should overlay the elevation chart in red');
 assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textContent = 'View'[\s\S]*?mapButton\.className = 'segment-map-button'[\s\S]*?mapLabel\.textContent = 'Map'[\s\S]*?mapIcon\.textContent = '⌖'[\s\S]*?mapButton\.append\(mapLabel, mapIcon\)[\s\S]*?actions\.append\(mapButton, streetView\)/,
   'each route-detail item should put an in-app Map button before its stacked Street View button');
 assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view', lat, lng, heading \}, window\.location\.origin\)/,
@@ -38,6 +42,8 @@ assert.match(details, /function scrollToConcernSection\(sectionId\)[\s\S]*?scrol
   'Concerns should offer compact category shortcuts that scroll to the matching section');
 assert.match(details, /renderConcernShortcuts\(report, \[[\s\S]*?Fails rules[\s\S]*?Steep grades[\s\S]*?Limited access/,
   'the shortcut row should include every available concern type');
+assert.match(css, /\.concern-shortcuts\s*\{[^}]*overflow:\s*hidden[\s\S]*?\.concern-shortcuts button\s*\{[^}]*flex:\s*1 1 0[^}]*text-overflow:\s*ellipsis/,
+  'concern shortcuts should fit in a compact row instead of horizontally scrolling');
 assert.match(app, /event\.data\?\.type === 'open-street-view'[\s\S]*?openStreetView\(lat, lng/,
   'the app should accept Street View requests from its Route Details frame');
 assert.doesNotMatch(app, /highlight-route-concern|showRouteConcernOnMap/,
@@ -46,8 +52,10 @@ assert.match(css, /\.segment-actions\s*\{[^}]*margin-left:\s*auto[\s\S]*?\.segme
   'the equal-sized, stacked Map and Street View controls should align at the card right edge');
 assert.match(html, /class="dialog-close streetview-close"[\s\S]*?<span>Close<\/span>/,
   'the embedded Street View close control should have a visible Close label');
-assert.match(html, /No view within 200 m\?[\s\S]*?Open in Google Maps/,
-  'the embedded viewer should use a concise nearby-coverage fallback');
+assert.match(html, /Street View location may not be exact\.[\s\S]*?No view within 250 m\?[\s\S]*?Open in Google Maps/,
+  'the embedded viewer should explain the nearby-coverage fallback and possible location offset');
+assert.match(app, /maps\/embed\/v1\/streetview[\s\S]*?radius=250/,
+  'the embedded Street View lookup should search up to 250 m for nearby imagery');
 assert.match(appCss, /\.full-help-head \.streetview-close\s*\{[^}]*min-height:\s*42px/,
   'the embedded Street View close control should have a clear hit target');
 assert.match(appCss, /\.sv-coverage-note\s*\{[^}]*position:\s*absolute/,
@@ -199,8 +207,8 @@ assert.match(detailsHtml, /vendor\/maplibre-gl\.css[\s\S]*?id="routePreviewMap"[
   'Route Details should load MapLibre with compact, always-visible map attribution');
 assert.match(details, /attributionControl:\s*false/,
   'the map library’s expandable attribution control should be replaced by the compact static credit');
-assert.match(css, /\.route-option-tabs\s*\{[^}]*position:\s*sticky[\s\S]*?\.route-preview-map\s*\{[^}]*height:\s*122px/,
-  'route choices should remain visible at the top and the route map should be reduced by about one fifth');
+assert.match(css, /\.route-option-tabs\s*\{[^}]*position:\s*sticky[^}]*flex-wrap:\s*wrap[\s\S]*?\.route-option-tabs::before\s*\{[^}]*content:\s*'Choose route'[\s\S]*?\.route-preview-map\s*\{[^}]*height:\s*122px/,
+  'route choices should remain visible with a clear title, and the route map should be reduced by about one fifth');
 assert.match(css, /\.detail-panel\[hidden\]\s*\{\s*display:\s*none !important;/,
   'only the selected Route Details panel should be visible');
 assert.match(detailsHtml, /id="tab-stats"[\s\S]*?data-detail-tab="stats">Stats<\/button>[\s\S]*?id="tab-concerns"[\s\S]*?id="tab-steps"/,
@@ -225,10 +233,16 @@ assert.match(css, /#elevationDialogCanvas, #speedDialogCanvas\s*\{[^}]*aspect-ra
   'both enlarged charts should use a similar compact aspect ratio');
 assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>[\s\S]*?<b>10%\+ uphill<\/b>[\s\S]*?fmtMi\(steepUphillM\)/,
   'elevation metrics should include the mileage of sustained uphill grade over 10%');
+assert.match(detailsHtml, /id="elevationSteepWarning"[\s\S]*?may be impassable by bike[\s\S]*?Steep Grades[\s\S]*?Concerns tab/,
+  'the elevation card should clearly explain the steep-grade route warning');
+assert.match(details, /elevationSteepWarning\.hidden = !\(maxGradePct > 18\)/,
+  'the steep-grade elevation warning should appear only above 18%');
+assert.match(css, /\.elevation-steep-warning\s*\{[^}]*grid-column:\s*1\s*\/\s*-1[^}]*border-left:\s*4px solid #c33327/,
+  'the steep-grade elevation warning should span the card with a prominent warning treatment');
 assert.match(details, /const STEEP_UPHILL_CONCERN_PCT = 10;[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = STEEP_UPHILL_CONCERN_PCT\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep uphill grade segments \(over 10%\)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality\.'\)/,
   'Concerns should list only sustained uphill segments whose grade exceeds 10% and disclose data quality limits');
-assert.match(details, /const minSpeed = 10;[\s\S]*?Math\.min\(maxSpeed - minSpeed, Math\.max\(0, mph - minSpeed\)\)/,
-  'the speed chart should use a 10 mph baseline to keep its trace vertically centered');
+assert.match(details, /const minSpeed = 10;[\s\S]*?Math\.min\(maxSpeed - minSpeed, Math\.max\(0, mph - minSpeed\)\)[\s\S]*?mph === minSpeed\) ctx\.fillText\(`\$\{mph\} mph`/,
+  'the speed chart should use and visibly label a 10 mph baseline');
 const speedDrawStart = details.indexOf('function drawSpeedProfile(');
 const speedDrawEnd = details.indexOf('function drawElevation(', speedDrawStart);
 assert.ok(speedDrawStart >= 0 && speedDrawEnd > speedDrawStart, 'speed-profile chart renderer was not found');

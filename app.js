@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.278';
+const APP_VERSION = '2026-07-22.284';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3237,6 +3237,7 @@ function renderRouteCard(m) {
   const cautionPct = routePercent(stats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(m.failM || 0, ridingM, true);
   const averageSpeedLimit = stats.avgRoadSpeedMph == null ? 'N/A' : `${stats.avgRoadSpeedMph} mph`;
+  const hasSteepGradeWarning = Number(m.maxGradePct) > 18;
   const mtbNotice = stats.mtbM > 0
     ? `<div class="rc-warn rc-mtb">⚠ ${fmtDist(stats.mtbM)} on mountain-bike trail</div>`
     : '';
@@ -3249,7 +3250,7 @@ function renderRouteCard(m) {
       </div>
       <div class="rc-summary-content">
         <div class="rc-summary-row">
-          <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas></div>
+          <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas><button id="rcElevGradeWarning" class="rc-elev-grade-warning" type="button" aria-label="Route has a sustained grade over 18 percent. View Steep Grades in route details." ${hasSteepGradeWarning ? '' : 'hidden'}><span aria-hidden="true">!</span> See Details</button></div>
           <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
         </div>
         ${mtbNotice}<div class="rc-bottom-stats">
@@ -3259,6 +3260,7 @@ function renderRouteCard(m) {
     </div>`;
   moveControls();
   moveDetails();
+  document.getElementById('rcElevGradeWarning')?.addEventListener('click', () => openRouteDetails('concerns'));
   refreshNavigationUI();
   drawRouteCardElevation();
 }
@@ -5500,7 +5502,7 @@ function openStreetView(lat, lng, heading = null) {
   const externalLink = document.getElementById('streetViewExternal');
   if (externalLink) externalLink.href = googleMapsPointUrl(lat, lng);
   const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
-  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=200${headingParam}&fov=90`;
+  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=250${headingParam}&fov=90`;
   if (!dialog.open) dialog.showModal();
 }
 

@@ -129,8 +129,8 @@ assert.match(mapUrl, /maps\/search\/\?api=1&query=47\.600000,-122\.100000/,
   'the Google Map link should open the selected coordinates');
 assert.match(streetViewUrl, /map_action=pano[\s\S]*?heading=90/,
   'the direct Google Street View link should preserve the road-aligned heading');
-assert.match(app, /&radius=200\$\{headingParam\}/,
-  'the embedded Street View search should look up to 200 meters from the selected road');
+assert.match(app, /&radius=250\$\{headingParam\}/,
+  'the embedded Street View search should look up to 250 meters from the selected road');
 assert.match(app, /const externalLink = document\.getElementById\('streetViewExternal'\);[\s\S]*?externalLink\.href = googleMapsPointUrl\(lat, lng\)/,
   'the Street View header Google Maps link should open the normal map, not panorama mode');
 
