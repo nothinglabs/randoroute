@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.263';
+const APP_VERSION = '2026-07-22.264';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2028,7 +2028,7 @@ function navigationElevationProgressM() {
   return Math.max(0, Math.min(profileTotalM, plannedM * profileTotalM / plannedTotalM));
 }
 
-function openRouteDetails() {
+function openRouteDetails(detailTab = null) {
   if (!routing.last?.ok) return;
   // Refresh the compact report before loading it. This lets an already-drawn
   // route gain its per-segment Google Maps and Street View locations as soon
@@ -2054,20 +2054,21 @@ function openRouteDetails() {
   let progress = '';
   const progressM = navigationElevationProgressM();
   if (Number.isFinite(progressM)) progress = `&navProgress=${Math.round(progressM)}`;
-  frame.src = `route-details.html?embedded=1&t=${Date.now()}${progress}`;
+  const requestedTab = ['stats', 'concerns', 'steps'].includes(detailTab) ? `&tab=${detailTab}` : '';
+  frame.src = `route-details.html?embedded=1&t=${Date.now()}${progress}${requestedTab}`;
   if (!dialog.open) dialog.showModal();
 }
 
-function selectRouteDetailsOption(index) {
+function selectRouteDetailsOption(index, detailTab = null) {
   if (turnNav.active) return;
   const option = routing.options[Number(index)];
   if (!option?.ok || option === routing.last) return;
   // Keep the same shared-route safeguard as the map's route chooser.
   if (routing.sharedActive && !option.asShared) { openSharedSwitchDialog(); return; }
   activateRouteOption(option);
-  // Reload on Stats so the compact map preview immediately shows the newly
-  // selected route, while the map behind the dialog is already in sync.
-  openRouteDetails();
+  // Keep the current Details tab open while its selected-route content reloads.
+  // The map behind the dialog is already updated by activateRouteOption().
+  openRouteDetails(detailTab);
 }
 
 function openRouteTips() {
@@ -2091,7 +2092,7 @@ window.addEventListener('message', (event) => {
     return;
   }
   if (event.data?.type === 'select-route-details-option') {
-    selectRouteDetailsOption(event.data.index);
+    selectRouteDetailsOption(event.data.index, event.data.tab);
     return;
   }
   if (event.data?.type === 'highlight-route-step') {

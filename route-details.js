@@ -12,6 +12,7 @@ const PASS_COLOR = '#168ad1';
 const CAUTION_COLOR = '#c46b00';
 const FAIL_COLOR = '#b2182b';
 let routePreviewMap = null;
+const REQUESTED_DETAIL_TAB = new URLSearchParams(window.location.search).get('tab');
 const MIN_REPORTED_GRADE_M = 20;
 const MAX_CREDIBLE_GRADE_PCT = 40;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
@@ -669,6 +670,14 @@ function restoreDetailPosition() {
   } catch (e) { return false; }
 }
 
+function restoreInitialDetailTab() {
+  if (['stats', 'concerns', 'steps'].includes(REQUESTED_DETAIL_TAB)) {
+    selectDetailTab(REQUESTED_DETAIL_TAB);
+    return;
+  }
+  if (!restoreDetailPosition()) selectDetailTab('stats');
+}
+
 const details = loadDetails();
 const hasRoute = !!(details && details.summary && Array.isArray(details.segs));
 const report = document.getElementById('report');
@@ -696,7 +705,9 @@ function renderRouteOptionTabs() {
     button.addEventListener('click', () => {
       if (button.getAttribute('aria-selected') === 'true') return;
       window.parent.postMessage({
-        type: 'select-route-details-option', index: Number(button.dataset.routeDetailsOption),
+        type: 'select-route-details-option',
+        index: Number(button.dataset.routeDetailsOption),
+        tab: selectedDetailTab(),
       }, window.location.origin);
     });
   });
@@ -779,7 +790,7 @@ function initializeRoutePreviewMap() {
   routePreviewMap = new maplibregl.Map({
     container: host,
     interactive: false,
-    attributionControl: true,
+    attributionControl: false,
     style: {
       version: 8,
       sources: { positron: { type: 'raster', tiles: [
@@ -848,7 +859,7 @@ if (!hasRoute) {
   noRouteSummary.textContent = 'No current route.';
   report.innerHTML = '<div class="no-route">Set a start and destination on the map to see freeways, highways, and any road-rule concerns here.</div>';
   steps.innerHTML = '<div class="no-route">Set a start and destination on the map to see the road-by-road route steps here.</div>';
-  if (!restoreDetailPosition()) selectDetailTab('stats');
+  restoreInitialDetailTab();
 } else {
   const { rules = {}, summary: totals, segs } = details;
   const routeStats = routeSummaryStats(segs);
@@ -868,9 +879,8 @@ if (!hasRoute) {
   const failPct = routePercent(totals.failM || 0, ridingM, true);
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
-  document.getElementById('routeRoadSummary').hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
-  summarySub.textContent = `↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent · ${avgUphillPct.toFixed(1)}% avg uphill · ${maxGradePct.toFixed(1)}% max${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}`;
+  summarySub.innerHTML = `<span><b>↗ ${fmtFt(totals.ascentM)} ft</b> climb · <b>↘ ${fmtFt(totals.descentM)} ft</b> descent</span><span><b>${avgUphillPct.toFixed(1)}%</b> avg uphill · <b>${maxGradePct.toFixed(1)}%</b> max grade${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}</span>`;
   summaryRoadSpeed.textContent = `Avg. road speed limit: ${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`} (all roads)`;
   summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
   const speedProfile = document.getElementById('speedProfile');
@@ -988,7 +998,7 @@ if (!hasRoute) {
   }
   renderSection(steps, 'Follow these roads in order', routeSteps, 'No street-level steps are available for this route.', '', true);
   if (ferries.length) renderSection(steps, 'Ferry crossings', ferries, '', 'caution', true);
-  if (!restoreDetailPosition()) selectDetailTab('stats');
+  restoreInitialDetailTab();
 }
 
 

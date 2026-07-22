@@ -12,14 +12,14 @@ const detailsHtml = fs.readFileSync(new URL('../route-details.html', import.meta
 
 assert.match(app, /locationStart: locationAt\(s\.c0\), locationEnd: locationAt\(s\.c1\)/,
   'stored route details should retain a compact on-road point for each segment');
-assert.match(app, /function openRouteDetails\(\) \{[\s\S]*?storeRouteDetails\(routing\.last\)/,
+assert.match(app, /function openRouteDetails\(detailTab = null\) \{[\s\S]*?storeRouteDetails\(routing\.last\)[\s\S]*?\['stats', 'concerns', 'steps'\]\.includes\(detailTab\)[\s\S]*?&tab=\$\{detailTab\}/,
   'opening Details should refresh an already-drawn route with its segment locations');
 assert.match(app, /function compactRouteCoords\(m, includeIndices = false\)[\s\S]*?Math\.ceil\(coords\.length \/ 600\)[\s\S]*?const routePreview = compactRouteCoords\(m, true\);[\s\S]*?routeCoords: routePreview\?\.coords \|\| null,[\s\S]*?routeCoordIndices: routePreview\?\.indices \|\| null,[\s\S]*?routeOptions: routeDetailsOptionTabs\(m\)/,
   'Route Details should retain compact preview geometry with the source indexes needed for map colors');
-assert.match(app, /function selectRouteDetailsOption\(index\)[\s\S]*?if \(turnNav\.active\) return;[\s\S]*?activateRouteOption\(option\);[\s\S]*?openRouteDetails\(\);/,
-  'choosing a route in Details should update the map selection and refresh its preview');
-assert.match(app, /event\.data\?\.type === 'select-route-details-option'[\s\S]*?selectRouteDetailsOption\(event\.data\.index\)/,
-  'the app should accept a route-choice request from its Details frame');
+assert.match(app, /function selectRouteDetailsOption\(index, detailTab = null\)[\s\S]*?if \(turnNav\.active\) return;[\s\S]*?activateRouteOption\(option\);[\s\S]*?openRouteDetails\(detailTab\);/,
+  'choosing a route in Details should update the map selection while preserving the current Details tab');
+assert.match(app, /event\.data\?\.type === 'select-route-details-option'[\s\S]*?selectRouteDetailsOption\(event\.data\.index, event\.data\.tab\)/,
+  'the app should accept the current Details tab with a route-choice request');
 assert.match(app, /const dialogTitle = turnNav\.active \? 'Active Route Details' : `\$\{routeLabel\} Details`/,
   'navigation should title the report "Active Route Details"');
 assert.doesNotMatch(app, /ROUTE_TIME_DISPLAY_MULTIPLIER/,
@@ -58,8 +58,8 @@ assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(
   'the route-card ride classes should balance into two equal columns on narrow phones');
 assert.match(appCss, /\.rc-details-wrap\s*\{[^}]*flex-direction:\s*column[^}]*justify-content:\s*flex-end[\s\S]*?\.rc-speed-limit\s*\{[^}]*text-align:\s*center/,
   'the route-choice Details rail should sit at the bottom-left with a compact speed metric above it');
-assert.match(css, /\.route-summary-mix-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.route-summary-mix-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
-  'the Route Details ride classes should balance into two equal columns on narrow phones');
+assert.match(css, /\.route-quick-summary\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap[\s\S]*?\.route-summary-mix-items\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap/,
+  'the shared route summary should keep route metrics and safety percentages compactly together');
 assert.match(app, /description: routeDetailsOptimizationDescription\(m\.optimization\)/,
   'route-search rationale should remain stored for future Route Details rendering');
 assert.doesNotMatch(detailsHtml, /Tap any road, concern, or step/,
@@ -147,14 +147,20 @@ assert.equal(vm.runInContext(`routePreviewEdgeColors([
 
 assert.match(detailsHtml, /id="routeOptionTabs"[\s\S]*?id="routeQuickSummary"[\s\S]*?id="summary"[\s\S]*?id="summaryMix"[\s\S]*?id="panel-stats"[\s\S]*?id="panel-concerns"[\s\S]*?id="panel-steps"/,
   'route mileage, time, and safety mix should be shared above every Details tab');
-assert.match(detailsHtml, /id="panel-stats"[\s\S]*?id="routeSummaryCard"[\s\S]*?id="routeRoadSummary"[\s\S]*?id="routePreview"[\s\S]*?id="speedProfile"/,
-  'elevation, road speed, map preview, and speed chart should remain in the Stats tab');
-assert.match(details, /const embeddedDetails = window\.self !== window\.top;[\s\S]*?function renderRouteOptionTabs\(\)[\s\S]*?host\.hidden = !embeddedDetails \|\| options\.length < 2;[\s\S]*?type: 'select-route-details-option'/,
-  'only non-navigating embedded Details should offer route switching back to the map');
+assert.match(detailsHtml, /id="panel-stats"[\s\S]*?id="routeSummaryCard"[\s\S]*?id="routePreview"[\s\S]*?id="speedProfile"/,
+  'elevation, map preview, and speed chart should remain in the Stats tab');
+assert.doesNotMatch(detailsHtml, /id="routeRoadSummary"/,
+  'road speed should be combined with the speed-limit chart rather than using a separate section');
+assert.match(details, /const embeddedDetails = window\.self !== window\.top;[\s\S]*?function renderRouteOptionTabs\(\)[\s\S]*?host\.hidden = !embeddedDetails \|\| options\.length < 2;[\s\S]*?type: 'select-route-details-option',[\s\S]*?tab: selectedDetailTab\(\)/,
+  'only non-navigating embedded Details should offer route switching and preserve its current tab');
+assert.match(details, /const REQUESTED_DETAIL_TAB[\s\S]*?function restoreInitialDetailTab\(\)[\s\S]*?selectDetailTab\(REQUESTED_DETAIL_TAB\)/,
+  'the reloaded report should restore the requested Details tab before showing the new route');
 assert.match(details, /function routePreviewStyle\(seg\)[\s\S]*?Number\(seg\.facility\) === 5 \? 'trail' : 'bike'[\s\S]*?isDesignated\(seg\) \? 'designated' : 'pass'[\s\S]*?function initializeRoutePreviewMap\(\)[\s\S]*?new maplibregl\.Map\([\s\S]*?route-preview-colored[\s\S]*?routePreviewMap\.fitBounds/,
   'the Stats preview should be a real map with the same route safety styles');
-assert.match(detailsHtml, /vendor\/maplibre-gl\.css[\s\S]*?id="routePreviewMap"[\s\S]*?vendor\/maplibre-gl\.js/,
-  'Route Details should load MapLibre for its route map');
+assert.match(detailsHtml, /vendor\/maplibre-gl\.css[\s\S]*?id="routePreviewMap"[\s\S]*?route-preview-attribution[\s\S]*?© OpenStreetMap contributors[\s\S]*?© CARTO[\s\S]*?vendor\/maplibre-gl\.js/,
+  'Route Details should load MapLibre with compact, always-visible map attribution');
+assert.match(details, /attributionControl:\s*false/,
+  'the map library’s expandable attribution control should be replaced by the compact static credit');
 assert.match(css, /\.route-option-tabs\s*\{[^}]*position:\s*sticky[\s\S]*?\.route-preview-map\s*\{[^}]*height:\s*152px/,
   'route choices should remain visible at the top and the route map should stay compact');
 assert.match(css, /\.detail-panel\[hidden\]\s*\{\s*display:\s*none !important;/,
@@ -165,8 +171,8 @@ assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?bike pat
   'Route Details should retain its speed-profile graph');
 assert.doesNotMatch(detailsHtml, /speed-profile-legend|speed-profile-swatch/,
   'the speed-profile color legend should be removed');
-assert.match(detailsHtml, /id="routeRoadSummary"[\s\S]*?Road speed[\s\S]*?id="summaryRoadSpeed"/,
-  'average road speed should remain a dedicated Stats section');
+assert.match(detailsHtml, /id="speedProfile"[\s\S]*?class="speed-profile-head"[\s\S]*?id="summaryRoadSpeed"/,
+  'average road speed should appear with the speed-limit chart');
 
 const coordsStart = app.indexOf('function compactRouteCoords(');
 const coordsEnd = app.indexOf('function routeDetailsOptionTabs(', coordsStart);
