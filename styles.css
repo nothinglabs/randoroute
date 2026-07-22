@@ -403,20 +403,22 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout table { border-collapse: collapse; width: 100%; }
 .readout td { padding: 0 5px 1px 0; line-height: 1.18; vertical-align: top; }
 .readout td.k { width: 1%; padding-right: 8px; color: #777; white-space: nowrap; }
-.readout .gmap {
-  display: inline-block;
-  margin-top: 4px;
-  padding: 5px 8px 2px 0;
-  border: 0;
-  background: none;
-  color: #0a66c2;
-  font-family: inherit;
-  font-size: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: none;
+.road-map-actions { margin: 7px 0 6px; }
+.streetview-launch {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 49px;
+  padding: 8px 10px; border: 1px solid #07549f; border-radius: 9px;
+  background: linear-gradient(135deg, #0874d1, #075ba9); color: #fff;
+  text-align: left; box-shadow: 0 2px 5px rgba(7, 91, 169, .23); cursor: pointer;
 }
-.readout .gmap:hover { text-decoration: underline; }
+.streetview-launch:hover { background: linear-gradient(135deg, #0a7ddf, #0762b7); }
+.streetview-launch:focus-visible { outline: 3px solid #75bdf4; outline-offset: 2px; }
+.streetview-launch-icon { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid rgba(255,255,255,.48); border-radius: 50%; font: 800 19px/1 system-ui; }
+.streetview-launch > span:last-child { display: grid; gap: 1px; min-width: 0; }
+.streetview-launch strong { font: 800 14px/1.05 system-ui; }
+.streetview-launch small { color: rgba(255,255,255,.86); font: 600 10.5px/1.1 system-ui; }
+.road-external-links { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; margin: 5px 1px 0; color: #657681; font: 600 10.5px/1.25 system-ui; }
+.road-external-links a { color: #0a66c2; font-weight: 750; text-decoration: none; }
+.road-external-links a:hover { text-decoration: underline; }
 
 .status {
   position: absolute; top: calc(env(safe-area-inset-top) + 60px); right: 58px; z-index: 10;

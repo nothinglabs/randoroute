@@ -14,6 +14,10 @@ assert.match(css, /@media \(max-width: 720px\)[\s\S]*?\.readout\s*\{[^}]*width:\
   'the mobile road-information card should use a compact content width');
 assert.match(css, /\.readout td\.k\s*\{[^}]*white-space:\s*nowrap/,
   'road-information labels should stay on one line to reduce card height');
+assert.match(css, /\.streetview-launch\s*\{[^}]*min-height:\s*49px/,
+  'Street View should be a prominent full-width road-card action');
+assert.match(app, /googleMapsPointUrl\(svLat, svLng\)[\s\S]*?googleStreetViewUrl\(svLat, svLng, svHeading\)/,
+  'every road-information card should offer direct Google Map and Street View links');
 assert.match(app, /roadInfoHoverMedia\s*=\s*window\.matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)[\s\S]*?if \(!roadInfoHoverMedia\.matches\) return/,
   'touch-generated mouse movement must not open the fixed hover preview');
 assert.match(app, /canvas\.addEventListener\('touchend'[\s\S]*?inspectRoadAt\(point, lngLat\)[\s\S]*?lastRoadInfoTouchAt = Date\.now\(\)/,
@@ -95,6 +99,34 @@ assert.equal(inlineStyles.get('top'), '634px', 'a card should stay inside the bo
 vm.runInContext('resetRoadInfoPosition()', positionContext);
 assert.equal(inlineStyles.size, 0, 'hover previews should clear tapped-card inline positioning');
 assert.ok(!classNames.has('near-tap'), 'hover previews should return to stable corner placement');
+
+const headingStart = app.indexOf('function streetViewRoadHeading(');
+const headingEnd = app.indexOf('function renderReadout(', headingStart);
+assert.ok(headingStart >= 0 && headingEnd > headingStart,
+  'Street View road-heading helper was not found');
+const headingContext = vm.createContext({ Math });
+vm.runInContext(app.slice(headingStart, headingEnd), headingContext);
+const eastHeading = vm.runInContext(`streetViewRoadHeading({ geometry: {
+  type: 'LineString', coordinates: [[-122.1, 47.6], [-122.09, 47.6]]
+} }, { lng: -122.095, lat: 47.6 })`, headingContext);
+const northHeading = vm.runInContext(`streetViewRoadHeading({ geometry: {
+  type: 'LineString', coordinates: [[-122.1, 47.6], [-122.1, 47.61]]
+} }, { lng: -122.1, lat: 47.605 })`, headingContext);
+assert.ok(Math.abs(eastHeading - 90) < 1, 'an east-west road should open Street View facing along the road');
+assert.ok(northHeading < 1 || northHeading > 359, 'a north-south road should open Street View facing along the road');
+
+const urlStart = app.indexOf('function googleMapsPointUrl(');
+const urlEnd = app.indexOf('function openStreetView(', urlStart);
+assert.ok(urlStart >= 0 && urlEnd > urlStart,
+  'Google Map and Street View URL helpers were not found');
+const urlContext = vm.createContext({ Math });
+vm.runInContext(app.slice(urlStart, urlEnd), urlContext);
+const mapUrl = vm.runInContext('googleMapsPointUrl(47.6, -122.1)', urlContext);
+const streetViewUrl = vm.runInContext('googleStreetViewUrl(47.6, -122.1, 90)', urlContext);
+assert.match(mapUrl, /maps\/search\/\?api=1&query=47\.600000,-122\.100000/,
+  'the Google Map link should open the selected coordinates');
+assert.match(streetViewUrl, /map_action=pano[\s\S]*?heading=90/,
+  'the direct Google Street View link should preserve the road-aligned heading');
 
 const roadInfoSection = app.indexOf('// A pinned road card belongs to the map inspection interaction.');
 const listenerStart = app.indexOf("document.addEventListener('click'", roadInfoSection);

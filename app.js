@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.230';
+const APP_VERSION = '2026-07-20.231';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5143,6 +5143,54 @@ function positionRoadInfoNear(point) {
   readoutEl.style.top = `${Math.round(viewportTop - parentRect.top)}px`;
 }
 
+// Google otherwise chooses an arbitrary initial panorama direction, which is
+// often toward a building or ditch. Find the feature segment nearest the tap
+// and use its bearing so Street View starts looking along the road instead.
+function streetViewRoadHeading(feature, lngLat) {
+  const geometry = feature?.geometry;
+  const lines = geometry?.type === 'LineString' ? [geometry.coordinates]
+    : geometry?.type === 'MultiLineString' ? geometry.coordinates : [];
+  if (!lines.length) return null;
+
+  const lat0 = lngLat.lat;
+  const lng0 = lngLat.lng;
+  const longitudeScale = Math.cos(lat0 * Math.PI / 180);
+  let nearest = null;
+  let nearestDistance = Infinity;
+
+  for (const line of lines) {
+    for (let i = 1; i < line.length; i++) {
+      const start = line[i - 1];
+      const end = line[i];
+      if (!Array.isArray(start) || !Array.isArray(end)) continue;
+      const ax = (start[0] - lng0) * longitudeScale;
+      const ay = start[1] - lat0;
+      const bx = (end[0] - lng0) * longitudeScale;
+      const by = end[1] - lat0;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const lengthSquared = dx * dx + dy * dy;
+      if (!lengthSquared) continue;
+      const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / lengthSquared));
+      const distanceSquared = (ax + t * dx) ** 2 + (ay + t * dy) ** 2;
+      if (distanceSquared < nearestDistance) {
+        nearestDistance = distanceSquared;
+        nearest = [start, end];
+      }
+    }
+  }
+  if (!nearest) return null;
+
+  const [start, end] = nearest;
+  const lat1 = start[1] * Math.PI / 180;
+  const lat2 = end[1] * Math.PI / 180;
+  const deltaLng = (end[0] - start[0]) * Math.PI / 180;
+  const y = Math.sin(deltaLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2)
+    - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
 function renderReadout(feature, lngLat, anchorPoint = null) {
   resetRoadInfoPosition();
   const src = HIT_SRC[feature.layer.id];
@@ -5249,6 +5297,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   }
   rows = rows.filter(([, v]) => v != null && v !== '');
   const svLat = lngLat.lat, svLng = lngLat.lng;
+  const svHeading = streetViewRoadHeading(feature, lngLat);
   readoutEl.replaceChildren();
   const close = document.createElement('button');
   close.className = 'readout-close';
@@ -5278,12 +5327,45 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
     tr.append(keyCell, valueCell);
     table.appendChild(tr);
   }
+  const mapActions = document.createElement('div');
+  mapActions.className = 'road-map-actions';
   const streetViewBtn = document.createElement('button');
   streetViewBtn.type = 'button';
-  streetViewBtn.className = 'gmap';
-  streetViewBtn.textContent = GOOGLE_MAPS_EMBED_KEY ? 'Street View' : 'Open Street View ↗';
-  streetViewBtn.addEventListener('click', () => openStreetView(svLat, svLng));
-  readoutEl.append(close, heading, table, streetViewBtn);
+  streetViewBtn.className = 'streetview-launch';
+  streetViewBtn.setAttribute('aria-label', GOOGLE_MAPS_EMBED_KEY
+    ? 'Open Street View in this app' : 'Open Street View in Google Maps');
+  const streetViewIcon = document.createElement('span');
+  streetViewIcon.className = 'streetview-launch-icon';
+  streetViewIcon.setAttribute('aria-hidden', 'true');
+  streetViewIcon.textContent = '◉';
+  const streetViewCopy = document.createElement('span');
+  const streetViewLabel = document.createElement('strong');
+  streetViewLabel.textContent = GOOGLE_MAPS_EMBED_KEY ? 'Street View' : 'Open Street View';
+  const streetViewHint = document.createElement('small');
+  streetViewHint.textContent = 'Look along this road';
+  streetViewCopy.append(streetViewLabel, streetViewHint);
+  streetViewBtn.append(streetViewIcon, streetViewCopy);
+  streetViewBtn.addEventListener('click', () => openStreetView(svLat, svLng, svHeading));
+
+  const externalLinks = document.createElement('div');
+  externalLinks.className = 'road-external-links';
+  const externalLabel = document.createElement('span');
+  externalLabel.textContent = 'Open in Google:';
+  const mapLink = document.createElement('a');
+  mapLink.href = googleMapsPointUrl(svLat, svLng);
+  mapLink.target = '_blank';
+  mapLink.rel = 'noopener';
+  mapLink.textContent = 'Map ↗';
+  mapLink.setAttribute('aria-label', 'Open this location in Google Maps');
+  const streetViewLink = document.createElement('a');
+  streetViewLink.href = googleStreetViewUrl(svLat, svLng, svHeading);
+  streetViewLink.target = '_blank';
+  streetViewLink.rel = 'noopener';
+  streetViewLink.textContent = 'Street View ↗';
+  streetViewLink.setAttribute('aria-label', 'Open this location in Google Street View');
+  externalLinks.append(externalLabel, mapLink, streetViewLink);
+  mapActions.append(streetViewBtn, externalLinks);
+  readoutEl.append(close, heading, mapActions, table);
   readoutEl.classList.add('show');
   if (anchorPoint) positionRoadInfoNear(anchorPoint);
 }
@@ -5299,8 +5381,17 @@ readoutEl.addEventListener('click', (e) => {
 // key (that API has no usage charges); set it here to enable the in-app view.
 const GOOGLE_MAPS_EMBED_KEY = 'AIzaSyBQZNQ4jPlLjOH3efOD228wOjayupCfa6Y';
 
-function openStreetView(lat, lng) {
-  const external = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}`;
+function googleMapsPointUrl(lat, lng) {
+  return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
+}
+
+function googleStreetViewUrl(lat, lng, heading = null) {
+  const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
+  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}${headingParam}`;
+}
+
+function openStreetView(lat, lng, heading = null) {
+  const external = googleStreetViewUrl(lat, lng, heading);
   if (!GOOGLE_MAPS_EMBED_KEY) {
     // A real link click (not window.open with a features string, which iOS
     // turns into a chrome-laden popup window) so the OS opens its clean in-app
@@ -5318,7 +5409,8 @@ function openStreetView(lat, lng) {
   const frame = document.getElementById('streetViewFrame');
   const externalLink = document.getElementById('streetViewExternal');
   if (externalLink) externalLink.href = external;
-  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=100&fov=90`;
+  const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
+  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=100${headingParam}&fov=90`;
   if (!dialog.open) dialog.showModal();
 }
 
