@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.226';
+const APP_VERSION = '2026-07-20.227';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2562,6 +2562,9 @@ function openOffRouteDialog() {
     ? `The nearest point on your current route is ${navDistanceText(info.distM)} ${info.dir}${info.street ? ` on ${info.street}` : ''}. Choose how navigation should continue.`
     : 'Choose how navigation should continue.';
   if (!dialog.open) dialog.showModal();
+  // Default to "I'll find my own way" — that is the state the rider is already
+  // in when they open this from the off-route button.
+  document.getElementById('navKeepRouteBtn')?.focus();
 }
 
 const PASSED_WAYPOINT_TOLERANCE_M = 25;
