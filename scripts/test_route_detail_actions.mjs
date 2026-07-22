@@ -34,8 +34,10 @@ assert.match(app, /description: routeDetailsOptimizationDescription\(m\.optimiza
   'route-search rationale should remain stored for future Route Details rendering');
 assert.doesNotMatch(detailsHtml, /Tap any road, concern, or step/,
   'Route Details should not repeat the map-tapping instruction');
-assert.doesNotMatch(detailsHtml, /id="optimization"/,
-  'Route Details should not display the route-search rationale');
+assert.doesNotMatch(detailsHtml, /id="(?:optimization|mapTapHint)"/,
+  'Route Details should not need compatibility placeholders once updates are atomic');
+assert.doesNotMatch(detailsHtml, /route-optimization|tap-hint/,
+  'Route Details should not display the route-search rationale or map-tapping instruction');
 assert.doesNotMatch(details, /of this route does not meet your riding rules/,
   'Route Details should not repeat the failing-route distance above its concerns');
 assert.match(details, /note\.textContent = `Pins off road: \$\{snapNotes\.join\(' · '\)\}\.`/,

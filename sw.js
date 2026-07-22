@@ -2,14 +2,15 @@
  * Service worker: makes the app installable and usable offline.
  *
  * Strategy:
- *  - App shell (html/js/css/vendor/manifest/icons): NETWORK-FIRST, falling
- *    back to cache — deploys update instantly when online, still work offline.
+ *  - App shell (html/js/css/vendor/manifest/icons): CACHE-FIRST. A running
+ *    app stays on one complete release until the user accepts the precached
+ *    update, so HTML, JS, and CSS cannot be mixed during deployment.
  *  - Data files (data/*.geojson): CACHE-FIRST — large and rarely changing;
  *    downloaded once, then served locally forever (until the version bumps).
  *  - Basemap tiles (CARTO): CACHE-FIRST — areas you've viewed keep working
  *    offline. Statewide coverage is never fully cached, only what you browse.
  */
-const VERSION = 'v240'; // bump when app shell or data files change so installed clients refetch
+const VERSION = 'v242'; // bump when app shell or data files change so installed clients refetch
 const SHELL_CACHE = `shell-${VERSION}`;
 const DATA_CACHE = `data-${VERSION}`;
 // Keep viewed basemap tiles across ordinary app-shell releases. The provider
@@ -68,7 +69,7 @@ self.addEventListener('fetch', (e) => {
   } else if (url.hostname.endsWith('basemaps.cartocdn.com')) {
     e.respondWith(cacheFirst(TILE_CACHE, e.request));
   } else if (url.origin === location.origin) {
-    e.respondWith(networkFirst(SHELL_CACHE, e.request));
+    e.respondWith(cacheFirst(SHELL_CACHE, e.request));
   }
   // Everything else (cross-origin non-tile) goes straight to the network.
 });
@@ -80,17 +81,4 @@ async function cacheFirst(name, req) {
   const res = await fetch(req);
   if (res.ok) cache.put(req, res.clone());
   return res;
-}
-
-async function networkFirst(name, req) {
-  const cache = await caches.open(name);
-  try {
-    const res = await fetch(req);
-    if (res.ok) cache.put(req, res.clone());
-    return res;
-  } catch (err) {
-    const hit = await cache.match(req, { ignoreVary: true, ignoreSearch: true });
-    if (hit) return hit;
-    throw err;
-  }
 }
