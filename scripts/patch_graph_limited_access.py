@@ -81,8 +81,10 @@ def graph_layout(raw):
     if magic in (b'BGR4', b'BGR5', b'BGR6', b'BGR7'):
         edge_road_class = offset
         offset += e  # OSM highway class
+    edge_facility = None
     edge_walk = None
     if magic in (b'BGR5', b'BGR6', b'BGR7'):
+        edge_facility = offset
         offset += e  # typed bicycle facility
         offset += e  # authoritative WSDOT source bits
     if magic == b'BGR6':
@@ -117,6 +119,7 @@ def graph_layout(raw):
         'edge_flags': edge_flags,
         'edge_shoulder': edge_shoulder,
         'edge_road_class': edge_road_class,
+        'edge_facility': edge_facility,
         'edge_walk': edge_walk,
         'edge_geom_off': edge_geom_off,
         'edge_geom_count': edge_geom_count,
@@ -173,12 +176,18 @@ def patch_graph(raw, grid, match_deg, strict_match_deg):
     matched_by_route = Counter()
     changed_by_route = Counter()
 
+    FACILITY_LANE = 2  # typed bicycle facility: >=2 is a bike lane or better
     for edge in range(layout['edges']):
         # WSDOT's roadway centerline can run immediately beside a legal bike
         # path. The normal builder never conflates WSDOT road attributes onto
-        # dedicated infrastructure, so the migration must not either.
+        # dedicated infrastructure, so the migration must not either. A road that
+        # carries a bike lane is likewise not access-controlled (e.g. a street
+        # with bike lanes that only bridges over I-5), so it is spared too — its
+        # midpoint sitting over the freeway centerline must not read as limited.
         if (raw[layout['edge_flags'] + edge] & 8
-                or (layout.get('edge_walk') is not None and raw[layout['edge_walk'] + edge])):
+                or (layout.get('edge_walk') is not None and raw[layout['edge_walk'] + edge])
+                or (layout.get('edge_facility') is not None
+                    and raw[layout['edge_facility'] + edge] >= FACILITY_LANE)):
             continue
         geom_off = struct.unpack_from('<I', raw, layout['edge_geom_off'] + 4 * edge)[0]
         geom_count = struct.unpack_from('<H', raw, layout['edge_geom_count'] + 2 * edge)[0]

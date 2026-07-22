@@ -905,12 +905,15 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                     if best['prohibited']:
                                         seg = [p]
                                         continue  # WSDOT permanent bike restriction
-                                    if best['limited']:
+                                    if best['limited'] and efacility < FACILITY_LANE:
                                         # WSDOT access control is useful safety context even
                                         # when OSM calls the road a trunk rather than a
                                         # motorway. Keep it distinct from flag 4: a bicycle-
                                         # legal access-controlled highway is a caution, while
                                         # a true motorway remains a last-resort route failure.
+                                        # A road that carries a bike lane is by definition not
+                                        # access-controlled (e.g. a street with bike lanes that
+                                        # merely bridges over I-5), so it never gets this flag.
                                         eflags |= 128
                                     if best['sh'] is not None:
                                         esh = max(-1, min(127, int(best['sh'])))
