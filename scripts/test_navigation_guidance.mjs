@@ -72,8 +72,8 @@ assert.match(html, /<title>Just Rolling Along<\/title>/,
   'the app is titled Just Rolling Along');
 assert.doesNotMatch(app, /startTurnNavigation[\s\S]*?mobileNavMedia\.matches\) setPanelOpen\(false\)/,
   'starting navigation should leave the panel open');
-assert.match(html, /id="navRouteBackBtn"[\s\S]*?Route to the nearest point[\s\S]*?id="navKeepRouteBtn"[\s\S]*?I'll find my own way[\s\S]*?id="navNewRouteBtn"[\s\S]*?New route to destination/,
-  'off-route recovery dialog should present all three explicit choices');
+assert.match(html, /id="navKeepRouteBtn"[\s\S]*?I'll find my own way[\s\S]*?id="navRouteBackBtn"[\s\S]*?Route to the nearest point[\s\S]*?id="navNewRouteBtn"[\s\S]*?New route to destination/,
+  'off-route recovery dialog leads with "find my own way", then all three explicit choices');
 assert.match(html, /id="navNewRouteBtn"[\s\S]*?fresh route from here through any remaining stops/,
   'manual dynamic rerouting should also promise to preserve remaining stops');
 assert.match(css, /\.nav-banner\.off-route-action-visible\s*\{[^}]*flex-direction:\s*column[\s\S]*?\.nav-off-route-action\s*\{[^}]*border-radius:\s*9px[^}]*background:\s*#b42318/,

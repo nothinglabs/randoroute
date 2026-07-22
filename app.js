@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.225';
+const APP_VERSION = '2026-07-20.226';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1574,14 +1574,15 @@ function compassWord(bearing) {
   return COMPASS_WORDS[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
 }
 
-function navTurnText(delta, road, heading) {
+function navTurnText(delta, road, heading, staying) {
   const abs = Math.abs(delta);
-  const onto = road ? ` onto ${road}` : '';
+  // "onto X" when joining a new road; "to stay on X" when the same road bends.
+  const onto = road ? `${staying ? ' to stay on' : ' onto'} ${road}` : '';
   const toward = heading ? `, heading ${heading}` : '';
   if (abs >= 150) return `Make a U-turn${onto}${toward}`;
   if (abs >= 55) return `Turn ${delta > 0 ? 'right' : 'left'}${onto}${toward}`;
   if (abs >= 20) return `Bear ${delta > 0 ? 'right' : 'left'}${onto}${toward}`;
-  return road ? `Continue onto ${road}${toward}` : `Continue${toward}`;
+  return road ? `Continue ${staying ? 'on' : 'onto'} ${road}${toward}` : `Continue${toward}`;
 }
 
 function navDistanceText(m) {
@@ -1683,17 +1684,25 @@ function buildTurnInstructions(m) {
     const incoming = routeBearingOver(coords, cumulative, junctionM - TURN_BEARING_SPAN_M, junctionM);
     const outgoing = routeBearingOver(coords, cumulative, junctionM, junctionM + TURN_BEARING_SPAN_M);
     const delta = navDelta(incoming, outgoing);
+    const from = navRoadName(segs[i]?.name);
     const destination = navDestinationSegment(segs, i);
     const to = destination?.name || '';
+    // Staying on the same road/path: a shared-use path (e.g. the Green Lake
+    // Cycle Path) curves constantly, so calling out every gentle bend as "bear
+    // onto <the path you're already on>" is noise and reads as a wrong turn.
+    // Only announce a same-road bend when it's a genuine turn a rider could
+    // miss (a fork), and phrase it as staying on, not turning onto.
+    const sameRoad = !!to && !!from && to.toLowerCase() === from.toLowerCase();
     // Only announce an actual bend or turn. A road merely changing name while
     // the rider continues straight used to emit a "Continue onto X" prompt at
     // every name change; that flooded the voice guidance, interrupted itself,
-    // and buried the real turns. Below ~20° there is no maneuver to call.
-    if (Math.abs(delta) < 20) continue;
+    // and buried the real turns. Below ~20° (or ~50° on the same road) there is
+    // no maneuver to call.
+    if (Math.abs(delta) < (sameRoad ? 50 : 20)) continue;
     const distanceM = cumulative[at];
     // Do not speak a chain of tiny graph-edge transitions as separate turns.
     if (distanceM - lastM < 70) continue;
-    instructions.push({ distanceM, coordIndex: at, text: navTurnText(delta, to), heading: compassWord(outgoing) });
+    instructions.push({ distanceM, coordIndex: at, text: navTurnText(delta, to, undefined, sameRoad), heading: compassWord(outgoing) });
     lastM = distanceM;
   }
   instructions.sort((a, b) => a.distanceM - b.distanceM);
