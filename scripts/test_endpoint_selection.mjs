@@ -72,39 +72,15 @@ failureContext.handleRouterFailure('preload interrupted');
 assert.equal(preloadRouting.last.ok, true,
   'a background graph preload failure must not replace the current route with a failure');
 assert.deepEqual(failureCalls, [], 'a background preload failure must not tear down route UI or navigation');
-const start = app.indexOf('function advanceToMissingEndpoint');
-const end = app.indexOf('function enableLongPressEndpointMove');
-assert.ok(start >= 0 && end > start, 'endpoint-selection helper source was not found');
-
-const messages = [];
-const context = vm.createContext({
-  routing: { start: null, end: [-122.3, 47.9], arm: null },
-  suppressRoadInfo() {},
-  updateArmButtons() {},
-  setRouteStatus(message) { messages.push(['status', message]); },
-  showRouteActionToast(message) { messages.push(['toast', message]); },
-});
-vm.runInContext(`${app.slice(start, end)}\nthis.advance = advanceToMissingEndpoint;`, context);
-
-assert.equal(context.advance('end'), true, 'destination-first should advance automatically');
-assert.equal(context.routing.arm, 'start', 'destination-first should arm the start point');
-assert.match(messages.at(-2)[1], /Destination set.*choose start/,
-  'destination-first status should explain the next action');
-
-messages.length = 0;
-context.routing.start = [-122.35, 47.67];
-context.routing.end = null;
-context.routing.arm = null;
-assert.equal(context.advance('start'), true, 'start-first should advance automatically');
-assert.equal(context.routing.arm, 'end', 'start-first should arm the destination');
-assert.match(messages.at(-1)[1], /Start set.*Now choose destination/,
-  'start-first toast should consistently call the endpoint the destination');
-assert.doesNotMatch(messages.at(-1)[1], /choose end/i,
-  'endpoint prompts should not switch terminology from destination to end');
-
-context.routing.end = [-122.3, 47.9];
-context.routing.arm = null;
-assert.equal(context.advance('end'), false, 'a complete route should not auto-arm another endpoint');
-assert.equal(context.routing.arm, null, 'replacing an endpoint should preserve normal complete-route behavior');
+assert.doesNotMatch(app, /function advanceToMissingEndpoint/,
+  'placing one endpoint should not automatically arm the other endpoint');
+assert.doesNotMatch(app, /Now choose (?:start|destination)|now set the (?:start|destination)/i,
+  'endpoint placement should not prompt riders to choose the other endpoint');
+assert.match(app, /setRoutePoint\(kind, lngLat\);[\s\S]*?setRouteStatus\(kind === 'start' \? 'Start set' : 'Destination set'\);/,
+  'placing a lone endpoint on the map should simply confirm that placement');
+assert.match(app, /else \{\s*setRouteStatus\(placeTarget === 'start' \? 'Start set' : 'Destination set'\);\s*\}/,
+  'selecting a place-search result should simply confirm the selected endpoint');
+assert.match(app, /dialog\.showModal\(\);[\s\S]*?dialog\.focus\(\{ preventScroll: true \}\);/,
+  'opening Save & Share should focus its dialog rather than preselecting the help button');
 
 console.log('Endpoint selection tests passed.');

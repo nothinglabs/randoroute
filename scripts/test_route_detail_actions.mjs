@@ -42,6 +42,8 @@ assert.match(app, /class="rc-ride-items"[\s\S]*?class="rc-ride-item"[\s\S]*?trai
   'the route card should group its ride classes into equal-width items');
 assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summary-mix-item"[\s\S]*?trails \/ bike lanes[\s\S]*?pass rules[\s\S]*?mix-fail[\s\S]*?fail rules/,
   'Route Details should group its ride classes into equal-width items');
+assert.doesNotMatch(details, /class="route-summary-label">Ride<\//,
+  'Route Details should not show an unexplained Ride label above its class metrics');
 assert.match(details, /function routeSummaryStats\(segs\)[\s\S]*?!isBikeNetwork\(seg\)[\s\S]*?avgRoadSpeedMph: ordinaryRoadM > 0 \? Math\.round\(ordinaryRoadSpeedM \/ ordinaryRoadM\) : null[\s\S]*?summaryRoadSpeed\.textContent = `Avg\. speed limit: \$\{routeStats\.avgRoadSpeedMph == null \? 'N\/A'/,
   'Route Details should show the ordinary-road average speed limit and report unavailable source data as N/A');
 assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.rc-ride-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
@@ -91,4 +93,25 @@ assert.equal(vm.runInContext(`routeSummaryStats([
   { lenM: 100, mph: 0 }
 ]).avgRoadSpeedMph`, statsContext), 38,
   'average speed should be distance-weighted across roads with or without shoulders, excluding bike facilities, infrastructure, ferries, and missing speeds');
+
+const speedStart = details.indexOf('function speedProfileFailsShoulder(');
+const speedEnd = details.indexOf('function drawElevation(', speedStart);
+assert.ok(speedStart >= 0 && speedEnd > speedStart, 'speed-profile helpers were not found');
+const speedContext = vm.createContext({
+  Math, FLAG_FERRY: 32, FLAG_INFRA: 8, FLAG_DESIGNATED: 64,
+  isBikeNetwork: (seg) => !!((seg.flags || 0) & 8) || (seg.facility || 0) >= 2,
+});
+vm.runInContext(details.slice(speedStart, speedEnd), speedContext);
+assert.equal(vm.runInContext(`speedProfileSegments([
+  { lenM: 100, mph: 35, sh: 2 },
+  { lenM: 100, mph: 30, facility: 2 },
+  { lenM: 100, mph: 0, facility: 5, flags: 8 },
+  { lenM: 100, mph: 25, sh: 0 },
+  { lenM: 100, mph: 45, sh: 0, flags: 64 }
+], { minShoulder: 4, freeMaxSpeed: 30, unknownShoulderZero: true, vettedBikeRoutes: true })
+  .map((seg) => seg.color + ':' + seg.mph).join('|')`, speedContext),
+  'shoulder-fail:35|bike:30|bike:15|road:25|road:45',
+  'the speed profile should infer bike paths at 15 mph, highlight facilities lime, and flag only active shoulder-rule failures red');
+assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?bike paths shown as 15 mph[\s\S]*?Bike lane or trail[\s\S]*?Fails shoulder rule/,
+  'Route Details should include a clear speed-profile graph and legend');
 console.log('Route detail action tests passed.');

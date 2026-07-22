@@ -22,6 +22,11 @@
         <div id="elevationPreviewEmpty" class="elevation-preview-empty" hidden>Elevation profile unavailable</div>
         <div id="summaryMix" class="route-summary-mix" title="Percent of riding distance; colors match the map legend"></div>
       </div>
+      <section id="speedProfile" class="speed-profile" aria-labelledby="speedProfileTitle" hidden>
+        <div class="speed-profile-head"><div><h2 id="speedProfileTitle">Speed limits</h2><p>Along the route · bike paths shown as 15 mph</p></div></div>
+        <canvas id="speedProfileCanvas" role="img" aria-label="Speed limits along the route"></canvas>
+        <div class="speed-profile-legend" aria-label="Speed profile colors"><span><i class="speed-profile-swatch bike"></i>Bike lane or trail</span><span><i class="speed-profile-swatch shoulder-fail"></i>Fails shoulder rule</span><span><i class="speed-profile-swatch road"></i>Other road</span></div>
+      </section>
       <p id="noRouteSummary" class="summary" hidden></p>
     </header>
 

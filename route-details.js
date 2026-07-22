@@ -454,6 +454,99 @@ function selectDetailTab(tabId) {
 
 const NAV_PROGRESS_M = Number(new URLSearchParams(location.search).get('navProgress'));
 
+function speedProfileFailsShoulder(seg, rules) {
+  const flags = Number(seg?.flags) || 0;
+  if ((flags & FLAG_FERRY) || isBikeNetwork(seg)) return false;
+  const mph = Number(seg?.mph);
+  if (!Number.isFinite(mph) || mph <= Number(rules?.freeMaxSpeed)) return false;
+  // A designated route that the rider has elected to trust bypasses the
+  // shoulder rule, just as it does in the router's segment classification.
+  if ((flags & FLAG_DESIGNATED) && rules?.vettedBikeRoutes) return false;
+  let shoulder = Number(seg?.sh);
+  if (!Number.isFinite(shoulder) || shoulder < 0) {
+    shoulder = rules?.unknownShoulderZero ? 0 : null;
+  }
+  return shoulder != null && shoulder < Number(rules?.minShoulder);
+}
+
+function speedProfileSegments(segs, rules) {
+  const profile = [];
+  let distanceM = 0;
+  for (const seg of segs || []) {
+    const lenM = Math.max(0, Number(seg?.lenM) || 0);
+    const startM = distanceM;
+    distanceM += lenM;
+    const flags = Number(seg?.flags) || 0;
+    if (!(lenM > 0) || (flags & FLAG_FERRY)) continue;
+    // Dedicated paths have no legal motor-vehicle speed in the graph. Show
+    // them at a readable, conservative biking speed instead of a zero line.
+    const isPath = (flags & FLAG_INFRA) || Number(seg?.facility) === 5;
+    const mph = isPath ? 15 : Number(seg?.mph);
+    if (!Number.isFinite(mph) || mph <= 0) continue;
+    profile.push({
+      startM, endM: distanceM, mph,
+      color: isBikeNetwork(seg) ? 'bike'
+        : speedProfileFailsShoulder(seg, rules) ? 'shoulder-fail' : 'road',
+    });
+  }
+  return profile;
+}
+
+function drawSpeedProfile(canvas) {
+  const segments = speedProfileSegments(details?.segs, details?.rules);
+  const distM = Number(details?.summary?.distM) || Math.max(0, ...segments.map((seg) => seg.endM));
+  if (!canvas || !segments.length || !(distM > 0)) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 88;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const maxSpeed = Math.max(20, Math.ceil(Math.max(...segments.map((seg) => seg.mph)) / 10) * 10);
+  const padT = 10, padB = 18, padL = 6, padR = 6;
+  const X = (distance) => padL + Math.min(1, Math.max(0, distance / distM)) * (w - padL - padR);
+  const Y = (mph) => padT + (1 - Math.min(maxSpeed, mph) / maxSpeed) * (h - padT - padB);
+  // Light horizontal guides make the speed scale readable without competing
+  // with the lime and red route overlays.
+  ctx.strokeStyle = 'rgba(120,140,155,.18)';
+  ctx.fillStyle = '#71818c';
+  ctx.font = '700 9px system-ui';
+  ctx.textBaseline = 'middle';
+  for (let mph = 10; mph < maxSpeed; mph += 10) {
+    const y = Y(mph);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    if (mph === 10 || mph % 20 === 0) ctx.fillText(`${mph}`, padL + 3, y - 5);
+  }
+  const colors = { bike: '#9fc400', 'shoulder-fail': '#b2182b', road: '#2c7bb6' };
+  let previous = null;
+  for (const segment of segments) {
+    const y = Y(segment.mph);
+    if (previous && Math.abs(previous.endM - segment.startM) < .1) {
+      ctx.beginPath();
+      ctx.moveTo(X(segment.startM), Y(previous.mph));
+      ctx.lineTo(X(segment.startM), y);
+      ctx.strokeStyle = '#b8c6cf';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(X(segment.startM), y);
+    ctx.lineTo(X(segment.endM), y);
+    ctx.strokeStyle = colors[segment.color];
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'butt';
+    ctx.stroke();
+    previous = segment;
+  }
+  ctx.fillStyle = '#607482';
+  ctx.font = '700 9px system-ui';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`${maxSpeed} mph`, padL + 2, padT - 1);
+  ctx.textAlign = 'right';
+  ctx.fillText(`${(distM / 1609.34).toFixed(1)} mi`, w - padR - 2, h - 3);
+  ctx.textAlign = 'left';
+}
+
 function drawElevation(canvas, compact = false) {
   const profile = details?.profile;
   const distM = details?.summary?.distM;
@@ -552,6 +645,7 @@ function drawElevation(canvas, compact = false) {
 }
 window.addEventListener('resize', () => {
   drawElevation(document.getElementById('elevationPreviewCanvas'), true);
+  drawSpeedProfile(document.getElementById('speedProfileCanvas'));
   if (document.getElementById('elevationDialog')?.open) {
     drawElevation(document.getElementById('elevationDialogCanvas'));
   }
@@ -634,7 +728,15 @@ if (!hasRoute) {
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
   summarySub.textContent = `↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent · ${avgUphillPct.toFixed(1)}% avg uphill · ${maxGradePct.toFixed(1)}% max${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}`;
   summaryRoadSpeed.textContent = `Avg. speed limit: ${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`} (roads without bike lanes)`;
-  summaryMix.innerHTML = `<span class="route-summary-label">Ride</span><div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
+  summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
+  const speedProfile = document.getElementById('speedProfile');
+  const speedSegments = speedProfileSegments(segs, rules);
+  speedProfile.hidden = !speedSegments.length;
+  if (speedSegments.length) {
+    document.getElementById('speedProfileCanvas').setAttribute('aria-label',
+      `Speed limits along ${fmtMi(totals.distM)} miles. Bike lanes and trails are lime; roads failing the active shoulder rule are red.`);
+    requestAnimationFrame(() => drawSpeedProfile(document.getElementById('speedProfileCanvas')));
+  }
   if (Array.isArray(details.profile) && details.profile.length >= 2) {
     const elevationPreview = document.getElementById('elevationPreview');
     const elevationDialog = document.getElementById('elevationDialog');

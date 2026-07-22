@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.255';
+const APP_VERSION = '2026-07-22.257';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3920,20 +3920,6 @@ function setRoutePoint(kind, lngLat, name = 'Point on map') {
   updateArmButtons();
 }
 
-function advanceToMissingEndpoint(kind) {
-  const next = kind === 'start' && !routing.end ? 'end'
-    : kind === 'end' && !routing.start ? 'start' : null;
-  if (!next) return false;
-  routing.arm = next;
-  suppressRoadInfo();
-  updateArmButtons();
-  const placedLabel = kind === 'start' ? 'Start' : 'Destination';
-  const nextLabel = next === 'start' ? 'start' : 'destination';
-  setRouteStatus(`${placedLabel} set — tap the map or choose ${nextLabel} to search`);
-  showRouteActionToast(`${placedLabel} set · Now choose ${nextLabel}`, { duration: 3200 });
-  return true;
-}
-
 function enableLongPressEndpointMove(kind, marker) {
   const el = marker.getElement();
   el.classList.add('endpoint-marker');
@@ -4564,6 +4550,9 @@ function buildSavedRoutes() {
   document.getElementById('routeLibraryBtn').addEventListener('click', () => {
     render();
     dialog.showModal();
+    // Avoid the browser focusing the first control (the help button), which
+    // makes it look selected before the rider has chosen anything.
+    dialog.focus({ preventScroll: true });
   });
   copyShare.addEventListener('click', async () => {
     const url = shareRouteUrl();
@@ -4969,7 +4958,7 @@ function buildPlacePicker() {
     if (placeTarget === 'via') {
       setRouteStatus('Waypoint added');
       showRouteActionToast('Waypoint added — route recalculating', { duration: 2200 });
-    } else if (!advanceToMissingEndpoint(placeTarget)) {
+    } else {
       setRouteStatus(placeTarget === 'start' ? 'Start set' : 'Destination set');
     }
     closePlacePicker(false);
@@ -4989,7 +4978,7 @@ function buildPlacePicker() {
       updateArmButtons();
       closePlacePicker(false);
       frameMapAfterPlacePicker(lngLat);
-      if (!advanceToMissingEndpoint(placeTarget)) setRouteStatus(placeTarget === 'start' ? 'Start set to your location' : 'Destination set');
+      setRouteStatus(placeTarget === 'start' ? 'Start set to your location' : 'Destination set');
     }, () => setRouteStatus('Could not get your location'), { enableHighAccuracy: true, timeout: 10000 });
   });
 }
@@ -5502,11 +5491,9 @@ function placeArmedPoint(lngLat) {
     return true;
   }
   setRoutePoint(kind, lngLat);
-  if (advanceToMissingEndpoint(kind)) return true;
   if (!(routing.start && routing.end)) {
-    // confirm the placement; with only one point there's no route yet
-    setRouteStatus(kind === 'start' ? 'Start set — now set the destination'
-      : 'Destination set — now set the start');
+    // Confirm the placement; riders choose the next endpoint themselves.
+    setRouteStatus(kind === 'start' ? 'Start set' : 'Destination set');
   }
   return true;
 }

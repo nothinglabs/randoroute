@@ -21,14 +21,27 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-road-speed { margin-top: 4px; color: #405866; font: 750 11.5px/1.25 system-ui; }
 /* Full-width row beneath the stats + chart. Each ride class gets an equal
    share of the available width instead of wrapping as an uneven sentence. */
-.route-summary-mix { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; min-height: 20px; margin-top: 2px; color: #52616b; font: 600 10.5px/1.2 system-ui; }
+.route-summary-mix { grid-column: 1 / -1; min-height: 20px; margin-top: 2px; color: #52616b; font: 600 10.5px/1.2 system-ui; }
 .route-summary-mix-items { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; gap: 4px 8px; min-width: 0; }
 .route-summary-mix-item { min-width: 0; white-space: nowrap; text-align: center; }
 .route-summary-mix b { color: #223c4b; font-weight: 800; }
 .route-summary-mix .mix-caution, .route-summary-mix .mix-caution b { color: #9a4f00; }
 .route-summary-mix .mix-fail, .route-summary-mix .mix-fail b { color: #b42318; }
 .route-summary-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
-.route-summary-label { justify-self: start; padding: 2px 4px; border-radius: 4px; background: #e7eef3; color: #405866; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+/* The speed profile is specific to Route Details. It shares the route's
+   horizontal distance, while its trace highlights bike facilities and active
+   shoulder-rule failures without assigning a new safety rating to other roads. */
+.speed-profile { margin-top: 10px; padding: 10px 12px 9px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
+.speed-profile[hidden] { display: none; }
+.speed-profile-head h2 { margin: 0; color: #2c3e4c; font: 750 13px/1.2 system-ui; }
+.speed-profile-head p { margin: 2px 0 6px; color: #667784; font: 600 10.5px/1.25 system-ui; }
+#speedProfileCanvas { display: block; width: 100%; height: 88px; border: 1px solid #e0e9ee; border-radius: 8px; background: #fbfcfd; }
+.speed-profile-legend { display: flex; flex-wrap: wrap; gap: 4px 11px; margin-top: 6px; color: #5b6d78; font: 650 10px/1.2 system-ui; }
+.speed-profile-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.speed-profile-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
+.speed-profile-swatch.bike { background: #9fc400; }
+.speed-profile-swatch.shoulder-fail { background: #b2182b; }
+.speed-profile-swatch.road { background: #2c7bb6; }
 /* The left column now holds only the distance + climb text, so the chart
    stretches to that short height plus a min-height floor — bigger than before
    and no longer near-square, matching the route-selection card's sparkline. */
