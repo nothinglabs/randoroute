@@ -536,8 +536,6 @@ function drawSpeedProfile(canvas) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'bottom';
   ctx.fillText(`${maxSpeed} mph`, padL + 2, padT - 1);
-  ctx.textAlign = 'right';
-  ctx.fillText(`${(distM / 1609.34).toFixed(1)} mi`, w - padR - 2, h - 3);
   ctx.textAlign = 'left';
 }
 
@@ -880,8 +878,8 @@ if (!hasRoute) {
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
-  summarySub.innerHTML = `<span><b>↗ ${fmtFt(totals.ascentM)} ft</b> climb · <b>↘ ${fmtFt(totals.descentM)} ft</b> descent</span><span><b>${avgUphillPct.toFixed(1)}%</b> avg uphill · <b>${maxGradePct.toFixed(1)}%</b> max grade${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}</span>`;
-  summaryRoadSpeed.textContent = `Avg. road speed limit: ${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`} (all roads)`;
+  summarySub.innerHTML = `<span><b>Climb:</b> ↗ ${fmtFt(totals.ascentM)} ft</span><span><b>Descent:</b> ↘ ${fmtFt(totals.descentM)} ft</span><span><b>Grades:</b> ${avgUphillPct.toFixed(1)}% avg · ${maxGradePct.toFixed(1)}% max${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}</span>`;
+  summaryRoadSpeed.innerHTML = `<b>${routeStats.avgRoadSpeedMph == null ? 'N/A' : `${routeStats.avgRoadSpeedMph} mph`}</b><span>avg. road speed limit<br>all roads</span>`;
   summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
   const speedProfile = document.getElementById('speedProfile');
   const speedSegments = speedProfileSegments(segs);

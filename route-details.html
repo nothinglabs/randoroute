@@ -16,6 +16,13 @@
       <div id="summaryMix" class="route-summary-mix" title="Percent of riding distance; colors match the map legend"></div>
     </section>
     <section id="panel-stats" class="detail-panel detail-stats" role="tabpanel" aria-labelledby="tab-stats">
+      <section id="routePreview" class="route-preview" aria-labelledby="routePreviewTitle" hidden>
+        <div class="route-preview-head"><h2 id="routePreviewTitle">Route map</h2><p>Selected route</p></div>
+        <div class="route-preview-map-wrap">
+          <div id="routePreviewMap" class="route-preview-map" aria-label="Selected route map preview"></div>
+          <span class="route-preview-attribution"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> · <a href="https://carto.com/attributions" target="_blank" rel="noopener">© CARTO</a></span>
+        </div>
+      </section>
       <div id="routeSummaryCard" class="route-summary-card" aria-label="Route elevation summary" hidden>
         <div class="route-summary-info">
           <h2 class="route-summary-title">Elevation</h2>
@@ -26,15 +33,8 @@
         </button>
         <div id="elevationPreviewEmpty" class="elevation-preview-empty" hidden>Elevation profile unavailable</div>
       </div>
-      <section id="routePreview" class="route-preview" aria-labelledby="routePreviewTitle" hidden>
-        <div class="route-preview-head"><h2 id="routePreviewTitle">Route map</h2><p>Selected route</p></div>
-        <div class="route-preview-map-wrap">
-          <div id="routePreviewMap" class="route-preview-map" aria-label="Selected route map preview"></div>
-          <span class="route-preview-attribution"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> · <a href="https://carto.com/attributions" target="_blank" rel="noopener">© CARTO</a></span>
-        </div>
-      </section>
       <section id="speedProfile" class="speed-profile" aria-labelledby="speedProfileTitle" hidden>
-        <div class="speed-profile-head"><div><h2 id="speedProfileTitle">Speed limits</h2><p>Along the route · bike paths shown as 15 mph</p></div><div id="summaryRoadSpeed" class="speed-profile-average"></div></div>
+        <div class="speed-profile-info"><h2 id="speedProfileTitle">Speed limits</h2><div id="summaryRoadSpeed" class="speed-profile-average"></div><p>Bike paths shown as 15 mph</p></div>
         <canvas id="speedProfileCanvas" role="img" aria-label="Speed limits along the route"></canvas>
       </section>
       <p id="noRouteSummary" class="summary" hidden></p>

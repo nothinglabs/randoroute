@@ -52,7 +52,7 @@ assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summa
   'Route Details should group its ride classes into equal-width items');
 assert.doesNotMatch(details, /class="route-summary-label">Ride<\//,
   'Route Details should not show an unexplained Ride label above its class metrics');
-assert.match(details, /function routeSummaryStats\(segs\)[\s\S]*?\!\(flags & FLAG_INFRA\)[\s\S]*?avgRoadSpeedMph: roadM > 0 \? Math\.round\(roadSpeedM \/ roadM\) : null[\s\S]*?summaryRoadSpeed\.textContent = `Avg\. road speed limit: \$\{routeStats\.avgRoadSpeedMph == null \? 'N\/A'/,
+assert.match(details, /function routeSummaryStats\(segs\)[\s\S]*?\!\(flags & FLAG_INFRA\)[\s\S]*?avgRoadSpeedMph: roadM > 0 \? Math\.round\(roadSpeedM \/ roadM\) : null[\s\S]*?summaryRoadSpeed\.innerHTML = `<b>\$\{routeStats\.avgRoadSpeedMph == null \? 'N\/A'/,
   'Route Details should show the all-road average speed limit and report unavailable source data as N/A');
 assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.rc-ride-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
   'the route-card ride classes should balance into two equal columns on narrow phones');
@@ -147,8 +147,8 @@ assert.equal(vm.runInContext(`routePreviewEdgeColors([
 
 assert.match(detailsHtml, /id="routeOptionTabs"[\s\S]*?id="routeQuickSummary"[\s\S]*?id="summary"[\s\S]*?id="summaryMix"[\s\S]*?id="panel-stats"[\s\S]*?id="panel-concerns"[\s\S]*?id="panel-steps"/,
   'route mileage, time, and safety mix should be shared above every Details tab');
-assert.match(detailsHtml, /id="panel-stats"[\s\S]*?id="routeSummaryCard"[\s\S]*?id="routePreview"[\s\S]*?id="speedProfile"/,
-  'elevation, map preview, and speed chart should remain in the Stats tab');
+assert.match(detailsHtml, /id="panel-stats"[\s\S]*?id="routePreview"[\s\S]*?id="routeSummaryCard"[\s\S]*?id="speedProfile"/,
+  'the smaller route map should sit directly below the shared summary, ahead of the charts');
 assert.doesNotMatch(detailsHtml, /id="routeRoadSummary"/,
   'road speed should be combined with the speed-limit chart rather than using a separate section');
 assert.match(details, /const embeddedDetails = window\.self !== window\.top;[\s\S]*?function renderRouteOptionTabs\(\)[\s\S]*?host\.hidden = !embeddedDetails \|\| options\.length < 2;[\s\S]*?type: 'select-route-details-option',[\s\S]*?tab: selectedDetailTab\(\)/,
@@ -161,18 +161,25 @@ assert.match(detailsHtml, /vendor\/maplibre-gl\.css[\s\S]*?id="routePreviewMap"[
   'Route Details should load MapLibre with compact, always-visible map attribution');
 assert.match(details, /attributionControl:\s*false/,
   'the map library’s expandable attribution control should be replaced by the compact static credit');
-assert.match(css, /\.route-option-tabs\s*\{[^}]*position:\s*sticky[\s\S]*?\.route-preview-map\s*\{[^}]*height:\s*152px/,
-  'route choices should remain visible at the top and the route map should stay compact');
+assert.match(css, /\.route-option-tabs\s*\{[^}]*position:\s*sticky[\s\S]*?\.route-preview-map\s*\{[^}]*height:\s*122px/,
+  'route choices should remain visible at the top and the route map should be reduced by about one fifth');
 assert.match(css, /\.detail-panel\[hidden\]\s*\{\s*display:\s*none !important;/,
   'only the selected Route Details panel should be visible');
 assert.match(detailsHtml, /id="tab-stats"[\s\S]*?data-detail-tab="stats">Stats<\/button>[\s\S]*?id="tab-concerns"[\s\S]*?id="tab-steps"/,
   'Route Details should present Stats as the first of its three tabs');
-assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?bike paths shown as 15 mph/,
+assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?Bike paths shown as 15 mph/,
   'Route Details should retain its speed-profile graph');
 assert.doesNotMatch(detailsHtml, /speed-profile-legend|speed-profile-swatch/,
   'the speed-profile color legend should be removed');
-assert.match(detailsHtml, /id="speedProfile"[\s\S]*?class="speed-profile-head"[\s\S]*?id="summaryRoadSpeed"/,
+assert.match(detailsHtml, /id="speedProfile"[\s\S]*?class="speed-profile-info"[\s\S]*?id="summaryRoadSpeed"/,
   'average road speed should appear with the speed-limit chart');
+assert.match(css, /\.speed-profile\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(145px, 46%\)/,
+  'the speed chart should use the same text-and-chart card layout as elevation');
+const speedDrawStart = details.indexOf('function drawSpeedProfile(');
+const speedDrawEnd = details.indexOf('function drawElevation(', speedDrawStart);
+assert.ok(speedDrawStart >= 0 && speedDrawEnd > speedDrawStart, 'speed-profile chart renderer was not found');
+assert.doesNotMatch(details.slice(speedDrawStart, speedDrawEnd), /distM \/ 1609\.34.*mi/,
+  'the speed-limit chart should not label its horizontal axis with route mileage');
 
 const coordsStart = app.indexOf('function compactRouteCoords(');
 const coordsEnd = app.indexOf('function routeDetailsOptionTabs(', coordsStart);
