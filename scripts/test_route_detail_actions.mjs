@@ -60,6 +60,8 @@ assert.doesNotMatch(details, /class="route-summary-label">Ride<\//,
   'Route Details should not show an unexplained Ride label above its class metrics');
 assert.match(details, /function routeSummaryStats\(segs, minShoulderFt = 4\)[\s\S]*?maxRoadSpeedMph[\s\S]*?roadAtOrAbove45M[\s\S]*?noBikeAccommodationOrShoulderM[\s\S]*?summaryRoadSpeed\.innerHTML = `<span class="speed-limit-metric">[\s\S]*?At least 45 mph[\s\S]*?summaryShoulderNote\.innerHTML/,
   'Route Details should report average and maximum road speeds, high-speed mileage, and the shoulder/accommodation mileage');
+assert.match(css, /\.speed-profile-average\s*\{[^}]*display:\s*grid[^}]*gap:\s*4px[\s\S]*?\.speed-limit-metric\s*\{[^}]*grid-template-columns:\s*74px minmax\(0, 1fr\)/,
+  'speed-limit metrics should use a compact vertical label/value list like Elevation');
 assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.rc-ride-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
   'the route-card ride classes should balance into two equal columns on narrow phones');
 assert.match(appCss, /\.rc-details-wrap\s*\{[^}]*flex-direction:\s*column[^}]*justify-content:\s*flex-end[\s\S]*?\.rc-speed-limit\s*\{[^}]*text-align:\s*center/,
@@ -219,10 +221,10 @@ assert.match(details, /speedPreview\.addEventListener\('click',[\s\S]*?speedDial
   'tapping the speed preview should render its enlarged chart');
 assert.match(css, /#elevationDialogCanvas, #speedDialogCanvas\s*\{[^}]*aspect-ratio:\s*1\.45 \/ 1/,
   'both enlarged charts should use a similar compact aspect ratio');
-assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>/,
-  'elevation metrics should use separate, stable average- and maximum-grade rows');
-assert.match(details, /function sustainedUphillGradeSamples\(segs\)[\s\S]*?SUSTAINED_GRADE_WINDOW_M[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = 12\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep grade segments \(over 12%\)', steepGrades, '', 'caution', false, 'concern-steep-grades'\)/,
-  'Concerns should list only sustained uphill segments whose grade exceeds 12%');
+assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>[\s\S]*?<b>10%\+ uphill<\/b>[\s\S]*?fmtMi\(steepUphillM\)/,
+  'elevation metrics should include the mileage of sustained uphill grade over 10%');
+assert.match(details, /const STEEP_UPHILL_CONCERN_PCT = 10;[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = STEEP_UPHILL_CONCERN_PCT\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep uphill grade segments \(over 10%\)', steepGrades, '', 'caution', false, 'concern-steep-grades'\)/,
+  'Concerns should list only sustained uphill segments whose grade exceeds 10%');
 assert.match(details, /const minSpeed = 10;[\s\S]*?Math\.min\(maxSpeed - minSpeed, Math\.max\(0, mph - minSpeed\)\)/,
   'the speed chart should use a 10 mph baseline to keep its trace vertically centered');
 const speedDrawStart = details.indexOf('function drawSpeedProfile(');

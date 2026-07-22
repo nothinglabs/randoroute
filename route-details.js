@@ -17,6 +17,7 @@ const REQUESTED_DETAIL_TAB = new URLSearchParams(window.location.search).get('ta
 const MIN_REPORTED_GRADE_M = 20;
 const MAX_CREDIBLE_GRADE_PCT = 40;
 const SUSTAINED_GRADE_WINDOW_M = 100;
+const STEEP_UPHILL_CONCERN_PCT = 10;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 const FACILITY_NAME = {
   1: 'shared lane', 2: 'bike lane', 3: 'buffered bike lane',
@@ -221,7 +222,7 @@ function routeGradeStats(segs) {
   };
 }
 
-function sustainedUphillGradeConcerns(segs, thresholdPct = 12) {
+function sustainedUphillGradeConcerns(segs, thresholdPct = STEEP_UPHILL_CONCERN_PCT) {
   const concerns = [];
   for (const sample of sustainedUphillGradeSamples(segs)) {
     if (!(sample.gradePct > thresholdPct)) continue;
@@ -1010,6 +1011,8 @@ if (!hasRoute) {
   // Recalculate from stored segments so an already-open route benefits from
   // the sustained-grade method without requiring another route search.
   const maxGradePct = calculatedGrades.maxGradePct;
+  const steepGrades = sustainedUphillGradeConcerns(segs);
+  const steepUphillM = steepGrades.reduce((sum, item) => sum + item.lenM, 0);
   const ridingM = Math.max(1, totals.distM - (totals.ferryM || 0));
   const bikePct = routePercent(routeStats.bikeNetworkM, ridingM);
   const passPct = routePercent((routeStats.levels[1] || 0) + (routeStats.levels[2] || 0), ridingM, true);
@@ -1018,10 +1021,10 @@ if (!hasRoute) {
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
-  summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span>${totals.ferryM > 0 ? `<span class="elevation-metric"><b>Ferry</b><strong>⛴ ${fmtMi(totals.ferryM)} mi</strong></span>` : ''}`;
+  summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span><span class="elevation-metric"><b>10%+ uphill</b><strong>${fmtMi(steepUphillM)} mi</strong></span>${totals.ferryM > 0 ? `<span class="elevation-metric"><b>Ferry</b><strong>⛴ ${fmtMi(totals.ferryM)} mi</strong></span>` : ''}`;
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
-  summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b><span>Avg. limit</span></span><span class="speed-limit-metric"><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b><span>Max limit</span></span><span class="speed-limit-metric"><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b><span>At least 45 mph</span></span><span class="speed-limit-metric"><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b><span>At least 35 mph</span></span>`;
+  summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>Avg. limit</span><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>Max limit</span><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>At least 45 mph</span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span><span class="speed-limit-metric"><span>At least 35 mph</span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span>`;
   summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
   summaryShoulderNote.hidden = false;
   summaryShoulderNote.innerHTML = `<b>${fmtMi(routeStats.noBikeAccommodationOrShoulderM)} mi</b> without bike accommodation or a confirmed ≥${routeStats.minShoulderFt} ft shoulder`;
@@ -1090,7 +1093,6 @@ if (!hasRoute) {
     locationEnd: s.hazardLocationEnd ?? s.locationEnd,
     lenM: s.hazardLenM || s.lenM,
   }));
-  const steepGrades = sustainedUphillGradeConcerns(segs);
   const routeSteps = buildRouteSteps(segs);
   const ferries = sections(segs, (s) => !!(s.flags & FLAG_FERRY), () => ({
     name: 'Ferry crossing', meta: 'Ferry segment',
@@ -1109,7 +1111,7 @@ if (!hasRoute) {
       if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} on mountain-bike trail`);
       if (limitedM) notes.push(`${fmtDist(limitedM)} on a limited-access highway`);
       if (curveHazards.length) notes.push(`${fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0))} with a possible uphill-curve visibility caution`);
-      if (steepGrades.length) notes.push(`${fmtDist(steepGrades.reduce((sum, item) => sum + item.lenM, 0))} over 12% grade`);
+      if (steepGrades.length) notes.push(`${fmtDist(steepUphillM)} over 10% uphill grade`);
       alert.textContent = `${notes.join(' · ')}. These are called out for judgment but are not road-rule failures.`;
     } else {
       alert.classList.add('good');
@@ -1142,7 +1144,7 @@ if (!hasRoute) {
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails');
   if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike');
   if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution', false, 'concern-uphill-curves');
-  if (steepGrades.length) renderSection(report, 'Steep grade segments (over 12%)', steepGrades, '', 'caution', false, 'concern-steep-grades');
+  if (steepGrades.length) renderSection(report, 'Steep uphill grade segments (over 10%)', steepGrades, '', 'caution', false, 'concern-steep-grades');
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway', false, 'concern-freeways');
   if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution', false, 'concern-limited-access');
   if (highways.length) renderSection(report, 'Highways', highways, '', '', false, 'concern-highways');
