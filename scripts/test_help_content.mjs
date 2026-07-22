@@ -5,10 +5,13 @@ import fs from 'node:fs';
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 
-assert.match(html, /id="legendFlyout"[\s\S]*?id="legend"[\s\S]*?Tap any path to get details\./,
+assert.match(html, /id="legendFlyout"[\s\S]*?id="legend"[\s\S]*?Tap any path on map to get details\./,
   'the map legend should end with a compact path-details tip');
-assert.match(html, /id="appHelpDialog"[\s\S]*?The letters identify routes; they are not safety grades[\s\S]*?Layers<\/b> changes only what you see[\s\S]*?Tap any road or trail to get more information or access <b>Google Street View<\/b>/,
-  'quick-start help should distinguish route choices, layer visibility, and road-information access');
+assert.match(html, /id="appHelpDialog"[\s\S]*?The letters identify routes; they are not safety grades[\s\S]*?Tap <b>Navigate<\/b> for GPS and voice guidance[\s\S]*?Tap any road or trail to get more information or access <b>Google Street View<\/b>/,
+  'quick-start help should distinguish route choices, navigation, and road-information access');
+const quickStartHelp = html.match(/<dialog id="appHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
+assert.doesNotMatch(quickStartHelp, /Layers<\/b> changes only what you see|Routing and safety colors update on this device/,
+  'quick-start help should omit the removed layers and disclaimer copy');
 assert.match(html, /id="routesHelpDialog"[\s\S]*?Save on this device[\s\S]*?They stay in this browser on this device[\s\S]*?Share a link[\s\S]*?Anyone with the link can open it[\s\S]*?Open a shared route[\s\S]*?without changing your own saved settings[\s\S]*?intended to reproduce the original path[\s\S]*?routing-data updates can produce a different result/,
   'save-and-share help should cover local storage, share-link scope, and shared-route loading');
 const routesHelp = html.match(/<dialog id="routesHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
@@ -37,10 +40,14 @@ assert.match(html, /<h3>Voice navigation<\/h3><ul class="help-list">[\s\S]*?Noti
 assert.match(html, /id="layersHelpDialog"[\s\S]*?<h3>Data sources<\/h3>[\s\S]*?WSDOT BLTS[\s\S]*?OSM bike infrastructure[\s\S]*?All roads[\s\S]*?Elevation &amp; cautions[\s\S]*?Technical data notes[\s\S]*?planning aid, not a guarantee of safety/,
   'map-data help should lead with its data sources, then keep technical context and state its limits');
 const layersHelp = html.match(/<dialog id="layersHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
+assert.match(layersHelp, /All roads \(OpenStreetMap, estimated speeds\)/,
+  'map-data help should spell out OpenStreetMap in its data sources');
+assert.doesNotMatch(layersHelp, /The router combines Washington road data, OpenStreetMap, and elevation/,
+  'map-data help should omit its removed introductory sentence');
 assert.doesNotMatch(layersHelp, /lime|blue|amber|red fails|gray lacks enough data/i,
   'map-layers help should not duplicate the route color legend');
 const routeHelp = html.match(/<dialog id="routeTipsDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
-assert.match(routeHelp, /<h3>Choose Route<\/h3>[\s\S]*?Tap A–E[\s\S]*?Click <b>Details<\/b>[\s\S]*?<h3>Details<\/h3>[\s\S]*?Concerns:[\s\S]*?All Steps:[\s\S]*?Google Street View[\s\S]*?Safety ratings &amp; map colors[\s\S]*?Red dashed — Road that fails rules\.[\s\S]*?Amber — Caution:[\s\S]*?Dashed light blue — Designated bike route/,
+assert.match(routeHelp, /<h3>Choose Route<\/h3>[\s\S]*?Tap A–E[\s\S]*?Click <b>Details<\/b>[\s\S]*?<h3>Details<\/h3>[\s\S]*?Concerns:[\s\S]*?All Steps:[\s\S]*?Tap buttons in route segments[\s\S]*?Google Street View[\s\S]*?Safety ratings &amp; map colors[\s\S]*?<b>Lime<\/b> —[\s\S]*?<b>Dotted lime<\/b> —[\s\S]*?<b>Blue<\/b> —[\s\S]*?<b>Red dashed<\/b> — Road that fails rules\.[\s\S]*?<b>Amber<\/b> — Caution:[\s\S]*?<b>Dashed light blue<\/b> — Designated bike route/,
   'route help should explain the route picker, details tools, and active safety labels');
 assert.doesNotMatch(routeHelp, /Gray — Insufficient data|Possible limited-visibility uphill curve/,
   'route help should omit the removed safety-label entries');

@@ -18,6 +18,10 @@ assert.doesNotMatch(app, /ROUTE_TIME_DISPLAY_MULTIPLIER/,
   'route-choice duration should use the route engine estimate without a display buffer');
 assert.match(app, /class="rc-distance">\$\{fmtMi\(m\.distM\)\} mi<\/span><span class="rc-duration">Est\. \$\{fmtDur\(m\.timeS\)\}<\/span>/,
   'the route-choice card should stack miles above its estimated duration');
+assert.match(app, /let ordinaryRoadM = 0, ordinaryRoadSpeedM = 0;[\s\S]*?\(s\.facility \|\| 0\) < 2[\s\S]*?ordinaryRoadSpeedM \+= mph \* len[\s\S]*?avgRoadSpeedMph: ordinaryRoadM > 0 \? Math\.round\(ordinaryRoadSpeedM \/ ordinaryRoadM\) : null/,
+  'the average speed limit should be distance-weighted across ordinary, non-bike-facility road segments');
+assert.match(app, /class="rc-details-wrap">[\s\S]*?class="rc-speed-limit"><span>Avg\. speed limit<\/span><b>\$\{averageSpeedLimit\}<\/b>[\s\S]*?id="routeDetailsSlot"/,
+  'the route-choice card should place the average speed limit directly above Details');
 assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textContent = 'View'[\s\S]*?mapButton\.className = 'segment-map-button'[\s\S]*?mapLabel\.textContent = 'Map'[\s\S]*?mapIcon\.textContent = '⌖'[\s\S]*?mapButton\.append\(mapLabel, mapIcon\)[\s\S]*?actions\.append\(mapButton, streetView\)/,
   'each route-detail item should put an in-app Map button before its stacked Street View button');
 assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view', lat, lng, heading \}, window\.location\.origin\)/,
@@ -40,6 +44,8 @@ assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summa
   'Route Details should group its ride classes into equal-width items');
 assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.rc-ride-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
   'the route-card ride classes should balance into two equal columns on narrow phones');
+assert.match(appCss, /\.rc-details-wrap\s*\{[^}]*flex-direction:\s*column[^}]*justify-content:\s*flex-end[\s\S]*?\.rc-speed-limit\s*\{[^}]*text-align:\s*center/,
+  'the route-choice Details rail should sit at the bottom-left with a compact speed metric above it');
 assert.match(css, /\.route-summary-mix-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.route-summary-mix-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
   'the Route Details ride classes should balance into two equal columns on narrow phones');
 assert.match(app, /description: routeDetailsOptimizationDescription\(m\.optimization\)/,

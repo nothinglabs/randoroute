@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.253';
+const APP_VERSION = '2026-07-20.254';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1377,6 +1377,7 @@ function isHighwaySegment(s) {
 function routeSummaryStats(m) {
   const levels = [0, 0, 0, 0, 0];
   let highwayM = 0, freewayM = 0, limitedAccessM = 0, bikeNetworkM = 0, mtbM = 0;
+  let ordinaryRoadM = 0, ordinaryRoadSpeedM = 0;
   for (const s of m.segs || []) {
     const flags = s.flags || 0;
     const len = Number(s.lenM) || 0;
@@ -1387,12 +1388,22 @@ function routeSummaryStats(m) {
     // plain road, and Route Details' "Bike network" verdict draws this line
     // the same way.
     if ((flags & 8) || (s.facility || 0) >= 2) bikeNetworkM += len;
+    // Include ordinary roads regardless of shoulder width, but leave out bike
+    // infrastructure, bike lanes, shared-use paths, and ferries.
+    const mph = Number(s.mph);
+    if (!(flags & 8) && (s.facility || 0) < 2 && Number.isFinite(mph) && mph > 0) {
+      ordinaryRoadM += len;
+      ordinaryRoadSpeedM += mph * len;
+    }
     if (s.mtb || ((s.official || 0) & 4)) mtbM += len;
     if (flags & 4) freewayM += len;
     else if (flags & 128) limitedAccessM += len;
     else if (isHighwaySegment(s)) highwayM += len;
   }
-  return { levels, highwayM, freewayM, limitedAccessM, bikeNetworkM, mtbM };
+  return {
+    levels, highwayM, freewayM, limitedAccessM, bikeNetworkM, mtbM,
+    avgRoadSpeedMph: ordinaryRoadM > 0 ? Math.round(ordinaryRoadSpeedM / ordinaryRoadM) : null,
+  };
 }
 
 function routePercent(meters, total, preciseSmall = false) {
@@ -3154,13 +3165,17 @@ function renderRouteCard(m) {
   const passPct = routePercent((stats.levels[1] || 0) + (stats.levels[2] || 0), ridingM, true);
   const cautionPct = routePercent(stats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(m.failM || 0, ridingM, true);
+  const averageSpeedLimit = stats.avgRoadSpeedMph == null ? '—' : `${stats.avgRoadSpeedMph} mph`;
   const mtbNotice = stats.mtbM > 0
     ? `<div class="rc-warn rc-mtb">⚠ ${fmtDist(stats.mtbM)} on mountain-bike trail</div>`
     : '';
   card.innerHTML = `
     <div id="routeControlsSlot"></div>
     <div class="rc-route-summary">
-      <div class="rc-details-wrap"><div id="routeDetailsSlot"></div></div>
+      <div class="rc-details-wrap">
+        <div class="rc-speed-limit"><span>Avg. speed limit</span><b>${averageSpeedLimit}</b></div>
+        <div id="routeDetailsSlot"></div>
+      </div>
       <div class="rc-summary-content">
         <div class="rc-summary-row">
           <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas></div>

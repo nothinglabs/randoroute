@@ -68,7 +68,7 @@
   <aside id="legendFlyout" aria-label="Map legend" hidden>
     <div class="legend-flyout-head"><strong>Map legend</strong><button id="legendClose" type="button" aria-label="Hide map legend" title="Hide map legend">✕</button></div>
     <div class="legend" id="legend"></div>
-    <p class="legend-note">Tap any path to get details.</p>
+    <p class="legend-note">Tap any path on map to get details.</p>
   </aside>
 
   <button id="panelOpen" type="button" aria-label="Show map controls" title="Show map controls"><span class="panel-control-icon" aria-hidden="true">☰</span><span class="panel-control-label">Menu</span></button>
@@ -276,10 +276,9 @@
       <li>Set <b>Start</b> and <b>Destination</b> by search or by tapping the map.</li>
       <li>In <b>Route</b>, view choices A–E. The letters identify routes; they are not safety grades.</li>
       <li>Open <b>Details</b> to inspect concerns and road-by-road steps. Use <b>Settings</b> to change riding rules.</li>
-      <li>Tap <b>Navigate</b> for GPS and voice guidance. <b>Layers</b> changes only what you see on the map.</li>
+      <li>Tap <b>Navigate</b> for GPS and voice guidance.</li>
     </ol>
     <p class="app-help-note">Tap any road or trail to get more information or access <b>Google Street View</b>.</p>
-    <p>Routing and safety colors update on this device. Always follow signs and current conditions.</p>
     <div class="app-help-update">
       <p id="appVersion" class="app-help-version" aria-label="App version"></p>
       <button id="checkUpdatesBtn" type="button">Check for updates</button>
@@ -290,13 +289,12 @@
   <dialog id="layersHelpDialog" class="full-help-dialog" aria-label="Map data and layers help">
     <div class="full-help-head"><div><span>Help</span><h2>Map layers &amp; data</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="layersHelpDialog" aria-label="Close">✕</button></div></div>
     <div class="full-help-body">
-      <p class="help-lead">The router combines Washington road data, OpenStreetMap, and elevation. Layer switches change only what is visible; routing still uses every available source.</p>
       <section><h3>Data sources</h3><ul>
         <li><b>Designated routes (USBR &amp; regional)</b>: mapped bicycle-route relationships from OpenStreetMap. They provide route context, not proof of a bike facility.</li>
         <li><b>WSDOT BLTS (state highways)</b>: official state-road stress, shoulder and access context, legal speeds, and bike-facility data.</li>
         <li><b>OSM bike infrastructure</b>: mapped bike lanes, cycle tracks, shared-use paths, and other bicycle facilities. It distinguishes off-street paths from on-street facilities.</li>
         <li><b>Bikes prohibited (WSDOT)</b>: permanent state restriction data. These graph segments are excluded from routing.</li>
-        <li><b>All roads (OSM, est. speeds)</b>: the connected road and path network, including names, direction, bicycle access, ferries, and residential streets. Missing legal speeds use an estimate.</li>
+        <li><b>All roads (OpenStreetMap, estimated speeds)</b>: the connected road and path network, including names, direction, bicycle access, ferries, and residential streets. Missing legal speeds use an estimate.</li>
       </ul></section>
       <section><h3>Elevation &amp; cautions</h3><p>Elevation supplies climb, descent, grade, and travel-time estimates. The app also flags a <b>possible limited-visibility uphill curve</b> when road geometry, grade, speed, and facility data suggest extra care. It is a directional planning cue—not measured sight distance—and does not itself fail your rules.</p></section>
       <section><h3>How choices are made</h3><p>The app tests several time, safety, and road-preference combinations, removes near-duplicates, and shows up to five meaningfully different routes. Freeways are a last resort, legal limited-access highways are cautions, and permanent bicycle restrictions are impassable. A physical bike facility gets a stronger routing benefit than designation alone.</p><details class="technical-note"><summary>Technical data notes</summary><p>Missing speed limits use a road-class estimate, and the street popup identifies estimates. Roads tagged <b>bicycle=no</b> or <b>bicycle=dismount</b> are excluded. Explicit MTB paths are excluded by default and can be enabled with a strong penalty. Higher OSM road classes add soft costs when no bike facility is recorded; this is a traffic-volume proxy, not a rule failure.</p></details></section>
@@ -315,15 +313,15 @@
       <section><h3>Details</h3><ul>
         <li><b>Concerns:</b> shows steps with rule failures, freeways, limited-access roads, mountain-bike trails, and uphill-curve cautions.</li>
         <li><b>All Steps:</b> every route segment in order.</li>
-        <li>Tap any route segment to view it on the map or with <b>Google Street View</b>.</li>
+        <li>Tap buttons in route segments to view them on the map or with <b>Google Street View</b>.</li>
       </ul></section>
       <section><h3>Safety ratings &amp; map colors</h3><ul>
-        <li><b>Lime — Bike network:</b> a recorded bike facility (bike lane, etc.).</li>
-        <li><b>Dotted lime:</b> off-street paths and shared-use trails.</li>
-        <li><b>Blue:</b> road that passes rules (speed and shoulder requirements).</li>
-        <li><b>Red dashed — Road that fails rules.</b> A known rule conflict, freeway, or permanent bicycle restriction. <b>Failing lane segments pulse.</b> Permanent bicycle restrictions are never routed.</li>
-        <li><b>Amber — Caution:</b> a bike-legal limited-access highway or allowed mountain-bike trail. It deserves extra judgment.</li>
-        <li><b>Dashed light blue — Designated bike route:</b> a signed or mapped bicycle corridor. This is an additional overlay; it does not indicate a safety level.</li>
+        <li><b>Lime</b> — Bike network: a recorded bike facility (bike lane, etc.).</li>
+        <li><b>Dotted lime</b> — off-street paths and shared-use trails.</li>
+        <li><b>Blue</b> — road that passes rules (speed and shoulder requirements).</li>
+        <li><b>Red dashed</b> — Road that fails rules. A known rule conflict, freeway, or permanent bicycle restriction. <b>Failing lane segments pulse.</b> Permanent bicycle restrictions are never routed.</li>
+        <li><b>Amber</b> — Caution: a bike-legal limited-access highway or allowed mountain-bike trail. It deserves extra judgment.</li>
+        <li><b>Dashed light blue</b> — Designated bike route: a signed or mapped bicycle corridor. This is an additional overlay; it does not indicate a safety level.</li>
       </ul></section>
     </div>
   </dialog>
