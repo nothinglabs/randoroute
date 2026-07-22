@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.233';
+const APP_VERSION = '2026-07-20.234';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2651,7 +2651,9 @@ function activateNewRouteFromCurrentLocation(result) {
   turnNav.newRouteRequestId = null;
   turnNav.newRouteStart = null;
   turnNav.newRouteVias = null;
-  if (!result.ok || !Array.isArray(result.coords) || result.coords.length < 2) {
+  const options = Array.isArray(result.options) ? result.options.filter((option) => option?.ok) : [];
+  const selected = options.find((option) => option.optimization?.label === 'Route A') || options[0];
+  if (!result.ok || !selected || !Array.isArray(selected.coords) || selected.coords.length < 2) {
     showRouteActionToast('Could not calculate a new route', {
       detail: `${result.reason || 'No connected route was available.'} Your current route is unchanged.`,
       duration: 8000,
@@ -2667,7 +2669,10 @@ function activateNewRouteFromCurrentLocation(result) {
     if (!remainingVias.includes(via)) via.marker.remove();
   }
   routing.vias = remainingVias;
-  routing.options = [result];
+  // Keep the portfolio from the reroute. Navigation starts immediately on
+  // Route A, but the rider can compare the other meaningful corridors after
+  // stopping instead of being left with a single locked-in choice.
+  routing.options = options;
   turnNav.followingConnector = false;
   turnNav.connectorRoute = null;
   turnNav.connectorRequestId = null;
@@ -2682,8 +2687,8 @@ function activateNewRouteFromCurrentLocation(result) {
   turnNav.autoRecoveryAttempted = false;
   turnNav.message = '';
   drawNavigationConnector([]);
-  activateRouteOption(result);
-  turnNav.plannedRoute = buildTurnInstructions(result);
+  activateRouteOption(selected);
+  turnNav.plannedRoute = buildTurnInstructions(selected);
   turnNav.route = turnNav.plannedRoute;
   turnNav.next = 0;
   turnNav.nearest = 0;

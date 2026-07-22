@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 assert.match(html, /id="navOffRouteBtn"[^>]*>Re-route</,
@@ -196,6 +197,10 @@ assert.match(activationSource, /routing\.vias = remainingVias/,
   'a successful replacement route should keep its remaining waypoint objects and markers');
 assert.doesNotMatch(activationSource, /routing\.vias\s*=\s*\[\]/,
   'a successful replacement route must not clear all waypoints');
+assert.match(activationSource, /const options = Array\.isArray\(result\.options\)[\s\S]*?routing\.options = options[\s\S]*?activateRouteOption\(selected\)/,
+  'an off-route replacement should keep every generated option while navigating Route A');
+assert.match(worker, /m\.type === 'navigation-new-route'[\s\S]*?const result = routeOptions\(points, m\.rules, !!m\.prefDesignated,[\s\S]*?postMessage\(\{ type: 'navigation-new-route', id: m\.id, \.\.\.result \}\)/,
+  'the worker should run the full alternatives search for a current-location replacement');
 const start = app.indexOf('function navDistanceM');
 const end = app.indexOf('// Leaving the route no longer triggers rerouting.');
 assert.ok(start >= 0 && end > start, 'navigation helper source was not found');

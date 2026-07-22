@@ -1599,15 +1599,12 @@ onmessage = (ev) => {
     } else if (m.type === 'navigation-new-route') {
       useWeights(m.weights);
       const points = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
-      const mode = m.mode || 'balanced';
-      const r = route(points, m.rules, mode, !!m.prefDesignated, !!m.prefResidential);
-      const profile = {
-        id: m.profileId || 'efficient', label: m.profileLabel || 'Route A',
-        mode, prefDesig: !!m.prefDesignated,
-        prefResidential: !!m.prefResidential,
-      };
-      postMessage({ type: 'navigation-new-route', id: m.id,
-        ...publicCandidate({ ...r, _profile: profile }) });
+      // Use the normal portfolio search here too. Navigation takes Route A
+      // immediately, while the remaining choices stay available when the
+      // rider stops and returns to the Route panel.
+      const result = routeOptions(points, m.rules, !!m.prefDesignated,
+        !!m.prefResidential, m.profileId);
+      postMessage({ type: 'navigation-new-route', id: m.id, ...result });
     }
   } catch (err) {
     const message = String(err && err.message || err);

@@ -56,17 +56,13 @@ context.onmessage({ data: {
 } });
 const replacement = messages.at(-1);
 assert.equal(replacement?.type, 'navigation-new-route',
-  'worker should return a dedicated current-location route response');
+  'worker should return a dedicated current-location route-options response');
 assert.equal(replacement?.ok, true, replacement?.reason || 'replacement route should be available');
-assert.equal(replacement.optimization.mode, 'low',
-  'new route should retain the selected routing mode');
-assert.equal(replacement.optimization.prefDesignated, true,
-  'new route should retain the current bike-route preference');
-assert.equal(replacement.optimization.prefResidential, false,
-  'new route should retain the current residential preference');
-assert.equal(replacement.optimization.label, 'Route A',
-  'a sole replacement route should restart the route labels at A');
-assert.equal(replacement.legs?.length, 2,
-  'a replacement route should preserve its ordered waypoint as two routed legs');
+assert.ok(Array.isArray(replacement.options) && replacement.options.length,
+  'a replacement route should retain the normal route-options portfolio');
+const replacementRouteA = replacement.options.find((option) => option.optimization?.label === 'Route A');
+assert.ok(replacementRouteA, 'the replacement portfolio should include Route A');
+assert.equal(replacementRouteA.legs?.length, 2,
+  'the Route A replacement should preserve its ordered waypoint as two routed legs');
 
 console.log('Route connector tests passed.');
