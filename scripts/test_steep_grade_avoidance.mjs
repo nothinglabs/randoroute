@@ -36,7 +36,11 @@ assert.ok(context.steepUphillAvoidanceS(3, true, 'low') > at14,
   'friendly routes should be more steep-grade averse than balanced routes');
 assert.ok(context.steepUphillAvoidanceS(3, true, 'direct') < at14,
   'direct routes should retain the least, but still meaningful, steep-grade penalty');
-assert.match(worker, /let cost = step \* mult;[\s\S]*?cost \+= steepUphillAvoidanceS\(ei, forward, mode\)/,
-  'A* should apply the steep-grade preference independently of safety multipliers');
+const routeLoop = worker.indexOf('let cost = step * mult;');
+const facilityBonus = worker.indexOf('const facilityBonus =', routeLoop);
+const steepCost = worker.indexOf('cost += steepUphillAvoidanceS(ei, forward, mode);', routeLoop);
+const turnCost = worker.indexOf('cost += turnPreferenceS(', routeLoop);
+assert.ok(facilityBonus > routeLoop && steepCost > facilityBonus && turnCost > steepCost,
+  'A* should apply steep-grade cost after facility and route-preference multipliers');
 
 console.log('Steep grade avoidance tests passed.');

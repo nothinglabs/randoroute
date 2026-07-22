@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.295';
+const APP_VERSION = '2026-07-22.296';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1309,6 +1309,7 @@ function handleRouterFailure(message) {
   if (routing.worker) routing.worker.terminate();
   routing.worker = null;
   setRouteOptionsLoading(false);
+  updateArmButtons();
   if (routeWasRequested) {
     routing.options = [];
     renderRouteOptionControls();
@@ -1324,6 +1325,10 @@ function handleRouterFailure(message) {
 async function ensureRouter() {
   if (routing.ready || routing.loading) return;
   routing.loading = true;
+  // The graph and worker must be ready before editing a route. In particular,
+  // do not let a partly-loaded engine race a map tap or place-search result.
+  setRouteActionsOpen(false);
+  updateArmButtons();
   try {
     showRouterProgress('Downloading Washington roads, trails, ferries, and elevation data…');
     const res = await fetch(`data/graph2.bin.gz?format=${GRAPH_FORMAT_VERSION}`);
@@ -1349,6 +1354,18 @@ async function ensureRouter() {
   } catch (e) {
     handleRouterFailure(`routing data could not load: ${e.message}`);
   }
+}
+
+function routePlannerIsLoading() {
+  return routing.loading && !routing.ready;
+}
+
+function waitForRoutePlanner() {
+  if (routing.ready) return false;
+  ensureRouter();
+  showRouterProgress('Navigation data is loading. Route planning will be available in a moment.',
+    'Preparing route planner');
+  return true;
 }
 
 const fmtMi = (m) => (m / 1609.34).toFixed(1);
@@ -3329,6 +3346,7 @@ function onRouterMessage(ev) {
     routing.ready = true;
     routing.loading = false;
     routing.pendingRoute = false;
+    updateArmButtons();
     setRouteStatus(routing.start && routing.end ? 'Routing…' : '');
     if (!(routing.start && routing.end)) {
       setRouteOptionsLoading(false);
@@ -4347,6 +4365,7 @@ function setRouteActionsOpen(open) {
 }
 
 function updateArmButtons() {
+  const plannerLoading = routePlannerIsLoading();
   for (const kind of ['start', 'end', 'via', 'block']) {
     for (const prefix of ['rt-', 'rb-']) {
       const b = document.getElementById(prefix + kind);
@@ -4364,7 +4383,9 @@ function updateArmButtons() {
     else button.removeAttribute('aria-current');
     button.title = isActive ? `Choosing ${endpointName} — tap the map or search`
       : `${isSet ? 'Change' : 'Set'} ${endpointName}`;
+    if (plannerLoading) button.title = 'Loading navigation data…';
     button.setAttribute('aria-label', button.title);
+    button.disabled = plannerLoading;
     const value = button.querySelector('[data-endpoint-value]');
     if (value) value.textContent = routeEndpointDisplayName(kind);
   }
@@ -4374,20 +4395,20 @@ function updateArmButtons() {
   const clear = document.getElementById('rb-clear');
   const more = document.getElementById('rb-more');
   if (add) {
-    add.disabled = !(routing.start && routing.end) || routing.vias.length >= MAX_ROUTE_STOPS;
-    add.title = routing.vias.length >= MAX_ROUTE_STOPS
+    add.disabled = plannerLoading || !(routing.start && routing.end) || routing.vias.length >= MAX_ROUTE_STOPS;
+    add.title = plannerLoading ? 'Loading navigation data…' : routing.vias.length >= MAX_ROUTE_STOPS
       ? `Maximum of ${MAX_ROUTE_STOPS} waypoints reached` : 'Add waypoint';
   }
   if (block) {
-    block.disabled = !(routing.start && routing.end) || routing.blocks.length >= MAX_ROAD_BLOCKS;
-    block.title = routing.blocks.length >= MAX_ROAD_BLOCKS
+    block.disabled = plannerLoading || !(routing.start && routing.end) || routing.blocks.length >= MAX_ROAD_BLOCKS;
+    block.title = plannerLoading ? 'Loading navigation data…' : routing.blocks.length >= MAX_ROAD_BLOCKS
       ? `Maximum of ${MAX_ROAD_BLOCKS} road blocks reached` : 'Add a road block';
   }
-  if (reverse) reverse.disabled = !(routing.start && routing.end);
-  if (clear) clear.disabled = !(routing.start || routing.end || routing.vias.length || routing.blocks.length);
+  if (reverse) reverse.disabled = plannerLoading || !(routing.start && routing.end);
+  if (clear) clear.disabled = plannerLoading || !(routing.start || routing.end || routing.vias.length || routing.blocks.length);
   // Keep the menu discoverable before the route is complete. Its individual
   // actions remain disabled until their own requirements are met.
-  if (more) more.disabled = false;
+  if (more) more.disabled = plannerLoading;
 }
 
 function syncRoutePreferenceControls() {
@@ -5019,6 +5040,7 @@ function closePlacePicker(cancelArm = false) {
 }
 
 function openPlacePicker(kind) {
+  if (waitForRoutePlanner()) return;
   // A road block is intentionally map-only: routing uses the exact point the
   // rider picks, so a place-search result would add unnecessary indirection.
   if (kind === 'block') {
@@ -5067,6 +5089,7 @@ function openPlacePicker(kind) {
 }
 
 function armRoutePoint(kind) {
+  if (waitForRoutePlanner()) return;
   const isConstraint = kind === 'via' || kind === 'block';
   if (isConstraint && !(routing.start && routing.end)) return;
   if (kind === 'via' && routing.vias.length >= MAX_ROUTE_STOPS) {
@@ -5754,6 +5777,15 @@ function inspectRoadAt(point, lngLat = null) {
 function placeArmedPoint(lngLat) {
   const kind = routing.arm;
   if (!kind) return false;
+  if (!routing.ready) {
+    // A stale arm should never let the placement click fall through to road
+    // details while the routing graph is still initializing.
+    routing.arm = null;
+    suppressRoadInfo(1500);
+    updateArmButtons();
+    waitForRoutePlanner();
+    return true;
+  }
   lastPlacementTs = Date.now();
   suppressRoadInfo(1500);
   routing.arm = null;
@@ -6387,6 +6419,9 @@ buildRulesPanel();
 buildVoicePanel();
 buildRoutingPanel();
 buildLegend();
+// Start the on-device routing graph before route editing is available. This
+// keeps endpoint, waypoint, and road-block actions from racing initialization.
+ensureRouter();
 
 function setLegendOpen(open) {
   const flyout = document.getElementById('legendFlyout');

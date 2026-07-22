@@ -679,9 +679,6 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode);
       if ((fl & 32) && nodeHasLand[u]) step += activeWeights.ferryWaitMin * 60; // boarding
       let cost = step * mult;
-      // Do not dilute the steep-grade preference with bike-facility or other
-      // route multipliers. Grade is an independent rideability concern.
-      cost += steepUphillAvoidanceS(ei, forward, mode);
       // An exempted terminal-access block is a last resort, never a shortcut:
       // any reasonable fully-safe approach must still win.
       if (requiredSafeAccess) cost *= 30;
@@ -717,6 +714,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       if (diversityEdges?.has(ei) && !protectedInfrastructure && !(fl & 32)) {
         cost *= diversityFactor;
       }
+      // Grade is an independent rideability concern. Apply it after every
+      // safety, facility, residential, and alternate-corridor multiplier so
+      // a path bonus cannot shrink the penalty for a genuinely steep climb.
+      cost += steepUphillAvoidanceS(ei, forward, mode);
       // Turn friction is independent of the road entered: a bike facility or
       // residential bonus should not make repeated intersection turns free.
       cost += turnPreferenceS(incomingEdge, u, ei, mode);
