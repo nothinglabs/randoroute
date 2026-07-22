@@ -15,6 +15,8 @@ assert.match(html, /id="rb-road-block"[\s\S]*?Add road block/,
   'the route menu should offer an explicit road-block action');
 assert.match(html, /id="routeActionsMenu"[\s\S]*?id="rb-clear"[\s\S]*?Clear route/,
   'clearing a route should live with the other overflow route actions');
+assert.match(html, /id="clearRouteDialog"[\s\S]*?waypoints, and road blocks will be removed/,
+  'the clear-route confirmation should explain that road blocks are removed too');
 assert.doesNotMatch(html, /route-endpoints[\s\S]*?id="rb-clear"[\s\S]*?id="rb-more"/,
   'the clear-route X should not occupy a separate slot beside the overflow menu');
 assert.match(html, /id="removeRouteMarkerDialog"[\s\S]*?id="confirmRemoveRouteMarker"/,

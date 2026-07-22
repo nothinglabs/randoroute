@@ -687,7 +687,7 @@ body.navigation-active #routeBar { display: none; }
 #getUpdateBtn { min-height: 32px; padding: 6px 9px; border: none; border-radius: 8px; background: #0a66c2; color: #fff; font: 700 11px system-ui; cursor: pointer; }
 #updateLaterBtn { width: 32px; height: 32px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
 @media (max-width: 720px) {
-  #topToolbar { left: 6px; gap: 4px; max-width: calc(100vw - 12px); }
+  #topToolbar { left: 8px; gap: 4px; max-width: calc(100vw - 12px); }
   .nav-start { min-width: 100px; min-height: 46px; padding: 0 8px; font-size: 11px; }
   #routeBar { gap: 3px; padding: 5px 6px 5px 5px; max-width: calc(100vw - 12px); }
   #routeBar > button { width: 38px; height: 38px; }

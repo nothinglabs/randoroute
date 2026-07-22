@@ -435,6 +435,31 @@ function climbPreferenceS(i, forward, mode) {
   return (netAsc * steepness + rollingAsc * 0.5) * activeWeights[key];
 }
 
+// Ordinary 9–10% climbs remain available; the ride-time model already treats
+// them as slower. Above 12%, add a growing *route-choice* cost so the router
+// looks for a gentler option first. It is deliberately bounded rather than a
+// prohibition: even a 14%+ stretch can be walked, and one short steep segment
+// must not erase an otherwise useful route or its alternatives. Require a
+// meaningful edge length to avoid turning a one-cell DEM step into a detour.
+const STEEP_UPHILL_AVOID_PCT = 12;
+const MIN_STEEP_AVOID_EDGE_M = 20;
+const MAX_STEEP_UPHILL_AVOID_S = 180;
+function steepUphillAvoidanceS(i, forward, mode) {
+  if ((eFlags[i] & 32) || eLen[i] < MIN_STEEP_AVOID_EDGE_M) return 0;
+  const asc = forward ? eAsc[i] : eDes[i];
+  const des = forward ? eDes[i] : eAsc[i];
+  const gradePct = 100 * Math.max(0, asc - des) / Math.max(eLen[i], 1);
+  const excessPct = gradePct - STEEP_UPHILL_AVOID_PCT;
+  if (excessPct <= 0) return 0;
+  // The added cost is modest just over 12%, firm by 14%, and capped at three
+  // minutes per edge. Friendly routes are most averse, but every profile can
+  // still choose a steep segment when it avoids a material detour.
+  const modeFactor = mode === 'low' ? 1.35 : mode === 'direct' ? 0.7 : 1;
+  const lengthFactor = Math.min(1, eLen[i] / 100);
+  return Math.min(MAX_STEEP_UPHILL_AVOID_S,
+    lengthFactor * 30 * excessPct * excessPct * modeFactor);
+}
+
 // Fixed intersection friction discourages routes that zigzag block by block.
 // It is deliberately moderate: a safer or substantially quicker corridor can
 // still win, but ten unnecessary turns cost roughly 2–5 minutes depending on
@@ -654,6 +679,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode);
       if ((fl & 32) && nodeHasLand[u]) step += activeWeights.ferryWaitMin * 60; // boarding
       let cost = step * mult;
+      // Do not dilute the steep-grade preference with bike-facility or other
+      // route multipliers. Grade is an independent rideability concern.
+      cost += steepUphillAvoidanceS(ei, forward, mode);
       // An exempted terminal-access block is a last resort, never a shortcut:
       // any reasonable fully-safe approach must still win.
       if (requiredSafeAccess) cost *= 30;
