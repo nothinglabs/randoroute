@@ -230,8 +230,12 @@
   </dialog>
 
   <dialog id="settingsHelpDialog" class="map-dialog settings-help-dialog" aria-label="Routing settings help">
-    <div class="dialog-head"><h2>Routing settings</h2><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div>
-    <section><h3>Presets</h3><p>A preset replaces your active rules and route preferences. Use its <b>Rules</b> button to review the full setup. Adjusting any control switches to custom rules.</p></section>
+    <div class="dialog-head"><h2>Routing settings</h2><div class="dialog-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div></div>
+    <section><h3>Presets</h3><p>A preset replaces your active rules and route preferences. Use its <b>Rules</b> button to review the full setup. Adjusting any control switches to custom rules.</p><ul class="help-list">
+      <li><b>The Randonneur</b> — widest choice of routes; loose rules and fewer flags.</li>
+      <li><b>Weekend Wanderer</b> — slower roads with practical flexibility; concerns pulse red.</li>
+      <li><b>Casual Cruiser</b> — low-stress riding; routes must fully follow your safety rules.</li>
+    </ul></section>
     <section><h3>Limits</h3><ul class="help-list">
       <li><b>Minimum shoulder</b> — the shoulder width required on faster roads.</li>
       <li><b>Max speed without shoulder</b> — roads at or below this speed can pass when shoulder data is missing.</li>
@@ -247,12 +251,18 @@
       <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
       <li><b>Unknown shoulder = 0 ft</b> — faster roads must prove an adequate shoulder to pass.</li>
       </ul><p>Search always includes local offline results; the ⌕ button also tries an online lookup.</p></section>
-    <section><h3>Voice navigation</h3><p><b>Off-route behavior</b> can give direction-and-distance guidance, route back to the current route, or create a new route to the destination after 60 seconds. A replacement keeps remaining stops. <b>Speak compass directions</b> adds headings to turns; <b>Status update</b> speaks on your chosen cadence.</p></section>
+    <section><h3>Voice navigation</h3><ul class="help-list">
+      <li><b>Off-route: Notify only</b> — gives direction and distance back to your route.</li>
+      <li><b>Off-route: Route back to route</b> — automatically routes to the nearest point on your route.</li>
+      <li><b>Off-route: Dynamic re-routing</b> — creates a new route to your destination through remaining stops.</li>
+      <li><b>Speak compass directions (N/S/E/W)</b> — adds headings to turn instructions.</li>
+      <li><b>Status update</b> — choose how often it speaks, and whether it includes route status, current speed, miles remaining, and estimated time left.</li>
+    </ul></section>
     <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Usually leave these alone.</b> Presets and Limits are the intended controls. Weights are soft preferences for testing and fine-tuning; unusual values can create long or unintuitive routes. They never override bicycle prohibitions or hard Limits, and <b>Reset all defaults</b> restores them.</p><button id="settingsAdvancedWeightsBtn" type="button">Open advanced weights</button></section>
   </dialog>
 
   <dialog id="presetInfoDialog" class="map-dialog preset-info-dialog" aria-labelledby="presetInfoTitle">
-    <div class="dialog-head"><h2 id="presetInfoTitle"></h2><button class="dialog-close" data-close="presetInfoDialog" aria-label="Close">✕</button></div>
+    <div class="dialog-head"><h2 id="presetInfoTitle"></h2><div class="dialog-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="presetInfoDialog" aria-label="Close">✕</button></div></div>
     <p id="presetInfoAudience" class="preset-info-audience"></p>
     <ul id="presetInfoDetails" class="preset-info-details"></ul>
   </dialog>
@@ -274,7 +284,7 @@
   </dialog>
 
   <dialog id="layersHelpDialog" class="full-help-dialog" aria-label="Map data and layers help">
-    <div class="full-help-head"><div><span>Help</span><h2>Map layers &amp; data</h2></div><button class="dialog-close" data-close="layersHelpDialog" aria-label="Close">✕</button></div>
+    <div class="full-help-head"><div><span>Help</span><h2>Map layers &amp; data</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="layersHelpDialog" aria-label="Close">✕</button></div></div>
     <div class="full-help-body">
       <p class="help-lead">The router combines Washington road data, OpenStreetMap, and elevation. Layer switches change only what is visible; routing still uses every available source.</p>
       <section><h3>Data sources</h3><ul>
@@ -291,22 +301,25 @@
   </dialog>
 
   <dialog id="routeTipsDialog" class="full-help-dialog" aria-labelledby="routeTipsTitle">
-    <div class="full-help-head"><div><span>Route help</span><h2 id="routeTipsTitle">Route information</h2></div><button class="dialog-close" data-close="routeTipsDialog" aria-label="Close routing tips">✕</button></div>
+    <div class="full-help-head"><div><span>Route help</span><h2 id="routeTipsTitle">Route information</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="routeTipsDialog" aria-label="Close routing tips">✕</button></div></div>
     <div class="full-help-body">
-      <p class="help-lead">Route cards show distance, estimated time, elevation, and the route’s road and safety information. <b>Details</b> lets you inspect a route.</p>
-      <section><h3>Route choices</h3><p>The app can show up to five route options, A–E, generated by different route searches. The letters identify the options; they are not safety grades.</p></section>
+      <section><h3>Choose Route</h3><ul>
+        <li>The app can show up to five route options, A–E, generated by different route searches.</li>
+        <li>Tap A–E to show distance, estimated time, elevation, and the route’s road and safety information.</li>
+        <li>Click <b>Details</b> to see in-depth information on the route.</li>
+      </ul></section>
       <section><h3>Details</h3><ul>
-        <li><b>Concerns:</b> rule failures, freeways, limited-access roads, mountain-bike trails, and uphill-curve cautions.</li>
-        <li><b>All Steps:</b> every road in order. Individual steps can be viewed on the map or with <b>Google Street View</b>.</li>
+        <li><b>Concerns:</b> shows steps with rule failures, freeways, limited-access roads, mountain-bike trails, and uphill-curve cautions.</li>
+        <li><b>All Steps:</b> every road in order.</li>
+        <li>Tap any route segment to view it on the map or with <b>Google Street View</b>.</li>
       </ul></section>
       <section><h3>Safety ratings &amp; map colors</h3><ul>
-        <li><b>Lime — Bike network:</b> a recorded bike facility that passes your rules. Off-street paths and shared-use trails are dotted.</li>
-        <li><b>Dashed blue — Designated route:</b> a signed or mapped bicycle corridor. It is route context, not automatically a trail or bike facility; judge each stretch by its own color and Details.</li>
-        <li><b>Blue — Passes rules:</b> another road that passes your current shoulder and speed limits.</li>
+        <li><b>Lime — Bike network:</b> a recorded bike facility (bike lane, etc.).</li>
+        <li><b>Dotted lime:</b> off-street paths and shared-use trails.</li>
+        <li><b>Blue:</b> road that passes rules (speed and shoulder requirements).</li>
         <li><b>Amber — Caution:</b> a bike-legal limited-access highway or allowed mountain-bike trail. It deserves extra judgment.</li>
         <li><b>Red dashed — Fails rules / unavailable:</b> a known rule conflict, freeway, or permanent bicycle restriction. Failing planned segments pulse; permanent restrictions are never routed.</li>
-        <li><b>Gray — Insufficient data:</b> available road data cannot support a verdict under the current settings.</li>
-        <li><b>Possible limited-visibility uphill curve:</b> a separately reported geometry/elevation estimate, not measured sight distance. Tap it in Details to highlight it.</li>
+        <li><b>Dashed light blue — Designated bike route:</b> a signed or mapped bicycle corridor. This is an additional overlay; it does not indicate a safety level.</li>
       </ul></section>
     </div>
   </dialog>

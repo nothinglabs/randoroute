@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.250';
+const APP_VERSION = '2026-07-20.251';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6068,11 +6068,11 @@ function buildLegend() {
   const rows = [
     [BIKE_NETWORK_COLOR, 'Bike trails & lanes'],
     ['trail', 'Off-street trails'],
-    ['dashDesig', 'Designated bike route'],
-    [COLORS[1], 'Meets safety rules'],
+    [COLORS[1], 'Road that meets safety rules'],
+    ['dash4', 'Road that fails safety rules'],
     [COLORS[3], 'Caution — limited-access highway'],
-    ['dash4', 'Fails safety rules'],
     ['ferry', 'Ferry crossing (planned route)'],
+    ['dashDesig', 'Designated bike route (overlay)'],
   ];
   for (const [color, label] of rows) {
     const item = document.createElement('div');
