@@ -14,6 +14,10 @@ assert.match(app, /locationStart: locationAt\(s\.c0\), locationEnd: locationAt\(
   'stored route details should retain a compact on-road point for each segment');
 assert.match(app, /function openRouteDetails\(\) \{[\s\S]*?storeRouteDetails\(routing\.last\)/,
   'opening Details should refresh an already-drawn route with its segment locations');
+assert.match(app, /const ROUTE_TIME_DISPLAY_MULTIPLIER = 1\.2;/,
+  'route-choice duration should use a documented 20% display buffer');
+assert.match(app, /class="rc-distance">\$\{fmtMi\(m\.distM\)\} mi<\/span><span class="rc-duration">About \$\{fmtDur\(m\.timeS \* ROUTE_TIME_DISPLAY_MULTIPLIER\)\}<\/span>/,
+  'the route-choice card should stack miles above its conservative About duration');
 assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textContent = 'View'[\s\S]*?mapButton\.className = 'segment-map-button'[\s\S]*?mapLabel\.textContent = 'Map'[\s\S]*?mapIcon\.textContent = '⌖'[\s\S]*?mapButton\.append\(mapLabel, mapIcon\)[\s\S]*?actions\.append\(mapButton, streetView\)/,
   'each route-detail item should put an in-app Map button before its stacked Street View button');
 assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view', lat, lng, heading \}, window\.location\.origin\)/,
