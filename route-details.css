@@ -18,16 +18,16 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-main { color: #111; font: 700 20px/1.15 system-ui; }
 .route-summary-main small { color: #555; font: 600 15px system-ui; }
 .route-summary-sub { margin-top: 4px; color: #555; font: 12px system-ui; }
-/* Full-width row beneath the stats + chart, so the ride mix uses the space
-   under the (now shorter) chart instead of crowding the left text column. */
-.route-summary-mix { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; align-content: flex-start; gap: 2px 6px; min-height: 20px; margin-top: 2px; color: #52616b; font: 600 10.5px/1.2 system-ui; }
-.route-summary-mix > span { white-space: nowrap; }
+/* Full-width row beneath the stats + chart. Each ride class gets an equal
+   share of the available width instead of wrapping as an uneven sentence. */
+.route-summary-mix { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; min-height: 20px; margin-top: 2px; color: #52616b; font: 600 10.5px/1.2 system-ui; }
+.route-summary-mix-items { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; gap: 4px 8px; min-width: 0; }
+.route-summary-mix-item { min-width: 0; white-space: nowrap; text-align: center; }
 .route-summary-mix b { color: #223c4b; font-weight: 800; }
-.route-summary-mix i { color: #a0aab1; font-style: normal; }
 .route-summary-mix .mix-caution, .route-summary-mix .mix-caution b { color: #9a4f00; }
 .route-summary-mix .mix-fail, .route-summary-mix .mix-fail b { color: #b42318; }
 .route-summary-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
-.route-summary-label { padding: 2px 4px; border-radius: 4px; background: #e7eef3; color: #405866; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.route-summary-label { justify-self: start; padding: 2px 4px; border-radius: 4px; background: #e7eef3; color: #405866; font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 /* The left column now holds only the distance + climb text, so the chart
    stretches to that short height plus a min-height floor — bigger than before
    and no longer near-square, matching the route-selection card's sparkline. */
@@ -96,6 +96,9 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
   .route-summary-main small { font-size: 16px; }
   .route-summary-sub { font-size: 13px; }
   .elevation-preview { min-height: 104px; }
+}
+@media (max-width: 460px) {
+  .route-summary-mix-items { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 .elevation-dialog { width: min(94vw, 780px); max-width: none; padding: 0; overflow: hidden; border: 0; border-radius: 15px; background: #f4f7f9; box-shadow: 0 14px 44px rgba(0,0,0,.32); }

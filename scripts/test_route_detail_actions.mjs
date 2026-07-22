@@ -30,6 +30,14 @@ assert.match(appCss, /\.full-help-head \.streetview-close\s*\{[^}]*min-height:\s
   'the embedded Street View close control should have a clear hit target');
 assert.match(appCss, /\.sv-coverage-note\s*\{[^}]*position:\s*absolute/,
   'the coverage fallback should remain visible over an unavailable panorama');
+assert.match(app, /class="rc-ride-items"[\s\S]*?class="rc-ride-item"[\s\S]*?trails\/lanes[\s\S]*?rc-ride-fail/,
+  'the route card should group its ride classes into equal-width items');
+assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summary-mix-item"[\s\S]*?trails\/lanes[\s\S]*?mix-fail/,
+  'Route Details should group its ride classes into equal-width items');
+assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.rc-ride-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
+  'the route-card ride classes should balance into two equal columns on narrow phones');
+assert.match(css, /\.route-summary-mix-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.route-summary-mix-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
+  'the Route Details ride classes should balance into two equal columns on narrow phones');
 assert.match(app, /description: routeDetailsOptimizationDescription\(m\.optimization\)/,
   'route-search rationale should remain stored for future Route Details rendering');
 assert.doesNotMatch(detailsHtml, /Tap any road, concern, or step/,
@@ -40,8 +48,8 @@ assert.doesNotMatch(detailsHtml, /route-optimization|tap-hint/,
   'Route Details should not display the route-search rationale or map-tapping instruction');
 assert.doesNotMatch(details, /of this route does not meet your riding rules/,
   'Route Details should not repeat the failing-route distance above its concerns');
-assert.match(details, /note\.textContent = `Pins off road: \$\{snapNotes\.join\(' · '\)\}\.`/,
-  'long pin warnings should be reduced to a compact distance note');
+assert.match(details, /snapNotes\.push\(`Destination off route by \$\{fmtDist\(details\.snapEndM\)\}`\)[\s\S]*?note\.textContent = `Note: \$\{snapNotes\.join\(' · '\)\}\.`/,
+  'pin warnings should identify the affected pin in a compact distance note');
 
 const helperStart = details.indexOf('function lngLat(');
 const helperEnd = details.indexOf('function routePercent(', helperStart);

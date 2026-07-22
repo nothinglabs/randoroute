@@ -623,7 +623,7 @@ if (!hasRoute) {
   summaryCard.hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
   summarySub.textContent = `↗ ${fmtFt(totals.ascentM)} ft climb · ↘ ${fmtFt(totals.descentM)} ft descent · ${avgUphillPct.toFixed(1)}% avg uphill · ${maxGradePct.toFixed(1)}% max${totals.ferryM > 0 ? ` · ⛴ ${fmtMi(totals.ferryM)} mi ferry` : ''}`;
-  summaryMix.innerHTML = `<span class="route-summary-label">Ride</span><span><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><i>·</i><span><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass</span><i>·</i><span class="${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><i>·</i><span class="${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail</span>`;
+  summaryMix.innerHTML = `<span class="route-summary-label">Ride</span><div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail</span></div>`;
   if (Array.isArray(details.profile) && details.profile.length >= 2) {
     const elevationPreview = document.getElementById('elevationPreview');
     const elevationDialog = document.getElementById('elevationDialog');
@@ -697,12 +697,12 @@ if (!hasRoute) {
   }
 
   const snapNotes = [];
-  if (Number(details.snapStartM) > 80) snapNotes.push(`start ${fmtDist(details.snapStartM)}`);
-  if (Number(details.snapEndM) > 80) snapNotes.push(`destination ${fmtDist(details.snapEndM)}`);
+  if (Number(details.snapStartM) > 80) snapNotes.push(`Start off route by ${fmtDist(details.snapStartM)}`);
+  if (Number(details.snapEndM) > 80) snapNotes.push(`Destination off route by ${fmtDist(details.snapEndM)}`);
   if (snapNotes.length) {
     const note = document.createElement('p');
     note.className = 'snap-note';
-    note.textContent = `Pins off road: ${snapNotes.join(' · ')}.`;
+    note.textContent = `Note: ${snapNotes.join(' · ')}.`;
     alert.insertAdjacentElement('afterend', note);
   }
 
