@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.290';
+const APP_VERSION = '2026-07-22.292';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4136,10 +4136,44 @@ function bindRouteConstraintMarker(marker, kind, item) {
     event.stopPropagation();
     promptRemoveRouteMarker(kind, item);
   };
-  el.addEventListener('click', prompt);
-  el.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') prompt(event);
+  let press = null;
+  let suppressClickUntil = 0;
+  el.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    press = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+  }, { capture: true });
+  el.addEventListener('pointermove', (event) => {
+    if (!press || event.pointerId !== press.id) return;
+    if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 12) press.moved = true;
+  }, { capture: true });
+  el.addEventListener('pointerup', (event) => {
+    if (!press || event.pointerId !== press.id) return;
+    const wasTap = !press.moved;
+    press = null;
+    if (!wasTap) return; // preserve MapLibre's deliberate marker drag behavior
+    // MapLibre can suppress click after a tiny touch movement. Handling the
+    // release directly makes a normal phone tap reliably open confirmation.
+    suppressClickUntil = Date.now() + 600;
+    prompt(event);
+  }, { capture: true });
+  el.addEventListener('pointercancel', () => { press = null; }, { capture: true });
+  el.addEventListener('lostpointercapture', () => { press = null; }, { capture: true });
+  el.addEventListener('click', (event) => {
+    if (Date.now() < suppressClickUntil) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    prompt(event);
   });
+}
+
+function waypointMarkerElement() {
+  const element = document.createElement('button');
+  element.type = 'button';
+  element.className = 'waypoint-marker';
+  element.innerHTML = '<svg viewBox="0 0 28 42" aria-hidden="true" focusable="false"><path d="M14 1C6.82 1 1 6.82 1 14c0 9.75 13 27 13 27s13-17.25 13-27C27 6.82 21.18 1 14 1Z"/><circle cx="14" cy="14" r="5"/></svg>';
+  return element;
 }
 
 function addVia(lngLat, { allowPastLimit = false } = {}) {
@@ -4150,7 +4184,9 @@ function addVia(lngLat, { allowPastLimit = false } = {}) {
     setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} waypoints`);
     return false;
   }
-  const marker = new maplibregl.Marker({ color: '#555555', draggable: true, scale: 0.85 })
+  const marker = new maplibregl.Marker({
+    element: waypointMarkerElement(), anchor: 'bottom', draggable: true,
+  })
     .setLngLat(lngLat).addTo(map);
   const via = { pt: [lngLat.lng, lngLat.lat], marker };
   routing.vias.push(via);
@@ -4179,9 +4215,10 @@ function removeVia(via) {
 }
 
 function roadBlockMarkerElement() {
-  const element = document.createElement('div');
+  const element = document.createElement('button');
+  element.type = 'button';
   element.className = 'road-block-marker';
-  element.textContent = '🚧';
+  element.innerHTML = '<span class="road-block-icon" aria-hidden="true">🚧</span>';
   return element;
 }
 
@@ -4475,7 +4512,7 @@ function buildRoutingPanel() {
     setRouteActionsOpen(menu.hidden);
   });
   document.getElementById('rb-via').addEventListener('click', () => openPlacePicker('via'));
-  document.getElementById('rb-road-block').addEventListener('click', () => openPlacePicker('block'));
+  document.getElementById('rb-road-block').addEventListener('click', () => armRoutePoint('block'));
   document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.getElementById('navStartButton').addEventListener('click', () => {
     if (turnNav.active) stopTurnNavigation();
@@ -4968,6 +5005,12 @@ function closePlacePicker(cancelArm = false) {
 }
 
 function openPlacePicker(kind) {
+  // A road block is intentionally map-only: routing uses the exact point the
+  // rider picks, so a place-search result would add unnecessary indirection.
+  if (kind === 'block') {
+    armRoutePoint('block');
+    return;
+  }
   const isConstraint = kind === 'via' || kind === 'block';
   if (isConstraint && (!(routing.start && routing.end)
     || (kind === 'via' ? routing.vias.length >= MAX_ROUTE_STOPS : routing.blocks.length >= MAX_ROAD_BLOCKS))) return;

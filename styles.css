@@ -179,7 +179,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   margin-bottom: 0;
   background: transparent;
 }
-#routeCard > #routeControls { margin-top: 0; padding-top: 0; border-top: none; }
+#routeCard > #routeControls { margin: 5px -6px 0; padding-top: 0; border-top: none; }
 #routeCard .rc-empty { color: #888; font-size: 12.5px; line-height: 1.5; }
 #routeCard .rc-main { display: grid; justify-items: end; gap: 1px; color: #111; }
 #routeCard .rc-distance { font: 700 21px/1.15 system-ui; white-space: nowrap; }
@@ -538,8 +538,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #routeBar .route-endpoint.active .endpoint-label,
 #routeBar .route-endpoint.active .endpoint-copy strong { color: #075993; }
 #routeBar button:disabled { opacity: .38; cursor: default; }
-#routeBar #rb-clear, #routeBar #rb-more { width: 42px; }
-#routeBar #rb-clear { color: #9b2836; font-size: 16px; font-weight: 500; }
+#routeBar #rb-more { width: 42px; }
 #routeBar #rb-more { font-size: 20px; line-height: 1; }
 .route-actions-menu {
   position: absolute;
@@ -573,6 +572,8 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #routeBar .route-actions-menu button:focus-visible { background: #edf5fa; }
 #routeBar .route-actions-menu button span { width: 18px; color: #45616f; text-align: center; font-size: 17px; }
 #routeBar .route-actions-menu #rb-road-block span { font-size: 16px; }
+#routeBar .route-actions-menu #rb-clear { color: #9b2836; }
+#routeBar .route-actions-menu #rb-clear span { color: currentColor; }
 #routeBar .route-actions-menu button strong { font: 700 12px system-ui; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 .place-results .place-choice {
@@ -696,7 +697,7 @@ body.navigation-active #routeBar { display: none; }
   .route-endpoint-marker { flex-basis: 10px; width: 10px; height: 10px; }
   .endpoint-copy strong { font-size: 11.25px; }
   .endpoint-label { font-size: 8.5px; }
-  #routeBar #rb-clear, #routeBar #rb-more { width: 38px; }
+  #routeBar #rb-more { width: 38px; }
   .route-actions-menu { right: -1px; width: 210px; }
   .route-action-toast { top: calc(env(safe-area-inset-top) + 78px); }
   .route-action-toast.has-detail { top: max(calc(env(safe-area-inset-top) + 120px), 24vh); }
@@ -852,14 +853,14 @@ body.navigation-active #routeBar { display: none; }
 }
 
 .nav-bike-marker { display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid #00795c; border-radius: 50%; background: rgba(255,255,255,.96); box-shadow: 0 2px 8px rgba(0,0,0,.35); font-size: 19px; line-height: 1; z-index: 6; }
-.route-constraint-marker { cursor: pointer; }
-/* Keep the pin's visual size, but give it a forgiving phone-sized hit area.
-   The transparent pseudo-element still bubbles taps and drags to MapLibre's
-   marker element. */
-.route-constraint-marker::before { position: absolute; inset: -10px -12px; content: ''; }
+.route-constraint-marker { display: flex; align-items: flex-end; justify-content: center; width: 56px; height: 56px; padding: 0; border: 0; background: transparent; cursor: pointer; touch-action: manipulation; }
 .route-constraint-marker:focus-visible { outline: 3px solid #0072b2; outline-offset: 3px; }
-.road-block-marker { display: grid; place-items: center; width: 32px; height: 32px; border: 2px solid #a63a16; border-radius: 8px; background: #fff8e8; box-shadow: 0 2px 8px rgba(0,0,0,.35); color: #a63a16; font: 24px/1 system-ui; cursor: pointer; }
-.road-block-marker:hover { transform: scale(1.08); }
+.waypoint-marker svg { width: 26px; height: 40px; overflow: visible; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
+.waypoint-marker path { fill: #555; stroke: #fff; stroke-width: 2; }
+.waypoint-marker circle { fill: #fff; }
+.road-block-marker { color: #a63a16; }
+.road-block-icon { display: grid; place-items: center; width: 32px; height: 32px; border: 2px solid #a63a16; border-radius: 8px; background: #fff8e8; box-shadow: 0 2px 8px rgba(0,0,0,.35); font: 24px/1 system-ui; }
+.road-block-marker:hover .road-block-icon { transform: scale(1.08); }
 body.navigation-active .maplibregl-user-location-dot,
 body.navigation-active .maplibregl-user-location-accuracy-circle { display: none; }
 

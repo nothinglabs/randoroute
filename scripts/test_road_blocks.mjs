@@ -13,19 +13,27 @@ assert.doesNotMatch(html, /id="rb-via-remove"/,
   'the route menu should no longer offer removal of an arbitrary last waypoint');
 assert.match(html, /id="rb-road-block"[\s\S]*?Add road block/,
   'the route menu should offer an explicit road-block action');
+assert.match(html, /id="routeActionsMenu"[\s\S]*?id="rb-clear"[\s\S]*?Clear route/,
+  'clearing a route should live with the other overflow route actions');
+assert.doesNotMatch(html, /route-endpoints[\s\S]*?id="rb-clear"[\s\S]*?id="rb-more"/,
+  'the clear-route X should not occupy a separate slot beside the overflow menu');
 assert.match(html, /id="removeRouteMarkerDialog"[\s\S]*?id="confirmRemoveRouteMarker"/,
   'tapping a route marker should use a confirmation dialog before removing it');
-assert.match(css, /\.road-block-marker\s*\{[^}]*cursor:\s*pointer/,
-  'road blocks should render as a distinct, tappable road-work marker');
-assert.match(css, /\.route-constraint-marker::before\s*\{[^}]*inset:\s*-10px -12px/,
-  'waypoint and road-block markers should have a generous invisible tap target');
+assert.match(css, /\.route-constraint-marker\s*\{[^}]*width:\s*56px[^}]*height:\s*56px[^}]*touch-action:\s*manipulation/,
+  'waypoint and road-block markers should be true phone-sized touch controls');
+assert.match(css, /\.waypoint-marker svg\s*\{[^}]*width:\s*26px[^}]*height:\s*40px[\s\S]*?\.road-block-icon\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/,
+  'large marker hit areas should preserve compact waypoint and road-block visuals');
 
-assert.match(app, /function bindRouteConstraintMarker\([\s\S]*?promptRemoveRouteMarker\(kind, item\)/,
-  'waypoint and road-block markers should directly prompt for removal when tapped');
-assert.match(app, /function addVia\([\s\S]*?bindRouteConstraintMarker\(marker, 'via', via\)/,
-  'each waypoint marker should get direct removal behavior');
+assert.match(app, /function bindRouteConstraintMarker\([\s\S]*?Math\.hypot\([\s\S]*?> 12[\s\S]*?pointerup[\s\S]*?suppressClickUntil[\s\S]*?prompt\(event\)/,
+  'waypoint and road-block markers should directly prompt on a forgiving release tap while preserving drag');
+assert.match(app, /function waypointMarkerElement\([\s\S]*?<svg viewBox=[\s\S]*?function addVia\([\s\S]*?element: waypointMarkerElement\(\), anchor: 'bottom'[\s\S]*?bindRouteConstraintMarker\(marker, 'via', via\)/,
+  'each waypoint should use a large anchored touch control around its compact pin');
 assert.match(app, /function addRoadBlock\([\s\S]*?roadBlockMarkerElement\(\)[\s\S]*?bindRouteConstraintMarker\(marker, 'block', block\)/,
   'each road block should use the physical road-block marker and direct removal behavior');
+assert.match(app, /function openPlacePicker\(kind\) \{[\s\S]*?if \(kind === 'block'\) \{[\s\S]*?armRoutePoint\('block'\)[\s\S]*?return;/,
+  'road blocks should bypass the search picker and immediately enter map-pick mode');
+assert.match(app, /document\.getElementById\('rb-road-block'\)\.addEventListener\('click', \(\) => armRoutePoint\('block'\)\)/,
+  'the road-block action should immediately ask the rider to pick a map location');
 assert.match(app, /blocks: routing\.blocks\?\.map\(\(block\) => block\.pt\) \|\| \[\]/,
   'all route requests should send road-block locations to the routing worker');
 assert.match(app, /b: routing\.blocks\.map\(\(x\) => x\.pt\)/,
