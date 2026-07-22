@@ -28,8 +28,8 @@ assert.match(css, /\.segment-actions\s*\{[^}]*margin-left:\s*auto[\s\S]*?\.segme
   'the equal-sized, stacked Map and Street View controls should align at the card right edge');
 assert.match(html, /class="dialog-close streetview-close"[\s\S]*?<span>Close<\/span>/,
   'the embedded Street View close control should have a visible Close label');
-assert.match(html, /No panorama showing\?[\s\S]*?searched up to 150 m[\s\S]*?Open in Google Maps/,
-  'the embedded viewer should explain its nearby-coverage fallback');
+assert.match(html, /No view within 200 m\?[\s\S]*?Open in Google Maps/,
+  'the embedded viewer should use a concise nearby-coverage fallback');
 assert.match(appCss, /\.full-help-head \.streetview-close\s*\{[^}]*min-height:\s*42px/,
   'the embedded Street View close control should have a clear hit target');
 assert.match(appCss, /\.sv-coverage-note\s*\{[^}]*position:\s*absolute/,

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.245';
+const APP_VERSION = '2026-07-20.246';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5419,7 +5419,7 @@ function openStreetView(lat, lng, heading = null) {
   const externalLink = document.getElementById('streetViewExternal');
   if (externalLink) externalLink.href = googleMapsPointUrl(lat, lng);
   const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
-  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=150${headingParam}&fov=90`;
+  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=200${headingParam}&fov=90`;
   if (!dialog.open) dialog.showModal();
 }
 
@@ -5678,11 +5678,13 @@ function presetInfoRows(preset) {
     preset.preferences.prefResidential ? 'residential streets' : null,
   ].filter(Boolean).join(' and ');
   return [
-    ['Speed with shoulder', presetRules.noUpperLimit ? 'No speed limit.' : `Up to ${presetRules.upperMaxSpeed} mph.`],
+    ['Never allow speed', presetRules.noUpperLimit
+      ? 'No cutoff.' : `Ordinary roads over ${presetRules.upperMaxSpeed} mph fail; dedicated bike infrastructure is exempt.`],
     ['Speed without shoulder', `Up to ${presetRules.freeMaxSpeed} mph.`],
     ['Minimum shoulder', `${presetRules.minShoulder} ft on faster roads.`],
     ['Designated bike routes', presetRules.vettedBikeRoutes
-      ? 'Assumed safe.' : 'Must meet the normal speed and shoulder rules.'],
+      ? 'Can satisfy the shoulder rule; speed and access limits still apply.'
+      : 'Must meet the normal speed and shoulder rules.'],
     ['Freeways', presetRules.allowFreeways
       ? 'Bike-legal segments may be used only as a last resort.' : 'Not used.'],
     ['Rule matching', presetRules.requireSafe
