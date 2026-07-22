@@ -13,14 +13,14 @@ assert.match(app, /locationStart: locationAt\(s\.c0\), locationEnd: locationAt\(
   'stored route details should retain a compact on-road point for each segment');
 assert.match(app, /function openRouteDetails\(\) \{[\s\S]*?storeRouteDetails\(routing\.last\)/,
   'opening Details should refresh an already-drawn route with its segment locations');
-assert.match(details, /streetView\.textContent = 'Street View'[\s\S]*?mapButton\.textContent = 'Map'[\s\S]*?showRouteStep\(item\)/,
-  'each route-detail item should expose compact Street View and an in-app map action');
+assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textContent = 'View'[\s\S]*?mapButton\.className = 'segment-map-button'[\s\S]*?mapIcon\.textContent = '⌖'[\s\S]*?actions\.append\(mapButton, streetView\)/,
+  'each route-detail item should put an in-app Map button before its stacked Street View button');
 assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view', lat, lng, heading \}, window\.location\.origin\)/,
   'embedded Details should ask the app to open its Street View dialog');
 assert.match(app, /event\.data\?\.type === 'open-street-view'[\s\S]*?openStreetView\(lat, lng/,
   'the app should accept Street View requests from its Route Details frame');
-assert.match(css, /\.detail-item\.clickable\s*\{[^}]*display:\s*flex[\s\S]*?\.segment-streetview\s*\{[^}]*min-height:\s*26px/,
-  'per-segment Street View actions should stay compact');
+assert.match(css, /\.segment-actions\s*\{[^}]*margin-left:\s*auto[\s\S]*?\.segment-streetview\s*\{[^}]*width:\s*42px[^}]*min-height:\s*38px[\s\S]*?\.segment-map-button\s*\{[^}]*display:\s*inline-flex/,
+  'the compact Map and stacked Street View controls should align at the card right edge');
 assert.match(html, /class="dialog-close streetview-close"[\s\S]*?<span>Close<\/span>/,
   'the embedded Street View close control should have a visible Close label');
 assert.match(html, /No panorama showing\?[\s\S]*?searched up to 150 m[\s\S]*?Open in Google Maps/,
