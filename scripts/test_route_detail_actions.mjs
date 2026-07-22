@@ -70,8 +70,10 @@ assert.doesNotMatch(details, /class="route-summary-label">Ride<\//,
   'Route Details should not show an unexplained Ride label above its class metrics');
 assert.match(details, /function routeSummaryStats\(segs, minShoulderFt = 4\)[\s\S]*?maxRoadSpeedMph[\s\S]*?roadAtOrAbove45M[\s\S]*?highSpeedNoBikeAccommodationOrShoulderM[\s\S]*?mph >= 30[\s\S]*?summaryRoadSpeed\.innerHTML = `<span class="speed-limit-metric">[\s\S]*?At least 45 mph[\s\S]*?speedShoulderNote\.innerHTML[\s\S]*?≥30 mph roads/,
   'Route Details should report average and maximum road speeds, high-speed mileage, and a 30+ mph shoulder/accommodation mileage');
-assert.match(css, /\.speed-profile-average\s*\{[^}]*display:\s*grid[^}]*gap:\s*4px[\s\S]*?\.speed-limit-metric\s*\{[^}]*grid-template-columns:\s*84px minmax\(0, 1fr\)[\s\S]*?\.speed-limit-metric span\s*\{[^}]*white-space:\s*nowrap/,
-  'speed-limit metrics should use a compact vertical label/value list like Elevation');
+assert.match(css, /\.speed-profile-average\s*\{[^}]*display:\s*grid[^}]*gap:\s*4px[\s\S]*?\.speed-limit-metric\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0, 1fr\)[^}]*gap:\s*9px[\s\S]*?\.speed-limit-metric span\s*\{[^}]*white-space:\s*nowrap/,
+  'speed-limit metrics should use a compact vertical list with clear label/value separation');
+assert.match(css, /\.speed-shoulder-note\s*\{[^}]*font:\s*650 13px\/1\.35 system-ui/,
+  'the high-speed shoulder/accommodation note should remain comfortably readable');
 assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.rc-ride-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
   'the route-card ride classes should balance into two equal columns on narrow phones');
 assert.match(appCss, /\.rc-details-wrap\s*\{[^}]*flex-direction:\s*column[^}]*justify-content:\s*flex-end[\s\S]*?\.rc-speed-limit\s*\{[^}]*text-align:\s*center/,
@@ -235,7 +237,7 @@ assert.match(css, /#elevationDialogCanvas, #speedDialogCanvas\s*\{[^}]*aspect-ra
   'both enlarged charts should use a similar compact aspect ratio');
 assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>[\s\S]*?<b>10%\+ uphill<\/b>[\s\S]*?fmtMi\(steepUphillM\)/,
   'elevation metrics should include the mileage of sustained uphill grade over 10%');
-assert.match(detailsHtml, /button id="elevationSteepWarning"[\s\S]*?grades that may be impassable[\s\S]*?Tap to review[\s\S]*?Grades[\s\S]*?in Concerns/,
+assert.match(detailsHtml, /button id="elevationSteepWarning"[\s\S]*?class="elevation-warning-message"[\s\S]*?grades that may be impassable[\s\S]*?class="elevation-warning-action"[\s\S]*?Tap to review[\s\S]*?Grades[\s\S]*?in Concerns/,
   'the elevation card should clearly explain the steep-grade route warning as an action');
 assert.match(details, /elevationSteepWarning\.addEventListener\('click',[\s\S]*?selectDetailTab\('concerns'\)[\s\S]*?requestAnimationFrame\(\(\) => scrollToConcernSection\('concern-steep-grades'\)\)/,
   'tapping the elevation warning should open Concerns at Steep Grades');
@@ -243,6 +245,8 @@ assert.match(details, /elevationSteepWarning\.hidden = !\(maxGradePct > 18\)/,
   'the steep-grade elevation warning should appear only above 18%');
 assert.match(css, /\.elevation-steep-warning\s*\{[^}]*grid-column:\s*1\s*\/\s*-1[^}]*width:\s*100%[^}]*border-left:\s*4px solid #c33327[^}]*cursor:\s*pointer/,
   'the steep-grade elevation warning should span the card as a prominent, tappable warning');
+assert.match(css, /\.elevation-warning-message\s*\{[^}]*clamp\(9px, 2\.6vw, 10px\)[^}]*white-space:\s*nowrap/,
+  'the warning sentence should remain intact on a single responsive line');
 assert.match(details, /const STEEP_UPHILL_CONCERN_PCT = 10;[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = STEEP_UPHILL_CONCERN_PCT\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep uphill grade segments \(over 10%\)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality\.'\)/,
   'Concerns should list only sustained uphill segments whose grade exceeds 10% and disclose data quality limits');
 assert.match(details, /const minSpeed = 10;[\s\S]*?Math\.min\(maxSpeed - minSpeed, Math\.max\(0, mph - minSpeed\)\)[\s\S]*?mph === minSpeed\) ctx\.fillText\(`\$\{mph\} mph`/,

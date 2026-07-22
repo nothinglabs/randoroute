@@ -22,6 +22,9 @@ let searchDist, searchPrevArc, searchStamp, searchGeneration = 0;
 let nodeHasLand;
 let inGiant;
 let nodeLocal, nodeNonMtb;
+// Set for the duration of one request. A road block snaps to a graph node and
+// makes every road edge through that location unavailable to the search.
+let activeRoadBlockEdges = null;
 
 const _dec = new TextDecoder();
 // The signed shoulder byte normally ranges from -1 (unknown) to 127 ft.
@@ -181,6 +184,32 @@ function nearestNode(lon, lat, rules = null) {
     if (dLoc <= dAny + 300) return { node: bestL, distM: dLoc };
   }
   return { node: best, distM: havM(lon, lat, nodeLon[best], nodeLat[best]) };
+}
+
+function roadBlockEdgeSet(points, rules) {
+  if (!Array.isArray(points) || !points.length) return null;
+  const blocked = new Set();
+  for (const point of points) {
+    if (!Array.isArray(point) || point.length < 2) continue;
+    const lon = Number(point[0]), lat = Number(point[1]);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    const snap = nearestNode(lon, lat, rules);
+    if (!Number.isInteger(snap?.node) || snap.node < 0) continue;
+    for (let arc = outStart[snap.node]; arc < outStart[snap.node + 1]; arc++) {
+      blocked.add(outEdge[arc]);
+    }
+  }
+  return blocked.size ? blocked : null;
+}
+
+function withRoadBlocks(points, rules, work) {
+  const prior = activeRoadBlockEdges;
+  activeRoadBlockEdges = roadBlockEdgeSet(points, rules);
+  try {
+    return work();
+  } finally {
+    activeRoadBlockEdges = prior;
+  }
 }
 
 // Mirrors the app's effectiveLevel() for packed edge attributes.
@@ -547,6 +576,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       const v = outTarget[a];
       if (searchStamp[a] === -generation) continue;
       const ei = outEdge[a];
+      if (activeRoadBlockEdges?.has(ei)) continue;
       // An immediate reversal can never improve a positive-cost route and
       // dramatically enlarges an edge-state search at dead ends.
       if (ei === incomingEdge) continue;
@@ -1602,7 +1632,8 @@ onmessage = (ev) => {
       const mode = m.mode || 'balanced';
       postMessage({ type: 'progress', phase: 'reroute', id: m.id,
         detail: 'Finding a route from your current position…' });
-      const r = route(pts, m.rules, mode, !!m.prefDesignated, !!m.prefResidential);
+      const r = withRoadBlocks(m.blocks, m.rules, () =>
+        route(pts, m.rules, mode, !!m.prefDesignated, !!m.prefResidential));
       const profile = {
         id: m.profileId || 'efficient', label: m.profileLabel || 'Selected route',
         mode, prefDesig: !!m.prefDesignated,
@@ -1614,8 +1645,8 @@ onmessage = (ev) => {
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const progress = (detail) => postMessage({ type: 'progress', phase: 'route', id: m.id, detail });
       progress('Testing faster, safer, and bike-friendly route profiles…');
-      const result = routeOptions(pts, m.rules, !!m.forceDesignated,
-        !!m.forceResidential, m.preferredProfileId, !!m.debug, progress);
+      const result = withRoadBlocks(m.blocks, m.rules, () => routeOptions(pts, m.rules,
+        !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress));
       postMessage({ type: 'route-options', id: m.id, ...result });
     } else if (m.type === 'route-connector') {
       useWeights(m.weights);
@@ -1625,8 +1656,8 @@ onmessage = (ev) => {
       // temporary route can try to reach the planned start when a perfect
       // match is unavailable. Designated/residential preferences remain soft.
       const connectorRules = { ...m.rules, requireSafe: false };
-      const r = route(points, connectorRules, 'balanced',
-        !!m.prefDesignated, !!m.prefResidential);
+      const r = withRoadBlocks(m.blocks, connectorRules, () => route(points, connectorRules,
+        'balanced', !!m.prefDesignated, !!m.prefResidential));
       const profile = {
         id: 'route-start', label: 'Route to start', mode: 'balanced',
         prefDesig: !!m.prefDesignated,
@@ -1642,7 +1673,17 @@ onmessage = (ev) => {
       // convenience for after navigation stops, never a reason to reject a
       // usable recovery route.
       const mode = m.mode || 'balanced';
-      const primary = route(points, m.rules, mode, !!m.prefDesignated, !!m.prefResidential);
+      const result = withRoadBlocks(m.blocks, m.rules, () => {
+        const primary = route(points, m.rules, mode, !!m.prefDesignated, !!m.prefResidential);
+        if (!primary.ok) return { primary, portfolio: null };
+        let portfolio = null;
+        try {
+          portfolio = routeOptions(points, m.rules, !!m.prefDesignated,
+            !!m.prefResidential, m.profileId);
+        } catch (e) { /* Keep the working recovery route if comparison fails. */ }
+        return { primary, portfolio };
+      });
+      const { primary, portfolio } = result;
       if (!primary.ok) {
         postMessage({ type: 'navigation-new-route', id: m.id, ...primary });
         return;
@@ -1652,11 +1693,6 @@ onmessage = (ev) => {
         mode, prefDesig: !!m.prefDesignated,
         prefResidential: !!m.prefResidential,
       };
-      let portfolio = null;
-      try {
-        portfolio = routeOptions(points, m.rules, !!m.prefDesignated,
-          !!m.prefResidential, m.profileId);
-      } catch (e) { /* Keep the working recovery route if comparison fails. */ }
       const options = portfolio?.ok && Array.isArray(portfolio.options) && portfolio.options.length
         ? portfolio.options : [publicCandidate({ ...primary, _profile: primaryProfile })];
       postMessage({ type: 'navigation-new-route', id: m.id, ok: true, options,

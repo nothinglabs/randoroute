@@ -572,6 +572,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #routeBar .route-actions-menu button:hover:not(:disabled),
 #routeBar .route-actions-menu button:focus-visible { background: #edf5fa; }
 #routeBar .route-actions-menu button span { width: 18px; color: #45616f; text-align: center; font-size: 17px; }
+#routeBar .route-actions-menu #rb-road-block span { font-size: 16px; }
 #routeBar .route-actions-menu button strong { font: 700 12px system-ui; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 .place-results .place-choice {
@@ -778,6 +779,8 @@ body.navigation-active #routeBar { display: none; }
 .route-problem-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .clear-route-dialog { border-top: 4px solid #b42318; }
 .clear-route-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
+.remove-route-marker-dialog { border-top: 4px solid #c46b00; }
+.remove-route-marker-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .shared-route-tip { border-top: 4px solid #0a66c2; }
 .shared-route-tip p { margin: 12px 0 2px; font: 13px/1.45 system-ui; color: #444; }
 .routes-help-dialog section { margin-top: 12px; }
@@ -848,6 +851,10 @@ body.navigation-active #routeBar { display: none; }
 }
 
 .nav-bike-marker { display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid #00795c; border-radius: 50%; background: rgba(255,255,255,.96); box-shadow: 0 2px 8px rgba(0,0,0,.35); font-size: 19px; line-height: 1; z-index: 6; }
+.route-constraint-marker { cursor: pointer; }
+.route-constraint-marker:focus-visible { outline: 3px solid #0072b2; outline-offset: 3px; }
+.road-block-marker { display: grid; place-items: center; width: 32px; height: 32px; border: 2px solid #a63a16; border-radius: 8px; background: #fff8e8; box-shadow: 0 2px 8px rgba(0,0,0,.35); color: #a63a16; font: 24px/1 system-ui; cursor: pointer; }
+.road-block-marker:hover { transform: scale(1.08); }
 body.navigation-active .maplibregl-user-location-dot,
 body.navigation-active .maplibregl-user-location-accuracy-circle { display: none; }
 

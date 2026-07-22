@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.286';
+const APP_VERSION = '2026-07-22.288';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -493,6 +493,7 @@ function normalizeEndpointName(value) {
 }
 
 const MAX_ROUTE_STOPS = 8;
+const MAX_ROAD_BLOCKS = 8;
 const ROUTE_PROFILE_IDS = new Set([
   'quick', 'quick-bike', 'quick-residential', 'quick-friendly',
   'efficient', 'bike', 'residential', 'bike-residential',
@@ -510,11 +511,12 @@ function legacyRouteProfile(mode) {
 function normalizeStoredRoute(route) {
   if (!route || !validRoutePoint(route.s) || !validRoutePoint(route.e)) return null;
   const vias = Array.isArray(route.v) ? route.v : [];
-  if (!vias.every(validRoutePoint)) return null;
+  const blocks = Array.isArray(route.b) ? route.b : [];
+  if (!vias.every(validRoutePoint) || !blocks.every(validRoutePoint)) return null;
   // Preserve plans created before the editor gained a stop limit. New edits
   // cannot add past the limit, but opening an old plan must not delete stops.
   return {
-    s: route.s, e: route.e, v: [...vias],
+    s: route.s, e: route.e, v: [...vias], b: [...blocks],
     sn: normalizeEndpointName(route.sn), en: normalizeEndpointName(route.en),
   };
 }
@@ -529,13 +531,14 @@ function decodeSharedRouteToken(token) {
     const data = JSON.parse(new TextDecoder().decode(bytes));
     if (data.v !== 1 || !validRoutePoint(data.s) || !validRoutePoint(data.e)) return null;
     const vias = Array.isArray(data.x) ? data.x : [];
-    if (!vias.every(validRoutePoint)) return null;
+    const blocks = Array.isArray(data.z) ? data.z : [];
+    if (!vias.every(validRoutePoint) || !blocks.every(validRoutePoint)) return null;
     const sharedRules = validRuleOverrides(data.r);
     return {
       // Version-1 links historically loaded their first eight stops. Preserve
       // that behavior so older links in messages continue to work.
       route: {
-        s: data.s, e: data.e, v: vias.slice(0, MAX_ROUTE_STOPS),
+        s: data.s, e: data.e, v: vias.slice(0, MAX_ROUTE_STOPS), b: blocks.slice(0, MAX_ROAD_BLOCKS),
         sn: normalizeEndpointName(data.a), en: normalizeEndpointName(data.b),
       },
       mode: ['direct', 'balanced', 'low'].includes(data.m) ? data.m : null,
@@ -598,6 +601,7 @@ function saveStateNow() {
       route: routing.start && routing.end
         ? {
             s: routing.start, e: routing.end, v: routing.vias.map((x) => x.pt),
+            b: routing.blocks.map((x) => x.pt),
             sn: routing.startName, en: routing.endName,
           } : null,
     }));
@@ -1191,6 +1195,7 @@ const routing = {
   start: null, end: null,    // [lng, lat]
   startName: null, endName: null,
   vias: [],                  // intermediate stops: { pt: [lng,lat], marker }
+  blocks: [],                // avoided road locations: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false, pendingRoute: false, routeRequestActive: false,
   mode: ['direct', 'balanced', 'low'].includes(savedState?.mode)
@@ -2567,6 +2572,7 @@ function requestNavigationConnector(target, purpose = 'start', automatic = false
   routing.worker.postMessage({
     type: 'route-connector', id,
     points: [turnNav.lastPosition, target],
+    blocks: routing.blocks?.map((block) => block.pt) || [],
     rules: { ...rules, requireSafe: false },
     prefDesignated: routing.prefDesig,
     prefResidential: routing.prefResidential,
@@ -2717,6 +2723,7 @@ function requestNewRouteFromCurrentLocation({ automatic = false } = {}) {
   routing.worker.postMessage({
     type: 'navigation-new-route', id,
     points: [turnNav.newRouteStart, ...remainingVias.map((via) => via.pt), routing.end],
+    blocks: routing.blocks?.map((block) => block.pt) || [],
     rules: { ...rules }, mode: selected.mode || routing.mode,
     profileId: selected.profileId || routing.profileId,
     profileLabel: 'Route A',
@@ -3421,6 +3428,7 @@ function computeRoute() {
   if (turnNav.active) {
     routing.worker.postMessage({
       type: 'route', id: routing.reqId, points, rules: { ...rules },
+      blocks: routing.blocks?.map((block) => block.pt) || [],
       mode: selected?.mode || routing.mode,
       profileId: selected?.profileId || routing.profileId,
       profileLabel: selected?.label,
@@ -3436,6 +3444,7 @@ function computeRoute() {
     const rec = routing.sharedActive ? routing.sharedRecipe : null;
     routing.worker.postMessage({
       type: 'route-options', id: routing.reqId, points,
+      blocks: routing.blocks?.map((block) => block.pt) || [],
       rules: { ...(rec?.rules || rules) },
       forceDesignated: rec ? !!rec.prefDesig : routing.prefDesig,
       forceResidential: rec ? !!rec.prefResidential : routing.prefResidential,
@@ -4094,6 +4103,45 @@ function enableLongPressEndpointMove(kind, marker) {
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
+let pendingRouteMarkerRemoval = null;
+
+function promptRemoveRouteMarker(kind, item) {
+  const label = kind === 'via' ? 'waypoint' : 'road block';
+  const dialog = document.getElementById('removeRouteMarkerDialog');
+  if (dialog?.showModal) {
+    pendingRouteMarkerRemoval = { kind, item };
+    document.getElementById('removeRouteMarkerTitle').textContent = `Remove ${label}?`;
+    document.getElementById('removeRouteMarkerText').textContent = kind === 'via'
+      ? 'This waypoint will be removed and the route recalculated.'
+      : 'This road block will be removed and the route recalculated.';
+    document.getElementById('confirmRemoveRouteMarker').textContent = `Remove ${label}`;
+    if (!dialog.open) dialog.showModal();
+    return;
+  }
+  if (confirm(`Remove this ${label}?`)) {
+    if (kind === 'via') removeVia(item);
+    else removeRoadBlock(item);
+  }
+}
+
+function bindRouteConstraintMarker(marker, kind, item) {
+  const label = kind === 'via' ? 'waypoint' : 'road block';
+  const el = marker.getElement();
+  el.classList.add('route-constraint-marker');
+  el.setAttribute('role', 'button');
+  el.tabIndex = 0;
+  el.setAttribute('aria-label', `Remove ${label}`);
+  const prompt = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    promptRemoveRouteMarker(kind, item);
+  };
+  el.addEventListener('click', prompt);
+  el.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') prompt(event);
+  });
+}
+
 function addVia(lngLat, { allowPastLimit = false } = {}) {
   exitSharedRoute();
   if (!allowPastLimit && routing.vias.length >= MAX_ROUTE_STOPS) {
@@ -4106,6 +4154,7 @@ function addVia(lngLat, { allowPastLimit = false } = {}) {
     .setLngLat(lngLat).addTo(map);
   const via = { pt: [lngLat.lng, lngLat.lat], marker };
   routing.vias.push(via);
+  bindRouteConstraintMarker(marker, 'via', via);
   marker.on('dragend', () => {
     const ll = marker.getLngLat();
     via.pt = [ll.lng, ll.lat];
@@ -4116,15 +4165,61 @@ function addVia(lngLat, { allowPastLimit = false } = {}) {
   return true;
 }
 
-function removeLastVia() {
-  setRouteActionsOpen(false);
-  const via = routing.vias.pop();
-  if (!via) { showRouteActionToast('No waypoints to remove'); return; }
+function removeVia(via) {
+  const index = routing.vias.indexOf(via);
+  if (index < 0) return;
+  exitSharedRoute();
+  routing.vias.splice(index, 1);
   via.marker.remove();
   if (routing.arm === 'via') routing.arm = null;
   updateArmButtons();
   computeRoute();
-  showRouteActionToast('Last waypoint removed · recalculating…', { busy: true, duration: 0 });
+  showRouteActionToast('Waypoint removed · recalculating…', { busy: true, duration: 0 });
+  saveStateSoon();
+}
+
+function roadBlockMarkerElement() {
+  const element = document.createElement('div');
+  element.className = 'road-block-marker';
+  element.textContent = '🚧';
+  return element;
+}
+
+function addRoadBlock(lngLat, { allowPastLimit = false } = {}) {
+  exitSharedRoute();
+  if (!allowPastLimit && routing.blocks.length >= MAX_ROAD_BLOCKS) {
+    routing.arm = null;
+    updateArmButtons();
+    setRouteStatus(`A route can have up to ${MAX_ROAD_BLOCKS} road blocks`);
+    return false;
+  }
+  const marker = new maplibregl.Marker({
+    element: roadBlockMarkerElement(), anchor: 'bottom', draggable: true,
+  }).setLngLat(lngLat).addTo(map);
+  const block = { pt: [lngLat.lng, lngLat.lat], marker };
+  routing.blocks.push(block);
+  bindRouteConstraintMarker(marker, 'block', block);
+  marker.on('dragend', () => {
+    const ll = marker.getLngLat();
+    block.pt = [ll.lng, ll.lat];
+    computeRoute();
+    saveStateSoon();
+  });
+  computeRoute();
+  updateArmButtons();
+  return true;
+}
+
+function removeRoadBlock(block) {
+  const index = routing.blocks.indexOf(block);
+  if (index < 0) return;
+  exitSharedRoute();
+  routing.blocks.splice(index, 1);
+  block.marker.remove();
+  if (routing.arm === 'block') routing.arm = null;
+  updateArmButtons();
+  computeRoute();
+  showRouteActionToast('Road block removed · recalculating…', { busy: true, duration: 0 });
   saveStateSoon();
 }
 
@@ -4167,6 +4262,9 @@ function clearRoute() {
   routing.reqId++; // a route already being calculated must not reappear after clear
   for (const v of routing.vias) v.marker.remove();
   routing.vias = [];
+  for (const block of routing.blocks) block.marker.remove();
+  routing.blocks = [];
+  pendingRouteMarkerRemoval = null;
   for (const k of ['startMarker', 'endMarker']) {
     if (routing[k]) { routing[k].remove(); routing[k] = null; }
   }
@@ -4182,7 +4280,7 @@ function clearRoute() {
 }
 
 function requestClearRoute() {
-  if (!routing.start && !routing.end && routing.vias.length === 0) return;
+  if (!routing.start && !routing.end && routing.vias.length === 0 && routing.blocks.length === 0) return;
   setRouteActionsOpen(false);
   const dialog = document.getElementById('clearRouteDialog');
   if (dialog && !dialog.open) dialog.showModal();
@@ -4198,7 +4296,7 @@ function setRouteActionsOpen(open) {
 }
 
 function updateArmButtons() {
-  for (const kind of ['start', 'end', 'via']) {
+  for (const kind of ['start', 'end', 'via', 'block']) {
     for (const prefix of ['rt-', 'rb-']) {
       const b = document.getElementById(prefix + kind);
       if (b) b.classList.toggle('active', routing.arm === kind);
@@ -4220,7 +4318,7 @@ function updateArmButtons() {
     if (value) value.textContent = routeEndpointDisplayName(kind);
   }
   const add = document.getElementById('rb-via');
-  const remove = document.getElementById('rb-via-remove');
+  const block = document.getElementById('rb-road-block');
   const reverse = document.getElementById('rb-reverse');
   const clear = document.getElementById('rb-clear');
   const more = document.getElementById('rb-more');
@@ -4229,9 +4327,13 @@ function updateArmButtons() {
     add.title = routing.vias.length >= MAX_ROUTE_STOPS
       ? `Maximum of ${MAX_ROUTE_STOPS} waypoints reached` : 'Add new waypoint';
   }
-  if (remove) remove.disabled = routing.vias.length === 0;
+  if (block) {
+    block.disabled = !(routing.start && routing.end) || routing.blocks.length >= MAX_ROAD_BLOCKS;
+    block.title = routing.blocks.length >= MAX_ROAD_BLOCKS
+      ? `Maximum of ${MAX_ROAD_BLOCKS} road blocks reached` : 'Add a road block';
+  }
   if (reverse) reverse.disabled = !(routing.start && routing.end);
-  if (clear) clear.disabled = !(routing.start || routing.end || routing.vias.length);
+  if (clear) clear.disabled = !(routing.start || routing.end || routing.vias.length || routing.blocks.length);
   // Keep the menu discoverable before the route is complete. Its individual
   // actions remain disabled until their own requirements are met.
   if (more) more.disabled = false;
@@ -4373,7 +4475,7 @@ function buildRoutingPanel() {
     setRouteActionsOpen(menu.hidden);
   });
   document.getElementById('rb-via').addEventListener('click', () => openPlacePicker('via'));
-  document.getElementById('rb-via-remove').addEventListener('click', removeLastVia);
+  document.getElementById('rb-road-block').addEventListener('click', () => openPlacePicker('block'));
   document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.getElementById('navStartButton').addEventListener('click', () => {
     if (turnNav.active) stopTurnNavigation();
@@ -4408,6 +4510,14 @@ function buildRoutingPanel() {
     document.getElementById('clearRouteDialog').close();
     clearRoute();
   });
+  document.getElementById('confirmRemoveRouteMarker').addEventListener('click', () => {
+    const pending = pendingRouteMarkerRemoval;
+    pendingRouteMarkerRemoval = null;
+    document.getElementById('removeRouteMarkerDialog').close();
+    if (!pending) return;
+    if (pending.kind === 'via') removeVia(pending.item);
+    else removeRoadBlock(pending.item);
+  });
   document.getElementById('confirmSharedSwitch').addEventListener('click', () => confirmSharedSwitch());
   document.addEventListener('click', (event) => {
     if (!document.getElementById('routeBar').contains(event.target)) setRouteActionsOpen(false);
@@ -4426,6 +4536,7 @@ function buildRoutingPanel() {
     routing.sharedActive = !!routing.sharedRecipe;
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn);
     for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] });
+    for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
     routing.sharedLoading = false;
     fitRouteBounds(rt);
@@ -4438,6 +4549,7 @@ function buildRoutingPanel() {
     const rt = normalizeStoredRoute(savedState.route);
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn);
     for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
+    for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
   }
 }
@@ -4453,6 +4565,7 @@ function shareRouteUrl() {
     a: routing.startName,
     b: routing.endName,
     x: routing.vias.map((via) => point(via.pt)),
+    z: routing.blocks.map((block) => point(block.pt)),
     m: routing.mode,
     o: routing.profileId,
     p: routing.prefDesig,
@@ -4471,8 +4584,8 @@ function shareRouteUrl() {
 }
 
 function fitRouteBounds(route) {
-  const lons = [route.s[0], route.e[0], ...(route.v || []).map((p) => p[0])];
-  const lats = [route.s[1], route.e[1], ...(route.v || []).map((p) => p[1])];
+  const lons = [route.s[0], route.e[0], ...(route.v || []).map((p) => p[0]), ...(route.b || []).map((p) => p[0])];
+  const lats = [route.s[1], route.e[1], ...(route.v || []).map((p) => p[1]), ...(route.b || []).map((p) => p[1])];
   map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
     { padding: 60, maxZoom: 13 });
 }
@@ -4495,6 +4608,7 @@ function loadSharedRouteIntoPlanner(shared) {
   const route = shared.route;
   setRoutePoint('start', { lng: route.s[0], lat: route.s[1] }, route.sn);
   for (const p of route.v || []) addVia({ lng: p[0], lat: p[1] });
+  for (const p of route.b || []) addRoadBlock({ lng: p[0], lat: p[1] });
   setRoutePoint('end', { lng: route.e[0], lat: route.e[1] }, route.en);
   routing.sharedLoading = false;
   fitRouteBounds(route);
@@ -4604,6 +4718,8 @@ function buildSavedRoutes() {
         setRoutePoint('start', { lng: currentRoute.s[0], lat: currentRoute.s[1] }, currentRoute.sn);
         for (const point of currentRoute.v) addVia(
           { lng: point[0], lat: point[1] }, { allowPastLimit: true });
+        for (const point of currentRoute.b || []) addRoadBlock(
+          { lng: point[0], lat: point[1] }, { allowPastLimit: true });
         setRoutePoint('end', { lng: currentRoute.e[0], lat: currentRoute.e[1] }, currentRoute.en);
         fitRouteBounds(currentRoute);
         saveStateSoon();
@@ -4684,7 +4800,8 @@ function buildSavedRoutes() {
     const list = loadSavedRoutes();
     list.unshift({ name: name.slice(0, 60), s: routing.start, e: routing.end,
       sn: routing.startName, en: routing.endName,
-      v: routing.vias.map((x) => x.pt), mode: routing.mode, profileId: routing.profileId,
+      v: routing.vias.map((x) => x.pt), b: routing.blocks.map((x) => x.pt),
+      mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig,
       prefResidential: routing.prefResidential, rules: { ...rules },
       ts: Date.now() });
@@ -4825,6 +4942,7 @@ function frameMapAfterPlacePicker(lngLat) {
         s: routing.start,
         e: routing.end,
         v: routing.vias.map((via) => via.pt),
+        b: routing.blocks.map((block) => block.pt),
       });
     } else {
       map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
@@ -4841,7 +4959,8 @@ function closePlacePicker(cancelArm = false) {
   restoreViewportAfterPlacePicker();
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
-  if (cancelArm && (routing.arm === 'start' || routing.arm === 'end' || routing.arm === 'via')) {
+  if (cancelArm && (routing.arm === 'start' || routing.arm === 'end'
+    || routing.arm === 'via' || routing.arm === 'block')) {
     routing.arm = null;
     updateArmButtons();
     setRouteStatus('');
@@ -4849,7 +4968,9 @@ function closePlacePicker(cancelArm = false) {
 }
 
 function openPlacePicker(kind) {
-  if (kind === 'via' && (!(routing.start && routing.end) || routing.vias.length >= MAX_ROUTE_STOPS)) return;
+  const isConstraint = kind === 'via' || kind === 'block';
+  if (isConstraint && (!(routing.start && routing.end)
+    || (kind === 'via' ? routing.vias.length >= MAX_ROUTE_STOPS : routing.blocks.length >= MAX_ROAD_BLOCKS))) return;
   setLegendOpen(false);
   setRouteActionsOpen(false);
   placeTarget = kind;
@@ -4859,9 +4980,12 @@ function openPlacePicker(kind) {
   ensureRouter();
   setPanelOpen(false);
   document.getElementById('placePickerTitle').textContent = kind === 'start' ? 'Choose start'
-    : kind === 'via' ? 'Add new waypoint' : 'Choose destination';
+    : kind === 'via' ? 'Add new waypoint'
+      : kind === 'block' ? 'Add road block' : 'Choose destination';
   document.getElementById('placePickerHint').innerHTML = kind === 'via'
     ? '<strong>Search</strong> for a place below, or <strong>tap the map</strong> to add it.'
+    : kind === 'block'
+      ? '<strong>Search</strong> for a road or place below, or <strong>tap the map</strong> to block it.'
     : '<strong>Search</strong> for a place below, or <strong>tap the map</strong> to set it.';
   document.getElementById('useLoc').hidden = kind !== 'start';
   const onlineButton = document.getElementById('onlinePlaceSearch');
@@ -4869,8 +4993,9 @@ function openPlacePicker(kind) {
   onlineButton.classList.remove('searching');
   const searchInput = document.getElementById('placeSearch');
   searchInput.placeholder = kind === 'start' ? 'Search for a start…'
-    : kind === 'via' ? 'Search for a waypoint…' : 'Search for a destination…';
-  const currentEndpointName = kind !== 'via' && routing[kind]
+    : kind === 'via' ? 'Search for a waypoint…'
+      : kind === 'block' ? 'Search for a road block…' : 'Search for a destination…';
+  const currentEndpointName = !isConstraint && routing[kind]
     ? (normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map') : '';
   searchInput.value = currentEndpointName;
   searchInput.classList.toggle('current-endpoint-preview', Boolean(currentEndpointName));
@@ -4880,13 +5005,19 @@ function openPlacePicker(kind) {
   document.getElementById('placePicker').hidden = false;
   document.body.classList.add('place-picker-open');
   setRouteStatus(kind === 'via' ? 'Search or tap the map to add a WAYPOINT'
-    : `Tap the map or search to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
+    : kind === 'block' ? 'Search or tap the map to add a ROAD BLOCK'
+      : `Tap the map or search to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
 }
 
 function armRoutePoint(kind) {
-  if (kind === 'via' && !(routing.start && routing.end)) return;
+  const isConstraint = kind === 'via' || kind === 'block';
+  if (isConstraint && !(routing.start && routing.end)) return;
   if (kind === 'via' && routing.vias.length >= MAX_ROUTE_STOPS) {
     setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} waypoints`);
+    return;
+  }
+  if (kind === 'block' && routing.blocks.length >= MAX_ROAD_BLOCKS) {
+    setRouteStatus(`A route can have up to ${MAX_ROAD_BLOCKS} road blocks`);
     return;
   }
   closePlacePicker(false);
@@ -4897,8 +5028,10 @@ function armRoutePoint(kind) {
   if (routing.arm) {
     setPanelOpen(false);
     setRouteStatus(kind === 'via' ? 'Tap the map to add a waypoint'
-      : `Tap the map to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
+      : kind === 'block' ? 'Tap the map to add a road block'
+        : `Tap the map to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
     if (kind === 'via') showRouteActionToast('Tap the map to add a waypoint', { duration: 3200 });
+    if (kind === 'block') showRouteActionToast('Tap the map to add a road block', { duration: 3200 });
   } else {
     setRouteStatus('');
   }
@@ -5031,12 +5164,16 @@ function buildPlacePicker() {
     if (!hit) return;
     const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
     if (placeTarget === 'via') addVia(lngLat);
+    else if (placeTarget === 'block') addRoadBlock(lngLat);
     else setRoutePoint(placeTarget, lngLat, hit.dataset.name);
     routing.arm = null;
     updateArmButtons();
     if (placeTarget === 'via') {
       setRouteStatus('Waypoint added');
       showRouteActionToast('Waypoint added — route recalculating', { duration: 2200 });
+    } else if (placeTarget === 'block') {
+      setRouteStatus('Road block added');
+      showRouteActionToast('Road block added — route recalculating', { duration: 2200 });
     } else {
       setRouteStatus(placeTarget === 'start' ? 'Start set' : 'Destination set');
     }
@@ -5567,6 +5704,13 @@ function placeArmedPoint(lngLat) {
     if (added) setRouteStatus(routing.vias.length >= MAX_ROUTE_STOPS
       ? `Waypoint added — maximum of ${MAX_ROUTE_STOPS} reached`
       : 'Waypoint added — use ⋮ to add another');
+    return true;
+  }
+  if (kind === 'block') {
+    const added = addRoadBlock(lngLat);
+    if (added) setRouteStatus(routing.blocks.length >= MAX_ROAD_BLOCKS
+      ? `Road block added — maximum of ${MAX_ROAD_BLOCKS} reached`
+      : 'Road block added — use ⋮ to add another');
     return true;
   }
   setRoutePoint(kind, lngLat);
