@@ -14,6 +14,12 @@ assert.match(app, /locationStart: locationAt\(s\.c0\), locationEnd: locationAt\(
   'stored route details should retain a compact on-road point for each segment');
 assert.match(app, /function openRouteDetails\(\) \{[\s\S]*?storeRouteDetails\(routing\.last\)/,
   'opening Details should refresh an already-drawn route with its segment locations');
+assert.match(app, /function compactRouteCoords\(m\)[\s\S]*?Math\.ceil\(coords\.length \/ 600\)[\s\S]*?routeCoords: compactRouteCoords\(m\),[\s\S]*?routeOptions: routeDetailsOptionTabs\(m\)/,
+  'Route Details should retain a compact preview line and selectable route metadata');
+assert.match(app, /function selectRouteDetailsOption\(index\)[\s\S]*?if \(turnNav\.active\) return;[\s\S]*?activateRouteOption\(option\);[\s\S]*?openRouteDetails\(\);/,
+  'choosing a route in Details should update the map selection and refresh its preview');
+assert.match(app, /event\.data\?\.type === 'select-route-details-option'[\s\S]*?selectRouteDetailsOption\(event\.data\.index\)/,
+  'the app should accept a route-choice request from its Details frame');
 assert.doesNotMatch(app, /ROUTE_TIME_DISPLAY_MULTIPLIER/,
   'route-choice duration should use the route engine estimate without a display buffer');
 assert.match(app, /class="rc-distance">\$\{fmtMi\(m\.distM\)\} mi<\/span><span class="rc-duration">Est\. \$\{fmtDur\(m\.timeS\)\}<\/span>/,
@@ -114,10 +120,30 @@ assert.equal(vm.runInContext(`speedProfileSegments([
   'the speed profile should infer bike paths at 15 mph and use the route safety colors for facilities, passing roads, cautions, and failures');
 assert.match(detailsHtml, /id="panel-stats"[\s\S]*?id="routeSummaryCard"[\s\S]*?id="speedProfile"[\s\S]*?id="panel-concerns"[\s\S]*?id="panel-steps"/,
   'Route Details should keep its shared route statistics and speed chart in the dedicated Stats panel');
+assert.match(detailsHtml, /id="routeOptionTabs"[\s\S]*?id="panel-stats"[\s\S]*?id="routePreview"[\s\S]*?id="panel-concerns"/,
+  'Route Details should place its route chooser above the tabs and its map preview only on Stats');
+assert.match(details, /const embeddedDetails = window\.self !== window\.top;[\s\S]*?function renderRouteOptionTabs\(\)[\s\S]*?host\.hidden = !embeddedDetails \|\| options\.length < 2;[\s\S]*?type: 'select-route-details-option'/,
+  'only non-navigating embedded Details should offer route switching back to the map');
+assert.match(details, /function drawRoutePreview\(canvas\)[\s\S]*?drawLine\('#0a66c2', 4\.5\)[\s\S]*?marker\(projected\[0\], '#00795c'\)[\s\S]*?marker\(projected\[projected\.length - 1\], '#e87817'\)/,
+  'the Stats route preview should show the selected path and start/end markers');
+assert.match(css, /\.route-option-tabs\s*\{[^}]*position:\s*sticky[\s\S]*?#routePreviewCanvas\s*\{[^}]*height:\s*116px/,
+  'route choices should remain visible at the top and the Stats preview should stay compact');
 assert.match(css, /\.detail-panel\[hidden\]\s*\{\s*display:\s*none !important;/,
   'only the selected Route Details panel should be visible');
 assert.match(detailsHtml, /id="tab-stats"[\s\S]*?data-detail-tab="stats">Stats<\/button>[\s\S]*?id="tab-concerns"[\s\S]*?id="tab-steps"/,
   'Route Details should present Stats as the first of its three tabs');
 assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?bike paths shown as 15 mph[\s\S]*?Bike facility or trail[\s\S]*?Meets safety rules[\s\S]*?Caution[\s\S]*?Fails safety rules/,
   'Route Details should include a clear speed-profile graph and the normal route safety colors');
+
+const coordsStart = app.indexOf('function compactRouteCoords(');
+const coordsEnd = app.indexOf('function routeDetailsOptionTabs(', coordsStart);
+assert.ok(coordsStart >= 0 && coordsEnd > coordsStart, 'compact route-preview geometry helper was not found');
+const coordsContext = vm.createContext({ Math, Array, Number });
+vm.runInContext(`${app.slice(coordsStart, coordsEnd)} this.compactRouteCoords = compactRouteCoords;`, coordsContext);
+const previewCoords = vm.runInContext(`compactRouteCoords({ coords: Array.from({ length: 1201 }, (_, i) => [-122.4 + i / 1e5, 47.6 + i / 1e5]) })`, coordsContext);
+assert.ok(previewCoords.length <= 601, 'route-preview geometry should remain compact');
+assert.equal(JSON.stringify(previewCoords[0]), JSON.stringify([-122.4, 47.6]),
+  'route preview should retain its start point');
+assert.equal(JSON.stringify(previewCoords.at(-1)), JSON.stringify([-122.388, 47.612]),
+  'route preview should retain its end point');
 console.log('Route detail action tests passed.');

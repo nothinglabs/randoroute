@@ -9,6 +9,7 @@
 </head>
 <body>
   <main>
+    <nav id="routeOptionTabs" class="route-option-tabs" role="tablist" aria-label="Route choices" hidden></nav>
     <section id="panel-stats" class="detail-panel detail-stats" role="tabpanel" aria-labelledby="tab-stats">
       <div id="routeSummaryCard" class="route-summary-card" aria-label="Selected route summary" hidden>
         <div class="route-summary-info">
@@ -22,6 +23,10 @@
         <div id="elevationPreviewEmpty" class="elevation-preview-empty" hidden>Elevation profile unavailable</div>
         <div id="summaryMix" class="route-summary-mix" title="Percent of riding distance; colors match the map legend"></div>
       </div>
+      <section id="routePreview" class="route-preview" aria-labelledby="routePreviewTitle" hidden>
+        <div class="route-preview-head"><h2 id="routePreviewTitle">Route preview</h2><p>Selected route</p></div>
+        <canvas id="routePreviewCanvas" role="img" aria-label="Selected route map preview"></canvas>
+      </section>
       <section id="speedProfile" class="speed-profile" aria-labelledby="speedProfileTitle" hidden>
         <div class="speed-profile-head"><div><h2 id="speedProfileTitle">Speed limits</h2><p>Along the route · bike paths shown as 15 mph</p></div></div>
         <canvas id="speedProfileCanvas" role="img" aria-label="Speed limits along the route"></canvas>

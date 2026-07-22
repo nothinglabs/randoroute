@@ -47,7 +47,8 @@ function safetyVerdict(seg) {
   return { label: 'Passes rules', className: 'pass' };
 }
 
-if (window.self !== window.top) document.body.classList.add('embedded');
+const embeddedDetails = window.self !== window.top;
+if (embeddedDetails) document.body.classList.add('embedded');
 
 document.getElementById('backToMap').addEventListener('click', () => {
   if (window.self !== window.top) {
@@ -637,6 +638,7 @@ function drawElevation(canvas, compact = false) {
 window.addEventListener('resize', () => {
   drawElevation(document.getElementById('elevationPreviewCanvas'), true);
   drawSpeedProfile(document.getElementById('speedProfileCanvas'));
+  drawRoutePreview(document.getElementById('routePreviewCanvas'));
   if (document.getElementById('elevationDialog')?.open) {
     drawElevation(document.getElementById('elevationDialogCanvas'));
   }
@@ -677,6 +679,90 @@ const summaryRoadSpeed = document.getElementById('summaryRoadSpeed');
 const summaryMix = document.getElementById('summaryMix');
 const noRouteSummary = document.getElementById('noRouteSummary');
 const alert = document.getElementById('routeAlert');
+
+function renderRouteOptionTabs() {
+  const host = document.getElementById('routeOptionTabs');
+  const options = Array.isArray(details?.routeOptions) ? details.routeOptions : [];
+  // Direct visits have no live map to update. The embedded page only exposes
+  // choices when it can hand the new selection back to the app.
+  host.hidden = !embeddedDetails || options.length < 2;
+  if (host.hidden) return;
+  host.innerHTML = options.map((option) => `<button type="button" role="tab"
+      data-route-details-option="${option.index}" aria-selected="${!!option.selected}"
+      aria-label="Choose ${option.label === 'Shared' ? 'shared route' : `route ${option.label}`}">
+      ${option.label}</button>`).join('');
+  host.querySelectorAll('[data-route-details-option]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (button.getAttribute('aria-selected') === 'true') return;
+      window.parent.postMessage({
+        type: 'select-route-details-option', index: Number(button.dataset.routeDetailsOption),
+      }, window.location.origin);
+    });
+  });
+}
+
+function routePreviewPoints() {
+  return (details?.routeCoords || []).map(lngLat).filter(Boolean);
+}
+
+function drawRoutePreview(canvas) {
+  const points = routePreviewPoints();
+  if (!canvas || points.length < 2) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 116;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = '#edf4f0';
+  ctx.fillRect(0, 0, w, h);
+  // A subtle, map-like grid gives the lightweight geometry context without
+  // fetching a second map or tiles inside the Details frame.
+  ctx.strokeStyle = 'rgba(93,132,148,.12)';
+  ctx.lineWidth = 1;
+  for (let x = 18; x < w; x += 28) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let y = 14; y < h; y += 28) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+
+  const latMid = points.reduce((sum, point) => sum + point[1], 0) / points.length;
+  const lngScale = Math.max(.01, Math.cos(latMid * Math.PI / 180));
+  const projected = points.map(([lng, lat]) => [lng * lngScale, lat]);
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of projected) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  const pad = 14;
+  const spanX = Math.max((maxX - minX), 0.00001);
+  const spanY = Math.max((maxY - minY), 0.00001);
+  const scale = Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY);
+  const offsetX = (w - spanX * scale) / 2 - minX * scale;
+  const offsetY = (h - spanY * scale) / 2 + maxY * scale;
+  const pointAt = ([x, y]) => [offsetX + x * scale, offsetY - y * scale];
+  const drawLine = (color, width) => {
+    ctx.beginPath();
+    projected.forEach((point, index) => {
+      const [x, y] = pointAt(point);
+      if (index) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  };
+  drawLine('rgba(255,255,255,.95)', 8);
+  drawLine('#0a66c2', 4.5);
+  const marker = (point, color) => {
+    const [x, y] = pointAt(point);
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 3.3, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill();
+  };
+  marker(projected[0], '#00795c');
+  marker(projected[projected.length - 1], '#e87817');
+}
+
+renderRouteOptionTabs();
 
 const detailTabs = [...document.querySelectorAll('[data-detail-tab]')];
 detailTabs.forEach((tab) => {
@@ -728,6 +814,9 @@ if (!hasRoute) {
       `Speed limits along ${fmtMi(totals.distM)} miles. Bike facilities and trails are lime, passing roads blue, cautions amber, and failing roads red.`);
     requestAnimationFrame(() => drawSpeedProfile(document.getElementById('speedProfileCanvas')));
   }
+  const routePreview = document.getElementById('routePreview');
+  routePreview.hidden = routePreviewPoints().length < 2;
+  if (!routePreview.hidden) requestAnimationFrame(() => drawRoutePreview(document.getElementById('routePreviewCanvas')));
   if (Array.isArray(details.profile) && details.profile.length >= 2) {
     const elevationPreview = document.getElementById('elevationPreview');
     const elevationDialog = document.getElementById('elevationDialog');

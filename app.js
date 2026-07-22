@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.260';
+const APP_VERSION = '2026-07-22.261';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1464,6 +1464,41 @@ function compactRouteProfile(m) {
   return out;
 }
 
+// Route Details also gets a lightweight map preview. Keep enough of the route
+// shape to be recognizable without copying the full routing geometry into
+// localStorage for every option.
+function compactRouteCoords(m) {
+  const coords = Array.isArray(m?.coords) ? m.coords : [];
+  if (coords.length < 2) return null;
+  const stride = Math.max(1, Math.ceil(coords.length / 600));
+  const out = [];
+  for (let i = 0; i < coords.length; i += stride) {
+    const point = coords[i];
+    const lng = Number(point?.[0]), lat = Number(point?.[1]);
+    if (Number.isFinite(lng) && Number.isFinite(lat)) out.push([+lng.toFixed(6), +lat.toFixed(6)]);
+  }
+  const last = coords[coords.length - 1];
+  const lng = Number(last?.[0]), lat = Number(last?.[1]);
+  if (Number.isFinite(lng) && Number.isFinite(lat)
+      && (!out.length || out[out.length - 1][0] !== +lng.toFixed(6) || out[out.length - 1][1] !== +lat.toFixed(6))) {
+    out.push([+lng.toFixed(6), +lat.toFixed(6)]);
+  }
+  return out.length >= 2 ? out : null;
+}
+
+function routeDetailsOptionTabs(selected) {
+  if (turnNav.active || !Array.isArray(routing.options)) return [];
+  const sharedInPlay = routing.options.some((option) => option?.asShared);
+  return routing.options.map((option, index) => {
+    if (!option?.ok) return null;
+    const label = option.asShared ? 'Shared'
+      : sharedInPlay ? String.fromCharCode(65 + index)
+        : /^Route ([A-Z])$/.exec(option.optimization?.label || '')?.[1]
+          || `Route ${index + 1}`;
+    return { index, label, selected: option === selected };
+  }).filter(Boolean);
+}
+
 function storeRouteDetails(m) {
   if (!m || !m.ok) return;
   try {
@@ -1479,6 +1514,8 @@ function storeRouteDetails(m) {
     localStorage.setItem(ROUTE_DETAILS_KEY, JSON.stringify({
       savedAt: Date.now(),
       profile: compactRouteProfile(m),
+      routeCoords: compactRouteCoords(m),
+      routeOptions: routeDetailsOptionTabs(m),
       snapStartM: Number(m.snapStartM) || 0,
       snapEndM: Number(m.snapEndM) || 0,
       legs: (m.legs || []).map((l) => ({
@@ -1497,7 +1534,7 @@ function storeRouteDetails(m) {
         mtbM: m.mtbM || 0, hazardM: m.hazardM || 0,
       },
       // Keep the detailed report compact: it only needs road attributes and
-      // lengths, not the complete route geometry or elevation profile.
+      // lengths plus downsampled geometry for the small route preview.
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
@@ -2014,6 +2051,18 @@ function openRouteDetails() {
   if (!dialog.open) dialog.showModal();
 }
 
+function selectRouteDetailsOption(index) {
+  if (turnNav.active) return;
+  const option = routing.options[Number(index)];
+  if (!option?.ok || option === routing.last) return;
+  // Keep the same shared-route safeguard as the map's route chooser.
+  if (routing.sharedActive && !option.asShared) { openSharedSwitchDialog(); return; }
+  activateRouteOption(option);
+  // Reload on Stats so the compact map preview immediately shows the newly
+  // selected route, while the map behind the dialog is already in sync.
+  openRouteDetails();
+}
+
 function openRouteTips() {
   const dialog = document.getElementById('routeTipsDialog');
   if (dialog?.showModal && !dialog.open) dialog.showModal();
@@ -2032,6 +2081,10 @@ window.addEventListener('message', (event) => {
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
       openStreetView(lat, lng, Number.isFinite(heading) ? heading : null);
     }
+    return;
+  }
+  if (event.data?.type === 'select-route-details-option') {
+    selectRouteDetailsOption(event.data.index);
     return;
   }
   if (event.data?.type === 'highlight-route-step') {
