@@ -15,10 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-20.244';
-// Planning cards deliberately show a conservative duration. It is a display
-// buffer only: routing, navigation progress, and arrival calculations stay exact.
-const ROUTE_TIME_DISPLAY_MULTIPLIER = 1.2;
+const APP_VERSION = '2026-07-20.245';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3167,7 +3164,7 @@ function renderRouteCard(m) {
       <div class="rc-summary-content">
         <div class="rc-summary-row">
           <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas></div>
-          <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">About ${fmtDur(m.timeS * ROUTE_TIME_DISPLAY_MULTIPLIER)}</span></div>
+          <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
         </div>
         ${mtbNotice}<div class="rc-bottom-stats">
           <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><span class="rc-ride-label">Ride</span><div class="rc-ride-items"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails/lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail</span></div></div>
