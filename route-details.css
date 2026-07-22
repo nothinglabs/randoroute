@@ -5,6 +5,7 @@ html, body { min-height: 100%; margin: 0; background: #f4f7f9; color: #1d2935; f
 body { padding: max(20px, env(safe-area-inset-top)) 16px calc(78px + env(safe-area-inset-bottom)); }
 body.embedded { padding: 16px 16px calc(78px + env(safe-area-inset-bottom)); }
 body.embedded #panel-stats { margin-top: 0; }
+.detail-panel[hidden] { display: none !important; }
 main { width: min(100%, 760px); margin: 0 auto; }
 .back { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-height: 42px; padding: 0 11px; border: 1px solid #b8cbd8; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 700 12px system-ui; text-decoration: none; white-space: nowrap; cursor: pointer; }
 .back:hover { background: #edf5fa; }

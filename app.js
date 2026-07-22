@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.258';
+const APP_VERSION = '2026-07-22.260';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1718,13 +1718,22 @@ function buildTurnInstructions(m) {
     // Only announce an actual bend or turn. A road merely changing name while
     // the rider continues straight used to emit a "Continue onto X" prompt at
     // every name change; that flooded the voice guidance, interrupted itself,
-    // and buried the real turns. Below ~20° (or ~50° on the same road) there is
-    // no maneuver to call.
-    if (Math.abs(delta) < (sameRoad ? 50 : 20)) continue;
+    // and buried the real turns. A verified short road crossing is the
+    // exception: it can look like a path choice even when the geometry is
+    // straight, so explicitly tell the rider to continue across it. Likewise,
+    // a straight entry to or exit from an off-street path is worth confirming.
+    const pathTransition = navPathLike(segs[i]) !== navPathLike(next);
+    const straightCrossing = !!next.crossing && Math.abs(delta) < 20;
+    const straightPathTransition = pathTransition && Math.abs(delta) < 20;
+    if (Math.abs(delta) < (sameRoad ? 50 : 20) && !straightCrossing && !straightPathTransition) continue;
     const distanceM = cumulative[at];
     // Do not speak a chain of tiny graph-edge transitions as separate turns.
     if (distanceM - lastM < 70) continue;
-    instructions.push({ distanceM, coordIndex: at, text: navTurnText(delta, to, undefined, sameRoad), heading: compassWord(outgoing) });
+    const crossingRoad = navRoadName(next.name);
+    const text = straightCrossing
+      ? `Continue across ${crossingRoad || 'the road'}`
+      : navTurnText(delta, to, undefined, sameRoad);
+    instructions.push({ distanceM, coordIndex: at, text, heading: compassWord(outgoing) });
     lastM = distanceM;
   }
   instructions.sort((a, b) => a.distanceM - b.distanceM);

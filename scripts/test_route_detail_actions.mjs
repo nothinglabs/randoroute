@@ -114,6 +114,8 @@ assert.equal(vm.runInContext(`speedProfileSegments([
   'the speed profile should infer bike paths at 15 mph and use the route safety colors for facilities, passing roads, cautions, and failures');
 assert.match(detailsHtml, /id="panel-stats"[\s\S]*?id="routeSummaryCard"[\s\S]*?id="speedProfile"[\s\S]*?id="panel-concerns"[\s\S]*?id="panel-steps"/,
   'Route Details should keep its shared route statistics and speed chart in the dedicated Stats panel');
+assert.match(css, /\.detail-panel\[hidden\]\s*\{\s*display:\s*none !important;/,
+  'only the selected Route Details panel should be visible');
 assert.match(detailsHtml, /id="tab-stats"[\s\S]*?data-detail-tab="stats">Stats<\/button>[\s\S]*?id="tab-concerns"[\s\S]*?id="tab-steps"/,
   'Route Details should present Stats as the first of its three tabs');
 assert.match(detailsHtml, /id="speedProfile"[\s\S]*?Speed limits[\s\S]*?bike paths shown as 15 mph[\s\S]*?Bike facility or trail[\s\S]*?Meets safety rules[\s\S]*?Caution[\s\S]*?Fails safety rules/,

@@ -295,6 +295,23 @@ assert.match(trailExit.instructions[0].text, /24th Avenue Northwest/,
 assert.doesNotMatch(trailExit.instructions[0].text, /onto Burke-Gilman/i,
   'trail exit must not announce the inbound trail as the destination');
 
+const straightPathCrossing = context.buildTurnInstructions({
+  coords: [
+    [-122.3500, 47.6700],
+    [-122.3500, 47.6702],
+    [-122.3500, 47.6704],
+    [-122.3500, 47.6706],
+    [-122.3500, 47.6708],
+  ],
+  segs: [
+    { c0: 0, c1: 2, name: 'Green Lake Cycle Path', flags: 8, facility: 5, lenM: 44 },
+    { c0: 2, c1: 3, name: 'Woodland Place North', flags: 0, facility: 0, crossing: 1, lenM: 8 },
+    { c0: 3, c1: 4, name: 'Green Lake Cycle Path', flags: 8, facility: 5, lenM: 44 },
+  ],
+});
+assert.match(straightPathCrossing.instructions[0].text, /Continue across Woodland Place North/,
+  'a verified road crossing on a straight path should still receive a voice cue');
+
 const unnamedConnector = context.buildTurnInstructions({
   coords,
   segs: [
