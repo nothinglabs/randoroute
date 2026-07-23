@@ -80,8 +80,8 @@ assert.match(routeHelp, /<b>Failing lane segments pulse\.<\/b>/,
   'route help should emphasize that failing lane segments pulse');
 assert.doesNotMatch(html, /recommended balance|Ride mix|Compare the summaries/,
   'route help should not introduce unused labels or prescribe a route choice');
-assert.match(html, /Street View location may not be exact\. No view within 250 m\? Try <b>Open in Google Maps<\/b>\./,
-  'Street View fallback copy should explain the possible offset and match the configured radius');
+assert.match(html, /Location note:<\/b> The nearest available view may be up to 250 m away\. For trails, it may show a nearby road\./,
+  'Street View copy should explain the possible offset, configured radius, and trail fallback');
 assert.doesNotMatch(html, /Street View searched up to|Assumed safe\./,
   'obsolete verbose or overbroad help claims should not remain');
 assert.match(app, /&radius=250\$\{headingParam\}/,

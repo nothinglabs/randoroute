@@ -58,14 +58,14 @@ assert.match(css, /\.segment-actions\s*\{[^}]*margin-left:\s*auto[\s\S]*?\.segme
   'the equal-sized, stacked Map and Street View controls should align at the card right edge');
 assert.match(html, /class="dialog-close streetview-close"[\s\S]*?<span>Close<\/span>/,
   'the embedded Street View close control should have a visible Close label');
-assert.match(html, /Street View location may not be exact\.[\s\S]*?No view within 250 m\?[\s\S]*?Open in Google Maps/,
-  'the embedded viewer should explain the nearby-coverage fallback and possible location offset');
+assert.match(html, /Location note:<\/b>[\s\S]*?nearest available view may be up to 250 m away[\s\S]*?For trails, it may show a nearby road/,
+  'the embedded viewer should clearly explain its nearby-coverage behavior for roads and trails');
 assert.match(app, /maps\/embed\/v1\/streetview[\s\S]*?radius=250/,
   'the embedded Street View lookup should search up to 250 m for nearby imagery');
 assert.match(appCss, /\.full-help-head \.streetview-close\s*\{[^}]*min-height:\s*42px/,
   'the embedded Street View close control should have a clear hit target');
-assert.match(appCss, /\.sv-overlay-notes\s*\{[^}]*position:\s*absolute[\s\S]*?\.sv-coverage-note\s*\{[^}]*background:/,
-  'the coverage fallback should remain visible over an unavailable panorama');
+assert.match(appCss, /\.sv-overlay-notes\s*\{[^}]*position:\s*absolute[\s\S]*?\.sv-coverage-note\s*\{[^}]*border-left:\s*4px solid #f0b44d[^}]*background:[^}]*font:\s*700 12px/,
+  'the coverage note should remain visibly emphasized over the panorama');
 assert.match(html, /id="streetViewLoadStatus"[\s\S]*?role="status"/,
   'Street View should expose loading and failure status accessibly');
 assert.match(app, /Street View is taking longer than expected[\s\S]*?Street View could not load/,

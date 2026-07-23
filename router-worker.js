@@ -489,12 +489,12 @@ function climbPreferenceS(i, forward, mode) {
 
 // Surface preference is intentionally a soft, distance-proportional route
 // cost. Every route gets a modest 20% baseline preference for known pavement;
-// the rider-controlled option raises that to four times the former full cost.
-// This makes a paved alternative win decisively when it is reasonably
-// comparable, while unpaved links remain available when they are necessary.
+// the rider-controlled option raises that to ten times the original full cost.
+// This makes a reasonable paved detour win very decisively, while unpaved
+// links remain available when they are necessary for connectivity.
 function surfacePreferenceS(i, rules) {
   if (eFlags[i] & 32) return 0;
-  const strength = rules?.preferPaved === true ? 4 : 0.20;
+  const strength = rules?.preferPaved === true ? 10 : 0.20;
   const surface = eSurface[i];
   if (surface === SURFACE_GRAVEL) return eLen[i] * 0.065 * strength;
   if (surface === SURFACE_ROUGH) return eLen[i] * 0.20 * strength;

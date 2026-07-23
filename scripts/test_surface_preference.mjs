@@ -74,10 +74,10 @@ assert.equal(context.surfacePreferenceS(0, { preferPaved: true }), 0,
   'unknown OSM surfaces should not be penalized');
 assert.equal(context.surfacePreferenceS(1, { preferPaved: true }), 0,
   'paved surfaces should not be penalized');
-assert.equal(context.surfacePreferenceS(2, { preferPaved: true }), 260,
-  'strong preference should apply a substantially larger gravel cost');
-assert.equal(context.surfacePreferenceS(3, { preferPaved: true }), 800,
-  'strong preference should apply a substantially larger rough-surface cost');
+assert.equal(context.surfacePreferenceS(2, { preferPaved: true }), 650,
+  'strong preference should apply a decisive gravel cost');
+assert.equal(context.surfacePreferenceS(3, { preferPaved: true }), 2000,
+  'strong preference should apply a decisive rough-surface cost');
 assert.equal(context.surfacePreferenceS(2, { preferPaved: false }), 13,
   'with strong preference off, gravel should retain the 20-percent baseline cost');
 assert.equal(context.surfacePreferenceS(3, { preferPaved: false }), 40,

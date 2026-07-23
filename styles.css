@@ -895,8 +895,8 @@ body.navigation-active #routeBar { display: none; }
 .sv-load-status.warning { border-color: rgba(255,204,116,.7); background: rgba(76,48,10,.92); white-space: normal; }
 .sv-load-status[hidden] { display: none; }
 .sv-overlay-notes { position: absolute; right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); left: 14px; pointer-events: none; }
-.sv-coverage-note { margin: 0; padding: 8px 10px; border: 1px solid rgba(255,255,255,.32); border-radius: 9px; background: rgba(16,27,35,.86); color: #f6fafc; font: 600 11px/1.35 system-ui; text-align: center; }
-.sv-coverage-note b { color: #fff; }
+.sv-coverage-note { margin: 0; padding: 9px 11px; border: 1px solid rgba(255,211,118,.72); border-left: 4px solid #f0b44d; border-radius: 9px; background: rgba(16,27,35,.94); box-shadow: 0 2px 10px rgba(0,0,0,.28); color: #f6fafc; font: 700 12px/1.35 system-ui; text-align: center; }
+.sv-coverage-note b { color: #ffd376; font-weight: 850; }
 .weights-reset { min-height: 38px; padding: 0 15px; border: 1px solid #b34b3f; border-radius: 9px; background: #fff4f2; color: #9f352a; font: 750 12px system-ui; cursor: pointer; }
 .weights-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 18px 0 max(34px, env(safe-area-inset-bottom)); }
 .weights-body > .help-lead { max-width: 850px; margin: 0 0 14px; color: #435967; font: 650 13px/1.45 system-ui; }
