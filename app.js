@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.314';
+const APP_VERSION = '2026-07-22.315';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6657,7 +6657,7 @@ function buildLegend() {
     ['dash4', 'Road that fails safety rules'],
     [COLORS[3], 'Caution — limited-access highway'],
     ['ferry', 'Ferry crossing (planned route)'],
-    ['dismount', '⚠ Dismount point — walk your bike'],
+    ['dismount', 'Dismount point — walk your bike'],
     ['dashDesig', 'Designated bike route (overlay)'],
     ['unpaved', 'Cross-slats: confirmed unpaved (overlay)'],
   ];

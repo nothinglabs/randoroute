@@ -8,6 +8,8 @@ const css = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 
 assert.match(html, /id="legendFlyout"[\s\S]*?id="legend"[\s\S]*?Tap any path on map to get details\./,
   'the map legend should end with a compact path-details tip');
+assert.match(app, /\['dismount', 'Dismount point — walk your bike'\],[\s\S]*?legend-dismount-swatch">⚠<\/span>/,
+  'the dismount legend should use its warning marker once, in the swatch');
 assert.match(html, /id="appHelpDialog"[\s\S]*?The letters identify routes; they are not safety grades[\s\S]*?Tap <b>Navigate<\/b> for GPS and voice guidance[\s\S]*?Tap any road or trail to get more information or access <b>Google Street View<\/b>/,
   'quick-start help should distinguish route choices, navigation, and road-information access');
 const quickStartHelp = html.match(/<dialog id="appHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
