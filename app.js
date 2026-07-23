@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.300';
+const APP_VERSION = '2026-07-22.301';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -48,7 +48,7 @@ function isConfirmedUnpavedSurface(surface) {
 const DEFAULT_RULES = Object.freeze({
   allowFreeways: true,  // only permit heavily penalized freeway fallback?
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
-  preferPaved: true,    // soft preference: gravel and dirt stay available when useful
+  preferPaved: false,   // strong pavement preference; a smaller baseline is always active
   vettedBikeRoutes: true, // let designated corridors pass despite missing/narrow shoulder data?
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
@@ -6062,8 +6062,8 @@ function presetInfoRows(preset) {
       : 'Not required; a route may include rule-failing segments to complete it.'],
     ['Unknown shoulder', presetRules.unknownShoulderZero ? 'Treated as 0 ft.' : 'Left as unknown.'],
     ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],
-    ['Surface', presetRules.preferPaved === false
-      ? 'No pavement preference.' : 'Paved roads and trails are preferred; gravel and unpaved paths remain available.'],
+    ['Surface', presetRules.preferPaved === true
+      ? 'Strongly prefer paved roads and trails.' : 'Slightly prefer paved roads and trails.'],
     ['Route preferences', preferenceText ? `Strongly prefer ${preferenceText}.` : 'No additional preference.'],
   ];
 }
@@ -6243,7 +6243,7 @@ function buildRulesPanel() {
     if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
     scheduleRescore();
   });
-  check('preferPaved', 'Prefer paved surfaces');
+  check('preferPaved', 'Strongly prefer paved surfaces');
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
   slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');

@@ -1143,7 +1143,7 @@ if (!hasRoute) {
     name: roadName(s),
     meta: `Allowed mountain-bike trail · ${s.mtb ? 'OSM MTB tag' : 'OSM MTB route'}`,
   }));
-  const unpaved = rules.preferPaved === false ? [] : sections(segs,
+  const unpaved = sections(segs,
     (s) => isConfirmedUnpavedSurface(s.surface), (s) => ({
       name: roadName(s),
       meta: `Confirmed ${surfaceLabel(s.surface).toLowerCase()} surface · OSM data`,
@@ -1213,7 +1213,7 @@ if (!hasRoute) {
     { label: 'Highways', shortLabel: 'Hwys', items: highways, sectionId: 'concern-highways' },
   ]);
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails');
-  if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'Paved surfaces are preferred in Settings. These are only segments positively tagged as unpaved in OpenStreetMap.');
+  if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'The router always slightly favors pavement. Turn on Strongly prefer paved surfaces in Settings for a stronger preference.');
   if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike');
   if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution', false, 'concern-uphill-curves');
   if (steepGrades.length) renderSection(report, 'Steep uphill grade segments (over 10%)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality.');
