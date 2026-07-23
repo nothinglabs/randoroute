@@ -455,11 +455,26 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .road-map-link:hover { text-decoration: underline; }
 
 .status {
-  position: absolute; top: calc(env(safe-area-inset-top) + 60px); right: 58px; z-index: 10;
-  background: rgba(0, 0, 0, 0.72); color: #fff; padding: 6px 12px;
-  border-radius: 6px; font-size: 12px; transition: opacity .3s; pointer-events: none;
+  /* Map-data notices used to sit behind the endpoint card. Keep them visible
+     below that card and visually separate from the routing-engine progress
+     notice, which uses the larger route-action toast below. */
+  position: absolute; z-index: 16;
+  top: calc(env(safe-area-inset-top) + 96px); left: 12px;
+  width: max-content; max-width: calc(100vw - 68px);
+  overflow: hidden; padding: 6px 10px;
+  border: 1px solid #9fc8df; border-radius: 999px;
+  background: rgba(247,252,255,.98); box-shadow: 0 3px 12px rgba(0,0,0,.18);
+  color: #22485e; font: 650 11px/1.2 system-ui; text-overflow: ellipsis; white-space: nowrap;
+  transition: opacity .3s, visibility .3s; pointer-events: none;
 }
-.status.hidden { opacity: 0; }
+.status.hidden { visibility: hidden; opacity: 0; }
+@media (min-width: 721px) {
+  .status {
+    top: calc(env(safe-area-inset-top) + 104px);
+    left: calc(24px + var(--desktop-panel-width));
+    max-width: calc(100vw - var(--desktop-panel-width) - 96px);
+  }
+}
 
 #topToolbar {
   position: absolute;
