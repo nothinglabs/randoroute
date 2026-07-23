@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.309';
+const APP_VERSION = '2026-07-22.310';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6416,9 +6416,9 @@ function buildRulesPanel() {
   check('allowSidewalkFallback', 'Allow sidewalk fallback');
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
-  slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');
-  slider('urbanMaxSpeedNoShoulder', 'Urban max speed without shoulder', 15, 45, 5, ' mph');
-  slider('ruralMaxSpeedNoShoulder', 'Rural max speed without shoulder', 15, 45, 5, ' mph');
+  slider('urbanMaxSpeedNoShoulder', '<strong class="area-rule area-rule-urban">Urban</strong> max speed without shoulder', 15, 45, 5, ' mph');
+  slider('ruralMaxSpeedNoShoulder', '<strong class="area-rule area-rule-rural">Rural</strong> max speed without shoulder', 15, 45, 5, ' mph');
+  slider('minShoulder', 'Minimum shoulder for faster roads', 0, 10, 1, ' ft');
 
   // Upper speed cutoff: one slider, whose TOP position means "no cutoff"
   // (replaces the old separate "No speed cutoff" checkbox).
