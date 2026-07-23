@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-23.318';
+const APP_VERSION = '2026-07-23.319';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1292,6 +1292,7 @@ const routing = {
     ? savedState.prefResidential : DEFAULT_ROUTE_PREFERENCES.prefResidential,
   reqId: 0,
   compareStartedAt: 0,
+  selectRecommendedNext: false,
   options: [],
   last: null, // last successful result (for redraws)
   // Shared-route ("As Shared") state — the sender's recipe and whether the
@@ -2890,7 +2891,8 @@ function activateNewRouteFromCurrentLocation(result) {
   turnNav.newRouteStart = null;
   turnNav.newRouteVias = null;
   const options = Array.isArray(result.options) ? result.options.filter((option) => option?.ok) : [];
-  const selected = options.find((option) => option.optimization?.label === 'Route A') || options[0];
+  const selected = options.find((option) => option.optimization?.recommended)
+    || options.find((option) => option.optimization?.label === 'Route A') || options[0];
   if (!result.ok || !selected || !Array.isArray(selected.coords) || selected.coords.length < 2) {
     showRouteActionToast('Could not calculate a new route', {
       detail: `${result.reason || 'No connected route was available.'} Your current route is unchanged.`,
@@ -2908,7 +2910,7 @@ function activateNewRouteFromCurrentLocation(result) {
   }
   routing.vias = remainingVias;
   // Keep the portfolio from the reroute. Navigation starts immediately on
-  // Route A, but the rider can compare the other meaningful corridors after
+  // its recommended option, but the rider can compare the other meaningful corridors after
   // stopping instead of being left with a single locked-in choice.
   routing.options = options;
   turnNav.followingConnector = false;
@@ -3461,16 +3463,19 @@ function showPointTooFarPopup(m) {
 
 function refreshedRouteSelection(options) {
   if (!options.length) return null;
+  const recommended = options.find((option) => option.optimization?.recommended);
+  if (routing.selectRecommendedNext) return recommended || options[0];
   const previous = routing.last?.optimization;
   const profileId = previous?.profileId || routing.profileId;
   const exact = profileId
     ? options.find((option) => option.optimization?.profileId === profileId)
     : null;
-  if (exact || !previous) return exact || options[0];
+  if (!previous) return recommended || options[0];
+  if (exact) return exact;
 
   // A settings change can legitimately remove the old profile from the
   // portfolio. In that case, keep the closest search method and preferences
-  // instead of falling all the way back to the newly recommended Route A.
+  // instead of falling all the way back to the newly recommended route.
   const mismatch = (option) => {
     const next = option.optimization || {};
     let score = 0;
@@ -3546,6 +3551,7 @@ function onRouterMessage(ev) {
     } else {
       selected = refreshedRouteSelection(m.options);
     }
+    routing.selectRecommendedNext = false;
     activateRouteOption(selected);
     notifySnapDistance(selected);
   } else if (m.type === 'route') {
@@ -4292,6 +4298,10 @@ function clearWaypointsForEndpointChange(kind, lngLat) {
 
 function setRoutePoint(kind, lngLat, name = 'Point on map') {
   exitSharedRoute();
+  const previous = routing[kind];
+  if (!Array.isArray(previous) || previous[0] !== lngLat.lng || previous[1] !== lngLat.lat) {
+    routing.selectRecommendedNext = true;
+  }
   clearWaypointsForEndpointChange(kind, lngLat);
   routing[kind] = [lngLat.lng, lngLat.lat];
   routing[`${kind}Name`] = normalizeEndpointName(name) || 'Point on map';

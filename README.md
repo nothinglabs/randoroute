@@ -311,10 +311,10 @@ The app routes **fully client-side**: A* in a web worker over estimated riding
 TIME (a grade-aware speed model). Each request probes a matrix of direct,
 balanced, and low-stress costs with and without bike-route and residential
 preferences. Near-duplicates and dominated choices are removed, leaving up to
-five useful alternatives labeled **Route A–E**. Route A is always selected by
-default and is the safest candidate that stays within a practical per-leg
-detour of the quickest result; the other letters are meaningfully different
-options without implying a fixed fastest-to-safest scale. Each selected route
+five useful alternatives labeled **Route A–E**, ordered from shortest to
+longest. The app initially selects the safest candidate that stays within a
+practical per-leg detour of the quickest result, so the recommended route may
+have any letter. Each selected route
 shows a compact ride mix: the share of riding distance on physical bike
 trails and lanes (lime on the map, with matching legend swatches) and the
 shares that pass, need caution, or fail the current rules. The trails/lanes

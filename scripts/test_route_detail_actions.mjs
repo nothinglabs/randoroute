@@ -90,8 +90,10 @@ assert.match(appCss, /@media \(max-width: 340px\)\s*\{[\s\S]*?\.rc-ride-items\s*
   '320px phones should use two metric columns so nowrap labels cannot collide');
 assert.match(appCss, /\.rc-details-wrap\s*\{[^}]*flex-direction:\s*column[^}]*justify-content:\s*flex-end[\s\S]*?\.rc-speed-limit\s*\{[^}]*text-align:\s*center/,
   'the route-choice Details rail should sit at the bottom-left with a compact speed metric above it');
-assert.match(css, /\.route-quick-summary\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:[^}]*minmax\(0,\s*1\.2fr\)[\s\S]*?\.route-summary-mix-items\s*\{[^}]*display:\s*grid[^}]*justify-self:\s*center/,
-  'the shared route summary should stack time under mileage and center its right-side metrics');
+assert.match(css, /\.route-quick-summary\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:[^}]*minmax\(0,\s*1\.3fr\)[\s\S]*?\.route-summary-mix-items\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(2, max-content\)[^}]*justify-self:\s*center/,
+  'the shared route summary should stack time under mileage and arrange its metrics in two columns');
+assert.match(css, /@media \(max-width: 340px\)\s*\{[\s\S]*?\.route-summary-mix-items\s*\{[^}]*grid-template-columns:\s*max-content/,
+  'very narrow phones should fall back to one summary-metric column');
 assert.match(details, /summary\.innerHTML\s*=\s*`<strong>\$\{fmtMi\(totals\.distM\)\} mi<\/strong><small>\$\{fmtDur\(totals\.timeS\)\}<\/small>`/,
   'the shared route summary should place time under mileage');
 assert.match(details, /summaryMix\.innerHTML[\s\S]*totals\.ferryM > 0[\s\S]*mix-ferry[\s\S]*fmtMi\(totals\.ferryM\)[\s\S]*speedShoulderNote/,
@@ -267,12 +269,20 @@ assert.match(css, /\.speed-profile\s*\{[^}]*display:\s*grid[^}]*grid-template-co
   'the speed card should keep text left while giving its tappable chart a little more room');
 assert.match(detailsHtml, /id="speedProfilePreview"[\s\S]*?id="speedProfileCanvas"[\s\S]*?id="speedDialog"[\s\S]*?id="speedDialogCanvas"/,
   'the speed chart should offer an enlarged dialog view');
+assert.equal((detailsHtml.match(/Tap anywhere on the chart to show that route segment on the map\./g) || []).length, 2,
+  'both enlarged charts should explain that a tap opens the corresponding map segment');
 assert.match(detailsHtml, /id="elevationPreview"[\s\S]*?class="chart-expand-note"[\s\S]*?Tap to expand[\s\S]*?id="speedProfilePreview"[\s\S]*?class="chart-expand-note"/,
   'both compact charts should explain that they can be expanded');
 assert.match(details, /speedPreview\.addEventListener\('click',[\s\S]*?speedDialog\.showModal\(\)[\s\S]*?drawSpeedProfile\(document\.getElementById\('speedDialogCanvas'\)\)/,
   'tapping the speed preview should render its enlarged chart');
+assert.match(details, /function routeSegmentAtDistance\(distanceM\)[\s\S]*?startIndex:\s*index[\s\S]*?coordStart:\s*seg\?\.c0[\s\S]*?function chartDistanceAtPointer\(canvas, event, padL, padR\)[\s\S]*?function bindExpandedChartMapTap\(canvas, dialog, padL, padR\)[\s\S]*?dialog\.close\(\);[\s\S]*?showRouteStep\(segment\)/,
+  'expanded charts should translate a horizontal tap into a route segment and hand it to the map');
+assert.match(details, /bindExpandedChartMapTap\(document\.getElementById\('speedDialogCanvas'\), speedDialog, 6, 6\)[\s\S]*?bindExpandedChartMapTap\(document\.getElementById\('elevationDialogCanvas'\), elevationDialog, 8, 8\)/,
+  'both enlarged chart canvases should enable map navigation with their rendered plot padding');
 assert.match(css, /#elevationDialogCanvas, #speedDialogCanvas\s*\{[^}]*aspect-ratio:\s*1\.45 \/ 1/,
   'both enlarged charts should use a similar compact aspect ratio');
+assert.match(css, /\.elevation-dialog-body \.chart-map-hint\s*\{[^}]*color:\s*#1769aa[\s\S]*?\.chart-map-target\s*\{[^}]*cursor:\s*pointer/,
+  'expanded chart navigation should have visible instructions and an interactive cursor');
 assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>[\s\S]*?<b>10%\+ uphill<\/b>[\s\S]*?fmtMi\(steepUphillM\)/,
   'elevation metrics should include the mileage of sustained uphill grade over 10%');
 assert.match(detailsHtml, /button id="elevationSteepWarning"[\s\S]*?class="elevation-warning-message"[\s\S]*?grades that may be impassable[\s\S]*?class="elevation-warning-action"[\s\S]*?Tap to review[\s\S]*?Grades[\s\S]*?in Concerns/,

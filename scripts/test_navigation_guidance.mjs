@@ -247,7 +247,18 @@ assert.match(activationSource, /routing\.vias = remainingVias/,
 assert.doesNotMatch(activationSource, /routing\.vias\s*=\s*\[\]/,
   'a successful replacement route must not clear all waypoints');
 assert.match(activationSource, /const options = Array\.isArray\(result\.options\)[\s\S]*?routing\.options = options[\s\S]*?activateRouteOption\(selected\)/,
-  'an off-route replacement should keep every generated option while navigating Route A');
+  'an off-route replacement should keep every generated option while navigating the selected route');
+assert.match(activationSource, /options\.find\(\(option\) => option\.optimization\?\.recommended\)[\s\S]*?optimization\?\.label === 'Route A'/,
+  'an off-route replacement should select the recommended route before falling back to shortest Route A');
+const refreshedStart = app.indexOf('function refreshedRouteSelection(');
+const refreshedEnd = app.indexOf('function onWorkerMessage(', refreshedStart);
+const refreshedSource = app.slice(refreshedStart, refreshedEnd);
+assert.match(refreshedSource, /const recommended = options\.find\(\(option\) => option\.optimization\?\.recommended\);[\s\S]*?if \(routing\.selectRecommendedNext\) return recommended \|\| options\[0\];[\s\S]*?if \(!previous\) return recommended \|\| options\[0\];[\s\S]*?if \(exact\) return exact;/,
+  'a fresh route search should select the recommended result even when it is not shortest Route A');
+assert.match(app, /function setRoutePoint\(kind, lngLat[\s\S]*?routing\.selectRecommendedNext = true;/,
+  'changing either endpoint should request the new portfolio recommendation');
+assert.match(app, /function onRouterMessage[\s\S]*?routing\.selectRecommendedNext = false;[\s\S]*?activateRouteOption\(selected\)/,
+  'changing either endpoint should request the new portfolio recommendation exactly once');
 assert.match(worker, /m\.type === 'navigation-new-route'[\s\S]*?const primary = route\(points, m\.rules, mode, !!m\.prefDesignated, !!m\.prefResidential\)[\s\S]*?if \(!primary\.ok\)[\s\S]*?const options = portfolio\?\.ok[\s\S]*?publicCandidate\(\{ \.\.\.primary, _profile: primaryProfile \}\)/,
   'a current-location replacement should preserve a usable Route A when alternatives fail');
 const start = app.indexOf('function navDistanceM');

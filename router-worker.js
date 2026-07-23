@@ -1307,26 +1307,20 @@ function outcomeSnapshot(route) {
 
 function presentAsLetters(routes, recommended) {
   if (!routes.length) return routes;
-  const fastest = routes.reduce((best, route) => route.timeS < best.timeS ? route : best, routes[0]);
-  const safest = routes.reduce((best, route) => compareSafety(route, best) < 0 ? route : best, routes[0]);
-  const middle = routes.filter((route) => route !== fastest && route !== safest);
-  middle.sort(fastest === safest
-    ? (a, b) => a.timeS - b.timeS
-    : (a, b) => compareSafety(b, a) || a.timeS - b.timeS);
-  const outcomeOrder = fastest === safest ? [fastest, ...middle] : [fastest, ...middle, safest];
-  const ordered = recommended && outcomeOrder.includes(recommended)
-    ? [recommended, ...outcomeOrder.filter((route) => route !== recommended)] : outcomeOrder;
+  const ordered = [...routes].sort((a, b) =>
+    a.distM - b.distM || a.timeS - b.timeS || compareSafety(a, b));
 
   for (let i = 0; i < ordered.length; i++) {
     const route = ordered[i];
     const letter = String.fromCharCode(65 + i);
-    const lead = i === 0
+    const isRecommended = route === recommended;
+    const lead = isRecommended
       ? 'Recommended — best balance of safety and practicality.'
       : 'A distinct alternative.';
     route._outcome = {
       label: `Route ${letter}`,
       reason: `${lead} ${outcomeSnapshot(route)}.`,
-      recommended: i === 0,
+      recommended: isRecommended,
     };
   }
   return ordered;
@@ -1665,7 +1659,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     })) : choices;
   const boundedSafer = boundedChoices.reduce((best, route) =>
     !best || compareSafety(route, best) < 0 ? route : best, null);
-  // Route A is not necessarily the absolute safest or the absolute fastest.
+  // The recommended route is not necessarily the absolute safest or shortest.
   // Choose the safest result whose every leg stays within a practical detour
   // of the quickest option; the stricter choices remain available as letters.
   const practicalChoices = choices.filter((route) =>

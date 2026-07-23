@@ -60,6 +60,11 @@ assert.equal(replacement?.type, 'navigation-new-route',
 assert.equal(replacement?.ok, true, replacement?.reason || 'replacement route should be available');
 assert.ok(Array.isArray(replacement.options) && replacement.options.length,
   'a replacement route should retain the normal route-options portfolio');
+assert.ok(replacement.options.every((option, index, options) =>
+  index === 0 || options[index - 1].distM <= option.distM),
+  'lettered replacement routes should be ordered shortest through longest');
+assert.equal(replacement.options.filter((option) => option.optimization?.recommended).length, 1,
+  'the replacement portfolio should identify exactly one recommended route independently of its letter');
 const replacementRouteA = replacement.options.find((option) => option.optimization?.label === 'Route A');
 assert.ok(replacementRouteA, 'the replacement portfolio should include Route A');
 assert.equal(replacementRouteA.legs?.length, 2,

@@ -649,6 +649,46 @@ function speedProfileSegments(segs) {
   return profile;
 }
 
+function routeSegmentAtDistance(distanceM) {
+  const segs = Array.isArray(details?.segs) ? details.segs : [];
+  if (!segs.length) return null;
+  const targetM = Math.max(0, Number(distanceM) || 0);
+  let elapsedM = 0;
+  for (let index = 0; index < segs.length; index++) {
+    const seg = segs[index];
+    elapsedM += Math.max(0, Number(seg?.lenM) || 0);
+    if (targetM <= elapsedM || index === segs.length - 1) {
+      return {
+        startIndex: index,
+        endIndex: index,
+        name: roadName(seg),
+        coordStart: seg?.c0,
+        coordEnd: seg?.c1,
+      };
+    }
+  }
+  return null;
+}
+
+function chartDistanceAtPointer(canvas, event, padL, padR) {
+  const rect = canvas.getBoundingClientRect();
+  const chartWidth = Math.max(1, rect.width - padL - padR);
+  const x = Math.min(chartWidth, Math.max(0, event.clientX - rect.left - padL));
+  return x / chartWidth * (Number(details?.summary?.distM) || 0);
+}
+
+function bindExpandedChartMapTap(canvas, dialog, padL, padR) {
+  if (!canvas || !dialog) return;
+  canvas.classList.add('chart-map-target');
+  canvas.setAttribute('aria-label', 'Route chart. Tap a position to show that route segment on the map.');
+  canvas.addEventListener('click', (event) => {
+    const segment = routeSegmentAtDistance(chartDistanceAtPointer(canvas, event, padL, padR));
+    if (!segment) return;
+    dialog.close();
+    showRouteStep(segment);
+  });
+}
+
 function drawSpeedProfile(canvas) {
   const segments = speedProfileSegments(details?.segs);
   const distM = Number(details?.summary?.distM) || Math.max(0, ...segments.map((seg) => seg.endM));
@@ -1178,7 +1218,7 @@ if (!hasRoute) {
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
   summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>Avg. limit</span><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>Max limit</span><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>At least 35 mph</span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span><span class="speed-limit-metric"><span>At least 45 mph</span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span>`;
-  summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span><span class="route-summary-mix-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>${totals.ferryM > 0 ? `<span class="route-summary-mix-item mix-ferry">⛴ <b>${fmtMi(totals.ferryM)} mi</b> ferry</span>` : ''}${routeStats.dismountM > 0 ? '<span class="route-summary-mix-item mix-dismount">⚠ <b>Dismount</b> — walk</span>' : ''}</div>`;
+  summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span><span class="route-summary-mix-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>${totals.ferryM > 0 ? `<span class="route-summary-mix-item mix-ferry"><span class="route-summary-ferry-swatch" aria-hidden="true">⛴︎</span><b>${fmtMi(totals.ferryM)} mi</b> ferry</span>` : ''}${routeStats.dismountM > 0 ? '<span class="route-summary-mix-item mix-dismount">⚠ <b>Dismount</b> — walk</span>' : ''}</div>`;
   speedShoulderNote.hidden = false;
   speedShoulderNote.innerHTML = `<b>${speedMiles(routeStats.highSpeedNoBikeAccommodationOrShoulderM)}</b> on ≥30 mph roads without bike accommodation or a confirmed ≥${routeStats.minShoulderFt} ft shoulder`;
   const speedProfile = document.getElementById('speedProfile');
@@ -1194,6 +1234,7 @@ if (!hasRoute) {
       requestAnimationFrame(() => drawSpeedProfile(document.getElementById('speedDialogCanvas')));
     });
     document.getElementById('speedDialogClose').addEventListener('click', () => speedDialog.close());
+    bindExpandedChartMapTap(document.getElementById('speedDialogCanvas'), speedDialog, 6, 6);
     requestAnimationFrame(() => drawSpeedProfile(document.getElementById('speedProfileCanvas')));
   }
   const routePreview = document.getElementById('routePreview');
@@ -1209,6 +1250,7 @@ if (!hasRoute) {
       requestAnimationFrame(() => drawElevation(document.getElementById('elevationDialogCanvas')));
     });
     document.getElementById('elevationDialogClose').addEventListener('click', () => elevationDialog.close());
+    bindExpandedChartMapTap(document.getElementById('elevationDialogCanvas'), elevationDialog, 8, 8);
     requestAnimationFrame(() => drawElevation(document.getElementById('elevationPreviewCanvas'), true));
   } else {
     document.getElementById('elevationPreviewEmpty').hidden = false;

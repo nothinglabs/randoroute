@@ -107,6 +107,15 @@ for (let index = 0; index < scenarios.length; index++) {
     continue;
   }
   console.log(`${scenario.name}: ${result.options.length} option(s), ${result.ms} ms`);
+  if (!result.options.every((option, optionIndex, options) =>
+    optionIndex === 0 || options[optionIndex - 1].distM <= option.distM)) {
+    console.error('  ORDER FAIL — route letters are not shortest through longest');
+    process.exitCode = 1;
+  }
+  if (result.options.filter((option) => option.optimization?.recommended).length !== 1) {
+    console.error('  RECOMMENDATION FAIL — expected exactly one recommended option');
+    process.exitCode = 1;
+  }
   if (result.debug) console.log('  stages:', JSON.stringify(result.debug));
   for (const option of result.options) {
     const probeText = scenario.probe
