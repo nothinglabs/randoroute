@@ -20,6 +20,55 @@ assert.match(app, /function drawNavElevation\([\s\S]*?ctx\.clip\(\)[\s\S]*?NAV_E
   'the navigating elevation chart should shade the ridden portion');
 assert.match(app, /function updateNavCard\([\s\S]*?navigationElevationProgressM\(\)/,
   'the navigating panel should track the live position on its elevation chart');
+assert.match(app, /function startTurnNavigation\(\)\s*\{\s*if \(routing\.pendingRoute \|\| routing\.routeRequestActive\)/,
+  'navigation must not start while a replacement route is still calculating');
+assert.match(app, /const routeReady = routeAvailable && !routing\.pendingRoute && !routing\.routeRequestActive[\s\S]*?startButton\.disabled = turnNav\.active \? false : !routeReady/,
+  'the Navigate button should remain disabled until the latest route is ready');
+assert.match(app, /locationReady:\s*false[\s\S]*?Waiting for a GPS fix…/,
+  'the navigation card should show an explicit acquisition state before its first fix');
+assert.match(app, /!turnNav\.locationReady\s*\?\s*'Navigation begins after a usable GPS fix'/,
+  'the navigation banner must not report route progress before a usable GPS fix');
+assert.match(app, /function navSegInfoHTML\(\)\s*\{\s*if \(!turnNav\.locationReady\)[\s\S]*?Waiting for GPS…/,
+  'the current-road card must not guess the first route segment before a GPS fix');
+
+const mapProgressStart = app.indexOf('function updateNavigationProgress');
+const mapProgressEnd = app.indexOf('function rejoinRoute', mapProgressStart);
+assert.ok(mapProgressStart >= 0 && mapProgressEnd > mapProgressStart,
+  'planned-route progress helpers were not found');
+let progressData = null;
+const connectorProgressContext = vm.createContext({
+  Math, Number, Array,
+  navDistanceM(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); },
+  map: { getSource: () => ({ setData(data) { progressData = data; } }) },
+  turnNav: {
+    active: true, followingConnector: true,
+    route: { coords: [[9, 9], [10, 10]] },
+    nearestSegment: 0, nearestPoint: [9.5, 9.5],
+    plannedRoute: { coords: [[0, 0], [1, 0], [2, 0]] },
+    plannedNearestSegment: 1, plannedNearestPoint: [1.5, 0],
+  },
+});
+vm.runInContext(`${app.slice(mapProgressStart, mapProgressEnd)}
+  this.updateNavigationProgress = updateNavigationProgress;`, connectorProgressContext);
+connectorProgressContext.updateNavigationProgress();
+assert.deepEqual(progressData.geometry.coordinates, [[0, 0], [1, 0], [1.5, 0]],
+  'a return connector must preserve the completed portion of the planned route');
+
+const elevationProgressStart = app.indexOf('function navigationElevationProgressM');
+const elevationProgressEnd = app.indexOf('function openRouteDetails', elevationProgressStart);
+const elevationProgressContext = vm.createContext({
+  Math, Number,
+  routing: { last: { distM: 1000 } },
+  turnNav: {
+    active: true, locationReady: true, followingConnector: true,
+    plannedRouteM: 400, routeM: 25,
+    plannedRoute: { totalM: 1000 },
+  },
+});
+vm.runInContext(`${app.slice(elevationProgressStart, elevationProgressEnd)}
+  this.navigationElevationProgressM = navigationElevationProgressM;`, elevationProgressContext);
+assert.equal(elevationProgressContext.navigationElevationProgressM(), 400,
+  'connector navigation should keep the original elevation progress instead of resetting it');
 // Panel content: destination, miles done/left, and current-segment facts;
 // the route-segment percentages are gone.
 assert.match(html, /id="navDest"[\s\S]*?id="navSegInfo"[\s\S]*?id="navProgressDist"/,

@@ -1,5 +1,5 @@
 * { box-sizing: border-box; }
-:root { --desktop-panel-width: min(clamp(370px, 33vw, 430px), calc(100vw - 24px)); }
+:root { --desktop-panel-width: min(clamp(370px, 35vw, 460px), calc(100vw - 24px)); }
 html, body { margin: 0; height: 100%; height: 100dvh; height: var(--app-height, 100dvh); overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; touch-action: manipulation; }
 #map { position: absolute; inset: 0; touch-action: manipulation; }
 button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
@@ -265,6 +265,18 @@ body:not(.navigation-active) #navCard { display: none; }
   #routeCard .rc-ride-items { gap: 3px 2px; }
   #routeCard .rc-mix-swatch, #routeCard .rc-unpaved-swatch { width: 10px; margin-right: 2px; }
 }
+/* Two columns give every metric a real label-width budget on legacy 320 px
+   phones. The prior three-column layout stayed inside the viewport but its
+   nowrap labels painted over one another. */
+@media (max-width: 340px) {
+  #routeCard .rc-route-summary { gap: 7px; }
+  #routeCard .rc-summary-row { gap: 5px; }
+  #routeCard .rc-distance { font-size: 20px; }
+  #routeCard .rc-duration { font-size: 14.5px; }
+  #routeCard .rc-ride-mix { font-size: 9px; }
+  #routeCard .rc-ride-items { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 6px; }
+  #routeCard .rc-ride-items:not(.has-dismount) .rc-ride-item:first-child { grid-column: auto; }
+}
 #routeCard canvas { display: block; }
 @media (min-width: 721px) {
   #tabs { gap: 6px; padding: 5px 10px; }
@@ -273,6 +285,10 @@ body:not(.navigation-active) #navCard { display: none; }
   #routeCard .rc-distance { font-size: 24px; }
   #routeCard .rc-duration { font-size: 16.5px; }
   #routeCard .rc-elev-wrap { max-width: 300px; }
+  #routeCard .rc-route-summary { gap: 12px; }
+  #routeCard .rc-summary-row { gap: 10px; }
+  #routeCard .rc-ride-mix { font-size: 10px; }
+  #routeCard .rc-ride-items { gap: 4px 8px; }
   #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
   #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }
@@ -875,6 +891,9 @@ body.navigation-active #routeBar { display: none; }
 .streetview-close span:first-child { color: currentColor; font-size: 16px; line-height: 1; }
 .sv-body { position: relative; width: 100%; height: calc(var(--app-height, 100dvh) - 65px); background: #0b0f13; }
 #streetViewFrame { display: block; width: 100%; height: 100%; border: 0; }
+.sv-load-status { position: absolute; z-index: 2; top: 14px; left: 50%; max-width: calc(100% - 28px); margin: 0; padding: 7px 10px; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.3); border-radius: 8px; background: rgba(16,27,35,.88); color: #fff; font: 700 11px/1.3 system-ui; text-align: center; white-space: nowrap; }
+.sv-load-status.warning { border-color: rgba(255,204,116,.7); background: rgba(76,48,10,.92); white-space: normal; }
+.sv-load-status[hidden] { display: none; }
 .sv-overlay-notes { position: absolute; right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); left: 14px; pointer-events: none; }
 .sv-coverage-note { margin: 0; padding: 8px 10px; border: 1px solid rgba(255,255,255,.32); border-radius: 9px; background: rgba(16,27,35,.86); color: #f6fafc; font: 600 11px/1.35 system-ui; text-align: center; }
 .sv-coverage-note b { color: #fff; }

@@ -66,6 +66,10 @@ assert.match(appCss, /\.full-help-head \.streetview-close\s*\{[^}]*min-height:\s
   'the embedded Street View close control should have a clear hit target');
 assert.match(appCss, /\.sv-overlay-notes\s*\{[^}]*position:\s*absolute[\s\S]*?\.sv-coverage-note\s*\{[^}]*background:/,
   'the coverage fallback should remain visible over an unavailable panorama');
+assert.match(html, /id="streetViewLoadStatus"[\s\S]*?role="status"/,
+  'Street View should expose loading and failure status accessibly');
+assert.match(app, /Street View is taking longer than expected[\s\S]*?Street View could not load/,
+  'Street View should offer the Google Maps fallback after a timeout or load error');
 assert.match(app, /class="rc-ride-items[\s\S]*?class="rc-ride-item"[\s\S]*?trails \/ lanes[\s\S]*?pass rules[\s\S]*?rc-ride-fail[\s\S]*?fail rules/,
   'the route card should group its ride classes into equal-width items');
 assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summary-mix-item"[\s\S]*?trails \/ lanes[\s\S]*?pass rules[\s\S]*?mix-fail[\s\S]*?fail rules/,
@@ -82,6 +86,8 @@ assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(
   'the route-card ride classes should use the compact three-column layout while keeping the lead metric balanced');
 assert.match(appCss, /@media \(max-width: 375px\)\s*\{[\s\S]*?#routeCard \.rc-ride-mix\s*\{[^}]*font-size:\s*8\.75px[\s\S]*?#routeCard \.rc-ride-items\s*\{[^}]*gap:\s*3px 2px[\s\S]*?#routeCard \.rc-mix-swatch, #routeCard \.rc-unpaved-swatch\s*\{[^}]*width:\s*10px/,
   'narrow phones should compact route-summary tokens instead of horizontally overflowing');
+assert.match(appCss, /@media \(max-width: 340px\)\s*\{[\s\S]*?\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)[\s\S]*?\.rc-ride-item:first-child\s*\{[^}]*grid-column:\s*auto/,
+  '320px phones should use two metric columns so nowrap labels cannot collide');
 assert.match(appCss, /\.rc-details-wrap\s*\{[^}]*flex-direction:\s*column[^}]*justify-content:\s*flex-end[\s\S]*?\.rc-speed-limit\s*\{[^}]*text-align:\s*center/,
   'the route-choice Details rail should sit at the bottom-left with a compact speed metric above it');
 assert.match(css, /\.route-quick-summary\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap[\s\S]*?\.route-summary-mix-items\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap/,

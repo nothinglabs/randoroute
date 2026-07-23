@@ -40,6 +40,8 @@ assert.match(html, /<h3>Presets<\/h3>[\s\S]*?The Randonneur[\s\S]*?looser rules 
   'settings help should describe the available routing presets individually');
 assert.match(html, /<h3>Limits<\/h3><ul class="help-list">[\s\S]*?Minimum shoulder[\s\S]*?Urban \/ rural max speed without shoulder[\s\S]*?Never allow roads faster than[\s\S]*?No cutoff[\s\S]*?<\/ul>/,
   'settings help should describe each routing limit as a separate, scannable item');
+assert.match(html, /Minimum shoulder for faster roads/,
+  'settings help should use the same shoulder-limit label as the product');
 assert.match(html, /Unknown shoulder = 0 ft[\s\S]*?if shoulder data is missing, treat it as 0 ft for rules purposes/,
   'settings help should plainly explain how missing shoulder data is evaluated');
 assert.match(html, /<h3>Voice navigation<\/h3><ul class="help-list">[\s\S]*?Notify only[\s\S]*?Route back to route[\s\S]*?Dynamic re-routing[\s\S]*?Speak compass directions[\s\S]*?Status update[\s\S]*?<\/ul>/,
@@ -51,6 +53,8 @@ assert.match(layersHelp, /Toggling layers only adjusts visibility\. All data is 
   'map-data help should state that layer toggles do not change routing before its data sources');
 assert.match(layersHelp, /All roads \(OpenStreetMap, estimated speeds\)/,
   'map-data help should spell out OpenStreetMap in its data sources');
+assert.match(layersHelp, /All roads \(OpenStreetMap, estimated speeds\)[\s\S]*?known route closures/,
+  'layers help should briefly identify the always-on closure data');
 assert.match(layersHelp, /try to avoid any climbs over 12%, but steep segments remain routable/,
   'map-data help should describe the bounded steep-grade routing preference');
 assert.doesNotMatch(layersHelp, /The router combines Washington road data, OpenStreetMap, and elevation/,
@@ -58,6 +62,8 @@ assert.doesNotMatch(layersHelp, /The router combines Washington road data, OpenS
 assert.doesNotMatch(layersHelp, /lime|blue|amber|red fails|gray lacks enough data/i,
   'map-layers help should not duplicate the route color legend');
 const routeHelp = html.match(/<dialog id="routeTipsDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
+assert.match(routeHelp, /Concerns:[\s\S]*?sidewalk fallbacks[\s\S]*?highways/,
+  'route help should name the concern types that affect current route details');
 assert.match(html, /id="routeControls"[\s\S]*?class="route-chooser-row"[\s\S]*?id="routeOptions"[\s\S]*?id="routeTipsBtn"/,
   'the main map route picker should keep its selector and Help button on one row');
 assert.match(css, /#routeOptions\s*\{[^}]*padding:\s*3px[^}]*border:\s*1px solid #cddde7[\s\S]*?#routeOptions::before\s*\{[^}]*content:\s*'Choose route'[\s\S]*?#routeOptions button\.active\s*\{[^}]*background:\s*#0a66c2/,

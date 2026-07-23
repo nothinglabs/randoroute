@@ -998,7 +998,7 @@ function routePreviewRenderData() {
 function ensureUnpavedSlatImage(targetMap) {
   const imageId = 'route-preview-unpaved-slats';
   if (targetMap.hasImage(imageId)) return;
-  const width = 2, height = 11;
+  const width = 2, height = 12;
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -1106,7 +1106,7 @@ function initializeRoutePreviewMap() {
     ensureDismountMarkerImage(routePreviewMap);
     routePreviewMap.addLayer({ id: 'route-preview-unpaved-slats', type: 'symbol', source: 'route-preview-unpaved',
       layout: {
-        'symbol-placement': 'line', 'symbol-spacing': 12,
+        'symbol-placement': 'line', 'symbol-spacing': 10,
         'icon-image': 'route-preview-unpaved-slats', 'icon-allow-overlap': true,
         'icon-ignore-placement': true, 'icon-rotation-alignment': 'map',
         'icon-pitch-alignment': 'map', 'icon-keep-upright': false,

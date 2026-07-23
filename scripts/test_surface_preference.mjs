@@ -24,8 +24,8 @@ assert.match(app, /buildRouteUnpavedData/,
   'confirmed unpaved route segments should have a dedicated map-overlay source');
 assert.match(app, /route-unpaved-slats/,
   'the map should render confirmed unpaved segments with cross-slats');
-assert.match(app, /'symbol-placement': 'line', 'symbol-spacing': 13/,
-  'main-map slats should use fixed-size symbols at stable spacing');
+assert.match(app, /const width = 2, height = 12[\s\S]*?'symbol-placement': 'line', 'symbol-spacing': 10/,
+  'main-map slats should use dense fixed-size symbols that extend beyond the route');
 assert.doesNotMatch(app, /'line-pattern': 'route-unpaved-slats'/,
   'main-map slats should not scale with a line texture');
 assert.match(details, /Unpaved surfaces/,
@@ -34,8 +34,8 @@ assert.doesNotMatch(details, /rules\.preferPaved === false \? \[\]/,
   'confirmed unpaved segments should remain a concern when the strong preference is off');
 assert.match(details, /route-preview-unpaved-slats/,
   'the route-details map preview should preserve the unpaved-surface overlay');
-assert.match(details, /'symbol-placement': 'line', 'symbol-spacing': 12/,
-  'details-map slats should use fixed-size symbols at stable spacing');
+assert.match(details, /const width = 2, height = 12[\s\S]*?'symbol-placement': 'line', 'symbol-spacing': 10/,
+  'details-map slats should match the dense main-map surface texture');
 assert.doesNotMatch(details, /'line-pattern': 'route-preview-unpaved-slats'/,
   'details-map slats should not scale with a line texture');
 assert.doesNotMatch(html, /streetViewSurfaceNote/,

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.315';
+const APP_VERSION = '2026-07-23.317';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1693,6 +1693,13 @@ const turnNav = {
   plannedRoute: null,
   connectorRoute: null,
   followingConnector: false,
+  // Progress on the planned route remains independent from a temporary
+  // connector. This preserves the ridden portion while routing back.
+  plannedRouteM: 0,
+  plannedNearestSegment: 0,
+  plannedNearestPoint: null,
+  locationReady: false,
+  screenMaySleep: false,
   joinDecision: 'pending',
   joinFix: null,
   connectorRequestId: null,
@@ -2013,15 +2020,28 @@ function updateNavigationProgress() {
   const source = map.getSource('route-progress');
   if (!source) return;
   let coords = [];
-  if (turnNav.active && turnNav.route && turnNav.nearestPoint) {
+  const route = turnNav.followingConnector ? turnNav.plannedRoute : turnNav.route;
+  const nearestSegment = turnNav.followingConnector
+    ? turnNav.plannedNearestSegment : turnNav.nearestSegment;
+  const nearestPoint = turnNav.followingConnector
+    ? turnNav.plannedNearestPoint : turnNav.nearestPoint;
+  if (turnNav.active && route && nearestPoint) {
     const lastComplete = Math.max(0,
-      Math.min(turnNav.route.coords.length - 1, turnNav.nearestSegment));
-    coords = turnNav.route.coords.slice(0, lastComplete + 1);
+      Math.min(route.coords.length - 1, nearestSegment));
+    coords = route.coords.slice(0, lastComplete + 1);
     const tail = coords[coords.length - 1];
-    if (!tail || navDistanceM(tail, turnNav.nearestPoint) > 0.25) coords.push(turnNav.nearestPoint);
+    if (!tail || navDistanceM(tail, nearestPoint) > 0.25) coords.push(nearestPoint);
   }
   source.setData({ type: 'Feature', properties: {},
     geometry: { type: 'LineString', coordinates: coords.length >= 2 ? coords : [] } });
+}
+
+function rememberPlannedRouteProgress() {
+  if (turnNav.followingConnector || turnNav.route !== turnNav.plannedRoute) return;
+  turnNav.plannedRouteM = Math.max(0, Number(turnNav.routeM) || 0);
+  turnNav.plannedNearestSegment = Math.max(0, Number(turnNav.nearestSegment) || 0);
+  turnNav.plannedNearestPoint = Array.isArray(turnNav.nearestPoint)
+    ? [...turnNav.nearestPoint] : null;
 }
 
 function rejoinRoute(nearest, previousFix, reachedText = 'Back on route') {
@@ -2034,6 +2054,7 @@ function rejoinRoute(nearest, previousFix, reachedText = 'Back on route') {
   turnNav.nearestSegment = nearest.segmentIndex;
   turnNav.nearestPoint = nearest.point;
   turnNav.routeM = nearest.routeM;
+  rememberPlannedRouteProgress();
   turnNav.arrived = false;
   // Re-aim guidance at the honestly-next maneuver — silently. Rejoining
   // behind the departure point re-arms the instructions in between.
@@ -2111,7 +2132,9 @@ function navigationBannerInfo() {
   const next = turnNav.route?.instructions[turnNav.next];
   if (turnNav.message) return {
     headline: turnNav.message,
-    meta: turnNav.followingConnector ? `${routeMeta} · Connector onto your route` : routeMeta,
+    meta: !turnNav.locationReady
+      ? 'Navigation begins after a usable GPS fix'
+      : turnNav.followingConnector ? `${routeMeta} · Connector onto your route` : routeMeta,
     kicker: turnNav.followingConnector ? 'To your route' : 'Turn-by-turn navigation',
   };
   if (!next) return {
@@ -2134,10 +2157,9 @@ function navigationStatusText() {
 }
 
 function navigationElevationProgressM() {
-  if (!turnNav.active || !turnNav.route) return null;
-  if (turnNav.followingConnector) return 0;
-  const plannedM = turnNav.routeM;
-  const plannedTotalM = turnNav.route.totalM;
+  if (!turnNav.active || !turnNav.plannedRoute || !turnNav.locationReady) return null;
+  const plannedM = turnNav.followingConnector ? turnNav.plannedRouteM : turnNav.routeM;
+  const plannedTotalM = turnNav.plannedRoute.totalM;
   const profileTotalM = Number(routing.last?.distM) || 0;
   if (!(plannedTotalM > 0) || !(profileTotalM > 0)) return Math.max(0, plannedM);
   return Math.max(0, Math.min(profileTotalM, plannedM * profileTotalM / plannedTotalM));
@@ -2219,13 +2241,16 @@ window.addEventListener('message', (event) => {
 
 function refreshNavigationUI() {
   const routeAvailable = !!(routing.last?.ok && routing.last.coords?.length > 1);
+  const routeReady = routeAvailable && !routing.pendingRoute && !routing.routeRequestActive;
   document.body.classList.toggle('navigation-active', turnNav.active);
   const startButton = document.getElementById('navStartButton');
   if (startButton) {
-    startButton.disabled = !routeAvailable;
-    startButton.title = !routeAvailable
-      ? 'Set a route to navigate'
-      : turnNav.active ? 'Stop navigation' : 'Start turn-by-turn navigation';
+    startButton.disabled = turnNav.active ? false : !routeReady;
+    startButton.title = turnNav.active
+      ? 'Stop navigation'
+      : !routeAvailable ? 'Set a route to navigate'
+      : !routeReady ? 'Wait for the updated route'
+      : 'Start turn-by-turn navigation';
     startButton.setAttribute('aria-pressed', String(turnNav.active));
     startButton.classList.toggle('navigating', turnNav.active);
   }
@@ -2391,6 +2416,9 @@ function navShoulderText(seg) {
 }
 
 function navSegInfoHTML() {
+  if (!turnNav.locationReady) {
+    return '<span class="nav-seg-label">Location</span><strong class="nav-seg-name">Waiting for GPS…</strong>';
+  }
   const seg = navCurrentSegment();
   if (!seg) return '';
   const name = navRoadName(seg.name) || 'Unnamed road';
@@ -2407,18 +2435,27 @@ function updateNavCard() {
   if (!turnNav.active) { card.hidden = true; navCardStatsFor = null; return; }
   card.hidden = false;
   const m = routing.last;
-  const totalM = turnNav.route?.totalM || 0;
-  const doneM = Math.max(0, Math.min(totalM, turnNav.routeM));
+  const progressRoute = turnNav.followingConnector ? turnNav.plannedRoute : turnNav.route;
+  const totalM = progressRoute?.totalM || 0;
+  const progressM = turnNav.followingConnector ? turnNav.plannedRouteM : turnNav.routeM;
+  const doneM = turnNav.locationReady ? Math.max(0, Math.min(totalM, progressM)) : 0;
   const remainingM = Math.max(0, totalM - doneM);
   const pct = totalM > 0 ? Math.round(100 * doneM / totalM) : 0;
   const fill = document.getElementById('navProgressFill');
   if (fill) fill.style.width = `${pct}%`;
   const distEl = document.getElementById('navProgressDist');
-  if (distEl) distEl.textContent = `${fmtMi(doneM)} mi done · ${fmtMi(remainingM)} mi left`;
-  const remainingS = remainingNavigationTimeS();
+  if (distEl) {
+    distEl.textContent = turnNav.locationReady
+      ? `${fmtMi(doneM)} mi done · ${fmtMi(remainingM)} mi left`
+      : 'Waiting for a GPS fix…';
+  }
+  const remainingS = turnNav.followingConnector
+    ? remainingNavigationTimeS() + remainingNavigationTimeS(turnNav.plannedRouteM, turnNav.plannedRoute)
+    : remainingNavigationTimeS();
   const etaEl = document.getElementById('navProgressEta');
   if (etaEl) {
-    if (turnNav.arrived) etaEl.textContent = 'Arrived';
+    if (!turnNav.locationReady) etaEl.textContent = '';
+    else if (turnNav.arrived) etaEl.textContent = 'Arrived';
     else if (remainingS >= 30) {
       const eta = new Date(Date.now() + remainingS * 1000);
       etaEl.textContent = `ETA ${eta.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
@@ -2475,12 +2512,14 @@ async function requestNavigationWakeLock() {
   if (!turnNav.active || !navigator.wakeLock || document.visibilityState !== 'visible') return;
   try {
     turnNav.wakeLock = await navigator.wakeLock.request('screen');
+    turnNav.screenMaySleep = false;
     turnNav.wakeLock.addEventListener('release', () => {
       if (turnNav.active && document.visibilityState === 'visible') requestNavigationWakeLock();
     }, { once: true });
-    turnNav.message = '';
+    if (turnNav.locationReady) turnNav.message = '';
   } catch (e) {
-    turnNav.message = 'Screen may sleep on this browser';
+    turnNav.screenMaySleep = true;
+    if (turnNav.locationReady) turnNav.message = 'Screen may sleep on this browser';
   }
   refreshNavigationUI();
 }
@@ -2635,7 +2674,7 @@ function useNearestPlannedRoute(reason = '', purpose = turnNav.connectorPurpose)
   if (offRouteDialog?.open) offRouteDialog.close();
   turnNav.connectorRequestId = null;
   turnNav.joinDecision = 'nearest';
-  turnNav.message = '';
+  turnNav.message = turnNav.screenMaySleep ? 'Screen may sleep on this browser' : '';
   turnNav.route = turnNav.plannedRoute;
   turnNav.followingConnector = false;
   turnNav.connectorRoute = null;
@@ -2904,6 +2943,7 @@ function activateNewRouteFromCurrentLocation(result) {
     turnNav.nearestPoint = nearest.point;
     turnNav.routeM = nearest.routeM;
   }
+  rememberPlannedRouteProgress();
   updateArmButtons();
   updateNavigationProgress();
   saveStateSoon();
@@ -2978,8 +3018,8 @@ function recenterNavigationOnRider() {
   refreshNavigationUI();
 }
 
-function remainingNavigationTimeS(routeM = turnNav.routeM) {
-  const route = turnNav.route;
+function remainingNavigationTimeS(routeM = turnNav.routeM, routeOverride = null) {
+  const route = routeOverride || turnNav.route;
   if (!route) return 0;
   let remainingS = 0;
   let hasSegmentTimes = false;
@@ -3032,6 +3072,11 @@ function finishTurnNavigation() {
 function updateTurnNavigation(pos) {
   if (!turnNav.active || !turnNav.route) return;
   const { longitude, latitude } = pos.coords;
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+    handleTurnNavigationLocationError({ code: 2 });
+    return;
+  }
+  turnNav.locationReady = true;
   turnNav.lastPosition = [longitude, latitude];
   if (!turnNav.marker) {
     const element = document.createElement('div');
@@ -3134,7 +3179,8 @@ function updateTurnNavigation(pos) {
   turnNav.nearestSegment = nearest.segmentIndex;
   turnNav.nearestPoint = nearest.point;
   turnNav.routeM = nearest.routeM;
-  turnNav.message = '';
+  rememberPlannedRouteProgress();
+  turnNav.message = turnNav.screenMaySleep ? 'Screen may sleep on this browser' : '';
   updateNavigationProgress();
   const instructions = turnNav.route.instructions;
   // Passed maneuvers advance silently; announcing them late is noise.
@@ -3214,6 +3260,10 @@ function handleTurnNavigationLocationError(error) {
 }
 
 function startTurnNavigation() {
+  if (routing.pendingRoute || routing.routeRequestActive) {
+    setStatus('Wait for the updated route before starting navigation.', true);
+    return;
+  }
   if (!routing.last?.ok || routing.last.coords?.length < 2 || !navigator.geolocation) {
     setStatus('Set a route and allow location access to start navigation.', true);
     return;
@@ -3222,6 +3272,11 @@ function startTurnNavigation() {
   turnNav.route = turnNav.plannedRoute;
   turnNav.connectorRoute = null;
   turnNav.followingConnector = false;
+  turnNav.plannedRouteM = 0;
+  turnNav.plannedNearestSegment = 0;
+  turnNav.plannedNearestPoint = null;
+  turnNav.locationReady = false;
+  turnNav.screenMaySleep = false;
   turnNav.joinDecision = 'pending';
   turnNav.joinFix = null;
   turnNav.connectorRequestId = null;
@@ -3280,6 +3335,11 @@ function stopTurnNavigation(announce = true) {
   turnNav.plannedRoute = null;
   turnNav.connectorRoute = null;
   turnNav.followingConnector = false;
+  turnNav.plannedRouteM = 0;
+  turnNav.plannedNearestSegment = 0;
+  turnNav.plannedNearestPoint = null;
+  turnNav.locationReady = false;
+  turnNav.screenMaySleep = false;
   turnNav.joinDecision = 'pending';
   turnNav.joinFix = null;
   turnNav.connectorRequestId = null;
@@ -3705,9 +3765,9 @@ function buildRouteDismountData(sdata) {
 
 function ensureUnpavedSlatImage(targetMap, imageId = 'route-unpaved-slats') {
   if (targetMap.hasImage(imageId)) return;
-  // Fixed-size symbols stay stable across zoom levels.  A narrower, denser
-  // cross-slat reads as a surface texture instead of a heavy ladder.
-  const width = 2, height = 11;
+  // Fixed-size symbols stay stable across zoom levels. Dense, narrow bars read
+  // as a surface texture while extending beyond the route stroke.
+  const width = 2, height = 12;
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -3952,7 +4012,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-unpaved-slats', type: 'symbol', source: 'route-unpaved',
     layout: {
-      'symbol-placement': 'line', 'symbol-spacing': 13,
+      'symbol-placement': 'line', 'symbol-spacing': 10,
       'icon-image': 'route-unpaved-slats', 'icon-allow-overlap': true,
       'icon-ignore-placement': true, 'icon-rotation-alignment': 'map',
       'icon-pitch-alignment': 'map', 'icon-keep-upright': false,
@@ -4648,7 +4708,7 @@ function syncRouteOptionControls() {
     const active = Number(button.dataset.routeOption) === routing.options.indexOf(routing.last);
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
-    button.disabled = busy;
+    button.disabled = busy || turnNav.active;
     button.classList.toggle('nav-locked', turnNav.active);
     button.setAttribute('aria-disabled', String(turnNav.active || busy));
   });
@@ -4672,6 +4732,7 @@ function setRouteOptionsLoading(loading) {
   host.querySelectorAll('button[data-route-option]').forEach((button) => {
     button.disabled = loading || turnNav.active;
   });
+  refreshNavigationUI();
 }
 
 function renderRouteOptionControls() {
@@ -5962,6 +6023,15 @@ function googleStreetViewUrl(lat, lng, heading = null) {
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}${headingParam}`;
 }
 
+let streetViewLoadTimer = null;
+function setStreetViewLoadStatus(message = '', warning = false) {
+  const status = document.getElementById('streetViewLoadStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.hidden = !message;
+  status.classList.toggle('warning', warning);
+}
+
 function openStreetView(lat, lng, heading = null) {
   const external = googleStreetViewUrl(lat, lng, heading);
   if (!GOOGLE_MAPS_EMBED_KEY) {
@@ -5982,13 +6052,39 @@ function openStreetView(lat, lng, heading = null) {
   const externalLink = document.getElementById('streetViewExternal');
   if (externalLink) externalLink.href = googleMapsPointUrl(lat, lng);
   const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
+  clearTimeout(streetViewLoadTimer);
+  frame.dataset.streetViewActive = '1';
+  setStreetViewLoadStatus('Loading Street View…');
+  streetViewLoadTimer = setTimeout(() => {
+    if (frame.dataset.streetViewActive === '1') {
+      setStreetViewLoadStatus('Street View is taking longer than expected. Try Open in Google Maps.', true);
+    }
+  }, 12000);
   frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=250${headingParam}&fov=90`;
   if (!dialog.open) dialog.showModal();
 }
 
+document.getElementById('streetViewFrame').addEventListener('load', (event) => {
+  if (event.currentTarget.dataset.streetViewActive !== '1') return;
+  clearTimeout(streetViewLoadTimer);
+  streetViewLoadTimer = null;
+  setStreetViewLoadStatus();
+});
+document.getElementById('streetViewFrame').addEventListener('error', (event) => {
+  if (event.currentTarget.dataset.streetViewActive !== '1') return;
+  clearTimeout(streetViewLoadTimer);
+  streetViewLoadTimer = null;
+  setStreetViewLoadStatus('Street View could not load. Try Open in Google Maps.', true);
+});
+
 // Stop the panorama streaming (and free the connection) when the dialog closes.
 document.getElementById('streetViewDialog').addEventListener('close', () => {
-  document.getElementById('streetViewFrame').src = 'about:blank';
+  clearTimeout(streetViewLoadTimer);
+  streetViewLoadTimer = null;
+  const frame = document.getElementById('streetViewFrame');
+  frame.dataset.streetViewActive = '0';
+  frame.src = 'about:blank';
+  setStreetViewLoadStatus();
 });
 
 // A pinned road card belongs to the map inspection interaction. Any click on
