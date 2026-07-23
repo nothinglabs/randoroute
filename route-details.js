@@ -493,6 +493,7 @@ function renderConcernShortcuts(host, groups) {
   for (const group of available) {
     const button = document.createElement('button');
     button.type = 'button';
+    button.classList.add(`concern-shortcut-${group.sectionId.replace('concern-', '')}`);
     button.textContent = group.shortLabel || group.label;
     button.setAttribute('aria-label', `Jump to ${group.label.toLowerCase()} concerns`);
     button.addEventListener('click', () => scrollToConcernSection(group.sectionId));

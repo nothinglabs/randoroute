@@ -42,10 +42,14 @@ assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view',
   'embedded Details should ask the app to open its Street View dialog');
 assert.match(details, /function scrollToConcernSection\(sectionId\)[\s\S]*?scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)[\s\S]*?function renderConcernShortcuts\(host, groups\)[\s\S]*?Jump to a concern type/,
   'Concerns should offer compact category shortcuts that scroll to the matching section');
+assert.match(details, /button\.classList\.add\(`concern-shortcut-\$\{group\.sectionId\.replace\('concern-', ''\)\}`\)/,
+  'concern shortcut buttons should expose their concern type for compact layout tuning');
 assert.match(details, /renderConcernShortcuts\(report, \[[\s\S]*?Fails rules[\s\S]*?Steep grades[\s\S]*?Limited access/,
   'the shortcut row should include every available concern type');
 assert.match(css, /\.concern-shortcuts\s*\{[^}]*overflow:\s*hidden[\s\S]*?\.concern-shortcuts button\s*\{[^}]*flex:\s*1 1 0[^}]*font:\s*800 9\.5px\/1\.1 system-ui[^}]*text-overflow:\s*ellipsis/,
   'concern shortcuts should fit in a larger, compact row instead of horizontally scrolling');
+assert.match(css, /\.concern-shortcuts \.concern-shortcut-sidewalk-fallback\s*\{[^}]*flex-grow:\s*1\.1/,
+  'the longer Sidewalk shortcut should remain readable when all concern types share one row');
 assert.match(app, /event\.data\?\.type === 'open-street-view'[\s\S]*?openStreetView\(lat, lng/,
   'the app should accept Street View requests from its Route Details frame');
 assert.doesNotMatch(app, /highlight-route-concern|showRouteConcernOnMap/,
@@ -76,6 +80,8 @@ assert.match(css, /\.speed-shoulder-note\s*\{[^}]*font:\s*650 13px\/1\.35 system
   'the high-speed shoulder/accommodation note should remain comfortably readable');
 assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)[\s\S]*?\.rc-ride-items:not\(\.has-dismount\) .rc-ride-item:first-child\s*\{[^}]*grid-column:\s*span 2/,
   'the route-card ride classes should use the compact three-column layout while keeping the lead metric balanced');
+assert.match(appCss, /@media \(max-width: 375px\)\s*\{[\s\S]*?#routeCard \.rc-ride-mix\s*\{[^}]*font-size:\s*8\.75px[\s\S]*?#routeCard \.rc-ride-items\s*\{[^}]*gap:\s*3px 2px[\s\S]*?#routeCard \.rc-mix-swatch, #routeCard \.rc-unpaved-swatch\s*\{[^}]*width:\s*10px/,
+  'narrow phones should compact route-summary tokens instead of horizontally overflowing');
 assert.match(appCss, /\.rc-details-wrap\s*\{[^}]*flex-direction:\s*column[^}]*justify-content:\s*flex-end[\s\S]*?\.rc-speed-limit\s*\{[^}]*text-align:\s*center/,
   'the route-choice Details rail should sit at the bottom-left with a compact speed metric above it');
 assert.match(css, /\.route-quick-summary\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap[\s\S]*?\.route-summary-mix-items\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap/,

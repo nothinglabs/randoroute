@@ -256,6 +256,15 @@ body:not(.navigation-active) #navCard { display: none; }
 @media (max-width: 460px) {
   #routeCard .rc-ride-items { gap: 3px 4px; }
 }
+/* A 360 px phone leaves only one narrow third-column beside the two-column
+   trails/lanes label. Tighten the inline tokens—not the card itself—so every
+   percentage remains readable and the Route sheet never gains a horizontal
+   scrollbar. */
+@media (max-width: 375px) {
+  #routeCard .rc-ride-mix { font-size: 8.75px; }
+  #routeCard .rc-ride-items { gap: 3px 2px; }
+  #routeCard .rc-mix-swatch, #routeCard .rc-unpaved-swatch { width: 10px; margin-right: 2px; }
+}
 #routeCard canvas { display: block; }
 @media (min-width: 721px) {
   #tabs { gap: 6px; padding: 5px 10px; }
