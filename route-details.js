@@ -1401,6 +1401,16 @@ if (!hasRoute) {
   const ferries = sections(segs, (s) => !!(s.flags & FLAG_FERRY), () => ({
     name: 'Ferry crossing', meta: 'Ferry segment',
   }));
+  const concernTitles = {
+    failing: 'Does not meet your rules',
+    dismount: 'Dismount points — walk your bike',
+    steepGrades: 'Steep uphill grades (over 10%)',
+    limitedAccess: 'Limited-access highways',
+    mountainBike: 'Mountain-bike trails',
+    curveHazards: 'Possible limited-visibility uphill curves',
+    unpaved: 'Unpaved surfaces',
+    sidewalkFallback: 'Sidewalk fallback',
+  };
 
   alert.hidden = false;
   alert.classList.remove('good', 'caution');
@@ -1412,19 +1422,20 @@ if (!hasRoute) {
     const unpavedM = unpaved.reduce((sum, item) => sum + item.lenM, 0);
     if (!failingM) alert.classList.add('caution');
     const notes = [];
-    if (failingM) notes.push(`${fmtDist(failingM)} fails rules`);
-    if (dismountM) notes.push(`${fmtDist(dismountM)} dismount`);
-    if (sidewalkFallbacks.length) notes.push(`${fmtDist(sidewalkFallbacks.reduce((sum, item) => sum + item.lenM, 0))} sidewalk fallback`);
-    if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} mountain-bike trail`);
-    if (limitedM) notes.push(`${fmtDist(limitedM)} limited-access highway`);
-    if (unpavedM) notes.push(`${fmtDist(unpavedM)} unpaved`);
-    if (curveHazards.length) notes.push(`${fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0))} uphill-curve caution`);
-    if (steepGrades.length) notes.push(`${fmtDist(steepUphillM)} at 10%+ uphill`);
+    if (failingM) notes.push(`${fmtDist(failingM)} ${concernTitles.failing}`);
+    if (dismountM) notes.push(`${fmtDist(dismountM)} ${concernTitles.dismount}`);
+    if (steepGrades.length) notes.push(`${fmtDist(steepUphillM)} ${concernTitles.steepGrades}`);
+    if (limitedM) notes.push(`${fmtDist(limitedM)} ${concernTitles.limitedAccess}`);
+    if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} ${concernTitles.mountainBike}`);
+    if (curveHazards.length) notes.push(`${fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0))} ${concernTitles.curveHazards}`);
+    if (unpavedM) notes.push(`${fmtDist(unpavedM)} ${concernTitles.unpaved}`);
+    if (sidewalkFallbacks.length) notes.push(`${fmtDist(sidewalkFallbacks.reduce((sum, item) => sum + item.lenM, 0))} ${concernTitles.sidewalkFallback}`);
     const title = document.createElement('strong');
     title.className = 'route-alert-title';
     title.textContent = 'Route concerns';
     const list = document.createElement('ul');
     list.className = 'route-alert-list';
+    list.style.setProperty('--summary-rows', Math.ceil(notes.length / 2));
     notes.forEach((text) => {
       const item = document.createElement('li');
       item.textContent = text;
@@ -1451,16 +1462,16 @@ if (!hasRoute) {
 
   // Put the strongest actionable concerns first. Broad road-type context and
   // deliberately allowed fallbacks sit lower in the report.
-  if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails', '', true);
-  if (dismounts.length) renderSection(report, 'Dismount points — walk your bike', dismounts, '', 'caution', false, 'concern-dismount', '', true);
-  if (steepGrades.length) renderSection(report, 'Steep uphill grades (over 10%)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality.', true);
+  if (failing.length) renderSection(report, concernTitles.failing, failing, '', 'fail', false, 'concern-fails', '', true);
+  if (dismounts.length) renderSection(report, concernTitles.dismount, dismounts, '', 'caution', false, 'concern-dismount', '', true);
+  if (steepGrades.length) renderSection(report, concernTitles.steepGrades, steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality.', true);
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway', false, 'concern-freeways', '', true);
-  if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution', false, 'concern-limited-access', '', true);
-  if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike', '', true);
-  if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution', false, 'concern-uphill-curves', '', true);
-  if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'Known unpaved surfaces receive a modest route-choice cost; Settings can make the preference strong.', true);
+  if (limitedAccess.length) renderSection(report, concernTitles.limitedAccess, limitedAccess, '', 'caution', false, 'concern-limited-access', '', true);
+  if (mountainBike.length) renderSection(report, concernTitles.mountainBike, mountainBike, '', 'caution', false, 'concern-mountain-bike', '', true);
+  if (curveHazards.length) renderSection(report, concernTitles.curveHazards, curveHazards, '', 'caution', false, 'concern-uphill-curves', '', true);
+  if (unpaved.length) renderSection(report, concernTitles.unpaved, unpaved, '', 'caution', false, 'concern-unpaved', 'Known unpaved surfaces receive a modest route-choice cost; Settings can make the preference strong.', true);
   if (highways.length) renderSection(report, 'Highways', highways, '', '', false, 'concern-highways', '', true);
-  if (sidewalkFallbacks.length) renderSection(report, 'Sidewalk fallback', sidewalkFallbacks, '', 'caution', false, 'concern-sidewalk-fallback', 'Uses mapped sidewalks as a route fallback.', true);
+  if (sidewalkFallbacks.length) renderSection(report, concernTitles.sidewalkFallback, sidewalkFallbacks, '', 'caution', false, 'concern-sidewalk-fallback', 'Uses mapped sidewalks as a route fallback.', true);
   if (!freeways.length && !limitedAccess.length && !highways.length && !dismounts.length && !sidewalkFallbacks.length && !failing.length && !unpaved.length && !mountainBike.length
       && !curveHazards.length && !steepGrades.length) {
     report.innerHTML = '<div class="no-route">No dismount, freeway, limited-access highway, unpaved, highway, steep-grade, or rule-failing sections were found on this route.</div>';

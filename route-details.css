@@ -89,10 +89,10 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-alert.good { border-left-color: #008b68; background: #edf9f5; color: #00664d; }
 .route-alert.caution { border-left-color: #c46b00; background: #fff5e8; color: #753c00; }
 .route-alert-title { display: block; margin-bottom: 5px; font: 850 12px/1.2 system-ui; letter-spacing: .025em; text-transform: uppercase; }
-.route-alert-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 12px; margin: 0; padding: 0; list-style: none; font: 700 11.5px/1.25 system-ui; }
+.route-alert-list { display: grid; grid-auto-flow: column; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--summary-rows), auto); gap: 3px 12px; margin: 0; padding: 0; list-style: none; font: 700 11.5px/1.25 system-ui; }
 .route-alert-list li { position: relative; min-width: 0; padding-left: 10px; }
 .route-alert-list li::before { position: absolute; left: 0; content: '•'; }
-.route-alert-hint { margin: 7px 0 0; font: 750 10.5px/1.2 system-ui; opacity: .82; }
+.route-alert-hint { margin: 7px 0 0; color: #0a66c2; font: 800 10.5px/1.2 system-ui; }
 #panel-concerns .detail-section { scroll-margin-top: 58px; }
 .concern-section { overflow: hidden; }
 .concern-section-toggle { display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 10px 12px; border: 0; background: transparent; color: #263b48; cursor: pointer; text-align: left; }
@@ -197,7 +197,6 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
   #panel-stats .elevation-preview, #panel-stats .elevation-preview-empty { min-height: 114px; }
   .route-preview-map { height: 140px; }
   #panel-stats .speed-profile-preview { min-height: 114px; }
-  .route-alert-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 .elevation-dialog { width: min(94vw, 580px); max-width: none; padding: 0; overflow: hidden; border: 0; border-radius: 15px; background: #f4f7f9; box-shadow: 0 14px 44px rgba(0,0,0,.32); }

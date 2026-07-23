@@ -116,12 +116,14 @@ assert.match(details, /meta: `\$\{s\.mph\} mph · \$\{\(s\.official \|\| 0\) & O
   'sidewalk concern items should show only speed and area context');
 assert.doesNotMatch(details, /meta: `[^`]*mapped sidewalk fallback/,
   'sidewalk concern items should not repeat their section label');
-assert.match(details, /if \(failingM\) notes\.push\(`\$\{fmtDist\(failingM\)\} fails rules`\)[\s\S]*?title\.textContent = 'Route concerns'[\s\S]*?list\.className = 'route-alert-list'[\s\S]*?hint\.textContent = 'Tap a section below for details\.'[\s\S]*?alert\.replaceChildren\(title, list, hint\)/,
+assert.match(details, /concernTitles = \{[\s\S]*?failing: 'Does not meet your rules'[\s\S]*?steepGrades: 'Steep uphill grades \(over 10%\)'[\s\S]*?sidewalkFallback: 'Sidewalk fallback'[\s\S]*?if \(failingM\) notes\.push\(`\$\{fmtDist\(failingM\)\} \$\{concernTitles\.failing\}`\)[\s\S]*?if \(steepGrades\.length\) notes\.push\(`\$\{fmtDist\(steepUphillM\)\} \$\{concernTitles\.steepGrades\}`\)[\s\S]*?if \(sidewalkFallbacks\.length\) notes\.push\(`\$\{fmtDist\([\s\S]*?\)\} \$\{concernTitles\.sidewalkFallback\}`\)[\s\S]*?title\.textContent = 'Route concerns'[\s\S]*?list\.className = 'route-alert-list'[\s\S]*?list\.style\.setProperty\('--summary-rows', Math\.ceil\(notes\.length \/ 2\)\)[\s\S]*?hint\.textContent = 'Tap a section below for details\.'[\s\S]*?alert\.replaceChildren\(title, list, hint\)/,
   'the top concern summary should render as a scannable list instead of a sentence');
-assert.match(css, /\.route-alert-list\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)[^}]*font:\s*700 11\.5px\/1\.25 system-ui/,
-  'the compact concern summary should use a readable two-column phone layout');
-assert.match(css, /\.route-alert-hint\s*\{[^}]*font:\s*750 10\.5px\/1\.2 system-ui/,
-  'the concern summary should include a compact disclosure hint');
+assert.match(details, /renderSection\(report, concernTitles\.failing[\s\S]*?renderSection\(report, concernTitles\.steepGrades[\s\S]*?renderSection\(report, concernTitles\.sidewalkFallback/,
+  'concern summary labels and section titles should share the same ordered title definitions');
+assert.match(css, /\.route-alert-list\s*\{[^}]*grid-auto-flow:\s*column[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)[^}]*grid-template-rows:\s*repeat\(var\(--summary-rows\), auto\)[^}]*font:\s*700 11\.5px\/1\.25 system-ui/,
+  'the compact concern summary should fill two readable columns from top to bottom');
+assert.match(css, /\.route-alert-hint\s*\{[^}]*color:\s*#0a66c2[^}]*font:\s*800 10\.5px\/1\.2 system-ui/,
+  'the concern summary should include a compact blue disclosure hint');
 assert.doesNotMatch(detailsHtml, /id="(?:optimization|mapTapHint)"/,
   'Route Details should not need compatibility placeholders once updates are atomic');
 assert.doesNotMatch(detailsHtml, /route-optimization|tap-hint/,
@@ -322,7 +324,7 @@ assert.match(css, /\.elevation-steep-warning\s*\{[^}]*grid-column:\s*1\s*\/\s*-1
   'the steep-grade elevation warning should span the card as a prominent, tappable warning');
 assert.match(css, /\.elevation-warning-message\s*\{[^}]*clamp\(9px, 2\.6vw, 10px\)[^}]*white-space:\s*nowrap/,
   'the warning sentence should remain intact on a single responsive line');
-assert.match(details, /const STEEP_UPHILL_CONCERN_PCT = 10;[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = STEEP_UPHILL_CONCERN_PCT\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = consolidateConcernItems\(sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep uphill grades \(over 10%\)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality\.', true\)/,
+assert.match(details, /const STEEP_UPHILL_CONCERN_PCT = 10;[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = STEEP_UPHILL_CONCERN_PCT\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = consolidateConcernItems\(sustainedUphillGradeConcerns\(segs\)[\s\S]*?steepGrades: 'Steep uphill grades \(over 10%\)'[\s\S]*?renderSection\(report, concernTitles\.steepGrades, steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality\.', true\)/,
   'Concerns should list only sustained uphill segments whose grade exceeds 10% and disclose data quality limits');
 assert.match(details, /const minSpeed = 10;[\s\S]*?Math\.min\(maxSpeed - minSpeed, Math\.max\(0, mph - minSpeed\)\)[\s\S]*?mph === minSpeed\) ctx\.fillText\(`\$\{mph\} mph`/,
   'the speed chart should use and visibly label a 10 mph baseline');
