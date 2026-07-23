@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.299';
+const APP_VERSION = '2026-07-22.300';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3584,12 +3584,12 @@ function ensureUnpavedSlatImage(targetMap, imageId = 'route-unpaved-slats') {
   const width = 12, height = 12;
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
-    for (let x = 4; x <= 5; x++) {
+    for (let x = 3; x <= 6; x++) {
       const offset = (y * width + x) * 4;
       data[offset] = 35;
       data[offset + 1] = 54;
       data[offset + 2] = 66;
-      data[offset + 3] = 176;
+      data[offset + 3] = 218;
     }
   }
   targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
@@ -3796,7 +3796,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-unpaved-slats', type: 'line', source: 'route-unpaved',
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
-    paint: { 'line-pattern': 'route-unpaved-slats', 'line-width': 6.6, 'line-opacity': 0.9 },
+    paint: { 'line-pattern': 'route-unpaved-slats', 'line-width': 12.5, 'line-opacity': 1 },
   });
   map.addLayer({
     id: 'route-ferry', type: 'line', source: 'route-ferry',

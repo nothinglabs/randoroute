@@ -247,7 +247,11 @@ body:not(.navigation-active) #navCard { display: none; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
 #routeCard .rc-bottom-stats { flex: 1; min-width: 0; text-align: right; }
 @media (max-width: 460px) {
-  #routeCard .rc-ride-items { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Five mix metrics still fit in the original two-row footprint: the long
+     trails/bike-lanes label gets two cells, and the remaining four labels
+     stay legible in the two three-cell rows. */
+  #routeCard .rc-ride-items { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 4px; }
+  #routeCard .rc-ride-item:first-child { grid-column: span 2; }
 }
 #routeCard canvas { display: block; }
 @media (min-width: 721px) {

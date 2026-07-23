@@ -948,12 +948,12 @@ function ensureUnpavedSlatImage(targetMap) {
   const width = 12, height = 12;
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
-    for (let x = 4; x <= 5; x++) {
+    for (let x = 3; x <= 6; x++) {
       const offset = (y * width + x) * 4;
       data[offset] = 35;
       data[offset + 1] = 54;
       data[offset + 2] = 66;
-      data[offset + 3] = 176;
+      data[offset + 3] = 218;
     }
   }
   targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
@@ -1027,7 +1027,7 @@ function initializeRoutePreviewMap() {
     ensureUnpavedSlatImage(routePreviewMap);
     routePreviewMap.addLayer({ id: 'route-preview-unpaved-slats', type: 'line', source: 'route-preview-unpaved',
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: { 'line-pattern': 'route-preview-unpaved-slats', 'line-width': 4.8, 'line-opacity': .9 } });
+      paint: { 'line-pattern': 'route-preview-unpaved-slats', 'line-width': 8.4, 'line-opacity': 1 } });
     setRoutePreviewFailPulse(preview.colored.features.some((feature) => feature.properties.style === 'fail'));
     routePreviewMap.addLayer({ id: 'route-preview-markers', type: 'circle', source: 'route-preview-markers',
       paint: { 'circle-radius': 5, 'circle-color': ['match', ['get', 'marker'], 'start', '#00795c', '#e87817'],
