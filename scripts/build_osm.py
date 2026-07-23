@@ -88,7 +88,7 @@ def classify(tags):
     cw = cycleway_value(tags)
     bikeish = hw in ("cycleway", "path", "bridleway", "track", "service") or cw is not None
 
-    if hw == "cycleway" and bike not in ("no", "dismount"):
+    if hw == "cycleway" and bike != "no":
         return 1, False
     if hw == "path" and bike in ("designated", "yes"):
         return 1, False
@@ -106,8 +106,10 @@ def classify(tags):
         return 1, False
     if cw in LANE:
         return 2, False
-    # Genuine bike-ish infra but cycling prohibited / must dismount.
-    if bike in ("no", "dismount") and bikeish:
+    # ``bicycle=no`` is prohibited.  ``bicycle=dismount`` remains visible as
+    # a legal walk-bike link and is retained by build_graph.py with a strong
+    # route penalty.
+    if bike == "no" and bikeish:
         return 4, True
     return None, False
 

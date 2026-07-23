@@ -7,7 +7,8 @@ the browser routes over locally (A* in a web worker). No routing server.
 
 Included edges:
   - drivable roads (same classes/filters as build_roads.py, with the same
-    BNA-style speed inference), excluding bicycle=no/dismount
+    BNA-style speed inference), excluding bicycle=no and retaining
+    bicycle=dismount as walk-bike connectors
   - rideable bike infrastructure (same keep logic as build_osm.py classify,
     excluding prohibited), including explicitly bike-designated service links
     closed to public motor traffic — flagged infra=1
@@ -28,7 +29,7 @@ Binary layout (little-endian), after header 'BGR8' + N,E,D,G,U,B (u32):
   edgeFacility u8[E] (0=none, 1=shared lane, 2=bike lane,
                       3=buffered lane, 4=separated lane, 5=shared-use path),
   edgeOfficial u8[E] (1=WSDOT legal speed, 2=WSDOT facility,
-                      4=explicit mountain-bike path),
+                      4=explicit mountain-bike path, 8=bicycle=dismount),
   edgeSurface u8[E] (0=unknown, 1=paved, 2=gravel/compacted,
                      3=rough unpaved),
   edgeHazardAB u8[E], edgeHazardBA u8[E]
@@ -114,6 +115,12 @@ OFFICIAL_FACILITY = 2
 # paths available to a rider-controlled runtime option instead of deleting
 # them during the build.
 EDGE_MTB = 4
+# ``bicycle=dismount`` is distinct from ``bicycle=no``: it allows a rider to
+# take a bike through the segment on foot.  Retain that access fact in an
+# unused bit of the compact source/edge byte rather than expanding the binary
+# layout.  The worker charges walking time plus a per-section penalty, so it
+# can repair an otherwise valid trail corridor without becoming a shortcut.
+EDGE_DISMOUNT = 8
 # Surface is intentionally a tiny routing category rather than the original
 # OSM string.  It lets the client prefer pavement without treating incomplete
 # OSM tagging as an instruction to avoid a road.  Gravel rail trails remain
@@ -520,8 +527,9 @@ def classify_way(tags):
     bike = tags.get('bicycle')
     foot = tags.get('foot')
     hw = tags.get('highway')
-    if bike in ('no', 'dismount'):
-        return None  # not rideable; pedestrian/dismount fallbacks are not in this graph
+    if bike == 'no':
+        return None  # bicycle access is explicitly prohibited
+    dismount = bike == 'dismount'
     # access=no/private is a blanket default that mode-specific tags override:
     # e.g. the SR 520 Trail bridge is access=no + bicycle=designated (closed to
     # general traffic, explicitly open to bikes). A numbered state/US/Interstate
@@ -542,7 +550,8 @@ def classify_way(tags):
             return None
         return {'speed': FERRY_DEFAULT_MPH, 'est': True, 'facility': FACILITY_NONE, 'lim': False,
                 'infra': False, 'sh': None, 'road_class': 0, 'ferry': True,
-                'duration': tags.get('duration'), 'surface': SURFACE_UNKNOWN}
+                'duration': tags.get('duration'), 'surface': SURFACE_UNKNOWN,
+                'dismount': dismount}
 
     cycleways = [tags[k] for k in CYCLEWAY_KEYS if tags.get(k)]
 
@@ -583,7 +592,8 @@ def classify_way(tags):
     )
     if infra:
         return {'speed': 0, 'est': False, 'facility': FACILITY_PATH, 'lim': False,
-                'infra': True, 'sh': None, 'road_class': 0, 'surface': surface_class(tags)}
+                'infra': True, 'sh': None, 'road_class': 0, 'surface': surface_class(tags),
+                'dismount': dismount}
     if hw not in DRIVE:
         return None
 
@@ -596,6 +606,7 @@ def classify_way(tags):
         'facility': osm_facility(), 'lim': hw in LIMITED,
         'infra': False, 'sh': parse_shoulder_ft(tags),
         'road_class': ROAD_CLASS[hw], 'surface': surface_class(tags),
+        'dismount': dismount,
     }
 
 
@@ -926,7 +937,9 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                         b = gnode(seg[-1][0], *coords[-1])
                         if a != b or length > 10:  # drop degenerate micro-loops
                             espeed, esh, eflags = attrs['speed'], sh, flags
-                            efacility, eofficial = attrs['facility'], EDGE_MTB if attrs['mtb'] else 0
+                            efacility = attrs['facility']
+                            eofficial = ((EDGE_MTB if attrs['mtb'] else 0)
+                                         | (EDGE_DISMOUNT if attrs.get('dismount') else 0))
                             if (restriction_index and not attrs['infra']
                                     and is_restricted_edge(coords, tags, restriction_index)):
                                 restricted_edges[0] += 1

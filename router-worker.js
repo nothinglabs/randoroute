@@ -50,6 +50,9 @@ const CROSSING_RETRY_LIMIT = 8;
 // mountain-bike infrastructure (including mtb:scale:imba). They remain in the
 // graph for the rider-controlled option, but are unavailable by default.
 const EDGE_MTB = 4;
+// Stored in the graph's compact edge-source byte. Unlike bicycle=no, a
+// bicycle=dismount edge is legal when the rider walks the bike through it.
+const EDGE_DISMOUNT = 8;
 const SURFACE_UNKNOWN = 0;
 const SURFACE_PAVED = 1;
 const SURFACE_GRAVEL = 2;
@@ -294,6 +297,8 @@ function edgeLevel(i, rules) {
 const V_ROAD = 5.6;   // ~12.5 mph
 const V_MAX = 12.0;   // ~27 mph downhill cap
 const V_MIN = 1.3;    // steep-climb floor (~3 mph)
+const V_DISMOUNT = 1.15; // ~2.6 mph while walking a bike
+const DISMOUNT_ENTRY_PENALTY_S = 4 * 60;
 // A* heuristic speed: must not undershoot any effective edge speed, including
 // fast ferries and the strongest cost bonuses, or A* loses optimality.
 // Worst case: V_MAX 12 / (0.38 path facility x 0.78 residential)
@@ -350,6 +355,9 @@ function facilityPrefMult(level) {
 }
 function isResidential(i) {
   return eClass[i] === 1 || eClass[i] === 2; // residential / living_street
+}
+function isDismountEdge(i) {
+  return !!(eOfficial[i] & EDGE_DISMOUNT);
 }
 // Freeways are a true last resort: even a short ordinary failure should win
 // over a much longer freeway detour.
@@ -408,6 +416,9 @@ function edgeTimeS(i, forward) {
     return eLen[i] / (Math.max(eSpeed[i], 3) * 0.44704);
   }
   const len = eLen[i];
+  // This is real travel time, not merely a routing penalty.  The separate
+  // entry cost below expresses the interruption of getting off and walking.
+  if (isDismountEdge(i)) return len / V_DISMOUNT;
   const asc = forward ? eAsc[i] : eDes[i];
   const des = forward ? eDes[i] : eAsc[i];
   const vflat = V_ROAD;
@@ -441,14 +452,15 @@ function climbPreferenceS(i, forward, mode) {
 }
 
 // Surface preference is intentionally a soft, distance-proportional route
-// cost. The rider-controlled option applies it to gravel rail trails and
-// rough ground paths, without making either category illegal or making an
-// untagged OSM edge look worse.
+// cost.  Every route gets a modest 20% baseline preference for known pavement;
+// the rider-controlled option raises that to the full penalty.  Neither makes
+// an unpaved edge illegal, and unknown OSM surface data remains neutral.
 function surfacePreferenceS(i, rules) {
-  if (rules?.preferPaved !== true || (eFlags[i] & 32)) return 0;
+  if (eFlags[i] & 32) return 0;
+  const strength = rules?.preferPaved === true ? 1 : 0.20;
   const surface = eSurface[i];
-  if (surface === SURFACE_GRAVEL) return eLen[i] * 0.065;
-  if (surface === SURFACE_ROUGH) return eLen[i] * 0.20;
+  if (surface === SURFACE_GRAVEL) return eLen[i] * 0.065 * strength;
+  if (surface === SURFACE_ROUGH) return eLen[i] * 0.20 * strength;
   return 0;
 }
 
@@ -624,7 +636,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       coords: [[nodeLon[s.node], nodeLat[s.node]]],
       distM: 0, timeS: 0, ascentM: 0, descentM: 0, failM: 0, ferryM: 0,
       ferrySegs: [], desigM: 0, residentialM: 0, freewayM: 0,
-      limitedAccessM: 0, facilityM: 0, mtbM: 0, hazardM: 0,
+      limitedAccessM: 0, facilityM: 0, mtbM: 0, dismountM: 0, hazardM: 0,
       levelM: [0, 0, 0, 0, 0], edgeIds: [],
       nodeIds: [s.node],
       segs: [], profile: [[0, nodeEle[s.node]]],
@@ -715,7 +727,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // an ordinary road, a physical facility beats designation alone; when
       // both are present, use whichever benefit is stronger rather than
       // stacking them into an outsized corridor bonus.
-      if (!(fl & (32 | 4 | 128))) {
+      if (!(fl & (32 | 4 | 128)) && !isDismountEdge(ei)) {
         const facilityBonus = eFacility[ei] ? facilityPrefMult(eFacility[ei]) : 1;
         if (prefDesig) {
           const designationBonus = (fl & 64) ? activeWeights.strongDesignated : 1;
@@ -743,6 +755,14 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // Similarly, a designated trail remains eligible but should not erase
       // the rider's explicit preference for pavement.
       cost += surfacePreferenceS(ei, rules);
+      // Dismount access remains available to repair a genuinely connected
+      // cycling corridor, but entering it has a fixed interruption cost in
+      // addition to the walking time returned by edgeTimeS().  Because the
+      // search state includes the incoming edge, a continuous dismount run is
+      // charged once rather than once for every split graph edge.
+      if (isDismountEdge(ei) && (incomingEdge < 0 || !isDismountEdge(incomingEdge))) {
+        cost += DISMOUNT_ENTRY_PENALTY_S;
+      }
       // Turn friction is independent of the road entered: a bike facility or
       // residential bonus should not make repeated intersection turns free.
       cost += turnPreferenceS(incomingEdge, u, ei, mode);
@@ -783,7 +803,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
-  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0, dismountM = 0;
   for (const [ei, fromNode] of edges) {
     edgeIds.push(ei);
     const off = eOff[ei], cnt = eCnt[ei];
@@ -811,6 +831,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     if (eFlags[ei] & 64) desigM += eLen[ei];
     if (eFacility[ei] >= 2) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
+    if (isDismountEdge(ei)) dismountM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4 | 128)) && isResidential(ei)) residentialM += eLen[ei];
     if (eFlags[ei] & 4) freewayM += eLen[ei];
     else if (eFlags[ei] & 128) limitedAccessM += eLen[ei];
@@ -836,7 +857,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     }
     segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
       mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], roadClass: eClass[ei],
-      facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB), level,
+      facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
+      dismount: isDismountEdge(ei), level,
       surface: eSurface[ei], surfaceLabel: SURFACE_LABEL[eSurface[ei]] || SURFACE_LABEL[SURFACE_UNKNOWN],
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
@@ -905,7 +927,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const gradeStats = routeGradeStats(segs);
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, dismountM, hazardM,
     levelM, edgeIds, nodeIds, segs, ...gradeStats,
     profile, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
@@ -942,7 +964,8 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
   const coords = [], segs = [], ferrySegs = [], profile = [];
   const legSummaries = legs.map((l) => ({
     distM: l.distM, timeS: l.timeS, failM: l.failM,
-    desigM: l.desigM, facilityM: l.facilityM, mtbM: l.mtbM || 0, residentialM: l.residentialM,
+    desigM: l.desigM, facilityM: l.facilityM, mtbM: l.mtbM || 0,
+    dismountM: l.dismountM || 0, residentialM: l.residentialM,
     freewayM: l.freewayM, limitedAccessM: l.limitedAccessM, hazardM: l.hazardM || 0,
     avgUphillPct: l.avgUphillPct || 0, maxGradePct: l.maxGradePct || 0,
   }));
@@ -950,7 +973,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
-  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0, dismountM = 0;
   for (const leg of legs) {
     const cOff = coords.length ? coords.length - 1 : 0; // joint vertex is shared
     for (let j = coords.length ? 1 : 0; j < leg.coords.length; j++) coords.push(leg.coords[j]);
@@ -966,6 +989,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
     failM += leg.failM; ferryM += leg.ferryM; desigM += leg.desigM;
     residentialM += leg.residentialM; freewayM += leg.freewayM;
     limitedAccessM += leg.limitedAccessM; facilityM += leg.facilityM; mtbM += leg.mtbM || 0;
+    dismountM += leg.dismountM || 0;
     hazardM += leg.hazardM || 0; edgeIds.push(...leg.edgeIds);
     for (let j = nodeIds.length ? 1 : 0; j < leg.nodeIds.length; j++) nodeIds.push(leg.nodeIds[j]);
     for (let level = 1; level <= 4; level++) levelM[level] += leg.levelM[level];
@@ -982,7 +1006,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
   const gradeStats = routeGradeStats(segs);
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, dismountM, hazardM,
     levelM, edgeIds, nodeIds, segs, ...gradeStats,
     legs: legSummaries,
     profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
@@ -1014,7 +1038,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
-  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0, dismountM = 0;
   for (let index = 0; index < sourceEdgeIds.length; index++) {
     const ei = sourceEdgeIds[index], fromNode = nodeIds[index];
     const forward = eA[ei] === fromNode;
@@ -1035,6 +1059,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
     if (eFlags[ei] & 64) desigM += eLen[ei];
     if (eFacility[ei] >= 2) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
+    if (isDismountEdge(ei)) dismountM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4 | 128)) && isResidential(ei)) residentialM += eLen[ei];
     if (eFlags[ei] & 4) freewayM += eLen[ei];
     else if (eFlags[ei] & 128) limitedAccessM += eLen[ei];
@@ -1048,7 +1073,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM,
     ferrySegs: ferryRanges.map(([a, b]) => coords.slice(a, b + 1)),
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, dismountM, hazardM,
     levelM, edgeIds: sourceEdgeIds, nodeIds, segs, profile, ...gradeStats,
     snapStartM: 0, snapEndM: 0, ms: 0,
   };
@@ -1058,7 +1083,8 @@ function routeSummary(routeResult) {
   return {
     distM: routeResult.distM, timeS: routeResult.timeS, failM: routeResult.failM,
     desigM: routeResult.desigM, facilityM: routeResult.facilityM,
-    mtbM: routeResult.mtbM || 0, residentialM: routeResult.residentialM,
+    mtbM: routeResult.mtbM || 0, dismountM: routeResult.dismountM || 0,
+    residentialM: routeResult.residentialM,
     freewayM: routeResult.freewayM, limitedAccessM: routeResult.limitedAccessM,
     hazardM: routeResult.hazardM || 0,
     avgUphillPct: routeResult.avgUphillPct || 0,
@@ -1075,7 +1101,7 @@ function mergeRouteParts(parts, snapStartM, snapEndM) {
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
-  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0, dismountM = 0;
   for (const part of parts) {
     const cOff = coords.length ? coords.length - 1 : 0;
     for (let j = coords.length ? 1 : 0; j < part.coords.length; j++) coords.push(part.coords[j]);
@@ -1092,6 +1118,7 @@ function mergeRouteParts(parts, snapStartM, snapEndM) {
     failM += part.failM; ferryM += part.ferryM; desigM += part.desigM;
     residentialM += part.residentialM; freewayM += part.freewayM;
     limitedAccessM += part.limitedAccessM; facilityM += part.facilityM; mtbM += part.mtbM || 0;
+    dismountM += part.dismountM || 0;
     hazardM += part.hazardM || 0; edgeIds.push(...part.edgeIds);
     for (let j = nodeIds.length ? 1 : 0; j < part.nodeIds.length; j++) nodeIds.push(part.nodeIds[j]);
     for (let level = 1; level <= 4; level++) levelM[level] += part.levelM[level];
@@ -1106,7 +1133,7 @@ function mergeRouteParts(parts, snapStartM, snapEndM) {
   const gradeStats = routeGradeStats(segs);
   const merged = {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, dismountM, hazardM,
     levelM, edgeIds, nodeIds, segs, profile: prof, snapStartM, snapEndM, ...gradeStats,
     ms: Date.now() - started,
   };
@@ -1168,6 +1195,7 @@ function materialTradeoff(a, b) {
     || Math.abs(a.freewayM - b.freewayM) >= 60
     || Math.abs(a.limitedAccessM - b.limitedAccessM) >= Math.max(120, routeScale * 0.5)
     || Math.abs((a.mtbM || 0) - (b.mtbM || 0)) >= 40
+    || (!!a.dismountM !== !!b.dismountM)
     || Math.abs(a.facilityM - b.facilityM) >= routeScale
     || Math.abs((a.hazardM || 0) - (b.hazardM || 0)) >= 50
     || Math.abs(a.desigM - b.desigM) >= routeScale
@@ -1188,7 +1216,7 @@ function routeAggression(r) {
   const levels = r.levelM || [0, 0, 0, 0, 0];
   const stress = (levels[2] * 0.18 + levels[3] * 0.75 + levels[4] * 3.5
     + r.freewayM * 4 + r.limitedAccessM * 0.8 + (r.hazardM || 0) * 1.1
-    + (r.mtbM || 0) * 1.25) / ridingM;
+    + (r.mtbM || 0) * 1.25 + (r.dismountM ? 450 + r.dismountM * 1.5 : 0)) / ridingM;
   const friendlyCoverage = (r.desigM * 0.12 + r.facilityM * 0.1 + r.residentialM * 0.08) / ridingM;
   return stress - friendlyCoverage;
 }
@@ -1233,6 +1261,7 @@ function outcomeSnapshot(route) {
   if (cautionPct > 0) details.push(`${cautionPct}% caution`);
   if (route.limitedAccessM > 0) details.push(`${outcomeDistance(route.limitedAccessM)} limited-access caution`);
   if (route.mtbM > 0) details.push(`${outcomeDistance(route.mtbM)} mountain-bike trail`);
+  if (route.dismountM > 0) details.push('contains dismount');
   if (route.hazardM > 0) details.push(`${outcomeDistance(route.hazardM)} curve caution`);
   return details.join(' · ');
 }

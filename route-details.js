@@ -7,6 +7,7 @@ const FLAG_FERRY = 32;
 const FLAG_DESIGNATED = 64;
 const FLAG_LIMITED_ACCESS = 128;
 const OFFICIAL_MTB = 4;
+const OFFICIAL_DISMOUNT = 8;
 const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 const BIKE_NETWORK_COLOR = '#9fc400';
 const PASS_COLOR = '#168ad1';
@@ -41,6 +42,10 @@ function isDesignated(seg) {
 
 function isMountainBikeTrail(seg) {
   return !!seg.mtb || !!((seg.official || 0) & OFFICIAL_MTB);
+}
+
+function isDismountSegment(seg) {
+  return !!seg?.dismount || !!((seg?.official || 0) & OFFICIAL_DISMOUNT);
 }
 
 function safetyVerdict(seg) {
@@ -132,7 +137,7 @@ function routePercent(meters, total, preciseSmall = false) {
 }
 function routeSummaryStats(segs, minShoulderFt = 4) {
   const levels = [0, 0, 0, 0, 0];
-  let bikeNetworkM = 0, roadM = 0, roadSpeedM = 0, unpavedM = 0;
+  let bikeNetworkM = 0, roadM = 0, roadSpeedM = 0, unpavedM = 0, dismountM = 0;
   let maxRoadSpeedMph = 0, roadAtOrAbove45M = 0, roadAtOrAbove35M = 0;
   let highSpeedNoBikeAccommodationOrShoulderM = 0;
   minShoulderFt = Number.isFinite(Number(minShoulderFt))
@@ -144,6 +149,7 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
     const level = Number(seg.level) || 0;
     if (level >= 1 && level <= 4) levels[level] += len;
     if (isConfirmedUnpavedSurface(seg.surface)) unpavedM += len;
+    if (isDismountSegment(seg)) dismountM += len;
     if ((flags & FLAG_INFRA) || (seg.facility || 0) >= 2) bikeNetworkM += len;
     // Every road speed counts here, including roads with bike lanes. Dedicated
     // paths have no motor-vehicle speed in the graph and are not road speeds.
@@ -163,7 +169,7 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
     }
   }
   return {
-    levels, bikeNetworkM, unpavedM,
+    levels, bikeNetworkM, unpavedM, dismountM,
     avgRoadSpeedMph: roadM > 0 ? Math.round(roadSpeedM / roadM) : null,
     maxRoadSpeedMph: roadM > 0 ? Math.round(maxRoadSpeedMph) : null,
     roadAtOrAbove45M, roadAtOrAbove35M, highSpeedNoBikeAccommodationOrShoulderM,
@@ -904,7 +910,8 @@ function routePreviewEdges(points) {
     const routeIndex = (point.routeIndex + points[index + 1].routeIndex) / 2;
     while (segmentAt + 1 < segs.length && routeIndex >= Number(segs[segmentAt]?.c1)) segmentAt++;
     const seg = segs[segmentAt];
-    return { style: routePreviewStyle(seg), unpaved: isConfirmedUnpavedSurface(seg?.surface) };
+    return { style: routePreviewStyle(seg), unpaved: isConfirmedUnpavedSurface(seg?.surface),
+      dismount: isDismountSegment(seg) };
   });
 }
 
@@ -952,13 +959,23 @@ function routePreviewRenderData() {
     unpavedFeatures.push(currentUnpaved);
   });
   const unpaved = { type: 'FeatureCollection', features: unpavedFeatures };
-  return { points, colored: { type: 'FeatureCollection', features }, unpaved };
+  const dismountFeatures = [];
+  let inDismount = false;
+  edges.forEach((edge, index) => {
+    if (edge.dismount && !inDismount && points[index]) {
+      dismountFeatures.push({ type: 'Feature', properties: {},
+        geometry: { type: 'Point', coordinates: points[index] } });
+    }
+    inDismount = edge.dismount;
+  });
+  const dismount = { type: 'FeatureCollection', features: dismountFeatures };
+  return { points, colored: { type: 'FeatureCollection', features }, unpaved, dismount };
 }
 
 function ensureUnpavedSlatImage(targetMap) {
   const imageId = 'route-preview-unpaved-slats';
   if (targetMap.hasImage(imageId)) return;
-  const width = 5, height = 16;
+  const width = 2, height = 11;
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -969,6 +986,30 @@ function ensureUnpavedSlatImage(targetMap) {
       data[offset + 3] = 218;
     }
   }
+  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
+}
+
+function ensureDismountMarkerImage(targetMap) {
+  const imageId = 'route-preview-dismount-marker-icon';
+  if (targetMap.hasImage(imageId)) return;
+  const width = 18, height = 18;
+  const data = new Uint8Array(width * height * 4);
+  const paint = (x, y, color) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return;
+    const offset = (y * width + x) * 4;
+    data[offset] = color[0]; data[offset + 1] = color[1];
+    data[offset + 2] = color[2]; data[offset + 3] = color[3];
+  };
+  for (let y = 1; y < 17; y++) {
+    const half = Math.max(1, Math.floor((y - 1) * .5) + 1);
+    for (let x = 9 - half; x <= 9 + half; x++) paint(x, y, [138, 86, 0, 255]);
+  }
+  for (let y = 3; y < 15; y++) {
+    const half = Math.max(1, Math.floor((y - 2) * .47));
+    for (let x = 9 - half; x <= 9 + half; x++) paint(x, y, [239, 176, 37, 255]);
+  }
+  for (let y = 6; y < 11; y++) { paint(8, y, [81, 47, 0, 255]); paint(9, y, [81, 47, 0, 255]); }
+  paint(8, 13, [81, 47, 0, 255]); paint(9, 13, [81, 47, 0, 255]);
   targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
 }
 
@@ -1016,6 +1057,7 @@ function initializeRoutePreviewMap() {
     } });
     routePreviewMap.addSource('route-preview-colored', { type: 'geojson', data: preview.colored });
     routePreviewMap.addSource('route-preview-unpaved', { type: 'geojson', data: preview.unpaved });
+    routePreviewMap.addSource('route-preview-dismount', { type: 'geojson', data: preview.dismount });
     routePreviewMap.addSource('route-preview-markers', { type: 'geojson', data: {
       type: 'FeatureCollection', features: [
         { type: 'Feature', properties: { marker: 'start' }, geometry: { type: 'Point', coordinates: preview.points[0] } },
@@ -1038,14 +1080,21 @@ function initializeRoutePreviewMap() {
     addRouteLayer('fail', { 'line-color': FAIL_COLOR, 'line-width': 4.8, 'line-dasharray': [1.5, 1] });
     addRouteLayer('unknown', { 'line-color': '#98a2ad', 'line-width': 4.8 });
     ensureUnpavedSlatImage(routePreviewMap);
+    ensureDismountMarkerImage(routePreviewMap);
     routePreviewMap.addLayer({ id: 'route-preview-unpaved-slats', type: 'symbol', source: 'route-preview-unpaved',
       layout: {
-        'symbol-placement': 'line', 'symbol-spacing': 18,
+        'symbol-placement': 'line', 'symbol-spacing': 12,
         'icon-image': 'route-preview-unpaved-slats', 'icon-allow-overlap': true,
         'icon-ignore-placement': true, 'icon-rotation-alignment': 'map',
         'icon-pitch-alignment': 'map', 'icon-keep-upright': false,
       },
       paint: { 'icon-opacity': 1 } });
+    routePreviewMap.addLayer({ id: 'route-preview-dismount-halo', type: 'circle', source: 'route-preview-dismount',
+      paint: { 'circle-radius': 9, 'circle-color': '#fff7d6', 'circle-opacity': .96,
+        'circle-stroke-color': '#8a5600', 'circle-stroke-width': 1.2 } });
+    routePreviewMap.addLayer({ id: 'route-preview-dismount-marker', type: 'symbol', source: 'route-preview-dismount',
+      layout: { 'icon-image': 'route-preview-dismount-marker-icon', 'icon-size': .8,
+        'icon-allow-overlap': true, 'icon-ignore-placement': true } });
     setRoutePreviewFailPulse(preview.colored.features.some((feature) => feature.properties.style === 'fail'));
     routePreviewMap.addLayer({ id: 'route-preview-markers', type: 'circle', source: 'route-preview-markers',
       paint: { 'circle-radius': 5, 'circle-color': ['match', ['get', 'marker'], 'start', '#00795c', '#e87817'],
@@ -1106,7 +1155,7 @@ if (!hasRoute) {
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
   summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>Avg. limit</span><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>Max limit</span><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>At least 35 mph</span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span><span class="speed-limit-metric"><span>At least 45 mph</span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span>`;
-  summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span><span class="route-summary-mix-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span></div>`;
+  summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span><span class="route-summary-mix-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>${routeStats.dismountM > 0 ? '<span class="route-summary-mix-item mix-dismount">⚠ <b>Contains dismount</b> — walk your bike</span>' : ''}</div>`;
   speedShoulderNote.hidden = false;
   speedShoulderNote.innerHTML = `<b>${speedMiles(routeStats.highSpeedNoBikeAccommodationOrShoulderM)}</b> on ≥30 mph roads without bike accommodation or a confirmed ≥${routeStats.minShoulderFt} ft shoulder`;
   const speedProfile = document.getElementById('speedProfile');
@@ -1157,6 +1206,9 @@ if (!hasRoute) {
   const failing = sections(segs, (s) => s.level === 4, (s) => ({
     name: roadName(s), meta: failedRoadDetails(s, rules),
   }));
+  const dismounts = sections(segs, isDismountSegment, (s) => ({
+    name: roadName(s), meta: 'Dismount required — walk your bike',
+  }));
   const mountainBike = sections(segs, isMountainBikeTrail, (s) => ({
     name: roadName(s),
     meta: `Allowed mountain-bike trail · ${s.mtb ? 'OSM MTB tag' : 'OSM MTB route'}`,
@@ -1189,12 +1241,14 @@ if (!hasRoute) {
     alert.hidden = true;
   } else {
     alert.hidden = false;
-    if (mountainBike.length || limitedAccess.length || curveHazards.length || steepGrades.length || unpaved.length) {
+    if (dismounts.length || mountainBike.length || limitedAccess.length || curveHazards.length || steepGrades.length || unpaved.length) {
+      const dismountM = dismounts.reduce((sum, item) => sum + item.lenM, 0);
       const limitedM = limitedAccess.reduce((sum, item) => sum + item.lenM, 0);
       const mountainBikeM = mountainBike.reduce((sum, item) => sum + item.lenM, 0);
       const unpavedM = unpaved.reduce((sum, item) => sum + item.lenM, 0);
       alert.classList.add('caution');
       const notes = [];
+      if (dismountM) notes.push(`${fmtDist(dismountM)} requires dismounting`);
       if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} on mountain-bike trail`);
       if (limitedM) notes.push(`${fmtDist(limitedM)} on a limited-access highway`);
       if (unpavedM) notes.push(`${fmtDist(unpavedM)} confirmed unpaved`);
@@ -1221,6 +1275,7 @@ if (!hasRoute) {
   // A freeway can appear in both sections because one answers “what failed?”
   // while the other answers “what kind of road is this?”.
   renderConcernShortcuts(report, [
+    { label: 'Dismount', shortLabel: 'Walk', items: dismounts, sectionId: 'concern-dismount' },
     { label: 'Fails rules', shortLabel: 'Fail', items: failing, sectionId: 'concern-fails' },
     { label: 'Unpaved', shortLabel: 'Surface', items: unpaved, sectionId: 'concern-unpaved' },
     { label: 'Mountain-bike', shortLabel: 'MTB', items: mountainBike, sectionId: 'concern-mountain-bike' },
@@ -1230,17 +1285,18 @@ if (!hasRoute) {
     { label: 'Limited access', shortLabel: 'Access', items: limitedAccess, sectionId: 'concern-limited-access' },
     { label: 'Highways', shortLabel: 'Hwys', items: highways, sectionId: 'concern-highways' },
   ]);
+  if (dismounts.length) renderSection(report, 'Dismount points — walk your bike', dismounts, '', 'caution', false, 'concern-dismount');
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails');
-  if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'Surface data affects routing only when Strongly prefer paved surfaces is on in Settings.');
+  if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'Known unpaved surfaces receive a modest route-choice cost; Settings can make the preference strong.');
   if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike');
   if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution', false, 'concern-uphill-curves');
   if (steepGrades.length) renderSection(report, 'Steep uphill grade segments (over 10%)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality.');
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway', false, 'concern-freeways');
   if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution', false, 'concern-limited-access');
   if (highways.length) renderSection(report, 'Highways', highways, '', '', false, 'concern-highways');
-  if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length && !unpaved.length && !mountainBike.length
+  if (!freeways.length && !limitedAccess.length && !highways.length && !dismounts.length && !failing.length && !unpaved.length && !mountainBike.length
       && !curveHazards.length && !steepGrades.length) {
-    report.innerHTML = '<div class="no-route">No freeway, limited-access highway, unpaved, highway, steep-grade, or rule-failing sections were found on this route.</div>';
+    report.innerHTML = '<div class="no-route">No dismount, freeway, limited-access highway, unpaved, highway, steep-grade, or rule-failing sections were found on this route.</div>';
   }
   if (Array.isArray(details.legs) && details.legs.length > 1) {
     renderSection(steps, 'Legs', details.legs.map((leg, i) => ({

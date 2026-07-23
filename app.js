@@ -15,11 +15,12 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.302';
+const APP_VERSION = '2026-07-22.303';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
-const GRAPH_FORMAT_VERSION = 'bgr8-1';
+const GRAPH_FORMAT_VERSION = 'bgr8-2';
+const OFFICIAL_DISMOUNT = 8;
 
 /* ---------------------------------------------------------------- palette */
 // One visual verdict system. Internal levels 1 and 2 retain different routing
@@ -43,12 +44,15 @@ function isConfirmedUnpavedSurface(surface) {
   const value = Number(surface);
   return value === 2 || value === 3;
 }
+function isDismountSegment(segment) {
+  return !!segment?.dismount || !!((segment?.official || 0) & OFFICIAL_DISMOUNT);
+}
 
 /* ------------------------------------------------- riding-rules state */
 const DEFAULT_RULES = Object.freeze({
   allowFreeways: true,  // only permit heavily penalized freeway fallback?
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
-  preferPaved: false,   // strong pavement preference
+  preferPaved: false,   // strong pavement preference; a modest baseline remains
   vettedBikeRoutes: true, // let designated corridors pass despite missing/narrow shoulder data?
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
@@ -182,7 +186,8 @@ function scoreOSM(p) {
     || hw === 'track' || hw === 'service' || cw != null;
   let base = null;
   let prohibited = false;
-  if (hw === 'cycleway' && bike !== 'no' && bike !== 'dismount') base = 1;
+  const dismount = bike === 'dismount';
+  if (hw === 'cycleway' && bike !== 'no') base = 1;
   else if (hw === 'path' && (bike === 'designated' || bike === 'yes')) base = 1;
   else if (hw === 'footway' && bike === 'designated') base = 2;
   else if (hw === 'bridleway' && (bike === 'designated' || bike === 'yes')) base = 2;
@@ -192,7 +197,7 @@ function scoreOSM(p) {
         || p.access === 'no' || p.access === 'private')) base = 1;
   else if (OSM_PROTECTED.has(cw)) base = 1;
   else if (OSM_LANE.has(cw)) base = 2;
-  else if ((bike === 'no' || bike === 'dismount') && bikeish) { base = 4; prohibited = true; }
+  else if (bike === 'no' && bikeish) { base = 4; prohibited = true; }
   const width = p.width != null ? parseFloat(p.width) : NaN;
   return {
     baseScore: base,
@@ -205,6 +210,7 @@ function scoreOSM(p) {
     good_facility: base != null && !prohibited,
     infra: true,
     mountain_bike: p.mtb === 1,
+    dismount,
   };
 }
 
@@ -1409,7 +1415,7 @@ function isHighwaySegment(s) {
 
 function routeSummaryStats(m) {
   const levels = [0, 0, 0, 0, 0];
-  let highwayM = 0, freewayM = 0, limitedAccessM = 0, bikeNetworkM = 0, mtbM = 0;
+  let highwayM = 0, freewayM = 0, limitedAccessM = 0, bikeNetworkM = 0, mtbM = 0, dismountM = 0;
   let roadM = 0, roadSpeedM = 0, unpavedM = 0;
   for (const s of m.segs || []) {
     const flags = s.flags || 0;
@@ -1430,12 +1436,13 @@ function routeSummaryStats(m) {
       roadSpeedM += mph * len;
     }
     if (s.mtb || ((s.official || 0) & 4)) mtbM += len;
+    if (isDismountSegment(s)) dismountM += len;
     if (flags & 4) freewayM += len;
     else if (flags & 128) limitedAccessM += len;
     else if (isHighwaySegment(s)) highwayM += len;
   }
   return {
-    levels, highwayM, freewayM, limitedAccessM, bikeNetworkM, mtbM, unpavedM,
+    levels, highwayM, freewayM, limitedAccessM, bikeNetworkM, mtbM, dismountM, unpavedM,
     avgRoadSpeedMph: roadM > 0 ? Math.round(roadSpeedM / roadM) : null,
   };
 }
@@ -1572,13 +1579,14 @@ function storeRouteDetails(m) {
         distM: m.distM, timeS: m.timeS, ascentM: m.ascentM, descentM: m.descentM,
         avgUphillPct: m.avgUphillPct || 0, maxGradePct: m.maxGradePct || 0,
         failM: m.failM, desigM: m.desigM, facilityM: m.facilityM, ferryM: m.ferryM,
-        mtbM: m.mtbM || 0, hazardM: m.hazardM || 0,
+        mtbM: m.mtbM || 0, dismountM: m.dismountM || 0, hazardM: m.hazardM || 0,
       },
       // Keep the detailed report compact: it only needs road attributes and
       // lengths plus downsampled geometry for the small route preview.
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
+        dismount: isDismountSegment(s),
         surface: Number.isInteger(s.surface) ? s.surface : 0,
         roadClass: s.roadClass || 0, c0: s.c0, c1: s.c1,
         locationStart: locationAt(s.c0), locationEnd: locationAt(s.c1),
@@ -3274,6 +3282,7 @@ function renderRouteCard(m) {
   const cautionPct = routePercent(stats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(m.failM || 0, ridingM, true);
   const unpavedPct = routePercent(stats.unpavedM, ridingM, true);
+  const containsDismount = stats.dismountM > 0;
   const averageSpeedLimit = stats.avgRoadSpeedMph == null ? 'N/A' : `${stats.avgRoadSpeedMph} mph`;
   const hasSteepGradeWarning = Number(m.maxGradePct) > 18;
   const mtbNotice = stats.mtbM > 0
@@ -3292,7 +3301,7 @@ function renderRouteCard(m) {
           <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
         </div>
         ${mtbNotice}<div class="rc-bottom-stats">
-          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><div class="rc-ride-items"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span><span class="rc-ride-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span></div></div>
+          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><div class="rc-ride-items${containsDismount ? ' has-dismount' : ''}"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span><span class="rc-ride-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>${containsDismount ? '<span class="rc-ride-item rc-ride-dismount" title="Walk your bike through a short route section"><span aria-hidden="true">⚠</span> Contains dismount</span>' : ''}</div></div>
         </div>
       </div>
     </div>`;
@@ -3512,6 +3521,7 @@ function scoreRouteSeg(p) {
     infra: p.infra === 1 || facility >= 4,
     est: p.e === 1,
     desig: p.desig === 1,
+    dismount: p.dismount === 1,
   };
 }
 
@@ -3597,9 +3607,31 @@ function buildRouteUnpavedData(sdata) {
   };
 }
 
+// Dismounts are marked once at the entry to every continuous run.  The route
+// line keeps its normal safety color; this marker communicates an access
+// instruction without turning a legal walk-bike link into a rule failure.
+function buildRouteDismountData(sdata) {
+  const features = [];
+  let inDismount = false;
+  for (const feature of sdata.features) {
+    const dismount = feature.properties?.dismount === 1;
+    if (dismount && !inDismount) {
+      const point = feature.geometry?.coordinates?.[0];
+      if (Array.isArray(point) && point.length >= 2) {
+        features.push({ type: 'Feature', properties: { name: feature.properties?.name || '' },
+          geometry: { type: 'Point', coordinates: point } });
+      }
+    }
+    inDismount = dismount;
+  }
+  return { type: 'FeatureCollection', features };
+}
+
 function ensureUnpavedSlatImage(targetMap, imageId = 'route-unpaved-slats') {
   if (targetMap.hasImage(imageId)) return;
-  const width = 5, height = 16;
+  // Fixed-size symbols stay stable across zoom levels.  A narrower, denser
+  // cross-slat reads as a surface texture instead of a heavy ladder.
+  const width = 2, height = 11;
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -3610,6 +3642,31 @@ function ensureUnpavedSlatImage(targetMap, imageId = 'route-unpaved-slats') {
       data[offset + 3] = 218;
     }
   }
+  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
+}
+
+function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-icon') {
+  if (targetMap.hasImage(imageId)) return;
+  // Use a small raster warning icon instead of a text glyph so it works with
+  // both our local raster style and hosted styles that do not expose glyphs.
+  const width = 18, height = 18;
+  const data = new Uint8Array(width * height * 4);
+  const paint = (x, y, color) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return;
+    const offset = (y * width + x) * 4;
+    data[offset] = color[0]; data[offset + 1] = color[1];
+    data[offset + 2] = color[2]; data[offset + 3] = color[3];
+  };
+  for (let y = 1; y < 17; y++) {
+    const half = Math.max(1, Math.floor((y - 1) * .5) + 1);
+    for (let x = 9 - half; x <= 9 + half; x++) paint(x, y, [138, 86, 0, 255]);
+  }
+  for (let y = 3; y < 15; y++) {
+    const half = Math.max(1, Math.floor((y - 2) * .47));
+    for (let x = 9 - half; x <= 9 + half; x++) paint(x, y, [239, 176, 37, 255]);
+  }
+  for (let y = 6; y < 11; y++) { paint(8, y, [81, 47, 0, 255]); paint(9, y, [81, 47, 0, 255]); }
+  paint(8, 13, [81, 47, 0, 255]); paint(9, 13, [81, 47, 0, 255]);
   targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
 }
 
@@ -3683,6 +3740,7 @@ function drawRoute(coords, ferrySegs, segs) {
       hazard: s.hazard || 0, gradePct: s.gradePct || 0, crossing: s.crossing ? 1 : 0,
       infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
       facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
+      dismount: isDismountSegment(s) ? 1 : 0,
       surface: Number.isInteger(s.surface) ? s.surface : 0,
       roadClass: s.roadClass || 0,
       routeIndex,
@@ -3691,6 +3749,7 @@ function drawRoute(coords, ferrySegs, segs) {
   })) };
   const renderData = buildRouteRenderData(sdata);
   const unpavedData = buildRouteUnpavedData(sdata);
+  const dismountData = buildRouteDismountData(sdata);
   // Failing portions (scored live against the current rules) pulse red on top.
   // These use the same merged geometry as the visible route so their dashes
   // remain continuous rather than restarting at every graph edge.
@@ -3706,6 +3765,7 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-render').setData(renderData);
     map.getSource('route-fail').setData(failData);
     map.getSource('route-unpaved').setData(unpavedData);
+    map.getSource('route-dismount').setData(dismountData);
     map.getSource('route-highlight-marker').setData(emptyHighlights);
     map.getSource('route-detail-marker').setData(emptyHighlights);
     map.getSource('route-detail-selection').setData(emptyLine);
@@ -3720,6 +3780,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-render', { type: 'geojson', data: renderData });
   map.addSource('route-fail', { type: 'geojson', data: failData });
   map.addSource('route-unpaved', { type: 'geojson', data: unpavedData });
+  map.addSource('route-dismount', { type: 'geojson', data: dismountData });
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-selection', { type: 'geojson', data: emptyLine });
@@ -3811,15 +3872,26 @@ function drawRoute(coords, ferrySegs, segs) {
              'line-dasharray': [1.25, 1] },
   });
   ensureUnpavedSlatImage(map);
+  ensureDismountMarkerImage(map);
   map.addLayer({
     id: 'route-unpaved-slats', type: 'symbol', source: 'route-unpaved',
     layout: {
-      'symbol-placement': 'line', 'symbol-spacing': 22,
+      'symbol-placement': 'line', 'symbol-spacing': 13,
       'icon-image': 'route-unpaved-slats', 'icon-allow-overlap': true,
       'icon-ignore-placement': true, 'icon-rotation-alignment': 'map',
       'icon-pitch-alignment': 'map', 'icon-keep-upright': false,
     },
     paint: { 'icon-opacity': 1 },
+  });
+  map.addLayer({
+    id: 'route-dismount-halo', type: 'circle', source: 'route-dismount',
+    paint: { 'circle-radius': 12, 'circle-color': '#fff7d6', 'circle-opacity': .96,
+      'circle-stroke-color': '#8a5600', 'circle-stroke-width': 1.5 },
+  });
+  map.addLayer({
+    id: 'route-dismount-marker', type: 'symbol', source: 'route-dismount',
+    layout: { 'icon-image': 'route-dismount-marker-icon', 'icon-size': 1,
+      'icon-allow-overlap': true, 'icon-ignore-placement': true },
   });
   map.addLayer({
     id: 'route-ferry', type: 'line', source: 'route-ferry',
@@ -5361,6 +5433,7 @@ function buildPlacePicker() {
 const readoutEl = document.getElementById('readout');
 // The road card repeats the one shared map/route verdict vocabulary.
 function readoutVerdict(n, level) {
+  if (n.dismount) return 'Dismount required';
   if (level === 4) return 'Fails your rules';
   if (level === 3) return 'Caution — limited-access highway';
   if (level === 0) return 'Insufficient data';
@@ -5369,6 +5442,7 @@ function readoutVerdict(n, level) {
   return 'Passes your rules';
 }
 function readoutVerdictColor(n, level) {
+  if (n.dismount) return COLORS[3];
   if (level === 4) return COLORS[4];
   if (level === 3) return COLORS[3];
   if (level === 0) return COLORS[0];
@@ -5401,10 +5475,11 @@ function routeClassNote(p) {
 // Plain-language reason for a segment's verdict under the current rules.
 // Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
 function explainLevel(n) {
+  if (n.dismount) return 'Bicycle access is allowed here, but you must walk your bike.';
   if (n.prohibited)
     return n.wsdotBan
       ? 'Bikes prohibited — WSDOT permanent restriction.'
-      : 'Bikes prohibited — OSM-tagged (bicycle=no/dismount).';
+      : 'Bikes prohibited — OSM-tagged bicycle=no.';
   if (n.freeway)
     return 'Limited-access freeway — treated as a last-resort route failure.';
   if (n.infra)
@@ -5625,6 +5700,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ] : common;
       rows = [
         ['Name', p.name || '(unnamed road)'],
+        ['Access', p.dismount === 1 ? 'Dismount required — walk your bike.' : null],
         ...routeVerdict,
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
         ['Speed source', p.official & 1 ? 'WSDOT legal speed' : null],
@@ -6086,7 +6162,7 @@ function presetInfoRows(preset) {
     ['Unknown shoulder', presetRules.unknownShoulderZero ? 'Treated as 0 ft.' : 'Left as unknown.'],
     ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],
     ['Surface', presetRules.preferPaved === true
-      ? 'Strongly prefer paved roads and trails.' : 'No pavement preference.'],
+      ? 'Strongly prefer paved roads and trails.' : 'Slightly prefer known paved roads and trails.'],
     ['Route preferences', preferenceText ? `Strongly prefer ${preferenceText}.` : 'No additional preference.'],
   ];
 }
@@ -6468,6 +6544,7 @@ function buildLegend() {
     ['dash4', 'Road that fails safety rules'],
     [COLORS[3], 'Caution — limited-access highway'],
     ['ferry', 'Ferry crossing (planned route)'],
+    ['dismount', '⚠ Dismount point — walk your bike'],
     ['dashDesig', 'Designated bike route (overlay)'],
     ['unpaved', 'Cross-slats: confirmed unpaved (overlay)'],
   ];
@@ -6483,6 +6560,8 @@ function buildLegend() {
         ? `<span class="swatch" style="${dash(COLORS[2])}"></span>`
         : color === 'unpaved'
         ? '<span class="swatch legend-unpaved-swatch"></span>'
+        : color === 'dismount'
+        ? '<span class="swatch legend-dismount-swatch">⚠</span>'
         : color === 'ferry'
         ? `<span class="swatch" style="background:repeating-linear-gradient(90deg,#ffffff 0 4px,#9dbfd8 4px 8px);border:1px solid #c7d7e2"></span>`
         : color === 'dash2'

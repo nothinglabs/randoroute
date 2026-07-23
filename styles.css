@@ -201,14 +201,19 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-elev-grade-warning[hidden] { display: none; }
 #routeCard .rc-details-hidden { display: none; }
 #routeCard .rc-sub { margin-top: 3px; font-size: 12px; color: #555; }
-#routeCard .rc-ride-mix { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; min-width: 0; min-height: 26px; margin-top: 4px; color: #52616b; font: 600 10px/1.2 system-ui; }
-#routeCard .rc-ride-items { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; gap: 4px 8px; min-width: 0; }
+#routeCard .rc-ride-mix { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; min-width: 0; min-height: 26px; margin-top: 3px; color: #52616b; font: 600 9.5px/1.15 system-ui; }
+/* The desktop side panel is deliberately narrow.  Use the same compact two-row
+   pattern as phones so the five percentage labels—and an optional dismount
+   status—stay legible instead of being squeezed into five tiny columns. */
+#routeCard .rc-ride-items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 3px 5px; min-width: 0; }
 #routeCard .rc-ride-item { min-width: 0; white-space: nowrap; text-align: center; }
+#routeCard .rc-ride-items:not(.has-dismount) .rc-ride-item:first-child { grid-column: span 2; }
 #routeCard .rc-ride-mix b { color: #223c4b; font-weight: 800; }
 #routeCard .rc-mix-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
 #routeCard .rc-unpaved-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border: 1px solid #536672; border-radius: 1px; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); vertical-align: -0.5px; }
 #routeCard .rc-ride-caution, #routeCard .rc-ride-caution b { color: #9a4f00; }
 #routeCard .rc-ride-fail, #routeCard .rc-ride-fail b { color: #b42318; }
+#routeCard .rc-ride-dismount { color: #8a4900; font-weight: 800; }
 
 /* ---- Navigating Route panel: the Route tab while turn-by-turn is active. ---- */
 /* Pin the Route tab's height so switching between planning and navigating does
@@ -247,11 +252,7 @@ body:not(.navigation-active) #navCard { display: none; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
 #routeCard .rc-bottom-stats { flex: 1; min-width: 0; text-align: right; }
 @media (max-width: 460px) {
-  /* Five mix metrics still fit in the original two-row footprint: the long
-     trails/bike-lanes label gets two cells, and the remaining four labels
-     stay legible in the two three-cell rows. */
-  #routeCard .rc-ride-items { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 4px; }
-  #routeCard .rc-ride-item:first-child { grid-column: span 2; }
+  #routeCard .rc-ride-items { gap: 3px 4px; }
 }
 #routeCard canvas { display: block; }
 @media (min-width: 721px) {
@@ -267,6 +268,7 @@ body:not(.navigation-active) #navCard { display: none; }
   #tabs #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; }
   #tabs #routeLibraryBtn .share-icon { width: 19px; height: 19px; }
   #routeOptions { gap: 4px; }
+  #routeOptions::before { padding: 0 5px; font-size: 10.5px; letter-spacing: .05em; }
   #routeOptions button { min-height: 34px; padding: 4px 3px; font-size: 14px; }
 }
 
@@ -360,7 +362,8 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .legend { margin-top: 5px; }
 .legend .item { display: flex; align-items: center; gap: 8px; margin: 5px 0; font: 600 11px/1.25 system-ui; }
 .legend .swatch { width: 22px; height: 6px; border-radius: 3px; flex: none; }
-.legend .legend-unpaved-swatch { border: 1px solid #536672; background: repeating-linear-gradient(90deg, transparent 0 3px, #536672 3px 4px); }
+.legend .legend-unpaved-swatch { border: 1px solid #536672; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); }
+.legend .legend-dismount-swatch { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid #8a5600; border-radius: 50%; background: #fff7d6; color: #a04d00; font: 800 12px/1 system-ui; }
 .legend-note { margin: 7px 0 0; padding-top: 6px; border-top: 1px solid #e2eaee; color: #6b7d88; font: 600 10px/1.35 system-ui; }
 
 #legendToggle {

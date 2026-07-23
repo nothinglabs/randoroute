@@ -258,8 +258,10 @@ speed — official WSDOT legal speed, OSM-posted, or class-estimated — compact
 OSM surface category (paved, gravel/compacted, rough unpaved, or unknown), typed
 bicycle facility, authoritative-source bits, freeway/limited-access/
 infrastructure flags, shoulder from WSDOT conflation or OSM, and directional
-curve-warning severity/range). Pedestrian-only and `bicycle=dismount` ways are
-not included in the riding graph. Short `highway=service` links are treated as
+curve-warning severity/range). Pedestrian-only and `bicycle=no` ways are not
+included in the riding graph. `bicycle=dismount` ways are retained as
+walk-bike connectors: the router charges walking time plus a strong per-entry
+cost and reports them as dismount points. Short `highway=service` links are treated as
 bike infrastructure only when they are explicitly `bicycle=designated` and
 closed to public motor traffic; this preserves mapped trail links through
 transit centers and maintenance plazas without admitting ordinary driveways.

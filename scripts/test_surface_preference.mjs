@@ -12,7 +12,7 @@ assert.match(app, /preferPaved:\s*false/,
   'strong paved-surface preference should default off for new settings');
 assert.match(app, /check\('preferPaved', 'Strongly prefer paved surfaces'\)/,
   'the strong surface preference should be available in Settings');
-assert.match(app, /GRAPH_FORMAT_VERSION = 'bgr8-1'/,
+assert.match(app, /GRAPH_FORMAT_VERSION = 'bgr8-2'/,
   'the app should request the BGR8 graph layout');
 assert.match(worker, /want BGR8/,
   'the router should reject an older graph layout instead of misreading it');
@@ -24,7 +24,7 @@ assert.match(app, /buildRouteUnpavedData/,
   'confirmed unpaved route segments should have a dedicated map-overlay source');
 assert.match(app, /route-unpaved-slats/,
   'the map should render confirmed unpaved segments with cross-slats');
-assert.match(app, /'symbol-placement': 'line', 'symbol-spacing': 22/,
+assert.match(app, /'symbol-placement': 'line', 'symbol-spacing': 13/,
   'main-map slats should use fixed-size symbols at stable spacing');
 assert.doesNotMatch(app, /'line-pattern': 'route-unpaved-slats'/,
   'main-map slats should not scale with a line texture');
@@ -34,7 +34,7 @@ assert.doesNotMatch(details, /rules\.preferPaved === false \? \[\]/,
   'confirmed unpaved segments should remain a concern when the strong preference is off');
 assert.match(details, /route-preview-unpaved-slats/,
   'the route-details map preview should preserve the unpaved-surface overlay');
-assert.match(details, /'symbol-placement': 'line', 'symbol-spacing': 18/,
+assert.match(details, /'symbol-placement': 'line', 'symbol-spacing': 12/,
   'details-map slats should use fixed-size symbols at stable spacing');
 assert.doesNotMatch(details, /'line-pattern': 'route-preview-unpaved-slats'/,
   'details-map slats should not scale with a line texture');
@@ -78,12 +78,12 @@ assert.equal(context.surfacePreferenceS(2, { preferPaved: true }), 65,
   'strong preference should retain the full gravel cost');
 assert.equal(context.surfacePreferenceS(3, { preferPaved: true }), 200,
   'strong preference should retain the full rough-surface cost');
-assert.equal(context.surfacePreferenceS(2, { preferPaved: false }), 0,
-  'with strong preference off, gravel should not change routing cost');
-assert.equal(context.surfacePreferenceS(3, { preferPaved: false }), 0,
-  'with strong preference off, rough surface should not change routing cost');
-assert.equal(context.surfacePreferenceS(3, {}), 0,
-  'no preference should apply when a route has no explicit setting');
+assert.equal(context.surfacePreferenceS(2, { preferPaved: false }), 13,
+  'with strong preference off, gravel should retain the 20-percent baseline cost');
+assert.equal(context.surfacePreferenceS(3, { preferPaved: false }), 40,
+  'with strong preference off, rough surface should retain the 20-percent baseline cost');
+assert.equal(context.surfacePreferenceS(3, {}), 40,
+  'routes without an explicit setting should retain the baseline pavement preference');
 assert.equal(context.surfacePreferenceS(4, { preferPaved: true }), 0,
   'ferry crossings should never receive a surface cost');
 
