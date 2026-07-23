@@ -1402,40 +1402,41 @@ if (!hasRoute) {
     name: 'Ferry crossing', meta: 'Ferry segment',
   }));
 
-  if (totals.failM > 0) {
-    // The detailed concerns immediately below state the failing distance and roads.
-    alert.hidden = true;
+  alert.hidden = false;
+  alert.classList.remove('good', 'caution');
+  if (failing.length || dismounts.length || sidewalkFallbacks.length || mountainBike.length || limitedAccess.length || curveHazards.length || steepGrades.length || unpaved.length) {
+    const failingM = failing.reduce((sum, item) => sum + item.lenM, 0);
+    const dismountM = dismounts.reduce((sum, item) => sum + item.lenM, 0);
+    const limitedM = limitedAccess.reduce((sum, item) => sum + item.lenM, 0);
+    const mountainBikeM = mountainBike.reduce((sum, item) => sum + item.lenM, 0);
+    const unpavedM = unpaved.reduce((sum, item) => sum + item.lenM, 0);
+    if (!failingM) alert.classList.add('caution');
+    const notes = [];
+    if (failingM) notes.push(`${fmtDist(failingM)} fails rules`);
+    if (dismountM) notes.push(`${fmtDist(dismountM)} dismount`);
+    if (sidewalkFallbacks.length) notes.push(`${fmtDist(sidewalkFallbacks.reduce((sum, item) => sum + item.lenM, 0))} sidewalk fallback`);
+    if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} mountain-bike trail`);
+    if (limitedM) notes.push(`${fmtDist(limitedM)} limited-access highway`);
+    if (unpavedM) notes.push(`${fmtDist(unpavedM)} unpaved`);
+    if (curveHazards.length) notes.push(`${fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0))} uphill-curve caution`);
+    if (steepGrades.length) notes.push(`${fmtDist(steepUphillM)} at 10%+ uphill`);
+    const title = document.createElement('strong');
+    title.className = 'route-alert-title';
+    title.textContent = 'Route concerns';
+    const list = document.createElement('ul');
+    list.className = 'route-alert-list';
+    notes.forEach((text) => {
+      const item = document.createElement('li');
+      item.textContent = text;
+      list.appendChild(item);
+    });
+    const hint = document.createElement('p');
+    hint.className = 'route-alert-hint';
+    hint.textContent = 'Tap a section below for details.';
+    alert.replaceChildren(title, list, hint);
   } else {
-    alert.hidden = false;
-    if (dismounts.length || sidewalkFallbacks.length || mountainBike.length || limitedAccess.length || curveHazards.length || steepGrades.length || unpaved.length) {
-      const dismountM = dismounts.reduce((sum, item) => sum + item.lenM, 0);
-      const limitedM = limitedAccess.reduce((sum, item) => sum + item.lenM, 0);
-      const mountainBikeM = mountainBike.reduce((sum, item) => sum + item.lenM, 0);
-      const unpavedM = unpaved.reduce((sum, item) => sum + item.lenM, 0);
-      alert.classList.add('caution');
-      const notes = [];
-      if (dismountM) notes.push(`${fmtDist(dismountM)} dismount`);
-      if (sidewalkFallbacks.length) notes.push(`${fmtDist(sidewalkFallbacks.reduce((sum, item) => sum + item.lenM, 0))} sidewalk fallback`);
-      if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} mountain-bike trail`);
-      if (limitedM) notes.push(`${fmtDist(limitedM)} limited-access highway`);
-      if (unpavedM) notes.push(`${fmtDist(unpavedM)} unpaved`);
-      if (curveHazards.length) notes.push(`${fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0))} uphill-curve caution`);
-      if (steepGrades.length) notes.push(`${fmtDist(steepUphillM)} at 10%+ uphill`);
-      const title = document.createElement('strong');
-      title.className = 'route-alert-title';
-      title.textContent = 'Route concerns';
-      const list = document.createElement('ul');
-      list.className = 'route-alert-list';
-      notes.forEach((text) => {
-        const item = document.createElement('li');
-        item.textContent = text;
-        list.appendChild(item);
-      });
-      alert.replaceChildren(title, list);
-    } else {
-      alert.classList.add('good');
-      alert.textContent = 'No route concerns were found under your current riding rules.';
-    }
+    alert.classList.add('good');
+    alert.textContent = 'No route concerns were found under your current riding rules.';
   }
 
   const snapNotes = [];

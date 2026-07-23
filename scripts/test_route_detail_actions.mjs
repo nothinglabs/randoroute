@@ -116,10 +116,12 @@ assert.match(details, /meta: `\$\{s\.mph\} mph · \$\{\(s\.official \|\| 0\) & O
   'sidewalk concern items should show only speed and area context');
 assert.doesNotMatch(details, /meta: `[^`]*mapped sidewalk fallback/,
   'sidewalk concern items should not repeat their section label');
-assert.match(details, /title\.textContent = 'Route concerns'[\s\S]*?list\.className = 'route-alert-list'[\s\S]*?alert\.replaceChildren\(title, list\)/,
+assert.match(details, /if \(failingM\) notes\.push\(`\$\{fmtDist\(failingM\)\} fails rules`\)[\s\S]*?title\.textContent = 'Route concerns'[\s\S]*?list\.className = 'route-alert-list'[\s\S]*?hint\.textContent = 'Tap a section below for details\.'[\s\S]*?alert\.replaceChildren\(title, list, hint\)/,
   'the top concern summary should render as a scannable list instead of a sentence');
 assert.match(css, /\.route-alert-list\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)[^}]*font:\s*700 11\.5px\/1\.25 system-ui/,
   'the compact concern summary should use a readable two-column phone layout');
+assert.match(css, /\.route-alert-hint\s*\{[^}]*font:\s*750 10\.5px\/1\.2 system-ui/,
+  'the concern summary should include a compact disclosure hint');
 assert.doesNotMatch(detailsHtml, /id="(?:optimization|mapTapHint)"/,
   'Route Details should not need compatibility placeholders once updates are atomic');
 assert.doesNotMatch(detailsHtml, /route-optimization|tap-hint/,
