@@ -20,6 +20,10 @@ assert.match(app, /streetViewBtn\.textContent\s*=\s*'Google Street View'[\s\S]*?
   'the road card should use the requested Google Street View label and retain a Google Maps link');
 assert.match(app, /readoutEl\.append\(close, heading, table, mapActions\)/,
   'the compact road-card actions should appear below the road details');
+assert.match(app, /function scoreBLTS\(p\)[\s\S]*?urban: p\.Urban === 1[\s\S]*?\['Area', n\.urban \? 'Urban \(Census\)' : 'Rural \(Census\)'\][\s\S]*?\['Designated bike route', p\.Designated === 1 \? 'yes' : null\]/,
+  'WSDOT road scoring and its popup should use the same Census urban/rural context as routing');
+assert.match(css, /#settings-limits\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settings-limits #settingsSliders\s*\{[^}]*gap:\s*3px[\s\S]*?#settings-limits #settingsSliders \.rule-card\s*\{[^}]*padding:\s*3px 8px/,
+  'the compact Limits pane should fit its controls without a nested scrollbar');
 assert.match(app, /roadInfoHoverMedia\s*=\s*window\.matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)[\s\S]*?if \(!roadInfoHoverMedia\.matches\) return/,
   'touch-generated mouse movement must not open the fixed hover preview');
 assert.match(app, /canvas\.addEventListener\('touchend'[\s\S]*?inspectRoadAt\(point, lngLat\)[\s\S]*?lastRoadInfoTouchAt = Date\.now\(\)/,

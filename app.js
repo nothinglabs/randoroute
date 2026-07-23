@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.308';
+const APP_VERSION = '2026-07-22.309';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -183,6 +183,7 @@ function scoreBLTS(p) {
     good_facility: !!(p.BikeFacilityType && p.BikeFacilityType.length),
     infra: false,
     desig: p.Designated === 1, // on a designated bike route (USBR / regional)
+    urban: p.Urban === 1,
   };
 }
 
@@ -5832,7 +5833,9 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Lanes', p.LaneCount],
       ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
       ['Shoulder', p.ShoulderWidth != null ? p.ShoulderWidth + ' ft' : null],
+      ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Bike facility', p.BikeFacilityType],
+      ['Designated bike route', p.Designated === 1 ? 'yes' : null],
       ['Limited access', p.LimitedAccess ? 'yes' : null],
       ['Bikes prohibited', p.Prohibited ? 'yes (WSDOT restriction)' : null],
     ];

@@ -16,13 +16,14 @@ Requires: geopandas, pyogrio, pyproj, shapely  (pip install geopandas pyogrio)
 Usage:
   python3 scripts/build_blts.py \
     --src data/BikePedLTS.gdb --out data/blts.geojson
+
+  # Add/rebuild Census urban context without needing the raw WSDOT export.
+  python3 scripts/build_blts.py --enrich-existing --out data/blts.geojson
 """
 import argparse
 import json
 import math
 import os
-
-import geopandas as gpd
 
 # AccessControlTypeCode values that mean limited-access (freeway/expressway).
 LIMITED_ACCESS_CODES = {"F", "M", "P"}
@@ -81,7 +82,50 @@ def load_routes_index(path):
 ROUTE_MATCH_DEG = 0.0003  # ~25-30 m: highway centerline vs route line offset
 
 
-def build(src, out, restrictions=None, routes=None):
+def load_urban_index(path):
+    """Load build-only Census urban polygons for the WSDOT display overlay."""
+    from shapely.geometry import shape
+    from shapely.strtree import STRtree
+
+    fc = json.load(open(path))
+    geoms = [shape(feature['geometry']) for feature in fc.get('features', [])
+             if feature.get('geometry')]
+    if not geoms:
+        raise ValueError(f'no usable Census urban areas in {path}')
+    print(f'urban context: {len(geoms):,} Census polygons')
+    return STRtree(geoms), geoms
+
+
+def is_urban_geometry(geom, index):
+    """Classify a line by its midpoint, matching the graph builder policy."""
+    if index is None or geom is None or geom.is_empty:
+        return False
+    midpoint = geom.interpolate(0.5, normalized=True)
+    tree, geoms = index
+    return any(geoms[int(candidate)].covers(midpoint) for candidate in tree.query(midpoint))
+
+
+def enrich_existing(out, urban_areas):
+    """Add Urban=1 to an existing WSDOT GeoJSON after Census data changes."""
+    from shapely.geometry import shape
+
+    urban_index = load_urban_index(urban_areas)
+    fc = json.load(open(out))
+    urban_count = 0
+    for feature in fc.get('features', []):
+        props = feature.setdefault('properties', {})
+        if is_urban_geometry(shape(feature['geometry']), urban_index):
+            props['Urban'] = 1
+            urban_count += 1
+        else:
+            props.pop('Urban', None)
+    with open(out, 'w') as fh:
+        json.dump(fc, fh, separators=(',', ':'))
+    print(f'added Urban=1 to {urban_count:,} of {len(fc.get("features", [])):,} WSDOT segments -> {out}')
+
+
+def build(src, out, restrictions=None, routes=None, urban_areas=None):
+    import geopandas as gpd
     from shapely.geometry import Point
 
     gdf = gpd.read_file(src, layer=LAYER)
@@ -90,7 +134,8 @@ def build(src, out, restrictions=None, routes=None):
     print(f"reprojected -> {gdf.crs}")
     restr = load_restrictions(restrictions) if restrictions else {}
     rtree = load_routes_index(routes) if routes else None
-    prohibited_count = designated_count = 0
+    urban_index = load_urban_index(urban_areas) if urban_areas else None
+    prohibited_count = designated_count = urban_count = 0
 
     feats = []
     for geom, row in zip(gdf.geometry.values, gdf.itertuples(index=False)):
@@ -158,6 +203,10 @@ def build(src, out, restrictions=None, routes=None):
                 props["Designated"] = 1
                 designated_count += 1
 
+        if is_urban_geometry(geom, urban_index):
+            props['Urban'] = 1
+            urban_count += 1
+
         feats.append({"type": "Feature", "properties": props, "geometry": gj})
 
     fc = {"type": "FeatureCollection", "features": feats}
@@ -168,6 +217,8 @@ def build(src, out, restrictions=None, routes=None):
         print(f"flagged Prohibited on {prohibited_count} segments")
     if routes:
         print(f"flagged Designated on {designated_count} segments")
+    if urban_areas:
+        print(f"flagged Urban on {urban_count} segments")
 
 
 if __name__ == "__main__":
@@ -178,5 +229,12 @@ if __name__ == "__main__":
                     help="path to PermanentBikeRestrictions.gdb to flag prohibited segments")
     ap.add_argument("--routes", default=None,
                     help="path to bikeroutes.geojson to flag designated-route segments")
+    ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-wa.geojson',
+                    help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
+    ap.add_argument('--enrich-existing', action='store_true',
+                    help='add Urban=1 context to --out without reading the raw WSDOT export')
     args = ap.parse_args()
-    build(args.src, args.out, args.restrictions, args.routes)
+    if args.enrich_existing:
+        enrich_existing(args.out, args.urban_areas)
+    else:
+        build(args.src, args.out, args.restrictions, args.routes, args.urban_areas)

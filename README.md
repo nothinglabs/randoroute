@@ -117,6 +117,7 @@ curl -o data/BikePedLTS.zip \
   https://data.wsdot.wa.gov/geospatial/DOT_ActiveTransportation/BikePedLTS.zip
 unzip -d data data/BikePedLTS.zip
 pip install geopandas pyogrio pyproj shapely
+python3 scripts/fetch_census_urban_areas.py
 python3 scripts/build_blts.py --src data/BikePedLTS.gdb --out data/blts.geojson
 ```
 
@@ -126,6 +127,10 @@ is no-data. Limited-access segments (`AccessControlTypeCode` F/M/P) are shown
 as an amber caution when their recorded speed and shoulder otherwise meet the
 rider's rules. They are distinct from true OSM motorways/freeways, which drive
 the freeway toggle and remain last-resort route failures.
+
+The build also assigns `Urban=1` when a segment midpoint lies in a 2020 Census
+urban-area polygon. This is the same context the routing graph uses for the
+urban versus rural no-shoulder speed rule; other segments are rural.
 
 ### WSDOT Permanent Bike Restrictions → `data/bike_restrictions.geojson` (81 segments)
 
