@@ -302,12 +302,12 @@ body:not(.navigation-active) #navCard { display: none; }
 }
 
 .route-details-btn { min-width: 64px; min-height: 40px; padding: 0 11px; border: 1px solid #78a9cc; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 750 11px/1 system-ui; cursor: pointer; }
-.route-details-btn.route-details-warning { border-color: #d88d85; background: #fff0ee; color: #a82017; }
+.route-details-btn.route-details-warning { border-color: #cf8179; background: #f5d5d1; color: #8f2e27; }
 .route-details-btn.route-details-attention { animation: route-details-alert-flash 1s ease-in-out; }
 @keyframes route-details-alert-flash {
-  0%, 100% { border-color: #d88d85; background: #fff0ee; color: #a82017; }
-  15%, 75% { border-color: #a82017; background: #c33327; color: #fff; box-shadow: 0 0 0 2px rgba(195,51,39,.2); }
-  45% { border-color: #d7e1e7; background: #fff; color: #a82017; box-shadow: none; }
+  0%, 100% { border-color: #cf8179; background: #f5d5d1; color: #8f2e27; }
+  15%, 75% { border-color: #9f4943; background: #b95750; color: #fff; box-shadow: 0 0 0 2px rgba(185,87,80,.18); }
+  45% { border-color: #d7e1e7; background: #fff; color: #8f2e27; box-shadow: none; }
 }
 .route-details-btn:disabled { opacity: .45; cursor: default; }
 .route-tips-btn { align-self: stretch; flex: 0 0 34px !important; width: 34px !important; min-height: 34px !important; max-height: none !important; height: auto !important; border-radius: 10px !important; font-size: 15px !important; }

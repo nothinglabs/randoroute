@@ -46,6 +46,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .unpaved-route-warning[hidden] { display: none; }
 .unpaved-warning-message { display: block; font: 750 11px/1.25 system-ui; }
 .unpaved-warning-message strong { color: #a82017; font-weight: 850; }
+.route-warning-note { display: block; margin-top: 2px; color: #7c413b; font: 650 10.5px/1.2 system-ui; }
 .unpaved-warning-action { display: block; margin-top: 3px; color: #9c2d23; font: 700 10.5px/1.2 system-ui; }
 .unpaved-route-warning:hover { border-color: #c33327; background: #ffe8e4; }
 .unpaved-route-warning:focus-visible { outline: 3px solid #0a66c2; outline-offset: 2px; }

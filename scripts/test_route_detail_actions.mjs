@@ -46,9 +46,9 @@ assert.match(app, /function routeHasDetailsWarning\(route\)[\s\S]*?Number\(route
   'selecting a steep or substantially unpaved route should flash the Details button');
 assert.match(app, /function setPanelOpen\(open\)[\s\S]*?if \(open\) \{[\s\S]*?syncRouteDetailsWarningState\(routing\.last, \{ flash: true \}\)/,
   'reopening the mobile panel should replay the Details warning when applicable');
-assert.match(appCss, /\.route-details-btn\.route-details-attention\s*\{[^}]*animation:\s*route-details-alert-flash 1s ease-in-out[\s\S]*?@keyframes route-details-alert-flash[\s\S]*?15%, 75%\s*\{[^}]*background:\s*#c33327[\s\S]*?45%\s*\{[^}]*background:\s*#fff/,
+assert.match(appCss, /\.route-details-btn\.route-details-attention\s*\{[^}]*animation:\s*route-details-alert-flash 1s ease-in-out[\s\S]*?@keyframes route-details-alert-flash[\s\S]*?15%, 75%\s*\{[^}]*background:\s*#b95750[\s\S]*?45%\s*\{[^}]*background:\s*#fff/,
   'the Details warning should flash red, white, and red over about one second');
-assert.match(appCss, /\.route-details-btn\.route-details-warning\s*\{[^}]*background:\s*#fff0ee[^}]*color:\s*#a82017/,
+assert.match(appCss, /\.route-details-btn\.route-details-warning\s*\{[^}]*background:\s*#f5d5d1[^}]*color:\s*#8f2e27/,
   'warning routes should leave Details with a quiet pink warning treatment');
 assert.match(app, /rc-ride-unpaved-warning[\s\S]*?rc-unpaved-alert-mark[\s\S]*?aria-hidden="true">!<\/span>/,
   'the emphasized unpaved metric should include a compact exclamation mark');
@@ -144,7 +144,7 @@ assert.match(css, /\.route-alert-link\s*\{[^}]*flex-direction:\s*column[^}]*alig
   'every tappable concern summary should stack its distance beneath its label');
 assert.match(detailsHtml, /id="concernDetailsHint" class="concern-details-hint" hidden>Tap for route concern details\.<\/p>[\s\S]*?<div id="report">/,
   'the concern detail instruction should sit between the summary and accordion sections');
-assert.match(detailsHtml, /id="routeQuickSummary"[\s\S]*?id="unpavedRouteWarning" class="unpaved-route-warning" type="button" hidden[\s\S]*?Tap to review and make sure you’re comfortable riding\./,
+assert.match(detailsHtml, /id="routeQuickSummary"[\s\S]*?id="unpavedRouteWarning" class="unpaved-route-warning" type="button" hidden[\s\S]*?Make sure you’re comfortable riding it\.[\s\S]*?Tap to review concerns\./,
   'Route Details should place the substantial-unpaved warning directly under its top summary');
 assert.match(details, /const hasSignificantUnpaved = routeStats\.unpavedM > SIGNIFICANT_UNPAVED_M;[\s\S]*?mix-unpaved-warning[\s\S]*?unpavedRouteWarning\.hidden = !hasSignificantUnpaved[\s\S]*?This route has \$\{fmtMi\(routeStats\.unpavedM\)\} mi of unpaved surface\./,
   'Route Details should emphasize and explain routes with more than one confirmed unpaved mile');
@@ -350,7 +350,7 @@ assert.match(css, /\.elevation-dialog-body \.chart-map-hint\s*\{[^}]*color:\s*#1
   'expanded chart navigation should have visible instructions and an interactive cursor');
 assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>[\s\S]*?<b>10%\+ uphill<\/b>[\s\S]*?fmtMi\(steepUphillM\)/,
   'elevation metrics should include the mileage of sustained uphill grade over 10%');
-assert.match(detailsHtml, /button id="elevationSteepWarning"[\s\S]*?class="elevation-warning-message"[\s\S]*?grades that may be impassable[\s\S]*?class="elevation-warning-action"[\s\S]*?Tap to review—extreme grades may reflect data errors\./,
+assert.match(detailsHtml, /button id="elevationSteepWarning"[\s\S]*?class="elevation-warning-message"[\s\S]*?grades that may be impassable[\s\S]*?Extreme grades can sometimes be data errors\.[\s\S]*?class="elevation-warning-action"[\s\S]*?Tap to review concerns\./,
   'the elevation card should clearly explain the steep-grade route warning as an action');
 assert.match(details, /elevationSteepWarning\.addEventListener\('click',[\s\S]*?selectDetailTab\('concerns'\)[\s\S]*?requestAnimationFrame\(\(\) => scrollToConcernSection\('concern-steep-grades'\)\)/,
   'tapping the elevation warning should open Concerns at Steep Grades');
