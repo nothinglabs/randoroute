@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#009E73" />
   <title>Route details · Just Rolling Along</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="route-details.css?v=330" />
+  <link rel="stylesheet" href="route-details.css?v=331" />
 </head>
 <body>
   <main>
@@ -15,6 +15,7 @@
       <div id="summary" class="route-summary-main"></div>
       <div id="summaryMix" class="route-summary-mix" title="Percent of riding distance; colors match the map legend"></div>
     </section>
+    <button id="unpavedRouteWarning" class="unpaved-route-warning" type="button" hidden><span class="unpaved-warning-message"><strong>Warning:</strong> <span id="unpavedWarningText"></span></span><span class="unpaved-warning-action">Tap to review <strong>Unpaved Surfaces</strong> in Concerns.</span></button>
     <section id="panel-stats" class="detail-panel detail-stats" role="tabpanel" aria-labelledby="tab-stats">
       <section id="routePreview" class="route-preview" aria-label="Route preview" hidden>
         <div class="route-preview-map-wrap">
@@ -79,6 +80,6 @@
     </div>
   </dialog>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="route-details.js?v=330"></script>
+  <script src="route-details.js?v=331"></script>
 </body>
 </html>

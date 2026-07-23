@@ -40,6 +40,12 @@ assert.match(app, /const hasSteepGradeWarning = Number\(m\.maxGradePct\) > 18;[\
   'the route-card elevation chart should flag sustained grades above 18% and open the Stats tab');
 assert.match(appCss, /\.rc-elev-wrap\s*\{[^}]*position:\s*relative[\s\S]*?\.rc-elev-grade-warning\s*\{[^}]*position:\s*absolute[^}]*min-height:\s*22px[^}]*color:\s*#b42318[^}]*font:\s*850 10px\/1 system-ui/,
   'the route-card steep-grade warning should overlay the elevation chart in red');
+assert.match(app, /const SIGNIFICANT_UNPAVED_M = 1609\.344;[\s\S]*?const hasSignificantUnpaved = stats\.unpavedM > SIGNIFICANT_UNPAVED_M;[\s\S]*?rc-ride-unpaved-warning/,
+  'routes with more than one confirmed unpaved mile should emphasize the unpaved route-card metric');
+assert.match(app, /function flashRouteDetailsWarning\(route\)[\s\S]*?Number\(route\.maxGradePct\) > 18 \|\| stats\.unpavedM > SIGNIFICANT_UNPAVED_M[\s\S]*?classList\.add\('route-details-attention'\)[\s\S]*?renderRouteCard\(option\);[\s\S]*?flashRouteDetailsWarning\(option\);/,
+  'selecting a steep or substantially unpaved route should flash the Details button');
+assert.match(appCss, /\.route-details-btn\.route-details-attention\s*\{[^}]*animation:\s*route-details-alert-flash 1s ease-in-out[\s\S]*?@keyframes route-details-alert-flash[\s\S]*?15%, 75%\s*\{[^}]*background:\s*#c33327[\s\S]*?45%\s*\{[^}]*background:\s*#fff/,
+  'the Details warning should flash red, white, and red over about one second');
 assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textContent = 'View'[\s\S]*?mapButton\.className = 'segment-map-button'[\s\S]*?mapLabel\.textContent = 'Map'[\s\S]*?mapIcon\.textContent = '⌖'[\s\S]*?mapButton\.append\(mapLabel, mapIcon\)[\s\S]*?actions\.append\(mapButton, streetView\)/,
   'each route-detail item should put an in-app Map button before its stacked Street View button');
 assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view', lat, lng, heading \}, window\.location\.origin\)/,
@@ -132,6 +138,12 @@ assert.match(css, /\.route-alert-link\s*\{[^}]*flex-direction:\s*column[^}]*alig
   'every tappable concern summary should stack its distance beneath its label');
 assert.match(detailsHtml, /id="concernDetailsHint" class="concern-details-hint" hidden>Tap for route concern details\.<\/p>[\s\S]*?<div id="report">/,
   'the concern detail instruction should sit between the summary and accordion sections');
+assert.match(detailsHtml, /id="routeQuickSummary"[\s\S]*?id="unpavedRouteWarning" class="unpaved-route-warning" type="button" hidden[\s\S]*?Tap to review <strong>Unpaved Surfaces<\/strong> in Concerns/,
+  'Route Details should place the substantial-unpaved warning directly under its top summary');
+assert.match(details, /const hasSignificantUnpaved = routeStats\.unpavedM > SIGNIFICANT_UNPAVED_M;[\s\S]*?mix-unpaved-warning[\s\S]*?unpavedRouteWarning\.hidden = !hasSignificantUnpaved[\s\S]*?Make sure you're comfortable riding it/,
+  'Route Details should emphasize and explain routes with more than one confirmed unpaved mile');
+assert.match(details, /unpavedRouteWarning\.addEventListener\('click'[\s\S]*?selectDetailTab\('concerns'\)[\s\S]*?scrollToConcernSection\('concern-unpaved'\)/,
+  'the unpaved warning should open the matching concern details');
 assert.match(css, /\.concern-details-hint\s*\{[^}]*margin:\s*2px 2px 8px[^}]*color:\s*#415361[^}]*font:\s*750 11px\/1\.25 system-ui/,
   'the concern detail instruction should read as a simple section label');
 assert.doesNotMatch(detailsHtml, /id="(?:optimization|mapTapHint)"/,

@@ -23,6 +23,7 @@ const MIN_REPORTED_GRADE_M = 20;
 const MAX_CREDIBLE_GRADE_PCT = 40;
 const SUSTAINED_GRADE_WINDOW_M = 100;
 const STEEP_UPHILL_CONCERN_PCT = 10;
+const SIGNIFICANT_UNPAVED_M = 1609.344;
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 const FACILITY_NAME = {
   1: 'shared lane', 2: 'bike lane', 3: 'buffered bike lane',
@@ -995,10 +996,15 @@ const elevationSteepWarning = document.getElementById('elevationSteepWarning');
 const noRouteSummary = document.getElementById('noRouteSummary');
 const alert = document.getElementById('routeAlert');
 const concernDetailsHint = document.getElementById('concernDetailsHint');
+const unpavedRouteWarning = document.getElementById('unpavedRouteWarning');
 
 elevationSteepWarning.addEventListener('click', () => {
   selectDetailTab('concerns');
   requestAnimationFrame(() => scrollToConcernSection('concern-steep-grades'));
+});
+unpavedRouteWarning.addEventListener('click', () => {
+  selectDetailTab('concerns');
+  requestAnimationFrame(() => scrollToConcernSection('concern-unpaved'));
 });
 
 function renderRouteOptionTabs() {
@@ -1306,6 +1312,7 @@ if (!hasRoute) {
   const cautionPct = routePercent(routeStats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(totals.failM || 0, ridingM, true);
   const unpavedPct = routePercent(routeStats.unpavedM, ridingM, true);
+  const hasSignificantUnpaved = routeStats.unpavedM > SIGNIFICANT_UNPAVED_M;
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
   summary.innerHTML = `<strong>${fmtMi(totals.distM)} mi</strong><small>${fmtDur(totals.timeS)}</small>`;
@@ -1314,7 +1321,12 @@ if (!hasRoute) {
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
   summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>Avg. limit</span><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>Max limit</span><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>At least 35 mph</span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span><span class="speed-limit-metric"><span>At least 45 mph</span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span>`;
-  summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span><span class="route-summary-mix-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>${totals.ferryM > 0 ? `<span class="route-summary-mix-item mix-ferry"><span class="route-summary-ferry-swatch" aria-hidden="true">⛴︎</span><b>${fmtMi(totals.ferryM)} mi</b> ferry</span>` : ''}${routeStats.dismountM > 0 ? '<span class="route-summary-mix-item mix-dismount">⚠ <b>Dismount</b> — walk</span>' : ''}</div>`;
+  summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span><span class="route-summary-mix-item${hasSignificantUnpaved ? ' mix-unpaved-warning' : ''}"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>${totals.ferryM > 0 ? `<span class="route-summary-mix-item mix-ferry"><span class="route-summary-ferry-swatch" aria-hidden="true">⛴︎</span><b>${fmtMi(totals.ferryM)} mi</b> ferry</span>` : ''}${routeStats.dismountM > 0 ? '<span class="route-summary-mix-item mix-dismount">⚠ <b>Dismount</b> — walk</span>' : ''}</div>`;
+  unpavedRouteWarning.hidden = !hasSignificantUnpaved;
+  if (hasSignificantUnpaved) {
+    document.getElementById('unpavedWarningText').textContent =
+      `This route includes ${fmtMi(routeStats.unpavedM)} mi of confirmed unpaved surface. Make sure you're comfortable riding it.`;
+  }
   speedShoulderNote.hidden = false;
   speedShoulderNote.innerHTML = `<b>${speedMiles(routeStats.highSpeedNoBikeAccommodationOrShoulderM)}</b> on ≥30 mph roads without bike accommodation or a confirmed ≥${routeStats.minShoulderFt} ft shoulder`;
   const speedProfile = document.getElementById('speedProfile');

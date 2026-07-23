@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-23.330';
+const APP_VERSION = '2026-07-23.331';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -24,6 +24,7 @@ const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
 const OFFICIAL_URBAN = 64;
+const SIGNIFICANT_UNPAVED_M = 1609.344;
 
 /* ---------------------------------------------------------------- palette */
 // One visual verdict system. Internal levels 1 and 2 retain different routing
@@ -3437,6 +3438,7 @@ function renderRouteCard(m) {
   const cautionPct = routePercent(stats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(m.failM || 0, ridingM, true);
   const unpavedPct = routePercent(stats.unpavedM, ridingM, true);
+  const hasSignificantUnpaved = stats.unpavedM > SIGNIFICANT_UNPAVED_M;
   const containsDismount = stats.dismountM > 0;
   const averageSpeedLimit = stats.avgRoadSpeedMph == null ? 'N/A' : `${stats.avgRoadSpeedMph} mph`;
   const hasSteepGradeWarning = Number(m.maxGradePct) > 18;
@@ -3456,7 +3458,7 @@ function renderRouteCard(m) {
           <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
         </div>
         ${mtbNotice}<div class="rc-bottom-stats">
-          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><div class="rc-ride-items${containsDismount ? ' has-dismount' : ''}"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span><span class="rc-ride-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>${containsDismount ? '<span class="rc-ride-item rc-ride-dismount" title="Walk your bike through a short route section"><span aria-hidden="true">⚠</span> Dismount</span>' : ''}</div></div>
+          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><div class="rc-ride-items${containsDismount ? ' has-dismount' : ''}"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span><span class="rc-ride-item${hasSignificantUnpaved ? ' rc-ride-unpaved-warning' : ''}"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>${containsDismount ? '<span class="rc-ride-item rc-ride-dismount" title="Walk your bike through a short route section"><span aria-hidden="true">⚠</span> Dismount</span>' : ''}</div></div>
         </div>
       </div>
     </div>`;
@@ -3465,6 +3467,19 @@ function renderRouteCard(m) {
   document.getElementById('rcElevGradeWarning')?.addEventListener('click', () => openRouteDetails('stats'));
   refreshNavigationUI();
   drawRouteCardElevation();
+}
+
+function flashRouteDetailsWarning(route) {
+  if (!route?.ok) return;
+  const stats = routeSummaryStats(route);
+  if (!(Number(route.maxGradePct) > 18 || stats.unpavedM > SIGNIFICANT_UNPAVED_M)) return;
+  const button = document.getElementById('routeDetailsBtn');
+  if (!button) return;
+  button.classList.remove('route-details-attention');
+  void button.offsetWidth;
+  button.classList.add('route-details-attention');
+  button.addEventListener('animationend',
+    () => button.classList.remove('route-details-attention'), { once: true });
 }
 
 function showPointTooFarPopup(m) {
@@ -4825,6 +4840,7 @@ function activateRouteOption(option, updateNavigation = false) {
   }
   renderRouteOptionControls();
   renderRouteCard(option);
+  flashRouteDetailsWarning(option);
   storeRouteDetails(option);
   drawRoute(option.coords, option.ferrySegs, option.segs);
   consumePendingRouteStepHighlight();

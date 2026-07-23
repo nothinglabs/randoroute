@@ -215,6 +215,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-unpaved-swatch { display: inline-block; width: 12px; height: 7px; margin-right: 4px; border: 1px solid #536672; border-radius: 1px; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); vertical-align: -0.5px; }
 #routeCard .rc-ride-caution, #routeCard .rc-ride-caution b { color: #9a4f00; }
 #routeCard .rc-ride-fail, #routeCard .rc-ride-fail b { color: #b42318; }
+#routeCard .rc-ride-unpaved-warning, #routeCard .rc-ride-unpaved-warning b { color: #b42318; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
 #routeCard .rc-ride-dismount { color: #8a4900; font-weight: 800; }
 
 /* ---- Navigating Route panel: the Route tab while turn-by-turn is active. ---- */
@@ -300,6 +301,12 @@ body:not(.navigation-active) #navCard { display: none; }
 }
 
 .route-details-btn { min-width: 64px; min-height: 40px; padding: 0 11px; border: 1px solid #78a9cc; border-radius: 8px; background: #f7fafb; color: #0a66c2; font: 750 11px/1 system-ui; cursor: pointer; }
+.route-details-btn.route-details-attention { animation: route-details-alert-flash 1s ease-in-out; }
+@keyframes route-details-alert-flash {
+  0%, 100% { border-color: #78a9cc; background: #f7fafb; color: #0a66c2; }
+  15%, 75% { border-color: #a82017; background: #c33327; color: #fff; box-shadow: 0 0 0 2px rgba(195,51,39,.2); }
+  45% { border-color: #d7e1e7; background: #fff; color: #a82017; box-shadow: none; }
+}
 .route-details-btn:disabled { opacity: .45; cursor: default; }
 .route-tips-btn { align-self: stretch; flex: 0 0 34px !important; width: 34px !important; min-height: 34px !important; max-height: none !important; height: auto !important; border-radius: 10px !important; font-size: 15px !important; }
 
