@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const sw = fs.readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+const detailsHtml = fs.readFileSync(new URL('../route-details.html', import.meta.url), 'utf8');
 
 assert.match(sw, /c\.addAll\(SHELL\)/,
   'a candidate update must precache the complete app shell before it can install');
@@ -11,6 +12,14 @@ assert.match(sw, /url\.origin === location\.origin\) \{\s*e\.respondWith\(cacheF
   'the active app shell should stay cache-first until the user accepts an update');
 assert.doesNotMatch(sw, /networkFirst\(SHELL_CACHE/,
   'individual app-shell files must not refresh independently during a release');
+const detailsAssetVersion = /route-details\.css\?v=(\d+)/.exec(detailsHtml)?.[1];
+assert.ok(detailsAssetVersion, 'Route Details should version its CSS URL');
+assert.match(detailsHtml, new RegExp(`route-details\\.js\\?v=${detailsAssetVersion}`),
+  'Route Details CSS and JavaScript should use the same asset version');
+assert.match(sw, new RegExp(`'\\./route-details\\.css\\?v=${detailsAssetVersion}'`),
+  'the service worker should precache the exact versioned Route Details stylesheet');
+assert.match(sw, new RegExp(`'\\./route-details\\.js\\?v=${detailsAssetVersion}'`),
+  'the service worker should precache the exact versioned Route Details script');
 
 const cacheFirstStart = sw.indexOf('async function cacheFirst(');
 assert.ok(cacheFirstStart >= 0, 'cache-first helper was not found');
