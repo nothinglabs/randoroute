@@ -209,8 +209,10 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-ride-item { min-width: 0; white-space: nowrap; text-align: center; }
 #routeCard .rc-ride-items:not(.has-dismount) .rc-ride-item:first-child { grid-column: span 2; }
 #routeCard .rc-ride-mix b { color: #223c4b; font-weight: 800; }
-#routeCard .rc-mix-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border-radius: 2px; vertical-align: -0.5px; }
-#routeCard .rc-unpaved-swatch { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border: 1px solid #536672; border-radius: 1px; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); vertical-align: -0.5px; }
+#routeCard .rc-mix-swatch { display: inline-block; width: 12px; height: 7px; margin-right: 4px; border-radius: 2px; vertical-align: -0.5px; }
+/* A short horizontal sample gives the unpaved slats enough room to read as a
+   texture, while still fitting the route card's compact percentage grid. */
+#routeCard .rc-unpaved-swatch { display: inline-block; width: 12px; height: 7px; margin-right: 4px; border: 1px solid #536672; border-radius: 1px; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); vertical-align: -0.5px; }
 #routeCard .rc-ride-caution, #routeCard .rc-ride-caution b { color: #9a4f00; }
 #routeCard .rc-ride-fail, #routeCard .rc-ride-fail b { color: #b42318; }
 #routeCard .rc-ride-dismount { color: #8a4900; font-weight: 800; }
@@ -361,7 +363,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 
 .legend { margin-top: 5px; }
 .legend .item { display: flex; align-items: center; gap: 8px; margin: 5px 0; font: 600 11px/1.25 system-ui; }
-.legend .swatch { width: 22px; height: 6px; border-radius: 3px; flex: none; }
+.legend .swatch { width: 12px; height: 6px; border-radius: 3px; flex: none; }
 .legend .legend-unpaved-swatch { border: 1px solid #536672; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); }
 .legend .legend-dismount-swatch { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid #8a5600; border-radius: 50%; background: #fff7d6; color: #a04d00; font: 800 12px/1 system-ui; }
 .legend-note { margin: 7px 0 0; padding-top: 6px; border-top: 1px solid #e2eaee; color: #6b7d88; font: 600 10px/1.35 system-ui; }
