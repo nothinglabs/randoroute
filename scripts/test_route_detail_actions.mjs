@@ -28,7 +28,7 @@ assert.doesNotMatch(app, /ROUTE_TIME_DISPLAY_MULTIPLIER/,
   'route-choice duration should use the route engine estimate without a display buffer');
 assert.match(app, /class="rc-distance">\$\{fmtMi\(m\.distM\)\} mi<\/span><span class="rc-duration">Est\. \$\{fmtDur\(m\.timeS\)\}<\/span>/,
   'the route-choice card should stack miles above its estimated duration');
-assert.match(app, /let roadM = 0, roadSpeedM = 0;[\s\S]*?\!\(flags & 8\)[\s\S]*?roadSpeedM \+= mph \* len[\s\S]*?avgRoadSpeedMph: roadM > 0 \? Math\.round\(roadSpeedM \/ roadM\) : null/,
+assert.match(app, /let roadM = 0, roadSpeedM = 0, unpavedM = 0;[\s\S]*?\!\(flags & 8\)[\s\S]*?roadSpeedM \+= mph \* len[\s\S]*?avgRoadSpeedMph: roadM > 0 \? Math\.round\(roadSpeedM \/ roadM\) : null/,
   'the average speed limit should be distance-weighted across all road segments, including bike lanes');
 assert.match(app, /class="rc-details-wrap">[\s\S]*?class="rc-speed-limit"><b>\$\{averageSpeedLimit\}<\/b><span>Avg\. Road<br>Speed Limit<\/span>[\s\S]*?id="routeDetailsSlot"/,
   'the route-choice card should place the number above its average road speed limit label and Details');
@@ -60,11 +60,11 @@ assert.match(app, /maps\/embed\/v1\/streetview[\s\S]*?radius=250/,
   'the embedded Street View lookup should search up to 250 m for nearby imagery');
 assert.match(appCss, /\.full-help-head \.streetview-close\s*\{[^}]*min-height:\s*42px/,
   'the embedded Street View close control should have a clear hit target');
-assert.match(appCss, /\.sv-coverage-note\s*\{[^}]*position:\s*absolute/,
+assert.match(appCss, /\.sv-overlay-notes\s*\{[^}]*position:\s*absolute[\s\S]*?\.sv-coverage-note\s*\{[^}]*background:/,
   'the coverage fallback should remain visible over an unavailable panorama');
-assert.match(app, /class="rc-ride-items"[\s\S]*?class="rc-ride-item"[\s\S]*?trails \/ bike lanes[\s\S]*?pass rules[\s\S]*?rc-ride-fail[\s\S]*?fail rules/,
+assert.match(app, /class="rc-ride-items[\s\S]*?class="rc-ride-item"[\s\S]*?trails \/ lanes[\s\S]*?pass rules[\s\S]*?rc-ride-fail[\s\S]*?fail rules/,
   'the route card should group its ride classes into equal-width items');
-assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summary-mix-item"[\s\S]*?trails \/ bike lanes[\s\S]*?pass rules[\s\S]*?mix-fail[\s\S]*?fail rules/,
+assert.match(details, /class="route-summary-mix-items"[\s\S]*?class="route-summary-mix-item"[\s\S]*?trails \/ lanes[\s\S]*?pass rules[\s\S]*?mix-fail[\s\S]*?fail rules/,
   'Route Details should group its ride classes into equal-width items');
 assert.doesNotMatch(details, /class="route-summary-label">Ride<\//,
   'Route Details should not show an unexplained Ride label above its class metrics');
@@ -74,8 +74,8 @@ assert.match(css, /\.speed-profile-average\s*\{[^}]*display:\s*grid[^}]*gap:\s*4
   'speed-limit metrics should use a compact vertical list with clear label/value separation');
 assert.match(css, /\.speed-shoulder-note\s*\{[^}]*font:\s*650 13px\/1\.35 system-ui/,
   'the high-speed shoulder/accommodation note should remain comfortably readable');
-assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)[\s\S]*?@media \(max-width: 460px\)[\s\S]*?\.rc-ride-items\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/,
-  'the route-card ride classes should balance into two equal columns on narrow phones');
+assert.match(appCss, /\.rc-ride-items\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)[\s\S]*?\.rc-ride-items:not\(\.has-dismount\) .rc-ride-item:first-child\s*\{[^}]*grid-column:\s*span 2/,
+  'the route-card ride classes should use the compact three-column layout while keeping the lead metric balanced');
 assert.match(appCss, /\.rc-details-wrap\s*\{[^}]*flex-direction:\s*column[^}]*justify-content:\s*flex-end[\s\S]*?\.rc-speed-limit\s*\{[^}]*text-align:\s*center/,
   'the route-choice Details rail should sit at the bottom-left with a compact speed metric above it');
 assert.match(css, /\.route-quick-summary\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap[\s\S]*?\.route-summary-mix-items\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap/,
@@ -110,6 +110,8 @@ assert.ok(statsStart >= 0 && statsEnd > statsStart, 'route-summary statistics he
 const statsContext = vm.createContext({
   Math, FLAG_INFRA: 8, FLAG_FERRY: 32,
   isBikeNetwork: (seg) => !!((seg.flags || 0) & 8) || (seg.facility || 0) >= 2,
+  isConfirmedUnpavedSurface: (surface) => surface === 2 || surface === 3,
+  isDismountSegment: (seg) => !!seg.dismount || !!((seg.official || 0) & 8),
 });
 vm.runInContext(details.slice(statsStart, statsEnd), statsContext);
 assert.equal(vm.runInContext(`routeSummaryStats([
@@ -186,6 +188,8 @@ const previewContext = vm.createContext({
   isBikeNetwork: (seg) => !!((seg.flags || 0) & 8) || (seg.facility || 0) >= 2,
   isDesignated: () => false,
   isMountainBikeTrail: () => false,
+  isConfirmedUnpavedSurface: (surface) => surface === 2 || surface === 3,
+  isDismountSegment: (seg) => !!seg.dismount || !!((seg.official || 0) & 8),
 });
 vm.runInContext(details.slice(previewStart, previewEnd), previewContext);
 assert.equal(vm.runInContext(`routePreviewEdgeColors([

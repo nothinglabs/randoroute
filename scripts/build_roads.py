@@ -25,6 +25,8 @@ Feature properties (short keys to keep the files small):
   w  shoulder width, ft (only when OSM has real shoulder data; shoulder=no -> 0)
   n  name                   r  ref (route number)
   g  1 = on a designated bike route (USBR / regional trail)
+  k  sidewalk state (1=present, 2=explicitly absent)
+  u  1 = Census urban area
 
 Requires: osmium (pyosmium), shapely.
 Usage: python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
@@ -97,9 +99,12 @@ def parse_shoulder_ft(tags):
     return None
 
 
-def build(src, out_prefix):
-    from build_graph import collect_designated
+def build(src, out_prefix, urban_areas):
+    from build_graph import (EDGE_SIDEWALK, EDGE_SIDEWALK_NO, EDGE_URBAN,
+                             collect_designated, is_urban_edge, load_urban_index,
+                             sidewalk_flags)
     designated = collect_designated(src)
+    urban_index = load_urban_index(urban_areas)
     print(f'{len(designated):,} designated-route member ways', flush=True)
     feats = []
     kept = skipped_private = 0
@@ -151,6 +156,13 @@ def build(src, out_prefix):
             p['d'] = 1  # duplicated by the WSDOT BLTS layer
         if obj.id in designated:
             p['g'] = 1  # on a designated bike route (USBR / regional trail)
+        sidewalk = sidewalk_flags(tags)
+        if sidewalk & EDGE_SIDEWALK:
+            p['k'] = 1
+        elif sidewalk & EDGE_SIDEWALK_NO:
+            p['k'] = 2
+        if is_urban_edge(cc, urban_index):
+            p['u'] = 1
 
         feats.append(json.dumps(
             {'type': 'Feature', 'properties': p,
@@ -185,5 +197,7 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='data/washington-latest.osm.pbf')
     ap.add_argument('--out-prefix', default='data/roads')
+    ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-wa.geojson',
+                    help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
     args = ap.parse_args()
-    build(args.src, args.out_prefix)
+    build(args.src, args.out_prefix, args.urban_areas)

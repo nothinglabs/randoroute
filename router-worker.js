@@ -53,6 +53,11 @@ const EDGE_MTB = 4;
 // Stored in the graph's compact edge-source byte. Unlike bicycle=no, a
 // bicycle=dismount edge is legal when the rider walks the bike through it.
 const EDGE_DISMOUNT = 8;
+// OSM sidewalk state and build-time Census urban context share the existing
+// metadata byte, so this rule adds no per-edge graph storage.
+const EDGE_SIDEWALK = 16;
+const EDGE_SIDEWALK_NO = 32;
+const EDGE_URBAN = 64;
 const SURFACE_UNKNOWN = 0;
 const SURFACE_PAVED = 1;
 const SURFACE_GRAVEL = 2;
@@ -265,6 +270,19 @@ function withRoadBlocks(points, rules, work) {
 }
 
 // Mirrors the app's effectiveLevel() for packed edge attributes.
+function edgeNoShoulderMax(i, rules) {
+  const legacy = Number(rules.freeMaxSpeed) || 35;
+  const urban = Number(rules.urbanMaxSpeedNoShoulder) || legacy;
+  const rural = Number(rules.ruralMaxSpeedNoShoulder) || legacy;
+  return eOfficial[i] & EDGE_URBAN ? urban : rural;
+}
+
+function sidewalkFallbackApplies(i, rules, shoulder = eSh[i]) {
+  return rules.allowSidewalkFallback && !!(eOfficial[i] & EDGE_SIDEWALK)
+    && eFacility[i] < 2 && eSpeed[i] > edgeNoShoulderMax(i, rules)
+    && shoulder >= 0 && shoulder < rules.minShoulder;
+}
+
 function edgeLevel(i, rules) {
   const flags = eFlags[i];
   if (eSh[i] === PROHIBITED_SHOULDER) return 4;      // WSDOT prohibition
@@ -277,7 +295,7 @@ function edgeLevel(i, rules) {
   // ordinary roads, including designated routes. Dedicated infrastructure,
   // ferries, freeways, and prohibitions were handled above.
   if (!rules.noUpperLimit && spd > rules.upperMaxSpeed) return 4;
-  if (spd <= rules.freeMaxSpeed) return limitedAccess ? 3 : 1;
+  if (spd <= edgeNoShoulderMax(i, rules)) return limitedAccess ? 3 : 1;
   // A rider can opt to treat a designated bike route (USBR/regional) as a
   // vetted corridor. Otherwise it is evaluated by the normal shoulder rule.
   if ((flags & 64) && rules.vettedBikeRoutes) return limitedAccess ? 3 : 2;
@@ -286,7 +304,12 @@ function edgeLevel(i, rules) {
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
   // A conventional/buffered lane is usable operating space. A shared-lane
   // marking is useful context but does not substitute for a shoulder.
-  if (eFacility[i] < 2 && sh >= 0 && sh < rules.minShoulder) return 4;
+  if (eFacility[i] < 2 && sh >= 0 && sh < rules.minShoulder) {
+    // A mapped sidewalk is an opt-in shoulder fallback. It remains a caution
+    // and receives a strong route-choice cost below, but is not a rule fail.
+    if (sidewalkFallbackApplies(i, rules, sh)) return 3;
+    return 4;
+  }
   return limitedAccess ? 3 : 2;
 }
 
@@ -387,6 +410,19 @@ function majorRoadMult(i, mode) {
   return 1;
 }
 
+// `sidewalk=no` is positive evidence of less forgiving urban road context.
+// Missing sidewalk tags remain neutral. This is deliberately a soft cost,
+// never a claim about bicycle legality or actual traffic counts.
+function sidewalkExposureMult(i, mode) {
+  if ((eOfficial[i] & (EDGE_URBAN | EDGE_SIDEWALK_NO)) !== (EDGE_URBAN | EDGE_SIDEWALK_NO)
+      || eFacility[i] >= 2 || eSpeed[i] < 30 || (eFlags[i] & (8 | 32 | 4))) return 1;
+  return mode === 'direct' ? 1.06 : mode === 'low' ? 1.30 : 1.16;
+}
+
+function sidewalkFallbackMult(mode) {
+  return mode === 'direct' ? 1.9 : mode === 'low' ? 8 : 3.8;
+}
+
 function edgeHazard(i, forward) { return forward ? eHazAB[i] : eHazBA[i]; }
 
 // Graded pressure toward slower no-shoulder roads. Every mph over the comfort
@@ -452,12 +488,13 @@ function climbPreferenceS(i, forward, mode) {
 }
 
 // Surface preference is intentionally a soft, distance-proportional route
-// cost.  Every route gets a modest 20% baseline preference for known pavement;
-// the rider-controlled option raises that to the full penalty.  Neither makes
-// an unpaved edge illegal, and unknown OSM surface data remains neutral.
+// cost. Every route gets a modest 20% baseline preference for known pavement;
+// the rider-controlled option raises that to four times the former full cost.
+// This makes a paved alternative win decisively when it is reasonably
+// comparable, while unpaved links remain available when they are necessary.
 function surfacePreferenceS(i, rules) {
   if (eFlags[i] & 32) return 0;
-  const strength = rules?.preferPaved === true ? 1 : 0.20;
+  const strength = rules?.preferPaved === true ? 4 : 0.20;
   const surface = eSurface[i];
   if (surface === SURFACE_GRAVEL) return eLen[i] * 0.065 * strength;
   if (surface === SURFACE_ROUGH) return eLen[i] * 0.20 * strength;
@@ -716,9 +753,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // An exempted terminal-access block is a last resort, never a shortcut:
       // any reasonable fully-safe approach must still win.
       if (requiredSafeAccess) cost *= 30;
-      cost *= speedStress(mode, fl, eSpeed[ei], searchRules.freeMaxSpeed, eSh[ei]);
+      cost *= speedStress(mode, fl, eSpeed[ei], edgeNoShoulderMax(ei, searchRules), eSh[ei]);
       cost *= hazardMult(mode, edgeHazard(ei, forward) || 0);
       cost *= majorRoadMult(ei, mode);
+      cost *= sidewalkExposureMult(ei, mode);
+      if (sidewalkFallbackApplies(ei, searchRules)) cost *= sidewalkFallbackMult(mode);
       if (fl & 4) cost *= activeWeights.freeway;
       if (fl & 128) cost *= activeWeights[mode === 'direct' ? 'limitedDirect' : mode === 'low' ? 'limitedLow' : 'limitedBalanced'];
       if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
@@ -1314,9 +1353,14 @@ function publicCandidate(candidate) {
 }
 
 function conservativeDiscoveryRules(rules) {
-  const current = Number(rules.freeMaxSpeed) || 35;
-  const discoveryMax = Math.max(15, Math.min(30, current - 5));
-  return discoveryMax < current ? { ...rules, freeMaxSpeed: discoveryMax } : null;
+  const legacy = Number(rules.freeMaxSpeed) || 35;
+  const urbanCurrent = Number(rules.urbanMaxSpeedNoShoulder) || legacy;
+  const ruralCurrent = Number(rules.ruralMaxSpeedNoShoulder) || legacy;
+  const urbanMax = Math.max(15, Math.min(30, urbanCurrent - 5));
+  const ruralMax = Math.max(15, Math.min(30, ruralCurrent - 5));
+  return urbanMax < urbanCurrent || ruralMax < ruralCurrent
+    ? { ...rules, urbanMaxSpeedNoShoulder: urbanMax, ruralMaxSpeedNoShoulder: ruralMax }
+    : null;
 }
 
 // Add a small, bounded set of stricter searches to the candidate pool. These
@@ -1329,7 +1373,8 @@ function addDiscoveryCandidates(raw, points, rules, forceDesig, forceResidential
   // conservative lens across the entire itinerary is slower and recreates the
   // all-or-nothing behavior this portfolio is meant to avoid.
   if (raw.some((candidate) => candidate.ferryM > 0)) return searchRules;
-  const discoveryMaxSpeed = searchRules.freeMaxSpeed;
+  const discoveryMaxSpeed = Math.max(searchRules.urbanMaxSpeedNoShoulder,
+    searchRules.ruralMaxSpeedNoShoulder);
   const directProfile = {
     id: 'discover-quick', label: 'Low-speed discovery', mode: 'direct',
     prefDesig: forceDesig, prefResidential: forceResidential, order: 0.48,
@@ -1480,7 +1525,9 @@ function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, se
       id: 'adaptive-corridor',
       label: 'Adaptive corridor', mode: 'balanced', prefDesig: true, prefResidential: true,
       order: seed._profile.order + 0.08 + landIndex * 0.01,
-      alternativeCorridor: true, discoveryMaxSpeed: searchRules.freeMaxSpeed,
+      alternativeCorridor: true,
+      discoveryMaxSpeed: Math.max(searchRules.urbanMaxSpeedNoShoulder,
+        searchRules.ruralMaxSpeedNoShoulder),
     };
     hybrid.aggression = routeAggression(hybrid);
     raw.push(hybrid);

@@ -53,7 +53,12 @@ python3 scripts/serve.py
     designation satisfies the shoulder rule; turn this off to apply the same
     speed and shoulder limits as every other road.
   - *Min shoulder width* — a known shoulder under this fails a road.
-  - *"Free" max speed* — at/below this, the road passes regardless of shoulder.
+  - *Urban / rural max speed without shoulder* — a road at or below its local
+    threshold passes without a shoulder. Census urban areas use the urban
+    threshold; all other areas use the rural threshold.
+  - *Allow sidewalk fallback* — a mapped sidewalk can meet the shoulder rule
+    as an amber, strongly-deprioritized fallback. It does not bypass bicycle
+    restrictions, freeways, or the upper-speed limit.
   - *Upper max speed* — above this a road fails (unless *No upper limit*).
   - *No upper limit* — don't fail roads on speed alone.
 - Hover any segment for a **local readout** — the same color/verdict wording as
@@ -188,6 +193,7 @@ the rider-controlled **Allow mountain bike trails** option.
 ### Full road network → `data/roads.pmtiles` (~324k ways, vector tiles)
 
 ```bash
+python3 scripts/fetch_census_urban_areas.py
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads
 tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
@@ -201,6 +207,10 @@ Same Geofabrik extract. Keeps `motorway`..`tertiary` (+links), `unclassified`,
 `access=private/no`. Where OSM has no usable `maxspeed`, a class-based default
 is baked in (e.g. residential → 25 mph) and flagged `e=1` so the UI shows
 "(estimated from class)".
+
+The build also records compact OSM sidewalk state (`k`) and 2020 Census urban
+area context (`u`). They let the map use the same urban/rural no-shoulder rules
+as the routing graph without adding a large runtime data layer.
 
 Served as **PMTiles** — a single static vector-tile file read via HTTP range
 requests (no tile server). The browser fetches only the small tiles in view,
@@ -242,6 +252,8 @@ start at the rider's current location.
 bash scripts/fetch_dem.sh
 # refresh official WSDOT legal-speed and existing-facility build inputs
 python3 scripts/fetch_wsdot_graph_data.py
+# fetch 2020 Census urban-area polygons (build input; not committed)
+python3 scripts/fetch_census_urban_areas.py
 python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
 # Conservative final passes over the authoritative WSDOT linework. They are
 # idempotent and catch a few very-close matches that the build-time conflation
@@ -257,7 +269,8 @@ climb/descent sampled every 60 m from the DEM, the original OSM road class,
 speed — official WSDOT legal speed, OSM-posted, or class-estimated — compact
 OSM surface category (paved, gravel/compacted, rough unpaved, or unknown), typed
 bicycle facility, authoritative-source bits, freeway/limited-access/
-infrastructure flags, shoulder from WSDOT conflation or OSM, and directional
+infrastructure flags, shoulder from WSDOT conflation or OSM, compact OSM
+sidewalk state, Census urban-area context, and directional
 curve-warning severity/range). Pedestrian-only and `bicycle=no` ways are not
 included in the riding graph. `bicycle=dismount` ways are retained as
 walk-bike connectors: the router charges walking time plus a strong per-entry

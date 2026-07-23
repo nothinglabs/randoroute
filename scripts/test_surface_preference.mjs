@@ -12,7 +12,7 @@ assert.match(app, /preferPaved:\s*false/,
   'strong paved-surface preference should default off for new settings');
 assert.match(app, /check\('preferPaved', 'Strongly prefer paved surfaces'\)/,
   'the strong surface preference should be available in Settings');
-assert.match(app, /GRAPH_FORMAT_VERSION = 'bgr8-2'/,
+assert.match(app, /GRAPH_FORMAT_VERSION = 'bgr8-3'/,
   'the app should request the BGR8 graph layout');
 assert.match(worker, /want BGR8/,
   'the router should reject an older graph layout instead of misreading it');
@@ -74,10 +74,10 @@ assert.equal(context.surfacePreferenceS(0, { preferPaved: true }), 0,
   'unknown OSM surfaces should not be penalized');
 assert.equal(context.surfacePreferenceS(1, { preferPaved: true }), 0,
   'paved surfaces should not be penalized');
-assert.equal(context.surfacePreferenceS(2, { preferPaved: true }), 65,
-  'strong preference should retain the full gravel cost');
-assert.equal(context.surfacePreferenceS(3, { preferPaved: true }), 200,
-  'strong preference should retain the full rough-surface cost');
+assert.equal(context.surfacePreferenceS(2, { preferPaved: true }), 260,
+  'strong preference should apply a substantially larger gravel cost');
+assert.equal(context.surfacePreferenceS(3, { preferPaved: true }), 800,
+  'strong preference should apply a substantially larger rough-surface cost');
 assert.equal(context.surfacePreferenceS(2, { preferPaved: false }), 13,
   'with strong preference off, gravel should retain the 20-percent baseline cost');
 assert.equal(context.surfacePreferenceS(3, { preferPaved: false }), 40,

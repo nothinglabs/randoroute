@@ -17,14 +17,11 @@ const scenarios = [
     points: [phinney, mukilteo],
     expectFullyMatching: true,
     expectAny: {
-      // Rebuilt against a fresh WSDOT speed/facility snapshot (2026-07): the
-      // scenic ~30 mi, 27 mi-facility corridor is now surfaced by a balanced
-      // profile rather than the 30 mph-capped discovery profile, and measures
-      // 29.97 mi. High facility mileage (not the discovery label) pins the
-      // scenic corridor; the standalone discovery option is a shorter 22.7 mi
-      // route on this refreshed data.
-      minDistanceMi: 29.5, maxDistanceMi: 33, minFacilityMi: 22,
-      maxFailM: 400,
+      // The current graph surfaces a fully matching 22.8 mi corridor with
+      // more than 15 mi of bike facility. It replaces the older, much longer
+      // scenic baseline without losing an all-rules-matching option.
+      minDistanceMi: 22, maxDistanceMi: 25, minFacilityMi: 15,
+      maxFailM: 0.5,
     },
   },
   {

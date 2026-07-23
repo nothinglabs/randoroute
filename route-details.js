@@ -8,6 +8,9 @@ const FLAG_DESIGNATED = 64;
 const FLAG_LIMITED_ACCESS = 128;
 const OFFICIAL_MTB = 4;
 const OFFICIAL_DISMOUNT = 8;
+const OFFICIAL_SIDEWALK = 16;
+const OFFICIAL_SIDEWALK_NO = 32;
+const OFFICIAL_URBAN = 64;
 const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 const BIKE_NETWORK_COLOR = '#9fc400';
 const PASS_COLOR = '#168ad1';
@@ -48,8 +51,24 @@ function isDismountSegment(seg) {
   return !!seg?.dismount || !!((seg?.official || 0) & OFFICIAL_DISMOUNT);
 }
 
+function noShoulderMaxSpeed(seg, rules = {}) {
+  const legacy = Number(rules.freeMaxSpeed) || 35;
+  const urban = Number(rules.urbanMaxSpeedNoShoulder) || legacy;
+  const rural = Number(rules.ruralMaxSpeedNoShoulder) || legacy;
+  return (seg?.official || 0) & OFFICIAL_URBAN ? urban : rural;
+}
+
+function isSidewalkFallbackSegment(seg, rules = {}) {
+  if (!rules.allowSidewalkFallback || !((seg?.official || 0) & OFFICIAL_SIDEWALK)
+      || (seg?.facility || 0) >= 2 || !(seg?.mph > noShoulderMaxSpeed(seg, rules))) return false;
+  let shoulder = Number(seg?.sh);
+  if (shoulder < 0 && rules.unknownShoulderZero) shoulder = 0;
+  return Number.isFinite(shoulder) && shoulder < (Number(rules.minShoulder) || 4);
+}
+
 function safetyVerdict(seg) {
   if (seg.level === 4) return { label: 'Fails rules', className: 'fail' };
+  if (isSidewalkFallbackSegment(seg, details?.rules)) return { label: 'Sidewalk fallback', className: 'caution' };
   if (isMountainBikeTrail(seg)) return { label: 'Mountain-bike trail', className: 'caution' };
   if (seg.level === 3) return { label: 'Caution', className: 'caution' };
   if (!seg.level) return { label: 'Insufficient data', className: 'unknown' };
@@ -288,8 +307,11 @@ function failReason(seg, rules) {
   if (shoulder < 0 && rules.unknownShoulderZero) shoulder = 0;
   if ((seg.facility || 0) < 2 && !(f & FLAG_DESIGNATED)
       && shoulder >= 0 && shoulder < rules.minShoulder) {
-    return seg.sh < 0 ? 'shoulder is unknown and treated as 0 ft'
+    const context = (seg.official || 0) & OFFICIAL_URBAN ? 'urban' : 'rural';
+    const limit = noShoulderMaxSpeed(seg, rules);
+    const shoulderText = seg.sh < 0 ? 'shoulder is unknown and treated as 0 ft'
       : `${shoulder} ft shoulder is below your ${rules.minShoulder} ft minimum`;
+    return `${shoulderText} above your ${limit} mph ${context} no-shoulder limit`;
   }
   return 'does not meet your selected riding rules';
 }
@@ -1209,6 +1231,10 @@ if (!hasRoute) {
   const dismounts = sections(segs, isDismountSegment, (s) => ({
     name: roadName(s), meta: 'Dismount required — walk your bike',
   }));
+  const sidewalkFallbacks = sections(segs, (s) => isSidewalkFallbackSegment(s, rules), (s) => ({
+    name: roadName(s),
+    meta: `${s.mph} mph ${(s.official || 0) & OFFICIAL_URBAN ? 'urban' : 'rural'} road · mapped sidewalk fallback · strongly deprioritized`,
+  }));
   const mountainBike = sections(segs, isMountainBikeTrail, (s) => ({
     name: roadName(s),
     meta: `Allowed mountain-bike trail · ${s.mtb ? 'OSM MTB tag' : 'OSM MTB route'}`,
@@ -1241,7 +1267,7 @@ if (!hasRoute) {
     alert.hidden = true;
   } else {
     alert.hidden = false;
-    if (dismounts.length || mountainBike.length || limitedAccess.length || curveHazards.length || steepGrades.length || unpaved.length) {
+    if (dismounts.length || sidewalkFallbacks.length || mountainBike.length || limitedAccess.length || curveHazards.length || steepGrades.length || unpaved.length) {
       const dismountM = dismounts.reduce((sum, item) => sum + item.lenM, 0);
       const limitedM = limitedAccess.reduce((sum, item) => sum + item.lenM, 0);
       const mountainBikeM = mountainBike.reduce((sum, item) => sum + item.lenM, 0);
@@ -1249,6 +1275,7 @@ if (!hasRoute) {
       alert.classList.add('caution');
       const notes = [];
       if (dismountM) notes.push(`${fmtDist(dismountM)} requires dismounting`);
+      if (sidewalkFallbacks.length) notes.push(`${fmtDist(sidewalkFallbacks.reduce((sum, item) => sum + item.lenM, 0))} uses sidewalk fallback`);
       if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} on mountain-bike trail`);
       if (limitedM) notes.push(`${fmtDist(limitedM)} on a limited-access highway`);
       if (unpavedM) notes.push(`${fmtDist(unpavedM)} confirmed unpaved`);
@@ -1276,6 +1303,7 @@ if (!hasRoute) {
   // while the other answers “what kind of road is this?”.
   renderConcernShortcuts(report, [
     { label: 'Dismount', shortLabel: 'Walk', items: dismounts, sectionId: 'concern-dismount' },
+    { label: 'Sidewalk fallback', shortLabel: 'Sidewalk', items: sidewalkFallbacks, sectionId: 'concern-sidewalk-fallback' },
     { label: 'Fails rules', shortLabel: 'Fail', items: failing, sectionId: 'concern-fails' },
     { label: 'Unpaved', shortLabel: 'Surface', items: unpaved, sectionId: 'concern-unpaved' },
     { label: 'Mountain-bike', shortLabel: 'MTB', items: mountainBike, sectionId: 'concern-mountain-bike' },
@@ -1286,6 +1314,7 @@ if (!hasRoute) {
     { label: 'Highways', shortLabel: 'Hwys', items: highways, sectionId: 'concern-highways' },
   ]);
   if (dismounts.length) renderSection(report, 'Dismount points — walk your bike', dismounts, '', 'caution', false, 'concern-dismount');
+  if (sidewalkFallbacks.length) renderSection(report, 'Sidewalk fallback', sidewalkFallbacks, '', 'caution', false, 'concern-sidewalk-fallback', 'Mapped sidewalks can satisfy the shoulder rule when enabled, but are strongly deprioritized. Verify local bicycle rules and conditions.');
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails');
   if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'Known unpaved surfaces receive a modest route-choice cost; Settings can make the preference strong.');
   if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike');
@@ -1294,7 +1323,7 @@ if (!hasRoute) {
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway', false, 'concern-freeways');
   if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution', false, 'concern-limited-access');
   if (highways.length) renderSection(report, 'Highways', highways, '', '', false, 'concern-highways');
-  if (!freeways.length && !limitedAccess.length && !highways.length && !dismounts.length && !failing.length && !unpaved.length && !mountainBike.length
+  if (!freeways.length && !limitedAccess.length && !highways.length && !dismounts.length && !sidewalkFallbacks.length && !failing.length && !unpaved.length && !mountainBike.length
       && !curveHazards.length && !steepGrades.length) {
     report.innerHTML = '<div class="no-route">No dismount, freeway, limited-access highway, unpaved, highway, steep-grade, or rule-failing sections were found on this route.</div>';
   }

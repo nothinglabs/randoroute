@@ -29,7 +29,9 @@ Binary layout (little-endian), after header 'BGR8' + N,E,D,G,U,B (u32):
   edgeFacility u8[E] (0=none, 1=shared lane, 2=bike lane,
                       3=buffered lane, 4=separated lane, 5=shared-use path),
   edgeOfficial u8[E] (1=WSDOT legal speed, 2=WSDOT facility,
-                      4=explicit mountain-bike path, 8=bicycle=dismount),
+                      4=explicit mountain-bike path, 8=bicycle=dismount,
+                      16=mapped sidewalk, 32=explicitly no sidewalk,
+                      64=Census urban area),
   edgeSurface u8[E] (0=unknown, 1=paved, 2=gravel/compacted,
                      3=rough unpaved),
   edgeHazardAB u8[E], edgeHazardBA u8[E]
@@ -59,7 +61,7 @@ import sys
 from array import array
 
 import osmium
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString, Point, shape
 from shapely.strtree import STRtree
 
 DRIVE = {
@@ -121,6 +123,14 @@ EDGE_MTB = 4
 # layout.  The worker charges walking time plus a per-section penalty, so it
 # can repair an otherwise valid trail corridor without becoming a shortcut.
 EDGE_DISMOUNT = 8
+# Sidewalk data is deliberately ternary.  A missing OSM tag is not evidence
+# that a sidewalk is absent, while an explicit `sidewalk=no` is useful soft
+# safety context.  `sidewalk=separate` still means a sidewalk is available.
+EDGE_SIDEWALK = 16
+EDGE_SIDEWALK_NO = 32
+# Census 2020 Urban Areas distinguish built-up road context from rural roads
+# without tying routing to a local jurisdiction's traffic-count feed.
+EDGE_URBAN = 64
 # Surface is intentionally a tiny routing category rather than the original
 # OSM string.  It lets the client prefer pavement without treating incomplete
 # OSM tagging as an instruction to avoid a road.  Gravel rail trails remain
@@ -443,6 +453,48 @@ def parse_shoulder_ft(tags):
             if m:
                 return int(round(float(m.group(1)) * 3.28084))
     return None
+
+
+def sidewalk_flags(tags):
+    """Compact OSM sidewalk state: present, explicitly absent, or unknown."""
+    values = [tags.get('sidewalk')]
+    values.extend(tags.get(key) for key in (
+        'sidewalk:both', 'sidewalk:left', 'sidewalk:right'))
+    values = {str(value).strip().lower() for value in values if value is not None}
+    if values & {'yes', 'both', 'left', 'right', 'separate'}:
+        return EDGE_SIDEWALK
+    if values & {'no', 'none'}:
+        return EDGE_SIDEWALK_NO
+    return 0
+
+
+def load_urban_index(path):
+    """Load Census Urban Area polygons from an EPSG:4326 GeoJSON file."""
+    fc = json.load(open(path))
+    geoms = []
+    for feature in fc.get('features', []):
+        geometry = feature.get('geometry')
+        if not geometry:
+            continue
+        geom = shape(geometry)
+        if not geom.is_empty:
+            geoms.append(geom)
+    if not geoms:
+        raise ValueError(f'no usable Census urban areas in {path}')
+    print(f'  Census urban areas: {len(geoms):,} polygons', flush=True)
+    return STRtree(geoms), geoms
+
+
+def is_urban_edge(coords, index):
+    """Classify an edge by its midpoint so boundary crossings stay localized."""
+    if not index or len(coords) < 2:
+        return False
+    tree, geoms = index
+    midpoint = LineString(coords).interpolate(0.5, normalized=True)
+    for candidate in tree.query(midpoint):
+        if geoms[int(candidate)].covers(midpoint):
+            return True
+    return False
 
 
 def collect_designated(src):
@@ -790,11 +842,13 @@ def directional_curve_hazard(coords, ele_at, speed, shoulder, facility):
     return ab, ba
 
 
-def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=None):
+def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=None,
+          urban_areas=None):
     wsdot = load_blts_index(blts) if blts else None
     restriction_index = load_restriction_index(restrictions) if restrictions else None
     speed_index = load_official_index(legal_speeds, 'speed') if legal_speeds else None
     facility_index = load_official_index(facilities, 'facility') if facilities else None
+    urban_index = load_urban_index(urban_areas) if urban_areas else None
     ele_at = load_dem()
     if ele_at is None:
         print('  WARNING: no DEM tiles found — building without elevation', flush=True)
@@ -939,7 +993,9 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             espeed, esh, eflags = attrs['speed'], sh, flags
                             efacility = attrs['facility']
                             eofficial = ((EDGE_MTB if attrs['mtb'] else 0)
-                                         | (EDGE_DISMOUNT if attrs.get('dismount') else 0))
+                                         | (EDGE_DISMOUNT if attrs.get('dismount') else 0)
+                                         | sidewalk_flags(tags)
+                                         | (EDGE_URBAN if is_urban_edge(coords, urban_index) else 0))
                             if (restriction_index and not attrs['infra']
                                     and is_restricted_edge(coords, tags, restriction_index)):
                                 restricted_edges[0] += 1
@@ -1120,5 +1176,8 @@ if __name__ == '__main__':
                     help='WSDOT Roadway Characteristic legal-speed GeoJSON')
     ap.add_argument('--facilities', default='data/wsdot_bike_facilities.geojson',
                     help='WSDOT existing bicycle-facility GeoJSON')
+    ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-wa.geojson',
+                    help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
     args = ap.parse_args()
-    build(args.src, args.out, args.blts, args.restrictions, args.legal_speeds, args.facilities)
+    build(args.src, args.out, args.blts, args.restrictions, args.legal_speeds, args.facilities,
+          args.urban_areas)

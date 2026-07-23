@@ -10,7 +10,12 @@ const details = fs.readFileSync(new URL('../route-details.js', import.meta.url),
 const styleStart = app.indexOf('function scoreRouteSeg');
 const styleEnd = app.indexOf('function sameRouteCoordinate', styleStart);
 assert.ok(styleStart >= 0 && styleEnd > styleStart, 'route-style helpers were not found');
-const context = { effectiveLevel: () => 4 };
+const context = {
+  effectiveLevel: () => 4,
+  OFFICIAL_SIDEWALK: 16,
+  OFFICIAL_SIDEWALK_NO: 32,
+  OFFICIAL_URBAN: 64,
+};
 vm.createContext(context);
 vm.runInContext(`${app.slice(styleStart, styleEnd)}\nthis.routeVisualStyle = routeVisualStyle;`, context);
 assert.equal(context.routeVisualStyle({ crossing: 1, ferry: 0, facility: 0, infra: 0 }), 'pass',

@@ -15,12 +15,15 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.305';
+const APP_VERSION = '2026-07-22.308';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
-const GRAPH_FORMAT_VERSION = 'bgr8-2';
+const GRAPH_FORMAT_VERSION = 'bgr8-3';
 const OFFICIAL_DISMOUNT = 8;
+const OFFICIAL_SIDEWALK = 16;
+const OFFICIAL_SIDEWALK_NO = 32;
+const OFFICIAL_URBAN = 64;
 
 /* ---------------------------------------------------------------- palette */
 // One visual verdict system. Internal levels 1 and 2 retain different routing
@@ -56,7 +59,9 @@ const DEFAULT_RULES = Object.freeze({
   vettedBikeRoutes: true, // let designated corridors pass despite missing/narrow shoulder data?
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
-  freeMaxSpeed: 35,     // mph; at/below this a road passes even without a shoulder
+  urbanMaxSpeedNoShoulder: 30, // mph; at/below this an urban road passes without a shoulder
+  ruralMaxSpeedNoShoulder: 35, // mph; at/below this a rural road passes without a shoulder
+  allowSidewalkFallback: true, // a mapped sidewalk can satisfy the shoulder rule, with caution
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
@@ -64,7 +69,8 @@ const DEFAULT_RULES = Object.freeze({
 const rules = { ...DEFAULT_RULES };
 const RULE_NUMBER_LIMITS = {
   minShoulder: [0, 10],
-  freeMaxSpeed: [15, 45],
+  urbanMaxSpeedNoShoulder: [15, 45],
+  ruralMaxSpeedNoShoulder: [15, 45],
   upperMaxSpeed: [25, 65],
 };
 
@@ -115,6 +121,17 @@ function validRuleOverrides(source) {
     if (typeof current === 'number' && Number.isFinite(value)) {
       const [min, max] = RULE_NUMBER_LIMITS[key] || [-Infinity, Infinity];
       clean[key] = Math.min(max, Math.max(min, value));
+    }
+  }
+  // Preserve existing custom settings and shared links made before the
+  // urban/rural split.  New installs use the Randonneur 30/35 defaults.
+  const legacyNoShoulderMax = Number(source.freeMaxSpeed);
+  if (Number.isFinite(legacyNoShoulderMax)) {
+    for (const key of ['urbanMaxSpeedNoShoulder', 'ruralMaxSpeedNoShoulder']) {
+      if (clean[key] == null) {
+        const [min, max] = RULE_NUMBER_LIMITS[key];
+        clean[key] = Math.min(max, Math.max(min, legacyNoShoulderMax));
+      }
     }
   }
   return clean;
@@ -216,8 +233,8 @@ function scoreOSM(p) {
 
 // Full OSM road network (Phase 3). Short property keys (see build_roads.py):
 // h=class s=speed(mph) e=estimated f=facility b=bike-prohibited m=motorway
-// w=shoulder(ft) n=name r=ref. Speeds are always present — actual, or inferred
-// from road class (BNA-style) with e=1 marking the estimate.
+// w=shoulder(ft) n=name r=ref k=sidewalk state u=urban area. Speeds are always
+// present — actual, or inferred from road class (BNA-style) with e=1 marking it.
 function scoreRoad(p) {
   return {
     baseScore: null,
@@ -231,6 +248,8 @@ function scoreRoad(p) {
     infra: false,
     est: p.e === 1,
     desig: p.g === 1, // on a designated bike route (USBR / regional)
+    sidewalk: p.k === 1 ? 'present' : p.k === 2 ? 'absent' : null,
+    urban: p.u === 1,
   };
 }
 
@@ -248,6 +267,16 @@ function scoreRestrict() {
 }
 
 /* --------------------------------------------- source-agnostic scorer */
+function noShoulderMaxSpeed(n) {
+  return n.urban ? rules.urbanMaxSpeedNoShoulder : rules.ruralMaxSpeedNoShoulder;
+}
+
+function sidewalkFallbackApplies(n, speed = n.maxspeed_num, shoulder = n.shoulder_width) {
+  return rules.allowSidewalkFallback && n.sidewalk === 'present'
+    && !n.good_facility && speed != null && speed > noShoulderMaxSpeed(n)
+    && shoulder != null && shoulder < rules.minShoulder;
+}
+
 // "Your criteria decide", as HARD gates: each criterion is pass/fail. A road
 // fails (level 4 = avoid) if the data we have shows any criterion is not met.
 // Missing data does NOT fail a road — only a known-bad value does. Level 3 is
@@ -272,8 +301,10 @@ function effectiveLevel(n) {
   // rule below fires first) and so are roads with a bike facility.
   const sh = n.shoulder_width == null && rules.unknownShoulderZero ? 0 : n.shoulder_width;
 
-  // Slow enough → comfortable regardless of shoulder.
-  if (spd != null && spd <= rules.freeMaxSpeed) return n.limited_access ? 3 : 1;
+  // Slow enough → comfortable regardless of shoulder.  The local Census
+  // classification distinguishes a 35 mph rural road from urban exposure.
+  const noShoulderMax = noShoulderMaxSpeed(n);
+  if (spd != null && spd <= noShoulderMax) return n.limited_access ? 3 : 1;
 
   // A rider can opt to treat a designated bike route (USBR / regional trail)
   // as a vetted corridor. The freeway, prohibition, and speed-cutoff gates
@@ -283,6 +314,9 @@ function effectiveLevel(n) {
   // Hard gates. Each fails ONLY when we have data proving the violation
   // (with the pessimistic option, "unknown = 0 ft" counts as data).
   const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
+  // A mapped sidewalk is an opt-in fallback, not bike infrastructure. It
+  // meets the shoulder rule so strict filtering can use it, but stays amber.
+  if (shoulderFails && sidewalkFallbackApplies(n, spd, sh)) return 3;
   if (shoulderFails) return 4;
 
   // No usable data on any criterion → unknown.
@@ -356,9 +390,9 @@ const SOURCES = [
     // The ?v= busts stale HTTP range caches when the tiles are rebuilt —
     // PMTiles bypasses the service worker, and mixing old/new byte ranges
     // silently breaks tile decoding. Bump alongside the sw.js VERSION.
-    vector: 'pmtiles://data/roads.pmtiles?v=9',
+    vector: 'pmtiles://data/roads.pmtiles?v=10',
     sourceLayer: 'roads',
-    count: 323730, // baked at build time (tiles don't carry a global count)
+    count: 324089, // baked at build time (tiles don't carry a global count)
     scorer: scoreRoad,
     zRank: 0,      // bottom: authoritative layers draw on top
     expr: true,    // scored via map expressions (works identically on tiles)
@@ -387,11 +421,13 @@ display.passFail = false;
 // expression and re-apply paint/filters, which is instant at any data size.
 function roadLevelExpr() {
   const spd = ['get', 's'];
+  const noShoulderMax = ['case', ['==', ['get', 'u'], 1],
+    rules.urbanMaxSpeedNoShoulder, rules.ruralMaxSpeedNoShoulder];
   const cases = [];
   cases.push(['==', ['get', 'b'], 1], 4);                       // bikes prohibited
   cases.push(['==', ['get', 'm'], 1], 4);                       // freeway: last-resort failure
   if (!rules.noUpperLimit) cases.push(['>', spd, rules.upperMaxSpeed], 4); // absolute speed cap
-  cases.push(['<=', spd, rules.freeMaxSpeed], 1);               // slow = comfortable
+  cases.push(['<=', spd, noShoulderMax], 1);                    // slow = comfortable
   if (rules.vettedBikeRoutes)
     cases.push(['==', ['get', 'g'], 1], 2);                     // designated route = vetted
   // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
@@ -399,7 +435,13 @@ function roadLevelExpr() {
   const sh = rules.unknownShoulderZero
     ? ['coalesce', ['get', 'w'], 0]
     : ['case', ['has', 'w'], ['get', 'w'], rules.minShoulder]; // unknown -> never under
-  cases.push(['all', ['!=', ['get', 'f'], 1], ['<', sh, rules.minShoulder]], 4);
+  const shoulderFailure = ['all', ['!=', ['get', 'f'], 1], ['<', sh, rules.minShoulder]];
+  if (rules.allowSidewalkFallback) {
+    cases.push(['all', shoulderFailure, ['==', ['get', 'k'], 1]], 3);
+    cases.push(['all', shoulderFailure, ['!=', ['get', 'k'], 1]], 4);
+  } else {
+    cases.push(shoulderFailure, 4);
+  }
   return ['case', ...cases, 2];                                  // meets criteria
 }
 
@@ -472,7 +514,8 @@ const ROUTING_PRESETS = Object.freeze([
       ...DEFAULT_RULES,
       allowFreeways: false,
       vettedBikeRoutes: false,
-      freeMaxSpeed: 25,
+      urbanMaxSpeedNoShoulder: 25,
+      ruralMaxSpeedNoShoulder: 25,
       upperMaxSpeed: 45,
       noUpperLimit: false,
       requireSafe: false,
@@ -488,7 +531,8 @@ const ROUTING_PRESETS = Object.freeze([
       ...DEFAULT_RULES,
       allowFreeways: false,
       vettedBikeRoutes: false,
-      freeMaxSpeed: 25,
+      urbanMaxSpeedNoShoulder: 25,
+      ruralMaxSpeedNoShoulder: 25,
       upperMaxSpeed: 35,
       noUpperLimit: false,
       requireSafe: true,
@@ -1399,11 +1443,16 @@ function fallbackRouteLevel(s) {
   if (flags & 4) return 4;
   if ((flags & 8) || (s.facility || 0) >= 4) return 1;
   if (!rules.noUpperLimit && s.mph > rules.upperMaxSpeed) return 4;
-  if (s.mph <= rules.freeMaxSpeed) return flags & 128 ? 3 : 1;
+  const noShoulderMax = (s.official || 0) & OFFICIAL_URBAN
+    ? rules.urbanMaxSpeedNoShoulder : rules.ruralMaxSpeedNoShoulder;
+  if (s.mph <= noShoulderMax) return flags & 128 ? 3 : 1;
   if ((flags & 64) && rules.vettedBikeRoutes) return flags & 128 ? 3 : 2;
   let sh = s.sh;
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
-  if ((s.facility || 0) < 2 && sh >= 0 && sh < rules.minShoulder) return 4;
+  if ((s.facility || 0) < 2 && sh >= 0 && sh < rules.minShoulder) {
+    if (rules.allowSidewalkFallback && ((s.official || 0) & OFFICIAL_SIDEWALK)) return 3;
+    return 4;
+  }
   return flags & 128 ? 3 : 2;
 }
 
@@ -3510,6 +3559,7 @@ const ROUTE_SEG_PASS_EXPR = ['any', ['==', ['get', 'level'], 1],
   ['==', ['get', 'level'], 2]];
 function scoreRouteSeg(p) {
   const facility = p.facility || 0;
+  const official = p.official || 0;
   return {
     baseScore: facility >= 4 || p.infra === 1 ? 1 : facility >= 2 ? 2 : null,
     shoulder_width: p.sh >= 0 ? p.sh : null,
@@ -3522,6 +3572,9 @@ function scoreRouteSeg(p) {
     est: p.e === 1,
     desig: p.desig === 1,
     dismount: p.dismount === 1,
+    sidewalk: official & OFFICIAL_SIDEWALK ? 'present'
+      : official & OFFICIAL_SIDEWALK_NO ? 'absent' : null,
+    urban: !!(official & OFFICIAL_URBAN),
   };
 }
 
@@ -5494,10 +5547,12 @@ function explainLevel(n) {
   const sh = shUnknown && rules.unknownShoulderZero ? 0 : shRaw;
   const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : null;
   const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
-  if (!speedFails && spd != null && spd <= rules.freeMaxSpeed)
+  const noShoulderMax = noShoulderMaxSpeed(n);
+  const area = n.urban ? 'urban' : 'rural';
+  if (!speedFails && spd != null && spd <= noShoulderMax)
     return n.limited_access
       ? `${spdTxt} — meets your speed/shoulder rules, but this is a limited-access highway (caution).`
-      : `${spdTxt} — at or below your ${rules.freeMaxSpeed} mph no-shoulder limit, passes without a shoulder.`;
+      : `${spdTxt} — at or below your ${noShoulderMax} mph ${area} no-shoulder limit, passes without a shoulder.`;
 
   if (!speedFails && n.desig && rules.vettedBikeRoutes)
     return n.limited_access
@@ -5505,6 +5560,9 @@ function explainLevel(n) {
       : 'On a designated bike route (USBR / regional trail) — a vetted corridor, treated as meeting your criteria.';
 
   const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
+  if (!speedFails && shoulderFails && sidewalkFallbackApplies(n, spd, sh)) {
+    return `${spdTxt || 'This road'} uses your mapped sidewalk fallback instead of a ${rules.minShoulder} ft shoulder; it is strongly deprioritized.`;
+  }
   const reasons = [];
   if (speedFails) reasons.push(`${spdTxt} is over your ${rules.upperMaxSpeed} mph max`);
   if (shoulderFails)
@@ -5705,6 +5763,9 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
         ['Speed source', p.official & 1 ? 'WSDOT legal speed' : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
+        ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
+        ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
+        ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
         ['Bike facility', FACILITY_NAME[p.facility] || null],
         ['Facility source', p.official & 2 ? 'WSDOT Active Transportation Data' : null],
         ['Road class', ROAD_CLASS_NAME[p.roadClass] || null],
@@ -5754,6 +5815,9 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Class', p.h + (p.r ? ` (${p.r})` : '')],
       ['Speed limit', p.s != null ? `${p.s} mph${p.e ? ' (estimated from class)' : ''}` : null],
       ['Shoulder', p.w != null ? p.w + ' ft' : null],
+      ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
+      ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
+      ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
       ['Bike facility', p.f ? 'yes' : null],
       ['Limited access', p.m ? 'yes' : null],
       ['Bikes prohibited', p.b ? 'yes (OSM tag)' : null],
@@ -6149,8 +6213,11 @@ function presetInfoRows(preset) {
   return [
     ['Never allow speed', presetRules.noUpperLimit
       ? 'No cutoff.' : `Ordinary roads over ${presetRules.upperMaxSpeed} mph fail; dedicated bike infrastructure is exempt.`],
-    ['Speed without shoulder', `Up to ${presetRules.freeMaxSpeed} mph.`],
+    ['Speed without shoulder', `Urban: up to ${presetRules.urbanMaxSpeedNoShoulder} mph; rural: up to ${presetRules.ruralMaxSpeedNoShoulder} mph.`],
     ['Minimum shoulder', `${presetRules.minShoulder} ft on faster roads.`],
+    ['Sidewalk fallback', presetRules.allowSidewalkFallback
+      ? 'Mapped sidewalks can satisfy the shoulder rule, but are strongly deprioritized and called out as a concern.'
+      : 'Mapped sidewalks do not satisfy the shoulder rule.'],
     ['Designated bike routes', presetRules.vettedBikeRoutes
       ? 'Can satisfy the shoulder rule; speed and access limits still apply.'
       : 'Must meet the normal speed and shoulder rules.'],
@@ -6343,10 +6410,12 @@ function buildRulesPanel() {
     scheduleRescore();
   });
   check('preferPaved', 'Strongly prefer paved surfaces');
+  check('allowSidewalkFallback', 'Allow sidewalk fallback');
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
   slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');
-  slider('freeMaxSpeed', 'Max speed without shoulder', 15, 45, 5, ' mph');
+  slider('urbanMaxSpeedNoShoulder', 'Urban max speed without shoulder', 15, 45, 5, ' mph');
+  slider('ruralMaxSpeedNoShoulder', 'Rural max speed without shoulder', 15, 45, 5, ' mph');
 
   // Upper speed cutoff: one slider, whose TOP position means "no cutoff"
   // (replaces the old separate "No speed cutoff" checkbox).

@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
-assert.match(app, /if \(more\) more\.disabled = false;/,
-  'the more-actions menu should remain available before both endpoints are selected');
+assert.match(app, /if \(more\) more\.disabled = plannerLoading;/,
+  'the more-actions menu should remain available before both endpoints are selected, except while the graph loads');
 assert.match(app, /searchInput\.value = currentEndpointName;/,
   'the search field should preview the current endpoint name when replacing it');
 assert.match(app, /input\.classList\.contains\('current-endpoint-preview'\)[\s\S]*?input\.value = '';/,
@@ -62,6 +62,7 @@ const failureContext = vm.createContext({
   routing: preloadRouting,
   map: { isStyleLoaded: () => true },
   showRouteActionToast() {}, setRouteOptionsLoading() {}, setRouteStatus() {},
+  updateArmButtons() {},
   renderRouteOptionControls() { failureCalls.push('options'); },
   stopTurnNavigation() { failureCalls.push('navigation'); },
   clearStoredRouteDetails() { failureCalls.push('details'); },
