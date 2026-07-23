@@ -4,6 +4,9 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+
+assert.match(app, /center:\s*\(savedState && savedState\.view && savedState\.view\.c\) \|\| \[-122\.3321, 47\.6062\]/,
+  'a fresh install should start centered on Seattle while preserving a saved map view');
 assert.match(app, /if \(more\) more\.disabled = plannerLoading;/,
   'the more-actions menu should remain available before both endpoints are selected, except while the graph loads');
 assert.match(app, /searchInput\.value = currentEndpointName;/,

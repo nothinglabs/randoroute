@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-23.322';
+const APP_VERSION = '2026-07-23.323';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -698,7 +698,7 @@ const map = new maplibregl.Map({
     },
     layers: [{ id: 'positron', type: 'raster', source: 'positron' }],
   },
-  center: (savedState && savedState.view && savedState.view.c) || [-120.5, 47.4],
+  center: (savedState && savedState.view && savedState.view.c) || [-122.3321, 47.6062],
   zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
   maxZoom: 17,
   maxPitch: 0,
