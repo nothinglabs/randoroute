@@ -40,16 +40,14 @@ assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textC
   'each route-detail item should put an in-app Map button before its stacked Street View button');
 assert.match(details, /window\.parent\.postMessage\(\{ type: 'open-street-view', lat, lng, heading \}, window\.location\.origin\)/,
   'embedded Details should ask the app to open its Street View dialog');
-assert.match(details, /function scrollToConcernSection\(sectionId\)[\s\S]*?scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)[\s\S]*?function renderConcernShortcuts\(host, groups\)[\s\S]*?Jump to a concern type/,
-  'Concerns should offer compact category shortcuts that scroll to the matching section');
-assert.match(details, /button\.classList\.add\(`concern-shortcut-\$\{group\.sectionId\.replace\('concern-', ''\)\}`\)/,
-  'concern shortcut buttons should expose their concern type for compact layout tuning');
-assert.match(details, /renderConcernShortcuts\(report, \[[\s\S]*?Fails rules[\s\S]*?Steep grades[\s\S]*?Limited access/,
-  'the shortcut row should include every available concern type');
-assert.match(details, /const columnCount = available\.length <= 5 \? available\.length : Math\.ceil\(available\.length \/ 2\);[\s\S]*?--concern-shortcut-columns/,
-  'larger shortcut sets should balance across two rows');
-assert.match(css, /\.concern-shortcuts\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(var\(--concern-shortcut-columns, 4\), minmax\(0, 1fr\)\)[\s\S]*?\.concern-shortcuts button\s*\{[^}]*font:\s*800 10px\/1\.1 system-ui[^}]*white-space:\s*normal/,
-  'concern shortcuts should use a compact wrapping grid with readable labels and no scroller');
+assert.match(details, /function setConcernSectionExpanded\(section, expanded\)[\s\S]*?body\.replaceChildren\(\)[\s\S]*?function renderSection[\s\S]*?concern-section-toggle[\s\S]*?aria-expanded/,
+  'Concerns should use collapsed, lazy-rendered sections that release their cards when closed');
+assert.match(details, /function scrollToConcernSection\(sectionId\)[\s\S]*?setConcernSectionExpanded\(section, true\)[\s\S]*?scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)/,
+  'direct links to a concern should expand its collapsed section before scrolling');
+assert.doesNotMatch(details, /renderConcernShortcuts|concern-shortcut-/,
+  'the collapsed section headers should replace the overloaded concern shortcut buttons');
+assert.match(css, /\.concern-section-toggle\s*\{[^}]*grid-template-columns:[^}]*min-height:\s*48px[\s\S]*?\.concern-section\.expanded \.concern-section-chevron[\s\S]*?\.concern-section-body\[hidden\]\s*\{[^}]*display:\s*none/,
+  'concern section headers should provide compact, readable accordion controls');
 assert.match(app, /event\.data\?\.type === 'open-street-view'[\s\S]*?openStreetView\(lat, lng/,
   'the app should accept Street View requests from its Route Details frame');
 assert.doesNotMatch(app, /highlight-route-concern|showRouteConcernOnMap/,
@@ -60,8 +58,8 @@ assert.match(details, /function failedRoadDetails\(seg, rules\)[\s\S]*?facts\.pu
   'rule-failing roads should separate the primary reason from compact supporting facts');
 assert.match(details, /item\.metaFacts\?\.length[\s\S]*?meta\.classList\.add\('meta-structured'\)[\s\S]*?reason\.className = 'meta-reason'[\s\S]*?facts\.className = 'meta-facts'/,
   'structured concern metadata should render with a clear reason and fact list');
-assert.match(css, /\.detail-item \.meta-structured\s*\{[^}]*display:\s*grid[^}]*gap:\s*5px[\s\S]*?\.meta-reason\s*\{[^}]*color:\s*#984034[\s\S]*?\.meta-facts\s*\{[^}]*flex-wrap:\s*wrap[\s\S]*?\.meta-facts > span\s*\{[^}]*border-radius:\s*999px/,
-  'rule-failure reasons and facts should use a compact, readable visual hierarchy');
+assert.match(css, /\.concern-section \.detail-item \.meta-structured\s*\{[^}]*display:\s*block[^}]*margin-top:\s*3px[\s\S]*?\.concern-section \.meta-facts\s*\{[^}]*display:\s*inline[\s\S]*?\.concern-section \.meta-facts > span\s*\{[^}]*border:\s*0/,
+  'concern facts should use compact inline text instead of tall metadata pills');
 assert.match(html, /class="dialog-close streetview-close"[\s\S]*?<span>Close<\/span>/,
   'the embedded Street View close control should have a visible Close label');
 assert.match(html, /Location note:<\/b>[\s\S]*?nearest available view may be up to 250 m away[\s\S]*?For trails, it may show a nearby road/,
@@ -130,6 +128,27 @@ assert.doesNotMatch(details, /of this route does not meet your riding rules/,
   'Route Details should not repeat the failing-route distance above its concerns');
 assert.match(details, /snapNotes\.push\(`Destination off route by \$\{fmtDist\(details\.snapEndM\)\}`\)[\s\S]*?note\.textContent = `Note: \$\{snapNotes\.join\(' · '\)\}\.`/,
   'pin warnings should identify the affected pin in a compact distance note');
+assert.match(details, /if \(failing\.length\) renderSection[\s\S]*?if \(dismounts\.length\) renderSection[\s\S]*?if \(steepGrades\.length\) renderSection[\s\S]*?if \(sidewalkFallbacks\.length\) renderSection/,
+  'concern sections should put rule failures first and sidewalk fallback last');
+assert.match(app, /routeDetailsDialog'\)\?\.addEventListener\('close'[\s\S]*?frame\.src = 'about:blank'/,
+  'closing Route Details should unload its iframe and release the report map and cards');
+
+const consolidateStart = details.indexOf('function consolidateConcernItems(');
+const consolidateEnd = details.indexOf('function populateSectionBody(', consolidateStart);
+assert.ok(consolidateStart >= 0 && consolidateEnd > consolidateStart,
+  'concern consolidation helper was not found');
+const consolidateContext = vm.createContext({ Map, Number, String });
+vm.runInContext(details.slice(consolidateStart, consolidateEnd), consolidateContext);
+const consolidated = vm.runInContext(`consolidateConcernItems([
+  { name: 'Example Road', lenM: 100, riskScore: 50, meta: '50 mph', startIndex: 1 },
+  { name: 'Example Road', lenM: 200, riskScore: 60, meta: '60 mph', startIndex: 9 },
+  { name: 'Unnamed road', lenM: 20, riskScore: 5, startIndex: 12 },
+  { name: 'Unnamed road', lenM: 30, riskScore: 6, startIndex: 15 }
+])`, consolidateContext);
+assert.equal(consolidated.length, 3, 'named concern fragments should combine while unnamed roads stay distinct');
+assert.equal(consolidated[0].lenM, 300, 'combined concern mileage should include every matching fragment');
+assert.equal(consolidated[0].meta, '60 mph', 'combined concerns should display the worst representative condition');
+assert.equal(consolidated[0].startIndex, 9, 'map actions should target the worst representative segment');
 
 const helperStart = details.indexOf('function lngLat(');
 const helperEnd = details.indexOf('function routePercent(', helperStart);
@@ -301,7 +320,7 @@ assert.match(css, /\.elevation-steep-warning\s*\{[^}]*grid-column:\s*1\s*\/\s*-1
   'the steep-grade elevation warning should span the card as a prominent, tappable warning');
 assert.match(css, /\.elevation-warning-message\s*\{[^}]*clamp\(9px, 2\.6vw, 10px\)[^}]*white-space:\s*nowrap/,
   'the warning sentence should remain intact on a single responsive line');
-assert.match(details, /const STEEP_UPHILL_CONCERN_PCT = 10;[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = STEEP_UPHILL_CONCERN_PCT\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep uphill grade segments \(over 10%\)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality\.'\)/,
+assert.match(details, /const STEEP_UPHILL_CONCERN_PCT = 10;[\s\S]*?function sustainedUphillGradeConcerns\(segs, thresholdPct = STEEP_UPHILL_CONCERN_PCT\)[\s\S]*?sample\.gradePct > thresholdPct[\s\S]*?const steepGrades = consolidateConcernItems\(sustainedUphillGradeConcerns\(segs\)[\s\S]*?renderSection\(report, 'Steep uphill grades \(over 10%\)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality\.', true\)/,
   'Concerns should list only sustained uphill segments whose grade exceeds 10% and disclose data quality limits');
 assert.match(details, /const minSpeed = 10;[\s\S]*?Math\.min\(maxSpeed - minSpeed, Math\.max\(0, mph - minSpeed\)\)[\s\S]*?mph === minSpeed\) ctx\.fillText\(`\$\{mph\} mph`/,
   'the speed chart should use and visibly label a 10 mph baseline');

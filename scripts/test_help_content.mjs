@@ -64,6 +64,8 @@ assert.doesNotMatch(layersHelp, /lime|blue|amber|red fails|gray lacks enough dat
 const routeHelp = html.match(/<dialog id="routeTipsDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
 assert.match(routeHelp, /Concerns:[\s\S]*?sidewalk fallbacks[\s\S]*?highways/,
   'route help should name the concern types that affect current route details');
+assert.match(routeHelp, /ordered shortest to longest as A–E[\s\S]*?automatically selects the best match[\s\S]*?may not be A/,
+  'route help should explain route ordering without implying that A is the recommendation');
 assert.match(html, /id="routeControls"[\s\S]*?class="route-chooser-row"[\s\S]*?id="routeOptions"[\s\S]*?id="routeTipsBtn"/,
   'the main map route picker should keep its selector and Help button on one row');
 assert.match(css, /#routeOptions\s*\{[^}]*padding:\s*3px[^}]*border:\s*1px solid #cddde7[\s\S]*?#routeOptions::before\s*\{[^}]*content:\s*'Choose route'[\s\S]*?#routeOptions button\.active\s*\{[^}]*background:\s*#0a66c2/,

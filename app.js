@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-23.321';
+const APP_VERSION = '2026-07-23.322';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2238,6 +2238,14 @@ window.addEventListener('message', (event) => {
       event.data.coordStart, event.data.coordEnd);
     return;
   }
+});
+
+// Route Details can contain hundreds of road items plus its own MapLibre map.
+// Release that embedded document after closing instead of retaining it behind
+// the main map. Opening Details already reloads the latest selected route.
+document.getElementById('routeDetailsDialog')?.addEventListener('close', () => {
+  const frame = document.getElementById('routeDetailsFrame');
+  if (frame) frame.src = 'about:blank';
 });
 
 function refreshNavigationUI() {

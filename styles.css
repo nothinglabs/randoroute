@@ -385,6 +385,12 @@ body:not(.navigation-active) #navCard { display: none; }
 #settingsOptions .rule-card { min-height: 27px; padding: 4px 8px; }
 #settingsOptions .rule-check { gap: 6px; font-size: 11.5px; line-height: 1.2; }
 #settingsOptions .rule-check input { flex: 0 0 auto; margin: 0; }
+#settings-options { overflow-y: hidden; }
+#settings-options .settings-summary { margin: 0 1px 2px; font-size: 10px; line-height: 1.1; }
+#settings-options #settingsOptions { align-content: start; gap: 3px 4px; }
+#settings-options #settingsOptions .rule-card { min-height: 0; padding: 3px 6px; }
+#settings-options #settingsOptions .rule-check { gap: 5px; font-size: 10.5px; line-height: 1.1; }
+#settings-options #settingsOptions input[type="checkbox"] { width: 15px; height: 15px; }
 .check-rule { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
 .check-rule label { font-weight: 600; cursor: pointer; }
 input[type="checkbox"] { width: 17px; height: 17px; }

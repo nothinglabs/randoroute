@@ -26,6 +26,8 @@ assert.match(app, /const stateSidewalkProbeId = 'roads__state-sidewalk-probe'[\s
   'WSDOT cards should expose sidewalk status from the matching hidden OSM road tile');
 assert.match(css, /#settings-limits\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settings-limits #settingsSliders\s*\{[^}]*gap:\s*3px[\s\S]*?#settings-limits #settingsSliders \.rule-card\s*\{[^}]*padding:\s*3px 8px/,
   'the compact Limits pane should fit its controls without a nested scrollbar');
+assert.match(css, /#settings-options\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settings-options #settingsOptions\s*\{[^}]*align-content:\s*start[^}]*gap:\s*3px 4px[\s\S]*?#settings-options #settingsOptions \.rule-card\s*\{[^}]*min-height:\s*0[^}]*padding:\s*3px 6px/,
+  'the compact Options pane should fit its controls without a nested scrollbar');
 assert.match(app, /slider\('urbanMaxSpeedNoShoulder', '<strong class="area-rule area-rule-urban">Urban<\/strong> max speed without shoulder'[\s\S]*?slider\('ruralMaxSpeedNoShoulder', '<strong class="area-rule area-rule-rural">Rural<\/strong> max speed without shoulder'[\s\S]*?slider\('minShoulder', 'Minimum shoulder for faster roads'[\s\S]*?label for="r-upperMaxSpeed">Never allow roads faster than/,
   'Limits should distinguish urban/rural rules and place the minimum shoulder above the speed cutoff');
 assert.match(css, /#settings-limits \.area-rule\s*\{[^}]*border:\s*1px solid currentColor[^}]*border-radius:\s*999px[^}]*text-transform:\s*uppercase[\s\S]*?#settings-limits \.area-rule-urban\s*\{[^}]*background:\s*#e3f1fc[\s\S]*?#settings-limits \.area-rule-rural\s*\{[^}]*background:\s*#e8f4e5/,

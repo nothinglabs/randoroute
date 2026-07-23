@@ -356,118 +356,201 @@ function sections(segs, include, describe) {
       locationStart, locationEnd,
       surface: info.surface ?? seg.surface ?? 0,
       metaFacts: Array.isArray(info.metaFacts) ? info.metaFacts : [],
+      riskScore: Number(info.riskScore) || 0,
       safetyLabel: info.safetyLabel || '', safetyClass: info.safetyClass || '' });
     previousIndex = i;
   }
   return out;
 }
 
-function renderSection(host, title, items, emptyText, cls = '', numbered = false, sectionId = '', note = '') {
-  const total = items.reduce((sum, item) => sum + item.lenM, 0);
-  const section = document.createElement('section');
-  section.className = `detail-section ${cls}`;
-  if (sectionId) {
-    section.id = sectionId;
-    section.tabIndex = -1;
+// Concern data is stored per graph edge, so the same named road can otherwise
+// produce many nearly identical cards. Combine those cards for scanning, but
+// retain the worst representative segment for Map and Street View actions.
+// Unnamed roads stay separate because a long route may contain unrelated ways
+// that share that fallback label.
+function consolidateConcernItems(items) {
+  const combined = [];
+  const byName = new Map();
+  for (const source of items || []) {
+    const normalizedName = String(source.name || '').trim().toLocaleLowerCase();
+    const canCombine = normalizedName && normalizedName !== 'unnamed road';
+    const key = canCombine ? normalizedName : null;
+    const existing = key ? byName.get(key) : null;
+    if (!existing) {
+      const item = { ...source, lenM: Number(source.lenM) || 0, occurrenceCount: 1 };
+      combined.push(item);
+      if (key) byName.set(key, item);
+      continue;
+    }
+    const totalLenM = existing.lenM + (Number(source.lenM) || 0);
+    const occurrenceCount = existing.occurrenceCount + 1;
+    if ((Number(source.riskScore) || 0) > (Number(existing.riskScore) || 0)) {
+      Object.assign(existing, source);
+    }
+    existing.lenM = totalLenM;
+    existing.occurrenceCount = occurrenceCount;
   }
-  const heading = document.createElement('h2');
-  heading.append(document.createTextNode(title));
-  const totalLabel = document.createElement('span');
-  totalLabel.textContent = items.length ? fmtDist(total) : 'None';
-  heading.appendChild(totalLabel);
-  section.appendChild(heading);
+  return combined.sort((a, b) =>
+    (Number(b.riskScore) || 0) - (Number(a.riskScore) || 0)
+      || (Number(b.lenM) || 0) - (Number(a.lenM) || 0));
+}
+
+function populateSectionBody(body, items, emptyText, cls, numbered, note) {
   if (note) {
     const sectionNote = document.createElement('p');
     sectionNote.className = 'detail-note';
     sectionNote.textContent = note;
-    section.appendChild(sectionNote);
+    body.appendChild(sectionNote);
   }
   if (!items.length) {
     const empty = document.createElement('p');
     empty.className = 'empty';
     empty.textContent = emptyText;
-    section.appendChild(empty);
-  } else {
-    const list = document.createElement('ol');
-    list.className = `detail-list${numbered ? ' numbered' : ''}`;
-    for (const item of items) {
-      const li = document.createElement('li');
-      li.className = `detail-item ${cls}`;
-      if (item.safetyClass) li.classList.add(`safety-${item.safetyClass}`);
-      const content = item.startIndex == null ? li : document.createElement('button');
-      if (content !== li) {
-        li.classList.add('clickable');
-        content.type = 'button';
-        content.className = 'step-button';
-        content.setAttribute('aria-label', `${item.name}, ${fmtDist(item.lenM)}${item.safetyLabel ? `, ${item.safetyLabel}` : ''}. Show on map`);
-        content.addEventListener('click', () => showRouteStep(item));
-      }
-      const line = document.createElement('div');
-      line.className = 'line';
-      const name = document.createElement('span');
-      name.textContent = item.name;
-      if (item.safetyLabel) {
-        const safety = document.createElement('span');
-        safety.className = 'step-safety';
-        safety.textContent = item.safetyLabel;
-        name.prepend(safety);
-      }
-      const distance = document.createElement('span');
-      distance.className = 'distance';
-      distance.textContent = fmtDist(item.lenM);
-      line.append(name, distance);
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      if (item.metaFacts?.length) {
-        meta.classList.add('meta-structured');
-        const reason = document.createElement('span');
-        reason.className = 'meta-reason';
-        reason.textContent = item.meta;
-        const facts = document.createElement('span');
-        facts.className = 'meta-facts';
-        for (const factText of item.metaFacts) {
-          const fact = document.createElement('span');
-          fact.textContent = factText;
-          facts.appendChild(fact);
-        }
-        meta.append(reason, facts);
-      } else {
-        meta.textContent = item.meta;
-      }
-      content.append(line, meta);
-      if (content !== li) li.appendChild(content);
-      const location = itemLocation(item);
-      if (location) {
-        const actions = document.createElement('div');
-        actions.className = 'segment-actions';
-        const streetView = document.createElement('button');
-        streetView.type = 'button';
-        streetView.className = 'segment-streetview';
-        const streetLine = document.createElement('span');
-        streetLine.textContent = 'Street';
-        const viewLine = document.createElement('span');
-        viewLine.textContent = 'View';
-        streetView.append(streetLine, viewLine);
-        streetView.setAttribute('aria-label', `Open ${item.name} in Google Street View`);
-        streetView.addEventListener('click', () => openItemStreetView(item));
-        const mapButton = document.createElement('button');
-        mapButton.type = 'button';
-        mapButton.className = 'segment-map-button';
-        const mapLabel = document.createElement('span');
-        mapLabel.textContent = 'Map';
-        const mapIcon = document.createElement('span');
-        mapIcon.className = 'segment-map-icon';
-        mapIcon.setAttribute('aria-hidden', 'true');
-        mapIcon.textContent = '⌖';
-        mapButton.append(mapLabel, mapIcon);
-        mapButton.setAttribute('aria-label', `Show ${item.name} on the route map`);
-        mapButton.addEventListener('click', () => showRouteStep(item));
-        actions.append(mapButton, streetView);
-        li.appendChild(actions);
-      }
-      list.appendChild(li);
+    body.appendChild(empty);
+    return;
+  }
+  const list = document.createElement('ol');
+  list.className = `detail-list${numbered ? ' numbered' : ''}`;
+  for (const item of items) {
+    const li = document.createElement('li');
+    li.className = `detail-item ${cls}`;
+    if (item.safetyClass) li.classList.add(`safety-${item.safetyClass}`);
+    const content = item.startIndex == null ? li : document.createElement('button');
+    if (content !== li) {
+      li.classList.add('clickable');
+      content.type = 'button';
+      content.className = 'step-button';
+      content.setAttribute('aria-label', `${item.name}, ${fmtDist(item.lenM)}${item.safetyLabel ? `, ${item.safetyLabel}` : ''}. Show on map`);
+      content.addEventListener('click', () => showRouteStep(item));
     }
-    section.appendChild(list);
+    const line = document.createElement('div');
+    line.className = 'line';
+    const name = document.createElement('span');
+    name.textContent = item.name;
+    if (item.safetyLabel) {
+      const safety = document.createElement('span');
+      safety.className = 'step-safety';
+      safety.textContent = item.safetyLabel;
+      name.prepend(safety);
+    }
+    const distance = document.createElement('span');
+    distance.className = 'distance';
+    distance.textContent = fmtDist(item.lenM);
+    line.append(name, distance);
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    if (item.metaFacts?.length) {
+      meta.classList.add('meta-structured');
+      const reason = document.createElement('span');
+      reason.className = 'meta-reason';
+      reason.textContent = item.meta;
+      const facts = document.createElement('span');
+      facts.className = 'meta-facts';
+      for (const factText of item.metaFacts) {
+        const fact = document.createElement('span');
+        fact.textContent = factText;
+        facts.appendChild(fact);
+      }
+      meta.append(reason, facts);
+    } else {
+      meta.textContent = item.meta;
+    }
+    content.append(line, meta);
+    if (content !== li) li.appendChild(content);
+    const location = itemLocation(item);
+    if (location) {
+      const actions = document.createElement('div');
+      actions.className = 'segment-actions';
+      const streetView = document.createElement('button');
+      streetView.type = 'button';
+      streetView.className = 'segment-streetview';
+      const streetLine = document.createElement('span');
+      streetLine.textContent = 'Street';
+      const viewLine = document.createElement('span');
+      viewLine.textContent = 'View';
+      streetView.append(streetLine, viewLine);
+      streetView.setAttribute('aria-label', `Open ${item.name} in Google Street View`);
+      streetView.addEventListener('click', () => openItemStreetView(item));
+      const mapButton = document.createElement('button');
+      mapButton.type = 'button';
+      mapButton.className = 'segment-map-button';
+      const mapLabel = document.createElement('span');
+      mapLabel.textContent = 'Map';
+      const mapIcon = document.createElement('span');
+      mapIcon.className = 'segment-map-icon';
+      mapIcon.setAttribute('aria-hidden', 'true');
+      mapIcon.textContent = '⌖';
+      mapButton.append(mapLabel, mapIcon);
+      mapButton.setAttribute('aria-label', `Show ${item.name} on the route map`);
+      mapButton.addEventListener('click', () => showRouteStep(item));
+      actions.append(mapButton, streetView);
+      li.appendChild(actions);
+    }
+    list.appendChild(li);
+  }
+  body.appendChild(list);
+}
+
+function setConcernSectionExpanded(section, expanded) {
+  const button = section?.querySelector('.concern-section-toggle');
+  const body = section?.querySelector('.concern-section-body');
+  if (!button || !body) return;
+  button.setAttribute('aria-expanded', String(expanded));
+  section.classList.toggle('expanded', expanded);
+  section.classList.toggle('collapsed', !expanded);
+  body.hidden = !expanded;
+  if (expanded) {
+    if (!body.childNodes.length) section.renderConcernBody?.();
+  } else {
+    // The underlying route-detail data remains available, while removing the
+    // hundreds of hidden cards that made long routes expensive to keep open.
+    body.replaceChildren();
+  }
+}
+
+function renderSection(host, title, items, emptyText, cls = '', numbered = false, sectionId = '', note = '', collapsible = false) {
+  const total = items.reduce((sum, item) => sum + item.lenM, 0);
+  const section = document.createElement('section');
+  section.className = `detail-section ${cls}${collapsible ? ' concern-section collapsed' : ''}`;
+  if (sectionId) {
+    section.id = sectionId;
+  }
+  const heading = document.createElement('h2');
+  let toggle = null;
+  if (collapsible) {
+    toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'concern-section-toggle';
+    toggle.setAttribute('aria-expanded', 'false');
+    const titleLabel = document.createElement('span');
+    titleLabel.className = 'concern-section-title';
+    titleLabel.textContent = title;
+    const summaryLabel = document.createElement('span');
+    summaryLabel.className = 'concern-section-summary';
+    summaryLabel.textContent = `${fmtDist(total)} · ${items.length} ${items.length === 1 ? 'item' : 'items'}`;
+    const chevron = document.createElement('span');
+    chevron.className = 'concern-section-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.textContent = '›';
+    toggle.append(titleLabel, summaryLabel, chevron);
+    heading.appendChild(toggle);
+  } else {
+    heading.append(document.createTextNode(title));
+    const totalLabel = document.createElement('span');
+    totalLabel.textContent = items.length ? fmtDist(total) : 'None';
+    heading.appendChild(totalLabel);
+  }
+  section.appendChild(heading);
+  const body = document.createElement('div');
+  body.className = collapsible ? 'concern-section-body' : 'detail-section-body';
+  section.appendChild(body);
+  section.renderConcernBody = () => populateSectionBody(body, items, emptyText, cls, numbered, note);
+  if (collapsible) {
+    body.hidden = true;
+    toggle.addEventListener('click', () =>
+      setConcernSectionExpanded(section, toggle.getAttribute('aria-expanded') !== 'true'));
+  } else {
+    section.renderConcernBody();
   }
   host.appendChild(section);
 }
@@ -495,31 +578,11 @@ function showRouteStep(step) {
 function scrollToConcernSection(sectionId) {
   const section = document.getElementById(sectionId);
   if (!section) return;
-  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  // Preserve keyboard context after the animation without causing a second jump.
-  requestAnimationFrame(() => section.focus({ preventScroll: true }));
-}
-
-function renderConcernShortcuts(host, groups) {
-  const available = (groups || []).filter((group) => group.items?.length);
-  if (!available.length) return;
-  const nav = document.createElement('nav');
-  nav.className = 'concern-shortcuts';
-  nav.setAttribute('aria-label', 'Jump to a concern type');
-  // Keep one row for a short list, then balance larger sets across two rows.
-  // This avoids both horizontal scrolling and unreadably narrow pills.
-  const columnCount = available.length <= 5 ? available.length : Math.ceil(available.length / 2);
-  nav.style.setProperty('--concern-shortcut-columns', String(columnCount));
-  for (const group of available) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.classList.add(`concern-shortcut-${group.sectionId.replace('concern-', '')}`);
-    button.textContent = group.shortLabel || group.label;
-    button.setAttribute('aria-label', `Jump to ${group.label.toLowerCase()} concerns`);
-    button.addEventListener('click', () => scrollToConcernSection(group.sectionId));
-    nav.appendChild(button);
-  }
-  host.appendChild(nav);
+  setConcernSectionExpanded(section, true);
+  requestAnimationFrame(() => {
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    section.querySelector('.concern-section-toggle')?.focus({ preventScroll: true });
+  });
 }
 
 function buildRouteSteps(segs) {
@@ -1222,7 +1285,8 @@ if (!hasRoute) {
   // Recalculate from stored segments so an already-open route benefits from
   // the sustained-grade method without requiring another route search.
   const maxGradePct = calculatedGrades.maxGradePct;
-  const steepGrades = sustainedUphillGradeConcerns(segs);
+  const steepGrades = consolidateConcernItems(sustainedUphillGradeConcerns(segs)
+    .map((item) => ({ ...item, riskScore: Number(item.maxGradePct) || 0 })));
   const steepUphillM = steepGrades.reduce((sum, item) => sum + item.lenM, 0);
   const ridingM = Math.max(1, totals.distM - (totals.ferryM || 0));
   const bikePct = routePercent(routeStats.bikeNetworkM, ridingM);
@@ -1275,39 +1339,51 @@ if (!hasRoute) {
   } else {
     document.getElementById('elevationPreviewEmpty').hidden = false;
   }
-  const freeways = sections(segs, (s) => !!(s.flags & FLAG_FREEWAY), (s) => ({
+  const freeways = consolidateConcernItems(sections(segs, (s) => !!(s.flags & FLAG_FREEWAY), (s) => ({
     name: roadName(s),
     meta: [s.mph ? `${s.mph} mph` : null, 'limited-access freeway'].filter(Boolean).join(' · '),
-  }));
-  const limitedAccess = sections(segs,
+    riskScore: 1000 + (Number(s.mph) || 0),
+  })));
+  const limitedAccess = consolidateConcernItems(sections(segs,
     (s) => !(s.flags & FLAG_FREEWAY) && !!(s.flags & FLAG_LIMITED_ACCESS), (s) => ({
       name: roadName(s),
       meta: [s.mph ? `${s.mph} mph` : null, 'limited-access highway'].filter(Boolean).join(' · '),
-    }));
-  const highways = sections(segs, isHighway, (s) => ({
+      riskScore: Number(s.mph) || 0,
+    })));
+  const highways = consolidateConcernItems(sections(segs, isHighway, (s) => ({
     name: roadName(s),
     meta: s.mph ? `${s.mph} mph highway` : 'Highway',
-  }));
-  const failing = sections(segs, (s) => s.level === 4, (s) => ({
+    riskScore: Number(s.mph) || 0,
+  })));
+  const failing = consolidateConcernItems(sections(segs, (s) => s.level === 4, (s) => ({
     name: roadName(s), ...failedRoadDetails(s, rules),
-  }));
-  const dismounts = sections(segs, isDismountSegment, (s) => ({
+    // Speed dominates the representative choice, so a combined 50/60 mph
+    // road reports the 60 mph condition. Freeways remain the worst class.
+    riskScore: ((s.flags || 0) & FLAG_FREEWAY ? 10000 : 0)
+      + (Number(s.mph) || 0) * 100
+      + Math.max(0, (Number(rules.minShoulder) || 4) - Math.max(0, Number(s.sh) || 0)),
+  })));
+  const dismounts = consolidateConcernItems(sections(segs, isDismountSegment, (s) => ({
     name: roadName(s), meta: 'Dismount required — walk your bike',
-  }));
-  const sidewalkFallbacks = sections(segs, (s) => isSidewalkFallbackSegment(s, rules), (s) => ({
+    riskScore: Number(s.lenM) || 0,
+  })));
+  const sidewalkFallbacks = consolidateConcernItems(sections(segs, (s) => isSidewalkFallbackSegment(s, rules), (s) => ({
     name: roadName(s),
     meta: `${s.mph} mph · ${(s.official || 0) & OFFICIAL_URBAN ? 'urban' : 'rural'} road`,
-  }));
-  const mountainBike = sections(segs, isMountainBikeTrail, (s) => ({
+    riskScore: Number(s.mph) || 0,
+  })));
+  const mountainBike = consolidateConcernItems(sections(segs, isMountainBikeTrail, (s) => ({
     name: roadName(s),
     meta: `Allowed mountain-bike trail · ${s.mtb ? 'OSM MTB tag' : 'OSM MTB route'}`,
-  }));
-  const unpaved = sections(segs,
+    riskScore: Number(s.mtb) || 0,
+  })));
+  const unpaved = consolidateConcernItems(sections(segs,
     (s) => isConfirmedUnpavedSurface(s.surface), (s) => ({
       name: roadName(s),
       meta: `Confirmed ${surfaceLabel(s.surface).toLowerCase()} surface · OSM data`,
-    }));
-  const curveHazards = sections(segs, (s) => !!s.hazard, (s) => ({
+      riskScore: Number(s.surface) || 0,
+    })));
+  const curveHazards = consolidateConcernItems(sections(segs, (s) => !!s.hazard, (s) => ({
     name: roadName(s),
     meta: [
       'Possible limited-visibility uphill curve',
@@ -1319,7 +1395,8 @@ if (!hasRoute) {
     locationStart: s.hazardLocationStart ?? s.locationStart,
     locationEnd: s.hazardLocationEnd ?? s.locationEnd,
     lenM: s.hazardLenM || s.lenM,
-  }));
+    riskScore: credibleSegmentGradePct(s) * 100 + (Number(s.mph) || 0),
+  })));
   const routeSteps = buildRouteSteps(segs);
   const ferries = sections(segs, (s) => !!(s.flags & FLAG_FERRY), () => ({
     name: 'Ferry crossing', meta: 'Ferry segment',
@@ -1371,31 +1448,18 @@ if (!hasRoute) {
     alert.insertAdjacentElement('afterend', note);
   }
 
-  // Put the actionable rule violations first; road-type context follows.
-  // A freeway can appear in both sections because one answers “what failed?”
-  // while the other answers “what kind of road is this?”.
-  renderConcernShortcuts(report, [
-    { label: 'Dismount', shortLabel: 'Walk', items: dismounts, sectionId: 'concern-dismount' },
-    { label: 'Sidewalk fallback', shortLabel: 'Sidewalk', items: sidewalkFallbacks, sectionId: 'concern-sidewalk-fallback' },
-    { label: 'Fails rules', shortLabel: 'Fail', items: failing, sectionId: 'concern-fails' },
-    { label: 'Unpaved', shortLabel: 'Surface', items: unpaved, sectionId: 'concern-unpaved' },
-    { label: 'Mountain-bike', shortLabel: 'MTB', items: mountainBike, sectionId: 'concern-mountain-bike' },
-    { label: 'Uphill curves', shortLabel: 'Curves', items: curveHazards, sectionId: 'concern-uphill-curves' },
-    { label: 'Steep grades', shortLabel: 'Grades', items: steepGrades, sectionId: 'concern-steep-grades' },
-    { label: 'Freeways', shortLabel: 'Fwy', items: freeways, sectionId: 'concern-freeways' },
-    { label: 'Limited access', shortLabel: 'Access', items: limitedAccess, sectionId: 'concern-limited-access' },
-    { label: 'Highways', shortLabel: 'Hwys', items: highways, sectionId: 'concern-highways' },
-  ]);
-  if (dismounts.length) renderSection(report, 'Dismount points — walk your bike', dismounts, '', 'caution', false, 'concern-dismount');
-  if (sidewalkFallbacks.length) renderSection(report, 'Sidewalk fallback', sidewalkFallbacks, '', 'caution', false, 'concern-sidewalk-fallback', 'Uses mapped sidewalks as a route fallback.');
-  if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails');
-  if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'Known unpaved surfaces receive a modest route-choice cost; Settings can make the preference strong.');
-  if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike');
-  if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution', false, 'concern-uphill-curves');
-  if (steepGrades.length) renderSection(report, 'Steep uphill grade segments (over 10%)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality.');
-  if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway', false, 'concern-freeways');
-  if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution', false, 'concern-limited-access');
-  if (highways.length) renderSection(report, 'Highways', highways, '', '', false, 'concern-highways');
+  // Put the strongest actionable concerns first. Broad road-type context and
+  // deliberately allowed fallbacks sit lower in the report.
+  if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails', '', true);
+  if (dismounts.length) renderSection(report, 'Dismount points — walk your bike', dismounts, '', 'caution', false, 'concern-dismount', '', true);
+  if (steepGrades.length) renderSection(report, 'Steep uphill grades (over 10%)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality.', true);
+  if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway', false, 'concern-freeways', '', true);
+  if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution', false, 'concern-limited-access', '', true);
+  if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike', '', true);
+  if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution', false, 'concern-uphill-curves', '', true);
+  if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'Known unpaved surfaces receive a modest route-choice cost; Settings can make the preference strong.', true);
+  if (highways.length) renderSection(report, 'Highways', highways, '', '', false, 'concern-highways', '', true);
+  if (sidewalkFallbacks.length) renderSection(report, 'Sidewalk fallback', sidewalkFallbacks, '', 'caution', false, 'concern-sidewalk-fallback', 'Uses mapped sidewalks as a route fallback.', true);
   if (!freeways.length && !limitedAccess.length && !highways.length && !dismounts.length && !sidewalkFallbacks.length && !failing.length && !unpaved.length && !mountainBike.length
       && !curveHazards.length && !steepGrades.length) {
     report.innerHTML = '<div class="no-route">No dismount, freeway, limited-access highway, unpaved, highway, steep-grade, or rule-failing sections were found on this route.</div>';
