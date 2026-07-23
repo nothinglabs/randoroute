@@ -299,21 +299,18 @@ function isHighway(seg) {
 }
 function failReason(seg, rules) {
   const f = seg.flags || 0;
-  if (f & FLAG_FREEWAY) return 'limited-access freeway — last resort only';
+  if (f & FLAG_FREEWAY) return 'Limited-access freeway — last resort only';
   if (!rules.noUpperLimit && seg.mph > rules.upperMaxSpeed) {
-    return `${seg.mph} mph is above your ${rules.upperMaxSpeed} mph maximum`;
+    return `Above your ${rules.upperMaxSpeed} mph maximum`;
   }
   let shoulder = seg.sh;
   if (shoulder < 0 && rules.unknownShoulderZero) shoulder = 0;
   if ((seg.facility || 0) < 1 && !(f & FLAG_DESIGNATED)
       && shoulder >= 0 && shoulder < rules.minShoulder) {
-    const context = (seg.official || 0) & OFFICIAL_URBAN ? 'urban' : 'rural';
-    const limit = noShoulderMaxSpeed(seg, rules);
-    const shoulderText = seg.sh < 0 ? 'shoulder is unknown and treated as 0 ft'
-      : `${shoulder} ft shoulder is below your ${rules.minShoulder} ft minimum`;
-    return `${shoulderText} above your ${limit} mph ${context} no-shoulder limit`;
+    return seg.sh < 0 ? 'Shoulder unknown — treated as 0 ft'
+      : `${shoulder} ft shoulder — below your ${rules.minShoulder} ft minimum`;
   }
-  return 'does not meet your selected riding rules';
+  return 'Does not meet your selected riding rules';
 }
 
 function failedRoadDetails(seg, rules) {
@@ -323,14 +320,17 @@ function failedRoadDetails(seg, rules) {
   if (shoulder < 0 && rules.unknownShoulderZero) shoulder = 0;
   const failsShoulder = (seg.facility || 0) < 1 && !(flags & FLAG_DESIGNATED)
     && shoulder >= 0 && shoulder < rules.minShoulder;
-  const facts = [failReason(seg, rules)];
-  if (seg.mph > 0 && !failsSpeed) facts.push(`${seg.mph} mph`);
+  const facts = [];
+  if (seg.mph > 0) facts.push(`${seg.mph} mph`);
+  if (failsShoulder) {
+    const context = (seg.official || 0) & OFFICIAL_URBAN ? 'Urban' : 'Rural';
+    facts.push(`${context} no-shoulder limit: ${noShoulderMaxSpeed(seg, rules)} mph`);
+  }
   if (seg.sh >= 0 && !failsShoulder) facts.push(`${seg.sh} ft shoulder`);
   if (FACILITY_NAME[seg.facility]) facts.push(FACILITY_NAME[seg.facility]);
-  if (flags & FLAG_FREEWAY) facts.push('freeway');
-  else if (flags & FLAG_LIMITED_ACCESS) facts.push('limited access');
+  if (!(flags & FLAG_FREEWAY) && (flags & FLAG_LIMITED_ACCESS)) facts.push('Limited access');
   else if (ROAD_CLASS_NAME[seg.roadClass]) facts.push(ROAD_CLASS_NAME[seg.roadClass]);
-  return facts.join(' · ');
+  return { meta: failReason(seg, rules), metaFacts: facts };
 }
 
 // Consecutive graph edges with the same meaning become one readable road item.
@@ -341,7 +341,7 @@ function sections(segs, include, describe) {
     const seg = segs[i];
     if (!include(seg)) { previousIndex = -2; continue; }
     const info = describe(seg);
-    const key = `${info.name}\u0000${info.meta}`;
+    const key = `${info.name}\u0000${info.meta}\u0000${JSON.stringify(info.metaFacts || [])}`;
     const last = out[out.length - 1];
     const itemLenM = Number(info.lenM ?? seg.lenM) || 0;
     const locationStart = info.locationStart ?? seg.locationStart;
@@ -355,6 +355,7 @@ function sections(segs, include, describe) {
       startIndex: i, endIndex: i, coordStart: info.coordStart, coordEnd: info.coordEnd,
       locationStart, locationEnd,
       surface: info.surface ?? seg.surface ?? 0,
+      metaFacts: Array.isArray(info.metaFacts) ? info.metaFacts : [],
       safetyLabel: info.safetyLabel || '', safetyClass: info.safetyClass || '' });
     previousIndex = i;
   }
@@ -417,7 +418,22 @@ function renderSection(host, title, items, emptyText, cls = '', numbered = false
       line.append(name, distance);
       const meta = document.createElement('div');
       meta.className = 'meta';
-      meta.textContent = item.meta;
+      if (item.metaFacts?.length) {
+        meta.classList.add('meta-structured');
+        const reason = document.createElement('span');
+        reason.className = 'meta-reason';
+        reason.textContent = item.meta;
+        const facts = document.createElement('span');
+        facts.className = 'meta-facts';
+        for (const factText of item.metaFacts) {
+          const fact = document.createElement('span');
+          fact.textContent = factText;
+          facts.appendChild(fact);
+        }
+        meta.append(reason, facts);
+      } else {
+        meta.textContent = item.meta;
+      }
       content.append(line, meta);
       if (content !== li) li.appendChild(content);
       const location = itemLocation(item);
@@ -490,6 +506,10 @@ function renderConcernShortcuts(host, groups) {
   const nav = document.createElement('nav');
   nav.className = 'concern-shortcuts';
   nav.setAttribute('aria-label', 'Jump to a concern type');
+  // Keep one row for a short list, then balance larger sets across two rows.
+  // This avoids both horizontal scrolling and unreadably narrow pills.
+  const columnCount = available.length <= 5 ? available.length : Math.ceil(available.length / 2);
+  nav.style.setProperty('--concern-shortcut-columns', String(columnCount));
   for (const group of available) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -1269,7 +1289,7 @@ if (!hasRoute) {
     meta: s.mph ? `${s.mph} mph highway` : 'Highway',
   }));
   const failing = sections(segs, (s) => s.level === 4, (s) => ({
-    name: roadName(s), meta: failedRoadDetails(s, rules),
+    name: roadName(s), ...failedRoadDetails(s, rules),
   }));
   const dismounts = sections(segs, isDismountSegment, (s) => ({
     name: roadName(s), meta: 'Dismount required — walk your bike',

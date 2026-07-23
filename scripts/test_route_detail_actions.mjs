@@ -46,16 +46,22 @@ assert.match(details, /button\.classList\.add\(`concern-shortcut-\$\{group\.sect
   'concern shortcut buttons should expose their concern type for compact layout tuning');
 assert.match(details, /renderConcernShortcuts\(report, \[[\s\S]*?Fails rules[\s\S]*?Steep grades[\s\S]*?Limited access/,
   'the shortcut row should include every available concern type');
-assert.match(css, /\.concern-shortcuts\s*\{[^}]*overflow:\s*hidden[\s\S]*?\.concern-shortcuts button\s*\{[^}]*flex:\s*1 1 0[^}]*font:\s*800 9\.5px\/1\.1 system-ui[^}]*text-overflow:\s*ellipsis/,
-  'concern shortcuts should fit in a larger, compact row instead of horizontally scrolling');
-assert.match(css, /\.concern-shortcuts \.concern-shortcut-sidewalk-fallback\s*\{[^}]*flex-grow:\s*1\.1/,
-  'the longer Sidewalk shortcut should remain readable when all concern types share one row');
+assert.match(details, /const columnCount = available\.length <= 5 \? available\.length : Math\.ceil\(available\.length \/ 2\);[\s\S]*?--concern-shortcut-columns/,
+  'larger shortcut sets should balance across two rows');
+assert.match(css, /\.concern-shortcuts\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(var\(--concern-shortcut-columns, 4\), minmax\(0, 1fr\)\)[\s\S]*?\.concern-shortcuts button\s*\{[^}]*font:\s*800 10px\/1\.1 system-ui[^}]*white-space:\s*normal/,
+  'concern shortcuts should use a compact wrapping grid with readable labels and no scroller');
 assert.match(app, /event\.data\?\.type === 'open-street-view'[\s\S]*?openStreetView\(lat, lng/,
   'the app should accept Street View requests from its Route Details frame');
 assert.doesNotMatch(app, /highlight-route-concern|showRouteConcernOnMap/,
   'concern shortcuts should stay within the Details page rather than alter the map');
 assert.match(css, /\.segment-actions\s*\{[^}]*margin-left:\s*auto[\s\S]*?\.segment-streetview\s*\{[^}]*width:\s*42px[^}]*min-height:\s*38px[\s\S]*?\.segment-map-button\s*\{[^}]*display:\s*grid[^}]*width:\s*42px[^}]*min-height:\s*38px/,
   'the equal-sized, stacked Map and Street View controls should align at the card right edge');
+assert.match(details, /function failedRoadDetails\(seg, rules\)[\s\S]*?facts\.push\(`\$\{context\} no-shoulder limit: \$\{noShoulderMaxSpeed\(seg, rules\)\} mph`\)[\s\S]*?return \{ meta: failReason\(seg, rules\), metaFacts: facts \}/,
+  'rule-failing roads should separate the primary reason from compact supporting facts');
+assert.match(details, /item\.metaFacts\?\.length[\s\S]*?meta\.classList\.add\('meta-structured'\)[\s\S]*?reason\.className = 'meta-reason'[\s\S]*?facts\.className = 'meta-facts'/,
+  'structured concern metadata should render with a clear reason and fact list');
+assert.match(css, /\.detail-item \.meta-structured\s*\{[^}]*display:\s*grid[^}]*gap:\s*5px[\s\S]*?\.meta-reason\s*\{[^}]*color:\s*#984034[\s\S]*?\.meta-facts\s*\{[^}]*flex-wrap:\s*wrap[\s\S]*?\.meta-facts > span\s*\{[^}]*border-radius:\s*999px/,
+  'rule-failure reasons and facts should use a compact, readable visual hierarchy');
 assert.match(html, /class="dialog-close streetview-close"[\s\S]*?<span>Close<\/span>/,
   'the embedded Street View close control should have a visible Close label');
 assert.match(html, /Location note:<\/b>[\s\S]*?nearest available view may be up to 250 m away[\s\S]*?For trails, it may show a nearby road/,
