@@ -80,9 +80,14 @@ function lngLat(point) {
 function itemLocation(item) {
   return lngLat(item.locationStart) || lngLat(item.locationEnd);
 }
-function itemSurface(item) {
-  const surface = Number(item?.surface);
-  return Number.isInteger(surface) && surface >= 0 && surface < SURFACE_LABEL.length ? surface : 0;
+function surfaceLabel(surface) {
+  const value = Number(surface);
+  return Number.isInteger(value) && value >= 0 && value < SURFACE_LABEL.length
+    ? SURFACE_LABEL[value] : SURFACE_LABEL[0];
+}
+function isConfirmedUnpavedSurface(surface) {
+  const value = Number(surface);
+  return value === 2 || value === 3;
 }
 function itemStreetViewHeading(item) {
   const start = lngLat(item.locationStart);
@@ -106,7 +111,7 @@ function openItemStreetView(item) {
   const [lng, lat] = location;
   const heading = itemStreetViewHeading(item);
   if (window.self !== window.top) {
-    window.parent.postMessage({ type: 'open-street-view', lat, lng, heading, surface: itemSurface(item) }, window.location.origin);
+    window.parent.postMessage({ type: 'open-street-view', lat, lng, heading }, window.location.origin);
     return;
   }
   const link = document.createElement('a');
@@ -127,7 +132,7 @@ function routePercent(meters, total, preciseSmall = false) {
 }
 function routeSummaryStats(segs, minShoulderFt = 4) {
   const levels = [0, 0, 0, 0, 0];
-  let bikeNetworkM = 0, roadM = 0, roadSpeedM = 0;
+  let bikeNetworkM = 0, roadM = 0, roadSpeedM = 0, unpavedM = 0;
   let maxRoadSpeedMph = 0, roadAtOrAbove45M = 0, roadAtOrAbove35M = 0;
   let highSpeedNoBikeAccommodationOrShoulderM = 0;
   minShoulderFt = Number.isFinite(Number(minShoulderFt))
@@ -138,6 +143,7 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
     const len = Number(seg.lenM) || 0;
     const level = Number(seg.level) || 0;
     if (level >= 1 && level <= 4) levels[level] += len;
+    if (isConfirmedUnpavedSurface(seg.surface)) unpavedM += len;
     if ((flags & FLAG_INFRA) || (seg.facility || 0) >= 2) bikeNetworkM += len;
     // Every road speed counts here, including roads with bike lanes. Dedicated
     // paths have no motor-vehicle speed in the graph and are not road speeds.
@@ -157,7 +163,7 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
     }
   }
   return {
-    levels, bikeNetworkM,
+    levels, bikeNetworkM, unpavedM,
     avgRoadSpeedMph: roadM > 0 ? Math.round(roadSpeedM / roadM) : null,
     maxRoadSpeedMph: roadM > 0 ? Math.round(maxRoadSpeedMph) : null,
     roadAtOrAbove45M, roadAtOrAbove35M, highSpeedNoBikeAccommodationOrShoulderM,
@@ -891,14 +897,19 @@ function routePreviewColor(seg) {
   return ROUTE_PREVIEW_STYLES[routePreviewStyle(seg)];
 }
 
-function routePreviewEdgeStyles(points) {
+function routePreviewEdges(points) {
   const segs = details?.segs || [];
   let segmentAt = 0;
   return points.slice(0, -1).map((point, index) => {
     const routeIndex = (point.routeIndex + points[index + 1].routeIndex) / 2;
     while (segmentAt + 1 < segs.length && routeIndex >= Number(segs[segmentAt]?.c1)) segmentAt++;
-    return routePreviewStyle(segs[segmentAt]);
+    const seg = segs[segmentAt];
+    return { style: routePreviewStyle(seg), unpaved: isConfirmedUnpavedSurface(seg?.surface) };
   });
+}
+
+function routePreviewEdgeStyles(points) {
+  return routePreviewEdges(points).map((edge) => edge.style);
 }
 
 function routePreviewEdgeColors(points) {
@@ -908,7 +919,8 @@ function routePreviewEdgeColors(points) {
 function routePreviewRenderData() {
   const pointData = routePreviewPoints();
   const points = pointData.map((entry) => entry.point);
-  const edgeStyles = routePreviewEdgeStyles(pointData);
+  const edges = routePreviewEdges(pointData);
+  const edgeStyles = edges.map((edge) => edge.style);
   const features = [];
   let start = 0, style = edgeStyles[0];
   for (let edge = 1; edge < edgeStyles.length; edge++) {
@@ -920,7 +932,31 @@ function routePreviewRenderData() {
   }
   if (points.length >= 2) features.push({ type: 'Feature', properties: { style },
     geometry: { type: 'LineString', coordinates: points.slice(start) } });
-  return { points, colored: { type: 'FeatureCollection', features } };
+  const unpaved = {
+    type: 'FeatureCollection',
+    features: edges.flatMap((edge, index) => edge.unpaved ? [{
+      type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: [points[index], points[index + 1]] },
+    }] : []),
+  };
+  return { points, colored: { type: 'FeatureCollection', features }, unpaved };
+}
+
+function ensureUnpavedSlatImage(targetMap) {
+  const imageId = 'route-preview-unpaved-slats';
+  if (targetMap.hasImage(imageId)) return;
+  const width = 12, height = 12;
+  const data = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 4; x <= 5; x++) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 35;
+      data[offset + 1] = 54;
+      data[offset + 2] = 66;
+      data[offset + 3] = 176;
+    }
+  }
+  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
 }
 
 function setRoutePreviewFailPulse(on) {
@@ -966,6 +1002,7 @@ function initializeRoutePreviewMap() {
       type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: preview.points },
     } });
     routePreviewMap.addSource('route-preview-colored', { type: 'geojson', data: preview.colored });
+    routePreviewMap.addSource('route-preview-unpaved', { type: 'geojson', data: preview.unpaved });
     routePreviewMap.addSource('route-preview-markers', { type: 'geojson', data: {
       type: 'FeatureCollection', features: [
         { type: 'Feature', properties: { marker: 'start' }, geometry: { type: 'Point', coordinates: preview.points[0] } },
@@ -987,6 +1024,10 @@ function initializeRoutePreviewMap() {
     addRouteLayer('caution', { 'line-color': CAUTION_COLOR, 'line-width': 4.8 });
     addRouteLayer('fail', { 'line-color': FAIL_COLOR, 'line-width': 4.8, 'line-dasharray': [1.5, 1] });
     addRouteLayer('unknown', { 'line-color': '#98a2ad', 'line-width': 4.8 });
+    ensureUnpavedSlatImage(routePreviewMap);
+    routePreviewMap.addLayer({ id: 'route-preview-unpaved-slats', type: 'line', source: 'route-preview-unpaved',
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: { 'line-pattern': 'route-preview-unpaved-slats', 'line-width': 4.8, 'line-opacity': .9 } });
     setRoutePreviewFailPulse(preview.colored.features.some((feature) => feature.properties.style === 'fail'));
     routePreviewMap.addLayer({ id: 'route-preview-markers', type: 'circle', source: 'route-preview-markers',
       paint: { 'circle-radius': 5, 'circle-color': ['match', ['get', 'marker'], 'start', '#00795c', '#e87817'],
@@ -1038,6 +1079,7 @@ if (!hasRoute) {
   const passPct = routePercent((routeStats.levels[1] || 0) + (routeStats.levels[2] || 0), ridingM, true);
   const cautionPct = routePercent(routeStats.levels[3] || 0, ridingM, true);
   const failPct = routePercent(totals.failM || 0, ridingM, true);
+  const unpavedPct = routePercent(routeStats.unpavedM, ridingM, true);
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
   summary.innerHTML = `${fmtMi(totals.distM)} mi <small>· ${fmtDur(totals.timeS)}</small>`;
@@ -1046,7 +1088,7 @@ if (!hasRoute) {
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
   summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>Avg. limit</span><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>Max limit</span><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>At least 35 mph</span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span><span class="speed-limit-metric"><span>At least 45 mph</span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span>`;
-  summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span></div>`;
+  summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / bike lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span><span class="route-summary-mix-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span></div>`;
   speedShoulderNote.hidden = false;
   speedShoulderNote.innerHTML = `<b>${speedMiles(routeStats.highSpeedNoBikeAccommodationOrShoulderM)}</b> on ≥30 mph roads without bike accommodation or a confirmed ≥${routeStats.minShoulderFt} ft shoulder`;
   const speedProfile = document.getElementById('speedProfile');
@@ -1101,6 +1143,11 @@ if (!hasRoute) {
     name: roadName(s),
     meta: `Allowed mountain-bike trail · ${s.mtb ? 'OSM MTB tag' : 'OSM MTB route'}`,
   }));
+  const unpaved = rules.preferPaved === false ? [] : sections(segs,
+    (s) => isConfirmedUnpavedSurface(s.surface), (s) => ({
+      name: roadName(s),
+      meta: `Confirmed ${surfaceLabel(s.surface).toLowerCase()} surface · OSM data`,
+    }));
   const curveHazards = sections(segs, (s) => !!s.hazard, (s) => ({
     name: roadName(s),
     meta: [
@@ -1124,13 +1171,15 @@ if (!hasRoute) {
     alert.hidden = true;
   } else {
     alert.hidden = false;
-    if (mountainBike.length || limitedAccess.length || curveHazards.length || steepGrades.length) {
+    if (mountainBike.length || limitedAccess.length || curveHazards.length || steepGrades.length || unpaved.length) {
       const limitedM = limitedAccess.reduce((sum, item) => sum + item.lenM, 0);
       const mountainBikeM = mountainBike.reduce((sum, item) => sum + item.lenM, 0);
+      const unpavedM = unpaved.reduce((sum, item) => sum + item.lenM, 0);
       alert.classList.add('caution');
       const notes = [];
       if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} on mountain-bike trail`);
       if (limitedM) notes.push(`${fmtDist(limitedM)} on a limited-access highway`);
+      if (unpavedM) notes.push(`${fmtDist(unpavedM)} confirmed unpaved`);
       if (curveHazards.length) notes.push(`${fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0))} with a possible uphill-curve visibility caution`);
       if (steepGrades.length) notes.push(`${fmtDist(steepUphillM)} over 10% uphill grade`);
       alert.textContent = `${notes.join(' · ')}. These are called out for judgment but are not road-rule failures.`;
@@ -1155,6 +1204,7 @@ if (!hasRoute) {
   // while the other answers “what kind of road is this?”.
   renderConcernShortcuts(report, [
     { label: 'Fails rules', shortLabel: 'Fail', items: failing, sectionId: 'concern-fails' },
+    { label: 'Unpaved', shortLabel: 'Surface', items: unpaved, sectionId: 'concern-unpaved' },
     { label: 'Mountain-bike', shortLabel: 'MTB', items: mountainBike, sectionId: 'concern-mountain-bike' },
     { label: 'Uphill curves', shortLabel: 'Curves', items: curveHazards, sectionId: 'concern-uphill-curves' },
     { label: 'Steep grades', shortLabel: 'Grades', items: steepGrades, sectionId: 'concern-steep-grades' },
@@ -1163,15 +1213,16 @@ if (!hasRoute) {
     { label: 'Highways', shortLabel: 'Hwys', items: highways, sectionId: 'concern-highways' },
   ]);
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails');
+  if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'Paved surfaces are preferred in Settings. These are only segments positively tagged as unpaved in OpenStreetMap.');
   if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike');
   if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution', false, 'concern-uphill-curves');
   if (steepGrades.length) renderSection(report, 'Steep uphill grade segments (over 10%)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality.');
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway', false, 'concern-freeways');
   if (limitedAccess.length) renderSection(report, 'Limited-access highways', limitedAccess, '', 'caution', false, 'concern-limited-access');
   if (highways.length) renderSection(report, 'Highways', highways, '', '', false, 'concern-highways');
-  if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length && !mountainBike.length
+  if (!freeways.length && !limitedAccess.length && !highways.length && !failing.length && !unpaved.length && !mountainBike.length
       && !curveHazards.length && !steepGrades.length) {
-    report.innerHTML = '<div class="no-route">No freeway, limited-access highway, highway, steep-grade, or rule-failing sections were found on this route.</div>';
+    report.innerHTML = '<div class="no-route">No freeway, limited-access highway, unpaved, highway, steep-grade, or rule-failing sections were found on this route.</div>';
   }
   if (Array.isArray(details.legs) && details.legs.length > 1) {
     renderSection(steps, 'Legs', details.legs.map((leg, i) => ({

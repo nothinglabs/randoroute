@@ -18,10 +18,33 @@ assert.match(worker, /want BGR8/,
   'the router should reject an older graph layout instead of misreading it');
 assert.match(worker, /eSurface = u8\(E\)/,
   'the router should load one compact surface category for each graph edge');
-assert.match(details, /surface: itemSurface\(item\)/,
-  'route-detail Street View launches should send the route segment surface');
-assert.match(html, /id="streetViewSurfaceNote"/,
-  'the embedded Street View overlay should have a surface note');
+assert.match(app, /\['Surface \(OSM\)', routeSurfaceLabel\(p\.surface\)\]/,
+  'route-segment popups should show the compact OSM surface category');
+assert.match(app, /buildRouteUnpavedData/,
+  'confirmed unpaved route segments should have a dedicated map-overlay source');
+assert.match(app, /route-unpaved-slats/,
+  'the map should render confirmed unpaved segments with cross-slats');
+assert.match(details, /Unpaved surfaces/,
+  'route details should report confirmed unpaved segments as a concern when pavement is preferred');
+assert.match(details, /route-preview-unpaved-slats/,
+  'the route-details map preview should preserve the unpaved-surface overlay');
+assert.doesNotMatch(html, /streetViewSurfaceNote/,
+  'surface labels belong in the road/trail detail popup, not over Street View');
+
+const surfaceLabelStart = app.indexOf('const ROUTE_SURFACE_LABEL');
+const surfaceLabelEnd = app.indexOf('/* ------------------------------------------------- riding-rules state */', surfaceLabelStart);
+assert.ok(surfaceLabelStart >= 0 && surfaceLabelEnd > surfaceLabelStart,
+  'surface classification helpers were not found in the app');
+const appSurfaceContext = vm.createContext({ Number });
+vm.runInContext(`${app.slice(surfaceLabelStart, surfaceLabelEnd)}\nglobalThis.isConfirmed = isConfirmedUnpavedSurface;`, appSurfaceContext);
+assert.equal(appSurfaceContext.isConfirmed(0), false,
+  'unknown surfaces must not be presented as unpaved');
+assert.equal(appSurfaceContext.isConfirmed(1), false,
+  'paved surfaces must not be presented as unpaved');
+assert.equal(appSurfaceContext.isConfirmed(2), true,
+  'confirmed gravel/compacted surfaces should be presented as unpaved');
+assert.equal(appSurfaceContext.isConfirmed(3), true,
+  'confirmed rough/unpaved surfaces should be presented as unpaved');
 
 const helperStart = worker.indexOf('function surfacePreferenceS');
 const helperEnd = worker.indexOf('// Ordinary 9', helperStart);

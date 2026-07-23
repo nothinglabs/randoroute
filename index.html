@@ -208,7 +208,7 @@
 
   <dialog id="streetViewDialog" class="full-help-dialog sv-dialog" aria-label="Street View">
     <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Open in Google Maps ↗</a><button class="dialog-close streetview-close" data-close="streetViewDialog" aria-label="Close Street View"><span aria-hidden="true">✕</span><span>Close</span></button></div></div>
-    <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade" loading="lazy"></iframe><div class="sv-overlay-notes"><p id="streetViewSurfaceNote" class="sv-surface-note" hidden></p><p class="sv-coverage-note">Street View location may not be exact. No view within 250 m? Try <b>Open in Google Maps</b>.</p></div></div>
+    <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade" loading="lazy"></iframe><div class="sv-overlay-notes"><p class="sv-coverage-note">Street View location may not be exact. No view within 250 m? Try <b>Open in Google Maps</b>.</p></div></div>
   </dialog>
 
   <dialog id="clearRouteDialog" class="map-dialog clear-route-dialog" aria-label="Clear this route">
@@ -320,7 +320,7 @@
       </ul></section>
       <section><h3>Details</h3><ul>
         <li><b>Stats:</b> route map, elevation, grades, and road-speed information.</li>
-        <li><b>Concerns:</b> shows rule failures, freeways, limited-access roads, mountain-bike trails, steep uphill grades, and uphill-curve cautions.</li>
+        <li><b>Concerns:</b> shows rule failures, freeways, limited-access roads, mountain-bike trails, steep uphill grades, uphill-curve cautions, and confirmed unpaved segments when paved surfaces are preferred.</li>
         <li><b>All Steps:</b> every route segment in order.</li>
         <li>Tap buttons in route segments to view them on the map or with <b>Google Street View</b>.</li>
       </ul></section>
@@ -331,6 +331,7 @@
         <li><b>Red dashed</b> — Road that fails rules. A known rule conflict, freeway, or permanent bicycle restriction. <b>Failing lane segments pulse.</b> Permanent bicycle restrictions are never routed.</li>
         <li><b>Amber</b> — Caution: a bike-legal limited-access highway or allowed mountain-bike trail. It deserves extra judgment.</li>
         <li><b>Dashed light blue</b> — Designated bike route: a signed or mapped bicycle corridor. This is an additional overlay; it does not indicate a safety level.</li>
+        <li><b>Cross-slats</b> — confirmed unpaved surface. This overlays the route safety color.</li>
       </ul></section>
     </div>
   </dialog>
