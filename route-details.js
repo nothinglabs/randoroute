@@ -414,6 +414,7 @@ function populateSectionBody(body, items, emptyText, cls, numbered, note) {
   for (const item of items) {
     const li = document.createElement('li');
     li.className = `detail-item ${cls}`;
+    if (item.roadName) li.classList.add('direction-item');
     if (item.safetyClass) li.classList.add(`safety-${item.safetyClass}`);
     const content = item.startIndex == null ? li : document.createElement('button');
     if (content !== li) {

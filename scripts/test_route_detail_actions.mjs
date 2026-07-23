@@ -128,6 +128,8 @@ assert.match(css, /\.route-alert-list\s*\{[^}]*grid-auto-flow:\s*column[^}]*grid
   'the compact concern summary should fill two readable columns from top to bottom');
 assert.match(css, /\.route-alert-label\s*\{[^}]*white-space:\s*pre-line[^}]*\}[\s\S]*?\.route-alert-distance\s*\{[^}]*color:\s*#0a66c2[^}]*font-weight:\s*850/,
   'concern summaries should show the category before a distinct blue distance');
+assert.match(css, /\.route-alert-list li\s*\{[^}]*flex-direction:\s*column[^}]*align-items:\s*flex-start[^}]*gap:\s*1px/,
+  'every concern summary distance should occupy the same line beneath its label');
 assert.match(css, /\.route-alert-hint\s*\{[^}]*color:\s*#0a66c2[^}]*font:\s*800 10\.5px\/1\.2 system-ui/,
   'the concern summary should include a compact blue disclosure hint');
 assert.doesNotMatch(detailsHtml, /id="(?:optimization|mapTapHint)"/,
@@ -142,6 +144,10 @@ assert.match(details, /if \(failing\.length\) renderSection[\s\S]*?if \(dismount
   'concern sections should put rule failures first and sidewalk fallback last');
 assert.match(details, /function buildRouteSteps\(segs, directions = \[\]\)[\s\S]*?directionBySegment[\s\S]*?!directionBySegment\.has\(index\)[\s\S]*?instruction: directionBySegment\.get\(index\) \|\| ''[\s\S]*?name: step\.instruction \|\| \(step\.name === 'Unnamed road'[\s\S]*?`\$\{step\.startIndex === 0 \? 'Start' : 'Continue'\} on \$\{step\.name\}`/,
   'All Steps should split at stored maneuvers and display real directions with useful fallbacks');
+assert.match(details, /if \(item\.roadName\) li\.classList\.add\('direction-item'\)/,
+  'turn-by-turn cards should receive a stable layout hook');
+assert.match(css, /\.direction-item \.step-button \.line > span:first-child\s*\{[^}]*flex-direction:\s*column[^}]*align-items:\s*flex-start[^}]*gap:\s*3px[^}]*\}[\s\S]*?\.direction-item \.step-safety\s*\{[^}]*margin-right:\s*0/,
+  'turn-by-turn cards should stack their badge consistently above the instruction');
 assert.match(details, /renderSection\(steps, 'Turn-by-turn directions', routeSteps, 'No street-level directions are available for this route\.'/,
   'the All Steps report should present its entries as turn-by-turn directions');
 assert.match(app, /routeDetailsDialog'\)\?\.addEventListener\('close'[\s\S]*?frame\.src = 'about:blank'/,
