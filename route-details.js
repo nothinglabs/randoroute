@@ -7,6 +7,7 @@ const FLAG_FERRY = 32;
 const FLAG_DESIGNATED = 64;
 const FLAG_LIMITED_ACCESS = 128;
 const OFFICIAL_MTB = 4;
+const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 const BIKE_NETWORK_COLOR = '#9fc400';
 const PASS_COLOR = '#168ad1';
 const CAUTION_COLOR = '#c46b00';
@@ -79,6 +80,10 @@ function lngLat(point) {
 function itemLocation(item) {
   return lngLat(item.locationStart) || lngLat(item.locationEnd);
 }
+function itemSurface(item) {
+  const surface = Number(item?.surface);
+  return Number.isInteger(surface) && surface >= 0 && surface < SURFACE_LABEL.length ? surface : 0;
+}
 function itemStreetViewHeading(item) {
   const start = lngLat(item.locationStart);
   const end = lngLat(item.locationEnd);
@@ -101,7 +106,7 @@ function openItemStreetView(item) {
   const [lng, lat] = location;
   const heading = itemStreetViewHeading(item);
   if (window.self !== window.top) {
-    window.parent.postMessage({ type: 'open-street-view', lat, lng, heading }, window.location.origin);
+    window.parent.postMessage({ type: 'open-street-view', lat, lng, heading, surface: itemSurface(item) }, window.location.origin);
     return;
   }
   const link = document.createElement('a');
@@ -315,6 +320,7 @@ function sections(segs, include, describe) {
     } else out.push({ key, name: info.name, meta: info.meta, lenM: itemLenM,
       startIndex: i, endIndex: i, coordStart: info.coordStart, coordEnd: info.coordEnd,
       locationStart, locationEnd,
+      surface: info.surface ?? seg.surface ?? 0,
       safetyLabel: info.safetyLabel || '', safetyClass: info.safetyClass || '' });
     previousIndex = i;
   }
@@ -492,6 +498,7 @@ function buildRouteSteps(segs) {
         coordEnd: seg.c1,
         locationStart: seg.locationStart,
         locationEnd: seg.locationEnd,
+        surface: seg.surface || 0,
         lenM: seg.lenM,
         flags: seg.flags || 0,
         facility: seg.facility || 0,

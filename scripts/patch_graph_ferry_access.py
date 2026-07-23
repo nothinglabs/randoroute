@@ -47,9 +47,9 @@ def haversine_m(lon1, lat1, lon2, lat2):
 
 
 def load(raw):
-    """Return (header dict, section byte offsets) for a BGR7 graph."""
-    if bytes(raw[:4]) != b'BGR7':
-        raise ValueError('ferry-access patch requires a BGR7 graph')
+    """Return (header dict, section byte offsets) for a BGR8 graph."""
+    if bytes(raw[:4]) != b'BGR8':
+        raise ValueError('ferry-access patch requires a BGR8 graph')
     n, e, d, g, u, name_bytes = struct.unpack_from('<6I', raw, 4)
     o = 28
     node_lon = o; o += 4 * n
@@ -64,7 +64,7 @@ def load(raw):
     edge_flags = o; o += e
     o += e                           # shoulder
     o += e                           # road class
-    o += e + e                       # facility, official
+    o += e + e + e                   # facility, official, surface
     o += e + e                       # hazard a->b, b->a
     o += o % 2
     o += 8 * e                       # four u16 hazard ranges

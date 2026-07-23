@@ -208,7 +208,7 @@
 
   <dialog id="streetViewDialog" class="full-help-dialog sv-dialog" aria-label="Street View">
     <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Open in Google Maps ↗</a><button class="dialog-close streetview-close" data-close="streetViewDialog" aria-label="Close Street View"><span aria-hidden="true">✕</span><span>Close</span></button></div></div>
-    <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade" loading="lazy"></iframe><p class="sv-coverage-note">Street View location may not be exact. No view within 250 m? Try <b>Open in Google Maps</b>.</p></div>
+    <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade" loading="lazy"></iframe><div class="sv-overlay-notes"><p id="streetViewSurfaceNote" class="sv-surface-note" hidden></p><p class="sv-coverage-note">Street View location may not be exact. No view within 250 m? Try <b>Open in Google Maps</b>.</p></div></div>
   </dialog>
 
   <dialog id="clearRouteDialog" class="map-dialog clear-route-dialog" aria-label="Clear this route">
@@ -255,6 +255,7 @@
       <li><b>Trust designated bike routes</b> — lets a USBR or regional designation satisfy the shoulder rule. Speed limits and access restrictions still apply.</li>
       <li><b>Allow freeway as last resort</b> — a freeway is permitted only as a heavily penalized fallback, and it still fails the rules.</li>
       <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided. Any use appears in Route Details.</li>
+      <li><b>Prefer paved surfaces</b> — favors paved roads and trails. Gravel and unpaved paths remain available when they are the practical connection; missing surface data is not penalized.</li>
       <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
       <li><b>Unknown shoulder = 0 ft</b> — if shoulder data is missing, treat it as 0 ft for rules purposes.</li>
       </ul><p>Search always includes local offline results; the ⌕ button also tries an online lookup.</p></section>

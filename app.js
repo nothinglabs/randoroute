@@ -15,11 +15,11 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.297';
+const APP_VERSION = '2026-07-22.298';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
-const GRAPH_FORMAT_VERSION = 'bgr7-3';
+const GRAPH_FORMAT_VERSION = 'bgr8-1';
 
 /* ---------------------------------------------------------------- palette */
 // One visual verdict system. Internal levels 1 and 2 retain different routing
@@ -33,11 +33,19 @@ const COLORS = {
   4: '#b2182b', // fails rules
   0: '#999999', // insufficient data
 };
+const ROUTE_SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
+function surfaceLabel(surface) {
+  if (Number.isInteger(surface)) return ROUTE_SURFACE_LABEL[surface] || ROUTE_SURFACE_LABEL[0];
+  const raw = String(surface || '').trim();
+  if (!raw) return null;
+  return raw.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 /* ------------------------------------------------- riding-rules state */
 const DEFAULT_RULES = Object.freeze({
   allowFreeways: true,  // only permit heavily penalized freeway fallback?
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
+  preferPaved: true,    // soft preference: gravel and dirt stay available when useful
   vettedBikeRoutes: true, // let designated corridors pass despite missing/narrow shoulder data?
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
@@ -1567,6 +1575,7 @@ function storeRouteDetails(m) {
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
+        surface: Number.isInteger(s.surface) ? s.surface : 0,
         roadClass: s.roadClass || 0, c0: s.c0, c1: s.c1,
         locationStart: locationAt(s.c0), locationEnd: locationAt(s.c1),
         crossing: s.crossing ? 1 : 0,
@@ -2109,7 +2118,7 @@ window.addEventListener('message', (event) => {
     const lat = Number(event.data.lat), lng = Number(event.data.lng);
     const heading = Number(event.data.heading);
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      openStreetView(lat, lng, Number.isFinite(heading) ? heading : null);
+      openStreetView(lat, lng, Number.isFinite(heading) ? heading : null, event.data.surface);
     }
     return;
   }
@@ -3623,6 +3632,7 @@ function drawRoute(coords, ferrySegs, segs) {
       hazard: s.hazard || 0, gradePct: s.gradePct || 0, crossing: s.crossing ? 1 : 0,
       infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
       facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
+      surface: Number.isInteger(s.surface) ? s.surface : 0,
       roadClass: s.roadClass || 0,
       routeIndex,
       level: s.level ?? fallbackRouteLevel(s), hwy: isHighwaySegment(s) ? 1 : 0 },
@@ -5667,7 +5677,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   streetViewBtn.setAttribute('aria-label', GOOGLE_MAPS_EMBED_KEY
     ? 'Open Street View in this app' : 'Open Street View in Google Maps');
   streetViewBtn.textContent = 'Google Street View';
-  streetViewBtn.addEventListener('click', () => openStreetView(svLat, svLng, svHeading));
+  streetViewBtn.addEventListener('click', () => openStreetView(svLat, svLng, svHeading, p.surface));
 
   const mapLink = document.createElement('a');
   mapLink.href = googleMapsPointUrl(svLat, svLng);
@@ -5702,7 +5712,7 @@ function googleStreetViewUrl(lat, lng, heading = null) {
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}${headingParam}`;
 }
 
-function openStreetView(lat, lng, heading = null) {
+function openStreetView(lat, lng, heading = null, surface = null) {
   const external = googleStreetViewUrl(lat, lng, heading);
   if (!GOOGLE_MAPS_EMBED_KEY) {
     // A real link click (not window.open with a features string, which iOS
@@ -5720,6 +5730,12 @@ function openStreetView(lat, lng, heading = null) {
   const dialog = document.getElementById('streetViewDialog');
   const frame = document.getElementById('streetViewFrame');
   const externalLink = document.getElementById('streetViewExternal');
+  const surfaceNote = document.getElementById('streetViewSurfaceNote');
+  const surfaceText = surfaceLabel(surface);
+  if (surfaceNote) {
+    surfaceNote.hidden = !surfaceText;
+    surfaceNote.textContent = surfaceText ? `Surface: ${surfaceText} (OpenStreetMap)` : '';
+  }
   if (externalLink) externalLink.href = googleMapsPointUrl(lat, lng);
   const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
   frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=250${headingParam}&fov=90`;
@@ -6009,6 +6025,8 @@ function presetInfoRows(preset) {
       : 'Not required; a route may include rule-failing segments to complete it.'],
     ['Unknown shoulder', presetRules.unknownShoulderZero ? 'Treated as 0 ft.' : 'Left as unknown.'],
     ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],
+    ['Surface', presetRules.preferPaved === false
+      ? 'No pavement preference.' : 'Paved roads and trails are preferred; gravel and unpaved paths remain available.'],
     ['Route preferences', preferenceText ? `Strongly prefer ${preferenceText}.` : 'No additional preference.'],
   ];
 }
@@ -6188,6 +6206,7 @@ function buildRulesPanel() {
     if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
     scheduleRescore();
   });
+  check('preferPaved', 'Prefer paved surfaces');
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
   slider('minShoulder', 'Minimum shoulder', 0, 10, 1, ' ft');

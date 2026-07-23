@@ -15,7 +15,7 @@ Included edges:
 One-way streets are honored for bikes (oneway / junction=roundabout, with
 oneway:bicycle=no overriding; oneway=-1 reverses the edge).
 
-Binary layout (little-endian), after header 'BGR7' + N,E,D,G,U,B (u32):
+Binary layout (little-endian), after header 'BGR8' + N,E,D,G,U,B (u32):
   nodeLon f32[N], nodeLat f32[N]
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
   edgeSpeed u8[E] (mph; 0 = separated infra), edgeFlags u8[E]
@@ -29,6 +29,8 @@ Binary layout (little-endian), after header 'BGR7' + N,E,D,G,U,B (u32):
                       3=buffered lane, 4=separated lane, 5=shared-use path),
   edgeOfficial u8[E] (1=WSDOT legal speed, 2=WSDOT facility,
                       4=explicit mountain-bike path),
+  edgeSurface u8[E] (0=unknown, 1=paved, 2=gravel/compacted,
+                     3=rough unpaved),
   edgeHazardAB u8[E], edgeHazardBA u8[E]
     (0=none; 1-3 directional possible limited-visibility uphill curve),
   edgeHazardStartAB u16[E], edgeHazardEndAB u16[E],
@@ -108,10 +110,29 @@ FACILITY_PATH = 5
 OFFICIAL_SPEED = 1
 OFFICIAL_FACILITY = 2
 # This byte has spare bits beyond the two WSDOT-source markers.  Keeping the
-# MTB marker here preserves the compact BGR7 layout while making technical
+# MTB marker here preserves the compact BGR8 layout while making technical
 # paths available to a rider-controlled runtime option instead of deleting
 # them during the build.
 EDGE_MTB = 4
+# Surface is intentionally a tiny routing category rather than the original
+# OSM string.  It lets the client prefer pavement without treating incomplete
+# OSM tagging as an instruction to avoid a road.  Gravel rail trails remain
+# routable; rough dirt/ground paths simply receive the stronger soft cost.
+SURFACE_UNKNOWN = 0
+SURFACE_PAVED = 1
+SURFACE_GRAVEL = 2
+SURFACE_ROUGH = 3
+PAVED_SURFACES = {
+    'asphalt', 'concrete', 'paved', 'paving_stones', 'sett', 'cobblestone',
+    'concrete:lanes', 'concrete:plates', 'metal',
+}
+GRAVEL_SURFACES = {
+    'gravel', 'fine_gravel', 'compacted', 'pebblestone', 'chipseal', 'wood',
+}
+ROUGH_SURFACES = {
+    'ground', 'dirt', 'earth', 'sand', 'grass', 'mud', 'clay', 'rock',
+    'rocks', 'unpaved', 'soil', 'ice', 'snow',
+}
 WSDOT_FACILITY_TYPE = {
     'Shared Lane': FACILITY_SHARED,
     'Bike Lane': FACILITY_LANE,
@@ -482,6 +503,18 @@ def is_mountain_bike_way(tags, way_id, mtb_route_members):
             or any(key.startswith('mtb:') for key in tags))
 
 
+def surface_class(tags):
+    """Return the compact rider-facing surface category for one OSM way."""
+    surface = (tags.get('surface') or '').strip().lower()
+    if surface in PAVED_SURFACES:
+        return SURFACE_PAVED
+    if surface in GRAVEL_SURFACES:
+        return SURFACE_GRAVEL
+    if surface in ROUGH_SURFACES:
+        return SURFACE_ROUGH
+    return SURFACE_UNKNOWN
+
+
 def classify_way(tags):
     """Return edge attrs dict, or None to exclude from the routable graph."""
     bike = tags.get('bicycle')
@@ -509,7 +542,7 @@ def classify_way(tags):
             return None
         return {'speed': FERRY_DEFAULT_MPH, 'est': True, 'facility': FACILITY_NONE, 'lim': False,
                 'infra': False, 'sh': None, 'road_class': 0, 'ferry': True,
-                'duration': tags.get('duration')}
+                'duration': tags.get('duration'), 'surface': SURFACE_UNKNOWN}
 
     cycleways = [tags[k] for k in CYCLEWAY_KEYS if tags.get(k)]
 
@@ -550,7 +583,7 @@ def classify_way(tags):
     )
     if infra:
         return {'speed': 0, 'est': False, 'facility': FACILITY_PATH, 'lim': False,
-                'infra': True, 'sh': None, 'road_class': 0}
+                'infra': True, 'sh': None, 'road_class': 0, 'surface': surface_class(tags)}
     if hw not in DRIVE:
         return None
 
@@ -562,7 +595,7 @@ def classify_way(tags):
         'speed': min(spd, 255), 'est': est,
         'facility': osm_facility(), 'lim': hw in LIMITED,
         'infra': False, 'sh': parse_shoulder_ft(tags),
-        'road_class': ROAD_CLASS[hw],
+        'road_class': ROAD_CLASS[hw], 'surface': surface_class(tags),
     }
 
 
@@ -792,7 +825,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     node_lon = array('f'); node_lat = array('f')
     eA = array('I'); eB = array('I'); eLen = array('f')
     eSpeed = array('B'); eFlags = array('B'); eSh = array('b'); eClass = array('B')
-    eFacility = array('B'); eOfficial = array('B')
+    eFacility = array('B'); eOfficial = array('B'); eSurface = array('B')
     eHazAB = array('B'); eHazBA = array('B')
     eHazStartAB = array('H'); eHazEndAB = array('H')
     eHazStartBA = array('H'); eHazEndBA = array('H')
@@ -952,13 +985,14 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 gLon.append(x); gLat.append(y)
 
                             def append_edge(edge_flags, edge_speed, edge_sh,
-                                            edge_class, edge_facility, edge_official,
+                                            edge_class, edge_facility, edge_official, edge_surface,
                                             edge_asc, edge_des, ab, ba):
                                 eAsc.append(min(int(edge_asc), 65535)); eDes.append(min(int(edge_des), 65535))
                                 eA.append(a); eB.append(b); eLen.append(length)
                                 eSpeed.append(edge_speed); eFlags.append(edge_flags)
                                 eSh.append(edge_sh); eClass.append(edge_class)
                                 eFacility.append(edge_facility); eOfficial.append(edge_official)
+                                eSurface.append(edge_surface)
                                 eHazAB.append(ab[0]); eHazBA.append(ba[0])
                                 eHazStartAB.append(ab[1]); eHazEndAB.append(ab[2])
                                 eHazStartBA.append(ba[1]); eHazEndBA.append(ba[2])
@@ -966,7 +1000,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 eOff.append(geom_off); eCnt.append(geom_cnt)
 
                             append_edge(eflags, espeed, esh,
-                                        attrs['road_class'], efacility, eofficial,
+                                        attrs['road_class'], efacility, eofficial, attrs['surface'],
                                         asc, des, haz_ab, haz_ba)
                             if attrs['mtb']:
                                 mtb_edges[0] += 1
@@ -1024,7 +1058,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     print(f'  names: {U:,} unique, blob {B:,} bytes', flush=True)
 
     for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass,
-                eFacility, eOfficial, eHazAB, eHazBA,
+                eFacility, eOfficial, eSurface, eHazAB, eHazBA,
                 eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA,
                 eName, name_offs, eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat):
         if sys.byteorder == 'big':
@@ -1032,14 +1066,14 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     # JS typed-array views need 4-byte alignment: pad after the byte arrays
     # and after the u16 arrays. The name blob goes LAST
     # so everything before it stays aligned.
-    parts = [b'BGR7', struct.pack('<IIIIII', N, E, D, G, U, B),
+    parts = [b'BGR8', struct.pack('<IIIIII', N, E, D, G, U, B),
              node_lon.tobytes(), node_lat.tobytes(), nEle.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
     parts += [eA.tobytes(), eB.tobytes(), eLen.tobytes(),
               eAsc.tobytes(), eDes.tobytes(),
               eSpeed.tobytes(), eFlags.tobytes(), eSh.tobytes(), eClass.tobytes(),
-              eFacility.tobytes(), eOfficial.tobytes(),
+              eFacility.tobytes(), eOfficial.tobytes(), eSurface.tobytes(),
               eHazAB.tobytes(), eHazBA.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((2 - off % 2) % 2))

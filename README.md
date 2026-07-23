@@ -250,11 +250,12 @@ python3 scripts/patch_graph_limited_access.py --apply
 python3 scripts/patch_graph_prohibited.py --apply
 ```
 
-A compact BGR7 binary graph (nodes at intersections plus graph-only nodes at
+A compact BGR8 binary graph (nodes at intersections plus graph-only nodes at
 roughly 120 m intervals on dedicated paths, so a point placed on a long trail
 snaps to that trail; edges carry length,
 climb/descent sampled every 60 m from the DEM, the original OSM road class,
-speed — official WSDOT legal speed, OSM-posted, or class-estimated — typed
+speed — official WSDOT legal speed, OSM-posted, or class-estimated — compact
+OSM surface category (paved, gravel/compacted, rough unpaved, or unknown), typed
 bicycle facility, authoritative-source bits, freeway/limited-access/
 infrastructure flags, shoulder from WSDOT conflation or OSM, and directional
 curve-warning severity/range). Pedestrian-only and `bicycle=dismount` ways are

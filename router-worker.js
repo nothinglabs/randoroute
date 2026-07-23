@@ -13,7 +13,7 @@
 
 let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
-let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass, eFacility, eOfficial;
+let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass, eFacility, eOfficial, eSurface;
 let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
@@ -50,6 +50,11 @@ const CROSSING_RETRY_LIMIT = 8;
 // mountain-bike infrastructure (including mtb:scale:imba). They remain in the
 // graph for the rider-controlled option, but are unavailable by default.
 const EDGE_MTB = 4;
+const SURFACE_UNKNOWN = 0;
+const SURFACE_PAVED = 1;
+const SURFACE_GRAVEL = 2;
+const SURFACE_ROUGH = 3;
+const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 function edgeName(i) {
   const id = eName[i];
   return _dec.decode(nameBytes.subarray(nameOff[id], nameOff[id + 1]));
@@ -65,7 +70,7 @@ function bearingDeg(fromLon, fromLat, toLon, toLat) {
 
 function loadGraph(buf) {
   const dv = new DataView(buf);
-  if (dv.getUint32(0, false) !== 0x42475237) throw new Error('bad graph magic (want BGR7)');
+  if (dv.getUint32(0, false) !== 0x42475238) throw new Error('bad graph magic (want BGR8)');
   N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
   const G = dv.getUint32(16, true), U = dv.getUint32(20, true), B = dv.getUint32(24, true);
   let o = 28;
@@ -82,7 +87,7 @@ function loadGraph(buf) {
   eA = u32(E); eB = u32(E); eLen = f32(E);
   eAsc = u16(E); eDes = u16(E);
   eSpeed = u8(E); eFlags = u8(E); eSh = i8(E); eClass = u8(E);
-  eFacility = u8(E); eOfficial = u8(E);
+  eFacility = u8(E); eOfficial = u8(E); eSurface = u8(E);
   eHazAB = u8(E); eHazBA = u8(E);
   pad2();
   eHazStartAB = u16(E); eHazEndAB = u16(E);
@@ -334,7 +339,7 @@ function useWeights(source) {
 // Shared-lane markings get only a small benefit; a separated lane or shared-
 // use path can justify a meaningfully longer route. Ferries keep their own
 // economics.
-// OSM road class is carried directly in BGR7.  This deliberately does not use
+// OSM road class is carried directly in BGR8.  This deliberately does not use
 // speed as a stand-in: a signed 25 mph arterial (such as NW 80th in Seattle)
 // is not a residential street.  The preference is a cost bonus, not a rule;
 // it still lets a shorter/safer non-residential connection win when needed.
@@ -433,6 +438,18 @@ function climbPreferenceS(i, forward, mode) {
   const grade = netAsc / Math.max(1, eLen[i]);
   const steepness = 1 + Math.max(0, grade - 0.04) * 8;
   return (netAsc * steepness + rollingAsc * 0.5) * activeWeights[key];
+}
+
+// Surface preference is intentionally a soft, distance-proportional route
+// cost. It gives a rider who prefers pavement a real alternative to gravel
+// rail trails and rough ground paths, without making either category illegal
+// or making an untagged OSM edge look worse than an honestly tagged one.
+function surfacePreferenceS(i, rules) {
+  if (rules?.preferPaved === false || (eFlags[i] & 32)) return 0;
+  const surface = eSurface[i];
+  if (surface === SURFACE_GRAVEL) return eLen[i] * 0.065;
+  if (surface === SURFACE_ROUGH) return eLen[i] * 0.20;
+  return 0;
 }
 
 // Ordinary 9–10% climbs remain available, but a run of them is meaningfully
@@ -723,6 +740,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // safety, facility, residential, and alternate-corridor multiplier so
       // a path bonus cannot shrink the penalty for a genuinely steep climb.
       cost += steepUphillAvoidanceS(ei, forward, mode);
+      // Similarly, a designated trail remains eligible but should not erase
+      // the rider's explicit preference for pavement.
+      cost += surfacePreferenceS(ei, rules);
       // Turn friction is independent of the road entered: a bike facility or
       // residential bonus should not make repeated intersection turns free.
       cost += turnPreferenceS(incomingEdge, u, ei, mode);
@@ -817,6 +837,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
       mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], roadClass: eClass[ei],
       facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB), level,
+      surface: eSurface[ei], surfaceLabel: SURFACE_LABEL[eSurface[ei]] || SURFACE_LABEL[SURFACE_UNKNOWN],
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei]), eLen[ei]),
