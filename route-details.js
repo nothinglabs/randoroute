@@ -994,6 +994,7 @@ const speedShoulderNote = document.getElementById('speedShoulderNote');
 const elevationSteepWarning = document.getElementById('elevationSteepWarning');
 const noRouteSummary = document.getElementById('noRouteSummary');
 const alert = document.getElementById('routeAlert');
+const concernDetailsHint = document.getElementById('concernDetailsHint');
 
 elevationSteepWarning.addEventListener('click', () => {
   selectDetailTab('concerns');
@@ -1472,13 +1473,12 @@ if (!hasRoute) {
       item.appendChild(link);
       list.appendChild(item);
     });
-    const hint = document.createElement('p');
-    hint.className = 'route-alert-hint';
-    hint.textContent = 'Tap for route concern details.';
-    alert.replaceChildren(title, list, hint);
+    alert.replaceChildren(title, list);
+    concernDetailsHint.hidden = false;
   } else {
     alert.classList.add('good');
     alert.textContent = 'No route concerns were found under your current riding rules.';
+    concernDetailsHint.hidden = true;
   }
 
   const snapNotes = [];

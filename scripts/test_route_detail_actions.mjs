@@ -120,7 +120,7 @@ assert.match(details, /meta: `\$\{s\.mph\} mph · \$\{\(s\.official \|\| 0\) & O
   'sidewalk concern items should show only speed and area context');
 assert.doesNotMatch(details, /meta: `[^`]*mapped sidewalk fallback/,
   'sidewalk concern items should not repeat their section label');
-assert.match(details, /concernTitles = \{[\s\S]*?failing: 'Does not meet your rules'[\s\S]*?steepGrades: 'Steep uphill grades\\n\(over 10%\)'[\s\S]*?sidewalkFallback: 'Sidewalk fallback'[\s\S]*?notes\.push\(\{ label: concernTitles\.failing, distance: fmtDist\(failingM\), sectionId: 'concern-fails' \}\)[\s\S]*?notes\.push\(\{ label: concernTitles\.steepGrades, distance: fmtDist\(steepUphillM\), sectionId: 'concern-steep-grades' \}\)[\s\S]*?link\.className = 'route-alert-link'[\s\S]*?link\.addEventListener\('click', \(\) => scrollToConcernSection\(sectionId\)\)[\s\S]*?link\.append\(labelText, distanceText\)[\s\S]*?hint\.textContent = 'Tap for route concern details\.'[\s\S]*?alert\.replaceChildren\(title, list, hint\)/,
+assert.match(details, /concernTitles = \{[\s\S]*?failing: 'Does not meet your rules'[\s\S]*?steepGrades: 'Steep uphill grades\\n\(over 10%\)'[\s\S]*?sidewalkFallback: 'Sidewalk fallback'[\s\S]*?notes\.push\(\{ label: concernTitles\.failing, distance: fmtDist\(failingM\), sectionId: 'concern-fails' \}\)[\s\S]*?notes\.push\(\{ label: concernTitles\.steepGrades, distance: fmtDist\(steepUphillM\), sectionId: 'concern-steep-grades' \}\)[\s\S]*?link\.className = 'route-alert-link'[\s\S]*?link\.addEventListener\('click', \(\) => scrollToConcernSection\(sectionId\)\)[\s\S]*?link\.append\(labelText, distanceText\)[\s\S]*?alert\.replaceChildren\(title, list\)[\s\S]*?concernDetailsHint\.hidden = false/,
   'the top concern summary should render as a scannable list instead of a sentence');
 assert.match(details, /renderSection\(report, concernTitles\.failing[\s\S]*?renderSection\(report, concernTitles\.steepGrades[\s\S]*?renderSection\(report, concernTitles\.sidewalkFallback/,
   'concern summary labels and section titles should share the same ordered title definitions');
@@ -130,8 +130,10 @@ assert.match(css, /\.route-alert-label\s*\{[^}]*white-space:\s*pre-line[^}]*\}[\
   'concern summaries should show the category before a distinct blue distance');
 assert.match(css, /\.route-alert-link\s*\{[^}]*flex-direction:\s*column[^}]*align-items:\s*flex-start[^}]*gap:\s*1px[^}]*cursor:\s*pointer/,
   'every tappable concern summary should stack its distance beneath its label');
-assert.match(css, /\.route-alert-hint\s*\{[^}]*padding:\s*4px 7px[^}]*border-radius:\s*999px[^}]*background:\s*#eef6fc[^}]*color:\s*#0a66c2[^}]*font:\s*800 10\.5px\/1\.2 system-ui/,
-  'the concern summary should include a compact, visually separate blue disclosure hint');
+assert.match(detailsHtml, /id="concernDetailsHint" class="concern-details-hint" hidden>Tap for route concern details\.<\/p>[\s\S]*?<div id="report">/,
+  'the concern detail instruction should sit between the summary and accordion sections');
+assert.match(css, /\.concern-details-hint\s*\{[^}]*margin:\s*2px 2px 8px[^}]*color:\s*#415361[^}]*font:\s*750 11px\/1\.25 system-ui/,
+  'the concern detail instruction should read as a simple section label');
 assert.doesNotMatch(detailsHtml, /id="(?:optimization|mapTapHint)"/,
   'Route Details should not need compatibility placeholders once updates are atomic');
 assert.doesNotMatch(detailsHtml, /route-optimization|tap-hint/,
