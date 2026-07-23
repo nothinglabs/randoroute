@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.310';
+const APP_VERSION = '2026-07-22.311';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -850,6 +850,7 @@ const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover 
 const trailId = (src) => src.id + '__trail'; // lime base for off-street OSM bike paths/trails
 const trailDotsId = (src) => src.id + '__trail-dots'; // fine dotted trail centerline
 const trailHitId = (src) => src.id + '__trail-hit'; // dedicated wide target for dotted trails
+const stateSidewalkProbeId = 'roads__state-sidewalk-probe';
 const OSM_TRAIL_EXPR = ['match', ['get', 'highway'],
   ['cycleway', 'path', 'footway', 'bridleway', 'track', 'service'], true, false];
 const OSM_NOT_TRAIL_EXPR = ['match', ['get', 'highway'],
@@ -987,6 +988,25 @@ function ensureLayer(src) {
       filter: OSM_TRAIL_EXPR,
     }, beforeId);
   }
+  // State highways are visually deduplicated beneath the richer WSDOT layer,
+  // but their matching OSM tile still supplies sidewalk context for a WSDOT
+  // road-info card.  This transparent layer is queried only on demand.
+  if (src.id === 'roads') {
+    map.addLayer({
+      id: stateSidewalkProbeId,
+      type: 'line',
+      source: src.id,
+      ...SL,
+      minzoom: src.minVisibleZoom || 0,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#000',
+        'line-opacity': 0,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 10, 12, 16, 16, 24],
+      },
+      filter: ['==', ['get', 'd'], 1],
+    }, beforeId);
+  }
   // Invisible wide line on top — a forgiving hover target so you don't have to
   // land pixel-perfect on the thin visible line. Transparent, so no visual change.
   map.addLayer({
@@ -1021,6 +1041,8 @@ function updateVisibility(src) {
     return;
   }
   if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', on ? 'visible' : 'none');
+  if (src.id === 'roads' && map.getLayer(stateSidewalkProbeId))
+    map.setLayoutProperty(stateSidewalkProbeId, 'visibility', on ? 'visible' : 'none');
   if (map.getLayer(trailId(src))) map.setLayoutProperty(trailId(src), 'visibility', on ? 'visible' : 'none');
   if (map.getLayer(trailDotsId(src))) map.setLayoutProperty(trailDotsId(src), 'visibility', on ? 'visible' : 'none');
   if (map.getLayer(trailHitId(src))) map.setLayoutProperty(trailHitId(src), 'visibility', on ? 'visible' : 'none');
@@ -5649,6 +5671,24 @@ function routeBadgeAt(point) {
   return labels.size ? [...labels].join(' · ') : null;
 }
 
+// WSDOT's BLTS layer does not carry OSM sidewalk tags.  Its coincident OSM
+// state-road feature is still available in the vector tile, even though it is
+// hidden from the normal road drawing to avoid duplicate lines.  Query that
+// transparent probe at the tap so the WSDOT card can expose the same sidewalk
+// context used by graph routing.
+function wsdotSidewalkAt(lngLat) {
+  if (!map.getLayer(stateSidewalkProbeId)) return 'not mapped';
+  const point = map.project(lngLat);
+  const pad = 7;
+  const matches = map.queryRenderedFeatures(
+    [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]],
+    { layers: [stateSidewalkProbeId] }
+  );
+  const props = matches[0]?.properties;
+  return Number(props?.k) === 1 ? 'present'
+    : Number(props?.k) === 2 ? 'absent' : 'not mapped';
+}
+
 function resetRoadInfoPosition() {
   readoutEl.classList.remove('near-tap');
   for (const property of ['left', 'right', 'top', 'bottom']) {
@@ -5834,6 +5874,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
       ['Shoulder', p.ShoulderWidth != null ? p.ShoulderWidth + ' ft' : null],
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
+      ['Sidewalk (OSM)', wsdotSidewalkAt(lngLat)],
       ['Bike facility', p.BikeFacilityType],
       ['Designated bike route', p.Designated === 1 ? 'yes' : null],
       ['Limited access', p.LimitedAccess ? 'yes' : null],

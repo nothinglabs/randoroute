@@ -22,6 +22,8 @@ assert.match(app, /readoutEl\.append\(close, heading, table, mapActions\)/,
   'the compact road-card actions should appear below the road details');
 assert.match(app, /function scoreBLTS\(p\)[\s\S]*?urban: p\.Urban === 1[\s\S]*?\['Area', n\.urban \? 'Urban \(Census\)' : 'Rural \(Census\)'\][\s\S]*?\['Designated bike route', p\.Designated === 1 \? 'yes' : null\]/,
   'WSDOT road scoring and its popup should use the same Census urban/rural context as routing');
+assert.match(app, /const stateSidewalkProbeId = 'roads__state-sidewalk-probe'[\s\S]*?function wsdotSidewalkAt\(lngLat\)[\s\S]*?\{ layers: \[stateSidewalkProbeId\] \}[\s\S]*?\['Sidewalk \(OSM\)', wsdotSidewalkAt\(lngLat\)\]/,
+  'WSDOT cards should expose sidewalk status from the matching hidden OSM road tile');
 assert.match(css, /#settings-limits\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settings-limits #settingsSliders\s*\{[^}]*gap:\s*3px[\s\S]*?#settings-limits #settingsSliders \.rule-card\s*\{[^}]*padding:\s*3px 8px/,
   'the compact Limits pane should fit its controls without a nested scrollbar');
 assert.match(app, /slider\('urbanMaxSpeedNoShoulder', '<strong class="area-rule area-rule-urban">Urban<\/strong> max speed without shoulder'[\s\S]*?slider\('ruralMaxSpeedNoShoulder', '<strong class="area-rule area-rule-rural">Rural<\/strong> max speed without shoulder'[\s\S]*?slider\('minShoulder', 'Minimum shoulder for faster roads'[\s\S]*?label for="r-upperMaxSpeed">Never allow roads faster than/,
