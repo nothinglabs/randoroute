@@ -1325,7 +1325,7 @@ if (!hasRoute) {
   unpavedRouteWarning.hidden = !hasSignificantUnpaved;
   if (hasSignificantUnpaved) {
     document.getElementById('unpavedWarningText').textContent =
-      `This route includes ${fmtMi(routeStats.unpavedM)} mi of confirmed unpaved surface. Make sure you're comfortable riding it.`;
+      `This route has ${fmtMi(routeStats.unpavedM)} mi of unpaved surface.`;
   }
   speedShoulderNote.hidden = false;
   speedShoulderNote.innerHTML = `<b>${speedMiles(routeStats.highSpeedNoBikeAccommodationOrShoulderM)}</b> on ≥30 mph roads without bike accommodation or a confirmed ≥${routeStats.minShoulderFt} ft shoulder`;

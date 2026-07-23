@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-23.331';
+const APP_VERSION = '2026-07-23.333';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3414,6 +3414,7 @@ function renderRouteCard(m) {
     if (slot && details) slot.replaceWith(details);
   };
   if (!card) return;
+  syncRouteDetailsWarningState(m);
   if (!m) {
     card.innerHTML = `<div id="routeControlsSlot"></div><div class="rc-empty">Choose either <b>From</b> or <b>To</b>
       first, then search or tap the map. Routes follow your
@@ -3458,7 +3459,7 @@ function renderRouteCard(m) {
           <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
         </div>
         ${mtbNotice}<div class="rc-bottom-stats">
-          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><div class="rc-ride-items${containsDismount ? ' has-dismount' : ''}"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span><span class="rc-ride-item${hasSignificantUnpaved ? ' rc-ride-unpaved-warning' : ''}"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>${containsDismount ? '<span class="rc-ride-item rc-ride-dismount" title="Walk your bike through a short route section"><span aria-hidden="true">⚠</span> Dismount</span>' : ''}</div></div>
+          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><div class="rc-ride-items${containsDismount ? ' has-dismount' : ''}"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span><span class="rc-ride-item${hasSignificantUnpaved ? ' rc-ride-unpaved-warning' : ''}"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved${hasSignificantUnpaved ? '<span class="rc-unpaved-alert-mark" aria-hidden="true">!</span>' : ''}</span>${containsDismount ? '<span class="rc-ride-item rc-ride-dismount" title="Walk your bike through a short route section"><span aria-hidden="true">⚠</span> Dismount</span>' : ''}</div></div>
         </div>
       </div>
     </div>`;
@@ -3469,10 +3470,18 @@ function renderRouteCard(m) {
   drawRouteCardElevation();
 }
 
-function flashRouteDetailsWarning(route) {
-  if (!route?.ok) return;
+function routeHasDetailsWarning(route) {
+  if (!route?.ok) return false;
   const stats = routeSummaryStats(route);
-  if (!(Number(route.maxGradePct) > 18 || stats.unpavedM > SIGNIFICANT_UNPAVED_M)) return;
+  return Number(route.maxGradePct) > 18 || stats.unpavedM > SIGNIFICANT_UNPAVED_M;
+}
+
+function syncRouteDetailsWarningState(route, { flash = false } = {}) {
+  const warning = routeHasDetailsWarning(route);
+  const buttons = ['routeDetailsBtn', 'navCardDetailsBtn']
+    .map((id) => document.getElementById(id)).filter(Boolean);
+  buttons.forEach((button) => button.classList.toggle('route-details-warning', warning));
+  if (!warning || !flash || turnNav.active) return;
   const button = document.getElementById('routeDetailsBtn');
   if (!button) return;
   button.classList.remove('route-details-attention');
@@ -4840,7 +4849,7 @@ function activateRouteOption(option, updateNavigation = false) {
   }
   renderRouteOptionControls();
   renderRouteCard(option);
-  flashRouteDetailsWarning(option);
+  syncRouteDetailsWarningState(option, { flash: true });
   storeRouteDetails(option);
   drawRoute(option.coords, option.ferrySegs, option.segs);
   consumePendingRouteStepHighlight();
@@ -6910,7 +6919,10 @@ function setPanelOpen(open) {
   // The route tab is display:none while the panel is closed, so its elevation
   // canvas has no width to draw into. Redraw once the panel (and the canvas)
   // is laid out, otherwise the chart stays blank until the next route render.
-  if (open) requestAnimationFrame(drawRouteCardElevation);
+  if (open) {
+    requestAnimationFrame(drawRouteCardElevation);
+    syncRouteDetailsWarningState(routing.last, { flash: true });
+  }
 }
 
 function selectPanelTab(tabId) {
