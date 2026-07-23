@@ -459,6 +459,7 @@ function populateSectionBody(body, items, emptyText, cls, numbered, note) {
     if (content !== li) li.appendChild(content);
     const location = itemLocation(item);
     if (location) {
+      const actionName = item.roadName || item.name;
       const actions = document.createElement('div');
       actions.className = 'segment-actions';
       const streetView = document.createElement('button');
@@ -469,7 +470,7 @@ function populateSectionBody(body, items, emptyText, cls, numbered, note) {
       const viewLine = document.createElement('span');
       viewLine.textContent = 'View';
       streetView.append(streetLine, viewLine);
-      streetView.setAttribute('aria-label', `Open ${item.name} in Google Street View`);
+      streetView.setAttribute('aria-label', `Open ${actionName} in Google Street View`);
       streetView.addEventListener('click', () => openItemStreetView(item));
       const mapButton = document.createElement('button');
       mapButton.type = 'button';
@@ -481,7 +482,7 @@ function populateSectionBody(body, items, emptyText, cls, numbered, note) {
       mapIcon.setAttribute('aria-hidden', 'true');
       mapIcon.textContent = '⌖';
       mapButton.append(mapLabel, mapIcon);
-      mapButton.setAttribute('aria-label', `Show ${item.name} on the route map`);
+      mapButton.setAttribute('aria-label', `Show ${actionName} on the route map`);
       mapButton.addEventListener('click', () => showRouteStep(item));
       actions.append(mapButton, streetView);
       li.appendChild(actions);
@@ -585,14 +586,18 @@ function scrollToConcernSection(sectionId) {
   });
 }
 
-function buildRouteSteps(segs) {
+function buildRouteSteps(segs, directions = []) {
+  const directionBySegment = new Map((directions || [])
+    .filter((direction) => Number.isInteger(direction?.segmentIndex) && direction.text)
+    .map((direction) => [direction.segmentIndex, direction.text]));
   const out = [];
   for (let index = 0; index < segs.length; index++) {
     const seg = segs[index];
     if (seg.flags & FLAG_FERRY) continue;
     const name = roadName(seg);
     const last = out[out.length - 1];
-    if (last && last.endIndex === index - 1 && last.name === name) {
+    if (last && last.endIndex === index - 1 && last.name === name
+        && !directionBySegment.has(index)) {
       last.lenM += seg.lenM;
       last.endIndex = index;
       last.coordEnd = seg.c1;
@@ -610,6 +615,7 @@ function buildRouteSteps(segs) {
     } else {
       out.push({
         name,
+        instruction: directionBySegment.get(index) || '',
         startIndex: index,
         endIndex: index,
         coordStart: seg.c0,
@@ -664,6 +670,10 @@ function buildRouteSteps(segs) {
   }
   return out.map((step) => ({
     ...step,
+    roadName: step.name,
+    name: step.instruction || (step.name === 'Unnamed road'
+      ? (step.startIndex === 0 ? 'Start' : 'Continue')
+      : `${step.startIndex === 0 ? 'Start' : 'Continue'} on ${step.name}`),
     safetyLabel: safetyVerdict(step).label,
     safetyClass: safetyVerdict(step).className,
     meta: stepMeta(step),
@@ -1397,14 +1407,14 @@ if (!hasRoute) {
     lenM: s.hazardLenM || s.lenM,
     riskScore: credibleSegmentGradePct(s) * 100 + (Number(s.mph) || 0),
   })));
-  const routeSteps = buildRouteSteps(segs);
+  const routeSteps = buildRouteSteps(segs, details.directions);
   const ferries = sections(segs, (s) => !!(s.flags & FLAG_FERRY), () => ({
     name: 'Ferry crossing', meta: 'Ferry segment',
   }));
   const concernTitles = {
     failing: 'Does not meet your rules',
     dismount: 'Dismount points — walk your bike',
-    steepGrades: 'Steep uphill grades (over 10%)',
+    steepGrades: 'Steep uphill grades\n(over 10%)',
     limitedAccess: 'Limited-access highways',
     mountainBike: 'Mountain-bike trails',
     curveHazards: 'Possible limited-visibility uphill curves',
@@ -1422,23 +1432,35 @@ if (!hasRoute) {
     const unpavedM = unpaved.reduce((sum, item) => sum + item.lenM, 0);
     if (!failingM) alert.classList.add('caution');
     const notes = [];
-    if (failingM) notes.push(`${fmtDist(failingM)} ${concernTitles.failing}`);
-    if (dismountM) notes.push(`${fmtDist(dismountM)} ${concernTitles.dismount}`);
-    if (steepGrades.length) notes.push(`${fmtDist(steepUphillM)} ${concernTitles.steepGrades}`);
-    if (limitedM) notes.push(`${fmtDist(limitedM)} ${concernTitles.limitedAccess}`);
-    if (mountainBikeM) notes.push(`${fmtDist(mountainBikeM)} ${concernTitles.mountainBike}`);
-    if (curveHazards.length) notes.push(`${fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0))} ${concernTitles.curveHazards}`);
-    if (unpavedM) notes.push(`${fmtDist(unpavedM)} ${concernTitles.unpaved}`);
-    if (sidewalkFallbacks.length) notes.push(`${fmtDist(sidewalkFallbacks.reduce((sum, item) => sum + item.lenM, 0))} ${concernTitles.sidewalkFallback}`);
+    if (failingM) notes.push({ label: concernTitles.failing, distance: fmtDist(failingM) });
+    if (dismountM) notes.push({ label: concernTitles.dismount, distance: fmtDist(dismountM) });
+    if (steepGrades.length) notes.push({ label: concernTitles.steepGrades, distance: fmtDist(steepUphillM) });
+    if (limitedM) notes.push({ label: concernTitles.limitedAccess, distance: fmtDist(limitedM) });
+    if (mountainBikeM) notes.push({ label: concernTitles.mountainBike, distance: fmtDist(mountainBikeM) });
+    if (curveHazards.length) notes.push({
+      label: concernTitles.curveHazards,
+      distance: fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0)),
+    });
+    if (unpavedM) notes.push({ label: concernTitles.unpaved, distance: fmtDist(unpavedM) });
+    if (sidewalkFallbacks.length) notes.push({
+      label: concernTitles.sidewalkFallback,
+      distance: fmtDist(sidewalkFallbacks.reduce((sum, item) => sum + item.lenM, 0)),
+    });
     const title = document.createElement('strong');
     title.className = 'route-alert-title';
     title.textContent = 'Route concerns';
     const list = document.createElement('ul');
     list.className = 'route-alert-list';
     list.style.setProperty('--summary-rows', Math.ceil(notes.length / 2));
-    notes.forEach((text) => {
+    notes.forEach(({ label, distance }) => {
       const item = document.createElement('li');
-      item.textContent = text;
+      const labelText = document.createElement('span');
+      labelText.className = 'route-alert-label';
+      labelText.textContent = label;
+      const distanceText = document.createElement('span');
+      distanceText.className = 'route-alert-distance';
+      distanceText.textContent = distance;
+      item.append(labelText, distanceText);
       list.appendChild(item);
     });
     const hint = document.createElement('p');
@@ -1483,7 +1505,7 @@ if (!hasRoute) {
       meta: `${fmtDur(leg.timeS)}${leg.failM > 0 ? ` · ${fmtDist(leg.failM)} fails rules` : ''}`,
     })), '');
   }
-  renderSection(steps, 'Follow these roads in order', routeSteps, 'No street-level steps are available for this route.', '', true);
+  renderSection(steps, 'Turn-by-turn directions', routeSteps, 'No street-level directions are available for this route.', '', true);
   if (ferries.length) renderSection(steps, 'Ferry crossings', ferries, '', 'caution', true);
   restoreInitialDetailTab();
 }

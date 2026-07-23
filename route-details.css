@@ -90,8 +90,10 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-alert.caution { border-left-color: #c46b00; background: #fff5e8; color: #753c00; }
 .route-alert-title { display: block; margin-bottom: 5px; font: 850 12px/1.2 system-ui; letter-spacing: .025em; text-transform: uppercase; }
 .route-alert-list { display: grid; grid-auto-flow: column; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--summary-rows), auto); gap: 3px 12px; margin: 0; padding: 0; list-style: none; font: 700 11.5px/1.25 system-ui; }
-.route-alert-list li { position: relative; min-width: 0; padding-left: 10px; }
+.route-alert-list li { position: relative; display: flex; flex-wrap: wrap; align-content: start; gap: 0 5px; min-width: 0; padding-left: 10px; }
 .route-alert-list li::before { position: absolute; left: 0; content: '•'; }
+.route-alert-label { min-width: 0; white-space: pre-line; }
+.route-alert-distance { color: #0a66c2; font-weight: 850; white-space: nowrap; }
 .route-alert-hint { margin: 7px 0 0; color: #0a66c2; font: 800 10.5px/1.2 system-ui; }
 #panel-concerns .detail-section { scroll-margin-top: 58px; }
 .concern-section { overflow: hidden; }
@@ -162,7 +164,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .detail-note { margin: 9px 0 0; color: #667784; font: 600 11px/1.35 system-ui; font-style: italic; }
 #panel-concerns .detail-section.concern-section { margin: 7px 0; padding: 0; }
 #panel-concerns .concern-section h2 { margin: 0; }
-#panel-concerns .concern-section h2 .concern-section-title { min-width: 0; color: #263b48; font: 800 15px/1.2 system-ui; white-space: normal; }
+#panel-concerns .concern-section h2 .concern-section-title { min-width: 0; color: #263b48; font: 800 15px/1.2 system-ui; white-space: pre-line; }
 #panel-concerns .concern-section h2 .concern-section-summary { color: #52616d; font: 750 11.5px/1.15 system-ui; white-space: nowrap; }
 #panel-concerns .concern-section .detail-note { margin: 7px 1px; }
 #panel-concerns .concern-section .detail-item { border-radius: 8px; }

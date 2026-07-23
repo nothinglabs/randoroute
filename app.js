@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-23.325';
+const APP_VERSION = '2026-07-23.326';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1623,6 +1623,12 @@ function storeRouteDetails(m) {
   try {
     const routeCoords = Array.isArray(m.coords) ? m.coords : [];
     const routePreview = compactRouteCoords(m, true);
+    const directions = buildTurnInstructions(m).instructions
+      .filter((instruction) => Number.isInteger(instruction.segmentIndex))
+      .map((instruction) => ({
+        segmentIndex: instruction.segmentIndex,
+        text: instruction.text,
+      }));
     // Route Details needs a real on-road point for its Google Maps and Street
     // View actions, but not the complete (potentially large) route geometry.
     const locationAt = (index) => {
@@ -1636,6 +1642,7 @@ function storeRouteDetails(m) {
       profile: compactRouteProfile(m),
       routeCoords: routePreview?.coords || null,
       routeCoordIndices: routePreview?.indices || null,
+      directions,
       routeOptions: routeDetailsOptionTabs(m),
       snapStartM: Number(m.snapStartM) || 0,
       snapEndM: Number(m.snapEndM) || 0,
@@ -1900,7 +1907,13 @@ function buildTurnInstructions(m) {
     const text = straightCrossing
       ? `Continue across ${crossingRoad || 'the road'}`
       : navTurnText(delta, to, undefined, sameRoad);
-    instructions.push({ distanceM, coordIndex: at, text, heading: compassWord(outgoing) });
+    instructions.push({
+      distanceM,
+      coordIndex: at,
+      segmentIndex: destination?.index ?? i + 1,
+      text,
+      heading: compassWord(outgoing),
+    });
     lastM = distanceM;
   }
   instructions.sort((a, b) => a.distanceM - b.distanceM);
