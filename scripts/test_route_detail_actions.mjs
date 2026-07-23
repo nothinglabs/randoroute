@@ -90,12 +90,30 @@ assert.match(appCss, /@media \(max-width: 340px\)\s*\{[\s\S]*?\.rc-ride-items\s*
   '320px phones should use two metric columns so nowrap labels cannot collide');
 assert.match(appCss, /\.rc-details-wrap\s*\{[^}]*flex-direction:\s*column[^}]*justify-content:\s*flex-end[\s\S]*?\.rc-speed-limit\s*\{[^}]*text-align:\s*center/,
   'the route-choice Details rail should sit at the bottom-left with a compact speed metric above it');
-assert.match(css, /\.route-quick-summary\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap[\s\S]*?\.route-summary-mix-items\s*\{[^}]*display:\s*flex[^}]*flex-wrap:\s*wrap/,
-  'the shared route summary should keep route metrics and safety percentages compactly together');
+assert.match(css, /\.route-quick-summary\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:[^}]*minmax\(0,\s*1\.2fr\)[\s\S]*?\.route-summary-mix-items\s*\{[^}]*display:\s*grid[^}]*justify-self:\s*center/,
+  'the shared route summary should stack time under mileage and center its right-side metrics');
+assert.match(details, /summary\.innerHTML\s*=\s*`<strong>\$\{fmtMi\(totals\.distM\)\} mi<\/strong><small>\$\{fmtDur\(totals\.timeS\)\}<\/small>`/,
+  'the shared route summary should place time under mileage');
+assert.match(details, /summaryMix\.innerHTML[\s\S]*totals\.ferryM > 0[\s\S]*mix-ferry[\s\S]*fmtMi\(totals\.ferryM\)[\s\S]*speedShoulderNote/,
+  'ferry mileage should appear with the top summary metrics');
+assert.doesNotMatch(details, /summarySub\.innerHTML[^;]*Ferry/,
+  'ferry mileage should no longer appear in the elevation metrics');
 assert.match(app, /description: routeDetailsOptimizationDescription\(m\.optimization\)/,
   'route-search rationale should remain stored for future Route Details rendering');
 assert.doesNotMatch(detailsHtml, /Tap any road, concern, or step/,
   'Route Details should not repeat the map-tapping instruction');
+assert.match(details, /Uses mapped sidewalks as a route fallback\./,
+  'the sidewalk concern should explain the fallback briefly');
+assert.doesNotMatch(details, /Verify local bicycle rules and conditions|called out for judgment but are not road-rule failures|mapped sidewalk fallback · strongly deprioritized/,
+  'sidewalk concerns should avoid redundant legality and implementation lectures');
+assert.match(details, /meta: `\$\{s\.mph\} mph · \$\{\(s\.official \|\| 0\) & OFFICIAL_URBAN \? 'urban' : 'rural'\} road`/,
+  'sidewalk concern items should show only speed and area context');
+assert.doesNotMatch(details, /meta: `[^`]*mapped sidewalk fallback/,
+  'sidewalk concern items should not repeat their section label');
+assert.match(details, /title\.textContent = 'Route concerns'[\s\S]*?list\.className = 'route-alert-list'[\s\S]*?alert\.replaceChildren\(title, list\)/,
+  'the top concern summary should render as a scannable list instead of a sentence');
+assert.match(css, /\.route-alert-list\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)[^}]*font:\s*700 11\.5px\/1\.25 system-ui/,
+  'the compact concern summary should use a readable two-column phone layout');
 assert.doesNotMatch(detailsHtml, /id="(?:optimization|mapTapHint)"/,
   'Route Details should not need compatibility placeholders once updates are atomic');
 assert.doesNotMatch(detailsHtml, /route-optimization|tap-hint/,
@@ -138,21 +156,21 @@ assert.equal(vm.runInContext(`routeSummaryStats([
 assert.equal(vm.runInContext(`routeSummaryStats([
   { lenM: 1609.34, mph: 45, sh: 2 },
   { lenM: 804.67, mph: 35, sh: 4 },
-  { lenM: 804.67, mph: 50, facility: 2, sh: 0 },
+  { lenM: 804.67, mph: 50, facility: 1, sh: 0 },
   { lenM: 804.67, mph: 20, flags: 8 }
 ]).maxRoadSpeedMph`, statsContext), 50,
   'the speed summary should report the maximum legal road speed');
 assert.equal(vm.runInContext(`routeSummaryStats([
   { lenM: 1609.34, mph: 45, sh: 2 },
   { lenM: 804.67, mph: 35, sh: 4 },
-  { lenM: 804.67, mph: 50, facility: 2, sh: 0 },
+  { lenM: 804.67, mph: 50, facility: 1, sh: 0 },
   { lenM: 804.67, mph: 20, flags: 8 }
 ]).avgRoadSpeedMph`, statsContext), 44,
   'the expanded speed metrics should preserve the distance-weighted average');
 assert.ok(Math.abs(vm.runInContext(`routeSummaryStats([
   { lenM: 1609.34, mph: 45, sh: 2 },
   { lenM: 804.67, mph: 35, sh: 4 },
-  { lenM: 804.67, mph: 50, facility: 2, sh: 0 },
+  { lenM: 804.67, mph: 50, facility: 1, sh: 0 },
   { lenM: 804.67, mph: 20, flags: 8 }
 ]).roadAtOrAbove45M`, statsContext) - 2414.01) < .001,
   'the 45 mph metric should count every road segment at or above that limit');
@@ -169,7 +187,7 @@ const speedEnd = details.indexOf('function drawElevation(', speedStart);
 assert.ok(speedStart >= 0 && speedEnd > speedStart, 'speed-profile helpers were not found');
 const speedContext = vm.createContext({
   Math, FLAG_FERRY: 32, FLAG_INFRA: 8,
-  isBikeNetwork: (seg) => !!((seg.flags || 0) & 8) || (seg.facility || 0) >= 2,
+  isBikeNetwork: (seg) => !!((seg.flags || 0) & 8) || (seg.facility || 0) >= 1,
 });
 vm.runInContext(details.slice(speedStart, speedEnd), speedContext);
 assert.equal(vm.runInContext(`speedProfileSegments([
@@ -221,6 +239,10 @@ assert.match(details, /const REQUESTED_DETAIL_TAB[\s\S]*?function restoreInitial
   'the reloaded report should restore the requested Details tab before showing the new route');
 assert.match(details, /function routePreviewStyle\(seg\)[\s\S]*?Number\(seg\.facility\) === 5 \? 'trail' : 'bike'[\s\S]*?isDesignated\(seg\) \? 'designated' : 'pass'[\s\S]*?function initializeRoutePreviewMap\(\)[\s\S]*?new maplibregl\.Map\([\s\S]*?route-preview-colored[\s\S]*?routePreviewMap\.fitBounds/,
   'the Stats preview should be a real map with the same route safety styles');
+assert.match(details, /function isBikeNetwork\(seg\)[\s\S]*?\(seg\.facility \|\| 0\) >= 1/,
+  'Route Details should count shared-lane markings as bike facilities');
+assert.match(app, /const ROUTE_SEG_BIKE_EXPR = \['any',[\s\S]*?\['>=', \['get', 'facility'\], 1\][\s\S]*?good_facility: facility >= 1/,
+  'the main map and route readout should treat shared-lane markings as bike facilities');
 assert.match(details, /function setRoutePreviewFailPulse\(on\)[\s\S]*?route-preview-fail[\s\S]*?line-opacity[\s\S]*?line-width[\s\S]*?setRoutePreviewFailPulse\(preview\.colored\.features\.some\(\(feature\) => feature\.properties\.style === 'fail'\)\)/,
   'failing route portions should pulse in the Details map preview');
 assert.match(detailsHtml, /vendor\/maplibre-gl\.css[\s\S]*?id="routePreviewMap"[\s\S]*?route-preview-attribution[\s\S]*?© OpenStreetMap contributors[\s\S]*?© CARTO[\s\S]*?vendor\/maplibre-gl\.js/,

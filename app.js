@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-23.317';
+const APP_VERSION = '2026-07-23.318';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1472,7 +1472,7 @@ function fallbackRouteLevel(s) {
   if ((flags & 64) && rules.vettedBikeRoutes) return flags & 128 ? 3 : 2;
   let sh = s.sh;
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
-  if ((s.facility || 0) < 2 && sh >= 0 && sh < rules.minShoulder) {
+  if ((s.facility || 0) < 1 && sh >= 0 && sh < rules.minShoulder) {
     if (rules.allowSidewalkFallback && ((s.official || 0) & OFFICIAL_SIDEWALK)) return 3;
     return 4;
   }
@@ -1499,7 +1499,7 @@ function routeSummaryStats(m) {
     // Physical facilities only (lime on the map) — designation alone can be a
     // plain road, and Route Details' "Bike network" verdict draws this line
     // the same way.
-    if ((flags & 8) || (s.facility || 0) >= 2) bikeNetworkM += len;
+    if ((flags & 8) || (s.facility || 0) >= 1) bikeNetworkM += len;
     // Include every road speed, including roads with bike lanes. Dedicated
     // paths carry no motor-vehicle speed and are not part of this road average.
     const mph = Number(s.mph);
@@ -2402,7 +2402,7 @@ function navCurrentSegment() {
 function navSegmentClassLabel(seg) {
   const flags = seg.flags || 0;
   if (flags & 32) return 'Ferry';
-  if ((seg.facility || 0) >= 2) return FACILITY_NAME[seg.facility] || 'Bike facility';
+  if ((seg.facility || 0) >= 1) return FACILITY_NAME[seg.facility] || 'Bike facility';
   if (flags & 8) return 'Off-street path';
   return ROAD_CLASS_NAME[seg.roadClass] || 'Road';
 }
@@ -3631,11 +3631,11 @@ function computeRoute() {
 // attributes, so the route is inspectable even with every data layer off.
 const ROUTESEG_SRC = { id: 'routeseg', name: 'Your route', scorer: scoreRouteSeg };
 const ROUTE_SEG_BIKE_EXPR = ['any', ['==', ['get', 'infra'], 1],
-  ['>=', ['get', 'facility'], 2]];
+  ['>=', ['get', 'facility'], 1]];
 const ROUTE_SEG_TRAIL_EXPR = ['==', ['get', 'facility'], 5];
 const ROUTE_SEG_NOT_TRAIL_EXPR = ['!=', ['get', 'facility'], 5];
 const ROUTE_SEG_NOT_BIKE_EXPR = ['all', ['!=', ['get', 'infra'], 1],
-  ['<', ['get', 'facility'], 2]];
+  ['<', ['get', 'facility'], 1]];
 const ROUTE_SEG_DESIGNATED_EXPR = ['==', ['get', 'desig'], 1];
 const ROUTE_SEG_NOT_DESIGNATED_EXPR = ['!=', ['get', 'desig'], 1];
 const ROUTE_SEG_PASS_EXPR = ['any', ['==', ['get', 'level'], 1],
@@ -3644,13 +3644,13 @@ function scoreRouteSeg(p) {
   const facility = p.facility || 0;
   const official = p.official || 0;
   return {
-    baseScore: facility >= 4 || p.infra === 1 ? 1 : facility >= 2 ? 2 : null,
+    baseScore: facility >= 4 || p.infra === 1 ? 1 : facility >= 1 ? 2 : null,
     shoulder_width: p.sh >= 0 ? p.sh : null,
     maxspeed_num: p.ferry ? null : p.mph,
     prohibited: false, restricted: false,
     freeway: p.fw === 1,
     limited_access: p.lim === 1 || p.fw === 1,
-    good_facility: facility >= 2,
+    good_facility: facility >= 1,
     infra: p.infra === 1 || facility >= 4,
     est: p.e === 1,
     desig: p.desig === 1,
@@ -3678,7 +3678,7 @@ function routeVisualStyle(p) {
   if (effectiveLevel(scoreRouteSeg(p)) === 4) return 'fail';
   if (p.level === 3) return 'caution';
   if (p.level === 0) return 'unknown';
-  const bike = p.infra === 1 || p.facility >= 2;
+  const bike = p.infra === 1 || p.facility >= 1;
   if (bike && p.facility === 5) return 'trail';
   if (bike) return 'bike';
   if (p.desig === 1) return 'designated';
@@ -4120,7 +4120,7 @@ const ROUTE_HIGHLIGHT_FILTERS = {
 function routeSegmentMatchesHighlight(seg, key) {
   const flags = seg.flags || 0;
   const level = seg.level || fallbackRouteLevel(seg);
-  if (key === 'bike-network') return !!(flags & (8 | 64)) || (seg.facility || 0) >= 2;
+  if (key === 'bike-network') return !!(flags & (8 | 64)) || (seg.facility || 0) >= 1;
   if (key === 'highway') return isHighwaySegment(seg);
   if (key === 'freeway') return !!(flags & 4);
   if (key === 'limited-access') return !!(flags & 128);
@@ -5600,7 +5600,7 @@ const ROAD_CLASS_NAME = {
   10: 'Trunk road', 11: 'Trunk link', 12: 'Motorway', 13: 'Motorway link',
 };
 function routeClassNote(p) {
-  if (p.infra || p.ferry || p.facility >= 2 || !p.roadClass) return null;
+  if (p.infra || p.ferry || p.facility >= 1 || !p.roadClass) return null;
   if (p.roadClass >= 8 && p.roadClass <= 11)
     return 'Major-road proxy adds a strong soft cost because no bike facility is recorded.';
   if (p.roadClass >= 6 && p.roadClass <= 7)

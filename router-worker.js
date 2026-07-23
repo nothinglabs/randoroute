@@ -279,7 +279,7 @@ function edgeNoShoulderMax(i, rules) {
 
 function sidewalkFallbackApplies(i, rules, shoulder = eSh[i]) {
   return rules.allowSidewalkFallback && !!(eOfficial[i] & EDGE_SIDEWALK)
-    && eFacility[i] < 2 && eSpeed[i] > edgeNoShoulderMax(i, rules)
+    && eFacility[i] === 0 && eSpeed[i] > edgeNoShoulderMax(i, rules)
     && shoulder >= 0 && shoulder < rules.minShoulder;
 }
 
@@ -302,9 +302,9 @@ function edgeLevel(i, rules) {
   // eSh < 0 = unknown; pessimistic mode counts that as a 0 ft shoulder.
   let sh = eSh[i];
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
-  // A conventional/buffered lane is usable operating space. A shared-lane
-  // marking is useful context but does not substitute for a shoulder.
-  if (eFacility[i] < 2 && sh >= 0 && sh < rules.minShoulder) {
+  // Any recorded bike facility, including a shared-lane marking, satisfies
+  // the bike-accommodation check without requiring sidewalk fallback.
+  if (eFacility[i] === 0 && sh >= 0 && sh < rules.minShoulder) {
     // A mapped sidewalk is an opt-in shoulder fallback. It remains a caution
     // and receives a strong route-choice cost below, but is not a rule fail.
     if (sidewalkFallbackApplies(i, rules, sh)) return 3;
@@ -399,9 +399,9 @@ function hazardMult(mode, severity) {
 
 // OSM road class is a useful traffic-volume proxy where measured AADT is not
 // available. This is deliberately a finite route-choice cost, not a safety
-// failure. A real bike lane/path (facility >= 2) removes the proxy penalty.
+// failure. Any recorded bike facility removes the no-facility proxy penalty.
 function majorRoadMult(i, mode) {
-  if (eFacility[i] >= 2 || (eFlags[i] & (8 | 32 | 4 | 128))) return 1;
+  if (eFacility[i] >= 1 || (eFlags[i] & (8 | 32 | 4 | 128))) return 1;
   const cls = eClass[i];
   const suffix = mode === 'direct' ? 'Direct' : mode === 'low' ? 'Low' : 'Balanced';
   if (cls === 4 || cls === 5) return activeWeights['arterialTertiary' + suffix];
@@ -415,7 +415,7 @@ function majorRoadMult(i, mode) {
 // never a claim about bicycle legality or actual traffic counts.
 function sidewalkExposureMult(i, mode) {
   if ((eOfficial[i] & (EDGE_URBAN | EDGE_SIDEWALK_NO)) !== (EDGE_URBAN | EDGE_SIDEWALK_NO)
-      || eFacility[i] >= 2 || eSpeed[i] < 30 || (eFlags[i] & (8 | 32 | 4))) return 1;
+      || eFacility[i] >= 1 || eSpeed[i] < 30 || (eFlags[i] & (8 | 32 | 4))) return 1;
   return mode === 'direct' ? 1.06 : mode === 'low' ? 1.30 : 1.16;
 }
 
@@ -868,7 +868,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (eFlags[ei] & 64) desigM += eLen[ei];
-    if (eFacility[ei] >= 2) facilityM += eLen[ei];
+    if (eFacility[ei] >= 1) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4 | 128)) && isResidential(ei)) residentialM += eLen[ei];
@@ -1096,7 +1096,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (eFlags[ei] & 64) desigM += eLen[ei];
-    if (eFacility[ei] >= 2) facilityM += eLen[ei];
+    if (eFacility[ei] >= 1) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4 | 128)) && isResidential(ei)) residentialM += eLen[ei];
@@ -1289,7 +1289,7 @@ function outcomeSnapshot(route) {
   const cautionPct = Math.round(100 * (route.levelM?.[3] || 0) / ridingM);
   const bikeNetworkM = (route.segs || []).reduce((sum, seg) => {
     const flags = seg.flags || 0;
-    return sum + (!(flags & 32) && ((flags & 8) || (seg.facility || 0) >= 2)
+    return sum + (!(flags & 32) && ((flags & 8) || (seg.facility || 0) >= 1)
       ? Number(seg.lenM) || 0 : 0);
   }, 0);
   const bikePct = Math.round(100 * Math.min(ridingM, bikeNetworkM) / ridingM);

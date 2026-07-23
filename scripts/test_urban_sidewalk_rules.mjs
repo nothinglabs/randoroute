@@ -56,10 +56,16 @@ const result = vm.runInContext(`(() => {
   const hardCapLevel = edgeLevel(edge, {
     ...rules, allowSidewalkFallback: true, noUpperLimit: false, upperMaxSpeed: 30,
   });
+  const originalFacility = eFacility[edge];
+  eFacility[edge] = 1;
+  const sharedLaneLevel = edgeLevel(edge, { ...rules, allowSidewalkFallback: true });
+  const sharedLaneUsesSidewalk = sidewalkFallbackApplies(
+    edge, { ...rules, allowSidewalkFallback: true }, 0);
+  eFacility[edge] = originalFacility;
   eOfficial[edge] = originalOfficial;
   return {
     official: originalOfficial, shoulder: eSh[edge], urbanLevel, ruralLevel,
-    sidewalkLevel, hardCapLevel,
+    sidewalkLevel, hardCapLevel, sharedLaneLevel, sharedLaneUsesSidewalk,
   };
 })()`, context);
 
@@ -71,5 +77,8 @@ assert.equal(result.urbanLevel, 4, '35 mph with no shoulder should fail under th
 assert.equal(result.ruralLevel, 1, 'the same 35 mph edge should pass under the 35 mph rural limit');
 assert.equal(result.sidewalkLevel, 3, 'a mapped sidewalk should become an amber fallback, not a pass');
 assert.equal(result.hardCapLevel, 4, 'sidewalk fallback must not bypass the upper speed limit');
+assert.equal(result.sharedLaneLevel, 2, 'a shared-lane marking should count as a passing bike facility');
+assert.equal(result.sharedLaneUsesSidewalk, false,
+  'a shared-lane marking should suppress sidewalk fallback and its route penalty');
 
 console.log('Urban/rural sidewalk fallback tests passed.');
