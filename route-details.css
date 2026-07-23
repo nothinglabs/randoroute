@@ -90,11 +90,13 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-alert.caution { border-left-color: #c46b00; background: #fff5e8; color: #753c00; }
 .route-alert-title { display: block; margin-bottom: 5px; font: 850 12px/1.2 system-ui; letter-spacing: .025em; text-transform: uppercase; }
 .route-alert-list { display: grid; grid-auto-flow: column; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--summary-rows), auto); gap: 3px 12px; margin: 0; padding: 0; list-style: none; font: 700 11.5px/1.25 system-ui; }
-.route-alert-list li { position: relative; display: flex; flex-direction: column; align-items: flex-start; align-content: start; gap: 1px; min-width: 0; padding-left: 10px; }
+.route-alert-list li { position: relative; min-width: 0; padding-left: 10px; }
 .route-alert-list li::before { position: absolute; left: 0; content: '•'; }
+.route-alert-link { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.route-alert-link:hover .route-alert-label { text-decoration: underline; text-underline-offset: 2px; }
 .route-alert-label { min-width: 0; white-space: pre-line; }
 .route-alert-distance { color: #0a66c2; font-weight: 850; white-space: nowrap; }
-.route-alert-hint { margin: 7px 0 0; color: #0a66c2; font: 800 10.5px/1.2 system-ui; }
+.route-alert-hint { display: inline-flex; margin: 9px 0 0; padding: 4px 7px; border: 1px solid rgba(10,102,194,.28); border-radius: 999px; background: #eef6fc; color: #0a66c2; font: 800 10.5px/1.2 system-ui; }
 #panel-concerns .detail-section { scroll-margin-top: 58px; }
 .concern-section { overflow: hidden; }
 .concern-section-toggle { display: grid; grid-template-columns: minmax(0, 1fr) auto 18px; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 10px 12px; border: 0; background: transparent; color: #263b48; cursor: pointer; text-align: left; }

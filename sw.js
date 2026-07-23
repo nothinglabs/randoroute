@@ -10,7 +10,7 @@
  *  - Basemap tiles (CARTO): CACHE-FIRST — areas you've viewed keep working
  *    offline. Statewide coverage is never fully cached, only what you browse.
  */
-const VERSION = 'v328'; // bump when app shell or data files change so installed clients refetch
+const VERSION = 'v329'; // bump when app shell or data files change so installed clients refetch
 const SHELL_CACHE = `shell-${VERSION}`;
 const DATA_CACHE = `data-${VERSION}`;
 // Keep viewed basemap tiles across ordinary app-shell releases. The provider
@@ -22,10 +22,10 @@ const SHELL = [
   './index.html',
   './route-details.html',
   './app.js',
-  './route-details.js?v=328',
+  './route-details.js?v=329',
   './router-worker.js',
   './styles.css',
-  './route-details.css?v=328',
+  './route-details.css?v=329',
   './manifest.json',
   './vendor/maplibre-gl.js',
   './vendor/maplibre-gl.css',

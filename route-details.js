@@ -1433,19 +1433,21 @@ if (!hasRoute) {
     const unpavedM = unpaved.reduce((sum, item) => sum + item.lenM, 0);
     if (!failingM) alert.classList.add('caution');
     const notes = [];
-    if (failingM) notes.push({ label: concernTitles.failing, distance: fmtDist(failingM) });
-    if (dismountM) notes.push({ label: concernTitles.dismount, distance: fmtDist(dismountM) });
-    if (steepGrades.length) notes.push({ label: concernTitles.steepGrades, distance: fmtDist(steepUphillM) });
-    if (limitedM) notes.push({ label: concernTitles.limitedAccess, distance: fmtDist(limitedM) });
-    if (mountainBikeM) notes.push({ label: concernTitles.mountainBike, distance: fmtDist(mountainBikeM) });
+    if (failingM) notes.push({ label: concernTitles.failing, distance: fmtDist(failingM), sectionId: 'concern-fails' });
+    if (dismountM) notes.push({ label: concernTitles.dismount, distance: fmtDist(dismountM), sectionId: 'concern-dismount' });
+    if (steepGrades.length) notes.push({ label: concernTitles.steepGrades, distance: fmtDist(steepUphillM), sectionId: 'concern-steep-grades' });
+    if (limitedM) notes.push({ label: concernTitles.limitedAccess, distance: fmtDist(limitedM), sectionId: 'concern-limited-access' });
+    if (mountainBikeM) notes.push({ label: concernTitles.mountainBike, distance: fmtDist(mountainBikeM), sectionId: 'concern-mountain-bike' });
     if (curveHazards.length) notes.push({
       label: concernTitles.curveHazards,
       distance: fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0)),
+      sectionId: 'concern-uphill-curves',
     });
-    if (unpavedM) notes.push({ label: concernTitles.unpaved, distance: fmtDist(unpavedM) });
+    if (unpavedM) notes.push({ label: concernTitles.unpaved, distance: fmtDist(unpavedM), sectionId: 'concern-unpaved' });
     if (sidewalkFallbacks.length) notes.push({
       label: concernTitles.sidewalkFallback,
       distance: fmtDist(sidewalkFallbacks.reduce((sum, item) => sum + item.lenM, 0)),
+      sectionId: 'concern-sidewalk-fallback',
     });
     const title = document.createElement('strong');
     title.className = 'route-alert-title';
@@ -1453,20 +1455,26 @@ if (!hasRoute) {
     const list = document.createElement('ul');
     list.className = 'route-alert-list';
     list.style.setProperty('--summary-rows', Math.ceil(notes.length / 2));
-    notes.forEach(({ label, distance }) => {
+    notes.forEach(({ label, distance, sectionId }) => {
       const item = document.createElement('li');
+      const link = document.createElement('button');
+      link.type = 'button';
+      link.className = 'route-alert-link';
+      link.setAttribute('aria-label', `Open ${label.replace('\n', ' ')} details`);
+      link.addEventListener('click', () => scrollToConcernSection(sectionId));
       const labelText = document.createElement('span');
       labelText.className = 'route-alert-label';
       labelText.textContent = label;
       const distanceText = document.createElement('span');
       distanceText.className = 'route-alert-distance';
       distanceText.textContent = distance;
-      item.append(labelText, distanceText);
+      link.append(labelText, distanceText);
+      item.appendChild(link);
       list.appendChild(item);
     });
     const hint = document.createElement('p');
     hint.className = 'route-alert-hint';
-    hint.textContent = 'Tap a section below for details.';
+    hint.textContent = 'Tap for route concern details.';
     alert.replaceChildren(title, list, hint);
   } else {
     alert.classList.add('good');
