@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-22.301';
+const APP_VERSION = '2026-07-22.302';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -48,7 +48,7 @@ function isConfirmedUnpavedSurface(surface) {
 const DEFAULT_RULES = Object.freeze({
   allowFreeways: true,  // only permit heavily penalized freeway fallback?
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
-  preferPaved: false,   // strong pavement preference; a smaller baseline is always active
+  preferPaved: false,   // strong pavement preference
   vettedBikeRoutes: true, // let designated corridors pass despite missing/narrow shoulder data?
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
@@ -3568,23 +3568,41 @@ function buildRouteRenderData(sdata) {
 }
 
 // Surface is an independent, rider-preference attribute rather than a safety
-// verdict. Keep the normal lime/blue/amber/red route color intact and draw a
-// narrow repeated cross-slat over only the edges OSM positively tags as gravel
-// or rough/unpaved. Unknown surface data never enters this source.
+// verdict. Keep the normal lime/blue/amber/red route color intact and draw
+// repeated cross-slats over only the edges OSM positively tags as gravel or
+// rough/unpaved. Unknown surface data never enters this source.
 function buildRouteUnpavedData(sdata) {
+  const features = [];
+  let current = null;
+  for (const feature of sdata.features) {
+    const coordinates = feature.geometry?.coordinates;
+    if (!isConfirmedUnpavedSurface(feature.properties?.surface) || coordinates?.length < 2) {
+      current = null;
+      continue;
+    }
+    const previous = current?.geometry.coordinates.at(-1);
+    if (current && sameRouteCoordinate(previous, coordinates[0])) {
+      current.geometry.coordinates.push(...coordinates.slice(1));
+      continue;
+    }
+    current = {
+      type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: coordinates.slice() },
+    };
+    features.push(current);
+  }
   return {
     type: 'FeatureCollection',
-    features: sdata.features.filter((feature) =>
-      isConfirmedUnpavedSurface(feature.properties?.surface)),
+    features,
   };
 }
 
 function ensureUnpavedSlatImage(targetMap, imageId = 'route-unpaved-slats') {
   if (targetMap.hasImage(imageId)) return;
-  const width = 12, height = 12;
+  const width = 5, height = 16;
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
-    for (let x = 3; x <= 6; x++) {
+    for (let x = 0; x < width; x++) {
       const offset = (y * width + x) * 4;
       data[offset] = 35;
       data[offset + 1] = 54;
@@ -3794,9 +3812,14 @@ function drawRoute(coords, ferrySegs, segs) {
   });
   ensureUnpavedSlatImage(map);
   map.addLayer({
-    id: 'route-unpaved-slats', type: 'line', source: 'route-unpaved',
-    layout: { 'line-cap': 'butt', 'line-join': 'round' },
-    paint: { 'line-pattern': 'route-unpaved-slats', 'line-width': 12.5, 'line-opacity': 1 },
+    id: 'route-unpaved-slats', type: 'symbol', source: 'route-unpaved',
+    layout: {
+      'symbol-placement': 'line', 'symbol-spacing': 22,
+      'icon-image': 'route-unpaved-slats', 'icon-allow-overlap': true,
+      'icon-ignore-placement': true, 'icon-rotation-alignment': 'map',
+      'icon-pitch-alignment': 'map', 'icon-keep-upright': false,
+    },
+    paint: { 'icon-opacity': 1 },
   });
   map.addLayer({
     id: 'route-ferry', type: 'line', source: 'route-ferry',
@@ -6063,7 +6086,7 @@ function presetInfoRows(preset) {
     ['Unknown shoulder', presetRules.unknownShoulderZero ? 'Treated as 0 ft.' : 'Left as unknown.'],
     ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],
     ['Surface', presetRules.preferPaved === true
-      ? 'Strongly prefer paved roads and trails.' : 'Slightly prefer paved roads and trails.'],
+      ? 'Strongly prefer paved roads and trails.' : 'No pavement preference.'],
     ['Route preferences', preferenceText ? `Strongly prefer ${preferenceText}.` : 'No additional preference.'],
   ];
 }

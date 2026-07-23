@@ -932,23 +932,36 @@ function routePreviewRenderData() {
   }
   if (points.length >= 2) features.push({ type: 'Feature', properties: { style },
     geometry: { type: 'LineString', coordinates: points.slice(start) } });
-  const unpaved = {
-    type: 'FeatureCollection',
-    features: edges.flatMap((edge, index) => edge.unpaved ? [{
+  const unpavedFeatures = [];
+  let currentUnpaved = null;
+  edges.forEach((edge, index) => {
+    if (!edge.unpaved) {
+      currentUnpaved = null;
+      return;
+    }
+    const coordinates = [points[index], points[index + 1]];
+    const previous = currentUnpaved?.geometry.coordinates.at(-1);
+    if (currentUnpaved && previous?.[0] === coordinates[0][0] && previous?.[1] === coordinates[0][1]) {
+      currentUnpaved.geometry.coordinates.push(coordinates[1]);
+      return;
+    }
+    currentUnpaved = {
       type: 'Feature', properties: {},
-      geometry: { type: 'LineString', coordinates: [points[index], points[index + 1]] },
-    }] : []),
-  };
+      geometry: { type: 'LineString', coordinates },
+    };
+    unpavedFeatures.push(currentUnpaved);
+  });
+  const unpaved = { type: 'FeatureCollection', features: unpavedFeatures };
   return { points, colored: { type: 'FeatureCollection', features }, unpaved };
 }
 
 function ensureUnpavedSlatImage(targetMap) {
   const imageId = 'route-preview-unpaved-slats';
   if (targetMap.hasImage(imageId)) return;
-  const width = 12, height = 12;
+  const width = 5, height = 16;
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
-    for (let x = 3; x <= 6; x++) {
+    for (let x = 0; x < width; x++) {
       const offset = (y * width + x) * 4;
       data[offset] = 35;
       data[offset + 1] = 54;
@@ -1025,9 +1038,14 @@ function initializeRoutePreviewMap() {
     addRouteLayer('fail', { 'line-color': FAIL_COLOR, 'line-width': 4.8, 'line-dasharray': [1.5, 1] });
     addRouteLayer('unknown', { 'line-color': '#98a2ad', 'line-width': 4.8 });
     ensureUnpavedSlatImage(routePreviewMap);
-    routePreviewMap.addLayer({ id: 'route-preview-unpaved-slats', type: 'line', source: 'route-preview-unpaved',
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: { 'line-pattern': 'route-preview-unpaved-slats', 'line-width': 8.4, 'line-opacity': 1 } });
+    routePreviewMap.addLayer({ id: 'route-preview-unpaved-slats', type: 'symbol', source: 'route-preview-unpaved',
+      layout: {
+        'symbol-placement': 'line', 'symbol-spacing': 18,
+        'icon-image': 'route-preview-unpaved-slats', 'icon-allow-overlap': true,
+        'icon-ignore-placement': true, 'icon-rotation-alignment': 'map',
+        'icon-pitch-alignment': 'map', 'icon-keep-upright': false,
+      },
+      paint: { 'icon-opacity': 1 } });
     setRoutePreviewFailPulse(preview.colored.features.some((feature) => feature.properties.style === 'fail'));
     routePreviewMap.addLayer({ id: 'route-preview-markers', type: 'circle', source: 'route-preview-markers',
       paint: { 'circle-radius': 5, 'circle-color': ['match', ['get', 'marker'], 'start', '#00795c', '#e87817'],
@@ -1213,7 +1231,7 @@ if (!hasRoute) {
     { label: 'Highways', shortLabel: 'Hwys', items: highways, sectionId: 'concern-highways' },
   ]);
   if (failing.length) renderSection(report, 'Does not meet your rules', failing, '', 'fail', false, 'concern-fails');
-  if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'The router always slightly favors pavement. Turn on Strongly prefer paved surfaces in Settings for a stronger preference.');
+  if (unpaved.length) renderSection(report, 'Unpaved surfaces', unpaved, '', 'caution', false, 'concern-unpaved', 'Surface data affects routing only when Strongly prefer paved surfaces is on in Settings.');
   if (mountainBike.length) renderSection(report, 'Mountain-bike trails', mountainBike, '', 'caution', false, 'concern-mountain-bike');
   if (curveHazards.length) renderSection(report, 'Possible limited-visibility uphill curves', curveHazards, '', 'caution', false, 'concern-uphill-curves');
   if (steepGrades.length) renderSection(report, 'Steep uphill grade segments (over 10%)', steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality.');

@@ -441,15 +441,14 @@ function climbPreferenceS(i, forward, mode) {
 }
 
 // Surface preference is intentionally a soft, distance-proportional route
-// cost. A small baseline always favors pavement; the rider-controlled option
-// applies the full strength to gravel rail trails and rough ground paths.
-// Neither makes a surface illegal or makes an untagged OSM edge look worse.
+// cost. The rider-controlled option applies it to gravel rail trails and
+// rough ground paths, without making either category illegal or making an
+// untagged OSM edge look worse.
 function surfacePreferenceS(i, rules) {
-  if (eFlags[i] & 32) return 0;
-  const strength = rules?.preferPaved === true ? 1 : 0.25;
+  if (rules?.preferPaved !== true || (eFlags[i] & 32)) return 0;
   const surface = eSurface[i];
-  if (surface === SURFACE_GRAVEL) return eLen[i] * 0.065 * strength;
-  if (surface === SURFACE_ROUGH) return eLen[i] * 0.20 * strength;
+  if (surface === SURFACE_GRAVEL) return eLen[i] * 0.065;
+  if (surface === SURFACE_ROUGH) return eLen[i] * 0.20;
   return 0;
 }
 
