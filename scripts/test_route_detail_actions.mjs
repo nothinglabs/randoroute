@@ -50,10 +50,12 @@ assert.match(app, /function flashRouteCardWarnings\(route\)[\s\S]*?turnNav\.acti
   'grade and unpaved route-card cues should flash with the Details warning');
 assert.match(app, /function setPanelOpen\(open\)[\s\S]*?if \(open\) \{[\s\S]*?syncRouteDetailsWarningState\(routing\.last, \{ flash: true \}\)/,
   'reopening the mobile panel should replay the Details warning when applicable');
-assert.match(appCss, /\.route-details-btn\.route-details-attention\s*\{[^}]*animation:\s*route-details-alert-flash 1s ease-in-out[\s\S]*?@keyframes route-details-alert-flash[\s\S]*?15%, 75%\s*\{[^}]*background:\s*#b95750[\s\S]*?45%\s*\{[^}]*background:\s*#fff/,
+assert.match(appCss, /\.route-details-btn\.route-details-attention\s*\{[^}]*animation:\s*route-details-alert-flash 1s ease-in-out[\s\S]*?@keyframes route-details-alert-flash[\s\S]*?15%, 75%\s*\{[^}]*background:\s*#a85a53[\s\S]*?45%\s*\{[^}]*background:\s*#fff/,
   'the Details warning should flash red, white, and red over about one second');
-assert.match(appCss, /\.route-details-btn\.route-details-warning\s*\{[^}]*background:\s*#f5d5d1[^}]*color:\s*#6f211d[^}]*font-weight:\s*850/,
-  'warning routes should leave Details with a quiet pink treatment and high-contrast text');
+assert.match(appCss, /\.route-details-btn\.route-details-warning\s*\{[^}]*border-color:\s*#bd7c75[^}]*background:\s*#f1d9d6[^}]*color:\s*#5f2420[^}]*font-weight:\s*850/,
+  'warning routes should leave Details with the chosen dusty-rose treatment');
+assert.match(appCss, /@keyframes route-details-alert-flash[\s\S]*?15%, 75%\s*\{[^}]*background:\s*#a85a53/,
+  'the warning flash should use the calmer dusty-rose pulse color');
 assert.match(appCss, /\.rc-warning-cue-attention\s*\{[^}]*animation:\s*route-card-warning-cue-flash 1s ease-in-out[\s\S]*?@keyframes route-card-warning-cue-flash/,
   'route-card warning labels should share a brief attention animation');
 assert.match(app, /rc-ride-unpaved-warning[\s\S]*?rc-unpaved-alert-mark[\s\S]*?aria-hidden="true">!<\/span>/,

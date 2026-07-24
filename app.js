@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-23.337';
+const APP_VERSION = '2026-07-23.338';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -56,7 +56,7 @@ function isDismountSegment(segment) {
 const DEFAULT_RULES = Object.freeze({
   allowFreeways: true,  // only permit heavily penalized freeway fallback?
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
-  preferPaved: false,   // strong pavement preference; a modest baseline remains
+  preferPaved: true,    // strongly prefer pavement by default; unpaved remains available
   vettedBikeRoutes: true, // let designated corridors pass despite missing/narrow shoulder data?
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
@@ -6443,7 +6443,8 @@ function presetInfoRows(preset) {
     ['Unknown shoulder', presetRules.unknownShoulderZero ? 'Treated as 0 ft.' : 'Left as unknown.'],
     ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],
     ['Surface', presetRules.preferPaved === true
-      ? 'Strongly prefer paved roads and trails.' : 'Slightly prefer known paved roads and trails.'],
+      ? 'Strongly prefers paved roads and trails; unpaved routes remain available.'
+      : 'Slightly prefers known paved roads and trails.'],
     ['Route preferences', preferenceText ? `Strongly prefer ${preferenceText}.` : 'No additional preference.'],
   ];
 }

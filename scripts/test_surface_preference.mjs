@@ -8,8 +8,12 @@ const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 
 const details = fs.readFileSync(new URL('../route-details.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
-assert.match(app, /preferPaved:\s*false/,
-  'strong paved-surface preference should default off for new settings');
+assert.match(app, /preferPaved:\s*true/,
+  'strong paved-surface preference should default on for new settings and presets');
+assert.match(app, /const ROUTING_PRESETS = Object\.freeze\(\[[\s\S]*?rules: Object\.freeze\(\{ \.\.\.DEFAULT_RULES \}\)[\s\S]*?\.\.\.DEFAULT_RULES[\s\S]*?\.\.\.DEFAULT_RULES/,
+  'all presets should inherit the strong paved-surface default');
+assert.match(app, /\['Surface', presetRules\.preferPaved === true[\s\S]*?Strongly prefers paved roads and trails; unpaved routes remain available\./,
+  'preset rule previews should explain their strong paved-surface preference');
 assert.match(app, /check\('preferPaved', 'Strongly prefer paved surfaces'\)/,
   'the strong surface preference should be available in Settings');
 assert.match(app, /GRAPH_FORMAT_VERSION = 'bgr8-3'/,
