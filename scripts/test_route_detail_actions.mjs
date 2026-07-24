@@ -144,8 +144,8 @@ assert.match(css, /\.route-alert-link\s*\{[^}]*flex-direction:\s*column[^}]*alig
   'every tappable concern summary should stack its distance beneath its label');
 assert.match(detailsHtml, /id="concernDetailsHint" class="concern-details-hint" hidden>Tap for route concern details\.<\/p>[\s\S]*?<div id="report">/,
   'the concern detail instruction should sit between the summary and accordion sections');
-assert.match(detailsHtml, /id="routeQuickSummary"[\s\S]*?id="unpavedRouteWarning" class="unpaved-route-warning" type="button" hidden[\s\S]*?Make sure you’re comfortable riding it\.[\s\S]*?Tap to review concerns\./,
-  'Route Details should place the substantial-unpaved warning directly under its top summary');
+assert.match(detailsHtml, /id="panel-stats"[\s\S]*?id="unpavedRouteWarning" class="unpaved-route-warning" type="button" hidden[\s\S]*?Make sure you’re comfortable riding it\. Tap to review\./,
+  'Route Details should show the substantial-unpaved warning only within Stats');
 assert.match(details, /const hasSignificantUnpaved = routeStats\.unpavedM > SIGNIFICANT_UNPAVED_M;[\s\S]*?mix-unpaved-warning[\s\S]*?unpavedRouteWarning\.hidden = !hasSignificantUnpaved[\s\S]*?This route has \$\{fmtMi\(routeStats\.unpavedM\)\} mi of unpaved surface\./,
   'Route Details should emphasize and explain routes with more than one confirmed unpaved mile');
 assert.match(details, /unpavedRouteWarning\.addEventListener\('click'[\s\S]*?selectDetailTab\('concerns'\)[\s\S]*?scrollToConcernSection\('concern-unpaved'\)/,
@@ -350,7 +350,7 @@ assert.match(css, /\.elevation-dialog-body \.chart-map-hint\s*\{[^}]*color:\s*#1
   'expanded chart navigation should have visible instructions and an interactive cursor');
 assert.match(details, /summarySub\.innerHTML = `<span class="elevation-metric">[\s\S]*?<b>Climb<\/b>[\s\S]*?<b>Descent<\/b>[\s\S]*?<b>Avg\. grade<\/b>[\s\S]*?<b>Max grade<\/b>[\s\S]*?<b>10%\+ uphill<\/b>[\s\S]*?fmtMi\(steepUphillM\)/,
   'elevation metrics should include the mileage of sustained uphill grade over 10%');
-assert.match(detailsHtml, /button id="elevationSteepWarning"[\s\S]*?class="elevation-warning-message"[\s\S]*?grades that may be impassable[\s\S]*?Extreme grades can sometimes be data errors\.[\s\S]*?class="elevation-warning-action"[\s\S]*?Tap to review concerns\./,
+assert.match(detailsHtml, /button id="elevationSteepWarning"[\s\S]*?class="elevation-warning-message"[\s\S]*?grades that may be impassable[\s\S]*?class="elevation-warning-action"[\s\S]*?Extreme grades might be data errors\. Tap to review\./,
   'the elevation card should clearly explain the steep-grade route warning as an action');
 assert.match(details, /elevationSteepWarning\.addEventListener\('click',[\s\S]*?selectDetailTab\('concerns'\)[\s\S]*?requestAnimationFrame\(\(\) => scrollToConcernSection\('concern-steep-grades'\)\)/,
   'tapping the elevation warning should open Concerns at Steep Grades');

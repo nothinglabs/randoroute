@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#009E73" />
   <title>Route details · Just Rolling Along</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="route-details.css?v=335" />
+  <link rel="stylesheet" href="route-details.css?v=336" />
 </head>
 <body>
   <main>
@@ -15,8 +15,8 @@
       <div id="summary" class="route-summary-main"></div>
       <div id="summaryMix" class="route-summary-mix" title="Percent of riding distance; colors match the map legend"></div>
     </section>
-    <button id="unpavedRouteWarning" class="unpaved-route-warning" type="button" hidden><span class="unpaved-warning-message"><strong>Warning:</strong> <span id="unpavedWarningText"></span></span><span class="route-warning-note">Make sure you’re comfortable riding it.</span><span class="unpaved-warning-action">Tap to review concerns.</span></button>
     <section id="panel-stats" class="detail-panel detail-stats" role="tabpanel" aria-labelledby="tab-stats">
+      <button id="unpavedRouteWarning" class="unpaved-route-warning" type="button" hidden><span class="unpaved-warning-message"><strong>Warning:</strong> <span id="unpavedWarningText"></span></span><span class="unpaved-warning-action">Make sure you’re comfortable riding it. Tap to review.</span></button>
       <section id="routePreview" class="route-preview" aria-label="Route preview" hidden>
         <div class="route-preview-map-wrap">
           <div id="routePreviewMap" class="route-preview-map" aria-label="Selected route map preview"></div>
@@ -33,7 +33,7 @@
           <span class="chart-expand-note" aria-hidden="true">Tap to expand</span>
         </button>
         <div id="elevationPreviewEmpty" class="elevation-preview-empty" hidden>Elevation profile unavailable</div>
-        <button id="elevationSteepWarning" class="elevation-steep-warning" type="button" hidden><span class="elevation-warning-message"><strong>Warning:</strong> This route has grades that may be impassable.</span><span class="route-warning-note">Extreme grades can sometimes be data errors.</span><span class="elevation-warning-action">Tap to review concerns.</span></button>
+        <button id="elevationSteepWarning" class="elevation-steep-warning" type="button" hidden><span class="elevation-warning-message"><strong>Warning:</strong> This route has grades that may be impassable.</span><span class="elevation-warning-action">Extreme grades might be data errors. Tap to review.</span></button>
       </div>
       <section id="speedProfile" class="speed-profile" aria-labelledby="speedProfileTitle" hidden>
         <div class="speed-profile-info"><h2 id="speedProfileTitle">Speed Limits (Roads Only)</h2><div id="summaryRoadSpeed" class="speed-profile-average"></div></div>
@@ -80,6 +80,6 @@
     </div>
   </dialog>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="route-details.js?v=335"></script>
+  <script src="route-details.js?v=336"></script>
 </body>
 </html>
