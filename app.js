@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-23.336';
+const APP_VERSION = '2026-07-23.337';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -3491,6 +3491,21 @@ function syncRouteDetailsWarningState(route, { flash = false } = {}) {
     () => button.classList.remove('route-details-attention'), { once: true });
 }
 
+function flashRouteCardWarnings(route) {
+  if (turnNav.active || !route?.ok) return;
+  const stats = routeSummaryStats(route);
+  const targets = [];
+  if (Number(route.maxGradePct) > 18) targets.push(document.getElementById('rcElevGradeWarning'));
+  if (stats.unpavedM > SIGNIFICANT_UNPAVED_M) {
+    targets.push(document.querySelector('#routeCard .rc-ride-unpaved-warning'));
+  }
+  targets.filter(Boolean).forEach((target) => {
+    target.classList.add('rc-warning-cue-attention');
+    target.addEventListener('animationend',
+      () => target.classList.remove('rc-warning-cue-attention'), { once: true });
+  });
+}
+
 function showPointTooFarPopup(m) {
   const dialog = document.getElementById('routeProblemDialog');
   const text = document.getElementById('routeProblemText');
@@ -4827,6 +4842,7 @@ function renderRouteOptionControls() {
 function activateRouteOption(option, updateNavigation = false) {
   if (!option?.ok) return;
   showRouteActionToast('');
+  const warningWasActive = routeHasDetailsWarning(routing.last);
   routing.last = option;
   // The shared route must not push the sender's profile onto the receiver.
   if (option.optimization && !option.asShared) {
@@ -4849,7 +4865,9 @@ function activateRouteOption(option, updateNavigation = false) {
   }
   renderRouteOptionControls();
   renderRouteCard(option);
-  syncRouteDetailsWarningState(option, { flash: true });
+  const shouldFlashWarning = !warningWasActive && routeHasDetailsWarning(option);
+  syncRouteDetailsWarningState(option, { flash: shouldFlashWarning });
+  if (shouldFlashWarning) flashRouteCardWarnings(option);
   storeRouteDetails(option);
   drawRoute(option.coords, option.ferrySegs, option.segs);
   consumePendingRouteStepHighlight();

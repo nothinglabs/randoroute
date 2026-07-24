@@ -42,14 +42,20 @@ assert.match(appCss, /\.rc-elev-wrap\s*\{[^}]*position:\s*relative[\s\S]*?\.rc-e
   'the route-card steep-grade warning should overlay the elevation chart in red');
 assert.match(app, /const SIGNIFICANT_UNPAVED_M = 1609\.344;[\s\S]*?const hasSignificantUnpaved = stats\.unpavedM > SIGNIFICANT_UNPAVED_M;[\s\S]*?rc-ride-unpaved-warning/,
   'routes with more than one confirmed unpaved mile should emphasize the unpaved route-card metric');
-assert.match(app, /function routeHasDetailsWarning\(route\)[\s\S]*?Number\(route\.maxGradePct\) > 18 \|\| stats\.unpavedM > SIGNIFICANT_UNPAVED_M[\s\S]*?function syncRouteDetailsWarningState\(route, \{ flash = false \} = \{\}\)[\s\S]*?classList\.toggle\('route-details-warning', warning\)[\s\S]*?if \(!warning \|\| !flash \|\| turnNav\.active\) return;[\s\S]*?classList\.add\('route-details-attention'\)[\s\S]*?renderRouteCard\(option\);[\s\S]*?syncRouteDetailsWarningState\(option, \{ flash: true \}\);/,
-  'selecting a steep or substantially unpaved route should flash the Details button');
+assert.match(app, /function routeHasDetailsWarning\(route\)[\s\S]*?Number\(route\.maxGradePct\) > 18 \|\| stats\.unpavedM > SIGNIFICANT_UNPAVED_M[\s\S]*?function syncRouteDetailsWarningState\(route, \{ flash = false \} = \{\}\)[\s\S]*?classList\.toggle\('route-details-warning', warning\)[\s\S]*?if \(!warning \|\| !flash \|\| turnNav\.active\) return;[\s\S]*?classList\.add\('route-details-attention'\)/,
+  'steep or substantially unpaved routes should retain the Details warning state');
+assert.match(app, /const warningWasActive = routeHasDetailsWarning\(routing\.last\);[\s\S]*?renderRouteCard\(option\);[\s\S]*?const shouldFlashWarning = !warningWasActive && routeHasDetailsWarning\(option\);[\s\S]*?syncRouteDetailsWarningState\(option, \{ flash: shouldFlashWarning \}\);[\s\S]*?if \(shouldFlashWarning\) flashRouteCardWarnings\(option\);/,
+  'route warning animations should run only when entering a warning state');
+assert.match(app, /function flashRouteCardWarnings\(route\)[\s\S]*?turnNav\.active[\s\S]*?rcElevGradeWarning[\s\S]*?rc-ride-unpaved-warning[\s\S]*?classList\.add\('rc-warning-cue-attention'\)/,
+  'grade and unpaved route-card cues should flash with the Details warning');
 assert.match(app, /function setPanelOpen\(open\)[\s\S]*?if \(open\) \{[\s\S]*?syncRouteDetailsWarningState\(routing\.last, \{ flash: true \}\)/,
   'reopening the mobile panel should replay the Details warning when applicable');
 assert.match(appCss, /\.route-details-btn\.route-details-attention\s*\{[^}]*animation:\s*route-details-alert-flash 1s ease-in-out[\s\S]*?@keyframes route-details-alert-flash[\s\S]*?15%, 75%\s*\{[^}]*background:\s*#b95750[\s\S]*?45%\s*\{[^}]*background:\s*#fff/,
   'the Details warning should flash red, white, and red over about one second');
-assert.match(appCss, /\.route-details-btn\.route-details-warning\s*\{[^}]*background:\s*#f5d5d1[^}]*color:\s*#8f2e27/,
-  'warning routes should leave Details with a quiet pink warning treatment');
+assert.match(appCss, /\.route-details-btn\.route-details-warning\s*\{[^}]*background:\s*#f5d5d1[^}]*color:\s*#6f211d[^}]*font-weight:\s*850/,
+  'warning routes should leave Details with a quiet pink treatment and high-contrast text');
+assert.match(appCss, /\.rc-warning-cue-attention\s*\{[^}]*animation:\s*route-card-warning-cue-flash 1s ease-in-out[\s\S]*?@keyframes route-card-warning-cue-flash/,
+  'route-card warning labels should share a brief attention animation');
 assert.match(app, /rc-ride-unpaved-warning[\s\S]*?rc-unpaved-alert-mark[\s\S]*?aria-hidden="true">!<\/span>/,
   'the emphasized unpaved metric should include a compact exclamation mark');
 assert.match(details, /streetLine\.textContent = 'Street'[\s\S]*?viewLine\.textContent = 'View'[\s\S]*?mapButton\.className = 'segment-map-button'[\s\S]*?mapLabel\.textContent = 'Map'[\s\S]*?mapIcon\.textContent = '⌖'[\s\S]*?mapButton\.append\(mapLabel, mapIcon\)[\s\S]*?actions\.append\(mapButton, streetView\)/,
