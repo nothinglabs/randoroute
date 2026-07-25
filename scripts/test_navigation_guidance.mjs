@@ -7,6 +7,10 @@ const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+const nativeBridge = fs.readFileSync(
+  new URL('../ios/App/App/BridgeViewController.swift', import.meta.url),
+  'utf8',
+);
 assert.match(html, /id="navOffRouteBtn"[^>]*>Re-route</,
   'off-route navigation should expose a conventional reroute button');
 assert.match(html, /class="nav-banner-main"[\s\S]*?class="nav-banner-copy"[\s\S]*?<\/div>[\s\S]*?id="navOffRouteBtn"/,
@@ -145,6 +149,18 @@ assert.match(app, /if \(!turnNav\.cameraFollow\) return;/,
   'the follow camera must not fight the rider while they are panning');
 assert.match(app, /maplibregl-ctrl-geolocate[\s\S]{0,140}!turnNav\.cameraFollow[\s\S]{0,120}recenterNavigationOnRider/,
   'the geolocate control should re-center on the rider on the first tap after panning');
+assert.match(app, /requestMapLocationRecenter\('launch'\)/,
+  'a fresh app load should request and center on the current location');
+assert.match(app, /visibilitychange[\s\S]{0,220}requestMapLocationRecenter\('foreground'\)/,
+  'returning to the foreground should request and center on a fresh location');
+assert.match(app, /addListener\(\s*'appActive',[\s\S]{0,120}requestMapLocationRecenter\('foreground'\)/,
+  'the native shell should explicitly request a foreground recenter');
+assert.match(app, /showRouteMessage\(\s*'Choose a start and destination',\s*'Use search or tap the map\.'/,
+  'the unset route card should provide compact, structured instructions');
+assert.match(app, /showRouteMessage\('Route unavailable', reason, hint, true\)/,
+  'an invalid route should use the compact error treatment');
+assert.match(css, /\.rc-route-message\.error\s*\{[^}]*border-left:[^}]*background:/,
+  'invalid route guidance should be visually distinct without becoming a wall of text');
 assert.match(app, /type:\s*'route-connector'/,
   'navigation should request a separate route-to-start connector');
 assert.match(app, /id:\s*'route-connector'/,
@@ -156,24 +172,30 @@ assert.match(app, /function requestRouteBackToCurrentRoute[\s\S]*?nearestNavigat
 assert.match(app, /type:\s*'navigation-new-route'/,
   'the off-route menu should support a new route from the live location');
 assert.match(app, /navigationOffRouteMode:\s*navVoice\.offRouteMode/,
-  'the exclusive off-route behavior mode should persist');
+  'the dormant off-route behavior mode should remain serializable for future restoration');
 assert.match(app, /navigationAutoReroute\s*\?\s*'return'\s*:\s*'guidance'/,
   'the former automatic-rerouting checkbox should migrate to automatic return mode');
-assert.match(app, /\['guidance', 'Notify only'[\s\S]*?\['return', 'Route back to route'[\s\S]*?\['dynamic', 'Dynamic re-routing'/,
-  'Voice-Nav settings should expose all three off-route modes');
+assert.match(app, /AUTOMATIC_OFF_ROUTE_RECOVERY_ENABLED\s*=\s*false/,
+  'automatic off-route recovery should be disabled behind a restorable feature flag');
+assert.match(app, /offRouteMode:\s*AUTOMATIC_OFF_ROUTE_RECOVERY_ENABLED\s*\?\s*savedOffRouteRecoveryMode\s*:\s*'guidance'/,
+  'navigation should always start in notify-only mode while automatic recovery is disabled');
+assert.match(app, /NAVIGATION_SPEECH_RATE\s*=\s*0\.96/,
+  'browser navigation speech should use a calmer, less robotic rate');
+assert.match(app, /function refreshPreferredNavigationVoice[\s\S]*?speechSynthesis\.getVoices\(\)/,
+  'browser navigation should automatically select from the voices exposed by the device');
+assert.match(app, /addEventListener\?\.\('voiceschanged'/,
+  'browser navigation should handle Safari publishing its voice list asynchronously');
+assert.match(nativeBridge, /voice\.quality == \.enhanced[\s\S]*?voice\.quality == \.premium/,
+  'native iOS navigation should prefer installed enhanced and premium voices');
+assert.match(nativeBridge, /navigationUtterance\([\s\S]*?AVSpeechUtteranceDefaultSpeechRate \* 0\.96/,
+  'native iOS navigation should share the calmer speech configuration');
 const voicePanelSource = app.slice(app.indexOf('function buildVoicePanel'), app.indexOf('function buildLegend'));
 assert.doesNotMatch(voicePanelSource, /violet/i,
   'Voice-Nav settings should describe behavior without naming a route color');
-assert.match(voicePanelSource, /Generates a new route automatically each time you go off course\. <strong>Caution: remaining route may change!<\/strong>/,
-  'dynamic re-routing should warn in bold that the remaining route may change');
-// The Voice-Nav pane must fit on one sheet: off-route mode is a dropdown with a
-// live description, not three tall described radio cards.
-assert.match(voicePanelSource, /id="v-offRouteMode" class="voice-select voice-select-inline"/,
-  'off-route behavior should be a compact inline dropdown');
-assert.doesNotMatch(voicePanelSource, /name="off-route-mode"/,
-  'the described-radio off-route control should be gone');
-assert.match(voicePanelSource, /class="voice-hint" id="v-offRouteDesc"/,
-  'the selected off-route mode should show a live description line');
+assert.doesNotMatch(voicePanelSource, /v-offRouteMode|offRouteChoices|off-route-mode/,
+  'Voice-Nav settings should not expose an automatic off-route behavior control');
+assert.match(html, /id="offRouteDialog"[\s\S]*?id="navKeepRouteBtn"[\s\S]*?id="navRouteBackBtn"[\s\S]*?id="navNewRouteBtn"/,
+  'the off-route dialog should preserve both manual recovery actions');
 // The route-settings lock during navigation surfaces inline above the panes
 // (where the rider is looking), not as a top-of-screen toast.
 assert.match(html, /id="tab-settings"[\s\S]*?id="settingsNavLockNotice"[^>]*class="settings-nav-lock"[\s\S]*?id="settingsTabs"/,
@@ -272,7 +294,11 @@ vm.runInContext(`${app.slice(start, end)}\nthis.buildTurnInstructions = buildTur
 const offerStart = app.indexOf('const OFF_ROUTE_ENTER_M');
 const offerEnd = app.indexOf('function navInstructionText', offerStart);
 assert.ok(offerStart >= 0 && offerEnd > offerStart, 'route-start offer helper was not found');
-vm.runInContext(`${app.slice(offerStart, offerEnd)}\nthis.shouldOfferRouteStartConnector = shouldOfferRouteStartConnector;`, context);
+context.turnNav = { offRouteCandidateAt: 0, offRouteCandidateFixes: 0 };
+vm.runInContext(`${app.slice(offerStart, offerEnd)}
+  this.shouldOfferRouteStartConnector = shouldOfferRouteStartConnector;
+  this.recordOffRouteCandidate = recordOffRouteCandidate;
+  this.clearOffRouteCandidate = clearOffRouteCandidate;`, context);
 assert.equal(context.shouldOfferRouteStartConnector(800, 0), false,
   'a rider already on the route must not be sent back to its original start');
 assert.equal(context.shouldOfferRouteStartConnector(800, 220), true,
@@ -281,6 +307,24 @@ assert.equal(context.shouldOfferRouteStartConnector(800, 80), true,
   'a rider beyond the rejoin tolerance is off route even when under the ordinary alert threshold');
 assert.equal(context.shouldOfferRouteStartConnector(120, 220), false,
   'ordinary nearest-route guidance should handle a rider within 0.1 mile of the start');
+assert.match(app.slice(offerStart, offerEnd), /OFF_ROUTE_ENTER_M = 65;[\s\S]*?OFF_ROUTE_REJOIN_M = 40;/,
+  'off-route hysteresis should operate at city-block scale');
+assert.equal(context.recordOffRouteCandidate(1_000, 20), false,
+  'one accurate off-route fix should not trigger');
+assert.equal(context.recordOffRouteCandidate(8_000, 20), true,
+  'two consistent accurate fixes should trigger');
+context.clearOffRouteCandidate();
+assert.equal(context.recordOffRouteCandidate(10_000, 80), false,
+  'one coarse off-route fix should not trigger');
+assert.equal(context.recordOffRouteCandidate(20_000, 80), false,
+  'two coarse off-route fixes should remain a candidate');
+assert.equal(context.recordOffRouteCandidate(30_000, 80), true,
+  'three consistent coarse fixes should trigger instead of being discarded');
+context.clearOffRouteCandidate();
+assert.equal(context.recordOffRouteCandidate(40_000, 130), false,
+  'an unusably coarse fix should not trigger');
+assert.equal(context.turnNav.offRouteCandidateFixes, 0,
+  'an unusably coarse fix should not create a candidate');
 
 const automaticStart = app.indexOf('function automaticOffRouteModeDue');
 const automaticEnd = app.indexOf('function updateNavigationCamera', automaticStart);

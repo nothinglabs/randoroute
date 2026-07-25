@@ -39,7 +39,9 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-mix .mix-dismount { color: #854500; font-weight: 750; }
 .route-summary-mix .mix-dismount b { color: #8a4900; }
 .route-summary-mix .mix-ferry, .route-summary-mix .mix-ferry b { color: #315f7b; }
+.route-summary-mix button.mix-unpaved-warning { appearance: none; margin: 0; padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
 .route-summary-mix .mix-unpaved-warning, .route-summary-mix .mix-unpaved-warning b { color: #b42318; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+.route-summary-mix button.mix-unpaved-warning:focus-visible { border-radius: 3px; outline: 2px solid #1671b8; outline-offset: 2px; }
 .route-summary-swatch { display: inline-block; width: 12px; height: 7px; margin-right: 4px; border-radius: 2px; vertical-align: -0.5px; }
 .route-summary-unpaved-swatch { display: inline-block; width: 12px; height: 7px; margin-right: 4px; border: 1px solid #536672; border-radius: 1px; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); vertical-align: -0.5px; }
 .unpaved-route-warning { display: block; width: 100%; margin: 0 0 8px; padding: 8px 10px; appearance: none; border: 1px solid #e5a39a; border-left: 4px solid #c33327; border-radius: 8px; background: #fff1ef; color: #84251c; cursor: pointer; text-align: left; }

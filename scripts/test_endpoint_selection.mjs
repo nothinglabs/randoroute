@@ -11,6 +11,8 @@ assert.match(app, /if \(more\) more\.disabled = plannerLoading;/,
   'the more-actions menu should remain available before both endpoints are selected, except while the graph loads');
 assert.match(app, /searchInput\.value = currentEndpointName;/,
   'the search field should preview the current endpoint name when replacing it');
+assert.match(app, /<strong>Tap on map<\/strong> to set \$\{kind === 'start' \? 'start' : 'destination'\} or <strong>search<\/strong> below\./,
+  'endpoint pickers should clearly lead with tapping the map, then offer search');
 assert.match(app, /input\.classList\.contains\('current-endpoint-preview'\)[\s\S]*?input\.value = '';/,
   'focusing the search field should clear the muted current-endpoint preview');
 assert.match(app, /addressdetails:\s*'1'/,

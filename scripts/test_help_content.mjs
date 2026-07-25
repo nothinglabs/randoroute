@@ -44,8 +44,8 @@ assert.match(html, /Minimum shoulder for faster roads/,
   'settings help should use the same shoulder-limit label as the product');
 assert.match(html, /Unknown shoulder = 0 ft[\s\S]*?if shoulder data is missing, treat it as 0 ft for rules purposes/,
   'settings help should plainly explain how missing shoulder data is evaluated');
-assert.match(html, /<h3>Voice navigation<\/h3><ul class="help-list">[\s\S]*?Notify only[\s\S]*?Route back to route[\s\S]*?Dynamic re-routing[\s\S]*?Speak compass directions[\s\S]*?Status update[\s\S]*?<\/ul>/,
-  'voice-navigation help should list each available setting and off-route behavior');
+assert.match(html, /<h3>Voice navigation<\/h3><ul class="help-list">[\s\S]*?<b>Off-route<\/b>[\s\S]*?direction and distance[\s\S]*?manually route back or create a new route[\s\S]*?Speak compass directions[\s\S]*?Status update[\s\S]*?<\/ul>/,
+  'voice-navigation help should explain notify-only guidance and manual recovery');
 assert.match(html, /id="layersHelpDialog"[\s\S]*?<h3>Data sources<\/h3>[\s\S]*?WSDOT BLTS[\s\S]*?OSM bike infrastructure[\s\S]*?All roads[\s\S]*?Elevation &amp; cautions[\s\S]*?Technical data notes[\s\S]*?planning aid, not a guarantee of safety/,
   'map-data help should lead with its data sources, then keep technical context and state its limits');
 const layersHelp = html.match(/<dialog id="layersHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-23.338';
+const APP_VERSION = '2026-07-24.341';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -477,6 +477,11 @@ if (savedWeightsVersion < 7) {
 const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 
 // Voice guidance is a local device preference, not part of a shared route.
+// Automatic recovery is intentionally disabled for now. Keep the dormant mode
+// parsing and recovery functions so the selector can be restored later without
+// rebuilding the feature; riders can still request either recovery action from
+// the off-route dialog.
+const AUTOMATIC_OFF_ROUTE_RECOVERY_ENABLED = false;
 const OFF_ROUTE_RECOVERY_MODES = new Set(['guidance', 'return', 'dynamic']);
 const savedOffRouteRecoveryMode = OFF_ROUTE_RECOVERY_MODES.has(savedState?.navigationOffRouteMode)
   ? savedState.navigationOffRouteMode
@@ -494,7 +499,7 @@ const navVoice = {
     ? true : savedState.voiceStatusMiles,
   statusEta: !savedState || typeof savedState.voiceStatusEta !== 'boolean'
     ? true : savedState.voiceStatusEta,
-  offRouteMode: savedOffRouteRecoveryMode,
+  offRouteMode: AUTOMATIC_OFF_ROUTE_RECOVERY_ENABLED ? savedOffRouteRecoveryMode : 'guidance',
 };
 
 const DEFAULT_ROUTE_PREFERENCES = Object.freeze({ prefDesig: true, prefResidential: true });
@@ -734,6 +739,92 @@ map.addControl(
   'top-right'
 );
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
+// Mouse/trackpad users benefit from explicit zoom buttons. Keep them out of
+// phone-sized web layouts and the native shell, where pinch zoom is primary
+// and the extra controls would crowd the map toolbar.
+const desktopBrowserZoomMedia = window.matchMedia('(min-width: 721px)');
+const desktopZoomControl = new maplibregl.NavigationControl({
+  showCompass: false,
+  showZoom: true,
+});
+let desktopZoomControlVisible = false;
+function syncDesktopZoomControl() {
+  const nativeShell = Boolean(window.Capacitor?.isNativePlatform?.());
+  const shouldShow = desktopBrowserZoomMedia.matches && !nativeShell;
+  if (shouldShow === desktopZoomControlVisible) return;
+  if (shouldShow) map.addControl(desktopZoomControl, 'top-right');
+  else map.removeControl(desktopZoomControl);
+  desktopZoomControlVisible = shouldShow;
+}
+syncDesktopZoomControl();
+if (desktopBrowserZoomMedia.addEventListener) {
+  desktopBrowserZoomMedia.addEventListener('change', syncDesktopZoomControl);
+} else {
+  desktopBrowserZoomMedia.addListener(syncDesktopZoomControl);
+}
+
+let nativeMapLocationMarker = null;
+let mapLocationRequest = null;
+let lastMapLocationRequestAt = 0;
+
+function updatePassiveMapLocation(position, reason = 'foreground') {
+  const lng = Number(position?.coords?.longitude);
+  const lat = Number(position?.coords?.latitude);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return false;
+  const point = [lng, lat];
+
+  // Navigation owns its live rider marker. Outside navigation, keep a simple
+  // marker visible for locations obtained automatically or through the native
+  // location button.
+  if (!turnNav.active) {
+    if (!nativeMapLocationMarker) {
+      const element = document.createElement('div');
+      element.className = 'native-location-marker';
+      nativeMapLocationMarker = new maplibregl.Marker({ element }).setLngLat(point).addTo(map);
+    } else nativeMapLocationMarker.setLngLat(point);
+  }
+
+  if (turnNav.active) {
+    clearTimeout(turnNav.followResumeTimer);
+    turnNav.cameraFollow = true;
+    turnNav.lastCameraAt = Date.now();
+  }
+  map.easeTo({
+    center: point,
+    zoom: reason === 'launch' ? Math.max(map.getZoom(), 14) : map.getZoom(),
+    duration: reason === 'launch' ? 650 : 450,
+    essential: true,
+  });
+  return true;
+}
+
+async function recenterMapOnCurrentLocation(reason = 'foreground') {
+  if (document.visibilityState === 'hidden') return false;
+  if (mapLocationRequest) return mapLocationRequest;
+  const now = Date.now();
+  if (reason !== 'launch' && now - lastMapLocationRequestAt < 1200) return false;
+  lastMapLocationRequestAt = now;
+  mapLocationRequest = getDevicePosition({
+    maximumAge: reason === 'launch' ? 30000 : 5000,
+    timeout: 15000,
+  }).then((position) => updatePassiveMapLocation(position, reason))
+    // An automatic request should not replace useful app status with an error.
+    // The location control remains available if permission or GPS is unavailable.
+    .catch(() => false)
+    .finally(() => { mapLocationRequest = null; });
+  return mapLocationRequest;
+}
+
+function requestMapLocationRecenter(reason = 'foreground') {
+  if (map.loaded()) return recenterMapOnCurrentLocation(reason);
+  map.once('load', () => recenterMapOnCurrentLocation(reason));
+  return null;
+}
+
+// Ask for a usable location on each fresh app load. If permission is already
+// granted this centers immediately; otherwise the platform can show its normal
+// permission prompt and the Seattle default remains as a safe fallback.
+requestMapLocationRecenter('launch');
 
 // A user-initiated pan/zoom (originalEvent present) suspends navigation
 // auto-follow; our own programmatic camera moves have no originalEvent.
@@ -744,6 +835,21 @@ map.on('moveend', (e) => { if (turnNav.active && e.originalEvent) scheduleNaviga
 // preempts the control's own click handler.
 map.getContainer().addEventListener('click', (e) => {
   const btn = e.target.closest && e.target.closest('.maplibregl-ctrl-geolocate');
+  if (btn && nativeNavigationPlugin() && !turnNav.active) {
+    e.stopPropagation();
+    e.preventDefault();
+    btn.classList.add('maplibregl-ctrl-geolocate-waiting');
+    getDevicePosition().then((position) => {
+      updatePassiveMapLocation(position, 'launch');
+      btn.classList.add('maplibregl-ctrl-geolocate-active');
+    }).catch((error) => {
+      const blocked = /blocked|denied|permission/i.test(String(error?.message || error));
+      setStatus(blocked
+        ? 'Location permission is blocked in iPhone Settings.'
+        : 'Could not get your location.', true);
+    }).finally(() => btn.classList.remove('maplibregl-ctrl-geolocate-waiting'));
+    return;
+  }
   if (btn && turnNav.active && !turnNav.cameraFollow) {
     e.stopPropagation();
     e.preventDefault();
@@ -1696,6 +1802,7 @@ let routeDetailsPanelWasOpen = false;
 const turnNav = {
   active: false,
   watchId: null,
+  nativeTracking: false,
   wakeLock: null,
   marker: null,
   route: null,
@@ -1728,6 +1835,8 @@ const turnNav = {
   offRouteApproachSpoken: false,
   offRouteApproachText: '',
   offRouteSince: 0,
+  offRouteCandidateAt: 0,
+  offRouteCandidateFixes: 0,
   autoRecoveryAttempted: false,
   prevFix: null,             // previous GPS fix, for the rider's own heading
   lastPosition: null,
@@ -1930,14 +2039,39 @@ function buildTurnInstructions(m) {
 // distance and compass direction back to the nearest route point, a concrete
 // turn instruction as they close in on it, and normal guidance the moment
 // they rejoin — anywhere along the route, ahead of or behind where they left.
-const OFF_ROUTE_ENTER_M = 100;
-const OFF_ROUTE_REJOIN_M = 60;
+const OFF_ROUTE_ENTER_M = 65;
+const OFF_ROUTE_REJOIN_M = 40;
 const OFF_ROUTE_APPROACH_M = 130;
 const OFF_ROUTE_RESPEAK_MS = 30_000;
+const OFF_ROUTE_GOOD_ACCURACY_M = 60;
+const OFF_ROUTE_MAX_ACCURACY_M = 120;
+const OFF_ROUTE_CANDIDATE_WINDOW_MS = 40_000;
 const ROUTE_START_OFFER_M = 160.934; // 0.1 mile
 const AUTO_OFF_ROUTE_DELAY_MS = 60_000;
 let navigationConnectorRequestId = 0;
 let navigationNewRouteRequestId = 0;
+
+function clearOffRouteCandidate() {
+  turnNav.offRouteCandidateAt = 0;
+  turnNav.offRouteCandidateFixes = 0;
+}
+
+function recordOffRouteCandidate(fixAt, reportedAccuracyM) {
+  const accuracyM = Number(reportedAccuracyM);
+  // Truly unusable fixes neither trigger nor erase an otherwise consistent
+  // candidate. Moderately coarse fixes still count, but need one extra sample.
+  if (Number.isFinite(accuracyM) && accuracyM > OFF_ROUTE_MAX_ACCURACY_M) return false;
+  const requiredFixes = Number.isFinite(accuracyM) && accuracyM > OFF_ROUTE_GOOD_ACCURACY_M ? 3 : 2;
+  if (!turnNav.offRouteCandidateAt
+      || fixAt < turnNav.offRouteCandidateAt
+      || fixAt - turnNav.offRouteCandidateAt > OFF_ROUTE_CANDIDATE_WINDOW_MS) {
+    turnNav.offRouteCandidateAt = fixAt;
+    turnNav.offRouteCandidateFixes = 1;
+  } else {
+    turnNav.offRouteCandidateFixes += 1;
+  }
+  return turnNav.offRouteCandidateFixes >= requiredFixes;
+}
 
 function shouldOfferRouteStartConnector(startDistanceM, offRouteM) {
   // Distance from the original start alone is not enough: a rider already on
@@ -2180,7 +2314,7 @@ function navigationElevationProgressM() {
   return Math.max(0, Math.min(profileTotalM, plannedM * profileTotalM / plannedTotalM));
 }
 
-function openRouteDetails(detailTab = null) {
+function openRouteDetails(detailTab = null, concernId = null) {
   if (!routing.last?.ok) return;
   // Refresh the compact report before loading it. This lets an already-drawn
   // route gain its per-segment Google Maps and Street View locations as soon
@@ -2191,8 +2325,11 @@ function openRouteDetails(detailTab = null) {
   // While navigating there is only one active route, so drop the option label.
   const routeLabel = routing.last.optimization?.label || 'Route';
   const dialogTitle = turnNav.active ? 'Active Route Details' : `${routeLabel} Details`;
+  const requestedTab = ['stats', 'concerns', 'steps'].includes(detailTab) ? `&tab=${detailTab}` : '';
+  const requestedConcern = concernId === 'concern-unpaved' ? `&concern=${concernId}` : '';
+  const detailsUrl = `route-details.html?embedded=1&t=${Date.now()}${requestedTab}${requestedConcern}`;
   if (!dialog || !frame || !dialog.showModal) {
-    window.location.href = 'route-details.html';
+    window.location.href = detailsUrl.replace('embedded=1&', '');
     return;
   }
   const title = document.getElementById('routeDetailsDialogTitle');
@@ -2206,8 +2343,7 @@ function openRouteDetails(detailTab = null) {
   let progress = '';
   const progressM = navigationElevationProgressM();
   if (Number.isFinite(progressM)) progress = `&navProgress=${Math.round(progressM)}`;
-  const requestedTab = ['stats', 'concerns', 'steps'].includes(detailTab) ? `&tab=${detailTab}` : '';
-  frame.src = `route-details.html?embedded=1&t=${Date.now()}${progress}${requestedTab}`;
+  frame.src = `${detailsUrl}${progress}`;
   if (!dialog.open) dialog.showModal();
 }
 
@@ -2501,13 +2637,183 @@ function updateNavCard() {
 
 let lastSpokenText = '';
 let lastSpokenAt = 0;
+
+function nativeNavigationPlugin() {
+  return window.Capacitor?.Plugins?.NativeNavigation || null;
+}
+
+let nativeNavigationListenersReady = null;
+let nativeAppLifecycleListenerReady = null;
+function nativePositionEvent(position) {
+  return {
+    coords: {
+      longitude: Number(position?.longitude),
+      latitude: Number(position?.latitude),
+      accuracy: Number(position?.accuracy),
+      altitude: position?.altitude == null ? null : Number(position.altitude),
+      altitudeAccuracy: position?.altitudeAccuracy == null ? null : Number(position.altitudeAccuracy),
+      heading: position?.heading == null ? null : Number(position.heading),
+      speed: position?.speed == null ? null : Number(position.speed),
+    },
+    timestamp: Number(position?.timestamp) || Date.now(),
+  };
+}
+
+function ensureNativeNavigationListeners() {
+  const plugin = nativeNavigationPlugin();
+  if (!plugin) return Promise.resolve(false);
+  if (nativeNavigationListenersReady) return nativeNavigationListenersReady;
+  nativeNavigationListenersReady = Promise.all([
+    plugin.addListener('location', (position) => updateTurnNavigation(nativePositionEvent(position))),
+    plugin.addListener('locationError', (error) => handleTurnNavigationLocationError(error)),
+  ]).then(() => true).catch((error) => {
+    nativeNavigationListenersReady = null;
+    throw error;
+  });
+  return nativeNavigationListenersReady;
+}
+
+function ensureNativeAppLifecycleListener() {
+  const plugin = nativeNavigationPlugin();
+  if (!plugin) return Promise.resolve(false);
+  if (nativeAppLifecycleListenerReady) return nativeAppLifecycleListenerReady;
+  nativeAppLifecycleListenerReady = plugin.addListener(
+    'appActive',
+    () => requestMapLocationRecenter('foreground'),
+  ).then(() => true).catch(() => {
+    nativeAppLifecycleListenerReady = null;
+    return false;
+  });
+  return nativeAppLifecycleListenerReady;
+}
+ensureNativeAppLifecycleListener();
+
+function nativeNavigationRoutePayload() {
+  const route = turnNav.route;
+  if (!route?.coords?.length || !route?.cumulative?.length) return {};
+  // The native locked-screen guide needs the route shape, but not every graph
+  // vertex. Samples about 25 m apart keep projection accurate while avoiding a
+  // large Capacitor message on long-distance routes.
+  const points = [];
+  let lastSampleM = -Infinity;
+  let segmentIndex = 0;
+  route.coords.forEach((coord, index) => {
+    const distanceM = Number(route.cumulative[index]) || 0;
+    const endpoint = index === 0 || index === route.coords.length - 1;
+    if (!endpoint && distanceM - lastSampleM < 25) return;
+    while (segmentIndex + 1 < route.segs.length
+        && index >= Number(route.segs[segmentIndex]?.c1)) segmentIndex++;
+    points.push({
+      longitude: Number(coord[0]),
+      latitude: Number(coord[1]),
+      distanceM,
+      roadName: navRoadName(route.segs[segmentIndex]?.name),
+    });
+    lastSampleM = distanceM;
+  });
+  return {
+    route: points,
+    speakHeadings: navVoice.headings,
+    instructions: route.instructions.map((instruction) => ({
+      distanceM: Number(instruction.distanceM) || 0,
+      text: navInstructionText(instruction),
+    })),
+  };
+}
+
+async function startNativeNavigationTracking() {
+  const plugin = nativeNavigationPlugin();
+  if (!plugin) return false;
+  try {
+    await ensureNativeNavigationListeners();
+    const status = await plugin.startTracking(nativeNavigationRoutePayload());
+    if (!turnNav.active) {
+      await plugin.stopTracking().catch(() => {});
+      return false;
+    }
+    turnNav.nativeTracking = true;
+    turnNav.screenMaySleep = false;
+    if (status?.accuracy === 'reduced') {
+      turnNav.message = 'Precise Location is off; navigation accuracy may be reduced';
+      refreshNavigationUI();
+    }
+    return true;
+  } catch (error) {
+    turnNav.nativeTracking = false;
+    handleTurnNavigationLocationError({
+      code: /blocked|denied|permission/i.test(String(error?.message || error)) ? 1 : 2,
+      message: String(error?.message || error || ''),
+    });
+    return false;
+  }
+}
+
+async function getDevicePosition(options = {}) {
+  const plugin = nativeNavigationPlugin();
+  if (plugin) {
+    const position = await plugin.getCurrentPosition();
+    return nativePositionEvent(position);
+  }
+  if (!navigator.geolocation) throw new Error('No location access on this device');
+  return new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(
+    resolve,
+    reject,
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000, ...options },
+  ));
+}
+
+const NAVIGATION_SPEECH_RATE = 0.96;
+let preferredNavigationVoice = null;
+
+function navigationVoiceScore(voice, requestedLanguage) {
+  const requested = String(requestedLanguage || 'en-US').toLowerCase();
+  const requestedBase = requested.split('-')[0];
+  const language = String(voice?.lang || '').toLowerCase();
+  const name = `${voice?.name || ''} ${voice?.voiceURI || ''}`.toLowerCase();
+  if (!language.startsWith(requestedBase)) return -Infinity;
+
+  let score = language === requested ? 40 : 20;
+  if (voice.localService !== false) score += 25;
+  if (voice.default) score += 20;
+
+  // Web Speech exposes names but no quality tier. On Apple devices these are
+  // the commonly exposed natural system voices; explicit quality wording wins
+  // if a browser includes it. Other platforms retain their own default voice.
+  const appleDevice = /Macintosh|Mac OS X|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (appleDevice && /\b(ava|samantha|alex|allison|susan|tom|nathan|siri)\b/i.test(name)) score += 15;
+  if (/\b(premium|enhanced|natural)\b/i.test(name)) score += 60;
+  if (/\b(bad news|bahh|bells|boing|bubbles|cellos|jester|organ|superstar|trinoids|whisper|wobble|zarvox)\b/i.test(name)) {
+    score -= 200;
+  }
+  return score;
+}
+
+function refreshPreferredNavigationVoice(language = navigator.language || 'en-US') {
+  if (!('speechSynthesis' in window)) return null;
+  const voices = window.speechSynthesis.getVoices();
+  preferredNavigationVoice = voices.reduce((best, voice) =>
+    navigationVoiceScore(voice, language) > navigationVoiceScore(best, language) ? voice : best, null);
+  return preferredNavigationVoice;
+}
+
+function navigationSpeechUtterance(text, language = navigator.language || 'en-US') {
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voice = refreshPreferredNavigationVoice(language);
+  utterance.rate = NAVIGATION_SPEECH_RATE;
+  utterance.lang = voice?.lang || language;
+  if (voice) utterance.voice = voice;
+  return utterance;
+}
+
+if ('speechSynthesis' in window) {
+  refreshPreferredNavigationVoice();
+  window.speechSynthesis.addEventListener?.('voiceschanged', () => {
+    refreshPreferredNavigationVoice();
+  });
+}
+
 function speakNavigation(text) {
   if (!text) return;
-  if (!('speechSynthesis' in window)) {
-    turnNav.message = 'Voice is unavailable in this browser';
-    refreshNavigationUI();
-    return;
-  }
   const now = Date.now();
   // Guard against re-speaking the same phrase on back-to-back GPS fixes (the
   // announcement window spans several fixes), which otherwise stutters and can
@@ -2516,6 +2822,26 @@ function speakNavigation(text) {
   lastSpokenText = text;
   lastSpokenAt = now;
   turnNav.lastVoiceAt = now;
+  const nativePlugin = nativeNavigationPlugin();
+  if (nativePlugin) {
+    nativePlugin.speak({ text, language: navigator.language || 'en-US' }).catch(() => {
+      if (!('speechSynthesis' in window)) {
+        turnNav.message = 'Voice is unavailable on this device';
+        refreshNavigationUI();
+        return;
+      }
+      const utterance = navigationSpeechUtterance(text);
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+      window.speechSynthesis.resume();
+    });
+    return;
+  }
+  if (!('speechSynthesis' in window)) {
+    turnNav.message = 'Voice is unavailable in this browser';
+    refreshNavigationUI();
+    return;
+  }
   try {
     const synth = window.speechSynthesis;
     // Latest-wins: a new maneuver supersedes whatever is queued or mid-word, so
@@ -2523,9 +2849,7 @@ function speakNavigation(text) {
     // running and swallowed the fresh prompt. resume() works around the mobile
     // Safari/Chrome bug where the queue silently pauses.
     synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.05;
-    utterance.lang = navigator.language || 'en-US';
+    const utterance = navigationSpeechUtterance(text);
     synth.speak(utterance);
     synth.resume();
   } catch (e) { /* the status line remains useful without speech */ }
@@ -3171,22 +3495,18 @@ function updateTurnNavigation(pos) {
   // Declining the connector—or leaving either route later—uses ordinary
   // nearest-point guidance, including compass direction and road/path name.
   if (!turnNav.offRoute && nearest.offRouteM > OFF_ROUTE_ENTER_M) {
-    // A single noisy or coarse fix must not announce off-route. A low-accuracy
-    // fix is ignored outright; otherwise two consecutive over-threshold fixes
-    // are required before declaring the rider has actually left the route.
-    const accuracy = Number(pos.coords.accuracy);
-    if (Number.isFinite(accuracy) && accuracy > 60) { refreshNavigationUI(); return; }
-    if (!(turnNav.offRouteCandidateAt && fixAt - turnNav.offRouteCandidateAt <= 25000)) {
-      turnNav.offRouteCandidateAt = fixAt;
+    // Confirm a sustained departure without making urban GPS an all-or-nothing
+    // gate: two reliable fixes suffice; moderately coarse fixes need three.
+    if (!recordOffRouteCandidate(fixAt, pos.coords.accuracy)) {
       refreshNavigationUI();
       return;
     }
-    turnNav.offRouteCandidateAt = 0;
+    clearOffRouteCandidate();
     enterOffRoute(nearest);
     refreshNavigationUI();
     return;
   }
-  turnNav.offRouteCandidateAt = 0;
+  clearOffRouteCandidate();
   if (turnNav.offRoute) {
     if (nearest.offRouteM > OFF_ROUTE_REJOIN_M) {
       updateOffRouteGuidance(nearest, previousFix);
@@ -3288,7 +3608,8 @@ function startTurnNavigation() {
     setStatus('Wait for the updated route before starting navigation.', true);
     return;
   }
-  if (!routing.last?.ok || routing.last.coords?.length < 2 || !navigator.geolocation) {
+  if (!routing.last?.ok || routing.last.coords?.length < 2
+      || (!nativeNavigationPlugin() && !navigator.geolocation)) {
     setStatus('Set a route and allow location access to start navigation.', true);
     return;
   }
@@ -3321,7 +3642,7 @@ function startTurnNavigation() {
   turnNav.offRouteApproachText = '';
   turnNav.offRouteSpokenAt = 0;
   turnNav.offRouteSince = 0;
-  turnNav.offRouteCandidateAt = 0;
+  clearOffRouteCandidate();
   turnNav.autoRecoveryAttempted = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
@@ -3331,20 +3652,25 @@ function startTurnNavigation() {
   turnNav.initialCameraAt = 0;
   turnNav.lastCameraAt = 0;
   turnNav.lastVoiceAt = Date.now();
+  turnNav.nativeTracking = false;
   drawNavigationConnector([]);
   updateNavigationProgress();
   turnNav.message = 'Getting your location';
   settingsPaneSelect?.('voice');
   refreshNavigationUI();
   speakNavigation('Navigation started. Getting your location.');
-  turnNav.watchId = navigator.geolocation.watchPosition(
-    updateTurnNavigation,
-    handleTurnNavigationLocationError,
-    // Accept a recent fix and allow GPS a little longer to acquire one. This
-    // avoids a false "needs location access" warning on phones whose map
-    // marker is already working but whose second watcher has not updated yet.
-    { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 }
-  );
+  if (nativeNavigationPlugin()) {
+    startNativeNavigationTracking();
+  } else {
+    turnNav.watchId = navigator.geolocation.watchPosition(
+      updateTurnNavigation,
+      handleTurnNavigationLocationError,
+      // Accept a recent fix and allow GPS a little longer to acquire one. This
+      // avoids a false "needs location access" warning on phones whose map
+      // marker is already working but whose second watcher has not updated yet.
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 }
+    );
+  }
   requestNavigationWakeLock();
 }
 
@@ -3352,6 +3678,8 @@ function stopTurnNavigation(announce = true) {
   if (!turnNav.active) return;
   if (turnNav.watchId != null) navigator.geolocation?.clearWatch(turnNav.watchId);
   turnNav.watchId = null;
+  nativeNavigationPlugin()?.stopTracking().catch(() => {});
+  turnNav.nativeTracking = false;
   releaseNavigationWakeLock();
   if (turnNav.marker) { turnNav.marker.remove(); turnNav.marker = null; }
   turnNav.active = false;
@@ -3377,6 +3705,7 @@ function stopTurnNavigation(announce = true) {
   turnNav.offRouteApproachSpoken = false;
   turnNav.offRouteApproachText = '';
   turnNav.offRouteSince = 0;
+  clearOffRouteCandidate();
   turnNav.autoRecoveryAttempted = false;
   turnNav.prevFix = null;
   turnNav.lastPosition = null;
@@ -3398,7 +3727,9 @@ function stopTurnNavigation(announce = true) {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (turnNav.active && document.visibilityState === 'visible') requestNavigationWakeLock();
+  if (document.visibilityState !== 'visible') return;
+  if (turnNav.active) requestNavigationWakeLock();
+  requestMapLocationRecenter('foreground');
 });
 
 function renderRouteCard(m) {
@@ -3413,23 +3744,44 @@ function renderRouteCard(m) {
     const slot = card.querySelector('#routeDetailsSlot');
     if (slot && details) slot.replaceWith(details);
   };
+  const showRouteMessage = (title, message, hint = '', error = false) => {
+    card.innerHTML = `<div id="routeControlsSlot"></div>
+      <div class="rc-route-message${error ? ' error' : ''}">
+        <strong></strong><span></span><small></small>
+      </div>
+      <div class="rc-details-hidden"><div id="routeDetailsSlot"></div></div>`;
+    const box = card.querySelector('.rc-route-message');
+    box.querySelector('strong').textContent = title;
+    box.querySelector('span').textContent = message;
+    box.querySelector('small').textContent = hint;
+    box.querySelector('small').hidden = !hint;
+    moveControls();
+    moveDetails();
+    refreshNavigationUI();
+  };
   if (!card) return;
   syncRouteDetailsWarningState(m);
   if (!m) {
-    card.innerHTML = `<div id="routeControlsSlot"></div><div class="rc-empty">Choose either <b>From</b> or <b>To</b>
-      first, then search or tap the map. Routes follow your
-      riding rules, entirely on this device. When meaningful alternatives exist, they appear above.</div><div class="rc-details-hidden"><div id="routeDetailsSlot"></div></div>`;
-    moveControls();
-    moveDetails();
-    refreshNavigationUI();
+    showRouteMessage(
+      'Choose a start and destination',
+      'Use search or tap the map.',
+      'Route choices will appear above.',
+    );
     return;
   }
   if (!m.ok) {
-    card.innerHTML = '<div id="routeControlsSlot"></div><div class="rc-empty"></div><div class="rc-details-hidden"><div id="routeDetailsSlot"></div></div>';
-    card.querySelector('.rc-empty').textContent = String(m.reason || 'No route found.');
-    moveControls();
-    moveDetails();
-    refreshNavigationUI();
+    let reason = String(m.reason || 'No route was found.');
+    if (reason === 'A route point is too far from a routable road or path.') {
+      reason = 'Move the route point closer to a road or path, then try again.';
+    } else if (reason.startsWith('No route fully matching your safety rules exists')) {
+      reason = 'No route fully matches your safety rules.';
+    } else if (reason === 'Start and destination snap to the same road point. Move one of them farther away.') {
+      reason = 'Move the start or destination farther away.';
+    }
+    const hint = reason === 'No route fully matches your safety rules.'
+      ? 'Adjust a rule, or turn off “Only show routes fully matching safety rules”.'
+      : '';
+    showRouteMessage('Route unavailable', reason, hint, true);
     return;
   }
   const stats = routeSummaryStats(m);
@@ -3443,6 +3795,9 @@ function renderRouteCard(m) {
   const containsDismount = stats.dismountM > 0;
   const averageSpeedLimit = stats.avgRoadSpeedMph == null ? 'N/A' : `${stats.avgRoadSpeedMph} mph`;
   const hasSteepGradeWarning = Number(m.maxGradePct) > 18;
+  const unpavedMetric = hasSignificantUnpaved
+    ? `<button class="rc-ride-item rc-ride-unpaved-warning" id="rcUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved<span class="rc-unpaved-alert-mark" aria-hidden="true">!</span></button>`
+    : `<span class="rc-ride-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>`;
   const mtbNotice = stats.mtbM > 0
     ? `<div class="rc-warn rc-mtb">⚠ ${fmtDist(stats.mtbM)} on mountain-bike trail</div>`
     : '';
@@ -3459,13 +3814,16 @@ function renderRouteCard(m) {
           <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
         </div>
         ${mtbNotice}<div class="rc-bottom-stats">
-          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><div class="rc-ride-items${containsDismount ? ' has-dismount' : ''}"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span><span class="rc-ride-item${hasSignificantUnpaved ? ' rc-ride-unpaved-warning' : ''}"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved${hasSignificantUnpaved ? '<span class="rc-unpaved-alert-mark" aria-hidden="true">!</span>' : ''}</span>${containsDismount ? '<span class="rc-ride-item rc-ride-dismount" title="Walk your bike through a short route section"><span aria-hidden="true">⚠</span> Dismount</span>' : ''}</div></div>
+          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><div class="rc-ride-items${containsDismount ? ' has-dismount' : ''}"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span>${unpavedMetric}${containsDismount ? '<span class="rc-ride-item rc-ride-dismount" title="Walk your bike through a short route section"><span aria-hidden="true">⚠</span> Dismount</span>' : ''}</div></div>
         </div>
       </div>
     </div>`;
   moveControls();
   moveDetails();
   document.getElementById('rcElevGradeWarning')?.addEventListener('click', () => openRouteDetails('stats'));
+  document.getElementById('rcUnpavedWarningLink')?.addEventListener('click', () => {
+    openRouteDetails('concerns', 'concern-unpaved');
+  });
   refreshNavigationUI();
   drawRouteCardElevation();
 }
@@ -5423,7 +5781,7 @@ function openPlacePicker(kind) {
     ? '<strong>Search</strong> for a place below, or <strong>tap the map</strong> to add it.'
     : kind === 'block'
       ? '<strong>Search</strong> for a road or place below, or <strong>tap the map</strong> to block it.'
-    : '<strong>Search</strong> for a place below, or <strong>tap the map</strong> to set it.';
+      : `<strong>Tap on map</strong> to set ${kind === 'start' ? 'start' : 'destination'} or <strong>search</strong> below.`;
   document.getElementById('useLoc').hidden = kind !== 'start';
   const onlineButton = document.getElementById('onlinePlaceSearch');
   onlineButton.disabled = false;
@@ -5626,9 +5984,8 @@ function buildPlacePicker() {
 
   document.getElementById('placePickerClose').addEventListener('click', () => closePlacePicker(true));
   document.getElementById('useLoc').addEventListener('click', () => {
-    if (!navigator.geolocation) { setStatus('No location access on this device', true); return; }
     setRouteStatus('Locating…');
-    navigator.geolocation.getCurrentPosition((pos) => {
+    getDevicePosition().then((pos) => {
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
       setRoutePoint(placeTarget, lngLat, 'My location');
       routing.arm = null;
@@ -5636,7 +5993,12 @@ function buildPlacePicker() {
       closePlacePicker(false);
       frameMapAfterPlacePicker(lngLat);
       setRouteStatus(placeTarget === 'start' ? 'Start set to your location' : 'Destination set');
-    }, () => setRouteStatus('Could not get your location'), { enableHighAccuracy: true, timeout: 10000 });
+    }).catch((error) => {
+      const message = /blocked|denied|permission/i.test(String(error?.message || error))
+        ? 'Location permission is blocked in iPhone Settings'
+        : 'Could not get your location';
+      setRouteStatus(message);
+    });
   });
 }
 
@@ -6741,41 +7103,6 @@ function buildVoicePanel() {
   const host = document.getElementById('settingsVoice');
   if (!host) return;
   host.replaceChildren();
-
-  // Off-route behavior: a dropdown plus one live description line. The three
-  // described radio cards it replaces forced the whole pane to scroll; a select
-  // keeps every voice control on one sheet without shrinking anything else.
-  // Descriptions are static literals (no user input), so innerHTML is safe and
-  // lets the dynamic-mode caution render in bold.
-  const offRouteChoices = [
-    ['guidance', 'Notify only', 'Gives the direction and distance back to your route.'],
-    ['return', 'Route back to route', 'Automatically routes you back to the nearest point on your route.'],
-    ['dynamic', 'Dynamic re-routing', 'Generates a new route automatically each time you go off course. <strong>Caution: remaining route may change!</strong>'],
-  ];
-  const offRoute = document.createElement('div');
-  offRoute.className = 'rule rule-card voice-offroute';
-  offRoute.innerHTML = `
-    <div class="rule-head voice-inline-head"><label for="v-offRouteMode">Off-route behavior</label>
-      <select id="v-offRouteMode" class="voice-select voice-select-inline">${offRouteChoices.map(([value, label]) =>
-        `<option value="${value}"${navVoice.offRouteMode === value ? ' selected' : ''}>${label}</option>`).join('')}</select></div>
-    <p class="voice-hint" id="v-offRouteDesc"></p>`;
-  const offRouteDesc = offRoute.querySelector('#v-offRouteDesc');
-  const syncOffRouteDesc = () => {
-    const choice = offRouteChoices.find(([value]) => value === navVoice.offRouteMode);
-    offRouteDesc.innerHTML = choice ? choice[2] : '';
-    offRouteDesc.classList.toggle('voice-hint-warn', navVoice.offRouteMode === 'dynamic');
-  };
-  syncOffRouteDesc();
-  offRoute.querySelector('select').addEventListener('change', (e) => {
-    navVoice.offRouteMode = e.target.value;
-    // Choosing an automatic mode is an explicit request to try it, even if a
-    // prior recovery attempt during this off-route interval could not finish.
-    turnNav.autoRecoveryAttempted = false;
-    syncOffRouteDesc();
-    saveStateSoon();
-    maybeAutomaticallyRecoverOffRoute();
-  });
-  host.appendChild(offRoute);
 
   const headings = document.createElement('div');
   headings.className = 'check-rule rule-card';

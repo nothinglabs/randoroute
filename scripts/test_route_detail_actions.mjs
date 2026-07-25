@@ -12,8 +12,12 @@ const detailsHtml = fs.readFileSync(new URL('../route-details.html', import.meta
 
 assert.match(app, /locationStart: locationAt\(s\.c0\), locationEnd: locationAt\(s\.c1\)/,
   'stored route details should retain a compact on-road point for each segment');
-assert.match(app, /function openRouteDetails\(detailTab = null\) \{[\s\S]*?storeRouteDetails\(routing\.last\)[\s\S]*?\['stats', 'concerns', 'steps'\]\.includes\(detailTab\)[\s\S]*?&tab=\$\{detailTab\}/,
+assert.match(app, /function openRouteDetails\(detailTab = null, concernId = null\) \{[\s\S]*?storeRouteDetails\(routing\.last\)[\s\S]*?\['stats', 'concerns', 'steps'\]\.includes\(detailTab\)[\s\S]*?&tab=\$\{detailTab\}/,
   'opening Details should refresh an already-drawn route with its segment locations');
+assert.match(app, /concernId === 'concern-unpaved'[\s\S]*?&concern=\$\{concernId\}[\s\S]*?id="rcUnpavedWarningLink"[\s\S]*?openRouteDetails\('concerns', 'concern-unpaved'\)/,
+  'the emphasized home-screen unpaved metric should open its concern directly');
+assert.match(details, /const REQUESTED_CONCERN = REQUEST_PARAMS\.get\('concern'\)[\s\S]*?REQUESTED_CONCERN === 'concern-unpaved'[\s\S]*?selectDetailTab\('concerns'\)[\s\S]*?scrollToConcernSection\(REQUESTED_CONCERN\)/,
+  'Route Details should expand and scroll to a requested unpaved concern');
 assert.match(app, /function compactRouteCoords\(m, includeIndices = false\)[\s\S]*?Math\.ceil\(coords\.length \/ 600\)[\s\S]*?const routePreview = compactRouteCoords\(m, true\);[\s\S]*?routeCoords: routePreview\?\.coords \|\| null,[\s\S]*?routeCoordIndices: routePreview\?\.indices \|\| null,[\s\S]*?routeOptions: routeDetailsOptionTabs\(m\)/,
   'Route Details should retain compact preview geometry with the source indexes needed for map colors');
 assert.match(app, /const directions = buildTurnInstructions\(m\)\.instructions[\s\S]*?segmentIndex: instruction\.segmentIndex,[\s\S]*?text: instruction\.text,[\s\S]*?routeCoordIndices: routePreview\?\.indices \|\| null,[\s\S]*?directions,/,
@@ -156,6 +160,8 @@ assert.match(detailsHtml, /id="panel-stats"[\s\S]*?id="unpavedRouteWarning" clas
   'Route Details should show the substantial-unpaved warning only within Stats');
 assert.match(details, /const hasSignificantUnpaved = routeStats\.unpavedM > SIGNIFICANT_UNPAVED_M;[\s\S]*?mix-unpaved-warning[\s\S]*?unpavedRouteWarning\.hidden = !hasSignificantUnpaved[\s\S]*?This route has \$\{fmtMi\(routeStats\.unpavedM\)\} mi of unpaved surface\./,
   'Route Details should emphasize and explain routes with more than one confirmed unpaved mile');
+assert.match(details, /id="summaryUnpavedWarningLink"[\s\S]*?summaryUnpavedWarningLink'\)\?\.addEventListener\('click'[\s\S]*?selectDetailTab\('concerns'\)[\s\S]*?scrollToConcernSection\('concern-unpaved'\)/,
+  'the underlined Stats unpaved metric should open its concern directly');
 assert.match(details, /unpavedRouteWarning\.addEventListener\('click'[\s\S]*?selectDetailTab\('concerns'\)[\s\S]*?scrollToConcernSection\('concern-unpaved'\)/,
   'the unpaved warning should open the matching concern details');
 assert.match(css, /\.concern-details-hint\s*\{[^}]*margin:\s*2px 2px 8px[^}]*color:\s*#415361[^}]*font:\s*750 11px\/1\.25 system-ui/,
