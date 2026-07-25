@@ -31,6 +31,7 @@ const files = [
   'data/places.json',
   'fonts/Klokantech Noto Sans Regular/0-255.pbf',
   'fonts/Klokantech Noto Sans Regular/256-511.pbf',
+  'fonts/Klokantech Noto Sans Regular/512-767.pbf',
 ];
 
 for (const relativePath of files) {

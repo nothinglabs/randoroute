@@ -23,6 +23,19 @@ python3 scripts/serve.py
 # then open http://localhost:8000/
 ```
 
+## Native iOS
+
+```bash
+npm install
+npm run ios:sync
+npm run ios:open
+```
+
+`ios:sync` assembles the complete web runtime and statewide data into
+`mobile-shell/` before copying it into the Xcode project. The current payload
+is about 159 MB uncompressed and has no GitHub Pages or online-basemap runtime
+dependency.
+
 ## Features
 
 - **MapLibre GL JS** map of Washington with a compact local vector basemap:
