@@ -33,6 +33,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         CAPPluginMethod(name: "getCurrentPosition", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startTracking", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopTracking", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "updateVoiceSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "speak", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopSpeaking", returnType: CAPPluginReturnPromise)
     ]
@@ -53,6 +54,13 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     private var lastOffRoutePromptAt = Date.distantPast
     private var previousLocation: CLLocation?
     private var speakHeadings = true
+    private var statusUpdateIntervalS: TimeInterval = 0
+    private var statusRoute = true
+    private var statusSpeed = true
+    private var statusMiles = true
+    private var statusEta = true
+    private var routeTotalTimeS: TimeInterval = 0
+    private var lastVoiceAt = Date()
     private var arrived = false
     private var latestLocationPayload: [String: Any]?
     private let offRouteEnterM = 65.0
@@ -142,31 +150,20 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         }
     }
 
+    @objc func updateVoiceSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            self.configureVoiceSettings(from: call)
+            call.resolve()
+        }
+    }
+
     @objc func speak(_ call: CAPPluginCall) {
         guard let text = call.getString("text"), !text.isEmpty else {
             call.reject("Speech text is required.")
             return
         }
         DispatchQueue.main.async {
-            do {
-                let session = AVAudioSession.sharedInstance()
-                try session.setCategory(
-                    .playback,
-                    mode: .spokenAudio,
-                    options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]
-                )
-                try session.setActive(true)
-            } catch {
-                // Speech can still succeed with the system's existing session.
-            }
-            if self.speechSynthesizer.isSpeaking {
-                self.speechSynthesizer.stopSpeaking(at: .immediate)
-            }
-            let utterance = self.navigationUtterance(
-                text,
-                language: call.getString("language") ?? "en-US"
-            )
-            self.speechSynthesizer.speak(utterance)
+            self.speakText(text, language: call.getString("language") ?? "en-US")
             call.resolve()
         }
     }
@@ -261,7 +258,8 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     }
 
     private func configureRoute(from call: CAPPluginCall) {
-        speakHeadings = call.getBool("speakHeadings") ?? true
+        configureVoiceSettings(from: call)
+        routeTotalTimeS = max(0, call.getDouble("routeTotalTimeS") ?? 0)
         route = (call.getArray("route", JSObject.self) ?? []).compactMap { point in
             guard let latitude = point["latitude"] as? Double,
                   let longitude = point["longitude"] as? Double,
@@ -287,7 +285,18 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         offRouteApproachSpoken = false
         lastOffRoutePromptAt = .distantPast
         previousLocation = nil
+        lastVoiceAt = Date()
         arrived = false
+    }
+
+    private func configureVoiceSettings(from call: CAPPluginCall) {
+        speakHeadings = call.getBool("speakHeadings") ?? speakHeadings
+        let updateMinutes = max(0, min(30, call.getDouble("statusUpdateMin") ?? 0))
+        statusUpdateIntervalS = updateMinutes * 60
+        statusRoute = call.getBool("statusRoute") ?? statusRoute
+        statusSpeed = call.getBool("statusSpeed") ?? statusSpeed
+        statusMiles = call.getBool("statusMiles") ?? statusMiles
+        statusEta = call.getBool("statusEta") ?? statusEta
     }
 
     private func clearRouteGuidance() {
@@ -300,6 +309,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         offRoute = false
         offRouteApproachSpoken = false
         previousLocation = nil
+        routeTotalTimeS = 0
         arrived = false
     }
 
@@ -377,6 +387,14 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                nearest.routeM >= destination.distanceM - 45 {
                 arrived = true
                 speakText("You have arrived at your destination.")
+            } else if background {
+                maybeSpeakPeriodicStatus(
+                    location: location,
+                    priorLocation: priorLocation,
+                    nearestRouteM: nearest.routeM,
+                    nextInstruction: nil,
+                    remainingToTurnM: .infinity
+                )
             }
             return
         }
@@ -394,6 +412,81 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                 speakText("In \(spokenDistance(remainingM)), \(instructions[0].text.lowercased()).")
             }
         }
+        if background {
+            maybeSpeakPeriodicStatus(
+                location: location,
+                priorLocation: priorLocation,
+                nearestRouteM: nearest.routeM,
+                nextInstruction: instructions[0],
+                remainingToTurnM: remainingM
+            )
+        }
+    }
+
+    private func maybeSpeakPeriodicStatus(
+        location: CLLocation,
+        priorLocation: CLLocation?,
+        nearestRouteM: Double,
+        nextInstruction: RouteInstruction?,
+        remainingToTurnM: Double
+    ) {
+        guard statusUpdateIntervalS > 0,
+              !arrived,
+              Date().timeIntervalSince(lastVoiceAt) >= statusUpdateIntervalS,
+              nextInstruction == nil || remainingToTurnM > 350 else { return }
+
+        var parts: [String] = []
+        if statusRoute {
+            if let nextInstruction {
+                parts.append(
+                    "In \(spokenDistance(remainingToTurnM)), "
+                        + nextInstruction.text.lowercased()
+                )
+            } else {
+                parts.append("Continue to your destination")
+            }
+        }
+        if statusSpeed, let speed = currentSpeedMph(location, priorLocation: priorLocation) {
+            parts.append("Speed \(Int(speed.rounded())) miles per hour")
+        }
+        let totalRouteM = route.last?.distanceM ?? 0
+        let remainingRouteM = max(0, totalRouteM - nearestRouteM)
+        if statusMiles {
+            parts.append("\(spokenDistance(remainingRouteM)) remaining")
+        }
+        if statusEta, routeTotalTimeS > 0, totalRouteM > 0 {
+            let remainingS = routeTotalTimeS * remainingRouteM / totalRouteM
+            if remainingS >= 45 {
+                parts.append("about \(spokenDuration(remainingS)) left")
+            }
+        }
+        if !parts.isEmpty {
+            speakText(parts.joined(separator: ". ") + ".")
+        }
+    }
+
+    private func currentSpeedMph(
+        _ location: CLLocation,
+        priorLocation: CLLocation?
+    ) -> Double? {
+        if location.speed >= 0 {
+            return location.speed * 2.23694
+        }
+        guard let priorLocation else { return nil }
+        let elapsed = location.timestamp.timeIntervalSince(priorLocation.timestamp)
+        guard elapsed > 0, elapsed < 30 else { return nil }
+        return location.distance(from: priorLocation) / elapsed * 2.23694
+    }
+
+    private func spokenDuration(_ seconds: TimeInterval) -> String {
+        let minutes = max(1, Int((seconds / 60).rounded()))
+        if minutes < 60 {
+            return "\(minutes) minute\(minutes == 1 ? "" : "s")"
+        }
+        let hours = minutes / 60
+        let remainder = minutes % 60
+        return "\(hours) hour\(hours == 1 ? "" : "s")"
+            + (remainder > 0 ? " \(remainder) minutes" : "")
     }
 
     private func nearestRoutePosition(to location: CLLocation)
@@ -600,7 +693,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         return utterance
     }
 
-    private func speakText(_ text: String) {
+    private func speakText(_ text: String, language: String = "en-US") {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(
@@ -615,7 +708,8 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)
         }
-        let utterance = navigationUtterance(text, language: "en-US")
+        lastVoiceAt = Date()
+        let utterance = navigationUtterance(text, language: language)
         speechSynthesizer.speak(utterance)
     }
 

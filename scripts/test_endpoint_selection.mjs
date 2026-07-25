@@ -7,8 +7,8 @@ const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 
 assert.match(app, /center:\s*\(savedState && savedState\.view && savedState\.view\.c\) \|\| \[-122\.3321, 47\.6062\]/,
   'a fresh install should start centered on Seattle while preserving a saved map view');
-assert.match(app, /if \(more\) more\.disabled = plannerLoading;/,
-  'the more-actions menu should remain available before both endpoints are selected, except while the graph loads');
+assert.match(app, /if \(more\) more\.disabled = false;/,
+  'the more-actions menu should remain discoverable while the graph loads');
 assert.match(app, /searchInput\.value = currentEndpointName;/,
   'the search field should preview the current endpoint name when replacing it');
 assert.match(app, /<strong>Tap on map<\/strong> to set \$\{kind === 'start' \? 'start' : 'destination'\} or <strong>search<\/strong> below\./,
@@ -21,6 +21,12 @@ assert.match(app, /No Net results for/,
   'an empty Net search should render an explicit result message');
 assert.match(app, /routing\.pendingRoute = true;[\s\S]*?setRouteOptionsLoading\(true\);[\s\S]*?ensureRouter\(\);/,
   'a route requested before graph readiness should remain visibly queued');
+assert.match(app, /function openPlacePicker\(kind\) \{[\s\S]*?ensureRouter\(\);[\s\S]*?document\.getElementById\('placePicker'\)\.hidden = false;/,
+  'start and destination selection should remain usable while the graph initializes');
+assert.match(app, /function placeArmedPoint\(lngLat\) \{[\s\S]*?setRoutePoint\(kind, lngLat\);/,
+  'a map-tapped endpoint should be accepted and queued before graph readiness');
+assert.doesNotMatch(app, /button\.disabled = plannerLoading/,
+  'graph initialization must not make endpoint controls appear broken');
 assert.match(app, /routing\.pendingRoute \|\| routing\.routeRequestActive/,
   'routing-map failures should distinguish preloading from real route requests');
 

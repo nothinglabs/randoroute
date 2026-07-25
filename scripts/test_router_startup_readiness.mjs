@@ -13,18 +13,17 @@ assert.match(css, /\.status \{[\s\S]*?top: calc\(env\(safe-area-inset-top\) \+ 9
 assert.match(css, /\.status\.hidden \{ visibility: hidden; opacity: 0; \}/,
   'hidden generic status should not leave a visible loading badge');
 
+assert.doesNotMatch(app, /function waitForRoutePlanner/,
+  'route-point editing should not be blocked on a fresh graph download');
 assert.match(app,
-  /function routePlannerIsLoading\(\) \{\s*return routing\.loading && !routing\.ready;\s*\}/,
-  'route controls should recognize a graph that is still initializing');
+  /function openPlacePicker\(kind\) \{[\s\S]*?routing\.arm = kind;[\s\S]*?ensureRouter\(\);/,
+  'place search should safely arm a route point while graph startup continues');
 assert.match(app,
-  /function openPlacePicker\(kind\) \{\s*if \(waitForRoutePlanner\(\)\) return;/,
-  'place search must not arm a route point before the graph is ready');
+  /function armRoutePoint\(kind\) \{[\s\S]*?routing\.arm = routing\.arm === kind \? null : kind;[\s\S]*?ensureRouter\(\);/,
+  'map-only route actions should safely arm while graph startup continues');
 assert.match(app,
-  /function armRoutePoint\(kind\) \{\s*if \(waitForRoutePlanner\(\)\) return;/,
-  'map-only route actions must not arm before the graph is ready');
-assert.match(app,
-  /function placeArmedPoint\(lngLat\) \{[\s\S]*?if \(!routing\.ready\) \{[\s\S]*?return true;/,
-  'a stale placement tap should be consumed rather than falling through to road details');
+  /function computeRoute\(\) \{[\s\S]*?if \(!routing\.ready\) \{[\s\S]*?routing\.pendingRoute = true;[\s\S]*?return;/,
+  'a complete route selected during startup should queue until the graph is ready');
 assert.match(app,
   /buildRoutingPanel\(\);\s*buildLegend\(\);[\s\S]*?ensureRouter\(\);/,
   'routing data should preload as the app starts');

@@ -1,29 +1,377 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#009e73" />
-  <title>Clauding</title>
-  <style>
-    html, body {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      background: #f5fafb;
-      color: #294653;
-      font: 700 17px/1.4 system-ui, sans-serif;
-    }
-    body {
-      display: grid;
-      place-items: center;
-      box-sizing: border-box;
-      padding: 24px;
-      text-align: center;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Just Rolling Along</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#009E73" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="JRA" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="vendor/maplibre-gl.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
-  <p>Loading the bike route app…</p>
+<body class="panel-open">
+  <div id="map"></div>
+  <button id="appHelpBtn" type="button" aria-label="How to use the app" title="How to use the app">?</button>
+
+  <div id="topToolbar">
+    <button id="navStartButton" class="nav-start" type="button" disabled title="Set a route to navigate">
+      <span id="navStartIcon" aria-hidden="true">▶</span> <span id="navStartLabel">Navigate</span>
+    </button>
+    <div id="routeBar">
+      <div class="route-endpoints" role="group" aria-label="Route endpoints">
+        <button id="rb-start" class="route-endpoint route-endpoint-start" type="button" title="Set start">
+          <span class="route-endpoint-marker" aria-hidden="true"></span>
+          <span class="endpoint-copy"><span class="endpoint-label">From</span><strong data-endpoint-value>Choose start</strong></span>
+        </button>
+        <button id="rb-end" class="route-endpoint route-endpoint-end" type="button" title="Set destination">
+          <span class="route-endpoint-marker" aria-hidden="true"></span>
+          <span class="endpoint-copy"><span class="endpoint-label">To</span><strong data-endpoint-value>Choose destination</strong></span>
+        </button>
+      </div>
+      <button id="rb-more" type="button" title="More route actions" aria-label="More route actions" aria-expanded="false" aria-controls="routeActionsMenu">⋮</button>
+      <div id="routeActionsMenu" class="route-actions-menu" role="menu" hidden>
+        <button id="rb-via" type="button" role="menuitem" title="Add waypoint"><span aria-hidden="true">＋</span><strong>Add waypoint</strong></button>
+        <button id="rb-road-block" type="button" role="menuitem" title="Add a road block"><span aria-hidden="true">🚧</span><strong>Add road block</strong></button>
+        <button id="rb-reverse" type="button" role="menuitem" title="Reverse route"><span aria-hidden="true">⇄</span><strong>Reverse route</strong></button>
+        <button id="rb-clear" type="button" role="menuitem" title="Clear route"><span aria-hidden="true">✕</span><strong>Clear route</strong></button>
+      </div>
+      <span id="rb-status"></span>
+      <div id="placePicker" class="place-picker" role="dialog" aria-modal="false" aria-labelledby="placePickerTitle" hidden>
+        <div class="picker-head"><strong id="placePickerTitle">Choose location</strong><button id="placePickerClose" type="button" aria-label="Close location picker">✕</button></div>
+        <p id="placePickerHint" class="picker-hint"><strong>Tap on map</strong> to set location or <strong>search</strong> below.</p>
+        <div class="picker-search-row">
+          <input id="placeSearch" type="search" placeholder="Search a place or store…" aria-label="Search for a place or store" autocomplete="off">
+          <button id="onlinePlaceSearch" type="button" aria-label="Search online for nearby places and stores" title="Search online for nearby places & stores">
+            <span class="online-search-ready" aria-hidden="true"><svg class="online-search-icon" viewBox="0 0 24 24"><circle cx="9.5" cy="9.5" r="6.5"></circle><path d="M3 9.5h13M9.5 3c2.2 2.2 2.2 10.8 0 13M9.5 3c-2.2 2.2-2.2 10.8 0 13M14.2 14.2 20 20"></path></svg>Net</span>
+            <span class="online-search-busy" aria-hidden="true">…</span>
+          </button>
+        </div>
+        <button id="useLoc" type="button" aria-label="Use my current location" title="Use my current location"><span aria-hidden="true">⌖</span> Use my current location</button>
+        <div id="placeResults" class="place-results"></div>
+      </div>
+    </div>
+  </div>
+  <div id="routeActionToast" class="route-action-toast" role="status" aria-live="polite" aria-atomic="true" hidden>
+    <span class="route-action-spinner" aria-hidden="true"></span>
+    <span class="route-action-copy"><strong id="routeActionText"></strong><span id="routeActionDetail" hidden></span></span>
+  </div>
+  <div id="mobileNavDock"></div>
+  <button id="legendToggle" type="button" aria-expanded="false" aria-controls="legendFlyout" title="Show map legend">
+    <svg class="legend-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2" fill="#9fc400"/><path d="M10 6h9M10 12h9M10 18h9"/><circle cx="5" cy="12" r="2" fill="#168ad1"/><circle cx="5" cy="18" r="2" fill="#b2182b"/></svg>
+  </button>
+  <aside id="legendFlyout" aria-label="Map legend" hidden>
+    <div class="legend-flyout-head"><strong>Map legend</strong><button id="legendClose" type="button" aria-label="Hide map legend" title="Hide map legend">✕</button></div>
+    <div class="legend" id="legend"></div>
+    <p class="legend-note">Tap any path on map to get details.</p>
+  </aside>
+
+  <button id="panelOpen" type="button" aria-label="Show map controls" title="Show map controls"><span class="panel-control-icon" aria-hidden="true">☰</span><span class="panel-control-label">Menu</span></button>
+
+  <div class="panel" id="panel" aria-label="Map controls">
+    <nav id="tabs">
+      <button id="panelClose" type="button" aria-label="Hide map controls" title="Hide map controls"><span class="panel-control-icon" aria-hidden="true">↓</span><span class="panel-control-label">Close</span></button>
+      <button type="button" data-tab="route" class="active" aria-pressed="true">Route</button>
+      <button type="button" data-tab="layers" aria-pressed="false">Layers</button>
+      <button type="button" data-tab="settings" aria-pressed="false">Settings</button>
+      <button id="routeLibraryBtn" type="button" title="Save or share routes" aria-label="Save or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0-11 4 4m-4-4-4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button>
+    </nav>
+
+    <section class="tab active" id="tab-route">
+      <div id="routeControls">
+        <div class="route-chooser-row">
+          <div id="routeOptions" role="group" aria-label="Choose route"></div>
+          <button id="routeTipsBtn" class="tab-help-btn route-tips-btn" type="button" aria-label="Routing tips" title="Routing tips">?</button>
+        </div>
+      </div>
+      <div id="routeDetailsStash" hidden><button id="routeDetailsBtn" class="route-details-btn" type="button" disabled>Details</button></div>
+      <div id="routeCard"></div>
+      <div id="navCard" class="nav-card" hidden>
+        <div class="nav-card-head">Navigating Route</div>
+        <div class="nav-card-body">
+          <div class="nav-elevation-wrap"><canvas id="navElevationCanvas" class="nav-elevation" aria-label="Route elevation with your current position"></canvas></div>
+          <div class="nav-card-info">
+            <div id="navDest" class="nav-dest"></div>
+            <div id="navSegInfo" class="nav-seg-info"></div>
+          </div>
+        </div>
+        <div class="nav-card-foot">
+          <button id="navCardDetailsBtn" class="route-details-btn nav-card-details" type="button">Details</button>
+          <div class="nav-progress">
+            <div class="nav-progress-track"><span id="navProgressFill"></span></div>
+            <div class="nav-progress-meta"><span id="navProgressDist"></span><strong id="navProgressEta"></strong></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-layers">
+      <div class="layers-intro"><div><strong>Map layers</strong><br><span>Visibility only — routing still uses all available data.</span></div><button type="button" id="layersHelpBtn" class="layers-help-btn" aria-label="Map data and layers help" title="Map data and layers help">?</button></div>
+      <div id="sources"></div>
+    </section>
+
+    <section class="tab" id="tab-settings">
+      <p id="settingsNavLockNotice" class="settings-nav-lock" role="alert" hidden>Pause navigation to change route settings.</p>
+      <div id="settingsTabs" class="settings-tabs">
+        <div class="settings-tab-pair" role="tablist" aria-label="Routing settings">
+          <button id="settings-tab-presets" type="button" role="tab" aria-selected="true" aria-controls="settings-presets" data-settings-pane="presets" class="active">Presets</button>
+          <button id="settings-tab-limits" type="button" role="tab" aria-selected="false" aria-controls="settings-limits" data-settings-pane="limits">Limits</button>
+          <button id="settings-tab-options" type="button" role="tab" aria-selected="false" aria-controls="settings-options" data-settings-pane="options">Options</button>
+          <button id="settings-tab-voice" type="button" role="tab" aria-selected="false" aria-controls="settings-voice" data-settings-pane="voice">Voice-Nav</button>
+        </div>
+        <button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button>
+      </div>
+      <div id="settings-presets" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-presets">
+        <p id="settingsPresetStatus" class="preset-status" aria-live="polite"></p>
+        <div id="settingsPresets"></div>
+      </div>
+      <div id="settings-limits" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-limits" hidden>
+        <p class="settings-summary">Changes override any preset and apply live.</p>
+        <div id="settingsSliders"></div>
+      </div>
+      <div id="settings-options" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-options" hidden>
+        <p class="settings-summary">Changes override any preset and apply live.</p>
+        <div id="settingsOptions"></div>
+      </div>
+      <div id="settings-voice" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-voice" hidden>
+        <div id="settingsVoice"></div>
+      </div>
+    </section>
+  </div>
+
+  <dialog id="routesDialog" class="map-dialog" aria-label="Save and share routes" tabindex="-1">
+    <div class="dialog-head"><h2>Save &amp; share routes</h2><div class="dialog-head-actions"><button id="routesHelpBtn" class="dialog-help-btn" type="button" aria-label="Save and share routes help" title="Save and share routes help">?</button><button class="dialog-close" data-close="routesDialog" aria-label="Close">✕</button></div></div>
+    <div class="save-route-form">
+      <input id="savedRouteName" type="text" maxlength="60" placeholder="Route name" aria-label="Route name">
+      <button id="saveRouteBtn">Save</button>
+    </div>
+    <div class="share-route">
+      <div class="share-route-title">Share current route</div>
+      <div class="share-route-actions"><button id="copyShareRouteBtn">Copy share link</button><button id="nativeShareRouteBtn" hidden>Share…</button></div>
+      <input id="shareRouteUrl" type="text" readonly hidden aria-label="Share route link">
+      <div id="shareRouteStatus" class="hint" role="status" aria-live="polite"></div>
+    </div>
+    <div class="import-route">
+      <div class="share-route-title">Load a shared route</div>
+      <div class="import-route-actions"><input id="importShareUrl" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Paste shared route link" aria-label="Paste shared route link"><button id="loadShareRouteBtn">Load</button></div>
+      <div id="importRouteStatus" class="hint" role="status" aria-live="polite"></div>
+    </div>
+    <div id="savedRoutes"></div>
+    <div id="savedRoutesStatus" class="sr-only" role="status" aria-live="polite"></div>
+  </dialog>
+
+  <dialog id="routesHelpDialog" class="map-dialog routes-help-dialog" aria-label="Save and share routes help">
+    <div class="dialog-head"><h2>Save &amp; share routes</h2><button class="dialog-close" data-close="routesHelpDialog" aria-label="Close">✕</button></div>
+    <section><h3>Save on this device</h3><p>Name the current route and tap <b>Save</b>. Saved routes appear below; tap one to reopen it. They stay in this browser on this device.</p></section>
+    <section><h3>Share a link</h3><p><b>Copy share link</b> or <b>Share</b> sends start/destination pins, waypoints, road blocks, and routing setup in the link. Anyone with the link can open it.</p></section>
+    <section><h3>Open a shared route</h3><p>Paste a shared route link and tap <b>Load</b>. It appears as <b>As Shared</b> without changing your own saved settings. Shared links are intended to reproduce the original path, but map or routing-data updates can produce a different result.</p></section>
+  </dialog>
+
+  <dialog id="routeProblemDialog" class="map-dialog route-problem-dialog" aria-label="Point is outside the routing network">
+    <div class="dialog-head"><h2>Point is outside the routing network</h2><button class="dialog-close" data-close="routeProblemDialog" aria-label="Close">✕</button></div>
+    <p id="routeProblemText"></p>
+    <div class="dialog-actions"><button data-close="routeProblemDialog">OK</button></div>
+  </dialog>
+
+  <dialog id="routeStartDialog" class="map-dialog off-route-dialog" aria-labelledby="routeStartDialogTitle">
+    <div class="dialog-head"><h2 id="routeStartDialogTitle">You're not on your route yet</h2><span id="routeStartCountdown" class="dialog-countdown" aria-hidden="true"></span></div>
+    <p id="routeStartDialogText"></p>
+    <p id="routeStartDialogStatus" class="route-start-status" role="status" aria-live="polite"></p>
+    <div class="off-route-actions">
+      <button id="navUseNearestBtn" type="button"><strong>I'll find my own way</strong><span>Distance and direction only — guidance resumes automatically when you reach the route.</span></button>
+      <button id="navRouteToStartBtn" type="button"><strong>Route to the nearest point</strong><span>Turn-by-turn directions onto your planned route.</span></button>
+    </div>
+  </dialog>
+
+  <dialog id="offRouteDialog" class="map-dialog off-route-dialog" aria-labelledby="offRouteDialogTitle">
+    <div class="dialog-head"><h2 id="offRouteDialogTitle">You've left your route</h2><button class="dialog-close" data-close="offRouteDialog" aria-label="Close">✕</button></div>
+    <p id="offRouteDialogText">Choose how navigation should continue.</p>
+    <div class="off-route-actions">
+      <button id="navKeepRouteBtn" type="button"><strong>I'll find my own way</strong><span>Distance and direction only — guidance resumes automatically when you reach the route.</span></button>
+      <button id="navRouteBackBtn" type="button"><strong>Route to the nearest point</strong><span>Turn-by-turn directions via a short connector onto your route.</span></button>
+      <button id="navNewRouteBtn" type="button"><strong>New route to destination</strong><span>Replace the plan with a fresh route from here through any remaining stops.</span></button>
+    </div>
+  </dialog>
+
+  <dialog id="weightsDialog" class="full-help-dialog weights-dialog" aria-label="Advanced routing weights">
+    <div class="full-help-head"><div><span>Advanced tool</span><h2>Routing weights</h2></div><div class="weights-head-actions"><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button><button class="dialog-close" data-close="weightsDialog" aria-label="Close routing weights">✕</button></div></div>
+    <div class="weights-body">
+      <p class="help-lead"><b>Most riders should leave these at their defaults.</b> These are internal soft route-choice costs, not safety rules. Changes recalculate the current route and affect every generated option. Lower than 1 favors a feature; higher than 1 avoids it.</p>
+      <div id="routingWeightsEditor" class="weights-groups"></div>
+    </div>
+  </dialog>
+
+  <dialog id="streetViewDialog" class="full-help-dialog sv-dialog" aria-label="Street View">
+    <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Open in Google Maps ↗</a><button class="dialog-close streetview-close" data-close="streetViewDialog" aria-label="Close Street View"><span aria-hidden="true">✕</span><span>Close</span></button></div></div>
+    <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="no-referrer-when-downgrade" loading="lazy"></iframe><p id="streetViewLoadStatus" class="sv-load-status" role="status" aria-live="polite" hidden></p><div class="sv-overlay-notes"><p class="sv-coverage-note"><b>Location note:</b> The nearest available view may be up to 250 m away. For trails, it may show a nearby road.</p></div></div>
+  </dialog>
+
+  <dialog id="clearRouteDialog" class="map-dialog clear-route-dialog" aria-label="Clear this route">
+    <div class="dialog-head"><h2>Clear this route?</h2><button class="dialog-close" data-close="clearRouteDialog" aria-label="Close">✕</button></div>
+    <p>Start, destination, waypoints, and road blocks will be removed.</p>
+    <div class="dialog-actions"><button data-close="clearRouteDialog">Keep route</button><button id="confirmClearRoute" class="danger">Clear route</button></div>
+  </dialog>
+
+  <dialog id="removeRouteMarkerDialog" class="map-dialog remove-route-marker-dialog" aria-labelledby="removeRouteMarkerTitle">
+    <div class="dialog-head"><h2 id="removeRouteMarkerTitle">Remove waypoint?</h2><button class="dialog-close" data-close="removeRouteMarkerDialog" aria-label="Close">✕</button></div>
+    <p id="removeRouteMarkerText">This waypoint will be removed and the route recalculated.</p>
+    <div class="dialog-actions"><button data-close="removeRouteMarkerDialog">Keep it</button><button id="confirmRemoveRouteMarker" class="danger">Remove waypoint</button></div>
+  </dialog>
+
+  <dialog id="sharedSwitchDialog" class="map-dialog" aria-labelledby="sharedSwitchTitle">
+    <div class="dialog-head"><h2 id="sharedSwitchTitle">Leave the shared route?</h2><button class="dialog-close" data-close="sharedSwitchDialog" aria-label="Close">✕</button></div>
+    <p>Choosing a different route uses <b>your</b> settings, so it may not match the shared route exactly.</p>
+    <div class="dialog-actions"><button data-close="sharedSwitchDialog">Keep shared</button><button id="confirmSharedSwitch" class="dialog-primary">Use my settings</button></div>
+  </dialog>
+
+  <dialog id="sharedRouteTip" class="map-dialog shared-route-tip" aria-label="Best on your Home Screen">
+    <div class="dialog-head"><h2>Best on your Home Screen</h2><button class="dialog-close" data-close="sharedRouteTip" aria-label="Close">✕</button></div>
+    <p>This shared route opened in your browser. For the full-screen map, copy its link, open the app from your Home Screen, then choose <b>Load a shared route</b>.</p>
+    <div class="dialog-actions"><button data-close="sharedRouteTip">Got it</button></div>
+  </dialog>
+
+  <dialog id="settingsHelpDialog" class="full-help-dialog settings-help-dialog" aria-label="Routing settings help">
+    <div class="full-help-head"><div><span>Help</span><h2>Routing settings</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div></div>
+    <div class="full-help-body">
+    <section><h3>Presets</h3><p>A preset replaces your active rules and route preferences. Use its <b>Rules</b> button to review the full setup. Adjusting any control switches to custom rules.</p><ul class="help-list">
+      <li><b>The Randonneur</b> — widest choice of routes; looser rules and fewer roads flagged as failing.</li>
+      <li><b>Weekend Wanderer</b> — slower roads with practical flexibility; concerns pulse red.</li>
+      <li><b>Casual Cruiser</b> — low-stress riding; routes must fully follow your safety rules.</li>
+    </ul></section>
+    <section><h3>Limits</h3><ul class="help-list">
+      <li><b>Minimum shoulder for faster roads</b> — the required shoulder width above the urban or rural no-shoulder speed limit.</li>
+      <li><b>Urban / rural max speed without shoulder</b> — roads at or below each area’s limit can pass when shoulder data is missing. Urban areas use Census boundaries.</li>
+      <li><b>Never allow roads faster than</b> — faster ordinary roads fail; dedicated bike infrastructure is exempt.</li>
+      <li><b>No cutoff</b> — disables the speed cap and leaves the shoulder rule in charge.</li>
+    </ul></section>
+    <section><h3>Options</h3><ul class="help-list">
+      <li><b>Heavily prefer bike routes &amp; trails</b> — favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
+      <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
+      <li><b>Trust designated bike routes</b> — lets a USBR or regional designation satisfy the shoulder rule. Speed limits and access restrictions still apply.</li>
+      <li><b>Allow freeway as last resort</b> — a freeway is permitted only as a heavily penalized fallback, and it still fails the rules.</li>
+      <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided. Any use appears in Route Details.</li>
+      <li><b>Strongly prefer paved surfaces</b> — favors paved roads and trails. Gravel and unpaved paths remain available, and missing surface data is not penalized.</li>
+      <li><b>Allow sidewalk fallback</b> — lets an explicitly mapped sidewalk satisfy the shoulder rule. It remains strongly avoided and is called out in Route Details; it never overrides a bicycle restriction or speed cap.</li>
+      <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
+      <li><b>Unknown shoulder = 0 ft</b> — if shoulder data is missing, treat it as 0 ft for rules purposes.</li>
+      </ul><p>Search always includes local offline results; the ⌕ button also tries an online lookup.</p></section>
+    <section><h3>Voice navigation</h3><ul class="help-list">
+      <li><b>Off-route</b> — gives direction and distance back to your route. Open the off-route notice to manually route back or create a new route.</li>
+      <li><b>Speak compass directions (N/S/E/W)</b> — adds headings to turn instructions.</li>
+      <li><b>Status update</b> — choose how often it speaks, and whether it includes route status, current speed, miles remaining, and estimated time left.</li>
+    </ul></section>
+    <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Usually leave these alone.</b> Presets and Limits are the intended controls. Weights are soft preferences for testing and fine-tuning; unusual values can create long or unintuitive routes. They never override bicycle prohibitions or hard Limits, and <b>Reset all defaults</b> restores them.</p><button id="settingsAdvancedWeightsBtn" type="button">Open advanced weights</button></section>
+    </div>
+  </dialog>
+
+  <dialog id="presetInfoDialog" class="map-dialog preset-info-dialog" aria-labelledby="presetInfoTitle">
+    <div class="dialog-head"><h2 id="presetInfoTitle"></h2><button class="dialog-close" data-close="presetInfoDialog" aria-label="Close">✕</button></div>
+    <p id="presetInfoAudience" class="preset-info-audience"></p>
+    <ul id="presetInfoDetails" class="preset-info-details"></ul>
+  </dialog>
+
+  <dialog id="appHelpDialog" class="map-dialog app-help-dialog" aria-label="How to use the app">
+    <div class="dialog-head"><h2>Plan your route</h2><button class="dialog-close" data-close="appHelpDialog" aria-label="Close">✕</button></div>
+    <ol>
+      <li>Set <b>Start</b> and <b>Destination</b> by search or by tapping the map.</li>
+      <li>In <b>Route</b>, view choices A–E. The letters identify routes; they are not safety grades.</li>
+      <li>Use <b>⋮</b> to add a waypoint (route through a point) or road block (avoid roads near a point).</li>
+      <li>Tap <b>Details</b> to inspect statistics, concerns, and route segments. Use <b>Settings</b> to change riding rules.</li>
+      <li>Tap <b>Navigate</b> for GPS and voice guidance.</li>
+    </ol>
+    <p class="app-help-note">Tap any road or trail to get more information or access <b>Google Street View</b>.</p>
+    <div class="app-help-update">
+      <p id="appVersion" class="app-help-version" aria-label="App version"></p>
+      <button id="checkUpdatesBtn" type="button">Check for updates</button>
+    </div>
+    <p id="updateCheckStatus" class="app-help-update-status" role="status" aria-live="polite"></p>
+  </dialog>
+
+  <dialog id="layersHelpDialog" class="full-help-dialog" aria-label="Map data and layers help">
+    <div class="full-help-head"><div><span>Help</span><h2>Map layers &amp; data</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="layersHelpDialog" aria-label="Close">✕</button></div></div>
+    <div class="full-help-body">
+      <p class="help-lead">Toggling layers only adjusts visibility. All data is always used for routing.</p>
+      <section><h3>Data sources</h3><ul>
+        <li><b>Designated routes (USBR &amp; regional)</b>: mapped bicycle-route relationships from OpenStreetMap. They provide route context, not proof of a bike facility.</li>
+        <li><b>WSDOT BLTS (state highways)</b>: official state-road stress, shoulder and access context, legal speeds, and bike-facility data.</li>
+        <li><b>OSM bike infrastructure</b>: mapped bike lanes, cycle tracks, shared-use paths, and other bicycle facilities. It distinguishes off-street paths from on-street facilities.</li>
+        <li><b>Bikes prohibited (WSDOT)</b>: permanent state restriction data. These graph segments are excluded from routing.</li>
+        <li><b>All roads (OpenStreetMap, estimated speeds)</b>: the connected road and path network, including names, direction, bicycle access, ferries, residential streets, and known route closures. Missing legal speeds use an estimate.</li>
+      </ul></section>
+      <section><h3>Elevation &amp; cautions</h3><p>Elevation supplies climb, descent, grade, and travel-time estimates. Routes try to avoid any climbs over 12%, but steep segments remain routable. The app also flags a <b>possible limited-visibility uphill curve</b> when road geometry, grade, speed, and facility data suggest extra care. It is a directional planning cue—not measured sight distance—and does not itself fail your rules.</p></section>
+      <section><h3>How choices are made</h3><p>The app tests several time, safety, and road-preference combinations, removes near-duplicates, and shows up to five meaningfully different routes. Freeways are a last resort, legal limited-access highways are cautions, and permanent bicycle restrictions are impassable. A physical bike facility gets a stronger routing benefit than designation alone.</p><details class="technical-note"><summary>Technical data notes</summary><p>Missing speed limits use a road-class estimate, and the street popup identifies estimates. Roads tagged <b>bicycle=no</b> are excluded. A <b>bicycle=dismount</b> link is a walk-bike connection with a strong route cost and a map marker. Explicit MTB paths are excluded by default and can be enabled with a strong penalty. Higher OSM road classes add soft costs when no bike facility is recorded; this is a traffic-volume proxy, not a rule failure. Census urban-area context makes fast roads without bike space less acceptable in built-up areas; it is not traffic-count data. Explicit <code>sidewalk=no</code> adds a small soft cost.</p></details></section>
+      <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. Missing data is not proof that a shoulder, facility, traffic condition, surface, crossing control, or sight line is absent. Short crossings are inferred from route geometry and do not confirm a signal or crosswalk. Use local signs and conditions; this is a planning aid, not a guarantee of safety.</p></section>
+    </div>
+  </dialog>
+
+  <dialog id="routeTipsDialog" class="full-help-dialog" aria-labelledby="routeTipsTitle">
+    <div class="full-help-head"><div><span>Route help</span><h2 id="routeTipsTitle">Route information</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="routeTipsDialog" aria-label="Close routing tips">✕</button></div></div>
+    <div class="full-help-body">
+      <section><h3>Choose Route</h3><ul>
+        <li>The app can show up to five routes, ordered shortest to longest as A–E. It automatically selects the best match for your settings, which may not be A.</li>
+        <li>Tap A–E to show distance, estimated time, elevation, and the route’s road and safety information.</li>
+        <li>Tap <b>Details</b> to see in-depth information on the route.</li>
+      </ul></section>
+      <section><h3>Details</h3><ul>
+        <li><b>Stats:</b> route map, elevation, grades, and road-speed information.</li>
+        <li><b>Concerns:</b> shows dismount points, sidewalk fallbacks, rule failures, highways, mountain-bike trails, steep uphill grades, uphill-curve cautions, and confirmed unpaved segments.</li>
+        <li><b>All Steps:</b> every route segment in order.</li>
+        <li>Tap buttons in route segments to view them on the map or with <b>Google Street View</b>.</li>
+      </ul></section>
+      <section><h3>Safety ratings &amp; map colors</h3><ul>
+        <li><b>Lime</b> — Bike network: a recorded bike facility (bike lane, etc.).</li>
+        <li><b>Dotted lime</b> — off-street paths and shared-use trails.</li>
+        <li><b>Blue</b> — road that passes rules (speed and shoulder requirements).</li>
+        <li><b>Red dashed</b> — Road that fails rules. A known rule conflict, freeway, or permanent bicycle restriction. <b>Failing lane segments pulse.</b> Permanent bicycle restrictions are never routed.</li>
+        <li><b>Amber</b> — Caution: a bike-legal limited-access highway or allowed mountain-bike trail. It deserves extra judgment.</li>
+        <li><b>Dashed light blue</b> — Designated bike route: a signed or mapped bicycle corridor. This is an additional overlay; it does not indicate a safety level.</li>
+        <li><b>Cross-slats</b> — confirmed unpaved surface. This overlays the route safety color.</li>
+      </ul></section>
+    </div>
+  </dialog>
+
+  <dialog id="routeDetailsDialog" class="route-details-dialog" aria-labelledby="routeDetailsDialogTitle">
+    <div class="route-details-dialog-head"><span id="routeDetailsDialogTitle">Route Details</span></div>
+    <iframe id="routeDetailsFrame" title="Route details"></iframe>
+  </dialog>
+
+  <div class="readout" id="readout"></div>
+  <div class="status hidden" id="status" role="status" aria-live="polite">Loading…</div>
+  <div id="route-status" class="sr-only" role="status" aria-live="polite"></div>
+  <div id="navBanner" class="nav-banner" role="status" aria-live="polite" hidden>
+    <div class="nav-banner-main">
+      <div class="nav-banner-copy">
+        <span id="navBannerKicker">Turn-by-turn navigation</span>
+        <strong id="navBannerText"></strong>
+        <span id="navBannerMeta"></span>
+      </div>
+    </div>
+    <button type="button" id="navOffRouteBtn" class="nav-off-route-action" aria-label="Off route: choose re-routing options" hidden>Re-route</button>
+  </div>
+  <div id="updatePrompt" class="update-prompt" hidden>
+    <span>New version available</span>
+    <button id="getUpdateBtn">Get update?</button>
+    <button id="updateLaterBtn" aria-label="Not now" title="Not now">✕</button>
+  </div>
+
+  <script>
+    // Register the service worker (offline support + installability).
+    const isNativeShell = window.location.protocol === 'capacitor:'
+      || Boolean(window.Capacitor?.isNativePlatform?.());
+    if (!isNativeShell && 'serviceWorker' in navigator) {
+      window.__swReady = navigator.serviceWorker
+        .register('./sw.js')
+        .then((reg) => (navigator.serviceWorker.ready, reg))
+        .catch((e) => console.warn('SW registration failed:', e));
+    }
+  </script>
+  <script src="vendor/maplibre-gl.js"></script>
+  <script src="vendor/pmtiles.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

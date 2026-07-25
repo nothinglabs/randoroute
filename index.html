@@ -361,7 +361,9 @@
 
   <script>
     // Register the service worker (offline support + installability).
-    if ('serviceWorker' in navigator) {
+    const isNativeShell = window.location.protocol === 'capacitor:'
+      || Boolean(window.Capacitor?.isNativePlatform?.());
+    if (!isNativeShell && 'serviceWorker' in navigator) {
       window.__swReady = navigator.serviceWorker
         .register('./sw.js')
         .then((reg) => (navigator.serviceWorker.ready, reg))

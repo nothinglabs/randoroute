@@ -8,6 +8,12 @@ data/*.osm.pbf
 node_modules/
 .venv/
 *.tgz
+# Generated lightweight Capacitor web bundle. Rebuilt by `npm run ios:sync`.
+# Keep index.html as a tracked, immediately buildable copy; supporting assets
+# are regenerated and ignored.
+mobile-shell/*
+!mobile-shell/README.md
+!mobile-shell/index.html
 data/PermanentBikeRestrictions.zip
 data/PermBikeRestrictions.zip
 data/permbike/

@@ -189,6 +189,14 @@ assert.match(nativeBridge, /voice\.quality == \.enhanced[\s\S]*?voice\.quality =
   'native iOS navigation should prefer installed enhanced and premium voices');
 assert.match(nativeBridge, /navigationUtterance\([\s\S]*?AVSpeechUtteranceDefaultSpeechRate \* 0\.96/,
   'native iOS navigation should share the calmer speech configuration');
+assert.match(app, /function nativeVoiceStatusPayload\(\)[\s\S]*?statusUpdateMin:\s*navVoice\.updateMin[\s\S]*?statusEta:\s*navVoice\.statusEta/,
+  'the native route payload should include the complete periodic status configuration');
+assert.match(app, /function syncNativeVoiceStatusPreferences[\s\S]*?updateVoiceSettings\(nativeVoiceStatusPayload\(\)\)/,
+  'voice status settings should update the native guide during active navigation');
+assert.match(nativeBridge, /CAPPluginMethod\(name: "updateVoiceSettings"[\s\S]*?private func maybeSpeakPeriodicStatus/,
+  'native iOS navigation should support live status settings and locked-screen updates');
+assert.match(nativeBridge, /maybeSpeakPeriodicStatus\([\s\S]*?currentSpeedMph[\s\S]*?spokenDuration/,
+  'locked-screen status updates should include the configured route, speed, distance, and time fields');
 const voicePanelSource = app.slice(app.indexOf('function buildVoicePanel'), app.indexOf('function buildLegend'));
 assert.doesNotMatch(voicePanelSource, /violet/i,
   'Voice-Nav settings should describe behavior without naming a route color');

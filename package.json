@@ -5,9 +5,10 @@
   "description": "Personal Capacitor iOS wrapper for the Clauding web app.",
   "scripts": {
     "ios:add": "cap add ios",
-    "ios:sync": "cap sync ios",
+    "ios:prepare-shell": "node scripts/build_mobile_shell.mjs",
+    "ios:sync": "npm run ios:prepare-shell && cap sync ios",
     "ios:open": "cap open ios",
-    "ios:build": "cap build ios"
+    "ios:build": "npm run ios:prepare-shell && cap build ios"
   },
   "dependencies": {
     "@capacitor/core": "^8.4.2",
