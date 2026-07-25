@@ -218,7 +218,7 @@ the rider-controlled **Allow mountain bike trails** option.
 python3 scripts/fetch_census_urban_areas.py
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads
-tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
+tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z11 \
   --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
   --simplification=8 --read-parallel data/roads-1.geojson data/roads-2.geojson
 rm data/roads-*.geojson  # intermediate
@@ -237,7 +237,9 @@ as the routing graph without adding a large runtime data layer.
 Served as **PMTiles** — a single static vector-tile file read via HTTP range
 requests (no tile server). The browser fetches only the small tiles in view,
 so this layer no longer parses ~78 MB of GeoJSON in the page (which crashed
-iOS Safari). It is scored with **MapLibre expressions** (`roadLevelExpr` in
+iOS Safari). Tiles above stored zoom 11 are overzoomed; their vector geometry
+remains sharp while avoiding redundant high-zoom copies. It is scored with
+**MapLibre expressions** (`roadLevelExpr` in
 `app.js`): a rule change just swaps paint/filter expressions — instant at any
 data size, GeoJSON or tiles.
 
@@ -249,8 +251,10 @@ python3 scripts/build_basemap.py \
   --natural-earth-land /path/to/ne_10m_land.shp
 ```
 
-The 43 MB context archive contains clipped Natural Earth land plus OSM water,
-waterways, parks/forests/wetlands, and the existing offline place index.
+The ~15 MB context archive contains clipped Natural Earth land plus OSM water,
+waterways, parks/forests/wetlands, and the existing offline place index. It
+stores context through zoom 10 and overzooms those vectors at closer scales;
+roads and their labels remain independently detailed through zoom 11.
 Street geometry and street names come from `roads.pmtiles`, so the basemap and
 safety overlay share one decoded MapLibre source instead of loading duplicate
 road tiles. The locally bundled Noto Sans glyph ranges render labels in both

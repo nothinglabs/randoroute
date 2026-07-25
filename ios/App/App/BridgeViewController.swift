@@ -342,16 +342,18 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
 
     private func handleScheduledStatusUpdate() {
         guard tracking,
-              UIApplication.shared.applicationState != .active,
               let location = latestLocation,
               let nearest = nearestRoutePosition(to: location) else { return }
+        let background = UIApplication.shared.applicationState != .active
         let remainingToTurnM = instructions.first.map {
             $0.distanceM - nearest.routeM
         } ?? .infinity
         // A phone that has stopped moving may not receive another GPS callback
-        // to trigger the ordinary approach prompt. Let the cadence check deliver
-        // that prompt once before falling through to a routine status update.
-        if !instructions.isEmpty,
+        // to trigger the ordinary approach prompt while locked. Let the cadence
+        // check deliver that prompt in the background only; foreground maneuver
+        // prompts remain owned by the web UI.
+        if background,
+           !instructions.isEmpty,
            remainingToTurnM <= 90,
            !instructions[0].immediateHandled {
             instructions[0].immediateHandled = true
@@ -359,7 +361,8 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
             speakText("\(instructions[0].text).")
             return
         }
-        if !instructions.isEmpty,
+        if background,
+           !instructions.isEmpty,
            remainingToTurnM <= 350,
            !instructions[0].approachHandled {
             instructions[0].approachHandled = true

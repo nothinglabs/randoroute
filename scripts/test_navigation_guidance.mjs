@@ -203,10 +203,14 @@ assert.match(nativeBridge, /maybeSpeakPeriodicStatus\([\s\S]*?currentSpeedMph[\s
   'locked-screen status updates should include the configured route, speed, distance, and time fields');
 assert.match(nativeBridge, /private var statusUpdateTimer:\s*Timer\?[\s\S]*?refreshStatusUpdateTimer\(\)/,
   'native periodic status should use a real timer instead of depending only on new GPS fixes');
-assert.match(nativeBridge, /private func handleScheduledStatusUpdate\(\)[\s\S]*?applicationState != \.active[\s\S]*?maybeSpeakPeriodicStatus/,
-  'the native status timer should speak only while navigation is backgrounded');
+assert.match(nativeBridge, /private func handleScheduledStatusUpdate\(\)[\s\S]*?let background = UIApplication\.shared\.applicationState != \.active[\s\S]*?if background,[\s\S]*?maybeSpeakPeriodicStatus/,
+  'the native status timer should reserve maneuver prompts for the background but speak cadence updates in either app state');
+assert.match(app, /function maybeSpeakPeriodicUpdate\([\s\S]*?if \(turnNav\.nativeTracking\) return;/,
+  'the foreground web guide should defer cadence updates to the native iOS timer');
 assert.match(nativeBridge, /didUpdateLocations[\s\S]*?latestLocation = location/,
   'the status timer should retain the latest native location fix');
+assert.match(app, /id: 'route-shadow'[\s\S]*?'line-width': 17[\s\S]*?'line-opacity': 0\.78[\s\S]*?id: 'route-casing'[\s\S]*?'line-width': 12\.5/,
+  'the selected route should mask slightly offset background state-highway geometry');
 assert.match(nativeInfo, /<key>UIBackgroundModes<\/key>[\s\S]*?<string>audio<\/string>[\s\S]*?<string>location<\/string>/,
   'native navigation should declare both spoken-audio and location background modes');
 assert.match(css, /#settingsVoice\s*\{[^}]*align-content:\s*start[^}]*gap:\s*7px/,

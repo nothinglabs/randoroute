@@ -1,4 +1,4 @@
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,14 +17,16 @@ const files = [
   'vendor/maplibre-gl.js',
   'vendor/maplibre-gl.css',
   'vendor/pmtiles.js',
+  'vendor/fflate.js',
+  'vendor/fflate-LICENSE.txt',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
-  'data/bikeroutes.geojson',
-  'data/blts.geojson',
-  'data/bikeinfra.geojson',
-  'data/bike_restrictions.geojson',
-  'data/route_closures.geojson',
+  'data/bikeroutes.geojson.gz',
+  'data/blts.geojson.gz',
+  'data/bikeinfra.geojson.gz',
+  'data/bike_restrictions.geojson.gz',
+  'data/route_closures.geojson.gz',
   'data/roads.pmtiles',
   'data/basemap.pmtiles',
   'data/graph2.bin.gz',
@@ -35,6 +37,18 @@ const files = [
   'fonts/Klokantech Noto Sans Regular/768-1023.pbf',
 ];
 
+// The shell is a generated bundle. Recreate it so assets removed from the
+// manifest (notably the former uncompressed map overlays) cannot linger in an
+// iOS build and silently erase the intended size reduction.
+await rm(output, { recursive: true, force: true });
+await mkdir(output, { recursive: true });
+await writeFile(join(output, 'README.md'), `# Generated iOS web bundle
+
+Run \`npm run ios:sync\` to rebuild this directory from the web app's current
+HTML, CSS, JavaScript, vendor libraries, manifest, and icons. Large routing and
+map datasets are also copied into the bundle so core mapping, routing, and
+navigation do not depend on GitHub or another runtime server.
+`);
 for (const relativePath of files) {
   const destination = join(output, relativePath);
   await mkdir(dirname(destination), { recursive: true });

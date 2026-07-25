@@ -3,8 +3,8 @@
   'use strict';
 
   const FONT_STACK = 'Klokantech Noto Sans Regular';
-  const CONTEXT_URL = 'pmtiles://data/basemap.pmtiles?v=1';
-  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=11';
+  const CONTEXT_URL = 'pmtiles://data/basemap.pmtiles?v=3';
+  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=13';
   let protocol = null;
 
   function ensureProtocol() {
@@ -32,6 +32,12 @@
     'secondary', 'secondary_link', 'tertiary', 'tertiary_link',
   ];
   const localRoads = ['unclassified', 'residential', 'living_street'];
+  const ROAD_CLASSES = {
+    major: majorRoads,
+    medium: mediumRoads,
+    local: localRoads,
+  };
+  const ROAD_MIN_ZOOM = { major: 5, medium: 8, local: 11 };
 
   function lineLayer(id, minzoom, filter, casing) {
     return {
@@ -131,12 +137,12 @@
             'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 12, 1.2, 16, 2.4],
             'line-opacity': 0.9,
           } },
-        lineLayer('basemap-major-casing', 5, roadMatch(majorRoads), true),
-        lineLayer('basemap-major', 5, roadMatch(majorRoads), false),
-        lineLayer('basemap-medium-casing', 8, roadMatch(mediumRoads), true),
-        lineLayer('basemap-medium', 8, roadMatch(mediumRoads), false),
-        lineLayer('basemap-local-casing', 11, roadMatch(localRoads), true),
-        lineLayer('basemap-local', 11, roadMatch(localRoads), false),
+        lineLayer('basemap-major-casing', ROAD_MIN_ZOOM.major, roadMatch(majorRoads), true),
+        lineLayer('basemap-major', ROAD_MIN_ZOOM.major, roadMatch(majorRoads), false),
+        lineLayer('basemap-medium-casing', ROAD_MIN_ZOOM.medium, roadMatch(mediumRoads), true),
+        lineLayer('basemap-medium', ROAD_MIN_ZOOM.medium, roadMatch(mediumRoads), false),
+        lineLayer('basemap-local-casing', ROAD_MIN_ZOOM.local, roadMatch(localRoads), true),
+        lineLayer('basemap-local', ROAD_MIN_ZOOM.local, roadMatch(localRoads), false),
         { id: 'basemap-water-labels', type: 'symbol', source: 'basemap-context',
           'source-layer': 'water', minzoom: 9, filter: named,
           layout: {
@@ -186,6 +192,8 @@
 
   global.BikeBasemap = {
     FONT_STACK,
+    ROAD_CLASSES,
+    ROAD_MIN_ZOOM,
     ensureProtocol,
     createStyle,
   };

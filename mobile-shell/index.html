@@ -63,7 +63,7 @@
   </div>
   <div id="mobileNavDock"></div>
   <button id="legendToggle" type="button" aria-expanded="false" aria-controls="legendFlyout" title="Show map legend">
-    <svg class="legend-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2" fill="#9fc400"/><path d="M10 6h9M10 12h9M10 18h9"/><circle cx="5" cy="12" r="2" fill="#168ad1"/><circle cx="5" cy="18" r="2" fill="#b2182b"/></svg>
+    <svg class="legend-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2" fill="#b7c900"/><path d="M10 6h9M10 12h9M10 18h9"/><circle cx="5" cy="12" r="2" fill="#168ad1"/><circle cx="5" cy="18" r="2" fill="#b2182b"/></svg>
   </button>
   <aside id="legendFlyout" aria-label="Map legend" hidden>
     <div class="legend-flyout-head"><strong>Map legend</strong><button id="legendClose" type="button" aria-label="Hide map legend" title="Hide map legend">✕</button></div>
@@ -287,9 +287,75 @@
     <p class="app-help-note">Tap any road or trail to get more information or access <b>Google Street View</b>.</p>
     <div class="app-help-update">
       <p id="appVersion" class="app-help-version" aria-label="App version"></p>
-      <button id="checkUpdatesBtn" type="button">Check for updates</button>
+      <div class="app-help-actions">
+        <button id="techDetailsBtn" type="button">Tech Details</button>
+        <button id="checkUpdatesBtn" type="button">Check for updates</button>
+        <span id="iosAppVersionLabel" class="ios-app-version-label" hidden>iOS App Version</span>
+      </div>
     </div>
     <p id="updateCheckStatus" class="app-help-update-status" role="status" aria-live="polite"></p>
+  </dialog>
+
+  <dialog id="techDetailsDialog" class="full-help-dialog tech-details-dialog" aria-labelledby="techDetailsTitle">
+    <div class="full-help-head">
+      <div><span>Help</span><h2 id="techDetailsTitle">Technical details</h2></div>
+      <div class="full-help-head-actions">
+        <span class="help-scroll-hint">Scroll ↓</span>
+        <button id="techDetailsBackBtn" class="tech-details-back" type="button">← Help</button>
+        <button class="dialog-close" data-close="techDetailsDialog" aria-label="Close technical details">✕</button>
+      </div>
+    </div>
+    <div class="full-help-body tech-details-body">
+      <p class="help-lead">The map is a custom, locally stored vector map. It does not use Google or CARTO basemap tiles. The installed web app downloads the statewide map for offline use, and the iOS app bundles the same map files.</p>
+
+      <section>
+        <h3>Map technology</h3>
+        <ul>
+          <li><a href="https://maplibre.org/maplibre-gl-js/docs/" target="_blank" rel="noopener"><b>MapLibre GL JS 4.7.1</b></a> renders and styles the interactive vector map on the device.</li>
+          <li><a href="https://docs.protomaps.com/pmtiles/" target="_blank" rel="noopener"><b>PMTiles</b></a> packages the basemap and road network into compact, single-file vector-tile archives. No map tile server is required.</li>
+          <li>Locally bundled <a href="https://notofonts.github.io/" target="_blank" rel="noopener"><b>Noto Sans</b></a> glyphs render street and place labels offline.</li>
+          <li>The native iOS app uses <a href="https://capacitorjs.com/docs" target="_blank" rel="noopener"><b>Capacitor 8</b></a> to package the web map and native iPhone services in a self-contained app.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Map and place data</h3>
+        <ul>
+          <li><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"><b>OpenStreetMap contributors</b></a> provide roads, paths, street names, bicycle facilities and routes, access tags, surfaces, sidewalks, ferries, waterways, parks, land cover, and place names. The Washington extract comes from <a href="https://download.geofabrik.de/north-america/us/washington.html" target="_blank" rel="noopener">Geofabrik</a>.</li>
+          <li><a href="https://www.naturalearthdata.com/downloads/10m-physical-vectors/" target="_blank" rel="noopener"><b>Natural Earth 1:10m land</b></a> supplies the low-zoom land and coastline backdrop.</li>
+          <li><a href="https://www.census.gov/programs-surveys/geography/guidance/geo-areas/urban-rural.html" target="_blank" rel="noopener"><b>U.S. Census Bureau 2020 Urban Areas</b></a> supply the statewide urban/rural context.</li>
+          <li><a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener"><b>AWS Terrain Tiles</b></a> in Terrarium format supply elevation used for profiles, climb, descent, and grade estimates.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Washington transportation data</h3>
+        <ul>
+          <li><a href="https://data.wsdot.wa.gov/arcgis/rest/services/Shared/ActiveTransportationData/FeatureServer/2" target="_blank" rel="noopener"><b>WSDOT Bicycle and Pedestrian Level of Traffic Stress</b></a> supplies state-highway bicycle stress, shoulder, access, speed, and facility attributes.</li>
+          <li><a href="https://data.wsdot.wa.gov/geospatial/DOT_ActiveTransportation/PermanentBikeRestrictions.zip" target="_blank" rel="noopener"><b>WSDOT Permanent Bicycle Restrictions</b></a> supplies official state-highway bicycle prohibitions.</li>
+          <li><a href="https://data.wsdot.wa.gov/arcgis/rest/services/Shared/RoadwayCharacteristicData/FeatureServer/4" target="_blank" rel="noopener"><b>WSDOT Roadway Characteristic Data</b></a> supplies legal speed limits on state routes.</li>
+          <li><a href="https://data.wsdot.wa.gov/arcgis/rest/services/Shared/ActiveTransportationData/FeatureServer/6" target="_blank" rel="noopener"><b>WSDOT Active Transportation Data</b></a> supplies recorded shared lanes, bike lanes, buffered and separated lanes, and shared-use paths.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How the offline map is built</h3>
+        <p>Source data is clipped, simplified, and converted into local vector tiles and compact supporting files before release. <a href="https://github.com/felt/tippecanoe" target="_blank" rel="noopener">Tippecanoe</a> builds the vector tiles; <a href="https://docs.osmcode.org/pyosmium/latest/" target="_blank" rel="noopener">PyOsmium</a>, <a href="https://geopandas.org/" target="_blank" rel="noopener">GeoPandas</a>, <a href="https://shapely.readthedocs.io/" target="_blank" rel="noopener">Shapely</a>, and <a href="https://python-pillow.github.io/" target="_blank" rel="noopener">Pillow</a> prepare and combine the public source data. These are build tools; the finished app does not need them or a map server.</p>
+      </section>
+
+      <section>
+        <h3>Optional online services</h3>
+        <ul>
+          <li><a href="https://nominatim.org/" target="_blank" rel="noopener"><b>OpenStreetMap Nominatim</b></a> expands place search when the user requests an online search. Local place search remains available offline.</li>
+          <li><a href="https://developers.google.com/maps/documentation/embed/embedding-map" target="_blank" rel="noopener"><b>Google Maps Embed API</b></a> provides the optional Street View screen and external Google Maps links. It is not the app’s basemap.</li>
+        </ul>
+      </section>
+
+      <section class="tech-details-note">
+        <h3>Data notes</h3>
+        <p>The app ships snapshots of these public datasets rather than querying them live. Source coverage, precision, and update schedules vary. The map’s source attribution remains visible on map previews, and links above lead to source, license, or project information.</p>
+      </section>
+    </div>
   </dialog>
 
   <dialog id="layersHelpDialog" class="full-help-dialog" aria-label="Map data and layers help">
@@ -372,6 +438,7 @@
   </script>
   <script src="vendor/maplibre-gl.js"></script>
   <script src="vendor/pmtiles.js"></script>
+  <script src="vendor/fflate.js"></script>
   <script src="basemap-style.js"></script>
   <script src="app.js"></script>
 </body>

@@ -17,6 +17,36 @@ assert.match(quickStartHelp, /<b>⋮<\/b> to add a waypoint \(route through a po
   'quick-start help should explain the two route constraints under the overflow menu');
 assert.doesNotMatch(quickStartHelp, /Layers<\/b> changes only what you see|Routing and safety colors update on this device/,
   'quick-start help should omit the removed layers and disclaimer copy');
+assert.match(quickStartHelp, /id="techDetailsBtn"[^>]*>Tech Details<\/button>[\s\S]*?id="checkUpdatesBtn"[^>]*>Check for updates<\/button>/,
+  'quick-start help should place Technical Details beside the update action');
+assert.match(quickStartHelp, /id="iosAppVersionLabel"[^>]*hidden[^>]*>iOS App Version<\/span>/,
+  'quick-start help should provide a plain native version label');
+const techDetailsHelp = html.match(/<dialog id="techDetailsDialog"[\s\S]*?<\/dialog>/)?.[0] || '';
+assert.match(techDetailsHelp, /Technical details[\s\S]*?custom, locally stored vector map[\s\S]*?does not use Google or CARTO basemap tiles/,
+  'technical help should clearly identify the app-owned offline vector map');
+for (const expected of [
+  'MapLibre GL JS 4.7.1', 'PMTiles', 'Noto Sans', 'Capacitor 8',
+  'OpenStreetMap contributors', 'Geofabrik', 'Natural Earth 1:10m land',
+  'U.S. Census Bureau 2020 Urban Areas', 'AWS Terrain Tiles',
+  'WSDOT Bicycle and Pedestrian Level of Traffic Stress',
+  'WSDOT Permanent Bicycle Restrictions', 'WSDOT Roadway Characteristic Data',
+  'WSDOT Active Transportation Data', 'Tippecanoe', 'PyOsmium',
+  'GeoPandas', 'Shapely', 'Pillow', 'OpenStreetMap Nominatim',
+  'Google Maps Embed API',
+]) {
+  assert.match(techDetailsHelp, new RegExp(expected),
+    `technical help should document ${expected}`);
+}
+assert.match(techDetailsHelp, /target="_blank" rel="noopener"/,
+  'technical source links should open safely');
+assert.doesNotMatch(techDetailsHelp, /routing weight|route scoring|candidate|penalty/i,
+  'technical map help should not drift into routing implementation details');
+assert.match(app, /techDetailsBtn[\s\S]*?appHelpDialog'\)\.close\(\)[\s\S]*?techDetailsDialog'\)\.showModal\(\)[\s\S]*?techDetailsBackBtn[\s\S]*?techDetailsDialog'\)\.close\(\)[\s\S]*?appHelpDialog'\)\.showModal\(\)/,
+  'technical details should open from and return to main help');
+assert.match(app, /nativeAppVersionOnly[\s\S]*?checkUpdatesBtn'\)\.hidden = true[\s\S]*?iosAppVersionLabel'\)\.hidden = false[\s\S]*?updateCheckStatus'\)\.hidden = true/,
+  'native help should replace update checking with a plain iOS App Version label');
+assert.match(app, /checkUpdatesBtn'\)\.addEventListener\('click', async \(\) => \{\s*if \(nativeAppVersionOnly\) return;/,
+  'the manual web update action should remain inert in the native app');
 assert.match(html, /id="routesHelpDialog"[\s\S]*?Save on this device[\s\S]*?They stay in this browser on this device[\s\S]*?Share a link[\s\S]*?Anyone with the link can open it[\s\S]*?Open a shared route[\s\S]*?without changing your own saved settings[\s\S]*?intended to reproduce the original path[\s\S]*?routing-data updates can produce a different result/,
   'save-and-share help should cover local storage, share-link scope, and shared-route loading');
 const routesHelp = html.match(/<dialog id="routesHelpDialog"[\s\S]*?<\/dialog>/)?.[0] || '';

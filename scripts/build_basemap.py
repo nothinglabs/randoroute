@@ -205,6 +205,10 @@ def main() -> None:
     parser.add_argument("--natural-earth-land", required=True,
                         help="Path to ne_10m_land.shp")
     parser.add_argument("--out", default="data/basemap.pmtiles")
+    parser.add_argument("--maxzoom", type=int, default=10,
+                        help="highest stored context zoom (higher zooms overzoom these tiles)")
+    parser.add_argument("--simplification", type=float, default=8,
+                        help="tippecanoe low-zoom simplification factor")
     args = parser.parse_args()
 
     for command in ("osmium", "tippecanoe"):
@@ -221,9 +225,9 @@ def main() -> None:
         export_land(Path(args.natural_earth_land), land)
         export_places(Path(args.places), places)
         run(
-            "tippecanoe", "-o", str(output), "--force", "-Z4", "-z13",
+            "tippecanoe", "-o", str(output), "--force", "-Z4", f"-z{args.maxzoom}",
             "--drop-densest-as-needed", "--drop-smallest-as-needed",
-            "--extend-zooms-if-still-dropping", "--simplification=8",
+            "--extend-zooms-if-still-dropping", f"--simplification={args.simplification}",
             "--simplify-only-low-zooms", "--read-parallel",
             "-L", f"land:{land}",
             "-L", f"water:{layers['water']}",

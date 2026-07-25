@@ -228,7 +228,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 /* A short horizontal sample gives the unpaved slats enough room to read as a
    texture, while still fitting the route card's compact percentage grid. */
 #routeCard .rc-unpaved-swatch { display: inline-block; width: 12px; height: 7px; margin-right: 4px; border: 1px solid #536672; border-radius: 1px; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); vertical-align: -0.5px; }
-#routeCard .rc-ride-caution, #routeCard .rc-ride-caution b { color: #9a4f00; }
+#routeCard .rc-ride-caution, #routeCard .rc-ride-caution b { color: #813e00; }
 #routeCard .rc-ride-fail, #routeCard .rc-ride-fail b { color: #b42318; }
 #routeCard button.rc-ride-unpaved-warning { appearance: none; margin: 0; padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
 #routeCard .rc-ride-unpaved-warning, #routeCard .rc-ride-unpaved-warning b { color: #b42318; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
@@ -273,7 +273,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .nav-seg-name { color: #223c4b; font: 800 12px/1.2 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-seg-line { color: #52616b; font: 620 10.5px/1.3 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #routeCard .rc-warn { margin-top: 3px; font-size: 12px; color: #b45309; font-weight: 600; }
-#routeCard .rc-caution { margin-top: 3px; font-size: 12px; color: #9a4f00; font-weight: 600; }
+#routeCard .rc-caution { margin-top: 3px; font-size: 12px; color: #813e00; font-weight: 600; }
 #routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }
 #routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
@@ -527,7 +527,11 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 
 #topToolbar {
   position: absolute;
-  top: calc(env(safe-area-inset-top) + 12px);
+  /* Start at the viewport edge and use padding for the safe area. Besides
+     moving the endpoint card 8px higher, the transparent padded strip catches
+     near-miss taps above From/To instead of letting them reach the map. */
+  top: 0;
+  padding-top: calc(env(safe-area-inset-top) + 4px);
   left: 12px;
   transform: none;
   z-index: 11;
@@ -748,10 +752,13 @@ body.navigation-active #routeBar { display: none; }
 }
 
 #appHelpBtn { position: absolute; z-index: 16; top: calc(env(safe-area-inset-top) + 94px); right: 10px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #b8cbd8; border-radius: 9px; background: rgba(255,255,255,.96); box-shadow: 0 2px 9px rgba(0,0,0,.18); color: #0a66c2; font: 800 17px/1 system-ui; cursor: pointer; }
-.app-help-update { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e1e7eb; }
+.app-help-update { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px 10px; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e1e7eb; }
 .app-help-version { margin: 0 !important; color: #56616a; font: 650 12px/1.2 system-ui; }
-#checkUpdatesBtn { flex: none; padding: 6px 11px; border: 1px solid #c9d7e0; border-radius: 8px; background: #f6fafc; color: #0a66c2; font: 700 11px system-ui; cursor: pointer; }
+.app-help-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+#checkUpdatesBtn, #techDetailsBtn { flex: none; padding: 6px 9px; border: 1px solid #c9d7e0; border-radius: 8px; background: #f6fafc; color: #0a66c2; font: 700 10.5px system-ui; cursor: pointer; }
+#techDetailsBtn { border-color: #a9c4d5; background: #eef7fb; color: #245b78; }
 #checkUpdatesBtn:disabled { color: #9fb2bf; cursor: default; }
+.ios-app-version-label { color: #667784; font: 700 10.5px/1.2 system-ui; white-space: nowrap; }
 .app-help-update-status { min-height: 0; margin: 6px 0 0 !important; color: #56616a !important; font: 600 11px/1.3 system-ui !important; }
 .app-help-update-status:empty { display: none; }
 .place-picker {
@@ -877,7 +884,7 @@ body.navigation-active #routeBar { display: none; }
 .route-problem-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .clear-route-dialog { border-top: 4px solid #b42318; }
 .clear-route-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
-.remove-route-marker-dialog { border-top: 4px solid #c46b00; }
+.remove-route-marker-dialog { border-top: 4px solid #a65300; }
 .remove-route-marker-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .shared-route-tip { border-top: 4px solid #0a66c2; }
 .shared-route-tip p { margin: 12px 0 2px; font: 13px/1.45 system-ui; color: #444; }
@@ -912,6 +919,11 @@ body.navigation-active #routeBar { display: none; }
 .full-help-body p, .full-help-body li { color: #52616d; font: 13px/1.48 system-ui; }
 .full-help-body p { margin: 0; }
 .full-help-body ul { display: grid; gap: 5px; margin: 7px 0; padding-left: 20px; }
+.tech-details-back { min-height: 34px; padding: 0 10px; border: 1px solid #bfd0da; border-radius: 8px; background: #f6fafc; color: #245b78; font: 750 11px/1 system-ui; cursor: pointer; white-space: nowrap; }
+.tech-details-body a { color: #0a66c2; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.tech-details-body a:hover { text-decoration-thickness: 2px; }
+.tech-details-body section { box-shadow: 0 1px 3px rgba(32,57,71,.04); }
+.tech-details-body .tech-details-note { border-left: 4px solid #7aa7bd; background: #f9fcfd; }
 .weights-dialog { overflow: hidden; }
 .weights-head-actions { display: flex; align-items: center; gap: 8px; }
 /* In-app Street View: a full-screen dialog whose body is the Google Maps

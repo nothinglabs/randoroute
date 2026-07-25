@@ -12,9 +12,9 @@ const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
 const OFFICIAL_URBAN = 64;
 const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
-const BIKE_NETWORK_COLOR = '#9fc400';
+const BIKE_NETWORK_COLOR = '#b7c900';
 const PASS_COLOR = '#168ad1';
-const CAUTION_COLOR = '#c46b00';
+const CAUTION_COLOR = '#a65300';
 const FAIL_COLOR = '#b2182b';
 let routePreviewMap = null;
 let routePreviewFailPulseTimer = null;
@@ -1191,8 +1191,10 @@ function setRoutePreviewFailPulse(on) {
       if (!routePreviewMap?.getLayer('route-preview-fail')) return;
       t += 0.11;
       const pulse = Math.abs(Math.sin(t));
-      routePreviewMap.setPaintProperty('route-preview-fail', 'line-opacity', 0.55 + 0.45 * pulse);
-      routePreviewMap.setPaintProperty('route-preview-fail', 'line-width', 4.4 + 2.6 * pulse);
+      // Keep failures red at every phase. A translucent red pulse over the
+      // basemap blends into an ambiguous purple-gray dash.
+      routePreviewMap.setPaintProperty('route-preview-fail', 'line-opacity', 0.92 + 0.08 * pulse);
+      routePreviewMap.setPaintProperty('route-preview-fail', 'line-width', 4.8 + 1.4 * pulse);
     }, 80);
   } else if (!on && routePreviewFailPulseTimer) {
     clearInterval(routePreviewFailPulseTimer);
