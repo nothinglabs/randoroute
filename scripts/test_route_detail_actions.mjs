@@ -326,7 +326,7 @@ assert.match(app, /const ROUTE_SEG_BIKE_EXPR = \['any',[\s\S]*?\['>=', \['get', 
   'the main map and route readout should treat shared-lane markings as bike facilities');
 assert.match(details, /function setRoutePreviewFailPulse\(on\)[\s\S]*?route-preview-fail[\s\S]*?line-opacity[\s\S]*?line-width[\s\S]*?setRoutePreviewFailPulse\(preview\.colored\.features\.some\(\(feature\) => feature\.properties\.style === 'fail'\)\)/,
   'failing route portions should pulse in the Details map preview');
-assert.match(detailsHtml, /vendor\/maplibre-gl\.css[\s\S]*?id="routePreviewMap"[\s\S]*?route-preview-attribution[\s\S]*?© OpenStreetMap contributors[\s\S]*?© CARTO[\s\S]*?vendor\/maplibre-gl\.js/,
+assert.match(detailsHtml, /vendor\/maplibre-gl\.css[\s\S]*?id="routePreviewMap"[\s\S]*?route-preview-attribution[\s\S]*?© OpenStreetMap contributors[\s\S]*?Natural Earth[\s\S]*?vendor\/maplibre-gl\.js[\s\S]*?vendor\/pmtiles\.js[\s\S]*?basemap-style\.js/,
   'Route Details should load MapLibre with compact, always-visible map attribution');
 assert.match(details, /attributionControl:\s*false/,
   'the map library’s expandable attribution control should be replaced by the compact static credit');

@@ -8,6 +8,15 @@ const detailsHtml = fs.readFileSync(new URL('../route-details.html', import.meta
 
 assert.match(sw, /c\.addAll\(SHELL\)/,
   'a candidate update must precache the complete app shell before it can install');
+assert.match(sw, /precacheData\(\)/,
+  'a candidate update must populate the complete offline data cache');
+assert.match(sw, /for \(const path of DATA\)[\s\S]*?await cache\.add\(request\)/,
+  'large statewide data archives should be cached sequentially to limit installation memory');
+for (const asset of ['data/roads.pmtiles', 'data/basemap.pmtiles', 'data/graph2.bin.gz']) {
+  assert.ok(sw.includes(`'./${asset}'`), `offline data cache omits ${asset}`);
+}
+assert.match(sw, /url\.pathname\.endsWith\('\.pmtiles'\)[\s\S]*?pmtilesRangeResponse\(e\.request\)/,
+  'PMTiles reads should be answered by the offline byte-range handler');
 assert.match(sw, /url\.origin === location\.origin\) \{\s*e\.respondWith\(cacheFirst\(SHELL_CACHE, e\.request\)\);/,
   'the active app shell should stay cache-first until the user accepts an update');
 assert.doesNotMatch(sw, /networkFirst\(SHELL_CACHE/,
@@ -54,5 +63,34 @@ vm.runInContext(cacheFirstSource, missContext);
 assert.equal(await vm.runInContext('cacheFirst("shell", "new-shell-file.js")', missContext), freshResponse,
   'an uncached local file should still load from the network');
 assert.deepEqual(writtenResponse, { source: 'clone' }, 'a successful network response should be cached for offline use');
+
+const rangeBytes = new Uint8Array([10, 20, 30, 40, 50, 60]);
+const fullArchive = new Response(rangeBytes, {
+  status: 200,
+  headers: { 'Content-Type': 'application/octet-stream' },
+});
+const rangeCache = {
+  match: async () => fullArchive.clone(),
+  put: async () => { throw new Error('a cached archive should not be rewritten'); },
+};
+const rangeContext = vm.createContext({
+  caches: { open: async () => rangeCache },
+  fetch: async () => { throw new Error('a cached archive range must not use the network'); },
+  Request,
+  Response,
+  Blob,
+  Headers,
+  Uint8Array,
+});
+rangeContext.DATA_CACHE = 'data-offline-map-v1';
+vm.runInContext(cacheFirstSource, rangeContext);
+rangeContext.rangeRequest = new Request('https://example.test/data/roads.pmtiles?v=11', {
+  headers: { Range: 'bytes=2-4' },
+});
+const partial = await vm.runInContext('pmtilesRangeResponse(rangeRequest)', rangeContext);
+assert.equal(partial.status, 206, 'a cached PMTiles byte range should return HTTP 206');
+assert.equal(partial.headers.get('Content-Range'), 'bytes 2-4/6');
+assert.deepEqual([...new Uint8Array(await partial.arrayBuffer())], [30, 40, 50],
+  'the offline PMTiles response should contain only the requested bytes');
 
 console.log('Service worker update tests passed.');

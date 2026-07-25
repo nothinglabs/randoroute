@@ -8,6 +8,7 @@ const files = [
   'index.html',
   'styles.css',
   'app.js',
+  'basemap-style.js',
   'router-worker.js',
   'route-details.html',
   'route-details.css',
@@ -25,8 +26,11 @@ const files = [
   'data/bike_restrictions.geojson',
   'data/route_closures.geojson',
   'data/roads.pmtiles',
+  'data/basemap.pmtiles',
   'data/graph2.bin.gz',
   'data/places.json',
+  'fonts/Klokantech Noto Sans Regular/0-255.pbf',
+  'fonts/Klokantech Noto Sans Regular/256-511.pbf',
 ];
 
 for (const relativePath of files) {

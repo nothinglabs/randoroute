@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#009E73" />
   <title>Route details · Just Rolling Along</title>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="route-details.css?v=340" />
+  <link rel="stylesheet" href="route-details.css?v=345" />
 </head>
 <body>
   <main>
@@ -20,7 +20,7 @@
       <section id="routePreview" class="route-preview" aria-label="Route preview" hidden>
         <div class="route-preview-map-wrap">
           <div id="routePreviewMap" class="route-preview-map" aria-label="Selected route map preview"></div>
-          <span class="route-preview-attribution"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> · <a href="https://carto.com/attributions" target="_blank" rel="noopener">© CARTO</a></span>
+          <span class="route-preview-attribution"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> · Natural Earth</span>
         </div>
       </section>
       <div id="routeSummaryCard" class="route-summary-card" aria-label="Route elevation summary" hidden>
@@ -80,6 +80,8 @@
     </div>
   </dialog>
   <script src="vendor/maplibre-gl.js"></script>
-  <script src="route-details.js?v=340"></script>
+  <script src="vendor/pmtiles.js"></script>
+  <script src="basemap-style.js"></script>
+  <script src="route-details.js?v=345"></script>
 </body>
 </html>

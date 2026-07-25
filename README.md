@@ -8,14 +8,15 @@ network** (every public drivable road, with speeds inferred from road class
 where OSM has no `maxspeed` tag — the approach pioneered by PeopleForBikes'
 Bicycle Network Analysis).
 
-**Everything runs in the browser** — visualization *and* routing, with no
-servers and no live network queries beyond basemap tiles. All data is baked
-into local static files at build time; the runtime is any static file server.
+**Everything runs on the device** — visualization, vector basemap, labels, and
+routing. All core map and routing data is baked into local static files at
+build time; the runtime is any static file server or the self-contained
+Capacitor iOS app. Online place search and Google Street View remain optional.
 
 ## Run it
 
-Use the included local server — it supports the HTTP byte ranges required by
-the optional all-roads PMTiles layer:
+Use the included local server—it supports the HTTP byte ranges required by the
+local basemap and roads PMTiles archives:
 
 ```bash
 python3 scripts/serve.py
@@ -24,7 +25,9 @@ python3 scripts/serve.py
 
 ## Features
 
-- **MapLibre GL JS** map of Washington on a **CARTO Positron** raster basemap.
+- **MapLibre GL JS** map of Washington with a compact local vector basemap:
+  land, water, parks, street geometry, street names, and place labels all work
+  without a tile server.
 - Five independent **data-source toggles**:
   - *Designated routes (USBR & regional)* — a dashed blue corridor beneath
     the scored road or facility verdict.
@@ -65,9 +68,10 @@ python3 scripts/serve.py
   the legend, a plain-language *why*, and the raw attributes. No lookups.
   On touch screens, tap a road instead; tap empty map to dismiss.
 - **PWA / offline**: installable ("Add to Home Screen" on iOS). A service
-  worker caches the app shell and data files after first use — the map works
-  offline (basemap tiles are cached for areas you've already viewed). The
-  shell is network-first, so deploys still update instantly when online.
+  worker precaches the app shell and complete statewide map/routing archives,
+  then serves PMTiles byte ranges from that local cache. After installation
+  finishes, the whole supported area works offline—not only places previously
+  viewed. App releases remain internally consistent until an update is ready.
 - **Location aware**: a geolocate control centers the map on you and can
   follow along (blue dot + heading) — handy mid-ride.
 - **Foreground turn-by-turn navigation**: Start navigation on a planned route
@@ -224,6 +228,21 @@ iOS Safari). It is scored with **MapLibre expressions** (`roadLevelExpr` in
 `app.js`): a rule change just swaps paint/filter expressions — instant at any
 data size, GeoJSON or tiles.
 
+### Offline vector basemap → `data/basemap.pmtiles`
+
+```bash
+python3 scripts/build_basemap.py \
+  --src data/washington-latest.osm.pbf \
+  --natural-earth-land /path/to/ne_10m_land.shp
+```
+
+The 43 MB context archive contains clipped Natural Earth land plus OSM water,
+waterways, parks/forests/wetlands, and the existing offline place index.
+Street geometry and street names come from `roads.pmtiles`, so the basemap and
+safety overlay share one decoded MapLibre source instead of loading duplicate
+road tiles. The locally bundled Noto Sans glyph ranges render labels in both
+the web/PWA and native iOS builds.
+
 ### Designated bike routes → `data/bikeroutes.geojson` (114 routes)
 
 ```bash
@@ -331,10 +350,10 @@ or penalizes an otherwise acceptable road solely because its shoulder is
 unknown. Settings can force the bike-route or residential preference across
 every candidate.
 Results include distance, duration, total climb/descent, and an elevation
-profile. No routing server; works offline once cached.
+profile. No routing server; the native app works immediately offline and the
+installed PWA works offline after its initial data installation completes.
 
 ## Vendored library
 
 `vendor/maplibre-gl.{js,css}` is MapLibre GL JS v4.7.1, vendored locally so the
-app is fully self-contained (the only third-party runtime request is the CARTO
-basemap tiles).
+app's core map and routing runtime is fully self-contained.

@@ -1211,15 +1211,7 @@ function initializeRoutePreviewMap() {
     container: host,
     interactive: false,
     attributionControl: false,
-    style: {
-      version: 8,
-      sources: { positron: { type: 'raster', tiles: [
-        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-      ], tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' } },
-      layers: [{ id: 'positron', type: 'raster', source: 'positron' }],
-    },
+    style: BikeBasemap.createStyle(),
     center: preview.points[0], zoom: 13, maxZoom: 17, maxPitch: 0,
   });
   routePreviewMap.on('load', () => {

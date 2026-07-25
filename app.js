@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-24.343';
+const APP_VERSION = '2026-07-25.345';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -392,7 +392,11 @@ const SOURCES = [
     // The ?v= busts stale HTTP range caches when the tiles are rebuilt —
     // PMTiles bypasses the service worker, and mixing old/new byte ranges
     // silently breaks tile decoding. Bump alongside the sw.js VERSION.
-    vector: 'pmtiles://data/roads.pmtiles?v=10',
+    vector: 'pmtiles://data/roads.pmtiles?v=11',
+    // The local basemap already opens this archive for its street geometry and
+    // labels. Reuse that MapLibre source for safety coloring and hit testing so
+    // iOS does not decode or retain the same vector tiles twice.
+    mapSourceId: 'basemap-roads',
     sourceLayer: 'roads',
     count: 324089, // baked at build time (tiles don't carry a global count)
     scorer: scoreRoad,
@@ -687,23 +691,7 @@ window.addEventListener('pagehide', saveStateNow);
 
 const map = new maplibregl.Map({
   container: 'map',
-  style: {
-    version: 8,
-    sources: {
-      positron: {
-        type: 'raster',
-        tiles: [
-          // CARTO Positron raster basemap (background only — not an OSM render).
-          'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-          'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-          'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        ],
-        tileSize: 256,
-        attribution: '© OpenStreetMap contributors © CARTO',
-      },
-    },
-    layers: [{ id: 'positron', type: 'raster', source: 'positron' }],
-  },
+  style: BikeBasemap.createStyle(),
   center: (savedState && savedState.view && savedState.view.c) || [-122.3321, 47.6062],
   zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
   maxZoom: 17,
@@ -724,11 +712,6 @@ const RES_MIN_ZOOM = 13;
 // expression below. That lets the renderer update continuously during wheel,
 // trackpad, touch, keyboard, and programmatic zooms without relying on a JS
 // zoom event to rebuild feature filters.
-// PMTiles: static single-file vector tiles over HTTP range requests — no server.
-if (window.pmtiles) {
-  const _pmProtocol = new pmtiles.Protocol();
-  maplibregl.addProtocol('pmtiles', _pmProtocol.tile);
-}
 map.on('moveend', saveStateSoon);
 map.addControl(
   new maplibregl.GeolocateControl({
@@ -957,6 +940,7 @@ const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover 
 const trailId = (src) => src.id + '__trail'; // lime base for off-street OSM bike paths/trails
 const trailDotsId = (src) => src.id + '__trail-dots'; // fine dotted trail centerline
 const trailHitId = (src) => src.id + '__trail-hit'; // dedicated wide target for dotted trails
+const trailLabelId = (src) => src.id + '__trail-labels';
 const stateSidewalkProbeId = 'roads__state-sidewalk-probe';
 const OSM_TRAIL_EXPR = ['match', ['get', 'highway'],
   ['cycleway', 'path', 'footway', 'bridleway', 'track', 'service'], true, false];
@@ -980,12 +964,15 @@ function beforeIdFor(src) {
 function ensureLayer(src) {
   if (map.getLayer(src.id)) return;
   const beforeId = beforeIdFor(src);
-  if (src.vector) map.addSource(src.id, { type: 'vector', url: src.vector });
-  else map.addSource(src.id, { type: 'geojson', data: src.fc });
+  const mapSourceId = src.mapSourceId || src.id;
+  if (!map.getSource(mapSourceId)) {
+    if (src.vector) map.addSource(mapSourceId, { type: 'vector', url: src.vector });
+    else map.addSource(mapSourceId, { type: 'geojson', data: src.fc });
+  }
   const SL = src.vector ? { 'source-layer': src.sourceLayer } : {};
   if (src.closure) {
     map.addLayer({
-      id: src.id + '__line', type: 'line', source: src.id,
+      id: src.id + '__line', type: 'line', source: mapSourceId,
       minzoom: 10,
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
       paint: { 'line-color': COLORS[4], 'line-width': 7, 'line-opacity': backgroundLineOpacity(0.92),
@@ -993,7 +980,7 @@ function ensureLayer(src) {
       filter: ['==', ['geometry-type'], 'LineString'],
     }, beforeId);
     map.addLayer({
-      id: src.id, type: 'circle', source: src.id,
+      id: src.id, type: 'circle', source: mapSourceId,
       minzoom: 10,
       paint: { 'circle-radius': 9, 'circle-color': COLORS[4],
                'circle-stroke-color': '#fff', 'circle-stroke-width': 2 },
@@ -1007,7 +994,7 @@ function ensureLayer(src) {
   map.addLayer({
     id: failId(src), // pass/fail mode: roads with data that don't qualify
     type: 'line',
-    source: src.id,
+    source: mapSourceId,
     ...SL,
     minzoom: src.minVisibleZoom || 0,
     layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
@@ -1022,7 +1009,7 @@ function ensureLayer(src) {
   map.addLayer({
     id: vhId(src), // color-ramp mode: level 4 shown dashed to read as "not passable"
     type: 'line',
-    source: src.id,
+    source: mapSourceId,
     ...SL,
     minzoom: src.minVisibleZoom || 0,
     layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
@@ -1037,7 +1024,7 @@ function ensureLayer(src) {
   map.addLayer({
     id: src.id,
     type: 'line',
-    source: src.id,
+    source: mapSourceId,
     ...SL,
     minzoom: src.minVisibleZoom || 0,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -1051,7 +1038,7 @@ function ensureLayer(src) {
     map.addLayer({
       id: trailId(src),
       type: 'line',
-      source: src.id,
+      source: mapSourceId,
       ...SL,
       minzoom: src.minVisibleZoom || 0,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -1065,7 +1052,7 @@ function ensureLayer(src) {
     map.addLayer({
       id: trailDotsId(src),
       type: 'line',
-      source: src.id,
+      source: mapSourceId,
       ...SL,
       minzoom: src.minVisibleZoom || 0,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -1083,7 +1070,7 @@ function ensureLayer(src) {
     map.addLayer({
       id: trailHitId(src),
       type: 'line',
-      source: src.id,
+      source: mapSourceId,
       ...SL,
       minzoom: src.minVisibleZoom || 0,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -1094,6 +1081,29 @@ function ensureLayer(src) {
       },
       filter: OSM_TRAIL_EXPR,
     }, beforeId);
+    map.addLayer({
+      id: trailLabelId(src),
+      type: 'symbol',
+      source: mapSourceId,
+      ...SL,
+      minzoom: 12,
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': 360,
+        'text-field': ['get', 'name'],
+        'text-font': [BikeBasemap.FONT_STACK],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 12, 10, 16, 12.5],
+        'text-padding': 4,
+        'text-keep-upright': true,
+      },
+      paint: {
+        'text-color': '#647600',
+        'text-halo-color': '#f7f9ef',
+        'text-halo-width': 1.5,
+      },
+      filter: ['all', OSM_TRAIL_EXPR, OSM_NOT_MTB_EXPR,
+        ['has', 'name'], ['!=', ['get', 'name'], '']],
+    }, beforeId);
   }
   // State highways are visually deduplicated beneath the richer WSDOT layer,
   // but their matching OSM tile still supplies sidewalk context for a WSDOT
@@ -1102,7 +1112,7 @@ function ensureLayer(src) {
     map.addLayer({
       id: stateSidewalkProbeId,
       type: 'line',
-      source: src.id,
+      source: mapSourceId,
       ...SL,
       minzoom: src.minVisibleZoom || 0,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -1119,7 +1129,7 @@ function ensureLayer(src) {
   map.addLayer({
     id: hitId(src),
     type: 'line',
-    source: src.id,
+    source: mapSourceId,
     ...SL,
     minzoom: src.minVisibleZoom || 0,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -2666,10 +2676,13 @@ function ensureNativeAppLifecycleListener() {
   const plugin = nativeNavigationPlugin();
   if (!plugin) return Promise.resolve(false);
   if (nativeAppLifecycleListenerReady) return nativeAppLifecycleListenerReady;
-  nativeAppLifecycleListenerReady = plugin.addListener(
+  // Capacitor's native proxy returns a listener handle immediately on some
+  // versions and a promise on others. Normalize both shapes so native startup
+  // cannot be interrupted before the map and routing data initialize.
+  nativeAppLifecycleListenerReady = Promise.resolve(plugin.addListener(
     'appActive',
     () => requestMapLocationRecenter('foreground'),
-  ).then(() => true).catch(() => {
+  )).then(() => true).catch(() => {
     nativeAppLifecycleListenerReady = null;
     return false;
   });
