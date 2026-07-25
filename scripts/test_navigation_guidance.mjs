@@ -11,6 +11,10 @@ const nativeBridge = fs.readFileSync(
   new URL('../ios/App/App/BridgeViewController.swift', import.meta.url),
   'utf8',
 );
+const nativeInfo = fs.readFileSync(
+  new URL('../ios/App/App/Info.plist', import.meta.url),
+  'utf8',
+);
 assert.match(html, /id="navOffRouteBtn"[^>]*>Re-route</,
   'off-route navigation should expose a conventional reroute button');
 assert.match(html, /class="nav-banner-main"[\s\S]*?class="nav-banner-copy"[\s\S]*?<\/div>[\s\S]*?id="navOffRouteBtn"/,
@@ -197,6 +201,16 @@ assert.match(nativeBridge, /CAPPluginMethod\(name: "updateVoiceSettings"[\s\S]*?
   'native iOS navigation should support live status settings and locked-screen updates');
 assert.match(nativeBridge, /maybeSpeakPeriodicStatus\([\s\S]*?currentSpeedMph[\s\S]*?spokenDuration/,
   'locked-screen status updates should include the configured route, speed, distance, and time fields');
+assert.match(nativeBridge, /private var statusUpdateTimer:\s*Timer\?[\s\S]*?refreshStatusUpdateTimer\(\)/,
+  'native periodic status should use a real timer instead of depending only on new GPS fixes');
+assert.match(nativeBridge, /private func handleScheduledStatusUpdate\(\)[\s\S]*?applicationState != \.active[\s\S]*?maybeSpeakPeriodicStatus/,
+  'the native status timer should speak only while navigation is backgrounded');
+assert.match(nativeBridge, /didUpdateLocations[\s\S]*?latestLocation = location/,
+  'the status timer should retain the latest native location fix');
+assert.match(nativeInfo, /<key>UIBackgroundModes<\/key>[\s\S]*?<string>audio<\/string>[\s\S]*?<string>location<\/string>/,
+  'native navigation should declare both spoken-audio and location background modes');
+assert.match(css, /#settingsVoice\s*\{[^}]*align-content:\s*start[^}]*gap:\s*7px/,
+  'the compact Voice-Nav cards should stay grouped instead of opening a large middle gap');
 const voicePanelSource = app.slice(app.indexOf('function buildVoicePanel'), app.indexOf('function buildLegend'));
 assert.doesNotMatch(voicePanelSource, /violet/i,
   'Voice-Nav settings should describe behavior without naming a route color');

@@ -61,6 +61,8 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     private var statusEta = true
     private var routeTotalTimeS: TimeInterval = 0
     private var lastVoiceAt = Date()
+    private var statusUpdateTimer: Timer?
+    private var latestLocation: CLLocation?
     private var arrived = false
     private var latestLocationPayload: [String: Any]?
     private let offRouteEnterM = 65.0
@@ -140,6 +142,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     @objc func stopTracking(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             self.tracking = false
+            self.stopStatusUpdateTimer()
             self.pendingStartCall?.resolve(self.statusPayload())
             self.pendingStartCall = nil
             self.locationManager.stopUpdatingLocation()
@@ -153,6 +156,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     @objc func updateVoiceSettings(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             self.configureVoiceSettings(from: call)
+            self.refreshStatusUpdateTimer()
             call.resolve()
         }
     }
@@ -211,6 +215,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
+        latestLocation = location
         let payload = locationPayload(location)
         latestLocationPayload = payload
         if !pendingPositionCalls.isEmpty {
@@ -246,6 +251,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.showsBackgroundLocationIndicator = true
         locationManager.startUpdatingLocation()
+        refreshStatusUpdateTimer()
         if locationManager.authorizationStatus == .authorizedWhenInUse {
             locationManager.requestAlwaysAuthorization()
         }
@@ -309,8 +315,67 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         offRoute = false
         offRouteApproachSpoken = false
         previousLocation = nil
+        latestLocation = nil
         routeTotalTimeS = 0
         arrived = false
+    }
+
+    // A distance-filtered CLLocationManager may deliver few fixes while a
+    // rider is stopped. Periodic voice status therefore needs its own cadence
+    // rather than being checked only as a side effect of a new GPS fix.
+    private func refreshStatusUpdateTimer() {
+        stopStatusUpdateTimer()
+        guard tracking, statusUpdateIntervalS > 0 else { return }
+        let pollInterval = min(15, statusUpdateIntervalS)
+        let timer = Timer(timeInterval: pollInterval, repeats: true) {
+            [weak self] _ in self?.handleScheduledStatusUpdate()
+        }
+        timer.tolerance = min(2, pollInterval / 5)
+        RunLoop.main.add(timer, forMode: .common)
+        statusUpdateTimer = timer
+    }
+
+    private func stopStatusUpdateTimer() {
+        statusUpdateTimer?.invalidate()
+        statusUpdateTimer = nil
+    }
+
+    private func handleScheduledStatusUpdate() {
+        guard tracking,
+              UIApplication.shared.applicationState != .active,
+              let location = latestLocation,
+              let nearest = nearestRoutePosition(to: location) else { return }
+        let remainingToTurnM = instructions.first.map {
+            $0.distanceM - nearest.routeM
+        } ?? .infinity
+        // A phone that has stopped moving may not receive another GPS callback
+        // to trigger the ordinary approach prompt. Let the cadence check deliver
+        // that prompt once before falling through to a routine status update.
+        if !instructions.isEmpty,
+           remainingToTurnM <= 90,
+           !instructions[0].immediateHandled {
+            instructions[0].immediateHandled = true
+            instructions[0].approachHandled = true
+            speakText("\(instructions[0].text).")
+            return
+        }
+        if !instructions.isEmpty,
+           remainingToTurnM <= 350,
+           !instructions[0].approachHandled {
+            instructions[0].approachHandled = true
+            speakText(
+                "In \(spokenDistance(remainingToTurnM)), "
+                    + instructions[0].text.lowercased() + "."
+            )
+            return
+        }
+        maybeSpeakPeriodicStatus(
+            location: location,
+            priorLocation: previousLocation,
+            nearestRouteM: nearest.routeM,
+            nextInstruction: instructions.first,
+            remainingToTurnM: remainingToTurnM
+        )
     }
 
     private func updateNativeGuidance(_ location: CLLocation) {
@@ -432,8 +497,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     ) {
         guard statusUpdateIntervalS > 0,
               !arrived,
-              Date().timeIntervalSince(lastVoiceAt) >= statusUpdateIntervalS,
-              nextInstruction == nil || remainingToTurnM > 350 else { return }
+              Date().timeIntervalSince(lastVoiceAt) >= statusUpdateIntervalS else { return }
 
         var parts: [String] = []
         if statusRoute {

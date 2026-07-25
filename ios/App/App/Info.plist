@@ -30,6 +30,7 @@
 	<string>While navigation is active, your location is used to keep bicycle directions and voice prompts working when the screen is locked.</string>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>audio</string>
 		<string>location</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
