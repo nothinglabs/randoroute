@@ -43,10 +43,12 @@
       filter,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: casing ? {
-        'line-color': '#c8cfd2',
+        // A firmer, wider casing makes the underlying street network readable
+        // without competing with the saturated bike-safety overlays above it.
+        'line-color': '#b7c1c5',
         'line-width': ['interpolate', ['linear'], ['zoom'],
-          5, 1.1, 8, 1.8, 11, 3.2, 14, 6.2, 17, 11],
-        'line-opacity': 0.9,
+          5, 1.4, 8, 2.25, 11, 4, 14, 7.4, 17, 12.5],
+        'line-opacity': 0.96,
       } : {
         'line-color': ['match', ['get', 'h'],
           ['motorway', 'motorway_link'], '#f3dec1',
