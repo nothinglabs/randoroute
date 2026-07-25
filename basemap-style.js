@@ -69,18 +69,21 @@
       filter: ['all', named, roadMatch(classes)],
       layout: {
         'symbol-placement': 'line',
-        'symbol-spacing': 320,
+        // Larger labels are much easier to read from a handlebar-mounted
+        // phone. Extra spacing lets MapLibre drop collisions instead of making
+        // the map feel more crowded.
+        'symbol-spacing': 370,
         'text-field': ['get', 'n'],
         'text-font': [FONT_STACK],
         'text-size': ['interpolate', ['linear'], ['zoom'], ...sizeStops],
         'text-max-angle': 35,
-        'text-padding': 3,
+        'text-padding': 4,
         'text-keep-upright': true,
       },
       paint: {
         'text-color': '#69767d',
         'text-halo-color': '#ffffff',
-        'text-halo-width': 1.5,
+        'text-halo-width': 1.7,
         'text-halo-blur': 0.35,
       },
     };
@@ -136,8 +139,8 @@
           'source-layer': 'water', minzoom: 9, filter: named,
           layout: {
             'text-field': ['get', 'n'], 'text-font': [FONT_STACK],
-            'text-size': ['interpolate', ['linear'], ['zoom'], 9, 10, 14, 13],
-            'text-padding': 6,
+            'text-size': ['interpolate', ['linear'], ['zoom'], 9, 12, 14, 15],
+            'text-padding': 7,
           },
           paint: {
             'text-color': '#6d94a4', 'text-halo-color': '#e8f3f7',
@@ -147,25 +150,25 @@
           'source-layer': 'green', minzoom: 11, filter: named,
           layout: {
             'text-field': ['get', 'n'], 'text-font': [FONT_STACK],
-            'text-size': 10.5, 'text-padding': 5,
+            'text-size': 12.5, 'text-padding': 6,
           },
           paint: {
             'text-color': '#668063', 'text-halo-color': '#f2f5ed',
             'text-halo-width': 1.2,
           } },
-        roadLabel('basemap-major-labels', 7, majorRoads, [7, 10, 13, 13]),
-        roadLabel('basemap-medium-labels', 10, mediumRoads, [10, 10, 15, 12.5]),
-        roadLabel('basemap-local-labels', 12.2, localRoads, [12, 9.5, 17, 12]),
+        roadLabel('basemap-major-labels', 7, majorRoads, [7, 12, 13, 15.5]),
+        roadLabel('basemap-medium-labels', 10, mediumRoads, [10, 11.5, 15, 14.5]),
+        roadLabel('basemap-local-labels', 12.2, localRoads, [12, 11, 17, 14.5]),
         { id: 'basemap-place-labels', type: 'symbol', source: 'basemap-context',
           'source-layer': 'places',
           layout: {
             'text-field': ['get', 'n'],
             'text-font': [FONT_STACK],
             'text-size': ['interpolate', ['linear'], ['zoom'],
-              5, ['case', ['>=', ['get', 'p'], 100000], 14, 11],
-              9, ['case', ['>=', ['get', 'p'], 25000], 15, 11],
-              13, ['case', ['match', ['get', 'k'], ['city', 'town'], true, false], 14, 11]],
-            'text-padding': 8,
+              5, ['case', ['>=', ['get', 'p'], 100000], 16.5, 13],
+              9, ['case', ['>=', ['get', 'p'], 25000], 17.5, 13],
+              13, ['case', ['match', ['get', 'k'], ['city', 'town'], true, false], 16.5, 13]],
+            'text-padding': 10,
             'text-allow-overlap': false,
             'symbol-sort-key': ['-', 0, ['coalesce', ['get', 'p'], 0]],
           },

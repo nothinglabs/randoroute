@@ -41,6 +41,7 @@ for (const asset of [
   'fonts/Klokantech Noto Sans Regular/0-255.pbf',
   'fonts/Klokantech Noto Sans Regular/256-511.pbf',
   'fonts/Klokantech Noto Sans Regular/512-767.pbf',
+  'fonts/Klokantech Noto Sans Regular/768-1023.pbf',
 ]) {
   assert.ok(builder.includes(`'${asset}'`), `native shell builder omits ${asset}`);
 }

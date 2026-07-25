@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-25.346';
+const APP_VERSION = '2026-07-25.347';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1089,17 +1089,17 @@ function ensureLayer(src) {
       minzoom: 12,
       layout: {
         'symbol-placement': 'line',
-        'symbol-spacing': 360,
+        'symbol-spacing': 400,
         'text-field': ['get', 'name'],
         'text-font': [BikeBasemap.FONT_STACK],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 12, 10, 16, 12.5],
-        'text-padding': 4,
+        'text-size': ['interpolate', ['linear'], ['zoom'], 12, 12, 16, 15],
+        'text-padding': 5,
         'text-keep-upright': true,
       },
       paint: {
         'text-color': '#647600',
         'text-halo-color': '#f7f9ef',
-        'text-halo-width': 1.5,
+        'text-halo-width': 1.7,
       },
       filter: ['all', OSM_TRAIL_EXPR, OSM_NOT_MTB_EXPR,
         ['has', 'name'], ['!=', ['get', 'name'], '']],
