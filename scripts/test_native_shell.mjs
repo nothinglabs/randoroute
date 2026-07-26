@@ -93,8 +93,8 @@ assert.match(app, /id: trailId\(src\),[\s\S]*?minzoom: BikeBasemap\.ROAD_MIN_ZOO
   'trail safety styling and hit targets should wait for local-detail zoom');
 assert.doesNotMatch(app, /RES_MIN_ZOOM/,
   'the old blanket residential safety zoom cutoff should be removed');
-assert.match(app, /setPaintProperty\('route-fail', 'line-opacity', 0\.92 \+ 0\.08 \* p\)[\s\S]*?setPaintProperty\('route-fail', 'line-width', routeWidthExpression\(3 \* p\)\)/,
-  'rule-failure animation should pulse the zoom-scaled width while remaining visibly red');
+assert.match(app, /setPaintProperty\('route-fail', 'line-opacity', 0\.92 \+ 0\.08 \* p\)[\s\S]*?setPaintProperty\('route-fail', 'line-width', 6\.5 \+ 3 \* p\)/,
+  'rule-failure animation should pulse width while remaining visibly red');
 assert.match(app, /id: 'route-detail-highlight'[\s\S]*?'line-color': '#ffd45c'[\s\S]*?}, 'route-pass'\)/,
   'detail selections should use a warm halo beneath the route safety color');
 assert.match(app, /src\.id === 'osm' \? \{ filter: \['boolean', false\] \}/,

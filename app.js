@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-25.360';
+const APP_VERSION = '2026-07-26.361';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -946,15 +946,6 @@ const stateSidewalkProbeId = 'roads__state-sidewalk-probe';
 // narrower line painted on top of the road.
 const SAFETY_ROAD_INTERIOR_WIDTH = ['interpolate', ['linear'], ['zoom'],
   5, 0.6, 8, 1.1, 11, 2.2, 14, 4.7, 17, 9];
-// Keep a selected route legible at statewide zooms, then let it grow with the
-// streets instead of retaining a fixed screen width. The extra width above the
-// road interior preserves the route's visual priority at every zoom.
-const routeWidthExpression = (extra = 0) => ['interpolate', ['linear'], ['zoom'],
-  5, 5 + extra, 8, 5.5 + extra, 11, 6.5 + extra, 14, 10 + extra, 17, 16 + extra];
-const routeCasingWidthExpression = (extra = 0) => ['interpolate', ['linear'], ['zoom'],
-  5, 10.5 + extra, 8, 11 + extra, 11, 12 + extra, 14, 15.5 + extra, 17, 21.5 + extra];
-const routeShadowWidthExpression = ['interpolate', ['linear'], ['zoom'],
-  5, 15.5, 8, 16, 11, 17, 14, 20.5, 17, 26.5];
 const ROAD_CLASS_EXPR = ['get', 'h'];
 const ROAD_CLASS_MAJOR_EXPR = ['match', ROAD_CLASS_EXPR,
   BikeBasemap.ROAD_CLASSES.major, true, false];
@@ -4253,8 +4244,8 @@ function buildRouteDismountData(sdata) {
 
 function ensureUnpavedSlatImage(targetMap, imageId = 'route-unpaved-slats') {
   if (targetMap.hasImage(imageId)) return;
-  // Dense, narrow bars read as a surface texture; their layer scales the image
-  // with the route so the bars continue extending beyond its stroke.
+  // Fixed-size symbols stay stable across zoom levels. Dense, narrow bars read
+  // as a surface texture while extending beyond the route stroke.
   const width = 2, height = 12;
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
@@ -4308,8 +4299,8 @@ function setFailPulse(on) {
       // basemap turns it purple-gray and can make a rule failure look like an
       // unpaved or designated-route pattern.
       map.setPaintProperty('route-fail', 'line-opacity', 0.92 + 0.08 * p);
-      map.setPaintProperty('route-fail', 'line-width', routeWidthExpression(3 * p));
-      map.setPaintProperty('route-fail-casing', 'line-width', routeCasingWidthExpression(2 * p));
+      map.setPaintProperty('route-fail', 'line-width', 6.5 + 3 * p);
+      map.setPaintProperty('route-fail-casing', 'line-width', 12.5 + 2 * p);
       map.setPaintProperty('route-fail-casing', 'line-opacity', 0.9 + 0.08 * p);
     }, 80);
   } else if (!on && failPulseTimer) {
@@ -4419,12 +4410,12 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-connector-casing', type: 'line', source: 'route-connector',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-width': routeCasingWidthExpression(-1.5), 'line-opacity': 0.96 },
+    paint: { 'line-color': '#ffffff', 'line-width': 10, 'line-opacity': 0.96 },
   });
   map.addLayer({
     id: 'route-connector', type: 'line', source: 'route-connector',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#7b2cbf', 'line-width': routeWidthExpression(-0.5), 'line-opacity': 1,
+    paint: { 'line-color': '#7b2cbf', 'line-width': 6, 'line-opacity': 1,
              'line-dasharray': [2.2, 1.15] },
   });
   map.addLayer({
@@ -4434,16 +4425,16 @@ function drawRoute(coords, ferrySegs, segs) {
     // highway geometry comes from WSDOT while the route follows OSM, and tiny
     // centerline differences otherwise leave a confusing second colored line
     // peeking out alongside the selected route.
-    paint: { 'line-color': '#102a43', 'line-width': routeShadowWidthExpression, 'line-opacity': 0.78,
+    paint: { 'line-color': '#102a43', 'line-width': 17, 'line-opacity': 0.78,
              'line-blur': 0.55 },
   });
   map.addLayer({
     id: 'route-casing', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-width': routeCasingWidthExpression(), 'line-opacity': 0.99 },
+    paint: { 'line-color': '#ffffff', 'line-width': 12.5, 'line-opacity': 0.99 },
   });
   const routeVerdictPaint = (color) => ({
-    'line-color': color, 'line-width': routeWidthExpression(), 'line-opacity': 1,
+    'line-color': color, 'line-width': 6.5, 'line-opacity': 1,
   });
   map.addLayer({
     id: 'route-pass', type: 'line', source: 'route-render',
@@ -4454,7 +4445,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-designated', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { ...routeVerdictPaint(COLORS[2]), 'line-width': routeWidthExpression(0.7),
+    paint: { ...routeVerdictPaint(COLORS[2]), 'line-width': 7.2,
              'line-dasharray': [1.6, 1.15] },
     filter: ['==', ['get', 'style'], 'designated'],
   });
@@ -4467,15 +4458,13 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-bike-trail', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { ...routeVerdictPaint(BIKE_NETWORK_COLOR), 'line-width': routeWidthExpression(0.7) },
+    paint: { ...routeVerdictPaint(BIKE_NETWORK_COLOR), 'line-width': 7.2 },
     filter: ['==', ['get', 'style'], 'trail'],
   });
   map.addLayer({
     id: 'route-bike-trail-dots', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#687d00',
-             'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.5, 11, 2, 14, 2.7, 17, 3.8],
-             'line-opacity': 0.96,
+    paint: { 'line-color': '#687d00', 'line-width': 2.2, 'line-opacity': 0.96,
              'line-dasharray': [0.05, 2.1] },
     filter: ['==', ['get', 'style'], 'trail'],
   });
@@ -4494,12 +4483,12 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-fail-casing', type: 'line', source: 'route-fail',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-width': routeCasingWidthExpression(), 'line-opacity': 0.8 },
+    paint: { 'line-color': '#ffffff', 'line-width': 12, 'line-opacity': 0.8 },
   });
   map.addLayer({
     id: 'route-fail', type: 'line', source: 'route-fail',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': COLORS[4], 'line-width': routeWidthExpression(), 'line-opacity': 0.96,
+    paint: { 'line-color': COLORS[4], 'line-width': 6.5, 'line-opacity': 0.96,
              'line-dasharray': [1.25, 1] },
   });
   ensureUnpavedSlatImage(map);
@@ -4507,12 +4496,10 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-unpaved-slats', type: 'symbol', source: 'route-unpaved',
     layout: {
-      'symbol-placement': 'line',
-      'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 5, 8, 11, 9, 14, 12, 17, 15],
+      'symbol-placement': 'line', 'symbol-spacing': 10,
       'icon-image': 'route-unpaved-slats', 'icon-allow-overlap': true,
       'icon-ignore-placement': true, 'icon-rotation-alignment': 'map',
       'icon-pitch-alignment': 'map', 'icon-keep-upright': false,
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.85, 11, 1, 14, 1.35, 17, 1.7],
     },
     paint: { 'icon-opacity': 1 },
   });
@@ -4528,7 +4515,7 @@ function drawRoute(coords, ferrySegs, segs) {
   });
   map.addLayer({
     id: 'route-ferry', type: 'line', source: 'route-ferry',
-    paint: { 'line-color': '#ffffff', 'line-width': routeWidthExpression(-1.5), 'line-opacity': 0.9,
+    paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.9,
              'line-dasharray': [0.6, 1.8] },
   });
   setFailPulse(failData.features.length > 0);
@@ -4536,7 +4523,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-progress', type: 'line', source: 'route-progress',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#17262f', 'line-width': routeWidthExpression(1.1), 'line-opacity': 0.26 },
+    paint: { 'line-color': '#17262f', 'line-width': 7.6, 'line-opacity': 0.26 },
   });
   map.addLayer({
     id: 'route-highlight-halo', type: 'line', source: 'route-seg',
