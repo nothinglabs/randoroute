@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.379';
+const APP_VERSION = '2026-07-26.380';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2183,6 +2183,25 @@ function buildTurnInstructions(m) {
     const straightCrossing = !!next.crossing && Math.abs(delta) < 20;
     const straightPathTransition = pathTransition && Math.abs(delta) < 20;
     if (Math.abs(delta) < (sameRoad ? 50 : 20) && !straightCrossing && !straightPathTransition) continue;
+    // A maneuver must never point the opposite way from the road it names. When
+    // the named road is still a few edges ahead (a trail exit, a crossing, a
+    // connector stub), the local bend can run one way while joining that road
+    // needs the other: leaving the Interurban Trail, a 33 deg leftward jog was
+    // announced as "Bear left onto North 155th Street" when the rider had to
+    // turn right onto it. Staying silent here lets the real junction — where
+    // the local bend and the named road agree — announce the true direction,
+    // instead of this one consuming it through the repeat-suppression window
+    // below. Destinations entered immediately measure the same bend twice, so
+    // ordinary turns can never be suppressed by this.
+    let alongDestination = null;
+    if (destination) {
+      const destinationM = cumulative[Math.min(coords.length - 1, destination.seg?.c0 ?? at)];
+      alongDestination = routeBearingOver(
+        coords, cumulative, destinationM, destinationM + TURN_BEARING_SPAN_M);
+      const destinationDelta = navDelta(incoming, alongDestination);
+      if (Math.abs(delta) >= 20 && Math.abs(destinationDelta) >= 20
+          && Math.sign(delta) !== Math.sign(destinationDelta)) continue;
+    }
     const distanceM = cumulative[at];
     // Do not speak a chain of tiny graph-edge transitions as separate turns.
     if (distanceM - lastM < 70) continue;
@@ -2195,7 +2214,12 @@ function buildTurnInstructions(m) {
       coordIndex: at,
       segmentIndex: destination?.index ?? i + 1,
       text,
-      heading: compassWord(outgoing),
+      // Report the heading of the road being named, not the bearing through the
+      // junction itself. Where the two differ the junction reading is the one
+      // that misleads: it describes a connector the rider is passing through
+      // rather than the street they are being told to ride.
+      heading: compassWord(straightCrossing || alongDestination == null
+        ? outgoing : alongDestination),
     });
     lastM = distanceM;
   }

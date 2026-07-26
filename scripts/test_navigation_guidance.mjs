@@ -451,6 +451,37 @@ const unnamedConnector = context.buildTurnInstructions({
 assert.match(unnamedConnector.instructions[0].text, /Second Avenue/,
   'a short unnamed junction connector should resolve to the outbound road');
 
+// A trail that jogs one way just before joining a road running the other way.
+// The local bend is a 32 deg left; joining the named street is a right turn.
+// Announcing the local bend as "Bear left onto North 155th Street" both pointed
+// the wrong way and consumed the repeat-suppression window that the true
+// junction needed, so the correct instruction never got spoken.
+const trailJogBeforeTurn = context.buildTurnInstructions({
+  coords: [
+    [-122.35000, 47.67000],
+    [-122.35000, 47.67036], // 40 m north along the trail
+    [-122.35018, 47.67056], // trail jogs ~32 deg left
+    [-122.35028, 47.67066], // unnamed path connector, same heading
+    [-122.34998, 47.67066], // North 155th Street runs east
+    [-122.34948, 47.67066],
+  ],
+  segs: [
+    { c0: 0, c1: 1, name: 'Shoreline Interurban Trail', flags: 8, facility: 5, lenM: 40 },
+    { c0: 1, c1: 2, name: 'Shoreline Interurban Trail', flags: 8, facility: 5, lenM: 26 },
+    { c0: 2, c1: 3, name: '', flags: 8, facility: 5, lenM: 13 },
+    { c0: 3, c1: 5, name: 'North 155th Street', flags: 0, facility: 0, lenM: 60 },
+  ],
+});
+const jogTexts = trailJogBeforeTurn.instructions.map((step) => step.text);
+assert.equal(jogTexts.filter((text) => /155th/.test(text)).length, 1,
+  'joining a road after a trail jog should be announced exactly once');
+assert.match(jogTexts[0], /right onto North 155th Street/,
+  'the maneuver must name the turn that actually reaches the road, not the trail jog');
+assert.doesNotMatch(jogTexts[0], /left/i,
+  'a right turn onto the named road must never be announced as a left');
+assert.equal(trailJogBeforeTurn.instructions[0].heading, 'east',
+  'the heading should describe the named road, not the connector being passed through');
+
 const arrivalStart = app.indexOf('function navigationHasArrived');
 const arrivalEnd = app.indexOf('function finishTurnNavigation');
 assert.ok(arrivalStart >= 0 && arrivalEnd > arrivalStart, 'arrival helper source was not found');
