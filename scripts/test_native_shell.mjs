@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { gunzipSync } from 'node:zlib';
 
 const [app, config, packageJson, index, nativeIndex, styles, builder, basemap, details, serviceWorker] = await Promise.all([
   readFile(new URL('../app.js', import.meta.url), 'utf8'),
@@ -32,13 +31,11 @@ for (const asset of [
   'vendor/maplibre-gl.js',
   'vendor/maplibre-gl.css',
   'vendor/pmtiles.js',
-  'vendor/fflate.js',
-  'vendor/fflate-LICENSE.txt',
-  'data/bikeroutes.geojson.gz',
-  'data/blts.geojson.gz',
-  'data/bikeinfra.geojson.gz',
-  'data/bike_restrictions.geojson.gz',
-  'data/route_closures.geojson.gz',
+  'data/bikeroutes.geojson',
+  'data/blts.geojson',
+  'data/bikeinfra.geojson',
+  'data/bike_restrictions.geojson',
+  'data/route_closures.geojson',
   'data/roads.pmtiles',
   'data/basemap.pmtiles',
   'data/graph2.bin.gz',
@@ -59,8 +56,6 @@ for (const runtime of [app, basemap, details, serviceWorker]) {
     'core map runtime must not depend on the old online CARTO basemap');
 }
 assert.match(index, /<script src="basemap-style\.js"><\/script>/);
-assert.match(index, /<script src="vendor\/fflate\.js"><\/script>[\s\S]*?<script src="basemap-style\.js"><\/script>/,
-  'the compressed map-data decoder must load before the app runtime');
 assert.match(index, /if \(!isNativeShell && 'serviceWorker' in navigator\)/);
 assert.match(nativeIndex, /id="techDetailsBtn"[^>]*>Tech Details<\/button>[\s\S]*?id="techDetailsDialog"[\s\S]*?Natural Earth 1:10m land[\s\S]*?WSDOT Active Transportation Data/,
   'the native bundle should include the complete technical map and data help');
@@ -76,17 +71,14 @@ assert.match(basemap, /const ROAD_MIN_ZOOM = \{\s*major:\s*5,\s*medium:\s*8,\s*l
   'the local basemap should expose one shared set of road-class zoom thresholds');
 assert.match(app, /mapSourceId:\s*'basemap-roads'/,
   'the safety overlay should reuse the basemap road source');
-assert.match(app, /jsonAssetResponse[\s\S]*?fflate\?\.gunzipSync[\s\S]*?fflate\?\.strFromU8/,
-  'large GeoJSON overlays should be expanded from their compact bundled gzip files');
-assert.doesNotMatch(builder, /data\/(?:bikeroutes|blts|bikeinfra|bike_restrictions|route_closures)\.geojson'/,
-  'the native shell must not retain the uncompressed overlay copies');
-for (const name of ['bikeroutes', 'blts', 'bikeinfra', 'bike_restrictions', 'route_closures']) {
-  const compressed = await readFile(new URL(`../data/${name}.geojson.gz`, import.meta.url));
-  assert.equal(compressed[0], 0x1f, `${name} should be a real gzip stream`);
-  assert.equal(compressed[1], 0x8b, `${name} should be a real gzip stream`);
-  assert.equal(JSON.parse(gunzipSync(compressed)).type, 'FeatureCollection',
-    `${name} should expand to GeoJSON without losing data`);
-}
+assert.match(app, /if \(src\.id === 'blts'\)[\s\S]*?map\.setFilter\(id, \['boolean', false\]\)/,
+  'overlapping directional WSDOT inventory lines should remain queryable but not be double-painted');
+assert.match(app, /limited_access:\s*p\.m === 1 \|\| p\.l === 1/,
+  'WSDOT limited-access context conflated onto road tiles should affect the visible verdict');
+assert.match(basemap, /'source-layer': 'land', maxzoom: 8[\s\S]*?'source-layer': 'land_detail', minzoom: 8/,
+  'precise OSM coastline land should replace generalized regional land at close zooms');
+assert.doesNotMatch(builder, /data\/(?:bikeroutes|blts|bikeinfra|bike_restrictions|route_closures)\.geojson\.gz'/,
+  'the native shell should use the full uncompressed overlay copies');
 assert.match(app, /const SAFETY_ROAD_INTERIOR_WIDTH = \['interpolate'[\s\S]*?5,\s*0\.6,\s*8,\s*1\.1,\s*11,\s*2\.2,\s*14,\s*4\.7,\s*17,\s*9\]/,
   'safety colors should fill the same road interior width used by the local basemap');
 assert.match(app, /\[BIKE_NETWORK_COLOR,\s*'Road with bike facility'\]/,

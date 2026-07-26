@@ -16,15 +16,16 @@ Included edges:
 One-way streets are honored for bikes (oneway / junction=roundabout, with
 oneway:bicycle=no overriding; oneway=-1 reverses the edge).
 
-Binary layout (little-endian), after header 'BGR8' + N,E,D,G,U,B (u32):
+Binary layout (little-endian), after header 'BGR9' + N,E,D,G,U,B (u32):
   nodeLon f32[N], nodeLat f32[N]
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
-  edgeSpeed u8[E] (mph; 0 = separated infra), edgeFlags u8[E]
+  edgeSpeedAB u8[E], edgeSpeedBA u8[E] (mph; 0 = separated infra),
+  edgeFlags u8[E]
     (1=est speed, 2=bike facility, 4=OSM motorway/freeway, 8=infra,
-     16=oneway a->b, 32=ferry crossing, 64=designated bike route,
-     128=WSDOT limited-access caution),
-  edgeShoulder i8[E] (-128 migration-only permanent prohibition, -1 unknown,
-                       else ft),
+     16=oneway a->b, 32=ferry crossing, 64=designated bike route),
+  edgeShoulderAB i8[E], edgeShoulderBA i8[E]
+    (-128 permanent prohibition, -1 unknown, else ft),
+  edgeLimitedDir u8[E] (bit 0 = a->b, bit 1 = b->a),
   edgeRoadClass u8[E] (OSM highway class; 0 for infrastructure/ferries),
   edgeFacility u8[E] (0=none, 1=shared lane, 2=bike lane,
                       3=buffered lane, 4=separated lane, 5=shared-use path),
@@ -95,7 +96,7 @@ ROAD_CLASS = {
     'motorway_link': 13,
 }
 CYCLEWAY_KEYS = ('cycleway', 'cycleway:both', 'cycleway:right', 'cycleway:left')
-SIMPLIFY_DEG = 0.00012  # ~12 m — route display geometry
+SIMPLIFY_DEG = 0.00005  # ~5 m — match the locally rendered road geometry
 _num = re.compile(r'^\s*(\d+(?:\.\d+)?)')
 # Edges eligible for WSDOT conflation: state-highway-ish classes or state refs.
 WSDOT_CLASSES = {'motorway', 'motorway_link', 'trunk', 'trunk_link',
@@ -103,6 +104,7 @@ WSDOT_CLASSES = {'motorway', 'motorway_link', 'trunk', 'trunk_link',
 REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA)[-\s]?\d+', re.I)
 WSDOT_MATCH_DEG = 0.00035  # ~30 m
 WSDOT_STRICT_DEG = 0.00009  # ~8–10 m; safe without a shared route number
+PROHIBITED_SHOULDER = -128
 
 FACILITY_NONE = 0
 FACILITY_SHARED = 1
@@ -247,12 +249,19 @@ def load_blts_index(path):
             if len(cs) < 2:
                 continue
             geoms.append(LineString(cs))
+            identifier = str(p.get('RouteIdentifier') or '')
+            suffix = identifier[-1:].lower()
             attrs.append({
                 'sh': p.get('ShoulderWidth'),
                 'spd': p.get('SpeedLimit'),
                 'prohibited': p.get('Prohibited') == 1,
                 'limited': p.get('LimitedAccess') == 1,
-                'route': _route_number(p.get('RouteIdentifier')),
+                'facility': bool(p.get('BikeFacilityType')),
+                'route': _route_number(identifier),
+                # WSDOT stores each line from BeginARM to EndARM. Thus the
+                # increasing record applies with the coordinate order and the
+                # decreasing record applies against it.
+                'direction': suffix if suffix in {'i', 'd'} else None,
             })
     print(f'  WSDOT index: {len(geoms):,} segments', flush=True)
     return STRtree(geoms), geoms, attrs
@@ -375,8 +384,8 @@ def is_restricted_edge(coords, tags, index):
     return False
 
 
-def blts_match(coords, tags, index):
-    """Best WSDOT BLTS segment for an edge, guarding against mere crossings.
+def blts_matches(coords, tags, index):
+    """Best WSDOT BLTS attributes for a->b and b->a travel.
 
     Same discipline as official_match/is_restricted_edge: a shared route
     number permits the normal WSDOT/OSM centerline offset; otherwise at least
@@ -390,9 +399,9 @@ def blts_match(coords, tags, index):
     tree, geoms, attrs = index
     points = sampled_points(coords)
     if not points:
-        return None
+        return None, None
     edge_routes = _route_numbers(tags.get('ref'))
-    best = None
+    best = {'i': None, 'd': None, None: None}
     candidates = set()
     for point in points:
         candidates.update(int(i) for i in tree.query(point.buffer(WSDOT_MATCH_DEG)))
@@ -404,9 +413,36 @@ def blts_match(coords, tags, index):
         if close_count < 2:
             continue
         score = sum(sorted(distances)[:2])
-        if best is None or score < best[0]:
-            best = (score, attrs[gi])
-    return best[1] if best else None
+        direction = attrs[gi]['direction']
+        if best[direction] is None or score < best[direction][0]:
+            best[direction] = (score, attrs[gi], geoms[gi])
+
+    orientation = best['i'] or best['d'] or best[None]
+    if orientation is None:
+        return None, None
+    line = orientation[2]
+    aligned = line.project(Point(coords[-1])) >= line.project(Point(coords[0]))
+    fallback = best[None][1] if best[None] else None
+    increasing = best['i'][1] if best['i'] else fallback
+    decreasing = best['d'][1] if best['d'] else fallback
+    return (increasing, decreasing) if aligned else (decreasing, increasing)
+
+
+def blts_match(coords, tags, index):
+    """Return conservative display attributes across both road directions."""
+    ab, ba = blts_matches(coords, tags, index)
+    matches = [match for match in (ab, ba) if match is not None]
+    if not matches:
+        return None
+    return {
+        'sh': min((match['sh'] for match in matches if match['sh'] is not None),
+                  default=None),
+        'spd': max((match['spd'] for match in matches if match['spd']), default=None),
+        'prohibited': any(match['prohibited'] for match in matches),
+        'limited': any(match['limited'] for match in matches),
+        'facility': any(match.get('facility') for match in matches),
+        'route': matches[0]['route'],
+    }
 
 
 def parse_mph(v):
@@ -889,7 +925,9 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     node_index = {}          # osm node id -> graph node index
     node_lon = array('f'); node_lat = array('f')
     eA = array('I'); eB = array('I'); eLen = array('f')
-    eSpeed = array('B'); eFlags = array('B'); eSh = array('b'); eClass = array('B')
+    eSpeed = array('B'); eSpeedBA = array('B'); eFlags = array('B')
+    eSh = array('b'); eShBA = array('b'); eLimitedDir = array('B')
+    eClass = array('B')
     eFacility = array('B'); eOfficial = array('B'); eSurface = array('B')
     eHazAB = array('B'); eHazBA = array('B')
     eHazStartAB = array('H'); eHazEndAB = array('H')
@@ -967,7 +1005,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
 
         wsdot_candidate = (
             wsdot is not None and not attrs['infra'] and not is_ferry
-            and (tags.get('highway') in WSDOT_CLASSES
+            and (tags.get('highway') in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}
                  or (tags.get('ref') and REF_STATE.search(tags['ref'])))
         )
 
@@ -980,7 +1018,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
         seg = [pts[0]]
         for p in pts[1:]:
             seg.append(p)
-            if refcount.get(p[0], 0) >= 2 or is_virtual_path_node(p[0]) or p is pts[-1]:
+            if (refcount.get(p[0], 0) >= 2 or is_virtual_path_node(p[0])
+                    or wsdot_candidate or p is pts[-1]):
                 coords = [(x, y) for _, x, y in seg]
                 if len(coords) >= 2:
                     length = line_len_m(coords)
@@ -990,7 +1029,9 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                         a = gnode(seg[0][0], *coords[0])
                         b = gnode(seg[-1][0], *coords[-1])
                         if a != b or length > 10:  # drop degenerate micro-loops
-                            espeed, esh, eflags = attrs['speed'], sh, flags
+                            espeed, espeed_ba = attrs['speed'], attrs['speed']
+                            esh, esh_ba, eflags = sh, sh, flags
+                            limited_dir = 0
                             efacility = attrs['facility']
                             eofficial = ((EDGE_MTB if attrs['mtb'] else 0)
                                          | (EDGE_DISMOUNT if attrs.get('dismount') else 0)
@@ -1002,31 +1043,39 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 seg = [p]
                                 continue  # WSDOT permanent bike restriction
                             if wsdot_candidate:
-                                best = blts_match(coords, tags, wsdot)
-                                if best is not None:
-                                    if best['prohibited']:
-                                        seg = [p]
-                                        continue  # WSDOT permanent bike restriction
-                                    if best['limited'] and efacility < FACILITY_LANE:
-                                        # WSDOT access control is useful safety context even
-                                        # when OSM calls the road a trunk rather than a
-                                        # motorway. Keep it distinct from flag 4: a bicycle-
-                                        # legal access-controlled highway is a caution, while
-                                        # a true motorway remains a last-resort route failure.
-                                        # A road that carries a bike lane is by definition not
-                                        # access-controlled (e.g. a street with bike lanes that
-                                        # merely bridges over I-5), so it never gets this flag.
-                                        eflags |= 128
-                                    if best['sh'] is not None:
-                                        esh = max(-1, min(127, int(best['sh'])))
-                                    if best['spd'] and (eflags & 1):
-                                        espeed = min(int(best['spd']), 255)
+                                match_ab, match_ba = blts_matches(coords, tags, wsdot)
+                                if match_ab is not None or match_ba is not None:
+                                    for direction, match in enumerate((match_ab, match_ba)):
+                                        if match is None:
+                                            continue
+                                        if match['prohibited']:
+                                            if direction == 0:
+                                                esh = PROHIBITED_SHOULDER
+                                            else:
+                                                esh_ba = PROHIBITED_SHOULDER
+                                        elif match['sh'] is not None:
+                                            shoulder = max(-1, min(127, int(match['sh'])))
+                                            if direction == 0:
+                                                esh = shoulder
+                                            else:
+                                                esh_ba = shoulder
+                                        if match['spd'] and (eflags & 1):
+                                            speed = min(int(match['spd']), 255)
+                                            if direction == 0:
+                                                espeed = speed
+                                            else:
+                                                espeed_ba = speed
+                                        if match['limited'] and efacility < FACILITY_LANE:
+                                            limited_dir |= 1 << direction
+                                    if ((match_ab and match_ab['spd'])
+                                            or (match_ba and match_ba['spd'])):
                                         eflags &= ~1  # measured, not estimated
                                     conflated[0] += 1
                             if speed_index and not attrs['infra'] and not is_ferry:
                                 match = official_match(coords, tags, speed_index)
                                 if match is not None:
                                     espeed = min(match['value'], 255)
+                                    espeed_ba = espeed
                                     eflags &= ~1
                                     eofficial |= OFFICIAL_SPEED
                                     official_speeds[0] += 1
@@ -1042,24 +1091,33 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                         eflags |= 2
                                         eofficial |= OFFICIAL_FACILITY
                                         official_facilities[0] += 1
+                                        if efacility >= FACILITY_LANE:
+                                            limited_dir = 0
                             asc, des = (0.0, 0.0) if is_ferry else edge_climb(coords, ele_at)
                             if is_ferry or attrs['infra']:
                                 haz_ab = haz_ba = (0, 0, 0)
                             else:
+                                hazard_speed = max(espeed, espeed_ba)
+                                known_shoulders = [value for value in (esh, esh_ba) if value >= 0]
+                                hazard_shoulder = min(known_shoulders) if known_shoulders else -1
                                 haz_ab, haz_ba = directional_curve_hazard(
-                                    coords, ele_at, espeed, esh, efacility)
+                                    coords, ele_at, hazard_speed, hazard_shoulder, efacility)
                             geom_off = len(gLon)
                             geom_cnt = min(len(coords), 65535)
                             for x, y in coords[:geom_cnt]:
                                 gLon.append(x); gLat.append(y)
 
-                            def append_edge(edge_flags, edge_speed, edge_sh,
+                            def append_edge(edge_flags, edge_speed, edge_speed_ba,
+                                            edge_sh, edge_sh_ba, edge_limited_dir,
                                             edge_class, edge_facility, edge_official, edge_surface,
                                             edge_asc, edge_des, ab, ba):
                                 eAsc.append(min(int(edge_asc), 65535)); eDes.append(min(int(edge_des), 65535))
                                 eA.append(a); eB.append(b); eLen.append(length)
-                                eSpeed.append(edge_speed); eFlags.append(edge_flags)
-                                eSh.append(edge_sh); eClass.append(edge_class)
+                                eSpeed.append(edge_speed); eSpeedBA.append(edge_speed_ba)
+                                eFlags.append(edge_flags)
+                                eSh.append(edge_sh); eShBA.append(edge_sh_ba)
+                                eLimitedDir.append(edge_limited_dir)
+                                eClass.append(edge_class)
                                 eFacility.append(edge_facility); eOfficial.append(edge_official)
                                 eSurface.append(edge_surface)
                                 eHazAB.append(ab[0]); eHazBA.append(ba[0])
@@ -1068,7 +1126,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 eName.append(name_idx(tags.get('name') or tags.get('ref')))
                                 eOff.append(geom_off); eCnt.append(geom_cnt)
 
-                            append_edge(eflags, espeed, esh,
+                            append_edge(eflags, espeed, espeed_ba, esh, esh_ba, limited_dir,
                                         attrs['road_class'], efacility, eofficial, attrs['surface'],
                                         asc, des, haz_ab, haz_ba)
                             if attrs['mtb']:
@@ -1126,7 +1184,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     U, B = len(name_list), len(name_blob)
     print(f'  names: {U:,} unique, blob {B:,} bytes', flush=True)
 
-    for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass,
+    for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes,
+                eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir, eClass,
                 eFacility, eOfficial, eSurface, eHazAB, eHazBA,
                 eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA,
                 eName, name_offs, eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat):
@@ -1135,13 +1194,15 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     # JS typed-array views need 4-byte alignment: pad after the byte arrays
     # and after the u16 arrays. The name blob goes LAST
     # so everything before it stays aligned.
-    parts = [b'BGR8', struct.pack('<IIIIII', N, E, D, G, U, B),
+    parts = [b'BGR9', struct.pack('<IIIIII', N, E, D, G, U, B),
              node_lon.tobytes(), node_lat.tobytes(), nEle.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
     parts += [eA.tobytes(), eB.tobytes(), eLen.tobytes(),
               eAsc.tobytes(), eDes.tobytes(),
-              eSpeed.tobytes(), eFlags.tobytes(), eSh.tobytes(), eClass.tobytes(),
+              eSpeed.tobytes(), eSpeedBA.tobytes(), eFlags.tobytes(),
+              eSh.tobytes(), eShBA.tobytes(), eLimitedDir.tobytes(),
+              eClass.tobytes(),
               eFacility.tobytes(), eOfficial.tobytes(), eSurface.tobytes(),
               eHazAB.tobytes(), eHazBA.tobytes()]
     off = sum(len(p) for p in parts)

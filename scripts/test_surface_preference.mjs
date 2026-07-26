@@ -16,9 +16,9 @@ assert.match(app, /\['Surface', presetRules\.preferPaved === true[\s\S]*?Strongl
   'preset rule previews should explain their strong paved-surface preference');
 assert.match(app, /check\('preferPaved', 'Strongly prefer paved surfaces'\)/,
   'the strong surface preference should be available in Settings');
-assert.match(app, /GRAPH_FORMAT_VERSION = 'bgr8-3'/,
-  'the app should request the BGR8 graph layout');
-assert.match(worker, /want BGR8/,
+assert.match(app, /GRAPH_FORMAT_VERSION = 'bgr9-1'/,
+  'the app should request the direction-aware BGR9 graph layout');
+assert.match(worker, /want BGR9/,
   'the router should reject an older graph layout instead of misreading it');
 assert.match(worker, /eSurface = u8\(E\)/,
   'the router should load one compact surface category for each graph edge');

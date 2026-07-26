@@ -26,7 +26,8 @@ Feature properties (short keys to keep the files small):
   n  name                   r  ref (route number)
   g  1 = on a designated bike route (USBR / regional trail)
   k  sidewalk state (1=present, 2=explicitly absent)
-  u  1 = Census urban area
+  u  1 = Census urban area   l  1 = WSDOT limited-access caution
+  d  1 = WSDOT-enriched state-highway geometry
 
 Requires: osmium (pyosmium), shapely.
 Usage: python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
@@ -99,37 +100,71 @@ def parse_shoulder_ft(tags):
     return None
 
 
-def build(src, out_prefix, urban_areas):
+def build(src, out_prefix, urban_areas, blts):
     from build_graph import (EDGE_SIDEWALK, EDGE_SIDEWALK_NO, EDGE_URBAN,
-                             collect_designated, is_urban_edge, load_urban_index,
-                             sidewalk_flags)
+                             blts_match, collect_designated, is_urban_edge,
+                             load_blts_index, load_urban_index, sidewalk_flags)
     designated = collect_designated(src)
     urban_index = load_urban_index(urban_areas)
+    wsdot_index = load_blts_index(blts)
     print(f'{len(designated):,} designated-route member ways', flush=True)
     feats = []
     kept = skipped_private = 0
-    for obj in osmium.FileProcessor(src).with_locations():
-        if not obj.is_way():
-            continue
+
+    def compact_coords(coords):
+        line = LineString(coords)
+        if len(coords) > 3:
+            line = line.simplify(SIMPLIFY_DEG, preserve_topology=False)
+        return [[round(x, COORD_DECIMALS), round(y, COORD_DECIMALS)]
+                for x, y in line.coords]
+
+    def wsdot_values(match):
+        if match is None:
+            return None
+        return (match['spd'], match['sh'], match['limited'],
+                match['facility'], match['prohibited'])
+
+    def add_feature(coords, base_props, match=None):
+        nonlocal kept
+        cc = compact_coords(coords)
+        props = dict(base_props)
+        if match is not None:
+            props['d'] = 1
+            if match['spd']:
+                props['s'] = int(match['spd'])
+                props.pop('e', None)
+            if match['sh'] is not None:
+                props['w'] = int(match['sh'])
+            if match['limited']:
+                props['l'] = 1
+            if match['facility']:
+                props['f'] = 1
+            if match['prohibited']:
+                props['b'] = 1
+        if is_urban_edge(cc, urban_index):
+            props['u'] = 1
+        feats.append(json.dumps(
+            {'type': 'Feature', 'properties': props,
+             'geometry': {'type': 'LineString', 'coordinates': cc}},
+            separators=(',', ':')))
+        kept += 1
+
+    def process_way(obj):
+        nonlocal kept, skipped_private
         tags = {t.k: t.v for t in obj.tags}
         hw = tags.get('highway')
         if hw not in CLASSES:
-            continue
+            return
         # Mode-specific tags override the blanket access default: keep roads
         # closed to general traffic but explicitly open to bikes.
         if tags.get('access') in ('private', 'no') and \
                 tags.get('bicycle') not in ('yes', 'designated', 'permissive'):
             skipped_private += 1
-            continue
+            return
 
         coords = [(nd.location.lon, nd.location.lat) for nd in obj.nodes if nd.location.valid()]
         if len(coords) < 2:
-            continue
-        line = LineString(coords)
-        if len(coords) > 3:
-            line = line.simplify(SIMPLIFY_DEG, preserve_topology=False)
-        cc = [[round(x, COORD_DECIMALS), round(y, COORD_DECIMALS)] for x, y in line.coords]
-
+            return
         p = {'h': hw}
         spd = parse_mph(tags.get('maxspeed'))
         if spd is None:
@@ -152,8 +187,6 @@ def build(src, out_prefix, urban_areas):
             p['n'] = tags['name']
         if tags.get('ref'):
             p['r'] = tags['ref']
-        if hw in WSDOT_CLASSES or (tags.get('ref') and REF_STATE.search(tags['ref'])):
-            p['d'] = 1  # duplicated by the WSDOT BLTS layer
         if obj.id in designated:
             p['g'] = 1  # on a designated bike route (USBR / regional trail)
         sidewalk = sidewalk_flags(tags)
@@ -161,14 +194,36 @@ def build(src, out_prefix, urban_areas):
             p['k'] = 1
         elif sidewalk & EDGE_SIDEWALK_NO:
             p['k'] = 2
-        if is_urban_edge(cc, urban_index):
-            p['u'] = 1
+        wsdot_candidate = (hw in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}
+                           or (tags.get('ref') and REF_STATE.search(tags['ref'])))
+        if not wsdot_candidate:
+            add_feature(coords, p)
+            return
 
-        feats.append(json.dumps(
-            {'type': 'Feature', 'properties': p,
-             'geometry': {'type': 'LineString', 'coordinates': cc}},
-            separators=(',', ':')))
-        kept += 1
+        # Match each OSM node interval before coalescing equal runs. WSDOT
+        # shoulder records can change inside one long OSM way; matching the
+        # whole way selected whichever inventory record covered most of it and
+        # misplaced the boundary by hundreds of feet.
+        runs = []
+        for start, end in zip(coords, coords[1:]):
+            match = blts_match([start, end], tags, wsdot_index)
+            signature = wsdot_values(match)
+            if runs and runs[-1][0] == signature:
+                runs[-1][1].append(end)
+            else:
+                runs.append([signature, [start, end], match])
+        for _, run_coords, match in runs:
+            add_feature(run_coords, p, match)
+
+    class RoadsHandler(osmium.SimpleHandler):
+        def way(self, obj):
+            process_way(obj)
+
+    # SimpleHandler keeps node locations in libosmium and calls Python only
+    # for completed ways. FileProcessor also materialized hundreds of millions
+    # of unrelated nodes/relations as Python objects and made this build take
+    # many times longer without changing its result.
+    RoadsHandler().apply_file(src, locations=True)
 
     # Split into files, each under MAX_FILE_BYTES.
     files, cur, cur_bytes = [], [], 0
@@ -199,5 +254,7 @@ if __name__ == '__main__':
     ap.add_argument('--out-prefix', default='data/roads')
     ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-wa.geojson',
                     help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
+    ap.add_argument('--blts', default='data/blts.geojson',
+                    help='WSDOT BLTS GeoJSON used to enrich state-highway geometry')
     args = ap.parse_args()
-    build(args.src, args.out_prefix, args.urban_areas)
+    build(args.src, args.out_prefix, args.urban_areas, args.blts)

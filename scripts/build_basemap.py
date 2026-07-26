@@ -6,8 +6,8 @@ This archive adds only the visual context the routing graph does not carry:
 land, water, green space, waterways, and settlement label points.
 
 Inputs:
-  * Geofabrik Washington OSM PBF (water and green-space geometry)
-  * Natural Earth 1:10m land shapefile (coastline/land backdrop)
+  * Geofabrik Washington OSM PBF (detailed coastline, water, and green space)
+  * Natural Earth 1:10m land shapefile (low-zoom land fallback)
   * The app's existing compact places.json search index
 
 Requires the ``osmium`` and ``tippecanoe`` command-line tools, plus the
@@ -24,7 +24,8 @@ import tempfile
 from pathlib import Path
 
 import shapefile
-from shapely.geometry import box, mapping, shape
+from shapely.geometry import LinearRing, Polygon, box, mapping, shape
+from shapely.ops import linemerge, unary_union
 
 
 BOUNDS = (-125.5, 45.2, -116.7, 50.0)
@@ -153,6 +154,7 @@ def export_osm_context(source: Path, work: Path) -> dict[str, Path]:
 
 
 def export_land(source: Path, output: Path) -> None:
+    """Clip the generalized Natural Earth land used at regional zooms."""
     clip = box(*BOUNDS)
     reader = shapefile.Reader(str(source))
     count = 0
@@ -171,6 +173,106 @@ def export_land(source: Path, output: Path) -> None:
             })
             count += 1
     print(f"Natural Earth land: {count:,} clipped feature(s)")
+
+
+def export_detailed_land(source: Path, output: Path, work: Path) -> None:
+    """Build accurate close-zoom land polygons from directed OSM coastlines.
+
+    Natural Earth is intentionally generalized and can put island streets in
+    the ocean when overzoomed. OSM coastline ways keep land on their left.
+    Merging those ways produces closed island rings plus one long mainland
+    coastline. Natural Earth remains underneath as a regional fallback; these
+    polygons replace its shoreline only from zoom 8 onward.
+    """
+    coast_pbf = work / "coastline.osm.pbf"
+    coast_seq = work / "coastline.geojsonseq"
+    export_config = work / "coastline-export-config.json"
+    run(
+        "osmium", "tags-filter", "-t", "-O", "-o", str(coast_pbf),
+        str(source), "w/natural=coastline",
+    )
+    export_config.write_text(json.dumps({
+        "attributes": {
+            "type": False, "id": False, "version": False, "changeset": False,
+            "timestamp": False, "uid": False, "user": False, "way_nodes": False,
+        },
+        "format_options": {},
+        # The input PBF was already filtered to coastline ways. Force every
+        # closed island way to remain a directed line so land-on-the-left
+        # orientation is preserved for polygon assembly below.
+        "linear_tags": True,
+        "area_tags": False,
+        "include_tags": ["natural"],
+    }, indent=2))
+    run(
+        "osmium", "export", "-c", str(export_config), "-f", "geojsonseq",
+        "-O", "-o", str(coast_seq), str(coast_pbf),
+    )
+
+    lines = []
+    with coast_seq.open(encoding="utf-8") as source_file:
+        for line in source_file:
+            feature = json.loads(line.lstrip("\x1e"))
+            geometry = feature.get("geometry")
+            if not geometry:
+                continue
+            item = shape(geometry)
+            if item.geom_type == "LineString":
+                lines.append(item)
+            elif item.geom_type == "MultiLineString":
+                lines.extend(item.geoms)
+    merged = linemerge(unary_union(lines))
+    parts = list(merged.geoms) if merged.geom_type == "MultiLineString" else [merged]
+    closed = [line for line in parts if line.is_ring]
+    open_lines = [line for line in parts if not line.is_ring]
+    if not closed or not open_lines:
+        raise RuntimeError("OSM coastline did not produce island and mainland geometry")
+
+    clip = box(*BOUNDS)
+    polygons = []
+    for ring in closed:
+        # OSM coastlines are directed with land on the left. Closed island
+        # rings must therefore be counter-clockwise.
+        if not LinearRing(ring.coords).is_ccw:
+            continue
+        polygon = Polygon(ring.coords)
+        if not polygon.is_valid:
+            polygon = polygon.buffer(0)
+        polygon = polygon.intersection(clip)
+        if not polygon.is_empty:
+            polygons.append(polygon)
+
+    # The longest open coastline is the Pacific-facing mainland. It runs from
+    # north to south in the Washington extract, with mainland on its left.
+    mainland_coast = max(open_lines, key=lambda line: line.length)
+    coast_coords = list(mainland_coast.coords)
+    if coast_coords[0][1] < coast_coords[-1][1]:
+        coast_coords.reverse()
+    minx, miny, maxx, maxy = BOUNDS
+    mainland = Polygon([
+        *coast_coords,
+        (maxx, miny),
+        (maxx, maxy),
+        coast_coords[0],
+    ]).buffer(0).intersection(clip)
+    if mainland.is_empty:
+        raise RuntimeError("OSM mainland coastline did not produce land geometry")
+    polygons.append(mainland)
+
+    count = 0
+    with output.open("w", encoding="utf-8") as handle:
+        for polygon in polygons:
+            write_record(handle, {
+                "type": "Feature",
+                "tippecanoe": {"minzoom": 8},
+                "properties": {},
+                "geometry": mapping(polygon),
+            })
+            count += 1
+    print(
+        f"OSM detailed land: {count:,} polygons "
+        f"({len(closed):,} closed rings, {len(open_lines):,} open coastlines)"
+    )
 
 
 def place_minzoom(kind: str, population: int) -> int:
@@ -205,7 +307,7 @@ def main() -> None:
     parser.add_argument("--natural-earth-land", required=True,
                         help="Path to ne_10m_land.shp")
     parser.add_argument("--out", default="data/basemap.pmtiles")
-    parser.add_argument("--maxzoom", type=int, default=10,
+    parser.add_argument("--maxzoom", type=int, default=13,
                         help="highest stored context zoom (higher zooms overzoom these tiles)")
     parser.add_argument("--simplification", type=float, default=8,
                         help="tippecanoe low-zoom simplification factor")
@@ -221,8 +323,10 @@ def main() -> None:
         work = Path(tmp)
         layers = export_osm_context(Path(args.src), work)
         land = work / "land.geojsonseq"
+        detailed_land = work / "land-detail.geojsonseq"
         places = work / "places.geojsonseq"
         export_land(Path(args.natural_earth_land), land)
+        export_detailed_land(Path(args.src), detailed_land, work)
         export_places(Path(args.places), places)
         run(
             "tippecanoe", "-o", str(output), "--force", "-Z4", f"-z{args.maxzoom}",
@@ -230,6 +334,7 @@ def main() -> None:
             "--extend-zooms-if-still-dropping", f"--simplification={args.simplification}",
             "--simplify-only-low-zooms", "--read-parallel",
             "-L", f"land:{land}",
+            "-L", f"land_detail:{detailed_land}",
             "-L", f"water:{layers['water']}",
             "-L", f"waterway:{layers['waterway']}",
             "-L", f"green:{layers['green']}",

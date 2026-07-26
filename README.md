@@ -212,13 +212,15 @@ and members of OSM `route=mtb` relations are retained with an MTB marker. The
 app hides and excludes them by default, but can make them available through
 the rider-controlled **Allow mountain bike trails** option.
 
-### Full road network → `data/roads.pmtiles` (~324k ways, vector tiles)
+### Full road network → `data/roads.pmtiles` (~339k ways, vector tiles)
 
 ```bash
 python3 scripts/fetch_census_urban_areas.py
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
-                               --out-prefix data/roads
-tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z11 \
+                               --out-prefix data/roads \
+                               --urban-areas data/census-urban-areas-2020-wa.geojson \
+                               --blts data/blts.geojson
+tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
   --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
   --simplification=8 --read-parallel data/roads-1.geojson data/roads-2.geojson
 rm data/roads-*.geojson  # intermediate
@@ -228,7 +230,11 @@ Same Geofabrik extract. Keeps `motorway`..`tertiary` (+links), `unclassified`,
 `residential`, `living_street`; excludes `service`/`track` and
 `access=private/no`. Where OSM has no usable `maxspeed`, a class-based default
 is baked in (e.g. residential → 25 mph) and flagged `e=1` so the UI shows
-"(estimated from class)".
+it as estimated. State-highway shoulder, speed, facility, restriction, and
+limited-access facts are conflated onto the matching OSM road centerline.
+WSDOT's two inventory directions are combined conservatively for this neutral
+background display, avoiding overlapping pass/fail lines; the routing graph
+below retains each direction separately.
 
 The build also records compact OSM sidewalk state (`k`) and 2020 Census urban
 area context (`u`). They let the map use the same urban/rural no-shoulder rules
@@ -237,9 +243,7 @@ as the routing graph without adding a large runtime data layer.
 Served as **PMTiles** — a single static vector-tile file read via HTTP range
 requests (no tile server). The browser fetches only the small tiles in view,
 so this layer no longer parses ~78 MB of GeoJSON in the page (which crashed
-iOS Safari). Tiles above stored zoom 11 are overzoomed; their vector geometry
-remains sharp while avoiding redundant high-zoom copies. It is scored with
-**MapLibre expressions** (`roadLevelExpr` in
+iOS Safari). It is scored with **MapLibre expressions** (`roadLevelExpr` in
 `app.js`): a rule change just swaps paint/filter expressions — instant at any
 data size, GeoJSON or tiles.
 
@@ -251,10 +255,8 @@ python3 scripts/build_basemap.py \
   --natural-earth-land /path/to/ne_10m_land.shp
 ```
 
-The ~15 MB context archive contains clipped Natural Earth land plus OSM water,
-waterways, parks/forests/wetlands, and the existing offline place index. It
-stores context through zoom 10 and overzooms those vectors at closer scales;
-roads and their labels remain independently detailed through zoom 11.
+The 43 MB context archive contains clipped Natural Earth land plus OSM water,
+waterways, parks/forests/wetlands, and the existing offline place index.
 Street geometry and street names come from `roads.pmtiles`, so the basemap and
 safety overlay share one decoded MapLibre source instead of loading duplicate
 road tiles. The locally bundled Noto Sans glyph ranges render labels in both
@@ -296,14 +298,9 @@ python3 scripts/fetch_wsdot_graph_data.py
 # fetch 2020 Census urban-area polygons (build input; not committed)
 python3 scripts/fetch_census_urban_areas.py
 python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
-# Conservative final passes over the authoritative WSDOT linework. They are
-# idempotent and catch a few very-close matches that the build-time conflation
-# deliberately leaves alone.
-python3 scripts/patch_graph_limited_access.py --apply
-python3 scripts/patch_graph_prohibited.py --apply
 ```
 
-A compact BGR8 binary graph (nodes at intersections plus graph-only nodes at
+A compact BGR9 binary graph (nodes at intersections plus graph-only nodes at
 roughly 120 m intervals on dedicated paths, so a point placed on a long trail
 snaps to that trail; edges carry length,
 climb/descent sampled every 60 m from the DEM, the original OSM road class,
@@ -312,7 +309,11 @@ OSM surface category (paved, gravel/compacted, rough unpaved, or unknown), typed
 bicycle facility, authoritative-source bits, freeway/limited-access/
 infrastructure flags, shoulder from WSDOT conflation or OSM, compact OSM
 sidewalk state, Census urban-area context, and directional
-curve-warning severity/range). Pedestrian-only and `bicycle=no` ways are not
+curve-warning severity/range). WSDOT increasing/decreasing inventory records
+are stored as directional speed, shoulder, prohibition, and limited-access
+attributes, so opposite sides of a state highway can correctly receive
+different routing verdicts without being painted as two physical roads.
+Pedestrian-only and `bicycle=no` ways are not
 included in the riding graph. `bicycle=dismount` ways are retained as
 walk-bike connectors: the router charges walking time plus a strong per-entry
 cost and reports them as dismount points. Short `highway=service` links are treated as

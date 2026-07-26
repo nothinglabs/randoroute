@@ -15,11 +15,11 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-25.358';
+const APP_VERSION = '2026-07-25.359';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
-const GRAPH_FORMAT_VERSION = 'bgr8-3';
+const GRAPH_FORMAT_VERSION = 'bgr9-1';
 const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
@@ -245,7 +245,7 @@ function scoreRoad(p) {
     prohibited: p.b === 1,
     restricted: false,
     freeway: p.m === 1,
-    limited_access: p.m === 1,
+    limited_access: p.m === 1 || p.l === 1,
     good_facility: p.f === 1,
     infra: false,
     est: p.e === 1,
@@ -333,7 +333,7 @@ const SOURCES = [
   {
     id: 'routes',
     name: 'Designated routes (USBR & regional)',
-    url: 'data/bikeroutes.geojson.gz',
+    url: 'data/bikeroutes.geojson',
     scorer: scoreRouteOverlay,
     zRank: -1,     // a ribbon UNDER the scoring layers
     ribbon: true,  // informational overlay: identical in both display modes
@@ -344,7 +344,7 @@ const SOURCES = [
   {
     id: 'blts',
     name: 'WSDOT BLTS (state highways)',
-    url: 'data/blts.geojson.gz',
+    url: 'data/blts.geojson',
     scorer: scoreBLTS,
     zRank: 1,
     minVisibleZoom: BikeBasemap.ROAD_MIN_ZOOM.major,
@@ -355,7 +355,7 @@ const SOURCES = [
   {
     id: 'osm',
     name: 'OSM bike infrastructure',
-    url: 'data/bikeinfra.geojson.gz',
+    url: 'data/bikeinfra.geojson',
     scorer: scoreOSM,
     zRank: 2,
     minVisibleZoom: BikeBasemap.ROAD_MIN_ZOOM.major,
@@ -366,7 +366,7 @@ const SOURCES = [
   {
     id: 'restrict',
     name: 'Bikes prohibited (WSDOT)',
-    url: 'data/bike_restrictions.geojson.gz',
+    url: 'data/bike_restrictions.geojson',
     scorer: scoreRestrict,
     zRank: 3,     // always on top
     fixed: true,  // fixed regulatory styling — identical in both display modes
@@ -377,7 +377,7 @@ const SOURCES = [
   {
     id: 'closures',
     name: 'Known route closures (OSM)',
-    url: 'data/route_closures.geojson.gz',
+    url: 'data/route_closures.geojson',
     zRank: 4,     // always above roads, routes, and the active route line
     closure: true,
     expr: true,   // static GeoJSON; no riding-rule score to calculate
@@ -393,13 +393,13 @@ const SOURCES = [
     // The ?v= busts stale HTTP range caches when the tiles are rebuilt —
     // PMTiles bypasses the service worker, and mixing old/new byte ranges
     // silently breaks tile decoding. Bump alongside the sw.js VERSION.
-    vector: 'pmtiles://data/roads.pmtiles?v=13',
+    vector: 'pmtiles://data/roads.pmtiles?v=15',
     // The local basemap already opens this archive for its street geometry and
     // labels. Reuse that MapLibre source for safety coloring and hit testing so
     // iOS does not decode or retain the same vector tiles twice.
     mapSourceId: 'basemap-roads',
     sourceLayer: 'roads',
-    count: 324089, // baked at build time (tiles don't carry a global count)
+    count: 338650, // baked at build time (tiles don't carry a global count)
     scorer: scoreRoad,
     zRank: 0,      // bottom: authoritative layers draw on top
     expr: true,    // scored via map expressions (works identically on tiles)
@@ -428,15 +428,17 @@ display.passFail = false;
 // expression and re-apply paint/filters, which is instant at any data size.
 function roadLevelExpr() {
   const spd = ['get', 's'];
+  const passLevel = ['case', ['==', ['get', 'l'], 1], 3, 1];
+  const ordinaryPassLevel = ['case', ['==', ['get', 'l'], 1], 3, 2];
   const noShoulderMax = ['case', ['==', ['get', 'u'], 1],
     rules.urbanMaxSpeedNoShoulder, rules.ruralMaxSpeedNoShoulder];
   const cases = [];
   cases.push(['==', ['get', 'b'], 1], 4);                       // bikes prohibited
   cases.push(['==', ['get', 'm'], 1], 4);                       // freeway: last-resort failure
   if (!rules.noUpperLimit) cases.push(['>', spd, rules.upperMaxSpeed], 4); // absolute speed cap
-  cases.push(['<=', spd, noShoulderMax], 1);                    // slow = comfortable
+  cases.push(['<=', spd, noShoulderMax], passLevel);            // slow = comfortable
   if (rules.vettedBikeRoutes)
-    cases.push(['==', ['get', 'g'], 1], 2);                     // designated route = vetted
+    cases.push(['==', ['get', 'g'], 1], ordinaryPassLevel);     // designated route = vetted
   // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
   // otherwise only a known-narrow shoulder fails.
   const sh = rules.unknownShoulderZero
@@ -449,7 +451,7 @@ function roadLevelExpr() {
   } else {
     cases.push(shoulderFailure, 4);
   }
-  return ['case', ...cases, 2];                                  // meets criteria
+  return ['case', ...cases, ordinaryPassLevel];                  // meets criteria
 }
 
 /* ------------------------------------------------------------- map */
@@ -778,7 +780,7 @@ function updatePassiveMapLocation(position, reason = 'foreground') {
   return true;
 }
 
-async function recenterMapOnCurrentLocation(reason = 'foreground') {
+async function recenterMapOnCurrentLocation(reason = 'launch') {
   if (document.visibilityState === 'hidden') return false;
   if (mapLocationRequest) return mapLocationRequest;
   const now = Date.now();
@@ -795,7 +797,7 @@ async function recenterMapOnCurrentLocation(reason = 'foreground') {
   return mapLocationRequest;
 }
 
-function requestMapLocationRecenter(reason = 'foreground') {
+function requestMapLocationRecenter(reason = 'launch') {
   if (map.loaded()) return recenterMapOnCurrentLocation(reason);
   map.once('load', () => recenterMapOnCurrentLocation(reason));
   return null;
@@ -1225,6 +1227,18 @@ function applyDisplayMode(src) {
     updateVisibility(src);
     return;
   }
+  if (src.id === 'blts') {
+    // WSDOT remains queryable for its detailed road-information cards, but
+    // its increasing/decreasing inventory lines must not be painted on top of
+    // one another. State-highway verdicts are conflated onto the matching OSM
+    // road centerline in roads.pmtiles, producing one aligned visual road.
+    for (const id of [src.id, failId(src), vhId(src)]) {
+      if (map.getLayer(id)) map.setFilter(id, ['boolean', false]);
+    }
+    if (map.getLayer(hitId(src))) map.setFilter(hitId(src), null);
+    updateVisibility(src);
+    return;
+  }
   if (src.fixed) {
     // Regulatory overlay: exempt from the rules, but drawn with the SAME
     // color coding as any failing road in the current display mode.
@@ -1250,13 +1264,8 @@ function applyDisplayMode(src) {
   // can follow the exact same major/medium/local zoom thresholds as the
   // locally rendered street underneath.
   const alignRoadClasses = src.id === 'roads' || src.id === 'osm';
-  // Dedup: while the (data-rich) WSDOT source is on, hide its state highways
-  // from the All-roads layer (d=1) — otherwise OSM's unknown-shoulder "pass"
-  // would visually mask WSDOT's measured verdict on the same physical road.
-  const dedup = src.id === 'roads' && SOURCES.find((s) => s.id === 'blts').enabled;
   const and = (f) => {
     const conds = [f];
-    if (dedup) conds.push(['!=', ['get', 'd'], 1]);
     // Explicitly technical MTB paths stay out of the normal map view as well
     // as the normal router. They reappear immediately when the rider opts in.
     if (src.id === 'osm' && !rules.allowMtbTrails) conds.push(OSM_NOT_MTB_EXPR);
@@ -1336,7 +1345,7 @@ function applyDisplayMode(src) {
     // generic road target off them ensures the full-width trail target wins
     // instead of a thinner overlapping target being returned first.
     const mainHitFilter = src.id === 'osm' ? OSM_NOT_TRAIL_EXPR : ['boolean', true];
-    map.setFilter(hitId(src), (dedup || src.id === 'osm') ? and(mainHitFilter) : null);
+    map.setFilter(hitId(src), src.id === 'osm' ? and(mainHitFilter) : null);
     const normalHitWidth = ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22];
     const knownRoadClass = ['any',
       ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR, ROAD_CLASS_LOCAL_EXPR];
@@ -1362,20 +1371,6 @@ function applyDisplayMode(src) {
 function applyDisplayModeAll() {
   for (const src of SOURCES) applyDisplayMode(src);
   buildLegend();
-}
-
-async function jsonAssetResponse(response, url) {
-  if (!/\.gz(?:$|[?#])/.test(url)) return response.json();
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  // A server is allowed to apply Content-Encoding and hand fetch() the
-  // already-expanded bytes. Otherwise expand the bundled gzip locally.
-  const compressed = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-  if (!compressed) return JSON.parse(new TextDecoder().decode(bytes));
-  if (!window.fflate?.gunzipSync || !window.fflate?.strFromU8) {
-    throw new Error('compressed map-data decoder unavailable');
-  }
-  const expanded = window.fflate.gunzipSync(bytes);
-  return JSON.parse(window.fflate.strFromU8(expanded));
 }
 
 async function loadSource(src) {
@@ -1407,7 +1402,7 @@ async function loadSource(src) {
           if (i === 1) throw new Error('HTTP ' + res.status);
           break;
         }
-        const part = await jsonAssetResponse(res, src.urlPattern.replace('{i}', i));
+        const part = await res.json();
         // (no spread: pushing 200k+ args at once overflows the call stack)
         for (const f of part.features) features.push(f);
         setStatus(`Loading ${src.name}… ${features.length.toLocaleString()} segments`, true);
@@ -1416,7 +1411,7 @@ async function loadSource(src) {
     } else {
       const res = await fetch(src.url);
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      fc = await jsonAssetResponse(res, src.url);
+      fc = await res.json();
     }
     src.count = fc.features.length;
     src.fc = fc;
@@ -1438,11 +1433,6 @@ function setSourceVisible(src, on) {
   if (on && !src.loaded) loadSource(src);
   else if (on && !map.getLayer(src.id)) ensureLayer(src);
   else updateVisibility(src);
-  // The roads layer's dedup filter depends on whether WSDOT is enabled.
-  if (src.id === 'blts') {
-    const roads = SOURCES.find((s) => s.id === 'roads');
-    if (map.getLayer(roads.id)) applyDisplayMode(roads);
-  }
   buildLegend();
   saveStateSoon();
 }
@@ -2702,7 +2692,6 @@ function nativeNavigationPlugin() {
 }
 
 let nativeNavigationListenersReady = null;
-let nativeAppLifecycleListenerReady = null;
 function nativePositionEvent(position) {
   return {
     coords: {
@@ -2731,24 +2720,6 @@ function ensureNativeNavigationListeners() {
   });
   return nativeNavigationListenersReady;
 }
-
-function ensureNativeAppLifecycleListener() {
-  const plugin = nativeNavigationPlugin();
-  if (!plugin) return Promise.resolve(false);
-  if (nativeAppLifecycleListenerReady) return nativeAppLifecycleListenerReady;
-  // Capacitor's native proxy returns a listener handle immediately on some
-  // versions and a promise on others. Normalize both shapes so native startup
-  // cannot be interrupted before the map and routing data initialize.
-  nativeAppLifecycleListenerReady = Promise.resolve(plugin.addListener(
-    'appActive',
-    () => requestMapLocationRecenter('foreground'),
-  )).then(() => true).catch(() => {
-    nativeAppLifecycleListenerReady = null;
-    return false;
-  });
-  return nativeAppLifecycleListenerReady;
-}
-ensureNativeAppLifecycleListener();
 
 function nativeNavigationRoutePayload() {
   const route = turnNav.route;
@@ -3814,7 +3785,6 @@ function stopTurnNavigation(announce = true) {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   if (turnNav.active) requestNavigationWakeLock();
-  requestMapLocationRecenter('foreground');
 });
 
 function renderRouteCard(m) {
@@ -6433,19 +6403,20 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Width', p.width != null ? `${p.width} m` : null],
     ];
   } else if (src.id === 'roads') {
-    title = 'Road (OSM)';
+    title = p.d ? 'Road (OSM geometry + WSDOT data)' : 'Road (OSM)';
     rows = [
       ['Name', p.n],
       ...common,
       ['Class', p.h + (p.r ? ` (${p.r})` : '')],
       ['Speed limit', p.s != null ? `${p.s} mph${p.e ? ' (estimated from class)' : ''}` : null],
       ['Shoulder', p.w != null ? p.w + ' ft' : null],
+      ['Road data', p.d ? 'WSDOT directions combined conservatively for map display' : null],
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
       ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
       ['Bike facility', p.f ? 'yes' : null],
-      ['Limited access', p.m ? 'yes' : null],
-      ['Bikes prohibited', p.b ? 'yes (OSM tag)' : null],
+      ['Limited access', p.m || p.l ? 'yes' : null],
+      ['Bikes prohibited', p.b ? (p.d ? 'yes (OSM or WSDOT)' : 'yes (OSM tag)') : null],
     ];
   } else {
     title = 'Road segment (WSDOT)';

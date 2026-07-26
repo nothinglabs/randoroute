@@ -13,7 +13,8 @@
 
 let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
-let eA, eB, eLen, eAsc, eDes, eSpeed, eFlags, eSh, eClass, eFacility, eOfficial, eSurface;
+let eA, eB, eLen, eAsc, eDes, eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir;
+let eClass, eFacility, eOfficial, eSurface;
 let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
@@ -78,7 +79,7 @@ function bearingDeg(fromLon, fromLat, toLon, toLat) {
 
 function loadGraph(buf) {
   const dv = new DataView(buf);
-  if (dv.getUint32(0, false) !== 0x42475238) throw new Error('bad graph magic (want BGR8)');
+  if (dv.getUint32(0, false) !== 0x42475239) throw new Error('bad graph magic (want BGR9)');
   N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
   const G = dv.getUint32(16, true), U = dv.getUint32(20, true), B = dv.getUint32(24, true);
   let o = 28;
@@ -94,7 +95,8 @@ function loadGraph(buf) {
   pad4();
   eA = u32(E); eB = u32(E); eLen = f32(E);
   eAsc = u16(E); eDes = u16(E);
-  eSpeed = u8(E); eFlags = u8(E); eSh = i8(E); eClass = u8(E);
+  eSpeed = u8(E); eSpeedBA = u8(E); eFlags = u8(E);
+  eSh = i8(E); eShBA = i8(E); eLimitedDir = u8(E); eClass = u8(E);
   eFacility = u8(E); eOfficial = u8(E); eSurface = u8(E);
   eHazAB = u8(E); eHazBA = u8(E);
   pad2();
@@ -159,7 +161,9 @@ function loadGraph(buf) {
   // bike network rather than snap onto an edge that A* will reject.
   nodeNonMtb = new Uint8Array(N);
   for (let i = 0; i < E; i++) {
-    if (eSh[i] !== PROHIBITED_SHOULDER && !(eFlags[i] & (4 | 32))) {
+    const hasLegalDirection = eSh[i] !== PROHIBITED_SHOULDER
+      || (!(eFlags[i] & 16) && eShBA[i] !== PROHIBITED_SHOULDER);
+    if (hasLegalDirection && !(eFlags[i] & (4 | 32))) {
       nodeLocal[eA[i]] = 1; nodeLocal[eB[i]] = 1;
       if (!(eOfficial[i] & EDGE_MTB)) {
         nodeNonMtb[eA[i]] = 1; nodeNonMtb[eB[i]] = 1;
@@ -277,20 +281,33 @@ function edgeNoShoulderMax(i, rules) {
   return eOfficial[i] & EDGE_URBAN ? urban : rural;
 }
 
-function sidewalkFallbackApplies(i, rules, shoulder = eSh[i]) {
+function edgeSpeed(i, forward) {
+  return forward ? eSpeed[i] : eSpeedBA[i];
+}
+
+function edgeShoulder(i, forward) {
+  return forward ? eSh[i] : eShBA[i];
+}
+
+function edgeLimited(i, forward) {
+  return !!(eLimitedDir[i] & (forward ? 1 : 2));
+}
+
+function sidewalkFallbackApplies(i, rules, forward, shoulder = edgeShoulder(i, forward)) {
   return rules.allowSidewalkFallback && !!(eOfficial[i] & EDGE_SIDEWALK)
-    && eFacility[i] === 0 && eSpeed[i] > edgeNoShoulderMax(i, rules)
+    && eFacility[i] === 0 && edgeSpeed(i, forward) > edgeNoShoulderMax(i, rules)
     && shoulder >= 0 && shoulder < rules.minShoulder;
 }
 
-function edgeLevel(i, rules) {
+function edgeLevel(i, rules, forward) {
   const flags = eFlags[i];
-  if (eSh[i] === PROHIBITED_SHOULDER) return 4;      // WSDOT prohibition
+  const shoulder = edgeShoulder(i, forward);
+  if (shoulder === PROHIBITED_SHOULDER) return 4;    // WSDOT prohibition
   if (flags & 32) return 2;                         // ferry — no road rules apply
   if (flags & 4) return 4;                         // freeway: last-resort failure
   if ((flags & 8) || eFacility[i] >= 4) return 1;  // protected lane / shared path
-  const limitedAccess = flags & 128;                // WSDOT bike-legal caution
-  const spd = eSpeed[i];
+  const limitedAccess = edgeLimited(i, forward);    // WSDOT bike-legal caution
+  const spd = edgeSpeed(i, forward);
   // The rider-facing “Never allow roads faster than” control is absolute for
   // ordinary roads, including designated routes. Dedicated infrastructure,
   // ferries, freeways, and prohibitions were handled above.
@@ -300,14 +317,14 @@ function edgeLevel(i, rules) {
   // vetted corridor. Otherwise it is evaluated by the normal shoulder rule.
   if ((flags & 64) && rules.vettedBikeRoutes) return limitedAccess ? 3 : 2;
   // eSh < 0 = unknown; pessimistic mode counts that as a 0 ft shoulder.
-  let sh = eSh[i];
+  let sh = shoulder;
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
   // Any recorded bike facility, including a shared-lane marking, satisfies
   // the bike-accommodation check without requiring sidewalk fallback.
   if (eFacility[i] === 0 && sh >= 0 && sh < rules.minShoulder) {
     // A mapped sidewalk is an opt-in shoulder fallback. It remains a caution
     // and receives a strong route-choice cost below, but is not a rule fail.
-    if (sidewalkFallbackApplies(i, rules, sh)) return 3;
+    if (sidewalkFallbackApplies(i, rules, forward, sh)) return 3;
     return 4;
   }
   return limitedAccess ? 3 : 2;
@@ -400,8 +417,8 @@ function hazardMult(mode, severity) {
 // OSM road class is a useful traffic-volume proxy where measured AADT is not
 // available. This is deliberately a finite route-choice cost, not a safety
 // failure. Any recorded bike facility removes the no-facility proxy penalty.
-function majorRoadMult(i, mode) {
-  if (eFacility[i] >= 1 || (eFlags[i] & (8 | 32 | 4 | 128))) return 1;
+function majorRoadMult(i, mode, forward) {
+  if (eFacility[i] >= 1 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
   const cls = eClass[i];
   const suffix = mode === 'direct' ? 'Direct' : mode === 'low' ? 'Low' : 'Balanced';
   if (cls === 4 || cls === 5) return activeWeights['arterialTertiary' + suffix];
@@ -413,9 +430,9 @@ function majorRoadMult(i, mode) {
 // `sidewalk=no` is positive evidence of less forgiving urban road context.
 // Missing sidewalk tags remain neutral. This is deliberately a soft cost,
 // never a claim about bicycle legality or actual traffic counts.
-function sidewalkExposureMult(i, mode) {
+function sidewalkExposureMult(i, mode, forward) {
   if ((eOfficial[i] & (EDGE_URBAN | EDGE_SIDEWALK_NO)) !== (EDGE_URBAN | EDGE_SIDEWALK_NO)
-      || eFacility[i] >= 1 || eSpeed[i] < 30 || (eFlags[i] & (8 | 32 | 4))) return 1;
+      || eFacility[i] >= 1 || edgeSpeed(i, forward) < 30 || (eFlags[i] & (8 | 32 | 4))) return 1;
   return mode === 'direct' ? 1.06 : mode === 'low' ? 1.30 : 1.16;
 }
 
@@ -449,7 +466,7 @@ function speedStress(mode, fl, spd, freeMax, shoulder) {
 function edgeTimeS(i, forward) {
   if (eFlags[i] & 32) {
     // Ferry: sail at the crossing speed baked from the duration tag (mph).
-    return eLen[i] / (Math.max(eSpeed[i], 3) * 0.44704);
+    return eLen[i] / (Math.max(edgeSpeed(i, forward), 3) * 0.44704);
   }
   const len = eLen[i];
   // This is real travel time, not merely a routing penalty.  The separate
@@ -721,9 +738,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // dramatically enlarges an edge-state search at dead ends.
       if (ei === incomingEdge) continue;
       const fl = eFlags[ei];
+      const forward = eA[ei] === u;
       // Permanent WSDOT bike restriction: never traverse it, in any mode or
       // with any setting. This is intentionally before all cost/rules logic.
-      if (eSh[ei] === PROHIBITED_SHOULDER) continue;
+      if (edgeShoulder(ei, forward) === PROHIBITED_SHOULDER) continue;
       // Technical mountain-bike paths are opt-in. Unlike a bicycle=no road,
       // they remain available to an informed rider, but never appear in an
       // ordinary road-bike route.
@@ -731,7 +749,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // This setting controls whether a true freeway can be used at all. When it
       // can, its level and cost still make it a route failure and last resort.
       if (!rules.allowFreeways && (fl & 4)) continue;
-      const actualLevel = edgeLevel(ei, rules);
+      const actualLevel = edgeLevel(ei, rules, forward);
       // "Only show routes fully matching safety rules": failing roads become
       // impassable in EVERY mode, so profiles choose only among matching
       // paths — except the short access blocks at a leg's own endpoints,
@@ -743,30 +761,33 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       const requiredSafeAccess = rules.requireSafe && actualLevel === 4;
       // Discovery lenses may price an otherwise-allowed edge more
       // conservatively, but they never change legality or reported safety.
-      const searchLevel = edgeLevel(ei, searchRules);
+      const searchLevel = edgeLevel(ei, searchRules, forward);
       const mult = modeMult(mode, searchLevel);
       if (mult === Infinity) continue;
-      const forward = eA[ei] === u;
       let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode);
       if ((fl & 32) && nodeHasLand[u]) step += activeWeights.ferryWaitMin * 60; // boarding
       let cost = step * mult;
       // An exempted terminal-access block is a last resort, never a shortcut:
       // any reasonable fully-safe approach must still win.
       if (requiredSafeAccess) cost *= 30;
-      cost *= speedStress(mode, fl, eSpeed[ei], edgeNoShoulderMax(ei, searchRules), eSh[ei]);
+      cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
+        edgeNoShoulderMax(ei, searchRules), edgeShoulder(ei, forward));
       cost *= hazardMult(mode, edgeHazard(ei, forward) || 0);
-      cost *= majorRoadMult(ei, mode);
-      cost *= sidewalkExposureMult(ei, mode);
-      if (sidewalkFallbackApplies(ei, searchRules)) cost *= sidewalkFallbackMult(mode);
+      cost *= majorRoadMult(ei, mode, forward);
+      cost *= sidewalkExposureMult(ei, mode, forward);
+      if (sidewalkFallbackApplies(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
       if (fl & 4) cost *= activeWeights.freeway;
-      if (fl & 128) cost *= activeWeights[mode === 'direct' ? 'limitedDirect' : mode === 'low' ? 'limitedLow' : 'limitedBalanced'];
+      if (edgeLimited(ei, forward)) {
+        cost *= activeWeights[mode === 'direct'
+          ? 'limitedDirect' : mode === 'low' ? 'limitedLow' : 'limitedBalanced'];
+      }
       if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
       // Bonuses never apply to ferries, freeways, or WSDOT limited-access
       // highways: preference must not erase their access/caution costs. For
       // an ordinary road, a physical facility beats designation alone; when
       // both are present, use whichever benefit is stronger rather than
       // stacking them into an outsized corridor bonus.
-      if (!(fl & (32 | 4 | 128)) && !isDismountEdge(ei)) {
+      if (!(fl & (32 | 4)) && !edgeLimited(ei, forward) && !isDismountEdge(ei)) {
         const facilityBonus = eFacility[ei] ? facilityPrefMult(eFacility[ei]) : 1;
         if (prefDesig) {
           const designationBonus = (fl & 64) ? activeWeights.strongDesignated : 1;
@@ -776,7 +797,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
           cost *= Math.min(facilityBonus, designationBonus);
         }
       }
-      if (prefResidential && !(fl & (8 | 32 | 4 | 128)) && isResidential(ei)) {
+      if (prefResidential && !(fl & (8 | 32 | 4))
+          && !edgeLimited(ei, forward) && isResidential(ei)) {
         cost *= activeWeights.residential;
       }
       // Alternative-corridor probes softly penalize ordinary road edges from
@@ -871,10 +893,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     if (eFacility[ei] >= 1) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
-    if (!(eFlags[ei] & (8 | 32 | 4 | 128)) && isResidential(ei)) residentialM += eLen[ei];
+    if (!(eFlags[ei] & (8 | 32 | 4)) && !edgeLimited(ei, forward)
+        && isResidential(ei)) residentialM += eLen[ei];
     if (eFlags[ei] & 4) freewayM += eLen[ei];
-    else if (eFlags[ei] & 128) limitedAccessM += eLen[ei];
-    const level = edgeLevel(ei, rules);
+    else if (edgeLimited(ei, forward)) limitedAccessM += eLen[ei];
+    const level = edgeLevel(ei, rules, forward);
     levelM[level] += eLen[ei];
     if (level === 4) failM += eLen[ei];
     const hazard = edgeHazard(ei, forward);
@@ -895,7 +918,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       hazardM += hazardLenM;
     }
     segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
-      mph: eSpeed[ei], sh: eSh[ei], flags: eFlags[ei], roadClass: eClass[ei],
+      mph: edgeSpeed(ei, forward), sh: edgeShoulder(ei, forward),
+      flags: eFlags[ei] | (edgeLimited(ei, forward) ? 128 : 0), roadClass: eClass[ei],
       facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
       dismount: isDismountEdge(ei), level,
       surface: eSurface[ei], surfaceLabel: SURFACE_LABEL[eSurface[ei]] || SURFACE_LABEL[SURFACE_UNKNOWN],
@@ -1070,7 +1094,8 @@ function routeFragment(source, startEdge, endEdge, rules) {
     c1: seg.c1 - coordStart,
     hazC0: seg.hazC0 == null ? null : seg.hazC0 - coordStart,
     hazC1: seg.hazC1 == null ? null : seg.hazC1 - coordStart,
-    level: edgeLevel(sourceEdgeIds[index], rules),
+    level: edgeLevel(sourceEdgeIds[index], rules,
+      eA[sourceEdgeIds[index]] === nodeIds[index]),
   }));
   const ferryRanges = [];
   const profile = [[0, nodeEle[nodeIds[0]]]];
@@ -1099,10 +1124,11 @@ function routeFragment(source, startEdge, endEdge, rules) {
     if (eFacility[ei] >= 1) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
-    if (!(eFlags[ei] & (8 | 32 | 4 | 128)) && isResidential(ei)) residentialM += eLen[ei];
+    if (!(eFlags[ei] & (8 | 32 | 4)) && !edgeLimited(ei, forward)
+        && isResidential(ei)) residentialM += eLen[ei];
     if (eFlags[ei] & 4) freewayM += eLen[ei];
-    else if (eFlags[ei] & 128) limitedAccessM += eLen[ei];
-    const level = edgeLevel(ei, rules);
+    else if (edgeLimited(ei, forward)) limitedAccessM += eLen[ei];
+    const level = edgeLevel(ei, rules, forward);
     levelM[level] += eLen[ei];
     if (level === 4) failM += eLen[ei];
     hazardM += Number(seg.hazardLenM) || 0;

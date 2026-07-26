@@ -3,8 +3,8 @@
   'use strict';
 
   const FONT_STACK = 'Klokantech Noto Sans Regular';
-  const CONTEXT_URL = 'pmtiles://data/basemap.pmtiles?v=3';
-  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=13';
+  const CONTEXT_URL = 'pmtiles://data/basemap.pmtiles?v=5';
+  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=15';
   let protocol = null;
 
   function ensureProtocol() {
@@ -116,7 +116,11 @@
       },
       layers: [
         { id: 'basemap-ocean', type: 'background', paint: { 'background-color': '#dcecf2' } },
-        { id: 'basemap-land', type: 'fill', source: 'basemap-context', 'source-layer': 'land',
+        { id: 'basemap-land', type: 'fill', source: 'basemap-context',
+          'source-layer': 'land', maxzoom: 8,
+          paint: { 'fill-color': '#f4f3ee' } },
+        { id: 'basemap-land-detail', type: 'fill', source: 'basemap-context',
+          'source-layer': 'land_detail', minzoom: 8,
           paint: { 'fill-color': '#f4f3ee' } },
         { id: 'basemap-green', type: 'fill', source: 'basemap-context', 'source-layer': 'green',
           paint: {

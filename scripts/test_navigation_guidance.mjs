@@ -155,10 +155,8 @@ assert.match(app, /maplibregl-ctrl-geolocate[\s\S]{0,140}!turnNav\.cameraFollow[
   'the geolocate control should re-center on the rider on the first tap after panning');
 assert.match(app, /requestMapLocationRecenter\('launch'\)/,
   'a fresh app load should request and center on the current location');
-assert.match(app, /visibilitychange[\s\S]{0,220}requestMapLocationRecenter\('foreground'\)/,
-  'returning to the foreground should request and center on a fresh location');
-assert.match(app, /addListener\(\s*'appActive',[\s\S]{0,120}requestMapLocationRecenter\('foreground'\)/,
-  'the native shell should explicitly request a foreground recenter');
+assert.doesNotMatch(app, /requestMapLocationRecenter\('foreground'\)/,
+  'returning to the foreground should preserve the rider’s map position');
 assert.match(app, /showRouteMessage\(\s*'Choose a start and destination',\s*'Use search or tap the map\.'/,
   'the unset route card should provide compact, structured instructions');
 assert.match(app, /showRouteMessage\('Route unavailable', reason, hint, true\)/,

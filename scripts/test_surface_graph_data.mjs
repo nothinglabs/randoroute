@@ -6,8 +6,8 @@ import zlib from 'node:zlib';
 
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
 const graph = zlib.gunzipSync(fs.readFileSync(new URL('../data/graph2.bin.gz', import.meta.url)));
-assert.equal(graph.subarray(0, 4).toString('ascii'), 'BGR8',
-  'production graph should use the BGR8 surface-aware layout');
+assert.equal(graph.subarray(0, 4).toString('ascii'), 'BGR9',
+  'production graph should use the BGR9 direction-aware surface layout');
 
 const messages = [];
 const context = vm.createContext({

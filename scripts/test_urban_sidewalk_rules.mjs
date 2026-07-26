@@ -48,19 +48,19 @@ const result = vm.runInContext(`(() => {
     allowSidewalkFallback: false, upperMaxSpeed: 45, noUpperLimit: true,
   };
   const originalOfficial = eOfficial[edge];
-  const urbanLevel = edgeLevel(edge, rules);
+  const urbanLevel = edgeLevel(edge, rules, true);
   eOfficial[edge] = originalOfficial & ~EDGE_URBAN;
-  const ruralLevel = edgeLevel(edge, rules);
+  const ruralLevel = edgeLevel(edge, rules, true);
   eOfficial[edge] = originalOfficial | EDGE_SIDEWALK;
-  const sidewalkLevel = edgeLevel(edge, { ...rules, allowSidewalkFallback: true });
+  const sidewalkLevel = edgeLevel(edge, { ...rules, allowSidewalkFallback: true }, true);
   const hardCapLevel = edgeLevel(edge, {
     ...rules, allowSidewalkFallback: true, noUpperLimit: false, upperMaxSpeed: 30,
-  });
+  }, true);
   const originalFacility = eFacility[edge];
   eFacility[edge] = 1;
-  const sharedLaneLevel = edgeLevel(edge, { ...rules, allowSidewalkFallback: true });
+  const sharedLaneLevel = edgeLevel(edge, { ...rules, allowSidewalkFallback: true }, true);
   const sharedLaneUsesSidewalk = sidewalkFallbackApplies(
-    edge, { ...rules, allowSidewalkFallback: true }, 0);
+    edge, { ...rules, allowSidewalkFallback: true }, true, 0);
   eFacility[edge] = originalFacility;
   eOfficial[edge] = originalOfficial;
   return {
