@@ -431,7 +431,7 @@
       || Boolean(window.Capacitor?.isNativePlatform?.());
     if (!isNativeShell && 'serviceWorker' in navigator) {
       window.__swReady = navigator.serviceWorker
-        .register('./sw.js')
+        .register('./sw.js', { updateViaCache: 'none' })
         .then((reg) => (navigator.serviceWorker.ready, reg))
         .catch((e) => console.warn('SW registration failed:', e));
     }

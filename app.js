@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.363';
+const APP_VERSION = '2026-07-26.364';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -7550,6 +7550,35 @@ setupAutomaticUpdates();
 // Manual "Check for updates" in the help dialog. Wired independently of
 // setupAutomaticUpdates so a slow or stalled service-worker registration
 // never leaves the button dead.
+async function publishedAppVersion() {
+  // The unique query is deliberate: an older cache-first service worker will
+  // miss this URL and retrieve the current release marker from the network.
+  const response = await fetch(`./version.json?update-check=${Date.now()}`, {
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error(`version check failed (${response.status})`);
+  const release = await response.json();
+  if (!release?.version) throw new Error('invalid version marker');
+  return String(release.version);
+}
+
+function waitForUpdateWorker(reg, timeoutMs = 2500) {
+  if (reg.waiting || reg.installing) return Promise.resolve(reg.waiting || reg.installing);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (worker = null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reg.removeEventListener('updatefound', onUpdate);
+      resolve(worker);
+    };
+    const onUpdate = () => finish(reg.waiting || reg.installing);
+    const timer = setTimeout(() => finish(), timeoutMs);
+    reg.addEventListener('updatefound', onUpdate);
+  });
+}
+
 document.getElementById('checkUpdatesBtn').addEventListener('click', async () => {
   if (nativeAppVersionOnly) return;
   const btn = document.getElementById('checkUpdatesBtn');
@@ -7565,8 +7594,10 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
     // registration that resolves immediately.
     if (!reg && navigator.serviceWorker) reg = await navigator.serviceWorker.getRegistration();
     if (!reg) throw new Error('service worker unavailable');
+    const publishedVersion = await publishedAppVersion();
+    const updateWorker = waitForUpdateWorker(reg);
     await reg.update();
-    const fresh = reg.waiting || reg.installing;
+    const fresh = reg.waiting || reg.installing || await updateWorker;
     if (fresh) {
       status.textContent = 'Update found — installing…';
       if (reg.waiting) offerUpdate(reg.waiting);
@@ -7576,6 +7607,8 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
       // The update prompt renders under this modal dialog; close it so the
       // "Get update?" banner is visible.
       document.getElementById('appHelpDialog')?.close();
+    } else if (publishedVersion !== APP_VERSION) {
+      status.textContent = `Version v${publishedVersion} is available. Close and reopen the app to finish updating.`;
     } else {
       status.textContent = `You have the latest version (v${APP_VERSION}).`;
     }
