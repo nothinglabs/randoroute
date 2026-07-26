@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.362';
+const APP_VERSION = '2026-07-26.363';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -38,6 +38,13 @@ const COLORS = {
   4: '#b2182b', // fails rules
   0: '#999999', // insufficient data
 };
+function opaqueColorOverWhite(hex, opacity) {
+  const value = String(hex).replace('#', '');
+  const channel = (offset) => parseInt(value.slice(offset, offset + 2), 16);
+  const blend = (component) => Math.round(component * opacity + 255 * (1 - opacity));
+  return `#${[channel(0), channel(2), channel(4)]
+    .map((component) => blend(component).toString(16).padStart(2, '0')).join('')}`;
+}
 const ROUTE_SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 function routeSurfaceLabel(surface) {
   const value = Number(surface);
@@ -859,6 +866,27 @@ function verdictColorExpr(src, levelExpr = ['get', 'level']) {
   ];
 }
 
+// The background safety network used to rely on translucent line paint. Tile
+// features and graph-derived road segments overlap at junctions, so their
+// round ends accumulated alpha into dark dots and colored wedges. Pre-blend
+// the same muted colors over the white road interior, then paint them fully
+// opaque so coincident features remain visually stable.
+function opaqueBackgroundVerdictColorExpr(src, levelExpr = ['get', 'level']) {
+  const normalOpacity = backgroundLineOpacity(0.9);
+  const cautionOpacity = cautionBackgroundLineOpacity();
+  const muted = (color, opacity = normalOpacity) => opaqueColorOverWhite(color, opacity);
+  const passes = ['match', levelExpr, [1, 2], true, false];
+  return ['case',
+    ['all', passes, bikeNetworkExpr(src)], muted(BIKE_NETWORK_COLOR),
+    ['match', levelExpr,
+      1, muted(COLORS[1]),
+      2, muted(COLORS[2]),
+      3, muted(COLORS[3], cautionOpacity),
+      4, muted(COLORS[4]),
+      muted(COLORS[0])],
+  ];
+}
+
 function isBikeNetworkVerdict(n) {
   return !!(n && (n.infra || n.good_facility));
 }
@@ -1043,7 +1071,13 @@ function ensureLayer(src) {
     source: mapSourceId,
     ...SL,
     minzoom: src.minVisibleZoom || 0,
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    layout: {
+      // Flat feature ends prevent independently tiled/segmented streets from
+      // protruding into one another at intersections. Curves within a feature
+      // still use round joins.
+      'line-cap': src.ribbon ? 'round' : 'butt',
+      'line-join': 'round',
+    },
     paint: {
       'line-color': verdictColorExpr(src),
       'line-width': SAFETY_ROAD_INTERIOR_WIDTH,
@@ -1274,8 +1308,11 @@ function applyDisplayMode(src) {
   // The shared vector-road source knows each OSM class. Reveal its safety fill
   // at exactly the zoom where BikeBasemap reveals that class's street casing.
   const opacity = (value) => {
-    const backgroundOpacity = backgroundLineOpacity(value);
-    const verdictOpacity = ['case', ['==', lvl, 3], cautionBackgroundLineOpacity(), backgroundOpacity];
+    // Opaque aligned fills remove alpha-addition seams. Their color expression
+    // is pre-blended to retain the previous muted visual strength.
+    const backgroundOpacity = alignRoadClasses ? 1 : backgroundLineOpacity(value);
+    const verdictOpacity = alignRoadClasses ? 1
+      : ['case', ['==', lvl, 3], cautionBackgroundLineOpacity(), backgroundOpacity];
     if (!alignRoadClasses) return verdictOpacity;
     const visibleAtLocal = src.id === 'osm'
       ? ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR,
@@ -1301,14 +1338,18 @@ function applyDisplayMode(src) {
   if (display.passFail) {
     const passFilter = ['all', ['>=', lvl, 1], ['<=', lvl, display.passMax]];
     map.setFilter(src.id, src.id === 'osm' ? ['boolean', false] : and(passFilter));
-    map.setPaintProperty(src.id, 'line-color', PASS_COLOR);
+    map.setPaintProperty(src.id, 'line-color', alignRoadClasses
+      ? opaqueColorOverWhite(PASS_COLOR, backgroundLineOpacity(0.95))
+      : PASS_COLOR);
     map.setPaintProperty(src.id, 'line-opacity', opacity(0.95));
     map.setPaintProperty(src.id, 'line-width', SAFETY_ROAD_INTERIOR_WIDTH);
   } else {
     // Solid ramp for passing levels (and unknown); level 4 goes to the dashed vh layer.
     const verdictFilter = ['!=', lvl, 4];
     map.setFilter(src.id, src.id === 'osm' ? ['boolean', false] : and(verdictFilter));
-    map.setPaintProperty(src.id, 'line-color', verdictColorExpr(src, lvl));
+    map.setPaintProperty(src.id, 'line-color', alignRoadClasses
+      ? opaqueBackgroundVerdictColorExpr(src, lvl)
+      : verdictColorExpr(src, lvl));
     map.setPaintProperty(src.id, 'line-opacity', opacity(0.9));
     map.setPaintProperty(src.id, 'line-width', SAFETY_ROAD_INTERIOR_WIDTH);
   }
@@ -1330,6 +1371,9 @@ function applyDisplayMode(src) {
     const failFilter = ['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4]];
     map.setFilter(failId(src), and(src.id === 'osm'
       ? ['all', failFilter, OSM_TRAIL_EXPR] : failFilter));
+    map.setPaintProperty(failId(src), 'line-color', alignRoadClasses
+      ? opaqueColorOverWhite(FAIL_COLOR, backgroundLineOpacity(0.65))
+      : FAIL_COLOR);
     map.setPaintProperty(failId(src), 'line-width', SAFETY_ROAD_INTERIOR_WIDTH);
     map.setPaintProperty(failId(src), 'line-opacity', opacity(0.65));
   }
@@ -1337,8 +1381,19 @@ function applyDisplayMode(src) {
     const veryHighFilter = ['==', lvl, 4];
     map.setFilter(vhId(src), and(src.id === 'osm'
       ? ['all', veryHighFilter, OSM_TRAIL_EXPR] : veryHighFilter));
+    map.setPaintProperty(vhId(src), 'line-color', alignRoadClasses
+      ? opaqueColorOverWhite(COLORS[4], backgroundLineOpacity(0.9))
+      : COLORS[4]);
     map.setPaintProperty(vhId(src), 'line-width', SAFETY_ROAD_INTERIOR_WIDTH);
     map.setPaintProperty(vhId(src), 'line-opacity', opacity(0.9));
+  }
+  if (alignRoadClasses) {
+    // At a junction, draw ordinary passing roads first and physical bicycle
+    // facilities last. Their opaque flat-ended fills then meet cleanly instead
+    // of leaving a blue spur on top of the lime corridor.
+    map.setLayoutProperty(src.id, 'line-sort-key',
+      ['case', bikeNetworkExpr(src), 3,
+        ['match', lvl, 3, 2, [1, 2], 1, 0]]);
   }
   if (map.getLayer(hitId(src))) {
     // OSM trails use their purpose-built, wider hit layer above.  Keeping the
