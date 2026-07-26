@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.369';
+const APP_VERSION = '2026-07-26.370';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -7638,7 +7638,7 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
       // "Get update?" banner is visible.
       document.getElementById('appHelpDialog')?.close();
     } else if (publishedVersion !== APP_VERSION) {
-      status.textContent = `Version v${publishedVersion} is available but could not install. Check available storage, then try again.`;
+      status.textContent = `Version v${publishedVersion} is available but could not install yet. Keep the app open briefly, then try again.`;
     } else {
       status.textContent = `You have the latest version (v${APP_VERSION}).`;
     }

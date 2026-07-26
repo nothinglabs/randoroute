@@ -10,7 +10,7 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v369'; // bump when app shell changes
+const VERSION = 'v370'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v5';
@@ -21,10 +21,10 @@ const SHELL = [
   './route-details.html',
   './app.js',
   './basemap-style.js',
-  './route-details.js?v=369',
+  './route-details.js?v=370',
   './router-worker.js',
   './styles.css',
-  './route-details.css?v=369',
+  './route-details.css?v=370',
   './manifest.json',
   './vendor/maplibre-gl.js',
   './vendor/maplibre-gl.css',
@@ -59,10 +59,15 @@ const ALWAYS_REFRESH_DATA = new Set([
 ]);
 
 self.addEventListener('install', (e) => {
+  const updatingExistingApp = Boolean(self.registration.active);
   e.waitUntil(
     Promise.all([
       caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL)),
-      precacheData(),
+      // A first install must become fully offline-capable. An update already
+      // has the complete data cache; touching every 30–44 MB archive here can
+      // make mobile Safari discard the candidate worker before it reaches the
+      // waiting state.
+      updatingExistingApp ? Promise.resolve() : precacheData(),
     ])
   );
 });
@@ -76,6 +81,7 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => !keep.includes(k)).map((k) => caches.delete(k))))
+      .then(() => refreshReleaseData())
       .then(() => self.clients.claim())
   );
 });
@@ -126,13 +132,24 @@ async function precacheData() {
   // persistent cache one file at a time.
   for (const path of DATA) {
     const request = new Request(path, { cache: 'reload' });
-    if (ALWAYS_REFRESH_DATA.has(path)) {
-      await cache.delete(request, { ignoreSearch: true });
-      await cache.add(request);
-      continue;
-    }
     const hit = await cache.match(request, { ignoreSearch: true });
     if (!hit) await cache.add(request);
+  }
+}
+
+async function refreshReleaseData() {
+  const cache = await caches.open(DATA_CACHE);
+  for (const path of ALWAYS_REFRESH_DATA) {
+    const request = new Request(path, { cache: 'reload' });
+    try {
+      const response = await fetch(request);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await cache.put(request, response);
+    } catch (error) {
+      // Preserve the prior offline copy if a rider accepts an update without a
+      // usable connection. A later release/update attempt can refresh it.
+      console.warn(`Could not refresh ${path}:`, error);
+    }
   }
 }
 
