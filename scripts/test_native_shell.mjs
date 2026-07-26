@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [app, config, packageJson, index, nativeIndex, styles, builder, basemap, details, serviceWorker] = await Promise.all([
+const [app, config, packageJson, index, nativeIndex, styles, builder, basemap, details, serviceWorker, launchStoryboard, streetViewBridge] = await Promise.all([
   readFile(new URL('../app.js', import.meta.url), 'utf8'),
   readFile(new URL('../capacitor.config.json', import.meta.url), 'utf8').then(JSON.parse),
   readFile(new URL('../package.json', import.meta.url), 'utf8').then(JSON.parse),
@@ -12,6 +12,8 @@ const [app, config, packageJson, index, nativeIndex, styles, builder, basemap, d
   readFile(new URL('../basemap-style.js', import.meta.url), 'utf8'),
   readFile(new URL('../route-details.js', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
+  readFile(new URL('../ios/App/App/Base.lproj/LaunchScreen.storyboard', import.meta.url), 'utf8'),
+  readFile(new URL('../street-view-embed.html', import.meta.url), 'utf8'),
 ]);
 
 assert.equal(config.webDir, 'mobile-shell');
@@ -21,6 +23,7 @@ assert.match(packageJson.scripts['ios:build'], /ios:prepare-shell.*cap build ios
 
 for (const asset of [
   'index.html',
+  'street-view-embed.html',
   'styles.css',
   'app.js',
   'basemap-style.js',
@@ -50,7 +53,8 @@ for (const asset of [
   assert.ok(builder.includes(`'${asset}'`), `native shell builder omits ${asset}`);
 }
 
-assert.doesNotMatch(app, /nothinglabs\.github\.io/);
+assert.equal((app.match(/nothinglabs\.github\.io/g) || []).length, 2,
+  'the optional Street View bridge URL and its message-origin check should be the only GitHub runtime references');
 assert.match(app, /fetch\('data\/places\.json'\)/);
 assert.match(app, /fetch\(`data\/graph2\.bin\.gz\?format=/);
 for (const runtime of [app, basemap, details, serviceWorker]) {
@@ -62,6 +66,20 @@ assert.match(index, /<html lang="en" data-app-runtime="web">/,
   'the shared web shell should identify itself as the web runtime');
 assert.match(nativeIndex, /<html lang="en" data-app-runtime="native">/,
   'the generated iOS shell should carry an explicit native runtime marker');
+assert.match(index, /id="appLaunchScreen"[\s\S]*?Just Rolling Along[\s\S]*?Preparing your map…[\s\S]*?__dismissAppLaunchScreen/,
+  'the shared shell should paint useful launch feedback before application JavaScript loads');
+assert.match(app, /map\.once\('load', finishAppLaunch\)/,
+  'the launch screen should dismiss on the first usable map load without a minimum delay');
+assert.match(launchStoryboard, /text="🚲"[\s\S]*?text="Just Rolling Along"[\s\S]*?text="Preparing your map…"/,
+  'the native iOS launch screen should visually hand off to the HTML launch screen');
+assert.match(app, /NATIVE_STREET_VIEW_BRIDGE[\s\S]*?streetViewBridge[\s\S]*?jra-street-view/,
+  'native Street View should use the hosted bridge and wait for its panorama');
+assert.match(streetViewBridge, /referrerpolicy="strict-origin-when-cross-origin"/,
+  'the hosted bridge should preserve the authorized website referrer');
+assert.match(streetViewBridge, /jra-street-view[\s\S]*?maps\/embed\/v1\/streetview/,
+  'the hosted bridge should report readiness and load the Google panorama');
+assert.match(styles, /\.sv-dialog\[open\][\s\S]*?overflow:\s*hidden[\s\S]*?\.sv-body[\s\S]*?min-height:\s*0/,
+  'the Street View dialog should remain fixed to the visible iPhone viewport');
 assert.match(builder, /replace\('data-app-runtime="web"', 'data-app-runtime="native"'\)/,
   'the native shell builder should set the native runtime marker');
 assert.match(index, /<script src="vendor\/fflate\.js"><\/script>[\s\S]*?<script src="basemap-style\.js"><\/script>/,

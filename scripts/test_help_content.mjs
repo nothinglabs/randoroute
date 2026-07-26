@@ -102,6 +102,8 @@ assert.match(css, /#routeOptions\s*\{[^}]*padding:\s*3px[^}]*border:\s*1px solid
   'the main map selector should use the same compact Choose route treatment as Details');
 assert.match(css, /\.route-tips-btn\s*\{[^}]*flex:\s*0 0 34px[^}]*min-height:\s*34px[\s\S]*?#routeTipsDialog\s*\{[^}]*height:\s*min\(90dvh, 780px\)/,
   'the Help button should sit beside the selector and its dialog should be slightly shorter than full screen');
+assert.match(css, /#routeTipsDialog \.full-help-head\s*\{[^}]*padding-top:\s*10px/,
+  'the centered route-information sheet should not duplicate the device safe-area inset');
 assert.match(css, /#routeCard > #routeControls\s*\{[^}]*margin:\s*5px -6px 0/,
   'the main route selector should gain a little top breathing room and extend closer to the panel edges');
 assert.match(routeHelp, /<h3>Choose Route<\/h3>[\s\S]*?Tap A–E[\s\S]*?Tap <b>Details<\/b>[\s\S]*?<h3>Details<\/h3>[\s\S]*?Stats:[\s\S]*?Concerns:[\s\S]*?steep uphill grades[\s\S]*?All Steps:[\s\S]*?Tap buttons in route segments[\s\S]*?Google Street View[\s\S]*?Safety ratings &amp; map colors[\s\S]*?<b>Lime<\/b> —[\s\S]*?<b>Dotted lime<\/b> —[\s\S]*?<b>Blue<\/b> —[\s\S]*?<b>Red dashed<\/b> — Road that fails rules\.[\s\S]*?<b>Amber<\/b> — Caution:[\s\S]*?<b>Dashed light blue<\/b> — Designated bike route/,

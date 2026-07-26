@@ -12,21 +12,40 @@
         <scene sceneID="EHf-IW-A2E">
             <objects>
                 <viewController id="01J-lp-oVM" sceneMemberID="viewController">
-                    <imageView key="view" userInteractionEnabled="NO" contentMode="scaleAspectFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="Splash" id="snD-IY-ifK">
+                    <view key="view" contentMode="scaleToFill" id="snD-IY-ifK">
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask"/>
-                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
-                    </imageView>
+                        <subviews>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="🚲" textAlignment="center" lineBreakMode="tailTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="bike-icon">
+                                <rect key="frame" x="159" y="260" width="57" height="57"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="46"/>
+                            </label>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="Just Rolling Along" textAlignment="center" lineBreakMode="tailTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="app-title">
+                                <rect key="frame" x="86" y="330" width="203" height="29"/>
+                                <fontDescription key="fontDescription" type="system" weight="semibold" pointSize="24"/>
+                                <color key="textColor" red="0.145" green="0.271" blue="0.341" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                            </label>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="Preparing your map…" textAlignment="center" lineBreakMode="tailTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="load-status">
+                                <rect key="frame" x="117" y="368" width="141" height="18"/>
+                                <fontDescription key="fontDescription" type="system" weight="semibold" pointSize="14"/>
+                                <color key="textColor" red="0.376" green="0.455" blue="0.498" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                            </label>
+                        </subviews>
+                        <viewLayoutGuide key="safeArea" id="safe-area"/>
+                        <color key="backgroundColor" red="0.957" green="0.973" blue="0.965" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="bike-icon" firstAttribute="centerX" secondItem="snD-IY-ifK" secondAttribute="centerX" id="bike-center-x"/>
+                            <constraint firstItem="bike-icon" firstAttribute="centerY" secondItem="snD-IY-ifK" secondAttribute="centerY" constant="-45" id="bike-center-y"/>
+                            <constraint firstItem="app-title" firstAttribute="top" secondItem="bike-icon" secondAttribute="bottom" constant="13" id="title-top"/>
+                            <constraint firstItem="app-title" firstAttribute="centerX" secondItem="snD-IY-ifK" secondAttribute="centerX" id="title-center-x"/>
+                            <constraint firstItem="load-status" firstAttribute="top" secondItem="app-title" secondAttribute="bottom" constant="8" id="status-top"/>
+                            <constraint firstItem="load-status" firstAttribute="centerX" secondItem="snD-IY-ifK" secondAttribute="centerX" id="status-center-x"/>
+                        </constraints>
+                    </view>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>
             </objects>
             <point key="canvasLocation" x="53" y="375"/>
         </scene>
     </scenes>
-    <resources>
-        <image name="Splash" width="1366" height="1366"/>
-        <systemColor name="systemBackgroundColor">
-            <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
-        </systemColor>
-    </resources>
 </document>

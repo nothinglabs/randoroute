@@ -22,6 +22,11 @@ app = (root / 'app.js').read_text(encoding='utf-8')
 assert f'ROUTE_BOUNDS = {ROUTE_BOUNDS!r}' in builder
 assert "src.ribbon ? 'round'" not in app
 assert "'line-cap': 'butt'" in app
+assert 'zRank: 2.5' in app
+assert "6, ['match', ['get', 't'], 'ncn', 4.3, 2.8]" in app
+assert "10, ['match', ['get', 't'], 'ncn', 8.4, 5.2]" in app
+assert "14, ['match', ['get', 't'], 'ncn', 14.4, 9]" in app
+assert "map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.4))" in app
 with gzip.open(root / 'data/bikeroutes.geojson.gz', 'rt', encoding='utf-8') as handle:
     routes = json.load(handle)
 

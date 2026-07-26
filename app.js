@@ -2,8 +2,8 @@
  * Washington Bike Safety Visualizer
  *
  * All road, trail, ferry, restriction, and elevation data is baked into local
- * static files. Routing runs on-device in a web worker; the only optional
- * runtime lookup is the rider-initiated online place search.
+ * static files. Routing runs on-device in a web worker; optional runtime
+ * network use is limited to rider-initiated place search and Street View.
  *
  * Architecture (built to let Phase 2's OSM source slot in with no rewrite):
  *   - Each data source has its own toggle, its own scorer, and its own layer.
@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.371';
+const APP_VERSION = '2026-07-26.376';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -342,7 +342,9 @@ const SOURCES = [
     name: 'Designated routes (USBR & regional)',
     url: 'data/bikeroutes.geojson.gz',
     scorer: scoreRouteOverlay,
-    zRank: -1,     // a ribbon UNDER the scoring layers
+    // Keep the informational ribbon above ordinary road/facility scoring, but
+    // below hard bicycle restrictions and known closures.
+    zRank: 2.5,
     ribbon: true,  // informational overlay: identical in both display modes
     enabled: true,
     fc: null,
@@ -708,6 +710,12 @@ const map = new maplibregl.Map({
   maxPitch: 0,
   pitchWithRotate: false,
 });
+const finishAppLaunch = () => {
+  clearTimeout(window.__appLaunchFallback);
+  window.__dismissAppLaunchScreen?.();
+};
+if (map.loaded()) finishAppLaunch();
+else map.once('load', finishAppLaunch);
 map.touchPitch?.disable();
 // A double tap is too easy to trigger while placing or inspecting a point on
 // a phone, and can leave the app looking brokenly zoomed-in. Desktop keeps the
@@ -1247,15 +1255,16 @@ function applyDisplayMode(src) {
   }
   if (src.ribbon) {
     // Designation is useful context, not physical infrastructure: show it as
-    // a dashed blue corridor beneath the actual facility/safety verdict.
+    // a translucent dashed corridor above ordinary safety/facility coloring.
+    // Regulatory restrictions and closures retain the two higher z-ranks.
     map.setFilter(src.id, null);
     map.setPaintProperty(src.id, 'line-color', COLORS[2]);
     map.setPaintProperty(src.id, 'line-width',
       ['interpolate', ['linear'], ['zoom'],
-        6, ['match', ['get', 't'], 'ncn', 3.6, 2.3],
-        10, ['match', ['get', 't'], 'ncn', 7, 4.3],
-        14, ['match', ['get', 't'], 'ncn', 12, 7.5]]);
-    map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.3));
+        6, ['match', ['get', 't'], 'ncn', 4.3, 2.8],
+        10, ['match', ['get', 't'], 'ncn', 8.4, 5.2],
+        14, ['match', ['get', 't'], 'ncn', 14.4, 9]]);
+    map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.4));
     map.setPaintProperty(src.id, 'line-dasharray', [2, 1.4]);
     if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
     if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
@@ -6523,8 +6532,8 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Bikes prohibited', p.Prohibited ? 'yes (WSDOT restriction)' : null],
     ];
   }
-  // If a designated route runs under this spot, say so — the scored layers
-  // draw on top of the ribbon, so this is how the designation stays visible.
+  // If a designated route runs through this spot, include its designation in
+  // the road details even though the ribbon is already visible on the map.
   if (src.id !== 'routes') {
     const badge = routeBadgeAt(map.project(lngLat));
     if (badge) rows.push(['Bike route', badge]);
@@ -6594,6 +6603,7 @@ readoutEl.addEventListener('click', (e) => {
 // new tab as before. The key is a public, HTTP-referrer-restricted Embed API
 // key (that API has no usage charges); set it here to enable the in-app view.
 const GOOGLE_MAPS_EMBED_KEY = 'AIzaSyBQZNQ4jPlLjOH3efOD228wOjayupCfa6Y';
+const NATIVE_STREET_VIEW_BRIDGE = 'https://nothinglabs.github.io/clauding/street-view-embed.html';
 
 function googleMapsPointUrl(lat, lng) {
   return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
@@ -6633,20 +6643,29 @@ function openStreetView(lat, lng, heading = null) {
   const externalLink = document.getElementById('streetViewExternal');
   if (externalLink) externalLink.href = googleMapsPointUrl(lat, lng);
   const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
+  const nativeRuntime = document.documentElement.dataset.appRuntime === 'native'
+    || window.location.protocol === 'capacitor:'
+    || Boolean(window.Capacitor?.isNativePlatform?.());
   clearTimeout(streetViewLoadTimer);
   frame.dataset.streetViewActive = '1';
+  frame.dataset.streetViewBridge = nativeRuntime ? '1' : '0';
   setStreetViewLoadStatus('Loading Street View…');
   streetViewLoadTimer = setTimeout(() => {
     if (frame.dataset.streetViewActive === '1') {
       setStreetViewLoadStatus('Street View is taking longer than expected. Try Open in Google Maps.', true);
     }
   }, 12000);
-  frame.src = `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=250${headingParam}&fov=90`;
+  frame.src = nativeRuntime
+    ? `${NATIVE_STREET_VIEW_BRIDGE}?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}${headingParam}`
+    : `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=250${headingParam}&fov=90`;
   if (!dialog.open) dialog.showModal();
 }
 
 document.getElementById('streetViewFrame').addEventListener('load', (event) => {
   if (event.currentTarget.dataset.streetViewActive !== '1') return;
+  // The native frame first loads the hosted bridge. Wait for its inner Google
+  // panorama to report ready instead of hiding feedback on this outer load.
+  if (event.currentTarget.dataset.streetViewBridge === '1') return;
   clearTimeout(streetViewLoadTimer);
   streetViewLoadTimer = null;
   setStreetViewLoadStatus();
@@ -6657,6 +6676,16 @@ document.getElementById('streetViewFrame').addEventListener('error', (event) => 
   streetViewLoadTimer = null;
   setStreetViewLoadStatus('Street View could not load. Try Open in Google Maps.', true);
 });
+window.addEventListener('message', (event) => {
+  if (event.origin !== 'https://nothinglabs.github.io'
+    || event.data?.type !== 'jra-street-view') return;
+  const frame = document.getElementById('streetViewFrame');
+  if (frame.dataset.streetViewActive !== '1' || frame.dataset.streetViewBridge !== '1') return;
+  clearTimeout(streetViewLoadTimer);
+  streetViewLoadTimer = null;
+  setStreetViewLoadStatus(event.data.state === 'ready'
+    ? '' : 'Street View could not load. Try Open in Google Maps.', event.data.state !== 'ready');
+});
 
 // Stop the panorama streaming (and free the connection) when the dialog closes.
 document.getElementById('streetViewDialog').addEventListener('close', () => {
@@ -6664,6 +6693,7 @@ document.getElementById('streetViewDialog').addEventListener('close', () => {
   streetViewLoadTimer = null;
   const frame = document.getElementById('streetViewFrame');
   frame.dataset.streetViewActive = '0';
+  frame.dataset.streetViewBridge = '0';
   frame.src = 'about:blank';
   setStreetViewLoadStatus();
 });

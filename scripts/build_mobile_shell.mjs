@@ -6,6 +6,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const output = join(root, 'mobile-shell');
 const files = [
   'index.html',
+  'street-view-embed.html',
   'styles.css',
   'app.js',
   'basemap-style.js',
