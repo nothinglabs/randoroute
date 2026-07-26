@@ -10,7 +10,7 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v368'; // bump when app shell changes
+const VERSION = 'v369'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v5';
@@ -21,10 +21,10 @@ const SHELL = [
   './route-details.html',
   './app.js',
   './basemap-style.js',
-  './route-details.js?v=368',
+  './route-details.js?v=369',
   './router-worker.js',
   './styles.css',
-  './route-details.css?v=368',
+  './route-details.css?v=369',
   './manifest.json',
   './vendor/maplibre-gl.js',
   './vendor/maplibre-gl.css',
@@ -51,6 +51,12 @@ const DATA = [
   './data/graph2.bin.gz',
   './data/places.json',
 ];
+// Small, release-generated overlays can change without changing the 100+ MB
+// statewide archives. Refresh these explicitly while retaining the rest of
+// DATA_CACHE across UI releases.
+const ALWAYS_REFRESH_DATA = new Set([
+  './data/bikeroutes.geojson.gz',
+]);
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -120,6 +126,11 @@ async function precacheData() {
   // persistent cache one file at a time.
   for (const path of DATA) {
     const request = new Request(path, { cache: 'reload' });
+    if (ALWAYS_REFRESH_DATA.has(path)) {
+      await cache.delete(request, { ignoreSearch: true });
+      await cache.add(request);
+      continue;
+    }
     const hit = await cache.match(request, { ignoreSearch: true });
     if (!hit) await cache.add(request);
   }

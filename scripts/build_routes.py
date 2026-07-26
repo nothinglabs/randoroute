@@ -18,8 +18,62 @@ import argparse
 import json
 
 import osmium
+from shapely.geometry import LineString, box
 
 KEEP_NETWORKS = {'ncn', 'rcn'}
+# Match the buffered Washington coverage used by the local basemap. The
+# Geofabrik extract can include complete route-relation members far outside
+# Washington (notably Alaska USBR super-relations), even though ordinary ways
+# are geographically clipped. Keep useful border/ferry context without
+# allowing those remote members to distort the rendered map.
+ROUTE_BOUNDS = (-125.5, 45.2, -116.7, 50.0)
+ROUTE_CLIP = box(*ROUTE_BOUNDS)
+
+
+def clipped_line_parts(lines):
+    """Return LineString coordinate parts clipped to app coverage."""
+    parts = []
+    for coords in lines:
+        if len(coords) < 2:
+            continue
+        clipped = LineString(coords).intersection(ROUTE_CLIP)
+        if clipped.is_empty:
+            continue
+        candidates = [clipped] if clipped.geom_type == 'LineString' else [
+            geom for geom in getattr(clipped, 'geoms', ())
+            if geom.geom_type == 'LineString'
+        ]
+        for line in candidates:
+            points = [[round(x, 6), round(y, 6)] for x, y in line.coords]
+            if len(points) >= 2:
+                parts.append(points)
+    return parts
+
+
+def clip_existing_routes(path):
+    """Clip an already-built overlay without refreshing its OSM snapshot."""
+    with open(path) as handle:
+        collection = json.load(handle)
+    features = []
+    for feature in collection.get('features', []):
+        geometry = feature.get('geometry') or {}
+        geometry_type = geometry.get('type')
+        source_lines = geometry.get('coordinates', [])
+        if geometry_type == 'LineString':
+            source_lines = [source_lines]
+        elif geometry_type != 'MultiLineString':
+            continue
+        lines = clipped_line_parts(source_lines)
+        if not lines:
+            continue
+        features.append({
+            **feature,
+            'geometry': {'type': 'MultiLineString', 'coordinates': lines},
+        })
+    with open(path, 'w') as handle:
+        json.dump({'type': 'FeatureCollection', 'features': features},
+                  handle, separators=(',', ':'))
+    return len(features)
 
 
 def route_way_is_open(tags):
@@ -112,7 +166,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='data/washington-latest.osm.pbf')
     ap.add_argument('--out', default='data/bikeroutes.geojson')
+    ap.add_argument('--clip-existing', action='store_true',
+                    help='clip the existing output without refreshing OSM data')
     args = ap.parse_args()
+
+    if args.clip_existing:
+        count = clip_existing_routes(args.out)
+        print(f'clipped {args.out}: {count} routes inside app coverage')
+        return
 
     meta, way_members = collect_relations(args.src)
     needed = set().union(*way_members.values()) if way_members else set()
@@ -122,7 +183,7 @@ def main():
 
     feats = []
     for rid, m in sorted(meta.items()):
-        lines = [geom[w] for w in sorted(way_members[rid]) if w in geom]
+        lines = clipped_line_parts([geom[w] for w in sorted(way_members[rid]) if w in geom])
         if not lines:
             continue  # e.g. members entirely outside the extract
         feats.append({
@@ -136,13 +197,13 @@ def main():
     closure_features = []
     for wid, closure in closures.items():
         routes = [meta[rid].get('r', '') for rid, members in way_members.items() if wid in members]
-        coords = closure['coords']
-        mid = coords[len(coords) // 2]
         props = {'name': closure['name'], 'reason': closure['reason'], 'routes': ', '.join(filter(None, routes))}
-        closure_features.append({'type': 'Feature', 'properties': props,
-                                 'geometry': {'type': 'LineString', 'coordinates': coords}})
-        closure_features.append({'type': 'Feature', 'properties': props,
-                                 'geometry': {'type': 'Point', 'coordinates': mid}})
+        for coords in clipped_line_parts([closure['coords']]):
+            mid = coords[len(coords) // 2]
+            closure_features.append({'type': 'Feature', 'properties': props,
+                                     'geometry': {'type': 'LineString', 'coordinates': coords}})
+            closure_features.append({'type': 'Feature', 'properties': props,
+                                     'geometry': {'type': 'Point', 'coordinates': mid}})
     closure_out = args.out.replace('bikeroutes.geojson', 'route_closures.geojson')
     with open(closure_out, 'w') as f:
         json.dump({'type': 'FeatureCollection', 'features': closure_features}, f, separators=(',', ':'))

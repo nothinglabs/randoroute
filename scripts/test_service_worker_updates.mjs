@@ -15,6 +15,8 @@ assert.match(sw, /precacheData\(\)/,
   'a candidate update must populate the complete offline data cache');
 assert.match(sw, /for \(const path of DATA\)[\s\S]*?await cache\.add\(request\)/,
   'large statewide data archives should be cached sequentially to limit installation memory');
+assert.match(sw, /ALWAYS_REFRESH_DATA = new Set\(\[[\s\S]*?bikeroutes\.geojson\.gz[\s\S]*?cache\.delete\(request, \{ ignoreSearch: true \}\)[\s\S]*?cache\.add\(request\)/,
+  'small changed route overlays should refresh without redownloading every statewide archive');
 for (const asset of ['data/roads.pmtiles', 'data/basemap.pmtiles', 'data/graph2.bin.gz']) {
   assert.ok(sw.includes(`'./${asset}'`), `offline data cache omits ${asset}`);
 }
