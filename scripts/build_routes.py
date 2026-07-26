@@ -17,7 +17,6 @@ Usage:
 import argparse
 import json
 
-import osmium
 from shapely.geometry import LineString, box
 
 KEEP_NETWORKS = {'ncn', 'rcn'}
@@ -28,6 +27,71 @@ KEEP_NETWORKS = {'ncn', 'rcn'}
 # allowing those remote members to distort the rendered map.
 ROUTE_BOUNDS = (-125.5, 45.2, -116.7, 50.0)
 ROUTE_CLIP = box(*ROUTE_BOUNDS)
+
+
+def route_line_key(coords):
+    """Direction-independent key for one physical route member."""
+    forward = tuple(tuple(point) for point in coords)
+    reverse = tuple(reversed(forward))
+    return min(forward, reverse)
+
+
+def merged_route_features(features):
+    """Collapse overlapping relation members into one rendered corridor.
+
+    A physical OSM way can belong to a regional route, a national route, and
+    one or more super-relations. Rendering each relation as a translucent line
+    compounds opacity and makes the same corridor look darker or beadier than
+    its neighbors. Merge exact member geometry while retaining every route
+    name/ref represented by that member.
+    """
+    corridors = {}
+    for feature in features:
+        geometry = feature.get('geometry') or {}
+        geometry_type = geometry.get('type')
+        lines = geometry.get('coordinates', [])
+        if geometry_type == 'LineString':
+            lines = [lines]
+        elif geometry_type != 'MultiLineString':
+            continue
+        properties = feature.get('properties') or {}
+        for coords in lines:
+            if len(coords) < 2:
+                continue
+            key = route_line_key(coords)
+            corridor = corridors.setdefault(key, {
+                'coordinates': coords,
+                'networks': set(),
+                'refs': set(),
+                'names': set(),
+            })
+            if properties.get('t'):
+                corridor['networks'].add(properties['t'])
+            if properties.get('r'):
+                corridor['refs'].add(properties['r'])
+            if properties.get('n'):
+                corridor['names'].add(properties['n'])
+
+    # Group corridors with identical merged metadata back into MultiLineString
+    # features. This keeps the GeoJSON compact without allowing a physical
+    # line to appear more than once.
+    groups = {}
+    for corridor in corridors.values():
+        properties = {
+            # A shared national/regional corridor keeps the stronger national
+            # rendering width while listing all names and references.
+            't': 'ncn' if 'ncn' in corridor['networks'] else 'rcn',
+            'r': ', '.join(sorted(corridor['refs'])),
+            'n': ' / '.join(sorted(corridor['names'])),
+        }
+        signature = (properties['t'], properties['r'], properties['n'])
+        group = groups.setdefault(signature, {
+            'type': 'Feature',
+            'properties': properties,
+            'geometry': {'type': 'MultiLineString', 'coordinates': []},
+        })
+        group['geometry']['coordinates'].append(corridor['coordinates'])
+    return list(groups.values())
 
 
 def clipped_line_parts(lines):
@@ -50,10 +114,12 @@ def clipped_line_parts(lines):
     return parts
 
 
-def clip_existing_routes(path):
+def clip_existing_routes(path, route_count_override=None):
     """Clip an already-built overlay without refreshing its OSM snapshot."""
     with open(path) as handle:
         collection = json.load(handle)
+    route_count = route_count_override or collection.get(
+        'routeCount', len(collection.get('features', [])))
     features = []
     for feature in collection.get('features', []):
         geometry = feature.get('geometry') or {}
@@ -70,10 +136,12 @@ def clip_existing_routes(path):
             **feature,
             'geometry': {'type': 'MultiLineString', 'coordinates': lines},
         })
+    merged = merged_route_features(features)
     with open(path, 'w') as handle:
-        json.dump({'type': 'FeatureCollection', 'features': features},
+        json.dump({'type': 'FeatureCollection', 'routeCount': route_count,
+                   'features': merged},
                   handle, separators=(',', ':'))
-    return len(features)
+    return len(merged)
 
 
 def route_way_is_open(tags):
@@ -109,6 +177,8 @@ def closure_reason(tags):
 
 def collect_relations(src):
     """Pass A: route=bicycle relations -> meta + member way ids (transitive)."""
+    import osmium
+
     meta = {}          # rel id -> {t, r, n}
     way_members = {}   # rel id -> set(way ids)
     sub_members = {}   # rel id -> set(rel ids)
@@ -144,6 +214,8 @@ def collect_relations(src):
 
 def collect_geometry(src, needed):
     """Pass B: coords for every needed member way."""
+    import osmium
+
     geom, closures = {}, {}
     for o in osmium.FileProcessor(src).with_locations():
         if not o.is_way() or o.id not in needed:
@@ -168,10 +240,12 @@ def main():
     ap.add_argument('--out', default='data/bikeroutes.geojson')
     ap.add_argument('--clip-existing', action='store_true',
                     help='clip the existing output without refreshing OSM data')
+    ap.add_argument('--route-count', type=int,
+                    help='preserve this informational relation count when transforming existing data')
     args = ap.parse_args()
 
     if args.clip_existing:
-        count = clip_existing_routes(args.out)
+        count = clip_existing_routes(args.out, args.route_count)
         print(f'clipped {args.out}: {count} routes inside app coverage')
         return
 
@@ -191,7 +265,9 @@ def main():
             'properties': {'t': m['t'], 'r': m['r'], 'n': m['n']},
             'geometry': {'type': 'MultiLineString', 'coordinates': lines},
         })
-    fc = {'type': 'FeatureCollection', 'features': feats}
+    feats = merged_route_features(feats)
+    fc = {'type': 'FeatureCollection', 'routeCount': len(meta),
+          'features': feats}
     with open(args.out, 'w') as f:
         json.dump(fc, f, separators=(',', ':'))
     closure_features = []

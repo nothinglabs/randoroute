@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.370';
+const APP_VERSION = '2026-07-26.371';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1073,10 +1073,10 @@ function ensureLayer(src) {
     ...SL,
     minzoom: src.minVisibleZoom || 0,
     layout: {
-      // Flat feature ends prevent independently tiled/segmented streets from
-      // protruding into one another at intersections. Curves within a feature
-      // still use round joins.
-      'line-cap': src.ribbon ? 'round' : 'butt',
+      // Flat feature ends prevent independently segmented roads and route
+      // relation members from alpha-stacking into dark dots where they meet.
+      // Curves within a feature still use round joins.
+      'line-cap': 'butt',
       'line-join': 'round',
     },
     paint: {
@@ -1483,7 +1483,7 @@ async function loadSource(src) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       fc = await jsonAssetResponse(res, src.url);
     }
-    src.count = fc.features.length;
+    src.count = Number.isFinite(fc.routeCount) ? fc.routeCount : fc.features.length;
     src.fc = fc;
     if (!src.expr) rescore(src); // sets .level on every feature
     ensureLayer(src);
