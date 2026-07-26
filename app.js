@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.378';
+const APP_VERSION = '2026-07-26.379';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2124,6 +2124,22 @@ function navDestinationSegment(segs, currentIndex) {
     : null);
 }
 
+// The named road the rider is actually travelling as they reach a maneuver,
+// looking back past unnamed stubs. A traffic circle (or a short intersection
+// connector) splits a through road into "<road> → <unnamed circle> → <road>";
+// read literally, the exit edge's origin is the blank circle, so continuing
+// straight out the far side gets mis-announced as "onto <the same road>". This
+// walks back to the last real name so that case is recognized as staying on it.
+function navOriginName(segs, currentIndex) {
+  let traveledM = 0;
+  for (let i = currentIndex; i >= 0 && traveledM <= 120; i--) {
+    const name = navRoadName(segs[i]?.name);
+    if (name) return name;
+    traveledM += Number(segs[i]?.lenM) || 0;
+  }
+  return '';
+}
+
 function buildTurnInstructions(m) {
   const coords = m.coords || [];
   const cumulative = [0];
@@ -2145,7 +2161,9 @@ function buildTurnInstructions(m) {
     const incoming = routeBearingOver(coords, cumulative, junctionM - TURN_BEARING_SPAN_M, junctionM);
     const outgoing = routeBearingOver(coords, cumulative, junctionM, junctionM + TURN_BEARING_SPAN_M);
     const delta = navDelta(incoming, outgoing);
-    const from = navRoadName(segs[i]?.name);
+    // Look back past unnamed circle/connector stubs so exiting a traffic circle
+    // onto the same through road is recognized as staying on it, not a turn.
+    const from = navOriginName(segs, i);
     const destination = navDestinationSegment(segs, i);
     const to = destination?.name || '';
     // Staying on the same road/path: a shared-use path (e.g. the Green Lake
