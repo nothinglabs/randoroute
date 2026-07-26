@@ -207,8 +207,8 @@ assert.match(app, /function maybeSpeakPeriodicUpdate\([\s\S]*?if \(turnNav\.nati
   'the foreground web guide should defer cadence updates to the native iOS timer');
 assert.match(nativeBridge, /didUpdateLocations[\s\S]*?latestLocation = location/,
   'the status timer should retain the latest native location fix');
-assert.match(app, /id: 'route-shadow'[\s\S]*?'line-width': 17[\s\S]*?'line-opacity': 0\.78[\s\S]*?id: 'route-casing'[\s\S]*?'line-width': 12\.5/,
-  'the selected route should mask slightly offset background state-highway geometry');
+assert.match(app, /const routeWidthExpression = \(extra = 0\) => \['interpolate'[\s\S]*?const routeCasingWidthExpression = \(extra = 0\) => \['interpolate'[\s\S]*?id: 'route-shadow'[\s\S]*?'line-width': routeShadowWidthExpression[\s\S]*?'line-opacity': 0\.78[\s\S]*?id: 'route-casing'[\s\S]*?'line-width': routeCasingWidthExpression\(\)/,
+  'the selected route should scale with zoom while masking slightly offset background state-highway geometry');
 assert.match(nativeInfo, /<key>UIBackgroundModes<\/key>[\s\S]*?<string>audio<\/string>[\s\S]*?<string>location<\/string>/,
   'native navigation should declare both spoken-audio and location background modes');
 assert.match(css, /#settingsVoice\s*\{[^}]*align-content:\s*start[^}]*gap:\s*7px/,

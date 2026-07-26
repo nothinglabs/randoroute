@@ -79,8 +79,10 @@ assert.match(basemap, /'source-layer': 'land', maxzoom: 8[\s\S]*?'source-layer':
   'precise OSM coastline land should replace generalized regional land at close zooms');
 assert.doesNotMatch(builder, /data\/(?:bikeroutes|blts|bikeinfra|bike_restrictions|route_closures)\.geojson\.gz'/,
   'the native shell should use the full uncompressed overlay copies');
-assert.match(app, /const SAFETY_ROAD_INTERIOR_WIDTH = \['interpolate'[\s\S]*?5,\s*0\.6,\s*8,\s*1\.1,\s*11,\s*2\.2,\s*14,\s*4\.7,\s*17,\s*9\]/,
-  'safety colors should fill the same road interior width used by the local basemap');
+assert.match(basemap, /const ROAD_WIDTHS = \{[\s\S]*?major:[\s\S]*?17,\s*12[\s\S]*?medium:[\s\S]*?17,\s*10\.4[\s\S]*?local:[\s\S]*?17,\s*9/,
+  'the local basemap should preserve a visible major, medium, and local road-width hierarchy');
+assert.match(app, /const SAFETY_ROAD_INTERIOR_WIDTH = \['match', ROAD_CLASS_EXPR,[\s\S]*?ROAD_CLASSES\.major,\s*BikeBasemap\.ROAD_WIDTHS\.major\.fill,[\s\S]*?ROAD_CLASSES\.medium,\s*BikeBasemap\.ROAD_WIDTHS\.medium\.fill,[\s\S]*?ROAD_WIDTHS\.local\.fill\]/,
+  'safety colors should fill the class-scaled road interior width used by the local basemap');
 assert.match(app, /\[BIKE_NETWORK_COLOR,\s*'Road with bike facility'\]/,
   'the solid-lime legend should describe on-road bike facilities');
 assert.match(styles, /#topToolbar\s*\{[\s\S]*?top:\s*0;[\s\S]*?padding-top:\s*calc\(env\(safe-area-inset-top\) \+ 4px\);/,
@@ -93,8 +95,8 @@ assert.match(app, /id: trailId\(src\),[\s\S]*?minzoom: BikeBasemap\.ROAD_MIN_ZOO
   'trail safety styling and hit targets should wait for local-detail zoom');
 assert.doesNotMatch(app, /RES_MIN_ZOOM/,
   'the old blanket residential safety zoom cutoff should be removed');
-assert.match(app, /setPaintProperty\('route-fail', 'line-opacity', 0\.92 \+ 0\.08 \* p\)[\s\S]*?setPaintProperty\('route-fail', 'line-width', 6\.5 \+ 3 \* p\)/,
-  'rule-failure animation should pulse width while remaining visibly red');
+assert.match(app, /setPaintProperty\('route-fail', 'line-opacity', 0\.92 \+ 0\.08 \* p\)[\s\S]*?setPaintProperty\('route-fail', 'line-width', routeWidthExpression\(3 \* p\)\)/,
+  'rule-failure animation should pulse the zoom-scaled width while remaining visibly red');
 assert.match(app, /id: 'route-detail-highlight'[\s\S]*?'line-color': '#ffd45c'[\s\S]*?}, 'route-pass'\)/,
   'detail selections should use a warm halo beneath the route safety color');
 assert.match(app, /src\.id === 'osm' \? \{ filter: \['boolean', false\] \}/,

@@ -38,8 +38,32 @@
     local: localRoads,
   };
   const ROAD_MIN_ZOOM = { major: 5, medium: 8, local: 11 };
+  // The zoom curves preserve a clear road hierarchy: highways and primary
+  // roads remain visibly broader than neighborhood streets at the same zoom.
+  // Safety fills reuse these exact expressions in app.js.
+  const ROAD_WIDTHS = {
+    major: {
+      fill: ['interpolate', ['linear'], ['zoom'],
+        5, 0.8, 8, 1.55, 11, 3.1, 14, 6.5, 17, 12],
+      casing: ['interpolate', ['linear'], ['zoom'],
+        5, 1.8, 8, 2.9, 11, 5.1, 14, 9.4, 17, 16],
+    },
+    medium: {
+      fill: ['interpolate', ['linear'], ['zoom'],
+        5, 0.7, 8, 1.3, 11, 2.6, 14, 5.6, 17, 10.4],
+      casing: ['interpolate', ['linear'], ['zoom'],
+        5, 1.55, 8, 2.55, 11, 4.5, 14, 8.4, 17, 14],
+    },
+    local: {
+      fill: ['interpolate', ['linear'], ['zoom'],
+        5, 0.6, 8, 1.1, 11, 2.2, 14, 4.7, 17, 9],
+      casing: ['interpolate', ['linear'], ['zoom'],
+        5, 1.4, 8, 2.25, 11, 4, 14, 7.4, 17, 12.5],
+    },
+  };
 
-  function lineLayer(id, minzoom, filter, casing) {
+  function lineLayer(id, minzoom, filter, roadClass, casing) {
+    const widths = ROAD_WIDTHS[roadClass];
     return {
       id,
       type: 'line',
@@ -52,16 +76,14 @@
         // A firmer, wider casing makes the underlying street network readable
         // without competing with the saturated bike-safety overlays above it.
         'line-color': '#b7c1c5',
-        'line-width': ['interpolate', ['linear'], ['zoom'],
-          5, 1.4, 8, 2.25, 11, 4, 14, 7.4, 17, 12.5],
+        'line-width': widths.casing,
         'line-opacity': 0.96,
       } : {
         'line-color': ['match', ['get', 'h'],
           ['motorway', 'motorway_link'], '#f3dec1',
           ['trunk', 'trunk_link', 'primary', 'primary_link'], '#fff5df',
           '#ffffff'],
-        'line-width': ['interpolate', ['linear'], ['zoom'],
-          5, 0.6, 8, 1.1, 11, 2.2, 14, 4.7, 17, 9],
+        'line-width': widths.fill,
         'line-opacity': 0.98,
       },
     };
@@ -141,12 +163,12 @@
             'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 12, 1.2, 16, 2.4],
             'line-opacity': 0.9,
           } },
-        lineLayer('basemap-major-casing', ROAD_MIN_ZOOM.major, roadMatch(majorRoads), true),
-        lineLayer('basemap-major', ROAD_MIN_ZOOM.major, roadMatch(majorRoads), false),
-        lineLayer('basemap-medium-casing', ROAD_MIN_ZOOM.medium, roadMatch(mediumRoads), true),
-        lineLayer('basemap-medium', ROAD_MIN_ZOOM.medium, roadMatch(mediumRoads), false),
-        lineLayer('basemap-local-casing', ROAD_MIN_ZOOM.local, roadMatch(localRoads), true),
-        lineLayer('basemap-local', ROAD_MIN_ZOOM.local, roadMatch(localRoads), false),
+        lineLayer('basemap-major-casing', ROAD_MIN_ZOOM.major, roadMatch(majorRoads), 'major', true),
+        lineLayer('basemap-major', ROAD_MIN_ZOOM.major, roadMatch(majorRoads), 'major', false),
+        lineLayer('basemap-medium-casing', ROAD_MIN_ZOOM.medium, roadMatch(mediumRoads), 'medium', true),
+        lineLayer('basemap-medium', ROAD_MIN_ZOOM.medium, roadMatch(mediumRoads), 'medium', false),
+        lineLayer('basemap-local-casing', ROAD_MIN_ZOOM.local, roadMatch(localRoads), 'local', true),
+        lineLayer('basemap-local', ROAD_MIN_ZOOM.local, roadMatch(localRoads), 'local', false),
         { id: 'basemap-water-labels', type: 'symbol', source: 'basemap-context',
           'source-layer': 'water', minzoom: 9, filter: named,
           layout: {
@@ -198,6 +220,7 @@
     FONT_STACK,
     ROAD_CLASSES,
     ROAD_MIN_ZOOM,
+    ROAD_WIDTHS,
     ensureProtocol,
     createStyle,
   };
