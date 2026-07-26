@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-app-runtime="native">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -427,7 +427,8 @@
 
   <script>
     // Register the service worker (offline support + installability).
-    const isNativeShell = window.location.protocol === 'capacitor:'
+    const isNativeShell = document.documentElement.dataset.appRuntime === 'native'
+      || window.location.protocol === 'capacitor:'
       || Boolean(window.Capacitor?.isNativePlatform?.());
     if (!isNativeShell && 'serviceWorker' in navigator) {
       window.__swReady = navigator.serviceWorker

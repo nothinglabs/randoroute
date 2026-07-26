@@ -1,4 +1,4 @@
-import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -54,5 +54,15 @@ for (const relativePath of files) {
   await mkdir(dirname(destination), { recursive: true });
   await copyFile(join(root, relativePath), destination);
 }
+
+const nativeIndexPath = join(output, 'index.html');
+const sharedIndex = await readFile(nativeIndexPath, 'utf8');
+if (!sharedIndex.includes('data-app-runtime="web"')) {
+  throw new Error('index.html is missing the native-build runtime marker');
+}
+await writeFile(
+  nativeIndexPath,
+  sharedIndex.replace('data-app-runtime="web"', 'data-app-runtime="native"'),
+);
 
 console.log(`Prepared ${files.length} native shell assets in mobile-shell/`);

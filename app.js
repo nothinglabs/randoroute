@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.364';
+const APP_VERSION = '2026-07-26.365';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -738,7 +738,8 @@ const desktopZoomControl = new maplibregl.NavigationControl({
 });
 let desktopZoomControlVisible = false;
 function syncDesktopZoomControl() {
-  const nativeShell = Boolean(window.Capacitor?.isNativePlatform?.());
+  const nativeShell = document.documentElement.dataset.appRuntime === 'native'
+    || Boolean(window.Capacitor?.isNativePlatform?.());
   const shouldShow = desktopBrowserZoomMedia.matches && !nativeShell;
   if (shouldShow === desktopZoomControlVisible) return;
   if (shouldShow) map.addControl(desktopZoomControl, 'top-right');
@@ -7428,7 +7429,8 @@ document.getElementById('panelOpen').addEventListener('click', () => {
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () =>
   document.getElementById(b.dataset.close).close()));
 document.getElementById('appVersion').textContent = 'v' + APP_VERSION;
-const nativeAppVersionOnly = window.location.protocol === 'capacitor:'
+const nativeAppVersionOnly = document.documentElement.dataset.appRuntime === 'native'
+  || window.location.protocol === 'capacitor:'
   || Boolean(window.Capacitor?.isNativePlatform?.());
 if (nativeAppVersionOnly) {
   document.getElementById('checkUpdatesBtn').hidden = true;

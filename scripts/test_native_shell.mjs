@@ -58,6 +58,12 @@ for (const runtime of [app, basemap, details, serviceWorker]) {
     'core map runtime must not depend on the old online CARTO basemap');
 }
 assert.match(index, /<script src="basemap-style\.js"><\/script>/);
+assert.match(index, /<html lang="en" data-app-runtime="web">/,
+  'the shared web shell should identify itself as the web runtime');
+assert.match(nativeIndex, /<html lang="en" data-app-runtime="native">/,
+  'the generated iOS shell should carry an explicit native runtime marker');
+assert.match(builder, /replace\('data-app-runtime="web"', 'data-app-runtime="native"'\)/,
+  'the native shell builder should set the native runtime marker');
 assert.match(index, /<script src="vendor\/fflate\.js"><\/script>[\s\S]*?<script src="basemap-style\.js"><\/script>/,
   'the compressed overlay decoder must load before the application');
 assert.match(index, /if \(!isNativeShell && 'serviceWorker' in navigator\)/);
@@ -67,6 +73,8 @@ assert.match(index, /id="iosAppVersionLabel"[^>]*hidden[^>]*>iOS App Version<\/s
   'the shared shell should provide a native-only plain app-version label');
 assert.match(app, /nativeAppVersionOnly[\s\S]*?checkUpdatesBtn'\)\.hidden = true[\s\S]*?iosAppVersionLabel'\)\.hidden = false/,
   'the native runtime should hide the unsupported update button');
+assert.match(app, /nativeAppVersionOnly = document\.documentElement\.dataset\.appRuntime === 'native'/,
+  'native-only help behavior should use the explicit bundle marker');
 assert.match(basemap, /pmtiles:\/\/data\/basemap\.pmtiles/);
 assert.match(basemap, /pmtiles:\/\/data\/roads\.pmtiles/);
 assert.match(basemap, /fonts\/\{fontstack\}\/\{range\}\.pbf/,
