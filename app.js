@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.366';
+const APP_VERSION = '2026-07-26.367';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1578,12 +1578,27 @@ async function readRoutingGraphResponse(response) {
   const total = Number(response.headers.get('content-length')) || 0;
   if (!response.body?.getReader) return response.arrayBuffer();
   const reader = response.body.getReader();
-  const chunks = [];
+  // GitHub Pages and the offline cache both provide Content-Length. Fill the
+  // final buffer directly instead of retaining ~30 MB of chunks and then
+  // allocating a second ~30 MB concatenation buffer.
+  let bytes = total > 0 ? new Uint8Array(total) : null;
+  const chunks = bytes ? null : [];
   let received = 0, announcedPercent = -10;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    chunks.push(value);
+    if (bytes) {
+      if (received + value.byteLength > bytes.byteLength) {
+        // A broken Content-Length should cost memory only on that exceptional
+        // response, not on every normal graph load.
+        const grown = new Uint8Array(Math.max(received + value.byteLength, bytes.byteLength * 2));
+        grown.set(bytes);
+        bytes = grown;
+      }
+      bytes.set(value, received);
+    } else {
+      chunks.push(value);
+    }
     received += value.byteLength;
     if (total > 0) {
       const percent = Math.min(100, Math.floor((received / total) * 10) * 10);
@@ -1593,10 +1608,12 @@ async function readRoutingGraphResponse(response) {
       }
     }
   }
-  const bytes = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  return bytes.buffer;
+  if (!bytes) {
+    bytes = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  }
+  return received === bytes.byteLength ? bytes.buffer : bytes.slice(0, received).buffer;
 }
 
 // Off-network start/end pins matter, but not enough to hold route-card space

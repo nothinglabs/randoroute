@@ -18,8 +18,12 @@ assert.match(sw, /for \(const path of DATA\)[\s\S]*?await cache\.add\(request\)/
 for (const asset of ['data/roads.pmtiles', 'data/basemap.pmtiles', 'data/graph2.bin.gz']) {
   assert.ok(sw.includes(`'./${asset}'`), `offline data cache omits ${asset}`);
 }
-assert.match(sw, /url\.pathname\.endsWith\('\.pmtiles'\)[\s\S]*?pmtilesRangeResponse\(e\.request\)/,
-  'PMTiles reads should be answered by the offline byte-range handler');
+assert.match(sw, /url\.pathname\.endsWith\('\.pmtiles'\)[\s\S]*?pmtilesOnlineFirst\(e\.request\)/,
+  'online PMTiles reads should avoid materializing the complete cached archive');
+assert.match(sw, /async function pmtilesOnlineFirst[\s\S]*?response\.status === 206[\s\S]*?return pmtilesRangeResponse\(req\)/,
+  'PMTiles should use server byte ranges online and retain the offline archive fallback');
+assert.match(sw, /const pmtilesBlobPromises = new Map\(\)[\s\S]*?pmtilesBlobPromises\.get\(archiveKey\)[\s\S]*?pmtilesBlobPromises\.set\(archiveKey, blobPromise\)/,
+  'offline range reads should reuse one archive Blob instead of copying it per tile');
 assert.match(sw, /url\.origin === location\.origin\) \{\s*e\.respondWith\(cacheFirst\(SHELL_CACHE, e\.request\)\);/,
   'the active app shell should stay cache-first until the user accepts an update');
 assert.doesNotMatch(sw, /networkFirst\(SHELL_CACHE/,
@@ -91,6 +95,7 @@ const rangeContext = vm.createContext({
   Request,
   Response,
   Blob,
+  URL,
   Headers,
   Uint8Array,
 });

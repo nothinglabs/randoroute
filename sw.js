@@ -10,7 +10,7 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v366'; // bump when app shell changes
+const VERSION = 'v367'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v5';
@@ -21,10 +21,10 @@ const SHELL = [
   './route-details.html',
   './app.js',
   './basemap-style.js',
-  './route-details.js?v=366',
+  './route-details.js?v=367',
   './router-worker.js',
   './styles.css',
-  './route-details.css?v=366',
+  './route-details.css?v=367',
   './manifest.json',
   './vendor/maplibre-gl.js',
   './vendor/maplibre-gl.css',
@@ -78,7 +78,7 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   if (url.origin === location.origin && url.pathname.endsWith('.pmtiles')) {
-    e.respondWith(pmtilesRangeResponse(e.request));
+    e.respondWith(pmtilesOnlineFirst(e.request));
   } else if (url.origin === location.origin && url.pathname.includes('/data/')) {
     e.respondWith(cacheFirst(DATA_CACHE, e.request, true));
   } else if (url.origin === location.origin) {
@@ -99,6 +99,20 @@ async function cacheFirst(name, req, ignoreSearch = false) {
   return res;
 }
 
+async function pmtilesOnlineFirst(req) {
+  try {
+    const response = await fetch(req);
+    // A PMTiles range read must remain a range response. GitHub Pages supports
+    // this directly, avoiding a 35–44 MB cached-archive Blob for every tile.
+    if (response.ok && (!req.headers.get('Range') || response.status === 206)) {
+      return response;
+    }
+  } catch (e) {
+    // Offline: fall through to the complete archive stored at installation.
+  }
+  return pmtilesRangeResponse(req);
+}
+
 async function precacheData() {
   const cache = await caches.open(DATA_CACHE);
   // These archives are intentionally large. Fetching all of them concurrently
@@ -110,6 +124,8 @@ async function precacheData() {
     if (!hit) await cache.add(request);
   }
 }
+
+const pmtilesBlobPromises = new Map();
 
 async function pmtilesRangeResponse(req) {
   const cache = await caches.open(DATA_CACHE);
@@ -124,7 +140,16 @@ async function pmtilesRangeResponse(req) {
   if (!range) return full;
   const match = /^bytes=(\d+)-(\d*)$/i.exec(range);
   if (!match) return new Response(null, { status: 416 });
-  const blob = await full.blob();
+  const archiveKey = new URL(req.url).pathname;
+  let blobPromise = pmtilesBlobPromises.get(archiveKey);
+  if (!blobPromise) {
+    blobPromise = full.blob().catch((error) => {
+      pmtilesBlobPromises.delete(archiveKey);
+      throw error;
+    });
+    pmtilesBlobPromises.set(archiveKey, blobPromise);
+  }
+  const blob = await blobPromise;
   const start = Number(match[1]);
   const requestedEnd = match[2] ? Number(match[2]) : blob.size - 1;
   const end = Math.min(requestedEnd, blob.size - 1);
