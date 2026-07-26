@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.376';
+const APP_VERSION = '2026-07-26.377';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -765,6 +765,16 @@ let nativeMapLocationMarker = null;
 let mapLocationRequest = null;
 let lastMapLocationRequestAt = 0;
 
+// The passive dot marks an approximate location outside navigation. It must
+// vanish the instant navigation takes over: otherwise it stays frozen at its
+// last resting place and reads as a second "you are here" beside the live
+// rider marker (which snaps to the route and moves on without it).
+function clearPassiveMapLocationMarker() {
+  if (!nativeMapLocationMarker) return;
+  nativeMapLocationMarker.remove();
+  nativeMapLocationMarker = null;
+}
+
 function updatePassiveMapLocation(position, reason = 'foreground') {
   const lng = Number(position?.coords?.longitude);
   const lat = Number(position?.coords?.latitude);
@@ -774,13 +784,13 @@ function updatePassiveMapLocation(position, reason = 'foreground') {
   // Navigation owns its live rider marker. Outside navigation, keep a simple
   // marker visible for locations obtained automatically or through the native
   // location button.
-  if (!turnNav.active) {
-    if (!nativeMapLocationMarker) {
-      const element = document.createElement('div');
-      element.className = 'native-location-marker';
-      nativeMapLocationMarker = new maplibregl.Marker({ element }).setLngLat(point).addTo(map);
-    } else nativeMapLocationMarker.setLngLat(point);
-  }
+  if (turnNav.active) {
+    clearPassiveMapLocationMarker();
+  } else if (!nativeMapLocationMarker) {
+    const element = document.createElement('div');
+    element.className = 'native-location-marker';
+    nativeMapLocationMarker = new maplibregl.Marker({ element }).setLngLat(point).addTo(map);
+  } else nativeMapLocationMarker.setLngLat(point);
 
   if (turnNav.active) {
     clearTimeout(turnNav.followResumeTimer);
@@ -2909,6 +2919,36 @@ async function getDevicePosition(options = {}) {
   ));
 }
 
+// Planning a route from "my location" must use a fix the device has actually
+// just taken, not a cached one. iOS (and the native plugin's last-known cache)
+// can return a fix from a previous place or session the instant it is asked,
+// before the GPS has updated — which is how a start pin lands somewhere the
+// rider no longer is. Force a new reading and reject anything stale or wildly
+// imprecise so the caller can ask the rider to wait a moment.
+const FRESH_FIX_MAX_AGE_MS = 45000;
+const FRESH_FIX_MAX_ACCURACY_M = 250;
+
+async function getFreshDevicePosition(options = {}) {
+  // maximumAge:0 makes the web geolocation path take a new reading instead of
+  // returning a cached one. The timestamp/accuracy checks below additionally
+  // cover the native plugin, whose getCurrentPosition can hand back a last-known
+  // fix regardless of the option.
+  const position = await getDevicePosition({ maximumAge: 0, timeout: 20000, ...options });
+  const fixAt = Number(position?.timestamp);
+  if (Number.isFinite(fixAt) && Date.now() - fixAt > FRESH_FIX_MAX_AGE_MS) {
+    const error = new Error('Location is still updating');
+    error.code = 'STALE_FIX';
+    throw error;
+  }
+  const accuracy = Number(position?.coords?.accuracy);
+  if (Number.isFinite(accuracy) && accuracy > FRESH_FIX_MAX_ACCURACY_M) {
+    const error = new Error('Location is still updating');
+    error.code = 'IMPRECISE_FIX';
+    throw error;
+  }
+  return position;
+}
+
 const NAVIGATION_SPEECH_RATE = 0.96;
 let preferredNavigationVoice = null;
 
@@ -3782,6 +3822,8 @@ function startTurnNavigation() {
   turnNav.newRouteStart = null;
   turnNav.newRouteVias = null;
   turnNav.active = true;
+  // The live rider marker is the only "you are here" during navigation.
+  clearPassiveMapLocationMarker();
   turnNav.next = 0;
   turnNav.nearest = 0;
   turnNav.nearestSegment = 0;
@@ -6138,7 +6180,7 @@ function buildPlacePicker() {
   document.getElementById('placePickerClose').addEventListener('click', () => closePlacePicker(true));
   document.getElementById('useLoc').addEventListener('click', () => {
     setRouteStatus('Locating…');
-    getDevicePosition().then((pos) => {
+    getFreshDevicePosition().then((pos) => {
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
       setRoutePoint(placeTarget, lngLat, 'My location');
       routing.arm = null;
@@ -6147,9 +6189,16 @@ function buildPlacePicker() {
       frameMapAfterPlacePicker(lngLat);
       setRouteStatus(placeTarget === 'start' ? 'Start set to your location' : 'Destination set');
     }).catch((error) => {
-      const message = /blocked|denied|permission/i.test(String(error?.message || error))
-        ? 'Location permission is blocked in iPhone Settings'
-        : 'Could not get your location';
+      // GeolocationPositionError.TIMEOUT is 3; our own gate throws string codes.
+      const code = error?.code;
+      let message;
+      if (code === 'STALE_FIX' || code === 'IMPRECISE_FIX' || code === 3) {
+        message = 'Still getting a GPS fix — try again in a moment';
+      } else if (/blocked|denied|permission/i.test(String(error?.message || error))) {
+        message = 'Location permission is blocked in iPhone Settings';
+      } else {
+        message = 'Could not get your location';
+      }
       setRouteStatus(message);
     });
   });
