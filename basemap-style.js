@@ -47,7 +47,10 @@
       'source-layer': 'roads',
       minzoom,
       filter,
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      // Safety colors replace this road interior with flat-ended segments.
+      // Match that cap here (for both casing and fill) so a round white base
+      // road cannot protrude as a semicircle beyond the safety color.
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
       paint: casing ? {
         // A firmer, wider casing makes the underlying street network readable
         // without competing with the saturated bike-safety overlays above it.

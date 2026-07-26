@@ -81,6 +81,8 @@ assert.match(basemap, /fonts\/\{fontstack\}\/\{range\}\.pbf/,
   'vector labels should use the bundled local glyph ranges');
 assert.match(basemap, /const ROAD_MIN_ZOOM = \{\s*major:\s*5,\s*medium:\s*8,\s*local:\s*11\s*\}[\s\S]*?ROAD_CLASSES,[\s\S]*?ROAD_MIN_ZOOM,/,
   'the local basemap should expose one shared set of road-class zoom thresholds');
+assert.match(basemap, /function lineLayer[\s\S]*?layout: \{ 'line-cap': 'butt', 'line-join': 'round' \}/,
+  'basemap road casing and fill should not protrude beyond flat-ended safety segments');
 assert.match(app, /mapSourceId:\s*'basemap-roads'/,
   'the safety overlay should reuse the basemap road source');
 assert.match(app, /if \(src\.id === 'blts'\)[\s\S]*?map\.setFilter\(id, \['boolean', false\]\)/,
