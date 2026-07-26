@@ -431,8 +431,21 @@
       || window.location.protocol === 'capacitor:'
       || Boolean(window.Capacitor?.isNativePlatform?.());
     if (!isNativeShell && 'serviceWorker' in navigator) {
-      window.__swReady = navigator.serviceWorker
-        .register('./sw.js', { updateViaCache: 'none' })
+      // GitHub Pages caches an exact sw.js URL for up to ten minutes. Resolve
+      // the tiny, cache-busted release marker first so a newly published worker
+      // gets a distinct script URL immediately.
+      window.__swReady = fetch(`./version.json?register=${Date.now()}`, { cache: 'no-store' })
+        .then((response) => response.ok ? response.json() : null)
+        .catch(() => null)
+        .then((release) => {
+          const suffix = release?.version
+            ? `?release=${encodeURIComponent(release.version)}`
+            : '';
+          return navigator.serviceWorker.register(`./sw.js${suffix}`, {
+            scope: './',
+            updateViaCache: 'none',
+          });
+        })
         .then((reg) => (navigator.serviceWorker.ready, reg))
         .catch((e) => console.warn('SW registration failed:', e));
     }

@@ -28,12 +28,14 @@ assert.match(sw, /url\.origin === location\.origin\) \{\s*e\.respondWith\(cacheF
   'the active app shell should stay cache-first until the user accepts an update');
 assert.doesNotMatch(sw, /networkFirst\(SHELL_CACHE/,
   'individual app-shell files must not refresh independently during a release');
-assert.match(indexHtml, /\.register\('\.\/sw\.js', \{ updateViaCache: 'none' \}\)/,
-  'service-worker update checks must bypass the browser HTTP cache');
+assert.match(indexHtml, /version\.json\?register=\$\{Date\.now\(\)\}[\s\S]*?sw\.js\$\{suffix\}[\s\S]*?updateViaCache: 'none'/,
+  'service-worker registration must use the cache-busted published release URL');
 assert.match(app, /version\.json\?update-check=\$\{Date\.now\(\)\}/,
   'manual update checks must use a unique release-marker URL');
 assert.match(app, /publishedVersion !== APP_VERSION/,
   'the app must compare its version with the published release marker');
+assert.match(app, /sw\.js\?release=\$\{encodeURIComponent\(publishedVersion\)\}[\s\S]*?scope: '\.\/', updateViaCache: 'none'/,
+  'manual update checks must bypass a stale CDN copy of the worker script');
 const appVersion = /const APP_VERSION = '([^']+)'/.exec(app)?.[1];
 assert.equal(release.version, appVersion,
   'the published release marker must match the app version');
