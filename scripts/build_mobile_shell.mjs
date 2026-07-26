@@ -17,14 +17,16 @@ const files = [
   'vendor/maplibre-gl.js',
   'vendor/maplibre-gl.css',
   'vendor/pmtiles.js',
+  'vendor/fflate.js',
+  'vendor/fflate-LICENSE.txt',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
-  'data/bikeroutes.geojson',
-  'data/blts.geojson',
-  'data/bikeinfra.geojson',
-  'data/bike_restrictions.geojson',
-  'data/route_closures.geojson',
+  'data/bikeroutes.geojson.gz',
+  'data/blts.geojson.gz',
+  'data/bikeinfra.geojson.gz',
+  'data/bike_restrictions.geojson.gz',
+  'data/route_closures.geojson.gz',
   'data/roads.pmtiles',
   'data/basemap.pmtiles',
   'data/graph2.bin.gz',
@@ -36,7 +38,8 @@ const files = [
 ];
 
 // The shell is a generated bundle. Recreate it so assets removed from the
-// manifest cannot linger in an iOS build.
+// manifest (notably the former uncompressed map overlays) cannot linger in an
+// iOS build and silently erase the intended size reduction.
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await writeFile(join(output, 'README.md'), `# Generated iOS web bundle

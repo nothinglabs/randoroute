@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.361';
+const APP_VERSION = '2026-07-26.362';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -333,7 +333,7 @@ const SOURCES = [
   {
     id: 'routes',
     name: 'Designated routes (USBR & regional)',
-    url: 'data/bikeroutes.geojson',
+    url: 'data/bikeroutes.geojson.gz',
     scorer: scoreRouteOverlay,
     zRank: -1,     // a ribbon UNDER the scoring layers
     ribbon: true,  // informational overlay: identical in both display modes
@@ -344,7 +344,7 @@ const SOURCES = [
   {
     id: 'blts',
     name: 'WSDOT BLTS (state highways)',
-    url: 'data/blts.geojson',
+    url: 'data/blts.geojson.gz',
     scorer: scoreBLTS,
     zRank: 1,
     minVisibleZoom: BikeBasemap.ROAD_MIN_ZOOM.major,
@@ -355,7 +355,7 @@ const SOURCES = [
   {
     id: 'osm',
     name: 'OSM bike infrastructure',
-    url: 'data/bikeinfra.geojson',
+    url: 'data/bikeinfra.geojson.gz',
     scorer: scoreOSM,
     zRank: 2,
     minVisibleZoom: BikeBasemap.ROAD_MIN_ZOOM.major,
@@ -366,7 +366,7 @@ const SOURCES = [
   {
     id: 'restrict',
     name: 'Bikes prohibited (WSDOT)',
-    url: 'data/bike_restrictions.geojson',
+    url: 'data/bike_restrictions.geojson.gz',
     scorer: scoreRestrict,
     zRank: 3,     // always on top
     fixed: true,  // fixed regulatory styling — identical in both display modes
@@ -377,7 +377,7 @@ const SOURCES = [
   {
     id: 'closures',
     name: 'Known route closures (OSM)',
-    url: 'data/route_closures.geojson',
+    url: 'data/route_closures.geojson.gz',
     zRank: 4,     // always above roads, routes, and the active route line
     closure: true,
     expr: true,   // static GeoJSON; no riding-rule score to calculate
@@ -1373,6 +1373,19 @@ function applyDisplayModeAll() {
   buildLegend();
 }
 
+async function jsonAssetResponse(response, url) {
+  if (!/\.gz(?:$|[?#])/.test(url)) return response.json();
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  // Some web servers transparently decode a .gz resource. Accept both forms
+  // so the same build works from GitHub Pages and inside the native shell.
+  const compressed = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  if (!compressed) return JSON.parse(new TextDecoder().decode(bytes));
+  if (!window.fflate?.gunzipSync || !window.fflate?.strFromU8) {
+    throw new Error('compressed map-data decoder unavailable');
+  }
+  return JSON.parse(window.fflate.strFromU8(window.fflate.gunzipSync(bytes)));
+}
+
 async function loadSource(src) {
   if (src.loaded || src.loading) return;
   if (src.vector) {
@@ -1402,7 +1415,8 @@ async function loadSource(src) {
           if (i === 1) throw new Error('HTTP ' + res.status);
           break;
         }
-        const part = await res.json();
+        const partUrl = src.urlPattern.replace('{i}', i);
+        const part = await jsonAssetResponse(res, partUrl);
         // (no spread: pushing 200k+ args at once overflows the call stack)
         for (const f of part.features) features.push(f);
         setStatus(`Loading ${src.name}… ${features.length.toLocaleString()} segments`, true);
@@ -1411,7 +1425,7 @@ async function loadSource(src) {
     } else {
       const res = await fetch(src.url);
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      fc = await res.json();
+      fc = await jsonAssetResponse(res, src.url);
     }
     src.count = fc.features.length;
     src.fc = fc;

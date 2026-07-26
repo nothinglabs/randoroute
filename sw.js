@@ -10,10 +10,10 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v361'; // bump when app shell changes
+const VERSION = 'v362'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
-const DATA_CACHE = 'data-offline-map-v4';
+const DATA_CACHE = 'data-offline-map-v5';
 
 const SHELL = [
   './',
@@ -21,14 +21,16 @@ const SHELL = [
   './route-details.html',
   './app.js',
   './basemap-style.js',
-  './route-details.js?v=361',
+  './route-details.js?v=362',
   './router-worker.js',
   './styles.css',
-  './route-details.css?v=361',
+  './route-details.css?v=362',
   './manifest.json',
   './vendor/maplibre-gl.js',
   './vendor/maplibre-gl.css',
   './vendor/pmtiles.js',
+  './vendor/fflate.js',
+  './vendor/fflate-LICENSE.txt',
   './fonts/Klokantech Noto Sans Regular/0-255.pbf',
   './fonts/Klokantech Noto Sans Regular/256-511.pbf',
   './fonts/Klokantech Noto Sans Regular/512-767.pbf',
@@ -39,11 +41,11 @@ const SHELL = [
 ];
 
 const DATA = [
-  './data/bikeroutes.geojson',
-  './data/blts.geojson',
-  './data/bikeinfra.geojson',
-  './data/bike_restrictions.geojson',
-  './data/route_closures.geojson',
+  './data/bikeroutes.geojson.gz',
+  './data/blts.geojson.gz',
+  './data/bikeinfra.geojson.gz',
+  './data/bike_restrictions.geojson.gz',
+  './data/route_closures.geojson.gz',
   './data/roads.pmtiles',
   './data/basemap.pmtiles',
   './data/graph2.bin.gz',

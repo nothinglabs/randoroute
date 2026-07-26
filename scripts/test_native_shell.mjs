@@ -31,11 +31,13 @@ for (const asset of [
   'vendor/maplibre-gl.js',
   'vendor/maplibre-gl.css',
   'vendor/pmtiles.js',
-  'data/bikeroutes.geojson',
-  'data/blts.geojson',
-  'data/bikeinfra.geojson',
-  'data/bike_restrictions.geojson',
-  'data/route_closures.geojson',
+  'vendor/fflate.js',
+  'vendor/fflate-LICENSE.txt',
+  'data/bikeroutes.geojson.gz',
+  'data/blts.geojson.gz',
+  'data/bikeinfra.geojson.gz',
+  'data/bike_restrictions.geojson.gz',
+  'data/route_closures.geojson.gz',
   'data/roads.pmtiles',
   'data/basemap.pmtiles',
   'data/graph2.bin.gz',
@@ -56,6 +58,8 @@ for (const runtime of [app, basemap, details, serviceWorker]) {
     'core map runtime must not depend on the old online CARTO basemap');
 }
 assert.match(index, /<script src="basemap-style\.js"><\/script>/);
+assert.match(index, /<script src="vendor\/fflate\.js"><\/script>[\s\S]*?<script src="basemap-style\.js"><\/script>/,
+  'the compressed overlay decoder must load before the application');
 assert.match(index, /if \(!isNativeShell && 'serviceWorker' in navigator\)/);
 assert.match(nativeIndex, /id="techDetailsBtn"[^>]*>Tech Details<\/button>[\s\S]*?id="techDetailsDialog"[\s\S]*?Natural Earth 1:10m land[\s\S]*?WSDOT Active Transportation Data/,
   'the native bundle should include the complete technical map and data help');
@@ -77,8 +81,10 @@ assert.match(app, /limited_access:\s*p\.m === 1 \|\| p\.l === 1/,
   'WSDOT limited-access context conflated onto road tiles should affect the visible verdict');
 assert.match(basemap, /'source-layer': 'land', maxzoom: 8[\s\S]*?'source-layer': 'land_detail', minzoom: 8/,
   'precise OSM coastline land should replace generalized regional land at close zooms');
-assert.doesNotMatch(builder, /data\/(?:bikeroutes|blts|bikeinfra|bike_restrictions|route_closures)\.geojson\.gz'/,
-  'the native shell should use the full uncompressed overlay copies');
+assert.match(app, /async function jsonAssetResponse[\s\S]*?gunzipSync[\s\S]*?strFromU8/,
+  'the runtime should decode bundled compressed overlays');
+assert.doesNotMatch(builder, /'data\/(?:bikeroutes|blts|bikeinfra|bike_restrictions|route_closures)\.geojson'/,
+  'the native shell should not retain duplicate uncompressed overlay copies');
 assert.match(app, /const SAFETY_ROAD_INTERIOR_WIDTH = \['interpolate'[\s\S]*?5,\s*0\.6,\s*8,\s*1\.1,\s*11,\s*2\.2,\s*14,\s*4\.7,\s*17,\s*9\]/,
   'safety colors should fill the same road interior width used by the local basemap');
 assert.match(app, /\[BIKE_NETWORK_COLOR,\s*'Road with bike facility'\]/,
