@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.377';
+const APP_VERSION = '2026-07-26.378';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6247,6 +6247,22 @@ function routeClassNote(p) {
     return 'Tertiary-road proxy adds a small soft cost because no bike facility is recorded.';
   return null;
 }
+// Incline for a planned-route segment. The router bakes a signed grade into each
+// segment relative to the direction of travel (positive = climbing), already
+// gated to credible values (>=20 m long, <=40%). Because a tapped route segment
+// is always part of the planned line, that direction is known, so the reading
+// can name uphill vs downhill rather than only its steepness.
+function routeSegmentGrade(gradePct, lenM) {
+  const grade = Number(gradePct);
+  if (!Number.isFinite(grade)) return null;
+  if (grade === 0) {
+    // The router reports 0 both for genuinely flat riding and for segments too
+    // short to measure. Only call it level when the segment is long enough.
+    return Number(lenM) >= 20 ? 'Level (under 0.1%)' : null;
+  }
+  const magnitude = (Math.round(Math.abs(grade) * 10) / 10).toString();
+  return grade > 0 ? `${magnitude}% uphill ↗` : `${magnitude}% downhill ↘`;
+}
 // Plain-language reason for a segment's verdict under the current rules.
 // Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
 function explainLevel(n) {
@@ -6503,6 +6519,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
         ['Speed source', p.official & 1 ? 'WSDOT legal speed' : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
+        ['Grade', routeSegmentGrade(p.gradePct, p.lenM)],
         ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
         ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
