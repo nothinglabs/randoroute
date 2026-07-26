@@ -941,14 +941,11 @@ const trailDotsId = (src) => src.id + '__trail-dots'; // fine dotted trail cente
 const trailHitId = (src) => src.id + '__trail-hit'; // dedicated wide target for dotted trails
 const trailLabelId = (src) => src.id + '__trail-labels';
 const stateSidewalkProbeId = 'roads__state-sidewalk-probe';
-const ROAD_CLASS_EXPR = ['get', 'h'];
 // Match BikeBasemap's road-interior width exactly. Safety colors then replace
 // the white street fill inside its gray casing instead of reading as a second,
 // narrower line painted on top of the road.
-const SAFETY_ROAD_INTERIOR_WIDTH = ['match', ROAD_CLASS_EXPR,
-  BikeBasemap.ROAD_CLASSES.major, BikeBasemap.ROAD_WIDTHS.major.fill,
-  BikeBasemap.ROAD_CLASSES.medium, BikeBasemap.ROAD_WIDTHS.medium.fill,
-  BikeBasemap.ROAD_WIDTHS.local.fill];
+const SAFETY_ROAD_INTERIOR_WIDTH = ['interpolate', ['linear'], ['zoom'],
+  5, 0.6, 8, 1.1, 11, 2.2, 14, 4.7, 17, 9];
 // Keep a selected route legible at statewide zooms, then let it grow with the
 // streets instead of retaining a fixed screen width. The extra width above the
 // road interior preserves the route's visual priority at every zoom.
@@ -958,6 +955,7 @@ const routeCasingWidthExpression = (extra = 0) => ['interpolate', ['linear'], ['
   5, 10.5 + extra, 8, 11 + extra, 11, 12 + extra, 14, 15.5 + extra, 17, 21.5 + extra];
 const routeShadowWidthExpression = ['interpolate', ['linear'], ['zoom'],
   5, 15.5, 8, 16, 11, 17, 14, 20.5, 17, 26.5];
+const ROAD_CLASS_EXPR = ['get', 'h'];
 const ROAD_CLASS_MAJOR_EXPR = ['match', ROAD_CLASS_EXPR,
   BikeBasemap.ROAD_CLASSES.major, true, false];
 const ROAD_CLASS_MEDIUM_EXPR = ['match', ROAD_CLASS_EXPR,
