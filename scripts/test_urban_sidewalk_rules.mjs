@@ -77,8 +77,13 @@ assert.equal(result.urbanLevel, 4, '35 mph with no shoulder should fail under th
 assert.equal(result.ruralLevel, 1, 'the same 35 mph edge should pass under the 35 mph rural limit');
 assert.equal(result.sidewalkLevel, 3, 'a mapped sidewalk should become an amber fallback, not a pass');
 assert.equal(result.hardCapLevel, 4, 'sidewalk fallback must not bypass the upper speed limit');
-assert.equal(result.sharedLaneLevel, 2, 'a shared-lane marking should count as a passing bike facility');
-assert.equal(result.sharedLaneUsesSidewalk, false,
-  'a shared-lane marking should suppress sidewalk fallback and its route penalty');
+// A sharrow is paint in a travel lane, not space of your own, so it no longer
+// satisfies the shoulder rule. By this point the setup above has given the edge
+// a mapped sidewalk, so the fallback catches it at amber rather than a fail --
+// and a sharrow no longer suppresses that fallback the way it used to.
+assert.equal(result.sharedLaneLevel, 3,
+  'a shared-lane marking must not stand in for a shoulder; only the sidewalk saves it');
+assert.equal(result.sharedLaneUsesSidewalk, true,
+  'a sharrowed road with no shoulder should be eligible for sidewalk fallback and its penalty');
 
 console.log('Urban/rural sidewalk fallback tests passed.');

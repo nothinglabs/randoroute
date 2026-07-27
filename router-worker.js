@@ -310,7 +310,7 @@ function edgeLimited(i, forward) {
 
 function sidewalkFallbackApplies(i, rules, forward, shoulder = edgeShoulder(i, forward)) {
   return rules.allowSidewalkFallback && !!(eOfficial[i] & EDGE_SIDEWALK)
-    && eFacility[i] === 0 && edgeSpeed(i, forward) > edgeNoShoulderMax(i, rules)
+    && eFacility[i] < 2 && edgeSpeed(i, forward) > edgeNoShoulderMax(i, rules)
     && shoulder >= 0 && shoulder < rules.minShoulder;
 }
 
@@ -351,9 +351,10 @@ function edgeLevel(i, rules, forward) {
   // eSh < 0 = unknown; pessimistic mode counts that as a 0 ft shoulder.
   let sh = shoulder;
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
-  // Any recorded bike facility, including a shared-lane marking, satisfies
-  // the bike-accommodation check without requiring sidewalk fallback.
-  if (eFacility[i] === 0 && sh >= 0 && sh < rules.minShoulder) {
+  // A bike lane or better satisfies the shoulder rule. A shared-lane marking
+  // (facility 1) is paint in a travel lane, not space of your own, so it does
+  // not -- matching app.js good_facility.
+  if (eFacility[i] < 2 && sh >= 0 && sh < rules.minShoulder) {
     // A mapped sidewalk is an opt-in shoulder fallback. It remains a caution
     // and receives a strong route-choice cost below, but is not a rule fail.
     if (sidewalkFallbackApplies(i, rules, forward, sh)) return 3;

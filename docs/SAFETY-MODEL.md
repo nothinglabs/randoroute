@@ -54,6 +54,14 @@ sliders are named "…without shoulder or bike lane" and the width slider
 "Minimum shoulder if no bike lane" — those thresholds only bite a road that has
 neither.
 
+**`facility >= 2` must be the threshold in every implementation.** When it was
+`>= 2` in `app.js` but `> 0` in `router-worker.js`, a sharrowed road with no
+shoulder drew red and its card read *"Verdict: Passes your rules"* directly
+above *"Why: Fails: shoulder unknown"* — the Verdict line reads the worker's
+`edgeLevel` via `p.level`, the Why line and the colour re-derive from `app.js`.
+Any drift between the two shows up as a self-contradicting card, and lets
+`requireSafe` route down roads the map paints as failing.
+
 ### Rule 5 — the lane threshold
 
 The setting is **the count that fails, not the widest road allowed**. At 4, a

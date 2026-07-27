@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.400';
+const APP_VERSION = '2026-07-27.401';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1985,7 +1985,7 @@ function fallbackRouteLevel(s) {
   if ((flags & 64) && rules.vettedBikeRoutes) return flags & 128 ? 3 : 2;
   let sh = s.sh;
   if (sh < 0 && rules.unknownShoulderZero) sh = 0;
-  if ((s.facility || 0) < 1 && sh >= 0 && sh < rules.minShoulder) {
+  if ((s.facility || 0) < 2 && sh >= 0 && sh < rules.minShoulder) {
     if (rules.allowSidewalkFallback && ((s.official || 0) & OFFICIAL_SIDEWALK)) return 3;
     return 4;
   }
