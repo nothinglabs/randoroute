@@ -28,6 +28,10 @@ Feature properties (short keys to keep the files small):
   k  sidewalk state (1=present, 2=explicitly absent)
   u  1 = Census urban area   l  1 = WSDOT limited-access caution
   d  1 = WSDOT-enriched state-highway geometry
+  ln through lanes           ctl 1 = centre turn lane
+  ft typed bike facility (1 shared .. 4 separated)
+  su surface class (1 paved, 2 gravel, 3 rough)
+  rc numeric road class      lts WSDOT bicycle level of traffic stress (1-4)
 
 Requires: osmium (pyosmium), shapely.
 Usage: python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
@@ -64,6 +68,14 @@ REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA)[-\s]?\d+', re.I)
 FACILITY = {'lane', 'shared_lane', 'buffered_lane', 'track', 'separated',
             'opposite_lane', 'opposite_track'}
 CYCLEWAY_KEYS = ('cycleway', 'cycleway:both', 'cycleway:right', 'cycleway:left')
+# Same ladder build_graph stores per edge, so the street card and the route card
+# describe one road the same way instead of "yes" versus "Buffered bike lane".
+OSM_FACILITY = {
+    'shared_lane': 1,
+    'lane': 2, 'opposite_lane': 2,
+    'buffered_lane': 3,
+    'track': 4, 'separated': 4, 'opposite_track': 4,
+}
 
 SIMPLIFY_DEG = 0.00005   # ~5 m
 COORD_DECIMALS = 5
@@ -130,10 +142,10 @@ def parse_shoulder_ft(tags):
 
 def build(src, out_prefix, urban_areas, blts):
     from build_graph import (EDGE_SIDEWALK, EDGE_SIDEWALK_NO, EDGE_URBAN,
-                             LANES_CENTER_TURN, LANES_COUNT_MASK,
+                             LANES_CENTER_TURN, LANES_COUNT_MASK, ROAD_CLASS,
                              blts_match, collect_designated, is_urban_edge,
                              lane_class, load_blts_index, load_urban_index,
-                             sidewalk_flags)
+                             sidewalk_flags, surface_class)
     designated = collect_designated(src)
     urban_index = load_urban_index(urban_areas)
     wsdot_index = load_blts_index(blts)
@@ -160,6 +172,8 @@ def build(src, out_prefix, urban_areas, blts):
                 props['w'] = int(match['sh'])
             if match['limited']:
                 props['l'] = 1
+            if match.get('lts'):
+                props['lts'] = int(match['lts'])
             if match['facility']:
                 props['f'] = 1
             if match['prohibited']:
@@ -199,10 +213,17 @@ def build(src, out_prefix, urban_areas, blts):
             p['m'] = 1
         if tags.get('bicycle') in ('no', 'dismount'):
             p['b'] = 1
+        facility = 0
         for k in CYCLEWAY_KEYS:
-            if tags.get(k) in FACILITY:
-                p['f'] = 1
-                break
+            facility = max(facility, OSM_FACILITY.get(tags.get(k), 0))
+        if facility:
+            p['f'] = 1
+            p['ft'] = facility
+        surface = surface_class(tags)
+        if surface:
+            p['su'] = surface
+        if hw in ROAD_CLASS:
+            p['rc'] = ROAD_CLASS[hw]
         # Lane count is the signal that still separates a de-facto arterial
         # from a side street where a city has signed both at the same speed.
         lanes = lane_class(tags)

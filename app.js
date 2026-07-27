@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.395';
+const APP_VERSION = '2026-07-27.396';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6823,14 +6823,24 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
     rows = [
       ['Name', p.n],
       ...common,
-      ['Class', p.h + (p.r ? ` (${p.r})` : '')],
+      // Tapping a road off the route and a segment of the route describe the
+      // same street, so they use one vocabulary. Grade and curve caution stay
+      // exclusive to the route card: both need elevation along a direction of
+      // travel, which the map tiles do not carry.
       ['Speed limit', p.s != null ? `${p.s} mph${p.e ? ' (estimated from class)' : ''}` : null],
       ['Shoulder', p.w != null ? p.w + ' ft' : null],
-      ['Road data', p.d ? 'WSDOT directions combined conservatively for map display' : null],
+      // Where a city has signed its arterials at the same limit as its side
+      // streets, lane count is the thing that still tells them apart.
+      ['Lanes', p.ln ? `${p.ln}${p.ctl ? ' + centre turn lane' : ''}` : null],
+      ['Traffic stress', p.lts ? `WSDOT level ${p.lts} of 4` : null],
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
       ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
-      ['Bike facility', p.f ? 'yes' : null],
+      ['Bike facility', FACILITY_NAME[p.ft] || (p.f ? 'Recorded bike facility' : null)],
+      ['Road class', ROAD_CLASS_NAME[p.rc] || p.h + (p.r ? ` (${p.r})` : '')],
+      ['Surface (OSM)', routeSurfaceLabel(p.su)],
+      ['Route choice', routeClassNote({ roadClass: p.rc, facility: p.ft || (p.f ? 1 : 0) })],
+      ['Road data', p.d ? 'WSDOT directions combined conservatively for map display' : null],
       ['Limited access', p.m || p.l ? 'yes' : null],
       ['Bikes prohibited', p.b ? (p.d ? 'yes (OSM or WSDOT)' : 'yes (OSM tag)') : null],
     ];
@@ -6855,8 +6865,12 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   // If a designated route runs through this spot, include its designation in
   // the road details even though the ribbon is already visible on the map.
   if (src.id !== 'routes') {
+    // routeBadgeAt can only name the route while its ribbon layer is switched
+    // on. The road itself records that it belongs to one, so fall back to that
+    // rather than silently dropping the fact when the layer is hidden.
     const badge = routeBadgeAt(map.project(lngLat));
     if (badge) rows.push(['Bike route', badge]);
+    else if (p.g) rows.push(['Bike route', 'On a designated route (USBR / regional trail)']);
   }
   rows = rows.filter(([, v]) => v != null && v !== '');
   const svLat = lngLat.lat, svLng = lngLat.lng;
