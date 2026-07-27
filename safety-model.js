@@ -30,7 +30,13 @@
  *   sidewalk        'present' | 'absent' | null
  *   urban           inside a Census urban area
  *   designated      on a signed USBR / regional bike route
+ *   stressRating    official Level of Traffic Stress, 1-4, or null if unrated
  * }
+ *
+ * `stressRating` names a published standard (Mekuria/Furth LTS), never an
+ * agency. Washington supplies it from WSDOT's LTS_Bicycle; another state
+ * supplies it from its own DOT. This module must never learn which. See
+ * "Adding another state" in docs/SAFETY-MODEL.md.
  */
 (function (root) {
   'use strict';
@@ -41,10 +47,18 @@
   // shared travel lane and satisfies nothing.
   var FACILITY_RIDING_SPACE = 2;
 
+  // Level of Traffic Stress at or above this is high stress. The scale is
+  // 1-4 low to high; 4 is "suitable only for the strong and fearless".
+  var STRESS_CAUTION_AT = 4;
+
   // Every rung, in order. The first that matches wins. `rule` is what the card
   // explains and what tests assert on, so these keys are part of the contract.
   var RULES = ['prohibited', 'ferry', 'freeway', 'infra', 'speed-cap', 'wide-road',
     'slow-road', 'designated', 'sidewalk-fallback', 'shoulder', 'unknown', 'default'];
+
+  // Why a road can be amber rather than green or blue. Every entry must appear
+  // in the "What makes a road caution?" help section; a test enforces it.
+  var CAUTION_CAUSES = ['limited-access', 'sidewalk-fallback', 'high-stress', 'dismount'];
 
   // `freeMaxSpeed` is the pre-split single limit, still present in shared links
   // and in settings saved before the urban/rural split.
@@ -101,8 +115,19 @@
   function evaluate(facts, rules) {
     var limited = !!facts.limitedAccess;
     var shoulder = effectiveShoulder(facts, rules);
-    var out = function (level, rule) {
-      return { level: level, rule: rule, shoulder: shoulder, limitedAccess: limited };
+    // Two facts about a road can turn a pass into a caution without ever
+    // failing it. Neither can rescue a road that failed a rung above.
+    var highStress = !!rules.cautionHighStress
+      && Number(facts.stressRating) >= STRESS_CAUTION_AT;
+    // A limited-access highway is the more specific statement, so it wins the
+    // headline when both are true.
+    var softCaution = limited ? 'limited-access' : highStress ? 'high-stress' : null;
+    var out = function (level, rule, caution) {
+      return {
+        level: level, rule: rule, shoulder: shoulder, limitedAccess: limited,
+        highStress: highStress,
+        caution: level === 3 ? (caution || softCaution) : null,
+      };
     };
 
     if (facts.prohibited) return out(4, 'prohibited');
@@ -115,10 +140,11 @@
     // shoulder rules do not apply to a path.
     if (facts.infra) return out(facts.infraScore == null ? 0 : facts.infraScore, 'infra');
 
-    // WSDOT's LTS_Bicycle deliberately does NOT appear here. 79.9% of its
-    // segments are rated 4, so on this dataset it is near a constant meaning
-    // "state highway" -- which the speed and shoulder rungs already infer, and
-    // infer more finely. It stays a routing cost and a reported fact.
+    // An official stress rating is deliberately NOT a rung of its own, and can
+    // only ever caution. On WSDOT's data four in five rated segments are 4, so
+    // as a pass/fail it would sever ~166k edges or blanket-amber every state
+    // highway. As a modifier it downgrades a road that would otherwise pass and
+    // leaves every failure and every dedicated path exactly as it was.
 
     // An absolute ceiling: it comes before the slow-road and designated
     // shortcuts so "Never allow roads faster than" means what it says.
@@ -129,12 +155,14 @@
     // 2020, so speed alone would pass a five-lane road outright.
     if (wideRoadNeedsSpace(facts, shoulder, rules)) return out(4, 'wide-road');
     if (facts.speed != null && facts.speed <= noShoulderMaxSpeed(facts, rules)) {
-      return out(limited ? 3 : 1, 'slow-road');
+      return out(softCaution ? 3 : 1, 'slow-road');
     }
-    if (facts.designated && rules.vettedBikeRoutes) return out(limited ? 3 : 2, 'designated');
+    if (facts.designated && rules.vettedBikeRoutes) return out(softCaution ? 3 : 2, 'designated');
 
     if (shoulderFails(facts, shoulder, rules)) {
-      if (sidewalkFallbackApplies(facts, shoulder, rules)) return out(3, 'sidewalk-fallback');
+      if (sidewalkFallbackApplies(facts, shoulder, rules)) {
+        return out(3, 'sidewalk-fallback', 'sidewalk-fallback');
+      }
       return out(4, 'shoulder');
     }
     // Nothing known about any criterion. Only reachable when the rider has
@@ -144,7 +172,7 @@
         && (facts.facility || 0) < FACILITY_RIDING_SPACE) {
       return out(0, 'unknown');
     }
-    return out(limited ? 3 : 2, 'default');
+    return out(softCaution ? 3 : 2, 'default');
   }
 
   function level(facts, rules) { return evaluate(facts, rules).level; }
@@ -152,7 +180,9 @@
   root.SafetyModel = {
     MAX_LANES_NO_LIMIT: MAX_LANES_NO_LIMIT,
     FACILITY_RIDING_SPACE: FACILITY_RIDING_SPACE,
+    STRESS_CAUTION_AT: STRESS_CAUTION_AT,
     RULES: RULES,
+    CAUTION_CAUSES: CAUTION_CAUSES,
     evaluate: evaluate,
     level: level,
     hasRidingSpace: hasRidingSpace,

@@ -294,20 +294,25 @@
       <li><b>Casual Cruiser</b> — low-stress riding; routes must fully follow your safety rules.</li>
     </ul></section>
     <section><h3>Limits</h3><ul class="help-list">
-      <li><b>Minimum shoulder for faster roads</b> — the required shoulder width above the urban or rural no-shoulder speed limit.</li>
-      <li><b>Urban / rural max speed without shoulder</b> — roads at or below each area’s limit can pass when shoulder data is missing. Urban areas use Census boundaries.</li>
-      <li><b>Never allow roads faster than</b> — faster ordinary roads fail; dedicated bike infrastructure is exempt.</li>
-      <li><b>No cutoff</b> — disables the speed cap and leaves the shoulder rule in charge.</li>
+      <li><b>Urban max speed without shoulder or bike lane</b> — inside a Census urban area, roads at or below this pass without needing either.</li>
+      <li><b>Rural max speed without shoulder or bike lane</b> — the same limit outside urban areas, where a rider is usually more exposed but traffic is lighter.</li>
+      <li><b>Minimum shoulder if no bike lane</b> — the shoulder width a faster road must have. A bike lane or better satisfies this instead; a sharrow does not.</li>
+      <li><b>Lanes needing a shoulder or bike lane</b> — at this many car lanes and above, a road must offer a shoulder or a bike lane or it fails. Turn lanes count. Set it to <b>No limit</b> to switch the rule off.</li>
+      <li><b>Never allow roads faster than</b> — faster ordinary roads fail; dedicated bike infrastructure is exempt. Its top position is <b>no cutoff</b>, which leaves the shoulder rule in charge.</li>
     </ul></section>
+    <section><h3>What makes a road caution?</h3>
+    <p>Amber is not a failure. It means the road meets your rules but there is something about it you should know before you ride it. Routes may use these roads, including when <b>Only show routes fully matching safety rules</b> is on.</p>
+    <ul class="help-list" id="cautionCauseList"></ul></section>
     <section><h3>Options</h3><ul class="help-list">
       <li><b>Heavily prefer bike routes &amp; trails</b> — favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
       <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
       <li><b>Trust designated bike routes</b> — lets a USBR or regional designation satisfy the shoulder rule. Speed limits and access restrictions still apply.</li>
-      <li><b>Allow freeway as last resort</b> — a freeway is permitted only as a heavily penalized fallback, and it still fails the rules.</li>
+      <li><b>Route over freeway as last resort (still shows as failing)</b> — a freeway always fails your rules. Off, routes never use one. On, one may be used as a heavily penalized last resort and is still reported as failing, so strict matching excludes it anyway.</li>
       <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided. Any use appears in Route Details.</li>
       <li><b>Strongly prefer paved surfaces</b> — favors paved roads and trails. Gravel and unpaved paths remain available, and missing surface data is not penalized.</li>
       <li><b>Allow sidewalk fallback</b> — lets an explicitly mapped sidewalk satisfy the shoulder rule. It remains strongly avoided and is called out in Route Details; it never overrides a bicycle restriction or speed cap.</li>
       <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
+      <li><b>Caution on roads WSDOT rates high stress</b> — the state transportation department publishes a Level of Traffic Stress from 1 to 4 for state highways. A 4 marks the road as caution. It never fails a road: most rated highway miles score 4, so failing on it would be indiscriminate.</li>
       <li><b>Unknown shoulder = 0 ft</b> — if shoulder data is missing, treat it as 0 ft for rules purposes.</li>
       </ul><p>Search always includes local offline results; the ⌕ button also tries an online lookup.</p></section>
     <section><h3>Voice navigation</h3><ul class="help-list">

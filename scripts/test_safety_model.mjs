@@ -68,11 +68,12 @@ function evalExpr(expr, props) {
 const start = app.indexOf('function roadLevelExpr()');
 const end = app.indexOf('\n}', app.indexOf('return [\'case\', ...cases', start)) + 2;
 assert.ok(start > 0 && end > start, 'roadLevelExpr should be findable in app.js');
-const exprCtx = vm.createContext({ rules: null, MAX_LANES_NO_LIMIT: SafetyModel.MAX_LANES_NO_LIMIT });
+const exprCtx = vm.createContext({ rules: null, SafetyModel,
+  MAX_LANES_NO_LIMIT: SafetyModel.MAX_LANES_NO_LIMIT });
 vm.runInContext(`${app.slice(start, end)}; this.roadLevelExpr = roadLevelExpr;`, exprCtx);
 
 // Road tiles carry: s speed, w shoulder, ln lanes, ft facility, k sidewalk,
-// u urban, l limited access, b prohibited, m freeway, g designated.
+// u urban, l limited access, b prohibited, m freeway, g designated, lts stress.
 const tileToFacts = (p) => ({
   prohibited: p.b === 1, ferry: false, freeway: p.m === 1,
   infra: false, infraScore: null, facility: p.ft || 0,
@@ -80,6 +81,7 @@ const tileToFacts = (p) => ({
   shoulder: p.w === undefined ? null : p.w, lanes: p.ln || 0,
   sidewalk: p.k === 1 ? 'present' : p.k === 2 ? 'absent' : null,
   urban: p.u === 1, designated: p.g === 1,
+  stressRating: p.lts || null,
 });
 
 const RULE_SETS = [];
@@ -89,11 +91,13 @@ for (const maxLanes of [2, 4, 6]) {
       for (const vetted of [true, false]) {
         for (const cap of [{ noUpperLimit: true, upperMaxSpeed: 45 },
           { noUpperLimit: false, upperMaxSpeed: 35 }]) {
-          RULE_SETS.push({
-            minShoulder: 4, maxLanesNoShoulder: maxLanes, unknownShoulderZero: unknownZero,
-            allowSidewalkFallback: sidewalk, vettedBikeRoutes: vetted,
-            urbanMaxSpeedNoShoulder: 30, ruralMaxSpeedNoShoulder: 35, ...cap,
-          });
+          for (const cautionHighStress of [true, false]) {
+            RULE_SETS.push({
+              minShoulder: 4, maxLanesNoShoulder: maxLanes, unknownShoulderZero: unknownZero,
+              allowSidewalkFallback: sidewalk, vettedBikeRoutes: vetted, cautionHighStress,
+              urbanMaxSpeedNoShoulder: 30, ruralMaxSpeedNoShoulder: 35, ...cap,
+            });
+          }
         }
       }
     }
@@ -107,7 +111,8 @@ for (const s of [undefined, 20, 25, 30, 35, 45, 55]) {
       for (const ft of [0, 1, 2, 4]) {
         for (const k of [0, 1, 2]) {
           for (const u of [0, 1]) {
-            for (const extra of [{}, { l: 1 }, { g: 1 }, { b: 1 }, { m: 1 }]) {
+            for (const extra of [{}, { l: 1 }, { g: 1 }, { b: 1 }, { m: 1 },
+              { lts: 4 }, { lts: 3 }, { lts: 1 }, { lts: 4, l: 1 }, { lts: 4, g: 1 }]) {
               const p = { u, ln, ft, k, ...extra };
               if (s !== undefined) p.s = s;
               if (w !== undefined) p.w = w;
@@ -134,6 +139,7 @@ for (const ruleSet of RULE_SETS) {
         maxLanes: ruleSet.maxLanesNoShoulder, unknownZero: ruleSet.unknownShoulderZero,
         sidewalk: ruleSet.allowSidewalkFallback, vetted: ruleSet.vettedBikeRoutes,
         cap: ruleSet.noUpperLimit ? 'none' : ruleSet.upperMaxSpeed,
+        stress: ruleSet.cautionHighStress,
       }, map: fromMap, model: fromModel });
     }
   }

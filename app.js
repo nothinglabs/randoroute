@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.403';
+const APP_VERSION = '2026-07-27.404';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -78,6 +78,10 @@ const DEFAULT_RULES = Object.freeze({
   // below passes a seven-lane arterial outright. MAX_LANES_NO_LIMIT disables it.
   maxLanesNoShoulder: 4,
   allowSidewalkFallback: true, // a mapped sidewalk can satisfy the shoulder rule, with caution
+  // An official Level of Traffic Stress of 4 turns a road that would otherwise
+  // pass into a caution. It can never fail a road: on WSDOT's data four in five
+  // rated segments are 4, so a hard gate would be indiscriminate.
+  cautionHighStress: true,
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
@@ -204,7 +208,7 @@ function scoreBLTS(p) {
   const lts = p.LTS_Bicycle;
   return {
     baseScore: lts == null ? null : lts,
-    wsdotStress: lts == null ? 0 : lts,
+    stressRating: lts == null ? null : lts,
     lanes: p.LaneCount || 0,
     shoulder_width: p.ShoulderWidth == null ? null : p.ShoulderWidth,
     maxspeed_num: p.SpeedLimit == null ? null : p.SpeedLimit,
@@ -296,7 +300,7 @@ function scoreRoad(p) {
     infra: false,
     lanes: p.ln || 0,
     ctl: p.ctl === 1,
-    wsdotStress: p.lts || 0,
+    stressRating: p.lts || null,
     est: p.e === 1,
     desig: p.g === 1, // on a designated bike route (USBR / regional)
     sidewalk: p.k === 1 ? 'present' : p.k === 2 ? 'absent' : null,
@@ -349,6 +353,7 @@ function factsOf(n) {
     sidewalk: n.sidewalk || null,
     urban: !!n.urban,
     designated: !!n.desig,
+    stressRating: n.stressRating == null ? null : Number(n.stressRating),
   };
 }
 
@@ -466,8 +471,14 @@ display.passFail = false;
 // expression and re-apply paint/filters, which is instant at any data size.
 function roadLevelExpr() {
   const spd = ['get', 's'];
-  const passLevel = ['case', ['==', ['get', 'l'], 1], 3, 1];
-  const ordinaryPassLevel = ['case', ['==', ['get', 'l'], 1], 3, 2];
+  // Limited access, or an official high-stress rating, turns a pass into a
+  // caution. Mirrors `softCaution` in safety-model.js.
+  const softCaution = rules.cautionHighStress
+    ? ['any', ['==', ['get', 'l'], 1],
+       ['>=', ['coalesce', ['get', 'lts'], 0], SafetyModel.STRESS_CAUTION_AT]]
+    : ['==', ['get', 'l'], 1];
+  const passLevel = ['case', softCaution, 3, 1];
+  const ordinaryPassLevel = ['case', softCaution, 3, 2];
   const noShoulderMax = ['case', ['==', ['get', 'u'], 1],
     rules.urbanMaxSpeedNoShoulder, rules.ruralMaxSpeedNoShoulder];
   const cases = [];
@@ -1949,6 +1960,7 @@ function routeSegFacts(s) {
       : official & OFFICIAL_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & OFFICIAL_URBAN),
     designated: !!(flags & 64),
+    stressRating: s.lts || null,
   };
 }
 function fallbackRouteLevel(s) { return SafetyModel.level(routeSegFacts(s), rules); }
@@ -4571,7 +4583,7 @@ function scoreRouteSeg(p) {
     lanes: p.lanes || 0,
     ctl: p.centerTurnLane === true || p.ctl === 1,
     oneway: p.ow === 1,
-    wsdotStress: p.lts || 0,
+    stressRating: p.lts || null,
     est: p.e === 1,
     desig: p.desig === 1,
     dismount: p.dismount === 1,
@@ -6514,17 +6526,60 @@ function buildPlacePicker() {
 /* ---------------------------------------------- hover/click readout */
 const readoutEl = document.getElementById('readout');
 // The road card repeats the one shared map/route verdict vocabulary.
+// Every reason a road can be amber. Keyed by SafetyModel.CAUTION_CAUSES, and
+// the help section is built from the same table so it cannot go stale.
+// The agency that publishes the traffic-stress rating for this build's data.
+// The safety model never learns this: it only sees `stressRating` on the
+// published 1-4 Level of Traffic Stress scale. Adding another state means
+// filling that field from their DOT and changing this label. Nothing else.
+const STRESS_AGENCY = 'WSDOT';
+// Headline form, e.g. "Caution — limited-access highway".
+const CAUTION_CAUSE_NAME = {
+  'limited-access': 'limited-access highway',
+  'sidewalk-fallback': 'sidewalk instead of a shoulder',
+  'high-stress': 'officially rated high stress',
+  dismount: 'you must walk your bike',
+};
+// Sentence form, e.g. "... — but it is a limited-access highway, so ...".
+const CAUTION_CAUSE_PHRASE = {
+  'limited-access': 'a limited-access highway',
+  'high-stress': 'officially rated high stress',
+};
+const CAUTION_CAUSE_DETAIL = {
+  'limited-access': 'Bikes are legal and the road meets your speed and shoulder rules, but it is a '
+    + 'limited-access highway: shoulder riding past on- and off-ramps.',
+  'sidewalk-fallback': 'The road does not meet your shoulder rule, but a sidewalk is mapped along it '
+    + 'and you allow that as a fallback. Routes avoid it strongly.',
+  'high-stress': 'The state transportation department rates this road at the top of the Level of '
+    + 'Traffic Stress scale (4 of 4). It can only ever caution, never fail: most rated highway '
+    + 'miles score 4, so failing on it would be indiscriminate.',
+  dismount: 'Bicycles are allowed, but you have to get off and walk.',
+};
+
+// Help is generated from SafetyModel.CAUTION_CAUSES rather than hand-written,
+// so a new cause cannot be added without appearing here.
+function buildCautionCauseHelp() {
+  const host = document.getElementById('cautionCauseList');
+  if (!host) return;
+  host.replaceChildren();
+  for (const cause of SafetyModel.CAUTION_CAUSES) {
+    const item = document.createElement('li');
+    const name = document.createElement('b');
+    name.textContent = cause === 'dismount'
+      ? 'Dismount required'
+      : `Caution — ${CAUTION_CAUSE_NAME[cause]}`;
+    item.append(name, ` — ${CAUTION_CAUSE_DETAIL[cause]}`);
+    host.appendChild(item);
+  }
+}
+
 // The verdict headline names the rung that actually decided, so it can never
 // describe a different rule than the "Why" line beneath it. Level 3 in
-// particular has three quite different causes.
+// particular has several quite different causes.
 function readoutVerdict(n, level, verdict = evaluateRoad(n)) {
   if (n.dismount) return 'Dismount required';
   if (level === 4) return 'Fails your rules';
-  if (level === 3) {
-    if (verdict.rule === 'sidewalk-fallback') return 'Caution — sidewalk instead of a shoulder';
-    if (verdict.limitedAccess) return 'Caution — limited-access highway';
-    return 'Caution';
-  }
+  if (level === 3) return `Caution — ${CAUTION_CAUSE_NAME[verdict.caution] || 'ride with care'}`;
   if (level === 0) return 'Insufficient data';
   if (isBikeNetworkVerdict(n)) return 'Bike network — passes your rules';
   if (n.desig) return 'Designated bike route — passes your rules';
@@ -6587,7 +6642,13 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
   const sh = verdict.shoulder;
   const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : 'This road';
   const area = n.urban ? 'urban' : 'rural';
-  const limitedNote = ' — but this is a limited-access highway, so ride it with caution.';
+  // Whatever downgraded this road from a pass to a caution, named.
+  const cautionNote = verdict.caution && verdict.caution !== 'sidewalk-fallback'
+    ? ` — but it is ${CAUTION_CAUSE_PHRASE[verdict.caution] || CAUTION_CAUSE_NAME[verdict.caution]}`
+      + (verdict.caution === 'high-stress'
+        ? ` (${STRESS_AGENCY} rates it ${n.stressRating} of 4), so ride it with caution.`
+        : ', so ride it with caution.')
+    : '.';
   const shoulderTxt = shUnknown
     ? `shoulder unknown — treated as 0 ft, under your ${rules.minShoulder} ft minimum`
     : `${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`;
@@ -6622,10 +6683,10 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
         + ' Raise "Lanes needing a shoulder or bike lane" to allow it.';
     case 'slow-road':
       return `${spdTxt} — at or below your ${noShoulderMaxSpeed(n)} mph ${area} no-shoulder limit,`
-        + ` passes without a shoulder${verdict.limitedAccess ? limitedNote : '.'}`;
+        + ` passes without a shoulder${cautionNote}`;
     case 'designated':
       return 'On a designated bike route (USBR / regional trail) — you have chosen to trust these,'
-        + ` so it passes without a shoulder check${verdict.limitedAccess ? limitedNote : '.'}`;
+        + ` so it passes without a shoulder check${cautionNote}`;
     case 'sidewalk-fallback':
       return `${spdTxt}: ${shoulderTxt}. Your mapped-sidewalk fallback keeps it out of a`
         + ' hard fail, but the router strongly avoids it.';
@@ -6648,7 +6709,7 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
     met.push(rules.noUpperLimit
       ? `${spdTxt} — no speed cutoff set`
       : `${spdTxt} within your ${rules.upperMaxSpeed} mph max`);
-  return `${met.join('; ')}${verdict.limitedAccess ? limitedNote : '.'}`;
+  return `${met.join('; ')}${cautionNote}`;
 }
 
 const HIT_LAYERS = [];  // hit-layer ids, registered as sources attach
@@ -6847,7 +6908,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Speed source', p.official & 1 ? 'WSDOT legal speed' : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
         ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
-        ['Traffic stress', p.lts ? `WSDOT level ${p.lts} of 4` : null],
+        ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
         ['Grade', routeSegmentGrade(p.gradePct, p.lenM)],
         ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
@@ -6907,7 +6968,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       // Where a city has signed its arterials at the same limit as its side
       // streets, lane count is the thing that still tells them apart.
       ['Lanes', p.ln ? `${p.ln}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
-      ['Traffic stress', p.lts ? `WSDOT level ${p.lts} of 4` : null],
+      ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
       ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
@@ -7379,6 +7440,9 @@ function presetInfoRows(preset) {
     ['Lanes needing a shoulder or bike lane', presetRules.maxLanesNoShoulder >= MAX_LANES_NO_LIMIT
       ? 'No limit.'
       : `${presetRules.maxLanesNoShoulder} or more lanes with neither fails your rules. Lanes are counted as tagged, turn lanes included.`],
+    ['Official stress rating', presetRules.cautionHighStress
+      ? `A ${STRESS_AGENCY} Level of Traffic Stress of 4 marks a road as caution. It never fails one.`
+      : 'Not used for the verdict; it still affects route choice.'],
     ['Sidewalk fallback', presetRules.allowSidewalkFallback
       ? 'Mapped sidewalks can satisfy the shoulder rule, but are strongly deprioritized and called out as a concern.'
       : 'Mapped sidewalks do not satisfy the shoulder rule.'],
@@ -7578,6 +7642,7 @@ function buildRulesPanel() {
   });
   check('preferPaved', 'Strongly prefer paved surfaces');
   check('allowSidewalkFallback', 'Allow sidewalk fallback');
+  check('cautionHighStress', `Caution on roads ${STRESS_AGENCY} rates high stress`);
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
   // Lanes slider: its TOP position means "no limit" rather than a count, the
@@ -7680,8 +7745,10 @@ function buildRulesPanel() {
         }
       });
     });
-    document.getElementById('settingsHelpBtn').addEventListener('click', () =>
-      document.getElementById('settingsHelpDialog').showModal());
+    document.getElementById('settingsHelpBtn').addEventListener('click', () => {
+      buildCautionCauseHelp();
+      document.getElementById('settingsHelpDialog').showModal();
+    });
     document.getElementById('settingsAdvancedWeightsBtn').addEventListener('click', () => {
       const helpDialog = document.getElementById('settingsHelpDialog');
       if (helpDialog.open) helpDialog.close();

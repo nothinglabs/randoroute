@@ -86,8 +86,43 @@ different rules.
 | 11 | `unknown` | no usable data on any criterion | 0 | — |
 | 12 | `default` | nothing failed, nothing shortcut it | 2 | — |
 
-A **limited-access** but bike-legal highway turns rungs 7, 8 and 12 into a
-caution (3) instead of a pass. It never changes a fail.
+### Soft cautions — the two modifiers
+
+Two facts can turn a **pass** into a caution without ever failing a road. They
+apply to rungs 7, 8 and 12 only; a road that failed higher up is untouched, and
+so is dedicated infrastructure, which returns at rung 4 before either is
+consulted.
+
+| modifier | setting | why it can only caution |
+|---|---|---|
+| limited-access highway, bike-legal | — (a fact, not a choice) | the road meets your rules; the hazard is its type |
+| official stress rating ≥ 4 | `cautionHighStress` | see below |
+
+When both apply, limited-access wins the headline: it is the more specific
+statement about the road.
+
+`evaluate()` returns `caution` naming which one fired, and the card headline,
+the "Why" line and the help list are all generated from that key.
+
+### Why an official stress rating can only ever caution
+
+WSDOT publishes a **Level of Traffic Stress** (the Mekuria/Furth scale, 1 low to
+4 high) for state highways. Among segments that carry a rating, **79.9% are 4**
+(61.8% of all segments; the rest are unrated). On this data the rating is close
+to a constant meaning "this is a state highway".
+
+That makes it useless as a gate and valuable as a warning:
+
+- **As a fail** it would sever ~166k edges — every state highway at once.
+- **As the only signal** it would tell you nothing, because it says 4 almost
+  everywhere it says anything.
+- **As a caution** it is honest: the road meets your measured rules, and the
+  agency that owns it still rates it at the top of the stress scale.
+
+With the setting on, 68,190 edges (2,792 mi) move from pass to caution on the
+default preset; 6,088 (138 mi) on Casual Cruiser, where the tighter speed rules
+already fail most of them. It changes no routing cost and can sever nothing,
+because `requireSafe` excludes only level 4.
 
 ### Rung 3 — freeways, and why the toggle is not a verdict
 
@@ -196,6 +231,35 @@ depending on which rung produced it, which is why `readoutVerdict` names the
 rung: "Caution — sidewalk instead of a shoulder" versus "Caution —
 limited-access highway".
 
+## Adding another state
+
+The safety model knows about a **rating**, never an agency. `facts.stressRating`
+is a Level of Traffic Stress from 1 to 4 on the published scale; nothing in
+`safety-model.js` mentions WSDOT, and nothing may.
+
+To add, say, Arizona:
+
+1. Write a build step that produces an LTS 1–4 per edge from ADOT's data,
+   normalising their scale to 1–4 if it differs, into the same `eLanes`-adjacent
+   `eLts` byte that `scripts/build_blts.py` fills today.
+2. Change `STRESS_AGENCY` in `app.js` — the one place the name is written. It
+   feeds the road card, the setting label and the explanation text.
+3. Nothing else. The rung, the modifier, the map expression, the help list and
+   the tests all work unchanged.
+
+The same seam already exists implicitly for three other signals, all currently
+WSDOT-sourced and all following the same shape — **OSM is the universal base, a
+state authority enriches it**:
+
+| signal | universal source | state authority adds |
+|---|---|---|
+| speed limit | OSM `maxspeed`, else class estimate | legal speeds |
+| limited access | — | the limited-access flag |
+| bicycle prohibition | OSM `bicycle=no` | permanent restrictions |
+| traffic stress | — | Level of Traffic Stress |
+
+Urban/rural context comes from the US Census and is already national.
+
 ## Which signals reach which decision
 
 Not every signal we hold is allowed to change a verdict. Several are
@@ -208,7 +272,7 @@ deliberately routing-only: they express preference, not safety.
 | shoulder | yes | yes |
 | bike facility type | yes | yes |
 | lanes | **yes** (rung 6) | yes |
-| WSDOT `LTS_Bicycle` | no — see below | yes |
+| official stress rating (LTS) | **caution only** (`cautionHighStress`) | yes |
 | OSM road class (secondary/primary/…) | no | yes |
 | surface, grade, curve hazard, sidewalk exposure | no | yes |
 
@@ -228,6 +292,7 @@ fact, so that is what rung 6 gates on.
 | `maxLanesNoShoulder` | Lanes needing a shoulder or bike lane | rung 6 threshold | also `wideRoad*` cost |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 9 exists at all | ×1.9 / ×3.8 / ×8.0 |
+| `cautionHighStress` | Caution on roads WSDOT rates high stress | downgrades a pass to caution | none (LTS already priced) |
 | `vettedBikeRoutes` | Trust designated bike routes | rung 8 exists at all | via the verdict |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
@@ -236,9 +301,33 @@ fact, so that is what rung 6 gates on.
 | `prefDesig` | Heavily prefer bike routes & trails | none | designation bonus |
 | `prefResidential` | Prefer residential streets | none | `residential` bonus |
 
-The first eight are named objectively and change the verdict. The last six are
+The first nine are named objectively and change the verdict. The last six are
 named as permissions or preferences and change only where you are sent — which
 is what their names promise.
+
+## What makes a road caution
+
+Amber never means "failed". It means the road meets the rider's rules and there
+is something about it they should know. Routes use these roads freely, including
+under *Only show routes fully matching safety rules*, which excludes level 4
+only.
+
+| cause | key | meaning |
+|---|---|---|
+| limited-access highway | `limited-access` | bike-legal, meets your rules, but it is highway shoulder riding past ramps |
+| sidewalk instead of a shoulder | `sidewalk-fallback` | fails your shoulder rule; a mapped sidewalk stands in, and routes avoid it strongly |
+| officially rated high stress | `high-stress` | the state DOT rates it 4 of 4 on the LTS scale |
+| dismount required | `dismount` | legal to bring a bike, but you must walk it |
+
+`SafetyModel.CAUTION_CAUSES` is that list, and the in-app help section "What
+makes a road caution?" is **generated from it** by `buildCautionCauseHelp()`, so
+a fifth cause cannot be added without appearing in help. A test asserts every
+entry has both a name and a description.
+
+Note that the causes carry very different routing costs — a sidewalk fallback is
+×8 in low-stress mode, a high-stress rating is priced through
+`trafficStressMult`, and a limited-access caution is barely priced at all. Amber
+is one colour over several meanings, which is why the card names which.
 
 ## Routing cost
 

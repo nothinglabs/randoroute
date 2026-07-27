@@ -336,6 +336,7 @@ function edgeFacts(i, forward) {
       : official & EDGE_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & EDGE_URBAN),
     designated: !!(flags & 64),
+    stressRating: eLts ? (eLts[i] || null) : null,
   };
 }
 
