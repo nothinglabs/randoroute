@@ -68,7 +68,7 @@ hue separation:
 
 | verdict | texture | colour |
 |---|---|---|
-| prohibited / fails | diagonal slashes, like hazard tape | `#b2182b` with `#4d060f` |
+| prohibited / fails | white diagonal slashes, like hazard tape | `#b2182b` with white |
 | caution | perpendicular ticks, like rungs across the road | `#efab3c` with white |
 | passes | solid | `#168ad1` |
 | bike network | solid | `#b7c900` |
@@ -81,7 +81,10 @@ Patterns are authored at `pixelRatio` 2 and drawn only above
 `PATTERN_MIN_ZOOM` (13). Below that a road is a few pixels wide and any texture
 smears into a solid line, so lightness carries it alone. `addVerdictPatterns()`
 builds the tiles; `roads__caution` and `roads__slash` draw them over the solid
-colour and are re-filtered whenever the rules change.
+colour, are re-filtered whenever the rules change, and — because they are
+decoration on the road below — carry the **same category filter and the same
+Layers toggles** as that road. An overlay that ignores the toggles will draw
+verdicts a rider has switched off.
 
 Colour is **not** decided by level alone. `readoutVerdictColor` checks levels
 4, 3 and 0 first, then asks `isBikeNetworkVerdict(n)` — true when the feature
@@ -399,6 +402,11 @@ under strict matching. The card names which one it is for that reason.
   `lanes:forward`/`lanes:backward` but no `lanes`, our fallback sums only those
   two and drops the centre lane. **22 ways statewide**, out of 3,177 with a
   centre turn lane. Fix it in `lane_class()` at the next rebuild.
+- **The WSDOT stress layer carries no motorway flag.** An Interstate express
+  lane therefore arrived looking like any other limited-access highway and was
+  described as a caution — "ride it with caution" on a road bikes may not use.
+  `isWsdotInterstate()` recovers the fact from the route id (prefixes 005, 082,
+  090, 182, 205, 405, 705 — 11,098 of 55,271 segments), so those fail instead.
 - **WSDOT `LTS_Bicycle`** covers state highways only, and 79.9% of its segments
   are rated 4. On this dataset it is close to a constant meaning "this is a state
   highway", so it is deliberately kept out of the verdict: the speed and shoulder

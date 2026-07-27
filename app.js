@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.405';
+const APP_VERSION = '2026-07-27.406';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -200,6 +200,17 @@ function cautionBackgroundLineOpacity() {
 /* ------------------------------------------------------- the scorers */
 // Each returns normalized props. baseScore null => unknown (gray).
 
+// The WSDOT stress data carries no motorway flag, so an Interstate express lane
+// arrives looking like any other limited-access highway and was described as a
+// caution -- "ride it with caution" on a road bikes may not use at all. WSDOT
+// numbers Interstates with these seven route prefixes, so recover the fact from
+// the route id: 11,098 of the 55,271 segments.
+const WSDOT_INTERSTATE_ROUTES = new Set(['005', '082', '090', '182', '205', '405', '705']);
+function isWsdotInterstate(routeIdentifier) {
+  const match = /^(\d{3})/.exec(String(routeIdentifier || ''));
+  return !!match && WSDOT_INTERSTATE_ROUTES.has(match[1]);
+}
+
 function scoreBLTS(p) {
   // WSDOT already computed LTS_Bicycle (1-4). Use it directly; missing => unknown.
   const lts = p.LTS_Bicycle;
@@ -212,7 +223,7 @@ function scoreBLTS(p) {
     prohibited: !!p.Prohibited, // overlaps a WSDOT permanent bike restriction
     wsdotBan: !!p.Prohibited,
     restricted: false,
-    freeway: false,
+    freeway: isWsdotInterstate(p.RouteIdentifier),
     limited_access: !!p.LimitedAccess,
     good_facility: !!(p.BikeFacilityType && p.BikeFacilityType.length),
     infra: false,
@@ -1055,7 +1066,7 @@ const FAIL_COLOR = '#9aa0a6';
  * all collapse into one olive family; only the pass blue survives. So the
  * verdicts are separated by TEXTURE first and lightness second:
  *
- *   prohibited  diagonal slashes   (hazard tape)
+ *   prohibited  white diagonal slashes on red (hazard tape)
  *   caution     perpendicular ticks (rungs across the road)
  *   passes      solid
  *
@@ -1088,7 +1099,7 @@ function addVerdictPatterns() {
   if (!map.hasImage(PATTERN_PROHIBITED)) {
     // Slashes shift 0.6 px per row so the 16 px tile repeats seamlessly.
     map.addImage(PATTERN_PROHIBITED, patternTile(16, (x, y) => (
-      (((x + Math.round(y * 0.6)) % 8) + 8) % 8 < 4 ? '#4d060f' : COLORS[4])));
+      (((x + Math.round(y * 0.6)) % 8) + 8) % 8 < 3 ? '#ffffff' : COLORS[4])));
   }
   if (!map.hasImage(PATTERN_CAUTION)) {
     map.addImage(PATTERN_CAUTION, patternTile(16, (x) => (x % 10 < 4 ? '#ffffff' : COLORS[3])));
@@ -1291,7 +1302,7 @@ function ensureLayer(src) {
       source: mapSourceId,
       ...SL,
       minzoom: PATTERN_MIN_ZOOM,
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
       paint: {
         'line-pattern': PATTERN_CAUTION,
         'line-width': safetyRoadWidth(src),
@@ -1305,7 +1316,7 @@ function ensureLayer(src) {
       source: mapSourceId,
       ...SL,
       minzoom: PATTERN_MIN_ZOOM,
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
       paint: {
         'line-pattern': PATTERN_PROHIBITED,
         'line-width': safetyRoadWidth(src),
@@ -1572,10 +1583,6 @@ function applyDisplayMode(src) {
     return;
   }
   const lvl = src.expr ? roadLevelExpr() : ['get', 'level'];
-  // The texture overlays are filtered by the same freshly rebuilt expression,
-  // so a rule change repaints them in step with the colours underneath.
-  if (map.getLayer(cautionId(src))) map.setFilter(cautionId(src), ['==', lvl, 3]);
-  if (map.getLayer(slashId(src))) map.setFilter(slashId(src), ['==', lvl, 4]);
   // These sources carry an OSM highway class, so their colored road interiors
   // can follow the exact same major/medium/local zoom thresholds as the
   // locally rendered street underneath.
@@ -1587,6 +1594,21 @@ function applyDisplayMode(src) {
     if (src.id === 'osm' && !rules.allowMtbTrails) conds.push(OSM_NOT_MTB_EXPR);
     return conds.length > 1 ? ['all', ...conds] : f;
   };
+  // The texture overlays are filtered by the same freshly rebuilt expression,
+  // so a rule change repaints them in step with the colours underneath. They
+  // are decoration on the road below, so they must never draw where that road
+  // is not drawn: same category filter, same visibility toggles.
+  if (map.getLayer(cautionId(src))) {
+    map.setFilter(cautionId(src), and(['all', ['==', lvl, 3],
+      visibleRoadCategoryFilter(src, lvl)]));
+    map.setLayoutProperty(cautionId(src), 'visibility',
+      display.caution ? 'visible' : 'none');
+  }
+  if (map.getLayer(slashId(src))) {
+    map.setFilter(slashId(src), and(['==', lvl, 4]));
+    map.setLayoutProperty(slashId(src), 'visibility',
+      display.failRules ? 'visible' : 'none');
+  }
   // The shared vector-road source knows each OSM class. Reveal its safety fill
   // at exactly the zoom where BikeBasemap reveals that class's street casing.
   const opacity = (value) => {
