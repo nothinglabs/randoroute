@@ -34,7 +34,7 @@ split is expressed by `bikeNetworkExpr`.
 | 2 | true motorway | 4 | `allowFreeways` governs routing, not this verdict |
 | 3 | dedicated infrastructure (`infra`) | its own `baseScore` | — |
 | 4 | speed over the absolute cap | 4 | `upperMaxSpeed`, `noUpperLimit` |
-| 5 | more lanes than allowed, with no shoulder and no bike lane | 3 | `maxLanesNoShoulder` |
+| 5 | at or over the lane threshold, with no shoulder and no bike lane | 4 | `maxLanesNoShoulder` |
 | 6 | slow enough to share the lane | 1 | `urbanMaxSpeedNoShoulder`, `ruralMaxSpeedNoShoulder` |
 | 7 | designated bike route, if trusted | 2 | `vettedBikeRoutes` |
 | 8 | shoulder under the minimum, no bike facility | 4, or 3 with a sidewalk | `minShoulder`, `unknownShoulderZero`, `allowSidewalkFallback` |
@@ -49,15 +49,68 @@ is exactly what 15th Ave NW in Ballard did.
 
 A **shoulder** at or above `minShoulder`, or a **bike lane or better**
 (`facility >= 2`). A sharrow is `facility == 1` and satisfies nothing: it is
-paint in a shared travel lane, not space of your own. That is why the speed and
-lane sliders are named "…without shoulder or bike lane", and the width slider
-"Minimum shoulder if no bike lane" — every one of those thresholds only bites a
-road that has neither.
+paint in a shared travel lane, not space of your own. That is why the speed
+sliders are named "…without shoulder or bike lane" and the width slider
+"Minimum shoulder if no bike lane" — those thresholds only bite a road that has
+neither.
+
+### Rule 5 — the lane threshold
+
+The setting is **the count that fails, not the widest road allowed**. At 4, a
+four-lane road with neither a shoulder nor a bike lane fails; a three-lane road
+passes. The slider is labelled "Lanes needing a shoulder or bike lane" and shows
+"4+ lanes" so it reads the way the rule works.
+
+Three things about the count, all deliberate:
+
+- **Every car lane counts, turn lanes included.** OSM's `lanes` already totals
+  them, so a road tagged `lanes=3` with `lanes:both_ways=1` is *three* lanes —
+  one each way plus a centre turn lane — not four. The road card says
+  "3, incl. centre turn lane" for exactly this reason; it used to say
+  "3 + centre turn lane", which read as four.
+- **No oneway adjustment.** Lanes are taken as tagged. A divided arterial's
+  two-lane carriageway therefore counts as two, which is also the traffic you
+  actually ride among. The cost is that a 2+2 divided arterial never trips this
+  rule; the speed and shoulder rules still apply to it.
+- **An unknown shoulder is not proof of space.** A wide road has to *show* a
+  shoulder or a bike lane, so a missing `shoulder` tag does not exempt it. This
+  is the opposite of how unknown data is treated elsewhere, and is why
+  `unknownShoulderZero` has no effect on this rule.
+
+**No sidewalk reprieve.** Unlike rule 8, a mapped sidewalk does not soften this
+to a caution. A sidewalk does not make a four-lane road shareable. 10,854 of the
+12,453 edges this rule newly fails have a mapped sidewalk, so this choice is
+most of the rule's effect, not a corner case.
+
+**Known cost: it can sever a corridor under `requireSafe`.** A 30-route
+statewide sweep finds no severance on the default preset, but two on Casual
+Cruiser: Longview→Kelso (the Allen Street bridge over the Cowlitz — 4 lanes,
+25 mph, no shoulder, and the only crossing) and Renton→Kent (Interurban Ave S
+through the Duwamish valley). Both are genuine sole links. The rider sees the
+normal "no route fully matching" message and can raise this slider; that is the
+intended escape hatch, but re-check it before tightening the default further.
 
 `maxLanesNoShoulder` runs 2–5, then "No limit" at the top stop
 (`MAX_LANES_NO_LIMIT`, 6). It stops there because "6 lanes without a shoulder is
 fine" is not a rule anyone would choose over switching the rule off. A saved
 value from a wider range clamps to the top stop, which reads as No limit.
+
+### Rule 8 — the sidewalk fallback
+
+`allowSidewalkFallback` (default on) applies to **rule 8 only**. It fires when
+all of: the setting is on, the sidewalk is positively mapped `present`
+(untagged does not count), there is no bike facility, the speed is known and
+*above* the no-shoulder limit, and the shoulder is known and *below*
+`minShoulder`.
+
+It turns a 4 into a 3 — so "Only show routes fully matching" stops excluding
+the road — and adds `Rule override: Sidewalk fallback` to the card. It is not a
+soft landing: the router prices it at **×1.9** direct, **×3.8** balanced,
+**×8.0** low-stress, so a route takes a long detour to avoid one.
+
+That is worth stating plainly because level 3 means two different things
+depending on which rule produced it. A rule-8 caution is heavily avoided. A
+limited-access caution (rule 6/7/10, flag 128) carries no such cost.
 
 ## Which signals reach which decision
 
@@ -86,10 +139,16 @@ Four implementations. All must agree.
 
 | file | form | covers |
 |---|---|---|
-| `app.js` `effectiveLevel()` | JS, per feature | GeoJSON sources, tap cards, route segments |
+| `app.js` `effectiveLevel()` | JS, per feature | GeoJSON sources, tap cards |
 | `app.js` `roadLevelExpr()` | MapLibre expression | vector road tiles — the map colours |
+| `app.js` `routeSegLevel()` | JS, per packed segment | route-segment colours and cards |
+| `router-worker.js` `edgeLevel()` | JS, per graph edge | **routing** — the only copy `requireSafe` reads |
 | `app.js` `scoreOSM/scoreRoad/scoreBLTS` | JS | normalises each source into the shared shape |
 | `scripts/build_osm.py` `classify()` | Python | which ways enter `bikeinfra.geojson` |
+
+A rule added only to `effectiveLevel()` changes what the map says and nothing
+about where you are sent. `edgeLevel()` is what excludes an edge under
+*Only show routes fully matching*.
 
 Routing cost is separate and lives in `router-worker.js`
 (`majorRoadMult`, `trafficStressMult`, `speedStress`, `hazardMult`,
@@ -104,8 +163,13 @@ a road legal or illegal — it only decides which legal road is preferred.
   tag therefore means "small road", never "unproven", and must leave scoring
   unchanged.
 - **On a oneway, `lanes` counts one direction.** A four-lane arterial split into
-  two oneway carriageways reads as two lanes each, so rule 5 halves its
-  threshold for oneway edges.
+  two oneway carriageways reads as two lanes each. Rule 5 does **not** correct
+  for this — see above — so such an arterial does not trip it.
+- **`lanes` includes turn lanes**, and `lanes:both_ways` is a subset of that
+  total, not an addition to it. One known gap: when a way tags
+  `lanes:forward`/`lanes:backward` but no `lanes`, our fallback sums only those
+  two and drops the centre lane. **22 ways statewide**, out of 3,177 with a
+  centre turn lane. Fix it in `lane_class()` at the next rebuild.
 - **WSDOT `LTS_Bicycle`** covers state highways only, and 79.9% of its segments
   are rated 4. On this dataset it is close to a constant meaning "this is a state
   highway", so it is deliberately kept out of the verdict: the speed and shoulder

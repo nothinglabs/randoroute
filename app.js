@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.399';
+const APP_VERSION = '2026-07-27.400';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -69,10 +69,10 @@ const DEFAULT_RULES = Object.freeze({
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
   urbanMaxSpeedNoShoulder: 30, // mph; at/below this an urban road passes without a shoulder
   ruralMaxSpeedNoShoulder: 35, // mph; at/below this a rural road passes without a shoulder
-  // You cannot share a lane with traffic on a wide road, so past this many
-  // lanes a road must offer a shoulder or a bike lane. Seattle signed its
-  // arterials at 25 mph in 2020, so without this the slow-road rule below
-  // passes a seven-lane arterial outright. MAX_LANES_NO_LIMIT disables it.
+  // You cannot share a lane with traffic on a wide road, so AT this many lanes
+  // and above a road must offer a shoulder or a bike lane or it fails. Seattle
+  // signed its arterials at 25 mph in 2020, so without this the slow-road rule
+  // below passes a seven-lane arterial outright. MAX_LANES_NO_LIMIT disables it.
   maxLanesNoShoulder: 4,
   allowSidewalkFallback: true, // a mapped sidewalk can satisfy the shoulder rule, with caution
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
@@ -292,6 +292,7 @@ function scoreRoad(p) {
     good_facility: p.ft >= 2 || (p.f === 1 && p.ft == null),
     infra: false,
     lanes: p.ln || 0,
+    ctl: p.ctl === 1,
     wsdotStress: p.lts || 0,
     est: p.e === 1,
     desig: p.g === 1, // on a designated bike route (USBR / regional)
@@ -335,15 +336,16 @@ function sidewalkFallbackApplies(n, speed = n.maxspeed_num, shoulder = n.shoulde
 function hasRidingSpace(n, sh) {
   return !!n.good_facility || (sh != null && sh >= rules.minShoulder);
 }
-// You cannot share a lane with traffic on a wide road. OSM counts lanes per
-// direction on a oneway, so a four-lane arterial split into two carriageways
-// reads as two lanes each and would otherwise escape entirely.
+// You cannot share a lane with traffic on a wide road. The threshold is the
+// count that fails, not the widest road allowed: at 4, a four-lane road fails.
+// Lanes are counted exactly as tagged — every car lane, turn lanes included —
+// with no adjustment for oneway carriageways. A divided arterial therefore
+// reads as its own carriageway's width, which is also the traffic you actually
+// ride among.
 function wideRoadNeedsSpace(n, sh) {
   const lanes = Number(n.lanes) || 0;
   if (!lanes || rules.maxLanesNoShoulder >= MAX_LANES_NO_LIMIT) return false;
-  const limit = n.oneway ? Math.max(1, Math.ceil(rules.maxLanesNoShoulder / 2))
-    : rules.maxLanesNoShoulder;
-  return lanes > limit && !hasRidingSpace(n, sh);
+  return lanes >= rules.maxLanesNoShoulder && !hasRidingSpace(n, sh);
 }
 
 function effectiveLevel(n) {
@@ -376,10 +378,10 @@ function effectiveLevel(n) {
   // Slow enough → comfortable regardless of shoulder.  The local Census
   // classification distinguishes a 35 mph rural road from urban exposure.
   // Before the slow-road rule below: a road too wide to share needs a shoulder
-  // or a bike lane no matter how it is signed. Caution rather than failure --
-  // these are often the only crossing for miles, and a hard gate here would
-  // sever corridors.
-  if (wideRoadNeedsSpace(n, sh)) return 3;
+  // or a bike lane no matter how it is signed. A failure like every other rule
+  // here -- there is no sidewalk reprieve, because a sidewalk does not make a
+  // four-lane road shareable.
+  if (wideRoadNeedsSpace(n, sh)) return 4;
 
   const noShoulderMax = noShoulderMaxSpeed(n);
   if (spd != null && spd <= noShoulderMax) return n.limited_access ? 3 : 1;
@@ -526,14 +528,13 @@ function roadLevelExpr() {
   // shoulder or a bike lane before the slow-road rule can pass it. WSDOT's
   // rating is deliberately absent here for the reason given there.
   if (rules.maxLanesNoShoulder < MAX_LANES_NO_LIMIT) {
-    // Tiles carry no oneway flag, so the threshold is not halved here as it is
-    // for graph edges; that only makes this side more permissive, never less.
     const ridingSpace = ['any',
       ['>=', ['coalesce', ['get', 'ft'], 0], 2],
       ['>=', ['coalesce', ['get', 'w'], -1], rules.minShoulder]];
     cases.push(['all',
-      ['>', ['coalesce', ['get', 'ln'], 0], rules.maxLanesNoShoulder],
-      ['!', ridingSpace]], 3);
+      ['>=', ['coalesce', ['get', 'ln'], 0], rules.maxLanesNoShoulder],
+      ['>', ['coalesce', ['get', 'ln'], 0], 0],
+      ['!', ridingSpace]], 4);
   }
   cases.push(['<=', spd, noShoulderMax], passLevel);            // slow = comfortable
   if (rules.vettedBikeRoutes)
@@ -1976,6 +1977,10 @@ function fallbackRouteLevel(s) {
   if (!rules.noUpperLimit && s.mph > rules.upperMaxSpeed) return 4;
   const noShoulderMax = (s.official || 0) & OFFICIAL_URBAN
     ? rules.urbanMaxSpeedNoShoulder : rules.ruralMaxSpeedNoShoulder;
+  // Same order and thresholds as effectiveLevel(): too wide to share fails
+  // before speed can pass it.
+  if (rules.maxLanesNoShoulder < MAX_LANES_NO_LIMIT && (s.lanes || 0) >= rules.maxLanesNoShoulder
+      && (s.facility || 0) < 2 && !(s.sh >= rules.minShoulder)) return 4;
   if (s.mph <= noShoulderMax) return flags & 128 ? 3 : 1;
   if ((flags & 64) && rules.vettedBikeRoutes) return flags & 128 ? 3 : 2;
   let sh = s.sh;
@@ -4603,6 +4608,7 @@ function scoreRouteSeg(p) {
     good_facility: facility >= 2,
     infra: p.infra === 1 || facility >= 4,
     lanes: p.lanes || 0,
+    ctl: p.centerTurnLane === true || p.ctl === 1,
     oneway: p.ow === 1,
     wsdotStress: p.lts || 0,
     est: p.e === 1,
@@ -6627,6 +6633,12 @@ function explainLevel(n) {
   const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
   const noShoulderMax = noShoulderMaxSpeed(n);
   const area = n.urban ? 'urban' : 'rural';
+  // Ordered as effectiveLevel() orders it: a road too wide to share fails
+  // before the slow-road rule gets a chance to pass it on speed alone.
+  if (!speedFails && wideRoadNeedsSpace(n, sh))
+    return `Fails: ${n.lanes} lanes of traffic${n.ctl ? ' (incl. a centre turn lane)' : ''}`
+      + ' with no shoulder and no bike lane — you cannot share a lane here.'
+      + ' Raise "Lanes needing a shoulder or bike lane" to allow it.';
   if (!speedFails && spd != null && spd <= noShoulderMax)
     return n.limited_access
       ? `${spdTxt} — meets your speed/shoulder rules, but this is a limited-access highway (caution).`
@@ -6649,8 +6661,6 @@ function explainLevel(n) {
       : `${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`);
   if (reasons.length) return `Fails: ${reasons.join(' and ')}.`;
 
-  if (wideRoadNeedsSpace(n, sh))
-    return `${n.lanes} lanes of traffic with no shoulder and no bike lane — you cannot share a lane here. Raise "Max lanes without shoulder or bike lane" to allow it.`;
   if (n.limited_access)
     return 'Limited-access highway — caution. Its recorded speed and shoulder meet your current criteria.';
 
@@ -6861,7 +6871,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
         ['Speed source', p.official & 1 ? 'WSDOT legal speed' : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
-        ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ' + centre turn lane' : ''}` : null],
+        ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
         ['Traffic stress', p.lts ? `WSDOT level ${p.lts} of 4` : null],
         ['Grade', routeSegmentGrade(p.gradePct, p.lenM)],
         ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
@@ -6921,7 +6931,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Shoulder', p.w != null ? p.w + ' ft' : null],
       // Where a city has signed its arterials at the same limit as its side
       // streets, lane count is the thing that still tells them apart.
-      ['Lanes', p.ln ? `${p.ln}${p.ctl ? ' + centre turn lane' : ''}` : null],
+      ['Lanes', p.ln ? `${p.ln}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
       ['Traffic stress', p.lts ? `WSDOT level ${p.lts} of 4` : null],
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
@@ -7391,9 +7401,9 @@ function presetInfoRows(preset) {
       ? 'No cutoff.' : `Ordinary roads over ${presetRules.upperMaxSpeed} mph fail; dedicated bike infrastructure is exempt.`],
     ['Speed without shoulder or bike lane', `Urban: up to ${presetRules.urbanMaxSpeedNoShoulder} mph; rural: up to ${presetRules.ruralMaxSpeedNoShoulder} mph.`],
     ['Minimum shoulder', `${presetRules.minShoulder} ft on faster roads, unless the road has a bike lane.`],
-    ['Lanes without shoulder or bike lane', presetRules.maxLanesNoShoulder >= MAX_LANES_NO_LIMIT
+    ['Lanes needing a shoulder or bike lane', presetRules.maxLanesNoShoulder >= MAX_LANES_NO_LIMIT
       ? 'No limit.'
-      : `Over ${presetRules.maxLanesNoShoulder} lanes is flagged as a concern (half that on a oneway, which counts one direction).`],
+      : `${presetRules.maxLanesNoShoulder} or more lanes with neither fails your rules. Lanes are counted as tagged, turn lanes included.`],
     ['Sidewalk fallback', presetRules.allowSidewalkFallback
       ? 'Mapped sidewalks can satisfy the shoulder rule, but are strongly deprioritized and called out as a concern.'
       : 'Mapped sidewalks do not satisfy the shoulder rule.'],
@@ -7599,10 +7609,10 @@ function buildRulesPanel() {
     const key = 'maxLanesNoShoulder';
     const wrap = document.createElement('div');
     wrap.className = 'rule rule-card';
-    const label = (v) => (v >= MAX_LANES_NO_LIMIT ? 'No limit' : `${v} lanes`);
+    const label = (v) => (v >= MAX_LANES_NO_LIMIT ? 'No limit' : `${v}+ lanes`);
     wrap.innerHTML = `
       <div class="rule-head">
-        <label for="r-${key}">Max lanes without shoulder or bike lane</label>
+        <label for="r-${key}">Lanes needing a shoulder or bike lane</label>
         <span class="val" id="v-${key}">${label(rules[key])}</span>
       </div>
       <input type="range" id="r-${key}" min="2" max="${MAX_LANES_NO_LIMIT}" step="1" value="${rules[key]}">`;

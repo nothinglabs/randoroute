@@ -314,6 +314,20 @@ function sidewalkFallbackApplies(i, rules, forward, shoulder = edgeShoulder(i, f
     && shoulder >= 0 && shoulder < rules.minShoulder;
 }
 
+// Mirrors app.js wideRoadNeedsSpace(). Lanes are counted exactly as tagged,
+// turn lanes included, with no oneway adjustment. eLanes is null on a format-9
+// graph still cached on a rider's phone, where the rule simply cannot fire.
+const WORKER_MAX_LANES_NO_LIMIT = 6;
+function wideRoadNeedsSpace(i, rules, shoulder) {
+  const limit = Number(rules.maxLanesNoShoulder) || 0;
+  if (!eLanes || !limit || limit >= WORKER_MAX_LANES_NO_LIMIT) return false;
+  const lanes = eLanes[i] & LANES_COUNT_MASK;
+  if (!lanes || lanes < limit) return false;
+  // A wide road must PROVE space: a bike lane or better, or a wide enough
+  // shoulder. An unknown shoulder is not proof, so it does not exempt.
+  return eFacility[i] < 2 && !(shoulder >= rules.minShoulder);
+}
+
 function edgeLevel(i, rules, forward) {
   const flags = eFlags[i];
   const shoulder = edgeShoulder(i, forward);
@@ -327,6 +341,9 @@ function edgeLevel(i, rules, forward) {
   // ordinary roads, including designated routes. Dedicated infrastructure,
   // ferries, freeways, and prohibitions were handled above.
   if (!rules.noUpperLimit && spd > rules.upperMaxSpeed) return 4;
+  // Before the slow-road shortcut: Seattle signed every arterial at 25 mph in
+  // 2020, so speed alone would pass a five-lane road outright.
+  if (wideRoadNeedsSpace(i, rules, shoulder)) return 4;
   if (spd <= edgeNoShoulderMax(i, rules)) return limitedAccess ? 3 : 1;
   // A rider can opt to treat a designated bike route (USBR/regional) as a
   // vetted corridor. Otherwise it is evaluated by the normal shoulder rule.
