@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.406';
+const APP_VERSION = '2026-07-27.407';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1239,6 +1239,8 @@ function ensureLayer(src) {
     source: mapSourceId,
     ...SL,
     minzoom: src.minVisibleZoom || 0,
+    // Handed over to the slash pattern once roads are wide enough to show one.
+    maxzoom: PATTERN_MIN_ZOOM,
     layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
     paint: {
       'line-color': COLORS[4],
@@ -1594,21 +1596,6 @@ function applyDisplayMode(src) {
     if (src.id === 'osm' && !rules.allowMtbTrails) conds.push(OSM_NOT_MTB_EXPR);
     return conds.length > 1 ? ['all', ...conds] : f;
   };
-  // The texture overlays are filtered by the same freshly rebuilt expression,
-  // so a rule change repaints them in step with the colours underneath. They
-  // are decoration on the road below, so they must never draw where that road
-  // is not drawn: same category filter, same visibility toggles.
-  if (map.getLayer(cautionId(src))) {
-    map.setFilter(cautionId(src), and(['all', ['==', lvl, 3],
-      visibleRoadCategoryFilter(src, lvl)]));
-    map.setLayoutProperty(cautionId(src), 'visibility',
-      display.caution ? 'visible' : 'none');
-  }
-  if (map.getLayer(slashId(src))) {
-    map.setFilter(slashId(src), and(['==', lvl, 4]));
-    map.setLayoutProperty(slashId(src), 'visibility',
-      display.failRules ? 'visible' : 'none');
-  }
   // The shared vector-road source knows each OSM class. Reveal its safety fill
   // at exactly the zoom where BikeBasemap reveals that class's street casing.
   const opacity = (value) => {
@@ -1700,6 +1687,30 @@ function applyDisplayMode(src) {
       : COLORS[4]);
     map.setPaintProperty(vhId(src), 'line-width', safetyRoadWidth(src));
     map.setPaintProperty(vhId(src), 'line-opacity', opacity(0.9));
+  }
+  // Texture overlays. They are decoration on the road below, so they take the
+  // SAME filter, the same width and the same class-masked opacity as the line
+  // they sit on -- a flat opacity here made a failing freeway and a failing
+  // local street fade at different zooms, because only one of them was masked.
+  // Above PATTERN_MIN_ZOOM the slash replaces the dash rather than stacking on
+  // it, so exactly one representation of a failure draws at any zoom.
+  if (map.getLayer(slashId(src))) {
+    const failFilter = src.id === 'roads'
+      ? ['all', ['==', lvl, 4], ['!=', ['get', 'b'], 1]]
+      : ['==', lvl, 4];
+    map.setFilter(slashId(src), and(failFilter));
+    map.setPaintProperty(slashId(src), 'line-width', safetyRoadWidth(src));
+    map.setPaintProperty(slashId(src), 'line-opacity', opacity(0.95));
+    map.setLayoutProperty(slashId(src), 'visibility',
+      display.failRules ? 'visible' : 'none');
+  }
+  if (map.getLayer(cautionId(src))) {
+    map.setFilter(cautionId(src), and(['all', ['==', lvl, 3],
+      visibleRoadCategoryFilter(src, lvl)]));
+    map.setPaintProperty(cautionId(src), 'line-width', safetyRoadWidth(src));
+    map.setPaintProperty(cautionId(src), 'line-opacity', opacity(0.95));
+    map.setLayoutProperty(cautionId(src), 'visibility',
+      display.caution ? 'visible' : 'none');
   }
   if (alignRoadClasses) {
     // At a junction, draw ordinary passing roads first and physical bicycle

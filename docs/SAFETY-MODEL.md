@@ -79,12 +79,20 @@ nothing left to tell them apart. `#efab3c` scores **3.45**.
 
 Patterns are authored at `pixelRatio` 2 and drawn only above
 `PATTERN_MIN_ZOOM` (13). Below that a road is a few pixels wide and any texture
-smears into a solid line, so lightness carries it alone. `addVerdictPatterns()`
-builds the tiles; `roads__caution` and `roads__slash` draw them over the solid
-colour, are re-filtered whenever the rules change, and — because they are
-decoration on the road below — carry the **same category filter and the same
-Layers toggles** as that road. An overlay that ignores the toggles will draw
-verdicts a rider has switched off.
+smears into a solid line, so lightness carries it alone. `addVerdictPatterns()` builds the tiles. `roads__caution` and `roads__slash`
+draw them, and because they are decoration on the road below they take the
+**same filter, width, class-masked opacity and Layers toggles** as that line.
+Two bugs came from getting this wrong: an overlay filtered on level alone drew
+verdicts the rider had switched off, and one with a flat opacity made a failing
+freeway and a failing local street fade at different zooms, because only the
+line underneath was class-masked.
+
+The dashed level-4 line (`roads__vh`) carries `maxzoom: PATTERN_MIN_ZOOM` and
+the slash carries `minzoom: PATTERN_MIN_ZOOM`, so they hand over at exactly one
+zoom: below it a failure is a red dash, above it a slash, never both and never
+neither. The **prohibited** overlay is deliberately left as its own dashed line
+at every zoom — bikes being banned is a different statement from failing the
+rider's rules, and it should not be folded into the same texture.
 
 Colour is **not** decided by level alone. `readoutVerdictColor` checks levels
 4, 3 and 0 first, then asks `isBikeNetworkVerdict(n)` — true when the feature
