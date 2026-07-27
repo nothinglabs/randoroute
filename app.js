@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.393';
+const APP_VERSION = '2026-07-26.394';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -100,6 +100,8 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   arterialTertiaryDirect: 1.02, arterialTertiaryBalanced: 1.12, arterialTertiaryLow: 1.22,
   arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
+  wideRoadDirect: 1.06, wideRoadBalanced: 1.35, wideRoadLow: 1.6,
+  stressedRoadDirect: 1.08, stressedRoadBalanced: 1.45, stressedRoadLow: 1.75,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowSec: 15,
@@ -4739,6 +4741,7 @@ function drawRoute(coords, ferrySegs, segs) {
       e: s.flags & 1 ? 1 : 0, fac: s.flags & 2 ? 1 : 0, fw: s.flags & 4 ? 1 : 0,
       lim: s.flags & 128 ? 1 : 0,
       hazard: s.hazard || 0, gradePct: s.gradePct || 0, crossing: s.crossing ? 1 : 0,
+      lanes: s.lanes || 0, ctl: s.centerTurnLane ? 1 : 0, lts: s.lts || 0,
       infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
       facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
       dismount: isDismountSegment(s) ? 1 : 0,
@@ -6768,6 +6771,8 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
         ['Speed source', p.official & 1 ? 'WSDOT legal speed' : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
+        ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ' + centre turn lane' : ''}` : null],
+        ['Traffic stress', p.lts ? `WSDOT level ${p.lts} of 4` : null],
         ['Grade', routeSegmentGrade(p.gradePct, p.lenM)],
         ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
@@ -7187,6 +7192,10 @@ const ROUTING_WEIGHT_GROUPS = [
     ['arterialSecondaryBalanced', 'Secondary · balanced', 1, 4, .01], ['arterialSecondaryLow', 'Secondary · friendly', 1, 4, .01],
     ['arterialPrimaryDirect', 'Primary/trunk · direct', 1, 5, .01], ['arterialPrimaryBalanced', 'Primary/trunk · balanced', 1, 5, .01],
     ['arterialPrimaryLow', 'Primary/trunk · friendly', 1, 5, .01],
+    ['wideRoadDirect', 'Four+ lanes · direct', 1, 4, .01], ['wideRoadBalanced', 'Four+ lanes · balanced', 1, 4, .01],
+    ['wideRoadLow', 'Four+ lanes · friendly', 1, 4, .01],
+    ['stressedRoadDirect', 'WSDOT high stress · direct', 1, 4, .01], ['stressedRoadBalanced', 'WSDOT high stress · balanced', 1, 4, .01],
+    ['stressedRoadLow', 'WSDOT high stress · friendly', 1, 4, .01],
   ]],
   ['Speed, access and curve caution', [
     ['speedBalanced', 'Balanced: each mph over comfort', 0, .08, .002], ['speedLow', 'Friendly: each mph over comfort', 0, .1, .002],

@@ -392,6 +392,97 @@ Results include distance, duration, total climb/descent, and an elevation
 profile. No routing server; the native app works immediately offline and the
 installed PWA works offline after its initial data installation completes.
 
+## PENDING REBUILD — traffic-stress data (read this before rebuilding)
+
+**Status: the code is shipped and live; the data is not.** Lane counts and
+WSDOT traffic-stress ratings are read, scored, and displayed by the app right
+now, but every value is empty until `data/graph2.bin.gz` and
+`data/roads.pmtiles` are rebuilt from the OSM extract. Until then the app
+behaves exactly as it did before — nothing is broken and nothing is waiting on
+a coordinated deploy.
+
+### Why
+
+Seattle signed every arterial at 25 mph in 2020, so speed no longer separates a
+five-lane arterial from the side street beside it. On 15th Ave NE, 27 of 51 OSM
+ways carry four or more lanes and 17 of those are tagged 25 mph — while 21 of
+its two-lane ways are *also* 25 mph. Two stretches are four lanes tagged merely
+`highway=tertiary`. Lane count still separates them, and OSM tags it on ~100% of
+`secondary` (in both Seattle and rural Kittitas samples) against 3-5% of
+`residential` — present exactly where it matters. Separately, WSDOT already
+publishes a finished `LTS_Bicycle` rating (1-4) in `data/blts.geojson` that the
+build simply never read.
+
+### What to run
+
+Both archives, from the same extract, in this order:
+
+```bash
+# 1. Routing graph -- adds edgeLanes + edgeLts, writes format 10 ('BGRA')
+python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
+
+# 2. Road tiles -- adds the `ln`/`ctl` properties behind the road card
+python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
+                               --out-prefix data/roads \
+                               --urban-areas data/census-urban-areas-2020-wa.geojson \
+                               --blts data/blts.geojson
+tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
+  --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
+  --simplification=8 --simplify-only-low-zooms \
+  --read-parallel data/roads-1.geojson data/roads-2.geojson
+rm data/roads-*.geojson
+```
+
+`--simplify-only-low-zooms` is mandatory — see the road-network section above
+for what happens without it.
+
+### Then bump every version, or riders keep the old data
+
+```
+app.js            APP_VERSION, GRAPH_FORMAT_VERSION ('bgr9-1' -> 'bgr10-1')
+app.js            roads.pmtiles?v=          <- and the SAME number in
+basemap-style.js  roads.pmtiles?v=             both files
+sw.js             VERSION, DATA_CACHE, route-details.{js,css}?v=
+route-details.html  route-details.{js,css}?v=
+version.json      version
+```
+
+`GRAPH_FORMAT_VERSION` is what stops a just-updated worker from being handed a
+graph cached by an older service worker; bumping it is not optional.
+
+### Verify before committing
+
+```bash
+python3 scripts/test_graph_format10.py   # layout + reader-offset contract
+python3 -c "import gzip;print(gzip.open('data/graph2.bin.gz','rb').read(4))"
+#   -> b'BGRA'   (b'BGR9' means build_graph.py did not pick up the change)
+tippecanoe-decode data/roads.pmtiles 13 1311 2858 | grep -c '"ln"'
+#   -> non-zero  (lane counts reached the tiles)
+```
+
+Then run the suite (`scripts/test_*.mjs`, `scripts/test_*.py`).
+`test_route_portfolio.mjs` is the one that matters most: it catches a scoring
+change that severs a corridor. `test_native_shell.mjs` fails unless
+`npm run ios:prepare-shell` has been run — that is expected, not a regression.
+
+Expect `graph2.bin.gz` to grow by roughly 2 bytes per edge before compression
+(~1.7 MB over 855k edges) and `roads.pmtiles` by well under a megabyte.
+
+### Notes for whoever does this
+
+- **Old graphs keep working.** `router-worker.js` accepts both `BGR9` and
+  `BGRA`; on a `BGR9` graph the two new arrays read as null and scoring is
+  byte-for-byte what it was. Verified against 11 statewide routes.
+- **The scoring is a soft cost, never a rule failure.** Four lanes with a
+  protected bike lane is genuinely fine, and hard gates risk severing corridors
+  the way earlier bugs did. A missing `lanes` tag means "small road", not
+  "unproven", and must leave scoring untouched.
+- `scripts/patch_graph_*.py` are stale migration tools that only understand up
+  to BGR8. They already reject the shipped graph and are not part of any
+  rebuild — leave them alone.
+- After deploying, tap a segment of 15th Ave NE in Lake City: the road card
+  should show **Lanes** and, on state highways, **Traffic stress**.
+
 ## Vendored library
 
 `vendor/maplibre-gl.{js,css}` is MapLibre GL JS v4.7.1, vendored locally so the

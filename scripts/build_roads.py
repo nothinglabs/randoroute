@@ -130,8 +130,10 @@ def parse_shoulder_ft(tags):
 
 def build(src, out_prefix, urban_areas, blts):
     from build_graph import (EDGE_SIDEWALK, EDGE_SIDEWALK_NO, EDGE_URBAN,
+                             LANES_CENTER_TURN, LANES_COUNT_MASK,
                              blts_match, collect_designated, is_urban_edge,
-                             load_blts_index, load_urban_index, sidewalk_flags)
+                             lane_class, load_blts_index, load_urban_index,
+                             sidewalk_flags)
     designated = collect_designated(src)
     urban_index = load_urban_index(urban_areas)
     wsdot_index = load_blts_index(blts)
@@ -201,6 +203,13 @@ def build(src, out_prefix, urban_areas, blts):
             if tags.get(k) in FACILITY:
                 p['f'] = 1
                 break
+        # Lane count is the signal that still separates a de-facto arterial
+        # from a side street where a city has signed both at the same speed.
+        lanes = lane_class(tags)
+        if lanes:
+            p['ln'] = lanes & LANES_COUNT_MASK
+            if lanes & LANES_CENTER_TURN:
+                p['ctl'] = 1
         w = parse_shoulder_ft(tags)
         if w is not None:
             p['w'] = w

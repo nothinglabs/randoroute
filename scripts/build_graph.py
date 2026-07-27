@@ -16,7 +16,10 @@ Included edges:
 One-way streets are honored for bikes (oneway / junction=roundabout, with
 oneway:bicycle=no overriding; oneway=-1 reverses the edge).
 
-Binary layout (little-endian), after header 'BGR9' + N,E,D,G,U,B (u32):
+Binary layout (little-endian), after header 'BGRA' + N,E,D,G,U,B (u32).
+'BGRA' is format 10; the magic is four bytes, so 10 is written as the hex
+digit A. Readers must keep accepting 'BGR9', which lacks the two arrays
+marked "format 10" below — see router-worker.js.
   nodeLon f32[N], nodeLat f32[N]
   edgeA u32[E], edgeB u32[E], edgeLen f32[E] (meters),
   edgeSpeedAB u8[E], edgeSpeedBA u8[E] (mph; 0 = separated infra),
@@ -35,6 +38,11 @@ Binary layout (little-endian), after header 'BGR9' + N,E,D,G,U,B (u32):
                       64=Census urban area),
   edgeSurface u8[E] (0=unknown, 1=paved, 2=gravel/compacted,
                      3=rough unpaved),
+  edgeLanes u8[E] (format 10; bits 0-5 = through lanes, 0 = not tagged;
+                   bit 6 = tagged centre turn lane. OSM `lanes`, falling back
+                   to WSDOT LaneCount on state routes),
+  edgeLts u8[E] (format 10; WSDOT LTS_Bicycle 1-4, 0 = no rating. State
+                 highways only; WSDOT derives it from lanes, speed and volume),
   edgeHazardAB u8[E], edgeHazardBA u8[E]
     (0=none; 1-3 directional possible limited-visibility uphill curve),
   edgeHazardStartAB u16[E], edgeHazardEndAB u16[E],
@@ -251,12 +259,20 @@ def load_blts_index(path):
             geoms.append(LineString(cs))
             identifier = str(p.get('RouteIdentifier') or '')
             suffix = identifier[-1:].lower()
+            lts = p.get('LTS_Bicycle')
+            lane_count = p.get('LaneCount')
             attrs.append({
                 'sh': p.get('ShoulderWidth'),
                 'spd': p.get('SpeedLimit'),
                 'prohibited': p.get('Prohibited') == 1,
                 'limited': p.get('LimitedAccess') == 1,
                 'facility': bool(p.get('BikeFacilityType')),
+                # WSDOT publishes a finished bicycle level-of-traffic-stress
+                # rating (1 comfortable .. 4 high stress) already derived from
+                # lanes, speed and volume. Carrying the rating itself is both
+                # cheaper and better informed than re-deriving one from AADT.
+                'lts': int(lts) if lts in (1, 2, 3, 4) else 0,
+                'lanes': int(lane_count) if isinstance(lane_count, int) and 0 < lane_count <= LANES_COUNT_MASK else 0,
                 'route': _route_number(identifier),
                 # WSDOT stores each line from BeginARM to EndARM. Thus the
                 # increasing record applies with the coordinate order and the
@@ -610,6 +626,44 @@ def surface_class(tags):
     return SURFACE_UNKNOWN
 
 
+LANES_CENTER_TURN = 64   # bit 6: a two-way left-turn lane down the middle
+LANES_COUNT_MASK = 63    # bits 0-5: through lanes, 0 = not tagged
+
+
+def lane_class(tags):
+    """Through-lane count for one way, plus a centre-turn-lane marker.
+
+    Seattle dropped every arterial to 25 mph in 2020, so a five-lane road and a
+    quiet residential street now carry the same ``maxspeed``. Lane count is what
+    still separates them, and OSM tags it on essentially every way that matters:
+    100% of ``secondary`` in samples from both Seattle and rural Kittitas County,
+    against 3-5% of ``residential``. Absent means "small road", never "unknown
+    risk", so a missing tag must leave scoring exactly as it was.
+    """
+    def count(key):
+        raw = tags.get(key)
+        if not raw:
+            return None
+        match = re.match(r'\s*(\d+)', str(raw))
+        if not match:
+            return None
+        value = int(match.group(1))
+        return value if 0 < value <= LANES_COUNT_MASK else None
+
+    total = count('lanes')
+    if total is None:
+        forward, backward = count('lanes:forward'), count('lanes:backward')
+        if forward is not None or backward is not None:
+            total = (forward or 0) + (backward or 0)
+    # A tagged centre turn lane is the signature of a wide suburban arterial and
+    # is worth keeping even where it inflates the through-lane count.
+    center = bool(tags.get('lanes:both_ways') or tags.get('turn:lanes:both_ways'))
+    if total is None and not center:
+        return 0
+    encoded = min(total or 0, LANES_COUNT_MASK)
+    return encoded | (LANES_CENTER_TURN if center else 0)
+
+
 def classify_way(tags):
     """Return edge attrs dict, or None to exclude from the routable graph."""
     bike = tags.get('bicycle')
@@ -639,7 +693,7 @@ def classify_way(tags):
         return {'speed': FERRY_DEFAULT_MPH, 'est': True, 'facility': FACILITY_NONE, 'lim': False,
                 'infra': False, 'sh': None, 'road_class': 0, 'ferry': True,
                 'duration': tags.get('duration'), 'surface': SURFACE_UNKNOWN,
-                'dismount': dismount}
+                'lanes': 0, 'dismount': dismount}
 
     cycleways = [tags[k] for k in CYCLEWAY_KEYS if tags.get(k)]
 
@@ -681,7 +735,7 @@ def classify_way(tags):
     if infra:
         return {'speed': 0, 'est': False, 'facility': FACILITY_PATH, 'lim': False,
                 'infra': True, 'sh': None, 'road_class': 0, 'surface': surface_class(tags),
-                'dismount': dismount}
+                'lanes': 0, 'dismount': dismount}
     if hw not in DRIVE:
         return None
 
@@ -694,7 +748,7 @@ def classify_way(tags):
         'facility': osm_facility(), 'lim': hw in LIMITED,
         'infra': False, 'sh': parse_shoulder_ft(tags),
         'road_class': ROAD_CLASS[hw], 'surface': surface_class(tags),
-        'dismount': dismount,
+        'lanes': lane_class(tags), 'dismount': dismount,
     }
 
 
@@ -930,6 +984,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     eClass = array('B')
     eFacility = array('B'); eOfficial = array('B'); eSurface = array('B')
     eHazAB = array('B'); eHazBA = array('B')
+    eLanes = array('B'); eLts = array('B')
     eHazStartAB = array('H'); eHazEndAB = array('H')
     eHazStartBA = array('H'); eHazEndBA = array('H')
     eOff = array('I'); eCnt = array('H')
@@ -1033,6 +1088,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             esh, esh_ba, eflags = sh, sh, flags
                             limited_dir = 0
                             efacility = attrs['facility']
+                            elanes = attrs.get('lanes', 0)
+                            elts = 0
                             eofficial = ((EDGE_MTB if attrs['mtb'] else 0)
                                          | (EDGE_DISMOUNT if attrs.get('dismount') else 0)
                                          | sidewalk_flags(tags)
@@ -1067,6 +1124,13 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                                 espeed_ba = speed
                                         if match['limited'] and efacility < FACILITY_LANE:
                                             limited_dir |= 1 << direction
+                                        # The two inventory directions describe
+                                        # one roadway, so take the worse rating
+                                        # and the wider cross-section.
+                                        if match['lts'] > elts:
+                                            elts = match['lts']
+                                        if not (elanes & LANES_COUNT_MASK) and match['lanes']:
+                                            elanes |= min(match['lanes'], LANES_COUNT_MASK)
                                     if ((match_ab and match_ab['spd'])
                                             or (match_ba and match_ba['spd'])):
                                         eflags &= ~1  # measured, not estimated
@@ -1110,6 +1174,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             def append_edge(edge_flags, edge_speed, edge_speed_ba,
                                             edge_sh, edge_sh_ba, edge_limited_dir,
                                             edge_class, edge_facility, edge_official, edge_surface,
+                                            edge_lanes, edge_lts,
                                             edge_asc, edge_des, ab, ba):
                                 eAsc.append(min(int(edge_asc), 65535)); eDes.append(min(int(edge_des), 65535))
                                 eA.append(a); eB.append(b); eLen.append(length)
@@ -1120,6 +1185,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 eClass.append(edge_class)
                                 eFacility.append(edge_facility); eOfficial.append(edge_official)
                                 eSurface.append(edge_surface)
+                                eLanes.append(edge_lanes); eLts.append(edge_lts)
                                 eHazAB.append(ab[0]); eHazBA.append(ba[0])
                                 eHazStartAB.append(ab[1]); eHazEndAB.append(ab[2])
                                 eHazStartBA.append(ba[1]); eHazEndBA.append(ba[2])
@@ -1128,6 +1194,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
 
                             append_edge(eflags, espeed, espeed_ba, esh, esh_ba, limited_dir,
                                         attrs['road_class'], efacility, eofficial, attrs['surface'],
+                                        elanes, elts,
                                         asc, des, haz_ab, haz_ba)
                             if attrs['mtb']:
                                 mtb_edges[0] += 1
@@ -1186,7 +1253,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
 
     for arr in (node_lon, node_lat, nEle, eA, eB, eLen, eAsc, eDes,
                 eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir, eClass,
-                eFacility, eOfficial, eSurface, eHazAB, eHazBA,
+                eFacility, eOfficial, eSurface, eLanes, eLts, eHazAB, eHazBA,
                 eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA,
                 eName, name_offs, eOff, eCnt, outStart, outTarget, outEdge, gLon, gLat):
         if sys.byteorder == 'big':
@@ -1194,7 +1261,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     # JS typed-array views need 4-byte alignment: pad after the byte arrays
     # and after the u16 arrays. The name blob goes LAST
     # so everything before it stays aligned.
-    parts = [b'BGR9', struct.pack('<IIIIII', N, E, D, G, U, B),
+    parts = [b'BGRA', struct.pack('<IIIIII', N, E, D, G, U, B),
              node_lon.tobytes(), node_lat.tobytes(), nEle.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
@@ -1204,6 +1271,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
               eSh.tobytes(), eShBA.tobytes(), eLimitedDir.tobytes(),
               eClass.tobytes(),
               eFacility.tobytes(), eOfficial.tobytes(), eSurface.tobytes(),
+              eLanes.tobytes(), eLts.tobytes(),
               eHazAB.tobytes(), eHazBA.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((2 - off % 2) % 2))

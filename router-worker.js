@@ -15,6 +15,8 @@ let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
 let eA, eB, eLen, eAsc, eDes, eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir;
 let eClass, eFacility, eOfficial, eSurface;
+// Format 10 only; null on a BGR9 graph.
+let eLanes, eLts;
 let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
@@ -79,7 +81,16 @@ function bearingDeg(fromLon, fromLat, toLon, toLat) {
 
 function loadGraph(buf) {
   const dv = new DataView(buf);
-  if (dv.getUint32(0, false) !== 0x42475239) throw new Error('bad graph magic (want BGR9)');
+  // 'BGR9' and 'BGRA'. 'BGRA' is format 10 — the magic is four bytes, so 10 is
+  // written as the hex digit A. Format 10 appends edgeLanes and edgeLts after
+  // edgeSurface. Reading both means a released worker keeps routing on the
+  // graph already cached on riders' phones, and the next data rebuild upgrades
+  // them without a coordinated deploy.
+  const magic = dv.getUint32(0, false);
+  const hasTrafficStress = magic === 0x42475241;
+  if (magic !== 0x42475239 && !hasTrafficStress) {
+    throw new Error('bad graph magic (want BGR9 or BGRA)');
+  }
   N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
   const G = dv.getUint32(16, true), U = dv.getUint32(20, true), B = dv.getUint32(24, true);
   let o = 28;
@@ -98,6 +109,10 @@ function loadGraph(buf) {
   eSpeed = u8(E); eSpeedBA = u8(E); eFlags = u8(E);
   eSh = i8(E); eShBA = i8(E); eLimitedDir = u8(E); eClass = u8(E);
   eFacility = u8(E); eOfficial = u8(E); eSurface = u8(E);
+  // On a BGR9 graph these stay null and every lookup reports "not tagged", so
+  // scoring behaves exactly as it did before the fields existed.
+  eLanes = hasTrafficStress ? u8(E) : null;
+  eLts = hasTrafficStress ? u8(E) : null;
   eHazAB = u8(E); eHazBA = u8(E);
   pad2();
   eHazStartAB = u16(E); eHazEndAB = u16(E);
@@ -362,6 +377,8 @@ const DEFAULT_WEIGHTS = Object.freeze({
   arterialTertiaryDirect: 1.02, arterialTertiaryBalanced: 1.12, arterialTertiaryLow: 1.22,
   arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
+  wideRoadDirect: 1.06, wideRoadBalanced: 1.35, wideRoadLow: 1.6,
+  stressedRoadDirect: 1.08, stressedRoadBalanced: 1.45, stressedRoadLow: 1.75,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowSec: 15,
@@ -425,6 +442,40 @@ function majorRoadMult(i, mode, forward) {
   if (cls === 6 || cls === 7) return activeWeights['arterialSecondary' + suffix];
   if (cls >= 8 && cls <= 11) return activeWeights['arterialPrimary' + suffix];
   return 1;
+}
+
+// Lane count and WSDOT's own stress rating, for the roads where speed has
+// stopped discriminating. Seattle signed every arterial at 25 mph in 2020, so
+// 15th Ave NE reads the same as the side street beside it: 27 of its 51 ways
+// carry four or more lanes, 17 of those at 25 mph, while 21 of its two-lane
+// ways are also 25 mph. Lanes still separate them, and OSM tags them on ~100%
+// of `secondary` against 3-5% of `residential` — present exactly where it
+// matters. A missing tag therefore means "small road", never "unproven", so it
+// must leave scoring untouched; on a BGR9 graph these arrays are absent and
+// every edge takes that path.
+//
+// Deliberately a soft cost like the class proxy above, not a rule failure: a
+// four-lane road with a protected lane is genuinely fine, and hard gates here
+// would risk severing corridors. Any recorded facility exempts the edge.
+const LANES_COUNT_MASK = 63;
+const LANES_CENTER_TURN = 64;
+function trafficStressMult(i, mode, forward) {
+  if (!eLanes && !eLts) return 1;
+  if (eFacility[i] >= 1 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
+  const suffix = mode === 'direct' ? 'Direct' : mode === 'low' ? 'Low' : 'Balanced';
+  const packed = eLanes ? eLanes[i] : 0;
+  const lanes = packed & LANES_COUNT_MASK;
+  // A centre turn lane is the signature of a wide suburban arterial, so three
+  // through lanes plus one counts alongside a plain four.
+  const wide = lanes >= 4 || (lanes >= 3 && (packed & LANES_CENTER_TURN));
+  const lts = eLts ? eLts[i] : 0;
+  // WSDOT rates 4 as high stress and 3 as uncomfortable for most riders. The
+  // two signals describe the same road, so take the stronger rather than
+  // multiplying them together.
+  const stress = lts >= 4 ? 1 : lts === 3 ? 0.5 : 0;
+  const wideMult = wide ? activeWeights['wideRoad' + suffix] : 1;
+  const stressMult = stress ? 1 + (activeWeights['stressedRoad' + suffix] - 1) * stress : 1;
+  return Math.max(wideMult, stressMult);
 }
 
 // `sidewalk=no` is positive evidence of less forgiving urban road context.
@@ -774,6 +825,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
         edgeNoShoulderMax(ei, searchRules), edgeShoulder(ei, forward));
       cost *= hazardMult(mode, edgeHazard(ei, forward) || 0);
       cost *= majorRoadMult(ei, mode, forward);
+      cost *= trafficStressMult(ei, mode, forward);
       cost *= sidewalkExposureMult(ei, mode, forward);
       if (sidewalkFallbackApplies(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
       if (fl & 4) cost *= activeWeights.freeway;
@@ -923,6 +975,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
       dismount: isDismountEdge(ei), level,
       surface: eSurface[ei], surfaceLabel: SURFACE_LABEL[eSurface[ei]] || SURFACE_LABEL[SURFACE_UNKNOWN],
+      lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
+      centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
+      lts: eLts ? eLts[ei] : 0,
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei]), eLen[ei]),
