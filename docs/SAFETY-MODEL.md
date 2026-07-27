@@ -73,7 +73,7 @@ hue separation:
 | passes | solid | `#168ad1` |
 | caution | perpendicular ticks, like rungs across the road | `#ff8c1a` + white |
 | fails | white diagonal slashes, like hazard tape | `#78121f` + white |
-| bikes prohibited | its own dashed line, at every zoom | `#78121f` |
+| bikes prohibited | wide translucent dashed ribbon, over the verdict | `#78121f` at 42% |
 
 **The colours were chosen numerically, not by eye.** Search for the pair that
 maximises the *smallest* CIELAB distance between any two roles, evaluated under
@@ -106,10 +106,16 @@ neither. Below it a failure is a **solid** red line, above it the same red
 slashed — one symbol gaining detail. It used to be a chunky dash below, which
 read as a different symbol entirely and made the handover jarring.
 
-**A prohibited road is a failing road**, the strongest kind, so it is withheld
-from the failure layers *only while the prohibited layer is actually drawing
-it*. Switch that layer off and it still appears, as an ordinary failure. Nothing
-silently disappears, and exactly one texture describes it at any time. The **prohibited** overlay is deliberately left as its own dashed line
+**A prohibited road is a failing road**, the strongest kind, so it keeps its
+failure colouring and the prohibition rides **on top** as a wide translucent
+dashed ribbon — the same visual grammar as the designated-route ribbon, and
+added last so it is the topmost layer of its source. Suppressing the failure in
+favour of the prohibition left whole highway corridors, I-5 through the
+U-District among them, with no safety colour at all: the strongest verdict we
+have was rendering as the absence of one.
+
+A prohibition is a regulatory fact laid over a safety verdict, never a
+substitute for it. The **prohibited** overlay is deliberately left as its own dashed line
 at every zoom — bikes being banned is a different statement from failing the
 rider's rules, and it should not be folded into the same texture.
 

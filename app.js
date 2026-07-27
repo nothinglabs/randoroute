@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.409';
+const APP_VERSION = '2026-07-27.410';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1258,25 +1258,6 @@ function ensureLayer(src) {
     },
     filter: ['==', ['get', 'level'], 4],
   }, beforeId);
-  if (src.id === 'roads' || src.id === 'osm') {
-    map.addLayer({
-      id: prohibitedId(src),
-      type: 'line',
-      source: mapSourceId,
-      ...SL,
-      minzoom: src.minVisibleZoom || 0,
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: {
-        'line-color': COLORS[4],
-        'line-dasharray': [1.1, 1],
-        'line-width': safetyRoadWidth(src),
-        'line-opacity': backgroundLineOpacity(0.95),
-      },
-      filter: src.id === 'roads'
-        ? ['all', ['==', ['get', 'b'], 1], ['!=', ['get', 'd'], 1]]
-        : ['==', ['get', 'bicycle'], 'no'],
-    }, beforeId);
-  }
   map.addLayer({
     id: src.id,
     type: 'line',
@@ -1333,6 +1314,30 @@ function ensureLayer(src) {
         'line-opacity': backgroundLineOpacity(0.95),
       },
       filter: ['==', levelExpr, 4],
+    }, beforeId);
+  }
+  // Added last so the regulatory ribbon sits above this source's own colours
+  // and textures rather than under them.
+  if (src.id === 'roads' || src.id === 'osm') {
+    map.addLayer({
+      id: prohibitedId(src),
+      type: 'line',
+      source: mapSourceId,
+      ...SL,
+      minzoom: src.minVisibleZoom || 0,
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      // A regulatory fact laid OVER the safety colouring, never instead of it:
+      // wider than the road line and translucent, so the verdict underneath
+      // still reads. Same visual grammar as the designated-route ribbon.
+      paint: {
+        'line-color': COLORS[4],
+        'line-dasharray': [2, 1.4],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 3.4, 10, 6.4, 14, 11, 17, 15],
+        'line-opacity': backgroundLineOpacity(0.42),
+      },
+      filter: src.id === 'roads'
+        ? ['all', ['==', ['get', 'b'], 1], ['!=', ['get', 'd'], 1]]
+        : ['==', ['get', 'bicycle'], 'no'],
     }, beforeId);
   }
   if (src.id === 'osm') {
@@ -1686,18 +1691,13 @@ function applyDisplayMode(src) {
     map.setPaintProperty(failId(src), 'line-width', safetyRoadWidth(src));
     map.setPaintProperty(failId(src), 'line-opacity', opacity(0.65));
   }
-  // A prohibited road is a FAILING road -- the strongest kind. It must never
-  // vanish just because its own layer is off, so it is only withheld from the
-  // failure layers while the prohibited layer is actually drawing it. That way
-  // exactly one texture describes it: the prohibited dash when that layer is
-  // on, the ordinary failure marking when it is not.
-  const drawnAsProhibited = display.bikesProhibited
-    ? (src.id === 'osm' ? ['==', ['get', 'bicycle'], 'no']
-      : src.id === 'roads' ? ['==', ['get', 'b'], 1] : ['boolean', false])
-    : ['boolean', false];
+  // A prohibited road is a FAILING road -- the strongest kind -- so it keeps its
+  // failure colouring and the prohibition rides on top as a translucent ribbon.
+  // Suppressing one for the other left whole highway corridors with no safety
+  // colour at all, which is the opposite of what a prohibition should convey.
   const failFilter = src.id === 'osm'
-    ? ['all', ['==', lvl, 4], OSM_TRAIL_EXPR, ['!', drawnAsProhibited]]
-    : ['all', ['==', lvl, 4], ['!', drawnAsProhibited]];
+    ? ['all', ['==', lvl, 4], OSM_TRAIL_EXPR]
+    : ['==', lvl, 4];
   if (map.getLayer(vhId(src))) {
     map.setFilter(vhId(src), and(failFilter));
     map.setPaintProperty(vhId(src), 'line-color', alignRoadClasses
