@@ -77,6 +77,13 @@ const context = vm.createContext({
   gLon: new Float32Array([-122.40, -122.39, -122.40, -122.39, -122.40, -122.39]),
   gLat: new Float32Array([47.6000, 47.6000, 47.6001, 47.6001, 47.6010, 47.6010]),
 });
+context.importScripts = (...names) => {
+  // The worker loads the shared verdict model with importScripts(); mirror that
+  // here so a test context is the same environment the browser gives it.
+  for (const n of names) {
+    vm.runInContext(fs.readFileSync(new URL(`../${n}`, import.meta.url), 'utf8'), context);
+  }
+};
 vm.runInContext(worker.slice(helperStart, helperEnd), context);
 assert.equal(vm.runInContext('Array.from(roadBlockEdgeSet([[-122.395, 47.6001]])).join(",")', context), '0,1',
   'a road block should select the exact nearby road geometry and its parallel carriageway');
@@ -91,6 +98,13 @@ const routerContext = vm.createContext({
   Int32Array, Uint8Array, Uint16Array, Uint32Array,
   postMessage(message) { messages.push(message); },
 });
+routerContext.importScripts = (...names) => {
+  // The worker loads the shared verdict model with importScripts(); mirror that
+  // here so a test context is the same environment the browser gives it.
+  for (const n of names) {
+    vm.runInContext(fs.readFileSync(new URL(`../${n}`, import.meta.url), 'utf8'), routerContext);
+  }
+};
 vm.runInContext(worker, routerContext);
 const buffer = graph.byteOffset === 0 && graph.byteLength === graph.buffer.byteLength
   ? graph.buffer : graph.buffer.slice(graph.byteOffset, graph.byteOffset + graph.byteLength);

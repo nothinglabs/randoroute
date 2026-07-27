@@ -18,6 +18,13 @@ const context = vm.createContext({
   Int32Array, Uint8Array, Uint16Array, Uint32Array,
   postMessage(message) { messages.push(message); },
 });
+context.importScripts = (...names) => {
+  // The worker loads the shared verdict model with importScripts(); mirror that
+  // here so a test context is the same environment the browser gives it.
+  for (const n of names) {
+    vm.runInContext(fs.readFileSync(new URL(`../${n}`, import.meta.url), 'utf8'), context);
+  }
+};
 vm.runInContext(worker, context);
 const buffer = graph.byteOffset === 0 && graph.byteLength === graph.buffer.byteLength
   ? graph.buffer : graph.buffer.slice(graph.byteOffset, graph.byteOffset + graph.byteLength);

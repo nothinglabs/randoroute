@@ -21,6 +21,7 @@ const SHELL = [
   './street-view-embed.html',
   './route-details.html',
   './app.js',
+  './safety-model.js',
   './basemap-style.js',
   './route-details.js?v=398',
   './router-worker.js',

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.401';
+const APP_VERSION = '2026-07-27.402';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -61,7 +61,10 @@ function isDismountSegment(segment) {
 
 /* ------------------------------------------------- riding-rules state */
 const DEFAULT_RULES = Object.freeze({
-  allowFreeways: true,  // only permit heavily penalized freeway fallback?
+  // A routing permission, never a verdict: a freeway always fails. Off means
+  // the router may not use one at all; on means it may, as a last resort, and
+  // those segments still report as failing.
+  allowFreeways: true,
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
   preferPaved: true,    // strongly prefer pavement by default; unpaved remains available
   vettedBikeRoutes: true, // let designated corridors pass despite missing/narrow shoulder data?
@@ -315,95 +318,42 @@ function scoreRestrict() {
 }
 
 /* --------------------------------------------- source-agnostic scorer */
-function noShoulderMaxSpeed(n) {
-  return n.urban ? rules.urbanMaxSpeedNoShoulder : rules.ruralMaxSpeedNoShoulder;
+// Every rule below lives in safety-model.js. These are thin wrappers so callers
+// that hold a scored feature rather than a facts object keep reading naturally;
+// none of them may contain a threshold of their own.
+function noShoulderMaxSpeed(n) { return SafetyModel.noShoulderMaxSpeed(factsOf(n), rules); }
+function sidewalkFallbackApplies(n) {
+  const f = factsOf(n);
+  return SafetyModel.sidewalkFallbackApplies(f, SafetyModel.effectiveShoulder(f, rules), rules);
+}
+function wideRoadNeedsSpace(n) {
+  const f = factsOf(n);
+  return SafetyModel.wideRoadNeedsSpace(f, SafetyModel.effectiveShoulder(f, rules), rules);
 }
 
-function sidewalkFallbackApplies(n, speed = n.maxspeed_num, shoulder = n.shoulder_width) {
-  return rules.allowSidewalkFallback && n.sidewalk === 'present'
-    && !n.good_facility && speed != null && speed > noShoulderMaxSpeed(n)
-    && shoulder != null && shoulder < rules.minShoulder;
+// Normalised source props -> the shared ladder's facts shape. Every scorer
+// (scoreOSM/scoreRoad/scoreBLTS/scoreRouteSeg) already produces this vocabulary;
+// this is the single adapter between it and safety-model.js.
+function factsOf(n) {
+  return {
+    prohibited: !!n.prohibited,
+    ferry: !!n.ferry,
+    freeway: !!n.freeway,
+    infra: !!n.infra,
+    infraScore: n.baseScore == null ? null : n.baseScore,
+    facility: n.good_facility ? Math.max(2, Number(n.facility) || 0) : (Number(n.facility) || 0),
+    limitedAccess: !!n.limited_access,
+    speed: n.maxspeed_num == null ? null : n.maxspeed_num,
+    shoulder: n.shoulder_width == null ? null : n.shoulder_width,
+    lanes: Number(n.lanes) || 0,
+    sidewalk: n.sidewalk || null,
+    urban: !!n.urban,
+    designated: !!n.desig,
+  };
 }
 
-// "Your criteria decide", as HARD gates: each criterion is pass/fail. A road
-// fails (level 4 = avoid) if the data we have shows any criterion is not met.
-// Missing data does NOT fail a road — only a known-bad value does. Level 3 is
-// reserved for a bike-legal WSDOT limited-access highway that otherwise meets
-// the rider's rules: a useful caution, not a failed route criterion.
-// A shoulder rule is satisfied by real space of your own: a wide enough
-// shoulder, or a bike lane or better. A sharrow is facility 1 -- paint in a
-// shared travel lane -- and satisfies nothing.
-function hasRidingSpace(n, sh) {
-  return !!n.good_facility || (sh != null && sh >= rules.minShoulder);
-}
-// You cannot share a lane with traffic on a wide road. The threshold is the
-// count that fails, not the widest road allowed: at 4, a four-lane road fails.
-// Lanes are counted exactly as tagged — every car lane, turn lanes included —
-// with no adjustment for oneway carriageways. A divided arterial therefore
-// reads as its own carriageway's width, which is also the traffic you actually
-// ride among.
-function wideRoadNeedsSpace(n, sh) {
-  const lanes = Number(n.lanes) || 0;
-  if (!lanes || rules.maxLanesNoShoulder >= MAX_LANES_NO_LIMIT) return false;
-  return lanes >= rules.maxLanesNoShoulder && !hasRidingSpace(n, sh);
-}
-
-function effectiveLevel(n) {
-  if (n.prohibited) return 4;                              // bikes not allowed
-  if (n.freeway) return 4;                                 // true motorway: last resort
-
-  // Dedicated bike infrastructure: the infra type IS the rating (cycleway = 1,
-  // bike lane = 2). The car-speed/shoulder rules don't apply to it.
-  if (n.infra) return n.baseScore == null ? 0 : n.baseScore;
-
-  // WSDOT's LTS_Bicycle deliberately does NOT decide the verdict. 79.9% of its
-  // segments are rated 4, so on this dataset it is close to a constant meaning
-  // "this is a state highway" -- which the speed and shoulder rules below
-  // already infer, and infer more finely: they separate a 6 ft shoulder from a
-  // 0 ft one where the rating flattens both to 4. Treating it as a verdict
-  // would either fail 166k edges or paint almost every highway amber. It stays
-  // a routing cost (trafficStressMult) and a reported fact on the road card.
-
-  const spd = n.maxspeed_num;
-  // This setting is an absolute road-speed ceiling. It comes before the
-  // slow-road and designated-route shortcuts so the UI's “Never allow” label
-  // always means what it says. Dedicated bike infrastructure remains exempt.
-  const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
-  if (speedFails) return 4;
-  // Pessimistic option: an unknown shoulder counts as 0 ft, so fast roads must
-  // PROVE an adequate shoulder to pass. Slow roads are unaffected (free-speed
-  // rule below fires first) and so are roads with a bike facility.
-  const sh = n.shoulder_width == null && rules.unknownShoulderZero ? 0 : n.shoulder_width;
-
-  // Slow enough → comfortable regardless of shoulder.  The local Census
-  // classification distinguishes a 35 mph rural road from urban exposure.
-  // Before the slow-road rule below: a road too wide to share needs a shoulder
-  // or a bike lane no matter how it is signed. A failure like every other rule
-  // here -- there is no sidewalk reprieve, because a sidewalk does not make a
-  // four-lane road shareable.
-  if (wideRoadNeedsSpace(n, sh)) return 4;
-
-  const noShoulderMax = noShoulderMaxSpeed(n);
-  if (spd != null && spd <= noShoulderMax) return n.limited_access ? 3 : 1;
-
-  // A rider can opt to treat a designated bike route (USBR / regional trail)
-  // as a vetted corridor. The freeway, prohibition, and speed-cutoff gates
-  // above still apply; otherwise it is evaluated by the shoulder rule.
-  if (n.desig && rules.vettedBikeRoutes) return n.limited_access ? 3 : 2;
-
-  // Hard gates. Each fails ONLY when we have data proving the violation
-  // (with the pessimistic option, "unknown = 0 ft" counts as data).
-  const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
-  // A mapped sidewalk is an opt-in fallback, not bike infrastructure. It
-  // meets the shoulder rule so strict filtering can use it, but stays amber.
-  if (shoulderFails && sidewalkFallbackApplies(n, spd, sh)) return 3;
-  if (shoulderFails) return 4;
-
-  // No usable data on any criterion → unknown.
-  if (spd == null && sh == null && !n.good_facility) return 0;
-
-  return n.limited_access ? 3 : 2; // caution, or meets your criteria
-}
+function evaluateRoad(n) { return SafetyModel.evaluate(factsOf(n), rules); }
+function effectiveLevel(n) { return evaluateRoad(n).level; }
 
 /* ------------------------------------------------ data-source registry */
 // zRank controls draw order: higher ranks render on top of lower ones.
@@ -521,9 +471,11 @@ function roadLevelExpr() {
   const noShoulderMax = ['case', ['==', ['get', 'u'], 1],
     rules.urbanMaxSpeedNoShoulder, rules.ruralMaxSpeedNoShoulder];
   const cases = [];
+  const hasSpeed = ['has', 's'];
   cases.push(['==', ['get', 'b'], 1], 4);                       // bikes prohibited
   cases.push(['==', ['get', 'm'], 1], 4);                       // freeway: last-resort failure
-  if (!rules.noUpperLimit) cases.push(['>', spd, rules.upperMaxSpeed], 4); // absolute speed cap
+  if (!rules.noUpperLimit)                                      // absolute speed cap
+    cases.push(['all', hasSpeed, ['>', spd, rules.upperMaxSpeed]], 4);
   // Keep in step with effectiveLevel(): a road too wide to share needs a
   // shoulder or a bike lane before the slow-road rule can pass it. WSDOT's
   // rating is deliberately absent here for the reason given there.
@@ -536,7 +488,7 @@ function roadLevelExpr() {
       ['>', ['coalesce', ['get', 'ln'], 0], 0],
       ['!', ridingSpace]], 4);
   }
-  cases.push(['<=', spd, noShoulderMax], passLevel);            // slow = comfortable
+  cases.push(['all', hasSpeed, ['<=', spd, noShoulderMax]], passLevel);  // slow = comfortable
   if (rules.vettedBikeRoutes)
     cases.push(['==', ['get', 'g'], 1], ordinaryPassLevel);     // designated route = vetted
   // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
@@ -547,10 +499,17 @@ function roadLevelExpr() {
   const shoulderFailure = ['all',
     ['<', ['coalesce', ['get', 'ft'], 0], 2], ['<', sh, rules.minShoulder]];
   if (rules.allowSidewalkFallback) {
-    cases.push(['all', shoulderFailure, ['==', ['get', 'k'], 1]], 3);
-    cases.push(['all', shoulderFailure, ['!=', ['get', 'k'], 1]], 4);
-  } else {
-    cases.push(shoulderFailure, 4);
+    // The fallback needs a KNOWN speed above the no-shoulder limit, as the
+    // shared model requires. Reaching here with a known speed already means it
+    // is above the limit, so `has` is the whole of the extra condition.
+    cases.push(['all', shoulderFailure, hasSpeed, ['==', ['get', 'k'], 1]], 3);
+  }
+  cases.push(shoulderFailure, 4);
+  // Nothing known about any criterion. Only reachable with "Unknown shoulder =
+  // 0 ft" off, exactly as in the shared model.
+  if (!rules.unknownShoulderZero) {
+    cases.push(['all', ['!', hasSpeed], ['!', ['has', 'w']],
+      ['<', ['coalesce', ['get', 'ft'], 0], 2]], 0);
   }
   return ['case', ...cases, ordinaryPassLevel];                  // meets criteria
 }
@@ -1970,27 +1929,29 @@ function fmtDur(s) {
   return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} m`;
 }
 
-function fallbackRouteLevel(s) {
+// A route segment the worker did not label (older payloads). Adapts the packed
+// segment to the shared ladder rather than restating it.
+function routeSegFacts(s) {
   const flags = s.flags || 0;
-  if (flags & 4) return 4;
-  if ((flags & 8) || (s.facility || 0) >= 4) return 1;
-  if (!rules.noUpperLimit && s.mph > rules.upperMaxSpeed) return 4;
-  const noShoulderMax = (s.official || 0) & OFFICIAL_URBAN
-    ? rules.urbanMaxSpeedNoShoulder : rules.ruralMaxSpeedNoShoulder;
-  // Same order and thresholds as effectiveLevel(): too wide to share fails
-  // before speed can pass it.
-  if (rules.maxLanesNoShoulder < MAX_LANES_NO_LIMIT && (s.lanes || 0) >= rules.maxLanesNoShoulder
-      && (s.facility || 0) < 2 && !(s.sh >= rules.minShoulder)) return 4;
-  if (s.mph <= noShoulderMax) return flags & 128 ? 3 : 1;
-  if ((flags & 64) && rules.vettedBikeRoutes) return flags & 128 ? 3 : 2;
-  let sh = s.sh;
-  if (sh < 0 && rules.unknownShoulderZero) sh = 0;
-  if ((s.facility || 0) < 2 && sh >= 0 && sh < rules.minShoulder) {
-    if (rules.allowSidewalkFallback && ((s.official || 0) & OFFICIAL_SIDEWALK)) return 3;
-    return 4;
-  }
-  return flags & 128 ? 3 : 2;
+  const official = s.official || 0;
+  return {
+    prohibited: false,
+    ferry: !!(flags & 32),
+    freeway: !!(flags & 4),
+    infra: !!(flags & 8) || (s.facility || 0) >= 4,
+    infraScore: 1,
+    facility: s.facility || 0,
+    limitedAccess: !!(flags & 128),
+    speed: s.mph == null ? null : s.mph,
+    shoulder: s.sh >= 0 ? s.sh : null,
+    lanes: s.lanes || 0,
+    sidewalk: official & OFFICIAL_SIDEWALK ? 'present'
+      : official & OFFICIAL_SIDEWALK_NO ? 'absent' : null,
+    urban: !!(official & OFFICIAL_URBAN),
+    designated: !!(flags & 64),
+  };
 }
+function fallbackRouteLevel(s) { return SafetyModel.level(routeSegFacts(s), rules); }
 
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 function isHighwaySegment(s) {
@@ -6553,10 +6514,17 @@ function buildPlacePicker() {
 /* ---------------------------------------------- hover/click readout */
 const readoutEl = document.getElementById('readout');
 // The road card repeats the one shared map/route verdict vocabulary.
-function readoutVerdict(n, level) {
+// The verdict headline names the rung that actually decided, so it can never
+// describe a different rule than the "Why" line beneath it. Level 3 in
+// particular has three quite different causes.
+function readoutVerdict(n, level, verdict = evaluateRoad(n)) {
   if (n.dismount) return 'Dismount required';
   if (level === 4) return 'Fails your rules';
-  if (level === 3) return 'Caution — limited-access highway';
+  if (level === 3) {
+    if (verdict.rule === 'sidewalk-fallback') return 'Caution — sidewalk instead of a shoulder';
+    if (verdict.limitedAccess) return 'Caution — limited-access highway';
+    return 'Caution';
+  }
   if (level === 0) return 'Insufficient data';
   if (isBikeNetworkVerdict(n)) return 'Bike network — passes your rules';
   if (n.desig) return 'Designated bike route — passes your rules';
@@ -6609,77 +6577,78 @@ function routeSegmentGrade(gradePct, lenM) {
   const magnitude = (Math.round(Math.abs(grade) * 10) / 10).toString();
   return grade > 0 ? `${magnitude}% uphill ↗` : `${magnitude}% downhill ↘`;
 }
-// Plain-language reason for a segment's verdict under the current rules.
-// Mirrors effectiveLevel()'s hard-gate branches so the readout explains why.
-function explainLevel(n) {
-  if (n.dismount) return 'Bicycle access is allowed here, but you must walk your bike.';
-  if (n.prohibited)
-    return n.wsdotBan
-      ? 'Bikes prohibited — WSDOT permanent restriction.'
-      : 'Bikes prohibited — OSM-tagged bicycle=no.';
-  if (n.freeway)
-    return 'Limited-access freeway — treated as a last-resort route failure.';
-  if (n.infra)
-    return n.baseScore === 1
-      ? 'Dedicated or protected bike path — part of the bike network and passes your rules.'
-      : n.baseScore === 2
-      ? 'Bike lane or shared path — part of the bike network and passes your rules.'
-      : 'Bike infrastructure.';
+// Plain-language reason for a segment's verdict, generated from the SAME
+// evaluation that produced the level. It switches on the rung that actually
+// fired, so the Verdict line and the Why line cannot describe different rules —
+// which is exactly what they used to do.
+function explainLevel(n, verdict = evaluateRoad(n)) {
   const spd = n.maxspeed_num;
-  const shRaw = n.shoulder_width;
-  const shUnknown = shRaw == null;
-  const sh = shUnknown && rules.unknownShoulderZero ? 0 : shRaw;
-  const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : null;
-  const speedFails = !rules.noUpperLimit && spd != null && spd > rules.upperMaxSpeed;
-  const noShoulderMax = noShoulderMaxSpeed(n);
+  const shUnknown = n.shoulder_width == null;
+  const sh = verdict.shoulder;
+  const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : 'This road';
   const area = n.urban ? 'urban' : 'rural';
-  // Ordered as effectiveLevel() orders it: a road too wide to share fails
-  // before the slow-road rule gets a chance to pass it on speed alone.
-  if (!speedFails && wideRoadNeedsSpace(n, sh))
-    return `Fails: ${n.lanes} lanes of traffic${n.ctl ? ' (incl. a centre turn lane)' : ''}`
-      + ' with no shoulder and no bike lane — you cannot share a lane here.'
-      + ' Raise "Lanes needing a shoulder or bike lane" to allow it.';
-  if (!speedFails && spd != null && spd <= noShoulderMax)
-    return n.limited_access
-      ? `${spdTxt} — meets your speed/shoulder rules, but this is a limited-access highway (caution).`
-      : `${spdTxt} — at or below your ${noShoulderMax} mph ${area} no-shoulder limit, passes without a shoulder.`;
+  const limitedNote = ' — but this is a limited-access highway, so ride it with caution.';
+  const shoulderTxt = shUnknown
+    ? `shoulder unknown — treated as 0 ft, under your ${rules.minShoulder} ft minimum`
+    : `${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`;
 
-  if (!speedFails && n.desig && rules.vettedBikeRoutes)
-    return n.limited_access
-      ? 'On a designated bike route, but it is also a limited-access highway (caution).'
-      : 'On a designated bike route (USBR / regional trail) — a vetted corridor, treated as meeting your criteria.';
+  // Access facts sit outside the ladder: they describe how you may use the
+  // road, not how it scores.
+  if (n.dismount) return 'Bicycle access is allowed here, but you must walk your bike.';
 
-  const shoulderFails = !n.good_facility && sh != null && sh < rules.minShoulder;
-  if (!speedFails && shoulderFails && sidewalkFallbackApplies(n, spd, sh)) {
-    return `${spdTxt || 'This road'} uses your mapped sidewalk fallback instead of a ${rules.minShoulder} ft shoulder; it is strongly deprioritized.`;
+  switch (verdict.rule) {
+    case 'prohibited':
+      return n.wsdotBan
+        ? 'Fails: bikes prohibited — WSDOT permanent restriction.'
+        : 'Fails: bikes prohibited — OSM-tagged bicycle=no.';
+    case 'ferry':
+      return 'Crossing by ferry — road rules don’t apply on the boat.';
+    case 'freeway':
+      return rules.allowFreeways
+        ? 'Fails: limited-access freeway. You allow these as a last resort, so a route may still'
+          + ' use one — it is reported as failing, and strict matching excludes it.'
+        : 'Fails: limited-access freeway. Your settings never route over one.';
+    case 'infra':
+      return verdict.level === 1
+        ? 'Dedicated or protected bike path — part of the bike network and passes your rules.'
+        : verdict.level === 2
+        ? 'Bike lane or shared path — part of the bike network and passes your rules.'
+        : 'Bike infrastructure, with no rating recorded for its type.';
+    case 'speed-cap':
+      return `Fails: ${spdTxt} is over your ${rules.upperMaxSpeed} mph max.`;
+    case 'wide-road':
+      return `Fails: ${n.lanes} lanes of traffic${n.ctl ? ' (incl. a centre turn lane)' : ''}`
+        + ' with no shoulder and no bike lane — you cannot share a lane here.'
+        + ' Raise "Lanes needing a shoulder or bike lane" to allow it.';
+    case 'slow-road':
+      return `${spdTxt} — at or below your ${noShoulderMaxSpeed(n)} mph ${area} no-shoulder limit,`
+        + ` passes without a shoulder${verdict.limitedAccess ? limitedNote : '.'}`;
+    case 'designated':
+      return 'On a designated bike route (USBR / regional trail) — you have chosen to trust these,'
+        + ` so it passes without a shoulder check${verdict.limitedAccess ? limitedNote : '.'}`;
+    case 'sidewalk-fallback':
+      return `${spdTxt}: ${shoulderTxt}. Your mapped-sidewalk fallback keeps it out of a`
+        + ' hard fail, but the router strongly avoids it.';
+    case 'shoulder':
+      return `Fails: ${shoulderTxt}.`;
+    case 'unknown':
+      return 'No speed or shoulder data for this segment — not enough to judge it.';
+    default:
+      break;
   }
-  const reasons = [];
-  if (speedFails) reasons.push(`${spdTxt} is over your ${rules.upperMaxSpeed} mph max`);
-  if (shoulderFails)
-    reasons.push(shUnknown
-      ? `shoulder unknown — treated as 0 ft, under your ${rules.minShoulder} ft minimum`
-      : `${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`);
-  if (reasons.length) return `Fails: ${reasons.join(' and ')}.`;
 
-  if (n.limited_access)
-    return 'Limited-access highway — caution. Its recorded speed and shoulder meet your current criteria.';
-
-  if (spd == null && shRaw == null && !n.good_facility && !rules.unknownShoulderZero)
-    return 'No speed or shoulder data for this segment.';
-
+  // 'default': nothing failed and nothing shortcut it. Say what it met.
   const met = [];
-  if (n.good_facility) met.push('has a bike facility');
+  if ((n.facility || 0) >= 2 || n.good_facility) met.push('has a bike lane or better');
   else if (!shUnknown) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
   else if (rules.unknownShoulderZero) met.push(`shoulder unknown — treated as 0 ft, meets your ${rules.minShoulder} ft minimum`);
   else met.push('shoulder unknown (not held against it)');
   if (n.desig && !rules.vettedBikeRoutes) met.push('designated route, checked against your rules');
   if (spd != null)
-    met.push(
-      rules.noUpperLimit
-        ? `${spdTxt} — no speed cutoff set`
-        : `${spdTxt} within your ${rules.upperMaxSpeed} mph max`
-    );
-  return `${met.join('; ')}.`;
+    met.push(rules.noUpperLimit
+      ? `${spdTxt} — no speed cutoff set`
+      : `${spdTxt} within your ${rules.upperMaxSpeed} mph max`);
+  return `${met.join('; ')}${verdict.limitedAccess ? limitedNote : '.'}`;
 }
 
 const HIT_LAYERS = [];  // hit-layer ids, registered as sources attach
@@ -6844,10 +6813,16 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   const src = HIT_SRC[feature.layer.id];
   const p = feature.properties;
   const n = src.scorer(p);            // recompute normalized props from this feature
-  const lvl = p.level != null ? p.level : effectiveLevel(n); // expr sources carry no .level
+  // One evaluation drives the headline, the reason, and the colour. It used to
+  // read p.level (the router's answer) for the headline and re-derive the
+  // reason, so a card could say "Passes your rules" above "Fails: ...". Both
+  // sides now ask safety-model.js, and asking once here means the card cannot
+  // disagree with itself even if they ever diverge again.
+  const verdict = evaluateRoad(n);
+  const lvl = verdict.level;
   const common = [
-    ['Verdict', readoutVerdict(n, lvl)],
-    ['Why', explainLevel(n)],
+    ['Verdict', readoutVerdict(n, lvl, verdict)],
+    ['Why', explainLevel(n, verdict)],
   ];
   let title, rows;
   if (src.id === 'routeseg') {
@@ -6989,7 +6964,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
     : src.id === 'restrict' ? COLORS[4]
       : p.ferry === 1 ? COLORS[0] : readoutVerdictColor(n, lvl);
   swatch.setAttribute('aria-label', src.id === 'routes'
-    ? 'Designated route map color' : `Map color: ${readoutVerdict(n, lvl)}`);
+    ? 'Designated route map color' : `Map color: ${readoutVerdict(n, lvl, verdict)}`);
   const headingText = document.createElement('span');
   headingText.textContent = title;
   heading.append(swatch, headingText);
@@ -7411,7 +7386,9 @@ function presetInfoRows(preset) {
       ? 'Can satisfy the shoulder rule; speed and access limits still apply.'
       : 'Must meet the normal speed and shoulder rules.'],
     ['Freeways', presetRules.allowFreeways
-      ? 'Bike-legal segments may be used only as a last resort.' : 'Not used.'],
+      ? 'Always fail your rules. Bike-legal segments may still be routed over as a last resort,'
+        + ' and are reported as failing; strict matching excludes them entirely.'
+      : 'Never routed over.'],
     ['Rule matching', presetRules.requireSafe
       ? 'Required, except short access blocks (~1,000 ft) at your start, waypoints, and destination; no route is shown otherwise.'
       : 'Not required; a route may include rule-failing segments to complete it.'],
@@ -7590,7 +7567,7 @@ function buildRulesPanel() {
   check('prefDesig', 'Heavily prefer bike routes & trails', routing, updateRoutePreference);
   check('prefResidential', 'Prefer residential streets', routing, updateRoutePreference);
   check('vettedBikeRoutes', 'Trust designated bike routes');
-  check('allowFreeways', 'Allow freeway as last resort');
+  check('allowFreeways', 'Route over freeway as last resort (fails)');
   check('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
     // This option affects both eligibility in the graph and the OSM layer's
     // feature filter. Repaint immediately, then recompute after the usual

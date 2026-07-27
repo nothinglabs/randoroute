@@ -2,11 +2,51 @@
 
 How a road gets its colour, its verdict, and its routing cost.
 
-These rules used to live only in code, in three separate implementations that
-had quietly drifted apart — the router avoided a five-lane arterial while the
-map painted it as bike network. This file is the single description. **If you
-change a rule, change it in every place listed under "Where the ladder lives"
-and update this file.**
+## The principle this file exists to enforce
+
+**A setting that sounds objective must have an objective consequence.** If a
+control is named like a fact or a permission — *Trust designated bike routes*,
+*Minimum shoulder if no bike lane*, *Route over freeway as last resort (fails)*
+— then changing it must change the verdict shown on the map in a defined,
+reproducible way. A control that sounds like it governs safety but only nudges
+routing cost is a lie to the rider.
+
+**The verdict must be traceable on the card.** Every input the verdict consumed
+appears on the road and route cards, together with the rule that fired and why,
+in plain language. A rider should be able to reconstruct the verdict from the
+card without reading code, and the street card and the route card must say the
+same thing about the same road.
+
+**Routing may be subjective, but never unexplained.** Choosing among *legal*
+roads is a matter of taste, so preferences, weights and soft costs are
+legitimate there. Every one of them is enumerated under "Routing cost" below. A
+cost may never make a road pass or fail — that is the verdict's job alone.
+
+**This file is the specification, not a summary of the code.** If the code and
+this file disagree, the code is wrong.
+
+## One definition, four readers
+
+The ladder lives in **`safety-model.js`** and nowhere else. Each caller
+normalises its own storage into the same `facts` object and asks:
+
+| caller | adapter | used for |
+|---|---|---|
+| `app.js` `effectiveLevel()` | `factsOf()` | tap cards, GeoJSON sources |
+| `app.js` `fallbackRouteLevel()` | `routeSegFacts()` | route segments |
+| `router-worker.js` `edgeLevel()` | `edgeFacts()` | **routing** — the only copy `requireSafe` reads |
+| `app.js` `roadLevelExpr()` | — | vector road tiles (the map colours) |
+
+The fourth cannot share the code: MapLibre evaluates it declaratively in the
+renderer. It is instead cross-checked against the model over ~1.2M
+property/rule combinations by `scripts/test_safety_model.mjs`, which is how a
+divergence in the sidewalk-fallback branch was caught.
+
+This structure exists because the ladder was previously written out four times
+and drifted. Two bugs reached riders as a result: a sharrowed road drawn red
+whose card read *"Verdict: Passes your rules"* above *"Why: Fails: shoulder
+unknown"*, and a wide-road rule added to the display copy alone, which changed
+what riders were told and nothing about where they were sent.
 
 ## The four levels
 
@@ -26,22 +66,48 @@ split is expressed by `bikeNetworkExpr`.
 
 ## The verdict ladder
 
-`effectiveLevel(n)` in `app.js`, in order. The first rule that matches wins.
+`evaluate(facts, rules)` in `safety-model.js`, in order. The first rung that
+matches wins, and its name is returned as `rule` — the card's headline and its
+explanation are both generated from that one answer, so they cannot describe
+different rules.
 
-| # | rule | result | setting |
-|---|---|---|---|
-| 1 | bikes prohibited | 4 | — |
-| 2 | true motorway | 4 | `allowFreeways` governs routing, not this verdict |
-| 3 | dedicated infrastructure (`infra`) | its own `baseScore` | — |
-| 4 | speed over the absolute cap | 4 | `upperMaxSpeed`, `noUpperLimit` |
-| 5 | at or over the lane threshold, with no shoulder and no bike lane | 4 | `maxLanesNoShoulder` |
-| 6 | slow enough to share the lane | 1 | `urbanMaxSpeedNoShoulder`, `ruralMaxSpeedNoShoulder` |
-| 7 | designated bike route, if trusted | 2 | `vettedBikeRoutes` |
-| 8 | shoulder under the minimum, no bike facility | 4, or 3 with a sidewalk | `minShoulder`, `unknownShoulderZero`, `allowSidewalkFallback` |
-| 9 | no usable data on any criterion | 0 | — |
+| # | `rule` | condition | result | setting |
+|---|---|---|---|---|
+| 1 | `prohibited` | bikes banned (OSM `bicycle=no`, WSDOT restriction) | 4 | — |
+| 2 | `ferry` | a boat, not a road | 2 | — |
+| 3 | `freeway` | a true motorway | 4 | — (see below) |
+| 4 | `infra` | dedicated bike infrastructure | its own `infraScore` | — |
+| 5 | `speed-cap` | speed over the absolute ceiling | 4 | `upperMaxSpeed`, `noUpperLimit` |
+| 6 | `wide-road` | at or over the lane threshold, no shoulder and no bike lane | 4 | `maxLanesNoShoulder` |
+| 7 | `slow-road` | slow enough to share the lane | 1 | `urbanMaxSpeedNoShoulder`, `ruralMaxSpeedNoShoulder` |
+| 8 | `designated` | on a signed bike route, if trusted | 2 | `vettedBikeRoutes` |
+| 9 | `sidewalk-fallback` | would fail the shoulder rung, but has a mapped sidewalk | 3 | `allowSidewalkFallback` |
+| 10 | `shoulder` | shoulder under the minimum, no bike lane | 4 | `minShoulder`, `unknownShoulderZero` |
+| 11 | `unknown` | no usable data on any criterion | 0 | — |
+| 12 | `default` | nothing failed, nothing shortcut it | 2 | — |
+
+A **limited-access** but bike-legal highway turns rungs 7, 8 and 12 into a
+caution (3) instead of a pass. It never changes a fail.
+
+### Rung 3 — freeways, and why the toggle is not a verdict
+
+A motorway **always** fails. `allowFreeways` — *"Route over freeway as last
+resort (fails)"* — is a **routing permission**, not a safety opinion:
+
+- **off**: the router may not traverse a freeway edge at all.
+- **on**: it may, as a genuine last resort (×60 cost), and those segments report
+  as failing and count toward the route's "fails rules" mileage.
+- **on, with strict matching**: the segments are level 4, so they are excluded
+  anyway. The toggle is inert.
+
+The setting is named "(fails)" so the rider can see that the verdict is fixed
+and they are only choosing whether the router may use a failing road. Freeways
+are also excluded from the terminal-access carve-out that otherwise lets short
+failing blocks be used at a leg's endpoints — nobody's driveway is on a
+motorway, and "(fails)" has to mean excluded whenever failing roads are.
 | 10 | otherwise | 2 | — |
 
-Rule 5 sits **before** rule 6 deliberately. Seattle signed every arterial at
+The lane rung sits **before** the slow-road rung deliberately. Seattle signed every arterial at
 25 mph in 2020, so without it a seven-lane road passes rule 6 outright — which
 is exactly what 15th Ave NW in Ballard did.
 
@@ -62,7 +128,7 @@ above *"Why: Fails: shoulder unknown"* — the Verdict line reads the worker's
 Any drift between the two shows up as a self-contradicting card, and lets
 `requireSafe` route down roads the map paints as failing.
 
-### Rule 5 — the lane threshold
+### Rung 6 — the lane threshold
 
 The setting is **the count that fails, not the widest road allowed**. At 4, a
 four-lane road with neither a shoulder nor a bike lane fails; a three-lane road
@@ -85,7 +151,7 @@ Three things about the count, all deliberate:
   is the opposite of how unknown data is treated elsewhere, and is why
   `unknownShoulderZero` has no effect on this rule.
 
-**No sidewalk reprieve.** Unlike rule 8, a mapped sidewalk does not soften this
+**No sidewalk reprieve.** Unlike the shoulder rung, a mapped sidewalk does not soften this
 to a caution. A sidewalk does not make a four-lane road shareable. 10,854 of the
 12,453 edges this rule newly fails have a mapped sidewalk, so this choice is
 most of the rule's effect, not a corner case.
@@ -111,9 +177,9 @@ number rather than a surprise.
 fine" is not a rule anyone would choose over switching the rule off. A saved
 value from a wider range clamps to the top stop, which reads as No limit.
 
-### Rule 8 — the sidewalk fallback
+### Rung 9/10 — the shoulder rung and its sidewalk fallback
 
-`allowSidewalkFallback` (default on) applies to **rule 8 only**. It fires when
+`allowSidewalkFallback` (default on) applies to **rung 10 only**. It fires when
 all of: the setting is on, the sidewalk is positively mapped `present`
 (untagged does not count), there is no bike facility, the speed is known and
 *above* the no-shoulder limit, and the shoulder is known and *below*
@@ -125,8 +191,9 @@ soft landing: the router prices it at **×1.9** direct, **×3.8** balanced,
 **×8.0** low-stress, so a route takes a long detour to avoid one.
 
 That is worth stating plainly because level 3 means two different things
-depending on which rule produced it. A rule-8 caution is heavily avoided. A
-limited-access caution (rule 6/7/10, flag 128) carries no such cost.
+depending on which rung produced it, which is why `readoutVerdict` names the
+rung: "Caution — sidewalk instead of a shoulder" versus "Caution —
+limited-access highway".
 
 ## Which signals reach which decision
 
@@ -139,7 +206,7 @@ deliberately routing-only: they express preference, not safety.
 | speed | yes | yes |
 | shoulder | yes | yes |
 | bike facility type | yes | yes |
-| lanes | **yes** (rule 5) | yes |
+| lanes | **yes** (rung 6) | yes |
 | WSDOT `LTS_Bicycle` | no — see below | yes |
 | OSM road class (secondary/primary/…) | no | yes |
 | surface, grade, curve hazard, sidewalk exposure | no | yes |
@@ -147,30 +214,61 @@ deliberately routing-only: they express preference, not safety.
 Road class stays out of the verdict on purpose. It is an administrative label,
 not a physical fact: 81% of "arterials" are one or two lanes, while 15th Ave NE
 has four-lane stretches tagged merely `tertiary`. Lane count is the physical
-fact, so that is what rule 5 gates on.
+fact, so that is what rung 6 gates on.
 
-## Where the ladder lives
+## Every rider setting, and what it objectively does
 
-Four implementations. All must agree.
+| setting | UI label | verdict effect | routing effect |
+|---|---|---|---|
+| `minShoulder` | Minimum shoulder if no bike lane | rung 10 threshold | via the verdict |
+| `unknownShoulderZero` | Unknown shoulder = 0 ft | untagged counts as 0 at rung 10 | via the verdict |
+| `urbanMaxSpeedNoShoulder` | Urban max speed without shoulder or bike lane | rung 7 threshold | via the verdict |
+| `ruralMaxSpeedNoShoulder` | Rural max speed without shoulder or bike lane | rung 7 threshold | via the verdict |
+| `maxLanesNoShoulder` | Lanes needing a shoulder or bike lane | rung 6 threshold | also `wideRoad*` cost |
+| `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
+| `allowSidewalkFallback` | Allow sidewalk fallback | rung 9 exists at all | ×1.9 / ×3.8 / ×8.0 |
+| `vettedBikeRoutes` | Trust designated bike routes | rung 8 exists at all | via the verdict |
+| `allowFreeways` | Route over freeway as last resort (fails) | **none** — a freeway always fails | traversable at all, ×60 |
+| `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
+| `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |
+| `preferPaved` | Strongly prefer paved surfaces | none | surface cost |
+| `prefDesig` | Heavily prefer bike routes & trails | none | designation bonus |
+| `prefResidential` | Prefer residential streets | none | `residential` bonus |
 
-| file | form | covers |
+The first eight are named objectively and change the verdict. The last six are
+named as permissions or preferences and change only where you are sent — which
+is what their names promise.
+
+## Routing cost
+
+Subjective by design: it chooses among *legal* roads and never makes one legal
+or illegal. Every multiplier applied to an edge, in `router-worker.js`:
+
+| influence | function / weight | what it expresses |
 |---|---|---|
-| `app.js` `effectiveLevel()` | JS, per feature | GeoJSON sources, tap cards |
-| `app.js` `roadLevelExpr()` | MapLibre expression | vector road tiles — the map colours |
-| `app.js` `routeSegLevel()` | JS, per packed segment | route-segment colours and cards |
-| `router-worker.js` `edgeLevel()` | JS, per graph edge | **routing** — the only copy `requireSafe` reads |
-| `app.js` `scoreOSM/scoreRoad/scoreBLTS` | JS | normalises each source into the shared shape |
-| `scripts/build_osm.py` `classify()` | Python | which ways enter `bikeinfra.geojson` |
+| speed above the comfort limit | `speedStress` | graded pressure toward slower roads |
+| curve/grade hazard | `hazardMult` | recorded hazard on the edge |
+| road class | `majorRoadMult`, `arterial*` | tertiary < secondary < primary |
+| lanes and WSDOT LTS | `trafficStressMult`, `wideRoad*`, `stressedRoad*` | traffic exposure; paint gives partial relief, a separated lane full |
+| urban road tagged `sidewalk=no` at 30+ mph | `sidewalkExposureMult` | nowhere to bail out |
+| riding on the sidewalk fallback | `sidewalkFallbackMult` | ×1.9 direct, ×3.8 balanced, ×8.0 low-stress |
+| freeway | `freeway` (×60) | last resort only |
+| WSDOT limited access | `limited*` | bike-legal but unpleasant |
+| mountain-bike trail | `mtbTrail` | opt-in, heavily penalised |
+| bike facility | facility bonus | separated lane or path can justify a detour |
+| residential street | `residential` | quieter grid |
+| climbing | `climb*SecPerM`, `uphillFactor` | time model plus a preference |
+| turns | `turn*Sec` | fewer manoeuvres |
+| route diversity | `diversity*` | keeps the five offered routes genuinely different |
 
-A rule added only to `effectiveLevel()` changes what the map says and nothing
-about where you are sent. `edgeLevel()` is what excludes an edge under
-*Only show routes fully matching*.
+Weights live in `DEFAULT_WEIGHTS` (`router-worker.js`), mirrored in `app.js` so
+the desktop weight editor stays reproducible. Three modes — direct, balanced,
+low-stress — scale most of them; that is what makes routes A–E differ.
 
-Routing cost is separate and lives in `router-worker.js`
-(`majorRoadMult`, `trafficStressMult`, `speedStress`, `hazardMult`,
-`sidewalkExposureMult`). Its weights are in `DEFAULT_ROUTING_WEIGHTS`, mirrored
-in `app.js` so the desktop weight editor stays reproducible. A cost never makes
-a road legal or illegal — it only decides which legal road is preferred.
+**Level 3 does not mean one thing for routing.** A `sidewalk-fallback` caution
+carries ×8 in low-stress mode; a `limited-access` caution carries `limited*`;
+a `wide-road` or `shoulder` outcome is a fail, not a caution, and is excluded
+under strict matching. The card names which one it is for that reason.
 
 ## Data notes worth knowing
 
@@ -179,7 +277,7 @@ a road legal or illegal — it only decides which legal road is preferred.
   tag therefore means "small road", never "unproven", and must leave scoring
   unchanged.
 - **On a oneway, `lanes` counts one direction.** A four-lane arterial split into
-  two oneway carriageways reads as two lanes each. Rule 5 does **not** correct
+  two oneway carriageways reads as two lanes each. Rung 6 does **not** correct
   for this — see above — so such an arterial does not trip it.
 - **`lanes` includes turn lanes**, and `lanes:both_ways` is a subset of that
   total, not an addition to it. One known gap: when a way tags

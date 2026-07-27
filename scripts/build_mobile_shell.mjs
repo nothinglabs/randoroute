@@ -10,6 +10,7 @@ const files = [
   'styles.css',
   'app.js',
   'basemap-style.js',
+  'safety-model.js',
   'router-worker.js',
   'route-details.html',
   'route-details.css',

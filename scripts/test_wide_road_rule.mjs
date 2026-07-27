@@ -12,31 +12,29 @@ import zlib from 'node:zlib';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
+const model = fs.readFileSync(new URL('../safety-model.js', import.meta.url), 'utf8');
 
 /* ---------------------------------------------- the threshold is inclusive */
-assert.match(app, /function wideRoadNeedsSpace\(n, sh\) \{[\s\S]*?lanes >= rules\.maxLanesNoShoulder && !hasRidingSpace\(n, sh\)/,
+assert.match(model, /return lanes >= limit && !hasRidingSpace\(facts, shoulder, rules\);/,
   'the setting is the lane count that FAILS, not the widest road allowed');
-assert.doesNotMatch(app, /function wideRoadNeedsSpace\(n, sh\) \{[\s\S]*?Math\.ceil\(rules\.maxLanesNoShoulder/,
+assert.doesNotMatch(model, /Math\.ceil\(rules\.maxLanesNoShoulder/,
   'lanes are counted as tagged; there is no oneway adjustment');
-assert.match(app, /if \(wideRoadNeedsSpace\(n, sh\)\) return 4;/,
+assert.match(model, /if \(wideRoadNeedsSpace\(facts, shoulder, rules\)\) return out\(4, 'wide-road'\);/,
   'breaking the lane rule fails like every other rule, and never softens to a caution');
 
 /* ------------------------------------------- it precedes the slow-road rule */
-const ladder = app.slice(app.indexOf('function effectiveLevel'), app.indexOf('function roadLevelExpr'));
-assert.ok(ladder.indexOf('wideRoadNeedsSpace') < ladder.indexOf('spd <= noShoulderMax'),
+assert.ok(model.indexOf("'wide-road'") < model.indexOf("'slow-road'"),
   'a road too wide to share must fail before 25 mph signage can pass it');
 
 /* ------------------------------------------------- the map expression agrees */
 assert.match(app, /cases\.push\(\['all',\s*\['>=', \['coalesce', \['get', 'ln'\], 0\], rules\.maxLanesNoShoulder\][\s\S]*?\], 4\);/,
   'roadLevelExpr should use the same inclusive threshold and the same verdict');
 
-/* --------------------------------------------- the route-segment scorer too */
-assert.match(app, /\(s\.lanes \|\| 0\) >= rules\.maxLanesNoShoulder\s*&&\s*\(s\.facility \|\| 0\) < 2 && !\(s\.sh >= rules\.minShoulder\)\) return 4;/,
-  'route segments should reach the same verdict as the road they lie on');
-
 /* --------------------------------------------------- a sharrow is not space */
-assert.match(app, /function hasRidingSpace\(n, sh\) \{\s*return !!n\.good_facility \|\| \(sh != null && sh >= rules\.minShoulder\);/,
+assert.match(model, /function hasRidingSpace\(facts, shoulder, rules\) \{[\s\S]*?FACILITY_RIDING_SPACE/,
   'only a bike lane or better, or a real shoulder, satisfies the rule');
+assert.match(model, /var FACILITY_RIDING_SPACE = 2;/,
+  'a sharrow (facility 1) must sit below the riding-space threshold');
 
 /* --------------------------------------- and the turn lane is not re-counted */
 assert.doesNotMatch(app, /\$\{p\.ctl \? ' \+ centre turn lane'/,
@@ -53,6 +51,13 @@ const context = vm.createContext({
   Int32Array, Uint8Array, Uint16Array, Uint32Array,
   postMessage(message) { messages.push(message); },
 });
+context.importScripts = (...names) => {
+  // The worker loads the shared verdict model with importScripts(); mirror that
+  // here so a test context is the same environment the browser gives it.
+  for (const n of names) {
+    vm.runInContext(fs.readFileSync(new URL(`../${n}`, import.meta.url), 'utf8'), context);
+  }
+};
 vm.runInContext(worker, context);
 const buffer = graph.byteOffset === 0 && graph.byteLength === graph.buffer.byteLength
   ? graph.buffer : graph.buffer.slice(graph.byteOffset, graph.byteOffset + graph.byteLength);

@@ -11,6 +11,10 @@
  */
 'use strict';
 
+// The verdict ladder is defined once, in safety-model.js, and shared with the
+// app so a road cannot score differently here than it reads on the map.
+importScripts('safety-model.js');
+
 let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
 let eA, eB, eLen, eAsc, eDes, eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir;
@@ -288,12 +292,8 @@ function withRoadBlocks(points, rules, work) {
   }
 }
 
-// Mirrors the app's effectiveLevel() for packed edge attributes.
 function edgeNoShoulderMax(i, rules) {
-  const legacy = Number(rules.freeMaxSpeed) || 35;
-  const urban = Number(rules.urbanMaxSpeedNoShoulder) || legacy;
-  const rural = Number(rules.ruralMaxSpeedNoShoulder) || legacy;
-  return eOfficial[i] & EDGE_URBAN ? urban : rural;
+  return SafetyModel.noShoulderMaxSpeed({ urban: !!(eOfficial[i] & EDGE_URBAN) }, rules);
 }
 
 function edgeSpeed(i, forward) {
@@ -308,59 +308,39 @@ function edgeLimited(i, forward) {
   return !!(eLimitedDir[i] & (forward ? 1 : 2));
 }
 
-function sidewalkFallbackApplies(i, rules, forward, shoulder = edgeShoulder(i, forward)) {
-  return rules.allowSidewalkFallback && !!(eOfficial[i] & EDGE_SIDEWALK)
-    && eFacility[i] < 2 && edgeSpeed(i, forward) > edgeNoShoulderMax(i, rules)
-    && shoulder >= 0 && shoulder < rules.minShoulder;
+// Routing cost asks the same question the verdict does, through the same model.
+function sidewalkFallbackApplies(i, rules, forward) {
+  const facts = edgeFacts(i, forward);
+  return SafetyModel.sidewalkFallbackApplies(
+    facts, SafetyModel.effectiveShoulder(facts, rules), rules);
 }
 
-// Mirrors app.js wideRoadNeedsSpace(). Lanes are counted exactly as tagged,
-// turn lanes included, with no oneway adjustment. eLanes is null on a format-9
-// graph still cached on a rider's phone, where the rule simply cannot fire.
-const WORKER_MAX_LANES_NO_LIMIT = 6;
-function wideRoadNeedsSpace(i, rules, shoulder) {
-  const limit = Number(rules.maxLanesNoShoulder) || 0;
-  if (!eLanes || !limit || limit >= WORKER_MAX_LANES_NO_LIMIT) return false;
-  const lanes = eLanes[i] & LANES_COUNT_MASK;
-  if (!lanes || lanes < limit) return false;
-  // A wide road must PROVE space: a bike lane or better, or a wide enough
-  // shoulder. An unknown shoulder is not proof, so it does not exempt.
-  return eFacility[i] < 2 && !(shoulder >= rules.minShoulder);
+// Packed edge -> the shared ladder's facts. A WSDOT prohibition is stored in
+// the shoulder slot, so it is unpacked here rather than inside the model.
+function edgeFacts(i, forward) {
+  const flags = eFlags[i];
+  const shoulder = edgeShoulder(i, forward);
+  const official = eOfficial[i];
+  return {
+    prohibited: shoulder === PROHIBITED_SHOULDER,
+    ferry: !!(flags & 32),
+    freeway: !!(flags & 4),
+    infra: !!(flags & 8) || eFacility[i] >= 4,
+    infraScore: 1,
+    facility: eFacility[i],
+    limitedAccess: edgeLimited(i, forward),
+    speed: edgeSpeed(i, forward),
+    shoulder: shoulder >= 0 ? shoulder : null,
+    lanes: eLanes ? eLanes[i] & LANES_COUNT_MASK : 0,
+    sidewalk: official & EDGE_SIDEWALK ? 'present'
+      : official & EDGE_SIDEWALK_NO ? 'absent' : null,
+    urban: !!(official & EDGE_URBAN),
+    designated: !!(flags & 64),
+  };
 }
 
 function edgeLevel(i, rules, forward) {
-  const flags = eFlags[i];
-  const shoulder = edgeShoulder(i, forward);
-  if (shoulder === PROHIBITED_SHOULDER) return 4;    // WSDOT prohibition
-  if (flags & 32) return 2;                         // ferry — no road rules apply
-  if (flags & 4) return 4;                         // freeway: last-resort failure
-  if ((flags & 8) || eFacility[i] >= 4) return 1;  // protected lane / shared path
-  const limitedAccess = edgeLimited(i, forward);    // WSDOT bike-legal caution
-  const spd = edgeSpeed(i, forward);
-  // The rider-facing “Never allow roads faster than” control is absolute for
-  // ordinary roads, including designated routes. Dedicated infrastructure,
-  // ferries, freeways, and prohibitions were handled above.
-  if (!rules.noUpperLimit && spd > rules.upperMaxSpeed) return 4;
-  // Before the slow-road shortcut: Seattle signed every arterial at 25 mph in
-  // 2020, so speed alone would pass a five-lane road outright.
-  if (wideRoadNeedsSpace(i, rules, shoulder)) return 4;
-  if (spd <= edgeNoShoulderMax(i, rules)) return limitedAccess ? 3 : 1;
-  // A rider can opt to treat a designated bike route (USBR/regional) as a
-  // vetted corridor. Otherwise it is evaluated by the normal shoulder rule.
-  if ((flags & 64) && rules.vettedBikeRoutes) return limitedAccess ? 3 : 2;
-  // eSh < 0 = unknown; pessimistic mode counts that as a 0 ft shoulder.
-  let sh = shoulder;
-  if (sh < 0 && rules.unknownShoulderZero) sh = 0;
-  // A bike lane or better satisfies the shoulder rule. A shared-lane marking
-  // (facility 1) is paint in a travel lane, not space of your own, so it does
-  // not -- matching app.js good_facility.
-  if (eFacility[i] < 2 && sh >= 0 && sh < rules.minShoulder) {
-    // A mapped sidewalk is an opt-in shoulder fallback. It remains a caution
-    // and receives a strong route-choice cost below, but is not a rule fail.
-    if (sidewalkFallbackApplies(i, rules, forward, sh)) return 3;
-    return 4;
-  }
-  return limitedAccess ? 3 : 2;
+  return SafetyModel.level(edgeFacts(i, forward), rules);
 }
 
 /* ------------------------------------------------ time model */
@@ -779,8 +759,13 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const nearTerminal = (n) =>
     havM(nodeLon[n], nodeLat[n], startLon, startLat) <= ACCESS_RADIUS_M
     || havM(nodeLon[n], nodeLat[n], goalLon, goalLat) <= ACCESS_RADIUS_M;
+  // Short failing blocks at a leg's own endpoints stay usable so a rider can get
+  // out of their own street. A freeway is never that: nobody's driveway is on a
+  // motorway, and "(fails)" on the setting has to mean the road is excluded
+  // whenever failing roads are.
   const terminalAccessEdge = (ei) =>
-    eLen[ei] <= ACCESS_EDGE_MAX_M && (nearTerminal(eA[ei]) || nearTerminal(eB[ei]));
+    eLen[ei] <= ACCESS_EDGE_MAX_M && !(eFlags[ei] & 4)
+    && (nearTerminal(eA[ei]) || nearTerminal(eB[ei]));
   // Turn costs depend on how the rider arrived at an intersection, so search
   // directed-edge states rather than collapsing every arrival into one node.
   // This preserves optimal A* behavior while allowing a simpler route to beat

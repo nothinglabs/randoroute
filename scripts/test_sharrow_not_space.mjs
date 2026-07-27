@@ -14,21 +14,22 @@ import zlib from 'node:zlib';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
+const model = fs.readFileSync(new URL('../safety-model.js', import.meta.url), 'utf8');
 
-assert.match(app, /function hasRidingSpace\(n, sh\)[\s\S]*?n\.good_facility/,
-  'the tap-card ladder should gate on good_facility');
+// One threshold, defined once, above which a facility is space of your own.
+assert.match(model, /var FACILITY_RIDING_SPACE = 2;/,
+  'a sharrow (facility 1) must sit below the riding-space threshold');
+assert.match(model, /function shoulderFails\(facts, shoulder, rules\) \{\s*return \(facts\.facility \|\| 0\) < FACILITY_RIDING_SPACE/,
+  'the shoulder rung must gate on the shared riding-space threshold');
+assert.match(model, /function sidewalkFallbackApplies[\s\S]*?\(facts\.facility \|\| 0\) < FACILITY_RIDING_SPACE/,
+  'the sidewalk fallback should be reachable on a sharrowed road');
+// Every scorer must normalise a sharrow to facility 1, never to "has a facility".
 assert.match(app, /good_facility: p\.ft >= 2/,
   'a road tile counts a bike lane or better as riding space');
 assert.match(app, /good_facility: facility >= 2/,
   'a route segment counts a bike lane or better as riding space');
-assert.match(app, /if \(\(s\.facility \|\| 0\) < 2 && sh >= 0 && sh < rules\.minShoulder\)/,
-  'fallbackRouteLevel must not let a sharrow satisfy the shoulder rule');
-assert.match(worker, /if \(eFacility\[i\] < 2 && sh >= 0 && sh < rules\.minShoulder\)/,
-  'the router must not let a sharrow satisfy the shoulder rule either');
-assert.match(worker, /&& eFacility\[i\] < 2 && edgeSpeed\(i, forward\)/,
-  'the sidewalk fallback should be reachable on a sharrowed road, as it is in app.js');
-assert.doesNotMatch(worker, /eFacility\[i\] === 0 && sh >= 0/,
-  'the old "any facility counts" gate should be gone');
+assert.doesNotMatch(worker, /eFacility\[i\] === 0/,
+  'the old "any facility counts" gate should be gone from the router');
 
 /* --------------------------------- and it actually bites on the real graph */
 const graph = zlib.gunzipSync(fs.readFileSync(new URL('../data/graph2.bin.gz', import.meta.url)));
@@ -39,6 +40,13 @@ const context = vm.createContext({
   Int32Array, Uint8Array, Uint16Array, Uint32Array,
   postMessage(message) { messages.push(message); },
 });
+context.importScripts = (...names) => {
+  // The worker loads the shared verdict model with importScripts(); mirror that
+  // here so a test context is the same environment the browser gives it.
+  for (const n of names) {
+    vm.runInContext(fs.readFileSync(new URL(`../${n}`, import.meta.url), 'utf8'), context);
+  }
+};
 vm.runInContext(worker, context);
 const buffer = graph.byteOffset === 0 && graph.byteLength === graph.buffer.byteLength
   ? graph.buffer : graph.buffer.slice(graph.byteOffset, graph.byteOffset + graph.byteLength);
