@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.392';
+const APP_VERSION = '2026-07-26.393';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2226,6 +2226,14 @@ function coordIndexAtDistance(cumulative, m) {
 // raw geometry points: inside a tiny traffic circle the point-to-point
 // bearings swing wildly and produce "turn left" for straight-through.
 const TURN_BEARING_SPAN_M = 20;
+// Window for confirming that a maneuver is a real change of course rather than
+// path jitter, and the smallest sustained change worth speaking.
+const SUSTAINED_TURN_SPAN_M = 40;
+const SUSTAINED_TURN_MIN_DEG = 25;
+// A second maneuver naming the road just announced is a repeat unless the rider
+// has travelled a real distance since, or it is a hard turn they could miss.
+const SAME_ROAD_REPEAT_M = 300;
+const HARD_TURN_DEG = 80;
 // Interpolated position at a distance along the polyline. Snapping to the
 // nearest vertex (the old approach) collapsed short edges: a turn's "incoming"
 // window could land entirely on the post-turn segment, reporting a 0° delta and
@@ -2307,6 +2315,8 @@ function buildTurnInstructions(m) {
   for (let i = 1; i < coords.length; i++) cumulative.push(cumulative[i - 1] + navDistanceM(coords[i - 1], coords[i]));
   const instructions = [];
   let lastM = -Infinity;
+  let lastRoad = '';
+  let lastText = '';
   const segs = m.segs || [];
   for (const seg of segs) {
     if (seg.hazard) {
@@ -2354,13 +2364,36 @@ function buildTurnInstructions(m) {
     // instead of this one consuming it through the repeat-suppression window
     // below. Destinations entered immediately measure the same bend twice, so
     // ordinary turns can never be suppressed by this.
+    // A path is a chain of short graph edges whose geometry wanders by a few
+    // metres. Sampled over 20 m that wander reads as a turn, so a rider riding
+    // dead straight was told to "Bear right, heading south" while the route
+    // carried on southeast. Where no new road is being named there is nothing
+    // for the rider to identify the maneuver by, so it is only worth speaking
+    // if their course actually changes: measure across the wiggle and drop it
+    // when the route resumes the bearing it arrived on. Maneuvers that name a
+    // road the rider is joining are never silenced by this.
+    let effectiveDelta = delta;
+    let sustainedBearing = null;
+    if (!to || sameRoad) {
+      const approach = routeBearingOver(
+        coords, cumulative, junctionM - SUSTAINED_TURN_SPAN_M, junctionM);
+      sustainedBearing = routeBearingOver(
+        coords, cumulative, junctionM + SUSTAINED_TURN_SPAN_M, junctionM + 3 * SUSTAINED_TURN_SPAN_M);
+      const sustained = navDelta(approach, sustainedBearing);
+      if (Math.abs(sustained) < SUSTAINED_TURN_MIN_DEG) continue;
+      // With no road name to identify the maneuver by, the short sample is not
+      // just noisy but can be backwards: one junction sampled a 42 deg turn to
+      // the right where the rider's course actually swings 38 deg left. Describe
+      // the change they will really make.
+      if (!to) effectiveDelta = sustained;
+    }
     let alongDestination = null;
     if (destination) {
       const destinationM = cumulative[Math.min(coords.length - 1, destination.seg?.c0 ?? at)];
       alongDestination = routeBearingOver(
         coords, cumulative, destinationM, destinationM + TURN_BEARING_SPAN_M);
       const destinationDelta = navDelta(incoming, alongDestination);
-      if (Math.abs(delta) >= 20 && Math.abs(destinationDelta) >= 20
+      if (to && Math.abs(delta) >= 20 && Math.abs(destinationDelta) >= 20
           && Math.sign(delta) !== Math.sign(destinationDelta)) continue;
     }
     const distanceM = cumulative[at];
@@ -2369,7 +2402,15 @@ function buildTurnInstructions(m) {
     const crossingRoad = navRoadName(next.name);
     const text = straightCrossing
       ? `Continue across ${crossingRoad || 'the road'}`
-      : navTurnText(delta, to, undefined, sameRoad);
+      : navTurnText(effectiveDelta, to, undefined, sameRoad);
+    // One road, one maneuver. A winding street crosses the turn threshold at
+    // several of its own graph edges, which produced runs like "Turn right onto
+    // BPA Trail" twice 87 m apart, and left/right pairs on the same road within
+    // a block. The rider was already told to ride this road; only a hard turn
+    // they could genuinely miss is worth repeating before they leave it.
+    if (to && to === lastRoad && distanceM - lastM < SAME_ROAD_REPEAT_M
+        && Math.abs(delta) < HARD_TURN_DEG) continue;
+    if (text === lastText && distanceM - lastM < SAME_ROAD_REPEAT_M) continue;
     instructions.push({
       distanceM,
       coordIndex: at,
@@ -2379,10 +2420,13 @@ function buildTurnInstructions(m) {
       // junction itself. Where the two differ the junction reading is the one
       // that misleads: it describes a connector the rider is passing through
       // rather than the street they are being told to ride.
-      heading: compassWord(straightCrossing || alongDestination == null
-        ? outgoing : alongDestination),
+      heading: compassWord(straightCrossing ? outgoing
+        : !to && sustainedBearing != null ? sustainedBearing
+        : alongDestination == null ? outgoing : alongDestination),
     });
     lastM = distanceM;
+    lastRoad = to;
+    lastText = text;
   }
   instructions.sort((a, b) => a.distanceM - b.distanceM);
   const segmentTimeS = segs.reduce((sum, seg) => sum + Math.max(0, Number(seg.timeS) || 0), 0);

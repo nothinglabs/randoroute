@@ -152,8 +152,13 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeLibraryBtn { cursor: pointer; }
 .share-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-#routeOptions { position: relative; display: flex; flex: 1; min-width: 0; gap: 3px; margin: 0; padding: 3px; border: 1px solid #cddde7; border-radius: 10px; background: rgba(248,251,253,.97); box-shadow: 0 2px 6px rgba(18,42,60,.07); }
-#routeOptions::before { flex: 0 0 auto; align-self: center; padding: 0 3px; color: #526b7a; content: 'Choose route'; font: 800 8.5px/1.05 system-ui; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+/* overflow:hidden keeps the row inside its own rounded border. The uppercase
+   label cannot shrink, so on a phone the buttons plus gaps could total a few
+   pixels more than the control and paint over its edge. */
+#routeOptions { position: relative; display: flex; flex: 1; min-width: 0; gap: 3px; margin: 0; padding: 3px; border: 1px solid #cddde7; border-radius: 10px; background: rgba(248,251,253,.97); box-shadow: 0 2px 6px rgba(18,42,60,.07); overflow: hidden; }
+/* Shrinkable so an extra route choice steals width from the label rather than
+   from the control's own edge; ellipsis keeps it readable while it does. */
+#routeOptions::before { flex: 0 1 auto; min-width: 0; overflow: hidden; align-self: center; padding: 0 3px; color: #526b7a; content: 'Choose route'; font: 800 8.5px/1.05 system-ui; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; text-overflow: ellipsis; }
 #routeOptions button {
   flex: 1 1 0;
   min-width: 0;
@@ -221,7 +226,11 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
    pattern as phones so the five percentage labels—and an optional dismount
    status—stay legible instead of being squeezed into five tiny columns. */
 #routeCard .rc-ride-items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 3px 5px; min-width: 0; }
-#routeCard .rc-ride-item { min-width: 0; white-space: nowrap; text-align: center; }
+/* Labels wrap inside their own cell rather than running past it. Holding these
+   on one line let the longest token ("100.0% pass rules") overhang the grid at
+   every phone width, so the card clipped its own right edge. The swatch stays
+   glued to the number it belongs to. */
+#routeCard .rc-ride-item { min-width: 0; overflow-wrap: break-word; text-align: center; }
 #routeCard .rc-ride-items:not(.has-dismount) .rc-ride-item:first-child { grid-column: span 2; }
 #routeCard .rc-ride-mix b { color: #223c4b; font-weight: 800; }
 #routeCard .rc-mix-swatch { display: inline-block; width: 12px; height: 7px; margin-right: 4px; border-radius: 2px; vertical-align: -0.5px; }

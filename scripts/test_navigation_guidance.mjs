@@ -486,6 +486,58 @@ assert.doesNotMatch(jogTexts[0], /left/i,
 assert.equal(trailJogBeforeTurn.instructions[0].heading, 'east',
   'the heading should describe the named road, not the connector being passed through');
 
+// Build a polyline from [bearingDeg, lengthM] legs at ~5 m resolution, and the
+// coordinate index where each leg starts, so a maneuver can be placed exactly.
+function navPath(legs, lat0 = 47.66, lng0 = -122.35) {
+  const mPerLat = 111320;
+  const mPerLng = 111320 * Math.cos((lat0 * Math.PI) / 180);
+  let lat = lat0;
+  let lng = lng0;
+  const coords = [[lng, lat]];
+  const bounds = [0];
+  for (const [bearingDeg, lengthM] of legs) {
+    const steps = Math.max(1, Math.round(lengthM / 5));
+    const step = lengthM / steps;
+    const th = (bearingDeg * Math.PI) / 180;
+    for (let i = 0; i < steps; i++) {
+      lat += (step * Math.cos(th)) / mPerLat;
+      lng += (step * Math.sin(th)) / mPerLng;
+      coords.push([lng, lat]);
+    }
+    bounds.push(coords.length - 1);
+  }
+  return { coords, bounds };
+}
+function navSegs(built, names, extra = {}) {
+  return names.map((name, k) => ({
+    c0: built.bounds[k], c1: built.bounds[k + 1], name,
+    lenM: 0, flags: 8, facility: 5, ...(extra[k] || {}),
+  }));
+}
+
+// An off-street path wanders by a few metres between graph nodes. Sampled over
+// 20 m that wander reads as a turn, so a rider going straight was told to bear
+// off it. A maneuver with no road name must reflect a real change of course.
+const pathJitter = context.buildTurnInstructions((() => {
+  const built = navPath([[120, 60], [150, 12], [120, 60]]);
+  return { coords: built.coords, segs: navSegs(built, ['', '', '']) };
+})());
+assert.equal(pathJitter.instructions.length, 0,
+  'a momentary wander on a continuous unnamed path is not a maneuver');
+
+// The same short sample can be worse than noisy: it can report the wrong way
+// round. Here the 20 m window sees a right jog while the rider's course swings
+// left. The spoken turn must match where they actually end up.
+const pathJog = context.buildTurnInstructions((() => {
+  const built = navPath([[120, 60], [165, 14], [80, 120]]);
+  return { coords: built.coords, segs: navSegs(built, ['', '', '']) };
+})());
+assert.ok(pathJog.instructions.length > 0, 'a real change of course still gets a maneuver');
+assert.doesNotMatch(pathJog.instructions[0].text, /right/i,
+  'an unnamed maneuver must not announce the opposite of the rider\'s actual course');
+assert.match(pathJog.instructions[0].text, /left/i,
+  'the maneuver should follow the sustained course change, not the 20 m sample');
+
 const arrivalStart = app.indexOf('function navigationHasArrived');
 const arrivalEnd = app.indexOf('function finishTurnNavigation');
 assert.ok(arrivalStart >= 0 && arrivalEnd > arrivalStart, 'arrival helper source was not found');

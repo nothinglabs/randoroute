@@ -22,7 +22,11 @@ assert.match(app, /function compactRouteCoords\(m, includeIndices = false\)[\s\S
   'Route Details should retain compact preview geometry with the source indexes needed for map colors');
 assert.match(app, /const directions = buildTurnInstructions\(m\)\.instructions[\s\S]*?segmentIndex: instruction\.segmentIndex,[\s\S]*?text: instruction\.text,[\s\S]*?routeCoordIndices: routePreview\?\.indices \|\| null,[\s\S]*?directions,/,
   'Route Details should retain the compact maneuver text generated for voice navigation');
-assert.match(app, /instructions\.push\(\{[\s\S]*?segmentIndex: destination\?\.index \?\? i \+ 1,[\s\S]*?text,[\s\S]*?heading: compassWord\(outgoing\)/,
+// The heading expression is deliberately not pinned here: it reports the named
+// road's bearing rather than the junction's, and test_navigation_guidance.mjs
+// owns that behaviour. This assertion only guards the segment identity that
+// Route Details needs to colour each maneuver.
+assert.match(app, /instructions\.push\(\{[\s\S]*?segmentIndex: destination\?\.index \?\? i \+ 1,[\s\S]*?text,[\s\S]*?heading: compassWord\(/,
   'navigation maneuvers should identify the destination segment for Route Details');
 assert.doesNotMatch(detailsHtml, /routePreviewTitle|>Route map<|>Selected route</,
   'the compact route preview should not repeat a visible title or selection label');
