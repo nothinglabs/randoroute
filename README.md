@@ -222,9 +222,19 @@ python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --blts data/blts.geojson
 tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
   --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
-  --simplification=8 --read-parallel data/roads-1.geojson data/roads-2.geojson
+  --simplification=8 --simplify-only-low-zooms \
+  --read-parallel data/roads-1.geojson data/roads-2.geojson
 rm data/roads-*.geojson  # intermediate
 ```
+
+`--simplify-only-low-zooms` is required, not a preference. The app draws these
+tiles far past their z13 maximum, so whatever z13 keeps is what a rider sees at
+full zoom; simplifying there is simplifying the final picture. Without it,
+`--simplification=8` works out to a tolerance of roughly 26 m at z13 and erases
+anything smaller, which put Washington's traffic circles back on the map as
+spikes even after the vertex reduction above was fixed — measured at 8.0 x 2.3 m
+instead of 8.0 x 8.0 m for the Dayton Avenue North circle. Keeping maxzoom
+unsimplified cost 1.2% (+0.4 MB) of archive size.
 
 Same Geofabrik extract. Keeps `motorway`..`tertiary` (+links), `unclassified`,
 `residential`, `living_street`; excludes `service`/`track` and
@@ -242,7 +252,10 @@ everything, which erased any feature smaller than the tolerance itself:
 Washington's traffic circles collapsed to triangles and there-and-back spikes
 (3,125 of 4,486 rings kept four or fewer distinct points) and drew on the map as
 arrowheads sitting in the intersection. `scripts/test_road_geometry.py` guards
-this with the surveyed Dayton Avenue North circle.
+this with the surveyed Dayton Avenue North circle. Both this stage and the
+tippecanoe flags above have to be right: either one alone still loses the
+circles, so a rebuild needs the current `build_roads.py` *and* the current
+tiling command.
 
 The build also records compact OSM sidewalk state (`k`) and 2020 Census urban
 area context (`u`). They let the map use the same urban/rural no-shoulder rules
