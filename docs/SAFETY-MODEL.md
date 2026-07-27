@@ -82,13 +82,21 @@ to a caution. A sidewalk does not make a four-lane road shareable. 10,854 of the
 12,453 edges this rule newly fails have a mapped sidewalk, so this choice is
 most of the rule's effect, not a corner case.
 
-**Known cost: it can sever a corridor under `requireSafe`.** A 30-route
-statewide sweep finds no severance on the default preset, but two on Casual
-Cruiser: Longview→Kelso (the Allen Street bridge over the Cowlitz — 4 lanes,
-25 mph, no shoulder, and the only crossing) and Renton→Kent (Interurban Ave S
-through the Duwamish valley). Both are genuine sole links. The rider sees the
-normal "no route fully matching" message and can raise this slider; that is the
-intended escape hatch, but re-check it before tightening the default further.
+**It can sever a corridor under `requireSafe`, and that is accepted.** A
+30-route statewide sweep finds no severance on the default preset, and two on
+Casual Cruiser: Longview→Kelso (the Allen Street bridge over the Cowlitz —
+4 lanes, 25 mph, no shoulder, and the only crossing) and Renton→Kent
+(Interurban Ave S through the Duwamish valley). Both are genuine sole links.
+
+This is a deliberate choice, not a defect to engineer around: if the only way
+through is a road the rider's own rules reject, *"no route fully matching"* is
+the honest answer. Inventing a pass for it would make every other verdict less
+trustworthy. The rider gets the standard message and can raise this slider or
+turn off strict matching.
+
+Do keep measuring it, though — a future tightening (default 3, or a stricter
+`minShoulder`) should be swept the same way so the severance count is a known
+number rather than a surprise.
 
 `maxLanesNoShoulder` runs 2–5, then "No limit" at the top stop
 (`MAX_LANES_NO_LIMIT`, 6). It stops there because "6 lanes without a shoulder is
