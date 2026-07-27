@@ -457,6 +457,11 @@ def blts_match(coords, tags, index):
         'prohibited': any(match['prohibited'] for match in matches),
         'limited': any(match['limited'] for match in matches),
         'facility': any(match.get('facility') for match in matches),
+        # Conservative like the shoulder and prohibition above: the two
+        # inventory directions describe one roadway, so a rider sees the worse
+        # of the two stress ratings rather than the friendlier one.
+        'lts': max((match.get('lts') or 0 for match in matches), default=0),
+        'lanes': max((match.get('lanes') or 0 for match in matches), default=0),
         'route': matches[0]['route'],
     }
 

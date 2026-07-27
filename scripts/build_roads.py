@@ -174,6 +174,8 @@ def build(src, out_prefix, urban_areas, blts):
                 props['l'] = 1
             if match.get('lts'):
                 props['lts'] = int(match['lts'])
+            if match.get('lanes') and not props.get('ln'):
+                props['ln'] = int(match['lanes'])
             if match['facility']:
                 props['f'] = 1
             if match['prohibited']:

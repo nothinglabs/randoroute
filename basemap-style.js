@@ -4,7 +4,7 @@
 
   const FONT_STACK = 'Klokantech Noto Sans Regular';
   const CONTEXT_URL = 'pmtiles://data/basemap.pmtiles?v=5';
-  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=17';
+  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=18';
   let protocol = null;
 
   function ensureProtocol() {

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.396';
+const APP_VERSION = '2026-07-27.397';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -413,7 +413,7 @@ const SOURCES = [
     // The ?v= busts stale HTTP range caches when the tiles are rebuilt —
     // PMTiles bypasses the service worker, and mixing old/new byte ranges
     // silently breaks tile decoding. Bump alongside the sw.js VERSION.
-    vector: 'pmtiles://data/roads.pmtiles?v=17',
+    vector: 'pmtiles://data/roads.pmtiles?v=18',
     // The local basemap already opens this archive for its street geometry and
     // labels. Reuse that MapLibre source for safety coloring and hit testing so
     // iOS does not decode or retain the same vector tiles twice.
