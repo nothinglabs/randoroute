@@ -6,8 +6,10 @@ import zlib from 'node:zlib';
 
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
 const graph = zlib.gunzipSync(fs.readFileSync(new URL('../data/graph2.bin.gz', import.meta.url)));
-assert.equal(graph.subarray(0, 4).toString('ascii'), 'BGR9',
-  'production graph should use the BGR9 direction-aware surface layout');
+// 'BGRA' is format 10, which appends edgeLanes/edgeLts; the worker reads both
+// and this file relies on its parsing, so either layout is valid here.
+assert.ok(['BGR9', 'BGRA'].includes(graph.subarray(0, 4).toString('ascii')),
+  'production graph should use a supported direction-aware surface layout');
 
 const messages = [];
 const context = vm.createContext({

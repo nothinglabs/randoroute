@@ -16,8 +16,10 @@ assert.match(app, /\['Surface', presetRules\.preferPaved === true[\s\S]*?Strongl
   'preset rule previews should explain their strong paved-surface preference');
 assert.match(app, /check\('preferPaved', 'Strongly prefer paved surfaces'\)/,
   'the strong surface preference should be available in Settings');
-assert.match(app, /GRAPH_FORMAT_VERSION = 'bgr9-1'/,
-  'the app should request the direction-aware BGR9 graph layout');
+// Guard the mechanism, not the number: this constant exists to bust a stale
+// cached graph when the binary layout changes, so it must keep moving.
+assert.match(app, /GRAPH_FORMAT_VERSION = 'bgr\d+-\d+'/,
+  'the app should request a format-versioned graph layout');
 assert.match(worker, /want BGR9/,
   'the router should reject an older graph layout instead of misreading it');
 assert.match(worker, /eSurface = u8\(E\)/,

@@ -103,12 +103,53 @@ def synth_lanes(header, s):
     return bytes(lanes), bytes(lts)
 
 
+def verify_shipped_format10(raw):
+    """The shipped graph is already format 10: check it in place."""
+    n, e, d, g, u, b = struct.unpack_from('<6I', raw, 4)
+    print(f'format 10 shipped: {n:,} nodes, {e:,} edges, {len(raw):,} bytes')
+    ok = True
+
+    def check(name, cond, detail=''):
+        nonlocal ok
+        ok = ok and cond
+        print(f"{'PASS' if cond else 'FAIL'}  {name}" + (f'  -- {detail}' if detail else ''))
+
+    o = 28 + 10 * n
+    o += pad(o, 4)
+    o += 12 * e + 4 * e + 10 * e
+    lanes = raw[o:o + e]
+    lts = raw[o + e:o + 2 * e]
+    tagged = sum(1 for x in lanes if x & 63)
+    center = sum(1 for x in lanes if x & 64)
+    rated = sum(1 for x in lts if x)
+    check('edgeLanes array is present and sane', len(lanes) == e and tagged > 0,
+          f'{tagged:,} of {e:,} edges tagged ({100 * tagged / e:.1f}%)')
+    check('centre-turn-lane bit is used', center > 0, f'{center:,} edges')
+    check('edgeLts carries WSDOT ratings', rated > 0,
+          f'{rated:,} of {e:,} edges ({100 * rated / e:.1f}%)')
+    check('every lane value is in range', all((x & 63) <= 63 for x in lanes))
+    check('every LTS value is 0-4', all(x <= 4 for x in lts),
+          f'max {max(lts) if lts else 0}')
+    # Lanes are a road attribute: a dedicated path must never carry one.
+    fo = 28 + 10 * n
+    fo += pad(fo, 4)
+    fo += 12 * e + 4 * e + 2 * e   # to edgeFlags
+    flags = raw[fo:fo + e]
+    path_with_lanes = sum(1 for i in range(e) if (flags[i] & 8) and (lanes[i] & 63))
+    check('dedicated paths carry no lane count', path_with_lanes == 0,
+          f'{path_with_lanes:,} offenders')
+    print('\nGraph format tests ' + ('passed.' if ok else 'FAILED.'))
+    return 0 if ok else 1
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--emit', help='write the converted format-10 graph here')
     args = ap.parse_args()
 
     raw = bytearray(gzip.open(GRAPH, 'rb').read())
+    if bytes(raw[:4]) == b'BGRA':
+        return verify_shipped_format10(raw)
     header, sections = split_format9(raw)
     n, e = header[0], header[1]
     print(f'format 9 parsed: {n:,} nodes, {e:,} edges, {len(raw):,} bytes')

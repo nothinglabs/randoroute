@@ -15,11 +15,11 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.394';
+const APP_VERSION = '2026-07-27.395';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
-const GRAPH_FORMAT_VERSION = 'bgr9-1';
+const GRAPH_FORMAT_VERSION = 'bgr10-1';
 const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
@@ -100,8 +100,8 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   arterialTertiaryDirect: 1.02, arterialTertiaryBalanced: 1.12, arterialTertiaryLow: 1.22,
   arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
-  wideRoadDirect: 1.06, wideRoadBalanced: 1.35, wideRoadLow: 1.6,
-  stressedRoadDirect: 1.08, stressedRoadBalanced: 1.45, stressedRoadLow: 1.75,
+  wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLow: 1.24,
+  stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLow: 1.30,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowSec: 15,
@@ -413,7 +413,7 @@ const SOURCES = [
     // The ?v= busts stale HTTP range caches when the tiles are rebuilt —
     // PMTiles bypasses the service worker, and mixing old/new byte ranges
     // silently breaks tile decoding. Bump alongside the sw.js VERSION.
-    vector: 'pmtiles://data/roads.pmtiles?v=16',
+    vector: 'pmtiles://data/roads.pmtiles?v=17',
     // The local basemap already opens this archive for its street geometry and
     // labels. Reuse that MapLibre source for safety coloring and hit testing so
     // iOS does not decode or retain the same vector tiles twice.

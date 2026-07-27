@@ -377,8 +377,8 @@ const DEFAULT_WEIGHTS = Object.freeze({
   arterialTertiaryDirect: 1.02, arterialTertiaryBalanced: 1.12, arterialTertiaryLow: 1.22,
   arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
-  wideRoadDirect: 1.06, wideRoadBalanced: 1.35, wideRoadLow: 1.6,
-  stressedRoadDirect: 1.08, stressedRoadBalanced: 1.45, stressedRoadLow: 1.75,
+  wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLow: 1.24,
+  stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLow: 1.30,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowSec: 15,
@@ -461,7 +461,13 @@ const LANES_COUNT_MASK = 63;
 const LANES_CENTER_TURN = 64;
 function trafficStressMult(i, mode, forward) {
   if (!eLanes && !eLts) return 1;
-  if (eFacility[i] >= 1 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
+  // Only physical separation earns a full exemption. Paint does not shrink the
+  // road: 15th Ave NE carries a bike lane along much of its five-lane length,
+  // and exempting anything with a stripe meant the road that prompted this was
+  // the one road it could never affect. A bike lane or buffer does help, so it
+  // halves the cost rather than clearing it.
+  if (eFacility[i] >= 4 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
+  const paintRelief = eFacility[i] >= 2 ? 0.5 : 1;
   const suffix = mode === 'direct' ? 'Direct' : mode === 'low' ? 'Low' : 'Balanced';
   const packed = eLanes ? eLanes[i] : 0;
   const lanes = packed & LANES_COUNT_MASK;
@@ -473,8 +479,9 @@ function trafficStressMult(i, mode, forward) {
   // two signals describe the same road, so take the stronger rather than
   // multiplying them together.
   const stress = lts >= 4 ? 1 : lts === 3 ? 0.5 : 0;
-  const wideMult = wide ? activeWeights['wideRoad' + suffix] : 1;
-  const stressMult = stress ? 1 + (activeWeights['stressedRoad' + suffix] - 1) * stress : 1;
+  const wideMult = wide ? 1 + (activeWeights['wideRoad' + suffix] - 1) * paintRelief : 1;
+  const stressMult = stress
+    ? 1 + (activeWeights['stressedRoad' + suffix] - 1) * stress * paintRelief : 1;
   return Math.max(wideMult, stressMult);
 }
 
