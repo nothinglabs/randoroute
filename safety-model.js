@@ -117,8 +117,9 @@
     var shoulder = effectiveShoulder(facts, rules);
     // Two facts about a road can turn a pass into a caution without ever
     // failing it. Neither can rescue a road that failed a rung above.
-    var highStress = !!rules.cautionHighStress
-      && Number(facts.stressRating) >= STRESS_CAUTION_AT;
+    // Not a rider setting: an official rating is a fact about the road, and it
+    // only ever cautions, so there is nothing to opt out of.
+    var highStress = Number(facts.stressRating) >= STRESS_CAUTION_AT;
     // A limited-access highway is the more specific statement, so it wins the
     // headline when both are true.
     var softCaution = limited ? 'limited-access' : highStress ? 'high-stress' : null;

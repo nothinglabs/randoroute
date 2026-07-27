@@ -58,6 +58,31 @@ what riders were told and nothing about where they were sent.
 | 4 | red `#b2182b` | fails your rules; excluded when *Only show routes fully matching* is on |
 | 0 | grey `#999999` | not enough data to judge |
 
+### Texture carries the verdict, not hue
+
+Simulated against deuteranopia and protanopia, the fail red, the caution amber
+and the bike-network green all collapse into one olive family. Only the pass
+blue survives. Hue therefore cannot be the signal, so each verdict has a
+texture, and the colours are chosen for **lightness** separation rather than
+hue separation:
+
+| verdict | texture | colour |
+|---|---|---|
+| prohibited / fails | diagonal slashes, like hazard tape | `#b2182b` with `#4d060f` |
+| caution | perpendicular ticks, like rungs across the road | `#efab3c` with white |
+| passes | solid | `#168ad1` |
+| bike network | solid | `#b7c900` |
+
+Caution's amber was lightened from `#a65300`: against the fail red that scored a
+contrast ratio of **1.26** — the same tone — so once hue collapsed there was
+nothing left to tell them apart. `#efab3c` scores **3.45**.
+
+Patterns are authored at `pixelRatio` 2 and drawn only above
+`PATTERN_MIN_ZOOM` (13). Below that a road is a few pixels wide and any texture
+smears into a solid line, so lightness carries it alone. `addVerdictPatterns()`
+builds the tiles; `roads__caution` and `roads__slash` draw them over the solid
+colour and are re-filtered whenever the rules change.
+
 Colour is **not** decided by level alone. `readoutVerdictColor` checks levels
 4, 3 and 0 first, then asks `isBikeNetworkVerdict(n)` — true when the feature
 has `infra` or `good_facility`. So a level-1 road with a bike lane draws
@@ -96,7 +121,7 @@ consulted.
 | modifier | setting | why it can only caution |
 |---|---|---|
 | limited-access highway, bike-legal | — (a fact, not a choice) | the road meets your rules; the hazard is its type |
-| official stress rating ≥ 4 | `cautionHighStress` | see below |
+| official stress rating ≥ 4 | — (a fact, not a choice) | see below |
 
 When both apply, limited-access wins the headline: it is the more specific
 statement about the road.
@@ -119,10 +144,11 @@ That makes it useless as a gate and valuable as a warning:
 - **As a caution** it is honest: the road meets your measured rules, and the
   agency that owns it still rates it at the top of the stress scale.
 
-With the setting on, 68,190 edges (2,792 mi) move from pass to caution on the
+68,190 edges (2,792 mi) move from pass to caution on the
 default preset; 6,088 (138 mi) on Casual Cruiser, where the tighter speed rules
-already fail most of them. It changes no routing cost and can sever nothing,
-because `requireSafe` excludes only level 4.
+already fail most of them. It changes no routing cost and can sever nothing, because `requireSafe`
+excludes only level 4. There is no setting for it: an official rating is a fact
+about the road, and a caution costs the rider nothing to be told.
 
 ### Rung 3 — freeways, and why the toggle is not a verdict
 
@@ -272,7 +298,7 @@ deliberately routing-only: they express preference, not safety.
 | shoulder | yes | yes |
 | bike facility type | yes | yes |
 | lanes | **yes** (rung 6) | yes |
-| official stress rating (LTS) | **caution only** (`cautionHighStress`) | yes |
+| official stress rating (LTS) | **caution only**, always on | yes |
 | OSM road class (secondary/primary/…) | no | yes |
 | surface, grade, curve hazard, sidewalk exposure | no | yes |
 
@@ -292,7 +318,6 @@ fact, so that is what rung 6 gates on.
 | `maxLanesNoShoulder` | Lanes needing a shoulder or bike lane | rung 6 threshold | also `wideRoad*` cost |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 9 exists at all | ×1.9 / ×3.8 / ×8.0 |
-| `cautionHighStress` | Caution on roads WSDOT rates high stress | downgrades a pass to caution | none (LTS already priced) |
 | `vettedBikeRoutes` | Trust designated bike routes | rung 8 exists at all | via the verdict |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
@@ -301,7 +326,7 @@ fact, so that is what rung 6 gates on.
 | `prefDesig` | Heavily prefer bike routes & trails | none | designation bonus |
 | `prefResidential` | Prefer residential streets | none | `residential` bonus |
 
-The first nine are named objectively and change the verdict. The last six are
+The first eight are named objectively and change the verdict. The last six are
 named as permissions or preferences and change only where you are sent — which
 is what their names promise.
 

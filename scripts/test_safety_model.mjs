@@ -91,13 +91,11 @@ for (const maxLanes of [2, 4, 6]) {
       for (const vetted of [true, false]) {
         for (const cap of [{ noUpperLimit: true, upperMaxSpeed: 45 },
           { noUpperLimit: false, upperMaxSpeed: 35 }]) {
-          for (const cautionHighStress of [true, false]) {
-            RULE_SETS.push({
-              minShoulder: 4, maxLanesNoShoulder: maxLanes, unknownShoulderZero: unknownZero,
-              allowSidewalkFallback: sidewalk, vettedBikeRoutes: vetted, cautionHighStress,
-              urbanMaxSpeedNoShoulder: 30, ruralMaxSpeedNoShoulder: 35, ...cap,
-            });
-          }
+          RULE_SETS.push({
+            minShoulder: 4, maxLanesNoShoulder: maxLanes, unknownShoulderZero: unknownZero,
+            allowSidewalkFallback: sidewalk, vettedBikeRoutes: vetted,
+            urbanMaxSpeedNoShoulder: 30, ruralMaxSpeedNoShoulder: 35, ...cap,
+          });
         }
       }
     }
@@ -139,7 +137,6 @@ for (const ruleSet of RULE_SETS) {
         maxLanes: ruleSet.maxLanesNoShoulder, unknownZero: ruleSet.unknownShoulderZero,
         sidewalk: ruleSet.allowSidewalkFallback, vetted: ruleSet.vettedBikeRoutes,
         cap: ruleSet.noUpperLimit ? 'none' : ruleSet.upperMaxSpeed,
-        stress: ruleSet.cautionHighStress,
       }, map: fromMap, model: fromModel });
     }
   }

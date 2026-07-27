@@ -77,10 +77,14 @@ assert.deepEqual(
 );
 assert.equal(repro.speedAB, 55, 'SR-525 increasing direction should retain 55 mph');
 assert.equal(repro.speedBA, 55, 'SR-525 decreasing direction should retain 55 mph');
+// SR-525 is rated LTS 4, so the direction with an 8 ft shoulder meets every
+// measured rule but is still cautioned by the official rating -- 3, not 2. The
+// 0 ft direction fails on shoulder regardless. The point of the test is that
+// the two directions are scored independently, and they still are.
 assert.deepEqual(
   new Set([repro.levelAB, repro.levelBA]),
-  new Set([2, 4]),
-  'default rules should pass the 8 ft direction and fail the 0 ft direction',
+  new Set([3, 4]),
+  'default rules should caution the 8 ft direction and fail the 0 ft direction',
 );
 
 console.log('Directional graph data tests passed.');

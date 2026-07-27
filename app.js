@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.404';
+const APP_VERSION = '2026-07-27.405';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -34,7 +34,8 @@ const BIKE_NETWORK_COLOR = '#b7c900';
 const COLORS = {
   1: '#168ad1', // passes rules
   2: '#168ad1', // passes rules (internal levels remain distinct for routing)
-  3: '#a65300', // caution — deeper amber, distinct in hue and brightness
+  3: '#efab3c', // caution — light amber: 3.45 contrast against the fail red, so
+                //           it stays separable when hue collapses (see patterns below)
   4: '#b2182b', // fails rules
   0: '#999999', // insufficient data
 };
@@ -78,10 +79,6 @@ const DEFAULT_RULES = Object.freeze({
   // below passes a seven-lane arterial outright. MAX_LANES_NO_LIMIT disables it.
   maxLanesNoShoulder: 4,
   allowSidewalkFallback: true, // a mapped sidewalk can satisfy the shoulder rule, with caution
-  // An official Level of Traffic Stress of 4 turns a road that would otherwise
-  // pass into a caution. It can never fail a road: on WSDOT's data four in five
-  // rated segments are 4, so a hard gate would be indiscriminate.
-  cautionHighStress: true,
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
@@ -473,10 +470,8 @@ function roadLevelExpr() {
   const spd = ['get', 's'];
   // Limited access, or an official high-stress rating, turns a pass into a
   // caution. Mirrors `softCaution` in safety-model.js.
-  const softCaution = rules.cautionHighStress
-    ? ['any', ['==', ['get', 'l'], 1],
-       ['>=', ['coalesce', ['get', 'lts'], 0], SafetyModel.STRESS_CAUTION_AT]]
-    : ['==', ['get', 'l'], 1];
+  const softCaution = ['any', ['==', ['get', 'l'], 1],
+    ['>=', ['coalesce', ['get', 'lts'], 0], SafetyModel.STRESS_CAUTION_AT]];
   const passLevel = ['case', softCaution, 3, 1];
   const ordinaryPassLevel = ['case', softCaution, 3, 2];
   const noShoulderMax = ['case', ['==', ['get', 'u'], 1],
@@ -1054,9 +1049,57 @@ function scheduleRescore() {
 }
 
 const FAIL_COLOR = '#9aa0a6';
+/* --------------------------------------------- colour-blind-safe patterns
+ * Hue alone cannot carry these three verdicts. Simulated against deuteranopia
+ * and protanopia, the fail red, the caution amber and the bike-network green
+ * all collapse into one olive family; only the pass blue survives. So the
+ * verdicts are separated by TEXTURE first and lightness second:
+ *
+ *   prohibited  diagonal slashes   (hazard tape)
+ *   caution     perpendicular ticks (rungs across the road)
+ *   passes      solid
+ *
+ * Caution's amber was also lightened: against the fail red the old #a65300
+ * scored a contrast ratio of 1.26 -- the same tone -- so once hue collapsed
+ * nothing was left. #efab3c scores 3.45.
+ *
+ * Patterns are authored at pixelRatio 2 so they stay crisp on a phone, and
+ * they only draw above PATTERN_MIN_ZOOM: below it a road is a few pixels wide
+ * and any texture smears into a solid line, where lightness carries it alone.
+ */
+const PATTERN_MIN_ZOOM = 13;
+const PATTERN_PROHIBITED = 'verdict-prohibited';
+const PATTERN_CAUTION = 'verdict-caution';
+function patternTile(size, colorAt) {
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const hex = colorAt(x, y).replace('#', '');
+      const i = (y * size + x) * 4;
+      data[i] = parseInt(hex.slice(0, 2), 16);
+      data[i + 1] = parseInt(hex.slice(2, 4), 16);
+      data[i + 2] = parseInt(hex.slice(4, 6), 16);
+      data[i + 3] = 255;
+    }
+  }
+  return { width: size, height: size, data, pixelRatio: 2 };
+}
+function addVerdictPatterns() {
+  if (!map.hasImage(PATTERN_PROHIBITED)) {
+    // Slashes shift 0.6 px per row so the 16 px tile repeats seamlessly.
+    map.addImage(PATTERN_PROHIBITED, patternTile(16, (x, y) => (
+      (((x + Math.round(y * 0.6)) % 8) + 8) % 8 < 4 ? '#4d060f' : COLORS[4])));
+  }
+  if (!map.hasImage(PATTERN_CAUTION)) {
+    map.addImage(PATTERN_CAUTION, patternTile(16, (x) => (x % 10 < 4 ? '#ffffff' : COLORS[3])));
+  }
+}
+
 const failId = (src) => src.id + '__fail'; // gray-dashed "has data but fails" (pass/fail mode)
 const vhId = (src) => src.id + '__vh';     // red-dashed "very high / avoid" (color-ramp mode)
 const prohibitedId = (src) => src.id + '__prohibited';
+const cautionId = (src) => src.id + '__caution';
+const slashId = (src) => src.id + '__slash';
 const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
 const trailId = (src) => src.id + '__trail'; // lime base for off-street OSM bike paths/trails
 const trailDotsId = (src) => src.id + '__trail-dots'; // fine dotted trail centerline
@@ -1135,6 +1178,7 @@ function beforeIdFor(src) {
 
 function ensureLayer(src) {
   if (map.getLayer(src.id)) return;
+  addVerdictPatterns();
   const beforeId = beforeIdFor(src);
   const mapSourceId = src.mapSourceId || src.id;
   if (!map.getSource(mapSourceId)) {
@@ -1236,6 +1280,40 @@ function ensureLayer(src) {
     // layers, but do not paint a second, slightly different copy of the road.
     ...(src.id === 'osm' ? { filter: ['boolean', false] } : {}),
   }, beforeId);
+  // Texture overlays. These carry the verdict for a rider who cannot rely on
+  // hue; they sit directly over the solid colour and only above the zoom where
+  // a road is wide enough to show a pattern at all.
+  if (src.id === 'roads') {
+    const levelExpr = src.expr ? roadLevelExpr() : ['get', 'level'];
+    map.addLayer({
+      id: cautionId(src),
+      type: 'line',
+      source: mapSourceId,
+      ...SL,
+      minzoom: PATTERN_MIN_ZOOM,
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: {
+        'line-pattern': PATTERN_CAUTION,
+        'line-width': safetyRoadWidth(src),
+        'line-opacity': backgroundLineOpacity(0.95),
+      },
+      filter: ['==', levelExpr, 3],
+    }, beforeId);
+    map.addLayer({
+      id: slashId(src),
+      type: 'line',
+      source: mapSourceId,
+      ...SL,
+      minzoom: PATTERN_MIN_ZOOM,
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: {
+        'line-pattern': PATTERN_PROHIBITED,
+        'line-width': safetyRoadWidth(src),
+        'line-opacity': backgroundLineOpacity(0.95),
+      },
+      filter: ['==', levelExpr, 4],
+    }, beforeId);
+  }
   if (src.id === 'osm') {
     map.addLayer({
       id: trailId(src),
@@ -1494,6 +1572,10 @@ function applyDisplayMode(src) {
     return;
   }
   const lvl = src.expr ? roadLevelExpr() : ['get', 'level'];
+  // The texture overlays are filtered by the same freshly rebuilt expression,
+  // so a rule change repaints them in step with the colours underneath.
+  if (map.getLayer(cautionId(src))) map.setFilter(cautionId(src), ['==', lvl, 3]);
+  if (map.getLayer(slashId(src))) map.setFilter(slashId(src), ['==', lvl, 4]);
   // These sources carry an OSM highway class, so their colored road interiors
   // can follow the exact same major/medium/local zoom thresholds as the
   // locally rendered street underneath.
@@ -7440,9 +7522,8 @@ function presetInfoRows(preset) {
     ['Lanes needing a shoulder or bike lane', presetRules.maxLanesNoShoulder >= MAX_LANES_NO_LIMIT
       ? 'No limit.'
       : `${presetRules.maxLanesNoShoulder} or more lanes with neither fails your rules. Lanes are counted as tagged, turn lanes included.`],
-    ['Official stress rating', presetRules.cautionHighStress
-      ? `A ${STRESS_AGENCY} Level of Traffic Stress of 4 marks a road as caution. It never fails one.`
-      : 'Not used for the verdict; it still affects route choice.'],
+    ['Official stress rating', `A ${STRESS_AGENCY} Level of Traffic Stress of 4 always marks a road`
+      + ' as caution. It never fails one.'],
     ['Sidewalk fallback', presetRules.allowSidewalkFallback
       ? 'Mapped sidewalks can satisfy the shoulder rule, but are strongly deprioritized and called out as a concern.'
       : 'Mapped sidewalks do not satisfy the shoulder rule.'],
@@ -7642,7 +7723,6 @@ function buildRulesPanel() {
   });
   check('preferPaved', 'Strongly prefer paved surfaces');
   check('allowSidewalkFallback', 'Allow sidewalk fallback');
-  check('cautionHighStress', `Caution on roads ${STRESS_AGENCY} rates high stress`);
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
   // Lanes slider: its TOP position means "no limit" rather than a count, the
