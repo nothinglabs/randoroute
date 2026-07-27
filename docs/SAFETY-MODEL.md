@@ -66,16 +66,29 @@ blue survives. Hue therefore cannot be the signal, so each verdict has a
 texture, and the colours are chosen for **lightness** separation rather than
 hue separation:
 
-| verdict | texture | colour |
+| role | texture | colour |
 |---|---|---|
-| prohibited / fails | white diagonal slashes, like hazard tape | `#b2182b` with white |
-| caution | perpendicular ticks, like rungs across the road | `#efab3c` with white |
+| bike lane | solid | `#b7c900` |
+| off-street trail | same lime, dark dashed centreline | `#b7c900` + `#4c5c00` |
 | passes | solid | `#168ad1` |
-| bike network | solid | `#b7c900` |
+| caution | perpendicular ticks, like rungs across the road | `#ff8c1a` + white |
+| fails | white diagonal slashes, like hazard tape | `#78121f` + white |
+| bikes prohibited | its own dashed line, at every zoom | `#78121f` |
 
-Caution's amber was lightened from `#a65300`: against the fail red that scored a
-contrast ratio of **1.26** — the same tone — so once hue collapsed there was
-nothing left to tell them apart. `#efab3c` scores **3.45**.
+**The colours were chosen numerically, not by eye.** Search for the pair that
+maximises the *smallest* CIELAB distance between any two roles, evaluated under
+normal, deuteranope and protanope vision. The original amber left caution only
+**dE 13.2** from the bike-network lime — the weakest link in the palette, and
+the reason caution and green looked alike. `#ff8c1a` with `#78121f` raises the
+weakest pair to **24.2**, and both keep the conventional warning/danger reading.
+
+The ceiling with the lime and blue fixed is lime-vs-fail at dE 21–24; you
+cannot do better without giving up the lime, which is the bike-network identity.
+That is why texture, not hue, is the primary signal.
+
+A trail and an on-street bike lane share the lime deliberately — both are bike
+network — so the difference is carried by the trail's dashed centreline rather
+than by a second green.
 
 Patterns are authored at `pixelRatio` 2 and drawn only above
 `PATTERN_MIN_ZOOM` (13). Below that a road is a few pixels wide and any texture
@@ -87,10 +100,16 @@ verdicts the rider had switched off, and one with a flat opacity made a failing
 freeway and a failing local street fade at different zooms, because only the
 line underneath was class-masked.
 
-The dashed level-4 line (`roads__vh`) carries `maxzoom: PATTERN_MIN_ZOOM` and
-the slash carries `minzoom: PATTERN_MIN_ZOOM`, so they hand over at exactly one
-zoom: below it a failure is a red dash, above it a slash, never both and never
-neither. The **prohibited** overlay is deliberately left as its own dashed line
+`roads__vh` carries `maxzoom: PATTERN_MIN_ZOOM` and the slash carries the
+matching `minzoom`, so they hand over at exactly one zoom, never both and never
+neither. Below it a failure is a **solid** red line, above it the same red
+slashed — one symbol gaining detail. It used to be a chunky dash below, which
+read as a different symbol entirely and made the handover jarring.
+
+**A prohibited road is a failing road**, the strongest kind, so it is withheld
+from the failure layers *only while the prohibited layer is actually drawing
+it*. Switch that layer off and it still appears, as an ordinary failure. Nothing
+silently disappears, and exactly one texture describes it at any time. The **prohibited** overlay is deliberately left as its own dashed line
 at every zoom — bikes being banned is a different statement from failing the
 rider's rules, and it should not be folded into the same texture.
 

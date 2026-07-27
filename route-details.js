@@ -16,8 +16,8 @@ const BIKE_NETWORK_COLOR = '#b7c900';
 const PASS_COLOR = '#168ad1';
 // Keep in step with COLORS[3] in app.js. Lightened from #a65300, which sat at
 // the same tone as the fail red and vanished under red-green colour blindness.
-const CAUTION_COLOR = '#efab3c';
-const FAIL_COLOR = '#b2182b';
+const CAUTION_COLOR = '#ff8c1a';
+const FAIL_COLOR = '#78121f';
 let routePreviewMap = null;
 let routePreviewFailPulseTimer = null;
 const REQUEST_PARAMS = new URLSearchParams(window.location.search);

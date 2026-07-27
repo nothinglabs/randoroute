@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.408';
+const APP_VERSION = '2026-07-27.409';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -34,9 +34,12 @@ const BIKE_NETWORK_COLOR = '#b7c900';
 const COLORS = {
   1: '#168ad1', // passes rules
   2: '#168ad1', // passes rules (internal levels remain distinct for routing)
-  3: '#efab3c', // caution — light amber: 3.45 contrast against the fail red, so
-                //           it stays separable when hue collapses (see patterns below)
-  4: '#b2182b', // fails rules
+  // Chosen by maximising the smallest CIELAB distance between any two roles
+  // across normal, deuteranope and protanope vision. The old amber/red pair sat
+  // at dE 13.2 from the bike-network lime; this palette's weakest pair is 24.2.
+  3: '#ff8c1a', // caution — vivid orange, the conventional "warning"
+  4: '#78121f', // fails   — deep maroon-red, conventional "danger", and dark
+                //           enough to stay apart from the lime by lightness
   0: '#999999', // insufficient data
 };
 function opaqueColorOverWhite(hex, opacity) {
@@ -1070,9 +1073,12 @@ const FAIL_COLOR = '#9aa0a6';
  *   caution     perpendicular ticks (rungs across the road)
  *   passes      solid
  *
- * Caution's amber was also lightened: against the fail red the old #a65300
- * scored a contrast ratio of 1.26 -- the same tone -- so once hue collapsed
- * nothing was left. #efab3c scores 3.45.
+ * The colours themselves were chosen numerically: search for the pair that
+ * maximises the SMALLEST CIELAB distance between any two roles, evaluated under
+ * normal, deuteranope and protanope vision. The original amber and red left the
+ * caution only dE 13.2 from the bike-network lime; #ff8c1a with #78121f raises
+ * the weakest pair in the whole palette to 24.2, and both keep the conventional
+ * warning/danger reading.
  *
  * Patterns are authored at pixelRatio 2 so they stay crisp on a phone, and
  * they only draw above PATTERN_MIN_ZOOM: below it a road is a few pixels wide
@@ -1243,8 +1249,10 @@ function ensureLayer(src) {
     maxzoom: PATTERN_MIN_ZOOM,
     layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
     paint: {
+      // Solid below PATTERN_MIN_ZOOM, slashed above: the same red line gaining
+      // detail as you zoom in. It used to be a chunky dash, which read as a
+      // different symbol from the fine hatch and made the handover jarring.
       'line-color': COLORS[4],
-      'line-dasharray': [2, 1.5],
       'line-width': safetyRoadWidth(src),
       'line-opacity': backgroundLineOpacity(0.9),
     },
@@ -1350,10 +1358,14 @@ function ensureLayer(src) {
       minzoom: 0,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': '#687d00',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.2, 14, 1.8],
+        // Trails share the lime of an on-street bike lane deliberately -- both
+        // are bike network -- so the difference has to be carried by this
+        // centreline. A dash reads as "path" far more strongly than the fine
+        // dots it replaced, and survives being small.
+        'line-color': '#4c5c00',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.9, 10, 1.5, 14, 2.4],
         'line-opacity': backgroundLineOpacity(0.95),
-        'line-dasharray': [0.05, 2.1],
+        'line-dasharray': [1.6, 1.5],
       },
       filter: ['boolean', false],
     }, beforeId);
@@ -1657,7 +1669,7 @@ function applyDisplayMode(src) {
   }
   if (map.getLayer(trailDotsId(src))) {
     map.setFilter(trailDotsId(src), and(visibleTrail));
-    map.setPaintProperty(trailDotsId(src), 'line-color', display.passFail ? '#587400' : '#687d00');
+    map.setPaintProperty(trailDotsId(src), 'line-color', display.passFail ? '#3f5200' : '#4c5c00');
     map.setPaintProperty(trailDotsId(src), 'line-opacity', backgroundLineOpacity(0.95));
   }
   if (map.getLayer(backgroundUnpavedId(src))) {
@@ -1674,14 +1686,20 @@ function applyDisplayMode(src) {
     map.setPaintProperty(failId(src), 'line-width', safetyRoadWidth(src));
     map.setPaintProperty(failId(src), 'line-opacity', opacity(0.65));
   }
+  // A prohibited road is a FAILING road -- the strongest kind. It must never
+  // vanish just because its own layer is off, so it is only withheld from the
+  // failure layers while the prohibited layer is actually drawing it. That way
+  // exactly one texture describes it: the prohibited dash when that layer is
+  // on, the ordinary failure marking when it is not.
+  const drawnAsProhibited = display.bikesProhibited
+    ? (src.id === 'osm' ? ['==', ['get', 'bicycle'], 'no']
+      : src.id === 'roads' ? ['==', ['get', 'b'], 1] : ['boolean', false])
+    : ['boolean', false];
+  const failFilter = src.id === 'osm'
+    ? ['all', ['==', lvl, 4], OSM_TRAIL_EXPR, ['!', drawnAsProhibited]]
+    : ['all', ['==', lvl, 4], ['!', drawnAsProhibited]];
   if (map.getLayer(vhId(src))) {
-    const veryHighFilter = ['==', lvl, 4];
-    const nonProhibitedFail = src.id === 'osm'
-      ? ['all', veryHighFilter, OSM_TRAIL_EXPR, ['!=', ['get', 'bicycle'], 'no']]
-      : src.id === 'roads'
-      ? ['all', veryHighFilter, ['!=', ['get', 'b'], 1]]
-      : veryHighFilter;
-    map.setFilter(vhId(src), and(nonProhibitedFail));
+    map.setFilter(vhId(src), and(failFilter));
     map.setPaintProperty(vhId(src), 'line-color', alignRoadClasses
       ? opaqueRoadColorExpr(src, COLORS[4], backgroundLineOpacity(0.9))
       : COLORS[4]);
@@ -1695,9 +1713,6 @@ function applyDisplayMode(src) {
   // Above PATTERN_MIN_ZOOM the slash replaces the dash rather than stacking on
   // it, so exactly one representation of a failure draws at any zoom.
   if (map.getLayer(slashId(src))) {
-    const failFilter = src.id === 'roads'
-      ? ['all', ['==', lvl, 4], ['!=', ['get', 'b'], 1]]
-      : ['==', lvl, 4];
     map.setFilter(slashId(src), and(failFilter));
     map.setPaintProperty(slashId(src), 'line-width', safetyRoadWidth(src));
     map.setPaintProperty(slashId(src), 'line-opacity', opacity(0.95));
