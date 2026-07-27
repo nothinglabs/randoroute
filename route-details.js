@@ -1249,11 +1249,14 @@ function initializeRoutePreviewMap() {
     routePreviewMap.addLayer({ id: 'route-preview-unpaved-slats', type: 'symbol', source: 'route-preview-unpaved',
       layout: {
         'symbol-placement': 'line', 'symbol-spacing': 10,
-        'icon-image': 'route-preview-unpaved-slats', 'icon-allow-overlap': true,
+        'icon-image': 'route-preview-unpaved-slats',
+        'icon-size': ['interpolate', ['linear'], ['zoom'],
+          5, 0.55, 7, 0.6, 9, 0.68, 11, 0.76, 13, 0.84, 15, 0.9],
+        'icon-allow-overlap': true,
         'icon-ignore-placement': true, 'icon-rotation-alignment': 'map',
         'icon-pitch-alignment': 'map', 'icon-keep-upright': false,
       },
-      paint: { 'icon-opacity': 1 } });
+      paint: { 'icon-opacity': 0.7 } });
     routePreviewMap.addLayer({ id: 'route-preview-dismount-halo', type: 'circle', source: 'route-preview-dismount',
       paint: { 'circle-radius': 9, 'circle-color': '#fff7d6', 'circle-opacity': .96,
         'circle-stroke-color': '#8a5600', 'circle-stroke-width': 1.2 } });

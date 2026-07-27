@@ -25,7 +25,7 @@ assert.match(app,
   /function computeRoute\(\) \{[\s\S]*?if \(!routing\.ready\) \{[\s\S]*?routing\.pendingRoute = true;[\s\S]*?return;/,
   'a complete route selected during startup should queue until the graph is ready');
 assert.match(app,
-  /buildRoutingPanel\(\);\s*buildLegend\(\);[\s\S]*?ensureRouter\(\);/,
+  /buildRoutingPanel\(\);[\s\S]*?ensureRouter\(\);/,
   'routing data should preload as the app starts');
 
 console.log('Router startup readiness tests passed.');

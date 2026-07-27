@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-26.380';
+const APP_VERSION = '2026-07-26.391';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -154,6 +154,14 @@ const PASS_COLOR = '#009E73';
 const display = {
   passFail: false, // retained internally for backwards-compatible saved state; no UI toggle
   passMax: 2, // a road "passes" if its effective level is 1..passMax (Low & Moderate)
+  offstreetTrails: true,
+  bikeFacilities: true,
+  meetRules: true,
+  failRules: true,
+  caution: true,
+  designated: true,
+  unpavedBackground: true,
+  bikesProhibited: true,
 };
 
 // The background network is useful context, but the planned route needs to
@@ -357,6 +365,7 @@ const SOURCES = [
     scorer: scoreBLTS,
     zRank: 1,
     minVisibleZoom: BikeBasemap.ROAD_MIN_ZOOM.major,
+    alwaysOn: true, // permanent street-details source; not a Layers checkbox
     enabled: true,
     fc: null,     // cached FeatureCollection (loaded once)
     loading: false,
@@ -412,7 +421,10 @@ const SOURCES = [
     scorer: scoreRoad,
     zRank: 0,      // bottom: authoritative layers draw on top
     expr: true,    // scored via map expressions (works identically on tiles)
-    minVisibleZoom: 10,
+    // Category-specific opacity still declutters ordinary roads by class.
+    // Starting the layer at zero lets a bike facility appear whenever its
+    // vector tile contains it, including before the ordinary road class.
+    minVisibleZoom: 0,
     enabled: true,  // on by default; automatically decluttered when zoomed out
     fc: null,
     loading: false,
@@ -422,11 +434,15 @@ const SOURCES = [
 // Layer toggles restore from the persisted state (before panels build).
 try {
   const st = JSON.parse(localStorage.getItem('wa-bike-state-1') || 'null');
-  if (st && st.sources) for (const s of SOURCES) if (st.sources[s.id] != null) s.enabled = st.sources[s.id];
+  if (st && st.sources) {
+    for (const s of SOURCES) {
+      if (!s.alwaysOn && st.sources[s.id] != null) s.enabled = st.sources[s.id];
+    }
+  }
 } catch (e) { /* ignore */ }
-// Closures are an informational map annotation, not a user-selectable data
-// layer. Keep them visible even if an older saved preference disabled them.
-for (const src of SOURCES) if (src.closure) src.enabled = true;
+// Closures and permanent information sources are not user-selectable layers.
+// Keep them enabled even if an older saved preference disabled them.
+for (const src of SOURCES) if (src.closure || src.alwaysOn) src.enabled = true;
 // The pass/fail presentation was removed from the UI; use the normal
 // low-to-high stress colors even for visitors with an older saved preference.
 display.passFail = false;
@@ -474,6 +490,14 @@ try { savedState = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); } catc
 if (savedState) {
   if (savedState.rules) Object.assign(rules, validRuleOverrides(savedState.rules));
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
+  if (typeof savedState.unpavedBackground === 'boolean')
+    display.unpavedBackground = savedState.unpavedBackground;
+  if (savedState.mapLayers && typeof savedState.mapLayers === 'object') {
+    for (const key of ['offstreetTrails', 'bikeFacilities', 'meetRules', 'failRules',
+      'caution', 'designated', 'bikesProhibited']) {
+      if (typeof savedState.mapLayers[key] === 'boolean') display[key] = savedState.mapLayers[key];
+    }
+  }
 }
 const savedRoutingWeights = validRoutingWeights(savedState?.weights);
 const savedWeightsVersion = savedState?.weightsVersion || 0;
@@ -673,6 +697,10 @@ function saveStateNow() {
   try {
     localStorage.setItem(STATE_KEY, JSON.stringify({
       rules, passFail: display.passFail,
+      unpavedBackground: display.unpavedBackground,
+      mapLayers: Object.fromEntries(['offstreetTrails', 'bikeFacilities', 'meetRules',
+        'failRules', 'caution', 'designated', 'bikesProhibited']
+        .map((key) => [key, display[key]])),
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
@@ -893,7 +921,7 @@ function verdictColorExpr(src, levelExpr = ['get', 'level']) {
 function opaqueBackgroundVerdictColorExpr(src, levelExpr = ['get', 'level']) {
   const normalOpacity = backgroundLineOpacity(0.9);
   const cautionOpacity = cautionBackgroundLineOpacity();
-  const muted = (color, opacity = normalOpacity) => opaqueColorOverWhite(color, opacity);
+  const muted = (color, opacity = normalOpacity) => opaqueRoadColorExpr(src, color, opacity);
   const passes = ['match', levelExpr, [1, 2], true, false];
   return ['case',
     ['all', passes, bikeNetworkExpr(src)], muted(BIKE_NETWORK_COLOR),
@@ -946,7 +974,6 @@ function rescore(src) {
 function rescoreAll(recomputeRoute = true) {
   const t0 = performance.now();
   for (const src of SOURCES) {
-    if (!src.enabled) continue;
     if (src.expr) {
       // Expression-scored: rebuild paint/filter expressions (no data rewrite).
       if (map.getLayer(src.id)) applyDisplayMode(src);
@@ -982,11 +1009,13 @@ function scheduleRescore() {
 const FAIL_COLOR = '#9aa0a6';
 const failId = (src) => src.id + '__fail'; // gray-dashed "has data but fails" (pass/fail mode)
 const vhId = (src) => src.id + '__vh';     // red-dashed "very high / avoid" (color-ramp mode)
+const prohibitedId = (src) => src.id + '__prohibited';
 const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
 const trailId = (src) => src.id + '__trail'; // lime base for off-street OSM bike paths/trails
 const trailDotsId = (src) => src.id + '__trail-dots'; // fine dotted trail centerline
 const trailHitId = (src) => src.id + '__trail-hit'; // dedicated wide target for dotted trails
 const trailLabelId = (src) => src.id + '__trail-labels';
+const backgroundUnpavedId = (src) => src.id + '__unpaved-slats';
 const stateSidewalkProbeId = 'roads__state-sidewalk-probe';
 // Match BikeBasemap's road-interior width exactly. Safety colors then replace
 // the white street fill inside its gray casing instead of reading as a second,
@@ -1005,6 +1034,39 @@ const OSM_TRAIL_EXPR = ['match', ['get', 'highway'],
 const OSM_NOT_TRAIL_EXPR = ['match', ['get', 'highway'],
   ['cycleway', 'path', 'footway', 'bridleway', 'track', 'service'], false, true];
 const OSM_NOT_MTB_EXPR = ['!=', ['get', 'mtb'], 1];
+
+function safetyRoadWidth(src) {
+  if (src.id !== 'roads') return SAFETY_ROAD_INTERIOR_WIDTH;
+  // MapLibre requires `zoom` to be the input of the outermost
+  // step/interpolate expression. Put the feature-dependent choice in each
+  // stop rather than nesting a zoom interpolation inside a `case`.
+  return ['interpolate', ['linear'], ['zoom'],
+    5, 0.6,
+    8, 1.1,
+    11, ['case', ROAD_CLASS_LOCAL_EXPR, 1.85, 2.2],
+    14, ['case', ROAD_CLASS_LOCAL_EXPR, 4.05, 4.7],
+    17, ['case', ROAD_CLASS_LOCAL_EXPR, 8.2, 9],
+  ];
+}
+
+// Local streets arrive in large batches at zoom 11. Keep their safety colors
+// fully opaque (so overlaps cannot create dark seams), but preblend them a
+// little more softly than larger roads.
+function opaqueRoadColorExpr(src, color, opacity) {
+  const normal = opaqueColorOverWhite(color, opacity);
+  if (src.id !== 'roads') return normal;
+  return ['case', ROAD_CLASS_LOCAL_EXPR,
+    opaqueColorOverWhite(color, opacity * 0.82), normal];
+}
+// Match the compact surface classification in scripts/build_graph.py. The
+// bike-infrastructure GeoJSON already carries the original OSM surface string,
+// so this adds statewide context without adding another data file or property.
+const OSM_CONFIRMED_UNPAVED_EXPR = ['match',
+  ['downcase', ['coalesce', ['get', 'surface'], '']],
+  ['gravel', 'fine_gravel', 'compacted', 'pebblestone', 'chipseal', 'wood',
+    'ground', 'dirt', 'earth', 'sand', 'grass', 'mud', 'clay', 'rock',
+    'rocks', 'unpaved', 'soil', 'ice', 'snow'],
+  true, false];
 
 // Insert this source's layers below any already-added layers of higher-zRank
 // sources, so draw order follows zRank regardless of load order.
@@ -1064,7 +1126,7 @@ function ensureLayer(src) {
     paint: {
       'line-color': FAIL_COLOR,
       'line-dasharray': [2, 2],
-      'line-width': SAFETY_ROAD_INTERIOR_WIDTH,
+      'line-width': safetyRoadWidth(src),
       'line-opacity': backgroundLineOpacity(0.65),
     },
     filter: ['all', ['>=', ['get', 'level'], display.passMax + 1], ['<=', ['get', 'level'], 4]],
@@ -1079,11 +1141,30 @@ function ensureLayer(src) {
     paint: {
       'line-color': COLORS[4],
       'line-dasharray': [2, 1.5],
-      'line-width': SAFETY_ROAD_INTERIOR_WIDTH,
+      'line-width': safetyRoadWidth(src),
       'line-opacity': backgroundLineOpacity(0.9),
     },
     filter: ['==', ['get', 'level'], 4],
   }, beforeId);
+  if (src.id === 'roads' || src.id === 'osm') {
+    map.addLayer({
+      id: prohibitedId(src),
+      type: 'line',
+      source: mapSourceId,
+      ...SL,
+      minzoom: src.minVisibleZoom || 0,
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: {
+        'line-color': COLORS[4],
+        'line-dasharray': [1.1, 1],
+        'line-width': safetyRoadWidth(src),
+        'line-opacity': backgroundLineOpacity(0.95),
+      },
+      filter: src.id === 'roads'
+        ? ['all', ['==', ['get', 'b'], 1], ['!=', ['get', 'd'], 1]]
+        : ['==', ['get', 'bicycle'], 'no'],
+    }, beforeId);
+  }
   map.addLayer({
     id: src.id,
     type: 'line',
@@ -1099,7 +1180,7 @@ function ensureLayer(src) {
     },
     paint: {
       'line-color': verdictColorExpr(src),
-      'line-width': SAFETY_ROAD_INTERIOR_WIDTH,
+      'line-width': safetyRoadWidth(src),
       'line-opacity': backgroundLineOpacity(0.9),
     },
     // On-street OSM bike facilities are already encoded in roads.pmtiles and
@@ -1114,7 +1195,7 @@ function ensureLayer(src) {
       type: 'line',
       source: mapSourceId,
       ...SL,
-      minzoom: BikeBasemap.ROAD_MIN_ZOOM.local,
+      minzoom: 0,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': BIKE_NETWORK_COLOR,
@@ -1128,7 +1209,7 @@ function ensureLayer(src) {
       type: 'line',
       source: mapSourceId,
       ...SL,
-      minzoom: BikeBasemap.ROAD_MIN_ZOOM.local,
+      minzoom: 0,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': '#687d00',
@@ -1138,6 +1219,31 @@ function ensureLayer(src) {
       },
       filter: ['boolean', false],
     }, beforeId);
+    // Surface is already present on these OSM bike-infrastructure features.
+    // Show the same cross-slat language used by an active route, but do not
+    // imply anything about features whose surface is absent or unknown.
+    ensureUnpavedSlatImage(map, 'background-unpaved-slats');
+    map.addLayer({
+      id: backgroundUnpavedId(src),
+      type: 'symbol',
+      source: mapSourceId,
+      ...SL,
+      minzoom: 0,
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': 10,
+        'icon-image': 'background-unpaved-slats',
+        'icon-size': ['interpolate', ['linear'], ['zoom'],
+          5, 0.12, 7, 0.18, 9, 0.28, 11, 0.45, 13, 0.65, 15, 0.8],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-rotation-alignment': 'map',
+        'icon-pitch-alignment': 'map',
+        'icon-keep-upright': false,
+      },
+      paint: { 'icon-opacity': 0.7 },
+      filter: ['all', OSM_CONFIRMED_UNPAVED_EXPR, OSM_NOT_MTB_EXPR],
+    }, beforeId);
     // Keep dotted paths as easy to inspect as ordinary streets.  This sits
     // directly on the source geometry (not the gaps between rendered dots),
     // so a trail remains hoverable across its full length.
@@ -1146,7 +1252,7 @@ function ensureLayer(src) {
       type: 'line',
       source: mapSourceId,
       ...SL,
-      minzoom: BikeBasemap.ROAD_MIN_ZOOM.local,
+      minzoom: 0,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': '#000',
@@ -1218,13 +1324,15 @@ function ensureLayer(src) {
   if (src.id === 'osm') attachHover(src, trailHitId(src));
 }
 
-// Main layer follows the source toggle; the two dashed overlays are each shown
-// in exactly one display mode.
+// Checkboxes control painted lines only. Invisible hit targets remain active
+// so hiding a visual layer never removes data from street-information popups.
 function updateVisibility(src) {
-  // Source checkboxes control layout visibility. Dense sources use the
-  // layers' native minzoom, which updates reliably throughout wheel, trackpad,
-  // touch, keyboard, and programmatic zoom gestures.
-  const on = src.enabled;
+  // Dense visual sources use the layers' native minzoom, which updates
+  // reliably throughout wheel, trackpad, touch, keyboard, and programmatic
+  // zoom gestures.
+  const on = src.id === 'routes' ? display.designated
+    : src.id === 'restrict' ? display.bikesProhibited
+    : true;
   if (src.closure) {
     for (const id of [src.id, src.id + '__line']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
@@ -1233,27 +1341,52 @@ function updateVisibility(src) {
   }
   if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', on ? 'visible' : 'none');
   if (src.id === 'roads' && map.getLayer(stateSidewalkProbeId))
-    map.setLayoutProperty(stateSidewalkProbeId, 'visibility', on ? 'visible' : 'none');
-  if (map.getLayer(trailId(src))) map.setLayoutProperty(trailId(src), 'visibility', on ? 'visible' : 'none');
-  if (map.getLayer(trailDotsId(src))) map.setLayoutProperty(trailDotsId(src), 'visibility', on ? 'visible' : 'none');
-  if (map.getLayer(trailHitId(src))) map.setLayoutProperty(trailHitId(src), 'visibility', on ? 'visible' : 'none');
+    map.setLayoutProperty(stateSidewalkProbeId, 'visibility', 'visible');
+  if (map.getLayer(trailId(src))) map.setLayoutProperty(trailId(src), 'visibility',
+    display.offstreetTrails ? 'visible' : 'none');
+  if (map.getLayer(trailDotsId(src))) map.setLayoutProperty(trailDotsId(src), 'visibility',
+    display.offstreetTrails ? 'visible' : 'none');
+  if (map.getLayer(backgroundUnpavedId(src)))
+    map.setLayoutProperty(backgroundUnpavedId(src), 'visibility',
+      display.unpavedBackground ? 'visible' : 'none');
+  if (map.getLayer(trailHitId(src))) map.setLayoutProperty(trailHitId(src), 'visibility', 'visible');
   if (src.fixed) { // overlay has no mode-specific layers to manage beyond the main one
-    if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', on ? 'visible' : 'none');
+    if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', 'visible');
     if (map.getLayer(failId(src))) map.setLayoutProperty(failId(src), 'visibility', 'none');
     if (map.getLayer(vhId(src))) map.setLayoutProperty(vhId(src), 'visibility', 'none');
     return;
   }
-  if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', on ? 'visible' : 'none');
+  if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', 'visible');
   if (map.getLayer(failId(src)))
-    map.setLayoutProperty(failId(src), 'visibility', on && display.passFail ? 'visible' : 'none');
+    map.setLayoutProperty(failId(src), 'visibility',
+      display.failRules && display.passFail ? 'visible' : 'none');
   if (map.getLayer(vhId(src)))
-    map.setLayoutProperty(vhId(src), 'visibility', on && !display.passFail ? 'visible' : 'none');
+    map.setLayoutProperty(vhId(src), 'visibility',
+      display.failRules && !display.passFail ? 'visible' : 'none');
+  if (map.getLayer(prohibitedId(src)))
+    map.setLayoutProperty(prohibitedId(src), 'visibility',
+      display.bikesProhibited ? 'visible' : 'none');
 }
 
 // Switch a source between the color-ramp view (level 4 dashed) and the green
 // pass/fail view (gray-dashed fail overlay). For setData sources the level
 // lives on each feature; for expression sources it's computed inline, so this
 // also serves as the "rescore" when rules change.
+function visibleRoadCategoryFilter(src, lvl) {
+  const filters = [];
+  const passing = ['match', lvl, [1, 2], true, false];
+  const facility = bikeNetworkExpr(src);
+  if (display.bikeFacilities) filters.push(['all', passing, facility]);
+  // Use an explicit boolean comparison here. It is accepted consistently as
+  // a style expression in both the bundled iOS MapLibre runtime and browsers;
+  // a rejected branch would invalidate this entire `any` filter, including
+  // otherwise-independent bike-facility and caution branches.
+  if (display.meetRules) filters.push(['all', passing, ['==', facility, false]]);
+  if (display.caution) filters.push(['==', lvl, 3]);
+  if (!filters.length) return ['boolean', false];
+  return filters.length === 1 ? filters[0] : ['any', ...filters];
+}
+
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
   if (src.closure) {
@@ -1338,15 +1471,16 @@ function applyDisplayMode(src) {
       ? ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR,
         ROAD_CLASS_LOCAL_EXPR, OSM_TRAIL_EXPR]
       : ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR, ROAD_CLASS_LOCAL_EXPR];
+    const earlyBikeFacility = display.bikeFacilities ? bikeNetworkExpr(src) : ['boolean', false];
     // MapLibre permits zoom only as the input to a top-level step/interpolate.
     // Each output is therefore a feature-dependent class mask.
     return ['step', ['zoom'],
-      0,
+      ['case', earlyBikeFacility, verdictOpacity, 0],
       BikeBasemap.ROAD_MIN_ZOOM.major,
-      ['case', ROAD_CLASS_MAJOR_EXPR, verdictOpacity, 0],
+      ['case', ['any', earlyBikeFacility, ROAD_CLASS_MAJOR_EXPR], verdictOpacity, 0],
       BikeBasemap.ROAD_MIN_ZOOM.medium,
       ['case',
-        ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR],
+        ['any', earlyBikeFacility, ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR],
         verdictOpacity, 0],
       BikeBasemap.ROAD_MIN_ZOOM.local,
       ['case', visibleAtLocal, verdictOpacity, 0],
@@ -1356,26 +1490,28 @@ function applyDisplayMode(src) {
   // broad invisible hit target below preserves easy road inspection even with
   // these deliberately fine visual strokes.
   if (display.passFail) {
-    const passFilter = ['all', ['>=', lvl, 1], ['<=', lvl, display.passMax]];
+    const passFilter = visibleRoadCategoryFilter(src, lvl);
     map.setFilter(src.id, src.id === 'osm' ? ['boolean', false] : and(passFilter));
     map.setPaintProperty(src.id, 'line-color', alignRoadClasses
-      ? opaqueColorOverWhite(PASS_COLOR, backgroundLineOpacity(0.95))
+      ? opaqueRoadColorExpr(src, PASS_COLOR, backgroundLineOpacity(0.95))
       : PASS_COLOR);
     map.setPaintProperty(src.id, 'line-opacity', opacity(0.95));
-    map.setPaintProperty(src.id, 'line-width', SAFETY_ROAD_INTERIOR_WIDTH);
+    map.setPaintProperty(src.id, 'line-width', safetyRoadWidth(src));
   } else {
     // Solid ramp for passing levels (and unknown); level 4 goes to the dashed vh layer.
-    const verdictFilter = ['!=', lvl, 4];
+    const verdictFilter = visibleRoadCategoryFilter(src, lvl);
     map.setFilter(src.id, src.id === 'osm' ? ['boolean', false] : and(verdictFilter));
     map.setPaintProperty(src.id, 'line-color', alignRoadClasses
       ? opaqueBackgroundVerdictColorExpr(src, lvl)
       : verdictColorExpr(src, lvl));
     map.setPaintProperty(src.id, 'line-opacity', opacity(0.9));
-    map.setPaintProperty(src.id, 'line-width', SAFETY_ROAD_INTERIOR_WIDTH);
+    map.setPaintProperty(src.id, 'line-width', safetyRoadWidth(src));
   }
-  const visibleTrail = display.passFail
-    ? ['all', ['>=', lvl, 1], ['<=', lvl, display.passMax], OSM_TRAIL_EXPR]
-    : ['all', ['!=', lvl, 4], OSM_TRAIL_EXPR];
+  const visibleTrail = display.offstreetTrails
+    ? (display.passFail
+      ? ['all', ['>=', lvl, 1], ['<=', lvl, display.passMax], OSM_TRAIL_EXPR]
+      : ['all', ['!=', lvl, 4], OSM_TRAIL_EXPR])
+    : ['boolean', false];
   if (map.getLayer(trailId(src))) {
     map.setFilter(trailId(src), and(visibleTrail));
     map.setPaintProperty(trailId(src), 'line-color', display.passFail ? PASS_COLOR : BIKE_NETWORK_COLOR);
@@ -1386,25 +1522,32 @@ function applyDisplayMode(src) {
     map.setPaintProperty(trailDotsId(src), 'line-color', display.passFail ? '#587400' : '#687d00');
     map.setPaintProperty(trailDotsId(src), 'line-opacity', backgroundLineOpacity(0.95));
   }
+  if (map.getLayer(backgroundUnpavedId(src))) {
+    map.setFilter(backgroundUnpavedId(src), and(OSM_CONFIRMED_UNPAVED_EXPR));
+  }
   if (map.getLayer(trailHitId(src))) map.setFilter(trailHitId(src), and(visibleTrail));
   if (map.getLayer(failId(src))) {
     const failFilter = ['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4]];
     map.setFilter(failId(src), and(src.id === 'osm'
       ? ['all', failFilter, OSM_TRAIL_EXPR] : failFilter));
     map.setPaintProperty(failId(src), 'line-color', alignRoadClasses
-      ? opaqueColorOverWhite(FAIL_COLOR, backgroundLineOpacity(0.65))
+      ? opaqueRoadColorExpr(src, FAIL_COLOR, backgroundLineOpacity(0.65))
       : FAIL_COLOR);
-    map.setPaintProperty(failId(src), 'line-width', SAFETY_ROAD_INTERIOR_WIDTH);
+    map.setPaintProperty(failId(src), 'line-width', safetyRoadWidth(src));
     map.setPaintProperty(failId(src), 'line-opacity', opacity(0.65));
   }
   if (map.getLayer(vhId(src))) {
     const veryHighFilter = ['==', lvl, 4];
-    map.setFilter(vhId(src), and(src.id === 'osm'
-      ? ['all', veryHighFilter, OSM_TRAIL_EXPR] : veryHighFilter));
+    const nonProhibitedFail = src.id === 'osm'
+      ? ['all', veryHighFilter, OSM_TRAIL_EXPR, ['!=', ['get', 'bicycle'], 'no']]
+      : src.id === 'roads'
+      ? ['all', veryHighFilter, ['!=', ['get', 'b'], 1]]
+      : veryHighFilter;
+    map.setFilter(vhId(src), and(nonProhibitedFail));
     map.setPaintProperty(vhId(src), 'line-color', alignRoadClasses
-      ? opaqueColorOverWhite(COLORS[4], backgroundLineOpacity(0.9))
+      ? opaqueRoadColorExpr(src, COLORS[4], backgroundLineOpacity(0.9))
       : COLORS[4]);
-    map.setPaintProperty(vhId(src), 'line-width', SAFETY_ROAD_INTERIOR_WIDTH);
+    map.setPaintProperty(vhId(src), 'line-width', safetyRoadWidth(src));
     map.setPaintProperty(vhId(src), 'line-opacity', opacity(0.9));
   }
   if (alignRoadClasses) {
@@ -1445,7 +1588,6 @@ function applyDisplayMode(src) {
 
 function applyDisplayModeAll() {
   for (const src of SOURCES) applyDisplayMode(src);
-  buildLegend();
 }
 
 async function jsonAssetResponse(response, url) {
@@ -1522,7 +1664,26 @@ function setSourceVisible(src, on) {
   if (on && !src.loaded) loadSource(src);
   else if (on && !map.getLayer(src.id)) ensureLayer(src);
   else updateVisibility(src);
-  buildLegend();
+  saveStateSoon();
+}
+
+function setBackgroundUnpavedVisible(on) {
+  display.unpavedBackground = !!on;
+  const osm = SOURCES.find((src) => src.id === 'osm');
+  if (osm && map.getLayer(backgroundUnpavedId(osm))) {
+    map.setLayoutProperty(backgroundUnpavedId(osm), 'visibility',
+      display.unpavedBackground ? 'visible' : 'none');
+  }
+  saveStateSoon();
+}
+
+function setMapLayerVisible(key, on) {
+  if (key === 'unpavedBackground') {
+    setBackgroundUnpavedVisible(on);
+    return;
+  }
+  display[key] = !!on;
+  applyDisplayModeAll();
   saveStateSoon();
 }
 
@@ -4049,7 +4210,7 @@ function renderRouteCard(m) {
           <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
         </div>
         ${mtbNotice}<div class="rc-bottom-stats">
-          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map legend"><div class="rc-ride-items${containsDismount ? ' has-dismount' : ''}"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span>${unpavedMetric}${containsDismount ? '<span class="rc-ride-item rc-ride-dismount" title="Walk your bike through a short route section"><span aria-hidden="true">⚠</span> Dismount</span>' : ''}</div></div>
+          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map"><div class="rc-ride-items${containsDismount ? ' has-dismount' : ''}"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span>${unpavedMetric}${containsDismount ? '<span class="rc-ride-item rc-ride-dismount" title="Walk your bike through a short route section"><span aria-hidden="true">⚠</span> Dismount</span>' : ''}</div></div>
         </div>
       </div>
     </div>`;
@@ -4677,11 +4838,14 @@ function drawRoute(coords, ferrySegs, segs) {
     id: 'route-unpaved-slats', type: 'symbol', source: 'route-unpaved',
     layout: {
       'symbol-placement': 'line', 'symbol-spacing': 10,
-      'icon-image': 'route-unpaved-slats', 'icon-allow-overlap': true,
+      'icon-image': 'route-unpaved-slats',
+      'icon-size': ['interpolate', ['linear'], ['zoom'],
+        5, 0.55, 7, 0.6, 9, 0.68, 11, 0.76, 13, 0.84, 15, 0.9],
+      'icon-allow-overlap': true,
       'icon-ignore-placement': true, 'icon-rotation-alignment': 'map',
       'icon-pitch-alignment': 'map', 'icon-keep-upright': false,
     },
-    paint: { 'icon-opacity': 1 },
+    paint: { 'icon-opacity': 0.7 },
   });
   map.addLayer({
     id: 'route-dismount-halo', type: 'circle', source: 'route-dismount',
@@ -6004,7 +6168,6 @@ function openPlacePicker(kind) {
   const isConstraint = kind === 'via' || kind === 'block';
   if (isConstraint && (!(routing.start && routing.end)
     || (kind === 'via' ? routing.vias.length >= MAX_ROUTE_STOPS : routing.blocks.length >= MAX_ROAD_BLOCKS))) return;
-  setLegendOpen(false);
   setRouteActionsOpen(false);
   placeTarget = kind;
   routing.arm = kind;
@@ -6413,7 +6576,7 @@ function featureAt(point) {
 // deduped across overlapping relations; null when none or the layer is off.
 function routeBadgeAt(point) {
   const lyr = 'routes__hit';
-  if (!map.getLayer(lyr) || map.getLayoutProperty('routes', 'visibility') === 'none') return null;
+  if (!map.getLayer(lyr)) return null;
   const pad = 6;
   const fs = map.queryRenderedFeatures(
     [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]], { layers: [lyr] });
@@ -6936,21 +7099,27 @@ function updateSourceCount(src) {
 
 function buildSourcePanel() {
   const host = document.getElementById('sources');
-  for (const src of SOURCES) {
-    if (src.closure) continue;
+  host.className = 'layer-toggle-grid';
+  const items = [
+    ['offstreetTrails', 'Off-street trails', 'trail'],
+    ['bikeFacilities', 'Road with bike facility', 'facility'],
+    ['meetRules', 'Road meets safety rules', 'meets'],
+    ['failRules', 'Road fails safety rules', 'fails'],
+    ['caution', 'Caution (limited access)', 'caution'],
+    ['designated', 'Designated bike route', 'designated'],
+    ['unpavedBackground', 'Unpaved surfaces', 'unpaved'],
+    ['bikesProhibited', 'Bikes prohibited', 'prohibited'],
+  ];
+  for (const [key, label, swatch] of items) {
     const row = document.createElement('div');
-    row.className = 'source-row';
-    row.id = `src-${src.id}`;
-    const note = src.id === 'routes'
-      ? '<small class="source-note source-note-prominent">Thicker dashed lines; may not have bike facilities</small>'
-      : '';
+    row.className = 'layer-toggle';
+    row.id = `layer-${key}`;
     row.innerHTML = `
-      <input type="checkbox" id="chk-${src.id}" ${src.enabled ? 'checked' : ''}>
-      <span class="source-copy"><label for="chk-${src.id}">${src.name}</label>${note}</span>
-      <span class="count"></span>`;
+      <input type="checkbox" id="chk-layer-${key}" ${display[key] ? 'checked' : ''}>
+      <label for="chk-layer-${key}"><span class="layer-toggle-swatch ${swatch}" aria-hidden="true"></span><span>${label}</span></label>`;
     host.appendChild(row);
     row.querySelector('input').addEventListener('change', (e) =>
-      setSourceVisible(src, e.target.checked)
+      setMapLayerVisible(key, e.target.checked)
     );
   }
 }
@@ -7420,69 +7589,14 @@ function buildVoicePanel() {
   host.appendChild(cadence);
 }
 
-function buildLegend() {
-  const host = document.getElementById('legend');
-  host.innerHTML = '';
-  const dash = (c) => `background:repeating-linear-gradient(90deg,${c} 0 4px,transparent 4px 8px)`;
-  const trail = `background-color:${BIKE_NETWORK_COLOR};background-image:radial-gradient(circle,#687d00 0 1.2px,transparent 1.45px);background-size:7px 6px;background-repeat:repeat-x;background-position:center`;
-  const rows = [
-    [BIKE_NETWORK_COLOR, 'Road with bike facility'],
-    ['trail', 'Off-street trails'],
-    [COLORS[1], 'Road that meets safety rules'],
-    ['dash4', 'Road that fails safety rules'],
-    [COLORS[3], 'Caution — limited-access highway'],
-    ['ferry', 'Ferry crossing (planned route)'],
-    ['dismount', 'Dismount point — walk your bike'],
-    ['dashDesig', 'Designated bike route (overlay)'],
-    ['unpaved', 'Cross-slats: confirmed unpaved (overlay)'],
-  ];
-  for (const [color, label] of rows) {
-    const item = document.createElement('div');
-    item.className = 'item';
-    const swatch =
-      color === 'trail'
-        ? `<span class="swatch" style="${trail}"></span>`
-        : color === 'dash4'
-        ? `<span class="swatch" style="${dash(COLORS[4])}"></span>`
-        : color === 'dashDesig'
-        ? `<span class="swatch" style="${dash(COLORS[2])}"></span>`
-        : color === 'unpaved'
-        ? '<span class="swatch legend-unpaved-swatch"></span>'
-        : color === 'dismount'
-        ? '<span class="swatch legend-dismount-swatch">⚠</span>'
-        : color === 'ferry'
-        ? `<span class="swatch" style="background:repeating-linear-gradient(90deg,#ffffff 0 4px,#9dbfd8 4px 8px);border:1px solid #c7d7e2"></span>`
-        : color === 'dash2'
-        ? `<span class="swatch" style="${dash(COLORS[2])}"></span>`
-        : color
-        ? `<span class="swatch" style="background:${color}"></span>`
-        : `<span class="swatch" style="background:transparent;border:1px dashed #bbb"></span>`;
-    item.innerHTML = `${swatch}<span>${label}</span>`;
-    host.appendChild(item);
-  }
-}
-
 /* ------------------------------------------------------------- boot */
 buildSourcePanel();
 buildRulesPanel();
 buildVoicePanel();
 buildRoutingPanel();
-buildLegend();
 // Start the on-device routing graph before route editing is available. This
 // keeps endpoint, waypoint, and road-block actions from racing initialization.
 ensureRouter();
-
-function setLegendOpen(open) {
-  const flyout = document.getElementById('legendFlyout');
-  const toggle = document.getElementById('legendToggle');
-  if (!flyout || !toggle) return;
-  flyout.hidden = !open;
-  toggle.setAttribute('aria-expanded', String(open));
-  toggle.title = open ? 'Hide map legend' : 'Show map legend';
-}
-document.getElementById('legendToggle').addEventListener('click', () =>
-  setLegendOpen(document.getElementById('legendFlyout').hidden));
-document.getElementById('legendClose').addEventListener('click', () => setLegendOpen(false));
 
 // On phones, Menu and Navigate share the lower-left thumb zone. Navigate sits
 // beside Menu while the map is unobstructed, then shifts to the sheet's left
@@ -7536,6 +7650,7 @@ function syncPanelInteractivity() {
 
 function setPanelOpen(open) {
   document.body.classList.toggle('panel-open', open);
+  syncLayersToggle();
   syncPanelInteractivity();
   refreshNavigationUI();
   scheduleMobileNavDock();
@@ -7557,6 +7672,7 @@ function selectPanelTab(tabId) {
   });
   document.querySelectorAll('.tab').forEach((t) =>
     t.classList.toggle('active', t.id === 'tab-' + tabId));
+  syncLayersToggle();
   scheduleMobileNavDock();
   if (tabId === 'route') { updateNavCard(); drawRouteCardElevation(); } // redraw elevation once visible
 }
@@ -7578,6 +7694,34 @@ document.getElementById('panelOpen').addEventListener('click', () => {
   selectPanelTab('route');
   setPanelOpen(true);
   document.getElementById('panelClose').focus({ preventScroll: true });
+});
+
+function layersMenuIsOpen() {
+  const selected = document.getElementById('tab-layers').classList.contains('active');
+  return selected && (!mobileNavMedia.matches || document.body.classList.contains('panel-open'));
+}
+
+function syncLayersToggle() {
+  const toggle = document.getElementById('layersToggle');
+  if (!toggle) return;
+  const open = layersMenuIsOpen();
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.setAttribute('aria-label', open ? 'Hide map layers' : 'Show map layers');
+  toggle.title = open ? 'Hide map layers' : 'Show map layers';
+}
+
+document.getElementById('layersToggle').addEventListener('click', () => {
+  const open = layersMenuIsOpen();
+  closePlacePicker(true);
+  dismissRoadInfo();
+  if (open) {
+    if (mobileNavMedia.matches) setPanelOpen(false);
+    else selectPanelTab('route');
+  } else {
+    selectPanelTab('layers');
+    setPanelOpen(true);
+  }
+  syncLayersToggle();
 });
 
 // Dialog close buttons and the version shown inside Getting Started help.
@@ -7797,7 +7941,9 @@ function onStyleReady(cb) {
 }
 
 onStyleReady(() => {
-  for (const src of SOURCES) if (src.enabled) loadSource(src);
+  // Visual toggles must not create holes in street-information popups. Load
+  // every source once; updateVisibility() independently hides painted lines.
+  for (const src of SOURCES) loadSource(src);
 });
 
 // Debug handle (harmless; used for local verification).

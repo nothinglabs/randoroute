@@ -115,16 +115,16 @@ assert.doesNotMatch(builder, /'data\/(?:bikeroutes|blts|bikeinfra|bike_restricti
   'the native shell should not retain duplicate uncompressed overlay copies');
 assert.match(app, /const SAFETY_ROAD_INTERIOR_WIDTH = \['interpolate'[\s\S]*?5,\s*0\.6,\s*8,\s*1\.1,\s*11,\s*2\.2,\s*14,\s*4\.7,\s*17,\s*9\]/,
   'safety colors should fill the same road interior width used by the local basemap');
-assert.match(app, /\[BIKE_NETWORK_COLOR,\s*'Road with bike facility'\]/,
-  'the solid-lime legend should describe on-road bike facilities');
+assert.match(app, /\['bikeFacilities', 'Road with bike facility', 'facility'\]/,
+  'the Layers menu should identify the on-road bike-facility category');
 assert.match(styles, /#topToolbar\s*\{[\s\S]*?top:\s*0;[\s\S]*?padding-top:\s*calc\(env\(safe-area-inset-top\) \+ 4px\);/,
   'the endpoint toolbar should sit high in the safe area and catch taps above From/To');
 assert.match(app, /firstBasemapLabel[\s\S]*?l\.type === 'symbol'[\s\S]*?return firstBasemapLabel\.id/,
   'basemap street labels should remain above the colored safety road interiors');
 assert.match(app, /return \['step', \['zoom'\],[\s\S]*?BikeBasemap\.ROAD_MIN_ZOOM\.major,[\s\S]*?ROAD_CLASS_MAJOR_EXPR[\s\S]*?BikeBasemap\.ROAD_MIN_ZOOM\.medium,[\s\S]*?ROAD_CLASS_MEDIUM_EXPR[\s\S]*?BikeBasemap\.ROAD_MIN_ZOOM\.local,[\s\S]*?ROAD_CLASS_LOCAL_EXPR/,
   'safety colors should appear at the same zoom threshold as each basemap road class');
-assert.match(app, /id: trailId\(src\),[\s\S]*?minzoom: BikeBasemap\.ROAD_MIN_ZOOM\.local,[\s\S]*?id: trailDotsId\(src\),[\s\S]*?minzoom: BikeBasemap\.ROAD_MIN_ZOOM\.local,[\s\S]*?id: trailHitId\(src\),[\s\S]*?minzoom: BikeBasemap\.ROAD_MIN_ZOOM\.local,/,
-  'trail safety styling and hit targets should wait for local-detail zoom');
+assert.match(app, /id: trailId\(src\),[\s\S]*?minzoom: 0,[\s\S]*?id: trailDotsId\(src\),[\s\S]*?minzoom: 0,[\s\S]*?id: trailHitId\(src\),[\s\S]*?minzoom: 0,/,
+  'trail safety styling and hit targets should render at every available source zoom');
 assert.doesNotMatch(app, /RES_MIN_ZOOM/,
   'the old blanket residential safety zoom cutoff should be removed');
 assert.match(app, /setPaintProperty\('route-fail', 'line-opacity', 0\.92 \+ 0\.08 \* p\)[\s\S]*?setPaintProperty\('route-fail', 'line-width', 6\.5 \+ 3 \* p\)/,

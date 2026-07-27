@@ -28,8 +28,26 @@ assert.match(app, /buildRouteUnpavedData/,
   'confirmed unpaved route segments should have a dedicated map-overlay source');
 assert.match(app, /route-unpaved-slats/,
   'the map should render confirmed unpaved segments with cross-slats');
+assert.match(app, /const OSM_CONFIRMED_UNPAVED_EXPR = \['match'/,
+  'already-loaded OSM bike infrastructure should classify confirmed unpaved surfaces');
+assert.match(app, /id: backgroundUnpavedId\(src\)[\s\S]*?'symbol-placement': 'line'[\s\S]*?OSM_CONFIRMED_UNPAVED_EXPR/,
+  'confirmed unpaved background bike infrastructure should use cross-slats without new data');
+assert.match(app, /\['unpavedBackground', 'Unpaved surfaces', 'unpaved'\][\s\S]*?setMapLayerVisible/,
+  'Layers should provide an independent control for existing-data background hatching');
+assert.match(app, /id: trailId\(src\)[\s\S]*?minzoom: 0/,
+  'off-street trails should render at every zoom where their source data is available');
+assert.match(app, /earlyBikeFacility[\s\S]*?BikeBasemap\.ROAD_MIN_ZOOM\.major/,
+  'bike-facility roads should render before their ordinary road class becomes visible');
+assert.match(app, /function visibleRoadCategoryFilter[\s\S]*?\['==', facility, false\][\s\S]*?\['==', lvl, 3\]/,
+  'facility, passing-road, and caution filters should coexist in one valid MapLibre expression');
+assert.match(app, /function safetyRoadWidth[\s\S]*?ROAD_CLASS_LOCAL_EXPR[\s\S]*?function opaqueRoadColorExpr/,
+  'minor-road safety rendering should be narrower and visually softer');
 assert.match(app, /const width = 2, height = 12[\s\S]*?'symbol-placement': 'line', 'symbol-spacing': 10/,
   'main-map slats should use dense fixed-size symbols that extend beyond the route');
+assert.match(app, /'icon-size': \['interpolate', \['linear'\], \['zoom'\],[\s\S]*?5, 0\.12[\s\S]*?15, 0\.8\]/,
+  'background unpaved slats should shrink substantially at statewide zooms');
+assert.match(app, /'icon-image': 'route-unpaved-slats',[\s\S]*?'icon-size': \['interpolate', \['linear'\], \['zoom'\],[\s\S]*?5, 0\.55[\s\S]*?15, 0\.9\]/,
+  'selected-route unpaved slats should remain prominent across zoom levels');
 assert.doesNotMatch(app, /'line-pattern': 'route-unpaved-slats'/,
   'main-map slats should not scale with a line texture');
 assert.match(details, /Unpaved surfaces/,
@@ -40,6 +58,8 @@ assert.match(details, /route-preview-unpaved-slats/,
   'the route-details map preview should preserve the unpaved-surface overlay');
 assert.match(details, /const width = 2, height = 12[\s\S]*?'symbol-placement': 'line', 'symbol-spacing': 10/,
   'details-map slats should match the dense main-map surface texture');
+assert.match(details, /'icon-image': 'route-preview-unpaved-slats',[\s\S]*?'icon-size': \['interpolate', \['linear'\], \['zoom'\],[\s\S]*?5, 0\.55[\s\S]*?15, 0\.9\]/,
+  'details-map route slats should stay visible across zoom levels');
 assert.doesNotMatch(details, /'line-pattern': 'route-preview-unpaved-slats'/,
   'details-map slats should not scale with a line texture');
 assert.doesNotMatch(html, /streetViewSurfaceNote/,

@@ -359,9 +359,27 @@ body:not(.navigation-active) #navCard { display: none; }
 .source-note-prominent { font-size: 11px; line-height: 1.35; }
 .source-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; min-height: 25px; }
 .source-row label { font-weight: 600; cursor: pointer; }
+.source-swatch-unpaved { display: inline-block; width: 18px; height: 8px; margin-right: 6px; vertical-align: -1px; border: 1px solid #536672; background: repeating-linear-gradient(90deg,transparent 0 3px,#536672 3px 5px); }
 .source-row .source-copy { display: grid; gap: 2px; min-width: 0; }
 .source-row .source-note { display: block; color: #4e6875; font: 600 10.5px/1.3 system-ui; }
 .source-row .count { color: #888; font-weight: 400; font-size: 11.5px; margin-left: auto; }
+.layer-toggle-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.layer-toggle { min-width: 0; }
+.layer-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.layer-toggle label { display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 5px 6px; border: 1px solid #b9c7d0; border-radius: 9px; background: #eef1f3; color: #61717b; font: 700 10.5px/1.12 system-ui; cursor: pointer; }
+.layer-toggle label > span:nth-child(2) { flex: 1; min-width: 0; }
+.layer-toggle label::after { content: "OFF"; flex: 0 0 auto; padding: 3px 5px; border-radius: 999px; background: #697983; color: #fff; font: 800 8px/1 system-ui; letter-spacing: .03em; }
+.layer-toggle input:checked + label { border-color: #2586c2; background: #e3f2fa; color: #0b5689; box-shadow: inset 0 0 0 1px #8fc6e5; }
+.layer-toggle input:checked + label::after { content: "ON"; background: #0877b9; }
+.layer-toggle input:focus-visible + label { outline: 2px solid #168ad1; outline-offset: 2px; }
+.layer-toggle-swatch { flex: 0 0 21px; width: 21px; height: 7px; border-radius: 2px; background: #999; }
+.layer-toggle-swatch.trail { background-color: #b7c900; background-image: radial-gradient(circle,#687d00 0 1.1px,transparent 1.4px); background-size: 6px 6px; }
+.layer-toggle-swatch.facility { background: #b7c900; }
+.layer-toggle-swatch.meets { background: #168ad1; }
+.layer-toggle-swatch.fails, .layer-toggle-swatch.prohibited { background: repeating-linear-gradient(90deg,#b2182b 0 4px,transparent 4px 7px); }
+.layer-toggle-swatch.caution { background: #a65300; }
+.layer-toggle-swatch.designated { background: repeating-linear-gradient(90deg,#168ad1 0 4px,transparent 4px 7px); opacity: .7; }
+.layer-toggle-swatch.unpaved { border: 1px solid #536672; background: repeating-linear-gradient(90deg,transparent 0 3px,#536672 3px 5px); }
 
 .rule { margin: 12px 0; }
 .rule .rule-head { display: flex; justify-content: space-between; align-items: baseline; }
@@ -435,27 +453,14 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .endpoint-marker.endpoint-moving { filter: drop-shadow(0 0 5px rgba(10,102,194,.9)); }
 
-.legend { margin-top: 5px; }
-.legend .item { display: flex; align-items: center; gap: 8px; margin: 5px 0; font: 600 11px/1.25 system-ui; }
-.legend .swatch { width: 12px; height: 6px; border-radius: 3px; flex: none; }
-.legend .legend-unpaved-swatch { border: 1px solid #536672; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); }
-.legend .legend-dismount-swatch { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid #8a5600; border-radius: 50%; background: #fff7d6; color: #a04d00; font: 800 12px/1 system-ui; }
-.legend-note { margin: 7px 0 0; padding-top: 6px; border-top: 1px solid #e2eaee; color: #6b7d88; font: 600 10px/1.35 system-ui; }
-
-#legendToggle {
+#layersToggle {
   position: absolute; z-index: 16; top: calc(env(safe-area-inset-top) + 52px); right: 10px;
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
   border: 1px solid #c8d5df; border-radius: 9px; background: rgba(255,255,255,.96);
   box-shadow: 0 2px 9px rgba(0,0,0,.16); color: #365263; cursor: pointer;
 }
-#legendToggle .legend-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-#legendFlyout {
-  position: absolute; z-index: 17; top: calc(env(safe-area-inset-top) + 136px); right: 10px;
-  width: min(238px, calc(100vw - 24px)); padding: 8px 10px 9px;
-  border: 1px solid #d4e0e7; border-radius: 11px; background: rgba(255,255,255,.98);
-  box-shadow: 0 4px 15px rgba(0,0,0,.2); color: #3e4f59;
-}
-#legendFlyout[hidden] { display: none; }
+#layersToggle[aria-expanded="true"] { border-color: #0a66c2; background: #eaf4fb; color: #0a66c2; }
+#layersToggle .layers-toggle-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 #map .maplibregl-ctrl-top-right { z-index: 16; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group {
   margin: calc(env(safe-area-inset-top) + 10px) 10px 0 0;
@@ -465,9 +470,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 /* Keep the compact OpenStreetMap attribution button comfortably inside the
    viewport edge without shifting the scale control above it. */
 #map .maplibregl-ctrl-bottom-right > .maplibregl-ctrl-attrib { margin-right: 3px; }
-.legend-flyout-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #344956; font: 750 11px system-ui; }
-#legendClose { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: none; border-radius: 8px; background: #eef3f6; color: #52636d; font-size: 17px; cursor: pointer; }
-
 /* -------------------------------------------------------------- overlays */
 .readout {
   position: absolute; z-index: 16;
@@ -737,7 +739,6 @@ body.navigation-active #routeBar { display: none; }
     top: calc(env(safe-area-inset-top) + 8px); right: 54px; bottom: auto; left: 122px;
     width: auto; transform: none;
   }
-  body.navigation-active #legendFlyout { top: calc(env(safe-area-inset-top) + 136px); }
 }
 
 @media (min-width: 721px) {
@@ -810,9 +811,8 @@ body.navigation-active #routeBar { display: none; }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group { margin-top: calc(env(safe-area-inset-top) + 10px); border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.22); }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 42px; height: 42px; border-radius: 12px; }
   #panelOpen { left: 10px; right: auto; }
-  #legendToggle { top: calc(env(safe-area-inset-top) + 58px); width: 42px; height: 42px; border-radius: 12px; }
+  #layersToggle { top: calc(env(safe-area-inset-top) + 58px); width: 42px; height: 42px; border-radius: 12px; }
   #appHelpBtn { top: calc(env(safe-area-inset-top) + 106px); width: 42px; height: 42px; border-radius: 12px; font-size: 18px; }
-  #legendFlyout { top: calc(env(safe-area-inset-top) + 154px); right: 10px; width: min(238px, calc(100vw - 20px)); }
   .place-picker { top: -5px; left: 0; width: min(340px, calc(100vw - 24px)); }
   body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
   body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
@@ -820,7 +820,6 @@ body.navigation-active #routeBar { display: none; }
     top: calc(env(safe-area-inset-top) + 8px); right: 54px; bottom: auto; left: 10px;
     width: auto; transform: none;
   }
-  body.navigation-active #legendFlyout { top: calc(env(safe-area-inset-top) + 154px); }
   body:not(.panel-open) .update-prompt, body.panel-open .update-prompt { left: 112px; right: 10px; width: auto; max-width: none; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; }
   body:not(.panel-open).navigation-active .update-prompt { bottom: calc(126px + env(safe-area-inset-bottom)); }
   body.panel-open .update-prompt { bottom: calc(var(--mobile-panel-height, 0px) + 58px); }
@@ -905,9 +904,6 @@ body.navigation-active #routeBar { display: none; }
 .app-help-dialog .app-help-note { margin: 10px 0 5px; color: #405562; }
 .full-help-dialog { width: 100vw; height: var(--app-height, 100dvh); max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: #f4f7f9; color: #1d2935; }
 #routeTipsDialog { width: min(calc(100vw - 20px), 760px); height: min(90dvh, 780px); max-height: calc(100dvh - 20px); margin: auto; border: 1px solid #d8e2e8; border-radius: 16px; box-shadow: 0 16px 48px rgba(18,42,60,.28); }
-/* This is a centered sheet already inset from the screen edge. Do not add
-   full-screen safe-area padding a second time inside its title bar. */
-#routeTipsDialog .full-help-head { padding-top: 10px; }
 .full-help-dialog::backdrop { background: rgba(18,42,60,.42); }
 .full-help-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: max(10px, env(safe-area-inset-top)) 18px 10px; border-bottom: 1px solid #d8e2e8; background: rgba(255,255,255,.96); }
 .full-help-head span { display: block; color: #667784; font: 700 10px/1.2 system-ui; letter-spacing: .08em; text-transform: uppercase; }
@@ -961,6 +957,15 @@ body.navigation-active #routeBar { display: none; }
   .full-help-head h2 { font-size: 17px; }
   .weights-reset { padding: 0 9px; font-size: 10.5px; }
   .weights-groups { grid-template-columns: 1fr; }
+}
+/* Route Information is a centered sheet already inset from the screen edge.
+   Give its title bar an explicit box height so iOS cannot add the viewport
+   safe-area inset to this scroll container and create a blank white band. */
+#routeTipsDialog > .full-help-head {
+  box-sizing: border-box;
+  min-height: 64px;
+  height: 64px;
+  padding: 10px 12px;
 }
 .dialog-actions .danger { border-color: #b42318; background: #c52b22; color: #fff; }
 .dialog-actions .dialog-primary { border-color: #0a66c2; background: #0a66c2; color: #fff; }

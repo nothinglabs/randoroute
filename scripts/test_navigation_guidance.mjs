@@ -128,7 +128,11 @@ assert.match(html, /id="sharedSwitchDialog"/,
 // The app is renamed and no longer closes the panel when navigation starts.
 assert.match(html, /<title>Just Rolling Along<\/title>/,
   'the app is titled Just Rolling Along');
-assert.doesNotMatch(app, /startTurnNavigation[\s\S]*?mobileNavMedia\.matches\) setPanelOpen\(false\)/,
+const startNavigationSource = app.slice(
+  app.indexOf('function startTurnNavigation'),
+  app.indexOf('function stopTurnNavigation')
+);
+assert.doesNotMatch(startNavigationSource, /mobileNavMedia\.matches\) setPanelOpen\(false\)/,
   'starting navigation should leave the panel open');
 assert.match(html, /id="navKeepRouteBtn"[\s\S]*?I'll find my own way[\s\S]*?id="navRouteBackBtn"[\s\S]*?Route to the nearest point[\s\S]*?id="navNewRouteBtn"[\s\S]*?New route to destination/,
   'off-route recovery dialog leads with "find my own way", then all three explicit choices');
@@ -213,7 +217,7 @@ assert.match(nativeInfo, /<key>UIBackgroundModes<\/key>[\s\S]*?<string>audio<\/s
   'native navigation should declare both spoken-audio and location background modes');
 assert.match(css, /#settingsVoice\s*\{[^}]*align-content:\s*start[^}]*gap:\s*7px/,
   'the compact Voice-Nav cards should stay grouped instead of opening a large middle gap');
-const voicePanelSource = app.slice(app.indexOf('function buildVoicePanel'), app.indexOf('function buildLegend'));
+const voicePanelSource = app.slice(app.indexOf('function buildVoicePanel'), app.indexOf('/* ------------------------------------------------------------- boot */'));
 assert.doesNotMatch(voicePanelSource, /violet/i,
   'Voice-Nav settings should describe behavior without naming a route color');
 assert.doesNotMatch(voicePanelSource, /v-offRouteMode|offRouteChoices|off-route-mode/,

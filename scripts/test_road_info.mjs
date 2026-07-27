@@ -22,6 +22,22 @@ assert.match(app, /readoutEl\.append\(close, heading, table, mapActions\)/,
   'the compact road-card actions should appear below the road details');
 assert.match(app, /function scoreBLTS\(p\)[\s\S]*?urban: p\.Urban === 1[\s\S]*?\['Area', n\.urban \? 'Urban \(Census\)' : 'Rural \(Census\)'\][\s\S]*?\['Designated bike route', p\.Designated === 1 \? 'yes' : null\]/,
   'WSDOT road scoring and its popup should use the same Census urban/rural context as routing');
+assert.match(app, /id:\s*'blts'[\s\S]*?alwaysOn:\s*true[\s\S]*?enabled:\s*true/,
+  'WSDOT BLTS should always be available to street details');
+assert.match(app, /if \(!s\.alwaysOn && st\.sources\[s\.id\] != null\) s\.enabled = st\.sources\[s\.id\][\s\S]*?if \(src\.closure \|\| src\.alwaysOn\) src\.enabled = true/,
+  'an older saved layer preference must not disable always-on WSDOT details');
+assert.match(app, /function buildSourcePanel\(\)[\s\S]*?const items = \[[\s\S]*?Off-street trails[\s\S]*?Bikes prohibited/,
+  'Layers should expose visual categories rather than underlying data sources');
+assert.match(app, /if \(src\.id === 'roads' && map\.getLayer\(stateSidewalkProbeId\)\)[\s\S]*?setLayoutProperty\(stateSidewalkProbeId, 'visibility', 'visible'\)/,
+  'the OSM sidewalk lookup should remain available when All roads coloring is hidden');
+assert.match(app, /map\.getLayer\(trailHitId\(src\)\)[\s\S]*?setLayoutProperty\(trailHitId\(src\), 'visibility', 'visible'\)[\s\S]*?map\.getLayer\(hitId\(src\)\)[\s\S]*?setLayoutProperty\(hitId\(src\), 'visibility', 'visible'\)/,
+  'visual toggles must leave ordinary and trail street-information targets active');
+assert.match(app, /function routeBadgeAt\(point\)\s*\{[\s\S]*?if \(!map\.getLayer\(lyr\)\) return null;/,
+  'designated-route names should remain available when their ribbon is hidden');
+assert.doesNotMatch(app, /for \(const src of SOURCES\) if \(src\.enabled\) loadSource\(src\)/,
+  'disabled visual layers must still load their street-information data');
+assert.match(app, /for \(const src of SOURCES\) loadSource\(src\)/,
+  'every source should load so map popups always have complete information');
 assert.match(app, /const stateSidewalkProbeId = 'roads__state-sidewalk-probe'[\s\S]*?function wsdotSidewalkAt\(lngLat\)[\s\S]*?\{ layers: \[stateSidewalkProbeId\] \}[\s\S]*?\['Sidewalk \(OSM\)', wsdotSidewalkAt\(lngLat\)\]/,
   'WSDOT cards should expose sidewalk status from the matching hidden OSM road tile');
 assert.match(css, /#settings-limits\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settings-limits #settingsSliders\s*\{[^}]*gap:\s*3px[\s\S]*?#settings-limits #settingsSliders \.rule-card\s*\{[^}]*padding:\s*3px 8px/,

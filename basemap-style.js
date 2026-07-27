@@ -40,6 +40,7 @@
   const ROAD_MIN_ZOOM = { major: 5, medium: 8, local: 11 };
 
   function lineLayer(id, minzoom, filter, casing) {
+    const local = id.includes('-local');
     return {
       id,
       type: 'line',
@@ -55,17 +56,25 @@
         // A firmer, wider casing makes the underlying street network readable
         // without competing with the saturated bike-safety overlays above it.
         'line-color': '#b7c1c5',
-        'line-width': ['interpolate', ['linear'], ['zoom'],
-          5, 1.4, 8, 2.25, 11, 4, 14, 7.4, 17, 12.5],
-        'line-opacity': 0.96,
+        'line-width': local
+          ? ['interpolate', ['linear'], ['zoom'], 11, 3.4, 14, 6.5, 17, 11.4]
+          : ['interpolate', ['linear'], ['zoom'],
+              5, 1.4, 8, 2.25, 11, 4, 14, 7.4, 17, 12.5],
+        'line-opacity': local
+          ? ['interpolate', ['linear'], ['zoom'], 11, 0.78, 14, 0.88, 17, 0.94]
+          : 0.96,
       } : {
         'line-color': ['match', ['get', 'h'],
           ['motorway', 'motorway_link'], '#f3dec1',
           ['trunk', 'trunk_link', 'primary', 'primary_link'], '#fff5df',
           '#ffffff'],
-        'line-width': ['interpolate', ['linear'], ['zoom'],
-          5, 0.6, 8, 1.1, 11, 2.2, 14, 4.7, 17, 9],
-        'line-opacity': 0.98,
+        'line-width': local
+          ? ['interpolate', ['linear'], ['zoom'], 11, 1.85, 14, 4.05, 17, 8.2]
+          : ['interpolate', ['linear'], ['zoom'],
+              5, 0.6, 8, 1.1, 11, 2.2, 14, 4.7, 17, 9],
+        'line-opacity': local
+          ? ['interpolate', ['linear'], ['zoom'], 11, 0.82, 14, 0.91, 17, 0.97]
+          : 0.98,
       },
     };
   }

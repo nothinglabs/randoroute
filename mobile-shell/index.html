@@ -117,14 +117,9 @@
     <span class="route-action-copy"><strong id="routeActionText"></strong><span id="routeActionDetail" hidden></span></span>
   </div>
   <div id="mobileNavDock"></div>
-  <button id="legendToggle" type="button" aria-expanded="false" aria-controls="legendFlyout" title="Show map legend">
-    <svg class="legend-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2" fill="#b7c900"/><path d="M10 6h9M10 12h9M10 18h9"/><circle cx="5" cy="12" r="2" fill="#168ad1"/><circle cx="5" cy="18" r="2" fill="#b2182b"/></svg>
+  <button id="layersToggle" type="button" aria-expanded="false" aria-controls="tab-layers" title="Show map layers" aria-label="Show map layers">
+    <svg class="layers-toggle-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2" fill="#b7c900"/><path d="M10 6h9M10 12h9M10 18h9"/><circle cx="5" cy="12" r="2" fill="#168ad1"/><circle cx="5" cy="18" r="2" fill="#b2182b"/></svg>
   </button>
-  <aside id="legendFlyout" aria-label="Map legend" hidden>
-    <div class="legend-flyout-head"><strong>Map legend</strong><button id="legendClose" type="button" aria-label="Hide map legend" title="Hide map legend">✕</button></div>
-    <div class="legend" id="legend"></div>
-    <p class="legend-note">Tap any path on map to get details.</p>
-  </aside>
 
   <button id="panelOpen" type="button" aria-label="Show map controls" title="Show map controls"><span class="panel-control-icon" aria-hidden="true">☰</span><span class="panel-control-label">Menu</span></button>
 
@@ -166,7 +161,7 @@
     </section>
 
     <section class="tab" id="tab-layers">
-      <div class="layers-intro"><div><strong>Map layers</strong><br><span>Visibility only — routing still uses all available data.</span></div><button type="button" id="layersHelpBtn" class="layers-help-btn" aria-label="Map data and layers help" title="Map data and layers help">?</button></div>
+      <div class="layers-intro"><div><strong>Map layers</strong><br><span>Tap to toggle visibility.</span></div><button type="button" id="layersHelpBtn" class="layers-help-btn" aria-label="Map data and layers help" title="Map data and layers help">?</button></div>
       <div id="sources"></div>
     </section>
 
@@ -416,17 +411,17 @@
   <dialog id="layersHelpDialog" class="full-help-dialog" aria-label="Map data and layers help">
     <div class="full-help-head"><div><span>Help</span><h2>Map layers &amp; data</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="layersHelpDialog" aria-label="Close">✕</button></div></div>
     <div class="full-help-body">
-      <p class="help-lead">Toggling layers only adjusts visibility. All data is always used for routing.</p>
+      <p class="help-lead">Toggling layers only changes what is drawn. Routing and street details always use all available data.</p>
       <section><h3>Data sources</h3><ul>
         <li><b>Designated routes (USBR &amp; regional)</b>: mapped bicycle-route relationships from OpenStreetMap. They provide route context, not proof of a bike facility.</li>
-        <li><b>WSDOT BLTS (state highways)</b>: official state-road stress, shoulder and access context, legal speeds, and bike-facility data.</li>
+        <li><b>WSDOT BLTS (state highways)</b>: always available in street details, with official state-road stress, shoulder and access context, legal speeds, and bike-facility data.</li>
         <li><b>OSM bike infrastructure</b>: mapped bike lanes, cycle tracks, shared-use paths, and other bicycle facilities. It distinguishes off-street paths from on-street facilities.</li>
         <li><b>Bikes prohibited (WSDOT)</b>: permanent state restriction data. These graph segments are excluded from routing.</li>
         <li><b>All roads (OpenStreetMap, estimated speeds)</b>: the connected road and path network, including names, direction, bicycle access, ferries, residential streets, and known route closures. Missing legal speeds use an estimate.</li>
       </ul></section>
       <section><h3>Elevation &amp; cautions</h3><p>Elevation supplies climb, descent, grade, and travel-time estimates. Routes try to avoid any climbs over 12%, but steep segments remain routable. The app also flags a <b>possible limited-visibility uphill curve</b> when road geometry, grade, speed, and facility data suggest extra care. It is a directional planning cue—not measured sight distance—and does not itself fail your rules.</p></section>
       <section><h3>How choices are made</h3><p>The app tests several time, safety, and road-preference combinations, removes near-duplicates, and shows up to five meaningfully different routes. Freeways are a last resort, legal limited-access highways are cautions, and permanent bicycle restrictions are impassable. A physical bike facility gets a stronger routing benefit than designation alone.</p><details class="technical-note"><summary>Technical data notes</summary><p>Missing speed limits use a road-class estimate, and the street popup identifies estimates. Roads tagged <b>bicycle=no</b> are excluded. A <b>bicycle=dismount</b> link is a walk-bike connection with a strong route cost and a map marker. Explicit MTB paths are excluded by default and can be enabled with a strong penalty. Higher OSM road classes add soft costs when no bike facility is recorded; this is a traffic-volume proxy, not a rule failure. Census urban-area context makes fast roads without bike space less acceptable in built-up areas; it is not traffic-count data. Explicit <code>sidewalk=no</code> adds a small soft cost.</p></details></section>
-      <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. Missing data is not proof that a shoulder, facility, traffic condition, surface, crossing control, or sight line is absent. Short crossings are inferred from route geometry and do not confirm a signal or crosswalk. Use local signs and conditions; this is a planning aid, not a guarantee of safety.</p></section>
+      <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. Missing data is not proof that a shoulder, facility, traffic condition, surface, crossing control, or sight line is absent. Outside a selected route, unpaved cross-slats appear only on bike-infrastructure and trail features that already include confirmed OSM surface data. A selected route may identify additional unpaved road segments. Short crossings are inferred from route geometry and do not confirm a signal or crosswalk. Use local signs and conditions; this is a planning aid, not a guarantee of safety.</p></section>
     </div>
   </dialog>
 
