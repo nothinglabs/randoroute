@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.402';
+const APP_VERSION = '2026-07-27.403';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -7567,7 +7567,7 @@ function buildRulesPanel() {
   check('prefDesig', 'Heavily prefer bike routes & trails', routing, updateRoutePreference);
   check('prefResidential', 'Prefer residential streets', routing, updateRoutePreference);
   check('vettedBikeRoutes', 'Trust designated bike routes');
-  check('allowFreeways', 'Route over freeway as last resort (fails)');
+  check('allowFreeways', 'Route over freeway as last resort (still shows as failing)');
   check('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
     // This option affects both eligibility in the graph and the OSM layer's
     // feature filter. Repaint immediately, then recompute after the usual

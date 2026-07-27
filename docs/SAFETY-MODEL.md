@@ -6,7 +6,7 @@ How a road gets its colour, its verdict, and its routing cost.
 
 **A setting that sounds objective must have an objective consequence.** If a
 control is named like a fact or a permission — *Trust designated bike routes*,
-*Minimum shoulder if no bike lane*, *Route over freeway as last resort (fails)*
+*Minimum shoulder if no bike lane*, *Route over freeway as last resort (still shows as failing)*
 — then changing it must change the verdict shown on the map in a defined,
 reproducible way. A control that sounds like it governs safety but only nudges
 routing cost is a lie to the rider.
@@ -100,11 +100,12 @@ resort (fails)"* — is a **routing permission**, not a safety opinion:
 - **on, with strict matching**: the segments are level 4, so they are excluded
   anyway. The toggle is inert.
 
-The setting is named "(fails)" so the rider can see that the verdict is fixed
-and they are only choosing whether the router may use a failing road. Freeways
-are also excluded from the terminal-access carve-out that otherwise lets short
-failing blocks be used at a leg's endpoints — nobody's driveway is on a
-motorway, and "(fails)" has to mean excluded whenever failing roads are.
+The label carries "(still shows as failing)" so the rider can see that the
+verdict is fixed and they are only choosing whether the router may use a failing
+road. Freeways are also excluded from the terminal-access carve-out that
+otherwise lets short failing blocks be used at a leg's endpoints — nobody's
+driveway is on a motorway, and the label has to mean excluded whenever failing
+roads are.
 | 10 | otherwise | 2 | — |
 
 The lane rung sits **before** the slow-road rung deliberately. Seattle signed every arterial at
@@ -228,7 +229,7 @@ fact, so that is what rung 6 gates on.
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 9 exists at all | ×1.9 / ×3.8 / ×8.0 |
 | `vettedBikeRoutes` | Trust designated bike routes | rung 8 exists at all | via the verdict |
-| `allowFreeways` | Route over freeway as last resort (fails) | **none** — a freeway always fails | traversable at all, ×60 |
+| `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
 | `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |
 | `preferPaved` | Strongly prefer paved surfaces | none | surface cost |
