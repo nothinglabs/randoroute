@@ -326,8 +326,11 @@ assert.match(details, /function routePreviewStyle\(seg\)[\s\S]*?Number\(seg\.fac
   'the Stats preview should be a real map with the same route safety styles');
 assert.match(details, /function isBikeNetwork\(seg\)[\s\S]*?\(seg\.facility \|\| 0\) >= 1/,
   'Route Details should count shared-lane markings as bike facilities');
-assert.match(app, /const ROUTE_SEG_BIKE_EXPR = \['any',[\s\S]*?\['>=', \['get', 'facility'\], 1\][\s\S]*?good_facility: facility >= 1/,
-  'the main map and route readout should treat shared-lane markings as bike facilities');
+// Sharrows are facility 1: paint in a shared travel lane, not space of your
+// own. They must not colour a road as bike network nor satisfy a shoulder
+// rule -- see docs/SAFETY-MODEL.md.
+assert.match(app, /const ROUTE_SEG_BIKE_EXPR = \['any',[\s\S]*?\['>=', \['get', 'facility'\], 2\][\s\S]*?good_facility: facility >= 2/,
+  'shared-lane markings must not count as a bike facility');
 assert.match(details, /function setRoutePreviewFailPulse\(on\)[\s\S]*?route-preview-fail[\s\S]*?line-opacity[\s\S]*?line-width[\s\S]*?setRoutePreviewFailPulse\(preview\.colored\.features\.some\(\(feature\) => feature\.properties\.style === 'fail'\)\)/,
   'failing route portions should pulse in the Details map preview');
 assert.match(detailsHtml, /vendor\/maplibre-gl\.css[\s\S]*?id="routePreviewMap"[\s\S]*?route-preview-attribution[\s\S]*?© OpenStreetMap contributors[\s\S]*?Natural Earth[\s\S]*?vendor\/maplibre-gl\.js[\s\S]*?vendor\/pmtiles\.js[\s\S]*?basemap-style\.js/,
