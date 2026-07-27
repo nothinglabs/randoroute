@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.398';
+const APP_VERSION = '2026-07-27.399';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -80,8 +80,10 @@ const DEFAULT_RULES = Object.freeze({
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
 });
 const rules = { ...DEFAULT_RULES };
-// Top of the lanes slider means "no limit" rather than a literal count.
-const MAX_LANES_NO_LIMIT = 8;
+// Top of the lanes slider means "no limit" rather than a literal count. It
+// stops at 6 because a "6 lanes without a shoulder is fine" rule is one nobody
+// would pick over turning the rule off entirely.
+const MAX_LANES_NO_LIMIT = 6;
 const RULE_NUMBER_LIMITS = {
   minShoulder: [0, 10],
   maxLanesNoShoulder: [2, MAX_LANES_NO_LIMIT],
@@ -7387,8 +7389,11 @@ function presetInfoRows(preset) {
   return [
     ['Never allow speed', presetRules.noUpperLimit
       ? 'No cutoff.' : `Ordinary roads over ${presetRules.upperMaxSpeed} mph fail; dedicated bike infrastructure is exempt.`],
-    ['Speed without shoulder', `Urban: up to ${presetRules.urbanMaxSpeedNoShoulder} mph; rural: up to ${presetRules.ruralMaxSpeedNoShoulder} mph.`],
-    ['Minimum shoulder', `${presetRules.minShoulder} ft on faster roads.`],
+    ['Speed without shoulder or bike lane', `Urban: up to ${presetRules.urbanMaxSpeedNoShoulder} mph; rural: up to ${presetRules.ruralMaxSpeedNoShoulder} mph.`],
+    ['Minimum shoulder', `${presetRules.minShoulder} ft on faster roads, unless the road has a bike lane.`],
+    ['Lanes without shoulder or bike lane', presetRules.maxLanesNoShoulder >= MAX_LANES_NO_LIMIT
+      ? 'No limit.'
+      : `Over ${presetRules.maxLanesNoShoulder} lanes is flagged as a concern (half that on a oneway, which counts one direction).`],
     ['Sidewalk fallback', presetRules.allowSidewalkFallback
       ? 'Mapped sidewalks can satisfy the shoulder rule, but are strongly deprioritized and called out as a concern.'
       : 'Mapped sidewalks do not satisfy the shoulder rule.'],
@@ -7614,7 +7619,7 @@ function buildRulesPanel() {
   };
   slider('urbanMaxSpeedNoShoulder', '<strong class="area-rule area-rule-urban">Urban</strong> max speed without shoulder or bike lane', 15, 45, 5, ' mph');
   slider('ruralMaxSpeedNoShoulder', '<strong class="area-rule area-rule-rural">Rural</strong> max speed without shoulder or bike lane', 15, 45, 5, ' mph');
-  slider('minShoulder', 'Minimum shoulder, or a bike lane', 0, 10, 1, ' ft');
+  slider('minShoulder', 'Minimum shoulder if no bike lane', 0, 10, 1, ' ft');
   lanesSlider();
 
   // Upper speed cutoff: one slider, whose TOP position means "no cutoff"

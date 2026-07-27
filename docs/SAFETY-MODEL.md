@@ -49,9 +49,15 @@ is exactly what 15th Ave NW in Ballard did.
 
 A **shoulder** at or above `minShoulder`, or a **bike lane or better**
 (`facility >= 2`). A sharrow is `facility == 1` and satisfies nothing: it is
-paint in a shared travel lane, not space of your own. That is why the sliders
-are named "…without shoulder or bike lane" — those thresholds only ever bite
-roads that have neither.
+paint in a shared travel lane, not space of your own. That is why the speed and
+lane sliders are named "…without shoulder or bike lane", and the width slider
+"Minimum shoulder if no bike lane" — every one of those thresholds only bites a
+road that has neither.
+
+`maxLanesNoShoulder` runs 2–5, then "No limit" at the top stop
+(`MAX_LANES_NO_LIMIT`, 6). It stops there because "6 lanes without a shoulder is
+fine" is not a rule anyone would choose over switching the rule off. A saved
+value from a wider range clamps to the top stop, which reads as No limit.
 
 ## Which signals reach which decision
 
