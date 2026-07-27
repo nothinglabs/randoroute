@@ -236,6 +236,14 @@ WSDOT's two inventory directions are combined conservatively for this neutral
 background display, avoiding overlapping pass/fail lines; the routing graph
 below retains each direction separately.
 
+Vertex reduction never applies to a closed ring, and never exceeds an eighth of
+an open way's own extent. A fixed ~5 m tolerance used to be applied to
+everything, which erased any feature smaller than the tolerance itself:
+Washington's traffic circles collapsed to triangles and there-and-back spikes
+(3,125 of 4,486 rings kept four or fewer distinct points) and drew on the map as
+arrowheads sitting in the intersection. `scripts/test_road_geometry.py` guards
+this with the surveyed Dayton Avenue North circle.
+
 The build also records compact OSM sidewalk state (`k`) and 2020 Census urban
 area context (`u`). They let the map use the same urban/rural no-shoulder rules
 as the routing graph without adding a large runtime data layer.

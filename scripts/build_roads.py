@@ -67,7 +67,35 @@ CYCLEWAY_KEYS = ('cycleway', 'cycleway:both', 'cycleway:right', 'cycleway:left')
 
 SIMPLIFY_DEG = 0.00005   # ~5 m
 COORD_DECIMALS = 5
+# A closed ring is a traffic circle, roundabout, or loop. Douglas-Peucker
+# measures deviation from the chord joining the retained end points, and on a
+# ring those are the same point, so a circle smaller across than the tolerance
+# has nothing to measure against and collapses. Seattle's 8-13 m traffic circles
+# all did: they reduced to a triangle or a there-and-back spike and drew on the
+# map as arrowheads sitting in the intersection. Rings are 1.4% of Washington's
+# ways, so keeping them verbatim - at the finer precision their size needs - is
+# effectively free.
+RING_COORD_DECIMALS = 6
+# An open way must not be simplified by more than a fraction of its own size
+# either, or a short connector (including the approach arcs of a circle that is
+# mapped as several ways rather than one ring) straightens into its chord.
+MAX_SIMPLIFY_FRACTION = 8
 MAX_FILE_BYTES = 55 * 1024 * 1024  # split well under GitHub's 100 MB limit
+
+
+def compact_coords(coords):
+    """Drop redundant vertices without letting a feature lose its shape."""
+    closed = len(coords) > 3 and tuple(coords[0]) == tuple(coords[-1])
+    line = LineString(coords)
+    if len(coords) > 3 and not closed:
+        xs = [x for x, _ in coords]
+        ys = [y for _, y in coords]
+        extent = max(max(xs) - min(xs), max(ys) - min(ys))
+        tolerance = min(SIMPLIFY_DEG, extent / MAX_SIMPLIFY_FRACTION)
+        if tolerance > 0:
+            line = line.simplify(tolerance, preserve_topology=False)
+    decimals = RING_COORD_DECIMALS if closed else COORD_DECIMALS
+    return [[round(x, decimals), round(y, decimals)] for x, y in line.coords]
 
 _num = re.compile(r'^\s*(\d+(?:\.\d+)?)')
 
@@ -110,13 +138,6 @@ def build(src, out_prefix, urban_areas, blts):
     print(f'{len(designated):,} designated-route member ways', flush=True)
     feats = []
     kept = skipped_private = 0
-
-    def compact_coords(coords):
-        line = LineString(coords)
-        if len(coords) > 3:
-            line = line.simplify(SIMPLIFY_DEG, preserve_topology=False)
-        return [[round(x, COORD_DECIMALS), round(y, COORD_DECIMALS)]
-                for x, y in line.coords]
 
     def wsdot_values(match):
         if match is None:
