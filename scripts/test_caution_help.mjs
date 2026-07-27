@@ -63,6 +63,37 @@ const missing = labels
 assert.deepEqual(missing, [],
   `every rules control needs a help entry; missing: ${missing.join(' | ')}`);
 
+/* ---------------------- the legend must speak the map's own vocabulary */
+const css = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+const routeDetails = fs.readFileSync(new URL('../route-details.js', import.meta.url), 'utf8');
+const colour = (level) => {
+  const m = new RegExp(`\\n\\s*${level}: '(#[0-9a-f]{6})'`).exec(app);
+  assert.ok(m, `COLORS[${level}] should be findable in app.js`);
+  return m[1];
+};
+const CAUTION = colour(3);
+const FAIL = colour(4);
+assert.ok(css.includes(`.layer-toggle-swatch.caution`) && css.includes(CAUTION),
+  `the legend caution swatch should use COLORS[3] (${CAUTION})`);
+assert.match(css, /\.layer-toggle-swatch\.caution \{[^}]*repeating-linear-gradient\(90deg[^}]*#fff/,
+  'the caution swatch should show the rungs the map draws, not a flat block');
+assert.match(css, /\.layer-toggle-swatch\.fails \{[^}]*repeating-linear-gradient\(115deg[^}]*#fff/,
+  'the fails swatch should show the diagonal slashes the map draws');
+assert.ok(css.includes(`.layer-toggle-swatch.fails { background: repeating-linear-gradient(115deg,${FAIL}`),
+  `the legend fails swatch should use COLORS[4] (${FAIL})`);
+assert.match(css, /\.layer-toggle-swatch\.prohibited \{[^}]*repeating-linear-gradient\(90deg/,
+  'bikes-prohibited keeps its own dashed swatch, distinct from a rules failure');
+// Caution has four causes; the legend must not name only one of them.
+assert.doesNotMatch(app, /'Caution \(limited access\)'/,
+  'the legend must not claim caution means limited access -- there are four causes');
+assert.match(app, /\['caution', 'Caution — ride with care', 'caution'\]/,
+  'the legend caution row should be cause-neutral');
+// Route Details keeps its own palette copy; it must not drift.
+assert.ok(routeDetails.includes(`const CAUTION_COLOR = '${CAUTION}'`),
+  `route-details.js CAUTION_COLOR should match COLORS[3] (${CAUTION})`);
+assert.ok(routeDetails.includes(`const FAIL_COLOR = '${FAIL}'`),
+  `route-details.js FAIL_COLOR should match COLORS[4] (${FAIL})`);
+
 /* ------------------------------------- the stress agency is written once */
 const agencyUses = (app.match(/'WSDOT'/g) || []).length;
 assert.equal(agencyUses, 1,

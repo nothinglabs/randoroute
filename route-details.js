@@ -14,7 +14,9 @@ const OFFICIAL_URBAN = 64;
 const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 const BIKE_NETWORK_COLOR = '#b7c900';
 const PASS_COLOR = '#168ad1';
-const CAUTION_COLOR = '#a65300';
+// Keep in step with COLORS[3] in app.js. Lightened from #a65300, which sat at
+// the same tone as the fail red and vanished under red-green colour blindness.
+const CAUTION_COLOR = '#efab3c';
 const FAIL_COLOR = '#b2182b';
 let routePreviewMap = null;
 let routePreviewFailPulseTimer = null;

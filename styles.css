@@ -385,8 +385,13 @@ body:not(.navigation-active) #navCard { display: none; }
 .layer-toggle-swatch.trail { background-color: #b7c900; background-image: radial-gradient(circle,#687d00 0 1.1px,transparent 1.4px); background-size: 6px 6px; }
 .layer-toggle-swatch.facility { background: #b7c900; }
 .layer-toggle-swatch.meets { background: #168ad1; }
-.layer-toggle-swatch.fails, .layer-toggle-swatch.prohibited { background: repeating-linear-gradient(90deg,#b2182b 0 4px,transparent 4px 7px); }
-.layer-toggle-swatch.caution { background: #a65300; }
+/* The legend swatches must be the map's own vocabulary: a failing road is red
+   with white diagonal slashes, a caution is light amber with white rungs, and
+   bikes-prohibited keeps its own dashed line. Colours track COLORS[] in app.js
+   -- test_help_content.mjs asserts they stay in step. */
+.layer-toggle-swatch.fails { background: repeating-linear-gradient(115deg,#b2182b 0 3px,#fff 3px 5px); }
+.layer-toggle-swatch.prohibited { background: repeating-linear-gradient(90deg,#b2182b 0 4px,transparent 4px 7px); }
+.layer-toggle-swatch.caution { background: repeating-linear-gradient(90deg,#efab3c 0 4px,#fff 4px 6px); }
 .layer-toggle-swatch.designated { background: repeating-linear-gradient(90deg,#168ad1 0 4px,transparent 4px 7px); opacity: .7; }
 .layer-toggle-swatch.unpaved { border: 1px solid #536672; background: repeating-linear-gradient(90deg,transparent 0 3px,#536672 3px 5px); }
 

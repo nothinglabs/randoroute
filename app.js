@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.407';
+const APP_VERSION = '2026-07-27.408';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -7419,7 +7419,7 @@ function buildSourcePanel() {
     ['bikeFacilities', 'Road with bike facility', 'facility'],
     ['meetRules', 'Road meets safety rules', 'meets'],
     ['failRules', 'Road fails safety rules', 'fails'],
-    ['caution', 'Caution (limited access)', 'caution'],
+    ['caution', 'Caution — ride with care', 'caution'],
     ['designated', 'Designated bike route', 'designated'],
     ['unpavedBackground', 'Unpaved surfaces', 'unpaved'],
     ['bikesProhibited', 'Bikes prohibited', 'prohibited'],
