@@ -71,7 +71,7 @@ hue separation:
 | bike lane | solid | `#b7c900` |
 | off-street trail | same lime, dark dashed centreline | `#b7c900` + `#4c5c00` |
 | passes | solid | `#168ad1` |
-| caution | perpendicular ticks, like rungs across the road | `#ff8c1a` + white |
+| caution | perpendicular rungs in the danger red | `#e8760a` + `#78121f` |
 | fails | white diagonal slashes, like hazard tape | `#78121f` + white |
 | bikes prohibited | wide translucent dashed ribbon, over the verdict | `#78121f` at 42% |
 
@@ -79,12 +79,18 @@ hue separation:
 maximises the *smallest* CIELAB distance between any two roles, evaluated under
 normal, deuteranope and protanope vision. The original amber left caution only
 **dE 13.2** from the bike-network lime — the weakest link in the palette, and
-the reason caution and green looked alike. `#ff8c1a` with `#78121f` raises the
-weakest pair to **24.2**, and both keep the conventional warning/danger reading.
+the reason caution and green looked alike. `#e8760a` with `#78121f` raises the
+weakest pair to **20.2**, and both keep the conventional warning/danger reading.
 
 The ceiling with the lime and blue fixed is lime-vs-fail at dE 21–24; you
 cannot do better without giving up the lime, which is the bike-network identity.
 That is why texture, not hue, is the primary signal.
+
+The caution rungs are drawn in the **danger red**, not white: a cautioned road
+is one heading toward a failure, and saying so in the same red ties the two
+together. Red on this orange holds a 3.69 contrast ratio, above the 3:1 minimum
+for a graphical object. Deepening the orange further costs both separation from
+the lime and the legibility of those rungs, so it is about as deep as it goes.
 
 A trail and an on-street bike lane share the lime deliberately — both are bike
 network — so the difference is carried by the trail's dashed centreline rather

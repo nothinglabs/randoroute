@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.410';
+const APP_VERSION = '2026-07-27.411';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -36,8 +36,10 @@ const COLORS = {
   2: '#168ad1', // passes rules (internal levels remain distinct for routing)
   // Chosen by maximising the smallest CIELAB distance between any two roles
   // across normal, deuteranope and protanope vision. The old amber/red pair sat
-  // at dE 13.2 from the bike-network lime; this palette's weakest pair is 24.2.
-  3: '#ff8c1a', // caution — vivid orange, the conventional "warning"
+  // at dE 13.2 from the bike-network lime; this palette's weakest pair is 20.2.
+  // Going deeper than this costs separation from the lime AND the legibility of
+  // the red rungs drawn on it, so it is about as deep as the orange can go.
+  3: '#e8760a', // caution — deep burnt orange, the conventional "warning"
   4: '#78121f', // fails   — deep maroon-red, conventional "danger", and dark
                 //           enough to stay apart from the lime by lightness
   0: '#999999', // insufficient data
@@ -1076,8 +1078,8 @@ const FAIL_COLOR = '#9aa0a6';
  * The colours themselves were chosen numerically: search for the pair that
  * maximises the SMALLEST CIELAB distance between any two roles, evaluated under
  * normal, deuteranope and protanope vision. The original amber and red left the
- * caution only dE 13.2 from the bike-network lime; #ff8c1a with #78121f raises
- * the weakest pair in the whole palette to 24.2, and both keep the conventional
+ * caution only dE 13.2 from the bike-network lime; #e8760a with #78121f raises
+ * the weakest pair in the whole palette to 20.2, and both keep the conventional
  * warning/danger reading.
  *
  * Patterns are authored at pixelRatio 2 so they stay crisp on a phone, and
@@ -1108,7 +1110,11 @@ function addVerdictPatterns() {
       (((x + Math.round(y * 0.6)) % 8) + 8) % 8 < 3 ? '#ffffff' : COLORS[4])));
   }
   if (!map.hasImage(PATTERN_CAUTION)) {
-    map.addImage(PATTERN_CAUTION, patternTile(16, (x) => (x % 10 < 4 ? '#ffffff' : COLORS[3])));
+    // The rungs are the DANGER red, not white: a cautioned road is one heading
+    // toward a failure, and saying so in the same red ties the two together.
+    // Red on this orange holds a 3.69 contrast ratio, above the 3:1 minimum for
+    // a graphical object.
+    map.addImage(PATTERN_CAUTION, patternTile(16, (x) => (x % 10 < 4 ? COLORS[4] : COLORS[3])));
   }
 }
 

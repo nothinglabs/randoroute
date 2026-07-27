@@ -299,7 +299,7 @@ const previewContext = vm.createContext({
       { c0: 30, c1: 40, level: 1 },
     ],
   },
-  BIKE_NETWORK_COLOR: '#b7c900', PASS_COLOR: '#168ad1', CAUTION_COLOR: '#ff8c1a', FAIL_COLOR: '#78121f',
+  BIKE_NETWORK_COLOR: '#b7c900', PASS_COLOR: '#168ad1', CAUTION_COLOR: '#e8760a', FAIL_COLOR: '#78121f',
   isBikeNetwork: (seg) => !!((seg.flags || 0) & 8) || (seg.facility || 0) >= 2,
   isDesignated: () => false,
   isMountainBikeTrail: () => false,
@@ -309,7 +309,7 @@ const previewContext = vm.createContext({
 vm.runInContext(details.slice(previewStart, previewEnd), previewContext);
 assert.equal(vm.runInContext(`routePreviewEdgeColors([
   { routeIndex: 0 }, { routeIndex: 10 }, { routeIndex: 20 }, { routeIndex: 30 }, { routeIndex: 40 },
-]).join('|')`, previewContext), '#b7c900|#78121f|#ff8c1a|#168ad1',
+]).join('|')`, previewContext), '#b7c900|#78121f|#e8760a|#168ad1',
   'the route preview should use the same bike, fail, caution, and pass colors as the map');
 
 assert.match(detailsHtml, /id="routeOptionTabs"[\s\S]*?id="routeQuickSummary"[\s\S]*?id="summary"[\s\S]*?id="summaryMix"[\s\S]*?id="panel-stats"[\s\S]*?id="panel-concerns"[\s\S]*?id="panel-steps"/,

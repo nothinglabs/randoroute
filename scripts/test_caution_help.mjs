@@ -75,8 +75,8 @@ const CAUTION = colour(3);
 const FAIL = colour(4);
 assert.ok(css.includes(`.layer-toggle-swatch.caution`) && css.includes(CAUTION),
   `the legend caution swatch should use COLORS[3] (${CAUTION})`);
-assert.match(css, /\.layer-toggle-swatch\.caution \{[^}]*repeating-linear-gradient\(90deg[^}]*#fff/,
-  'the caution swatch should show the rungs the map draws, not a flat block');
+assert.ok(css.includes(`.layer-toggle-swatch.caution { background: repeating-linear-gradient(90deg,${CAUTION} 0 4px,${FAIL} 4px 6px); }`),
+  'the caution swatch should show rungs in the danger red, exactly as the map draws them');
 assert.match(css, /\.layer-toggle-swatch\.fails \{[^}]*repeating-linear-gradient\(115deg[^}]*#fff/,
   'the fails swatch should show the diagonal slashes the map draws');
 assert.ok(css.includes(`.layer-toggle-swatch.fails { background: repeating-linear-gradient(115deg,${FAIL}`),
