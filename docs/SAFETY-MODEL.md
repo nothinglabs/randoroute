@@ -427,6 +427,19 @@ carries ×8 in low-stress mode; a `limited-access` caution carries `limited*`;
 a `wide-road` or `shoulder` outcome is a fail, not a caution, and is excluded
 under strict matching. The card names which one it is for that reason.
 
+## What the map deliberately does not draw
+
+A hiking trail is not bike infrastructure. `OSM_NOT_HIKING_EXPR` removes
+`bicycle=no` features on a path, footway, bridleway, track, service way or
+steps from every layer of the `osm` source — **4,664 of its 41,625 features,
+4,368 mi**, mostly unnamed fragments, and the bulk of the clutter around parks.
+
+Nothing is lost by it: `build_graph.py` drops `bicycle=no` outright, so these
+were never routable and existed only to be drawn.
+
+A prohibited **road** is a different matter and stays visible. You might
+otherwise consider riding it, so being told you cannot is worth the ink.
+
 ## Data notes worth knowing
 
 - **Lanes** come from OSM `lanes`, falling back to WSDOT `LaneCount`. Coverage

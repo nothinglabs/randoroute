@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.411';
+const APP_VERSION = '2026-07-27.412';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1147,6 +1147,18 @@ const OSM_TRAIL_EXPR = ['match', ['get', 'highway'],
 const OSM_NOT_TRAIL_EXPR = ['match', ['get', 'highway'],
   ['cycleway', 'path', 'footway', 'bridleway', 'track', 'service'], false, true];
 const OSM_NOT_MTB_EXPR = ['!=', ['get', 'mtb'], 1];
+// A hiking trail is not bike infrastructure. These features are `bicycle=no` on
+// a path, track, bridleway or service way: build_graph.py drops them outright,
+// so they are never routable and exist on the map only to be drawn. Around
+// 4,700 of the 41,625 features in the infrastructure layer are these, mostly
+// unnamed fragments, and they were the bulk of the clutter around parks.
+//
+// A prohibited ROAD is a different matter and stays: you might otherwise
+// consider riding it, so being told you cannot is worth the ink.
+const OSM_NOT_HIKING_EXPR = ['!', ['all',
+  ['==', ['get', 'bicycle'], 'no'],
+  ['match', ['get', 'highway'],
+    ['path', 'footway', 'bridleway', 'track', 'service', 'steps'], true, false]]];
 
 function safetyRoadWidth(src) {
   if (src.id !== 'roads') return SAFETY_ROAD_INTERIOR_WIDTH;
@@ -1341,9 +1353,11 @@ function ensureLayer(src) {
         'line-width': ['interpolate', ['linear'], ['zoom'], 6, 3.4, 10, 6.4, 14, 11, 17, 15],
         'line-opacity': backgroundLineOpacity(0.42),
       },
+      // A prohibited ROAD is worth the ink; a prohibited hiking path is not,
+      // and OSM_NOT_HIKING_EXPR removes those from every other osm layer.
       filter: src.id === 'roads'
         ? ['all', ['==', ['get', 'b'], 1], ['!=', ['get', 'd'], 1]]
-        : ['==', ['get', 'bicycle'], 'no'],
+        : ['all', ['==', ['get', 'bicycle'], 'no'], OSM_NOT_HIKING_EXPR],
     }, beforeId);
   }
   if (src.id === 'osm') {
@@ -1617,6 +1631,7 @@ function applyDisplayMode(src) {
     // Explicitly technical MTB paths stay out of the normal map view as well
     // as the normal router. They reappear immediately when the rider opts in.
     if (src.id === 'osm' && !rules.allowMtbTrails) conds.push(OSM_NOT_MTB_EXPR);
+    if (src.id === 'osm') conds.push(OSM_NOT_HIKING_EXPR);
     return conds.length > 1 ? ['all', ...conds] : f;
   };
   // The shared vector-road source knows each OSM class. Reveal its safety fill
