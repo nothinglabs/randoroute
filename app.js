@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.412';
+const APP_VERSION = '2026-07-27.413';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -31,6 +31,9 @@ const SIGNIFICANT_UNPAVED_M = 1609.344;
 // costs but share blue; a passing bike-network edge is promoted to lime.
 // Caution is amber, failure is red, and insufficient data is gray.
 const BIKE_NETWORK_COLOR = '#b7c900';
+// The designated-route ribbon: same family as the bike-network lime, duller,
+// because a signed route is advice rather than infrastructure.
+const DESIGNATED_COLOR = '#6f9400';
 const COLORS = {
   1: '#168ad1', // passes rules
   2: '#168ad1', // passes rules (internal levels remain distinct for routing)
@@ -106,7 +109,7 @@ const RULE_NUMBER_LIMITS = {
 // with router-worker.js so the advanced desktop editor is reproducible.
 const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   directFail: 1.5, balancedComfy: 0.92, balancedFail: 9, lowComfy: 0.9, lowFail: 30,
-  designated: 0.94, strongDesignated: 0.86, residential: 0.78,
+  designated: 0.94, strongDesignated: 0.65, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
@@ -194,6 +197,13 @@ let routeIsDisplayed = false;
 function backgroundLineOpacity(baseOpacity) {
   const targetOpacity = routeIsDisplayed ? 0.4 : 0.6;
   return Math.min(1, baseOpacity * (targetOpacity / 0.95));
+}
+
+// A road with a bike lane or better is the thing most riders are looking for,
+// so it gets a stronger opacity than ordinary background roads. At the shared
+// 0.9 base it pre-blended to about 0.57 over white and read as faint.
+function bikeNetworkBackgroundLineOpacity() {
+  return routeIsDisplayed ? 0.72 : 0.86;
 }
 
 // Caution has a specific semantic meaning, so keep it solid enough to avoid
@@ -982,7 +992,8 @@ function opaqueBackgroundVerdictColorExpr(src, levelExpr = ['get', 'level']) {
   const muted = (color, opacity = normalOpacity) => opaqueRoadColorExpr(src, color, opacity);
   const passes = ['match', levelExpr, [1, 2], true, false];
   return ['case',
-    ['all', passes, bikeNetworkExpr(src)], muted(BIKE_NETWORK_COLOR),
+    ['all', passes, bikeNetworkExpr(src)],
+    muted(BIKE_NETWORK_COLOR, bikeNetworkBackgroundLineOpacity()),
     ['match', levelExpr,
       1, muted(COLORS[1]),
       2, muted(COLORS[2]),
@@ -1165,12 +1176,17 @@ function safetyRoadWidth(src) {
   // MapLibre requires `zoom` to be the input of the outermost
   // step/interpolate expression. Put the feature-dependent choice in each
   // stop rather than nesting a zoom interpolation inside a `case`.
+  // A bike-network road is drawn a little wider than its neighbours; the
+  // feature test lives in each stop because zoom must be the outermost input.
+  const bike = bikeNetworkExpr(src);
+  const w = (local, major, lane) => ['case', bike, lane,
+    ROAD_CLASS_LOCAL_EXPR, local, major];
   return ['interpolate', ['linear'], ['zoom'],
     5, 0.6,
     8, 1.1,
-    11, ['case', ROAD_CLASS_LOCAL_EXPR, 1.85, 2.2],
-    14, ['case', ROAD_CLASS_LOCAL_EXPR, 4.05, 4.7],
-    17, ['case', ROAD_CLASS_LOCAL_EXPR, 8.2, 9],
+    11, w(1.85, 2.2, 2.6),
+    14, w(4.05, 4.7, 5.5),
+    17, w(8.2, 9, 10.4),
   ];
 }
 
@@ -1576,12 +1592,16 @@ function applyDisplayMode(src) {
     // a translucent dashed corridor above ordinary safety/facility coloring.
     // Regulatory restrictions and closures retain the two higher z-ranks.
     map.setFilter(src.id, null);
-    map.setPaintProperty(src.id, 'line-color', COLORS[2]);
+    // A relative of the bike-network lime, deliberately duller and translucent:
+    // a signed route is a recommendation whose usability still depends on the
+    // road passing the rider's own rules, so it reads as family with the lime
+    // without claiming to BE bike infrastructure.
+    map.setPaintProperty(src.id, 'line-color', DESIGNATED_COLOR);
     map.setPaintProperty(src.id, 'line-width',
       ['interpolate', ['linear'], ['zoom'],
-        6, ['match', ['get', 't'], 'ncn', 4.3, 2.8],
-        10, ['match', ['get', 't'], 'ncn', 8.4, 5.2],
-        14, ['match', ['get', 't'], 'ncn', 14.4, 9]]);
+        6, ['match', ['get', 't'], 'ncn', 5.4, 3.5],
+        10, ['match', ['get', 't'], 'ncn', 10.5, 6.5],
+        14, ['match', ['get', 't'], 'ncn', 18, 11.3]]);
     map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.4));
     map.setPaintProperty(src.id, 'line-dasharray', [2, 1.4]);
     if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);

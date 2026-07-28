@@ -363,7 +363,7 @@ const V_HEUR = 160.0;
 // designation is useful route context, but is not itself infrastructure.
 const DEFAULT_WEIGHTS = Object.freeze({
   directFail: 1.5, balancedComfy: 0.92, balancedFail: 9, lowComfy: 0.9, lowFail: 30,
-  designated: 0.94, strongDesignated: 0.86, residential: 0.78,
+  designated: 0.94, strongDesignated: 0.65, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
@@ -850,15 +850,18 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // an ordinary road, a physical facility beats designation alone; when
       // both are present, use whichever benefit is stronger rather than
       // stacking them into an outsized corridor bonus.
-      if (!(fl & (32 | 4)) && !edgeLimited(ei, forward) && !isDismountEdge(ei)) {
+      // A signed route is a recommendation, not a fact about the road, so the
+      // bonus is earned only by an edge that actually MEETS the rider's rules.
+      // 92% of designated mileage already does; the gate costs ~540 edges and
+      // stops a signed corridor that fails those rules from being made cheaper.
+      // Unlike before, it applies in every mode: a preference the rider asked
+      // for should not be silently absent from the quickest profile.
+      if (!(fl & (32 | 4)) && !edgeLimited(ei, forward) && !isDismountEdge(ei)
+          && actualLevel <= 2) {
         const facilityBonus = eFacility[ei] ? facilityPrefMult(eFacility[ei]) : 1;
-        if (prefDesig) {
-          const designationBonus = (fl & 64) ? activeWeights.strongDesignated : 1;
-          cost *= Math.min(facilityBonus, designationBonus);
-        } else if (mode !== 'direct') {
-          const designationBonus = (fl & 64) ? activeWeights.designated : 1;
-          cost *= Math.min(facilityBonus, designationBonus);
-        }
+        const designationBonus = (fl & 64)
+          ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1;
+        cost *= Math.min(facilityBonus, designationBonus);
       }
       if (prefResidential && !(fl & (8 | 32 | 4))
           && !edgeLimited(ei, forward) && isResidential(ei)) {
