@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.427';
+const APP_VERSION = '2026-07-28.428';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -24,6 +24,7 @@ const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
 const OFFICIAL_URBAN = 64;
+const OFFICIAL_COUNTY_ROUTE = 128;   // baked in by scripts/build_graph.py
 const SIGNIFICANT_UNPAVED_M = 1609.344;
 
 /* ---------------------------------------------------------------- palette */
@@ -400,7 +401,7 @@ function factsOf(n) {
     sidewalk: n.sidewalk || null,
     urban: !!n.urban,
     designated: !!n.desig,
-    countyDesignated: !!n.countyDesig,
+    countyDesignated: !!n.countyDesig || !!n.cg,
     stressRating: n.stressRating == null ? null : Number(n.stressRating),
   };
 }
@@ -492,7 +493,7 @@ const SOURCES = [
     // The ?v= busts stale HTTP range caches when the tiles are rebuilt —
     // PMTiles bypasses the service worker, and mixing old/new byte ranges
     // silently breaks tile decoding. Bump alongside the sw.js VERSION.
-    vector: 'pmtiles://data/roads.pmtiles?v=18',
+    vector: 'pmtiles://data/roads.pmtiles?v=19',
     // The local basemap already opens this archive for its street geometry and
     // labels. Reuse that MapLibre source for safety coloring and hit testing so
     // iOS does not decode or retain the same vector tiles twice.
@@ -560,12 +561,19 @@ function roadLevelExpr() {
       ['>=', ['coalesce', ['get', 'ln'], 0], rules.maxLanesNoShoulder],
       ['>', ['coalesce', ['get', 'ln'], 0], 0],
       ['!', ridingSpace]];
-    cases.push(rules.vettedBikeRoutes
-      ? ['all', wideRoad, ['!=', ['get', 'g'], 1]] : wideRoad, 4);
+    // State and county designations are trusted separately, so the exception
+    // is the union of whichever the rider has turned on.
+    const trustedRoute = [];
+    if (rules.vettedBikeRoutes) trustedRoute.push(['==', ['get', 'g'], 1]);
+    if (rules.vettedCountyRoutes) trustedRoute.push(['==', ['get', 'cg'], 1]);
+    cases.push(trustedRoute.length
+      ? ['all', wideRoad, ['!', ['any', ...trustedRoute]]] : wideRoad, 4);
   }
   cases.push(['all', hasSpeed, ['<=', spd, noShoulderMax]], passLevel);  // slow = comfortable
   if (rules.vettedBikeRoutes)
-    cases.push(['==', ['get', 'g'], 1], ordinaryPassLevel);     // designated route = vetted
+    cases.push(['==', ['get', 'g'], 1], ordinaryPassLevel);     // state route = vetted
+  if (rules.vettedCountyRoutes)
+    cases.push(['==', ['get', 'cg'], 1], ordinaryPassLevel);    // county route = vetted
   // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
   // otherwise only a known-narrow shoulder fails.
   const sh = rules.unknownShoulderZero
@@ -1915,10 +1923,11 @@ async function jsonAssetResponse(response, url) {
   return JSON.parse(window.fflate.strFromU8(window.fflate.gunzipSync(bytes)));
 }
 
-/* Fetch every county bundle once. The bundles do three jobs from one file:
- * they draw the county's bike network, they answer "what does the county say
- * about this spot?" for a tapped road, and they are handed to the router, which
- * conflates them onto the graph so a county route can earn a routing bonus.
+/* Fetch every county bundle once. The bundles draw the county's bike network
+ * and answer "what does the county say about this spot?" for a tapped road.
+ * They are NOT handed to the router: bike routes are baked into the graph and
+ * the road tiles at build time (scripts/county_conflate.py), because the map's
+ * colours come from tile properties and nothing computed here can reach them.
  * A county that fails to load is skipped rather than failing the others. */
 async function loadCountyBundles() {
   for (const url of COUNTY_BUNDLES) {
@@ -1931,32 +1940,7 @@ async function loadCountyBundles() {
     }
   }
   countyLookup = countyBundles.length ? CountyData.lookupIndex(countyBundles) : null;
-  sendCountyDataToRouter();
   return CountyData.routesToGeoJSON(countyBundles);
-}
-
-// Whether the route on screen passes through any county we hold data for.
-// The check is a bounding box against the built network, padded generously: it
-// only has to be cheap and never wrongly say "no".
-function routeTouchesCounty() {
-  const box = countyBundles.length && CountyData.bounds(countyBundles, 2000);
-  if (!box) return false;
-  const coords = routing.last?.coords;
-  const points = coords && coords.length
-    ? coords
-    : [routing.start, routing.end, ...routing.vias.map((v) => v.pt)].filter(Boolean);
-  return points.some(([lon, lat]) => lon >= box.minLon && lon <= box.maxLon
-    && lat >= box.minLat && lat <= box.maxLat);
-}
-
-// The router only accepts county data after the graph is in memory, and the
-// two load independently, so whichever finishes last performs the handoff.
-let countySentToRouter = false;
-function sendCountyDataToRouter() {
-  if (countySentToRouter || !countyBundles.length) return;
-  if (!routing.worker || !routing.ready) return;
-  countySentToRouter = true;
-  routing.worker.postMessage({ type: 'county', bundles: countyBundles });
 }
 
 async function loadSource(src) {
@@ -2271,7 +2255,7 @@ function routeSegFacts(s) {
       : official & OFFICIAL_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & OFFICIAL_URBAN),
     designated: !!(flags & 64),
-    countyDesignated: !!s.countyDesig,
+    countyDesignated: !!s.countyDesig || !!(official & OFFICIAL_COUNTY_ROUTE),
     stressRating: s.lts || null,
   };
 }
@@ -4738,8 +4722,6 @@ function onRouterMessage(ev) {
     routing.ready = true;
     routing.loading = false;
     routing.pendingRoute = false;
-    // County overlays may already be waiting; the graph had to land first.
-    sendCountyDataToRouter();
     updateArmButtons();
     setRouteStatus(routing.start && routing.end ? 'Routing…' : '');
     if (!(routing.start && routing.end)) {
@@ -4748,15 +4730,6 @@ function onRouterMessage(ev) {
     }
     renderRouteCard(routing.last);
     computeRoute();
-  } else if (m.type === 'county') {
-    // County data re-costs county-signed roads, so a route found before it
-    // landed may now be stale -- but only if it goes anywhere near the county.
-    // Recomputing unconditionally meant every launch with a saved route routed
-    // twice: once when the graph was ready, once a moment later. A ride in
-    // Seattle is untouched by Island County and must not pay for it.
-    const total = (m.stats?.counties || []).reduce((n, c) => n + c.routeEdges, 0);
-    if (!(routing.start && routing.end)) showRouteActionToast('');
-    else if (total && routeTouchesCounty()) computeRoute();
   } else if (m.type === 'route-options') {
     if (m.id !== routing.reqId) return;
     const remaining = 400 - (performance.now() - routing.compareStartedAt);

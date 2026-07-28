@@ -327,18 +327,13 @@ Randonneur alone. The road card names the agency either way.
 On Island County's 323 signed edges, turning county trust on moves **106 edges
 (14.6 mi)** off a failure: 102 from fail to pass and 4 from caution to pass.
 
-**Known gap: the map's road colouring cannot apply county trust.** Road colours
-come from `roadLevelExpr`, evaluated by the renderer against vector-tile
-properties, and the tiles carry the state designation (`g`) but not the county
-one — county data is a runtime overlay conflated in the worker, which is what
-lets a county be added without rebuilding `roads.pmtiles`. So with
-`vettedCountyRoutes` on, those 14.6 miles route as passing and read as passing on
-their cards, while the map still draws them failing. That violates
-"the verdict must be traceable on the card" in spirit: the card and the map
-disagree. Closing it means either putting the county flag into the road tiles
-(a `roads.pmtiles` rebuild, and county data stops being purely additive) or
-carrying it as feature state set per rendered tile. Until then this is a stated
-limitation, not an accident.
+The map applies this too. County bike routes are **baked in at build time** —
+`cg` in the road tiles, `EDGE_COUNTY_ROUTE` (`eOfficial` bit 128) in the graph —
+so the colour, the router and the cards read one flag. They were briefly a
+runtime overlay, which could not work: `roadLevelExpr` is evaluated by the
+renderer against tile properties, so a flag computed in JavaScript changed
+routing and the cards but never the colour, and those 14.6 miles routed as
+passing while drawn failing.
 
 ### Rung 9/10 — the shoulder rung and its sidewalk fallback
 
@@ -397,16 +392,23 @@ vehicles a day, and the app knew none of it, because the road is not a state
 route.
 
 Counties publish their own data one at a time, in their own GIS orgs, with their
-own field names. So a county is **not** a build input to the statewide graph. It
-is a bundle, conflated onto the graph at load:
+own field names, so each arrives as a self-describing bundle. Where it goes
+depends on whether the renderer needs it:
 
 ```
 scripts/build_county_data.py  →  data/county/<slug>.json(.gz)
-county-data.js                →  conflates it onto edges at runtime
+scripts/county_conflate.py    →  BAKED into graph2.bin.gz + roads.pmtiles (routes)
+county-data.js                →  runtime lookup for the cards (traffic)
 ```
 
-`graph2.bin.gz` never changes. Adding a county means adding one entry to
-`COUNTIES` in the build script and one path to `COUNTY_BUNDLES` in `app.js`.
+**Bike routes are baked**, because map colour can only come from tile
+properties. **Traffic counts are not**, because they never touch colour and are
+the part that churns — a county re-counting a road is a 100 KB file, not a 38 MB
+archive. The cost of the bake is honest: adding or re-surveying a county's
+routes means rebuilding both archives, so counties are batched.
+
+The full procedure, and what we accept and refuse from a county, is in
+[county-data-import.md](county-data-import.md).
 
 A bundle carries two things:
 

@@ -13,9 +13,7 @@
 
 // The verdict ladder is defined once, in safety-model.js, and shared with the
 // app so a road cannot score differently here than it reads on the map.
-// County overlays (bike networks, traffic counts) are conflated onto the graph
-// at load by county-data.js, shared with the app for the same reason.
-importScripts('safety-model.js', 'county-data.js');
+importScripts('safety-model.js');
 
 let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
@@ -23,13 +21,7 @@ let eA, eB, eLen, eAsc, eDes, eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir;
 let eClass, eFacility, eOfficial, eSurface;
 // Format 10 only; null on a BGR9 graph.
 let eLanes, eLts;
-// County overlays, conflated at load rather than baked into the graph so that
-// adding a county ships one file instead of rebuilding the state.
-// eCountyRoute[i] = 1 when edge i carries a BUILT county bike route. Traffic
-// counts are deliberately NOT here: they change nothing about routing, and the
-// cards resolve them by position from the bundles themselves.
-let eCountyRoute = null;
-let countyStats = null;
+
 let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
@@ -74,6 +66,9 @@ const EDGE_DISMOUNT = 8;
 const EDGE_SIDEWALK = 16;
 const EDGE_SIDEWALK_NO = 32;
 const EDGE_URBAN = 64;
+// On a county's own signed bike route, baked in by scripts/build_graph.py so
+// the router, the cards and the map's tile colours all read one flag.
+const EDGE_COUNTY_ROUTE = 128;
 const SURFACE_UNKNOWN = 0;
 const SURFACE_PAVED = 1;
 const SURFACE_GRAVEL = 2;
@@ -347,18 +342,9 @@ function edgeFacts(i, forward) {
     designated: !!(flags & 64),
     // Kept separate from the line above: the rider trusts state routes and
     // county routes independently, so the model must be able to tell them apart.
-    countyDesignated: !!(eCountyRoute && eCountyRoute[i]),
+    countyDesignated: !!(official & EDGE_COUNTY_ROUTE),
     stressRating: eLts ? (eLts[i] || null) : null,
   };
-}
-
-// Conflate county bundles onto the loaded graph. Called once, after the graph.
-function applyCountyBundles(bundles) {
-  const view = { count: E, edgeA: eA, edgeB: eB, nodeLon, nodeLat };
-  const out = CountyData.conflate(bundles, view);
-  eCountyRoute = out.route;
-  countyStats = out.stats;
-  return out.stats;
 }
 
 function edgeLevel(i, rules, forward) {
@@ -902,7 +888,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // Only BUILT county routes are ever marked; a planned corridor carries no
       // flag, so it cannot be preferred here (see county-data.js).
       if (!(fl & (32 | 4)) && !isDismountEdge(ei) && actualLevel < 4) {
-        const signed = (fl & 64) || (eCountyRoute && eCountyRoute[ei]);
+        const signed = (fl & 64) || (eOfficial[ei] & EDGE_COUNTY_ROUTE);
         cost *= eFacility[ei]
           ? facilityPrefMult(eFacility[ei])
           : (signed ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
@@ -999,7 +985,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     timeS += segTimeS;
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
-    if ((eFlags[ei] & 64) || (eCountyRoute && eCountyRoute[ei])) desigM += eLen[ei];
+    if ((eFlags[ei] & 64) || (eOfficial[ei] & EDGE_COUNTY_ROUTE)) desigM += eLen[ei];
     if (eFacility[ei] >= 1) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
@@ -1036,7 +1022,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
       lts: eLts ? eLts[ei] : 0,
-      countyDesig: !!(eCountyRoute && eCountyRoute[ei]),
+      countyDesig: !!(eOfficial[ei] & EDGE_COUNTY_ROUTE),
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei]), eLen[ei]),
@@ -1234,7 +1220,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
     seg.timeS = Math.round(segTimeS);
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
-    if ((eFlags[ei] & 64) || (eCountyRoute && eCountyRoute[ei])) desigM += eLen[ei];
+    if ((eFlags[ei] & 64) || (eOfficial[ei] & EDGE_COUNTY_ROUTE)) desigM += eLen[ei];
     if (eFacility[ei] >= 1) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
@@ -1936,12 +1922,9 @@ onmessage = (ev) => {
       loadGraph(m.buffer);
       postMessage({ type: 'ready', nodes: N, edges: E });
     } else if (m.type === 'county') {
-      // County overlays arrive after the graph and are conflated in place, so
-      // a new county never means a new graph build. No progress message: this
-      // takes tens of milliseconds, and the one that used to be posted here
-      // arrived after 'ready' had already dismissed the loading toast, so
-      // nothing was left to clear it and it sat on screen forever.
-      postMessage({ type: 'county', stats: applyCountyBundles(m.bundles) });
+      // County bike routes are baked into the graph now, so there is nothing to
+      // apply here. Kept so an older cached app that still sends this message
+      // does not fall into the error branch below.
     } else if (m.type === 'route') {
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];

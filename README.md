@@ -219,7 +219,8 @@ python3 scripts/fetch_census_urban_areas.py
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads \
                                --urban-areas data/census-urban-areas-2020-wa.geojson \
-                               --blts data/blts.geojson
+                               --blts data/blts.geojson \
+                               --county data/county/*.json
 tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
   --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
   --simplification=8 --simplify-only-low-zooms \
@@ -425,7 +426,8 @@ python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads \
                                --urban-areas data/census-urban-areas-2020-wa.geojson \
-                               --blts data/blts.geojson
+                               --blts data/blts.geojson \
+                               --county data/county/*.json
 tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
   --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
   --simplification=8 --simplify-only-low-zooms \

@@ -141,6 +141,10 @@ EDGE_SIDEWALK_NO = 32
 # Census 2020 Urban Areas distinguish built-up road context from rural roads
 # without tying routing to a local jurisdiction's traffic-count feed.
 EDGE_URBAN = 64
+# On a county's own signed bike route. Baked in here, not conflated at runtime,
+# so the router, the cards and the map's tile colours all read one flag. See
+# scripts/county_conflate.py.
+EDGE_COUNTY_ROUTE = 128
 # Surface is intentionally a tiny routing category rather than the original
 # OSM string.  It lets the client prefer pavement without treating incomplete
 # OSM tagging as an instruction to avoid a road.  Gravel rail trails remain
@@ -941,7 +945,10 @@ def directional_curve_hazard(coords, ele_at, speed, shoulder, facility):
 
 
 def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=None,
-          urban_areas=None):
+          urban_areas=None, county_bundles=None):
+    from county_conflate import CountyRouteIndex, load_bundles
+    county_index = CountyRouteIndex(load_bundles(county_bundles))
+    county_edges = [0]
     wsdot = load_blts_index(blts) if blts else None
     restriction_index = load_restriction_index(restrictions) if restrictions else None
     speed_index = load_official_index(legal_speeds, 'speed') if legal_speeds else None
@@ -1102,6 +1109,10 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                          | (EDGE_DISMOUNT if attrs.get('dismount') else 0)
                                          | sidewalk_flags(tags)
                                          | (EDGE_URBAN if is_urban_edge(coords, urban_index) else 0))
+                            if county_index is not None and not county_index.empty \
+                                    and county_index.county_for(coords):
+                                eofficial |= EDGE_COUNTY_ROUTE
+                                county_edges[0] += 1
                             if (restriction_index and not attrs['infra']
                                     and is_restricted_edge(coords, tags, restriction_index)):
                                 restricted_edges[0] += 1
@@ -1221,6 +1232,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     N, E, G = len(node_lon), len(eA), len(gLon)
     print(f'  nodes {N:,}  edges {E:,}  geom vertices {G:,}  oneway edges {oneway_arcs:,}', flush=True)
     print(f'  WSDOT-conflated edges: {conflated[0]:,}; direct restrictions excluded: {restricted_edges[0]:,}', flush=True)
+    if not county_index.empty:
+        print(f'  county signed-route edges: {county_edges[0]:,}', flush=True)
     print(f'  official legal speeds: {official_speeds[0]:,}; official facilities: {official_facilities[0]:,}', flush=True)
     print(f'  MTB-tagged edges: {mtb_edges[0]:,}; dedicated paths densified for snapping: {densified_paths[0]:,}', flush=True)
     print(f'  directional curve-warning edges: {hazard_edges[0]:,}', flush=True)
@@ -1313,8 +1326,11 @@ if __name__ == '__main__':
                     help='WSDOT Roadway Characteristic legal-speed GeoJSON')
     ap.add_argument('--facilities', default='data/wsdot_bike_facilities.geojson',
                     help='WSDOT existing bicycle-facility GeoJSON')
+    ap.add_argument('--county', nargs='*', default=None,
+                    help="county bundles (data/county/*.json) whose built bike "
+                         "routes are baked in as the EDGE_COUNTY_ROUTE bit")
     ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-wa.geojson',
                     help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
     args = ap.parse_args()
     build(args.src, args.out, args.blts, args.restrictions, args.legal_speeds, args.facilities,
-          args.urban_areas)
+          args.urban_areas, args.county)

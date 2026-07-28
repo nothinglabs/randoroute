@@ -25,6 +25,7 @@ Feature properties (short keys to keep the files small):
   w  shoulder width, ft (only when OSM has real shoulder data; shoulder=no -> 0)
   n  name                   r  ref (route number)
   g  1 = on a designated bike route (USBR / regional trail)
+  cg 1 = on a county's own signed bike route (see scripts/county_conflate.py)
   k  sidewalk state (1=present, 2=explicitly absent)
   u  1 = Census urban area   l  1 = WSDOT limited-access caution
   d  1 = WSDOT-enriched state-highway geometry
@@ -140,15 +141,21 @@ def parse_shoulder_ft(tags):
     return None
 
 
-def build(src, out_prefix, urban_areas, blts):
+def build(src, out_prefix, urban_areas, blts, county_bundles=None):
     from build_graph import (EDGE_SIDEWALK, EDGE_SIDEWALK_NO, EDGE_URBAN,
                              LANES_CENTER_TURN, LANES_COUNT_MASK, ROAD_CLASS,
                              blts_match, collect_designated, is_urban_edge,
                              lane_class, load_blts_index, load_urban_index,
                              sidewalk_flags, surface_class)
+    from county_conflate import CountyRouteIndex, load_bundles
     designated = collect_designated(src)
     urban_index = load_urban_index(urban_areas)
     wsdot_index = load_blts_index(blts)
+    # County signed routes are baked in rather than conflated at runtime: the
+    # renderer can only colour a road from what the tile carries, so a flag the
+    # map cannot see would let a road route as passing while drawn failing.
+    county_index = CountyRouteIndex(load_bundles(county_bundles))
+    county_ways = [0]
     print(f'{len(designated):,} designated-route member ways', flush=True)
     feats = []
     kept = skipped_private = 0
@@ -182,6 +189,9 @@ def build(src, out_prefix, urban_areas, blts):
                 props['b'] = 1
         if is_urban_edge(cc, urban_index):
             props['u'] = 1
+        if not county_index.empty and county_index.county_for(cc):
+            props['cg'] = 1                      # on a county's own signed bike route
+            county_ways[0] += 1
         feats.append(json.dumps(
             {'type': 'Feature', 'properties': props,
              'geometry': {'type': 'LineString', 'coordinates': cc}},
@@ -299,6 +309,8 @@ def build(src, out_prefix, urban_areas, blts):
         names.append(name)
         print(f'wrote {name}: {len(chunk):,} features, {os.path.getsize(name):,} bytes')
     print(f'total kept {kept:,} ways ({skipped_private:,} private skipped) across {len(names)} file(s)')
+    if not county_index.empty:
+        print(f'county signed-route ways flagged: {county_ways[0]:,}')
 
 
 if __name__ == '__main__':
@@ -309,5 +321,8 @@ if __name__ == '__main__':
                     help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
     ap.add_argument('--blts', default='data/blts.geojson',
                     help='WSDOT BLTS GeoJSON used to enrich state-highway geometry')
+    ap.add_argument('--county', nargs='*', default=None,
+                    help='county bundles (data/county/*.json) whose built bike '
+                         'routes are baked in as the cg property')
     args = ap.parse_args()
-    build(args.src, args.out_prefix, args.urban_areas, args.blts)
+    build(args.src, args.out_prefix, args.urban_areas, args.blts, args.county)
