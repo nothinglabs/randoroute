@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.424';
+const APP_VERSION = '2026-07-28.425';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -8456,6 +8456,23 @@ function waitForUpdateWorker(reg, timeoutMs = 2500) {
   });
 }
 
+// Poll the registration for a worker that arrived after update() resolved.
+// Installing the shell is real work, and on a phone it can land a second or two
+// after the promise settles; reading the registration once was reporting "could
+// not install yet" for updates that were on their way in.
+function settledUpdateWorker(reg, timeoutMs = 12000, stepMs = 400) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const poll = () => {
+      const worker = reg.waiting || reg.installing;
+      if (worker) return resolve(worker);
+      if (Date.now() >= deadline) return resolve(null);
+      setTimeout(poll, stepMs);
+    };
+    poll();
+  });
+}
+
 document.getElementById('checkUpdatesBtn').addEventListener('click', async () => {
   if (nativeAppVersionOnly) return;
   const btn = document.getElementById('checkUpdatesBtn');
@@ -8472,9 +8489,21 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
     if (!reg && navigator.serviceWorker) reg = await navigator.serviceWorker.getRegistration();
     if (!reg) throw new Error('service worker unavailable');
     const publishedVersion = await publishedAppVersion();
+    // Revalidate the worker script at its real URL first. Safari can hold
+    // sw.js in the HTTP cache, and reg.update() then byte-compares the new
+    // release against that stale copy, concludes nothing changed, and reports
+    // an update it can never install. `cache: 'reload'` replaces the cached
+    // entry, so the update below sees the bytes that are actually published.
+    try {
+      await fetch('./sw.js', { cache: 'reload' });
+    } catch { /* offline; reg.update() will fail the same way and be reported */ }
     let updateWorker = waitForUpdateWorker(reg);
     await reg.update();
-    let fresh = reg.waiting || reg.installing || await updateWorker;
+    // reg.update() resolving does not guarantee the new worker has appeared on
+    // the registration yet, and a phone on a slow connection routinely needs
+    // longer than one event turn. Poll rather than read once.
+    let fresh = reg.waiting || reg.installing || await updateWorker
+      || await settledUpdateWorker(reg);
     if (!fresh && publishedVersion !== APP_VERSION) {
       // The release marker can update before GitHub Pages' cached plain sw.js
       // URL. A versioned script URL forces the browser/CDN to retrieve the
@@ -8484,7 +8513,8 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
         `./sw.js?release=${encodeURIComponent(publishedVersion)}`,
         { scope: './', updateViaCache: 'none' },
       );
-      fresh = reg.waiting || reg.installing || await updateWorker;
+      fresh = reg.waiting || reg.installing || await updateWorker
+        || await settledUpdateWorker(reg);
     }
     if (fresh) {
       status.textContent = 'Update found — installing…';
@@ -8496,7 +8526,9 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
       // "Get update?" banner is visible.
       document.getElementById('appHelpDialog')?.close();
     } else if (publishedVersion !== APP_VERSION) {
-      status.textContent = `Version v${publishedVersion} is available but could not install yet. Keep the app open briefly, then try again.`;
+      status.textContent = `Version v${publishedVersion} is published but has not reached this device yet.`
+        + ' A release can take a couple of minutes to propagate. Try again shortly,'
+        + ' or fully close and reopen the app.';
     } else {
       status.textContent = `You have the latest version (v${APP_VERSION}).`;
     }

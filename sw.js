@@ -10,7 +10,7 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v402'; // bump when app shell changes
+const VERSION = 'v403'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -63,11 +63,36 @@ const ALWAYS_REFRESH_DATA = new Set([
   './data/county/island.json.gz',
 ]);
 
+// cache.addAll() is all-or-nothing: one dropped request on a phone fails the
+// whole install, the new worker never reaches the waiting state, and the app
+// reports an update it cannot install. Fetch each file with one retry instead.
+async function precacheShell() {
+  const cache = await caches.open(SHELL_CACHE);
+  for (const path of SHELL) {
+    const request = new Request(path, { cache: 'reload' });
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetch(request);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        await cache.put(path, response);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    // The shell must be complete for the app to work offline, so a file that
+    // fails twice still fails the install -- just not on a single blip.
+    if (lastError) throw new Error(`${path}: ${lastError.message}`);
+  }
+}
+
 self.addEventListener('install', (e) => {
   const updatingExistingApp = Boolean(self.registration.active);
   e.waitUntil(
     Promise.all([
-      caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL)),
+      precacheShell(),
       // A first install must become fully offline-capable. An update already
       // has the complete data cache; touching every 30–44 MB archive here can
       // make mobile Safari discard the candidate worker before it reaches the
