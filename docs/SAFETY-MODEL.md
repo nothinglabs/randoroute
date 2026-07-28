@@ -147,7 +147,7 @@ different rules.
 | 5 | `speed-cap` | speed over the absolute ceiling | 4 | `upperMaxSpeed`, `noUpperLimit` |
 | 6 | `wide-road` | at or over the lane threshold, no shoulder and no bike lane | 4 | `maxLanesNoShoulder` |
 | 7 | `slow-road` | slow enough to share the lane | 1 | `urbanMaxSpeedNoShoulder`, `ruralMaxSpeedNoShoulder` |
-| 8 | `designated` | on a signed bike route, if trusted | 2 | `vettedBikeRoutes` |
+| 8 | `designated` | on a signed bike route, if trusted | 2 (3 with a soft caution) | `vettedBikeRoutes` |
 | 9 | `sidewalk-fallback` | would fail the shoulder rung, but has a mapped sidewalk | 3 | `allowSidewalkFallback` |
 | 10 | `shoulder` | shoulder under the minimum, no bike lane | 4 | `minShoulder`, `unknownShoulderZero` |
 | 11 | `unknown` | no usable data on any criterion | 0 | — |
@@ -281,6 +281,24 @@ number rather than a surprise.
 fine" is not a rule anyone would choose over switching the rule off. A saved
 value from a wider range clamps to the top stop, which reads as No limit.
 
+### Rung 8 — what trusting a signed route does and does not override
+
+`vettedBikeRoutes` sits at rung 8, so its reach is decided entirely by that
+position. It overrides only the failures *below* it:
+
+| failure | rung | overridden by trust |
+|---|---|---|
+| bikes prohibited | 1 | no |
+| freeway | 3 | no |
+| speed cap | 5 | no |
+| wide road | 6 | no |
+| **shoulder under the minimum** | **10** | **yes** |
+
+That matches the control's own description — it satisfies the shoulder rule,
+while speed limits and access restrictions still apply. Moving the rung is the
+only way to change what it reaches, and anything it overrides also stops being
+filtered by *Only show routes fully matching*, since the road then passes.
+
 ### Rung 9/10 — the shoulder rung and its sidewalk fallback
 
 `allowSidewalkFallback` (default on) applies to **rung 10 only**. It fires when
@@ -412,11 +430,37 @@ or illegal. Every multiplier applied to an edge, in `router-worker.js`:
 | freeway | `freeway` (×60) | last resort only |
 | WSDOT limited access | `limited*` | bike-legal but unpleasant |
 | mountain-bike trail | `mtbTrail` | opt-in, heavily penalised |
-| bike facility | facility bonus | separated lane or path can justify a detour |
+| bike facility | `facility*` | separated lane or path can justify a detour |
+| signed bike route | `designated`, `strongDesignated` | a recommendation, worth a detour but not a fact about the road |
 | residential street | `residential` | quieter grid |
 | climbing | `climb*SecPerM`, `uphillFactor` | time model plus a preference |
 | turns | `turn*Sec` | fewer manoeuvres |
 | route diversity | `diversity*` | keeps the five offered routes genuinely different |
+
+### Bonuses
+
+Two multipliers are discounts rather than penalties, and they follow three rules.
+
+**A physical facility always speaks for itself.** If an edge has one, its
+`facility*` weight applies and designation is not consulted. These used to
+compete through `Math.min`, which was written when `strongDesignated` was 0.86 —
+weaker than every facility weight. Lowering it to 0.5 silently inverted that
+comparison and made a signed road with no infrastructure beat a road with a
+painted bike lane (0.68).
+
+**A signed route earns its bonus unless the edge fails.** A caution does not
+disqualify it: the rider's rules are met, and two of the three causes are facts
+about the road rather than anything they set. Gating on "passes cleanly" instead
+excluded 12,115 of the 17,097 edges where designation is the only preference,
+11,576 purely for carrying an LTS 4 rating.
+
+**A WSDOT limited-access edge earns it too.** Its `limited*` penalty is applied
+separately and stands on its own; withholding the bonus as well counted it
+twice, and priced a signed shoulder route along a state highway identically to
+any other highway — the case where a designation carries the most information.
+
+Ferries, freeways and dismount edges are still excluded: there, a preference
+would erase an access cost rather than express a taste.
 
 Weights live in `DEFAULT_WEIGHTS` (`router-worker.js`), mirrored in `app.js` so
 the desktop weight editor stays reproducible. Three modes — direct, balanced,

@@ -860,18 +860,24 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // withheld from a caution: a caution means the rules are met with a
       // caveat, and two of its three causes -- a limited-access highway and an
       // official high-stress rating -- are facts about the road rather than
-      // anything the rider set. Gating on `<= 2` instead excluded 12,115 of the
-      // 17,097 edges where designation is the only preference, 11,576 of them
-      // purely for carrying an LTS 4 rating, so the corridors this bonus exists
-      // to favour were the ones least likely to receive it.
-      // Unlike before, it applies in every mode: a preference the rider asked
-      // for should not be silently absent from the quickest profile.
-      if (!(fl & (32 | 4)) && !edgeLimited(ei, forward) && !isDismountEdge(ei)
-          && actualLevel < 4) {
-        const facilityBonus = eFacility[ei] ? facilityPrefMult(eFacility[ei]) : 1;
-        const designationBonus = (fl & 64)
-          ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1;
-        cost *= Math.min(facilityBonus, designationBonus);
+      // anything the rider set.
+      //
+      // A WSDOT limited-access edge is no longer excluded either. Its penalty
+      // (limitedDirect/Balanced/Low) is applied separately just above and stands
+      // on its own; withholding the bonus as well counted it twice, and left a
+      // signed shoulder route along a state highway priced identically to any
+      // other highway -- the case where a designation carries the most
+      // information for a touring rider.
+      //
+      // A physical facility now always speaks for itself rather than competing
+      // with designation through Math.min. That comparison was written when
+      // designation was 0.86, weaker than every facility weight; at 0.5 it
+      // silently inverted, making a signed road with no infrastructure beat a
+      // road with a painted bike lane (0.68).
+      if (!(fl & (32 | 4)) && !isDismountEdge(ei) && actualLevel < 4) {
+        cost *= eFacility[ei]
+          ? facilityPrefMult(eFacility[ei])
+          : ((fl & 64) ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
       }
       if (prefResidential && !(fl & (8 | 32 | 4))
           && !edgeLimited(ei, forward) && isResidential(ei)) {
