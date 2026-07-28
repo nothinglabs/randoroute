@@ -7,10 +7,78 @@
   const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=18';
   let protocol = null;
 
+  // A PMTiles tile is a byte-range read. On a phone one of those can fail for
+  // reasons that have nothing to do with the archive -- a dropped cell
+  // connection, a range request the CDN answers with a plain 200, an ETag that
+  // moved under a redeploy. MapLibre does not retry a tile it was handed an
+  // error for: it keeps whatever it had, so the map renders with rectangular
+  // holes along tile boundaries (land polygons missing, bare ocean showing
+  // through) until the rider happens to pan that area back into view.
+  //
+  // Retrying here, below MapLibre, is the only place a transient failure can be
+  // absorbed without the map ever learning about it. Aborts (the tile left the
+  // viewport) are passed straight through -- they are not failures.
+  const TILE_RETRY_DELAYS_MS = [120, 320, 800];
+
+  function withTileRetry(tile) {
+    return function retryingTile(params, abortController) {
+      let attempt = 0;
+      const run = () => Promise.resolve(tile(params, abortController)).catch((error) => {
+        const aborted = abortController && abortController.signal
+          && abortController.signal.aborted;
+        if (aborted || attempt >= TILE_RETRY_DELAYS_MS.length) throw error;
+        const delay = TILE_RETRY_DELAYS_MS[attempt++];
+        return new Promise((resolve, reject) => {
+          global.setTimeout(() => run().then(resolve, reject), delay);
+        });
+      });
+      return run();
+    };
+  }
+
+  // Retrying is not enough on its own. PMTiles memoizes the archive header and
+  // every directory read in a promise cache, and it stores that promise before
+  // it is settled -- so a read that REJECTS is remembered as the answer for the
+  // rest of the session. One dropped range request therefore poisons an entire
+  // directory: every tile beneath it fails instantly, without touching the
+  // network, and a retry just re-reads the same rejection. That is what turns a
+  // momentary connection blip into a permanent rectangular hole in the map.
+  //
+  // Only successful reads deserve to be cached. This drops any entry whose
+  // promise rejected, so the next attempt genuinely goes back to the archive.
+  function forgetFailedReads(cache) {
+    const entries = cache && cache.cache;
+    if (!entries || typeof entries.set !== 'function') return cache;
+    const set = entries.set.bind(entries);
+    entries.set = (key, entry) => {
+      const result = set(key, entry);
+      Promise.resolve(entry && entry.data).catch(() => {
+        // Only evict this exact entry: a later attempt may already have
+        // replaced it with a good one.
+        if (entries.get(key) === entry) entries.delete(key);
+      });
+      return result;
+    };
+    return cache;
+  }
+
+  // The archive path as PMTiles keys it: everything after the protocol.
+  function archiveKey(url) {
+    return url.slice('pmtiles://'.length);
+  }
+
   function ensureProtocol() {
     if (protocol || !global.pmtiles || !global.maplibregl) return protocol;
     protocol = new global.pmtiles.Protocol();
-    global.maplibregl.addProtocol('pmtiles', protocol.tile);
+    // Register the archives up front, sharing one self-healing cache, so the
+    // Protocol never has to construct its own (uncorrected) one lazily.
+    if (global.pmtiles.SharedPromiseCache && global.pmtiles.PMTiles) {
+      const cache = forgetFailedReads(new global.pmtiles.SharedPromiseCache());
+      for (const url of [CONTEXT_URL, ROADS_URL]) {
+        protocol.add(new global.pmtiles.PMTiles(archiveKey(url), cache));
+      }
+    }
+    global.maplibregl.addProtocol('pmtiles', withTileRetry(protocol.tile));
     return protocol;
   }
 

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.420';
+const APP_VERSION = '2026-07-28.421';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1078,6 +1078,21 @@ function scheduleRescore() {
       rescoreAll(false);
     }, 180);
   }
+  clearTimeout(_ruleRouteTimer);
+  _ruleRouteTimer = setTimeout(() => {
+    _ruleRouteTimer = null;
+    if (routing.ready && routing.start && routing.end) computeRoute();
+  }, 700);
+}
+
+// Routing weights are sent to the router and NOTHING else: no map layer reads
+// them, so a weight change can never alter a road's color. Dragging one used to
+// call scheduleRescore(), which every 180ms re-scored and re-uploaded every
+// GeoJSON source to the map for no visible change -- enough main-thread and
+// memory churn during a drag to get the tab killed on iOS. Weights now only
+// save and re-route.
+function scheduleReroute() {
+  saveStateSoon();
   clearTimeout(_ruleRouteTimer);
   _ruleRouteTimer = setTimeout(() => {
     _ruleRouteTimer = null;
@@ -7567,7 +7582,7 @@ function buildRoutingWeightsEditor() {
         routingWeights[key] = Number(input.value);
         row.querySelector('output').textContent = input.value;
         suppressRoadInfo(1200);
-        scheduleRescore();
+        scheduleReroute();
       });
       group.append(row);
     }
@@ -7931,7 +7946,7 @@ function buildRulesPanel() {
     document.getElementById('resetRoutingWeights').addEventListener('click', () => {
       Object.assign(routingWeights, DEFAULT_ROUTING_WEIGHTS);
       buildRoutingWeightsEditor();
-      scheduleRescore();
+      scheduleReroute();
       showRouteActionToast('Routing weights reset to defaults', { duration: 2200 });
     });
     selectSettingsPane(document.querySelector('[data-settings-pane].active')?.dataset.settingsPane || 'limits');
