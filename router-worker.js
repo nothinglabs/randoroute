@@ -856,13 +856,18 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // both are present, use whichever benefit is stronger rather than
       // stacking them into an outsized corridor bonus.
       // A signed route is a recommendation, not a fact about the road, so the
-      // bonus is earned only by an edge that actually MEETS the rider's rules.
-      // 92% of designated mileage already does; the gate costs ~540 edges and
-      // stops a signed corridor that fails those rules from being made cheaper.
+      // bonus is withheld from an edge that FAILS the rider's rules. It is not
+      // withheld from a caution: a caution means the rules are met with a
+      // caveat, and two of its three causes -- a limited-access highway and an
+      // official high-stress rating -- are facts about the road rather than
+      // anything the rider set. Gating on `<= 2` instead excluded 12,115 of the
+      // 17,097 edges where designation is the only preference, 11,576 of them
+      // purely for carrying an LTS 4 rating, so the corridors this bonus exists
+      // to favour were the ones least likely to receive it.
       // Unlike before, it applies in every mode: a preference the rider asked
       // for should not be silently absent from the quickest profile.
       if (!(fl & (32 | 4)) && !edgeLimited(ei, forward) && !isDismountEdge(ei)
-          && actualLevel <= 2) {
+          && actualLevel < 4) {
         const facilityBonus = eFacility[ei] ? facilityPrefMult(eFacility[ei]) : 1;
         const designationBonus = (fl & 64)
           ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1;
