@@ -25,8 +25,10 @@ let eClass, eFacility, eOfficial, eSurface;
 let eLanes, eLts;
 // County overlays, conflated at load rather than baked into the graph so that
 // adding a county ships one file instead of rebuilding the state.
-// eCountyRoute[i] = 1 when edge i carries a BUILT county bike route.
-let eCountyRoute = null, eCountyAdt = null, eCountyAdtYear = null;
+// eCountyRoute[i] = 1 when edge i carries a BUILT county bike route. Traffic
+// counts are deliberately NOT here: they change nothing about routing, and the
+// cards resolve them by position from the bundles themselves.
+let eCountyRoute = null;
 let countyStats = null;
 let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
@@ -350,18 +352,14 @@ function edgeFacts(i, forward) {
   };
 }
 
-// Everything a county overlay knows about one edge, or null where no county
-// data covers it. Display only for traffic -- nothing here reaches the ladder
-// except the designated bit above.
+// What the county overlay says about one edge: whether the router treated it as
+// a signed county route. The rest of the county's data (traffic, its posted
+// speed, the route's name) is resolved by position on the card, from the same
+// bundles, so it never has to be carried per edge.
 function edgeCountyInfo(i) {
-  if (!eCountyRoute) return null;
-  const adt = eCountyAdt[i] || 0;
-  const onRoute = !!eCountyRoute[i];
-  if (!onRoute && !adt) return null;
+  if (!eCountyRoute || !eCountyRoute[i]) return null;
   return {
-    route: onRoute,
-    adt: adt || null,
-    adtYear: eCountyAdtYear[i] || null,
+    route: true,
     county: countyStats && countyStats.counties.length === 1
       ? countyStats.counties[0].county : null,
   };
@@ -369,15 +367,9 @@ function edgeCountyInfo(i) {
 
 // Conflate county bundles onto the loaded graph. Called once, after the graph.
 function applyCountyBundles(bundles) {
-  const view = {
-    count: E,
-    alon: (i) => nodeLon[eA[i]], alat: (i) => nodeLat[eA[i]],
-    blon: (i) => nodeLon[eB[i]], blat: (i) => nodeLat[eB[i]],
-  };
+  const view = { count: E, edgeA: eA, edgeB: eB, nodeLon, nodeLat };
   const out = CountyData.conflate(bundles, view);
   eCountyRoute = out.route;
-  eCountyAdt = out.adt;
-  eCountyAdtYear = out.adtYear;
   countyStats = out.stats;
   return out.stats;
 }

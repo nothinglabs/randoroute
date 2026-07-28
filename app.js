@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.422';
+const APP_VERSION = '2026-07-28.423';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6849,22 +6849,18 @@ function countyDetailRows(info) {
   const rows = [];
   const agency = info.county ? `${info.county} County` : 'County';
   if (info.route) {
-    rows.push(['County bike route', info.routeName
-      ? `${info.routeName} — signed by ${agency}`
-      : `Signed by ${agency}`]);
+    rows.push(['County route', info.routeName
+      ? `${info.routeName} (${agency})` : agency]);
   }
   const rating = CountyData.trafficLevel(info.adt);
   if (rating) {
-    const stale = CountyData.trafficIsStale(info.adtYear);
-    const counted = info.adtYear
-      ? `counted ${info.adtYear}${stale ? ', now dated' : ''}`
-      : 'count year unrecorded';
-    rows.push(['Traffic', `${info.adt.toLocaleString()} vehicles/day — `
-      + `${rating.level} of 5, ${rating.label.toLowerCase()} (${counted})`]);
-    rows.push(['Traffic note', `${rating.blurb} ${agency} average daily traffic. `
-      + 'Shown for context only: it does not affect the verdict above or where you are routed.']);
+    const when = info.adtYear
+      ? `${info.adtYear}${CountyData.trafficIsStale(info.adtYear) ? ', dated' : ''}`
+      : 'year unknown';
+    rows.push(['Traffic', `${info.adt.toLocaleString()}/day — `
+      + `${rating.level} of 5, ${rating.label.toLowerCase()} (${when})`]);
   }
-  if (info.countySpeed) rows.push(['County speed limit', `${info.countySpeed} mph (${agency} road log)`]);
+  if (info.countySpeed) rows.push(['Speed limit (county)', `${info.countySpeed} mph`]);
   return rows;
 }
 
@@ -7274,22 +7270,15 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
     const planned = p.status === 'planned';
     title = planned ? 'Planned county bike route' : 'County bike route';
     rows = [
-      ['Name', p.n || null],
-      ['Signed by', p.county ? `${p.county} County, ${p.state}` : null],
-      ['Status', planned ? 'Planned — not built yet' : 'Existing — built and signed'],
+      ['Route', [p.n, p.county ? `(${p.county} County)` : null].filter(Boolean).join(' ') || null],
+      // Only worth a row when it changes what the rider can do with it.
+      ['Status', planned ? 'Planned — not built yet, not routed' : null],
       // This ribbon sits above the road, so tapping a county-signed street hits
       // the route rather than the road underneath. The county's own road-log
       // data therefore has to appear here as well, or signing a road would hide
       // the numbers that describe it. `route: false` because the rows above
       // already say which route this is.
       ...countyDetailRows(countyInfoAt(lngLat) && { ...countyInfoAt(lngLat), route: false }),
-      ['Map symbol', planned
-        ? 'Faint dotted green — a corridor the county intends to build'
-        : 'Dashed green — a route the county signs and maintains'],
-      ['Routing', planned
-        ? 'None. A planned route is a proposal, so it earns no preference and you will never be sent along it for being one.'
-        : 'Preferred exactly like a state or national designated route. If you have "Trust designated bike routes" on, that trust applies here too.'],
-      ['Note', 'A designation is not a bike facility. The scored road underneath still supplies the safety verdict and takes visual precedence.'],
     ];
   } else if (src.id === 'routes') {
     title = 'Designated bike route';

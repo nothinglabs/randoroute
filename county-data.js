@@ -56,11 +56,19 @@
     var mLon = metersPerDegLon(lat0);
     var dLon = SNAP_M / mLon;
     var dLat = SNAP_M / M_PER_DEG_LAT;
+    // Integer cell keys, not "gx:gy" strings. A bundle probes this grid ~85,000
+    // times and each probe reads nine cells, so string concatenation alone was
+    // three quarters of a million throwaway allocations and most of the cost.
+    // The grid is anchored to the county's own bounding box, which makes the
+    // key a plain array offset.
+    var gx0 = Math.floor(bbox.minLon / dLon) - 2;
+    var gy0 = Math.floor(bbox.minLat / dLat) - 2;
+    var width = Math.floor(bbox.maxLon / dLon) - gx0 + 4;
     var cells = new Map();
     var indexed = 0;
 
     function put(gx, gy, edge) {
-      var key = gx + ':' + gy;
+      var key = (gy - gy0) * width + (gx - gx0);
       var bucket = cells.get(key);
       if (bucket) {
         if (bucket[bucket.length - 1] !== edge) bucket.push(edge);
@@ -69,14 +77,26 @@
       }
     }
 
+    // Read the graph's own typed arrays directly. Going through accessor
+    // functions cost 3.4 million closure calls just to reject the 98% of edges
+    // that are not in this county, which dominated everything else.
+    var eA = edges.edgeA;
+    var eB = edges.edgeB;
+    var nLon = edges.nodeLon;
+    var nLat = edges.nodeLat;
     for (var i = 0; i < edges.count; i++) {
-      var alon = edges.alon(i);
-      var alat = edges.alat(i);
-      var blon = edges.blon(i);
-      var blat = edges.blat(i);
-      // Cheap reject first: the edge's own box against the county's.
-      if (Math.max(alon, blon) < bbox.minLon || Math.min(alon, blon) > bbox.maxLon
-          || Math.max(alat, blat) < bbox.minLat || Math.min(alat, blat) > bbox.maxLat) continue;
+      var na = eA[i];
+      var nb = eB[i];
+      var alat = nLat[na];
+      var blat = nLat[nb];
+      // Cheap reject first, latitude before longitude: a county spans a small
+      // band of latitude and this throws out most of the state in one compare.
+      if (alat < bbox.minLat ? blat < bbox.minLat : (blat > bbox.maxLat && alat > bbox.maxLat)) continue;
+      if (alat > bbox.maxLat && blat > bbox.maxLat) continue;
+      var alon = nLon[na];
+      var blon = nLon[nb];
+      if (alon < bbox.minLon && blon < bbox.minLon) continue;
+      if (alon > bbox.maxLon && blon > bbox.maxLon) continue;
       indexed++;
       var dx = (blon - alon) * mLon;
       var dy = (blat - alat) * M_PER_DEG_LAT;
@@ -88,17 +108,23 @@
         put(Math.floor(lon / dLon), Math.floor(lat / dLat), i);
       }
     }
-    return { cells: cells, dLon: dLon, dLat: dLat, mLon: mLon, indexed: indexed };
+    return {
+      cells: cells, dLon: dLon, dLat: dLat, mLon: mLon,
+      gx0: gx0, gy0: gy0, width: width, indexed: indexed,
+    };
   }
 
   // Candidate edges whose span passes near (lon, lat), deduped via `seen`.
   function near(index, lon, lat, out, seen, stamp) {
-    var cx = Math.floor(lon / index.dLon);
-    var cy = Math.floor(lat / index.dLat);
-    for (var gx = cx - 1; gx <= cx + 1; gx++) {
-      for (var gy = cy - 1; gy <= cy + 1; gy++) {
-        var bucket = index.cells.get(gx + ':' + gy);
-        if (!bucket) continue;
+    var cx = Math.floor(lon / index.dLon) - index.gx0;
+    var cy = Math.floor(lat / index.dLat) - index.gy0;
+    var cells = index.cells;
+    var width = index.width;
+    for (var dy = -1; dy <= 1; dy++) {
+      var row = (cy + dy) * width + cx;
+      for (var dx = -1; dx <= 1; dx++) {
+        var bucket = cells.get(row + dx);
+        if (bucket === undefined) continue;
         for (var k = 0; k < bucket.length; k++) {
           var e = bucket[k];
           if (seen[e] === stamp) continue;
@@ -112,10 +138,12 @@
 
   // Metres from a point to an edge's span, not to its midpoint.
   function distToEdge(edges, e, lon, lat, mLon) {
-    var ax = (edges.alon(e) - lon) * mLon;
-    var ay = (edges.alat(e) - lat) * M_PER_DEG_LAT;
-    var bx = (edges.blon(e) - lon) * mLon;
-    var by = (edges.blat(e) - lat) * M_PER_DEG_LAT;
+    var na = edges.edgeA[e];
+    var nb = edges.edgeB[e];
+    var ax = (edges.nodeLon[na] - lon) * mLon;
+    var ay = (edges.nodeLat[na] - lat) * M_PER_DEG_LAT;
+    var bx = (edges.nodeLon[nb] - lon) * mLon;
+    var by = (edges.nodeLat[nb] - lat) * M_PER_DEG_LAT;
     var vx = bx - ax;
     var vy = by - ay;
     var span = vx * vx + vy * vy;
@@ -152,8 +180,10 @@
   var MAX_BEARING_DIFF = 40 * Math.PI / 180;
 
   function bearingOf(edges, e, mLon) {
-    return Math.atan2((edges.blat(e) - edges.alat(e)) * M_PER_DEG_LAT,
-      (edges.blon(e) - edges.alon(e)) * mLon);
+    var na = edges.edgeA[e];
+    var nb = edges.edgeB[e];
+    return Math.atan2((edges.nodeLat[nb] - edges.nodeLat[na]) * M_PER_DEG_LAT,
+      (edges.nodeLon[nb] - edges.nodeLon[na]) * mLon);
   }
 
   function alignedWith(a, b) {
@@ -163,10 +193,13 @@
     return d <= MAX_BEARING_DIFF;
   }
 
-  function bundleBounds(bundles, pad) {
+  // `builtRoutesOnly` bounds the box to the geometry actually being conflated,
+  // so the edge index covers the bike network rather than every county road.
+  function bundleBounds(bundles, pad, builtRoutesOnly) {
     var box = { minLon: Infinity, minLat: Infinity, maxLon: -Infinity, maxLat: -Infinity };
-    function add(lines) {
+    function add(lines, routesOnly) {
       for (var i = 0; i < lines.length; i++) {
+        if (routesOnly && lines[i].status !== 'existing') continue;
         var coords = lines[i].coords || [];
         for (var j = 0; j < coords.length; j++) {
           var c = coords[j];
@@ -179,8 +212,8 @@
     }
     for (var b = 0; b < bundles.length; b++) {
       if (!bundles[b]) continue;
-      add(bundles[b].routes || []);
-      add(bundles[b].traffic || []);
+      add(bundles[b].routes || [], builtRoutesOnly);
+      if (!builtRoutesOnly) add(bundles[b].traffic || [], false);
     }
     if (!isFinite(box.minLon)) return null;
     var dLat = pad / M_PER_DEG_LAT;
@@ -191,25 +224,33 @@
   }
 
   /**
-   * Conflate one or more county bundles onto a graph.
+   * Conflate the county bike NETWORK onto a graph.
    *
-   * `edges` is the caller's view of its own storage, one call per endpoint:
-   *   { count, alon(i), alat(i), blon(i), blat(i) }
+   * `edges` is the graph's own storage, passed as typed arrays rather than
+   * accessors so that rejecting the 98% of edges outside the county is a few
+   * array reads instead of a few million function calls:
+   *   { count, edgeA, edgeB, nodeLon, nodeLat }
    *
-   * Returns { route, adt, adtYear, stats } where route[i] is 0 or 1 (on a BUILT
-   * county bike route). Planned routes are deliberately never marked: a plan is
-   * not pavement, and marking one would send a rider down a corridor that does
-   * not exist yet.
+   * Returns { route, stats } where route[i] is 0 or 1 (on a BUILT county bike
+   * route). Planned routes are deliberately never marked: a plan is not
+   * pavement, and marking one would send a rider down a corridor that does not
+   * exist yet.
+   *
+   * Traffic counts are NOT conflated here. They change nothing about routing,
+   * and both cards that display them already resolve them by position through
+   * lookup() -- so pushing them onto edges as well was pure duplicated work,
+   * and expensive: Island County's road log is 597 miles of geometry against
+   * 33 miles of bike route, which made it eighteen times the cost of the part
+   * that actually matters. If traffic is ever promoted into routing, it comes
+   * back here, and docs/SAFETY-MODEL.md changes with it.
    */
   function conflate(bundles, edges) {
     var route = new Uint8Array(edges.count);
-    var adt = new Int32Array(edges.count);
-    var adtYear = new Int16Array(edges.count);
-    var stats = { routeEdges: 0, trafficEdges: 0, indexed: 0, counties: [] };
-    var empty = { route: route, adt: adt, adtYear: adtYear, stats: stats };
+    var stats = { routeEdges: 0, indexed: 0, counties: [] };
+    var empty = { route: route, stats: stats };
     if (!bundles || !bundles.length || !edges.count) return empty;
 
-    var bbox = bundleBounds(bundles, SNAP_M * 4);
+    var bbox = bundleBounds(bundles, SNAP_M * 4, true);
     if (!bbox) return empty;
     var index = buildEdgeIndex(edges, bbox);
     stats.indexed = index.indexed;
@@ -219,58 +260,33 @@
     var seen = new Int32Array(edges.count);
     var stamp = 0;
 
-    function eachNear(coords, apply) {
-      walk(coords, function (lon, lat, bearing) {
-        scratch.length = 0;
-        stamp++;
-        near(index, lon, lat, scratch, seen, stamp);
-        for (var k = 0; k < scratch.length; k++) {
-          var e = scratch[k];
-          if (distToEdge(edges, e, lon, lat, index.mLon) > SNAP_M) continue;
-          if (!alignedWith(bearing, bearingOf(edges, e, index.mLon))) continue;
-          apply(e);
-        }
-      });
-    }
-
     for (var b = 0; b < bundles.length; b++) {
       var bundle = bundles[b];
       if (!bundle) continue;
       var beforeRoutes = stats.routeEdges;
-      var beforeTraffic = stats.trafficEdges;
-
       var routes = bundle.routes || [];
       for (var r = 0; r < routes.length; r++) {
         if (routes[r].status !== 'existing') continue;
-        eachNear(routes[r].coords, function (e) {              // eslint-disable-line no-loop-func
-          if (route[e]) return;
-          route[e] = 1;
-          stats.routeEdges++;
+        walk(routes[r].coords, function (lon, lat, bearing) {  // eslint-disable-line no-loop-func
+          scratch.length = 0;
+          stamp++;
+          near(index, lon, lat, scratch, seen, stamp);
+          for (var k = 0; k < scratch.length; k++) {
+            var e = scratch[k];
+            if (route[e]) continue;
+            if (distToEdge(edges, e, lon, lat, index.mLon) > SNAP_M) continue;
+            if (!alignedWith(bearing, bearingOf(edges, e, index.mLon))) continue;
+            route[e] = 1;
+            stats.routeEdges++;
+          }
         });
       }
-
-      var traffic = bundle.traffic || [];
-      for (var t = 0; t < traffic.length; t++) {
-        // Each segment carries its own count and year onto the edges it covers.
-        (function (seg) {
-          eachNear(seg.coords, function (e) {
-            // Where county segments overlap an edge, the busier count wins.
-            // Understating traffic is the error that matters to a rider.
-            if (seg.adt <= adt[e]) return;
-            if (!adt[e]) stats.trafficEdges++;
-            adt[e] = seg.adt;
-            adtYear[e] = seg.year || 0;
-          });
-        }(traffic[t]));
-      }
-
       stats.counties.push({
         county: bundle.county, state: bundle.state, built: bundle.built,
         routeEdges: stats.routeEdges - beforeRoutes,
-        trafficEdges: stats.trafficEdges - beforeTraffic,
       });
     }
-    return { route: route, adt: adt, adtYear: adtYear, stats: stats };
+    return { route: route, stats: stats };
   }
 
   /* ----------------------------------------------------------- point lookup */

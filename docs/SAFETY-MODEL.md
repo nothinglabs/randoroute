@@ -389,7 +389,7 @@ A bundle carries two things:
 | field | what it is | what it does |
 |---|---|---|
 | `routes[]` | the county's own bike network, each `existing` or `planned` | an **existing** route sets `facts.designated`, exactly like a USBR |
-| `traffic[]` | average daily traffic per road segment, with the year counted | **display only** — see below |
+| `traffic[]` | average daily traffic per road segment, with the year counted | **display only** — resolved by position on the card, never conflated onto an edge |
 
 **Planned routes are drawn and never ridden.** `county-data.js` marks only
 `existing` routes onto edges, so a planned corridor can never earn a routing
@@ -397,6 +397,13 @@ preference. It appears on the map faint and dotted, and its card says so. A plan
 is not pavement.
 
 ### How a county line becomes a graph edge
+
+Only the bike network is conflated onto edges. Traffic counts change nothing
+about routing and both cards resolve them by position from the bundle itself, so
+pushing them onto edges as well was duplicated work — and expensive: Island
+County's road log is 597 miles of geometry against 33 miles of bike route.
+Dropping it, plus integer grid keys and reading the graph's typed arrays instead
+of accessors, took the load-time conflation from 994 ms to 75 ms.
 
 County centrelines and OSM centrelines are drawn independently and sit a few
 metres apart on the same asphalt, so the match is geometric, with two gates:

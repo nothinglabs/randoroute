@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 // County overlays end to end: the bundle loads, reaches the router, draws its
 // own toggleable layer, and puts the county's route and traffic count on a road
-// card. Deer Lake Road on Whidbey is the fixture -- it carries Island County's
-// signed South Whidbey Bike Route and about 2,000 vehicles a day, none of which
-// WSDOT's state-highway layers know anything about.
+// card without turning it into an essay. Deer Lake Road on Whidbey is the
+// fixture -- it carries Island County's signed South Whidbey Bike Route and
+// about 2,000 vehicles a day, none of which WSDOT's state layers know about.
 //
-// ON HOLD with the rest of the suite (see CLAUDE.md); kept for when regression
-// coverage is switched back on.
+// ON HOLD with the rest of the suite (see CLAUDE.md).
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
@@ -75,11 +74,12 @@ const card = await pg.evaluate(()=>{
 });
 if(card.err) { console.log(card.err); }
 else {
-  console.log('--- card ---\n'+card.html.split('\n').filter(l=>/County|Traffic|Name|Verdict|Speed/.test(l)).join('\n'));
-  ck('card names the county bike route', /County bike route/.test(card.html), '');
-  ck('card shows traffic count + rating + year', /vehicles\/day/.test(card.html) && /of 5/.test(card.html) && /counted 20/.test(card.html));
-  ck('card says traffic does not affect routing', /does not affect the verdict/.test(card.html));
-  ck('card shows the county speed limit', /County speed limit/.test(card.html));
+  console.log('--- card ---\n'+card.html);
+  ck('card names the county bike route', /South Whidbey Bike Route/.test(card.html));
+  ck('card shows traffic count + rating + year', /2,357\/day/.test(card.html) && /3 of 5/.test(card.html) && /2016/.test(card.html));
+  ck('card shows the county speed limit', /Speed limit \(county\)\s*50 mph/.test(card.html));
+  const dataRows = card.html.split('\n').filter(l=>l.includes('\t'));
+  ck('card stays short', dataRows.length <= 4, dataRows.length+' data rows');
 }
 
 // The toggle must exist and actually hide the layer.
