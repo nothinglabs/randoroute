@@ -483,6 +483,10 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   border: 1px solid #c8d5df; border-radius: 9px; box-shadow: 0 2px 9px rgba(0,0,0,.16);
 }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 34px; height: 34px; border-radius: 9px; }
+/* The desktop zoom buttons share this corner with the app's own absolutely
+   positioned Layers (52px) and Help (94px) buttons. Start below both. */
+#map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 102px; }
+#map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group button { width: 34px; height: 34px; }
 /* Keep the compact OpenStreetMap attribution button comfortably inside the
    viewport edge without shifting the scale control above it. */
 #map .maplibregl-ctrl-bottom-right > .maplibregl-ctrl-attrib { margin-right: 3px; }

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.419';
+const APP_VERSION = '2026-07-28.420';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -848,7 +848,14 @@ function syncDesktopZoomControl() {
     || Boolean(window.Capacitor?.isNativePlatform?.());
   const shouldShow = desktopBrowserZoomMedia.matches && !nativeShell;
   if (shouldShow === desktopZoomControlVisible) return;
-  if (shouldShow) map.addControl(desktopZoomControl, 'top-right');
+  if (shouldShow) {
+    map.addControl(desktopZoomControl, 'top-right');
+    // MapLibre stacks this under the geolocate control, which lands it on top
+    // of the app's own floating Layers and Help buttons -- same corner, same
+    // z-index, so whichever paints last wins and the zoom buttons vanish. Tag
+    // the group so the stylesheet can drop it below them.
+    desktopZoomControl._container?.classList.add('zoom-ctrl-group');
+  }
   else map.removeControl(desktopZoomControl);
   desktopZoomControlVisible = shouldShow;
 }
@@ -7353,20 +7360,14 @@ document.addEventListener('click', (e) => {
 
 // ONE global handler pair (per-layer handlers raced where layers overlap).
 const roadInfoHoverMedia = window.matchMedia('(hover: hover) and (pointer: fine)');
+// Road information opens on a CLICK, never on hover. A hover preview meant the
+// card followed the pointer across the map and rewrote itself continuously,
+// which made it impossible to read one road while moving toward its controls.
+// Hovering still says a road is there, by changing the cursor, and nothing else.
 map.on('mousemove', (e) => {
-  // iOS synthesizes mouse movement while tapping. Let the touch-end handler
-  // below open and pin the card; otherwise this hover preview wins first and
-  // leaves the card in its fixed fallback position.
   if (!roadInfoHoverMedia.matches) return;
-  if (routing.arm || Date.now() < roadInfoSuppressedUntil) {
-    readoutEl.classList.remove('show');
-    return;
-  }
-  if (readoutPinned) return;
-  const f = featureAt(e.point);
-  map.getCanvas().style.cursor = f ? 'pointer' : '';
-  if (f) renderReadout(f, e.lngLat);
-  else readoutEl.classList.remove('show');
+  if (routing.arm || Date.now() < roadInfoSuppressedUntil) return;
+  map.getCanvas().style.cursor = featureAt(e.point) ? 'pointer' : '';
 });
 let lastPlacementTs = 0;
 let lastRoadInfoTouchAt = 0;
