@@ -51,7 +51,14 @@ def load_bundles(paths):
     for path in paths or []:
         with open(path, encoding='utf-8') as handle:
             bundle = json.load(handle)
-        routes = [r for r in bundle.get('routes', []) if r.get('status') == 'existing']
+        # `trust` absent means the county gave no per-segment type, so the whole
+        # network counts. Where a county does classify its own route, only the
+        # segments it calls bike infrastructure may satisfy the rider's rules:
+        # Clallam's ODT alignment includes "follow US 101 for four miles", and a
+        # wayfinding line along a 60 mph highway is not a designation that the
+        # highway is ridable. See docs/county-data-import.md.
+        routes = [r for r in bundle.get('routes', [])
+                  if r.get('status') == 'existing' and r.get('trust', True)]
         if routes:
             bundles.append({'county': bundle.get('county'), 'routes': routes})
     return bundles
@@ -117,6 +124,46 @@ class CountyRouteIndex:
         if diff > math.pi / 2:          # a road has no preferred end
             diff = math.pi - diff
         return diff <= MAX_BEARING_DIFF
+
+    def matched_length_m(self, coords):
+        """Metres of this way that actually lie on a county route.
+
+        Not the same as "does this way match": an OSM way runs for hundreds of
+        metres and a route may follow only part of it, so counting the whole
+        way inflates matched mileage by roughly 2x and makes an over-match gate
+        fire on healthy data. Walk it and sum only the matching steps.
+        """
+        if self.empty or len(coords) < 2:
+            return 0.0
+        total = 0.0
+        for i in range(len(coords) - 1):
+            a, b = coords[i], coords[i + 1]
+            m_lon = _m_per_deg_lon(a[1])
+            dx = (b[0] - a[0]) * m_lon
+            dy = (b[1] - a[1]) * M_PER_DEG_LAT
+            span = math.hypot(dx, dy)
+            bearing = math.atan2(dy, dx)
+            steps = max(1, int(math.ceil(span / STEP_M)))
+            step_m = span / steps
+            for s in range(steps):
+                t = (s + 0.5) / steps
+                lon = a[0] + (b[0] - a[0]) * t
+                lat = a[1] + (b[1] - a[1]) * t
+                if self._point_matches(lon, lat, bearing):
+                    total += step_m
+        return total
+
+    def _point_matches(self, lon, lat, bearing):
+        gx = int(math.floor(lon / self.d_lon))
+        gy = int(math.floor(lat / self.d_lat))
+        for ox in (-1, 0, 1):
+            for oy in (-1, 0, 1):
+                for sa, sb, sbearing, _county in self.cells.get((gx + ox, gy + oy), ()):
+                    if self._dist_to_span(lon, lat, sa, sb, self.m_lon) > SNAP_M:
+                        continue
+                    if self._aligned(bearing, sbearing):
+                        return True
+        return False
 
     def county_for(self, coords):
         """The county whose signed route this OSM way follows, or None.

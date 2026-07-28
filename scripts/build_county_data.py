@@ -30,6 +30,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -41,6 +42,10 @@ import urllib.request
 # a new county is a new dict and no new code. The field names differ per county
 # on purpose -- normalizing happens below, against the shared output schema.
 
+# `exclude_when` is how a county states our refusals in its own vocabulary:
+# each (field, pattern) pair drops a feature whose value matches. It is
+# explicit rather than inferred, because these values are hand-typed -- see
+# docs/county-data-import.md.
 COUNTIES = {
     'island': {
         'name': 'Island',
@@ -65,6 +70,42 @@ COUNTIES = {
                 'lanes': 'NumThruLanes', 'speed': 'SpeedLimit',
             },
         },
+    },
+    'clallam': {
+        'name': 'Clallam',
+        'state': 'WA',
+        'fips': '53009',
+        'routes': {
+            'url': 'https://services8.arcgis.com/noCZ2SM2C0rVag8y/arcgis/rest/'
+                   'services/Olympic_Discovery_Trail/FeatureServer/0',
+            'label': 'Clallam County — Olympic Discovery Trail',
+            'name_field': 'LABEL',
+            'type_field': 'ROUTE_TYPE',
+            'surface_field': 'SURFACE',
+            # A county saying "our signed route runs along here" is not the same
+            # as "this is bike infrastructure", and Clallam says which is which.
+            # Only the segments it calls trail or bike lane may satisfy the
+            # shoulder and lane rules; where it says the route is on ordinary
+            # road, the road is judged as a road. Without this, county trust
+            # turned US 101 at 60 mph with no shoulder into a pass.
+            'trust_when': r'trail|bike lane',
+            # Clallam classifies its own route honestly, which is the reason to
+            # import it: OSM's relation flattens 158 miles of trail, highway
+            # connector and backcountry tread into one line. These drops are our
+            # stated refusals expressed in Clallam's fields.
+            'exclude_when': [
+                ('STATUS', r'propos|under construction'),   # not built
+                ('ROUTE_TYPE', r'propos'),
+                ('STATUS', r'adventure'),                   # gravel/backcountry variant
+                ('TRAIL_TYPE', r'adventure|natural tread'),
+                ('ODT_Use', r'no\s*(road\s*bike|rd\s*bike)'),  # county says not for a road bike
+            ],
+        },
+        # Clallam publishes no traffic counts. Checked its ArcGIS org (160
+        # services) and its road layers: names and class only, no ADT, no
+        # shoulder, no speed. Counties differ in what they offer, and a missing
+        # half is recorded rather than faked.
+        'traffic': None,
     },
 }
 
@@ -172,23 +213,61 @@ def miles(coords):
 
 
 def build_routes(spec):
-    """The county's BUILT bike network.
+    """The county's BUILT, clearly bikeable network.
 
-    Planned corridors are dropped here rather than shipped and hidden. Island
-    County's plan is 49 miles against 33 miles of built route, so drawing it
-    put more provisional line on the map than real network and simply read as
-    noise. A corridor nobody can ride yet is not route data.
+    Everything we refuse is dropped here rather than shipped and hidden: a
+    corridor nobody can ride yet is not route data, and a county's trail folder
+    routinely mixes paved multi-use path with gravel logging road and 3-foot
+    natural tread. Island's plan alone was 49 miles against 33 built, which put
+    more provisional line on the map than real network.
+
+    Returns (routes, dropped) where `dropped` counts by reason, so the build
+    reports what it refused instead of silently thinning the data.
     """
     name_field = spec['name_field']
     marker = spec.get('planned_marker')
-    features = fetch_layer(spec['url'], ['OBJECTID', name_field])
-    routes, skipped = [], 0
+    excludes = [(field, re.compile(pattern, re.I))
+                for field, pattern in spec.get('exclude_when', [])]
+    wanted = ['OBJECTID', name_field]
+    for extra in ('type_field', 'surface_field'):
+        if spec.get(extra):
+            wanted.append(spec[extra])
+    wanted += [field for field, _p in spec.get('exclude_when', [])]
+    features = fetch_layer(spec['url'], sorted(set(wanted)))
+
+    routes = []
+    dropped = {}
     for feature in features:
-        raw = (feature.get('properties') or {}).get(name_field)
-        name = str(raw or '').strip()
+        props = feature.get('properties') or {}
+        name = str(props.get(name_field) or '').strip()
+
+        reason = None
         if marker and marker.lower() in name.lower():
-            skipped += 1
+            reason = 'planned'
+        else:
+            for field, pattern in excludes:
+                if pattern.search(str(props.get(field) or '')):
+                    reason = f'{field}~{pattern.pattern[:24]}'
+                    break
+        if reason:
+            dropped[reason] = dropped.get(reason, 0) + 1
             continue
+
+        entry_extra = {}
+        if spec.get('type_field'):
+            value = str(props.get(spec['type_field']) or '').strip()
+            if value:
+                entry_extra['type'] = value
+            # `trust` gates the safety override, not whether we carry the
+            # segment. An on-road stretch stays part of the route and is still
+            # drawn; it just does not get to waive the rules that judge a road.
+            if spec.get('trust_when'):
+                entry_extra['trust'] = bool(re.search(spec['trust_when'], value, re.I))
+        if spec.get('surface_field'):
+            value = str(props.get(spec['surface_field']) or '').strip()
+            if value:
+                entry_extra['surface'] = value
+
         for line in lines_of(feature.get('geometry')):
             coords = round_coords(simplify(line))
             if len(coords) < 2:
@@ -200,8 +279,9 @@ def build_routes(spec):
                 'status': 'existing',
                 'network': 'lcn',       # local cycling network, matching OSM's vocabulary
                 'coords': coords,
+                **entry_extra,
             })
-    return routes, skipped
+    return routes, dropped
 
 
 def build_traffic(spec):
@@ -251,9 +331,13 @@ def main():
 
     print(f'{spec["name"]} County, {spec["state"]}', flush=True)
     print('  bike network …', flush=True)
-    routes, skipped_planned = build_routes(spec['routes'])
-    print('  traffic counts …', flush=True)
-    traffic = build_traffic(spec['traffic'])
+    routes, dropped = build_routes(spec['routes'])
+    if spec.get('traffic'):
+        print('  traffic counts …', flush=True)
+        traffic = build_traffic(spec['traffic'])
+    else:
+        print('  traffic counts … none published by this county', flush=True)
+        traffic = []
 
     bundle = {
         'county': spec['name'],
@@ -262,7 +346,8 @@ def main():
         'built': time.strftime('%Y-%m-%d'),
         'sources': {
             'routes': {'label': spec['routes']['label'], 'url': spec['routes']['url']},
-            'traffic': {'label': spec['traffic']['label'], 'url': spec['traffic']['url']},
+            **({'traffic': {'label': spec['traffic']['label'], 'url': spec['traffic']['url']}}
+               if spec.get('traffic') else {}),
         },
         'routes': routes,
         'traffic': traffic,
@@ -272,8 +357,14 @@ def main():
 
     years = sorted(s['year'] for s in traffic if s.get('year'))
     print(f'\n  {out}  ({os.path.getsize(out) / 1024:.0f} KB)')
-    print(f'  routes  : {len(routes)} built ({sum(miles(r["coords"]) for r in routes):.1f} mi); '
-          f'{skipped_planned} planned corridors skipped')
+    trusted = [r for r in routes if r.get('trust', True)]
+    print(f'  routes  : {len(routes)} built ({sum(miles(r["coords"]) for r in routes):.1f} mi)')
+    if len(trusted) != len(routes):
+        on_road = sum(miles(r['coords']) for r in routes if not r.get('trust', True))
+        print(f'      of which {sum(miles(r["coords"]) for r in trusted):.1f} mi may satisfy '
+              f'the rules; {on_road:.1f} mi is on ordinary road and may not')
+    for reason, count in sorted(dropped.items(), key=lambda kv: -kv[1]):
+        print(f'      dropped {count:3} : {reason}')
     if years:
         stale = sum(1 for y in years if y < 2010)
         print(f'  traffic : {len(traffic):,} segments, counts {years[0]}-{years[-1]}, '

@@ -1,7 +1,7 @@
 # Importing a county's bike data
 
-How Island County was added, written so the next one is a procedure rather than
-a rediscovery. Clallam is next.
+How counties are added, written so each one is a procedure rather than a
+rediscovery. Island and Clallam are in; the rest follow the same four steps.
 
 ## Why counties at all
 
@@ -114,7 +114,7 @@ These are gates, not reports. Island needed every one of them:
 
 | check | why it exists |
 |---|---|
-| matched mileage ÷ published mileage between **1.0 and 1.5** | Below 1.0 the snap missed the network. Above 1.5 it is bleeding onto cross streets — the first run matched **72 mi against 33.5 mi published** before the bearing test existed; with it, 42 mi. |
+| matched mileage ÷ published mileage between **1.0 and 1.6** | Below 1.0 the snap missed the network. Above 1.6 it is bleeding onto cross streets — the first run matched **72 mi against 33.5 mi published** before the bearing test existed. Measure the *matched portion* of each way, not the whole way: the first version of this gate did the latter, reported 2.05, and failed healthy data. |
 | a road you can check by hand carries the flag | Deer Lake Road. If a named road you traced manually is not flagged, nothing else in the report means anything. |
 | no county line matched an OSM way more than 18 m away | The snap tolerance is a claim about centreline disagreement, not a licence to grab the next street. |
 | every distinct value of every mapped field is accounted for | An unmapped value must fail the build, never be silently dropped. |
@@ -176,3 +176,105 @@ they are.
 See `docs/SAFETY-MODEL.md` for what the resulting flag does to the verdict —
 in particular "Rung 8", where county trust and state trust are separate
 settings over separate facts.
+
+## Counties imported
+
+### Island — routes and traffic
+
+`Bridge_to_Boat_v2` layer 0 `BikeRoutes`, and `Average_Daily_Trips` for the road
+log. **33.5 mi built** (South and North Whidbey); 12 planned corridors dropped.
+4,346 traffic segments, counted 1977–2019.
+
+The bike layer carries **no per-feature bike attribute at all** — bikeability is
+asserted by the layer's name. Its only field is `Route`, with `(Planned)`
+suffixed onto the name of anything unbuilt.
+
+### Clallam — BUILT BUT NOT ENABLED
+
+The bundle exists and passes the gates; it is deliberately not loaded by the app
+and not baked into the archives, pending a decision recorded below.
+
+
+
+`Olympic_Discovery_Trail`, 111 segments, 157.9 mi, the whole Clallam stretch of
+the ODT. **115.1 mi kept, 27 segments dropped.**
+
+This is the county that shows why importing counties is worth it. OSM's ODT
+relation is one undifferentiated line; Clallam classifies its own route and says
+plainly which parts are not trail:
+
+| dropped | segments | why |
+|---|---|---|
+| `STATUS ~ adventure` | 11 | the gravel/backcountry variant |
+| `ODT_Use ~ no road bike` | 7 | the county's own words |
+| `STATUS ~ proposed / under construction` | 7 | not built |
+| `TRAIL_TYPE ~ adventure / natural tread` | 2 | 3-foot singletrack |
+
+`STATUS` also marks **55.8 mi "Complete – On Road"**. Those we keep — they are
+real, built, signed route — but they are ordinary road, and our ladder judges
+them as such. That is the point: the county stops the route layer claiming a
+highway connector is a trail, and then the shoulder and speed rules do their job.
+
+**Clallam publishes no traffic counts.** Checked its ArcGIS org (160 services)
+and its road layers (`Main_Roads`, `Other_Roads`): names and class only, no ADT,
+no shoulder, no speed. Counties differ in what they offer; the bundle records the
+half that exists rather than faking the other.
+
+Two schema additions came out of Clallam: `type` (`ROUTE_TYPE`) and `surface`
+(`SURFACE`) per route segment.
+
+### The open question Clallam exposed
+
+A county publishing a line is not the same as a county designating a bike route,
+and conflating the two nearly shipped something bad.
+
+Island's `BikeRoutes` is a designation: the county signs and maintains those
+roads for bicycles. Clallam's `Olympic_Discovery_Trail` is a **trail alignment** —
+it records where the ODT goes, and 55.8 mi of that is "follow the highway". Baked
+in as-is, the county flag landed on US 101, SR 112 and La Push Road, and with
+county trust on (the Randonneur default) the app would have reported:
+
+```
+La Push Road   50 mph, 0 ft shoulder   11.63 mi   -> passes your rules
+Highway 112    55 mph, 2 ft shoulder    6.48 mi   -> passes your rules
+US 101         60 mph, 0 ft shoulder    4.17 mi   -> passes your rules
+```
+
+A first attempt added a per-segment `trust` flag, keeping those miles in the
+bundle but withholding the override. That is worse than it sounds: they stay
+drawn as county bike route, so the map still paints a green designation ribbon
+along US 101 — the same false endorsement, just without the verdict change.
+
+The position that follows from "clearly bikeable routes only" is that a 60 mph
+shoulder-less highway is not one, and those segments should not be imported at
+all — `include_when` on the type field rather than `trust_when`. The cost is that
+the ODT appears in pieces, because the connectors between trail sections are not
+county bike route. That is arguably the honest picture: the gaps are real.
+
+Undecided, and not to be decided by inference:
+
+1. drop the on-road segments, or keep them drawn but untrusted;
+2. whether trust of any kind — county or state — should be barred above some
+   speed, which would also cover counties that publish no segment type at all
+   (Island trusts Wilkinson Rd at 50 mph and Bayview Rd at 45 with unknown
+   shoulders today).
+
+### What the gates said
+
+```
+Island County: 33.5 mi of built route
+Clallam County: 115.1 mi of built route
+  matched 170.8 mi of OSM ways  (ratio 1.15)
+  distinct named roads matched: 172
+  OK  hand-checked road present: Deer Lake Road
+  OK  hand-checked road present: Maxwelton Road
+  OK  hand-checked road present: Olympic Discovery Trail
+PASS
+```
+
+The first version of that gate measured **whole OSM ways** rather than the
+matched portion of each, reported a ratio of 2.05, and failed both counties on
+healthy data. An OSM way runs far past the stretch a route follows, so counting
+all of it roughly doubles the number. `matched_length_m()` walks the way and sums
+only the matching steps. A gate that measures the wrong thing is worse than no
+gate: it teaches you to ignore it.
