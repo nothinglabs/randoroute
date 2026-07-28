@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-27.413';
+const APP_VERSION = '2026-07-27.414';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -113,7 +113,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
-  freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1,
+  freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1.75,
   speedBalanced: 0.01, speedLow: 0.02,
   speedBelowDirect: 0.005, speedBelowBalanced: 0.015, speedBelowLow: 0.03,
   hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,

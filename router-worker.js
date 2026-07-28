@@ -367,7 +367,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
-  freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1,
+  freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1.75,
   speedBalanced: 0.01, speedLow: 0.02,
   speedBelowDirect: 0.005, speedBelowBalanced: 0.015, speedBelowLow: 0.03,
   hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
@@ -840,6 +840,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       cost *= sidewalkExposureMult(ei, mode, forward);
       if (sidewalkFallbackApplies(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
       if (fl & 4) cost *= activeWeights.freeway;
+      // Every other signal costs more as the profile gets friendlier, and this
+      // one must too: limitedLow sat at 1.0, so the low-stress profile applied
+      // no penalty at all to a bike-legal limited-access highway -- less than
+      // balanced. The friendliest route was the one most willing to put a rider
+      // on a highway shoulder.
       if (edgeLimited(ei, forward)) {
         cost *= activeWeights[mode === 'direct'
           ? 'limitedDirect' : mode === 'low' ? 'limitedLow' : 'limitedBalanced'];

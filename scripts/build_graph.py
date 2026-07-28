@@ -656,13 +656,16 @@ def lane_class(tags):
         return value if 0 < value <= LANES_COUNT_MASK else None
 
     total = count('lanes')
-    if total is None:
-        forward, backward = count('lanes:forward'), count('lanes:backward')
-        if forward is not None or backward is not None:
-            total = (forward or 0) + (backward or 0)
     # A tagged centre turn lane is the signature of a wide suburban arterial and
     # is worth keeping even where it inflates the through-lane count.
     center = bool(tags.get('lanes:both_ways') or tags.get('turn:lanes:both_ways'))
+    if total is None:
+        forward, backward = count('lanes:forward'), count('lanes:backward')
+        if forward is not None or backward is not None:
+            # ``lanes`` counts every marked lane including the centre one, so a
+            # fallback built from the directional counts has to add it back or
+            # a five-lane arterial reads as four. 22 ways statewide.
+            total = (forward or 0) + (backward or 0) + (1 if center else 0)
     if total is None and not center:
         return 0
     encoded = min(total or 0, LANES_COUNT_MASK)
