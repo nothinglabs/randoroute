@@ -23,9 +23,14 @@ assert f'ROUTE_BOUNDS = {ROUTE_BOUNDS!r}' in builder
 assert "src.ribbon ? 'round'" not in app
 assert "'line-cap': 'butt'" in app
 assert 'zRank: 2.5' in app
-assert "6, ['match', ['get', 't'], 'ncn', 4.3, 2.8]" in app
-assert "10, ['match', ['get', 't'], 'ncn', 8.4, 5.2]" in app
-assert "14, ['match', ['get', 't'], 'ncn', 14.4, 9]" in app
+# The designation ribbon is a duller relative of the bike-network lime, about a
+# quarter wider than it used to be: family with real infrastructure, without
+# claiming to be it.
+assert "const DESIGNATED_COLOR = '#6f9400'" in app
+assert "map.setPaintProperty(src.id, 'line-color', DESIGNATED_COLOR)" in app
+assert "6, ['match', ['get', 't'], 'ncn', 5.4, 3.5]" in app
+assert "10, ['match', ['get', 't'], 'ncn', 10.5, 6.5]" in app
+assert "14, ['match', ['get', 't'], 'ncn', 18, 11.3]" in app
 assert "map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.4))" in app
 with gzip.open(root / 'data/bikeroutes.geojson.gz', 'rt', encoding='utf-8') as handle:
     routes = json.load(handle)
