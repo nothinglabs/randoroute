@@ -306,7 +306,7 @@
     <section><h3>Options</h3><ul class="help-list">
       <li><b>Heavily prefer bike routes &amp; trails</b> — favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
       <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
-      <li><b>Trust designated bike routes</b> — lets a USBR or regional designation satisfy the shoulder rule. Speed limits and access restrictions still apply.</li>
+      <li><b>Trust designated bike routes</b> — lets a USBR, regional or county designation satisfy the shoulder rule. Speed limits and access restrictions still apply. The road details name the agency that signed the route, so you can see whose judgement you are trusting.</li>
       <li><b>Route over freeway as last resort (still shows as failing)</b> — a freeway always fails your rules. Off, routes never use one. On, one may be used as a heavily penalized last resort and is still reported as failing, so strict matching excludes it anyway.</li>
       <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided. Any use appears in Route Details.</li>
       <li><b>Strongly prefer paved surfaces</b> — favors paved roads and trails. Gravel and unpaved paths remain available, and missing surface data is not penalized.</li>
@@ -418,11 +418,13 @@
       <p class="help-lead">Toggling layers only changes what is drawn. Routing and street details always use all available data.</p>
       <section><h3>Data sources</h3><ul>
         <li><b>Designated routes (USBR &amp; regional)</b>: mapped bicycle-route relationships from OpenStreetMap. They provide route context, not proof of a bike facility.</li>
+        <li><b>County bike routes</b>: networks published by the county itself, which state data does not cover. A <b>built</b> route is preferred when routing, exactly like a USBR. A <b>planned</b> route is drawn faint and dotted and is never routed along — it is a proposal, not pavement. County road logs also supply the traffic counts shown on road details.</li>
         <li><b>WSDOT BLTS (state highways)</b>: always available in street details, with official state-road stress, shoulder and access context, legal speeds, and bike-facility data.</li>
         <li><b>OSM bike infrastructure</b>: mapped bike lanes, cycle tracks, shared-use paths, and other bicycle facilities. It distinguishes off-street paths from on-street facilities.</li>
         <li><b>Bikes prohibited (WSDOT)</b>: permanent state restriction data. These graph segments are excluded from routing.</li>
         <li><b>All roads (OpenStreetMap, estimated speeds)</b>: the connected road and path network, including names, direction, bicycle access, ferries, residential streets, and known route closures. Missing legal speeds use an estimate.</li>
       </ul></section>
+      <section><h3>Traffic counts</h3><p>Where a county publishes a road log, street details show its <b>average daily traffic</b>: the raw count, a 1&ndash;5 rating, and the year the count was taken. The scale is under 500 vehicles/day (1, very light), 500&ndash;1,500 (2, light), 1,500&ndash;3,000 (3, moderate), 3,000&ndash;8,000 (4, heavy), over 8,000 (5, very heavy).</p><p><b>This is shown for context only.</b> It does not change a road&rsquo;s safety verdict and does not change where you are routed. The count year matters: counties re-count a road when they get to it, so one log can hold a recent reading beside one from decades ago, and anything over ten years old is marked as dated. Coverage is county roads only &mdash; state highways are not included.</p></section>
       <section><h3>Elevation &amp; cautions</h3><p>Elevation supplies climb, descent, grade, and travel-time estimates. Routes try to avoid any climbs over 12%, but steep segments remain routable. The app also flags a <b>possible limited-visibility uphill curve</b> when road geometry, grade, speed, and facility data suggest extra care. It is a directional planning cue—not measured sight distance—and does not itself fail your rules.</p></section>
       <section><h3>How choices are made</h3><p>The app tests several time, safety, and road-preference combinations, removes near-duplicates, and shows up to five meaningfully different routes. Freeways are a last resort, legal limited-access highways are cautions, and permanent bicycle restrictions are impassable. A physical bike facility gets a stronger routing benefit than designation alone.</p><details class="technical-note"><summary>Technical data notes</summary><p>Missing speed limits use a road-class estimate, and the street popup identifies estimates. Roads tagged <b>bicycle=no</b> are excluded. A <b>bicycle=dismount</b> link is a walk-bike connection with a strong route cost and a map marker. Explicit MTB paths are excluded by default and can be enabled with a strong penalty. Higher OSM road classes add soft costs when no bike facility is recorded; this is a traffic-volume proxy, not a rule failure. Census urban-area context makes fast roads without bike space less acceptable in built-up areas; it is not traffic-count data. Explicit <code>sidewalk=no</code> adds a small soft cost.</p></details></section>
       <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. Missing data is not proof that a shoulder, facility, traffic condition, surface, crossing control, or sight line is absent. Outside a selected route, unpaved cross-slats appear only on bike-infrastructure and trail features that already include confirmed OSM surface data. A selected route may identify additional unpaved road segments. Short crossings are inferred from route geometry and do not confirm a signal or crosswalk. Use local signs and conditions; this is a planning aid, not a guarantee of safety.</p></section>
@@ -450,6 +452,7 @@
         <li><b>Red dashed</b> — Road that fails rules. A known rule conflict, freeway, or permanent bicycle restriction. <b>Failing lane segments pulse.</b> Permanent bicycle restrictions are never routed.</li>
         <li><b>Amber</b> — Caution: a bike-legal limited-access highway or allowed mountain-bike trail. It deserves extra judgment.</li>
         <li><b>Dashed light blue</b> — Designated bike route: a signed or mapped bicycle corridor. This is an additional overlay; it does not indicate a safety level.</li>
+        <li><b>Dashed dark green</b> — County bike route, signed by the county. Finely dotted and greyed means the county plans it but has not built it. Like any designation, it is an overlay and does not indicate a safety level.</li>
         <li><b>Cross-slats</b> — confirmed unpaved surface. This overlays the route safety color.</li>
       </ul></section>
     </div>
@@ -509,6 +512,7 @@
   <script src="vendor/fflate.js"></script>
   <script src="basemap-style.js"></script>
   <script src="safety-model.js"></script>
+  <script src="county-data.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

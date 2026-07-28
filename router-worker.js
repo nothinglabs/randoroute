@@ -13,7 +13,9 @@
 
 // The verdict ladder is defined once, in safety-model.js, and shared with the
 // app so a road cannot score differently here than it reads on the map.
-importScripts('safety-model.js');
+// County overlays (bike networks, traffic counts) are conflated onto the graph
+// at load by county-data.js, shared with the app for the same reason.
+importScripts('safety-model.js', 'county-data.js');
 
 let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
@@ -21,6 +23,11 @@ let eA, eB, eLen, eAsc, eDes, eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir;
 let eClass, eFacility, eOfficial, eSurface;
 // Format 10 only; null on a BGR9 graph.
 let eLanes, eLts;
+// County overlays, conflated at load rather than baked into the graph so that
+// adding a county ships one file instead of rebuilding the state.
+// eCountyRoute[i] = 1 when edge i carries a BUILT county bike route.
+let eCountyRoute = null, eCountyAdt = null, eCountyAdtYear = null;
+let countyStats = null;
 let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
@@ -335,9 +342,44 @@ function edgeFacts(i, forward) {
     sidewalk: official & EDGE_SIDEWALK ? 'present'
       : official & EDGE_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & EDGE_URBAN),
-    designated: !!(flags & 64),
+    // A county's own signed bike route counts as designated, exactly like a
+    // state or national one. The rider is told WHICH network signed it (see
+    // edgeCountyInfo) so the trust setting stays inspectable.
+    designated: !!(flags & 64) || !!(eCountyRoute && eCountyRoute[i]),
     stressRating: eLts ? (eLts[i] || null) : null,
   };
+}
+
+// Everything a county overlay knows about one edge, or null where no county
+// data covers it. Display only for traffic -- nothing here reaches the ladder
+// except the designated bit above.
+function edgeCountyInfo(i) {
+  if (!eCountyRoute) return null;
+  const adt = eCountyAdt[i] || 0;
+  const onRoute = !!eCountyRoute[i];
+  if (!onRoute && !adt) return null;
+  return {
+    route: onRoute,
+    adt: adt || null,
+    adtYear: eCountyAdtYear[i] || null,
+    county: countyStats && countyStats.counties.length === 1
+      ? countyStats.counties[0].county : null,
+  };
+}
+
+// Conflate county bundles onto the loaded graph. Called once, after the graph.
+function applyCountyBundles(bundles) {
+  const view = {
+    count: E,
+    alon: (i) => nodeLon[eA[i]], alat: (i) => nodeLat[eA[i]],
+    blon: (i) => nodeLon[eB[i]], blat: (i) => nodeLat[eB[i]],
+  };
+  const out = CountyData.conflate(bundles, view);
+  eCountyRoute = out.route;
+  eCountyAdt = out.adt;
+  eCountyAdtYear = out.adtYear;
+  countyStats = out.stats;
+  return out.stats;
 }
 
 function edgeLevel(i, rules, forward) {
@@ -874,10 +916,17 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // designation was 0.86, weaker than every facility weight; at 0.5 it
       // silently inverted, making a signed road with no infrastructure beat a
       // road with a painted bike lane (0.68).
+      //
+      // A county's own signed route earns the same bonus as a state one. It is
+      // the same kind of claim -- an agency put up signs and maintains them --
+      // and a rider who has asked to prefer signed routes means all of them.
+      // Only BUILT county routes are ever marked; a planned corridor carries no
+      // flag, so it cannot be preferred here (see county-data.js).
       if (!(fl & (32 | 4)) && !isDismountEdge(ei) && actualLevel < 4) {
+        const signed = (fl & 64) || (eCountyRoute && eCountyRoute[ei]);
         cost *= eFacility[ei]
           ? facilityPrefMult(eFacility[ei])
-          : ((fl & 64) ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
+          : (signed ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
       }
       if (prefResidential && !(fl & (8 | 32 | 4))
           && !edgeLimited(ei, forward) && isResidential(ei)) {
@@ -971,7 +1020,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     timeS += segTimeS;
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
-    if (eFlags[ei] & 64) desigM += eLen[ei];
+    if ((eFlags[ei] & 64) || (eCountyRoute && eCountyRoute[ei])) desigM += eLen[ei];
     if (eFacility[ei] >= 1) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
@@ -1008,6 +1057,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
       lts: eLts ? eLts[ei] : 0,
+      county: edgeCountyInfo(ei),
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei]), eLen[ei]),
@@ -1205,7 +1255,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
     seg.timeS = Math.round(segTimeS);
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
-    if (eFlags[ei] & 64) desigM += eLen[ei];
+    if ((eFlags[ei] & 64) || (eCountyRoute && eCountyRoute[ei])) desigM += eLen[ei];
     if (eFacility[ei] >= 1) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
@@ -1906,6 +1956,11 @@ onmessage = (ev) => {
       postMessage({ type: 'progress', phase: 'engine', detail: 'Reading the statewide routing map…' });
       loadGraph(m.buffer);
       postMessage({ type: 'ready', nodes: N, edges: E });
+    } else if (m.type === 'county') {
+      // County overlays arrive after the graph and are conflated in place, so
+      // a new county never means a new graph build.
+      postMessage({ type: 'progress', phase: 'engine', detail: 'Adding county road data…' });
+      postMessage({ type: 'county', stats: applyCountyBundles(m.bundles) });
     } else if (m.type === 'route') {
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];

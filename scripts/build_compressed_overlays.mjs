@@ -10,6 +10,9 @@ const overlays = [
   'data/bikeinfra.geojson',
   'data/bike_restrictions.geojson',
   'data/route_closures.geojson',
+  // County bundles: bike network plus traffic counts, one file per county.
+  // Built by scripts/build_county_data.py; conflated onto the graph at runtime.
+  'data/county/island.json',
 ];
 
 for (const relativePath of overlays) {

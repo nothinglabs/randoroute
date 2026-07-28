@@ -307,6 +307,15 @@ says, and prohibitions and freeways are never overridable.
 Anything trust overrides also stops being filtered by *Only show routes fully
 matching*, since the road then passes.
 
+**A county's signed route is a designated route here.** `facts.designated` is
+true for a national, state or county designation alike, so trusting signed routes
+trusts all of them, and the wide-road and shoulder overrides above apply to a
+county route exactly as they do to a USBR. That is intentional — each is an
+agency saying it signs and maintains this road for bicycles — but it does widen
+what one setting reaches, so the road card always names the agency that signed
+it. The rider can see whose judgement they are trusting. Only **built** county
+routes count; see "Adding another county".
+
 ### Rung 9/10 — the shoulder rung and its sidewalk fallback
 
 `allowSidewalkFallback` (default on) applies to **rung 10 only**. It fires when
@@ -354,6 +363,93 @@ state authority enriches it**:
 
 Urban/rural context comes from the US Census and is already national.
 
+## Adding another county
+
+A state DOT stops at the state highway system. Everything below it — the county
+roads most riding actually happens on — is invisible to WSDOT's layers no matter
+how well the county has mapped it. Deer Lake Road on Whidbey is the case that
+forced this: it carries Island County's own signed bike route and about 2,000
+vehicles a day, and the app knew none of it, because the road is not a state
+route.
+
+Counties publish their own data one at a time, in their own GIS orgs, with their
+own field names. So a county is **not** a build input to the statewide graph. It
+is a bundle, conflated onto the graph at load:
+
+```
+scripts/build_county_data.py  →  data/county/<slug>.json(.gz)
+county-data.js                →  conflates it onto edges at runtime
+```
+
+`graph2.bin.gz` never changes. Adding a county means adding one entry to
+`COUNTIES` in the build script and one path to `COUNTY_BUNDLES` in `app.js`.
+
+A bundle carries two things:
+
+| field | what it is | what it does |
+|---|---|---|
+| `routes[]` | the county's own bike network, each `existing` or `planned` | an **existing** route sets `facts.designated`, exactly like a USBR |
+| `traffic[]` | average daily traffic per road segment, with the year counted | **display only** — see below |
+
+**Planned routes are drawn and never ridden.** `county-data.js` marks only
+`existing` routes onto edges, so a planned corridor can never earn a routing
+preference. It appears on the map faint and dotted, and its card says so. A plan
+is not pavement.
+
+### How a county line becomes a graph edge
+
+County centrelines and OSM centrelines are drawn independently and sit a few
+metres apart on the same asphalt, so the match is geometric, with two gates:
+
+- within **18 m** of the edge's *span* (not its midpoint — graph edges average
+  ~190 m, so a midpoint test would miss most of a road), and
+- pointing the **same way within 40°**, either direction along it.
+
+The bearing gate is what stops a signed route from bleeding onto every side
+street that crosses it. Without it, Island County's 33.5 mi of built route
+matched 72 mi of graph; with it, 42 mi — the remaining overshoot being edges that
+straddle a route's endpoints, which is inherent to edge granularity and errs
+toward continuity rather than gaps.
+
+### County traffic counts
+
+Average daily traffic is shown on road and route cards as three things together:
+the raw count, a 1–5 rating, and **the year it was taken**.
+
+| rating | vehicles/day | label |
+|---|---|---|
+| 1 | under 500 | Very light |
+| 2 | 500–1,500 | Light |
+| 3 | 1,500–3,000 | Moderate |
+| 4 | 3,000–8,000 | Heavy |
+| 5 | over 8,000 | Very heavy |
+
+The breakpoints follow the volume thresholds used in bicycle level-of-traffic-
+stress work, where roughly 1,500 and 3,000 vehicles a day are the points at which
+a two-lane road stops feeling shared.
+
+**This rating does not enter the verdict and does not change routing.** Nothing
+in `safety-model.js` reads it. That is deliberate on two grounds: coverage is one
+county so far, and the counts are wildly uneven in age — of Island County's 4,346
+segments, 2,865 were counted before 2010, some as far back as 1977. A number that
+old cannot be allowed to fail a road. The card always prints the count year, and
+marks anything older than ten years as dated, because a count with no date on it
+is a guess presented as a measurement.
+
+If traffic volume is ever promoted into the verdict, it belongs in this document
+first, with a stated rule for what a missing or stale count means.
+
+### What a county bundle does not do
+
+The county road log also carries lane width, pavement width and a posted speed
+limit. Only the speed is surfaced, and only as a labelled county figure on the
+card — it does not override the speed the model uses. Nothing derives a shoulder
+from pavement width: on Deer Lake Road the county records "16 ft lanes, no
+shoulder", which almost certainly describes 32 ft of pavement with ~4–5 ft of
+usable edge per side, but that is an inference from a single entered value and
+the county has not asserted a shoulder. Inferring one would put a number the
+rider would read as measured behind a rule that fails roads.
+
 ## Which signals reach which decision
 
 Not every signal we hold is allowed to change a verdict. Several are
@@ -367,6 +463,9 @@ deliberately routing-only: they express preference, not safety.
 | bike facility type | yes | yes |
 | lanes | **yes** (rung 6) | yes |
 | official stress rating (LTS) | **caution only**, always on | yes |
+| county signed bike route (existing) | via rung 8, same as a state one | yes |
+| county signed bike route (planned) | **no** | **no** |
+| county traffic count (ADT) | **no** | **no** — display only |
 | OSM road class (secondary/primary/…) | no | yes |
 | surface, grade, curve hazard, sidewalk exposure | no | yes |
 
@@ -439,7 +538,7 @@ or illegal. Every multiplier applied to an edge, in `router-worker.js`:
 | WSDOT limited access | `limited*` | bike-legal but unpleasant |
 | mountain-bike trail | `mtbTrail` | opt-in, heavily penalised |
 | bike facility | `facility*` | separated lane or path can justify a detour |
-| signed bike route | `designated`, `strongDesignated` | a recommendation, worth a detour but not a fact about the road |
+| signed bike route (national, state **or county**) | `designated`, `strongDesignated` | a recommendation, worth a detour but not a fact about the road |
 | residential street | `residential` | quieter grid |
 | climbing | `climb*SecPerM`, `uphillFactor` | time model plus a preference |
 | turns | `turn*Sec` | fewer manoeuvres |
@@ -466,6 +565,11 @@ excluded 12,115 of the 17,097 edges where designation is the only preference,
 separately and stands on its own; withholding the bonus as well counted it
 twice, and priced a signed shoulder route along a state highway identically to
 any other highway — the case where a designation carries the most information.
+
+**A county's own signed route earns the same bonus as a state one.** It is the
+same kind of claim — an agency put up signs and maintains them — and a rider who
+asked to prefer signed routes meant all of them. Only routes the county marks
+`existing` are ever flagged, so a planned corridor is never preferred.
 
 Ferries, freeways and dismount edges are still excluded: there, a preference
 would erase an access cost rather than express a taste.

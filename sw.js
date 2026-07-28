@@ -10,7 +10,7 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v399'; // bump when app shell changes
+const VERSION = 'v400'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -22,6 +22,7 @@ const SHELL = [
   './route-details.html',
   './app.js',
   './safety-model.js',
+  './county-data.js',
   './basemap-style.js',
   './route-details.js?v=398',
   './router-worker.js',
@@ -48,6 +49,7 @@ const DATA = [
   './data/bikeinfra.geojson.gz',
   './data/bike_restrictions.geojson.gz',
   './data/route_closures.geojson.gz',
+  './data/county/island.json.gz',
   './data/roads.pmtiles',
   './data/basemap.pmtiles',
   './data/graph2.bin.gz',
@@ -58,6 +60,7 @@ const DATA = [
 // DATA_CACHE across UI releases.
 const ALWAYS_REFRESH_DATA = new Set([
   './data/bikeroutes.geojson.gz',
+  './data/county/island.json.gz',
 ]);
 
 self.addEventListener('install', (e) => {

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.421';
+const APP_VERSION = '2026-07-28.422';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -34,6 +34,13 @@ const BIKE_NETWORK_COLOR = '#b7c900';
 // The designated-route ribbon: same family as the bike-network lime, duller,
 // because a signed route is advice rather than infrastructure.
 const DESIGNATED_COLOR = '#6f9400';
+// County networks are designation too, so they stay in the same green family
+// as DESIGNATED_COLOR -- but cooler and darker, because "Island County signed
+// this" and "USBR signed this" are different claims and the rider should be
+// able to tell them apart at a glance. A planned corridor is greyed toward the
+// background: visible as an intention, never readable as a route.
+const COUNTY_ROUTE_COLOR = '#1f7a5a';
+const COUNTY_PLANNED_COLOR = '#7d9b91';
 const COLORS = {
   1: '#168ad1', // passes rules
   2: '#168ad1', // passes rules (internal levels remain distinct for routing)
@@ -184,9 +191,22 @@ const display = {
   failRules: true,
   caution: true,
   designated: true,
+  countyRoutes: true,
   unpavedBackground: true,
   bikesProhibited: true,
 };
+
+/* --------------------------------------------------- county road data
+ * WSDOT's layers stop at the state highway system, so a county road has no
+ * shoulder, no posted speed and no stress rating no matter how well the county
+ * has mapped it. Counties publish their own data one at a time, so each arrives
+ * as a self-describing bundle (scripts/build_county_data.py) that is conflated
+ * onto the routing graph at load rather than baked into it. Adding a county is
+ * one more entry here.
+ */
+const COUNTY_BUNDLES = ['data/county/island.json.gz'];
+const countyBundles = [];
+let countyLookup = null;   // point index, for roads tapped on the map
 
 // The background network is useful context, but the planned route needs to
 // remain visually dominant.  Keep every non-route line at a consistent visual
@@ -395,6 +415,21 @@ const SOURCES = [
     // below hard bicycle restrictions and known closures.
     zRank: 2.5,
     ribbon: true,  // informational overlay: identical in both display modes
+    enabled: true,
+    fc: null,
+    loading: false,
+  },
+  {
+    id: 'countyroutes',
+    name: 'County bike routes',
+    // No url: the geometry comes out of the county bundles, which also carry
+    // the traffic counts the road cards read.
+    county: true,
+    scorer: scoreRouteOverlay,
+    // Just above the state/national ribbon, so where a county route and a USBR
+    // share a road the local designation is the one you see.
+    zRank: 2.6,
+    ribbon: true,
     enabled: true,
     fc: null,
     loading: false,
@@ -1547,6 +1582,7 @@ function updateVisibility(src) {
   // reliably throughout wheel, trackpad, touch, keyboard, and programmatic
   // zoom gestures.
   const on = src.id === 'routes' ? display.designated
+    : src.id === 'countyroutes' ? display.countyRoutes
     : src.id === 'restrict' ? display.bikesProhibited
     : true;
   if (src.closure) {
@@ -1609,6 +1645,33 @@ function applyDisplayMode(src) {
     if (map.getLayer(src.id + '__line')) {
       map.setPaintProperty(src.id + '__line', 'line-opacity', backgroundLineOpacity(0.92));
     }
+    updateVisibility(src);
+    return;
+  }
+  if (src.id === 'countyroutes') {
+    // A county's own signed network, in the same designation family as the
+    // state ribbon but a distinctly cooler green, because the two answer
+    // different questions and a rider needs to see which agency signed a road.
+    //
+    // A PLANNED corridor is a proposal, not pavement. It is drawn thinner, far
+    // fainter and finely dotted, and it carries no routing preference at all
+    // (county-data.js never marks it), so it can never be mistaken for a route
+    // you can ride today.
+    map.setFilter(src.id, null);
+    map.setPaintProperty(src.id, 'line-color',
+      ['match', ['get', 'status'], 'planned', COUNTY_PLANNED_COLOR, COUNTY_ROUTE_COLOR]);
+    map.setPaintProperty(src.id, 'line-width',
+      ['interpolate', ['linear'], ['zoom'],
+        6, ['match', ['get', 'status'], 'planned', 2, 4],
+        10, ['match', ['get', 'status'], 'planned', 3.6, 7.5],
+        14, ['match', ['get', 'status'], 'planned', 5, 13]]);
+    map.setPaintProperty(src.id, 'line-opacity',
+      ['match', ['get', 'status'], 'planned',
+        backgroundLineOpacity(0.26), backgroundLineOpacity(0.52)]);
+    map.setPaintProperty(src.id, 'line-dasharray',
+      ['match', ['get', 'status'], 'planned', ['literal', [1, 2]], ['literal', [3, 1.2]]]);
+    if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
+    if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
     updateVisibility(src);
     return;
   }
@@ -1846,6 +1909,36 @@ async function jsonAssetResponse(response, url) {
   return JSON.parse(window.fflate.strFromU8(window.fflate.gunzipSync(bytes)));
 }
 
+/* Fetch every county bundle once. The bundles do three jobs from one file:
+ * they draw the county's bike network, they answer "what does the county say
+ * about this spot?" for a tapped road, and they are handed to the router, which
+ * conflates them onto the graph so a county route can earn a routing bonus.
+ * A county that fails to load is skipped rather than failing the others. */
+async function loadCountyBundles() {
+  for (const url of COUNTY_BUNDLES) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      countyBundles.push(await jsonAssetResponse(res, url));
+    } catch (e) {
+      console.warn(`County data unavailable (${url}):`, e.message);
+    }
+  }
+  countyLookup = countyBundles.length ? CountyData.lookupIndex(countyBundles) : null;
+  sendCountyDataToRouter();
+  return CountyData.routesToGeoJSON(countyBundles);
+}
+
+// The router only accepts county data after the graph is in memory, and the
+// two load independently, so whichever finishes last performs the handoff.
+let countySentToRouter = false;
+function sendCountyDataToRouter() {
+  if (countySentToRouter || !countyBundles.length) return;
+  if (!routing.worker || !routing.ready) return;
+  countySentToRouter = true;
+  routing.worker.postMessage({ type: 'county', bundles: countyBundles });
+}
+
 async function loadSource(src) {
   if (src.loaded || src.loading) return;
   if (src.vector) {
@@ -1860,7 +1953,9 @@ async function loadSource(src) {
   setStatus(`Loading ${src.name}…`, true);
   try {
     let fc;
-    if (src.urlPattern) {
+    if (src.county) {
+      fc = await loadCountyBundles();
+    } else if (src.urlPattern) {
       // Multi-part source: fetch data/<name>-1.geojson, -2, ... until a part is missing.
       const features = [];
       for (let i = 1; i <= 20; i++) {
@@ -4622,6 +4717,8 @@ function onRouterMessage(ev) {
     routing.ready = true;
     routing.loading = false;
     routing.pendingRoute = false;
+    // County overlays may already be waiting; the graph had to land first.
+    sendCountyDataToRouter();
     updateArmButtons();
     setRouteStatus(routing.start && routing.end ? 'Routing…' : '');
     if (!(routing.start && routing.end)) {
@@ -4630,6 +4727,11 @@ function onRouterMessage(ev) {
     }
     renderRouteCard(routing.last);
     computeRoute();
+  } else if (m.type === 'county') {
+    // The router re-costs county-signed roads, so any route already on screen
+    // was found without them.
+    const total = (m.stats?.counties || []).reduce((n, c) => n + c.routeEdges, 0);
+    if (total) computeRoute();
   } else if (m.type === 'route-options') {
     if (m.id !== routing.reqId) return;
     const remaining = 400 - (performance.now() - routing.compareStartedAt);
@@ -6729,6 +6831,48 @@ const readoutEl = document.getElementById('readout');
 // published 1-4 Level of Traffic Stress scale. Adding another state means
 // filling that field from their DOT and changing this label. Nothing else.
 const STRESS_AGENCY = 'WSDOT';
+
+/* County road data on a card.
+ *
+ * Two shapes reach here: a tap resolves against the bundles by position, and a
+ * route segment carries what the router conflated onto its edge. Both normalise
+ * to { county, route, routeName, adt, adtYear, countySpeed } so the rider reads
+ * the same sentences either way.
+ *
+ * Traffic is reported as the count, its rating, AND the year it was taken. The
+ * year is not decoration: counties re-count a road when they get to it, so one
+ * log holds a 2017 reading beside a 1977 one, and a number with no date on it
+ * would be a guess presented as a measurement.
+ */
+function countyDetailRows(info) {
+  if (!info) return [];
+  const rows = [];
+  const agency = info.county ? `${info.county} County` : 'County';
+  if (info.route) {
+    rows.push(['County bike route', info.routeName
+      ? `${info.routeName} — signed by ${agency}`
+      : `Signed by ${agency}`]);
+  }
+  const rating = CountyData.trafficLevel(info.adt);
+  if (rating) {
+    const stale = CountyData.trafficIsStale(info.adtYear);
+    const counted = info.adtYear
+      ? `counted ${info.adtYear}${stale ? ', now dated' : ''}`
+      : 'count year unrecorded';
+    rows.push(['Traffic', `${info.adt.toLocaleString()} vehicles/day — `
+      + `${rating.level} of 5, ${rating.label.toLowerCase()} (${counted})`]);
+    rows.push(['Traffic note', `${rating.blurb} ${agency} average daily traffic. `
+      + 'Shown for context only: it does not affect the verdict above or where you are routed.']);
+  }
+  if (info.countySpeed) rows.push(['County speed limit', `${info.countySpeed} mph (${agency} road log)`]);
+  return rows;
+}
+
+// What the county says about a point on the map, for a tapped road.
+function countyInfoAt(lngLat) {
+  if (!countyLookup || !lngLat) return null;
+  return CountyData.lookup(countyLookup, lngLat.lng, lngLat.lat);
+}
 // Headline form, e.g. "Caution — limited-access highway".
 const CAUTION_CAUSE_NAME = {
   'limited-access': 'limited-access highway',
@@ -7105,6 +7249,13 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
         ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
         ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
+        // The router conflated these onto the edge; resolve the route's NAME
+        // from the bundles, which the edge does not carry.
+        ...countyDetailRows(p.county && {
+          ...p.county,
+          routeName: p.county.route ? countyInfoAt(lngLat)?.route : null,
+          countySpeed: countyInfoAt(lngLat)?.countySpeed || null,
+        }),
         ['Grade', routeSegmentGrade(p.gradePct, p.lenM)],
         ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
@@ -7119,6 +7270,27 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Curve caution', p.hazard ? `Possible limited-visibility uphill curve${p.gradePct ? ` (${p.gradePct}% net grade)` : ''}; inferred, not measured sight distance` : null],
       ];
     }
+  } else if (src.id === 'countyroutes') {
+    const planned = p.status === 'planned';
+    title = planned ? 'Planned county bike route' : 'County bike route';
+    rows = [
+      ['Name', p.n || null],
+      ['Signed by', p.county ? `${p.county} County, ${p.state}` : null],
+      ['Status', planned ? 'Planned — not built yet' : 'Existing — built and signed'],
+      // This ribbon sits above the road, so tapping a county-signed street hits
+      // the route rather than the road underneath. The county's own road-log
+      // data therefore has to appear here as well, or signing a road would hide
+      // the numbers that describe it. `route: false` because the rows above
+      // already say which route this is.
+      ...countyDetailRows(countyInfoAt(lngLat) && { ...countyInfoAt(lngLat), route: false }),
+      ['Map symbol', planned
+        ? 'Faint dotted green — a corridor the county intends to build'
+        : 'Dashed green — a route the county signs and maintains'],
+      ['Routing', planned
+        ? 'None. A planned route is a proposal, so it earns no preference and you will never be sent along it for being one.'
+        : 'Preferred exactly like a state or national designated route. If you have "Trust designated bike routes" on, that trust applies here too.'],
+      ['Note', 'A designation is not a bike facility. The scored road underneath still supplies the safety verdict and takes visual precedence.'],
+    ];
   } else if (src.id === 'routes') {
     title = 'Designated bike route';
     const isUSBR = p.t === 'ncn' && /^\d+$/.test(p.r || '');
@@ -7165,6 +7337,8 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       // streets, lane count is the thing that still tells them apart.
       ['Lanes', p.ln ? `${p.ln}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
       ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
+      // Off the state highway system this is often the only inventory there is.
+      ...countyDetailRows(countyInfoAt(lngLat)),
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
       ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
@@ -7496,6 +7670,7 @@ function buildSourcePanel() {
     ['failRules', 'Road fails safety rules', 'fails'],
     ['caution', 'Caution — ride with care', 'caution'],
     ['designated', 'Designated bike route', 'designated'],
+    ['countyRoutes', 'County bike route', 'county-route'],
     ['unpavedBackground', 'Unpaved surfaces', 'unpaved'],
     ['bikesProhibited', 'Bikes prohibited', 'prohibited'],
   ];
