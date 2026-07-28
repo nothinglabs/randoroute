@@ -4,7 +4,7 @@
 
   const FONT_STACK = 'Klokantech Noto Sans Regular';
   const CONTEXT_URL = 'pmtiles://data/basemap.pmtiles?v=5';
-  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=19';
+  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=20';
   let protocol = null;
 
   // A PMTiles tile is a byte-range read. On a phone one of those can fail for

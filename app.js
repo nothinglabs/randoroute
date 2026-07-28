@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.428';
+const APP_VERSION = '2026-07-28.429';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -87,6 +87,10 @@ const DEFAULT_RULES = Object.freeze({
   // exists -- the Olympic Discovery Trail's includes long highway connectors --
   // while a county designation says the county signs and maintains that road.
   // A rider may reasonably trust one and not the other.
+  // Both off in every preset. A county publishing a bike route is not a claim
+  // that the road is safe: Clallam's ODT alignment runs 58.8 mi along ordinary
+  // road, including US 101 at 60 mph with no shoulder. Trusting a designation of
+  // either kind is something a rider opts into, having seen what it covers.
   vettedBikeRoutes: false,      // national / state / regional (OSM route relations)
   vettedCountyRoutes: false,    // a county's own signed network
   minShoulder: 4,       // ft; below this a road gets penalized
@@ -209,7 +213,7 @@ const display = {
  * onto the routing graph at load rather than baked into it. Adding a county is
  * one more entry here.
  */
-const COUNTY_BUNDLES = ['data/county/island.json.gz'];
+const COUNTY_BUNDLES = ['data/county/island.json.gz', 'data/county/clallam.json.gz'];
 const countyBundles = [];
 let countyLookup = null;   // point index, for roads tapped on the map
 
@@ -493,7 +497,7 @@ const SOURCES = [
     // The ?v= busts stale HTTP range caches when the tiles are rebuilt —
     // PMTiles bypasses the service worker, and mixing old/new byte ranges
     // silently breaks tile decoding. Bump alongside the sw.js VERSION.
-    vector: 'pmtiles://data/roads.pmtiles?v=19',
+    vector: 'pmtiles://data/roads.pmtiles?v=20',
     // The local basemap already opens this archive for its street geometry and
     // labels. Reuse that MapLibre source for safety coloring and hit testing so
     // iOS does not decode or retain the same vector tiles twice.
@@ -667,11 +671,7 @@ const ROUTING_PRESETS = Object.freeze([
     label: 'The Randonneur',
     audience: 'For long-distance riders who want the widest range of route choices.',
     blurb: 'Widest choice of routes; looser rules, fewer roads flagged as failing.',
-    // The one preset that takes a county at its word: a rider covering long
-    // distances benefits most from the local agency's own signed network, and
-    // has the experience to judge it. State route relations stay untrusted
-    // everywhere -- they are mapped corridors, not a maintenance commitment.
-    rules: Object.freeze({ ...DEFAULT_RULES, vettedCountyRoutes: true }),
+    rules: Object.freeze({ ...DEFAULT_RULES }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
   {

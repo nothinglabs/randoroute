@@ -82,13 +82,6 @@ COUNTIES = {
             'name_field': 'LABEL',
             'type_field': 'ROUTE_TYPE',
             'surface_field': 'SURFACE',
-            # A county saying "our signed route runs along here" is not the same
-            # as "this is bike infrastructure", and Clallam says which is which.
-            # Only the segments it calls trail or bike lane may satisfy the
-            # shoulder and lane rules; where it says the route is on ordinary
-            # road, the road is judged as a road. Without this, county trust
-            # turned US 101 at 60 mph with no shoulder into a pass.
-            'trust_when': r'trail|bike lane',
             # Clallam classifies its own route honestly, which is the reason to
             # import it: OSM's relation flattens 158 miles of trail, highway
             # connector and backcountry tread into one line. These drops are our
@@ -258,11 +251,6 @@ def build_routes(spec):
             value = str(props.get(spec['type_field']) or '').strip()
             if value:
                 entry_extra['type'] = value
-            # `trust` gates the safety override, not whether we carry the
-            # segment. An on-road stretch stays part of the route and is still
-            # drawn; it just does not get to waive the rules that judge a road.
-            if spec.get('trust_when'):
-                entry_extra['trust'] = bool(re.search(spec['trust_when'], value, re.I))
         if spec.get('surface_field'):
             value = str(props.get(spec['surface_field']) or '').strip()
             if value:
@@ -357,12 +345,7 @@ def main():
 
     years = sorted(s['year'] for s in traffic if s.get('year'))
     print(f'\n  {out}  ({os.path.getsize(out) / 1024:.0f} KB)')
-    trusted = [r for r in routes if r.get('trust', True)]
     print(f'  routes  : {len(routes)} built ({sum(miles(r["coords"]) for r in routes):.1f} mi)')
-    if len(trusted) != len(routes):
-        on_road = sum(miles(r['coords']) for r in routes if not r.get('trust', True))
-        print(f'      of which {sum(miles(r["coords"]) for r in trusted):.1f} mi may satisfy '
-              f'the rules; {on_road:.1f} mi is on ordinary road and may not')
     for reason, count in sorted(dropped.items(), key=lambda kv: -kv[1]):
         print(f'      dropped {count:3} : {reason}')
     if years:

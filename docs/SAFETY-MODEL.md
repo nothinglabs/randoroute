@@ -321,8 +321,11 @@ signed network) are separate facts, gated by `vettedBikeRoutes` and
 stand in for the other, because they are different claims: a route relation says
 somebody mapped a corridor — the Olympic Discovery Trail's includes long highway
 connectors — while a county designation says the county installed the signs and
-maintains the road. Both default off; `vettedCountyRoutes` is on for The
-Randonneur alone. The road card names the agency either way.
+maintains the road. **Both default off, in every preset.** A county publishing a bike route is not a
+claim that the road is safe: Clallam's Olympic Discovery Trail alignment runs
+58.8 mi along ordinary road, including US 101 at 60 mph with no shoulder. Trust
+of either kind is opt-in, and the road card names the agency so a rider can see
+what they are agreeing to.
 
 On Island County's 323 signed edges, turning county trust on moves **106 edges
 (14.6 mi)** off a failure: 102 from fail to pass and 4 from caution to pass.

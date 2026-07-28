@@ -189,10 +189,7 @@ The bike layer carries **no per-feature bike attribute at all** — bikeability 
 asserted by the layer's name. Its only field is `Route`, with `(Planned)`
 suffixed onto the name of anything unbuilt.
 
-### Clallam — BUILT BUT NOT ENABLED
-
-The bundle exists and passes the gates; it is deliberately not loaded by the app
-and not baked into the archives, pending a decision recorded below.
+### Clallam — routes only
 
 
 
@@ -217,47 +214,43 @@ highway connector is a trail, and then the shoulder and speed rules do their job
 
 **Clallam publishes no traffic counts.** Checked its ArcGIS org (160 services)
 and its road layers (`Main_Roads`, `Other_Roads`): names and class only, no ADT,
-no shoulder, no speed. Counties differ in what they offer; the bundle records the
-half that exists rather than faking the other.
+no shoulder, no speed. WSDOT's statewide AADT layer does not fill the gap either
+— 4,815 sections, every one a state route. Counties differ in what they offer;
+the bundle records the half that exists rather than faking the other.
 
-Two schema additions came out of Clallam: `type` (`ROUTE_TYPE`) and `surface`
-(`SURFACE`) per route segment.
+(WSDOT's AADT layer is still worth having one day: it would give traffic counts
+for US 101, SR 112, SR 525 and every other state highway, statewide, which no
+county publishes. Out of scope here.)
 
-### The open question Clallam exposed
+Two schema additions came out of Clallam, both display-only: `type`
+(`ROUTE_TYPE`) and `surface` (`SURFACE`) per route segment.
 
-A county publishing a line is not the same as a county designating a bike route,
-and conflating the two nearly shipped something bad.
+### What Clallam settled
 
-Island's `BikeRoutes` is a designation: the county signs and maintains those
-roads for bicycles. Clallam's `Olympic_Discovery_Trail` is a **trail alignment** —
-it records where the ODT goes, and 55.8 mi of that is "follow the highway". Baked
-in as-is, the county flag landed on US 101, SR 112 and La Push Road, and with
-county trust on (the Randonneur default) the app would have reported:
+A county publishing a bike route is not a claim that the road is safe. Island's
+`BikeRoutes` is a designation — the county signs and maintains those roads.
+Clallam's `Olympic_Discovery_Trail` is a **trail alignment**: it records where the
+ODT goes, and 58.8 mi of that is ordinary road, including US 101 at 60 mph with
+no shoulder and SR 112 at 55 mph with two feet.
 
-```
-La Push Road   50 mph, 0 ft shoulder   11.63 mi   -> passes your rules
-Highway 112    55 mph, 2 ft shoulder    6.48 mi   -> passes your rules
-US 101         60 mph, 0 ft shoulder    4.17 mi   -> passes your rules
-```
+So **county trust is off in every preset**, like state trust. Both are opt-in,
+and a rider who turns one on can see on the card which agency signed what.
 
-A first attempt added a per-segment `trust` flag, keeping those miles in the
-bundle but withholding the override. That is worse than it sounds: they stay
-drawn as county bike route, so the map still paints a green designation ribbon
-along US 101 — the same false endorsement, just without the verdict change.
+That decision is what keeps the import cheap. The alternative was per-segment
+massaging — reading each county's classification to decide which parts may
+satisfy the rules — and that does not scale to a state's worth of counties, each
+with its own vocabulary. Import what the county publishes, minus our stated
+refusals; let the ladder judge the road; let the rider opt into trust.
 
-The position that follows from "clearly bikeable routes only" is that a 60 mph
-shoulder-less highway is not one, and those segments should not be imported at
-all — `include_when` on the type field rather than `trust_when`. The cost is that
-the ODT appears in pieces, because the connectors between trail sections are not
-county bike route. That is arguably the honest picture: the gaps are real.
+Two things are worth knowing about how much the counties differ:
 
-Undecided, and not to be decided by inference:
-
-1. drop the on-road segments, or keep them drawn but untrusted;
-2. whether trust of any kind — county or state — should be barred above some
-   speed, which would also cover counties that publish no segment type at all
-   (Island trusts Wilkinson Rd at 50 mph and Bayview Rd at 45 with unknown
-   shoulders today).
+- **Clallam labels its own route.** `ROUTE_TYPE` splits it into Paved Trail
+  (42.8 mi), Bike Lane (8.1), Paved Road (58.8), Unpaved Road (5.4). If we ever
+  do want that split, the county hands it to us.
+- **Island labels nothing.** No type field at all, and **97% of its mileage has
+  an unknown shoulder**. Whidbey works out because those roads are 35–40 mph, but
+  that is our inference from OSM speeds, not something Island told us. Island is
+  the county we know least about, not the most.
 
 ### What the gates said
 

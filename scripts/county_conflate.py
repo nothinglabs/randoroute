@@ -51,14 +51,7 @@ def load_bundles(paths):
     for path in paths or []:
         with open(path, encoding='utf-8') as handle:
             bundle = json.load(handle)
-        # `trust` absent means the county gave no per-segment type, so the whole
-        # network counts. Where a county does classify its own route, only the
-        # segments it calls bike infrastructure may satisfy the rider's rules:
-        # Clallam's ODT alignment includes "follow US 101 for four miles", and a
-        # wayfinding line along a 60 mph highway is not a designation that the
-        # highway is ridable. See docs/county-data-import.md.
-        routes = [r for r in bundle.get('routes', [])
-                  if r.get('status') == 'existing' and r.get('trust', True)]
+        routes = [r for r in bundle.get('routes', []) if r.get('status') == 'existing']
         if routes:
             bundles.append({'county': bundle.get('county'), 'routes': routes})
     return bundles

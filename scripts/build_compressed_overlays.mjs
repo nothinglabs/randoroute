@@ -13,6 +13,7 @@ const overlays = [
   // County bundles: bike network plus traffic counts, one file per county.
   // Built by scripts/build_county_data.py; conflated onto the graph at runtime.
   'data/county/island.json',
+  'data/county/clallam.json',
 ];
 
 for (const relativePath of overlays) {
