@@ -5,7 +5,7 @@ How a road gets its colour, its verdict, and its routing cost.
 ## The principle this file exists to enforce
 
 **A setting that sounds objective must have an objective consequence.** If a
-control is named like a fact or a permission — *Trust designated bike routes*,
+control is named like a fact or a permission — *Assume designated bike routes safe*,
 *Minimum shoulder if no bike lane*, *Route over freeway as last resort (still shows as failing)*
 — then changing it must change the verdict shown on the map in a defined,
 reproducible way. A control that sounds like it governs safety but only nudges
@@ -283,7 +283,14 @@ value from a wider range clamps to the top stop, which reads as No limit.
 
 ### Rung 8 — what trusting a signed route does and does not override
 
-`vettedBikeRoutes` sits at rung 8, so its reach is decided entirely by that
+`vettedBikeRoutes` is **off by default**, in every preset. A designation says an
+agency signed a road, not that the road is good: signed-route relations include
+long highway connectors with no shoulder, and turning this on silently waives the
+shoulder and lane rules on them. A rider who wants that can ask for it; nobody
+should get it by accident. The name says so — *Assume designated bike routes safe
+(not all are!)*.
+
+When it is on, it sits at rung 8, so its reach is decided entirely by that
 position. It overrides only the failures *below* it:
 
 | failure | rung | overridden by trust |
@@ -391,6 +398,12 @@ A bundle carries two things:
 | `routes[]` | the county's own bike network, each `existing` or `planned` | an **existing** route sets `facts.designated`, exactly like a USBR |
 | `traffic[]` | average daily traffic per road segment, with the year counted | **display only** — resolved by position on the card, never conflated onto an edge |
 
+**The county ribbon answers no taps.** It is drawn above the road it follows, so
+making it hit-testable meant tapping a county-signed street returned three lines
+about the designation and hid everything about the road. The road is the
+substance; the designation is a property of it, and appears on the road and route
+cards as extra rows resolved by position.
+
 **Planned routes are drawn and never ridden.** `county-data.js` marks only
 `existing` routes onto edges, so a planned corridor can never earn a routing
 preference. It appears on the map faint and dotted, and its card says so. A plan
@@ -492,7 +505,7 @@ fact, so that is what rung 6 gates on.
 | `maxLanesNoShoulder` | Lanes needing a shoulder or bike lane | rung 6 threshold | also `wideRoad*` cost |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 9 exists at all | ×1.9 / ×3.8 / ×8.0 |
-| `vettedBikeRoutes` | Trust designated bike routes | rung 8 exists at all | via the verdict |
+| `vettedBikeRoutes` | Assume designated bike routes safe (not all are!) | rung 8 exists at all | via the verdict |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
 | `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |

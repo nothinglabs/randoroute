@@ -345,23 +345,10 @@ function edgeFacts(i, forward) {
       : official & EDGE_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & EDGE_URBAN),
     // A county's own signed bike route counts as designated, exactly like a
-    // state or national one. The rider is told WHICH network signed it (see
-    // edgeCountyInfo) so the trust setting stays inspectable.
+    // state or national one. The card names the signing agency (resolved by
+    // position from the bundle) so the trust setting stays inspectable.
     designated: !!(flags & 64) || !!(eCountyRoute && eCountyRoute[i]),
     stressRating: eLts ? (eLts[i] || null) : null,
-  };
-}
-
-// What the county overlay says about one edge: whether the router treated it as
-// a signed county route. The rest of the county's data (traffic, its posted
-// speed, the route's name) is resolved by position on the card, from the same
-// bundles, so it never has to be carried per edge.
-function edgeCountyInfo(i) {
-  if (!eCountyRoute || !eCountyRoute[i]) return null;
-  return {
-    route: true,
-    county: countyStats && countyStats.counties.length === 1
-      ? countyStats.counties[0].county : null,
   };
 }
 
@@ -1049,7 +1036,6 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
       lts: eLts ? eLts[ei] : 0,
-      county: edgeCountyInfo(ei),
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei]), eLen[ei]),
@@ -1950,8 +1936,10 @@ onmessage = (ev) => {
       postMessage({ type: 'ready', nodes: N, edges: E });
     } else if (m.type === 'county') {
       // County overlays arrive after the graph and are conflated in place, so
-      // a new county never means a new graph build.
-      postMessage({ type: 'progress', phase: 'engine', detail: 'Adding county road data…' });
+      // a new county never means a new graph build. No progress message: this
+      // takes tens of milliseconds, and the one that used to be posted here
+      // arrived after 'ready' had already dismissed the loading toast, so
+      // nothing was left to clear it and it sat on screen forever.
       postMessage({ type: 'county', stats: applyCountyBundles(m.bundles) });
     } else if (m.type === 'route') {
       useWeights(m.weights);
