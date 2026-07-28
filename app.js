@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.426';
+const APP_VERSION = '2026-07-28.427';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -81,11 +81,13 @@ const DEFAULT_RULES = Object.freeze({
   allowFreeways: true,
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
   preferPaved: true,    // strongly prefer pavement by default; unpaved remains available
-  // Off by default. A designation says an agency signed a road, not that the
-  // road is good: the Olympic Discovery Trail's relation includes long highway
-  // connectors, and trusting it silently waives the shoulder and lane rules on
-  // them. A rider who wants that can say so; nobody should get it by accident.
-  vettedBikeRoutes: false,
+  // Both off by default, and separate because they are different claims by
+  // different agencies. A state or national designation says a route relation
+  // exists -- the Olympic Discovery Trail's includes long highway connectors --
+  // while a county designation says the county signs and maintains that road.
+  // A rider may reasonably trust one and not the other.
+  vettedBikeRoutes: false,      // national / state / regional (OSM route relations)
+  vettedCountyRoutes: false,    // a county's own signed network
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
   urbanMaxSpeedNoShoulder: 30, // mph; at/below this an urban road passes without a shoulder
@@ -398,6 +400,7 @@ function factsOf(n) {
     sidewalk: n.sidewalk || null,
     urban: !!n.urban,
     designated: !!n.desig,
+    countyDesignated: !!n.countyDesig,
     stressRating: n.stressRating == null ? null : Number(n.stressRating),
   };
 }
@@ -656,7 +659,11 @@ const ROUTING_PRESETS = Object.freeze([
     label: 'The Randonneur',
     audience: 'For long-distance riders who want the widest range of route choices.',
     blurb: 'Widest choice of routes; looser rules, fewer roads flagged as failing.',
-    rules: Object.freeze({ ...DEFAULT_RULES }),
+    // The one preset that takes a county at its word: a rider covering long
+    // distances benefits most from the local agency's own signed network, and
+    // has the experience to judge it. State route relations stay untrusted
+    // everywhere -- they are mapped corridors, not a maintenance commitment.
+    rules: Object.freeze({ ...DEFAULT_RULES, vettedCountyRoutes: true }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
   {
@@ -2264,6 +2271,7 @@ function routeSegFacts(s) {
       : official & OFFICIAL_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & OFFICIAL_URBAN),
     designated: !!(flags & 64),
+    countyDesignated: !!s.countyDesig,
     stressRating: s.lts || null,
   };
 }
@@ -7053,7 +7061,8 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
   else if (!shUnknown) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
   else if (rules.unknownShoulderZero) met.push(`shoulder unknown — treated as 0 ft, meets your ${rules.minShoulder} ft minimum`);
   else met.push('shoulder unknown (not held against it)');
-  if (n.desig && !rules.vettedBikeRoutes) met.push('designated route, checked against your rules');
+  if (n.desig && !rules.vettedBikeRoutes) met.push('state bike route, checked against your rules');
+  if (n.countyDesig && !rules.vettedCountyRoutes) met.push('county bike route, checked against your rules');
   if (spd != null)
     met.push(rules.noUpperLimit
       ? `${spdTxt} — no speed cutoff set`
@@ -7651,8 +7660,8 @@ function buildSourcePanel() {
     ['meetRules', 'Road meets safety rules', 'meets'],
     ['failRules', 'Road fails safety rules', 'fails'],
     ['caution', 'Caution — ride with care', 'caution'],
-    ['designated', 'Designated bike route', 'designated'],
-    ['countyRoutes', 'County bike route', 'county-route'],
+    ['designated', 'State & national bike routes', 'designated'],
+    ['countyRoutes', 'County bike routes', 'county-route'],
     ['unpavedBackground', 'Unpaved surfaces', 'unpaved'],
     ['bikesProhibited', 'Bikes prohibited', 'prohibited'],
   ];
@@ -7792,8 +7801,11 @@ function presetInfoRows(preset) {
     ['Sidewalk fallback', presetRules.allowSidewalkFallback
       ? 'Mapped sidewalks can satisfy the shoulder rule, but are strongly deprioritized and called out as a concern.'
       : 'Mapped sidewalks do not satisfy the shoulder rule.'],
-    ['Designated bike routes', presetRules.vettedBikeRoutes
-      ? 'Can satisfy the shoulder rule; speed and access limits still apply.'
+    ['State bike routes', presetRules.vettedBikeRoutes
+      ? 'Can satisfy the shoulder and lane rules; speed and access limits still apply.'
+      : 'Must meet the normal speed and shoulder rules.'],
+    ['County bike routes', presetRules.vettedCountyRoutes
+      ? 'Can satisfy the shoulder and lane rules; speed and access limits still apply.'
       : 'Must meet the normal speed and shoulder rules.'],
     ['Freeways', presetRules.allowFreeways
       ? 'Always fail your rules. Bike-legal segments may still be routed over as a last resort,'
@@ -7976,7 +7988,8 @@ function buildRulesPanel() {
   };
   check('prefDesig', 'Heavily prefer bike routes & trails', routing, updateRoutePreference);
   check('prefResidential', 'Prefer residential streets', routing, updateRoutePreference);
-  check('vettedBikeRoutes', 'Assume designated bike routes safe (not all are!)');
+  check('vettedBikeRoutes', 'Assume state bike routes safe (not all are!)');
+  check('vettedCountyRoutes', 'Assume county bike routes safe (not all are!)');
   check('allowFreeways', 'Route over freeway as last resort (still shows as failing)');
   check('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
     // This option affects both eligibility in the graph and the OSM layer's

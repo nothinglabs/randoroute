@@ -344,10 +344,10 @@ function edgeFacts(i, forward) {
     sidewalk: official & EDGE_SIDEWALK ? 'present'
       : official & EDGE_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & EDGE_URBAN),
-    // A county's own signed bike route counts as designated, exactly like a
-    // state or national one. The card names the signing agency (resolved by
-    // position from the bundle) so the trust setting stays inspectable.
-    designated: !!(flags & 64) || !!(eCountyRoute && eCountyRoute[i]),
+    designated: !!(flags & 64),
+    // Kept separate from the line above: the rider trusts state routes and
+    // county routes independently, so the model must be able to tell them apart.
+    countyDesignated: !!(eCountyRoute && eCountyRoute[i]),
     stressRating: eLts ? (eLts[i] || null) : null,
   };
 }
@@ -1036,6 +1036,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
       lts: eLts ? eLts[ei] : 0,
+      countyDesig: !!(eCountyRoute && eCountyRoute[ei]),
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei]), eLen[ei]),

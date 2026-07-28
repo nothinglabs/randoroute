@@ -314,14 +314,31 @@ says, and prohibitions and freeways are never overridable.
 Anything trust overrides also stops being filtered by *Only show routes fully
 matching*, since the road then passes.
 
-**A county's signed route is a designated route here.** `facts.designated` is
-true for a national, state or county designation alike, so trusting signed routes
-trusts all of them, and the wide-road and shoulder overrides above apply to a
-county route exactly as they do to a USBR. That is intentional — each is an
-agency saying it signs and maintains this road for bicycles — but it does widen
-what one setting reaches, so the road card always names the agency that signed
-it. The rider can see whose judgement they are trusting. Only **built** county
-routes count; see "Adding another county".
+**Two designations, two settings.** `facts.designated` (a mapped national /
+state / regional route relation) and `facts.countyDesignated` (a county's own
+signed network) are separate facts, gated by `vettedBikeRoutes` and
+`vettedCountyRoutes`. Either alone is enough to trust a road, and neither may
+stand in for the other, because they are different claims: a route relation says
+somebody mapped a corridor — the Olympic Discovery Trail's includes long highway
+connectors — while a county designation says the county installed the signs and
+maintains the road. Both default off; `vettedCountyRoutes` is on for The
+Randonneur alone. The road card names the agency either way.
+
+On Island County's 323 signed edges, turning county trust on moves **106 edges
+(14.6 mi)** off a failure: 102 from fail to pass and 4 from caution to pass.
+
+**Known gap: the map's road colouring cannot apply county trust.** Road colours
+come from `roadLevelExpr`, evaluated by the renderer against vector-tile
+properties, and the tiles carry the state designation (`g`) but not the county
+one — county data is a runtime overlay conflated in the worker, which is what
+lets a county be added without rebuilding `roads.pmtiles`. So with
+`vettedCountyRoutes` on, those 14.6 miles route as passing and read as passing on
+their cards, while the map still draws them failing. That violates
+"the verdict must be traceable on the card" in spirit: the card and the map
+disagree. Closing it means either putting the county flag into the road tiles
+(a `roads.pmtiles` rebuild, and county data stops being purely additive) or
+carrying it as feature state set per rendered tile. Until then this is a stated
+limitation, not an accident.
 
 ### Rung 9/10 — the shoulder rung and its sidewalk fallback
 
@@ -506,7 +523,8 @@ fact, so that is what rung 6 gates on.
 | `maxLanesNoShoulder` | Lanes needing a shoulder or bike lane | rung 6 threshold | also `wideRoad*` cost |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 9 exists at all | ×1.9 / ×3.8 / ×8.0 |
-| `vettedBikeRoutes` | Assume designated bike routes safe (not all are!) | rung 8 exists at all | via the verdict |
+| `vettedBikeRoutes` | Assume state bike routes safe (not all are!) | rung 8, for `facts.designated` | via the verdict |
+| `vettedCountyRoutes` | Assume county bike routes safe (not all are!) | rung 8, for `facts.countyDesignated` | via the verdict |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
 | `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |

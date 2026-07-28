@@ -29,7 +29,8 @@
  *   lanes           every car lane including turn lanes, 0 if untagged
  *   sidewalk        'present' | 'absent' | null
  *   urban           inside a Census urban area
- *   designated      on a signed USBR / regional bike route
+ *   designated      on a signed national / state / regional bike route
+ *   countyDesignated on a county's own signed bike network
  *   stressRating    official Level of Traffic Stress, 1-4, or null if unrated
  * }
  *
@@ -162,7 +163,11 @@
     // trust rung above this one, because that would also pre-empt the slow-road
     // rung and cost a slow signed street its level 1. The speed cap above stays
     // absolute, so "Never allow roads faster than" still means what it says.
-    var trusted = !!(facts.designated && rules.vettedBikeRoutes);
+    // Two designations, two settings. A national or state route and a county
+    // route are different claims by different agencies, and a rider may well
+    // trust one and not the other -- so neither may stand in for the other.
+    var trusted = !!(facts.designated && rules.vettedBikeRoutes)
+      || !!(facts.countyDesignated && rules.vettedCountyRoutes);
     if (wideRoadNeedsSpace(facts, shoulder, rules) && !trusted) return out(4, 'wide-road');
     if (facts.speed != null && facts.speed <= noShoulderMaxSpeed(facts, rules)) {
       return out(softCaution ? 3 : 1, 'slow-road');
