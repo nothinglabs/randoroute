@@ -291,13 +291,21 @@ position. It overrides only the failures *below* it:
 | bikes prohibited | 1 | no |
 | freeway | 3 | no |
 | speed cap | 5 | no |
-| wide road | 6 | no |
+| **wide road** | 6 | **yes** |
 | **shoulder under the minimum** | **10** | **yes** |
 
-That matches the control's own description — it satisfies the shoulder rule,
-while speed limits and access restrictions still apply. Moving the rung is the
-only way to change what it reaches, and anything it overrides also stops being
-filtered by *Only show routes fully matching*, since the road then passes.
+The wide-road failure is overridden in place rather than by moving the rung
+above it, because moving it would also pre-empt the slow-road rung and cost a
+slow signed street its level 1. A route signed along a wide road is one somebody
+decided was ridable, so the lane count is describing a road already vouched for.
+556 signed edges (16 mi) are rescued: 289 to a pass, 267 to a caution they pick
+up from a limited-access or high-stress modifier.
+
+The speed cap stays absolute so *"Never allow roads faster than"* means what it
+says, and prohibitions and freeways are never overridable.
+
+Anything trust overrides also stops being filtered by *Only show routes fully
+matching*, since the road then passes.
 
 ### Rung 9/10 — the shoulder rung and its sidewalk fallback
 

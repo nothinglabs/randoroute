@@ -154,11 +154,20 @@
     }
     // Before the slow-road rung: Seattle signed every arterial at 25 mph in
     // 2020, so speed alone would pass a five-lane road outright.
-    if (wideRoadNeedsSpace(facts, shoulder, rules)) return out(4, 'wide-road');
+    //
+    // Trusting designated bike routes overrides this one failure. The rider has
+    // said they accept signed corridors, and a route signed along a wide road is
+    // one somebody decided was ridable; the lane count is then describing a road
+    // that is already vouched for. It is done here rather than by moving the
+    // trust rung above this one, because that would also pre-empt the slow-road
+    // rung and cost a slow signed street its level 1. The speed cap above stays
+    // absolute, so "Never allow roads faster than" still means what it says.
+    var trusted = !!(facts.designated && rules.vettedBikeRoutes);
+    if (wideRoadNeedsSpace(facts, shoulder, rules) && !trusted) return out(4, 'wide-road');
     if (facts.speed != null && facts.speed <= noShoulderMaxSpeed(facts, rules)) {
       return out(softCaution ? 3 : 1, 'slow-road');
     }
-    if (facts.designated && rules.vettedBikeRoutes) return out(softCaution ? 3 : 2, 'designated');
+    if (trusted) return out(softCaution ? 3 : 2, 'designated');
 
     if (shoulderFails(facts, shoulder, rules)) {
       if (sidewalkFallbackApplies(facts, shoulder, rules)) {

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.418';
+const APP_VERSION = '2026-07-28.419';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -515,10 +515,13 @@ function roadLevelExpr() {
     const ridingSpace = ['any',
       ['>=', ['coalesce', ['get', 'ft'], 0], 2],
       ['>=', ['coalesce', ['get', 'w'], -1], rules.minShoulder]];
-    cases.push(['all',
+    // Trusting designated routes overrides this failure; mirrors safety-model.js.
+    const wideRoad = ['all',
       ['>=', ['coalesce', ['get', 'ln'], 0], rules.maxLanesNoShoulder],
       ['>', ['coalesce', ['get', 'ln'], 0], 0],
-      ['!', ridingSpace]], 4);
+      ['!', ridingSpace]];
+    cases.push(rules.vettedBikeRoutes
+      ? ['all', wideRoad, ['!=', ['get', 'g'], 1]] : wideRoad, 4);
   }
   cases.push(['all', hasSpeed, ['<=', spd, noShoulderMax]], passLevel);  // slow = comfortable
   if (rules.vettedBikeRoutes)

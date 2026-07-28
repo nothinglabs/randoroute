@@ -41,7 +41,8 @@ assert.ok(context.steepUphillAvoidanceS(4, true, 'low') > at14,
 assert.equal(context.steepUphillAvoidanceS(4, true, 'direct'), at14,
   'direct routes should not discount a physically unbikeable steep grade');
 const routeLoop = worker.indexOf('let cost = step * mult;');
-const facilityBonus = worker.indexOf('const facilityBonus =', routeLoop);
+// The bonus block: a facility if the edge has one, designation otherwise.
+const facilityBonus = worker.indexOf('cost *= eFacility[ei]', routeLoop);
 const steepCost = worker.indexOf('cost += steepUphillAvoidanceS(ei, forward, mode);', routeLoop);
 const turnCost = worker.indexOf('cost += turnPreferenceS(', routeLoop);
 assert.ok(facilityBonus > routeLoop && steepCost > facilityBonus && turnCost > steepCost,
