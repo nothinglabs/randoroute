@@ -418,7 +418,7 @@
       <p class="help-lead">Toggling layers only changes what is drawn. Routing and street details always use all available data.</p>
       <section><h3>Data sources</h3><ul>
         <li><b>Designated routes (USBR &amp; regional)</b>: mapped bicycle-route relationships from OpenStreetMap. They provide route context, not proof of a bike facility.</li>
-        <li><b>County bike routes</b>: networks published by the county itself, which state data does not cover. A <b>built</b> route is preferred when routing, exactly like a USBR. A <b>planned</b> route is drawn faint and dotted and is never routed along — it is a proposal, not pavement. County road logs also supply the traffic counts shown on road details.</li>
+        <li><b>County bike routes</b>: networks published by the county itself, which state data does not cover. Only routes the county has actually built are included; planned corridors are left out. They are preferred when routing, exactly like a USBR. County road logs also supply the traffic counts shown on road details.</li>
         <li><b>WSDOT BLTS (state highways)</b>: always available in street details, with official state-road stress, shoulder and access context, legal speeds, and bike-facility data.</li>
         <li><b>OSM bike infrastructure</b>: mapped bike lanes, cycle tracks, shared-use paths, and other bicycle facilities. It distinguishes off-street paths from on-street facilities.</li>
         <li><b>Bikes prohibited (WSDOT)</b>: permanent state restriction data. These graph segments are excluded from routing.</li>
@@ -452,7 +452,7 @@
         <li><b>Red dashed</b> — Road that fails rules. A known rule conflict, freeway, or permanent bicycle restriction. <b>Failing lane segments pulse.</b> Permanent bicycle restrictions are never routed.</li>
         <li><b>Amber</b> — Caution: a bike-legal limited-access highway or allowed mountain-bike trail. It deserves extra judgment.</li>
         <li><b>Dashed light blue</b> — Designated bike route: a signed or mapped bicycle corridor. This is an additional overlay; it does not indicate a safety level.</li>
-        <li><b>Dashed dark green</b> — County bike route, signed by the county. Finely dotted and greyed means the county plans it but has not built it. Like any designation, it is an overlay and does not indicate a safety level.</li>
+        <li><b>Dashed dark green</b> &mdash; County bike route, signed and maintained by the county. Like any designation, it is an overlay and does not indicate a safety level.</li>
         <li><b>Cross-slats</b> — confirmed unpaved surface. This overlays the route safety color.</li>
       </ul></section>
     </div>

@@ -460,8 +460,15 @@
     return { type: 'FeatureCollection', features: features };
   }
 
+  // The built network's bounding box, padded, or null. Callers use it to ask
+  // "could this county possibly matter here?" before doing real work.
+  function bounds(bundles, padM) {
+    return bundleBounds(bundles || [], padM || 0, true);
+  }
+
   root.CountyData = {
     SNAP_M: SNAP_M,
+    bounds: bounds,
     TAP_M: TAP_M,
     TRAFFIC_LEVELS: TRAFFIC_LEVELS,
     STALE_AFTER_YEARS: STALE_AFTER_YEARS,

@@ -172,29 +172,36 @@ def miles(coords):
 
 
 def build_routes(spec):
-    """The county's bike network, split into built and planned."""
+    """The county's BUILT bike network.
+
+    Planned corridors are dropped here rather than shipped and hidden. Island
+    County's plan is 49 miles against 33 miles of built route, so drawing it
+    put more provisional line on the map than real network and simply read as
+    noise. A corridor nobody can ride yet is not route data.
+    """
     name_field = spec['name_field']
     marker = spec.get('planned_marker')
     features = fetch_layer(spec['url'], ['OBJECTID', name_field])
-    routes = []
+    routes, skipped = [], 0
     for feature in features:
         raw = (feature.get('properties') or {}).get(name_field)
         name = str(raw or '').strip()
-        planned = bool(marker and marker.lower() in name.lower())
-        if planned:
-            name = name.replace(marker, '').strip()
+        if marker and marker.lower() in name.lower():
+            skipped += 1
+            continue
         for line in lines_of(feature.get('geometry')):
             coords = round_coords(simplify(line))
             if len(coords) < 2:
                 continue
             routes.append({
                 'name': name or 'County bike route',
-                # A route that is not built yet is drawn and never ridden.
-                'status': 'planned' if planned else 'existing',
+                # Kept in the schema: another county may publish a status field
+                # of its own, and the readers already require 'existing'.
+                'status': 'existing',
                 'network': 'lcn',       # local cycling network, matching OSM's vocabulary
                 'coords': coords,
             })
-    return routes
+    return routes, skipped
 
 
 def build_traffic(spec):
@@ -244,7 +251,7 @@ def main():
 
     print(f'{spec["name"]} County, {spec["state"]}', flush=True)
     print('  bike network …', flush=True)
-    routes = build_routes(spec['routes'])
+    routes, skipped_planned = build_routes(spec['routes'])
     print('  traffic counts …', flush=True)
     traffic = build_traffic(spec['traffic'])
 
@@ -263,12 +270,10 @@ def main():
     with open(out, 'w', encoding='utf-8') as handle:
         json.dump(bundle, handle, separators=(',', ':'))
 
-    built = [r for r in routes if r['status'] == 'existing']
-    planned = [r for r in routes if r['status'] == 'planned']
     years = sorted(s['year'] for s in traffic if s.get('year'))
     print(f'\n  {out}  ({os.path.getsize(out) / 1024:.0f} KB)')
-    print(f'  routes  : {len(built)} built ({sum(miles(r["coords"]) for r in built):.1f} mi), '
-          f'{len(planned)} planned ({sum(miles(r["coords"]) for r in planned):.1f} mi)')
+    print(f'  routes  : {len(routes)} built ({sum(miles(r["coords"]) for r in routes):.1f} mi); '
+          f'{skipped_planned} planned corridors skipped')
     if years:
         stale = sum(1 for y in years if y < 2010)
         print(f'  traffic : {len(traffic):,} segments, counts {years[0]}-{years[-1]}, '

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.425';
+const APP_VERSION = '2026-07-28.426';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -37,10 +37,8 @@ const DESIGNATED_COLOR = '#6f9400';
 // County networks are designation too, so they stay in the same green family
 // as DESIGNATED_COLOR -- but cooler and darker, because "Island County signed
 // this" and "USBR signed this" are different claims and the rider should be
-// able to tell them apart at a glance. A planned corridor is greyed toward the
-// background: visible as an intention, never readable as a route.
+// able to tell them apart at a glance.
 const COUNTY_ROUTE_COLOR = '#1f7a5a';
-const COUNTY_PLANNED_COLOR = '#7d9b91';
 const COLORS = {
   1: '#168ad1', // passes rules
   2: '#168ad1', // passes rules (internal levels remain distinct for routing)
@@ -1661,23 +1659,16 @@ function applyDisplayMode(src) {
     // state ribbon but a distinctly cooler green, because the two answer
     // different questions and a rider needs to see which agency signed a road.
     //
-    // A PLANNED corridor is a proposal, not pavement. It is drawn thinner, far
-    // fainter and finely dotted, and it carries no routing preference at all
-    // (county-data.js never marks it), so it can never be mistaken for a route
-    // you can ride today.
+    // Only BUILT routes exist here. Island County's planned corridors were 49
+    // miles against 33 of real network, so drawing them put more provisional
+    // line on the map than actual route and read as noise; they are dropped at
+    // build time rather than shipped and de-emphasised.
     map.setFilter(src.id, null);
-    map.setPaintProperty(src.id, 'line-color',
-      ['match', ['get', 'status'], 'planned', COUNTY_PLANNED_COLOR, COUNTY_ROUTE_COLOR]);
+    map.setPaintProperty(src.id, 'line-color', COUNTY_ROUTE_COLOR);
     map.setPaintProperty(src.id, 'line-width',
-      ['interpolate', ['linear'], ['zoom'],
-        6, ['match', ['get', 'status'], 'planned', 2, 4],
-        10, ['match', ['get', 'status'], 'planned', 3.6, 7.5],
-        14, ['match', ['get', 'status'], 'planned', 5, 13]]);
-    map.setPaintProperty(src.id, 'line-opacity',
-      ['match', ['get', 'status'], 'planned',
-        backgroundLineOpacity(0.26), backgroundLineOpacity(0.52)]);
-    map.setPaintProperty(src.id, 'line-dasharray',
-      ['match', ['get', 'status'], 'planned', ['literal', [1, 2]], ['literal', [3, 1.2]]]);
+      ['interpolate', ['linear'], ['zoom'], 6, 4, 10, 7.5, 14, 13]);
+    map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.52));
+    map.setPaintProperty(src.id, 'line-dasharray', [3, 1.2]);
     if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
     if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
     updateVisibility(src);
@@ -1935,6 +1926,20 @@ async function loadCountyBundles() {
   countyLookup = countyBundles.length ? CountyData.lookupIndex(countyBundles) : null;
   sendCountyDataToRouter();
   return CountyData.routesToGeoJSON(countyBundles);
+}
+
+// Whether the route on screen passes through any county we hold data for.
+// The check is a bounding box against the built network, padded generously: it
+// only has to be cheap and never wrongly say "no".
+function routeTouchesCounty() {
+  const box = countyBundles.length && CountyData.bounds(countyBundles, 2000);
+  if (!box) return false;
+  const coords = routing.last?.coords;
+  const points = coords && coords.length
+    ? coords
+    : [routing.start, routing.end, ...routing.vias.map((v) => v.pt)].filter(Boolean);
+  return points.some(([lon, lat]) => lon >= box.minLon && lon <= box.maxLon
+    && lat >= box.minLat && lat <= box.maxLat);
 }
 
 // The router only accepts county data after the graph is in memory, and the
@@ -4736,11 +4741,14 @@ function onRouterMessage(ev) {
     renderRouteCard(routing.last);
     computeRoute();
   } else if (m.type === 'county') {
-    // The router re-costs county-signed roads, so any route already on screen
-    // was found without them.
+    // County data re-costs county-signed roads, so a route found before it
+    // landed may now be stale -- but only if it goes anywhere near the county.
+    // Recomputing unconditionally meant every launch with a saved route routed
+    // twice: once when the graph was ready, once a moment later. A ride in
+    // Seattle is untouched by Island County and must not pay for it.
     const total = (m.stats?.counties || []).reduce((n, c) => n + c.routeEdges, 0);
-    if (total && routing.start && routing.end) computeRoute();
-    else if (!(routing.start && routing.end)) showRouteActionToast('');
+    if (!(routing.start && routing.end)) showRouteActionToast('');
+    else if (total && routeTouchesCounty()) computeRoute();
   } else if (m.type === 'route-options') {
     if (m.id !== routing.reqId) return;
     const remaining = 400 - (performance.now() - routing.compareStartedAt);

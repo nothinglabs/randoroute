@@ -395,7 +395,7 @@ A bundle carries two things:
 
 | field | what it is | what it does |
 |---|---|---|
-| `routes[]` | the county's own bike network, each `existing` or `planned` | an **existing** route sets `facts.designated`, exactly like a USBR |
+| `routes[]` | the county's **built** bike network | sets `facts.designated`, exactly like a USBR |
 | `traffic[]` | average daily traffic per road segment, with the year counted | **display only** — resolved by position on the card, never conflated onto an edge |
 
 **The county ribbon answers no taps.** It is drawn above the road it follows, so
@@ -404,10 +404,12 @@ about the designation and hid everything about the road. The road is the
 substance; the designation is a property of it, and appears on the road and route
 cards as extra rows resolved by position.
 
-**Planned routes are drawn and never ridden.** `county-data.js` marks only
-`existing` routes onto edges, so a planned corridor can never earn a routing
-preference. It appears on the map faint and dotted, and its card says so. A plan
-is not pavement.
+**Planned corridors are not shipped.** Island County publishes 49 miles of
+planned route against 33 miles of built network, so drawing them put more
+provisional line on the map than real route and simply read as noise. They are
+dropped in `scripts/build_county_data.py`. The `status` field stays in the
+schema and both readers still require `existing`, so a county that publishes
+status differently cannot leak a plan into routing.
 
 ### How a county line becomes a graph edge
 
@@ -483,8 +485,7 @@ deliberately routing-only: they express preference, not safety.
 | bike facility type | yes | yes |
 | lanes | **yes** (rung 6) | yes |
 | official stress rating (LTS) | **caution only**, always on | yes |
-| county signed bike route (existing) | via rung 8, same as a state one | yes |
-| county signed bike route (planned) | **no** | **no** |
+| county signed bike route | via rung 8, same as a state one | yes |
 | county traffic count (ADT) | **no** | **no** — display only |
 | OSM road class (secondary/primary/…) | no | yes |
 | surface, grade, curve hazard, sidewalk exposure | no | yes |
@@ -589,7 +590,7 @@ any other highway — the case where a designation carries the most information.
 **A county's own signed route earns the same bonus as a state one.** It is the
 same kind of claim — an agency put up signs and maintains them — and a rider who
 asked to prefer signed routes meant all of them. Only routes the county marks
-`existing` are ever flagged, so a planned corridor is never preferred.
+`existing` are ever flagged, and planned corridors are not shipped at all.
 
 Ferries, freeways and dismount edges are still excluded: there, a preference
 would erase an access cost rather than express a taste.
