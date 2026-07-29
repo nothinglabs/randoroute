@@ -1,10 +1,22 @@
-# Current plan: the CRAB county road log
+# Current plan: statewide road measurements
 
 **Status: agreed direction, not started.** This is the live plan; when it is
 implemented the mechanics move into `docs/SAFETY-MODEL.md` and this file
 becomes history.
 
-## What it is
+## Three sources, one build step
+
+| # | source | what it gives us | coverage |
+|---|---|---|---|
+| 1 | **CRAB certified county road log** | derived bail-out space, `ADTVolume` + `ADTYear` | 39,187 mi |
+| 2 | **WSDOT Non-State Highway Functional Class** | `FHWARoadwayOwnerCode` (city vs county), FHWA functional class | ~19,000 mi |
+| 3 | **WSDOT Traffic Counts (AADT)** | current counts on state routes | ~7,000 mi |
+
+Together they take the app from measuring 9.2% of the network to roughly half.
+Source 1 is the bulk of it and most of this document; sources 2 and 3 are
+smaller adapters covering what 1 cannot reach.
+
+## Source 1: the CRAB county road log
 
 One ArcGIS endpoint, published by the County Road Administration Board:
 
@@ -161,7 +173,7 @@ matching half of the picture:
 54% are 2010 or newer, only 24% are 2018 or newer, and 12.6% are from 1977-78.
 A count is not usable without its year next to it.
 
-## The city-street gap, and what closes it
+## Source 2: the city-street gap, and what closes it
 
 The road log covers **county-maintained** roads: 39,187 miles. Every Pierce
 County row for the Puyallup corridor terminates at `at CITY LIMITS: PUYALLUP`,
@@ -218,6 +230,35 @@ Coverage limit: the layer carries **federally classified roads only** —
 arterials and collectors, roughly 19,000 miles against 39,187 miles of county
 road. Local residential streets are absent, which is tolerable, since those are
 the ones that are calm by default.
+
+### Import rules for this layer
+
+Decoded from the live service, not assumed.
+
+**Drop `FederalFunctionalClassCode` 92-96 outright.** These are `Proposed`
+classifications — "Proposed Urban Minor Arterial", "Proposed Rural Major
+Collector" — roads not built, or not yet reclassified. This is Island County's
+`(Planned)` bike routes in a new costume, and it caused a real bug last time.
+Keep codes 1-7 only.
+
+**`WSDOTUrbanRuralCode` is not a boolean.** It is an urban-area identifier:
+1-67 name individual urbanized areas (1 is by far the largest), and **98 and 99
+mean rural**. It therefore says *which* urban area, which is more than our own
+flag knows.
+
+**Our Census flag stays the sole driver of the urban speed rule.** WSDOT's
+urban/rural distinction descends from the FHWA *adjusted* urban area boundary:
+the Census line, smoothed to follow identifiable features and extended to
+capture growth, then approved by FHWA — the boundary that federal-aid
+eligibility keys off, and generally larger than the Census one. Ours is a
+straight point-in-polygon against Census 2020 (`is_urban_edge`). Same ancestry,
+different line, disagreeing at the fringes. Do not let a second definition of
+"urban" in through the back door; take the class code and treat the
+`Urban`/`Rural` prefix in the description as descriptive text.
+
+`WSDOTUrbanRuralCode` is still worth carrying as a cross-check: where it says
+rural and our Census polygon says urban, that disagreement should be visible
+rather than silently resolved.
 
 ## Speed limits: deliberately not imported
 
