@@ -30,7 +30,8 @@ function constOf(name) {
 /* ------------------------------------------- a stub map that records paint */
 const paint = new Map();
 const ticks = [];
-const LAYERS = new Set(['route-fail', 'route-fail-casing', 'route-caution']);
+const LAYERS = new Set(['route-fail', 'route-fail-casing',
+  'route-caution', 'route-caution-casing']);
 const ctx = {
   Math,
   map: {
@@ -52,11 +53,21 @@ vm.runInContext([
 const step = (n = 1) => {
   for (let i = 0; i < n; i++) for (const t of ticks) if (t) t.fn();
 };
-const seen = (key, n) => {
-  const values = new Set();
-  for (let i = 0; i < n; i++) { step(); values.add(paint.get(key)); }
+// Sample several keys over ONE window. Sampling them in sequence walks the sine
+// further each time, so a later key can be measured across a narrow slice of the
+// cycle and look far stiffer than it is.
+const sample = (keys, n) => {
+  const values = Object.fromEntries(keys.map((k) => [k, []]));
+  for (let i = 0; i < n; i++) {
+    step();
+    for (const k of keys) values[k].push(Number(paint.get(k)));
+  }
   return values;
 };
+const spread = (xs) => Math.max(...xs) - Math.min(...xs);
+// A full throb is half a sine period; sample a whole one so a min and a max are
+// both actually visited.
+const FULL_THROB = Math.ceil(Math.PI / 0.165) + 1;
 
 /* ------------------------------------------------------------ the checks */
 const render = (...styles) => ({ features: styles.map((style) => ({ properties: { style } })) });
@@ -69,25 +80,34 @@ assert.equal(ticks.filter(Boolean).length, 0,
 // A caution alone animates the caution layer and leaves the failure layer be.
 ctx.setRoutePulses(render('pass', 'caution'));
 assert.equal(ticks.filter(Boolean).length, 1, 'a caution alone starts one timer');
-const cautionWidths = seen('route-caution|line-width', 12);
-assert.ok(cautionWidths.size > 4,
-  `caution width should flicker, saw ${cautionWidths.size} distinct values`);
+const cautionSample = sample(
+  ['route-caution|line-width', 'route-caution-casing|line-width'], FULL_THROB);
+const widths = cautionSample['route-caution|line-width'];
+assert.ok(new Set(widths).size > 4,
+  `caution width should flicker, saw ${new Set(widths).size} distinct values`);
 assert.equal(paint.get('route-fail|line-width'), undefined,
   'a route with no failing segment should not touch the failure layer');
 
-const widths = [...cautionWidths].map(Number);
 assert.ok(Math.min(...widths) >= 6.5, 'caution never shrinks below its resting width');
-assert.ok(Math.max(...widths) <= 7.6, 'the caution flicker stays subtle');
-console.log(`PASS  caution flickers ${Math.min(...widths)}-${Math.max(...widths).toFixed(2)} px`);
+// A 1.1 px flicker with no casing was invisible on a phone. This has to move.
+const cautionAmp = spread(widths);
+assert.ok(cautionAmp >= 2.0,
+  `the caution flicker must be pronounced, moved only ${cautionAmp.toFixed(2)} px`);
+const casing = cautionSample['route-caution-casing|line-width'];
+assert.ok(spread(casing) >= 2.0,
+  'the caution casing pulses with the line, which is what makes it read');
+console.log(`PASS  caution flickers ${Math.min(...widths).toFixed(2)}-${Math.max(...widths).toFixed(2)} px`
+  + ` with a ${Math.min(...casing).toFixed(1)}-${Math.max(...casing).toFixed(1)} px casing`);
 
 // Both together: the failure throb must be wider than the caution flicker, or
 // the two verdicts stop being distinguishable at a glance.
 ctx.setRoutePulses(render('fail', 'caution'));
-const failWidths = [...seen('route-fail|line-width', 12)].map(Number);
-const failAmp = Math.max(...failWidths) - Math.min(...failWidths);
-const cautionAmp = Math.max(...widths) - Math.min(...widths);
-assert.ok(failAmp > cautionAmp * 2,
-  `a failure should throb harder than a caution (${failAmp.toFixed(2)} vs ${cautionAmp.toFixed(2)} px)`);
+const failWidths = sample(['route-fail|line-width'], FULL_THROB)['route-fail|line-width'];
+const failAmp = spread(failWidths);
+// The failure still leads, but only just: colour and the failure's dashes carry
+// the distinction, so the caution does not have to stay quiet to be told apart.
+assert.ok(failAmp > cautionAmp,
+  `a failure should still throb harder than a caution (${failAmp.toFixed(2)} vs ${cautionAmp.toFixed(2)} px)`);
 console.log(`PASS  failure throbs ${failAmp.toFixed(2)} px against caution's ${cautionAmp.toFixed(2)} px`);
 
 // The two must not breathe in step, or they read as one animation.
@@ -113,6 +133,7 @@ assert.equal(ticks.filter(Boolean).length, 0, 'a clean route stops every timer')
 assert.equal(paint.get('route-caution|line-width'), 6.5, 'caution rests at its base width');
 assert.equal(paint.get('route-fail|line-width'), 6.5, 'failure rests at its base width');
 assert.equal(paint.get('route-caution|line-opacity'), 1, 'caution rests fully opaque');
+assert.equal(paint.get('route-caution-casing|line-width'), 11, 'the casing rests too');
 console.log('PASS  both layers stop at their resting size');
 
 console.log('\n5 checks, 0 failed');

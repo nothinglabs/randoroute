@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-29.438';
+const APP_VERSION = '2026-07-29.439';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5039,9 +5039,12 @@ function setFailPulse(on) {
   }
 }
 
-// Caution segments flicker too, but gently: a third of the failure's amplitude,
-// and size rather than opacity for the same reason given above -- fading amber
-// over the basemap muddies it toward the unpaved and designated patterns.
+// Caution segments flicker with nearly the throb of a failure. An earlier
+// version moved 1.1 px with no casing and was invisible on a phone -- the
+// distinction between the two verdicts is carried by colour and by the
+// failure's dashes, so the animation does not also have to be timid to keep
+// them apart. Size rather than opacity, for the reason given above: fading
+// amber over the basemap muddies it toward the unpaved and designated patterns.
 let cautionPulseTimer = null;
 function setCautionPulse(on) {
   if (on && !cautionPulseTimer) {
@@ -5050,8 +5053,10 @@ function setCautionPulse(on) {
       t += ROUTE_PULSE_STEP;
       if (!map.getLayer('route-caution')) return;
       const p = Math.abs(Math.sin(t));
-      map.setPaintProperty('route-caution', 'line-width', 6.5 + 1.1 * p);
-      map.setPaintProperty('route-caution', 'line-opacity', 0.9 + 0.1 * p);
+      map.setPaintProperty('route-caution', 'line-width', 6.5 + 2.6 * p);
+      map.setPaintProperty('route-caution', 'line-opacity', 0.92 + 0.08 * p);
+      map.setPaintProperty('route-caution-casing', 'line-width', 11 + 2.6 * p);
+      map.setPaintProperty('route-caution-casing', 'line-opacity', 0.75 + 0.2 * p);
     }, 80);
   } else if (!on && cautionPulseTimer) {
     clearInterval(cautionPulseTimer);
@@ -5059,6 +5064,8 @@ function setCautionPulse(on) {
     if (map.getLayer('route-caution')) {
       map.setPaintProperty('route-caution', 'line-width', 6.5);
       map.setPaintProperty('route-caution', 'line-opacity', 1);
+      map.setPaintProperty('route-caution-casing', 'line-width', 11);
+      map.setPaintProperty('route-caution-casing', 'line-opacity', 0.75);
     }
   }
 }
@@ -5226,6 +5233,15 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: { 'line-color': '#687d00', 'line-width': 2.2, 'line-opacity': 0.96,
              'line-dasharray': [0.05, 2.1] },
     filter: ['==', ['get', 'style'], 'trail'],
+  });
+  // A white casing under the caution line, pulsed with it. Width alone on an
+  // amber line over a busy basemap was too easy to miss; the casing is most of
+  // why the failure throb reads from across the screen.
+  map.addLayer({
+    id: 'route-caution-casing', type: 'line', source: 'route-render',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': 11, 'line-opacity': 0.75 },
+    filter: ['==', ['get', 'style'], 'caution'],
   });
   map.addLayer({
     id: 'route-caution', type: 'line', source: 'route-render',

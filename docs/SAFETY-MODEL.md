@@ -132,17 +132,23 @@ still. Both animate **size, not opacity** — fading translucent red or amber ov
 the basemap turns it muddy and can make a rule failure read as an unpaved or
 designated-route pattern.
 
-| | throb | amplitude |
-|---|---|---|
-| failure | 6.5 → 9.5 px, casing 12.5 → 14.5 | 3.0 px |
-| caution | 6.5 → 7.6 px | 1.1 px |
+| | throb | casing | amplitude |
+|---|---|---|---|
+| failure | 6.5 → 9.5 px | 12.5 → 14.5 px | 3.0 px |
+| caution | 6.5 → 9.1 px | 11 → 13.6 px | 2.6 px |
 
-A full throb is about 1.5 s. The failure moves nearly three times as far as the
-caution, and the caution runs a quarter period behind it: sharing one phase made
-the whole route appear to breathe as a single animation, which is the opposite
-of the point, since a caution and a failure are different verdicts. When a route
-has neither, both layers rest at their base size rather than wherever the last
-animation frame happened to stop.
+A full throb is about 1.5 s. Both carry a white casing that pulses with the
+line, which is most of what makes either read from across a screen: an earlier
+caution moved 1.1 px with no casing and was invisible on a phone.
+
+The failure still leads, but only just. The two verdicts are told apart by
+colour and by the failure's dashes, so the caution does not have to stay quiet
+to stay distinct — and a caution nobody notices is not doing its job.
+
+The caution runs a quarter period behind the failure. Sharing one phase made the
+whole route appear to breathe as a single animation, which is the opposite of
+the point. When a route has neither verdict, both layers rest at their base size
+rather than wherever the last animation frame happened to stop.
 
 Colour is **not** decided by level alone. `readoutVerdictColor` checks levels
 4, 3 and 0 first, then asks `isBikeNetworkVerdict(n)` — true when the feature
