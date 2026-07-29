@@ -334,7 +334,28 @@ function scoreRoad(p) {
     desig: p.g === 1, // on a designated bike route (USBR / regional)
     sidewalk: p.k === 1 ? 'present' : p.k === 2 ? 'absent' : null,
     urban: p.u === 1,
+    measures: tileMeasures(p),
   };
+}
+
+// The statewide road measurements, from a roads tile. Display only: nothing
+// here reaches roadLevelExpr, so none of it can move a road's colour. Kept in
+// one shape so the tap card and the route card read the same object.
+function tileMeasures(p) {
+  const out = {};
+  if (p.adt) {
+    out.adt = p.adt;
+    if (p.ay) out.adty = p.ay;
+    out.adtState = p.as ? 1 : 0;
+  }
+  if (p.es != null) {
+    out.edge = p.es;
+    if (p.ec) out.edgeClamp = 1;
+  }
+  if (p.cs != null) out.countySh = p.cs;
+  if (p.fc) out.fc = p.fc;
+  if (p.ow) out.owner = p.ow;
+  return Object.keys(out).length ? out : null;
 }
 
 // Designated-routes overlay (USBR / regional trails): informational, not
@@ -2191,6 +2212,7 @@ function routeSegProps(s, routeIndex) {
     dismount: isDismountSegment(s) ? 1 : 0,
     surface: Number.isInteger(s.surface) ? s.surface : 0,
     roadClass: s.roadClass || 0,
+    measures: s.measures || null,
     routeIndex,
   };
 }
@@ -4827,6 +4849,7 @@ function scoreRouteSeg(p) {
     sidewalk: official & OFFICIAL_SIDEWALK ? 'present'
       : official & OFFICIAL_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & OFFICIAL_URBAN),
+    measures: p.measures || null,
   };
 }
 
@@ -6839,6 +6862,62 @@ const ROAD_CLASS_NAME = {
   7: 'Secondary link', 8: 'Primary road', 9: 'Primary link',
   10: 'Trunk road', 11: 'Trunk link', 12: 'Motorway', 13: 'Motorway link',
 };
+// ------------------------------------------- statewide road measurements
+// FHWA functional class: a road's job in the network, assigned by the local
+// agency, reviewed by WSDOT, approved by FHWA. Nationally standardised, which
+// is what lets any of this generalise past Washington.
+const FUNCTIONAL_CLASS_NAME = {
+  1: 'Interstate', 2: 'Freeway or expressway', 3: 'Principal arterial',
+  4: 'Minor arterial', 5: 'Major collector', 6: 'Minor collector',
+  7: 'Local street',
+};
+const ROAD_OWNER_NAME = { 1: 'State', 2: 'County', 3: 'Town', 4: 'City' };
+// A count older than this describes a road that may have been rebuilt since.
+// Shown, not hidden -- an old count is still evidence -- but never without the
+// year beside it. County counts run 1940-2023.
+const STALE_COUNT_BEFORE = 2000;
+
+// Rows for the measurements imported from the CRAB road log, WSDOT's functional
+// class layer and WSDOT's traffic counts.
+//
+// Every row states WHERE ITS NUMBER CAME FROM, because these are three
+// different kinds of claim and reading them as one would repeat the mistake
+// that made a designated bike route look like a safety guarantee:
+//   * traffic volume is a MEASUREMENT, and carries the year it was measured
+//   * bail-out space is DERIVED from widths, and is not a ridable shoulder
+//   * functional class is a PROXY for volume, never converted into a number
+//
+// Display only. None of this reaches roadLevelExpr or the router, so nothing
+// here changes a verdict, a colour or a route.
+function measurementRows(measures) {
+  if (!measures) return [];
+  const rows = [];
+  if (measures.adt != null) {
+    const source = measures.adtState ? 'WSDOT state-route count' : 'county road log';
+    const year = measures.adty ? `${measures.adty}` : 'year unrecorded';
+    const stale = measures.adty && measures.adty < STALE_COUNT_BEFORE;
+    rows.push(['Traffic', `${measures.adt.toLocaleString()} vehicles/day — `
+      + `${year}, ${source}${stale ? '; old count' : ''}`]);
+  }
+  if (measures.edge != null) {
+    rows.push(['Bail-out space', `~${measures.edge} ft beside the lane`
+      + `${measures.edgeClamp ? ', lane width capped' : ''}`
+      + ' — derived from county widths, paved or not; not a ridable shoulder']);
+  }
+  if (measures.countySh != null) {
+    rows.push(['County shoulder', `${measures.countySh} ft paved (county inventory)`]);
+  }
+  if (measures.fc) {
+    rows.push(['Road class (FHWA)', `${FUNCTIONAL_CLASS_NAME[measures.fc] || measures.fc}`
+      + (measures.owner ? ` — ${ROAD_OWNER_NAME[measures.owner] || 'owner ' + measures.owner}` +
+        ' maintained' : '')
+      + ' — indicates traffic level, not a count']);
+  } else if (measures.owner) {
+    rows.push(['Maintained by', ROAD_OWNER_NAME[measures.owner] || `owner ${measures.owner}`]);
+  }
+  return rows;
+}
+
 function routeClassNote(p) {
   if (p.infra || p.ferry || p.facility >= 1 || !p.roadClass) return null;
   if (p.roadClass >= 8 && p.roadClass <= 11)
@@ -7138,6 +7217,9 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
         ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
         ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
+        // One builder, so the route card and the tap card cannot describe the
+        // same road with different numbers.
+        ...measurementRows(n.measures),
         ['Grade', routeSegmentGrade(p.gradePct, p.lenM)],
         ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
@@ -7198,6 +7280,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       // streets, lane count is the thing that still tells them apart.
       ['Lanes', p.ln ? `${p.ln}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
       ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
+      ...measurementRows(n.measures),
       // Off the state highway system this is often the only inventory there is.
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],

@@ -21,6 +21,11 @@ let eA, eB, eLen, eAsc, eDes, eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir;
 let eClass, eFacility, eOfficial, eSurface;
 // Format 10 only; null on a BGR9 graph.
 let eLanes, eLts;
+// Format 11 only; null on anything older. Statewide road measurements: bail-out
+// space, the county's reported paved shoulder, traffic volume with its year and
+// source, and FHWA functional class with the owner. Carried to the card; none
+// of it prices a route.
+let eEdgeSpace, eCountyShoulder, eAdt, eAdtMeta, eClassOwner;
 
 let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
@@ -39,6 +44,36 @@ const _dec = new TextDecoder();
 // -128 is reserved by the migration tool for a WSDOT permanent bike
 // restriction. It is a hard graph exclusion, never a routing penalty.
 const PROHIBITED_SHOULDER = -128;
+// Format 11 packing, mirroring scripts/build_graph.py. 255 means "not known",
+// which is not the same as zero: a county that never separately inventoried a
+// shoulder is not asserting the road has none.
+const MEASURE_UNKNOWN = 255;
+const EDGE_SPACE_CLAMPED = 128;
+const ADT_YEAR_EPOCH = 1940;
+const ADT_SOURCE_STATE = 128;
+
+function edgeMeasures(i) {
+  if (!eAdt) return null;
+  const out = {};
+  const space = eEdgeSpace[i];
+  if (space !== MEASURE_UNKNOWN) {
+    out.edge = space & ~EDGE_SPACE_CLAMPED;
+    if (space & EDGE_SPACE_CLAMPED) out.edgeClamp = 1;
+  }
+  const countyShoulder = eCountyShoulder[i];
+  if (countyShoulder !== MEASURE_UNKNOWN) out.countySh = countyShoulder;
+  if (eAdt[i]) {
+    out.adt = eAdt[i];
+    const meta = eAdtMeta[i];
+    const year = meta & ~ADT_SOURCE_STATE;
+    if (year) out.adty = ADT_YEAR_EPOCH + year;
+    out.adtState = meta & ADT_SOURCE_STATE ? 1 : 0;
+  }
+  const classOwner = eClassOwner[i];
+  if (classOwner & 15) out.fc = classOwner & 15;
+  if (classOwner >> 4) out.owner = classOwner >> 4;
+  return Object.keys(out).length ? out : null;
+}
 // "Only show routes fully matching safety rules" exemption: the block or two touching a leg's
 // endpoints must stay traversable even when it fails the rules — you have to
 // reach the door somehow. Only edges near a terminus qualify, and only short
@@ -92,9 +127,13 @@ function loadGraph(buf) {
   // graph already cached on riders' phones, and the next data rebuild upgrades
   // them without a coordinated deploy.
   const magic = dv.getUint32(0, false);
-  const hasTrafficStress = magic === 0x42475241;
+  // 'BGRA' is format 10, 'BGRB' format 11. Each only ever appends, so a newer
+  // reader still understands an older graph and a rider is never stranded on a
+  // cached one; the fields it lacks simply read as "not known".
+  const hasMeasures = magic === 0x42475242;
+  const hasTrafficStress = magic === 0x42475241 || hasMeasures;
   if (magic !== 0x42475239 && !hasTrafficStress) {
-    throw new Error('bad graph magic (want BGR9 or BGRA)');
+    throw new Error('bad graph magic (want BGR9, BGRA or BGRB)');
   }
   N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
   const G = dv.getUint32(16, true), U = dv.getUint32(20, true), B = dv.getUint32(24, true);
@@ -118,6 +157,13 @@ function loadGraph(buf) {
   // scoring behaves exactly as it did before the fields existed.
   eLanes = hasTrafficStress ? u8(E) : null;
   eLts = hasTrafficStress ? u8(E) : null;
+  // Format 11: the statewide road measurements. Display-only for now -- nothing
+  // below prices a route by them.
+  eEdgeSpace = hasMeasures ? u8(E) : null;
+  eCountyShoulder = hasMeasures ? u8(E) : null;
+  eAdt = hasMeasures ? u16(E) : null;
+  eAdtMeta = hasMeasures ? u8(E) : null;
+  eClassOwner = hasMeasures ? u8(E) : null;
   eHazAB = u8(E); eHazBA = u8(E);
   pad2();
   eHazStartAB = u16(E); eHazEndAB = u16(E);
@@ -1009,6 +1055,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
       lts: eLts ? eLts[ei] : 0,
+      measures: edgeMeasures(ei),
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei]), eLen[ei]),

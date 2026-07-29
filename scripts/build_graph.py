@@ -141,7 +141,10 @@ PROHIBITED_SHOULDER = -128
 # that never separately inventoried a shoulder is not asserting there is none.
 MEASURE_UNKNOWN = 255
 EDGE_SPACE_CLAMPED = 128   # bit 7 of edgeEdgeSpace
-EDGE_SPACE_MAX_FT = 127
+# 126, not 127: 127 with the clamp bit set is 255, which is the "not known"
+# sentinel. A road with 127 ft of edge space a side does not exist, but a silent
+# collision between a value and "no value" is not a thing to leave in a format.
+EDGE_SPACE_MAX_FT = 126
 ADT_YEAR_EPOCH = 1940      # the oldest count in the CRAB log
 ADT_SOURCE_STATE = 128     # bit 7 of edgeAdtMeta
 

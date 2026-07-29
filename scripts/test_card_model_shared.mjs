@@ -47,6 +47,7 @@ vm.createContext(ctx);
 vm.runInContext(officials.join('\n').replace(/\bconst /g, 'var '), ctx);
 vm.runInContext([
   lift('factsOf'), lift('scoreRoad'), lift('scoreRouteSeg'), lift('routeSegProps'),
+  lift('tileMeasures'),
   'function isDismountSegment(s) { return false; }',
   'function evaluateRoad(n) { return SafetyModel.evaluate(factsOf(n), rules); }',
   'function effectiveLevel(n) { return evaluateRoad(n).level; }',
