@@ -53,9 +53,25 @@ Three caveats travel with it:
   lets states estimate volumes on lower functional classes, so a city-street
   figure is an official estimate. It needs its own provenance tag; it is not the
   same kind of claim as a WSDOT tube count.
-- **It disagrees with CRAB.** HPMS gives Pioneer Way E 13,425 where the road log
-  gives 7,925-15,175 for 2022. Two agencies, one road. Worth understanding
-  before either is trusted over the other.
+- **It does NOT systematically disagree with CRAB**, which an earlier draft of
+  this file claimed. That claim came from setting one HPMS value for a 2.7 mile
+  stretch against a spread of CRAB values across several different segments —
+  different places, different lengths, and 13,425 sits inside 7,925–15,175
+  anyway. Measured properly, on the **27,279 graph edges where both sources land
+  on the same place**, the median HPMS/CRAB ratio is **1.00**: no bias either
+  way.
+
+  The per-segment scatter is nonetheless wide — 49.4% agree within 1.25x, 83.9%
+  within 2x, and 8.3% differ by more than 3x — so on any particular road the
+  choice of source can swing the number by a factor of two. That is noise, not
+  disagreement, and it needs a tiebreak rule rather than an adjudication.
+  Recency is the only tiebreaker with a reason behind it, since neither source
+  is systematically off.
+
+  Age does not explain the scatter, which is worth knowing: CRAB counts from
+  before 2010 have the same median ratio against 2018 HPMS (1.00) as counts from
+  2015 onward (0.97). Either those roads are not growing, or HPMS partly derives
+  from the same underlying counts. This measurement cannot distinguish the two.
 
 Sections carry no `route_name` — they are keyed by LRS `route_id` — so matching
 is geometric, and the sections are short. A whole-way match against them fails
