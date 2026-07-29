@@ -27,3 +27,10 @@ data/dem/
 data/roads-*.geojson
 data/*.pmtiles-journal
 __pycache__/
+# Statewide road measurements: large build-time inputs, conflated into the
+# graph and tiles rather than shipped. Rebuild with scripts/build_roadlog.py,
+# build_funcclass.py and build_aadt.py.
+data/roadlog.geojson
+data/funcclass.geojson
+data/aadt.geojson
+data/.cache/
