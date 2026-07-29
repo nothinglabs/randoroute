@@ -10,7 +10,7 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v408'; // bump when app shell changes
+const VERSION = 'v409'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -111,6 +111,17 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('message', (e) => {
   if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+  // The page asks for this when the graph version it wants is not the one it
+  // last loaded. Activation already purges, but a page can outlive that: the
+  // load that first runs a new app.js is still controlled by the PREVIOUS
+  // worker, which served /data/ ignoring the query string and handed back a
+  // stale graph. Answering here lets the page clear it and retry without the
+  // rider having to reload a second time.
+  if (e.data && e.data.type === 'PURGE_GRAPH') {
+    e.waitUntil(purgeStaleGraph().then(() => {
+      e.source?.postMessage({ type: 'GRAPH_PURGED' });
+    }));
+  }
 });
 
 self.addEventListener('activate', (e) => {

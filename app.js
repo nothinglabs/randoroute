@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.432';
+const APP_VERSION = '2026-07-28.433';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2119,6 +2119,33 @@ function showRouterProgress(detail, title = 'Loading routing engine') {
   showRouteActionToast(title, { busy: true, detail, duration: 0 });
 }
 
+// If the graph we want is not the one we last loaded, ask the worker to drop
+// its cached copy before fetching. Without this the first load after a graph
+// rebuild is still controlled by the PREVIOUS service worker, which serves
+// /data/ ignoring the query string and returns the stale graph -- so the map
+// and the cards pick up new data while the router keeps routing on the old.
+const GRAPH_VERSION_KEY = 'jra.graphDataVersion';
+async function purgeStaleGraphCache() {
+  let seen = null;
+  try { seen = localStorage.getItem(GRAPH_VERSION_KEY); } catch { /* private mode */ }
+  if (seen === GRAPH_DATA_VERSION) return;
+  const worker = navigator.serviceWorker?.controller;
+  if (worker) {
+    await new Promise((resolve) => {
+      const done = (event) => {
+        if (event.data?.type !== 'GRAPH_PURGED') return;
+        navigator.serviceWorker.removeEventListener('message', done);
+        resolve();
+      };
+      navigator.serviceWorker.addEventListener('message', done);
+      worker.postMessage({ type: 'PURGE_GRAPH' });
+      // An older worker does not know this message; do not hang on it.
+      setTimeout(resolve, 1500);
+    });
+  }
+  try { localStorage.setItem(GRAPH_VERSION_KEY, GRAPH_DATA_VERSION); } catch { /* ignore */ }
+}
+
 async function readRoutingGraphResponse(response) {
   const total = Number(response.headers.get('content-length')) || 0;
   if (!response.body?.getReader) return response.arrayBuffer();
@@ -2216,6 +2243,7 @@ async function ensureRouter() {
   updateArmButtons();
   try {
     showRouterProgress('Downloading Washington roads, trails, ferries, and elevation data…');
+    await purgeStaleGraphCache();
     const res = await fetch(
       `data/graph2.bin.gz?format=${GRAPH_FORMAT_VERSION}&gv=${GRAPH_DATA_VERSION}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
