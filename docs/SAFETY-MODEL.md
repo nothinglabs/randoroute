@@ -369,11 +369,86 @@ deliberately routing-only: they express preference, not safety.
 | official stress rating (LTS) | **caution only**, always on | yes |
 | OSM road class (secondary/primary/…) | no | yes |
 | surface, grade, curve hazard, sidewalk exposure | no | yes |
+| traffic volume (ADT) | **no — shown only** | no |
+| bail-out space (derived) | **no — shown only** | no |
+| FHWA functional class, road owner | **no — shown only** | no |
 
 Road class stays out of the verdict on purpose. It is an administrative label,
 not a physical fact: 81% of "arterials" are one or two lanes, while 15th Ave NE
 has four-lane stretches tagged merely `tertiary`. Lane count is the physical
 fact, so that is what rung 6 gates on.
+
+## The statewide road measurements
+
+Three sources, imported and displayed, feeding no decision at all yet. They
+exist because the app measured 9.2% of its road mileage and estimated the rest,
+and that asymmetry had a specific consequence on the ground: the router
+preferred a state highway to the quiet county roads beside it, because the
+highway was the only thing it had evidence about.
+
+| source | what it gives | coverage |
+|---|---|---|
+| CRAB certified county road log | bail-out space (derived), ADT + year | 39,187 mi |
+| WSDOT non-state functional class | FHWA class, roadway owner | ~19,000 mi |
+| WSDOT traffic counts | ADT + year, state routes | ~7,000 mi |
+
+They are matched to OSM ways by span and bearing — every interior sample within
+18 m of the source line, headings aligned within 40° — and written identically
+into the graph (format 11) and the vector tiles, so the router, the tap card and
+the route card read one number.
+
+### Three different kinds of claim, never flattened
+
+This is the whole discipline of the feature, and it is the lesson of the
+designated-route mistake: a published line looked like a safety guarantee
+because nothing on the card said what kind of thing it was.
+
+- **Traffic volume is a measurement.** It is shown with the year it was taken
+  and the inventory it came from. County counts run 1940–2023 and only 24% are
+  2018 or newer, so a count from before 2000 is marked old, and a count with no
+  recorded year says so rather than implying a recent one.
+
+- **Bail-out space is derived**, from operational width minus lanes times lane
+  width, per side. It is total edge space, paved or not — somewhere to go when a
+  truck comes past — and it is **not a ridable shoulder**. The card says so on
+  every row. Where a county recorded a through-lane wider than 13 ft it has
+  entered half the pavement as the lane, so the lane is assumed to be 12 ft and
+  the remainder treated as edge space; those rows are marked, and the error
+  direction is conservative — folding a shoulder into a lane makes a road look
+  worse, never better.
+
+- **Functional class is a proxy.** Against 113,293 real counts it tracks volume
+  monotonically across a 60× spread, from 18,300 vehicles/day at principal
+  arterial to 297 at local, which is why it is worth carrying where no count
+  exists. It is shown as a class and **never converted into a vehicles-per-day
+  figure**. It is assigned by a local agency, reviewed by WSDOT, approved by
+  FHWA, and federal-aid eligibility depends on it — so it is an assertion with
+  money attached, not a reading off an instrument.
+
+Roadway owner — city, county, town, state — is context and provenance only. It
+is never a verdict: "city street" does not mean calm, and W Pioneer Ave in
+Puyallup is a city street *and* an urban principal arterial.
+
+### What is deliberately not imported
+
+**Speed limits from any county layer.** The road log carries no speed field, and
+the counties' separate speed layers actively hurt: a road known to be pleasant
+to ride was re-labelled from an estimated 35 mph to an actual 55 and began
+failing. On a rural county road the posted limit is frequently the statutory
+default — 50 mph outside cities, RCW 46.61.400 — on a road where no limit was
+ever set, which records the absence of a decision rather than a measured hazard.
+
+**The county's reported paved shoulder does not feed the shoulder rule.** It is
+carried in its own field and shown on its own row. Writing it into the edge
+shoulder would move roads across a rule as a side effect of an import, which is
+exactly the kind of silent change this file exists to prevent. Whether it should
+is a separate decision, not yet taken.
+
+**Their definition of "urban" is not adopted.** WSDOT's urban/rural descends
+from the FHWA *adjusted* urban boundary — the Census line smoothed and extended,
+then approved for federal-aid purposes — and is generally larger than ours. Our
+own Census 2020 point-in-polygon test remains the sole driver of the urban speed
+rule. WSDOT's call is carried only so a disagreement can be seen.
 
 ## Every rider setting, and what it objectively does
 
