@@ -216,11 +216,18 @@ the rider-controlled **Allow mountain bike trails** option.
 
 ```bash
 python3 scripts/fetch_census_urban_areas.py
+# Statewide road measurements. Each pages an ArcGIS service and caches pages
+# under data/.cache, so an interrupted run resumes rather than restarting.
+python3 scripts/build_roadlog.py     # CRAB county road log, 115,582 segments
+python3 scripts/build_funcclass.py   # WSDOT non-state functional class
+python3 scripts/build_aadt.py        # WSDOT traffic counts, state routes
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads \
                                --urban-areas data/census-urban-areas-2020-wa.geojson \
                                --blts data/blts.geojson \
-                               --county data/county/*.json
+                               --roadlog data/roadlog.geojson \
+                               --funcclass data/funcclass.geojson \
+                               --aadt data/aadt.geojson
 tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
   --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
   --simplification=8 --simplify-only-low-zooms \
@@ -427,7 +434,9 @@ python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads \
                                --urban-areas data/census-urban-areas-2020-wa.geojson \
                                --blts data/blts.geojson \
-                               --county data/county/*.json
+                               --roadlog data/roadlog.geojson \
+                               --funcclass data/funcclass.geojson \
+                               --aadt data/aadt.geojson
 tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
   --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
   --simplification=8 --simplify-only-low-zooms \
@@ -456,10 +465,14 @@ graph cached by an older service worker; bumping it is not optional.
 
 ```bash
 python3 scripts/test_graph_format10.py   # layout + reader-offset contract
+node scripts/test_road_measures.mjs      # Python packs, JavaScript unpacks
+node scripts/test_card_model_shared.mjs  # both cards read one adapter
 python3 -c "import gzip;print(gzip.open('data/graph2.bin.gz','rb').read(4))"
-#   -> b'BGRA'   (b'BGR9' means build_graph.py did not pick up the change)
+#   -> b'BGRB'   (an older magic means build_graph.py did not pick up the change)
 tippecanoe-decode data/roads.pmtiles 13 1311 2858 | grep -c '"ln"'
 #   -> non-zero  (lane counts reached the tiles)
+tippecanoe-decode data/roads.pmtiles 13 1311 2858 | grep -c '"adt"'
+#   -> non-zero  (traffic counts reached the tiles)
 ```
 
 Then run the suite (`scripts/test_*.mjs`, `scripts/test_*.py`).
@@ -467,14 +480,16 @@ Then run the suite (`scripts/test_*.mjs`, `scripts/test_*.py`).
 change that severs a corridor. `test_native_shell.mjs` fails unless
 `npm run ios:prepare-shell` has been run — that is expected, not a regression.
 
-Expect `graph2.bin.gz` to grow by roughly 2 bytes per edge before compression
-(~1.7 MB over 855k edges) and `roads.pmtiles` by well under a megabyte.
+Expect `graph2.bin.gz` to grow by roughly 6 bytes per edge before compression
+for the format-11 measurement arrays; measured, that was 556 KB compressed
+(31.34 -> 31.89 MB over 856k edges).
 
 ### Notes for whoever does this
 
-- **Old graphs keep working.** `router-worker.js` accepts both `BGR9` and
-  `BGRA`; on a `BGR9` graph the two new arrays read as null and scoring is
-  byte-for-byte what it was. Verified against 11 statewide routes.
+- **Old graphs keep working.** `router-worker.js` accepts `BGR9`, `BGRA` and
+  `BGRB`; each format only ever appends, so on an older graph the newer arrays
+  read as null, every value reports as "not known", and scoring is what it was.
+  A rider is never stranded on the copy already cached on their phone.
 - **The scoring is a soft cost, never a rule failure.** Four lanes with a
   protected bike lane is genuinely fine, and hard gates risk severing corridors
   the way earlier bugs did. A missing `lanes` tag means "small road", not
