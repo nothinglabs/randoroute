@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.429';
+const APP_VERSION = '2026-07-28.430';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -125,7 +125,7 @@ const RULE_NUMBER_LIMITS = {
 // with router-worker.js so the advanced desktop editor is reproducible.
 const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   directFail: 1.5, balancedComfy: 0.92, balancedFail: 9, lowComfy: 0.9, lowFail: 30,
-  designated: 0.94, strongDesignated: 0.5, residential: 0.78,
+  designated: 0.94, strongDesignated: 0.5, heavyDesignated: 0.25, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
@@ -7660,6 +7660,7 @@ const ROUTING_WEIGHT_GROUPS = [
   ]],
   ['Bike and neighborhood preference', [
     ['designated', 'Designated route (no facility)', .25, 1.2, .01], ['strongDesignated', 'Strong designated-route preference', .2, 1, .01],
+    ['heavyDesignated', 'Follow bike routes (heavy preference)', .1, 1, .01],
     ['residential', 'Residential street', .4, 1.1, .01], ['facilityShared', 'Shared-lane marking', .4, 1.2, .01],
     ['facilityLane', 'Bike lane', .25, 1.1, .01], ['facilityBuffered', 'Buffered bike lane', .2, 1.1, .01],
     ['facilitySeparated', 'Separated bike lane', .2, 1.1, .01], ['facilityPath', 'Shared-use path', .2, 1.1, .01],

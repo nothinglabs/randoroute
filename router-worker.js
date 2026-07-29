@@ -370,7 +370,7 @@ const V_HEUR = 160.0;
 // designation is useful route context, but is not itself infrastructure.
 const DEFAULT_WEIGHTS = Object.freeze({
   directFail: 1.5, balancedComfy: 0.92, balancedFail: 9, lowComfy: 0.9, lowFail: 30,
-  designated: 0.94, strongDesignated: 0.5, residential: 0.78,
+  designated: 0.94, strongDesignated: 0.5, heavyDesignated: 0.25, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
@@ -891,7 +891,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
         const signed = (fl & 64) || (eOfficial[ei] & EDGE_COUNTY_ROUTE);
         cost *= eFacility[ei]
           ? facilityPrefMult(eFacility[ei])
-          : (signed ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
+          : (signed ? activeWeights[prefDesig === 'heavy' ? 'heavyDesignated'
+            : prefDesig ? 'strongDesignated' : 'designated'] : 1);
       }
       if (prefResidential && !(fl & (8 | 32 | 4))
           && !edgeLimited(ei, forward) && isResidential(ei)) {
@@ -1324,6 +1325,17 @@ const ROUTE_PROFILES = [
   { id: 'gentle-bike', label: 'Low stress + bike', mode: 'low', prefDesig: true, prefResidential: false, order: 2.1 },
   { id: 'gentle-residential', label: 'Low stress + residential', mode: 'low', prefDesig: false, prefResidential: true, order: 2.2 },
   { id: 'friendly', label: 'Low stress + both', mode: 'low', prefDesig: true, prefResidential: true, order: 2.3 },
+  // Follow the signed network as far as it will take you. The ordinary
+  // preference (x0.5) turns out not to change these routes at all -- Clinton to
+  // Langley is byte-identical at x1.0 and x0.5 -- so this is the setting that
+  // actually buys a rider the signed route, at x0.25: a signed mile is worth
+  // riding four to reach. Measured on that leg it moves 7% -> 26% of the
+  // distance onto signed route for +15% distance and +28% time.
+  //
+  // It is still only a preference. The bonus is gated on the edge PASSING the
+  // rider's rules, so this cannot pull anyone onto a failing highway just
+  // because a county drew a line along it.
+  { id: 'route-first', label: 'Follow bike routes', mode: 'balanced', prefDesig: 'heavy', prefResidential: false, order: 1.4 },
 ];
 
 function candidateProfiles(forceDesig, forceResidential) {
@@ -1332,7 +1344,7 @@ function candidateProfiles(forceDesig, forceResidential) {
   for (const base of ROUTE_PROFILES) {
     const profile = {
       ...base,
-      prefDesig: forceDesig || base.prefDesig,
+      prefDesig: base.prefDesig === 'heavy' ? 'heavy' : (forceDesig || base.prefDesig),
       prefResidential: forceResidential || base.prefResidential,
     };
     const key = `${profile.mode}:${profile.prefDesig}:${profile.prefResidential}`;
