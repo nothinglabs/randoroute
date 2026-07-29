@@ -403,15 +403,19 @@ This is the whole discipline of the feature, and it is the lesson of the
 designated-route mistake: a published line looked like a safety guarantee
 because nothing on the card said what kind of thing it was.
 
-- **Traffic volume is a measurement.** It is shown with the year it was taken
-  and the inventory it came from. County counts run 1940–2023 and only 24% are
-  2018 or newer, so a count from before 2000 is marked old, and a count with no
-  recorded year says so rather than implying a recent one.
+- **Traffic volume is a measurement.** `2,357/day (county 2016)`. County and
+  state counts are the same kind of fact and are shown the same way; the tag
+  says which inventory it came from and when. County counts run 1940–2023 and
+  only 24% are 2018 or newer, so the year is doing real work — it needs no
+  adjective, and a count with no recorded year shows none rather than implying
+  a recent one.
 
 - **Bail-out space is derived**, from operational width minus lanes times lane
   width, per side. It is total edge space, paved or not — somewhere to go when a
-  truck comes past — and it is **not a ridable shoulder**. The card says so on
-  every row. Where a county recorded a through-lane wider than 13 ft it has
+  truck comes past — and it is **not a ridable shoulder**. The card shows
+  `~5 ft (derived)`; the label and that tag carry the distinction, and this file
+  carries the reasoning, because a card that explains itself in prose is a card
+  nobody reads. Where a county recorded a through-lane wider than 13 ft it has
   entered half the pavement as the lane, so the lane is assumed to be 12 ft and
   the remainder treated as edge space; those rows are marked, and the error
   direction is conservative — folding a shoulder into a lane makes a road look
@@ -420,8 +424,8 @@ because nothing on the card said what kind of thing it was.
 - **Functional class is a proxy.** Against 113,293 real counts it tracks volume
   monotonically across a 60× spread, from 18,300 vehicles/day at principal
   arterial to 297 at local, which is why it is worth carrying where no count
-  exists. It is shown as a class and **never converted into a vehicles-per-day
-  figure**. It is assigned by a local agency, reviewed by WSDOT, approved by
+  exists. It is shown as `Minor collector (FHWA, county)` — as a class, and
+  **never converted into a vehicles-per-day figure**. It is assigned by a local agency, reviewed by WSDOT, approved by
   FHWA, and federal-aid eligibility depends on it — so it is an assertion with
   money attached, not a reading off an instrument.
 

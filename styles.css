@@ -504,7 +504,14 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 @media (max-width: 720px) {
   .readout {
     left: 10px; right: auto; top: calc(env(safe-area-inset-top) + 66px); bottom: auto;
-    width: min(310px, calc(100vw - 20px)); max-width: calc(100vw - 20px); max-height: 44vh;
+    width: min(310px, calc(100vw - 20px)); max-width: calc(100vw - 20px);
+    /* 44vh was under half the screen and turned an ordinary road card into a
+       scroll. Take the room actually available between the route bar and the
+       bottom of the viewport, leaving a margin so the map stays visible and the
+       card never runs under the home indicator. dvh follows the URL bar on iOS
+       where vh does not; vh is the fallback for browsers without it. */
+    max-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 150px);
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 150px);
   }
 }
 .readout.show { display: block; }
@@ -514,6 +521,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout-close { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: none; border-radius: 8px; background: #eef1f4; color: #4b5961; font: 750 17px/1 system-ui; cursor: pointer; }
 .readout table { border-collapse: collapse; width: 100%; }
 .readout td { padding: 0 5px 1px 0; line-height: 1.18; vertical-align: top; }
+@media (max-width: 720px) { .readout td { line-height: 1.28; padding-bottom: 2px; } }
 .readout td.k { width: 1%; padding-right: 8px; color: #777; white-space: nowrap; }
 .road-map-actions { display: flex; align-items: center; gap: 9px; margin: 7px 0 0; }
 .streetview-launch {

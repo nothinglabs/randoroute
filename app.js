@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-29.436';
+const APP_VERSION = '2026-07-29.437';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6872,48 +6872,44 @@ const FUNCTIONAL_CLASS_NAME = {
   7: 'Local street',
 };
 const ROAD_OWNER_NAME = { 1: 'State', 2: 'County', 3: 'Town', 4: 'City' };
-// A count older than this describes a road that may have been rebuilt since.
-// Shown, not hidden -- an old count is still evidence -- but never without the
-// year beside it. County counts run 1940-2023.
-const STALE_COUNT_BEFORE = 2000;
 
 // Rows for the measurements imported from the CRAB road log, WSDOT's functional
 // class layer and WSDOT's traffic counts.
 //
-// Every row states WHERE ITS NUMBER CAME FROM, because these are three
-// different kinds of claim and reading them as one would repeat the mistake
-// that made a designated bike route look like a safety guarantee:
-//   * traffic volume is a MEASUREMENT, and carries the year it was measured
-//   * bail-out space is DERIVED from widths, and is not a ridable shoulder
-//   * functional class is a PROXY for volume, never converted into a number
+// Each value carries a short provenance tag in parentheses, and that tag is the
+// whole safeguard: these are three different kinds of claim and reading them as
+// one is how a designated bike route came to look like a safety guarantee.
+//   (county 2016) / (state 2025)  a MEASUREMENT, with who counted and when
+//   (derived)                     computed from widths, not a ridable shoulder
+//   (FHWA)                        a class, a proxy for volume, never a count
+// The full reasoning lives in docs/SAFETY-MODEL.md; a card is not the place for
+// it. Rows must fit a phone without turning the popup into a scroll.
 //
-// Display only. None of this reaches roadLevelExpr or the router, so nothing
-// here changes a verdict, a colour or a route.
+// Display only. None of this reaches roadLevelExpr or the router.
 function measurementRows(measures) {
   if (!measures) return [];
   const rows = [];
   if (measures.adt != null) {
-    const source = measures.adtState ? 'WSDOT state-route count' : 'county road log';
-    const year = measures.adty ? `${measures.adty}` : 'year unrecorded';
-    const stale = measures.adty && measures.adty < STALE_COUNT_BEFORE;
-    rows.push(['Traffic', `${measures.adt.toLocaleString()} vehicles/day — `
-      + `${year}, ${source}${stale ? '; old count' : ''}`]);
+    // County and state counts are the same kind of fact and are shown the same
+    // way; the tag says which inventory it came from. The year does the work of
+    // flagging an old count -- "1977" needs no adjective.
+    const source = measures.adtState ? 'state' : 'county';
+    const when = measures.adty ? ` ${measures.adty}` : '';
+    rows.push(['Traffic', `${measures.adt.toLocaleString()}/day (${source}${when})`]);
   }
   if (measures.edge != null) {
-    rows.push(['Bail-out space', `~${measures.edge} ft beside the lane`
-      + `${measures.edgeClamp ? ', lane width capped' : ''}`
-      + ' — derived from county widths, paved or not; not a ridable shoulder']);
+    rows.push(['Edge space', `~${measures.edge} ft `
+      + `(derived${measures.edgeClamp ? ', capped' : ''})`]);
   }
   if (measures.countySh != null) {
-    rows.push(['County shoulder', `${measures.countySh} ft paved (county inventory)`]);
+    rows.push(['Shoulder', `${measures.countySh} ft (county)`]);
   }
   if (measures.fc) {
-    rows.push(['Road class (FHWA)', `${FUNCTIONAL_CLASS_NAME[measures.fc] || measures.fc}`
-      + (measures.owner ? ` — ${ROAD_OWNER_NAME[measures.owner] || 'owner ' + measures.owner}` +
-        ' maintained' : '')
-      + ' — indicates traffic level, not a count']);
-  } else if (measures.owner) {
-    rows.push(['Maintained by', ROAD_OWNER_NAME[measures.owner] || `owner ${measures.owner}`]);
+    const owner = ROAD_OWNER_NAME[measures.owner];
+    rows.push(['Class', `${FUNCTIONAL_CLASS_NAME[measures.fc] || measures.fc} (FHWA`
+      + `${owner ? ', ' + owner.toLowerCase() : ''})`]);
+  } else if (measures.owner && ROAD_OWNER_NAME[measures.owner]) {
+    rows.push(['Maintained by', ROAD_OWNER_NAME[measures.owner]]);
   }
   return rows;
 }

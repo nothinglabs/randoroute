@@ -147,7 +147,6 @@ console.log('PASS  the tile shape and the graph-edge shape agree');
 /* ------------------------------------------ every row states its provenance */
 const rowsCtx = {};
 vm.createContext(rowsCtx);
-vm.runInContext(constsOf(appSrc, ['STALE_COUNT_BEFORE']), rowsCtx);
 vm.runInContext(
   appSrc.match(/const FUNCTIONAL_CLASS_NAME = \{[\s\S]*?\n\};/)[0].replace('const ', 'var ') + '\n'
   + appSrc.match(/const ROAD_OWNER_NAME = \{[^}]*\};/)[0].replace('const ', 'var '), rowsCtx);
@@ -155,24 +154,30 @@ vm.runInContext(lift(appSrc, 'measurementRows', 'app.js'), rowsCtx);
 
 const rows = rowsCtx.measurementRows(fromEdge);
 const byLabel = Object.fromEntries(rows);
-assert.ok(/2,357 vehicles\/day/.test(byLabel.Traffic), 'the count itself is shown');
-assert.ok(/2016/.test(byLabel.Traffic), 'a count is never shown without its year');
-assert.ok(/county road log/.test(byLabel.Traffic), 'the count names its source');
-assert.ok(/not a ridable shoulder/.test(byLabel['Bail-out space']),
-  'derived edge space must not be mistaken for a shoulder');
-assert.ok(/lane width capped/.test(byLabel['Bail-out space']),
-  'a clamped row must say so');
-assert.ok(/not a count/.test(byLabel['Road class (FHWA)']),
-  'functional class must be presented as a proxy, never as a measurement');
+assert.equal(byLabel.Traffic, '2,357/day (county 2016)',
+  'a count is shown with the inventory it came from and the year it was taken');
+assert.equal(byLabel['Edge space'], '~5 ft (derived, capped)',
+  'derived space is tagged as derived, and a capped lane width says so');
+assert.equal(byLabel.Class, 'Minor collector (FHWA, county)',
+  'functional class is shown as a class, never as a vehicles-per-day figure');
 
+// Every row must fit a phone line rather than wrapping the popup into a scroll.
+for (const [label, value] of rows) {
+  assert.ok(`${label} ${value}`.length <= 44,
+    `row too long for a phone card: "${label}: ${value}"`);
+}
+
+const stateCount = rowsCtx.measurementRows({ adt: 14000, adty: 2025, adtState: 1 });
+assert.equal(Object.fromEntries(stateCount).Traffic, '14,000/day (state 2025)',
+  'a state count is shown the same way, tagged as state');
 const old = rowsCtx.measurementRows({ adt: 1200, adty: 1977, adtState: 0 });
-assert.ok(/old count/.test(Object.fromEntries(old).Traffic),
-  'a count from before 2000 must be marked');
+assert.equal(Object.fromEntries(old).Traffic, '1,200/day (county 1977)',
+  'the year alone flags an old count; it needs no adjective');
 const noYear = rowsCtx.measurementRows({ adt: 1200, adtState: 0 });
-assert.ok(/year unrecorded/.test(Object.fromEntries(noYear).Traffic),
-  'a count with no year must say so rather than imply a recent one');
+assert.equal(Object.fromEntries(noYear).Traffic, '1,200/day (county)',
+  'a count with no year says nothing rather than implying one');
 // deepEqual would compare across vm realms, where Array.prototype differs.
 assert.equal(rowsCtx.measurementRows(null).length, 0, 'no measurements, no rows');
-console.log('PASS  every row states where its number came from');
+console.log('PASS  every row is tagged with its provenance and fits a phone line');
 
 console.log(`\n${checks + 3} checks, 0 failed`);
