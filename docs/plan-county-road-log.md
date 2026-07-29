@@ -50,6 +50,49 @@ Counted against the live service, not assumed:
 As on Island, a blank shoulder width means "not separately inventoried", not
 "no shoulder": of 16,801 populated values, only 15 are zero.
 
+## How much this expands what we know
+
+Measured against the shipped graph, not estimated:
+
+```
+road miles in graph (excluding paths and ferries)   94,518
+  KNOWN shoulder                                     8,721 mi    9.2%
+  unknown shoulder                                  85,796 mi   90.8%
+  WSDOT LTS present                                  7,969 mi    8.4%
+  traffic volume, any road                               0 mi      0%
+```
+
+The 9.2% is BLTS, and it is essentially the state highway system: 55,271 BLTS
+features and 15,897 directional miles collapse onto roughly 8,700 centerline
+miles of graph. Everything else is estimated or unknown. That asymmetry is the
+reason the router prefers SR 525 to the quiet roads beside it — the highway is
+the only thing it has evidence about.
+
+CRAB carries `OperationalWidth`, `ThruLanes` and `ThruLaneWidth` on 100% of
+39,187 county road miles.
+
+| | today | after CRAB (ceiling) |
+|---|---|---|
+| road with a space metric | 8,721 mi (9.2%) | ~48,000 mi (~50%) |
+| road with traffic volume | 0 | ~46,000 mi (39k county + ~7k state) |
+
+Roughly a fivefold expansion in road with a space measurement, and traffic
+volume goes from nothing to about half the network.
+
+Three deductions from that ceiling, all of them real:
+
+- **Conflation loss.** Not every CRAB mile will match OSM geometry. Perhaps
+  85-90% on named county roads; unknown until it is built.
+- **It is bail-out space, not ridable shoulder.** The paved-only field stays at
+  15% of CRAB rows, so ridable-shoulder coverage barely moves. The jump is in
+  the "somewhere to go when a truck comes past" number.
+- **21.8% carry the folded lane width**, and under-report until the clamp rule
+  is written.
+
+What remains uncovered afterwards is about 45,000 miles, overwhelmingly city
+streets and local residential roads. Functional class fills part of that for
+arterials; for the rest, calm-by-default is a fair assumption.
+
 ## The two quantities
 
 These are different questions and the model must keep them apart.
