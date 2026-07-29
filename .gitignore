@@ -29,8 +29,9 @@ data/*.pmtiles-journal
 __pycache__/
 # Statewide road measurements: large build-time inputs, conflated into the
 # graph and tiles rather than shipped. Rebuild with scripts/build_roadlog.py,
-# build_funcclass.py and build_aadt.py.
+# build_funcclass.py, build_aadt.py and build_hpms.py.
 data/roadlog.geojson
 data/funcclass.geojson
 data/aadt.geojson
+data/hpms.geojson
 data/.cache/
