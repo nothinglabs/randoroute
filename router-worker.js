@@ -66,9 +66,6 @@ const EDGE_DISMOUNT = 8;
 const EDGE_SIDEWALK = 16;
 const EDGE_SIDEWALK_NO = 32;
 const EDGE_URBAN = 64;
-// On a county's own signed bike route, baked in by scripts/build_graph.py so
-// the router, the cards and the map's tile colours all read one flag.
-const EDGE_COUNTY_ROUTE = 128;
 const SURFACE_UNKNOWN = 0;
 const SURFACE_PAVED = 1;
 const SURFACE_GRAVEL = 2;
@@ -339,10 +336,6 @@ function edgeFacts(i, forward) {
     sidewalk: official & EDGE_SIDEWALK ? 'present'
       : official & EDGE_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & EDGE_URBAN),
-    designated: !!(flags & 64),
-    // Kept separate from the line above: the rider trusts state routes and
-    // county routes independently, so the model must be able to tell them apart.
-    countyDesignated: !!(official & EDGE_COUNTY_ROUTE),
     stressRating: eLts ? (eLts[i] || null) : null,
   };
 }
@@ -370,7 +363,7 @@ const V_HEUR = 160.0;
 // designation is useful route context, but is not itself infrastructure.
 const DEFAULT_WEIGHTS = Object.freeze({
   directFail: 1.5, balancedComfy: 0.92, balancedFail: 9, lowComfy: 0.9, lowFail: 30,
-  designated: 0.94, strongDesignated: 0.5, heavyDesignated: 0.25, residential: 0.78,
+  designated: 0.94, strongDesignated: 0.5, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
@@ -881,18 +874,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // designation was 0.86, weaker than every facility weight; at 0.5 it
       // silently inverted, making a signed road with no infrastructure beat a
       // road with a painted bike lane (0.68).
-      //
-      // A county's own signed route earns the same bonus as a state one. It is
-      // the same kind of claim -- an agency put up signs and maintains them --
-      // and a rider who has asked to prefer signed routes means all of them.
-      // Only BUILT county routes are ever marked; a planned corridor carries no
-      // flag, so it cannot be preferred here (see county-data.js).
       if (!(fl & (32 | 4)) && !isDismountEdge(ei) && actualLevel < 4) {
-        const signed = (fl & 64) || (eOfficial[ei] & EDGE_COUNTY_ROUTE);
+        const signed = fl & 64;
         cost *= eFacility[ei]
           ? facilityPrefMult(eFacility[ei])
-          : (signed ? activeWeights[prefDesig === 'heavy' ? 'heavyDesignated'
-            : prefDesig ? 'strongDesignated' : 'designated'] : 1);
+          : (signed ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
       }
       if (prefResidential && !(fl & (8 | 32 | 4))
           && !edgeLimited(ei, forward) && isResidential(ei)) {
@@ -986,7 +972,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     timeS += segTimeS;
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
-    if ((eFlags[ei] & 64) || (eOfficial[ei] & EDGE_COUNTY_ROUTE)) desigM += eLen[ei];
+    if (eFlags[ei] & 64) desigM += eLen[ei];
     if (eFacility[ei] >= 1) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
@@ -1023,7 +1009,6 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
       lts: eLts ? eLts[ei] : 0,
-      countyDesig: !!(eOfficial[ei] & EDGE_COUNTY_ROUTE),
       hazard, hazardLenM: Math.round(hazardLenM), hazC0, hazC1,
       gradePct: reportedGradePct((forward ? eAsc[ei] : eDes[ei])
         - (forward ? eDes[ei] : eAsc[ei]), eLen[ei]),
@@ -1221,7 +1206,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
     seg.timeS = Math.round(segTimeS);
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
-    if ((eFlags[ei] & 64) || (eOfficial[ei] & EDGE_COUNTY_ROUTE)) desigM += eLen[ei];
+    if (eFlags[ei] & 64) desigM += eLen[ei];
     if (eFacility[ei] >= 1) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
@@ -1325,17 +1310,6 @@ const ROUTE_PROFILES = [
   { id: 'gentle-bike', label: 'Low stress + bike', mode: 'low', prefDesig: true, prefResidential: false, order: 2.1 },
   { id: 'gentle-residential', label: 'Low stress + residential', mode: 'low', prefDesig: false, prefResidential: true, order: 2.2 },
   { id: 'friendly', label: 'Low stress + both', mode: 'low', prefDesig: true, prefResidential: true, order: 2.3 },
-  // Follow the signed network as far as it will take you. The ordinary
-  // preference (x0.5) turns out not to change these routes at all -- Clinton to
-  // Langley is byte-identical at x1.0 and x0.5 -- so this is the setting that
-  // actually buys a rider the signed route, at x0.25: a signed mile is worth
-  // riding four to reach. Measured on that leg it moves 7% -> 26% of the
-  // distance onto signed route for +15% distance and +28% time.
-  //
-  // It is still only a preference. The bonus is gated on the edge PASSING the
-  // rider's rules, so this cannot pull anyone onto a failing highway just
-  // because a county drew a line along it.
-  { id: 'route-first', label: 'Follow bike routes', mode: 'balanced', prefDesig: 'heavy', prefResidential: false, order: 1.4 },
 ];
 
 function candidateProfiles(forceDesig, forceResidential) {
@@ -1344,7 +1318,7 @@ function candidateProfiles(forceDesig, forceResidential) {
   for (const base of ROUTE_PROFILES) {
     const profile = {
       ...base,
-      prefDesig: base.prefDesig === 'heavy' ? 'heavy' : (forceDesig || base.prefDesig),
+      prefDesig: forceDesig || base.prefDesig,
       prefResidential: forceResidential || base.prefResidential,
     };
     const key = `${profile.mode}:${profile.prefDesig}:${profile.prefResidential}`;
@@ -1932,17 +1906,7 @@ onmessage = (ev) => {
     if (m.type === 'graph') {
       postMessage({ type: 'progress', phase: 'engine', detail: 'Reading the statewide routing map…' });
       loadGraph(m.buffer);
-      // Report how many edges carry a county bike route. The app uses this to
-      // tell a freshly-built graph from a cached one that predates the county
-      // bake -- a version string cannot, because the previous service worker
-      // serves /data/ ignoring the query it is carried in.
-      let countyEdges = 0;
-      for (let i = 0; i < E; i++) if (eOfficial[i] & EDGE_COUNTY_ROUTE) countyEdges++;
-      postMessage({ type: 'ready', nodes: N, edges: E, countyEdges });
-    } else if (m.type === 'county') {
-      // County bike routes are baked into the graph now, so there is nothing to
-      // apply here. Kept so an older cached app that still sends this message
-      // does not fall into the error branch below.
+      postMessage({ type: 'ready', nodes: N, edges: E });
     } else if (m.type === 'route') {
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];

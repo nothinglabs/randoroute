@@ -31,7 +31,7 @@ context.onmessage({ data: { type: 'graph', buffer } });
 
 const rules = {
   allowFreeways: true, minShoulder: 4, unknownShoulderZero: true,
-  allowMtbTrails: false, vettedBikeRoutes: true,
+  allowMtbTrails: false,
   freeMaxSpeed: 35, upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
 };
 const sweepProfiles = [

@@ -29,8 +29,6 @@
  *   lanes           every car lane including turn lanes, 0 if untagged
  *   sidewalk        'present' | 'absent' | null
  *   urban           inside a Census urban area
- *   designated      on a signed national / state / regional bike route
- *   countyDesignated on a county's own signed bike network
  *   stressRating    official Level of Traffic Stress, 1-4, or null if unrated
  * }
  *
@@ -55,7 +53,7 @@
   // Every rung, in order. The first that matches wins. `rule` is what the card
   // explains and what tests assert on, so these keys are part of the contract.
   var RULES = ['prohibited', 'ferry', 'freeway', 'infra', 'speed-cap', 'wide-road',
-    'slow-road', 'designated', 'sidewalk-fallback', 'shoulder', 'unknown', 'default'];
+    'slow-road', 'sidewalk-fallback', 'shoulder', 'unknown', 'default'];
 
   // Why a road can be amber rather than green or blue. Every entry must appear
   // in the "What makes a road caution?" help section; a test enforces it.
@@ -148,31 +146,23 @@
     // highway. As a modifier it downgrades a road that would otherwise pass and
     // leaves every failure and every dedicated path exactly as it was.
 
-    // An absolute ceiling: it comes before the slow-road and designated
-    // shortcuts so "Never allow roads faster than" means what it says.
+    // An absolute ceiling: it comes before the slow-road shortcut so
+    // "Never allow roads faster than" means what it says.
     if (!rules.noUpperLimit && facts.speed != null && facts.speed > rules.upperMaxSpeed) {
       return out(4, 'speed-cap');
     }
     // Before the slow-road rung: Seattle signed every arterial at 25 mph in
     // 2020, so speed alone would pass a five-lane road outright.
     //
-    // Trusting designated bike routes overrides this one failure. The rider has
-    // said they accept signed corridors, and a route signed along a wide road is
-    // one somebody decided was ridable; the lane count is then describing a road
-    // that is already vouched for. It is done here rather than by moving the
-    // trust rung above this one, because that would also pre-empt the slow-road
-    // rung and cost a slow signed street its level 1. The speed cap above stays
-    // absolute, so "Never allow roads faster than" still means what it says.
-    // Two designations, two settings. A national or state route and a county
-    // route are different claims by different agencies, and a rider may well
-    // trust one and not the other -- so neither may stand in for the other.
-    var trusted = !!(facts.designated && rules.vettedBikeRoutes)
-      || !!(facts.countyDesignated && rules.vettedCountyRoutes);
-    if (wideRoadNeedsSpace(facts, shoulder, rules) && !trusted) return out(4, 'wide-road');
+    // No designation of any kind can excuse a road here. A signed route is a
+    // recommendation by an agency, not a measurement of the road: Clallam's
+    // Olympic Discovery Trail alignment runs 58.8 mi along ordinary road,
+    // including US 101 at 60 mph with no shoulder. The rules below judge the
+    // road, and a route drawn along it does not change what it is.
+    if (wideRoadNeedsSpace(facts, shoulder, rules)) return out(4, 'wide-road');
     if (facts.speed != null && facts.speed <= noShoulderMaxSpeed(facts, rules)) {
       return out(softCaution ? 3 : 1, 'slow-road');
     }
-    if (trusted) return out(softCaution ? 3 : 2, 'designated');
 
     if (shoulderFails(facts, shoulder, rules)) {
       if (sidewalkFallbackApplies(facts, shoulder, rules)) {

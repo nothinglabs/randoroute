@@ -10,7 +10,7 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v409'; // bump when app shell changes
+const VERSION = 'v410'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -22,7 +22,6 @@ const SHELL = [
   './route-details.html',
   './app.js',
   './safety-model.js',
-  './county-data.js',
   './basemap-style.js',
   './route-details.js?v=398',
   './router-worker.js',
@@ -46,7 +45,7 @@ const SHELL = [
 // Must match GRAPH_DATA_VERSION in app.js. Bump when the graph is rebuilt: the
 // cache below is keyed by URL, so a graph whose bytes changed under an unchanged
 // name would otherwise be served from cache forever.
-const GRAPH_DATA_VERSION = '2026-07-28-county';
+const GRAPH_DATA_VERSION = '2026-07-28-b';
 
 const DATA = [
   './data/bikeroutes.geojson.gz',
@@ -54,8 +53,6 @@ const DATA = [
   './data/bikeinfra.geojson.gz',
   './data/bike_restrictions.geojson.gz',
   './data/route_closures.geojson.gz',
-  './data/county/island.json.gz',
-  './data/county/clallam.json.gz',
   './data/roads.pmtiles',
   './data/basemap.pmtiles',
   `./data/graph2.bin.gz?gv=${GRAPH_DATA_VERSION}`,
@@ -66,8 +63,6 @@ const DATA = [
 // DATA_CACHE across UI releases.
 const ALWAYS_REFRESH_DATA = new Set([
   './data/bikeroutes.geojson.gz',
-  './data/county/island.json.gz',
-  './data/county/clallam.json.gz',
 ]);
 
 // cache.addAll() is all-or-nothing: one dropped request on a phone fails the

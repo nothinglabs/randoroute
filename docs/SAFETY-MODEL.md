@@ -5,7 +5,7 @@ How a road gets its colour, its verdict, and its routing cost.
 ## The principle this file exists to enforce
 
 **A setting that sounds objective must have an objective consequence.** If a
-control is named like a fact or a permission — *Assume designated bike routes safe*,
+control is named like a fact or a permission —
 *Minimum shoulder if no bike lane*, *Route over freeway as last resort (still shows as failing)*
 — then changing it must change the verdict shown on the map in a defined,
 reproducible way. A control that sounds like it governs safety but only nudges
@@ -147,11 +147,10 @@ different rules.
 | 5 | `speed-cap` | speed over the absolute ceiling | 4 | `upperMaxSpeed`, `noUpperLimit` |
 | 6 | `wide-road` | at or over the lane threshold, no shoulder and no bike lane | 4 | `maxLanesNoShoulder` |
 | 7 | `slow-road` | slow enough to share the lane | 1 | `urbanMaxSpeedNoShoulder`, `ruralMaxSpeedNoShoulder` |
-| 8 | `designated` | on a signed bike route, if trusted | 2 (3 with a soft caution) | `vettedBikeRoutes` |
-| 9 | `sidewalk-fallback` | would fail the shoulder rung, but has a mapped sidewalk | 3 | `allowSidewalkFallback` |
-| 10 | `shoulder` | shoulder under the minimum, no bike lane | 4 | `minShoulder`, `unknownShoulderZero` |
-| 11 | `unknown` | no usable data on any criterion | 0 | — |
-| 12 | `default` | nothing failed, nothing shortcut it | 2 | — |
+| 8 | `sidewalk-fallback` | would fail the shoulder rung, but has a mapped sidewalk | 3 | `allowSidewalkFallback` |
+| 9 | `shoulder` | shoulder under the minimum, no bike lane | 4 | `minShoulder`, `unknownShoulderZero` |
+| 10 | `unknown` | no usable data on any criterion | 0 | — |
+| 11 | `default` | nothing failed, nothing shortcut it | 2 | — |
 
 ### Soft cautions — the two modifiers
 
@@ -281,66 +280,36 @@ number rather than a surprise.
 fine" is not a rule anyone would choose over switching the rule off. A saved
 value from a wider range clamps to the top stop, which reads as No limit.
 
-### Rung 8 — what trusting a signed route does and does not override
+### No rung lets a designation excuse a road
 
-`vettedBikeRoutes` is **off by default**, in every preset. A designation says an
-agency signed a road, not that the road is good: signed-route relations include
-long highway connectors with no shoulder, and turning this on silently waives the
-shoulder and lane rules on them. A rider who wants that can ask for it; nobody
-should get it by accident. The name says so — *Assume designated bike routes safe
-(not all are!)*.
+There was one, and it was removed. `vettedBikeRoutes` and `vettedCountyRoutes`
+let a signed route override the wide-road and shoulder failures; both settings
+and the rung are gone.
 
-When it is on, it sits at rung 8, so its reach is decided entirely by that
-position. It overrides only the failures *below* it:
+The reason is what signed-route data actually contains. Clallam County's Olympic
+Discovery Trail alignment — the most carefully classified route data found in
+Washington — runs **58.8 of its 157.9 miles along ordinary road**, and the county
+says so in its own `ROUTE_TYPE` field. That road includes **US 101 at 60 mph with
+no shoulder**, **SR 112 at 55 mph with two feet**, and **La Push Road at 50 mph
+with none**. With the override on, 44 miles of that read as *"passes your rules"*.
 
-| failure | rung | overridden by trust |
-|---|---|---|
-| bikes prohibited | 1 | no |
-| freeway | 3 | no |
-| speed cap | 5 | no |
-| **wide road** | 6 | **yes** |
-| **shoulder under the minimum** | **10** | **yes** |
+OSM's national and regional relations are no better and give you less to work
+with: the same trail is a single undifferentiated line that cannot tell you any
+of it is highway.
 
-The wide-road failure is overridden in place rather than by moving the rung
-above it, because moving it would also pre-empt the slow-road rung and cost a
-slow signed street its level 1. A route signed along a wide road is one somebody
-decided was ridable, so the lane count is describing a road already vouched for.
-556 signed edges (16 mi) are rescued: 289 to a pass, 267 to a caution they pick
-up from a limited-access or high-stress modifier.
+A designation is an agency recommending a way through. It is not a measurement of
+the road, and the rules below measure the road. A route drawn along a highway
+does not change what the highway is.
 
-The speed cap stays absolute so *"Never allow roads faster than"* means what it
-says, and prohibitions and freeways are never overridable.
+Designation still *does* something: it earns a routing preference
+(`designated` ×0.94, `strongDesignated` ×0.5 under *Heavily prefer bike routes &
+trails*), which makes a qualifying road cheaper to route over. That bonus is
+gated on the edge passing, so it can never pull a rider onto a failing road.
+Preference, never permission.
 
-Anything trust overrides also stops being filtered by *Only show routes fully
-matching*, since the road then passes.
+### Rung 8/9 — the shoulder rung and its sidewalk fallback
 
-**Two designations, two settings.** `facts.designated` (a mapped national /
-state / regional route relation) and `facts.countyDesignated` (a county's own
-signed network) are separate facts, gated by `vettedBikeRoutes` and
-`vettedCountyRoutes`. Either alone is enough to trust a road, and neither may
-stand in for the other, because they are different claims: a route relation says
-somebody mapped a corridor — the Olympic Discovery Trail's includes long highway
-connectors — while a county designation says the county installed the signs and
-maintains the road. **Both default off, in every preset.** A county publishing a bike route is not a
-claim that the road is safe: Clallam's Olympic Discovery Trail alignment runs
-58.8 mi along ordinary road, including US 101 at 60 mph with no shoulder. Trust
-of either kind is opt-in, and the road card names the agency so a rider can see
-what they are agreeing to.
-
-On Island County's 323 signed edges, turning county trust on moves **106 edges
-(14.6 mi)** off a failure: 102 from fail to pass and 4 from caution to pass.
-
-The map applies this too. County bike routes are **baked in at build time** —
-`cg` in the road tiles, `EDGE_COUNTY_ROUTE` (`eOfficial` bit 128) in the graph —
-so the colour, the router and the cards read one flag. They were briefly a
-runtime overlay, which could not work: `roadLevelExpr` is evaluated by the
-renderer against tile properties, so a flag computed in JavaScript changed
-routing and the cards but never the colour, and those 14.6 miles routed as
-passing while drawn failing.
-
-### Rung 9/10 — the shoulder rung and its sidewalk fallback
-
-`allowSidewalkFallback` (default on) applies to **rung 10 only**. It fires when
+`allowSidewalkFallback` (default on) applies to **rung 9 only**. It fires when
 all of: the setting is on, the sidewalk is positively mapped `present`
 (untagged does not count), there is no bike facility, the speed is known and
 *above* the no-shoulder limit, and the shoulder is known and *below*
@@ -385,115 +354,6 @@ state authority enriches it**:
 
 Urban/rural context comes from the US Census and is already national.
 
-## Adding another county
-
-A state DOT stops at the state highway system. Everything below it — the county
-roads most riding actually happens on — is invisible to WSDOT's layers no matter
-how well the county has mapped it. Deer Lake Road on Whidbey is the case that
-forced this: it carries Island County's own signed bike route and about 2,000
-vehicles a day, and the app knew none of it, because the road is not a state
-route.
-
-Counties publish their own data one at a time, in their own GIS orgs, with their
-own field names, so each arrives as a self-describing bundle. Where it goes
-depends on whether the renderer needs it:
-
-```
-scripts/build_county_data.py  →  data/county/<slug>.json(.gz)
-scripts/county_conflate.py    →  BAKED into graph2.bin.gz + roads.pmtiles (routes)
-county-data.js                →  runtime lookup for the cards (traffic)
-```
-
-**Bike routes are baked**, because map colour can only come from tile
-properties. **Traffic counts are not**, because they never touch colour and are
-the part that churns — a county re-counting a road is a 100 KB file, not a 38 MB
-archive. The cost of the bake is honest: adding or re-surveying a county's
-routes means rebuilding both archives, so counties are batched.
-
-The full procedure, and what we accept and refuse from a county, is in
-[county-data-import.md](county-data-import.md).
-
-A bundle carries two things:
-
-| field | what it is | what it does |
-|---|---|---|
-| `routes[]` | the county's **built** bike network | sets `facts.designated`, exactly like a USBR |
-| `traffic[]` | average daily traffic per road segment, with the year counted | **display only** — resolved by position on the card, never conflated onto an edge |
-
-**The county ribbon answers no taps.** It is drawn above the road it follows, so
-making it hit-testable meant tapping a county-signed street returned three lines
-about the designation and hid everything about the road. The road is the
-substance; the designation is a property of it, and appears on the road and route
-cards as extra rows resolved by position.
-
-**Planned corridors are not shipped.** Island County publishes 49 miles of
-planned route against 33 miles of built network, so drawing them put more
-provisional line on the map than real route and simply read as noise. They are
-dropped in `scripts/build_county_data.py`. The `status` field stays in the
-schema and both readers still require `existing`, so a county that publishes
-status differently cannot leak a plan into routing.
-
-### How a county line becomes a graph edge
-
-Only the bike network is conflated onto edges. Traffic counts change nothing
-about routing and both cards resolve them by position from the bundle itself, so
-pushing them onto edges as well was duplicated work — and expensive: Island
-County's road log is 597 miles of geometry against 33 miles of bike route.
-Dropping it, plus integer grid keys and reading the graph's typed arrays instead
-of accessors, took the load-time conflation from 994 ms to 75 ms.
-
-County centrelines and OSM centrelines are drawn independently and sit a few
-metres apart on the same asphalt, so the match is geometric, with two gates:
-
-- within **18 m** of the edge's *span* (not its midpoint — graph edges average
-  ~190 m, so a midpoint test would miss most of a road), and
-- pointing the **same way within 40°**, either direction along it.
-
-The bearing gate is what stops a signed route from bleeding onto every side
-street that crosses it. Without it, Island County's 33.5 mi of built route
-matched 72 mi of graph; with it, 42 mi — the remaining overshoot being edges that
-straddle a route's endpoints, which is inherent to edge granularity and errs
-toward continuity rather than gaps.
-
-### County traffic counts
-
-Average daily traffic is shown on road and route cards as three things together:
-the raw count, a 1–5 rating, and **the year it was taken**.
-
-| rating | vehicles/day | label |
-|---|---|---|
-| 1 | under 500 | Very light |
-| 2 | 500–1,500 | Light |
-| 3 | 1,500–3,000 | Moderate |
-| 4 | 3,000–8,000 | Heavy |
-| 5 | over 8,000 | Very heavy |
-
-The breakpoints follow the volume thresholds used in bicycle level-of-traffic-
-stress work, where roughly 1,500 and 3,000 vehicles a day are the points at which
-a two-lane road stops feeling shared.
-
-**This rating does not enter the verdict and does not change routing.** Nothing
-in `safety-model.js` reads it. That is deliberate on two grounds: coverage is one
-county so far, and the counts are wildly uneven in age — of Island County's 4,346
-segments, 2,865 were counted before 2010, some as far back as 1977. A number that
-old cannot be allowed to fail a road. The card always prints the count year, and
-marks anything older than ten years as dated, because a count with no date on it
-is a guess presented as a measurement.
-
-If traffic volume is ever promoted into the verdict, it belongs in this document
-first, with a stated rule for what a missing or stale count means.
-
-### What a county bundle does not do
-
-The county road log also carries lane width, pavement width and a posted speed
-limit. Only the speed is surfaced, and only as a labelled county figure on the
-card — it does not override the speed the model uses. Nothing derives a shoulder
-from pavement width: on Deer Lake Road the county records "16 ft lanes, no
-shoulder", which almost certainly describes 32 ft of pavement with ~4–5 ft of
-usable edge per side, but that is an inference from a single entered value and
-the county has not asserted a shoulder. Inferring one would put a number the
-rider would read as measured behind a rule that fails roads.
-
 ## Which signals reach which decision
 
 Not every signal we hold is allowed to change a verdict. Several are
@@ -507,8 +367,6 @@ deliberately routing-only: they express preference, not safety.
 | bike facility type | yes | yes |
 | lanes | **yes** (rung 6) | yes |
 | official stress rating (LTS) | **caution only**, always on | yes |
-| county signed bike route | via rung 8, same as a state one | yes |
-| county traffic count (ADT) | **no** | **no** — display only |
 | OSM road class (secondary/primary/…) | no | yes |
 | surface, grade, curve hazard, sidewalk exposure | no | yes |
 
@@ -521,15 +379,13 @@ fact, so that is what rung 6 gates on.
 
 | setting | UI label | verdict effect | routing effect |
 |---|---|---|---|
-| `minShoulder` | Minimum shoulder if no bike lane | rung 10 threshold | via the verdict |
-| `unknownShoulderZero` | Unknown shoulder = 0 ft | untagged counts as 0 at rung 10 | via the verdict |
+| `minShoulder` | Minimum shoulder if no bike lane | rung 9 threshold | via the verdict |
+| `unknownShoulderZero` | Unknown shoulder = 0 ft | untagged counts as 0 at rung 9 | via the verdict |
 | `urbanMaxSpeedNoShoulder` | Urban max speed without shoulder or bike lane | rung 7 threshold | via the verdict |
 | `ruralMaxSpeedNoShoulder` | Rural max speed without shoulder or bike lane | rung 7 threshold | via the verdict |
 | `maxLanesNoShoulder` | Lanes needing a shoulder or bike lane | rung 6 threshold | also `wideRoad*` cost |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
-| `allowSidewalkFallback` | Allow sidewalk fallback | rung 9 exists at all | ×1.9 / ×3.8 / ×8.0 |
-| `vettedBikeRoutes` | Assume state bike routes safe (not all are!) | rung 8, for `facts.designated` | via the verdict |
-| `vettedCountyRoutes` | Assume county bike routes safe (not all are!) | rung 8, for `facts.countyDesignated` | via the verdict |
+| `allowSidewalkFallback` | Allow sidewalk fallback | rung 8 exists at all | ×1.9 / ×3.8 / ×8.0 |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
 | `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |
@@ -537,7 +393,7 @@ fact, so that is what rung 6 gates on.
 | `prefDesig` | Heavily prefer bike routes & trails | none | designation bonus |
 | `prefResidential` | Prefer residential streets | none | `residential` bonus |
 
-The first eight are named objectively and change the verdict. The last six are
+The first six are named objectively and change the verdict. The rest are
 named as permissions or preferences and change only where you are sent — which
 is what their names promise.
 
@@ -582,7 +438,7 @@ or illegal. Every multiplier applied to an edge, in `router-worker.js`:
 | WSDOT limited access | `limited*` | bike-legal but unpleasant |
 | mountain-bike trail | `mtbTrail` | opt-in, heavily penalised |
 | bike facility | `facility*` | separated lane or path can justify a detour |
-| signed bike route (national, state **or county**) | `designated`, `strongDesignated` | a recommendation, worth a detour but not a fact about the road |
+| signed bike route | `designated`, `strongDesignated` | a recommendation, worth a detour but not a fact about the road |
 | residential street | `residential` | quieter grid |
 | climbing | `climb*SecPerM`, `uphillFactor` | time model plus a preference |
 | turns | `turn*Sec` | fewer manoeuvres |
@@ -610,10 +466,6 @@ separately and stands on its own; withholding the bonus as well counted it
 twice, and priced a signed shoulder route along a state highway identically to
 any other highway — the case where a designation carries the most information.
 
-**A county's own signed route earns the same bonus as a state one.** It is the
-same kind of claim — an agency put up signs and maintains them — and a rider who
-asked to prefer signed routes meant all of them. Only routes the county marks
-`existing` are ever flagged, and planned corridors are not shipped at all.
 
 Ferries, freeways and dismount edges are still excluded: there, a preference
 would erase an access cost rather than express a taste.

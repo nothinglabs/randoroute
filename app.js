@@ -15,25 +15,21 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.434';
+const APP_VERSION = '2026-07-29.435';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
 const GRAPH_FORMAT_VERSION = 'bgr10-1';
 // Bump whenever data/graph2.bin.gz is REBUILT, even when its format is
 // unchanged. The service worker serves /data/ cache-first and ignores the query
-// string, so without this a rider keeps the graph they first downloaded forever.
-// That shipped: county bike routes were baked into the graph using a spare flag
-// bit, so the format string never moved, and devices kept routing on a graph
-// that had never heard of them -- the map and the card applied county trust
-// while the route line still drew the road failing.
+// string, so without this a rider keeps the graph they first downloaded forever
+// -- and a rebuilt graph silently never reaches them.
 // Must match GRAPH_DATA_VERSION in sw.js.
-const GRAPH_DATA_VERSION = '2026-07-28-county';
+const GRAPH_DATA_VERSION = '2026-07-28-b';
 const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
 const OFFICIAL_URBAN = 64;
-const OFFICIAL_COUNTY_ROUTE = 128;   // baked in by scripts/build_graph.py
 const SIGNIFICANT_UNPAVED_M = 1609.344;
 
 /* ---------------------------------------------------------------- palette */
@@ -44,11 +40,6 @@ const BIKE_NETWORK_COLOR = '#b7c900';
 // The designated-route ribbon: same family as the bike-network lime, duller,
 // because a signed route is advice rather than infrastructure.
 const DESIGNATED_COLOR = '#6f9400';
-// County networks are designation too, so they stay in the same green family
-// as DESIGNATED_COLOR -- but cooler and darker, because "Island County signed
-// this" and "USBR signed this" are different claims and the rider should be
-// able to tell them apart at a glance.
-const COUNTY_ROUTE_COLOR = '#1f7a5a';
 const COLORS = {
   1: '#168ad1', // passes rules
   2: '#168ad1', // passes rules (internal levels remain distinct for routing)
@@ -91,17 +82,6 @@ const DEFAULT_RULES = Object.freeze({
   allowFreeways: true,
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
   preferPaved: true,    // strongly prefer pavement by default; unpaved remains available
-  // Both off by default, and separate because they are different claims by
-  // different agencies. A state or national designation says a route relation
-  // exists -- the Olympic Discovery Trail's includes long highway connectors --
-  // while a county designation says the county signs and maintains that road.
-  // A rider may reasonably trust one and not the other.
-  // Both off in every preset. A county publishing a bike route is not a claim
-  // that the road is safe: Clallam's ODT alignment runs 58.8 mi along ordinary
-  // road, including US 101 at 60 mph with no shoulder. Trusting a designation of
-  // either kind is something a rider opts into, having seen what it covers.
-  vettedBikeRoutes: false,      // national / state / regional (OSM route relations)
-  vettedCountyRoutes: false,    // a county's own signed network
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
   urbanMaxSpeedNoShoulder: 30, // mph; at/below this an urban road passes without a shoulder
@@ -134,7 +114,7 @@ const RULE_NUMBER_LIMITS = {
 // with router-worker.js so the advanced desktop editor is reproducible.
 const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   directFail: 1.5, balancedComfy: 0.92, balancedFail: 9, lowComfy: 0.9, lowFail: 30,
-  designated: 0.94, strongDesignated: 0.5, heavyDesignated: 0.25, residential: 0.78,
+  designated: 0.94, strongDesignated: 0.5, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
@@ -209,22 +189,10 @@ const display = {
   failRules: true,
   caution: true,
   designated: true,
-  countyRoutes: true,
   unpavedBackground: true,
   bikesProhibited: true,
 };
 
-/* --------------------------------------------------- county road data
- * WSDOT's layers stop at the state highway system, so a county road has no
- * shoulder, no posted speed and no stress rating no matter how well the county
- * has mapped it. Counties publish their own data one at a time, so each arrives
- * as a self-describing bundle (scripts/build_county_data.py) that is conflated
- * onto the routing graph at load rather than baked into it. Adding a county is
- * one more entry here.
- */
-const COUNTY_BUNDLES = ['data/county/island.json.gz', 'data/county/clallam.json.gz'];
-const countyBundles = [];
-let countyLookup = null;   // point index, for roads tapped on the map
 
 // The background network is useful context, but the planned route needs to
 // remain visually dominant.  Keep every non-route line at a consistent visual
@@ -364,12 +332,6 @@ function scoreRoad(p) {
     stressRating: p.lts || null,
     est: p.e === 1,
     desig: p.g === 1, // on a designated bike route (USBR / regional)
-    // The county flag, baked into the tiles by scripts/county_conflate.py.
-    // Missing it here made the card and the map disagree: the map reads the
-    // tile property straight, so a county road drew as passing while its card
-    // still said "Fails: shoulder unknown". An adapter that drops an input is
-    // exactly the drift safety-model.js exists to stop.
-    cg: p.cg === 1,
     sidewalk: p.k === 1 ? 'present' : p.k === 2 ? 'absent' : null,
     urban: p.u === 1,
   };
@@ -419,8 +381,6 @@ function factsOf(n) {
     lanes: Number(n.lanes) || 0,
     sidewalk: n.sidewalk || null,
     urban: !!n.urban,
-    designated: !!n.desig,
-    countyDesignated: !!n.countyDesig || !!n.cg,
     stressRating: n.stressRating == null ? null : Number(n.stressRating),
   };
 }
@@ -440,21 +400,6 @@ const SOURCES = [
     // below hard bicycle restrictions and known closures.
     zRank: 2.5,
     ribbon: true,  // informational overlay: identical in both display modes
-    enabled: true,
-    fc: null,
-    loading: false,
-  },
-  {
-    id: 'countyroutes',
-    name: 'County bike routes',
-    // No url: the geometry comes out of the county bundles, which also carry
-    // the traffic counts the road cards read.
-    county: true,
-    scorer: scoreRouteOverlay,
-    // Just above the state/national ribbon, so where a county route and a USBR
-    // share a road the local designation is the one you see.
-    zRank: 2.6,
-    ribbon: true,
     enabled: true,
     fc: null,
     loading: false,
@@ -512,7 +457,7 @@ const SOURCES = [
     // The ?v= busts stale HTTP range caches when the tiles are rebuilt —
     // PMTiles bypasses the service worker, and mixing old/new byte ranges
     // silently breaks tile decoding. Bump alongside the sw.js VERSION.
-    vector: 'pmtiles://data/roads.pmtiles?v=20',
+    vector: 'pmtiles://data/roads.pmtiles?v=21',
     // The local basemap already opens this archive for its street geometry and
     // labels. Reuse that MapLibre source for safety coloring and hit testing so
     // iOS does not decode or retain the same vector tiles twice.
@@ -580,19 +525,9 @@ function roadLevelExpr() {
       ['>=', ['coalesce', ['get', 'ln'], 0], rules.maxLanesNoShoulder],
       ['>', ['coalesce', ['get', 'ln'], 0], 0],
       ['!', ridingSpace]];
-    // State and county designations are trusted separately, so the exception
-    // is the union of whichever the rider has turned on.
-    const trustedRoute = [];
-    if (rules.vettedBikeRoutes) trustedRoute.push(['==', ['get', 'g'], 1]);
-    if (rules.vettedCountyRoutes) trustedRoute.push(['==', ['get', 'cg'], 1]);
-    cases.push(trustedRoute.length
-      ? ['all', wideRoad, ['!', ['any', ...trustedRoute]]] : wideRoad, 4);
+    cases.push(wideRoad, 4);
   }
   cases.push(['all', hasSpeed, ['<=', spd, noShoulderMax]], passLevel);  // slow = comfortable
-  if (rules.vettedBikeRoutes)
-    cases.push(['==', ['get', 'g'], 1], ordinaryPassLevel);     // state route = vetted
-  if (rules.vettedCountyRoutes)
-    cases.push(['==', ['get', 'cg'], 1], ordinaryPassLevel);    // county route = vetted
   // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
   // otherwise only a known-narrow shoulder fails.
   const sh = rules.unknownShoulderZero
@@ -1601,13 +1536,7 @@ function ensureLayer(src) {
     },
   }, beforeId);
   applyDisplayMode(src);
-  // The county ribbon deliberately answers no taps. It is drawn above the road
-  // it follows, so making it hit-testable meant tapping a county-signed street
-  // returned three lines about the designation and hid everything about the
-  // road -- verdict, speed, shoulder, lanes, stress. The road is the substance;
-  // the designation is a property of it, and rides along on that card via
-  // countyDetailRows().
-  if (src.id !== 'countyroutes') attachHover(src, hitId(src));
+  attachHover(src, hitId(src));
   if (src.id === 'osm') attachHover(src, trailHitId(src));
 }
 
@@ -1618,7 +1547,6 @@ function updateVisibility(src) {
   // reliably throughout wheel, trackpad, touch, keyboard, and programmatic
   // zoom gestures.
   const on = src.id === 'routes' ? display.designated
-    : src.id === 'countyroutes' ? display.countyRoutes
     : src.id === 'restrict' ? display.bikesProhibited
     : true;
   if (src.closure) {
@@ -1681,26 +1609,6 @@ function applyDisplayMode(src) {
     if (map.getLayer(src.id + '__line')) {
       map.setPaintProperty(src.id + '__line', 'line-opacity', backgroundLineOpacity(0.92));
     }
-    updateVisibility(src);
-    return;
-  }
-  if (src.id === 'countyroutes') {
-    // A county's own signed network, in the same designation family as the
-    // state ribbon but a distinctly cooler green, because the two answer
-    // different questions and a rider needs to see which agency signed a road.
-    //
-    // Only BUILT routes exist here. Island County's planned corridors were 49
-    // miles against 33 of real network, so drawing them put more provisional
-    // line on the map than actual route and read as noise; they are dropped at
-    // build time rather than shipped and de-emphasised.
-    map.setFilter(src.id, null);
-    map.setPaintProperty(src.id, 'line-color', COUNTY_ROUTE_COLOR);
-    map.setPaintProperty(src.id, 'line-width',
-      ['interpolate', ['linear'], ['zoom'], 6, 4, 10, 7.5, 14, 13]);
-    map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.52));
-    map.setPaintProperty(src.id, 'line-dasharray', [3, 1.2]);
-    if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
-    if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
     updateVisibility(src);
     return;
   }
@@ -1938,26 +1846,6 @@ async function jsonAssetResponse(response, url) {
   return JSON.parse(window.fflate.strFromU8(window.fflate.gunzipSync(bytes)));
 }
 
-/* Fetch every county bundle once. The bundles draw the county's bike network
- * and answer "what does the county say about this spot?" for a tapped road.
- * They are NOT handed to the router: bike routes are baked into the graph and
- * the road tiles at build time (scripts/county_conflate.py), because the map's
- * colours come from tile properties and nothing computed here can reach them.
- * A county that fails to load is skipped rather than failing the others. */
-async function loadCountyBundles() {
-  for (const url of COUNTY_BUNDLES) {
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      countyBundles.push(await jsonAssetResponse(res, url));
-    } catch (e) {
-      console.warn(`County data unavailable (${url}):`, e.message);
-    }
-  }
-  countyLookup = countyBundles.length ? CountyData.lookupIndex(countyBundles) : null;
-  return CountyData.routesToGeoJSON(countyBundles);
-}
-
 async function loadSource(src) {
   if (src.loaded || src.loading) return;
   if (src.vector) {
@@ -1972,9 +1860,7 @@ async function loadSource(src) {
   setStatus(`Loading ${src.name}…`, true);
   try {
     let fc;
-    if (src.county) {
-      fc = await loadCountyBundles();
-    } else if (src.urlPattern) {
+    if (src.urlPattern) {
       // Multi-part source: fetch data/<name>-1.geojson, -2, ... until a part is missing.
       const features = [];
       for (let i = 1; i <= 20; i++) {
@@ -2305,8 +2191,6 @@ function routeSegFacts(s) {
     sidewalk: official & OFFICIAL_SIDEWALK ? 'present'
       : official & OFFICIAL_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & OFFICIAL_URBAN),
-    designated: !!(flags & 64),
-    countyDesignated: !!s.countyDesig || !!(official & OFFICIAL_COUNTY_ROUTE),
     stressRating: s.lts || null,
   };
 }
@@ -4770,18 +4654,7 @@ function onRouterMessage(ev) {
       : m.phase === 'reroute' ? 'Updating route' : 'Calculating route options';
     showRouterProgress(m.detail || 'Working…', title);
   } else if (m.type === 'ready') {
-    // A graph with no county edges, while county data is loaded, is a cached
-    // copy from before the county bake. Purge and reload once -- guarded by the
-    // session so a genuinely county-free graph cannot loop.
-    if (countyBundles.length && m.countyEdges === 0
-        && !sessionStorage.getItem('jra.graphReloaded')) {
-      try { sessionStorage.setItem('jra.graphReloaded', '1'); } catch { /* ignore */ }
-      try { localStorage.removeItem(GRAPH_VERSION_KEY); } catch { /* ignore */ }
-      setRouteStatus('Updating the routing map…');
-      purgeStaleGraphCache().then(() => location.reload());
-      return;
-    }
-    if (m.countyEdges > 0) markGraphDataLoaded();
+    markGraphDataLoaded();
     routing.ready = true;
     routing.loading = false;
     routing.pendingRoute = false;
@@ -6893,39 +6766,6 @@ const readoutEl = document.getElementById('readout');
 // filling that field from their DOT and changing this label. Nothing else.
 const STRESS_AGENCY = 'WSDOT';
 
-/* County road data on a card.
- *
- * Every caller resolves county data the same way -- by position, through
- * CountyData.lookup -- so a tapped road and a route segment describing the same
- * street cannot disagree.
- *
- * Traffic is reported as the count, its rating, AND the year it was taken. The
- * year is not decoration: counties re-count a road when they get to it, so one
- * log holds a 2017 reading beside a 1977 one, and a number with no date on it
- * would be a guess presented as a measurement.
- */
-function countyDetailRows(info) {
-  if (!info) return [];
-  const rows = [];
-  const agency = info.county ? `${info.county} County` : 'County';
-  if (info.route) rows.push(['County route', `${info.route} (${agency})`]);
-  const rating = CountyData.trafficLevel(info.adt);
-  if (rating) {
-    const when = info.adtYear
-      ? `${info.adtYear}${CountyData.trafficIsStale(info.adtYear) ? ', dated' : ''}`
-      : 'year unknown';
-    rows.push(['Traffic', `${info.adt.toLocaleString()}/day — `
-      + `${rating.level} of 5, ${rating.label.toLowerCase()} (${when})`]);
-  }
-  if (info.countySpeed) rows.push(['Speed limit (county)', `${info.countySpeed} mph`]);
-  return rows;
-}
-
-// What the county says about a point on the map, for a tapped road.
-function countyInfoAt(lngLat) {
-  if (!countyLookup || !lngLat) return null;
-  return CountyData.lookup(countyLookup, lngLat.lng, lngLat.lat);
-}
 // Headline form, e.g. "Caution — limited-access highway".
 const CAUTION_CAUSE_NAME = {
   'limited-access': 'limited-access highway',
@@ -7077,17 +6917,6 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
     case 'slow-road':
       return `${spdTxt} — at or below your ${noShoulderMaxSpeed(n)} mph ${area} no-shoulder limit,`
         + ` passes without a shoulder${cautionNote}`;
-    case 'designated': {
-      // Name the network that actually did it. Saying "USBR / regional trail"
-      // on a county road told the rider the wrong agency vouched for it, and
-      // pointed them at a setting they had not even turned on.
-      const byState = n.desig && rules.vettedBikeRoutes;
-      const source = byState
-        ? 'a state or national bike route (USBR / regional trail)'
-        : 'a county bike route';
-      return `On ${source} — you have chosen to trust these,`
-        + ` so it passes without a shoulder check${cautionNote}`;
-    }
     case 'sidewalk-fallback':
       return `${spdTxt}: ${shoulderTxt}. Your mapped-sidewalk fallback keeps it out of a`
         + ' hard fail, but the router strongly avoids it.';
@@ -7105,8 +6934,6 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
   else if (!shUnknown) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
   else if (rules.unknownShoulderZero) met.push(`shoulder unknown — treated as 0 ft, meets your ${rules.minShoulder} ft minimum`);
   else met.push('shoulder unknown (not held against it)');
-  if (n.desig && !rules.vettedBikeRoutes) met.push('state bike route, checked against your rules');
-  if (n.countyDesig && !rules.vettedCountyRoutes) met.push('county bike route, checked against your rules');
   if (spd != null)
     met.push(rules.noUpperLimit
       ? `${spdTxt} — no speed cutoff set`
@@ -7311,7 +7138,6 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
         ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
         ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
-        ...countyDetailRows(countyInfoAt(lngLat)),
         ['Grade', routeSegmentGrade(p.gradePct, p.lenM)],
         ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
@@ -7373,7 +7199,6 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Lanes', p.ln ? `${p.ln}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
       ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
       // Off the state highway system this is often the only inventory there is.
-      ...countyDetailRows(countyInfoAt(lngLat)),
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
       ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
@@ -7705,7 +7530,6 @@ function buildSourcePanel() {
     ['failRules', 'Road fails safety rules', 'fails'],
     ['caution', 'Caution — ride with care', 'caution'],
     ['designated', 'State & national bike routes', 'designated'],
-    ['countyRoutes', 'County bike routes', 'county-route'],
     ['unpavedBackground', 'Unpaved surfaces', 'unpaved'],
     ['bikesProhibited', 'Bikes prohibited', 'prohibited'],
   ];
@@ -7731,7 +7555,6 @@ const ROUTING_WEIGHT_GROUPS = [
   ]],
   ['Bike and neighborhood preference', [
     ['designated', 'Designated route (no facility)', .25, 1.2, .01], ['strongDesignated', 'Strong designated-route preference', .2, 1, .01],
-    ['heavyDesignated', 'Follow bike routes (heavy preference)', .1, 1, .01],
     ['residential', 'Residential street', .4, 1.1, .01], ['facilityShared', 'Shared-lane marking', .4, 1.2, .01],
     ['facilityLane', 'Bike lane', .25, 1.1, .01], ['facilityBuffered', 'Buffered bike lane', .2, 1.1, .01],
     ['facilitySeparated', 'Separated bike lane', .2, 1.1, .01], ['facilityPath', 'Shared-use path', .2, 1.1, .01],
@@ -7846,12 +7669,6 @@ function presetInfoRows(preset) {
     ['Sidewalk fallback', presetRules.allowSidewalkFallback
       ? 'Mapped sidewalks can satisfy the shoulder rule, but are strongly deprioritized and called out as a concern.'
       : 'Mapped sidewalks do not satisfy the shoulder rule.'],
-    ['State bike routes', presetRules.vettedBikeRoutes
-      ? 'Can satisfy the shoulder and lane rules; speed and access limits still apply.'
-      : 'Must meet the normal speed and shoulder rules.'],
-    ['County bike routes', presetRules.vettedCountyRoutes
-      ? 'Can satisfy the shoulder and lane rules; speed and access limits still apply.'
-      : 'Must meet the normal speed and shoulder rules.'],
     ['Freeways', presetRules.allowFreeways
       ? 'Always fail your rules. Bike-legal segments may still be routed over as a last resort,'
         + ' and are reported as failing; strict matching excludes them entirely.'
@@ -8033,8 +7850,6 @@ function buildRulesPanel() {
   };
   check('prefDesig', 'Heavily prefer bike routes & trails', routing, updateRoutePreference);
   check('prefResidential', 'Prefer residential streets', routing, updateRoutePreference);
-  check('vettedBikeRoutes', 'Assume state bike routes safe (not all are!)');
-  check('vettedCountyRoutes', 'Assume county bike routes safe (not all are!)');
   check('allowFreeways', 'Route over freeway as last resort (still shows as failing)');
   check('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
     // This option affects both eligibility in the graph and the OSM layer's
