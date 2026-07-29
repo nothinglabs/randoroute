@@ -85,6 +85,42 @@ the only thing it has evidence about.
 CRAB carries `OperationalWidth`, `ThruLanes` and `ThruLaneWidth` on 100% of
 39,187 county road miles.
 
+### A matching defect, and what fixing it recovered
+
+The first build's conflation rule required **every** sample point of a graph
+edge to fall within 18 m of **one** source segment. The road log stores a road
+as a run of short consecutive records, so no single record spans a graph edge,
+and the match failed outright — with the nearest road-log line touching the edge
+at zero distance:
+
+```
+samples 1/0/56 m      nearest source 0 m away, rejected
+samples 1/3/261 m     nearest source 0 m away, rejected
+samples 0/162/620 m   nearest source 0 m away, rejected
+```
+
+On Pioneer Way East that discarded 4.13 of 5.83 miles. Data already on disk.
+
+A way now matches when the source layer's aligned segments **together** cover a
+majority of five sample points, reporting the values of whichever single segment
+covers most of it. Every contributing segment is still checked individually for
+distance and bearing — stricter than the rule it replaces, which checked
+alignment only at the midpoint.
+
+Measured on a 40,000-edge sample, county road log coverage rises from **26.9% to
+38.1%** of road miles: **25,403 → 35,993 miles** statewide, a 42% relative gain.
+That is a larger improvement than adding a whole new source would give, out of
+data already fetched.
+
+An intermediate version of the fix matched on the best *single* segment and
+reached only 34.2%. It still rejected the fragmented case — five consecutive
+records each covering one sample — which is precisely the case that prompted the
+work. `scripts/test_road_match.py` caught that, and guards both directions:
+a parallel road 25 m away and a 45° crossing must be refused, a way split across
+five short records must be accepted.
+
+The figures below predate this fix and describe the shipped graph.
+
 ### What it actually delivered
 
 Measured on the built graph, not projected:
