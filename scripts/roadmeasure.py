@@ -165,7 +165,7 @@ class MeasureIndex:
         # Rule 3 for reporting: credit the matched PORTION of this way, which is
         # its own length here because every sample matched. Callers that match a
         # sub-span must add only that sub-span.
-        self.matched_m += _length_m(coords)
+        self.matched_m += length_m(coords)
         return self.props[best[1]]
 
     def report(self):
@@ -177,7 +177,7 @@ class MeasureIndex:
               f'({pct:.1f}%), {self.matched_m / 1609.344:,.0f} mi', flush=True)
 
 
-def _length_m(coords):
+def length_m(coords):
     total = 0.0
     for a, b in zip(coords, coords[1:]):
         dx = (b[0] - a[0]) * math.cos(math.radians((a[1] + b[1]) / 2)) * 111_320.0

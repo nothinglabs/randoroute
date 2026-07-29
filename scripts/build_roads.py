@@ -54,6 +54,7 @@ import osmium
 from shapely.geometry import LineString
 
 from roadmeasure import RoadMeasures
+from roadmeasure import length_m as measure_length_m
 
 CLASSES = {
     'motorway', 'motorway_link', 'trunk', 'trunk_link',
@@ -171,7 +172,45 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
         return (match['spd'], match['sh'], match['limited'],
                 match['facility'], match['prohibited'])
 
-    def add_feature(coords, base_props, match=None):
+    # Graph edges are split at junctions and average ~190 m, while an OSM way
+    # can run for kilometres. Matching a measurement to the whole way would give
+    # the tile one value where the graph has several, so the road card and the
+    # route card would disagree about the same spot -- the exact failure this
+    # import is supposed to be free of. Ways longer than this are measured in
+    # pieces of about this length, then equal neighbours are coalesced.
+    MEASURE_SPLIT_M = 250.0
+
+    def measured_runs(coords):
+        """[(run_coords, measurements)] at roughly graph-edge granularity."""
+        if not measures:
+            return [(coords, None)]
+        if measure_length_m(coords) <= MEASURE_SPLIT_M:
+            return [(coords, measures.match(coords))]
+        runs = []
+        chunk = [coords[0]]
+        run_m = 0.0
+        for a, b in zip(coords, coords[1:]):
+            chunk.append(b)
+            run_m += measure_length_m([a, b])
+            if run_m >= MEASURE_SPLIT_M:
+                runs.append(chunk)
+                chunk = [b]
+                run_m = 0.0
+        # A single leftover point is the previous run's own endpoint, already
+        # covered; only a real remaining segment becomes a run.
+        if len(chunk) >= 2:
+            runs.append(chunk)
+        out = []
+        for run in runs:
+            m = measures.match(run)
+            key = tuple(sorted((m or {}).items()))
+            if out and out[-1][0] == key:
+                out[-1][1].extend(run[1:])
+            else:
+                out.append([key, list(run), m])
+        return [(run_coords, m) for _, run_coords, m in out]
+
+    def add_feature(coords, base_props, match=None, meas=None):
         nonlocal kept
         cc = compact_coords(coords)
         props = dict(base_props)
@@ -197,8 +236,8 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
         # The same measurements the graph carries, matched the same way, so the
         # tap card and the route card cannot report different numbers for one
         # road. Display only in phase 1: none of these reaches roadLevelExpr.
-        if measures:
-            m = measures.match(cc)
+        m = meas
+        if m:
             if m.get('adt'):
                 props['adt'] = int(m['adt'])
                 if m.get('adty'):
@@ -283,7 +322,8 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
         wsdot_candidate = (hw in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}
                            or (tags.get('ref') and REF_STATE.search(tags['ref'])))
         if not wsdot_candidate:
-            add_feature(coords, p)
+            for run_coords, meas in measured_runs(coords):
+                add_feature(run_coords, p, meas=meas)
             return
 
         # Match each OSM node interval before coalescing equal runs. WSDOT
@@ -299,7 +339,8 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
             else:
                 runs.append([signature, [start, end], match])
         for _, run_coords, match in runs:
-            add_feature(run_coords, p, match)
+            for meas_coords, meas in measured_runs(run_coords):
+                add_feature(meas_coords, p, match, meas=meas)
 
     class RoadsHandler(osmium.SimpleHandler):
         def way(self, obj):
