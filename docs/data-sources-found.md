@@ -16,8 +16,54 @@ it is recorded below alongside what was actually learned from it.
 | **WSDOT bicycle restrictions** | permanent bans by traffic action | **in use** |
 | **OSM `route=bicycle` relations** | national (`ncn`) and regional (`rcn`) signed routes — USBR, Burke-Gilman, Palouse to Cascades, Olympic Discovery Trail | **in use** — `data/bikeroutes.geojson`, built by `scripts/build_routes.py`. WSDOT publishes these only as PDFs, which is why OSM is the source. |
 | **WSDOT Traffic Counts (AADT)** — `data.wsdot.wa.gov/arcgis/rest/services/Shared/TrafficData/MapServer/1` | annual average daily traffic per section, **4,815 sections, state routes only** | **not used.** One adapter would give traffic volume for every state highway in Washington. Sample: US 101 south of Forks 1,700/day; SR 112 west of Port Angeles 4,200–4,600/day (both 2025). |
+| **FHWA HPMS Public Release (Washington)** — `geo.dot.gov/server/rest/services/Hosted/Washington_2018_PR/FeatureServer/0` | 129,911 sections, **99.4% with AADT**, plus speed limit, through lanes, functional class, ownership, surface, IRI. **39,442 non-state sections carry a count, of which 23,413 are city-owned — every one with AADT.** | **not used.** The only source found that has traffic volume for city streets. Every state DOT must submit HPMS to FHWA annually and FHWA republishes it, so the same service exists for all 50 states. |
 | **CRAB certified county road log** — `services9.arcgis.com/bwkxJJr72Wf3t8dm/arcgis/rest/services/CRAB_County_Road_Log_Certified_2023/FeatureServer/0` | **115,582 segments, all 39 counties, one schema.** Lane count and width, surface, operational (total pavement) width, paved and unpaved shoulder widths, `ADTVolume` + `ADTYear`, functional class, truck route | **not used — the current plan.** See `docs/plan-county-road-log.md`. |
 | WSDOT's re-publication of CRAB (*CRAB Routes* / *County Road (CRAB)*) | geometry and linear referencing only — `RoadNumber`, `RouteIdentifier`, `LRSDate` | **not used.** Attribute-free. Do not mistake this for the row above: CRAB's own ArcGIS org publishes the full certified log, WSDOT's copy drops every attribute. |
+
+## The city-street traffic gap, and the one source that closes it
+
+Washington roads fall in three buckets and the state publishes counts for only
+one of them. WSDOT's traffic layers — both `MapServer/0` (6,615 point counts)
+and `MapServer/1` (4,815 sections) — are keyed to a `StateRouteNumber` and cover
+state routes only. The CRAB road log stops at the city line; its Pierce County
+rows literally end `at CITY LIMITS: PUYALLUP`.
+
+So a city arterial has no count from any state source. Verified on W Pioneer
+Ave in Puyallup: zero WSDOT AADT sections within 100 m of its real geometry (the
+two hits nearby are SR 512 and SR 162 crossing it, correctly rejected by the
+conflation's bearing test).
+
+**FHWA's HPMS Public Release is the exception.** Sampled along the Pioneer
+corridor it returns:
+
+```
+W Pioneer Ave  1.57 mi   AADT   444-10,588   City,   principal arterial, 4 lanes
+W Pioneer Ave  0.46 mi   AADT      10,925    City,   principal arterial, 4 lanes
+E Pioneer Ave  0.52 mi   AADT      13,222    City,   principal arterial, 2 lanes
+Pioneer Way E  2.72 mi   AADT      13,425    County, minor arterial
+```
+
+Three caveats travel with it:
+
+- **The hosted Washington release is 2018.** Older than WSDOT's 2025 state
+  counts, newer than most of the county road log.
+- **Non-state AADT in HPMS is frequently modelled rather than counted.** FHWA
+  lets states estimate volumes on lower functional classes, so a city-street
+  figure is an official estimate. It needs its own provenance tag; it is not the
+  same kind of claim as a WSDOT tube count.
+- **It disagrees with CRAB.** HPMS gives Pioneer Way E 13,425 where the road log
+  gives 7,925-15,175 for 2022. Two agencies, one road. Worth understanding
+  before either is trusted over the other.
+
+Sections carry no `route_name` — they are keyed by LRS `route_id` — so matching
+is geometric, and the sections are short. A whole-way match against them fails
+by construction; chunk the way first, as `scripts/roadmeasure.py` already does.
+
+**WSDOT Traffic Volume (MS2 TCDS)** — `wsdot.public.ms2soft.com/tcds/` — is
+WSDOT's public count database and may hold local-agency counts. It sits behind
+an AWS WAF JavaScript challenge, so it needs a real browser; it could not be
+evaluated from the build environment. HPMS looks the better source regardless:
+TCDS is a search interface, HPMS is a bulk service with a published schema.
 
 ## Island County (Whidbey and Camano)
 
