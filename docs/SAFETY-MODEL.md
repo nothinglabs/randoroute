@@ -475,6 +475,37 @@ Roadway owner — city, county, town, state — is context and provenance only. 
 is never a verdict: "city street" does not mean calm, and W Pioneer Ave in
 Puyallup is a city street *and* an urban principal arterial.
 
+### One class, two sources
+
+OSM's `highway` tag and FHWA's functional system answer the same question — what
+job does this road do — on two scales. The card showed both, leaving a rider to
+reconcile "Secondary road" with "Minor arterial". They are now normalised onto
+the **FHWA scale**, because that one is federally standardised and so is the one
+that survives leaving Washington.
+
+| OSM | FHWA |
+|---|---|
+| motorway, motorway_link | Freeway or expressway |
+| trunk, primary (+ links) | Principal arterial |
+| secondary (+ link) | Minor arterial |
+| tertiary (+ link) | Major collector |
+| unclassified | Minor collector |
+| residential, living_street | Local street |
+
+The correspondence is the conventional US tagging one and it is approximate:
+trunk and primary both land on principal arterial, and nothing in OSM
+distinguishes an Interstate, so `motorway` reports as freeway rather than
+claiming class 1.
+
+Where an official class exists it wins, and the row says which source it came
+from — `(FHWA, county)` or `(OSM)`. These are not equally strong claims: FHWA's
+is assigned by an agency and reviewed, OSM's is whatever a mapper typed.
+
+**Routing is unchanged by this.** The OSM class still drives the class-based
+soft cost exactly as before, and the FHWA class still drives nothing. Making the
+official class feed routing where OSM has none is a real improvement and a
+separate decision.
+
 ### What is deliberately not imported
 
 **Speed limits from any county layer.** The road log carries no speed field, and

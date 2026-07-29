@@ -149,8 +149,11 @@ const rowsCtx = {};
 vm.createContext(rowsCtx);
 vm.runInContext(
   appSrc.match(/const FUNCTIONAL_CLASS_NAME = \{[\s\S]*?\n\};/)[0].replace('const ', 'var ') + '\n'
-  + appSrc.match(/const ROAD_OWNER_NAME = \{[^}]*\};/)[0].replace('const ', 'var '), rowsCtx);
+  + appSrc.match(/const ROAD_OWNER_NAME = \{[^}]*\};/)[0].replace('const ', 'var ') + '\n'
+  + appSrc.match(/const OSM_CLASS_TO_FUNCTIONAL = \{[\s\S]*?\n\};/)[0].replace('const ', 'var '),
+  rowsCtx);
 vm.runInContext(lift(appSrc, 'measurementRows', 'app.js'), rowsCtx);
+vm.runInContext(lift(appSrc, 'roadClassRow', 'app.js'), rowsCtx);
 
 const rows = rowsCtx.measurementRows(fromEdge);
 const byLabel = Object.fromEntries(rows);
@@ -158,8 +161,6 @@ assert.equal(byLabel.Traffic, '2,357/day (county 2016)',
   'a count is shown with the inventory it came from and the year it was taken');
 assert.equal(byLabel['Edge space'], '~5 ft (derived, capped)',
   'derived space is tagged as derived, and a capped lane width says so');
-assert.equal(byLabel.Class, 'Minor collector (FHWA, county)',
-  'functional class is shown as a class, never as a vehicles-per-day figure');
 
 // Every row must fit a phone line rather than wrapping the popup into a scroll.
 for (const [label, value] of rows) {
@@ -170,12 +171,44 @@ for (const [label, value] of rows) {
 const stateCount = rowsCtx.measurementRows({ adt: 14000, adty: 2025, adtState: 1 });
 assert.equal(Object.fromEntries(stateCount).Traffic, '14,000/day (state 2025)',
   'a state count is shown the same way, tagged as state');
-const old = rowsCtx.measurementRows({ adt: 1200, adty: 1977, adtState: 0 });
-assert.equal(Object.fromEntries(old).Traffic, '1,200/day (county 1977)',
+const oldCount = rowsCtx.measurementRows({ adt: 1200, adty: 1977, adtState: 0 });
+assert.equal(Object.fromEntries(oldCount).Traffic, '1,200/day (county 1977)',
   'the year alone flags an old count; it needs no adjective');
 const noYear = rowsCtx.measurementRows({ adt: 1200, adtState: 0 });
 assert.equal(Object.fromEntries(noYear).Traffic, '1,200/day (county)',
   'a count with no year says nothing rather than implying one');
+
+/* ------------------- OSM and FHWA class collapse onto one row and one scale */
+// The card used to show "Road class: Secondary road" beside "Class: Minor
+// arterial" and leave the rider to work out that those are the same statement.
+const classRow = (measures, osmClass, fallback) =>
+  Object.fromEntries(rowsCtx.roadClassRow(measures, osmClass, fallback)).Class;
+
+assert.equal(classRow(fromEdge, 4), 'Minor collector (FHWA, county)',
+  'an official class wins and names its owner');
+assert.equal(classRow(null, 4), 'Major collector (OSM)',
+  'OSM tertiary maps onto the same scale, tagged as inferred');
+assert.equal(classRow({ adt: 5 }, 6), 'Minor arterial (OSM)',
+  'measurements without a class still fall back to OSM');
+assert.equal(classRow(null, 1), 'Local street (OSM)', 'residential is local');
+assert.equal(classRow(null, 12), 'Freeway or expressway (OSM)',
+  'nothing in OSM distinguishes an Interstate, so motorway must not claim class 1');
+assert.equal(classRow(null, 0, 'busway'), 'busway',
+  'a highway type outside the table still shows something');
+assert.equal(rowsCtx.roadClassRow(null, 0, null).length, 0,
+  'nothing known, no row');
+
+// Both sources must land in the same vocabulary, or consolidating them is
+// cosmetic. Every OSM class maps to a name the FHWA table also uses.
+for (const osmClass of Object.keys(rowsCtx.OSM_CLASS_TO_FUNCTIONAL)) {
+  const value = classRow(null, Number(osmClass));
+  assert.ok(/\(OSM\)$/.test(value), `OSM class ${osmClass} should be tagged OSM`);
+  const name = value.replace(' (OSM)', '');
+  assert.ok(Object.values(rowsCtx.FUNCTIONAL_CLASS_NAME).includes(name),
+    `OSM class ${osmClass} produced "${name}", which is not an FHWA class name`);
+}
+console.log('PASS  OSM and FHWA classes share one row, one scale, one vocabulary');
+
 // deepEqual would compare across vm realms, where Array.prototype differs.
 assert.equal(rowsCtx.measurementRows(null).length, 0, 'no measurements, no rows');
 console.log('PASS  every row is tagged with its provenance and fits a phone line');

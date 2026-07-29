@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-29.440';
+const APP_VERSION = '2026-07-29.441';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6936,6 +6936,27 @@ const ROAD_CLASS_NAME = {
   7: 'Secondary link', 8: 'Primary road', 9: 'Primary link',
   10: 'Trunk road', 11: 'Trunk link', 12: 'Motorway', 13: 'Motorway link',
 };
+// OSM's highway tag and FHWA's functional system answer the same question --
+// what job does this road do in the network -- on two scales, so the card used
+// to show both and leave the rider to reconcile "Secondary road" with "Minor
+// arterial". They are normalised onto the FHWA scale, because that one is
+// federally standardised and therefore the one that survives leaving
+// Washington.
+//
+// The correspondence is the conventional US tagging one and it is approximate.
+// Trunk and primary both land on principal arterial; nothing here can tell an
+// Interstate from another freeway, so OSM motorway reports as freeway rather
+// than claiming class 1. Where an official class exists it wins, and the card
+// says which of the two it is showing.
+const OSM_CLASS_TO_FUNCTIONAL = {
+  1: 7, 2: 7,          // residential, living street -> local
+  3: 6,                // unclassified               -> minor collector
+  4: 5, 5: 5,          // tertiary                   -> major collector
+  6: 4, 7: 4,          // secondary                  -> minor arterial
+  8: 3, 9: 3,          // primary                    -> principal arterial
+  10: 3, 11: 3,        // trunk                      -> principal arterial
+  12: 2, 13: 2,        // motorway                   -> freeway or expressway
+};
 // ------------------------------------------- statewide road measurements
 // FHWA functional class: a road's job in the network, assigned by the local
 // agency, reviewed by WSDOT, approved by FHWA. Nationally standardised, which
@@ -6978,14 +6999,25 @@ function measurementRows(measures) {
   if (measures.countySh != null) {
     rows.push(['Shoulder', `${measures.countySh} ft (county)`]);
   }
-  if (measures.fc) {
-    const owner = ROAD_OWNER_NAME[measures.owner];
-    rows.push(['Class', `${FUNCTIONAL_CLASS_NAME[measures.fc] || measures.fc} (FHWA`
-      + `${owner ? ', ' + owner.toLowerCase() : ''})`]);
-  } else if (measures.owner && ROAD_OWNER_NAME[measures.owner]) {
-    rows.push(['Maintained by', ROAD_OWNER_NAME[measures.owner]]);
-  }
   return rows;
+}
+
+// The road's job in the network, from whichever source knows it, on one scale.
+// `osmClass` is our numeric OSM highway class; `fallback` is the raw tag for the
+// handful of types the numeric table does not cover.
+function roadClassRow(measures, osmClass, fallback) {
+  const official = measures && measures.fc;
+  const level = official || OSM_CLASS_TO_FUNCTIONAL[osmClass];
+  if (!level) return fallback ? [['Class', fallback]] : [];
+  // An official class carries who maintains the road; an inferred one carries
+  // only that it was inferred. Either way the tag says which, because these are
+  // not equally strong claims: FHWA's is assigned by an agency and reviewed,
+  // OSM's is whatever a mapper typed.
+  const owner = official ? ROAD_OWNER_NAME[measures.owner] : null;
+  const source = official
+    ? `FHWA${owner ? ', ' + owner.toLowerCase() : ''}`
+    : 'OSM';
+  return [['Class', `${FUNCTIONAL_CLASS_NAME[level] || level} (${source})`]];
 }
 
 function routeClassNote(p) {
@@ -7290,13 +7322,13 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         // One builder, so the route card and the tap card cannot describe the
         // same road with different numbers.
         ...measurementRows(n.measures),
+        ...roadClassRow(n.measures, p.roadClass, null),
         ['Grade', routeSegmentGrade(p.gradePct, p.lenM)],
         ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
         ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
         ['Bike facility', FACILITY_NAME[p.facility] || null],
         ['Facility source', p.official & 2 ? 'WSDOT Active Transportation Data' : null],
-        ['Road class', ROAD_CLASS_NAME[p.roadClass] || null],
         ['Surface (OSM)', routeSurfaceLabel(p.surface)],
         ['Route choice', routeClassNote(p)],
         ['Type', p.infra ? 'Dedicated bike infrastructure' : (p.fw || p.lim) ? 'Limited-access highway' : null],
@@ -7351,12 +7383,12 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Lanes', p.ln ? `${p.ln}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
       ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
       ...measurementRows(n.measures),
+      ...roadClassRow(n.measures, p.rc, p.h ? p.h + (p.r ? ` (${p.r})` : '') : null),
       // Off the state highway system this is often the only inventory there is.
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
       ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
       ['Bike facility', FACILITY_NAME[p.ft] || (p.f ? 'Recorded bike facility' : null)],
-      ['Road class', ROAD_CLASS_NAME[p.rc] || p.h + (p.r ? ` (${p.r})` : '')],
       ['Surface (OSM)', routeSurfaceLabel(p.su)],
       ['Route choice', routeClassNote({ roadClass: p.rc, facility: p.ft || (p.f ? 1 : 0) })],
       ['Road data', p.d ? 'WSDOT directions combined conservatively for map display' : null],
