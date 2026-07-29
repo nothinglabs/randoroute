@@ -16,7 +16,8 @@ it is recorded below alongside what was actually learned from it.
 | **WSDOT bicycle restrictions** | permanent bans by traffic action | **in use** |
 | **OSM `route=bicycle` relations** | national (`ncn`) and regional (`rcn`) signed routes — USBR, Burke-Gilman, Palouse to Cascades, Olympic Discovery Trail | **in use** — `data/bikeroutes.geojson`, built by `scripts/build_routes.py`. WSDOT publishes these only as PDFs, which is why OSM is the source. |
 | **WSDOT Traffic Counts (AADT)** — `data.wsdot.wa.gov/arcgis/rest/services/Shared/TrafficData/MapServer/1` | annual average daily traffic per section, **4,815 sections, state routes only** | **not used.** One adapter would give traffic volume for every state highway in Washington. Sample: US 101 south of Forks 1,700/day; SR 112 west of Port Angeles 4,200–4,600/day (both 2025). |
-| **CRAB** (County Road Administration Board) | custodian of the county road log for all 39 counties, via GIS-Mo | **not used.** WSDOT's statewide *CRAB Routes* layer is geometry and linear referencing only — `RoadNumber`, `RouteIdentifier`, `LRSDate` — with no attributes. |
+| **CRAB certified county road log** — `services9.arcgis.com/bwkxJJr72Wf3t8dm/arcgis/rest/services/CRAB_County_Road_Log_Certified_2023/FeatureServer/0` | **115,582 segments, all 39 counties, one schema.** Lane count and width, surface, operational (total pavement) width, paved and unpaved shoulder widths, `ADTVolume` + `ADTYear`, functional class, truck route | **not used — the current plan.** See `docs/plan-county-road-log.md`. |
+| WSDOT's re-publication of CRAB (*CRAB Routes* / *County Road (CRAB)*) | geometry and linear referencing only — `RoadNumber`, `RouteIdentifier`, `LRSDate` | **not used.** Attribute-free. Do not mistake this for the row above: CRAB's own ArcGIS org publishes the full certified log, WSDOT's copy drops every attribute. |
 
 ## Island County (Whidbey and Camano)
 

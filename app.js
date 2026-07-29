@@ -520,7 +520,6 @@ function roadLevelExpr() {
     const ridingSpace = ['any',
       ['>=', ['coalesce', ['get', 'ft'], 0], 2],
       ['>=', ['coalesce', ['get', 'w'], -1], rules.minShoulder]];
-    // Trusting designated routes overrides this failure; mirrors safety-model.js.
     const wideRoad = ['all',
       ['>=', ['coalesce', ['get', 'ln'], 0], rules.maxLanesNoShoulder],
       ['>', ['coalesce', ['get', 'ln'], 0], 0],
