@@ -2171,29 +2171,32 @@ function fmtDur(s) {
   return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} m`;
 }
 
-// A route segment the worker did not label (older payloads). Adapts the packed
-// segment to the shared ladder rather than restating it.
-function routeSegFacts(s) {
+// The worker hands back segments carrying a `flags` bitfield; the map's tap
+// layer carries the same facts already unpacked. Both shapes existed, and each
+// grew its own adapter into the safety model — which is how a route card came
+// to disagree with the road card about the same street. Unpack in exactly one
+// place, so `scoreRouteSeg` -> `factsOf` is the only path from a segment to a
+// verdict, and the map feature and the fallback level cannot drift apart.
+function routeSegProps(s, routeIndex) {
   const flags = s.flags || 0;
-  const official = s.official || 0;
   return {
-    prohibited: false,
-    ferry: !!(flags & 32),
-    freeway: !!(flags & 4),
-    infra: !!(flags & 8) || (s.facility || 0) >= 4,
-    infraScore: 1,
-    facility: s.facility || 0,
-    limitedAccess: !!(flags & 128),
-    speed: s.mph == null ? null : s.mph,
-    shoulder: s.sh >= 0 ? s.sh : null,
-    lanes: s.lanes || 0,
-    sidewalk: official & OFFICIAL_SIDEWALK ? 'present'
-      : official & OFFICIAL_SIDEWALK_NO ? 'absent' : null,
-    urban: !!(official & OFFICIAL_URBAN),
-    stressRating: s.lts || null,
+    name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
+    e: flags & 1 ? 1 : 0, fac: flags & 2 ? 1 : 0, fw: flags & 4 ? 1 : 0,
+    lim: flags & 128 ? 1 : 0,
+    hazard: s.hazard || 0, gradePct: s.gradePct || 0, crossing: s.crossing ? 1 : 0,
+    lanes: s.lanes || 0, ctl: s.centerTurnLane ? 1 : 0, lts: s.lts || 0,
+    ow: flags & 16 ? 1 : 0,
+    infra: flags & 8 ? 1 : 0, ferry: flags & 32 ? 1 : 0, desig: flags & 64 ? 1 : 0,
+    facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
+    dismount: isDismountSegment(s) ? 1 : 0,
+    surface: Number.isInteger(s.surface) ? s.surface : 0,
+    roadClass: s.roadClass || 0,
+    routeIndex,
   };
 }
-function fallbackRouteLevel(s) { return SafetyModel.level(routeSegFacts(s), rules); }
+// A route segment the worker did not label (older payloads). Scores the segment
+// through the same scorer the map and the card use.
+function fallbackRouteLevel(s) { return effectiveLevel(scoreRouteSeg(routeSegProps(s))); }
 
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 function isHighwaySegment(s) {
@@ -4807,6 +4810,9 @@ function scoreRouteSeg(p) {
     shoulder_width: p.sh >= 0 ? p.sh : null,
     maxspeed_num: p.ferry ? null : p.mph,
     prohibited: false, restricted: false,
+    // The ladder has its own rung for a crossing by boat. Carry the fact, or a
+    // ferry leg is judged as though it were a road with no shoulder.
+    ferry: p.ferry === 1,
     freeway: p.fw === 1,
     limited_access: p.lim === 1 || p.fw === 1,
     good_facility: facility >= 2,
@@ -5032,23 +5038,18 @@ function drawRoute(coords, ferrySegs, segs) {
   const fdata = { type: 'FeatureCollection', features: (ferrySegs || []).map((c) => ({
     type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) };
   // Per-edge segments with graph attrs feed the invisible tap target.
-  const sdata = { type: 'FeatureCollection', features: (segs || []).map((s, routeIndex) => ({
-    type: 'Feature',
-    properties: { name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
-      e: s.flags & 1 ? 1 : 0, fac: s.flags & 2 ? 1 : 0, fw: s.flags & 4 ? 1 : 0,
-      lim: s.flags & 128 ? 1 : 0,
-      hazard: s.hazard || 0, gradePct: s.gradePct || 0, crossing: s.crossing ? 1 : 0,
-      lanes: s.lanes || 0, ctl: s.centerTurnLane ? 1 : 0, lts: s.lts || 0,
-      ow: s.flags & 16 ? 1 : 0,
-      infra: s.flags & 8 ? 1 : 0, ferry: s.flags & 32 ? 1 : 0, desig: s.flags & 64 ? 1 : 0,
-      facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
-      dismount: isDismountSegment(s) ? 1 : 0,
-      surface: Number.isInteger(s.surface) ? s.surface : 0,
-      roadClass: s.roadClass || 0,
-      routeIndex,
-      level: s.level ?? fallbackRouteLevel(s), hwy: isHighwaySegment(s) ? 1 : 0 },
-    geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
-  })) };
+  const sdata = { type: 'FeatureCollection', features: (segs || []).map((s, routeIndex) => {
+    const props = routeSegProps(s, routeIndex);
+    // Score the very properties the card will read, so the level baked into the
+    // feature is the level the card recomputes from it.
+    props.level = s.level ?? effectiveLevel(scoreRouteSeg(props));
+    props.hwy = isHighwaySegment(s) ? 1 : 0;
+    return {
+      type: 'Feature',
+      properties: props,
+      geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
+    };
+  }) };
   const renderData = buildRouteRenderData(sdata);
   const unpavedData = buildRouteUnpavedData(sdata);
   const dismountData = buildRouteDismountData(sdata);

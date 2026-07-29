@@ -31,8 +31,10 @@ for (const [file, src] of [['app.js', app],
 }
 assert.match(app, /function effectiveLevel\(n\) \{ return evaluateRoad\(n\)\.level; \}/,
   'the tap-card ladder should be a thin call into the shared model');
-assert.match(app, /function fallbackRouteLevel\(s\) \{ return SafetyModel\.level\(routeSegFacts\(s\), rules\); \}/,
-  'route segments should be a thin call into the shared model');
+assert.match(app, /function fallbackRouteLevel\(s\) \{ return effectiveLevel\(scoreRouteSeg\(routeSegProps\(s\)\)\); \}/,
+  'route segments should reach the shared model through the same scorer the card uses');
+assert.doesNotMatch(app, /function routeSegFacts\b/,
+  'a second adapter into the safety model is how the cards drifted apart before');
 
 /* ------------------------------- the map expression must match the model */
 // A small MapLibre expression evaluator: only the operators roadLevelExpr uses.
