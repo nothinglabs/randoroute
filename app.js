@@ -15,11 +15,20 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.431';
+const APP_VERSION = '2026-07-28.432';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
 const GRAPH_FORMAT_VERSION = 'bgr10-1';
+// Bump whenever data/graph2.bin.gz is REBUILT, even when its format is
+// unchanged. The service worker serves /data/ cache-first and ignores the query
+// string, so without this a rider keeps the graph they first downloaded forever.
+// That shipped: county bike routes were baked into the graph using a spare flag
+// bit, so the format string never moved, and devices kept routing on a graph
+// that had never heard of them -- the map and the card applied county trust
+// while the route line still drew the road failing.
+// Must match GRAPH_DATA_VERSION in sw.js.
+const GRAPH_DATA_VERSION = '2026-07-28-county';
 const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
@@ -2207,7 +2216,8 @@ async function ensureRouter() {
   updateArmButtons();
   try {
     showRouterProgress('Downloading Washington roads, trails, ferries, and elevation data…');
-    const res = await fetch(`data/graph2.bin.gz?format=${GRAPH_FORMAT_VERSION}`);
+    const res = await fetch(
+      `data/graph2.bin.gz?format=${GRAPH_FORMAT_VERSION}&gv=${GRAPH_DATA_VERSION}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     let buf = await readRoutingGraphResponse(res);
     showRouterProgress('Checking and unpacking the routing map…');
@@ -7020,9 +7030,17 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
     case 'slow-road':
       return `${spdTxt} — at or below your ${noShoulderMaxSpeed(n)} mph ${area} no-shoulder limit,`
         + ` passes without a shoulder${cautionNote}`;
-    case 'designated':
-      return 'On a designated bike route (USBR / regional trail) — you have chosen to trust these,'
+    case 'designated': {
+      // Name the network that actually did it. Saying "USBR / regional trail"
+      // on a county road told the rider the wrong agency vouched for it, and
+      // pointed them at a setting they had not even turned on.
+      const byState = n.desig && rules.vettedBikeRoutes;
+      const source = byState
+        ? 'a state or national bike route (USBR / regional trail)'
+        : 'a county bike route';
+      return `On ${source} — you have chosen to trust these,`
         + ` so it passes without a shoulder check${cautionNote}`;
+    }
     case 'sidewalk-fallback':
       return `${spdTxt}: ${shoulderTxt}. Your mapped-sidewalk fallback keeps it out of a`
         + ' hard fail, but the router strongly avoids it.';

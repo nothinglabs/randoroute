@@ -10,7 +10,7 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v407'; // bump when app shell changes
+const VERSION = 'v408'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -43,6 +43,11 @@ const SHELL = [
   './icons/apple-touch-icon.png',
 ];
 
+// Must match GRAPH_DATA_VERSION in app.js. Bump when the graph is rebuilt: the
+// cache below is keyed by URL, so a graph whose bytes changed under an unchanged
+// name would otherwise be served from cache forever.
+const GRAPH_DATA_VERSION = '2026-07-28-county';
+
 const DATA = [
   './data/bikeroutes.geojson.gz',
   './data/blts.geojson.gz',
@@ -53,7 +58,7 @@ const DATA = [
   './data/county/clallam.json.gz',
   './data/roads.pmtiles',
   './data/basemap.pmtiles',
-  './data/graph2.bin.gz',
+  `./data/graph2.bin.gz?gv=${GRAPH_DATA_VERSION}`,
   './data/places.json',
 ];
 // Small, release-generated overlays can change without changing the 100+ MB
@@ -113,6 +118,7 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => !keep.includes(k)).map((k) => caches.delete(k))))
+      .then(() => purgeStaleGraph())
       .then(() => refreshReleaseData())
       .then(() => self.clients.claim())
   );
@@ -123,6 +129,10 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.origin === location.origin && url.pathname.endsWith('.pmtiles')) {
     e.respondWith(pmtilesOnlineFirst(e.request));
+  } else if (url.origin === location.origin && url.pathname.endsWith('/data/graph2.bin.gz')) {
+    // The one /data/ asset whose query string matters: it carries the graph's
+    // build version, and ignoring it served a stale routing graph forever.
+    e.respondWith(cacheFirst(DATA_CACHE, e.request, false));
   } else if (url.origin === location.origin && url.pathname.includes('/data/')) {
     e.respondWith(cacheFirst(DATA_CACHE, e.request, true));
   } else if (url.origin === location.origin) {
@@ -166,6 +176,17 @@ async function precacheData() {
     const request = new Request(path, { cache: 'reload' });
     const hit = await cache.match(request, { ignoreSearch: true });
     if (!hit) await cache.add(request);
+  }
+}
+
+// Delete graph copies from an earlier build. Keyed caching alone would leave
+// the previous 30 MB archive sitting in storage for good.
+async function purgeStaleGraph() {
+  const cache = await caches.open(DATA_CACHE);
+  for (const request of await cache.keys()) {
+    const url = new URL(request.url);
+    if (!url.pathname.endsWith('/data/graph2.bin.gz')) continue;
+    if (url.searchParams.get('gv') !== GRAPH_DATA_VERSION) await cache.delete(request);
   }
 }
 
