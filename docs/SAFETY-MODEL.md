@@ -71,7 +71,7 @@ hue separation:
 | bike lane | solid | `#b7c900` |
 | off-street trail | same lime, dark dashed centreline | `#b7c900` + `#4c5c00` |
 | passes | solid | `#168ad1` |
-| caution | perpendicular rungs in the danger red | `#e8760a` + `#78121f` |
+| caution | perpendicular rungs in the danger red | `#c25d05` + `#78121f` |
 | fails | white diagonal slashes, like hazard tape | `#78121f` + white |
 | bikes prohibited | wide translucent dashed ribbon, over the verdict | `#78121f` at 42% |
 
@@ -79,8 +79,25 @@ hue separation:
 maximises the *smallest* CIELAB distance between any two roles, evaluated under
 normal, deuteranope and protanope vision. The original amber left caution only
 **dE 13.2** from the bike-network lime — the weakest link in the palette, and
-the reason caution and green looked alike. `#e8760a` with `#78121f` raises the
-weakest pair to **20.2**, and both keep the conventional warning/danger reading.
+the reason caution and green looked alike. `#c25d05` with `#78121f` pulls them
+apart, and both keep the conventional warning/danger reading.
+
+The governing pair is **caution against the bike-network lime under
+deuteranopia**, where a bright orange and that lime converge. A note in the code
+used to claim the orange was already as deep as it could go without losing that
+separation. Measured, the opposite holds — darkening it raises the weakest pair,
+because it moves away from the lime by lightness rather than by hue, and hue is
+the axis deuteranopia flattens:
+
+| caution | vs lime | vs fail |
+|---|---|---|
+| `#e8760a` (former) | 14.9 | 59.3 |
+| `#c25d05` (current) | **18.3** | 46.3 |
+| `#b85604` | 21.0 | 42.7 |
+
+Separation from the maroon fail rungs drawn over the caution falls as the orange
+deepens, but stays far above every other pair, so the lime is what sets the
+floor.
 
 The ceiling with the lime and blue fixed is lime-vs-fail at dE 21–24; you
 cannot do better without giving up the lime, which is the bike-network identity.

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-29.439';
+const APP_VERSION = '2026-07-29.440';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -44,11 +44,20 @@ const COLORS = {
   1: '#168ad1', // passes rules
   2: '#168ad1', // passes rules (internal levels remain distinct for routing)
   // Chosen by maximising the smallest CIELAB distance between any two roles
-  // across normal, deuteranope and protanope vision. The old amber/red pair sat
-  // at dE 13.2 from the bike-network lime; this palette's weakest pair is 20.2.
-  // Going deeper than this costs separation from the lime AND the legibility of
-  // the red rungs drawn on it, so it is about as deep as the orange can go.
-  3: '#e8760a', // caution — deep burnt orange, the conventional "warning"
+  // across normal, deuteranope and protanope vision. The binding pair is
+  // caution against the bike-network lime under deuteranopia, where a bright
+  // orange and that lime converge.
+  //
+  // An earlier note here claimed the orange was as deep as it could go without
+  // losing lime separation. That was backwards: measured, darkening the orange
+  // *raises* the weakest pair, because it pulls away from the lime by lightness
+  // rather than by hue, which is the axis deuteranopia flattens.
+  //   #e8760a  lime 14.9  fail 59.3
+  //   #c25d05  lime 18.3  fail 46.3   <- here
+  //   #b85604  lime 21.0  fail 42.7
+  // Separation from the maroon fail rungs drawn over it falls as it deepens but
+  // stays far above every other pair, so lime is what sets the floor.
+  3: '#c25d05', // caution — deep burnt orange, the conventional "warning"
   4: '#78121f', // fails   — deep maroon-red, conventional "danger", and dark
                 //           enough to stay apart from the lime by lightness
   0: '#999999', // insufficient data
@@ -1134,9 +1143,9 @@ const FAIL_COLOR = '#9aa0a6';
  * The colours themselves were chosen numerically: search for the pair that
  * maximises the SMALLEST CIELAB distance between any two roles, evaluated under
  * normal, deuteranope and protanope vision. The original amber and red left the
- * caution only dE 13.2 from the bike-network lime; #e8760a with #78121f raises
- * the weakest pair in the whole palette to 20.2, and both keep the conventional
- * warning/danger reading.
+ * caution barely separated from the bike-network lime; #c25d05 with #78121f
+ * pulls it clear, and both keep the conventional warning/danger reading. The
+ * governing pair and the measurements are recorded at COLORS above.
  *
  * Patterns are authored at pixelRatio 2 so they stay crisp on a phone, and
  * they only draw above PATTERN_MIN_ZOOM: below it a road is a few pixels wide
