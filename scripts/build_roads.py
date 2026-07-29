@@ -32,6 +32,14 @@ Feature properties (short keys to keep the files small):
   ft typed bike facility (1 shared .. 4 separated)
   su surface class (1 paved, 2 gravel, 3 rough)
   rc numeric road class      lts WSDOT bicycle level of traffic stress (1-4)
+  adt annual average daily traffic   ay year that count was taken
+  as  1 = the count is WSDOT state-route data, else a county road log
+  es  bail-out space per side, ft (CRAB, derived); ec 1 = lane clamp applied
+  cs  county-reported PAVED shoulder, ft (display only, never a rule input)
+  fc  FHWA functional class 1-7      ow FHWA owner (1 state 2 county 3 town 4 city)
+
+These last six mirror the graph exactly. Anything the router can read and the
+map cannot is a card that disagrees with the colour under it.
 
 Requires: osmium (pyosmium), shapely.
 Usage: python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
@@ -44,6 +52,8 @@ import re
 
 import osmium
 from shapely.geometry import LineString
+
+from roadmeasure import RoadMeasures
 
 CLASSES = {
     'motorway', 'motorway_link', 'trunk', 'trunk_link',
@@ -140,7 +150,8 @@ def parse_shoulder_ft(tags):
     return None
 
 
-def build(src, out_prefix, urban_areas, blts):
+def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
+          aadt=None):
     from build_graph import (EDGE_SIDEWALK, EDGE_SIDEWALK_NO, EDGE_URBAN,
                              LANES_CENTER_TURN, LANES_COUNT_MASK, ROAD_CLASS,
                              blts_match, collect_designated, is_urban_edge,
@@ -148,6 +159,7 @@ def build(src, out_prefix, urban_areas, blts):
                              sidewalk_flags, surface_class)
     designated = collect_designated(src)
     urban_index = load_urban_index(urban_areas)
+    measures = RoadMeasures(roadlog=roadlog, funcclass=funcclass, aadt=aadt)
     wsdot_index = load_blts_index(blts)
     print(f'{len(designated):,} designated-route member ways', flush=True)
     feats = []
@@ -182,6 +194,27 @@ def build(src, out_prefix, urban_areas, blts):
                 props['b'] = 1
         if is_urban_edge(cc, urban_index):
             props['u'] = 1
+        # The same measurements the graph carries, matched the same way, so the
+        # tap card and the route card cannot report different numbers for one
+        # road. Display only in phase 1: none of these reaches roadLevelExpr.
+        if measures:
+            m = measures.match(cc)
+            if m.get('adt'):
+                props['adt'] = int(m['adt'])
+                if m.get('adty'):
+                    props['ay'] = int(m['adty'])
+                if m.get('adtSrc') == 'state':
+                    props['as'] = 1
+            if m.get('edge') is not None:
+                props['es'] = round(float(m['edge']), 1)
+                if m.get('edgeClamp'):
+                    props['ec'] = 1
+            if m.get('shP') is not None:
+                props['cs'] = round(float(m['shP']), 1)
+            if m.get('fc'):
+                props['fc'] = int(m['fc'])
+            if m.get('owner'):
+                props['ow'] = int(m['owner'])
         feats.append(json.dumps(
             {'type': 'Feature', 'properties': props,
              'geometry': {'type': 'LineString', 'coordinates': cc}},
@@ -299,6 +332,7 @@ def build(src, out_prefix, urban_areas, blts):
         names.append(name)
         print(f'wrote {name}: {len(chunk):,} features, {os.path.getsize(name):,} bytes')
     print(f'total kept {kept:,} ways ({skipped_private:,} private skipped) across {len(names)} file(s)')
+    measures.report()
 
 
 if __name__ == '__main__':
@@ -309,5 +343,12 @@ if __name__ == '__main__':
                     help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
     ap.add_argument('--blts', default='data/blts.geojson',
                     help='WSDOT BLTS GeoJSON used to enrich state-highway geometry')
+    ap.add_argument('--roadlog', default='data/roadlog.geojson',
+                    help='CRAB certified county road log (scripts/build_roadlog.py)')
+    ap.add_argument('--funcclass', default='data/funcclass.geojson',
+                    help='WSDOT non-state functional class (scripts/build_funcclass.py)')
+    ap.add_argument('--aadt', default='data/aadt.geojson',
+                    help='WSDOT traffic counts (scripts/build_aadt.py)')
     args = ap.parse_args()
-    build(args.src, args.out_prefix, args.urban_areas, args.blts)
+    build(args.src, args.out_prefix, args.urban_areas, args.blts,
+          args.roadlog, args.funcclass, args.aadt)
