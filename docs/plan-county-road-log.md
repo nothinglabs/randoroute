@@ -251,11 +251,45 @@ geometry. Offline, one-time, and the span+bearing matcher from the county work
 already does this. Match within 18 m of the way's own span, aligned within 40
 degrees, and measure the matched portion of the way rather than the whole way.
 
+## The two cards must agree, structurally
+
+**Requirement: the road popup and the route-segment popup always show the same
+information about the same road, and neither is affected by which map layers
+are switched on.**
+
+Layer independence already holds. The invisible click targets are forced
+`visibility: 'visible'` with a null filter regardless of the display toggles
+(`app.js` in `updateVisibility` and the `hitId` block), so turning a layer off
+changes what is drawn and never what a popup can read.
+
+Agreement does *not* hold structurally. Two hand-written adapters feed the same
+verdict ladder from two different data shapes:
+
+- `factsOf(n)` — tile and GeoJSON properties (`n.maxspeed_num`, `n.shoulder_width`)
+- `routeSegFacts(s)` — worker segment messages (`s.mph`, `s.sh`, bitfields)
+
+They already disagree on three inputs:
+
+| fact | road card | route card |
+|---|---|---|
+| `prohibited` | real value | hardcoded `false` |
+| `infraScore` | `n.baseScore` | hardcoded `1` |
+| `facility` | `good_facility` bumps to >= 2 | no bump |
+
+This is the drift that produced the "card says fail, map says pass" bug: two
+adapters maintained by hand, one of them quietly stale. Adding three fields to
+both widens that surface by three.
+
+**Part of phase 1:** one shared card-model function that both paths call, and a
+test asserting that the same road yields identical rows through both. The
+requirement has to be structural rather than a matter of remembering.
+
 ## Order of work
 
-1. Import and conflate. Show **ADT with its year** and **derived edge space**
-   on the road and route detail cards. Read-only: no routing weight, no rung,
-   no map colour.
+1. Import and conflate. Show **ADT with its year**, **derived edge space** and
+   **functional class** on the road and route detail cards, each labelled with
+   its provenance. Build the shared card model first, so both cards read one
+   source. Read-only: no routing weight, no rung, no map colour.
 2. Field-test whether the numbers agree with roads the rider knows.
 3. Only then decide what these measurements earn in the ladder.
 
