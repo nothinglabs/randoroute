@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.430';
+const APP_VERSION = '2026-07-28.431';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -355,6 +355,12 @@ function scoreRoad(p) {
     stressRating: p.lts || null,
     est: p.e === 1,
     desig: p.g === 1, // on a designated bike route (USBR / regional)
+    // The county flag, baked into the tiles by scripts/county_conflate.py.
+    // Missing it here made the card and the map disagree: the map reads the
+    // tile property straight, so a county road drew as passing while its card
+    // still said "Fails: shoulder unknown". An adapter that drops an input is
+    // exactly the drift safety-model.js exists to stop.
+    cg: p.cg === 1,
     sidewalk: p.k === 1 ? 'present' : p.k === 2 ? 'absent' : null,
     urban: p.u === 1,
   };
