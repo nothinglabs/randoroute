@@ -1932,7 +1932,13 @@ onmessage = (ev) => {
     if (m.type === 'graph') {
       postMessage({ type: 'progress', phase: 'engine', detail: 'Reading the statewide routing map…' });
       loadGraph(m.buffer);
-      postMessage({ type: 'ready', nodes: N, edges: E });
+      // Report how many edges carry a county bike route. The app uses this to
+      // tell a freshly-built graph from a cached one that predates the county
+      // bake -- a version string cannot, because the previous service worker
+      // serves /data/ ignoring the query it is carried in.
+      let countyEdges = 0;
+      for (let i = 0; i < E; i++) if (eOfficial[i] & EDGE_COUNTY_ROUTE) countyEdges++;
+      postMessage({ type: 'ready', nodes: N, edges: E, countyEdges });
     } else if (m.type === 'county') {
       // County bike routes are baked into the graph now, so there is nothing to
       // apply here. Kept so an older cached app that still sends this message

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-28.433';
+const APP_VERSION = '2026-07-28.434';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2143,6 +2143,13 @@ async function purgeStaleGraphCache() {
       setTimeout(resolve, 1500);
     });
   }
+}
+
+// Marked only when a graph that genuinely carries the current data has loaded.
+// Recording it at fetch time made the self-heal one-shot: an older worker
+// ignores the purge, serves the stale graph anyway, and the flag then says the
+// job is done forever.
+function markGraphDataLoaded() {
   try { localStorage.setItem(GRAPH_VERSION_KEY, GRAPH_DATA_VERSION); } catch { /* ignore */ }
 }
 
@@ -4763,6 +4770,18 @@ function onRouterMessage(ev) {
       : m.phase === 'reroute' ? 'Updating route' : 'Calculating route options';
     showRouterProgress(m.detail || 'Working…', title);
   } else if (m.type === 'ready') {
+    // A graph with no county edges, while county data is loaded, is a cached
+    // copy from before the county bake. Purge and reload once -- guarded by the
+    // session so a genuinely county-free graph cannot loop.
+    if (countyBundles.length && m.countyEdges === 0
+        && !sessionStorage.getItem('jra.graphReloaded')) {
+      try { sessionStorage.setItem('jra.graphReloaded', '1'); } catch { /* ignore */ }
+      try { localStorage.removeItem(GRAPH_VERSION_KEY); } catch { /* ignore */ }
+      setRouteStatus('Updating the routing map…');
+      purgeStaleGraphCache().then(() => location.reload());
+      return;
+    }
+    if (m.countyEdges > 0) markGraphDataLoaded();
     routing.ready = true;
     routing.loading = false;
     routing.pendingRoute = false;
