@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-29.437';
+const APP_VERSION = '2026-07-29.438';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4998,14 +4998,23 @@ function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-i
   targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
 }
 
-// Pulse animation for failing portions of the route — impossible to miss.
+// Pulse animation for the parts of a route that need a second look: failures,
+// impossible to miss, and cautions, a quieter flicker beside them.
 let failPulseTimer = null;
 let detailSelectionPulseTimer = null;
+// Radians per 80 ms tick. A full throb is half a sine period, so this is about
+// 1.6 s end to end.
+const ROUTE_PULSE_STEP = 0.165;
+// The caution flicker runs a quarter period behind the failure throb. Sharing
+// one phase made the two read as a single animation across the whole route,
+// which is the opposite of the point: a caution and a failure are different
+// verdicts and should not breathe together.
+const CAUTION_PULSE_PHASE = Math.PI / 2;
 function setFailPulse(on) {
   if (on && !failPulseTimer) {
     let t = 0;
     failPulseTimer = setInterval(() => {
-      t += 0.11;
+      t += ROUTE_PULSE_STEP;
       if (!map.getLayer('route-fail')) return;
       const p = Math.abs(Math.sin(t)); // 0..1 throb
       // Pulse size, not visibility. Fading translucent red over the blue
@@ -5019,7 +5028,47 @@ function setFailPulse(on) {
   } else if (!on && failPulseTimer) {
     clearInterval(failPulseTimer);
     failPulseTimer = null;
+    // Leave the layer at its resting size rather than wherever the last tick
+    // happened to stop.
+    if (map.getLayer('route-fail')) {
+      map.setPaintProperty('route-fail', 'line-opacity', 0.96);
+      map.setPaintProperty('route-fail', 'line-width', 6.5);
+      map.setPaintProperty('route-fail-casing', 'line-width', 12);
+      map.setPaintProperty('route-fail-casing', 'line-opacity', 0.8);
+    }
   }
+}
+
+// Caution segments flicker too, but gently: a third of the failure's amplitude,
+// and size rather than opacity for the same reason given above -- fading amber
+// over the basemap muddies it toward the unpaved and designated patterns.
+let cautionPulseTimer = null;
+function setCautionPulse(on) {
+  if (on && !cautionPulseTimer) {
+    let t = CAUTION_PULSE_PHASE;
+    cautionPulseTimer = setInterval(() => {
+      t += ROUTE_PULSE_STEP;
+      if (!map.getLayer('route-caution')) return;
+      const p = Math.abs(Math.sin(t));
+      map.setPaintProperty('route-caution', 'line-width', 6.5 + 1.1 * p);
+      map.setPaintProperty('route-caution', 'line-opacity', 0.9 + 0.1 * p);
+    }, 80);
+  } else if (!on && cautionPulseTimer) {
+    clearInterval(cautionPulseTimer);
+    cautionPulseTimer = null;
+    if (map.getLayer('route-caution')) {
+      map.setPaintProperty('route-caution', 'line-width', 6.5);
+      map.setPaintProperty('route-caution', 'line-opacity', 1);
+    }
+  }
+}
+
+// One call site for both, so a route can never leave one animating and the
+// other stopped.
+function setRoutePulses(renderData) {
+  const features = (renderData && renderData.features) || [];
+  setFailPulse(features.some((f) => f.properties.style === 'fail'));
+  setCautionPulse(features.some((f) => f.properties.style === 'caution'));
 }
 
 // A report-item selection should retain the segment's own safety color. Pulse
@@ -5096,7 +5145,7 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-detail-marker').setData(emptyHighlights);
     map.getSource('route-detail-selection').setData(emptyLine);
     map.getSource('route-progress').setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } });
-    setFailPulse(failData.features.length > 0);
+    setRoutePulses(renderData);
     applyDisplayModeAll();
     return;
   }
@@ -5231,7 +5280,7 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.9,
              'line-dasharray': [0.6, 1.8] },
   });
-  setFailPulse(failData.features.length > 0);
+  setRoutePulses(renderData);
   // Ridden portion of the route darkens during navigation.
   map.addLayer({
     id: 'route-progress', type: 'line', source: 'route-progress',

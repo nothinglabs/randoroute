@@ -125,6 +125,25 @@ substitute for it. The **prohibited** overlay is deliberately left as its own da
 at every zoom — bikes being banned is a different statement from failing the
 rider's rules, and it should not be folded into the same texture.
 
+### A drawn route animates its two worst verdicts
+
+On a planned route, failing and cautioning stretches move; everything else is
+still. Both animate **size, not opacity** — fading translucent red or amber over
+the basemap turns it muddy and can make a rule failure read as an unpaved or
+designated-route pattern.
+
+| | throb | amplitude |
+|---|---|---|
+| failure | 6.5 → 9.5 px, casing 12.5 → 14.5 | 3.0 px |
+| caution | 6.5 → 7.6 px | 1.1 px |
+
+A full throb is about 1.5 s. The failure moves nearly three times as far as the
+caution, and the caution runs a quarter period behind it: sharing one phase made
+the whole route appear to breathe as a single animation, which is the opposite
+of the point, since a caution and a failure are different verdicts. When a route
+has neither, both layers rest at their base size rather than wherever the last
+animation frame happened to stop.
+
 Colour is **not** decided by level alone. `readoutVerdictColor` checks levels
 4, 3 and 0 first, then asks `isBikeNetworkVerdict(n)` — true when the feature
 has `infra` or `good_facility`. So a level-1 road with a bike lane draws
