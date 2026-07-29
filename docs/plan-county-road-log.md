@@ -118,6 +118,64 @@ matching half of the picture:
 54% are 2010 or newer, only 24% are 2018 or newer, and 12.6% are from 1977-78.
 A count is not usable without its year next to it.
 
+## The city-street gap, and what closes it
+
+The road log covers **county-maintained** roads: 39,187 miles. Every Pierce
+County row for the Puyallup corridor terminates at `at CITY LIMITS: PUYALLUP`,
+and there is no row named `W PIONEER` anywhere in the state. City streets are
+not in it, and no equivalent statewide city log exists — cities publish
+individually (Marysville, Kent, Newcastle each with their own schema) or not at
+all. Washington roads fall in three buckets and the road log covers one.
+
+What partially closes the gap is a second WSDOT layer:
+
+```
+data.wsdot.wa.gov/arcgis/rest/services/FunctionalClass/
+  WSDOTFunctionalClassData/MapServer/1     (Non-State Highway Functional Class)
+```
+
+16,811 features covering non-state roads, city and county alike, with two
+fields worth having:
+
+**`FHWARoadwayOwnerCode`** — who maintains it. Owner 4 (city/municipal) 4,924
+mi; owner 2 (county) 14,434 mi. This is jurisdiction as an explicit attribute
+rather than an inference from presence in the road log.
+
+**`FederalFunctionalClassDesc`** — the FHWA classification. Nationally
+standardised, which is the property that makes it generalise beyond
+Washington. Measured against the CRAB counts, it tracks volume monotonically
+across a 60x spread:
+
+| federal class | mean ADT |
+|---|---|
+| Principal Arterial | 18,300 |
+| Minor Arterial | 7,830 |
+| Major Collector | 2,361 |
+| Minor Collector | 725 |
+| Local | 297 |
+
+So on a city street with no traffic count, functional class is a defensible
+stand-in. W Pioneer Ave, Puyallup resolves to *Urban Other Principal Arterial*,
+owner 4 — the busiest non-freeway class, which is real evidence about a road we
+otherwise knew nothing official about.
+
+**Two cautions, because this has the shape of the trap we just climbed out of.**
+
+Jurisdiction alone is weak and must never become a verdict. "City street" does
+not mean calm: W Pioneer is a city street *and* a principal arterial. Treat
+owner code as context and as data provenance, not as safety.
+
+Functional class is a **proxy for volume, not a measurement of it**. Where a
+real count exists, use the count. Where none does, class is a reasonable
+fallback — but the card must say which of the two it is showing. A proxy
+presented as a measurement is exactly how a route line came to look like a
+safety claim.
+
+Coverage limit: the layer carries **federally classified roads only** —
+arterials and collectors, roughly 19,000 miles against 39,187 miles of county
+road. Local residential streets are absent, which is tolerable, since those are
+the ones that are calm by default.
+
 ## Speed limits: deliberately not imported
 
 **The road log has no speed limit field**, so taking it costs us nothing here.
