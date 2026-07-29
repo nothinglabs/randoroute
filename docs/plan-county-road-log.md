@@ -1,8 +1,10 @@
 # Current plan: statewide road measurements
 
-**Status: agreed direction, not started.** This is the live plan; when it is
-implemented the mechanics move into `docs/SAFETY-MODEL.md` and this file
-becomes history.
+**Status: phase 1 built.** The three sources are imported, conflated and shown
+on the road and route cards; nothing yet feeds a verdict, a colour or a route.
+The mechanics now live in `docs/SAFETY-MODEL.md`; what remains here is the
+reasoning and the measured outcome. Phase 2 is field testing, phase 3 an
+undecided question.
 
 ## Three sources, one build step
 
@@ -12,9 +14,9 @@ becomes history.
 | 2 | **WSDOT Non-State Highway Functional Class** | `FHWARoadwayOwnerCode` (city vs county), FHWA functional class | ~19,000 mi |
 | 3 | **WSDOT Traffic Counts (AADT)** | current counts on state routes | ~7,000 mi |
 
-Together they take the app from measuring 9.2% of the network to roughly half.
+Together they took the app from measuring 9.2% of its road network to 35.4%.
 Source 1 is the bulk of it and most of this document; sources 2 and 3 are
-smaller adapters covering what 1 cannot reach.
+smaller adapters covering what 1 cannot reach. Measured results are below.
 
 ## Source 1: the CRAB county road log
 
@@ -83,27 +85,50 @@ the only thing it has evidence about.
 CRAB carries `OperationalWidth`, `ThruLanes` and `ThruLaneWidth` on 100% of
 39,187 county road miles.
 
-| | today | after CRAB (ceiling) |
+### What it actually delivered
+
+Measured on the built graph, not projected:
+
+| | before | after |
 |---|---|---|
-| road with a space metric | 8,721 mi (9.2%) | ~48,000 mi (~50%) |
-| road with traffic volume | 0 | ~46,000 mi (39k county + ~7k state) |
+| road with a space metric | 8,721 mi (9.2%) | **26,745 mi (28.3%)** |
+| road with traffic volume | 0 | **33,452 mi (35.4%)** |
+| road with a functional class | 0 | 18,980 mi (20.1%) |
+| county-reported paved shoulder | 0 | 3,489 mi (3.7%) |
 
-Roughly a fivefold expansion in road with a space measurement, and traffic
-volume goes from nothing to about half the network.
+An earlier estimate in this document put the space metric near 50% and volume
+near half the network. That was wrong, and the reason is worth keeping.
 
-Three deductions from that ceiling, all of them real:
+**A third of the county road log is gravel.** Of its 38,778 miles: 28.4% GRV,
+3.7% GRD and 1.9% UNI -- about 13,200 miles of unpaved county road, most of
+which is not in our routing graph at all, because it is tagged as track or
+falls outside the drivable classes we keep. The projection treated all 39,187
+miles as conflatable.
 
-- **Conflation loss.** Not every CRAB mile will match OSM geometry. Perhaps
-  85-90% on named county roads; unknown until it is built.
-- **It is bail-out space, not ridable shoulder.** The paved-only field stays at
-  15% of CRAB rows, so ridable-shoulder coverage barely moves. The jump is in
-  the "somewhere to go when a truck comes past" number.
-- **21.8% carry the folded lane width**, and under-report until the clamp rule
-  is written.
+Against the mileage that *can* match -- 25,599 miles of paved county road (BST,
+ACP, HMA, PCC and the rest) -- the conflation returned 26,745 miles. Slightly
+more, because some gravel roads are mapped in OSM as ordinary unclassified
+roads. So the matcher did not underperform: it captured essentially all of the
+paved county network, and the shortfall against the projection is entirely
+roads we do not route on.
 
-What remains uncovered afterwards is about 45,000 miles, overwhelmingly city
-streets and local residential roads. Functional class fills part of that for
-arterials; for the rest, calm-by-default is a fair assumption.
+Functional class matched 18,980 of its ~19,000 source miles, and WSDOT AADT
+7,146 of ~7,000. Both effectively complete.
+
+Two other things stayed true as predicted:
+
+- **It is bail-out space, not ridable shoulder.** The county's explicit paved
+  shoulder reaches only 3.7% of the network, so ridable-shoulder coverage barely
+  moves. The jump is entirely in the "somewhere to go when a truck comes past"
+  number.
+- **3,461 of the 26,745 miles carry the lane clamp**, and read conservatively
+  until that rule is validated in the field.
+
+The graph grew 31.34 MB to 31.89 MB -- 556 KB for all of it.
+
+What remains uncovered is city streets and local residential roads, plus the
+unpaved county network. Functional class fills part of the first for arterials;
+for the rest, calm-by-default remains the assumption.
 
 ## The two quantities
 
