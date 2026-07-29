@@ -20,8 +20,8 @@ street. Two things fix that, and both are required:
 
   1. Match against the OSM way's OWN SPAN, not its midpoint. Graph edges average
      ~190 m, so a midpoint test says nothing about whether the source line
-     accompanies the edge or merely touches it. Interior sample points must all
-     lie within MATCH_M of the source geometry.
+     accompanies the edge or merely touches it. A source must cover a MAJORITY
+     of the way's interior sample points, each within MATCH_M.
 
   2. Require the two to be ALIGNED within BEARING_TOL_DEG. Without the bearing
      test a source line running along an arterial claims every residential
@@ -48,9 +48,25 @@ MATCH_DEG = MATCH_M / 111_320.0
 # Two lines describing the same road agree in heading within this, allowing for
 # the source's coarser digitising. A crossing street differs by ~90.
 BEARING_TOL_DEG = 40.0
-# Interior fractions; endpoints are excluded because that is where an edge meets
-# roads it is not part of.
-SAMPLE_FRACS = (0.2, 0.5, 0.8)
+# Sample points along the way, evenly spaced and away from the endpoints, since
+# an endpoint is where an edge meets roads it is not part of.
+SAMPLE_COUNT = 5
+SAMPLE_FRACS = tuple((i + 0.5) / SAMPLE_COUNT for i in range(SAMPLE_COUNT))
+# How many samples the source layer must cover, between all of its aligned
+# segments, to claim the way: a simple majority.
+#
+# An earlier rule demanded EVERY sample fall within MATCH_M of ONE source
+# segment. That was built to stop a source line merely touching an edge, and it
+# does -- but it also throws away sources that legitimately cover only part of
+# one. The road log's segments are frequently far shorter than a graph edge, so
+# no single record could span an edge and the match failed outright: on Pioneer
+# Way East it rejected 4.13 of 5.83 miles whose nearest road-log line was
+# touching the edge at zero distance.
+#
+# Majority coverage keeps the protection and drops the brittleness. It is in one
+# respect stricter than what it replaces: every sample is bearing-checked where
+# it sits, whereas the old rule checked alignment only at the midpoint.
+MIN_SAMPLES_COVERED = 3
 
 
 def _bearing(a, b):
@@ -107,7 +123,7 @@ class MeasureIndex:
             self.props.append(f.get('properties') or {})
         if self.geoms:
             self.tree = STRtree(self.geoms)
-        print(f'  {label}: {len(self.geoms):,} segments', flush=True)
+        print(f"  {label}: {len(self.geoms):,} segments", flush=True)
 
     def __bool__(self):
         return self.tree is not None
@@ -115,9 +131,10 @@ class MeasureIndex:
     def match(self, coords):
         """Best source properties for one OSM way, or None.
 
-        Returns the candidate whose geometry stays closest across all interior
-        samples, subject to every sample being within MATCH_M and the two
-        headings agreeing within BEARING_TOL_DEG.
+        Matches when the source layer's aligned segments together cover a
+        majority of the way's sample points, each within MATCH_M and aligned
+        within BEARING_TOL_DEG where it was sampled. Reports the values of
+        whichever single segment covers the most of it.
         """
         if self.tree is None or len(coords) < 2:
             return None
@@ -125,48 +142,54 @@ class MeasureIndex:
         if line.length == 0:
             return None
         points = [line.interpolate(f, normalized=True) for f in SAMPLE_FRACS]
-
-        # One `dwithin` query over the whole way, rather than a buffer polygon
-        # per sample point: same candidates, a third of the cost, and this runs
-        # once per OSM way across the whole state.
-        candidates = self.tree.query(line, predicate='dwithin', distance=MATCH_DEG)
-        best = None
         way_bearing = _bearing(coords[0], coords[-1])
-        mid = points[len(points) // 2]
-        for gi in candidates:
-            g = self.geoms[int(gi)]
-            # Rule 1: the source must accompany the way across its own span, not
-            # merely touch it somewhere. Checked sample by sample with an early
-            # exit -- most candidates fail on the first one, and this loop is
-            # the whole cost of the conflation.
-            total = 0.0
-            ok = True
-            for p in points:
-                d = g.distance(p)
-                if d > MATCH_DEG:
-                    ok = False
-                    break
-                total += d
-            if not ok:
-                continue
-            # Rule 2: aligned, or it is a road that crosses rather than one that
-            # coincides. Only reached by candidates that already ran alongside.
-            src_bearing = _line_bearing_near(g, mid)
-            if src_bearing is None:
-                continue
-            if _bearing_gap(way_bearing, src_bearing) > BEARING_TOL_DEG:
-                continue
-            if best is None or total < best[0]:
-                best = (total, int(gi))
-        if best is None:
+
+        # Which samples does each nearby segment cover? A segment is only
+        # credited with a sample it is genuinely beside AND aligned with, so a
+        # crossing street can never accumulate coverage.
+        covered = {}
+        for index, point in enumerate(points):
+            for gi in self.tree.query(point, predicate='dwithin', distance=MATCH_DEG):
+                gi = int(gi)
+                g = self.geoms[gi]
+                if g.distance(point) > MATCH_DEG:
+                    continue
+                src_bearing = _line_bearing_near(g, point)
+                if src_bearing is None:
+                    continue
+                if _bearing_gap(way_bearing, src_bearing) > BEARING_TOL_DEG:
+                    continue
+                covered.setdefault(gi, set()).add(index)
+
+        if not covered:
             self.misses += 1
             return None
+
+        # Does the source layer accompany this way at all? Answered by the UNION
+        # of what its aligned segments cover, not by any one of them. The road
+        # log stores a road as a run of short consecutive records -- a 1 km way
+        # can sit on five of them, each covering a single sample -- so asking
+        # any single record to reach a majority rejects exactly the case this
+        # rule exists to accept. Every contributing segment was individually
+        # distance- and bearing-checked above, so a crossing street or a
+        # parallel road still contributes nothing.
+        union = set()
+        for samples in covered.values():
+            union |= samples
+        if len(union) < MIN_SAMPLES_COVERED:
+            self.misses += 1
+            return None
+
+        # Which record's values to report: the one covering the most of the way,
+        # and where two tie, the one covering its middle.
+        middle = len(points) // 2
+        gi = max(covered, key=lambda k: (len(covered[k]), middle in covered[k]))
         self.hits += 1
-        # Rule 3 for reporting: credit the matched PORTION of this way, which is
-        # its own length here because every sample matched. Callers that match a
-        # sub-span must add only that sub-span.
-        self.matched_m += length_m(coords)
-        return self.props[best[1]]
+        # Credit only the MATCHED PORTION. A way runs past the stretch a source
+        # follows, so counting all of it roughly doubles the reported mileage
+        # and makes any over-match check fire on healthy data.
+        self.matched_m += length_m(coords) * len(union) / SAMPLE_COUNT
+        return self.props[gi]
 
     def report(self):
         if self.tree is None:
