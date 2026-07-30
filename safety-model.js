@@ -234,7 +234,12 @@
     // arterial signed at 25 mph passed on the speed rung after the lane rung
     // had already been consulted. Merging them removes the ordering entirely.
     if (needsSpace(facts, rules)) {
-      if (!hasRidingSpace(facts, shoulder, rules)) {
+      // shoulderFails, not !hasRidingSpace. With "Unknown shoulder = 0 ft"
+      // turned off, an untagged shoulder is not evidence of absence, so it must
+      // not fail -- and effectiveShoulder leaves it null to say so. Treating
+      // null as "no space" would quietly re-impose the pessimistic reading on a
+      // rider who switched it off.
+      if (shoulderFails(facts, shoulder, rules)) {
         if (sidewalkFallbackApplies(facts, shoulder, rules)) {
           return out(3, 'sidewalk-fallback', 'sidewalk-fallback');
         }

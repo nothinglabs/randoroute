@@ -99,11 +99,14 @@ const DEFAULT_RULES = Object.freeze({
   // opinion about a distinction the road does not make. The urban flag is still
   // carried and still shown on the card; it just no longer forks this rule.
   maxSpeedNoShoulder: 35,
-  // You cannot share a lane with traffic on a wide road, so AT this many lanes
-  // and above a road must offer a shoulder or a bike lane or it fails. Seattle
-  // signed its arterials at 25 mph in 2020, so without this the slow-road rule
-  // below passes a seven-lane arterial outright. MAX_LANES_NO_LIMIT disables it.
-  maxLanesNoShoulder: 4,
+  // MORE lanes than this and a road must offer a shoulder or a bike lane.
+  // Strictly greater, matching how the setting reads on screen.
+  // MAX_LANES_NO_LIMIT disables it.
+  lanesNoShoulderOver: 3,
+  // How busy before a road needs space of its own, as an index into
+  // SafetyModel.BUSY_LEVELS. 0 is off; 2 is "a neighborhood street", about
+  // 2,000 vehicles a day or a major collector where there is no count.
+  busyNoShoulder: 2,
   allowSidewalkFallback: true, // a mapped sidewalk can satisfy the shoulder rule, with caution
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
@@ -116,7 +119,8 @@ const rules = { ...DEFAULT_RULES };
 const MAX_LANES_NO_LIMIT = 6;
 const RULE_NUMBER_LIMITS = {
   minShoulder: [0, 10],
-  maxLanesNoShoulder: [2, MAX_LANES_NO_LIMIT],
+  lanesNoShoulderOver: [1, MAX_LANES_NO_LIMIT],
+  busyNoShoulder: [0, 4],
   maxSpeedNoShoulder: [15, 45],
   upperMaxSpeed: [25, 65],
 };
@@ -394,10 +398,8 @@ function sidewalkFallbackApplies(n) {
   const f = factsOf(n);
   return SafetyModel.sidewalkFallbackApplies(f, SafetyModel.effectiveShoulder(f, rules), rules);
 }
-function wideRoadNeedsSpace(n) {
-  const f = factsOf(n);
-  return SafetyModel.wideRoadNeedsSpace(f, SafetyModel.effectiveShoulder(f, rules), rules);
-}
+function needsSpace(n) { return SafetyModel.needsSpace(factsOf(n), rules); }
+function spaceReasons(n) { return SafetyModel.spaceReasons(factsOf(n), rules); }
 
 // Normalised source props -> the shared ladder's facts shape. Every scorer
 // (scoreOSM/scoreRoad/scoreBLTS/scoreRouteSeg) already produces this vocabulary;
@@ -417,6 +419,10 @@ function factsOf(n) {
     sidewalk: n.sidewalk || null,
     urban: !!n.urban,
     stressRating: n.stressRating == null ? null : Number(n.stressRating),
+    // The busy rule reads a count when there is one and the road's class when
+    // there is not. Both ride along on the normalised measurements.
+    adt: n.measures && n.measures.adt != null ? n.measures.adt : null,
+    fc: n.measures && n.measures.fc ? n.measures.fc : null,
   };
 }
 
@@ -550,34 +556,41 @@ function roadLevelExpr() {
   cases.push(['==', ['get', 'm'], 1], 4);                       // freeway: last-resort failure
   if (!rules.noUpperLimit)                                      // absolute speed cap
     cases.push(['all', hasSpeed, ['>', spd, rules.upperMaxSpeed]], 4);
-  // Keep in step with effectiveLevel(): a road too wide to share needs a
-  // shoulder or a bike lane before the slow-road rule can pass it. WSDOT's
-  // rating is deliberately absent here for the reason given there.
-  if (rules.maxLanesNoShoulder < MAX_LANES_NO_LIMIT) {
-    const ridingSpace = ['any',
-      ['>=', ['coalesce', ['get', 'ft'], 0], 2],
-      ['>=', ['coalesce', ['get', 'w'], -1], rules.minShoulder]];
-    const wideRoad = ['all',
-      ['>=', ['coalesce', ['get', 'ln'], 0], rules.maxLanesNoShoulder],
-      ['>', ['coalesce', ['get', 'ln'], 0], 0],
-      ['!', ridingSpace]];
-    cases.push(wideRoad, 4);
-  }
-  cases.push(['all', hasSpeed, ['<=', spd, noShoulderMax]], passLevel);  // slow = comfortable
-  // Shoulder gate: pessimistic mode treats a missing shoulder as 0 ft;
-  // otherwise only a known-narrow shoulder fails.
+  // One rung, three triggers, mirroring SafetyModel.needsSpace. This is the
+  // implementation that cannot share the model's code -- MapLibre evaluates it
+  // declaratively in the renderer -- so scripts/test_safety_model.mjs sweeps
+  // both and compares.
+  const ridingSpace = ['any',
+    ['>=', ['coalesce', ['get', 'ft'], 0], 2],
+    ['>=', ['coalesce', ['get', 'w'], -1], rules.minShoulder]];
+  const tooFast = ['all', hasSpeed, ['>', spd, noShoulderMax]];
+  const tooWide = rules.lanesNoShoulderOver >= MAX_LANES_NO_LIMIT
+    ? false
+    : ['>', ['coalesce', ['get', 'ln'], 0], rules.lanesNoShoulderOver];
+  // A count decides when the tile carries one; otherwise the functional class
+  // stands in, where a SMALLER class number is a bigger road.
+  const busy = SafetyModel.busyLevel(rules);
+  const tooBusy = !busy.id ? false : ['case',
+    ['has', 'adt'], ['>', ['get', 'adt'], busy.adt],
+    ['all', ['has', 'fc'], ['<=', ['get', 'fc'], busy.fc]]];
+  const wantsSpace = ['any', tooFast, tooWide, tooBusy];
+
+  // Pessimistic mode treats a missing shoulder as 0 ft; otherwise only a
+  // known-narrow shoulder fails.
   const sh = rules.unknownShoulderZero
     ? ['coalesce', ['get', 'w'], 0]
     : ['case', ['has', 'w'], ['get', 'w'], rules.minShoulder]; // unknown -> never under
-  const shoulderFailure = ['all',
+  const noSpace = ['all',
     ['<', ['coalesce', ['get', 'ft'], 0], 2], ['<', sh, rules.minShoulder]];
   if (rules.allowSidewalkFallback) {
-    // The fallback needs a KNOWN speed above the no-shoulder limit, as the
-    // shared model requires. Reaching here with a known speed already means it
-    // is above the limit, so `has` is the whole of the extra condition.
-    cases.push(['all', shoulderFailure, hasSpeed, ['==', ['get', 'k'], 1]], 3);
+    // The fallback needs a KNOWN speed over the limit, as the shared model
+    // requires -- it answers the shoulder question, not the lane or traffic one.
+    cases.push(['all', wantsSpace, noSpace, tooFast, ['==', ['get', 'k'], 1]], 3);
   }
-  cases.push(shoulderFailure, 4);
+  cases.push(['all', wantsSpace, noSpace], 4);
+  // Needs space and has some: not the same as a quiet lane, so not its level.
+  cases.push(wantsSpace, ordinaryPassLevel);
+  cases.push(hasSpeed, passLevel);   // nothing demands space of its own
   // Nothing known about any criterion. Only reachable with "Unknown shoulder =
   // 0 ft" off, exactly as in the shared model.
   if (!rules.unknownShoulderZero) {

@@ -84,6 +84,8 @@ const tileToFacts = (p) => ({
   sidewalk: p.k === 1 ? 'present' : p.k === 2 ? 'absent' : null,
   urban: p.u === 1, designated: p.g === 1,
   stressRating: p.lts || null,
+  adt: p.adt === undefined ? null : p.adt,
+  fc: p.fc === undefined ? null : p.fc,
 });
 
 const RULE_SETS = [];
@@ -94,10 +96,10 @@ for (const maxLanes of [2, 4, 6]) {
       // key nothing reads just doubled the combination count for nothing.
       for (const cap of [{ noUpperLimit: true, upperMaxSpeed: 45 },
         { noUpperLimit: false, upperMaxSpeed: 35 }]) {
-        for (const noShoulderMax of [25, 35]) {
+        for (const noShoulderMax of [25, 35]) for (const busy of [0, 2, 4]) {
           RULE_SETS.push({
-            minShoulder: 4, maxLanesNoShoulder: maxLanes, unknownShoulderZero: unknownZero,
-            allowSidewalkFallback: sidewalk,
+            minShoulder: 4, lanesNoShoulderOver: maxLanes, unknownShoulderZero: unknownZero,
+            allowSidewalkFallback: sidewalk, busyNoShoulder: busy,
             maxSpeedNoShoulder: noShoulderMax, ...cap,
           });
         }
@@ -113,8 +115,14 @@ for (const s of [undefined, 20, 25, 30, 35, 45, 55]) {
       for (const ft of [0, 1, 2, 4]) {
         for (const k of [0, 1, 2]) {
           for (const u of [0, 1]) {
+            // adt and fc drive the busy trigger: a count when the tile has one,
+            // the functional class when it does not. Both must be swept, or the
+            // map expression and the model are never compared on that path.
             for (const extra of [{}, { l: 1 }, { g: 1 }, { b: 1 }, { m: 1 },
-              { lts: 4 }, { lts: 3 }, { lts: 1 }, { lts: 4, l: 1 }, { lts: 4, g: 1 }]) {
+              { lts: 4 }, { lts: 3 }, { lts: 1 }, { lts: 4, l: 1 }, { lts: 4, g: 1 },
+              { adt: 200 }, { adt: 3000 }, { adt: 20000 },
+              { fc: 3 }, { fc: 5 }, { fc: 7 },
+              { adt: 200, fc: 3 }, { adt: 20000, fc: 7 }]) {
               const p = { u, ln, ft, k, ...extra };
               if (s !== undefined) p.s = s;
               if (w !== undefined) p.w = w;
