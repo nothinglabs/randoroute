@@ -196,8 +196,25 @@
       },
       layers: [
         { id: 'basemap-ocean', type: 'background', paint: { 'background-color': '#dcecf2' } },
+        // The background is ocean, so ANY area without a land polygon renders as
+        // open water. That makes a missing tile look like the rider is at sea,
+        // which is the single most alarming way this map can fail -- and on a
+        // phone it happens routinely, because a byte-range read over cell data
+        // can fail or simply not have arrived yet while the map is being panned.
+        //
+        // `land` used to stop at maxzoom 8, leaving `land_detail` as the only
+        // thing between the rider and the ocean above that zoom. Uncapping it
+        // lets MapLibre overzoom the coarse tile, so there is always a land
+        // backdrop: a detail tile that has not arrived now degrades to slightly
+        // blocky coastline instead of to open sea. The coarse tiles are few,
+        // small, and load early, which is exactly what a fallback needs.
+        //
+        // Order matters and is load-bearing: `basemap-water` is drawn AFTER both
+        // land layers, so real lakes, rivers and the Sound still paint on top of
+        // the coarse backdrop and shorelines stay correct wherever the water
+        // tile is present.
         { id: 'basemap-land', type: 'fill', source: 'basemap-context',
-          'source-layer': 'land', maxzoom: 8,
+          'source-layer': 'land',
           paint: { 'fill-color': '#f4f3ee' } },
         { id: 'basemap-land-detail', type: 'fill', source: 'basemap-context',
           'source-layer': 'land_detail', minzoom: 8,
