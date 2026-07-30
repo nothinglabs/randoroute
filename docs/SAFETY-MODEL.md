@@ -896,6 +896,34 @@ carries ×8 in low-stress mode; a `limited-access` caution carries `limitedAcces
 a `needs-space` outcome is a fail, not a caution, and is excluded
 under strict matching. The card names which one it is for that reason.
 
+### A sharrow is not bike infrastructure
+
+Facility level 1 is a shared-lane marking: paint in a traffic lane, no space of
+a rider's own. It gets **no bike-network lime** and does **not** count toward a
+route's "trails / lanes" percentage. It keeps its small routing weight
+(`facilityShared` 0.82) — it may still be worth a mild preference — so this is a
+statement about what the map claims, not about what the router prefers.
+
+The rule has to be enforced in three places that cannot import each other, and
+it had leaked in all three:
+
+| where | was | now |
+|---|---|---|
+| `routeVisualStyle()` — the route line | `facility >= 1` | `facility >= 2` |
+| `facilityM` in `router-worker.js` — the headline % | `eFacility >= 1` | `eFacility >= 2` |
+| `bikeNetworkExpr('osm')` — the OSM layer | `true` | excludes `shared_lane` |
+
+The OSM case is the subtle one: `build_osm.py` scores `shared_lane` as **2**,
+the same as a painted lane, so that source genuinely contains sharrows and could
+never be painted wholesale. The raw `cycleway*` tags survive into the tiles via
+`KEEP_TAGS`, so the filter is declarative and needed no tile rebuild.
+
+The road tiles (`ft >= 2`) and the ladder (`FACILITY_RIDING_SPACE`) were already
+correct. `test_sharrow_not_infrastructure.mjs` holds all five together.
+
+Statewide the graph carries **385 mi of sharrow** against 7,884 mi of real
+facility, so this is a small correction in mileage and a large one in honesty.
+
 ## What the map deliberately does not draw
 
 A hiking trail is not bike infrastructure. `OSM_NOT_HIKING_EXPR` removes

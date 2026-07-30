@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.452';
+const APP_VERSION = '2026-07-30.453';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -1074,14 +1074,30 @@ map.getContainer().addEventListener('click', (e) => {
   }
 }, true);
 
+// Cycleway tag values that are paint in a shared traffic lane rather than space
+// of a rider's own. build_osm.py scores `shared_lane` as 2, the same as a
+// painted lane, so the OSM source cannot be trusted to have excluded it and the
+// raw tag is filtered here instead. The tags survive into the tiles via
+// KEEP_TAGS, so this needs no rebuild.
+const SHARED_LANE_VALUES = ['shared_lane', 'share_busway', 'opposite_share_busway'];
+function notSharedLaneExpr() {
+  return ['all', ...['cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right']
+    .map((key) => ['!', ['in', ['coalesce', ['get', key], ''], ['literal', SHARED_LANE_VALUES]]])];
+}
 function bikeNetworkExpr(src) {
-  if (src.id === 'osm') return ['boolean', true];
+  // Every feature in this source is bike infrastructure by construction -- but
+  // a sharrow is not, so it is excluded explicitly.
+  if (src.id === 'osm') return notSharedLaneExpr();
   if (src.id === 'roads') {
     // ft 1 is a sharrow: paint in a shared lane, not a facility of your own.
     return ['>=', ['coalesce', ['get', 'ft'], 0], 2];
   }
   if (src.id === 'blts') {
-    return ['all', ['has', 'BikeFacilityType'], ['!=', ['get', 'BikeFacilityType'], '']];
+    // The source carries no sharrow value, so only the empty and literal 'nan'
+    // placeholders need excluding -- 3 features whose facility type is the
+    // string "nan" would otherwise paint as infrastructure.
+    return ['all', ['has', 'BikeFacilityType'],
+      ['!', ['in', ['coalesce', ['get', 'BikeFacilityType'], ''], ['literal', ['', 'nan']]]]];
   }
   return ['boolean', false];
 }
@@ -4983,7 +4999,9 @@ function routeVisualStyle(p) {
   if (effectiveLevel(scoreRouteSeg(p)) === 4) return 'fail';
   if (p.level === 3) return 'caution';
   if (p.level === 0) return 'unknown';
-  const bike = p.infra === 1 || p.facility >= 1;
+  // facility 1 is a sharrow: paint in a shared traffic lane, not a facility of
+  // your own. It gets no lime, matching bikeNetworkExpr() for the road tiles.
+  const bike = p.infra === 1 || p.facility >= 2;
   if (bike && p.facility === 5) return 'trail';
   if (bike) return 'bike';
   if (p.desig === 1) return 'designated';

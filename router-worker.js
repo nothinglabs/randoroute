@@ -1125,7 +1125,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (eFlags[ei] & 64) desigM += eLen[ei];
-    if (eFacility[ei] >= 1) facilityM += eLen[ei];
+    // >= 2, not >= 1: facility 1 is a sharrow, which is paint in a shared lane
+    // and must not count toward the route's bike-facility mileage.
+    if (eFacility[ei] >= 2) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4)) && !edgeLimited(ei, forward)
@@ -1360,7 +1362,9 @@ function routeFragment(source, startEdge, endEdge, rules) {
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
     if (eFlags[ei] & 64) desigM += eLen[ei];
-    if (eFacility[ei] >= 1) facilityM += eLen[ei];
+    // >= 2, not >= 1: facility 1 is a sharrow, which is paint in a shared lane
+    // and must not count toward the route's bike-facility mileage.
+    if (eFacility[ei] >= 2) facilityM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4)) && !edgeLimited(ei, forward)
