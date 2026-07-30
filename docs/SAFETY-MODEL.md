@@ -188,17 +188,20 @@ different rules.
 | 3 | `freeway` | a true motorway | 4 | — (see below) |
 | 4 | `infra` | dedicated bike infrastructure | its own `infraScore` | — |
 | 5 | `speed-cap` | speed over the absolute ceiling | 4 | `upperMaxSpeed`, `noUpperLimit` |
-| 6 | `wide-road` | at or over the lane threshold, no shoulder and no bike lane | 4 | `maxLanesNoShoulder` |
-| 7 | `slow-road` | slow enough to share the lane | 1 | `maxSpeedNoShoulder` |
-| 8 | `sidewalk-fallback` | would fail the shoulder rung, but has a mapped sidewalk | 3 | `allowSidewalkFallback` |
-| 9 | `shoulder` | shoulder under the minimum, no bike lane | 4 | `minShoulder`, `unknownShoulderZero` |
-| 10 | `unknown` | no usable data on any criterion | 0 | — |
-| 11 | `default` | nothing failed, nothing shortcut it | 2 | — |
+| 6 | `needs-space` | too fast, too wide **or** too busy to share, and no shoulder or bike lane | 4 | `maxSpeedNoShoulder`, `lanesNoShoulderOver`, `busyNoShoulder`, `minShoulder`, `unknownShoulderZero` |
+| 7 | `sidewalk-fallback` | would fail rung 6, but has a mapped sidewalk | 3 | `allowSidewalkFallback` |
+| 8 | `shares-lane` | nothing about the road demands space of its own | 1 | — |
+| 9 | `unknown` | no usable data on any criterion | 0 | — |
+| 10 | `default` | needs space and has it | 2 | — |
+
+A road that trips rung 6 and *does* have the space falls through to `default`
+at level 2. That is deliberate: it is not the same thing as a quiet lane, so it
+does not get the quiet lane's level 1.
 
 ### Soft cautions — the two modifiers
 
 Two facts can turn a **pass** into a caution without ever failing a road. They
-apply to rungs 7, 8 and 12 only; a road that failed higher up is untouched, and
+apply to rungs 8 and 10 only; a road that failed higher up is untouched, and
 so is dedicated infrastructure, which returns at rung 4 before either is
 consulted.
 
@@ -251,11 +254,6 @@ road. Freeways are also excluded from the terminal-access carve-out that
 otherwise lets short failing blocks be used at a leg's endpoints — nobody's
 driveway is on a motorway, and the label has to mean excluded whenever failing
 roads are.
-| 10 | otherwise | 2 | — |
-
-The lane rung sits **before** the slow-road rung deliberately. Seattle signed every arterial at
-25 mph in 2020, so without it a seven-lane road passes rule 6 outright — which
-is exactly what 15th Ave NW in Ballard did.
 
 ### What satisfies a shoulder rule
 
@@ -274,12 +272,49 @@ above *"Why: Fails: shoulder unknown"* — the Verdict line reads the worker's
 Any drift between the two shows up as a self-contradicting card, and lets
 `requireSafe` route down roads the map paints as failing.
 
-### Rung 6 — the lane threshold
+### Rung 6 — one rung, three triggers
 
-The setting is **the count that fails, not the widest road allowed**. At 4, a
-four-lane road with neither a shoulder nor a bike lane fails; a three-lane road
-passes. The slider is labelled "Lanes needing a shoulder or bike lane" and shows
-"4+ lanes" so it reads the way the rule works.
+Speed, lanes and traffic are three ways of asking one question: **how much of
+this lane is actually available to a rider?** They are therefore a single rung,
+and the settings read as one sentence in the panel:
+
+> **Require a bike lane or wide shoulder whenever:**
+> Speed limit is over — `maxSpeedNoShoulder`
+> Lanes of traffic more than — `lanesNoShoulderOver`
+> Road is busier than — `busyNoShoulder`
+>
+> Minimum shoulder width to count — `minShoulder`
+
+The three triggers are **ORed**. Any one of them means the road needs space of
+its own; the road then fails only if it does not have any. `spaceReasons()`
+returns *every* trigger that fired, and the card names all of them — "Fails:
+needs a bike lane or wide shoulder — 45 mph, 4 lanes". Naming only the first
+would invite a rider to change the wrong setting.
+
+**They were separate rungs and the ordering was a bug.** A `wide-road` rung sat
+above a `slow-road` rung specifically because Seattle signed every arterial at
+25 mph in 2020, so on speed alone a seven-lane road passed outright — which is
+exactly what 15th Ave NW in Ballard did. That ordering was load-bearing and
+invisible. Merged, there is no order left to get wrong.
+
+#### Trigger 1 — speed
+
+`facts.speed > maxSpeedNoShoulder`. Strictly greater, so a road *at* the limit
+shares the lane. Default 35 mph; the slider runs 15–45. See "One speed limit,
+not two" below for why this is one setting and not an urban/rural pair.
+
+#### Trigger 2 — lanes
+
+`facts.lanes > lanesNoShoulderOver`. The setting is phrased "Lanes of traffic
+more than", so the number shown is **the widest road that still passes** — at 3,
+a four-lane road with neither shoulder nor bike lane fails and a three-lane road
+does not. It runs 1–5, then "No limit" at the top stop (`MAX_LANES_NO_LIMIT`,
+6), which switches the trigger off. A saved value from the old wider range
+clamps to the top stop and reads as No limit.
+
+It reads "more than" rather than the old "at or over" because that is how a
+rider states the rule aloud, and because the two phrasings are off by one — a
+silent way to move every road one lane in the wrong direction.
 
 Three things about the count, all deliberate:
 
@@ -292,15 +327,62 @@ Three things about the count, all deliberate:
   two-lane carriageway therefore counts as two, which is also the traffic you
   actually ride among. The cost is that a 2+2 divided arterial never trips this
   rule; the speed and shoulder rules still apply to it.
-- **An unknown shoulder is not proof of space.** A wide road has to *show* a
-  shoulder or a bike lane, so a missing `shoulder` tag does not exempt it. This
-  is the opposite of how unknown data is treated elsewhere, and is why
-  `unknownShoulderZero` has no effect on this rule.
+- **A missing `lanes` tag never trips it.** Coverage tracks road importance —
+  ~100% of `secondary`, 3–5% of `residential` — so an absent tag means "small
+  road", not "unproven", and `lanesNeedSpace` returns false on it.
 
-**No sidewalk reprieve.** Unlike the shoulder rung, a mapped sidewalk does not soften this
-to a caution. A sidewalk does not make a four-lane road shareable. 10,854 of the
-12,453 edges this rule newly fails have a mapped sidewalk, so this choice is
-most of the rule's effect, not a corner case.
+#### Trigger 3 — traffic
+
+The rider picks a **road type**, not a number. Nobody has an intuition for
+"3,000 vehicles a day"; everyone knows what a neighbourhood street feels like.
+`BUSY_LEVELS` in `safety-model.js` is the list, and it is the contract:
+
+| id | slider reads | count over | else class at or above |
+|---|---|---|---|
+| 0 | Not used | — | — |
+| 1 | a quiet lane | 500/day | 6 minor collector |
+| 2 | a neighborhood street | 2,000/day | 5 major collector |
+| 3 | a busy through road | 6,000/day | 4 minor arterial |
+| 4 | a main highway | 15,000/day | 3 principal arterial |
+
+**Each level carries both a count and a class, and that is what makes the
+setting work everywhere.** Only about half the network has a traffic count. The
+count is a measurement and wins whenever there is one; the functional class
+stands in for the rest. `fc` runs the FHWA way, *smaller is bigger road*, so the
+class test is `fc <= level.fc`.
+
+The card says which of the two decided — "2,357 vehicles/day" or "Minor
+arterial, no count" — because they are different kinds of claim, and the whole
+discipline of the measurement import is never flattening them together.
+
+The slider shows the figure alongside the label ("a neighborhood street
+(~2,000/day)") so a rider who does want the number has it, without having to
+reason in numbers to use the control.
+
+Default is level 2. **This is the first rule that lets the statewide traffic
+data change a verdict** — see "Which signals reach which decision" below.
+
+#### The shoulder test, and what an unknown shoulder means
+
+Once a road needs space, it fails only if `shoulderFails()`: no bike lane or
+better **and** a known shoulder below `minShoulder`.
+
+It is `shoulderFails`, deliberately **not** `!hasRidingSpace`. With *Unknown
+shoulder = 0 ft* turned off, an untagged shoulder is not evidence of absence —
+`effectiveShoulder` leaves it null to say exactly that — and treating null as
+"no space" would quietly re-impose the pessimistic reading on a rider who
+switched it off. The old wide-road rung did precisely that, and the 13M-combination
+sweep in `scripts/test_safety_model.mjs` is what caught it during the merge.
+
+So `unknownShoulderZero` now governs all three triggers uniformly, where it used
+to be ignored by the lane rule. That is a real behaviour change, and the right
+one: one rung, one shoulder test.
+
+**A sidewalk reprieve, but only for speed.** `sidewalkFallbackApplies` still
+requires the speed to be over the limit, so a road that trips the rung on lanes
+or traffic alone gets no fallback. A sidewalk does not make a four-lane road
+shareable. Of the edges the lane trigger fails, 10,854 of 12,453 have a mapped
+sidewalk, so that restriction is most of the trigger's effect, not a corner case.
 
 **It can sever a corridor under `requireSafe`, and that is accepted.** A
 30-route statewide sweep finds no severance on the default preset, and two on
@@ -314,14 +396,9 @@ the honest answer. Inventing a pass for it would make every other verdict less
 trustworthy. The rider gets the standard message and can raise this slider or
 turn off strict matching.
 
-Do keep measuring it, though — a future tightening (default 3, or a stricter
-`minShoulder`) should be swept the same way so the severance count is a known
-number rather than a surprise.
-
-`maxLanesNoShoulder` runs 2–5, then "No limit" at the top stop
-(`MAX_LANES_NO_LIMIT`, 6). It stops there because "6 lanes without a shoulder is
-fine" is not a rule anyone would choose over switching the rule off. A saved
-value from a wider range clamps to the top stop, which reads as No limit.
+Do keep measuring it, though — a future tightening (a stricter `minShoulder`, or
+raising `busyNoShoulder` in a preset) should be swept the same way so the
+severance count is a known number rather than a surprise.
 
 ### No rung lets a designation excuse a road
 
@@ -350,13 +427,16 @@ trails*), which makes a qualifying road cheaper to route over. That bonus is
 gated on the edge passing, so it can never pull a rider onto a failing road.
 Preference, never permission.
 
-### Rung 8/9 — the shoulder rung and its sidewalk fallback
+### Rung 7 — the sidewalk fallback
 
-`allowSidewalkFallback` (default on) applies to **rung 9 only**. It fires when
-all of: the setting is on, the sidewalk is positively mapped `present`
-(untagged does not count), there is no bike facility, the speed is known and
-*above* the no-shoulder limit, and the shoulder is known and *below*
+`allowSidewalkFallback` (default on) is the only way out of a rung-6 failure. It
+fires when all of: the setting is on, the sidewalk is positively mapped
+`present` (untagged does not count), there is no bike facility, the speed is
+known and *above* the no-shoulder limit, and the shoulder is known and *below*
 `minShoulder`.
+
+Note the speed condition. A road that trips rung 6 on lanes or traffic but is
+within the speed limit gets no fallback, however well its sidewalks are mapped.
 
 It turns a 4 into a 3 — so "Only show routes fully matching" stops excluding
 the road — and adds `Rule override: Sidewalk fallback` to the card. It is not a
@@ -439,37 +519,71 @@ deliberately routing-only: they express preference, not safety.
 | speed | yes | yes |
 | shoulder | yes | yes |
 | bike facility type | yes | yes |
-| lanes | **yes** (rung 6) | yes |
+| lanes | **yes** (rung 6, trigger 2) | yes |
+| traffic volume (ADT) | **yes** (rung 6, trigger 3) | no |
+| FHWA functional class | **yes** (rung 6, trigger 3 — only where no ADT) | no |
 | official stress rating (LTS) | **caution only**, always on | yes |
 | OSM road class (secondary/primary/…) | no | yes |
 | surface, grade, curve hazard, sidewalk exposure | no | yes |
-| traffic volume (ADT) | **no — shown only** | no |
 | bail-out space (derived) | **no — shown only** | no |
-| FHWA functional class, road owner | **no — shown only** | no |
+| road owner | **no — shown only** | no |
 
-Road class stays out of the verdict on purpose. It is an administrative label,
-not a physical fact: 81% of "arterials" are one or two lanes, while 15th Ave NE
-has four-lane stretches tagged merely `tertiary`. Lane count is the physical
-fact, so that is what rung 6 gates on.
+ADT and functional class moved into the verdict when `busyNoShoulder` shipped,
+and that was the point of importing them. They are still gated behind one rider
+setting with an off position, and they can only ever say "this road needs space
+of its own" — the shoulder test still decides whether it has any.
+
+**Functional class is used as a class, never converted to a vehicles-per-day
+figure.** It is a fallback for the half of the network with no count, matched
+level-for-level against the count thresholds in `BUSY_LEVELS`, and the card says
+which of the two answered.
+
+**OSM road class stays out of the verdict** and is not interchangeable with the
+FHWA one here. It is whatever a mapper typed: 81% of "arterials" are one or two
+lanes, while 15th Ave NE has four-lane stretches tagged merely `tertiary`. The
+FHWA class is assigned by a local agency, reviewed by WSDOT and approved by
+FHWA, with federal-aid money attached — which is why trigger 3 reads `fc` and
+not `highway`.
 
 ## The statewide road measurements
 
-Three sources, imported and displayed, feeding no decision at all yet. They
-exist because the app measured 9.2% of its road mileage and estimated the rest,
+Four sources. They exist because the app measured 9.2% of its road mileage and
+estimated the rest,
 and that asymmetry had a specific consequence on the ground: the router
 preferred a state highway to the quiet county roads beside it, because the
 highway was the only thing it had evidence about.
 
-| source | what it gives | coverage |
+| source | what it gives | source extent |
 |---|---|---|
 | CRAB certified county road log | bail-out space (derived), ADT + year | 39,187 mi |
 | WSDOT non-state functional class | FHWA class, roadway owner | ~19,000 mi |
 | WSDOT traffic counts | ADT + year, state routes | ~7,000 mi |
+| FHWA HPMS (WA submittal) | AADT + year | federal-aid network |
 
-They are matched to OSM ways by span and bearing — every interior sample within
-18 m of the source line, headings aligned within 40° — and written identically
-into the graph (format 11) and the vector tiles, so the router, the tap card and
-the route card read one number.
+What lands on the routing graph after conflation:
+
+| | before | after |
+|---|---|---|
+| traffic count | 0 | **48,998 mi (51.8%)** |
+| bail-out space | 8,721 mi (9.2%) | **36,653 mi (38.8%)** |
+
+By functional class: Interstate 100%, minor arterial 94.7%, principal arterial
+92.1%, major collector 87.1%, minor collector 46.6%, local 30.9%. The gradient
+is the reason trigger 3 falls back to class — the roads with no count are
+overwhelmingly the small ones, which is itself information.
+
+Where two counts cover the same edge, the newer year wins; on a tie a directly
+measured count (county or state inventory) beats a modelled HPMS one. That is
+`_better_count()` in `scripts/roadmeasure.py`.
+
+They are matched to OSM ways by span and bearing — a **majority** of interior
+samples within 18 m of the source line, headings aligned within 40°. Requiring
+*every* sample to be covered was the single largest loss in the pipeline:
+relaxing it to 3 of 5 added ~9,847 mi of traffic coverage, more than adding
+HPMS as a whole source did (+5,699 mi).
+
+Measurements are written identically into the graph (format 12) and the vector
+tiles, so the router, the tap card and the route card read one number.
 
 ### Three different kinds of claim, never flattened
 
@@ -533,10 +647,15 @@ Where an official class exists it wins, and the row says which source it came
 from — `(FHWA, county)` or `(OSM)`. These are not equally strong claims: FHWA's
 is assigned by an agency and reviewed, OSM's is whatever a mapper typed.
 
-**Routing is unchanged by this.** The OSM class still drives the class-based
-soft cost exactly as before, and the FHWA class still drives nothing. Making the
-official class feed routing where OSM has none is a real improvement and a
-separate decision.
+**The normalisation is for the card only.** Rung 6's traffic trigger reads
+`facts.fc`, which every adapter fills from the *official* class alone — never
+from the OSM one mapped through this table. A mapper's `tertiary` must not be
+able to fail a road for being busy; an agency's reviewed Major collector may.
+
+Routing cost is unchanged by any of this: the OSM class still drives the
+class-based soft cost exactly as before, and the FHWA class drives no cost.
+Making the official class feed routing where OSM has none is a real improvement
+and a separate decision.
 
 ### What is deliberately not imported
 
@@ -561,8 +680,8 @@ rule. WSDOT's call is carried only so a disagreement can be seen.
 
 ### One speed limit, not two
 
-The slow-road rung used to read two settings, 30 mph in a Census urban area and
-35 outside one. They are now a single `maxSpeedNoShoulder`, defaulting to 35.
+Rung 6's speed trigger used to read two settings, 30 mph in a Census urban area
+and 35 outside one. They are now a single `maxSpeedNoShoulder`, defaulting to 35.
 
 The split asked a rider to hold an opinion about a distinction the road does not
 make. A 35 mph lane with no shoulder is the same lane whether or not a polygon
@@ -583,12 +702,13 @@ even the urban/rural split, is still honoured behind both.
 
 | setting | UI label | verdict effect | routing effect |
 |---|---|---|---|
-| `minShoulder` | Minimum shoulder if no bike lane | rung 9 threshold | via the verdict |
-| `unknownShoulderZero` | Unknown shoulder = 0 ft | untagged counts as 0 at rung 9 | via the verdict |
-| `maxSpeedNoShoulder` | Max speed without shoulder or bike lane | at or below it, a road passes with no shoulder | feeds the slow-road rung |
-| `maxLanesNoShoulder` | Lanes needing a shoulder or bike lane | rung 6 threshold | also `wideRoad*` cost |
+| `maxSpeedNoShoulder` | Speed limit is over | rung 6, trigger 1 | via the verdict |
+| `lanesNoShoulderOver` | Lanes of traffic more than | rung 6, trigger 2 | also `wideRoad*` cost |
+| `busyNoShoulder` | Road is busier than | rung 6, trigger 3 | via the verdict |
+| `minShoulder` | Minimum shoulder width to count | what satisfies rung 6 | via the verdict |
+| `unknownShoulderZero` | Unknown shoulder = 0 ft | untagged counts as 0 at rung 6 | via the verdict |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
-| `allowSidewalkFallback` | Allow sidewalk fallback | rung 8 exists at all | ×1.9 / ×3.8 / ×8.0 |
+| `allowSidewalkFallback` | Allow sidewalk fallback | rung 7 exists at all | ×1.9 / ×3.8 / ×8.0 |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
 | `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |
@@ -596,9 +716,14 @@ even the urban/rural split, is still honoured behind both.
 | `prefDesig` | Heavily prefer bike routes & trails | none | designation bonus |
 | `prefResidential` | Prefer residential streets | none | `residential` bonus |
 
-The first six are named objectively and change the verdict. The rest are
+The first seven are named objectively and change the verdict. The rest are
 named as permissions or preferences and change only where you are sent — which
 is what their names promise.
+
+The three rung-6 triggers plus `minShoulder` are presented as one indented group
+under the heading **"Require a bike lane or wide shoulder whenever:"**, because
+they are one rule read as one sentence. Presenting them as four independent
+sliders was what let the old speed/lane ordering hide.
 
 ## What makes a road caution
 
@@ -679,7 +804,7 @@ low-stress — scale most of them; that is what makes routes A–E differ.
 
 **Level 3 does not mean one thing for routing.** A `sidewalk-fallback` caution
 carries ×8 in low-stress mode; a `limited-access` caution carries `limited*`;
-a `wide-road` or `shoulder` outcome is a fail, not a caution, and is excluded
+a `needs-space` outcome is a fail, not a caution, and is excluded
 under strict matching. The card names which one it is for that reason.
 
 ## What the map deliberately does not draw
