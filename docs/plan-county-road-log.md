@@ -107,10 +107,13 @@ covers most of it. Every contributing segment is still checked individually for
 distance and bearing — stricter than the rule it replaces, which checked
 alignment only at the midpoint.
 
-Measured on a 40,000-edge sample, county road log coverage rises from **26.9% to
-38.1%** of road miles: **25,403 → 35,993 miles** statewide, a 42% relative gain.
-That is a larger improvement than adding a whole new source would give, out of
-data already fetched.
+Built and measured, not sampled: the network's traffic-count coverage rises from
+**35.4% to 45.8%** and its bail-out-space coverage from **28.3% to 38.8%** —
+**+9,847 and +9,908 miles** respectively. Larger than adding a whole new source
+would give, out of data already fetched. (A 40,000-edge sample had projected
+25,403 → 35,993 miles for the road log alone; the built graph reached 34,631,
+and the fix also recovered functional-class and state-AADT matches the sample
+did not account for.)
 
 An intermediate version of the fix matched on the best *single* segment and
 reached only 34.2%. It still rejected the fragmented case — five consecutive
@@ -125,12 +128,12 @@ The figures below predate this fix and describe the shipped graph.
 
 Measured on the built graph, not projected:
 
-| | before | after |
-|---|---|---|
-| road with a space metric | 8,721 mi (9.2%) | **26,745 mi (28.3%)** |
-| road with traffic volume | 0 | **33,452 mi (35.4%)** |
-| road with a functional class | 0 | 18,980 mi (20.1%) |
-| county-reported paved shoulder | 0 | 3,489 mi (3.7%) |
+| | before | first build | after the matcher fix |
+|---|---|---|---|
+| road with a space metric | 8,721 mi (9.2%) | 26,745 mi (28.3%) | **36,653 mi (38.8%)** |
+| road with traffic volume | 0 | 33,452 mi (35.4%) | **43,299 mi (45.8%)** |
+| road with a functional class | 0 | 18,980 mi (20.1%) | 19,359 mi (20.5%) |
+| county-reported paved shoulder | 0 | 3,489 mi (3.7%) | 4,600 mi (4.9%) |
 
 An earlier estimate in this document put the space metric near 50% and volume
 near half the network. That was wrong, and the reason is worth keeping.
@@ -233,6 +236,43 @@ matching half of the picture:
 **Age is the weakness and must be shown.** County `ADTYear` runs 1940-2023:
 54% are 2010 or newer, only 24% are 2018 or newer, and 12.6% are from 1977-78.
 A count is not usable without its year next to it.
+
+## Source 4 candidate: FHWA HPMS
+
+Measured against the improved baseline, not the stale one. `scripts/build_hpms.py`
+fetches it; `docs/PORTING-TO-ANOTHER-STATE.md` explains why it is the most
+portable source in the project.
+
+```
+would gain                        5,699 mi   6.0%
+network with a count afterwards  48,998 mi  51.8%
+```
+
+Only ~900 miles of its original 6,610 were absorbed by the matcher fix, so the
+two really are complementary: HPMS contributes city arterials the county road
+log structurally cannot reach.
+
+| class | now | with HPMS |
+|---|---|---|
+| Principal arterial | 77.9% | **95.2%** |
+| Minor arterial | 60.0% | **94.8%** |
+| Major collector | 68.3% | 85.7% |
+| Minor collector | 46.3% | 46.6% |
+| Local street | 30.9% | 31.0% |
+
+The case for it is the arterial rows, not the 6% headline. A busy arterial with
+no shoulder is where traffic volume changes a cycling decision, and this takes
+both arterial classes to roughly complete. What it leaves uncovered is local and
+minor-collector road, where calm-by-default is already the assumption.
+
+Two things must be settled before adopting it. It needs its own provenance tag —
+`(HPMS 2018)` — because its non-state counts are modelled rather than measured,
+and it needs a tiebreak against the county road log where both land. On the
+27,279 edges where both already fall, the median HPMS/CRAB ratio is 1.00, so
+neither is systematically better; recency is the only tiebreaker with a reason
+behind it.
+
+**Not adopted. This is a decision, not a backlog item.**
 
 ## Source 2: the city-street gap, and what closes it
 
