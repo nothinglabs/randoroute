@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.445';
+const APP_VERSION = '2026-07-30.446';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5077,33 +5077,45 @@ function setFailPulse(on) {
   }
 }
 
-// Caution segments flicker with nearly the throb of a failure. An earlier
-// version moved 1.1 px with no casing and was invisible on a phone -- the
-// distinction between the two verdicts is carried by colour and by the
-// failure's dashes, so the animation does not also have to be timid to keep
-// them apart. Size rather than opacity, for the reason given above: fading
-// amber over the basemap muddies it toward the unpaved and designated patterns.
+// Caution does not throb. A failure breathes in WIDTH; a caution's ticks TRAVEL
+// along the line. Two sizes of the same pulse read as "a bit less bad" rather
+// than as a different verdict, which is the whole point of distinguishing them.
+//
+// It also brings the route line into line with the map's own texture vocabulary,
+// documented above: prohibited is hazard-tape slashes, caution is perpendicular
+// ticks, passing is solid. The caution route line was drawing solid.
+//
+// Movement comes from cycling the dash pattern rather than a dash offset, which
+// MapLibre has no paint property for. Each frame shifts the gap a little
+// further along, and the pattern repeats seamlessly at the end of the cycle.
+const CAUTION_TICKS = (() => {
+  const frames = [];
+  const period = 4;      // tick + gap, in line widths
+  const tick = 1;        // the tick itself
+  const steps = 8;
+  for (let i = 0; i < steps; i++) {
+    const lead = (period * i) / steps;   // grows, walking the tick forward
+    frames.push([lead, tick, Math.max(0.01, period - tick - lead)]);
+  }
+  return frames;
+})();
 let cautionPulseTimer = null;
 function setCautionPulse(on) {
   if (on && !cautionPulseTimer) {
-    let t = CAUTION_PULSE_PHASE;
+    let frame = 0;
     cautionPulseTimer = setInterval(() => {
-      t += ROUTE_PULSE_STEP;
       if (!map.getLayer('route-caution')) return;
-      const p = Math.abs(Math.sin(t));
-      map.setPaintProperty('route-caution', 'line-width', 6.5 + 2.6 * p);
-      map.setPaintProperty('route-caution', 'line-opacity', 0.92 + 0.08 * p);
-      map.setPaintProperty('route-caution-casing', 'line-width', 11 + 2.6 * p);
-      map.setPaintProperty('route-caution-casing', 'line-opacity', 0.75 + 0.2 * p);
-    }, 80);
+      map.setPaintProperty('route-caution', 'line-dasharray',
+        CAUTION_TICKS[frame % CAUTION_TICKS.length]);
+      frame++;
+    }, 110);
   } else if (!on && cautionPulseTimer) {
     clearInterval(cautionPulseTimer);
     cautionPulseTimer = null;
     if (map.getLayer('route-caution')) {
-      map.setPaintProperty('route-caution', 'line-width', 6.5);
-      map.setPaintProperty('route-caution', 'line-opacity', 1);
-      map.setPaintProperty('route-caution-casing', 'line-width', 11);
-      map.setPaintProperty('route-caution-casing', 'line-opacity', 0.75);
+      // At rest it keeps the ticks -- the texture carries the verdict whether or
+      // not anything is moving, which is what makes it legible in a screenshot.
+      map.setPaintProperty('route-caution', 'line-dasharray', CAUTION_TICKS[0]);
     }
   }
 }
@@ -5278,13 +5290,17 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-caution-casing', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-width': 11, 'line-opacity': 0.75 },
+    // Solid and still. The casing is what the ticks are read against, so it
+    // must not move with them.
+    paint: { 'line-color': '#ffffff', 'line-width': 10.5, 'line-opacity': 0.9 },
     filter: ['==', ['get', 'style'], 'caution'],
   });
   map.addLayer({
     id: 'route-caution', type: 'line', source: 'route-render',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: routeVerdictPaint(COLORS[3]),
+    // Butt caps, not round: round caps smear a short tick into a lozenge and
+    // the pattern stops reading as rungs across the road.
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { ...routeVerdictPaint(COLORS[3]), 'line-dasharray': CAUTION_TICKS[0] },
     filter: ['==', ['get', 'style'], 'caution'],
   });
   map.addLayer({

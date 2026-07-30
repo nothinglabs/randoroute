@@ -142,30 +142,31 @@ substitute for it. The **prohibited** overlay is deliberately left as its own da
 at every zoom — bikes being banned is a different statement from failing the
 rider's rules, and it should not be folded into the same texture.
 
-### A drawn route animates its two worst verdicts
+### A drawn route animates its two worst verdicts, differently
 
 On a planned route, failing and cautioning stretches move; everything else is
-still. Both animate **size, not opacity** — fading translucent red or amber over
-the basemap turns it muddy and can make a rule failure read as an unpaved or
-designated-route pattern.
+still. They do not move the same way, and that is the point:
 
-| | throb | casing | amplitude |
-|---|---|---|---|
-| failure | 6.5 → 9.5 px | 12.5 → 14.5 px | 3.0 px |
-| caution | 6.5 → 9.1 px | 11 → 13.6 px | 2.6 px |
+| | texture | motion |
+|---|---|---|
+| **failure** | dashes, red | **breathes in width** — 6.5 → 9.5 px, casing 12.5 → 14.5, about 1.5 s a throb |
+| **caution** | perpendicular ticks, orange | **ticks travel along the line** — steady width, eight frames of dash pattern |
 
-A full throb is about 1.5 s. Both carry a white casing that pulses with the
-line, which is most of what makes either read from across a screen: an earlier
-caution moved 1.1 px with no casing and was invisible on a phone.
+An earlier version gave the caution a smaller version of the failure's throb.
+That reads as "a bit less bad", not as a different verdict — the rider has to
+compare two amplitudes to tell them apart, which is not something a glance can
+do. Two different *kinds* of motion need no comparison.
 
-The failure still leads, but only just. The two verdicts are told apart by
-colour and by the failure's dashes, so the caution does not have to stay quiet
-to stay distinct — and a caution nobody notices is not doing its job.
+It also puts the route line back in step with the map's texture vocabulary,
+where caution has always been perpendicular ticks and only a passing road is
+solid. The caution route line had been drawing solid.
 
-The caution runs a quarter period behind the failure. Sharing one phase made the
-whole route appear to breathe as a single animation, which is the opposite of
-the point. When a route has neither verdict, both layers rest at their base size
-rather than wherever the last animation frame happened to stop.
+Both animate size or pattern, never opacity: fading translucent red or amber
+over the basemap turns it muddy and can make a rule failure read as an unpaved
+or designated-route pattern.
+
+A caution at rest keeps its ticks. The texture carries the verdict whether or
+not anything is moving, so it still reads in a screenshot.
 
 Colour is **not** decided by level alone. `readoutVerdictColor` checks levels
 4, 3 and 0 first, then asks `isBikeNetworkVerdict(n)` — true when the feature

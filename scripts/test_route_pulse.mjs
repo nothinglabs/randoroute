@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// The route pulses are wired through three functions and two call sites, and a
-// mistake in any of them is invisible in code review and obvious on a phone.
-// This drives the real timers against a stub map and checks that both layers
-// actually animate, at the intended rate, and stop cleanly.
+// A failure and a caution must not read as two sizes of one effect. A failure
+// breathes in WIDTH; a caution's ticks TRAVEL along the line. This drives the
+// real timers against a stub map and checks that each animates its own property,
+// that neither borrows the other's, and that both stop cleanly.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -45,7 +45,8 @@ const ctx = {
 };
 vm.createContext(ctx);
 vm.runInContext([
-  constOf('ROUTE_PULSE_STEP'), constOf('CAUTION_PULSE_PHASE'),
+  constOf('ROUTE_PULSE_STEP'),
+  appSrc.match(/const CAUTION_TICKS = \(\(\) => \{[\s\S]*?\}\)\(\);/)[0].replace('const ', 'var '),
   'var failPulseTimer = null, detailSelectionPulseTimer = null, cautionPulseTimer = null;',
   lift('setFailPulse'), lift('setCautionPulse'), lift('setRoutePulses'),
 ].join('\n'), ctx);
@@ -60,11 +61,16 @@ const sample = (keys, n) => {
   const values = Object.fromEntries(keys.map((k) => [k, []]));
   for (let i = 0; i < n; i++) {
     step();
-    for (const k of keys) values[k].push(Number(paint.get(k)));
+    // Raw, not coerced: Number() on a dash array is NaN, which silently makes
+    // every frame look identical and a travelling pattern look static.
+    for (const k of keys) values[k].push(paint.get(k));
   }
   return values;
 };
-const spread = (xs) => Math.max(...xs) - Math.min(...xs);
+const spread = (xs) => {
+  const ns = xs.map(Number);
+  return Math.max(...ns) - Math.min(...ns);
+};
 // A full throb is half a sine period; sample a whole one so a min and a max are
 // both actually visited.
 const FULL_THROB = Math.ceil(Math.PI / 0.165) + 1;
@@ -81,39 +87,32 @@ assert.equal(ticks.filter(Boolean).length, 0,
 ctx.setRoutePulses(render('pass', 'caution'));
 assert.equal(ticks.filter(Boolean).length, 1, 'a caution alone starts one timer');
 const cautionSample = sample(
-  ['route-caution|line-width', 'route-caution-casing|line-width'], FULL_THROB);
-const widths = cautionSample['route-caution|line-width'];
-assert.ok(new Set(widths).size > 4,
-  `caution width should flicker, saw ${new Set(widths).size} distinct values`);
+  ['route-caution|line-dasharray', 'route-caution|line-width'], FULL_THROB);
+const patterns = cautionSample['route-caution|line-dasharray'];
 assert.equal(paint.get('route-fail|line-width'), undefined,
   'a route with no failing segment should not touch the failure layer');
 
-assert.ok(Math.min(...widths) >= 6.5, 'caution never shrinks below its resting width');
-// A 1.1 px flicker with no casing was invisible on a phone. This has to move.
-const cautionAmp = spread(widths);
-assert.ok(cautionAmp >= 2.0,
-  `the caution flicker must be pronounced, moved only ${cautionAmp.toFixed(2)} px`);
-const casing = cautionSample['route-caution-casing|line-width'];
-assert.ok(spread(casing) >= 2.0,
-  'the caution casing pulses with the line, which is what makes it read');
-console.log(`PASS  caution flickers ${Math.min(...widths).toFixed(2)}-${Math.max(...widths).toFixed(2)} px`
-  + ` with a ${Math.min(...casing).toFixed(1)}-${Math.max(...casing).toFixed(1)} px casing`);
+// The ticks must MOVE: several distinct dash patterns over one cycle.
+const distinct = new Set(patterns.map((p) => JSON.stringify(p)));
+assert.ok(distinct.size >= 4,
+  `caution ticks should travel, saw ${distinct.size} distinct dash patterns`);
+// And the line must NOT throb, or it is just the failure effect again.
+assert.equal(new Set(cautionSample['route-caution|line-width']).size, 1,
+  'a caution must not also pulse its width; that is the failure\'s motion');
+console.log(`PASS  caution ticks travel through ${distinct.size} dash patterns, width steady`);
 
-// Both together: the failure throb must be wider than the caution flicker, or
-// the two verdicts stop being distinguishable at a glance.
+// Both together: the failure throbs in width and does NOT march, so the two
+// verdicts are told apart by the kind of motion, not merely its size.
 ctx.setRoutePulses(render('fail', 'caution'));
-const failWidths = sample(['route-fail|line-width'], FULL_THROB)['route-fail|line-width'];
+const failSample = sample(['route-fail|line-width', 'route-fail|line-dasharray'], FULL_THROB);
+const failWidths = failSample['route-fail|line-width'].map(Number);
 const failAmp = spread(failWidths);
-// The failure still leads, but only just: colour and the failure's dashes carry
-// the distinction, so the caution does not have to stay quiet to be told apart.
-assert.ok(failAmp > cautionAmp,
-  `a failure should still throb harder than a caution (${failAmp.toFixed(2)} vs ${cautionAmp.toFixed(2)} px)`);
-console.log(`PASS  failure throbs ${failAmp.toFixed(2)} px against caution's ${cautionAmp.toFixed(2)} px`);
+assert.ok(failAmp > 2, `a failure should throb in width, moved ${failAmp.toFixed(2)} px`);
+assert.equal(new Set(failSample['route-fail|line-dasharray'].map(String)).size, 1,
+  'a failure must not also march; that is the caution\'s motion');
+console.log(`PASS  failure throbs ${failAmp.toFixed(2)} px in width and does not march`);
 
 // The two must not breathe in step, or they read as one animation.
-assert.ok(Math.abs(ctx.CAUTION_PULSE_PHASE) > 0.5,
-  'the caution flicker should be offset from the failure throb');
-
 // Rate: a full throb is half a sine period. 80 ms ticks at the current step.
 const periodMs = (Math.PI / ctx.ROUTE_PULSE_STEP) * 80;
 assert.ok(periodMs > 1200 && periodMs < 2000,
@@ -130,10 +129,12 @@ console.log(`PASS  a full throb takes ${Math.round(periodMs)} ms `
 // the last tick happened to paint.
 ctx.setRoutePulses(render('pass'));
 assert.equal(ticks.filter(Boolean).length, 0, 'a clean route stops every timer');
-assert.equal(paint.get('route-caution|line-width'), 6.5, 'caution rests at its base width');
 assert.equal(paint.get('route-fail|line-width'), 6.5, 'failure rests at its base width');
-assert.equal(paint.get('route-caution|line-opacity'), 1, 'caution rests fully opaque');
-assert.equal(paint.get('route-caution-casing|line-width'), 11, 'the casing rests too');
+// A caution at rest KEEPS its ticks. The texture carries the verdict whether or
+// not anything is moving, so it still reads in a screenshot.
+assert.deepEqual(JSON.parse(JSON.stringify(paint.get('route-caution|line-dasharray'))),
+  JSON.parse(JSON.stringify(ctx.CAUTION_TICKS[0])),
+  'a stopped caution keeps its ticks rather than going solid');
 console.log('PASS  both layers stop at their resting size');
 
 console.log('\n5 checks, 0 failed');
