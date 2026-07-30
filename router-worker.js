@@ -442,6 +442,10 @@ const DEFAULT_WEIGHTS = Object.freeze({
   arterialTertiaryDirect: 1.02, arterialTertiaryBalanced: 1.12, arterialTertiaryLow: 1.22,
   arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
+  // 0 = price major roads off the OSM tag alone, as before the statewide
+  // measurements existed. 1 = let a measured count or an official functional
+  // class override the tag. Fractions blend the two.
+  measuredTraffic: 1,
   wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLow: 1.24,
   stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLow: 1.30,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
@@ -456,7 +460,7 @@ function useWeights(source) {
   const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
     'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM',
     'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowSecPerM',
-    'turnDirectSec', 'turnBalancedSec', 'turnLowSec']);
+    'turnDirectSec', 'turnBalancedSec', 'turnLowSec', 'measuredTraffic']);
   for (const key of Object.keys(DEFAULT_WEIGHTS)) {
     const value = Number(source[key]);
     if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) activeWeights[key] = value;
@@ -496,17 +500,71 @@ function hazardMult(mode, severity) {
   return activeWeights[prefix + Math.min(3, severity)] || 1;
 }
 
-// OSM road class is a useful traffic-volume proxy where measured AADT is not
-// available. This is deliberately a finite route-choice cost, not a safety
-// failure. Any recorded bike facility removes the no-facility proxy penalty.
+// How much traffic is on this road? Three sources answer that question, in
+// descending order of directness: a measured AADT, the agency's FHWA functional
+// class, and OSM's `highway` tag. This used to read the OSM tag alone, and its
+// own comment said why -- "a useful traffic-volume proxy where measured AADT is
+// not available". AADT is now available on 51.8% of graph mileage, so the proxy
+// was standing in for a number we hold.
+//
+// All three land on the SAME three tiers, so this changes the evidence and not
+// the price: no new tier weights, and an edge OSM already classed pays exactly
+// what it paid before unless the measurements disagree with the tag.
+//
+// This is deliberately a finite route-choice cost, not a safety failure. Any
+// recorded bike facility removes the no-facility proxy penalty.
+const TIER_NONE = 0, TIER_TERTIARY = 1, TIER_SECONDARY = 2, TIER_PRIMARY = 3;
+
+function osmTrafficTier(i) {
+  const cls = eClass[i];
+  if (cls === 4 || cls === 5) return TIER_TERTIARY;
+  if (cls === 6 || cls === 7) return TIER_SECONDARY;
+  if (cls >= 8 && cls <= 11) return TIER_PRIMARY;
+  return TIER_NONE;
+}
+
+// Thresholds are BUSY_LEVELS ids 4/3/2 from safety-model.js, count and class
+// alike. One vocabulary: a rider must never be told a road is "busier than a
+// neighborhood street" by the verdict and then have it priced as quiet here.
+//
+// Returns null -- not TIER_NONE -- when there is no measurement at all. The
+// difference matters: null means "keep the OSM answer", while TIER_NONE is a
+// measurement saying this road is genuinely quiet, which is the whole point of
+// having imported counts for the county roads beside the state highways.
+function measuredTrafficTier(i) {
+  const adt = eAdt ? eAdt[i] : 0;
+  if (adt) {
+    return adt > 15000 ? TIER_PRIMARY
+      : adt > 6000 ? TIER_SECONDARY
+      : adt > 2000 ? TIER_TERTIARY : TIER_NONE;
+  }
+  const fc = eClassOwner ? (eClassOwner[i] & 15) : 0;
+  if (!fc) return null;
+  // FHWA runs the other way: smaller is bigger road.
+  return fc <= 3 ? TIER_PRIMARY : fc === 4 ? TIER_SECONDARY
+    : fc === 5 ? TIER_TERTIARY : TIER_NONE;
+}
+
+function trafficTierMult(tier, suffix) {
+  if (tier === TIER_TERTIARY) return activeWeights['arterialTertiary' + suffix];
+  if (tier === TIER_SECONDARY) return activeWeights['arterialSecondary' + suffix];
+  if (tier === TIER_PRIMARY) return activeWeights['arterialPrimary' + suffix];
+  return 1;
+}
+
 function majorRoadMult(i, mode, forward) {
   if (eFacility[i] >= 1 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
-  const cls = eClass[i];
   const suffix = mode === 'direct' ? 'Direct' : mode === 'low' ? 'Low' : 'Balanced';
-  if (cls === 4 || cls === 5) return activeWeights['arterialTertiary' + suffix];
-  if (cls === 6 || cls === 7) return activeWeights['arterialSecondary' + suffix];
-  if (cls >= 8 && cls <= 11) return activeWeights['arterialPrimary' + suffix];
-  return 1;
+  const osm = trafficTierMult(osmTrafficTier(i), suffix);
+  // `measuredTraffic` blends from the OSM answer toward the measured one. At 0
+  // this function is byte-for-byte the old behaviour, which is the point: the
+  // measurements can be switched off from the desktop weight editor and ridden
+  // against, rather than being an unfalsifiable improvement.
+  const blend = activeWeights.measuredTraffic;
+  if (!blend) return osm;
+  const tier = measuredTrafficTier(i);
+  if (tier == null) return osm;
+  return osm + blend * (trafficTierMult(tier, suffix) - osm);
 }
 
 // Lane count and WSDOT's own stress rating, for the roads where speed has

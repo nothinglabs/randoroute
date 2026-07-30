@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.448';
+const APP_VERSION = '2026-07-30.449';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -143,6 +143,10 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   arterialTertiaryDirect: 1.02, arterialTertiaryBalanced: 1.12, arterialTertiaryLow: 1.22,
   arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
   arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
+  // 0 = price major roads off the OSM tag alone, as before the statewide
+  // measurements existed. 1 = let a measured count or an official functional
+  // class override the tag. Fractions blend the two.
+  measuredTraffic: 1,
   wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLow: 1.24,
   stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLow: 1.30,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
@@ -156,7 +160,7 @@ function validRoutingWeights(source) {
   const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
     'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM',
     'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowSecPerM',
-    'turnDirectSec', 'turnBalancedSec', 'turnLowSec']);
+    'turnDirectSec', 'turnBalancedSec', 'turnLowSec', 'measuredTraffic']);
   if (!source || typeof source !== 'object') return clean;
   for (const key of Object.keys(DEFAULT_ROUTING_WEIGHTS)) {
     const value = Number(source[key]);
@@ -7855,6 +7859,7 @@ const ROUTING_WEIGHT_GROUPS = [
     ['arterialSecondaryBalanced', 'Secondary · balanced', 1, 4, .01], ['arterialSecondaryLow', 'Secondary · friendly', 1, 4, .01],
     ['arterialPrimaryDirect', 'Primary/trunk · direct', 1, 5, .01], ['arterialPrimaryBalanced', 'Primary/trunk · balanced', 1, 5, .01],
     ['arterialPrimaryLow', 'Primary/trunk · friendly', 1, 5, .01],
+    ['measuredTraffic', 'Use measured traffic over OSM class (0 = off)', 0, 1, .05],
     ['wideRoadDirect', 'Four+ lanes · direct', 1, 4, .01], ['wideRoadBalanced', 'Four+ lanes · balanced', 1, 4, .01],
     ['wideRoadLow', 'Four+ lanes · friendly', 1, 4, .01],
     ['stressedRoadDirect', 'WSDOT high stress · direct', 1, 4, .01], ['stressedRoadBalanced', 'WSDOT high stress · balanced', 1, 4, .01],
