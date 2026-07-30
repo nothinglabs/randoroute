@@ -756,14 +756,14 @@ or illegal. Every multiplier applied to an edge, in `router-worker.js`:
 
 | influence | function / weight | what it expresses |
 |---|---|---|
-| speed above the comfort limit | `speedStress` | graded pressure toward slower roads |
-| curve/grade hazard | `hazardMult` | recorded hazard on the edge |
-| road class | `majorRoadMult`, `arterial*` | tertiary < secondary < primary |
+| speed above the comfort limit | `speedStress`, `speedOver*` / `speedBelow*` | graded pressure toward slower roads; the `Below` pair charges a slow road with no riding space |
+| curve/grade hazard | `hazardMult`, `curve*1-3` | recorded hazard on the edge |
+| traffic volume | `majorRoadMult`, `busyLight/Medium/Heavy*` | measured AADT first, FHWA functional class second, OSM tag last |
 | lanes and WSDOT LTS | `trafficStressMult`, `wideRoad*`, `stressedRoad*` | traffic exposure; paint gives partial relief, a separated lane full |
 | urban road tagged `sidewalk=no` at 30+ mph | `sidewalkExposureMult` | nowhere to bail out |
 | riding on the sidewalk fallback | `sidewalkFallbackMult` | ×1.9 direct, ×3.8 balanced, ×8.0 low-stress |
 | freeway | `freeway` (×60) | last resort only |
-| WSDOT limited access | `limited*` | bike-legal but unpleasant |
+| WSDOT limited access | `limitedAccess*` | bike-legal but unpleasant |
 | mountain-bike trail | `mtbTrail` | opt-in, heavily penalised |
 | bike facility | `facility*` | separated lane or path can justify a detour |
 | signed bike route | `designated`, `strongDesignated` | a recommendation, worth a detour but not a fact about the road |
@@ -789,7 +789,7 @@ about the road rather than anything they set. Gating on "passes cleanly" instead
 excluded 12,115 of the 17,097 edges where designation is the only preference,
 11,576 purely for carrying an LTS 4 rating.
 
-**A WSDOT limited-access edge earns it too.** Its `limited*` penalty is applied
+**A WSDOT limited-access edge earns it too.** Its `limitedAccess*` penalty is applied
 separately and stands on its own; withholding the bonus as well counted it
 twice, and priced a signed shoulder route along a state highway identically to
 any other highway — the case where a designation carries the most information.
@@ -798,12 +798,58 @@ any other highway — the case where a designation carries the most information.
 Ferries, freeways and dismount edges are still excluded: there, a preference
 would erase an access cost rather than express a taste.
 
+### Traffic volume
+
+`majorRoadMult` answers one question — how much traffic is on this road — from
+three sources, strongest evidence first:
+
+| evidence | tier thresholds |
+|---|---|
+| measured AADT | >2,000 light · >6,000 medium · >15,000 heavy |
+| FHWA functional class | 5 light · 4 medium · ≤3 heavy |
+| OSM `highway` tag | tertiary light · secondary medium · primary/trunk heavy |
+
+Thresholds are the `BUSY_LEVELS` numbers from `safety-model.js`, so the verdict
+and the cost cannot disagree about what "busy" means. Any recorded bike
+facility, path flag or limited-access edge is exempt.
+
+`useMeasuredTraffic` (0–1, default 1) blends from the OSM answer toward the
+measured one. **At 0 the function is exactly the pre-measurement behaviour**,
+which is what makes the import falsifiable on a real ride rather than an
+unfalsifiable improvement.
+
+Measured over all 635,995 eligible edges, the measurement disagrees with the
+OSM tag on 171,466 — but **150,079 of those move down and only 21,387 up**. The
+dominant case is a road OSM calls `secondary` that FHWA classes a minor
+collector, or that counted under 2,000/day; it sheds its arterial penalty.
+Only 4,728 edges are OSM-class gaps the measurement fills, which is why this
+prices off the count rather than merely extending the proxy to more roads.
+
+### Weight naming
+
 Weights live in `DEFAULT_WEIGHTS` (`router-worker.js`), mirrored in `app.js` so
 the desktop weight editor stays reproducible. Three modes — direct, balanced,
 low-stress — scale most of them; that is what makes routes A–E differ.
 
+Every mode-scaled weight **ends** in its mode: `Direct`, `Balanced`,
+`LowStress`. One function, `modeSuffix()`, builds that suffix, so a new mode
+cannot reach some cost functions and miss others. The suffix used to be `Low`
+while the UI called it "friendly", which collided with the `friendly`
+`ROUTE_PROFILES` id (low-stress mode with both preferences on) — three names
+for two things.
+
+`RENAMED_ROUTING_WEIGHTS` in `app.js` carries a rider's saved custom values
+across the rename. Values are unchanged, so it is not a behaviour migration and
+needs no `ROUTING_WEIGHTS_VERSION` bump.
+
+The editor is reachable from **Settings → Advanced** and from the **⚖ button on
+the map**, which marks itself when any weight sits off its default.
+`test_weights_editor_coverage.mjs` proves every weight has exactly one slider
+and that `app.js` and `router-worker.js` agree key for key;
+`test_weights_panel_ui.mjs` proves the same in a real browser.
+
 **Level 3 does not mean one thing for routing.** A `sidewalk-fallback` caution
-carries ×8 in low-stress mode; a `limited-access` caution carries `limited*`;
+carries ×8 in low-stress mode; a `limited-access` caution carries `limitedAccess*`;
 a `needs-space` outcome is a fail, not a caution, and is excluded
 under strict matching. The card names which one it is for that reason.
 

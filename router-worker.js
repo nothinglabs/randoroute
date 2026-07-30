@@ -427,40 +427,62 @@ const V_HEUR = 160.0;
 // Designated bike routes (USBR / regional, edge flag 64) get a modest cost
 // bonus. A recorded physical bike facility always gets the stronger bonus;
 // designation is useful route context, but is not itself infrastructure.
+// Naming: every mode-scaled weight ends in the mode -- Direct, Balanced or
+// LowStress -- so the key sorts with its siblings and reads the same way the
+// editor labels it. `Low` used to be the suffix and the UI called it
+// "friendly", which collided with the `friendly` ROUTE_PROFILES id (low-stress
+// mode with both preferences on). Three names for two things; now one each.
 const DEFAULT_WEIGHTS = Object.freeze({
-  directFail: 1.5, balancedComfy: 0.92, balancedFail: 9, lowComfy: 0.9, lowFail: 30,
+  failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
+  comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   designated: 0.94, strongDesignated: 0.5, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
-  freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1.75,
-  speedBalanced: 0.01, speedLow: 0.02,
-  speedBelowDirect: 0.005, speedBelowBalanced: 0.015, speedBelowLow: 0.03,
-  hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
-  hazardBalanced1: 1.35, hazardBalanced2: 1.8, hazardBalanced3: 2.6,
-  hazardLow1: 1.8, hazardLow2: 3.4, hazardLow3: 6.5,
-  arterialTertiaryDirect: 1.02, arterialTertiaryBalanced: 1.12, arterialTertiaryLow: 1.22,
-  arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
-  arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
-  // 0 = price major roads off the OSM tag alone, as before the statewide
+  freeway: 60,
+  limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
+  // speedOver* and speedBelow* are a pair: cost per mph above your comfort
+  // speed, and cost per mph below it on a road with no riding space. The old
+  // names were `speedBalanced` and `speedBelowBalanced`, which read as though
+  // one were the general case and the other a variant.
+  speedOverBalanced: 0.01, speedOverLowStress: 0.02,
+  speedBelowDirect: 0.005, speedBelowBalanced: 0.015, speedBelowLowStress: 0.03,
+  // Curve severity 1-3. Was `hazard*`, which named no particular hazard.
+  curveDirect1: 1.08, curveDirect2: 1.16, curveDirect3: 1.3,
+  curveBalanced1: 1.35, curveBalanced2: 1.8, curveBalanced3: 2.6,
+  curveLowStress1: 1.8, curveLowStress2: 3.4, curveLowStress3: 6.5,
+  // Traffic volume tiers, thresholds in vehicles/day from BUSY_LEVELS. These
+  // were `arterialTertiary/Secondary/Primary`, named for the OSM highway tag
+  // they used to read. They now price a measured count first and the OSM tag
+  // last, so the old names described the weakest of their three inputs.
+  busyLightDirect: 1.02, busyLightBalanced: 1.12, busyLightLowStress: 1.22,
+  busyMediumDirect: 1.05, busyMediumBalanced: 1.28, busyMediumLowStress: 1.48,
+  busyHeavyDirect: 1.1, busyHeavyBalanced: 1.5, busyHeavyLowStress: 1.85,
+  // 0 = price busy roads off the OSM tag alone, as before the statewide
   // measurements existed. 1 = let a measured count or an official functional
   // class override the tag. Fractions blend the two.
-  measuredTraffic: 1,
-  wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLow: 1.24,
-  stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLow: 1.30,
+  useMeasuredTraffic: 1,
+  wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLowStress: 1.24,
+  stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLowStress: 1.30,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
-  climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
-  turnDirectSec: 6, turnBalancedSec: 11, turnLowSec: 15,
+  climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowStressSecPerM: 1.6,
+  turnDirectSec: 6, turnBalancedSec: 11, turnLowStressSec: 15,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
 });
+// One place decides how a mode names its weights. Everything that used to spell
+// out `mode === 'low' ? 'Low' : ...` inline now calls this, so a future mode
+// cannot be added to some cost functions and forgotten in others.
+function modeSuffix(mode) {
+  return mode === 'direct' ? 'Direct' : mode === 'low' ? 'LowStress' : 'Balanced';
+}
 let activeWeights = { ...DEFAULT_WEIGHTS };
 function useWeights(source) {
   activeWeights = { ...DEFAULT_WEIGHTS };
   if (!source || typeof source !== 'object') return;
-  const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
-    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM',
-    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowSecPerM',
-    'turnDirectSec', 'turnBalancedSec', 'turnLowSec', 'measuredTraffic']);
+  const zeroOkay = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
+    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
+    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
+    'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic']);
   for (const key of Object.keys(DEFAULT_WEIGHTS)) {
     const value = Number(source[key]);
     if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) activeWeights[key] = value;
@@ -496,7 +518,7 @@ function isDismountEdge(i) {
 // from land (mid-water route junctions don't re-charge it).
 function hazardMult(mode, severity) {
   if (!severity) return 1;
-  const prefix = mode === 'direct' ? 'hazardDirect' : mode === 'low' ? 'hazardLow' : 'hazardBalanced';
+  const prefix = 'curve' + modeSuffix(mode);
   return activeWeights[prefix + Math.min(3, severity)] || 1;
 }
 
@@ -546,21 +568,21 @@ function measuredTrafficTier(i) {
 }
 
 function trafficTierMult(tier, suffix) {
-  if (tier === TIER_TERTIARY) return activeWeights['arterialTertiary' + suffix];
-  if (tier === TIER_SECONDARY) return activeWeights['arterialSecondary' + suffix];
-  if (tier === TIER_PRIMARY) return activeWeights['arterialPrimary' + suffix];
+  if (tier === TIER_TERTIARY) return activeWeights['busyLight' + suffix];
+  if (tier === TIER_SECONDARY) return activeWeights['busyMedium' + suffix];
+  if (tier === TIER_PRIMARY) return activeWeights['busyHeavy' + suffix];
   return 1;
 }
 
 function majorRoadMult(i, mode, forward) {
   if (eFacility[i] >= 1 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
-  const suffix = mode === 'direct' ? 'Direct' : mode === 'low' ? 'Low' : 'Balanced';
+  const suffix = modeSuffix(mode);
   const osm = trafficTierMult(osmTrafficTier(i), suffix);
-  // `measuredTraffic` blends from the OSM answer toward the measured one. At 0
+  // `useMeasuredTraffic` blends from the OSM answer toward the measured one. At 0
   // this function is byte-for-byte the old behaviour, which is the point: the
   // measurements can be switched off from the desktop weight editor and ridden
   // against, rather than being an unfalsifiable improvement.
-  const blend = activeWeights.measuredTraffic;
+  const blend = activeWeights.useMeasuredTraffic;
   if (!blend) return osm;
   const tier = measuredTrafficTier(i);
   if (tier == null) return osm;
@@ -591,7 +613,7 @@ function trafficStressMult(i, mode, forward) {
   // halves the cost rather than clearing it.
   if (eFacility[i] >= 4 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
   const paintRelief = eFacility[i] >= 2 ? 0.5 : 1;
-  const suffix = mode === 'direct' ? 'Direct' : mode === 'low' ? 'Low' : 'Balanced';
+  const suffix = modeSuffix(mode);
   const packed = eLanes ? eLanes[i] : 0;
   const lanes = packed & LANES_COUNT_MASK;
   // A centre turn lane is the signature of a wide suburban arterial, so three
@@ -634,12 +656,12 @@ function speedStress(mode, fl, spd, freeMax, shoulder) {
   const delta = spd - freeMax;
   if (delta > 0) {
     if (mode === 'direct') return 1.0;
-    return 1 + (mode === 'low' ? activeWeights.speedLow : activeWeights.speedBalanced) * delta;
+    return 1 + (mode === 'low' ? activeWeights.speedOverLowStress : activeWeights.speedOverBalanced) * delta;
   }
   if (delta === 0 || shoulder > 0) return 1.0;
   const belowKey = mode === 'direct'
     ? 'speedBelowDirect'
-    : mode === 'low' ? 'speedBelowLow' : 'speedBelowBalanced';
+    : mode === 'low' ? 'speedBelowLowStress' : 'speedBelowBalanced';
   return Math.max(0.25, 1 - activeWeights[belowKey] * -delta);
 }
 
@@ -679,7 +701,7 @@ function climbPreferenceS(i, forward, mode) {
   const netAsc = Math.max(0, asc - des);
   const rollingAsc = Math.max(0, asc - netAsc);
   const key = mode === 'direct' ? 'climbDirectSecPerM'
-    : mode === 'low' ? 'climbLowSecPerM' : 'climbBalancedSecPerM';
+    : mode === 'low' ? 'climbLowStressSecPerM' : 'climbBalancedSecPerM';
   const grade = netAsc / Math.max(1, eLen[i]);
   const steepness = 1 + Math.max(0, grade - 0.04) * 8;
   return (netAsc * steepness + rollingAsc * 0.5) * activeWeights[key];
@@ -745,7 +767,7 @@ function turnPreferenceS(incomingEdge, node, outgoingEdge, mode) {
     && nameOff[incomingName + 1] > nameOff[incomingName];
   if (delta < 30 || (sameRoad && delta < 70)) return 0;
   const key = mode === 'direct' ? 'turnDirectSec'
-    : mode === 'low' ? 'turnLowSec' : 'turnBalancedSec';
+    : mode === 'low' ? 'turnLowStressSec' : 'turnBalancedSec';
   const base = activeWeights[key];
   if (delta >= 150) return base * 2;
   if (delta < 55) return base * 0.65;
@@ -841,9 +863,9 @@ function routeGradeStats(segs) {
 // returns a route when some failing pavement is truly unavoidable — the app
 // highlights those segments instead of refusing to route.
 function modeMult(mode, lvl) {
-  if (mode === 'direct') return lvl === 4 ? activeWeights.directFail : 1.0;
-  if (mode === 'balanced') return lvl === 4 ? activeWeights.balancedFail : lvl === 1 ? activeWeights.balancedComfy : 1.0;
-  /* low */ return lvl === 4 ? activeWeights.lowFail : lvl === 1 ? activeWeights.lowComfy : 1.0;
+  if (mode === 'direct') return lvl === 4 ? activeWeights.failRoadDirect : 1.0;
+  if (mode === 'balanced') return lvl === 4 ? activeWeights.failRoadBalanced : lvl === 1 ? activeWeights.comfyRoadBalanced : 1.0;
+  /* low */ return lvl === 4 ? activeWeights.failRoadLowStress : lvl === 1 ? activeWeights.comfyRoadLowStress : 1.0;
 }
 
 function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
@@ -965,13 +987,13 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       if (sidewalkFallbackApplies(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
       if (fl & 4) cost *= activeWeights.freeway;
       // Every other signal costs more as the profile gets friendlier, and this
-      // one must too: limitedLow sat at 1.0, so the low-stress profile applied
+      // one must too: limitedAccessLowStress sat at 1.0, so the low-stress profile applied
       // no penalty at all to a bike-legal limited-access highway -- less than
       // balanced. The friendliest route was the one most willing to put a rider
       // on a highway shoulder.
       if (edgeLimited(ei, forward)) {
         cost *= activeWeights[mode === 'direct'
-          ? 'limitedDirect' : mode === 'low' ? 'limitedLow' : 'limitedBalanced'];
+          ? 'limitedAccessDirect' : mode === 'low' ? 'limitedAccessLowStress' : 'limitedAccessBalanced'];
       }
       if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
       // Bonuses never apply to ferries, freeways, or WSDOT limited-access
@@ -987,7 +1009,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // anything the rider set.
       //
       // A WSDOT limited-access edge is no longer excluded either. Its penalty
-      // (limitedDirect/Balanced/Low) is applied separately just above and stands
+      // (limitedAccess*) is applied separately just above and stands
       // on its own; withholding the bonus as well counted it twice, and left a
       // signed shoulder route along a state highway priced identically to any
       // other highway -- the case where a designation carries the most

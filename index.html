@@ -73,6 +73,7 @@
   </script>
   <div id="map"></div>
   <button id="appHelpBtn" type="button" aria-label="How to use the app" title="How to use the app">?</button>
+  <button id="appWeightsBtn" type="button" aria-label="Advanced routing weights" title="Advanced routing weights">⚖</button>
 
   <div id="topToolbar">
     <button id="navStartButton" class="nav-start" type="button" disabled title="Set a route to navigate">
@@ -251,7 +252,12 @@
   <dialog id="weightsDialog" class="full-help-dialog weights-dialog" aria-label="Advanced routing weights">
     <div class="full-help-head"><div><span>Advanced tool</span><h2>Routing weights</h2></div><div class="weights-head-actions"><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button><button class="dialog-close" data-close="weightsDialog" aria-label="Close routing weights">✕</button></div></div>
     <div class="weights-body">
-      <p class="help-lead"><b>Most riders should leave these at their defaults.</b> These are internal soft route-choice costs, not safety rules. Changes recalculate the current route and affect every generated option. Lower than 1 favors a feature; higher than 1 avoids it.</p>
+      <ul class="weights-key">
+        <li><b>Above 1 avoids, below 1 seeks out.</b> Each value multiplies how long a stretch of road looks to the router.</li>
+        <li><b>Never a safety rule.</b> These can't make a road legal or illegal, and never override your Limits.</li>
+        <li><b>Three sliders = three searches.</b> Every route is searched as Direct, Balanced and Low stress; that's what makes A–E differ. A slider only moves its own mode.</li>
+        <li><b>↺</b> resets one value, <b>Reset all defaults</b> resets everything. Changes re-route immediately.</li>
+      </ul>
       <div id="routingWeightsEditor" class="weights-groups"></div>
     </div>
   </dialog>

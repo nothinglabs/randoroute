@@ -24,8 +24,13 @@ assert.doesNotMatch(app.slice(scorerStart, scorerStart + 400), /routingWeights/,
   'per-feature scoring must not depend on routing weights');
 
 /* ---------------------------- the sliders take the route-only path */
-const editor = app.slice(app.indexOf('function buildRoutingWeightsEditor'),
+// Slice from weightSlider, not buildRoutingWeightsEditor: the per-slider
+// handler was factored out when the editor was regrouped into per-cost mode
+// triples, and it is the handler that must stay off the re-score path.
+const editor = app.slice(app.indexOf('function weightSlider'),
   app.indexOf('function activeRoutingPreset'));
+assert.ok(editor.includes('function buildRoutingWeightsEditor'),
+  'this slice should still span the whole editor');
 assert.match(editor, /scheduleReroute\(\);/,
   'a weight change should re-route');
 assert.doesNotMatch(editor, /scheduleRescore\(\)/,

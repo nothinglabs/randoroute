@@ -777,7 +777,13 @@ body.navigation-active #routeBar { display: none; }
   #rb-status { min-width: 0; }
 }
 
-#appHelpBtn { position: absolute; z-index: 16; top: calc(env(safe-area-inset-top) + 94px); right: 10px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #b8cbd8; border-radius: 9px; background: rgba(255,255,255,.96); box-shadow: 0 2px 9px rgba(0,0,0,.18); color: #0a66c2; font: 800 17px/1 system-ui; cursor: pointer; }
+#appHelpBtn, #appWeightsBtn { position: absolute; z-index: 16; right: 10px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #b8cbd8; border-radius: 9px; background: rgba(255,255,255,.96); box-shadow: 0 2px 9px rgba(0,0,0,.18); color: #0a66c2; cursor: pointer; }
+#appHelpBtn { top: calc(env(safe-area-inset-top) + 94px); font: 800 17px/1 system-ui; }
+/* Directly under Help, same column. The weights panel is also reachable from
+   Settings > Advanced; this is the shortcut for tuning against the map you are
+   looking at, which is how it actually gets used. */
+#appWeightsBtn { top: calc(env(safe-area-inset-top) + 132px); font: 700 16px/1 system-ui; }
+#appWeightsBtn.tuned { border-color: #d8a447; background: #fff6e4; color: #96590a; }
 .app-help-update { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px 10px; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e1e7eb; }
 .app-help-version { margin: 0 !important; color: #56616a; font: 650 12px/1.2 system-ui; }
 .app-help-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
@@ -837,7 +843,9 @@ body.navigation-active #routeBar { display: none; }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 42px; height: 42px; border-radius: 12px; }
   #panelOpen { left: 10px; right: auto; }
   #layersToggle { top: calc(env(safe-area-inset-top) + 58px); width: 42px; height: 42px; border-radius: 12px; }
-  #appHelpBtn { top: calc(env(safe-area-inset-top) + 106px); width: 42px; height: 42px; border-radius: 12px; font-size: 18px; }
+  #appHelpBtn, #appWeightsBtn { width: 42px; height: 42px; border-radius: 12px; }
+  #appHelpBtn { top: calc(env(safe-area-inset-top) + 106px); font-size: 18px; }
+  #appWeightsBtn { top: calc(env(safe-area-inset-top) + 154px); font-size: 19px; }
   .place-picker { top: -5px; left: 0; width: min(340px, calc(100vw - 24px)); }
   body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
   body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
@@ -974,14 +982,36 @@ body.navigation-active #routeBar { display: none; }
 .weights-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
 .weights-group { padding: 13px; border: 1px solid #d7e2e8; border-radius: 11px; background: #fff; box-shadow: 0 1px 3px rgba(32,57,71,.05); }
 .weights-group h3 { margin: 0 0 9px; color: #304957; font: 760 14px system-ui; }
-.weight-row { display: grid; grid-template-columns: minmax(0, 1fr) 52px; gap: 2px 8px; align-items: center; padding: 5px 0; border-top: 1px solid #eef2f4; color: #52636d; font: 620 11px/1.2 system-ui; }
-.weight-row output { text-align: right; color: #0a66c2; font: 750 11px tabular-nums, system-ui; }
+/* Four short lines, not two paragraphs: on a phone the old lead filled the
+   screen before a single control appeared. */
+.weights-key { max-width: 900px; margin: 0 0 14px; padding: 11px 13px 11px 28px; border: 1px solid #dbe6ec; border-radius: 10px; background: #fff; color: #435967; font: 500 12px/1.5 system-ui; }
+.weights-key li { margin: 3px 0; }
+.weights-key b { color: #26404f; }
+.weights-group-note { margin: -4px 0 10px; color: #5c6f7b; font: 500 11.5px/1.45 system-ui; }
+/* One cost, described once, with its mode sliders underneath. The block is the
+   unit a reader reasons about, so it gets the visible boundary; the sliders
+   inside it are deliberately quiet. */
+.weight-cost { margin: 9px 0 0; padding: 9px 10px; border: 1px solid #e4ecf1; border-radius: 9px; background: #fafcfd; }
+.weight-cost h4 { margin: 0; color: #26404f; font: 750 12.5px/1.3 system-ui; }
+.weight-hint { margin: 4px 0 2px; color: #5c6f7b; font: 500 11px/1.42 system-ui; }
+.weight-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 24px; gap: 2px 8px; align-items: center; padding: 5px 0 3px; border-top: 1px solid #eef2f4; color: #52636d; font: 620 11px/1.2 system-ui; }
+.weight-cost > .weight-row:first-of-type { border-top: 1px solid #e4ecf1; margin-top: 6px; }
+.weight-row-label { min-width: 0; }
+.weight-row output { text-align: right; color: #0a66c2; font: 750 11px tabular-nums, system-ui; white-space: nowrap; }
+.weight-row.changed output { color: #9a5b00; }
+.weight-row.changed .weight-row-label { color: #26404f; font-weight: 750; }
 .weight-row input { grid-column: 1 / -1; width: 100%; margin: 0; touch-action: pan-y; }
+.weight-revert { width: 22px; height: 22px; padding: 0; border: 1px solid #d8c39a; border-radius: 6px; background: #fff8ea; color: #9a5b00; font: 700 12px/1 system-ui; cursor: pointer; }
+.weight-revert[hidden] { display: none; }
 @media (max-width: 600px) {
   .full-help-head { padding-left: 12px; padding-right: 10px; }
   .full-help-head h2 { font-size: 17px; }
   .weights-reset { padding: 0 9px; font-size: 10.5px; }
   .weights-groups { grid-template-columns: 1fr; }
+  /* Thumb-sized targets: this panel is reachable from the map now, so it gets
+     used on a phone at the roadside rather than only at a desk. */
+  .weight-row input { height: 26px; }
+  .weight-revert { width: 26px; height: 26px; }
 }
 /* Route Information is a centered sheet already inset from the screen edge.
    Give its title bar an explicit box height so iOS cannot add the viewport

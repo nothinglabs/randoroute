@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.449';
+const APP_VERSION = '2026-07-30.450';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -129,41 +129,68 @@ const RULE_NUMBER_LIMITS = {
 // rider-facing Limits remain the hard safety rules. Kept in one shared shape
 // with router-worker.js so the advanced desktop editor is reproducible.
 const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
-  directFail: 1.5, balancedComfy: 0.92, balancedFail: 9, lowComfy: 0.9, lowFail: 30,
+  failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
+  comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   designated: 0.94, strongDesignated: 0.5, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
   facilitySeparated: 0.46, facilityPath: 0.38,
   mtbTrail: 6,
-  freeway: 60, limitedDirect: 1.05, limitedBalanced: 1.35, limitedLow: 1.75,
-  speedBalanced: 0.01, speedLow: 0.02,
-  speedBelowDirect: 0.005, speedBelowBalanced: 0.015, speedBelowLow: 0.03,
-  hazardDirect1: 1.08, hazardDirect2: 1.16, hazardDirect3: 1.3,
-  hazardBalanced1: 1.35, hazardBalanced2: 1.8, hazardBalanced3: 2.6,
-  hazardLow1: 1.8, hazardLow2: 3.4, hazardLow3: 6.5,
-  arterialTertiaryDirect: 1.02, arterialTertiaryBalanced: 1.12, arterialTertiaryLow: 1.22,
-  arterialSecondaryDirect: 1.05, arterialSecondaryBalanced: 1.28, arterialSecondaryLow: 1.48,
-  arterialPrimaryDirect: 1.1, arterialPrimaryBalanced: 1.5, arterialPrimaryLow: 1.85,
-  // 0 = price major roads off the OSM tag alone, as before the statewide
-  // measurements existed. 1 = let a measured count or an official functional
-  // class override the tag. Fractions blend the two.
-  measuredTraffic: 1,
-  wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLow: 1.24,
-  stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLow: 1.30,
+  freeway: 60,
+  limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
+  speedOverBalanced: 0.01, speedOverLowStress: 0.02,
+  speedBelowDirect: 0.005, speedBelowBalanced: 0.015, speedBelowLowStress: 0.03,
+  curveDirect1: 1.08, curveDirect2: 1.16, curveDirect3: 1.3,
+  curveBalanced1: 1.35, curveBalanced2: 1.8, curveBalanced3: 2.6,
+  curveLowStress1: 1.8, curveLowStress2: 3.4, curveLowStress3: 6.5,
+  busyLightDirect: 1.02, busyLightBalanced: 1.12, busyLightLowStress: 1.22,
+  busyMediumDirect: 1.05, busyMediumBalanced: 1.28, busyMediumLowStress: 1.48,
+  busyHeavyDirect: 1.1, busyHeavyBalanced: 1.5, busyHeavyLowStress: 1.85,
+  useMeasuredTraffic: 1,
+  wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLowStress: 1.24,
+  stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLowStress: 1.30,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
-  climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowSecPerM: 1.6,
-  turnDirectSec: 6, turnBalancedSec: 11, turnLowSec: 15,
+  climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowStressSecPerM: 1.6,
+  turnDirectSec: 6, turnBalancedSec: 11, turnLowStressSec: 15,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
+});
+// Weights the rider tuned under the old names, so a saved custom set is
+// carried across the rename instead of silently snapping back to defaults.
+// Values are unchanged -- only the key moved -- so this is not a migration of
+// behaviour and needs no version bump.
+const RENAMED_ROUTING_WEIGHTS = Object.freeze({
+  directFail: 'failRoadDirect', balancedFail: 'failRoadBalanced', lowFail: 'failRoadLowStress',
+  balancedComfy: 'comfyRoadBalanced', lowComfy: 'comfyRoadLowStress',
+  limitedDirect: 'limitedAccessDirect', limitedBalanced: 'limitedAccessBalanced',
+  limitedLow: 'limitedAccessLowStress',
+  speedBalanced: 'speedOverBalanced', speedLow: 'speedOverLowStress',
+  speedBelowLow: 'speedBelowLowStress',
+  hazardDirect1: 'curveDirect1', hazardDirect2: 'curveDirect2', hazardDirect3: 'curveDirect3',
+  hazardBalanced1: 'curveBalanced1', hazardBalanced2: 'curveBalanced2', hazardBalanced3: 'curveBalanced3',
+  hazardLow1: 'curveLowStress1', hazardLow2: 'curveLowStress2', hazardLow3: 'curveLowStress3',
+  arterialTertiaryDirect: 'busyLightDirect', arterialTertiaryBalanced: 'busyLightBalanced',
+  arterialTertiaryLow: 'busyLightLowStress',
+  arterialSecondaryDirect: 'busyMediumDirect', arterialSecondaryBalanced: 'busyMediumBalanced',
+  arterialSecondaryLow: 'busyMediumLowStress',
+  arterialPrimaryDirect: 'busyHeavyDirect', arterialPrimaryBalanced: 'busyHeavyBalanced',
+  arterialPrimaryLow: 'busyHeavyLowStress',
+  measuredTraffic: 'useMeasuredTraffic',
+  wideRoadLow: 'wideRoadLowStress', stressedRoadLow: 'stressedRoadLowStress',
+  climbLowSecPerM: 'climbLowStressSecPerM', turnLowSec: 'turnLowStressSec',
 });
 const ROUTING_WEIGHTS_VERSION = 8;
 function validRoutingWeights(source) {
   const clean = {};
-  const zeroOkay = new Set(['ferryWaitMin', 'speedBalanced', 'speedLow',
-    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLow', 'downhillFactor', 'undulationSecPerM',
-    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowSecPerM',
-    'turnDirectSec', 'turnBalancedSec', 'turnLowSec', 'measuredTraffic']);
+  const zeroOkay = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
+    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
+    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
+    'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic']);
   if (!source || typeof source !== 'object') return clean;
+  const renamed = {};
+  for (const [was, now] of Object.entries(RENAMED_ROUTING_WEIGHTS)) {
+    if (source[was] !== undefined && source[now] === undefined) renamed[now] = source[was];
+  }
   for (const key of Object.keys(DEFAULT_ROUTING_WEIGHTS)) {
-    const value = Number(source[key]);
+    const value = Number(source[key] !== undefined ? source[key] : renamed[key]);
     if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) clean[key] = value;
   }
   return clean;
@@ -7840,79 +7867,204 @@ function buildSourcePanel() {
   }
 }
 
+// The editor used to list every weight as its own row, so a single cost showed
+// up three times with near-identical labels ("Tertiary . direct", "Tertiary .
+// balanced", "Tertiary . friendly"). That buried the one idea a reader needs:
+// most costs exist once and are simply priced differently by the three riding
+// modes. Here a cost is described once, and its three mode sliders sit under
+// that description.
+//
+// An entry is either a single weight ({ key }) or a mode triple ({ base }),
+// where the three keys are base + 'Direct' / 'Balanced' / 'LowStress'.
+const WEIGHT_MODES = [
+  ['Direct', 'Direct', 'Shortest sensible ride.'],
+  ['Balanced', 'Balanced', 'The default trade-off.'],
+  ['LowStress', 'Low stress', 'Takes real detours to avoid unpleasant road.'],
+];
 const ROUTING_WEIGHT_GROUPS = [
-  ['Safety outcomes', [
-    ['directFail', 'Direct: failing road', 1, 8, .05], ['balancedFail', 'Balanced: failing road', 1, 12, .1],
-    ['lowFail', 'Friendly: failing road', 2, 60, 1], ['balancedComfy', 'Balanced: lower-stress road', .5, 1.2, .01],
-    ['lowComfy', 'Friendly: lower-stress road', .5, 1.2, .01], ['freeway', 'Freeway last resort', 5, 100, 1],
+  ['Roads that fail your rules', 'How far out of the way to go to avoid road your Limits already reject, and how much to seek out road that clears them comfortably.', [
+    { base: 'failRoad', label: 'Avoid a failing road', min: 1, max: 60, step: .1,
+      hint: 'Multiplies time on any road your Limits fail. Higher = longer detours to dodge it. Never a ban: if failing pavement is unavoidable the route still returns, with those stretches flagged.' },
+    { base: 'comfyRoad', label: 'Seek out a comfortable road', min: .5, max: 1.2, step: .01, modes: ['Balanced', 'LowStress'],
+      hint: 'Below 1 rewards road that clears your rules with room to spare. Direct mode does not use this.' },
+    { key: 'freeway', label: 'Freeway, absolute last resort', min: 5, max: 100, step: 1,
+      hint: 'Only reachable where a freeway shoulder is legally open to bikes and nothing else connects.' },
   ]],
-  ['Bike and neighborhood preference', [
-    ['designated', 'Designated route (no facility)', .25, 1.2, .01], ['strongDesignated', 'Strong designated-route preference', .2, 1, .01],
-    ['residential', 'Residential street', .4, 1.1, .01], ['facilityShared', 'Shared-lane marking', .4, 1.2, .01],
-    ['facilityLane', 'Bike lane', .25, 1.1, .01], ['facilityBuffered', 'Buffered bike lane', .2, 1.1, .01],
-    ['facilitySeparated', 'Separated bike lane', .2, 1.1, .01], ['facilityPath', 'Shared-use path', .2, 1.1, .01],
-    ['mtbTrail', 'Mountain-bike trail when allowed', 1, 30, .5],
+  ['Bike infrastructure and quiet streets', 'Bonuses, not rules. Below 1 makes a mile feel shorter to the router, so it will ride further to use one.', [
+    { key: 'facilityPath', label: 'Shared-use path or trail', min: .2, max: 1.1, step: .01,
+      hint: 'Fully separated from traffic. The strongest bonus there is.' },
+    { key: 'facilitySeparated', label: 'Separated bike lane', min: .2, max: 1.1, step: .01,
+      hint: 'Physical barrier between you and the traffic lane.' },
+    { key: 'facilityBuffered', label: 'Buffered bike lane', min: .2, max: 1.1, step: .01,
+      hint: 'Painted buffer, no barrier.' },
+    { key: 'facilityLane', label: 'Bike lane', min: .25, max: 1.1, step: .01,
+      hint: 'An ordinary striped lane.' },
+    { key: 'facilityShared', label: 'Sharrow / shared-lane marking', min: .4, max: 1.2, step: .01,
+      hint: 'Paint in the traffic lane. Almost no protection, so almost no bonus.' },
+    { key: 'residential', label: 'Residential street', min: .4, max: 1.1, step: .01,
+      hint: 'Applies to the OSM residential and living-street classes, not to anything merely signed 25 mph.' },
+    { key: 'designated', label: 'Signed bike route, no infrastructure', min: .25, max: 1.2, step: .01,
+      hint: 'A route number on a sign. Deliberately a small bonus: signage is context, not protection.' },
+    { key: 'strongDesignated', label: 'Signed bike route, when you asked to prefer them', min: .2, max: 1, step: .01,
+      hint: 'Replaces the value above while "Heavily prefer bike routes & trails" is on.' },
+    { key: 'mtbTrail', label: 'Mountain-bike trail, when your rules allow one', min: 1, max: 30, step: .5,
+      hint: 'Above 1: rideable on a mountain bike, avoided unless it is the only link.' },
   ]],
-  ['Major roads without a bike facility', [
-    ['arterialTertiaryDirect', 'Tertiary · direct', 1, 3, .01], ['arterialTertiaryBalanced', 'Tertiary · balanced', 1, 3, .01],
-    ['arterialTertiaryLow', 'Tertiary · friendly', 1, 3, .01], ['arterialSecondaryDirect', 'Secondary · direct', 1, 4, .01],
-    ['arterialSecondaryBalanced', 'Secondary · balanced', 1, 4, .01], ['arterialSecondaryLow', 'Secondary · friendly', 1, 4, .01],
-    ['arterialPrimaryDirect', 'Primary/trunk · direct', 1, 5, .01], ['arterialPrimaryBalanced', 'Primary/trunk · balanced', 1, 5, .01],
-    ['arterialPrimaryLow', 'Primary/trunk · friendly', 1, 5, .01],
-    ['measuredTraffic', 'Use measured traffic over OSM class (0 = off)', 0, 1, .05],
-    ['wideRoadDirect', 'Four+ lanes · direct', 1, 4, .01], ['wideRoadBalanced', 'Four+ lanes · balanced', 1, 4, .01],
-    ['wideRoadLow', 'Four+ lanes · friendly', 1, 4, .01],
-    ['stressedRoadDirect', 'WSDOT high stress · direct', 1, 4, .01], ['stressedRoadBalanced', 'WSDOT high stress · balanced', 1, 4, .01],
-    ['stressedRoadLow', 'WSDOT high stress · friendly', 1, 4, .01],
+  ['Traffic volume', 'Priced from a measured vehicle count where the state or county has one, the FHWA functional class where it does not, and the OSM road tag only as a last resort. Thresholds match the "Road is busier than" setting in Limits. Any recorded bike facility clears these entirely.', [
+    { key: 'useMeasuredTraffic', label: 'Trust measurements over OSM road tags', min: 0, max: 1, step: .05,
+      hint: 'Set to 0 to price traffic purely from OSM tags, exactly as the app did before the statewide counts were imported. 1 lets a real count or official class override the tag. Useful for telling whether the data is helping you.' },
+    { base: 'busyLight', label: 'Light traffic', min: 1, max: 3, step: .01,
+      hint: 'Over 2,000 vehicles/day, or an FHWA major collector.' },
+    { base: 'busyMedium', label: 'Medium traffic', min: 1, max: 4, step: .01,
+      hint: 'Over 6,000 vehicles/day, or an FHWA minor arterial.' },
+    { base: 'busyHeavy', label: 'Heavy traffic', min: 1, max: 5, step: .01,
+      hint: 'Over 15,000 vehicles/day, or an FHWA principal arterial and up.' },
   ]],
-  ['Speed, access and curve caution', [
-    ['speedBalanced', 'Balanced: each mph over comfort', 0, .08, .002], ['speedLow', 'Friendly: each mph over comfort', 0, .1, .002],
-    ['speedBelowDirect', 'Direct: each mph below comfort without shoulder', 0, .04, .001], ['speedBelowBalanced', 'Balanced: each mph below comfort without shoulder', 0, .08, .002],
-    ['speedBelowLow', 'Friendly: each mph below comfort without shoulder', 0, .1, .002],
-    ['limitedDirect', 'Limited access · direct', 1, 5, .05], ['limitedBalanced', 'Limited access · balanced', 1, 6, .05],
-    ['limitedLow', 'Limited access · friendly', 1, 8, .05],
-    ['hazardDirect1', 'Curve low · direct', 1, 5, .01], ['hazardDirect2', 'Curve medium · direct', 1, 6, .01],
-    ['hazardDirect3', 'Curve high · direct', 1, 8, .01], ['hazardBalanced1', 'Curve low · balanced', 1, 5, .01],
-    ['hazardBalanced2', 'Curve medium · balanced', 1, 8, .01], ['hazardBalanced3', 'Curve high · balanced', 1, 12, .1],
-    ['hazardLow1', 'Curve low · friendly', 1, 8, .01], ['hazardLow2', 'Curve medium · friendly', 1, 12, .1],
-    ['hazardLow3', 'Curve high · friendly', 1, 20, .1],
+  ['Road size and stress rating', 'Two signals for roads where the speed limit has stopped telling you anything. Physical separation exempts an edge; paint halves the cost. The two are combined by taking the larger, not by multiplying.', [
+    { base: 'wideRoad', label: 'Four or more lanes', min: 1, max: 4, step: .01,
+      hint: 'Counts a centre turn lane, so three through lanes plus one qualifies.' },
+    { base: 'stressedRoad', label: 'WSDOT rates it high stress', min: 1, max: 4, step: .01,
+      hint: 'The state bicycle level of traffic stress rating. Applies at full weight to a 4 and half weight to a 3. State highways only, which is the only place the rating exists.' },
   ]],
-  ['Ride model and alternatives', [
-    ['ferryWaitMin', 'Ferry boarding wait (minutes)', 0, 60, 1], ['uphillFactor', 'Uphill effort', 1, 15, .25],
-    ['downhillFactor', 'Downhill speed benefit', 0, 5, .1], ['undulationSecPerM', 'Rolling-hill cost (sec/m)', 0, 10, .25],
-    ['climbDirectSecPerM', 'Extra climb preference · direct', 0, 5, .05],
-    ['climbBalancedSecPerM', 'Extra climb preference · balanced', 0, 5, .05],
-    ['climbLowSecPerM', 'Extra climb preference · friendly', 0, 5, .05],
-    ['turnDirectSec', 'Turn cost · direct (seconds)', 0, 90, 1],
-    ['turnBalancedSec', 'Turn cost · balanced (seconds)', 0, 90, 1],
-    ['turnLowSec', 'Turn cost · friendly (seconds)', 0, 90, 1],
-    ['diversityQuick', 'Alternative corridor · quick', 1.05, 3, .05], ['diversityBalanced', 'Alternative corridor · balanced', 1.05, 3, .05],
-    ['diversitySafer', 'Alternative corridor · safer', 1.05, 3, .05], ['diversityWide', 'Alternative corridor · wide search', 1.05, 4, .05],
+  ['Speed', 'Both are per mile-per-hour, so they accumulate: 10 mph over comfort at 0.02 is a 20% cost.', [
+    { base: 'speedOver', label: 'Each mph above your comfort speed', min: 0, max: .1, step: .002, modes: ['Balanced', 'LowStress'],
+      hint: 'Direct mode ignores this. Trails and ferries are always exempt.' },
+    { base: 'speedBelow', label: 'Each mph below comfort, with no shoulder or bike lane', min: 0, max: .1, step: .001,
+      hint: 'A slow road with nowhere to ride is still a road with nowhere to ride. Bounded so it can never discount an edge below 25%.' },
+  ]],
+  ['Limited access and curves', null, [
+    { base: 'limitedAccess', label: 'Limited-access highway', min: 1, max: 8, step: .05,
+      hint: 'Ramps and interchanges rather than driveways. Priced separately from the traffic tiers above, which it is exempt from.' },
+    { base: 'curve', label: 'Sightline-limiting curve', min: 1, max: 20, step: .01, levels: [1, 2, 3],
+      levelLabels: ['Gentle', 'Moderate', 'Sharp'],
+      hint: 'Severity measured from the road geometry. Compounds along a winding road, so the low-stress figures climb steeply.' },
+  ]],
+  ['Effort: hills, turns and ferries', 'These change estimated time as well as route choice.', [
+    { key: 'uphillFactor', label: 'Uphill effort', min: 1, max: 15, step: .25,
+      hint: 'How much climbing slows you. Affects the time estimate.' },
+    { key: 'downhillFactor', label: 'Downhill benefit', min: 0, max: 5, step: .1,
+      hint: 'How much descending speeds you up. 0 = descents are no faster than flat.' },
+    { key: 'undulationSecPerM', label: 'Rolling-hill cost (sec per m climbed)', min: 0, max: 10, step: .25,
+      hint: 'Charges repeated small climbs that a net-elevation figure hides.' },
+    { base: 'climb', suffix: 'SecPerM', label: 'Detour to avoid climbing (sec per m)', min: 0, max: 5, step: .05,
+      hint: 'Above and beyond the time climbing costs. This is how much you dislike it.' },
+    { base: 'turn', suffix: 'Sec', label: 'Cost of a turn (seconds)', min: 0, max: 90, step: 1,
+      hint: 'Discourages zig-zag routes through a street grid.' },
+    { key: 'ferryWaitMin', label: 'Ferry boarding wait (minutes)', min: 0, max: 60, step: 1,
+      hint: 'Added once per ferry leg.' },
+  ]],
+  ['Alternative routes', 'Applied to edges an already-chosen option used, to push the next option onto genuinely different roads. Higher = more different, and more likely to be a worse route.', [
+    { key: 'diversityQuick', label: 'Second option, quick', min: 1.05, max: 3, step: .05 },
+    { key: 'diversityBalanced', label: 'Second option, balanced', min: 1.05, max: 3, step: .05 },
+    { key: 'diversitySafer', label: 'Second option, safer', min: 1.05, max: 3, step: .05 },
+    { key: 'diversityWide', label: 'Wide search', min: 1.05, max: 4, step: .05 },
   ]],
 ];
+
+// Every weight the editor can reach, so a test can prove none was orphaned by
+// the rename.
+function editorWeightKeys() {
+  const keys = [];
+  for (const [, , items] of ROUTING_WEIGHT_GROUPS) {
+    for (const item of items) keys.push(...weightKeysFor(item));
+  }
+  return keys;
+}
+function weightKeysFor(item) {
+  if (item.key) return [item.key];
+  const suffix = item.suffix || '';
+  const modes = item.modes || WEIGHT_MODES.map(([id]) => id);
+  if (item.levels) {
+    const out = [];
+    for (const mode of modes) for (const lvl of item.levels) out.push(item.base + mode + lvl);
+    return out;
+  }
+  return modes.map((mode) => item.base + mode + suffix);
+}
+
+function weightSlider(key, label, min, max, step) {
+  const row = document.createElement('label');
+  row.className = 'weight-row';
+  const dflt = DEFAULT_ROUTING_WEIGHTS[key];
+  row.innerHTML = `<span class="weight-row-label">${label}</span>
+    <output></output>
+    <input type="range" min="${min}" max="${max}" step="${step}" value="${routingWeights[key]}" data-weight="${key}">
+    <button type="button" class="weight-revert" title="Back to the default, ${dflt}" aria-label="Reset ${label} to default">↺</button>`;
+  const input = row.querySelector('input');
+  const out = row.querySelector('output');
+  const revert = row.querySelector('.weight-revert');
+  const paint = () => {
+    const value = Number(input.value);
+    out.textContent = value === dflt ? String(value) : `${value} (was ${dflt})`;
+    row.classList.toggle('changed', value !== dflt);
+    revert.hidden = value === dflt;
+  };
+  const commit = () => {
+    routingWeights[key] = Number(input.value);
+    paint();
+    syncWeightsTunedBadge();
+    suppressRoadInfo(1200);
+    // Route-only, never the full map re-score: weights are read by the router
+    // and by nothing that paints the map, so re-scoring every source mid-drag
+    // is guaranteed churn. test_weights_editor_cost pins this.
+    scheduleReroute();
+  };
+  input.addEventListener('input', commit);
+  revert.addEventListener('click', (e) => {
+    e.preventDefault();
+    input.value = String(dflt);
+    commit();
+  });
+  paint();
+  return row;
+}
 
 function buildRoutingWeightsEditor() {
   const host = document.getElementById('routingWeightsEditor');
   host.replaceChildren();
-  for (const [title, items] of ROUTING_WEIGHT_GROUPS) {
+  for (const [title, blurb, items] of ROUTING_WEIGHT_GROUPS) {
     const group = document.createElement('section');
     group.className = 'weights-group';
     const heading = document.createElement('h3');
     heading.textContent = title;
     group.append(heading);
-    for (const [key, label, min, max, step] of items) {
-      const row = document.createElement('label');
-      row.className = 'weight-row';
-      row.innerHTML = `<span>${label}</span><output>${routingWeights[key]}</output>
-        <input type="range" min="${min}" max="${max}" step="${step}" value="${routingWeights[key]}" data-weight="${key}">`;
-      const input = row.querySelector('input');
-      input.addEventListener('input', () => {
-        routingWeights[key] = Number(input.value);
-        row.querySelector('output').textContent = input.value;
-        suppressRoadInfo(1200);
-        scheduleReroute();
-      });
-      group.append(row);
+    if (blurb) {
+      const note = document.createElement('p');
+      note.className = 'weights-group-note';
+      note.textContent = blurb;
+      group.append(note);
+    }
+    for (const item of items) {
+      const cost = document.createElement('div');
+      cost.className = 'weight-cost';
+      const name = document.createElement('h4');
+      name.textContent = item.label;
+      cost.append(name);
+      if (item.hint) {
+        const hint = document.createElement('p');
+        hint.className = 'weight-hint';
+        hint.textContent = item.hint;
+        cost.append(hint);
+      }
+      if (item.key) {
+        cost.append(weightSlider(item.key, 'Value', item.min, item.max, item.step));
+      } else {
+        const suffix = item.suffix || '';
+        const modes = item.modes || WEIGHT_MODES.map(([id]) => id);
+        for (const mode of modes) {
+          const [, modeLabel] = WEIGHT_MODES.find(([id]) => id === mode);
+          if (item.levels) {
+            for (let i = 0; i < item.levels.length; i++) {
+              cost.append(weightSlider(item.base + mode + item.levels[i],
+                `${modeLabel} · ${item.levelLabels[i].toLowerCase()}`, item.min, item.max, item.step));
+            }
+          } else {
+            cost.append(weightSlider(item.base + mode + suffix, modeLabel,
+              item.min, item.max, item.step));
+          }
+        }
+      }
+      group.append(cost);
     }
     host.append(group);
   }
@@ -8310,12 +8462,12 @@ function buildRulesPanel() {
     document.getElementById('settingsAdvancedWeightsBtn').addEventListener('click', () => {
       const helpDialog = document.getElementById('settingsHelpDialog');
       if (helpDialog.open) helpDialog.close();
-      buildRoutingWeightsEditor();
-      document.getElementById('weightsDialog').showModal();
+      openRoutingWeights();
     });
     document.getElementById('resetRoutingWeights').addEventListener('click', () => {
       Object.assign(routingWeights, DEFAULT_ROUTING_WEIGHTS);
       buildRoutingWeightsEditor();
+      syncWeightsTunedBadge();
       scheduleReroute();
       showRouteActionToast('Routing weights reset to defaults', { duration: 2200 });
     });
@@ -8543,6 +8695,28 @@ document.getElementById('techDetailsBackBtn').addEventListener('click', () => {
   document.getElementById('techDetailsDialog').close();
   document.getElementById('appHelpDialog').showModal();
 });
+// The weights panel is reachable two ways on purpose: from Settings > Advanced,
+// where a reader finds it while reading about what it does, and from the map,
+// where it gets used -- tuning a weight is only meaningful while you can watch
+// the route it changes.
+function openRoutingWeights() {
+  buildRoutingWeightsEditor();
+  document.getElementById('weightsDialog').showModal();
+}
+// A weight left off its default silently changes every route, and the panel is
+// several taps away from wherever the surprise shows up. Mark the button.
+function syncWeightsTunedBadge() {
+  const button = document.getElementById('appWeightsBtn');
+  if (!button) return;
+  const off = Object.keys(DEFAULT_ROUTING_WEIGHTS)
+    .filter((key) => routingWeights[key] !== DEFAULT_ROUTING_WEIGHTS[key]);
+  button.classList.toggle('tuned', off.length > 0);
+  button.title = off.length
+    ? `Advanced routing weights (${off.length} changed from default)`
+    : 'Advanced routing weights';
+}
+document.getElementById('appWeightsBtn').addEventListener('click', openRoutingWeights);
+syncWeightsTunedBadge();
 document.getElementById('layersHelpBtn').addEventListener('click', () =>
   document.getElementById('layersHelpDialog').showModal());
 document.getElementById('routesHelpBtn').addEventListener('click', () => {

@@ -15,7 +15,7 @@ const context = {
   eName: new Uint32Array([1, 2, 3, 1, 4, 0]),
   // Name 0 is empty; all other ids are non-empty.
   nameOff: new Uint32Array([0, 0, 1, 2, 3, 4]),
-  activeWeights: { turnDirectSec: 6, turnBalancedSec: 11, turnLowSec: 15 },
+  activeWeights: { turnDirectSec: 6, turnBalancedSec: 11, turnLowStressSec: 15 },
 };
 vm.createContext(context);
 vm.runInContext(worker.slice(start, end), context);
