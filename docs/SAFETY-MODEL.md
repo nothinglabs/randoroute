@@ -924,6 +924,41 @@ correct. `test_sharrow_not_infrastructure.mjs` holds all five together.
 Statewide the graph carries **385 mi of sharrow** against 7,884 mi of real
 facility, so this is a small correction in mileage and a large one in honesty.
 
+## The "More" screen — all routes considered
+
+A troubleshooting view, reached from the **More** button after Route E. It lists
+every candidate the portfolio built for the current points: the five offered and
+everything discarded, each with the reason it was built and the reason it was
+dropped.
+
+The pipeline is `raw → reasonable → unique → useful → choices → selected`, and
+each candidate is tagged with the earliest stage it failed to reach:
+
+| stage | meaning |
+|---|---|
+| `offered` | one of the five on the map |
+| `not-chosen` | survived every filter; five slots were filled by more distinct routes |
+| `dominated` | another option shares the corridor and is no slower and no less safe |
+| `duplicate` | effectively the same roads as a named option |
+| `too-slow` | far slower than the quickest without being safer |
+
+Offered routes keep their A–E letters; extras continue F, G, … and fall back to
+numbering past Z.
+
+**Payload.** Candidate *summaries* ship with every route reply (~5 KB); full
+geometry does not. Sending every candidate whole measures **3.4–4.2 MB** on a
+Puget Sound trip, which is too large a structured clone to pay on every request
+for a screen opened occasionally. Tapping a discarded route fetches it via
+`route-candidate` from a worker-side cache of the last portfolio, keyed by the
+request, so a stale tap after the pins move is refused rather than answered
+wrongly.
+
+**What it revealed immediately.** On Seattle → Mukilteo the portfolio builds 10
+candidates and offers 5 — and all 5 discards are `duplicate`, not hidden
+diversity. The router is not concealing better routes there; it genuinely found
+5 distinct ones out of 10 attempts. That is the question the screen exists to
+answer.
+
 ## What the map deliberately does not draw
 
 A hiking trail is not bike infrastructure. `OSM_NOT_HIKING_EXPR` removes

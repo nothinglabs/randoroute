@@ -178,6 +178,43 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeOptions button.route-option-shared { flex: 2.4 1 0; font: 800 10px/1.05 system-ui; letter-spacing: -.1px; }
 #routeOptions button.route-option-shared.active { border-color: #7b2cbf; background: #f2e9fb; color: #6a1fb0; }
 #routeOptions button.active { border-color: #8dc2e5; background: #0a66c2; color: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.16); }
+/* Not a route: a way in. Deliberately reads as a different KIND of control
+   than the lettered options beside it, so nobody taps it expecting route F. */
+#routeOptions button.route-option-more { flex: 1.9 1 0; border-color: #7b2cbf; background: #f4ecfd; color: #5f1fa8; font: 800 9.5px/1.05 system-ui; letter-spacing: .02em; }
+#routeOptions button.route-option-more:hover { background: #ece0fb; }
+
+/* ---------------------------------------------- all routes considered */
+.all-routes-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(900px, calc(100% - 24px)); margin: 0 auto; padding: 16px 0 max(34px, env(safe-area-inset-bottom)); }
+.all-routes-lead { margin: 0 0 12px; color: #435967; font: 500 12px/1.5 system-ui; }
+.all-routes-empty { color: #6a7c86; font: 600 13px system-ui; }
+.all-routes-list { display: grid; gap: 9px; }
+.all-route-row { display: block; width: 100%; padding: 11px 12px; border: 1px solid #d7e2e8; border-radius: 11px; background: #fff; text-align: left; cursor: pointer; }
+.all-route-row:hover { border-color: #9fc4dc; }
+.all-route-row.active { border-color: #0a66c2; box-shadow: 0 0 0 2px rgba(10,102,194,.16); }
+/* A discarded candidate is muted, but never hidden -- the point of the screen
+   is to see what was dropped, so it has to stay readable. */
+.all-route-row.tone-cut { background: #fbfcfd; }
+.all-route-row.tone-cut .all-route-stats { opacity: .82; }
+.all-route-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.all-route-head strong { color: #22384a; font: 800 14px/1.2 system-ui; }
+.all-route-badge { padding: 2px 7px; border-radius: 999px; font: 750 9.5px/1.5 system-ui; letter-spacing: .03em; text-transform: uppercase; }
+.all-route-badge.rec { background: #e3f2e8; color: #1c6b3a; }
+.all-route-badge.cur { background: #e6f0fa; color: #0a66c2; }
+.all-route-badge.stage-offered { background: #e6f0fa; color: #14507f; }
+.all-route-badge.stage-near { background: #fff4e2; color: #8a5200; }
+.all-route-badge.stage-cut { background: #eef2f4; color: #5b6d78; }
+.all-route-stats { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 7px; color: #52636d; font: 550 11.5px/1.4 system-ui; }
+.all-route-stats b { color: #22384a; font-weight: 800; }
+.all-route-stats .lvl-caution b { color: #c25d05; }
+.all-route-stats .lvl-fail b { color: #b2182b; }
+.all-route-stats .lvl-fac b { color: #6f7a00; }
+.all-route-why, .all-route-stage-why { margin: 6px 0 0; color: #5c6f7b; font: 500 11px/1.45 system-ui; }
+.all-route-stage-why { color: #6b5330; }
+.all-route-why b, .all-route-stage-why b { color: #3d5261; }
+@media (max-width: 600px) {
+  .all-routes-body { width: calc(100% - 18px); }
+  .all-route-stats { gap: 3px 10px; font-size: 11px; }
+}
 #routeOptions button:disabled { cursor: default; opacity: .64; }
 .route-options-loading { position: absolute; z-index: 2; inset: 0; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1.5px solid #8eb9d8; border-radius: 8px; background: rgba(245,250,254,.97); color: #0a66c2; font: 700 11px system-ui; }
 .route-options-loading > span { width: 12px; height: 12px; border: 2px solid #bad3e6; border-top-color: #0a66c2; border-radius: 50%; animation: route-options-spin .7s linear infinite; }

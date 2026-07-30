@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.453';
+const APP_VERSION = '2026-07-30.454';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2082,6 +2082,9 @@ const routing = {
   compareStartedAt: 0,
   selectRecommendedNext: false,
   options: [],
+  // Summaries of every candidate the last portfolio built, offered or not, for
+  // the "More" screen. Full geometry is fetched from the worker on tap.
+  allCandidates: [], candidatesKey: null,
   last: null, // last successful result (for redraws)
   // Shared-route ("As Shared") state — the sender's recipe and whether the
   // shared route is currently the active option.
@@ -4842,6 +4845,8 @@ function onRouterMessage(ev) {
       return;
     }
     routing.options = m.options;
+    routing.allCandidates = Array.isArray(m.allCandidates) ? m.allCandidates : [];
+    routing.candidatesKey = m.candidatesKey || null;
     let selected;
     if (routing.sharedActive) {
       // The sender's exact route is the option matching their profile; it goes
@@ -4857,6 +4862,19 @@ function onRouterMessage(ev) {
     routing.selectRecommendedNext = false;
     activateRouteOption(selected);
     notifySnapDistance(selected);
+  } else if (m.type === 'route-candidate') {
+    if (m.id !== routing.candidateReqId) return; // stale reply
+    showRouteActionToast('');
+    if (!m.ok) {
+      showRouteActionToast(m.reason || 'That route is no longer available', { duration: 2800 });
+      return;
+    }
+    // Park it alongside the offered routes so the chooser can show it as the
+    // active selection and the rider can switch back without re-opening More.
+    routing.options = [...(routing.options || []).filter((o) =>
+      o.optimization?.profileId !== m.option.optimization?.profileId), m.option];
+    activateRouteOption(m.option, true);
+    renderRouteOptionControls();
   } else if (m.type === 'route') {
     if (m.id !== routing.reqId) return; // stale reply
     routing.routeRequestActive = false;
@@ -6178,7 +6196,113 @@ function renderRouteOptionControls() {
       aria-pressed="${active}" aria-label="${option.asShared ? 'Shared route' : `Choose route ${index + 1}: ${label}`}"
       title="${title}"${turnNav.active ? ' aria-disabled="true"' : ''}>
       <span>${shortLabel}</span></button>`;
-  }).join('');
+  }).join('') + moreRoutesButtonHtml();
+}
+
+// Every candidate the portfolio built, not just the five that fit. Purely a
+// troubleshooting view: it exists to answer "what am I not being shown, and
+// why", so it lists the rejects alongside the offers with the stage that
+// dropped each one.
+function moreRoutesButtonHtml() {
+  const all = routing.allCandidates || [];
+  if (all.length <= (routing.options?.length || 0)) return '';
+  const extra = all.length - (routing.options?.length || 0);
+  return `<button type="button" id="moreRoutesBtn" class="route-option-more"
+    title="Show all ${all.length} routes the router built, including the ${extra} it did not offer"
+    aria-label="More routes: show all ${all.length} considered"><span>More</span></button>`;
+}
+
+// The stage that removed a candidate, in the order the pipeline applies them.
+// Each is a plain-language answer to "why am I not being offered this?".
+const CANDIDATE_STAGES = {
+  offered: { label: 'Offered', tone: 'offered' },
+  'not-chosen': { label: 'Not chosen', tone: 'near' },
+  dominated: { label: 'Dominated', tone: 'cut' },
+  duplicate: { label: 'Duplicate', tone: 'cut' },
+  'too-slow': { label: 'Too slow', tone: 'cut' },
+  considered: { label: 'Considered', tone: 'cut' },
+};
+
+function candidateStatLine(c) {
+  const mi = c.distM / 1609.344;
+  const ridingM = Math.max(1, c.distM - (c.ferryM || 0));
+  const levels = c.levelM || [];
+  const pct = (m) => Math.round((m || 0) / ridingM * 100);
+  const pass = pct((levels[1] || 0) + (levels[2] || 0));
+  const caution = pct(levels[3] || 0);
+  const fail = pct(levels[4] || 0);
+  const facility = pct(c.facilityM);
+  return { mi, hours: c.timeS / 3600, pass, caution, fail, facility };
+}
+
+function renderAllRoutesList() {
+  const host = document.getElementById('allRoutesList');
+  if (!host) return;
+  const all = routing.allCandidates || [];
+  host.replaceChildren();
+  if (!all.length) {
+    const empty = document.createElement('p');
+    empty.className = 'all-routes-empty';
+    empty.textContent = 'No routes have been calculated yet.';
+    host.append(empty);
+    return;
+  }
+  for (const c of all) {
+    const stage = CANDIDATE_STAGES[c.stage] || CANDIDATE_STAGES.considered;
+    const s = candidateStatLine(c);
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = `all-route-row tone-${stage.tone}${c.presented ? ' is-offered' : ''}`;
+    row.dataset.profileId = c.profileId;
+    const active = routing.last?.optimization?.profileId === c.profileId;
+    if (active) row.classList.add('active');
+    row.setAttribute('aria-label', `${c.label}: ${s.mi.toFixed(1)} miles, `
+      + `${s.pass}% pass, ${s.caution}% caution, ${s.fail}% fail. ${stage.label}. ${c.why}`);
+    row.innerHTML = `
+      <div class="all-route-head">
+        <strong>${c.label}</strong>
+        ${c.recommended ? '<span class="all-route-badge rec">Recommended</span>' : ''}
+        <span class="all-route-badge stage-${stage.tone}">${stage.label}</span>
+        ${active ? '<span class="all-route-badge cur">Showing</span>' : ''}
+      </div>
+      <div class="all-route-stats">
+        <span><b>${s.mi.toFixed(1)}</b> mi</span>
+        <span><b>${Math.floor(s.hours)}h${String(Math.round(s.hours % 1 * 60)).padStart(2, '0')}</b></span>
+        <span class="lvl-pass"><b>${s.pass}%</b> pass</span>
+        <span class="lvl-caution"><b>${s.caution}%</b> caution</span>
+        <span class="lvl-fail"><b>${s.fail}%</b> fail</span>
+        <span class="lvl-fac"><b>${s.facility}%</b> trails / lanes</span>
+      </div>
+      <p class="all-route-why"><b>Built as:</b> ${c.why}</p>
+      ${c.stageWhy ? `<p class="all-route-stage-why"><b>${stage.label}:</b> ${c.stageWhy}</p>` : ''}`;
+    row.addEventListener('click', () => chooseCandidate(c));
+    host.append(row);
+  }
+}
+
+// Tapping a row loads that route. Offered routes are already in hand; the rest
+// are fetched whole from the worker's portfolio cache.
+function chooseCandidate(c) {
+  const dialog = document.getElementById('allRoutesDialog');
+  const existing = (routing.options || []).find((o) =>
+    o.optimization?.profileId === c.profileId);
+  if (existing) {
+    dialog.close();
+    activateRouteOption(existing, true);
+    renderRouteOptionControls();
+    return;
+  }
+  if (!routing.worker || !routing.candidatesKey) return;
+  routing.candidateReqId = (routing.candidateReqId || 0) + 1;
+  routing.worker.postMessage({ type: 'route-candidate', id: routing.candidateReqId,
+    candidatesKey: routing.candidatesKey, profileId: c.profileId });
+  dialog.close();
+  showRouteActionToast(`Loading ${c.label}…`, { busy: true, duration: 8000 });
+}
+
+function openAllRoutes() {
+  renderAllRoutesList();
+  document.getElementById('allRoutesDialog').showModal();
 }
 
 function activateRouteOption(option, updateNavigation = false) {
@@ -8775,6 +8899,10 @@ function syncWeightsTunedBadge() {
     : 'Advanced routing weights';
 }
 document.getElementById('appWeightsBtn').addEventListener('click', openRoutingWeights);
+// Delegated: #moreRoutesBtn is rebuilt every time the chooser re-renders.
+document.getElementById('routeOptions').addEventListener('click', (e) => {
+  if (e.target.closest('#moreRoutesBtn')) openAllRoutes();
+});
 syncWeightsTunedBadge();
 document.getElementById('layersHelpBtn').addEventListener('click', () =>
   document.getElementById('layersHelpDialog').showModal());

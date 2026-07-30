@@ -1595,6 +1595,60 @@ function presentAsLetters(routes, recommended) {
   return ordered;
 }
 
+// Why did this route get generated at all? The portfolio runs a grid of
+// profiles plus several special probes, and the whole point of the "More"
+// screen is to see what each one produced -- so each has to be able to say what
+// it was asked for, in the rider's vocabulary rather than a profile id.
+const MODE_WORDS = { direct: 'Direct', balanced: 'Balanced', low: 'Low stress' };
+function profileExplanation(profile) {
+  if (profile.fullyMatchingProbe) {
+    return 'Strict probe: searched only road that fully matches your rules.';
+  }
+  if (profile.fullyMatchingRules) {
+    return 'Searched only road that fully matches your rules.';
+  }
+  if (profile.discoveryMaxSpeed) {
+    return `Discovery: same search with the no-shoulder speed dropped to ${profile.discoveryMaxSpeed} mph,`
+      + ' to see whether a quieter corridor exists at all.';
+  }
+  const parts = [`${MODE_WORDS[profile.mode] || profile.mode} cost model`];
+  if (profile.prefDesig) parts.push('preferring signed bike routes and trails');
+  if (profile.prefResidential) parts.push('preferring residential streets');
+  let text = parts.join(', ') + '.';
+  if (profile.alternativeCorridor) {
+    text += ' Re-run with the roads of an earlier option penalised, to force a different corridor.';
+  }
+  return text;
+}
+
+// A compact row for the "More" screen. Deliberately excludes segs/geometry:
+// shipping every candidate in full measures 3.4-4.2 MB on a Puget Sound trip,
+// which is a large structured clone to pay on every single route request for a
+// screen the rider opens occasionally. The full route is fetched on tap
+// instead, from the cache below.
+function candidateSummary(candidate) {
+  const profile = candidate._profile;
+  return {
+    profileId: profile.id,
+    label: candidate._outcome?.label || profile.label,
+    presented: !!candidate._outcome,
+    recommended: !!candidate._outcome?.recommended,
+    why: profileExplanation(profile),
+    stage: candidate._stage || 'considered',
+    stageWhy: candidate._stageWhy || '',
+    distM: candidate.distM,
+    timeS: candidate.timeS,
+    failM: candidate.failM,
+    levelM: candidate.levelM,
+    facilityM: candidate.facilityM,
+    desigM: candidate.desigM,
+    residentialM: candidate.residentialM,
+    unpavedM: candidate.unpavedM || 0,
+    ferryM: candidate.ferryM || 0,
+    ascentM: candidate.ascentM || 0,
+  };
+}
+
 function publicCandidate(candidate) {
   const { edgeIds, nodeIds, _profile, _outcome, ...routeResult } = candidate;
   return {
@@ -1792,9 +1846,18 @@ function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, se
   }
 }
 
+// The last portfolio, kept whole so the "More" screen can hand back a full
+// route on tap without re-searching. Keyed by the request it came from, so a
+// stale tap after the rider moved a pin is refused rather than answered wrongly.
+let lastCandidates = null;
+let lastCandidatesKey = null;
+
 function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false,
     progress = null) {
   const started = Date.now();
+  // Identifies this exact request. Rules are included because the same pins
+  // under different limits are a different portfolio.
+  const routeKey = JSON.stringify([points, rules, !!forceDesig, !!forceResidential]);
   const profiles = candidateProfiles(forceDesig, forceResidential);
   // Snapping scans the statewide node table. Do it once per route point, not
   // once again for every optimization profile.
@@ -2001,8 +2064,56 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (replaceAt >= 0) selected.splice(replaceAt, 1, candidate);
   }
   const presented = presentAsLetters(selected.slice(0, 5), recommended);
+
+  // ---- the troubleshooting record -------------------------------------
+  // Mark every candidate with the stage that dropped it, so the "More" screen
+  // can explain absence rather than merely listing survivors. Order matters:
+  // the earliest stage a route failed to reach is the one that removed it.
+  const inReasonable = new Set(reasonable), inUnique = new Set(unique);
+  const inUseful = new Set(useful), inSelected = new Set(presented);
+  for (const candidate of raw) {
+    if (inSelected.has(candidate)) {
+      candidate._stage = 'offered';
+      candidate._stageWhy = '';
+    } else if (!inReasonable.has(candidate)) {
+      candidate._stage = 'too-slow';
+      candidate._stageWhy = 'Far slower than the quickest option without being safer.';
+    } else if (!inUnique.has(candidate)) {
+      const twin = unique.find((other) => !meaningfullyDifferent(candidate, other));
+      candidate._stage = 'duplicate';
+      candidate._stageWhy = twin
+        ? `Effectively the same roads as ${twin._outcome?.label || twin._profile.label}.`
+        : 'Effectively the same roads as another option.';
+    } else if (!inUseful.has(candidate)) {
+      candidate._stage = 'dominated';
+      candidate._stageWhy = 'Another option shares this corridor and is no slower and no less safe.';
+    } else {
+      candidate._stage = 'not-chosen';
+      candidate._stageWhy = 'Survived every filter, but five slots were filled by more distinct routes.';
+    }
+  }
+  // Letter the extras so a rider can name them. A-E are the offered routes; the
+  // rest continue F, G, ... and fall back to numbering past Z.
+  const extras = raw.filter((candidate) => !inSelected.has(candidate))
+    .sort((a, b) => a.distM - b.distM || a.timeS - b.timeS);
+  for (let i = 0; i < extras.length; i++) {
+    const index = presented.length + i;
+    extras[i]._extraLabel = index < 26
+      ? `Route ${String.fromCharCode(65 + index)}`
+      : `Route ${index - 25}`;
+  }
+  const allCandidates = [...presented, ...extras];
+  // Cache the full routes so tapping one costs a lookup rather than a re-search.
+  lastCandidates = new Map(allCandidates.map((c) => [c._profile.id, c]));
+  lastCandidatesKey = String(routeKey);
+
   return {
     ok: true, options: presented.map(publicCandidate), ms: Date.now() - started,
+    candidatesKey: String(routeKey),
+    allCandidates: allCandidates.map((candidate) => ({
+      ...candidateSummary(candidate),
+      label: candidate._outcome?.label || candidate._extraLabel || candidate._profile.label,
+    })),
     debug: debug ? {
       raw: raw.map((r) => r._profile.id), reasonable: reasonable.map((r) => r._profile.id),
       unique: unique.map((r) => r._profile.id), useful: useful.map((r) => r._profile.id),
@@ -2081,6 +2192,19 @@ onmessage = (ev) => {
       const result = withRoadBlocks(m.blocks, m.rules, () => routeOptions(pts, m.rules,
         !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress));
       postMessage({ type: 'route-options', id: m.id, ...result });
+    } else if (m.type === 'route-candidate') {
+      // Full geometry for one candidate the "More" screen listed. Served from
+      // the portfolio cache, so this is a lookup rather than a second search.
+      const cached = lastCandidatesKey === m.candidatesKey && lastCandidates
+        ? lastCandidates.get(m.profileId) : null;
+      postMessage(cached
+        ? { type: 'route-candidate', id: m.id, ok: true,
+            option: { ...publicCandidate(cached),
+              optimization: { ...publicCandidate(cached).optimization,
+                label: cached._outcome?.label || cached._extraLabel
+                  || cached._profile.label } } }
+        : { type: 'route-candidate', id: m.id, ok: false,
+            reason: 'That route is no longer available — the map or your rules changed.' });
     } else if (m.type === 'route-connector') {
       useWeights(m.weights);
       const points = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
