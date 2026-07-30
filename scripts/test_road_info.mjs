@@ -40,10 +40,19 @@ assert.match(app, /for \(const src of SOURCES\) loadSource\(src\)/,
   'every source should load so map popups always have complete information');
 assert.match(app, /const stateSidewalkProbeId = 'roads__state-sidewalk-probe'[\s\S]*?function wsdotSidewalkAt\(lngLat\)[\s\S]*?\{ layers: \[stateSidewalkProbeId\] \}[\s\S]*?\['Sidewalk \(OSM\)', wsdotSidewalkAt\(lngLat\)\]/,
   'WSDOT cards should expose sidewalk status from the matching hidden OSM road tile');
-assert.match(css, /#settings-limits\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settings-limits #settingsSliders\s*\{[^}]*gap:\s*3px[\s\S]*?#settings-limits #settingsSliders \.rule-card\s*\{[^}]*padding:\s*3px 8px/,
-  'the compact Limits pane should fit its controls without a nested scrollbar');
-assert.match(css, /#settings-options\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settings-options #settingsOptions\s*\{[^}]*align-content:\s*start[^}]*gap:\s*3px 4px[\s\S]*?#settings-options #settingsOptions \.rule-card\s*\{[^}]*min-height:\s*0[^}]*padding:\s*3px 6px/,
-  'the compact Options pane should fit its controls without a nested scrollbar');
+// These used to require `overflow-y: hidden` on both panes. That pinned the
+// MECHANISM instead of the outcome, and the mechanism was the bug: paired with
+// a fixed 196px height it clipped "Never allow roads faster than" out of reach
+// the moment a fifth slider was added, and this assertion would have failed the
+// fix. Compaction is still worth pinning -- it is what keeps the panes short --
+// but reachability is now proved directly, in a browser, by
+// test_settings_panes_reachable.mjs.
+assert.match(css, /#settings-limits #settingsSliders\s*\{[^}]*gap:\s*3px[\s\S]*?#settings-limits #settingsSliders \.rule-card\s*\{[^}]*padding:\s*3px 8px/,
+  'the Limits pane should keep its compact slider spacing');
+assert.match(css, /#settings-options #settingsOptions\s*\{[^}]*align-content:\s*start[^}]*gap:\s*3px 4px[\s\S]*?#settings-options #settingsOptions \.rule-card\s*\{[^}]*min-height:\s*0[^}]*padding:\s*3px 6px/,
+  'the Options pane should keep its compact card spacing');
+assert.doesNotMatch(css, /#settings-(limits|options)\s*\{[^}]*overflow-y:\s*hidden/,
+  'a settings pane must never clip content it gives no way to scroll to');
 // The three "needs space" conditions come first, under their shared heading,
 // then the shoulder width they are measured against, then the hard cutoff.
 assert.match(app, /Require a bike lane or wide shoulder whenever:[\s\S]*?slider\('maxSpeedNoShoulder', 'Speed limit is over'[\s\S]*?lanesSlider\(\);[\s\S]*?busySlider\(\);[\s\S]*?slider\('minShoulder', 'Minimum shoulder width to count'[\s\S]*?label for="r-upperMaxSpeed">Never allow roads faster than/,

@@ -458,7 +458,13 @@ body:not(.navigation-active) #navCard { display: none; }
 .settings-tabs .settings-help-btn { align-self: center; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }
-.settings-pane { display: flex; flex-direction: column; height: 196px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
+/* Height follows the content. It used to be a hard 196px, which silently
+   encoded "Limits has four sliders" -- adding a fifth pushed "Never allow roads
+   faster than" past the edge of a pane that also set overflow-y: hidden, so it
+   was clipped with no way to reach it. A magic number that has to be re-derived
+   every time a control is added will be wrong again; min-height keeps the sheet
+   from collapsing on the shorter panes without capping the taller ones. */
+.settings-pane { display: flex; flex-direction: column; min-height: 196px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
 .settings-pane[hidden] { display: none; }
 .settings-pane > .settings-summary, .settings-pane > .preset-status { flex: none; }
 #settingsPresets, #settingsSliders, #settingsOptions, #settingsVoice { flex: 1; align-content: space-between; }
@@ -484,9 +490,11 @@ body:not(.navigation-active) #navCard { display: none; }
 #settingsSliders .rule-card, #settingsOptions .rule-card, #settingsVoice .rule-card { margin: 0; padding: 6px 9px; border: 1px solid #dbe5eb; border-radius: 9px; background: #fbfcfd; }
 #settingsSliders .rule-head { margin-bottom: 5px; }
 #settingsSliders .rule-card input[type="range"] { display: block; margin: 0; touch-action: pan-y; }
-/* Limits has four small sliders; keep it a single stable sheet rather than a
-   nested scroll area that competes with the map panel on a phone. */
-#settings-limits { overflow-y: hidden; }
+/* Kept as a single sheet rather than a nested scroll area competing with the
+   map panel -- but by sizing to content, not by clipping it. `visible` rather
+   than `hidden`: if a future control does overflow, it must remain reachable
+   through the panel's own scroll instead of disappearing. */
+#settings-limits { overflow-y: visible; }
 #settings-limits .settings-summary { margin: 0 1px 2px; font-size: 10.5px; line-height: 1.15; }
 #settings-limits #settingsSliders { gap: 3px; }
 #settings-limits #settingsSliders .rule-card { padding: 3px 8px; }
@@ -499,7 +507,7 @@ body:not(.navigation-active) #navCard { display: none; }
 #settingsOptions .rule-card { min-height: 27px; padding: 4px 8px; }
 #settingsOptions .rule-check { gap: 6px; font-size: 11.5px; line-height: 1.2; }
 #settingsOptions .rule-check input { flex: 0 0 auto; margin: 0; }
-#settings-options { overflow-y: hidden; }
+#settings-options { overflow-y: visible; }
 #settings-options .settings-summary { margin: 0 1px 2px; font-size: 10px; line-height: 1.1; }
 #settings-options #settingsOptions { align-content: start; gap: 3px 4px; }
 #settings-options #settingsOptions .rule-card { min-height: 0; padding: 3px 6px; }
