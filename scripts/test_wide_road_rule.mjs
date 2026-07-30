@@ -14,13 +14,23 @@ const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
 const model = fs.readFileSync(new URL('../safety-model.js', import.meta.url), 'utf8');
 
-/* ---------------------------------------------- the threshold is inclusive */
-assert.match(model, /return lanes >= limit && !hasRidingSpace\(facts, shoulder, rules\);/,
-  'the setting is the lane count that FAILS, not the widest road allowed');
-assert.doesNotMatch(model, /Math\.ceil\(rules\.maxLanesNoShoulder/,
+/* ------------------------------------------------- the threshold is exclusive */
+// The setting reads "Lanes of traffic more than X", so X is the widest road
+// that still passes. It used to read "at X and above it fails", which put a
+// different number on screen for the same roads.
+assert.match(model, /return lanes > over;/,
+  'the setting is the widest road that PASSES, matching how it is worded');
+assert.doesNotMatch(model, /Math\.ceil\(rules\.lanesNoShoulderOver/,
   'lanes are counted as tagged; there is no oneway adjustment');
-assert.match(model, /if \(wideRoadNeedsSpace\(facts, shoulder, rules\)\) return out\(4, 'wide-road'\);/,
-  'breaking the lane rule fails like every other rule, and never softens to a caution');
+
+/* ------------------------- lanes are one trigger of a single needs-space rung */
+// Speed, lanes and traffic all answer the same question -- how much of this
+// lane is available to a rider -- so they are one rung with three triggers
+// rather than three rungs in an order that mattered.
+assert.match(model, /function needsSpace\(facts, rules\) \{\s*return speedNeedsSpace\(facts, rules\) \|\| lanesNeedSpace\(facts, rules\)\s*\|\| trafficNeedsSpace\(facts, rules\);/,
+  'the three triggers are ORed into one rule');
+assert.match(model, /if \(needsSpace\(facts, rules\)\) \{[\s\S]*?return out\(4, 'needs-space'\);/,
+  'breaking it fails like every other rule, and never softens to a caution');
 // There is NO exception. A signed route across a wide road used to override this
 // failure, on the theory that an agency had vetted the corridor. Clallam's
 // Olympic Discovery Trail then turned out to run 58.8 miles along ordinary road,
@@ -29,16 +39,16 @@ assert.doesNotMatch(model, /trusted/,
   'no designation may excuse a road that is too wide to share');
 assert.doesNotMatch(model, /vettedBikeRoutes|vettedCountyRoutes/,
   'the route-trust settings are gone and must not return');
-
-/* ------------------------------------------- it precedes the slow-road rule */
-assert.ok(model.indexOf("'wide-road'") < model.indexOf("'slow-road'"),
-  'a road too wide to share must fail before 25 mph signage can pass it');
+// Merging the rungs removed the ordering problem outright: there is no longer a
+// slow-road rung that a wide road could reach and pass on.
+assert.doesNotMatch(model, /'slow-road'/,
+  'the slow-road rung is gone; speed is a trigger of needs-space now');
 
 /* ------------------------------------------------- the map expression agrees */
-assert.match(app, /const wideRoad = \['all',\s*\['>=', \['coalesce', \['get', 'ln'\], 0\], rules\.maxLanesNoShoulder\]/,
-  'roadLevelExpr should use the same inclusive threshold');
-assert.match(app, /cases\.push\(wideRoad, 4\);/,
-  'and the same verdict as the model, with no exception either');
+assert.match(app, /const tooWide = rules\.lanesNoShoulderOver >= MAX_LANES_NO_LIMIT[\s\S]*?\['>', \['coalesce', \['get', 'ln'\], 0\], rules\.lanesNoShoulderOver\]/,
+  'roadLevelExpr should use the same exclusive threshold');
+assert.match(app, /const wantsSpace = \['any', tooFast, tooWide, tooBusy\];/,
+  'and OR the same three triggers');
 
 /* --------------------------------------------------- a sharrow is not space */
 assert.match(model, /function hasRidingSpace\(facts, shoulder, rules\) \{[\s\S]*?FACILITY_RIDING_SPACE/,
@@ -76,12 +86,16 @@ assert.equal(messages.at(-1)?.type, 'ready', 'the production graph should load')
 
 const out = vm.runInContext(`(() => {
   const rules = {
-    allowFreeways: true, allowMtbTrails: false, vettedBikeRoutes: true,
+    allowFreeways: true, allowMtbTrails: false,
     minShoulder: 4, unknownShoulderZero: true, maxSpeedNoShoulder: 35,
     upperMaxSpeed: 45, noUpperLimit: true,
-    requireSafe: false, allowSidewalkFallback: true, maxLanesNoShoulder: 4,
+    requireSafe: false, allowSidewalkFallback: true,
+    // "more lanes than 3", i.e. 4 and up. Traffic held off throughout: this
+    // test isolates the lane trigger, and a busy road failing for its volume
+    // would be counted as a lane failure.
+    lanesNoShoulderOver: 3, busyNoShoulder: 0,
   };
-  const off = { ...rules, maxLanesNoShoulder: 6 };   // slider at "No limit"
+  const off = { ...rules, lanesNoShoulderOver: 6 };   // slider at "No limit"
   // Every edge the rule can reach: lane-tagged, no bike lane, no shoulder.
   let failedOn = 0, failedOff = 0, exemptedByFacility = 0, exemptedByShoulder = 0;
   let threeLaneFailures = 0, sidewalkRescued = 0;
@@ -106,7 +120,7 @@ const out = vm.runInContext(`(() => {
 assert.ok(out.failedOn > 10000,
   `the router should newly fail the wide roads the map fails, got ${out.failedOn}`);
 assert.equal(out.threeLaneFailures, 0,
-  'nothing under the threshold may fail: a 3-lane road is not caught at a setting of 4');
+  'nothing at or under the threshold may fail: 3 lanes is not more than 3');
 assert.ok(out.exemptedByFacility > 0 && out.exemptedByShoulder > 0,
   'both exemptions should still be reachable on real data');
 assert.ok(out.sidewalkRescued > 0,

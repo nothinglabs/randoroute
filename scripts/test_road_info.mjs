@@ -44,8 +44,10 @@ assert.match(css, /#settings-limits\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settin
   'the compact Limits pane should fit its controls without a nested scrollbar');
 assert.match(css, /#settings-options\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settings-options #settingsOptions\s*\{[^}]*align-content:\s*start[^}]*gap:\s*3px 4px[\s\S]*?#settings-options #settingsOptions \.rule-card\s*\{[^}]*min-height:\s*0[^}]*padding:\s*3px 6px/,
   'the compact Options pane should fit its controls without a nested scrollbar');
-assert.match(app, /slider\('maxSpeedNoShoulder', 'Max speed without shoulder or bike lane'[\s\S]*?slider\('minShoulder', 'Minimum shoulder if no bike lane'[\s\S]*?label for="r-upperMaxSpeed">Never allow roads faster than/,
-  'Limits should order the no-shoulder speed above the minimum shoulder and the speed cutoff');
+// The three "needs space" conditions come first, under their shared heading,
+// then the shoulder width they are measured against, then the hard cutoff.
+assert.match(app, /Require a bike lane or wide shoulder whenever:[\s\S]*?slider\('maxSpeedNoShoulder', 'Speed limit is over'[\s\S]*?lanesSlider\(\);[\s\S]*?busySlider\(\);[\s\S]*?slider\('minShoulder', 'Minimum shoulder width to count'[\s\S]*?label for="r-upperMaxSpeed">Never allow roads faster than/,
+  'Limits should group the three space conditions, then the shoulder width, then the cutoff');
 // The urban and rural badges went with the settings they labelled. There is one
 // speed limit now, so there is nothing left to tell apart.
 assert.doesNotMatch(css, /area-rule/,

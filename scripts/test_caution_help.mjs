@@ -50,7 +50,10 @@ assert.ok(helpDialog, 'the settings help dialog should exist');
 // Labels as the rider reads them, taken from the control definitions.
 const labels = [...app.matchAll(/check\('(\w+)', ['`]([^'`]+)['`]/g)].map((m) => m[2])
   .concat([...app.matchAll(/slider\('(\w+)', '([^']+)'/g)].map((m) => m[2]))
-  .concat(['Lanes needing a shoulder or bike lane', 'Never allow roads faster than']);
+  // The lanes and busy sliders are built by hand rather than through slider(),
+  // so the scrape above cannot see their labels.
+  .concat(['Lanes of traffic more than', 'Road is busier than',
+    'Never allow roads faster than']);
 const strip = (s) => s.replace(/<[^>]+>/g, '')
   .replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ')
   .replace(/\$\{STRESS_AGENCY\}/g, 'WSDOT')
