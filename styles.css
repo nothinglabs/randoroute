@@ -441,9 +441,6 @@ body:not(.navigation-active) #navCard { display: none; }
 #settings-limits #settingsSliders .rule-card { padding: 3px 8px; }
 #settings-limits #settingsSliders .rule-head { min-height: 13px; margin-bottom: 0; font-size: 10.5px; line-height: 1.1; }
 #settings-limits #settingsSliders .rule-card input[type="range"] { height: 14px; }
-#settings-limits .area-rule { display: inline-block; margin-right: 3px; padding: 1px 5px; border: 1px solid currentColor; border-radius: 999px; font: 850 9px/1.05 system-ui; letter-spacing: .045em; text-transform: uppercase; vertical-align: 1px; }
-#settings-limits .area-rule-urban { background: #e3f1fc; color: #075fae; }
-#settings-limits .area-rule-rural { background: #e8f4e5; color: #2f6f27; }
 #settingsOptions .check-rule.rule-card { display: block; }
 #settingsOptions .rule-check, #settingsVoice .rule-check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
 #settingsOptions .rule-check span { flex: 1; }

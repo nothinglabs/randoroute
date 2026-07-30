@@ -53,14 +53,14 @@ const repro = vm.runInContext(`(() => {
         levelAB: edgeLevel(edge, {
           allowFreeways: true, allowMtbTrails: false, vettedBikeRoutes: true,
           minShoulder: 4, unknownShoulderZero: true, freeMaxSpeed: 35,
-          urbanMaxSpeedNoShoulder: 30, ruralMaxSpeedNoShoulder: 35,
+          maxSpeedNoShoulder: 35,
           upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
           sidewalkFallback: true,
         }, true),
         levelBA: edgeLevel(edge, {
           allowFreeways: true, allowMtbTrails: false, vettedBikeRoutes: true,
           minShoulder: 4, unknownShoulderZero: true, freeMaxSpeed: 35,
-          urbanMaxSpeedNoShoulder: 30, ruralMaxSpeedNoShoulder: 35,
+          maxSpeedNoShoulder: 35,
           upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
           sidewalkFallback: true,
         }, false),

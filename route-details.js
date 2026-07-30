@@ -56,11 +56,16 @@ function isDismountSegment(seg) {
   return !!seg?.dismount || !!((seg?.official || 0) & OFFICIAL_DISMOUNT);
 }
 
+// One speed, urban or rural. The older keys are still read so a rider arriving
+// with saved settings keeps a sensible limit; rural wins, because the single
+// default is the old rural value. Mirrors SafetyModel.noShoulderMaxSpeed, which
+// this file cannot import -- it runs in the route-details window.
 function noShoulderMaxSpeed(seg, rules = {}) {
-  const legacy = Number(rules.freeMaxSpeed) || 35;
-  const urban = Number(rules.urbanMaxSpeedNoShoulder) || legacy;
-  const rural = Number(rules.ruralMaxSpeedNoShoulder) || legacy;
-  return (seg?.official || 0) & OFFICIAL_URBAN ? urban : rural;
+  return Number(rules.maxSpeedNoShoulder)
+    || Number(rules.ruralMaxSpeedNoShoulder)
+    || Number(rules.urbanMaxSpeedNoShoulder)
+    || Number(rules.freeMaxSpeed)
+    || 35;
 }
 
 function isSidewalkFallbackSegment(seg, rules = {}) {

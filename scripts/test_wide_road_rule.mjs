@@ -77,8 +77,8 @@ assert.equal(messages.at(-1)?.type, 'ready', 'the production graph should load')
 const out = vm.runInContext(`(() => {
   const rules = {
     allowFreeways: true, allowMtbTrails: false, vettedBikeRoutes: true,
-    minShoulder: 4, unknownShoulderZero: true, urbanMaxSpeedNoShoulder: 30,
-    ruralMaxSpeedNoShoulder: 35, upperMaxSpeed: 45, noUpperLimit: true,
+    minShoulder: 4, unknownShoulderZero: true, maxSpeedNoShoulder: 35,
+    upperMaxSpeed: 45, noUpperLimit: true,
     requireSafe: false, allowSidewalkFallback: true, maxLanesNoShoulder: 4,
   };
   const off = { ...rules, maxLanesNoShoulder: 6 };   // slider at "No limit"

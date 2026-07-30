@@ -1520,14 +1520,11 @@ function publicCandidate(candidate) {
 }
 
 function conservativeDiscoveryRules(rules) {
-  const legacy = Number(rules.freeMaxSpeed) || 35;
-  const urbanCurrent = Number(rules.urbanMaxSpeedNoShoulder) || legacy;
-  const ruralCurrent = Number(rules.ruralMaxSpeedNoShoulder) || legacy;
-  const urbanMax = Math.max(15, Math.min(30, urbanCurrent - 5));
-  const ruralMax = Math.max(15, Math.min(30, ruralCurrent - 5));
-  return urbanMax < urbanCurrent || ruralMax < ruralCurrent
-    ? { ...rules, urbanMaxSpeedNoShoulder: urbanMax, ruralMaxSpeedNoShoulder: ruralMax }
-    : null;
+  // One speed since the urban/rural split was collapsed; the shared model still
+  // reads the old keys so a rider on saved settings is not stranded.
+  const current = SafetyModel.noShoulderMaxSpeed({}, rules);
+  const stricter = Math.max(15, Math.min(30, current - 5));
+  return stricter < current ? { ...rules, maxSpeedNoShoulder: stricter } : null;
 }
 
 // Add a small, bounded set of stricter searches to the candidate pool. These
@@ -1540,8 +1537,7 @@ function addDiscoveryCandidates(raw, points, rules, forceDesig, forceResidential
   // conservative lens across the entire itinerary is slower and recreates the
   // all-or-nothing behavior this portfolio is meant to avoid.
   if (raw.some((candidate) => candidate.ferryM > 0)) return searchRules;
-  const discoveryMaxSpeed = Math.max(searchRules.urbanMaxSpeedNoShoulder,
-    searchRules.ruralMaxSpeedNoShoulder);
+  const discoveryMaxSpeed = SafetyModel.noShoulderMaxSpeed({}, searchRules);
   const directProfile = {
     id: 'discover-quick', label: 'Low-speed discovery', mode: 'direct',
     prefDesig: forceDesig, prefResidential: forceResidential, order: 0.48,
@@ -1693,8 +1689,7 @@ function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, se
       label: 'Adaptive corridor', mode: 'balanced', prefDesig: true, prefResidential: true,
       order: seed._profile.order + 0.08 + landIndex * 0.01,
       alternativeCorridor: true,
-      discoveryMaxSpeed: Math.max(searchRules.urbanMaxSpeedNoShoulder,
-        searchRules.ruralMaxSpeedNoShoulder),
+      discoveryMaxSpeed: SafetyModel.noShoulderMaxSpeed({}, searchRules),
     };
     hybrid.aggression = routeAggression(hybrid);
     raw.push(hybrid);

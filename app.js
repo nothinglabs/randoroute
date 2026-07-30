@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.446';
+const APP_VERSION = '2026-07-30.447';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -93,8 +93,12 @@ const DEFAULT_RULES = Object.freeze({
   preferPaved: true,    // strongly prefer pavement by default; unpaved remains available
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
-  urbanMaxSpeedNoShoulder: 30, // mph; at/below this an urban road passes without a shoulder
-  ruralMaxSpeedNoShoulder: 35, // mph; at/below this a rural road passes without a shoulder
+  // mph; at/below this a road passes without a shoulder. One number, town or
+  // country: a 35 mph lane with no shoulder is the same lane whether or not a
+  // Census polygon contains it, and the old 30/35 split asked a rider to hold an
+  // opinion about a distinction the road does not make. The urban flag is still
+  // carried and still shown on the card; it just no longer forks this rule.
+  maxSpeedNoShoulder: 35,
   // You cannot share a lane with traffic on a wide road, so AT this many lanes
   // and above a road must offer a shoulder or a bike lane or it fails. Seattle
   // signed its arterials at 25 mph in 2020, so without this the slow-road rule
@@ -113,8 +117,7 @@ const MAX_LANES_NO_LIMIT = 6;
 const RULE_NUMBER_LIMITS = {
   minShoulder: [0, 10],
   maxLanesNoShoulder: [2, MAX_LANES_NO_LIMIT],
-  urbanMaxSpeedNoShoulder: [15, 45],
-  ruralMaxSpeedNoShoulder: [15, 45],
+  maxSpeedNoShoulder: [15, 45],
   upperMaxSpeed: [25, 65],
 };
 
@@ -169,15 +172,17 @@ function validRuleOverrides(source) {
       clean[key] = Math.min(max, Math.max(min, value));
     }
   }
-  // Preserve existing custom settings and shared links made before the
-  // urban/rural split.  New installs use the Randonneur 30/35 defaults.
-  const legacyNoShoulderMax = Number(source.freeMaxSpeed);
-  if (Number.isFinite(legacyNoShoulderMax)) {
-    for (const key of ['urbanMaxSpeedNoShoulder', 'ruralMaxSpeedNoShoulder']) {
-      if (clean[key] == null) {
-        const [min, max] = RULE_NUMBER_LIMITS[key];
-        clean[key] = Math.min(max, Math.max(min, legacyNoShoulderMax));
-      }
+  // Saved settings and shared links predating the collapse to one speed. Rural
+  // wins over urban because the single default IS the old rural value, so a
+  // rider who never touched either lands exactly where the new default is.
+  // `freeMaxSpeed` predates even the urban/rural split.
+  if (clean.maxSpeedNoShoulder == null) {
+    const legacy = Number(source.ruralMaxSpeedNoShoulder)
+      || Number(source.urbanMaxSpeedNoShoulder)
+      || Number(source.freeMaxSpeed);
+    if (Number.isFinite(legacy) && legacy > 0) {
+      const [min, max] = RULE_NUMBER_LIMITS.maxSpeedNoShoulder;
+      clean.maxSpeedNoShoulder = Math.min(max, Math.max(min, legacy));
     }
   }
   return clean;
@@ -535,8 +540,10 @@ function roadLevelExpr() {
     ['>=', ['coalesce', ['get', 'lts'], 0], SafetyModel.STRESS_CAUTION_AT]];
   const passLevel = ['case', softCaution, 3, 1];
   const ordinaryPassLevel = ['case', softCaution, 3, 2];
-  const noShoulderMax = ['case', ['==', ['get', 'u'], 1],
-    rules.urbanMaxSpeedNoShoulder, rules.ruralMaxSpeedNoShoulder];
+  // One speed now, so no branch on the urban flag. Mirrors
+  // SafetyModel.noShoulderMaxSpeed, which this expression is cross-checked
+  // against by scripts/test_safety_model.mjs.
+  const noShoulderMax = rules.maxSpeedNoShoulder;
   const cases = [];
   const hasSpeed = ['has', 's'];
   cases.push(['==', ['get', 'b'], 1], 4);                       // bikes prohibited
@@ -661,8 +668,7 @@ const ROUTING_PRESETS = Object.freeze([
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
-      urbanMaxSpeedNoShoulder: 25,
-      ruralMaxSpeedNoShoulder: 25,
+      maxSpeedNoShoulder: 25,
       upperMaxSpeed: 45,
       noUpperLimit: false,
       requireSafe: false,
@@ -677,8 +683,7 @@ const ROUTING_PRESETS = Object.freeze([
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
-      urbanMaxSpeedNoShoulder: 25,
-      ruralMaxSpeedNoShoulder: 25,
+      maxSpeedNoShoulder: 25,
       upperMaxSpeed: 35,
       noUpperLimit: false,
       requireSafe: true,
@@ -7921,7 +7926,7 @@ function presetInfoRows(preset) {
   return [
     ['Never allow speed', presetRules.noUpperLimit
       ? 'No cutoff.' : `Ordinary roads over ${presetRules.upperMaxSpeed} mph fail; dedicated bike infrastructure is exempt.`],
-    ['Speed without shoulder or bike lane', `Urban: up to ${presetRules.urbanMaxSpeedNoShoulder} mph; rural: up to ${presetRules.ruralMaxSpeedNoShoulder} mph.`],
+    ['Speed without shoulder or bike lane', `Up to ${presetRules.maxSpeedNoShoulder} mph.`],
     ['Minimum shoulder', `${presetRules.minShoulder} ft on faster roads, unless the road has a bike lane.`],
     ['Lanes needing a shoulder or bike lane', presetRules.maxLanesNoShoulder >= MAX_LANES_NO_LIMIT
       ? 'No limit.'
@@ -8149,8 +8154,7 @@ function buildRulesPanel() {
       scheduleRescore();
     });
   };
-  slider('urbanMaxSpeedNoShoulder', '<strong class="area-rule area-rule-urban">Urban</strong> max speed without shoulder or bike lane', 15, 45, 5, ' mph');
-  slider('ruralMaxSpeedNoShoulder', '<strong class="area-rule area-rule-rural">Rural</strong> max speed without shoulder or bike lane', 15, 45, 5, ' mph');
+  slider('maxSpeedNoShoulder', 'Max speed without shoulder or bike lane', 15, 45, 5, ' mph');
   slider('minShoulder', 'Minimum shoulder if no bike lane', 0, 10, 1, ' ft');
   lanesSlider();
 

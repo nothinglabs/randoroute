@@ -44,10 +44,12 @@ assert.match(css, /#settings-limits\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settin
   'the compact Limits pane should fit its controls without a nested scrollbar');
 assert.match(css, /#settings-options\s*\{[^}]*overflow-y:\s*hidden[\s\S]*?#settings-options #settingsOptions\s*\{[^}]*align-content:\s*start[^}]*gap:\s*3px 4px[\s\S]*?#settings-options #settingsOptions \.rule-card\s*\{[^}]*min-height:\s*0[^}]*padding:\s*3px 6px/,
   'the compact Options pane should fit its controls without a nested scrollbar');
-assert.match(app, /slider\('urbanMaxSpeedNoShoulder', '<strong class="area-rule area-rule-urban">Urban<\/strong> max speed without shoulder or bike lane'[\s\S]*?slider\('ruralMaxSpeedNoShoulder', '<strong class="area-rule area-rule-rural">Rural<\/strong> max speed without shoulder or bike lane'[\s\S]*?slider\('minShoulder', 'Minimum shoulder if no bike lane'[\s\S]*?label for="r-upperMaxSpeed">Never allow roads faster than/,
-  'Limits should distinguish urban/rural rules and place the minimum shoulder above the speed cutoff');
-assert.match(css, /#settings-limits \.area-rule\s*\{[^}]*border:\s*1px solid currentColor[^}]*border-radius:\s*999px[^}]*text-transform:\s*uppercase[\s\S]*?#settings-limits \.area-rule-urban\s*\{[^}]*background:\s*#e3f1fc[\s\S]*?#settings-limits \.area-rule-rural\s*\{[^}]*background:\s*#e8f4e5/,
-  'urban and rural limit labels should use distinct, high-contrast badges');
+assert.match(app, /slider\('maxSpeedNoShoulder', 'Max speed without shoulder or bike lane'[\s\S]*?slider\('minShoulder', 'Minimum shoulder if no bike lane'[\s\S]*?label for="r-upperMaxSpeed">Never allow roads faster than/,
+  'Limits should order the no-shoulder speed above the minimum shoulder and the speed cutoff');
+// The urban and rural badges went with the settings they labelled. There is one
+// speed limit now, so there is nothing left to tell apart.
+assert.doesNotMatch(css, /area-rule/,
+  'the urban/rural limit badges should be gone along with the split setting');
 assert.match(app, /roadInfoHoverMedia\s*=\s*window\.matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)[\s\S]*?if \(!roadInfoHoverMedia\.matches\) return/,
   'touch-generated mouse movement must not open the fixed hover preview');
 assert.match(app, /canvas\.addEventListener\('touchend'[\s\S]*?inspectRoadAt\(point, lngLat\)[\s\S]*?lastRoadInfoTouchAt = Date\.now\(\)/,

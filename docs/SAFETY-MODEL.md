@@ -189,7 +189,7 @@ different rules.
 | 4 | `infra` | dedicated bike infrastructure | its own `infraScore` | — |
 | 5 | `speed-cap` | speed over the absolute ceiling | 4 | `upperMaxSpeed`, `noUpperLimit` |
 | 6 | `wide-road` | at or over the lane threshold, no shoulder and no bike lane | 4 | `maxLanesNoShoulder` |
-| 7 | `slow-road` | slow enough to share the lane | 1 | `urbanMaxSpeedNoShoulder`, `ruralMaxSpeedNoShoulder` |
+| 7 | `slow-road` | slow enough to share the lane | 1 | `maxSpeedNoShoulder` |
 | 8 | `sidewalk-fallback` | would fail the shoulder rung, but has a mapped sidewalk | 3 | `allowSidewalkFallback` |
 | 9 | `shoulder` | shoulder under the minimum, no bike lane | 4 | `minShoulder`, `unknownShoulderZero` |
 | 10 | `unknown` | no usable data on any criterion | 0 | — |
@@ -559,14 +559,33 @@ then approved for federal-aid purposes — and is generally larger than ours. Ou
 own Census 2020 point-in-polygon test remains the sole driver of the urban speed
 rule. WSDOT's call is carried only so a disagreement can be seen.
 
+### One speed limit, not two
+
+The slow-road rung used to read two settings, 30 mph in a Census urban area and
+35 outside one. They are now a single `maxSpeedNoShoulder`, defaulting to 35.
+
+The split asked a rider to hold an opinion about a distinction the road does not
+make. A 35 mph lane with no shoulder is the same lane whether or not a polygon
+contains it, and the direction of the old default was itself arguable: it was
+*stricter* in town, where speeds are better enforced and there is somewhere to
+turn off, than in the country, where a rider is more exposed.
+
+The urban flag is still carried in the graph, still shown on the card as
+context, and still available to any future rule. It simply no longer forks this
+one.
+
+Saved settings from before the collapse are migrated by taking the **rural**
+value, since the single default is the old rural value — so a rider who never
+touched either lands exactly on the new default. `freeMaxSpeed`, which predates
+even the urban/rural split, is still honoured behind both.
+
 ## Every rider setting, and what it objectively does
 
 | setting | UI label | verdict effect | routing effect |
 |---|---|---|---|
 | `minShoulder` | Minimum shoulder if no bike lane | rung 9 threshold | via the verdict |
 | `unknownShoulderZero` | Unknown shoulder = 0 ft | untagged counts as 0 at rung 9 | via the verdict |
-| `urbanMaxSpeedNoShoulder` | Urban max speed without shoulder or bike lane | rung 7 threshold | via the verdict |
-| `ruralMaxSpeedNoShoulder` | Rural max speed without shoulder or bike lane | rung 7 threshold | via the verdict |
+| `maxSpeedNoShoulder` | Max speed without shoulder or bike lane | at or below it, a road passes with no shoulder | feeds the slow-road rung |
 | `maxLanesNoShoulder` | Lanes needing a shoulder or bike lane | rung 6 threshold | also `wideRoad*` cost |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 8 exists at all | ×1.9 / ×3.8 / ×8.0 |

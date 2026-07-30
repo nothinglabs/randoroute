@@ -90,13 +90,15 @@ const RULE_SETS = [];
 for (const maxLanes of [2, 4, 6]) {
   for (const unknownZero of [true, false]) {
     for (const sidewalk of [true, false]) {
-      for (const vetted of [true, false]) {
-        for (const cap of [{ noUpperLimit: true, upperMaxSpeed: 45 },
-          { noUpperLimit: false, upperMaxSpeed: 35 }]) {
+      // No `vetted` dimension: designation trust is gone, and sweeping a rule
+      // key nothing reads just doubled the combination count for nothing.
+      for (const cap of [{ noUpperLimit: true, upperMaxSpeed: 45 },
+        { noUpperLimit: false, upperMaxSpeed: 35 }]) {
+        for (const noShoulderMax of [25, 35]) {
           RULE_SETS.push({
             minShoulder: 4, maxLanesNoShoulder: maxLanes, unknownShoulderZero: unknownZero,
-            allowSidewalkFallback: sidewalk, vettedBikeRoutes: vetted,
-            urbanMaxSpeedNoShoulder: 30, ruralMaxSpeedNoShoulder: 35, ...cap,
+            allowSidewalkFallback: sidewalk,
+            maxSpeedNoShoulder: noShoulderMax, ...cap,
           });
         }
       }

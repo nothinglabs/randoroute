@@ -55,9 +55,13 @@ assert.equal(messages.at(-1)?.type, 'ready', 'the production graph should load')
 
 const out = vm.runInContext(`(() => {
   const rules = {
-    allowFreeways: true, allowMtbTrails: false, vettedBikeRoutes: true,
-    minShoulder: 4, unknownShoulderZero: true, urbanMaxSpeedNoShoulder: 30,
-    ruralMaxSpeedNoShoulder: 35, upperMaxSpeed: 45, noUpperLimit: true,
+    allowFreeways: true, allowMtbTrails: false,
+    // 30, not the 35 default: the subject here is whether a SHARROW counts as
+    // riding space, and that question only arises once a road is fast enough to
+    // reach the shoulder rung. At the default limit this 35 mph edge passes as
+    // a slow road and never gets there.
+    minShoulder: 4, unknownShoulderZero: true, maxSpeedNoShoulder: 30,
+    upperMaxSpeed: 45, noUpperLimit: true,
     requireSafe: false, allowSidewalkFallback: true, maxLanesNoShoulder: 4,
   };
   // 8th Avenue South at S 312th St, Federal Way: sharrow, shoulder untagged,
@@ -77,8 +81,7 @@ const out = vm.runInContext(`(() => {
     let sh = eSh[i];
     if (sh < 0) sh = 0;
     const gated = sh < rules.minShoulder && !(eFlags[i] & (4 | 8 | 32))
-      && eSpeed[i] > (eOfficial[i] & 64 ? rules.urbanMaxSpeedNoShoulder : rules.ruralMaxSpeedNoShoulder)
-      && !((eFlags[i] & 64) && rules.vettedBikeRoutes);
+      && eSpeed[i] > rules.maxSpeedNoShoulder;
     // Anything the shoulder rule should catch must now be a fail, or a caution
     // that only the sidewalk fallback earned it.
     if (gated && edgeLevel(i, rules, true) < 3) sharrowsStillPassing++;

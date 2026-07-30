@@ -76,8 +76,10 @@ assert.match(html, /id="settingsHelpDialog"[\s\S]*?<h3>Presets<\/h3>[\s\S]*?<h3>
   'settings help should introduce presets before individual routing limits');
 assert.match(html, /<h3>Presets<\/h3>[\s\S]*?The Randonneur[\s\S]*?looser rules and fewer roads flagged as failing[\s\S]*?Weekend Wanderer[\s\S]*?Casual Cruiser/,
   'settings help should describe the available routing presets individually');
-assert.match(html, /<h3>Limits<\/h3><ul class="help-list">[\s\S]*?Urban max speed without shoulder or bike lane[\s\S]*?Rural max speed without shoulder or bike lane[\s\S]*?Minimum shoulder if no bike lane[\s\S]*?Lanes needing a shoulder or bike lane[\s\S]*?Never allow roads faster than[\s\S]*?no cutoff[\s\S]*?<\/ul>/,
+assert.match(html, /<h3>Limits<\/h3><ul class="help-list">[\s\S]*?Max speed without shoulder or bike lane[\s\S]*?Minimum shoulder if no bike lane[\s\S]*?Lanes needing a shoulder or bike lane[\s\S]*?Never allow roads faster than[\s\S]*?no cutoff[\s\S]*?<\/ul>/,
   'settings help should describe each routing limit as a separate, scannable item');
+assert.doesNotMatch(html, /Urban max speed without shoulder|Rural max speed without shoulder/,
+  'the split urban/rural speed limits are gone and must not be described');
 assert.match(html, /Minimum shoulder if no bike lane/,
   'settings help should use the same shoulder-limit label as the product');
 assert.match(html, /Unknown shoulder = 0 ft[\s\S]*?if shoulder data is missing, treat it as 0 ft for rules purposes/,

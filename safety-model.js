@@ -61,11 +61,22 @@
 
   // `freeMaxSpeed` is the pre-split single limit, still present in shared links
   // and in settings saved before the urban/rural split.
+  // One speed, urban or rural. This was two settings, 30 in town and 35 out of
+  // it, and the split asked a rider to hold an opinion about a distinction the
+  // road does not make: a 35 mph lane with no shoulder is the same lane whether
+  // or not a Census polygon contains it. The urban flag is still carried and
+  // still shown on the card as context; it simply no longer forks this rule.
+  //
+  // `urbanMaxSpeedNoShoulder` and `ruralMaxSpeedNoShoulder` are read here only
+  // so a rider arriving with either in saved state keeps a sensible limit
+  // instead of silently dropping to the legacy fallback. Rural wins, because
+  // the single default is the old rural value.
   function noShoulderMaxSpeed(facts, rules) {
-    var legacy = Number(rules.freeMaxSpeed) || 35;
-    return facts.urban
-      ? (Number(rules.urbanMaxSpeedNoShoulder) || legacy)
-      : (Number(rules.ruralMaxSpeedNoShoulder) || legacy);
+    return Number(rules.maxSpeedNoShoulder)
+      || Number(rules.ruralMaxSpeedNoShoulder)
+      || Number(rules.urbanMaxSpeedNoShoulder)
+      || Number(rules.freeMaxSpeed)
+      || 35;
   }
 
   // The rider's pessimistic option: an untagged shoulder counts as 0 ft, so a
