@@ -318,6 +318,7 @@
       <li><b>Allow sidewalk fallback</b> — lets an explicitly mapped sidewalk satisfy the shoulder rule. It remains strongly avoided and is called out in Route Details; it never overrides a bicycle restriction or speed cap.</li>
       <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
       <li><b>Unknown shoulder = 0 ft</b> — if shoulder data is missing, treat it as 0 ft for rules purposes.</li>
+      <li><b>Infer shoulder from edge space when none is recorded</b> — the county road log records how much pavement is left over once the lanes are taken out, per side. That is somewhere to pull over, not necessarily somewhere to ride, so 1 ft is subtracted and the rest counts as shoulder. Only fills a gap: a recorded shoulder always wins, and a zero is ignored because it can mean a paperwork error rather than a measured absence. Cards say when a figure was inferred. Off by default — it loosens your shoulder rule.</li>
       </ul><p>Search always includes local offline results; the ⌕ button also tries an online lookup.</p></section>
     <section><h3>Voice navigation</h3><ul class="help-list">
       <li><b>Off-route</b> — gives direction and distance back to your route. Open the off-route notice to manually route back or create a new route.</li>

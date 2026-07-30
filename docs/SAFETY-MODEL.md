@@ -785,6 +785,40 @@ also now preferred the trail. Measured facility share across four corridors
 rose 0–8 points; failing distance on the quickest options rose slightly, since
 a little more failing road is now worth paying to reach a trail.
 
+### Inferring a shoulder from edge space
+
+`inferShoulderFromEdge` (off by default). Where OSM recorded no shoulder but the
+CRAB road log logged edge space, the space **less 1 ft** counts as shoulder.
+
+Edge space is what is left of the operational width once the lanes are removed,
+and `build_roadlog.py` halves it at derivation, so it is already **per side**
+and compares directly against `minShoulder`. It is explicitly *not* a ridable
+shoulder — it may be gravel, rumble strip or ditch lip — which is what the 1 ft
+margin is for, and why this is a rider-facing toggle rather than a silent
+improvement.
+
+Three constraints, all pinned by `test_edge_space_shoulder.mjs`:
+
+- **It only fills a gap.** A recorded shoulder always wins, including a
+  recorded 0 ft, which is evidence of absence.
+- **A zero infers nothing.** `edge_space()` clamps a negative result to 0, and a
+  negative result means the recorded lane widths exceed the recorded operational
+  width — a paperwork error. Inferring a hard 0 ft from that would turn bad data
+  into a failing road.
+- **It is consulted before `unknownShoulderZero`.** Those riders are exactly the
+  ones for whom an untagged rural road already reads 0 ft, so an inference
+  placed after the zero could never fire.
+
+An inference is *information*, so it can cut both ways: with
+`unknownShoulderZero` **off**, a road that was "unknown, not held against it"
+can become "known narrow" and fail. That is the honest answer rather than a bug,
+but it is the surprising direction and is asserted explicitly.
+
+Measured on the shipped graph at Randonneur defaults: 20,891 mi carry edge space
+with no recorded shoulder; turning the toggle on moves **9,545 edges / 1,696 mi**,
+all of them 4→2 (9,401) or 3→2 (144), and **nothing gets worse** — because the
+default is pessimistic, so there is no "unknown" left to lose.
+
 **A physical facility always speaks for itself.** If an edge has one, its
 `facility*` weight applies and designation is not consulted. These used to
 compete through `Math.min`, which was written when `strongDesignated` was 0.86 —

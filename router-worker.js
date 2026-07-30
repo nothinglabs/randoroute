@@ -392,6 +392,10 @@ function edgeFacts(i, forward) {
     limitedAccess: edgeLimited(i, forward),
     speed: edgeSpeed(i, forward),
     shoulder: shoulder >= 0 ? shoulder : null,
+    // Bail-out space per side from the CRAB road log; only consulted when
+    // `inferShoulderFromEdge` is on and OSM recorded no shoulder.
+    edgeSpace: eEdgeSpace && eEdgeSpace[i] !== MEASURE_UNKNOWN
+      ? (eEdgeSpace[i] & ~EDGE_SPACE_CLAMPED) : null,
     lanes: eLanes ? eLanes[i] & LANES_COUNT_MASK : 0,
     sidewalk: official & EDGE_SIDEWALK ? 'present'
       : official & EDGE_SIDEWALK_NO ? 'absent' : null,

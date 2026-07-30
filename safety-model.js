@@ -103,11 +103,47 @@
       || 35;
   }
 
+  // Edge space is what the CRAB road log leaves over once the lanes are taken
+  // out of the operational width: somewhere to go when a truck comes past. It
+  // is explicitly NOT a ridable shoulder -- paved or not, it may be gravel,
+  // rumble strip or ditch lip. Subtracting a foot converts "space exists" into
+  // "space you would actually ride on", and is the whole reason this is a
+  // rider-facing toggle rather than something applied silently.
+  //
+  // Already per side: build_roadlog.py halves the leftover once, at derivation,
+  // so it compares directly against minShoulder without further division.
+  var EDGE_SPACE_MARGIN_FT = 1;
+  function inferredShoulder(facts, rules) {
+    if (!rules.inferShoulderFromEdge) return null;
+    if (facts.edgeSpace == null) return null;
+    // Zero is not "no shoulder", it is "no usable answer". edge_space() in
+    // build_roadlog.py clamps a negative result to 0, and a negative result
+    // means the recorded lane widths exceed the recorded operational width --
+    // a data error. Inferring a hard 0 ft from that would turn bad paperwork
+    // into a failing road, so an unpositive figure falls through as unknown.
+    if (!(facts.edgeSpace > 0)) return null;
+    return Math.max(0, facts.edgeSpace - EDGE_SPACE_MARGIN_FT);
+  }
+
   // The rider's pessimistic option: an untagged shoulder counts as 0 ft, so a
   // fast road must PROVE it has one. Slow roads never reach the shoulder rung.
+  //
+  // Order is load-bearing. A real tag always wins; the inference only fills a
+  // gap; and it must be consulted BEFORE unknownShoulderZero, or it could never
+  // fire for the pessimistic riders it exists to help -- they are the ones for
+  // whom an untagged rural road is currently 0 ft.
   function effectiveShoulder(facts, rules) {
-    if (facts.shoulder == null && rules.unknownShoulderZero) return 0;
-    return facts.shoulder;
+    if (facts.shoulder != null) return facts.shoulder;
+    var inferred = inferredShoulder(facts, rules);
+    if (inferred != null) return inferred;
+    if (rules.unknownShoulderZero) return 0;
+    return null;
+  }
+  // Did this verdict rest on an inferred figure rather than a recorded one? The
+  // card has to be able to say so: a rider who sees "5 ft shoulder" needs to
+  // know whether that was surveyed or derived.
+  function shoulderWasInferred(facts, rules) {
+    return facts.shoulder == null && inferredShoulder(facts, rules) != null;
   }
 
   function hasRidingSpace(facts, shoulder, rules) {
@@ -282,5 +318,7 @@
     sidewalkFallbackApplies: sidewalkFallbackApplies,
     noShoulderMaxSpeed: noShoulderMaxSpeed,
     effectiveShoulder: effectiveShoulder,
+    shoulderWasInferred: shoulderWasInferred,
+    EDGE_SPACE_MARGIN_FT: EDGE_SPACE_MARGIN_FT,
   };
 }(typeof self !== 'undefined' ? self : this));

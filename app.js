@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.451';
+const APP_VERSION = '2026-07-30.452';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -93,6 +93,10 @@ const DEFAULT_RULES = Object.freeze({
   preferPaved: true,    // strongly prefer pavement by default; unpaved remains available
   minShoulder: 4,       // ft; below this a road gets penalized
   unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
+  // Off by default. It LOOSENS the shoulder rule -- a road that recorded no
+  // shoulder can now clear it on derived evidence -- so it is the rider's call,
+  // not a silent improvement.
+  inferShoulderFromEdge: false,
   // mph; at/below this a road passes without a shoulder. One number, town or
   // country: a 35 mph lane with no shoulder is the same lane whether or not a
   // Census polygon contains it, and the old 30/35 split asked a rider to hold an
@@ -446,6 +450,9 @@ function factsOf(n) {
     limitedAccess: !!n.limited_access,
     speed: n.maxspeed_num == null ? null : n.maxspeed_num,
     shoulder: n.shoulder_width == null ? null : n.shoulder_width,
+    // Same field the map's `es` property carries, so the card and the paint
+    // expression infer from one number.
+    edgeSpace: n.measures && n.measures.edge != null ? n.measures.edge : null,
     lanes: Number(n.lanes) || 0,
     sidewalk: n.sidewalk || null,
     urban: !!n.urban,
@@ -608,9 +615,23 @@ function roadLevelExpr() {
 
   // Pessimistic mode treats a missing shoulder as 0 ft; otherwise only a
   // known-narrow shoulder fails.
-  const sh = rules.unknownShoulderZero
-    ? ['coalesce', ['get', 'w'], 0]
-    : ['case', ['has', 'w'], ['get', 'w'], rules.minShoulder]; // unknown -> never under
+  //
+  // This must mirror effectiveShoulder() in safety-model.js rung for rung,
+  // including the order: recorded tag, then the edge-space inference, then the
+  // pessimistic zero. Nothing computed in JS can reach a paint expression, so
+  // the inference is rebuilt here declaratively against the tile's `es`
+  // property -- the same per-side number the model reads as facts.edgeSpace.
+  const unknownSh = rules.unknownShoulderZero ? 0 : rules.minShoulder;
+  const inferredSh = ['max', 0, ['-', ['get', 'es'], SafetyModel.EDGE_SPACE_MARGIN_FT]];
+  // `es > 0` mirrors inferredShoulder(): a zero can be a clamped data error
+  // rather than a measured absence, so it is not evidence of anything.
+  const hasEdgeSpace = ['all', ['has', 'es'], ['>', ['coalesce', ['get', 'es'], 0], 0]];
+  const sh = rules.inferShoulderFromEdge
+    ? ['case',
+      ['has', 'w'], ['get', 'w'],
+      hasEdgeSpace, inferredSh,
+      unknownSh]
+    : ['case', ['has', 'w'], ['get', 'w'], unknownSh];
   const noSpace = ['all',
     ['<', ['coalesce', ['get', 'ft'], 0], 2], ['<', sh, rules.minShoulder]];
   if (rules.allowSidewalkFallback) {
@@ -625,7 +646,12 @@ function roadLevelExpr() {
   // Nothing known about any criterion. Only reachable with "Unknown shoulder =
   // 0 ft" off, exactly as in the shared model.
   if (!rules.unknownShoulderZero) {
-    cases.push(['all', ['!', hasSpeed], ['!', ['has', 'w']],
+    // An inferred shoulder is knowledge, so an edge that has one is no longer
+    // "nothing known" and must not fall into the unknown bucket.
+    const noShoulderKnowledge = rules.inferShoulderFromEdge
+      ? ['all', ['!', ['has', 'w']], ['!', hasEdgeSpace]]
+      : ['!', ['has', 'w']];
+    cases.push(['all', ['!', hasSpeed], noShoulderKnowledge,
       ['<', ['coalesce', ['get', 'ft'], 0], 2]], 0);
   }
   return ['case', ...cases, ordinaryPassLevel];                  // meets criteria
@@ -7164,6 +7190,14 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
   const spd = n.maxspeed_num;
   const shUnknown = n.shoulder_width == null;
   const sh = verdict.shoulder;
+  // A rider who reads "5 ft shoulder" has to know whether that was surveyed or
+  // derived from the county's operational width. Never present an inference as
+  // a measurement.
+  const shFacts = factsOf(n);
+  const shInferred = SafetyModel.shoulderWasInferred(shFacts, rules);
+  const shSource = shInferred
+    ? ` (inferred from ${shFacts.edgeSpace} ft of county edge space, less ${SafetyModel.EDGE_SPACE_MARGIN_FT} ft)`
+    : '';
   const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : 'This road';
   const area = n.urban ? 'urban' : 'rural';
   // Whatever downgraded this road from a pass to a caution, named.
@@ -7173,9 +7207,11 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
         ? ` (${STRESS_AGENCY} rates it ${n.stressRating} of 4), so ride it with caution.`
         : ', so ride it with caution.')
     : '.';
-  const shoulderTxt = shUnknown
-    ? `shoulder unknown — treated as 0 ft, under your ${rules.minShoulder} ft minimum`
-    : `${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`;
+  const shoulderTxt = shInferred
+    ? `${sh} ft shoulder${shSource} is under your ${rules.minShoulder} ft minimum`
+    : shUnknown
+      ? `shoulder unknown — treated as 0 ft, under your ${rules.minShoulder} ft minimum`
+      : `${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`;
 
   // Access facts sit outside the ladder: they describe how you may use the
   // road, not how it scores.
@@ -7232,6 +7268,7 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
   const met = [];
   if ((n.facility || 0) >= 2 || n.good_facility) met.push('has a bike lane or better');
   else if (!shUnknown) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
+  else if (shInferred) met.push(`${sh} ft shoulder${shSource} ≥ your ${rules.minShoulder} ft`);
   else if (rules.unknownShoulderZero) met.push(`shoulder unknown — treated as 0 ft, meets your ${rules.minShoulder} ft minimum`);
   else met.push('shoulder unknown (not held against it)');
   if (spd != null)
@@ -8129,6 +8166,9 @@ function presetInfoRows(preset) {
       ? 'Required, except short access blocks (~1,000 ft) at your start, waypoints, and destination; no route is shown otherwise.'
       : 'Not required; a route may include rule-failing segments to complete it.'],
     ['Unknown shoulder', presetRules.unknownShoulderZero ? 'Treated as 0 ft.' : 'Left as unknown.'],
+    ['Infer shoulder from edge space', presetRules.inferShoulderFromEdge
+      ? `Where no shoulder is recorded but the county logged edge space, ${SafetyModel.EDGE_SPACE_MARGIN_FT} ft is subtracted and the rest counts as shoulder.`
+      : 'Off. Only a recorded shoulder counts.'],
     ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],
     ['Surface', presetRules.preferPaved === true
       ? 'Strongly prefers paved roads and trails; unpaved routes remain available.'
@@ -8315,6 +8355,7 @@ function buildRulesPanel() {
   check('allowSidewalkFallback', 'Allow sidewalk fallback');
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
+  check('inferShoulderFromEdge', 'Infer shoulder from edge space when none is recorded');
   // Lanes slider: its TOP position means "no limit" rather than a count, the
   // same idiom the upper-speed cutoff uses. The setting reads "more lanes
   // than", so the number shown is the widest road that still passes.
