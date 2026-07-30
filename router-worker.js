@@ -1892,11 +1892,18 @@ let lastCandidates = null;
 let lastCandidatesKey = null;
 
 function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false,
-    progress = null) {
+    progress = null, requestSignature = null) {
   const started = Date.now();
-  // Identifies this exact request. Rules are included because the same pins
-  // under different limits are a different portfolio.
-  const routeKey = JSON.stringify([points, rules, !!forceDesig, !!forceResidential]);
+  // Identifies this exact request, so a tap on the "More" screen that arrives
+  // after the rider changed something is refused rather than answered from a
+  // portfolio built under different inputs.
+  //
+  // The caller supplies the signature because weights and road blocks are not
+  // arguments here -- they are applied around the call -- and both change which
+  // routes come back. Leaving them out made the key claim two different
+  // portfolios were the same.
+  const routeKey = requestSignature
+    || JSON.stringify([points, rules, !!forceDesig, !!forceResidential]);
   const profiles = candidateProfiles(forceDesig, forceResidential);
   // Snapping scans the statewide node table. Do it once per route point, not
   // once again for every optimization profile.
@@ -2228,8 +2235,12 @@ onmessage = (ev) => {
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const progress = (detail) => postMessage({ type: 'progress', phase: 'route', id: m.id, detail });
       progress('Testing faster, safer, and bike-friendly route profiles…');
+      // Everything that can change the portfolio goes into the signature.
+      const signature = JSON.stringify([pts, m.rules, !!m.forceDesignated,
+        !!m.forceResidential, m.weights || null, m.blocks || null]);
       const result = withRoadBlocks(m.blocks, m.rules, () => routeOptions(pts, m.rules,
-        !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress));
+        !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress,
+        signature));
       postMessage({ type: 'route-options', id: m.id, ...result });
     } else if (m.type === 'route-candidate') {
       // Full geometry for one candidate the "More" screen listed. Served from

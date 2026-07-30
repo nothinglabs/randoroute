@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.458';
+const APP_VERSION = '2026-07-30.459';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -316,13 +316,52 @@ function osmCycleway(p) {
 }
 // True when the way is in the bike-infrastructure layer only because someone
 // painted sharrows on it: no separate path, no bike lane, no bike designation.
+// Paint in a traffic lane on an ordinary road, with no facility of its own.
+//
+// `bicycle=designated` used to exempt a way from this, on the reasoning that a
+// signed route is more than a sharrow. Two things make that wrong. Designation
+// trust was removed from the model entirely -- a route number is an agency's
+// recommendation, not a measurement of the road -- and scoreOSM never had a
+// branch that scored one, so a designated sharrow fell through to
+// `baseScore: null` while still claiming `infra: true`. The model's infra rung
+// then returned level 0, and tapping 1st Avenue in downtown Seattle -- a
+// secondary arterial whose speed, lanes and traffic count we hold -- answered
+// "Insufficient data".
+// Highway types that ARE a facility in their own right, whatever paint they
+// happen to carry.
+const DEDICATED_INFRA_HW = new Set(['cycleway', 'path', 'footway', 'bridleway',
+  'track', 'service']);
+
 function sharrowOnly(p) {
   if (!p) return false;
   if (osmCycleway(p) !== 'shared_lane') return false;
   const hw = p.highway;
-  if (hw === 'cycleway' || hw === 'path' || hw === 'footway'
-      || hw === 'bridleway' || hw === 'track' || hw === 'service') return false;
-  return p.bicycle !== 'designated';
+  return !(hw === 'cycleway' || hw === 'path' || hw === 'footway'
+    || hw === 'bridleway' || hw === 'track' || hw === 'service');
+}
+
+// The declarative twin of sharrowOnly(), for layer filters. MapLibre evaluates
+// filters in the renderer and cannot call the predicate above, so the two have
+// to be kept in step by hand; test_sharrow_not_infrastructure pins them.
+// A sharrow-only way must never be a tap target on the bike-infrastructure
+// layer. It is paint in a traffic lane, not a facility, and letting it win the
+// hit test short-circuits the whole ladder: scoreOSM gives it baseScore null,
+// the model's `infra` rung returns level 0, and a rider tapping a sharrowed
+// downtown street gets "Insufficient data" for a road we know the speed, lane
+// count and traffic volume of. Excluding it here lets the tap fall through to
+// the roads layer underneath, which answers properly.
+function osmHitFilter(src) {
+  if (src.id !== 'osm') return null;
+  return ['!', sharrowOnlyExpr()];
+}
+
+function sharrowOnlyExpr() {
+  const cw = ['coalesce', ['get', 'cycleway'], ['get', 'cycleway:both'],
+    ['get', 'cycleway:left'], ['get', 'cycleway:right'], ''];
+  return ['all',
+    ['==', cw, 'shared_lane'],
+    ['!', ['in', ['coalesce', ['get', 'highway'], ''],
+      ['literal', ['cycleway', 'path', 'footway', 'bridleway', 'track', 'service']]]]];
 }
 
 function scoreOSM(p) {
@@ -334,9 +373,22 @@ function scoreOSM(p) {
   let base = null;
   let prohibited = false;
   const dismount = bike === 'dismount';
-  if (hw === 'cycleway' && bike !== 'no') base = 1;
+  // The prohibition is checked FIRST. It used to sit at the end, after the
+  // cycleway branches, so a way tagged `bicycle=no` that also carried a
+  // `cycleway=shared_lane` marking hit the sharrow branch, took `base = null`
+  // and reported "Insufficient data" instead of "bikes prohibited" -- the
+  // strongest verdict we have, silently downgraded to the weakest.
+  if (bike === 'no' && bikeish) {
+    base = 4; prohibited = true;
+  }
+  else if (hw === 'cycleway' && bike !== 'no') base = 1;
   else if (hw === 'path' && (bike === 'designated' || bike === 'yes')) base = 1;
-  else if (hw === 'footway' && bike === 'designated') base = 2;
+  // `yes` as well as `designated`, matching path/bridleway/track just above and
+  // matching classify_way() in build_graph.py, which routes over a
+  // `bicycle=yes` footway. The app was stricter than the graph, so a footway the
+  // router will happily send you along scored baseScore null here and the card
+  // called it "Insufficient data".
+  else if (hw === 'footway' && (bike === 'designated' || bike === 'yes')) base = 2;
   else if (hw === 'bridleway' && (bike === 'designated' || bike === 'yes')) base = 2;
   else if (hw === 'track' && (bike === 'designated' || bike === 'yes')) base = 2;
   else if (hw === 'service' && bike === 'designated'
@@ -345,7 +397,13 @@ function scoreOSM(p) {
   else if (OSM_PROTECTED.has(cw)) base = 1;
   else if (cw === 'shared_lane') base = null;   // sharrow: see sharrowOnly()
   else if (OSM_LANE.has(cw)) base = 2;
-  else if (bike === 'no' && bikeish) { base = 4; prohibited = true; }
+  // Last resort for a dedicated-infrastructure way that matched no branch above
+  // -- most often a path or footway carrying a stray `cycleway=shared_lane`
+  // marking. build_osm.py exports it (its LANE set still counts shared_lane as a
+  // lane), so it reaches the layer and must be describable. A path with sharrow
+  // paint on it is still a path; scoring it null made the card say
+  // "Insufficient data" about dedicated infrastructure.
+  if (base == null && !prohibited && DEDICATED_INFRA_HW.has(hw)) base = 2;
   const width = p.width != null ? parseFloat(p.width) : NaN;
   return {
     baseScore: base,
@@ -1753,7 +1811,7 @@ function applyDisplayMode(src) {
     for (const id of [src.id, failId(src), vhId(src)]) {
       if (map.getLayer(id)) map.setFilter(id, ['boolean', false]);
     }
-    if (map.getLayer(hitId(src))) map.setFilter(hitId(src), null);
+    if (map.getLayer(hitId(src))) map.setFilter(hitId(src), osmHitFilter(src));
     updateVisibility(src);
     return;
   }
@@ -1916,7 +1974,8 @@ function applyDisplayMode(src) {
     // OSM trails use their purpose-built, wider hit layer above.  Keeping the
     // generic road target off them ensures the full-width trail target wins
     // instead of a thinner overlapping target being returned first.
-    const mainHitFilter = src.id === 'osm' ? OSM_NOT_TRAIL_EXPR : ['boolean', true];
+    const mainHitFilter = src.id === 'osm'
+      ? ['all', OSM_NOT_TRAIL_EXPR, ['!', sharrowOnlyExpr()]] : ['boolean', true];
     map.setFilter(hitId(src), src.id === 'osm' ? and(mainHitFilter) : null);
     const normalHitWidth = ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22];
     const knownRoadClass = ['any',
