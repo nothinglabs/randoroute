@@ -42,9 +42,10 @@ def read_graph(path):
     """Minimal reader for the fields this analysis needs."""
     raw = gzip.open(path, 'rb').read()
     magic = raw[:4]
-    if magic not in (b'BGRA', b'BGRB'):
+    if magic not in (b'BGRA', b'BGRB', b'BGRC'):
         raise SystemExit(f'unexpected graph magic {magic!r}')
-    has_measures = magic == b'BGRB'
+    has_measures = magic in (b'BGRB', b'BGRC')
+    has_adt_source = magic == b'BGRC'
     n, e, d, g, u, b = struct.unpack_from('<IIIIII', raw, 4)
     off = 28
 
@@ -79,6 +80,8 @@ def read_graph(path):
     adt_at = off
     off += 2 * e                          # eAdt
     off += e                              # eAdtMeta
+    if has_adt_source:
+        off += e                          # eAdtSource (format 12)
     class_owner_at = off
     off += e                              # eClassOwner
     off += e + e                          # eHazAB, eHazBA
