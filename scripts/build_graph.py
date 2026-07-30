@@ -799,9 +799,21 @@ def classify_way(tags):
     # that is explicitly designated for bikes while public motor traffic is
     # prohibited. Dropping these short links can sever an otherwise continuous
     # rail-trail and force a multi-mile street detour.
+    # `yes` as well as `designated`, matching path/footway/bridleway/track above.
+    # Service was the only category demanding `designated`, and the difference
+    # severed the Tacoma-Olympia corridor: Hoffman Hill Boulevard continues into
+    # Mounts Road SW as a 9-node emergency-access link (w12189384) tagged
+    # `access=no bicycle=yes foot=yes motor_vehicle=no` -- explicitly open to
+    # bikes, closed to cars, and dropped. Losing those 89 m left I-5 as the only
+    # link from DuPont, and with the freeway weight at 60 the router walked 45
+    # extra miles around through Spanaway and Yelm.
+    #
+    # Statewide this admits 227 ways / 87 mi, all of them bike-permitted ways
+    # that exclude motor traffic -- the same narrow combination the rule already
+    # trusted, just not spelled `designated`.
     designated_bike_service = (
         hw == 'service'
-        and bike == 'designated'
+        and bike in ('designated', 'yes')
         and (tags.get('motor_vehicle') in ('no', 'private')
              or tags.get('access') in ('no', 'private'))
     )
