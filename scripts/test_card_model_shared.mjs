@@ -47,7 +47,7 @@ vm.createContext(ctx);
 vm.runInContext(officials.join('\n').replace(/\bconst /g, 'var '), ctx);
 vm.runInContext([
   lift('factsOf'), lift('scoreRoad'), lift('scoreRouteSeg'), lift('routeSegProps'),
-  lift('tileMeasures'),
+  lift('tileMeasures'), lift('measureProps'),
   'function isDismountSegment(s) { return false; }',
   'function evaluateRoad(n) { return SafetyModel.evaluate(factsOf(n), rules); }',
   'function effectiveLevel(n) { return evaluateRoad(n).level; }',
@@ -142,6 +142,38 @@ for (const s of [seg(), seg({ mph: 25 }), seg({ facility: 2 }), seg({ sh: 6 }),
   checks++;
 }
 console.log('PASS  the baked route level equals what the card recomputes');
+
+/* ------- feature properties must survive MapLibre, so they must be scalars */
+// A nested object on a GeoJSON feature does not round-trip through MapLibre: it
+// comes back from the tap layer as a string, and every lookup on it silently
+// reads undefined. That shipped once -- the route card lost its traffic and
+// edge-space rows while the road card kept them, on the same street.
+{
+  const withMeasures = ctx.routeSegProps(seg({
+    measures: { adt: 6850, adty: 2022, adtSrc: 1, edge: 6, edgeClamp: 0, fc: 3, owner: 2 },
+  }), 0);
+  for (const [key, value] of Object.entries(withMeasures)) {
+    const kind = value === null ? 'null' : typeof value;
+    assert.ok(value === null || kind === 'number' || kind === 'string' || kind === 'boolean',
+      `route feature property "${key}" is a ${kind}; MapLibre only round-trips scalars`);
+  }
+  // And the flattened keys must be the ones the tiles use, or the two cards
+  // cannot share a reader.
+  assert.equal(withMeasures.adt, 6850, 'the count reaches the feature');
+  assert.equal(withMeasures.ay, 2022, 'under the tile key for its year');
+  assert.equal(withMeasures.asrc, 1, 'and for its source');
+  assert.equal(withMeasures.es, 6, 'edge space under the tile key');
+  assert.equal(withMeasures.fc, 3, 'functional class under the tile key');
+
+  // Read back through the shared reader, a route segment and a roads tile
+  // describing one road must produce identical measurements.
+  const viaRoute = ctx.scoreRouteSeg(withMeasures).measures;
+  const viaTile = ctx.tileMeasures({ adt: 6850, ay: 2022, asrc: 1, es: 6, fc: 3, ow: 2 });
+  assert.deepEqual(JSON.parse(JSON.stringify(viaRoute)), JSON.parse(JSON.stringify(viaTile)),
+    'the same road must measure the same whether tapped or routed over');
+  checks++;
+}
+console.log('PASS  route feature properties are scalars, and read back like a tile');
 
 /* ------------------------------------------------- no second adapter exists */
 assert.doesNotMatch(appSrc, /function routeSegFacts\b/,

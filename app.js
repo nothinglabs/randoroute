@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.443';
+const APP_VERSION = '2026-07-30.444';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2221,9 +2221,36 @@ function routeSegProps(s, routeIndex) {
     dismount: isDismountSegment(s) ? 1 : 0,
     surface: Number.isInteger(s.surface) ? s.surface : 0,
     roadClass: s.roadClass || 0,
-    measures: s.measures || null,
     routeIndex,
+    // Flattened onto the feature under the ROADS TILE's own key names, not
+    // nested under a `measures` object. Two reasons, and the first is a bug
+    // already shipped once: MapLibre serialises GeoJSON feature properties, so
+    // a nested object comes back from the tap layer as a string and every
+    // lookup on it silently reads undefined -- the route card lost its traffic
+    // and edge-space rows while the road card kept them. The second is that
+    // sharing the tile's key names lets one function, tileMeasures, serve both
+    // cards, which is the only way they stay identical.
+    ...measureProps(s.measures),
   };
+}
+
+// A worker segment's measurements as flat, tile-shaped scalars.
+function measureProps(m) {
+  if (!m) return {};
+  const out = {};
+  if (m.adt) {
+    out.adt = m.adt;
+    if (m.adty) out.ay = m.adty;
+    if (m.adtSrc) out.asrc = m.adtSrc;
+  }
+  if (m.edge != null) {
+    out.es = m.edge;
+    if (m.edgeClamp) out.ec = 1;
+  }
+  if (m.countySh != null) out.cs = m.countySh;
+  if (m.fc) out.fc = m.fc;
+  if (m.owner) out.ow = m.owner;
+  return out;
 }
 // A route segment the worker did not label (older payloads). Scores the segment
 // through the same scorer the map and the card use.
@@ -4858,7 +4885,9 @@ function scoreRouteSeg(p) {
     sidewalk: official & OFFICIAL_SIDEWALK ? 'present'
       : official & OFFICIAL_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & OFFICIAL_URBAN),
-    measures: p.measures || null,
+    // The very same reader the roads tiles use. One function, so a road and the
+    // route over it cannot describe themselves differently.
+    measures: tileMeasures(p),
   };
 }
 

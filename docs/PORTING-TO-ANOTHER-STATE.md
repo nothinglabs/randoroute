@@ -205,6 +205,12 @@ reached the safety model down two hand-written paths that disagreed on three
 inputs. If a new source is added, it goes through the same normaliser both cards
 read. `scripts/test_card_model_shared.mjs` enforces this.
 
+**And feature properties must be scalars.** MapLibre serialises them, so a
+nested object on a route feature returns from the tap layer as a string and
+reads as `undefined` everywhere. A shared reader is not enough on its own — the
+data has to survive the trip to reach it. Flatten measurements onto the feature
+under the same key names the tiles use.
+
 ---
 
 ## 8. Operating notes
