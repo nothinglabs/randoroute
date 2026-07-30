@@ -33,6 +33,7 @@ never the whole way: a way runs far past the stretch a source line follows, so
 counting all of it roughly doubles the figure and makes any over-match check
 fire on healthy data.
 """
+import gzip
 import json
 import math
 import os
@@ -97,6 +98,23 @@ def _line_bearing_near(line, point):
     return _bearing((lo.x, lo.y), (hi.x, hi.y))
 
 
+def resolve_source(path):
+    """The plain file if present, else its .gz twin, else None.
+
+    These sources take the better part of an hour to fetch and the container is
+    reclaimed after a short idle period, taking anything untracked with it. The
+    compressed copies are committed so a fresh container costs a decompress
+    rather than a re-fetch; the plain files stay ignored.
+    """
+    if not path:
+        return None
+    if os.path.exists(path):
+        return path
+    if not path.endswith('.gz') and os.path.exists(path + '.gz'):
+        return path + '.gz'
+    return None
+
+
 class MeasureIndex:
     """One source layer, indexed for span+bearing matching."""
 
@@ -108,10 +126,13 @@ class MeasureIndex:
         self.matched_m = 0.0
         self.hits = 0
         self.misses = 0
-        if not path or not os.path.exists(path):
+        path = resolve_source(path)
+        if not path:
             print(f'  {label}: not present, skipped', flush=True)
             return
-        fc = json.load(open(path))
+        opener = gzip.open if path.endswith('.gz') else open
+        with opener(path, 'rt') as fh:
+            fc = json.load(fh)
         for f in fc.get('features', []):
             g = f.get('geometry') or {}
             if g.get('type') != 'LineString':
