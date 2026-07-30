@@ -53,7 +53,7 @@
   // Every rung, in order. The first that matches wins. `rule` is what the card
   // explains and what tests assert on, so these keys are part of the contract.
   var RULES = ['prohibited', 'ferry', 'freeway', 'infra', 'speed-cap',
-    'needs-space', 'sidewalk-fallback', 'shares-lane', 'unknown', 'default'];
+    'needs-space', 'sidewalk-fallback', 'shares-lane', 'default'];
 
   // How busy a road has to be before it needs space of its own. A rider picks a
   // familiar road type, not a number: nobody has an intuition for "3,000
@@ -125,19 +125,23 @@
     return Math.max(0, facts.edgeSpace - EDGE_SPACE_MARGIN_FT);
   }
 
-  // The rider's pessimistic option: an untagged shoulder counts as 0 ft, so a
-  // fast road must PROVE it has one. Slow roads never reach the shoulder rung.
+  // An untagged shoulder counts as 0 ft, always: a fast road must PROVE it has
+  // one. This used to be the `unknownShoulderZero` toggle, defaulting on. It is
+  // no longer a choice -- "no data" and "no shoulder" cannot be distinguished
+  // from the rider's seat, and the optimistic reading let a 55 mph road with no
+  // recorded shoulder pass on an absence of evidence.
   //
-  // Order is load-bearing. A real tag always wins; the inference only fills a
-  // gap; and it must be consulted BEFORE unknownShoulderZero, or it could never
-  // fire for the pessimistic riders it exists to help -- they are the ones for
-  // whom an untagged rural road is currently 0 ft.
+  // Order is load-bearing. A real tag always wins, then the edge-space
+  // inference fills a gap, and only then does the road fall back to zero. If
+  // the fallback came first the inference could never fire at all.
+  //
+  // Slow roads never reach the shoulder rung, so this does not fail quiet
+  // streets for lacking a tag.
   function effectiveShoulder(facts, rules) {
     if (facts.shoulder != null) return facts.shoulder;
     var inferred = inferredShoulder(facts, rules);
     if (inferred != null) return inferred;
-    if (rules.unknownShoulderZero) return 0;
-    return null;
+    return 0;
   }
   // Did this verdict rest on an inferred figure rather than a recorded one? The
   // card has to be able to say so: a rider who sees "5 ft shoulder" needs to
@@ -287,13 +291,10 @@
     }
     // Nothing about this road demands space of its own.
     if (facts.speed != null) return out(softCaution ? 3 : 1, 'shares-lane');
-    // Nothing known about any criterion. Only reachable when the rider has
-    // turned off "Unknown shoulder = 0 ft"; with it on, an untagged shoulder is
-    // data and the shoulder rung above has already decided.
-    if (facts.speed == null && shoulder == null
-        && (facts.facility || 0) < FACILITY_RIDING_SPACE) {
-      return out(0, 'unknown');
-    }
+    // There was an 'unknown' rung here, reachable only when a rider turned off
+    // "Unknown shoulder = 0 ft". With that setting gone, effectiveShoulder()
+    // never returns null and the rung could never fire. Level 0 still exists
+    // for ferries and as a paint fallback; nothing in the ladder produces it.
     return out(softCaution ? 3 : 2, 'default');
   }
 

@@ -133,6 +133,57 @@ check('rows carry distance and the safety levels',
     && /caution/.test(r.stats) && /fail/.test(r.stats)),
   rows[0]?.stats);
 
+/* ------------------------------- thumbnails are drawn and comparable ---- */
+// The sketches share one bounding box on purpose: these are all routes between
+// the same two points, so per-row autoscaling would normalise away exactly the
+// difference the picture exists to show. Two routes of very different length
+// must therefore produce visibly different path extents.
+const thumbs = await pg.evaluate(() => {
+  const rows = [...document.querySelectorAll('.all-route-row')];
+  return rows.map((r) => {
+    const svg = r.querySelector('.all-route-thumb');
+    const base = svg?.querySelector('.thumb-base');
+    const box = base?.getBBox?.();
+    return {
+      hasSvg: !!svg,
+      hasPath: !!base && (base.getAttribute('d') || '').length > 20,
+      w: box ? Math.round(box.width) : 0,
+      h: box ? Math.round(box.height) : 0,
+      dots: svg ? svg.querySelectorAll('circle').length : 0,
+      nan: (base?.getAttribute('d') || '').includes('NaN'),
+      viewBox: svg?.getAttribute('viewBox'),
+    };
+  });
+});
+check('every row draws a thumbnail', thumbs.every((t) => t.hasSvg && t.hasPath),
+  JSON.stringify(thumbs.find((t) => !t.hasSvg || !t.hasPath)));
+check('no thumbnail has NaN coordinates', thumbs.every((t) => !t.nan));
+check('each thumbnail marks a start and an end',
+  thumbs.every((t) => t.dots === 2), thumbs.map((t) => t.dots).join(','));
+check('thumbnails share one viewBox',
+  new Set(thumbs.map((t) => t.viewBox)).size === 1, thumbs[0]?.viewBox);
+// Routes between the same two points share endpoints, so their extent along the
+// travel axis is near-identical by construction -- comparing that would prove
+// nothing. What separates them is how far each WANDERS off the direct line, so
+// compare the cross-axis extent.
+const wander = thumbs.map((t) => Math.min(t.w, t.h));
+check('routes that wander differently draw differently',
+  Math.max(...wander) - Math.min(...wander) >= 4,
+  `cross-axis extents ${wander.join(',')}`);
+// Aspect. Seattle -> Mukilteo is ~0.34 degrees north-south against ~0.04 east
+// -west, so every sketch must be clearly TALLER than it is wide. This is the
+// assertion that catches a sheared projection: mixing degrees on one axis with
+// Mercator radians on the other drew this trip as a horizontal sliver, and
+// every other check here still passed.
+const upright = thumbs.filter((t) => t.h > t.w * 1.5).length;
+check('a north-south trip draws taller than wide',
+  upright === thumbs.length,
+  thumbs.map((t) => `${t.w}x${t.h}`).join(' '));
+
+check('no thumbnail overflows its box',
+  thumbs.every((t) => t.w <= 97 && t.h <= 73),
+  JSON.stringify(thumbs.filter((t) => t.w > 97 || t.h > 73)));
+
 /* -------------------- tapping a DISCARDED route actually loads it ------- */
 const target = await pg.evaluate(() => {
   const offeredIds = new Set(routing.options.map((o) => o.optimization?.profileId));

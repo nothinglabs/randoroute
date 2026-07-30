@@ -87,7 +87,7 @@ assert.equal(messages.at(-1)?.type, 'ready', 'the production graph should load')
 const out = vm.runInContext(`(() => {
   const rules = {
     allowFreeways: true, allowMtbTrails: false,
-    minShoulder: 4, unknownShoulderZero: true, maxSpeedNoShoulder: 35,
+    minShoulder: 4, maxSpeedNoShoulder: 35,
     upperMaxSpeed: 45, noUpperLimit: true,
     requireSafe: false, allowSidewalkFallback: true,
     // "more lanes than 3", i.e. 4 and up. Traffic held off throughout: this

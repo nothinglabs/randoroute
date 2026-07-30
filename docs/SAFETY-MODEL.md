@@ -188,7 +188,7 @@ different rules.
 | 3 | `freeway` | a true motorway | 4 | — (see below) |
 | 4 | `infra` | dedicated bike infrastructure | its own `infraScore` | — |
 | 5 | `speed-cap` | speed over the absolute ceiling | 4 | `upperMaxSpeed`, `noUpperLimit` |
-| 6 | `needs-space` | too fast, too wide **or** too busy to share, and no shoulder or bike lane | 4 | `maxSpeedNoShoulder`, `lanesNoShoulderOver`, `busyNoShoulder`, `minShoulder`, `unknownShoulderZero` |
+| 6 | `needs-space` | too fast, too wide **or** too busy to share, and no shoulder or bike lane | 4 | `maxSpeedNoShoulder`, `lanesNoShoulderOver`, `busyNoShoulder`, `minShoulder` |
 | 7 | `sidewalk-fallback` | would fail rung 6, but has a mapped sidewalk | 3 | `allowSidewalkFallback` |
 | 8 | `shares-lane` | nothing about the road demands space of its own | 1 | — |
 | 9 | `unknown` | no usable data on any criterion | 0 | — |
@@ -374,7 +374,7 @@ shoulder = 0 ft* turned off, an untagged shoulder is not evidence of absence —
 switched it off. The old wide-road rung did precisely that, and the 13M-combination
 sweep in `scripts/test_safety_model.mjs` is what caught it during the merge.
 
-So `unknownShoulderZero` now governs all three triggers uniformly, where it used
+So the untagged-is-zero floor now governs all three triggers uniformly, where it used
 to be ignored by the lane rule. That is a real behaviour change, and the right
 one: one rung, one shoulder test.
 
@@ -706,7 +706,6 @@ even the urban/rural split, is still honoured behind both.
 | `lanesNoShoulderOver` | Lanes of traffic more than | rung 6, trigger 2 | also `wideRoad*` cost |
 | `busyNoShoulder` | Road is busier than | rung 6, trigger 3 | via the verdict |
 | `minShoulder` | Minimum shoulder width to count | what satisfies rung 6 | via the verdict |
-| `unknownShoulderZero` | Unknown shoulder = 0 ft | untagged counts as 0 at rung 6 | via the verdict |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 7 exists at all | ×1.9 / ×3.8 / ×8.0 |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
@@ -785,6 +784,22 @@ also now preferred the trail. Measured facility share across four corridors
 rose 0–8 points; failing distance on the quickest options rose slightly, since
 a little more failing road is now worth paying to reach a trail.
 
+### An untagged shoulder is always 0 ft
+
+There was an `unknownShoulderZero` setting, defaulting on. It is gone, and the
+pessimistic reading is now unconditional.
+
+"No data" and "no shoulder" are indistinguishable from the saddle, so treating
+the first as evidence of safety let a fast road pass on an absence of evidence.
+The optimistic branch also produced the ladder's only route to level 0
+(`unknown`), which was unreachable with the default on; that rung is removed
+too. Level 0 survives for ferries and as a paint fallback, but nothing in the
+ladder produces it.
+
+`effectiveShoulder()` is now three steps with no branch on rider preference: a
+recorded tag, then the edge-space inference, then zero. Slow roads never reach
+the shoulder rung at all, so this does not fail quiet streets for lacking a tag.
+
 ### Inferring a shoulder from edge space
 
 `inferShoulderFromEdge` (off by default). Where OSM recorded no shoulder but the
@@ -805,14 +820,13 @@ Three constraints, all pinned by `test_edge_space_shoulder.mjs`:
   negative result means the recorded lane widths exceed the recorded operational
   width — a paperwork error. Inferring a hard 0 ft from that would turn bad data
   into a failing road.
-- **It is consulted before `unknownShoulderZero`.** Those riders are exactly the
-  ones for whom an untagged rural road already reads 0 ft, so an inference
-  placed after the zero could never fire.
+- **It is consulted before the zero floor.** Untagged is unconditionally 0 ft,
+  so an inference placed after it could never fire at all.
 
-An inference is *information*, so it can cut both ways: with
-`unknownShoulderZero` **off**, a road that was "unknown, not held against it"
-can become "known narrow" and fail. That is the honest answer rather than a bug,
-but it is the surprising direction and is asserted explicitly.
+An inference can now only ever be kinder: the baseline is a hard 0 ft, which is
+the harshest reading available. It used to cut both ways, back when a rider
+could switch the zero off and an inference could turn "unknown, not held against
+it" into "known narrow".
 
 Measured on the shipped graph at Randonneur defaults: 20,891 mi carry edge space
 with no recorded shoulder; turning the toggle on moves **9,545 edges / 1,696 mi**,
@@ -998,5 +1012,5 @@ otherwise consider riding it, so being told you cannot is worth the ink.
   one where the rating flattens both to 4. Letting it decide would either fail
   166k edges or paint almost every highway amber. It stays a routing cost and a
   reported fact on the road card.
-- **Shoulder is usually untagged on city streets.** `unknownShoulderZero`
+- **Shoulder is usually untagged on city streets.** The zero floor
   decides whether that counts against a road.

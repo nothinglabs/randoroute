@@ -89,8 +89,10 @@ const tileToFacts = (p) => ({
 });
 
 const RULE_SETS = [];
+// No `unknownZero` dimension: an untagged shoulder is unconditionally 0 ft now,
+// so there is no second reading of it to sweep.
 for (const maxLanes of [2, 4, 6]) {
-  for (const unknownZero of [true, false]) {
+  {
     for (const sidewalk of [true, false]) {
       // No `vetted` dimension: designation trust is gone, and sweeping a rule
       // key nothing reads just doubled the combination count for nothing.
@@ -98,7 +100,7 @@ for (const maxLanes of [2, 4, 6]) {
         { noUpperLimit: false, upperMaxSpeed: 35 }]) {
         for (const noShoulderMax of [25, 35]) for (const busy of [0, 2, 4]) {
           RULE_SETS.push({
-            minShoulder: 4, lanesNoShoulderOver: maxLanes, unknownShoulderZero: unknownZero,
+            minShoulder: 4, lanesNoShoulderOver: maxLanes,
             allowSidewalkFallback: sidewalk, busyNoShoulder: busy,
             maxSpeedNoShoulder: noShoulderMax, ...cap,
           });
@@ -146,8 +148,8 @@ for (const ruleSet of RULE_SETS) {
     compared++;
     if (fromMap !== fromModel && mismatches.length < 8) {
       mismatches.push({ props: p, rules: {
-        maxLanes: ruleSet.maxLanesNoShoulder, unknownZero: ruleSet.unknownShoulderZero,
-        sidewalk: ruleSet.allowSidewalkFallback, vetted: ruleSet.vettedBikeRoutes,
+        maxLanes: ruleSet.maxLanesNoShoulder,
+        sidewalk: ruleSet.allowSidewalkFallback,
         cap: ruleSet.noUpperLimit ? 'none' : ruleSet.upperMaxSpeed,
       }, map: fromMap, model: fromModel });
     }

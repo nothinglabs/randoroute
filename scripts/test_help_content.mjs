@@ -82,8 +82,15 @@ assert.doesNotMatch(html, /Urban max speed without shoulder|Rural max speed with
   'the split urban/rural speed limits are gone and must not be described');
 assert.match(html, /Minimum shoulder width to count/,
   'settings help should use the same shoulder-limit label as the product');
-assert.match(html, /Unknown shoulder = 0 ft[\s\S]*?if shoulder data is missing, treat it as 0 ft for rules purposes/,
+// No longer a setting -- an untagged shoulder is unconditionally 0 ft -- but the
+// help still has to say so. It is the single most consequential thing the
+// ladder does to a road nobody surveyed.
+assert.doesNotMatch(html, /Unknown shoulder = 0 ft/,
+  'the unknown-shoulder toggle is gone and must not be described as a control');
+assert.match(html, /Missing shoulder data[\s\S]*?always treated as 0 ft/,
   'settings help should plainly explain how missing shoulder data is evaluated');
+assert.match(html, /Infer shoulder from edge space[\s\S]*?county[\s\S]*?subtracted/,
+  'settings help should explain the edge-space inference that can fill that gap');
 assert.match(html, /<h3>Voice navigation<\/h3><ul class="help-list">[\s\S]*?<b>Off-route<\/b>[\s\S]*?direction and distance[\s\S]*?manually route back or create a new route[\s\S]*?Speak compass directions[\s\S]*?Status update[\s\S]*?<\/ul>/,
   'voice-navigation help should explain notify-only guidance and manual recovery');
 assert.match(html, /id="layersHelpDialog"[\s\S]*?<h3>Data sources<\/h3>[\s\S]*?WSDOT BLTS[\s\S]*?OSM bike infrastructure[\s\S]*?All roads[\s\S]*?Elevation &amp; cautions[\s\S]*?Technical data notes[\s\S]*?planning aid, not a guarantee of safety/,

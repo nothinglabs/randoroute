@@ -1621,6 +1621,44 @@ function profileExplanation(profile) {
   return text;
 }
 
+// A coarse outline for the "More" screen's thumbnails, carrying the worst
+// verdict level along each kept span so the sketch can show WHERE a route goes
+// bad, not merely that it does.
+//
+// 48 points is enough to tell two corridors apart at thumbnail size and costs
+// roughly 700 bytes -- the whole reason the summaries exist is that shipping
+// real geometry for every candidate measures megabytes.
+var SHAPE_POINTS = 48;
+function candidateShape(candidate) {
+  var coords = candidate.coords || [];
+  if (coords.length < 2) return null;
+  // Worst level touching each coordinate, so a short failing stretch inside a
+  // long span survives the downsample instead of being averaged away.
+  var levelAt = new Uint8Array(coords.length);
+  var segs = candidate.segs || [];
+  for (var i = 0; i < segs.length; i++) {
+    var seg = segs[i], lv = Number(seg.level) || 0;
+    for (var c = seg.c0; c <= seg.c1 && c < coords.length; c++) {
+      if (lv > levelAt[c]) levelAt[c] = lv;
+    }
+  }
+  var step = Math.max(1, Math.floor(coords.length / SHAPE_POINTS));
+  var pts = [], lv2 = [];
+  for (var k = 0; k < coords.length; k += step) {
+    // Carry the worst level across the points this one stands in for.
+    var worst = 0;
+    for (var j = k; j < Math.min(k + step, coords.length); j++) {
+      if (levelAt[j] > worst) worst = levelAt[j];
+    }
+    pts.push([Math.round(coords[k][0] * 1e4) / 1e4, Math.round(coords[k][1] * 1e4) / 1e4]);
+    lv2.push(worst);
+  }
+  var last = coords[coords.length - 1];
+  pts.push([Math.round(last[0] * 1e4) / 1e4, Math.round(last[1] * 1e4) / 1e4]);
+  lv2.push(levelAt[coords.length - 1]);
+  return { pts: pts, lv: lv2 };
+}
+
 // A compact row for the "More" screen. Deliberately excludes segs/geometry:
 // shipping every candidate in full measures 3.4-4.2 MB on a Puget Sound trip,
 // which is a large structured clone to pay on every single route request for a
@@ -1646,6 +1684,7 @@ function candidateSummary(candidate) {
     unpavedM: candidate.unpavedM || 0,
     ferryM: candidate.ferryM || 0,
     ascentM: candidate.ascentM || 0,
+    shape: candidateShape(candidate),
   };
 }
 

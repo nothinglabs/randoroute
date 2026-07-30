@@ -85,7 +85,7 @@ context.onmessage({ data: {
   type: 'route', id: 'dismount-regression', points: mountWashingtonEndpoints,
   rules: {
     allowFreeways: true, allowMtbTrails: false, vettedBikeRoutes: true,
-    minShoulder: 4, unknownShoulderZero: true, freeMaxSpeed: 35,
+    minShoulder: 4, freeMaxSpeed: 35,
     upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
   }, mode: 'balanced', prefDesignated: true,
 } });

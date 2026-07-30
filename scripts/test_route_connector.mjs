@@ -30,7 +30,7 @@ context.onmessage({ data: {
   points: [[-122.391, 47.689], [-122.350, 47.673]],
   rules: {
     allowFreeways: false, allowMtbTrails: false, vettedBikeRoutes: true,
-    minShoulder: 4, unknownShoulderZero: true, freeMaxSpeed: 35,
+    minShoulder: 4, freeMaxSpeed: 35,
     upperMaxSpeed: 45, noUpperLimit: true, requireSafe: true,
   },
   prefDesignated: true,
@@ -55,7 +55,7 @@ context.onmessage({ data: {
   points: [[-122.391, 47.689], [-122.370, 47.680], [-122.350, 47.673]],
   rules: {
     allowFreeways: false, allowMtbTrails: false, vettedBikeRoutes: true,
-    minShoulder: 4, unknownShoulderZero: true, freeMaxSpeed: 35,
+    minShoulder: 4, freeMaxSpeed: 35,
     upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
   },
   mode: 'low', profileId: 'gentle', profileLabel: 'Route A',
@@ -87,7 +87,7 @@ context.onmessage({ data: {
   points: [[-122.391, 47.689], [-122.350, 47.673]],
   rules: {
     allowFreeways: false, allowMtbTrails: false, vettedBikeRoutes: true,
-    minShoulder: 4, unknownShoulderZero: true, freeMaxSpeed: 35,
+    minShoulder: 4, freeMaxSpeed: 35,
     upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
   },
   mode: 'balanced', profileId: 'efficient', profileLabel: 'Route A',

@@ -12,9 +12,9 @@
 //
 //   1. It only ever FILLS A GAP. A recorded shoulder always wins, even when
 //      edge space would be kinder.
-//   2. It runs BEFORE unknownShoulderZero. Those riders -- the pessimistic
-//      default -- are precisely the ones for whom an untagged rural road reads
-//      0 ft today, so an inference consulted after the zero could never fire.
+//   2. It runs BEFORE the untagged-is-zero fallback. That fallback is now
+//      unconditional, so an inference consulted after it could never fire at
+//      all -- every untagged road would already read 0 ft.
 //   3. Off means off: the verdict is byte-for-byte the old one.
 //   4. The map agrees with the card. roadLevelExpr is evaluated by MapLibre
 //      against tile properties and cannot call the model, so the inference is
@@ -37,7 +37,7 @@ const base = {
   lanes: 2, sidewalk: null, urban: false, stressRating: null, adt: null, fc: null,
 };
 const rules = {
-  minShoulder: 4, unknownShoulderZero: true, inferShoulderFromEdge: false,
+  minShoulder: 4, inferShoulderFromEdge: false,
   maxSpeedNoShoulder: 35, lanesNoShoulderOver: 3, busyNoShoulder: 0,
   noUpperLimit: true, allowSidewalkFallback: false,
 };
@@ -56,19 +56,16 @@ assert.strictEqual(
   SM.effectiveShoulder({ ...base, shoulder: 0, edgeSpace: 9 }, on), 0,
   'a recorded zero is evidence of absence and must not be overridden');
 
-/* ------------------------------------ 2. it runs before the pessimistic zero */
+/* ------------------------------------- 2. it runs before the zero fallback */
 const gap = { ...base, shoulder: null, edgeSpace: 6 };
 assert.strictEqual(SM.effectiveShoulder(gap, on), 5,
   '6 ft of edge space less the 1 ft margin should read as a 5 ft shoulder');
 assert.strictEqual(SM.shoulderWasInferred(gap, on), true);
-// With unknownShoulderZero ON -- the default, and the whole point.
-assert.strictEqual(rules.unknownShoulderZero, true, 'this test assumes the pessimistic default');
 assert.strictEqual(SM.effectiveShoulder(gap, rules), 0,
-  'baseline: without the toggle a pessimistic rider sees 0 ft');
-// And with it off, an inference is still knowledge.
-assert.strictEqual(
-  SM.effectiveShoulder(gap, { ...on, unknownShoulderZero: false }), 5,
-  'the inference must not depend on the pessimistic setting either way');
+  'baseline: without the toggle an untagged road is 0 ft');
+// Untagged-is-zero is unconditional now, so it can never pre-empt the inference.
+assert.strictEqual(SM.effectiveShoulder({ ...base, shoulder: null, edgeSpace: null }, on), 0,
+  'no tag and no edge space still falls back to zero');
 
 /* --------------------------------------------- the margin cannot go negative */
 for (const space of [0, 0.5, 1]) {
@@ -83,16 +80,14 @@ const cases = [];
 for (const shoulder of [null, 0, 2, 6]) {
   for (const edgeSpace of [null, 0, 2, 6, 12]) {
     for (const speed of [25, 35, 45, 60]) {
-      for (const unknownShoulderZero of [true, false]) {
-        cases.push({ shoulder, edgeSpace, speed, unknownShoulderZero });
-      }
+      cases.push({ shoulder, edgeSpace, speed });
     }
   }
 }
 let differed = 0, improved = 0, worsened = 0;
 for (const c of cases) {
   const facts = { ...base, shoulder: c.shoulder, edgeSpace: c.edgeSpace, speed: c.speed };
-  const off = { ...rules, unknownShoulderZero: c.unknownShoulderZero };
+  const off = { ...rules };
   const withToggle = { ...off, inferShoulderFromEdge: true };
   const a = SM.evaluate(facts, off);
   const b = SM.evaluate(facts, withToggle);
@@ -108,21 +103,17 @@ for (const c of cases) {
   assert.ok(c.edgeSpace > 0,
     `verdict moved on edgeSpace ${c.edgeSpace}, which carries no information`);
   if (b.level < a.level) improved++; else worsened++;
-  // An inference is INFORMATION, and information cuts both ways. It can only
-  // make a road worse for a rider who turned the pessimistic default off: they
-  // asked not to hold an unknown against a road, and a derived figure is no
-  // longer unknown -- it is known-narrow. That is the honest answer, not a bug,
-  // but it is the surprising direction, so it is pinned explicitly.
-  if (b.level > a.level) {
-    assert.strictEqual(c.unknownShoulderZero, false,
-      `inference worsened a verdict for a pessimistic rider at ${JSON.stringify(c)};`
-      + ' for them an untagged road is already 0 ft, so nothing should get worse');
-    assert.ok(c.edgeSpace - MARGIN < rules.minShoulder,
-      'a road only worsens when the derived figure is genuinely under the minimum');
-  }
+  // Now that untagged is unconditionally 0 ft, the baseline is the harshest
+  // reading available and an inference can only ever be kinder. The direction
+  // is asserted rather than assumed: it used to be able to cut both ways, when
+  // a rider could switch the zero off and turn "unknown" into "known narrow".
+  assert.ok(b.level <= a.level,
+    `inference worsened a verdict at ${JSON.stringify(c)}; with the zero`
+    + ' fallback unconditional there is no optimistic baseline left to lose');
 }
 assert.ok(differed > 0, 'the toggle should change something, or it does nothing at all');
 assert.ok(improved > 0, 'the toggle must be able to clear a road, which is its purpose');
+assert.strictEqual(worsened, 0, 'nothing may get worse; zero is already the floor');
 console.log(`  toggle moves ${differed} of ${cases.length} combinations`
   + ` (${improved} cleared, ${worsened} newly narrow)`);
 

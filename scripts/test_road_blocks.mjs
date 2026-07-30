@@ -111,7 +111,7 @@ const buffer = graph.byteOffset === 0 && graph.byteLength === graph.buffer.byteL
 routerContext.onmessage({ data: { type: 'graph', buffer } });
 const rules = {
   allowFreeways: false, allowMtbTrails: false, vettedBikeRoutes: true,
-  minShoulder: 4, unknownShoulderZero: true, freeMaxSpeed: 35,
+  minShoulder: 4, freeMaxSpeed: 35,
   upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
 };
 const routePoints = [[-122.391, 47.689], [-122.350, 47.673]];

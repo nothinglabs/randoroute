@@ -60,7 +60,7 @@ const out = vm.runInContext(`(() => {
     // riding space, and that question only arises once a road is fast enough to
     // reach the shoulder rung. At the default limit this 35 mph edge passes as
     // a slow road and never gets there.
-    minShoulder: 4, unknownShoulderZero: true, maxSpeedNoShoulder: 30,
+    minShoulder: 4, maxSpeedNoShoulder: 30,
     upperMaxSpeed: 45, noUpperLimit: true,
     requireSafe: false, allowSidewalkFallback: true, maxLanesNoShoulder: 4,
   };

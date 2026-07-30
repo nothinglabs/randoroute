@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.454';
+const APP_VERSION = '2026-07-30.455';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -92,7 +92,6 @@ const DEFAULT_RULES = Object.freeze({
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
   preferPaved: true,    // strongly prefer pavement by default; unpaved remains available
   minShoulder: 4,       // ft; below this a road gets penalized
-  unknownShoulderZero: true, // pessimistic: no shoulder data = 0 ft (fast roads must PROVE a shoulder)
   // Off by default. It LOOSENS the shoulder rule -- a road that recorded no
   // shoulder can now clear it on derived evidence -- so it is the rider's call,
   // not a silent improvement.
@@ -621,7 +620,8 @@ function roadLevelExpr() {
   // pessimistic zero. Nothing computed in JS can reach a paint expression, so
   // the inference is rebuilt here declaratively against the tile's `es`
   // property -- the same per-side number the model reads as facts.edgeSpace.
-  const unknownSh = rules.unknownShoulderZero ? 0 : rules.minShoulder;
+  // Untagged is always 0 ft now; there is no optimistic branch left.
+  const unknownSh = 0;
   const inferredSh = ['max', 0, ['-', ['get', 'es'], SafetyModel.EDGE_SPACE_MARGIN_FT]];
   // `es > 0` mirrors inferredShoulder(): a zero can be a clamped data error
   // rather than a measured absence, so it is not evidence of anything.
@@ -645,15 +645,6 @@ function roadLevelExpr() {
   cases.push(hasSpeed, passLevel);   // nothing demands space of its own
   // Nothing known about any criterion. Only reachable with "Unknown shoulder =
   // 0 ft" off, exactly as in the shared model.
-  if (!rules.unknownShoulderZero) {
-    // An inferred shoulder is knowledge, so an edge that has one is no longer
-    // "nothing known" and must not fall into the unknown bucket.
-    const noShoulderKnowledge = rules.inferShoulderFromEdge
-      ? ['all', ['!', ['has', 'w']], ['!', hasEdgeSpace]]
-      : ['!', ['has', 'w']];
-    cases.push(['all', ['!', hasSpeed], noShoulderKnowledge,
-      ['<', ['coalesce', ['get', 'ft'], 0], 2]], 0);
-  }
   return ['case', ...cases, ordinaryPassLevel];                  // meets criteria
 }
 
@@ -6223,6 +6214,90 @@ const CANDIDATE_STAGES = {
   considered: { label: 'Considered', tone: 'cut' },
 };
 
+// A thumbnail sketch of where each route goes.
+//
+// Every candidate is drawn in ONE shared bounding box, not auto-fitted
+// individually. These are all routes between the same two points, so the
+// question the picture answers is "how does this one differ from that one" --
+// and per-row autoscaling would normalise exactly the difference worth seeing.
+//
+// Web Mercator y, so north-south distances are not stretched relative to
+// east-west at Washington's latitude; a plain lat/lon plot would squash every
+// route by about a third.
+// Both axes must be in the SAME units or the sketch is sheared. mercatorY
+// returns natural-log units (radians of a unit sphere), so longitude has to be
+// radians too -- feeding it degrees stretched every route by 180/pi across,
+// which drew Seattle-Mukilteo, a 0.34 degree north-south trip, as a horizontal
+// sliver.
+function mercatorX(lng) {
+  return lng * Math.PI / 180;
+}
+function mercatorY(lat) {
+  const clamped = Math.max(-85, Math.min(85, lat));
+  return Math.log(Math.tan(Math.PI / 4 + clamped * Math.PI / 360));
+}
+
+function candidateShapeBounds(all) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const c of all) {
+    for (const [lng, lat] of c.shape?.pts || []) {
+      const x = mercatorX(lng), y = mercatorY(lat);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (!Number.isFinite(minX)) return null;
+  // A dead-straight route has zero extent on one axis; give it something to
+  // divide by rather than producing NaN coordinates.
+  const padX = (maxX - minX) * 0.06 || 1e-5;
+  const padY = (maxY - minY) * 0.06 || 1e-5;
+  return { minX: minX - padX, maxX: maxX + padX, minY: minY - padY, maxY: maxY + padY };
+}
+
+const THUMB_W = 96, THUMB_H = 72;
+function candidateThumbSvg(c, bounds) {
+  if (!c.shape?.pts?.length || !bounds) {
+    return `<svg class="all-route-thumb" viewBox="0 0 ${THUMB_W} ${THUMB_H}" aria-hidden="true"></svg>`;
+  }
+  const spanX = bounds.maxX - bounds.minX, spanY = bounds.maxY - bounds.minY;
+  // One scale for both axes keeps the shape's proportions honest; the smaller
+  // fit wins so nothing overflows the box.
+  const scale = Math.min(THUMB_W / spanX, THUMB_H / spanY);
+  const offX = (THUMB_W - spanX * scale) / 2, offY = (THUMB_H - spanY * scale) / 2;
+  const project = ([lng, lat]) => [
+    offX + (mercatorX(lng) - bounds.minX) * scale,
+    // SVG y grows downward; Mercator y grows north.
+    THUMB_H - offY - (mercatorY(lat) - bounds.minY) * scale,
+  ];
+  const pts = c.shape.pts.map(project);
+  const lv = c.shape.lv || [];
+  // Base line first, then the failing and caution spans on top, so a short bad
+  // stretch is visible against the whole rather than hidden under it.
+  const path = (indices) => indices.map((seg) =>
+    'M' + seg.map((i) => `${pts[i][0].toFixed(1)} ${pts[i][1].toFixed(1)}`).join('L')).join('');
+  const runs = (test) => {
+    const out = [];
+    let run = null;
+    for (let i = 0; i < pts.length; i++) {
+      if (test(lv[i] || 0)) {
+        if (!run) { run = i > 0 ? [i - 1, i] : [i]; out.push(run); }
+        else run.push(i);
+      } else run = null;
+    }
+    return out.filter((r) => r.length > 1);
+  };
+  const all = [[...pts.keys()]];
+  return `<svg class="all-route-thumb" viewBox="0 0 ${THUMB_W} ${THUMB_H}" aria-hidden="true">
+    <path class="thumb-base" d="${path(all)}"/>
+    <path class="thumb-caution" d="${path(runs((l) => l === 3))}"/>
+    <path class="thumb-fail" d="${path(runs((l) => l === 4))}"/>
+    <circle class="thumb-start" cx="${pts[0][0].toFixed(1)}" cy="${pts[0][1].toFixed(1)}" r="3.4"/>
+    <circle class="thumb-end" cx="${pts[pts.length - 1][0].toFixed(1)}" cy="${pts[pts.length - 1][1].toFixed(1)}" r="3.4"/>
+  </svg>`;
+}
+
 function candidateStatLine(c) {
   const mi = c.distM / 1609.344;
   const ridingM = Math.max(1, c.distM - (c.ferryM || 0));
@@ -6247,6 +6322,7 @@ function renderAllRoutesList() {
     host.append(empty);
     return;
   }
+  const bounds = candidateShapeBounds(all);
   for (const c of all) {
     const stage = CANDIDATE_STAGES[c.stage] || CANDIDATE_STAGES.considered;
     const s = candidateStatLine(c);
@@ -6259,6 +6335,7 @@ function renderAllRoutesList() {
     row.setAttribute('aria-label', `${c.label}: ${s.mi.toFixed(1)} miles, `
       + `${s.pass}% pass, ${s.caution}% caution, ${s.fail}% fail. ${stage.label}. ${c.why}`);
     row.innerHTML = `
+      ${candidateThumbSvg(c, bounds)}
       <div class="all-route-head">
         <strong>${c.label}</strong>
         ${c.recommended ? '<span class="all-route-badge rec">Recommended</span>' : ''}
@@ -7411,8 +7488,7 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
   if ((n.facility || 0) >= 2 || n.good_facility) met.push('has a bike lane or better');
   else if (!shUnknown) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
   else if (shInferred) met.push(`${sh} ft shoulder${shSource} ≥ your ${rules.minShoulder} ft`);
-  else if (rules.unknownShoulderZero) met.push(`shoulder unknown — treated as 0 ft, meets your ${rules.minShoulder} ft minimum`);
-  else met.push('shoulder unknown (not held against it)');
+  else met.push(`shoulder unknown — treated as 0 ft, meets your ${rules.minShoulder} ft minimum`);
   if (spd != null)
     met.push(rules.noUpperLimit
       ? `${spdTxt} — no speed cutoff set`
@@ -8307,7 +8383,6 @@ function presetInfoRows(preset) {
     ['Rule matching', presetRules.requireSafe
       ? 'Required, except short access blocks (~1,000 ft) at your start, waypoints, and destination; no route is shown otherwise.'
       : 'Not required; a route may include rule-failing segments to complete it.'],
-    ['Unknown shoulder', presetRules.unknownShoulderZero ? 'Treated as 0 ft.' : 'Left as unknown.'],
     ['Infer shoulder from edge space', presetRules.inferShoulderFromEdge
       ? `Where no shoulder is recorded but the county logged edge space, ${SafetyModel.EDGE_SPACE_MARGIN_FT} ft is subtracted and the rest counts as shoulder.`
       : 'Off. Only a recorded shoulder counts.'],
@@ -8496,7 +8571,6 @@ function buildRulesPanel() {
   check('preferPaved', 'Strongly prefer paved surfaces');
   check('allowSidewalkFallback', 'Allow sidewalk fallback');
   check('requireSafe', 'Only show routes fully matching safety rules');
-  check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
   check('inferShoulderFromEdge', 'Infer shoulder from edge space when none is recorded');
   // Lanes slider: its TOP position means "no limit" rather than a count, the
   // same idiom the upper-speed cutoff uses. The setting reads "more lanes

@@ -50,7 +50,7 @@ const result = vm.runInContext(`(() => {
   if (edge < 0) return { error: 'No Pioneer Way East 35 mph edge near Puyallup' };
   const rules = {
     allowFreeways: true, allowMtbTrails: false, vettedBikeRoutes: false,
-    minShoulder: 4, unknownShoulderZero: true,
+    minShoulder: 4,
     maxSpeedNoShoulder: 35,
     allowSidewalkFallback: false, upperMaxSpeed: 45, noUpperLimit: true,
   };

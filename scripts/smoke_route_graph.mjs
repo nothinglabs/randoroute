@@ -30,7 +30,7 @@ const buffer = graph.byteOffset === 0 && graph.byteLength === graph.buffer.byteL
 context.onmessage({ data: { type: 'graph', buffer } });
 
 const rules = {
-  allowFreeways: true, minShoulder: 4, unknownShoulderZero: true,
+  allowFreeways: true, minShoulder: 4,
   allowMtbTrails: false,
   freeMaxSpeed: 35, upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false,
 };
