@@ -367,6 +367,33 @@ depending on which rung produced it, which is why `readoutVerdict` names the
 rung: "Caution — sidewalk instead of a shoulder" versus "Caution —
 limited-access highway".
 
+## Two ways a card can lie by omission
+
+Both of these shipped. Neither was a wrong value — in each case the right value
+existed and simply never reached the rider.
+
+**Feature properties must be scalars.** MapLibre serialises GeoJSON feature
+properties, so a nested object put on a route feature comes back from the tap
+layer as a string and every lookup on it silently reads `undefined`. The route
+card lost its traffic and edge-space rows and fell back to the OSM road class,
+while the road card over the same street kept all three. Measurements travel on
+the route feature flattened under the **roads tile's own key names**, which both
+fixes the round trip and lets one reader, `tileMeasures`, serve both cards.
+
+**An informational ribbon never hides the road beneath it.** The
+designated-route overlay draws above roads by design, so tapping it returned the
+ribbon's own card — a name, a network, and a note reading "the scored road or
+facility supplies the safety verdict" — while showing nothing about that road.
+On the Olympic Discovery Trail: the corridor that runs 58.8 miles along ordinary
+road, including US 101 at 60 mph with no shoulder, and the reason no designation
+may excuse anything. The rider was shown the designation and denied the verdict.
+`featureAt` returns the topmost **scored** feature whatever the draw order, and
+a ribbon answers only when nothing scored is under the tap. The road card names
+the route it carries regardless.
+
+The shared lesson: agreeing on one reader is not enough. The data has to survive
+the trip, and the card has to be reachable.
+
 ## Adding another state
 
 For the full method — finding sources, conflating them, and the disciplines that
