@@ -397,6 +397,12 @@ function edgeFacts(i, forward) {
       : official & EDGE_SIDEWALK_NO ? 'absent' : null,
     urban: !!(official & EDGE_URBAN),
     stressRating: eLts ? (eLts[i] || null) : null,
+    // The busy trigger reads a count when the graph has one and the road's
+    // class when it does not. Without these the rule would colour the map and
+    // do nothing to routing, which is the exact split that made a card
+    // disagree with the line under it once already.
+    adt: eAdt && eAdt[i] ? eAdt[i] : null,
+    fc: eClassOwner && (eClassOwner[i] & 15) ? (eClassOwner[i] & 15) : null,
   };
 }
 

@@ -7170,18 +7170,27 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
         : 'Bike infrastructure, with no rating recorded for its type.';
     case 'speed-cap':
       return `Fails: ${spdTxt} is over your ${rules.upperMaxSpeed} mph max.`;
-    case 'wide-road':
-      return `Fails: ${n.lanes} lanes of traffic${n.ctl ? ' (incl. a centre turn lane)' : ''}`
-        + ' with no shoulder and no bike lane — you cannot share a lane here.'
-        + ' Raise "Lanes needing a shoulder or bike lane" to allow it.';
-    case 'slow-road':
-      return `${spdTxt} — at or below your ${noShoulderMaxSpeed(n)} mph ${area} no-shoulder limit,`
-        + ` passes without a shoulder${cautionNote}`;
+    case 'needs-space': {
+      // Name every trigger that fired, not just the first. A road can be too
+      // fast AND too busy, and being told only one of them invites a rider to
+      // change the wrong setting.
+      const why = spaceReasons(n).map((reason) => {
+        if (reason === 'speed') return `${n.maxspeed_num} mph`;
+        if (reason === 'lanes') {
+          return `${n.lanes} lanes${n.ctl ? ' (incl. a centre turn lane)' : ''}`;
+        }
+        if (reason === 'traffic') return `${n.measures.adt.toLocaleString()} vehicles/day`;
+        return `${FUNCTIONAL_CLASS_NAME[n.measures.fc] || 'major road'}, no count`;
+      });
+      return `Fails: needs a bike lane or wide shoulder — ${why.join(', ')}.`;
+    }
+    case 'shares-lane':
+      return `${spdTxt} — nothing here demands space of its own,`
+        + ` so it passes without a shoulder${cautionNote}`;
     case 'sidewalk-fallback':
       return `${spdTxt}: ${shoulderTxt}. Your mapped-sidewalk fallback keeps it out of a`
         + ' hard fail, but the router strongly avoids it.';
-    case 'shoulder':
-      return `Fails: ${shoulderTxt}.`;
+
     case 'unknown':
       return 'No speed or shoulder data for this segment — not enough to judge it.';
     default:
@@ -7941,9 +7950,15 @@ function presetInfoRows(preset) {
       ? 'No cutoff.' : `Ordinary roads over ${presetRules.upperMaxSpeed} mph fail; dedicated bike infrastructure is exempt.`],
     ['Speed without shoulder or bike lane', `Up to ${presetRules.maxSpeedNoShoulder} mph.`],
     ['Minimum shoulder', `${presetRules.minShoulder} ft on faster roads, unless the road has a bike lane.`],
-    ['Lanes needing a shoulder or bike lane', presetRules.maxLanesNoShoulder >= MAX_LANES_NO_LIMIT
+    ['Lanes of traffic more than', presetRules.lanesNoShoulderOver >= MAX_LANES_NO_LIMIT
       ? 'No limit.'
-      : `${presetRules.maxLanesNoShoulder} or more lanes with neither fails your rules. Lanes are counted as tagged, turn lanes included.`],
+      : `More than ${presetRules.lanesNoShoulderOver} lanes with neither fails your rules. Lanes are counted as tagged, turn lanes included.`],
+    ['Road is busier than', (() => {
+      const lvl = SafetyModel.busyLevel(presetRules);
+      return lvl.id
+        ? `${lvl.label}, about ${lvl.adt.toLocaleString()} vehicles a day, needs a bike lane or wide shoulder. Where no count exists the road's class stands in.`
+        : 'Traffic volume is not used.';
+    })()],
     ['Official stress rating', `A ${STRESS_AGENCY} Level of Traffic Stress of 4 always marks a road`
       + ' as caution. It never fails one.'],
     ['Sidewalk fallback', presetRules.allowSidewalkFallback
@@ -8084,9 +8099,9 @@ function buildRulesPanel() {
     input.addEventListener('touchcancel', protect, { passive: true });
   };
 
-  const slider = (key, label, min, max, step, unit) => {
+  const slider = (key, label, min, max, step, unit, extraClass = '') => {
     const wrap = document.createElement('div');
-    wrap.className = 'rule rule-card';
+    wrap.className = `rule rule-card${extraClass ? ' ' + extraClass : ''}`;
     wrap.innerHTML = `
       <div class="rule-head">
         <label for="r-${key}">${label}</label>
@@ -8144,18 +8159,19 @@ function buildRulesPanel() {
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('unknownShoulderZero', 'Unknown shoulder = 0 ft');
   // Lanes slider: its TOP position means "no limit" rather than a count, the
-  // same idiom the upper-speed cutoff uses.
+  // same idiom the upper-speed cutoff uses. The setting reads "more lanes
+  // than", so the number shown is the widest road that still passes.
   const lanesSlider = () => {
-    const key = 'maxLanesNoShoulder';
+    const key = 'lanesNoShoulderOver';
     const wrap = document.createElement('div');
-    wrap.className = 'rule rule-card';
-    const label = (v) => (v >= MAX_LANES_NO_LIMIT ? 'No limit' : `${v}+ lanes`);
+    wrap.className = 'rule rule-card rule-sub';
+    const label = (v) => (v >= MAX_LANES_NO_LIMIT ? 'No limit' : `${v} lanes`);
     wrap.innerHTML = `
       <div class="rule-head">
-        <label for="r-${key}">Lanes needing a shoulder or bike lane</label>
+        <label for="r-${key}">Lanes of traffic more than</label>
         <span class="val" id="v-${key}">${label(rules[key])}</span>
       </div>
-      <input type="range" id="r-${key}" min="2" max="${MAX_LANES_NO_LIMIT}" step="1" value="${rules[key]}">`;
+      <input type="range" id="r-${key}" min="1" max="${MAX_LANES_NO_LIMIT}" step="1" value="${rules[key]}">`;
     slidersHost.appendChild(wrap);
     const input = wrap.querySelector('input');
     protectSliderGesture(input);
@@ -8167,9 +8183,49 @@ function buildRulesPanel() {
       scheduleRescore();
     });
   };
-  slider('maxSpeedNoShoulder', 'Max speed without shoulder or bike lane', 15, 45, 5, ' mph');
-  slider('minShoulder', 'Minimum shoulder if no bike lane', 0, 10, 1, ' ft');
+
+  // How busy before a road needs space of its own. The choices are road types,
+  // not numbers: nobody has an intuition for "3,000 vehicles a day", but
+  // everyone knows what a neighbourhood street feels like. The figure rides
+  // along as supporting detail for anyone who wants it.
+  const busySlider = () => {
+    const key = 'busyNoShoulder';
+    const levels = SafetyModel.BUSY_LEVELS;
+    const wrap = document.createElement('div');
+    wrap.className = 'rule rule-card rule-sub';
+    const label = (v) => {
+      const lvl = levels[v] || levels[0];
+      return lvl.id ? `${lvl.label} (~${lvl.adt.toLocaleString()}/day)` : 'Not used';
+    };
+    wrap.innerHTML = `
+      <div class="rule-head">
+        <label for="r-${key}">Road is busier than</label>
+        <span class="val" id="v-${key}">${label(rules[key])}</span>
+      </div>
+      <input type="range" id="r-${key}" min="0" max="${levels.length - 1}" step="1" value="${rules[key]}">`;
+    slidersHost.appendChild(wrap);
+    const input = wrap.querySelector('input');
+    protectSliderGesture(input);
+    input.addEventListener('input', () => {
+      rules[key] = Number(input.value);
+      document.getElementById(`v-${key}`).textContent = label(rules[key]);
+      suppressRoadInfo(1800);
+      syncPresetSelection();
+      scheduleRescore();
+    });
+  };
+
+  // The three conditions read as one sentence, so they are introduced as one
+  // and indented under it. They are ORed: any of them means the road needs
+  // space of its own.
+  const spaceHeading = document.createElement('p');
+  spaceHeading.className = 'rule-group-head';
+  spaceHeading.textContent = 'Require a bike lane or wide shoulder whenever:';
+  slidersHost.appendChild(spaceHeading);
+  slider('maxSpeedNoShoulder', 'Speed limit is over', 15, 45, 5, ' mph', 'rule-sub');
   lanesSlider();
+  busySlider();
+  slider('minShoulder', 'Minimum shoulder width to count', 0, 10, 1, ' ft');
 
   // Upper speed cutoff: one slider, whose TOP position means "no cutoff"
   // (replaces the old separate "No speed cutoff" checkbox).
