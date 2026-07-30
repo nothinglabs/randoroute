@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.444';
+const APP_VERSION = '2026-07-30.445';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -7191,6 +7191,18 @@ function attachHover(src, layerId) {
 
 // Topmost feature within a small tolerance box around the pointer/tap —
 // forgiving for touch, and deterministic where several layers overlap.
+//
+// With one exception: an informational RIBBON never hides the road beneath it.
+// The designated-route ribbon draws above roads by design, so tapping the
+// Olympic Discovery Trail returned the ribbon's own card — a name, a network,
+// and a note saying "the scored road supplies the safety verdict" — while
+// showing nothing whatsoever about that road. On the ODT of all places, which
+// runs 58.8 miles along ordinary road including US 101 at 60 mph with no
+// shoulder. The card that mattered was the one being covered up.
+//
+// A scored feature therefore wins over a ribbon regardless of draw order, and
+// the road card names the route anyway via routeBadgeAt. A ribbon still answers
+// when nothing scored is under the tap.
 function featureAt(point) {
   const layers = HIT_LAYERS.filter(
     (id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none'
@@ -7201,7 +7213,11 @@ function featureAt(point) {
     [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]],
     { layers }
   );
-  return feats[0] || null; // queryRenderedFeatures returns topmost first
+  if (!feats.length) return null;
+  const isRibbon = (f) => !!(HIT_SRC[f.layer.id] || {}).ribbon;
+  // queryRenderedFeatures returns topmost first, so the first non-ribbon is the
+  // topmost scored feature.
+  return feats.find((f) => !isRibbon(f)) || feats[0];
 }
 
 // Designated-route labels under a screen point (e.g. "US Bicycle Route 10"),
