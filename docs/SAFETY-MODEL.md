@@ -973,6 +973,54 @@ diversity. The router is not concealing better routes there; it genuinely found
 5 distinct ones out of 10 attempts. That is the question the screen exists to
 answer.
 
+## Corridor severance: one missing link costs 45 miles
+
+A short way that is open to bikes and closed to cars is a **link**, not a
+driveway. Dropping one severs a corridor, and nothing about it looks like a
+failure: routes still return, no test errors, the ride is simply always long.
+
+This has now happened twice, the same way:
+
+| way type | link | cost |
+|---|---|---|
+| `highway=track` + `bicycle=yes` | 70 m joining two halves of a rail-trail (Issaquah-Preston, High Point) | forced onto highway shoulders |
+| `highway=service` + `bicycle=yes` | 89 m joining Hoffman Hill Blvd to Mounts Rd SW (OSM w12189384) | **+15 mi on Tacoma-Olympia** |
+
+`classify_way()` accepted `bike in ('designated', 'yes')` for path, footway,
+bridleway and track, but demanded `bicycle == 'designated'` for service. That
+one word dropped w12189384 — `access=no bicycle=yes foot=yes motor_vehicle=no
+service=emergency_access` — and with it the only surface link out of DuPont.
+What remained was 1.3 mi of I-5, and at `freeway: 60` the router preferred a
+45-mile detour through Spanaway and Yelm.
+
+Measured before and after the rebuild:
+
+| | before | after |
+|---|---|---|
+| Tacoma → Olympia | 53.9 mi | **38.8 mi** |
+| DuPont → Nisqually (4.3 mi straight) | 46.4 mi | **6.6 mi** |
+
+Statewide the rule change admits 227 ways / 87 mi, all bike-permitted and
+car-excluded — the same narrow combination the rule already trusted, spelled
+differently.
+
+**How it was found, and why that matters.** Not by a test. A rider compared
+against a route posted to Reddit, which named the chain road by road: *"Center
+Dr to McNeil to Hoffman Hill Rd to Mounts Rd. Take that over 5."* Every junction
+in that chain existed in the graph except one. Before that, the long route
+looked like a legitimate safety trade-off, and an investigation that measured
+the network's floor with every rule disabled concluded — wrongly — that no
+shorter path existed. A floor measured on a graph with a hole in it just
+measures the hole.
+
+`test_corridor_severance.mjs` now guards this as an invariant: a route exists,
+needs no freeway, and is not absurd against the straight line. It caught the
+DuPont gap at 10.7x with three control corridors passing.
+`test_bike_service_links.py` pins the rule itself — `designated` and `yes` must
+behave identically in every infra category, while a plain or car-open service
+way stays out, since that narrowness is what keeps every parking aisle in the
+state from becoming bike infrastructure.
+
 ## What the map deliberately does not draw
 
 A hiking trail is not bike infrastructure. `OSM_NOT_HIKING_EXPR` removes

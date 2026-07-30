@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.456';
+const APP_VERSION = '2026-07-30.457';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -25,7 +25,7 @@ const GRAPH_FORMAT_VERSION = 'bgr10-1';
 // string, so without this a rider keeps the graph they first downloaded forever
 // -- and a rebuilt graph silently never reaches them.
 // Must match GRAPH_DATA_VERSION in sw.js.
-const GRAPH_DATA_VERSION = '2026-07-30-hpms';
+const GRAPH_DATA_VERSION = '2026-07-30-service-links';
 const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
