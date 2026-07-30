@@ -15,6 +15,10 @@ const context = {
   OFFICIAL_SIDEWALK: 16,
   OFFICIAL_SIDEWALK_NO: 32,
   OFFICIAL_URBAN: 64,
+  // scoreRouteSeg reads a route segment's measurements with the very reader the
+  // roads tiles use, so the slice lifted here needs it in scope. This stub
+  // returns nothing because crossing classification does not consult it.
+  tileMeasures: () => null,
 };
 vm.createContext(context);
 vm.runInContext(`${app.slice(styleStart, styleEnd)}\nthis.routeVisualStyle = routeVisualStyle;`, context);

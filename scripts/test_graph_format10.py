@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Format 10 ('BGRA') must round-trip, and format 9 must keep working.
+"""The edgeLanes/edgeLts layout must hold, and format 9 must keep working.
 
 Adding edgeLanes/edgeLts changes the graph binary, and the rebuild that
 produces one runs in a different environment from the app release. This builds
@@ -104,9 +104,10 @@ def synth_lanes(header, s):
 
 
 def verify_shipped_format10(raw):
-    """The shipped graph is already format 10: check it in place."""
+    """The shipped graph already has the arrays: check them in place."""
     n, e, d, g, u, b = struct.unpack_from('<6I', raw, 4)
-    print(f'format 10 shipped: {n:,} nodes, {e:,} edges, {len(raw):,} bytes')
+    print(f"{bytes(raw[:4]).decode()} shipped: {n:,} nodes, {e:,} edges, "
+          f'{len(raw):,} bytes')
     ok = True
 
     def check(name, cond, detail=''):
@@ -148,7 +149,10 @@ def main():
     args = ap.parse_args()
 
     raw = bytearray(gzip.open(GRAPH, 'rb').read())
-    if bytes(raw[:4]) == b'BGRA':
+    # Formats 11 ('BGRB') and 12 ('BGRC') only append after edgeLts, so the
+    # offsets this verifier computes are unchanged and it checks them in place
+    # exactly as it does for format 10.
+    if bytes(raw[:4]) in (b'BGRA', b'BGRB', b'BGRC'):
         return verify_shipped_format10(raw)
     header, sections = split_format9(raw)
     n, e = header[0], header[1]

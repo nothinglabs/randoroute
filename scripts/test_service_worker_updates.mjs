@@ -9,8 +9,18 @@ const indexHtml = fs.readFileSync(new URL('../index.html', import.meta.url), 'ut
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 const release = JSON.parse(fs.readFileSync(new URL('../version.json', import.meta.url), 'utf8'));
 
-assert.match(sw, /c\.addAll\(SHELL\)/,
+// Deliberately NOT cache.addAll: that is all-or-nothing, so one dropped request
+// on a phone failed the whole install, the new worker never reached the waiting
+// state, and the app reported an update it could not install. Each file is
+// fetched with a retry instead, and a file that fails twice still fails the
+// install. This test asserted the old, weaker shape long after sw.js stopped
+// using it.
+assert.match(sw, /async function precacheShell\(\)[\s\S]*?for \(const path of SHELL\)/,
   'a candidate update must precache the complete app shell before it can install');
+assert.match(sw, /for \(let attempt = 0; attempt < 2; attempt\+\+\)/,
+  'and must survive a single dropped request rather than failing the install');
+assert.match(sw, /if \(lastError\) throw new Error/,
+  'while still failing the install when a shell file genuinely cannot be fetched');
 assert.match(sw, /precacheData\(\)/,
   'a candidate update must populate the complete offline data cache');
 assert.match(sw, /updatingExistingApp = Boolean\(self\.registration\.active\)[\s\S]*?updatingExistingApp \? Promise\.resolve\(\) : precacheData\(\)/,
@@ -19,9 +29,16 @@ assert.match(sw, /for \(const path of DATA\)[\s\S]*?await cache\.add\(request\)/
   'large statewide data archives should be cached sequentially to limit installation memory');
 assert.match(sw, /ALWAYS_REFRESH_DATA = new Set\(\[[\s\S]*?bikeroutes\.geojson\.gz[\s\S]*?async function refreshReleaseData[\s\S]*?cache\.put\(request, response\)/,
   'small changed route overlays should refresh during activation without redownloading every statewide archive');
-for (const asset of ['data/roads.pmtiles', 'data/basemap.pmtiles', 'data/graph2.bin.gz']) {
+for (const asset of ['data/roads.pmtiles', 'data/basemap.pmtiles']) {
   assert.ok(sw.includes(`'./${asset}'`), `offline data cache omits ${asset}`);
 }
+// The graph is listed with a cache-busting query string rather than as a bare
+// path. The service worker serves /data/ cache-first and ignores the query, so
+// without this a rider keeps the graph they first downloaded forever and a
+// rebuilt one silently never reaches them. A plain-substring check for the path
+// missed it entirely once the template literal went in.
+assert.match(sw, /`\.\/data\/graph2\.bin\.gz\?gv=\$\{GRAPH_DATA_VERSION\}`/,
+  'the graph must be precached under its data version, not as a bare path');
 assert.match(sw, /url\.pathname\.endsWith\('\.pmtiles'\)[\s\S]*?pmtilesOnlineFirst\(e\.request\)/,
   'online PMTiles reads should avoid materializing the complete cached archive');
 assert.match(sw, /async function pmtilesOnlineFirst[\s\S]*?response\.status === 206[\s\S]*?return pmtilesRangeResponse\(req\)/,

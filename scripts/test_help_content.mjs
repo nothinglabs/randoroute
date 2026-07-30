@@ -64,8 +64,14 @@ assert.doesNotMatch(presetInfo, /help-scroll-hint/,
   'non-scrolling preset rule popups should not show a scroll affordance');
 assert.match(html, /id="settingsHelpDialog" class="full-help-dialog settings-help-dialog"[\s\S]*?full-help-head[\s\S]*?full-help-body/,
   'routing-settings help should use the same full-screen layout as the longer help screens');
-assert.match(html, /id="settingsHelpDialog"[\s\S]*?dedicated bike infrastructure is exempt[\s\S]*?Trust designated bike routes[\s\S]*?Speed limits and access restrictions still apply[\s\S]*?Only show routes fully matching safety rules[\s\S]*?Minor exception: a short access link near a pin may remain and appear red/,
+assert.match(html, /id="settingsHelpDialog"[\s\S]*?dedicated bike infrastructure is exempt[\s\S]*?Only show routes fully matching safety rules[\s\S]*?Minor exception: a short access link near a pin may remain and appear red/,
   'settings help should state the pin-access exception next to the strict route filter');
+// The help used to document a "Trust designated bike routes" setting between
+// those two. Both trust settings were removed once the data showed a signed
+// route can run along a 60 mph highway with no shoulder, so the help must not
+// describe them and this test must not require it to.
+assert.doesNotMatch(html, /Trust designated bike routes|Assume .*bike routes safe/,
+  'the removed route-trust settings must not reappear in the help');
 assert.match(html, /id="settingsHelpDialog"[\s\S]*?<h3>Presets<\/h3>[\s\S]*?<h3>Limits<\/h3>/,
   'settings help should introduce presets before individual routing limits');
 assert.match(html, /<h3>Presets<\/h3>[\s\S]*?The Randonneur[\s\S]*?looser rules and fewer roads flagged as failing[\s\S]*?Weekend Wanderer[\s\S]*?Casual Cruiser/,
@@ -124,7 +130,11 @@ assert.doesNotMatch(html, /Street View searched up to|Assumed safe\./,
   'obsolete verbose or overbroad help claims should not remain');
 assert.match(app, /&radius=250\$\{headingParam\}/,
   'the Street View request should match its documented 250-meter search radius');
-assert.match(app, /Ordinary roads over \$\{presetRules\.upperMaxSpeed\} mph fail; dedicated bike infrastructure is exempt\.[\s\S]*?Can satisfy the shoulder rule; speed and access limits still apply\./,
-  'preset help should describe speed and designated-route behavior accurately');
+assert.match(app, /Ordinary roads over \$\{presetRules\.upperMaxSpeed\} mph fail; dedicated bike infrastructure is exempt\./,
+  'preset help should describe the speed cutoff accurately');
+// A "Can satisfy the shoulder rule" row for designated routes used to follow
+// this one. Nothing may satisfy the shoulder rule by designation any more.
+assert.doesNotMatch(app, /Can satisfy the shoulder rule/,
+  'no preset row may claim a designation satisfies a physical rule');
 
 console.log('Help content tests passed.');

@@ -6,9 +6,11 @@ import zlib from 'node:zlib';
 
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
 const graph = zlib.gunzipSync(fs.readFileSync(new URL('../data/graph2.bin.gz', import.meta.url)));
-// 'BGRA' is format 10, which appends edgeLanes/edgeLts; the worker reads both
+// Each format only ever appends, and the worker reads every one, so a rider is
+// never stranded on the graph already cached on their phone. 10 adds
+// edgeLanes/edgeLts, 11 the road measurements, 12 the count's provenance byte.
 // and this file relies on its parsing, so either layout is valid here.
-assert.ok(['BGR9', 'BGRA'].includes(graph.subarray(0, 4).toString('ascii')),
+assert.ok(['BGR9', 'BGRA', 'BGRB', 'BGRC'].includes(graph.subarray(0, 4).toString('ascii')),
   'production graph should use a supported direction-aware layout');
 
 const messages = [];

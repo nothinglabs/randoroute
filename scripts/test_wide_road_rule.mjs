@@ -19,12 +19,16 @@ assert.match(model, /return lanes >= limit && !hasRidingSpace\(facts, shoulder, 
   'the setting is the lane count that FAILS, not the widest road allowed');
 assert.doesNotMatch(model, /Math\.ceil\(rules\.maxLanesNoShoulder/,
   'lanes are counted as tagged; there is no oneway adjustment');
-assert.match(model, /if \(wideRoadNeedsSpace\(facts, shoulder, rules\) && !trusted\) return out\(4, 'wide-road'\);/,
+assert.match(model, /if \(wideRoadNeedsSpace\(facts, shoulder, rules\)\) return out\(4, 'wide-road'\);/,
   'breaking the lane rule fails like every other rule, and never softens to a caution');
-// The one exception: a rider who trusts signed routes accepts a wide road that
-// carries one. Nothing else may excuse it.
-assert.match(model, /var trusted = !!\(facts\.designated && rules\.vettedBikeRoutes\);/,
-  'only an explicitly trusted designated route may override the lane failure');
+// There is NO exception. A signed route across a wide road used to override this
+// failure, on the theory that an agency had vetted the corridor. Clallam's
+// Olympic Discovery Trail then turned out to run 58.8 miles along ordinary road,
+// including US 101 at 60 mph with no shoulder, and the override was removed.
+assert.doesNotMatch(model, /trusted/,
+  'no designation may excuse a road that is too wide to share');
+assert.doesNotMatch(model, /vettedBikeRoutes|vettedCountyRoutes/,
+  'the route-trust settings are gone and must not return');
 
 /* ------------------------------------------- it precedes the slow-road rule */
 assert.ok(model.indexOf("'wide-road'") < model.indexOf("'slow-road'"),
@@ -33,8 +37,8 @@ assert.ok(model.indexOf("'wide-road'") < model.indexOf("'slow-road'"),
 /* ------------------------------------------------- the map expression agrees */
 assert.match(app, /const wideRoad = \['all',\s*\['>=', \['coalesce', \['get', 'ln'\], 0\], rules\.maxLanesNoShoulder\]/,
   'roadLevelExpr should use the same inclusive threshold');
-assert.match(app, /cases\.push\(rules\.vettedBikeRoutes\s*\?\s*\['all', wideRoad, \['!=', \['get', 'g'\], 1\]\] : wideRoad, 4\);/,
-  'and the same verdict, with the same trusted-route exception as the model');
+assert.match(app, /cases\.push\(wideRoad, 4\);/,
+  'and the same verdict as the model, with no exception either');
 
 /* --------------------------------------------------- a sharrow is not space */
 assert.match(model, /function hasRidingSpace\(facts, shoulder, rules\) \{[\s\S]*?FACILITY_RIDING_SPACE/,
