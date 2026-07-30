@@ -369,6 +369,10 @@ limited-access highway".
 
 ## Adding another state
 
+For the full method — finding sources, conflating them, and the disciplines that
+keep a proxy from becoming a verdict — see `docs/PORTING-TO-ANOTHER-STATE.md`.
+What follows is the narrower seam for the traffic-stress rating.
+
 The safety model knows about a **rating**, never an agency. `facts.stressRating`
 is a Level of Traffic Stress from 1 to 4 on the published scale; nothing in
 `safety-model.js` mentions WSDOT, and nothing may.
