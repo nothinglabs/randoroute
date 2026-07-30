@@ -52,8 +52,32 @@
 
   // Every rung, in order. The first that matches wins. `rule` is what the card
   // explains and what tests assert on, so these keys are part of the contract.
-  var RULES = ['prohibited', 'ferry', 'freeway', 'infra', 'speed-cap', 'wide-road',
-    'slow-road', 'sidewalk-fallback', 'shoulder', 'unknown', 'default'];
+  var RULES = ['prohibited', 'ferry', 'freeway', 'infra', 'speed-cap',
+    'needs-space', 'sidewalk-fallback', 'shares-lane', 'unknown', 'default'];
+
+  // How busy a road has to be before it needs space of its own. A rider picks a
+  // familiar road type, not a number: nobody has an intuition for "3,000
+  // vehicles a day", but everyone knows what a neighbourhood street feels like.
+  //
+  // Each level carries BOTH a traffic threshold and the equivalent functional
+  // class, and that is what makes the setting work everywhere. Only about half
+  // the network has a traffic count; the class covers the rest. The count is a
+  // measurement and wins whenever there is one, the class is the fallback, and
+  // the card says which of the two decided.
+  //
+  // `fc` is the FHWA functional system, where SMALLER is bigger road:
+  // 1 Interstate, 3 principal arterial, 5 major collector, 7 local street.
+  var BUSY_LEVELS = [
+    { id: 0, label: 'don\u2019t use traffic', adt: null, fc: null },
+    { id: 1, label: 'a quiet lane', adt: 500, fc: 6 },
+    { id: 2, label: 'a neighborhood street', adt: 2000, fc: 5 },
+    { id: 3, label: 'a busy through road', adt: 6000, fc: 4 },
+    { id: 4, label: 'a main highway', adt: 15000, fc: 3 },
+  ];
+  function busyLevel(rules) {
+    var id = Number(rules.busyNoShoulder) || 0;
+    return BUSY_LEVELS[id] || BUSY_LEVELS[0];
+  }
 
   // Why a road can be amber rather than green or blue. Every entry must appear
   // in the "What makes a road caution?" help section; a test enforces it.
@@ -91,15 +115,47 @@
     return shoulder != null && shoulder >= rules.minShoulder;
   }
 
-  // You cannot share a lane with traffic on a wide road. The setting is the
-  // count that FAILS, not the widest road allowed. Lanes are counted exactly as
-  // tagged -- turn lanes included, no oneway adjustment -- and an unknown
-  // shoulder is not proof of space, so it does not exempt.
-  function wideRoadNeedsSpace(facts, shoulder, rules) {
-    var limit = Number(rules.maxLanesNoShoulder) || 0;
+  // ---- the three reasons a road needs space of its own ----------------
+  // Each answers the same question differently: how much of this lane is
+  // actually available to a rider. They are ORed, and `spaceReasons` reports
+  // every one that applied so the card can say what it was.
+
+  // Too fast to share.
+  function speedNeedsSpace(facts, rules) {
+    return facts.speed != null && facts.speed > noShoulderMaxSpeed(facts, rules);
+  }
+
+  // Too wide to share. Lanes are counted exactly as tagged -- turn lanes
+  // included, no oneway adjustment. The setting reads "more lanes than X", so
+  // the comparison is strictly greater; MAX_LANES_NO_LIMIT turns it off.
+  function lanesNeedSpace(facts, rules) {
+    var over = Number(rules.lanesNoShoulderOver) || 0;
     var lanes = Number(facts.lanes) || 0;
-    if (!lanes || !limit || limit >= MAX_LANES_NO_LIMIT) return false;
-    return lanes >= limit && !hasRidingSpace(facts, shoulder, rules);
+    if (!lanes || !over || over >= MAX_LANES_NO_LIMIT) return false;
+    return lanes > over;
+  }
+
+  // Too busy to share. A traffic count decides when there is one, because it is
+  // a measurement; otherwise the road's functional class stands in for it.
+  function trafficNeedsSpace(facts, rules) {
+    var level = busyLevel(rules);
+    if (!level.id) return false;
+    if (facts.adt != null) return facts.adt > level.adt;
+    return facts.fc != null && facts.fc <= level.fc;
+  }
+
+  // Which of them fired, in the order a rider would say them aloud.
+  function spaceReasons(facts, rules) {
+    var reasons = [];
+    if (speedNeedsSpace(facts, rules)) reasons.push('speed');
+    if (lanesNeedSpace(facts, rules)) reasons.push('lanes');
+    if (trafficNeedsSpace(facts, rules)) reasons.push(facts.adt != null ? 'traffic' : 'class');
+    return reasons;
+  }
+
+  function needsSpace(facts, rules) {
+    return speedNeedsSpace(facts, rules) || lanesNeedSpace(facts, rules)
+      || trafficNeedsSpace(facts, rules);
   }
 
   // A mapped sidewalk is an opt-in stand-in for a shoulder. It applies to the
@@ -170,17 +226,26 @@
     // Olympic Discovery Trail alignment runs 58.8 mi along ordinary road,
     // including US 101 at 60 mph with no shoulder. The rules below judge the
     // road, and a route drawn along it does not change what it is.
-    if (wideRoadNeedsSpace(facts, shoulder, rules)) return out(4, 'wide-road');
-    if (facts.speed != null && facts.speed <= noShoulderMaxSpeed(facts, rules)) {
-      return out(softCaution ? 3 : 1, 'slow-road');
-    }
-
-    if (shoulderFails(facts, shoulder, rules)) {
-      if (sidewalkFallbackApplies(facts, shoulder, rules)) {
-        return out(3, 'sidewalk-fallback', 'sidewalk-fallback');
+    // One rung, three triggers. Too fast, too wide, or too busy to share a
+    // lane -- all of them the same question, so they give the same answer and
+    // the card can name whichever applied.
+    //
+    // Speed and lanes used to be separate rungs, which meant a five-lane
+    // arterial signed at 25 mph passed on the speed rung after the lane rung
+    // had already been consulted. Merging them removes the ordering entirely.
+    if (needsSpace(facts, rules)) {
+      if (!hasRidingSpace(facts, shoulder, rules)) {
+        if (sidewalkFallbackApplies(facts, shoulder, rules)) {
+          return out(3, 'sidewalk-fallback', 'sidewalk-fallback');
+        }
+        return out(4, 'needs-space');
       }
-      return out(4, 'shoulder');
+      // It needs space and it has some. Not the same as a quiet lane, so it
+      // does not get the quiet lane's level.
+      return out(softCaution ? 3 : 2, 'default');
     }
+    // Nothing about this road demands space of its own.
+    if (facts.speed != null) return out(softCaution ? 3 : 1, 'shares-lane');
     // Nothing known about any criterion. Only reachable when the rider has
     // turned off "Unknown shoulder = 0 ft"; with it on, an untagged shoulder is
     // data and the shoulder rung above has already decided.
@@ -202,7 +267,13 @@
     evaluate: evaluate,
     level: level,
     hasRidingSpace: hasRidingSpace,
-    wideRoadNeedsSpace: wideRoadNeedsSpace,
+    BUSY_LEVELS: BUSY_LEVELS,
+    busyLevel: busyLevel,
+    needsSpace: needsSpace,
+    spaceReasons: spaceReasons,
+    speedNeedsSpace: speedNeedsSpace,
+    lanesNeedSpace: lanesNeedSpace,
+    trafficNeedsSpace: trafficNeedsSpace,
     sidewalkFallbackApplies: sidewalkFallbackApplies,
     noShoulderMaxSpeed: noShoulderMaxSpeed,
     effectiveShoulder: effectiveShoulder,
