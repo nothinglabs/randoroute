@@ -214,6 +214,33 @@ for (let index = 0; index < scenarios.length; index++) {
       process.exitCode = 1;
     }
   }
+  // ---- invariants, checked against EVERY option rather than any one of them.
+  // These hold whatever the router is tuned to prefer, which is the point: the
+  // distance and facility windows they replaced had to be re-blessed after
+  // every routing change, so they measured sameness rather than correctness.
+  if (scenario.invariants) {
+    const inv = scenario.invariants;
+    const shortest = Math.min(...result.options.map((o) => o.distM));
+    for (const option of result.options) {
+      const label = option.optimization.label;
+      if (inv.maxDistanceRatio != null && shortest > 0
+          && option.distM / shortest > inv.maxDistanceRatio) {
+        console.error(`  INVARIANT FAIL — ${label} is ${(option.distM / shortest).toFixed(1)}x `
+          + `the shortest option (limit ${inv.maxDistanceRatio}x)`);
+        process.exitCode = 1;
+      }
+      if (inv.maxFreewayM != null && option.freewayM > inv.maxFreewayM) {
+        console.error(`  INVARIANT FAIL — ${label} uses ${Math.round(option.freewayM)} m of freeway`);
+        process.exitCode = 1;
+      }
+      if (inv.maxMtbM != null && option.mtbM > inv.maxMtbM) {
+        console.error(`  INVARIANT FAIL — ${label} uses ${Math.round(option.mtbM)} m of mountain-bike trail`);
+        process.exitCode = 1;
+      }
+    }
+    console.log(`  INVARIANTS PASS — ${result.options.length} options, `
+      + `longest ${(Math.max(...result.options.map((o) => o.distM)) / shortest).toFixed(1)}x the shortest`);
+  }
   if (scenario.expectFullyMatching) {
     const match = result.options.find((option) => option.failM <= 0.5
       && option.optimization.fullyMatchingRules);

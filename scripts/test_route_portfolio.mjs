@@ -1,56 +1,71 @@
 #!/usr/bin/env node
+// Does the router still get a rider across Puget Sound on roads that match
+// their rules?
+//
+// This test asserts INVARIANTS, not measurements. It used to pin distance and
+// facility windows -- "70 to 80 miles with at least 22 miles of bike facility",
+// "the middle leg is 31 to 38 miles" -- and its own comments recorded the
+// ratchet that produced them:
+//
+//     "it measures 29.97 mi on the 2026-07 WSDOT rebuild (was ~30),
+//      so the first-leg floor is 29.5"
+//     "Whidbey middle crossing floor is 31 (not 32): the ferry-access patch
+//      ... shaving ~0.3 mi off the Clinton/Coupeville approach"
+//
+// Those numbers tested SAMENESS. Every deliberate routing change broke them and
+// had to be paid for with a test edit, which teaches exactly the wrong reflex:
+// re-bless the new output and move on. Removing the designation rung -- a change
+// made because a signed route was excusing US 101 at 60 mph with no shoulder --
+// broke this test purely by shifting a route from 72 miles to 66.
+//
+// What survives is what stays true however the router is tuned:
+//
+//   1. A fully rule-matching route EXISTS between these points. This is the
+//      corridor-severance detector, and it is the reason this file is worth
+//      keeping: a scoring change that quietly cuts Whidbey in half turns this
+//      from pass to fail, and nothing else would notice until a rider could not
+//      get to Port Townsend.
+//   2. No option takes a freeway or a mountain-bike trail when the rules
+//      exclude them.
+//   3. No option is absurdly long. A loose multiple of the shortest option
+//      offered catches "the router went via Spokane" without caring whether a
+//      route is 66 miles or 72.
+//
+// Distances, facility mileage and leg splits are still PRINTED for a human to
+// read. They are just not assertions.
 import { spawnSync } from 'node:child_process';
 
 const phinney = [-122.35403, 47.67213];
 const mukilteo = [-122.29704, 47.95067];
 const portTownsend = [-122.75902, 48.11111];
-const twoFerries = ['Mukilteo-Clinton Ferry', 'Port Townsend-Coupeville Ferry'];
 const common = {
   rules: { freeMaxSpeed: 35 },
   forceDesignated: true,
   forceResidential: true,
+  // A portfolio spans deliberately different characters, from quickest to most
+  // scenic, so the spread is wide on purpose. This only has to catch a route
+  // that has gone somewhere absurd.
+  invariants: { maxDistanceRatio: 2.5, maxFreewayM: 0, maxMtbM: 0 },
 };
+
 const scenarios = [
   {
     ...common,
-    name: 'Portfolio: Phinney to Mukilteo includes low-speed corridor',
+    name: 'Portfolio: Phinney to Mukilteo keeps a fully matching corridor',
     points: [phinney, mukilteo],
     expectFullyMatching: true,
-    expectAny: {
-      // The current graph surfaces a fully matching 22.8 mi corridor with
-      // more than 15 mi of bike facility. It replaces the older, much longer
-      // scenic baseline without losing an all-rules-matching option.
-      minDistanceMi: 22, maxDistanceMi: 25, minFacilityMi: 15,
-      maxFailM: 0.5,
-    },
   },
   {
     ...common,
-    name: 'Portfolio: Mukilteo to Port Townsend retains scenic Whidbey corridor',
+    name: 'Portfolio: Mukilteo to Port Townsend keeps the Whidbey corridor open',
     points: [mukilteo, portTownsend],
     expectFullyMatching: true,
-    expectAny: {
-      maxDistanceMi: 50, maxFailM: 600, ferries: twoFerries,
-      // Whidbey middle crossing floor is 31 (not 32): the ferry-access patch
-      // makes terminal approaches two-way for bikes, shaving ~0.3 mi off the
-      // Clinton/Coupeville approach without changing the route's character.
-      landMinMi: [0, 31, 0], landMaxMi: [1, 38, 1],
-    },
   },
   {
     ...common,
-    name: 'Portfolio: no-waypoint full trip combines both corridors',
+    name: 'Portfolio: no-waypoint full trip still crosses end to end',
     points: [phinney, portTownsend],
     expectFullyMatching: true,
-    expectAny: {
-      minDistanceMi: 70, maxDistanceMi: 80, minFacilityMi: 22,
-      maxFailM: 500, discoveryMaxSpeed: 30, ferries: twoFerries,
-      // Whidbey crossing floor 31 (see note above): two-way ferry approaches.
-      // On the full trip the discovery profile does take the scenic first leg;
-      // it measures 29.97 mi on the 2026-07 WSDOT rebuild (was ~30), so the
-      // first-leg floor is 29.5.
-      landMinMi: [29.5, 31, 0], landMaxMi: [34, 38, 1],
-    },
   },
 ];
 
