@@ -421,8 +421,10 @@ const V_DISMOUNT = 1.15; // ~2.6 mph while walking a bike
 const DISMOUNT_ENTRY_PENALTY_S = 4 * 60;
 // A* heuristic speed: must not undershoot any effective edge speed, including
 // fast ferries and the strongest cost bonuses, or A* loses optimality.
-// Worst case: V_MAX 12 / (0.38 path facility x 0.78 residential)
-// = 40.5 m/s. Keep ample headroom so the heuristic remains admissible.
+// Worst case: V_MAX 12 / (0.30 path facility x 0.78 residential x 0.9
+// low-stress comfort bonus) = 57.0 m/s. Keep ample headroom so the heuristic
+// remains admissible; the facility sliders bottom out at 0.20, which would be
+// 12 / (0.20 x 0.78 x 0.9) = 85.5 m/s and still clears 160.
 const V_HEUR = 160.0;
 // Designated bike routes (USBR / regional, edge flag 64) get a modest cost
 // bonus. A recorded physical bike facility always gets the stronger bonus;
@@ -436,8 +438,8 @@ const DEFAULT_WEIGHTS = Object.freeze({
   failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   designated: 0.94, strongDesignated: 0.5, residential: 0.78,
-  facilityShared: 0.82, facilityLane: 0.68, facilityBuffered: 0.58,
-  facilitySeparated: 0.46, facilityPath: 0.38,
+  facilityShared: 0.82, facilityLane: 0.5, facilityBuffered: 0.45,
+  facilitySeparated: 0.4, facilityPath: 0.3,
   mtbTrail: 6,
   freeway: 60,
   limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,

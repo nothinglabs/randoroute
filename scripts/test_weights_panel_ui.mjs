@@ -124,6 +124,37 @@ check('a changed row is marked and offers a revert', drag.marked && drag.revertS
 check('revert restores exactly the default',
   drag.restored === drag.before && !drag.stillMarked, JSON.stringify(drag));
 
+/* ---- 4b. the revert sits beside the value, not on a row of its own ---- */
+// The slider spans every grid column and claims its own row. Without an
+// explicit position the button auto-places BELOW it, adding a third row to
+// every changed control -- which is exactly what shipped and showed up on a
+// phone. Presence alone did not catch it, so this checks geometry.
+const revertBox = await pg.evaluate(() => {
+  const input = document.querySelector('#routingWeightsEditor input[data-weight="facilityPath"]');
+  input.value = String(Number(input.min));
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  const row = input.closest('.weight-row');
+  const revert = row.querySelector('.weight-revert');
+  const r = revert.getBoundingClientRect();
+  const slider = input.getBoundingClientRect();
+  const out = row.querySelector('output').getBoundingClientRect();
+  const result = {
+    aboveSlider: r.bottom <= slider.top + 1,
+    sharesRowWithValue: !(r.bottom <= out.top || r.top >= out.bottom),
+    rightOfValue: r.left >= out.right - 1,
+    rowHeight: row.getBoundingClientRect().height,
+  };
+  row.querySelector('.weight-revert').click();
+  return result;
+});
+check('revert sits on the value row, not below the slider',
+  revertBox.aboveSlider && revertBox.sharesRowWithValue, JSON.stringify(revertBox));
+check('revert sits to the right of the value', revertBox.rightOfValue, JSON.stringify(revertBox));
+// Two rows of content: label+value+revert, then the slider. A third row means
+// the button wrapped again.
+check('a changed row stays two rows tall', revertBox.rowHeight < 70,
+  `${revertBox.rowHeight}px`);
+
 /* --------------------------------- 5. the tuned badge tracks off-defaults */
 const badge = await pg.evaluate(() => {
   const button = document.getElementById('appWeightsBtn');

@@ -994,14 +994,17 @@ body.navigation-active #routeBar { display: none; }
 .weight-cost { margin: 9px 0 0; padding: 9px 10px; border: 1px solid #e4ecf1; border-radius: 9px; background: #fafcfd; }
 .weight-cost h4 { margin: 0; color: #26404f; font: 750 12.5px/1.3 system-ui; }
 .weight-hint { margin: 4px 0 2px; color: #5c6f7b; font: 500 11px/1.42 system-ui; }
-.weight-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 24px; gap: 2px 8px; align-items: center; padding: 5px 0 3px; border-top: 1px solid #eef2f4; color: #52636d; font: 620 11px/1.2 system-ui; }
+.weight-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px 8px; align-items: center; padding: 5px 0 3px; border-top: 1px solid #eef2f4; color: #52636d; font: 620 11px/1.2 system-ui; }
 .weight-cost > .weight-row:first-of-type { border-top: 1px solid #e4ecf1; margin-top: 6px; }
 .weight-row-label { min-width: 0; }
 .weight-row output { text-align: right; color: #0a66c2; font: 750 11px tabular-nums, system-ui; white-space: nowrap; }
 .weight-row.changed output { color: #9a5b00; }
 .weight-row.changed .weight-row-label { color: #26404f; font-weight: 750; }
-.weight-row input { grid-column: 1 / -1; width: 100%; margin: 0; touch-action: pan-y; }
-.weight-revert { width: 22px; height: 22px; padding: 0; border: 1px solid #d8c39a; border-radius: 6px; background: #fff8ea; color: #9a5b00; font: 700 12px/1 system-ui; cursor: pointer; }
+.weight-row input { grid-row: 2; grid-column: 1 / -1; width: 100%; margin: 0; touch-action: pan-y; }
+/* Pinned to row 1, beside the value. The slider spans every column and so
+   claims row 2; without an explicit position the revert button auto-places
+   onto a THIRD row under the slider, which is where it landed on a phone. */
+.weight-revert { grid-row: 1; grid-column: 3; width: 22px; height: 22px; padding: 0; border: 1px solid #d8c39a; border-radius: 6px; background: #fff8ea; color: #9a5b00; font: 700 12px/1 system-ui; cursor: pointer; }
 .weight-revert[hidden] { display: none; }
 @media (max-width: 600px) {
   .full-help-head { padding-left: 12px; padding-right: 10px; }

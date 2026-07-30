@@ -776,6 +776,15 @@ or illegal. Every multiplier applied to an edge, in `router-worker.js`:
 
 Two multipliers are discounts rather than penalties, and they follow three rules.
 
+Facility multipliers are **profile-independent** — they apply unchanged in
+direct, balanced and low-stress mode alike. Lowering one therefore moves every
+option in the portfolio, not just the low-stress end, and can remove the short
+end of it entirely: dropping the set to 0.30/0.40/0.45/0.50 took the shortest
+Olympia–Centralia option from 28.7 mi to 39.8 mi, because the direct profile
+also now preferred the trail. Measured facility share across four corridors
+rose 0–8 points; failing distance on the quickest options rose slightly, since
+a little more failing road is now worth paying to reach a trail.
+
 **A physical facility always speaks for itself.** If an edge has one, its
 `facility*` weight applies and designation is not consulted. These used to
 compete through `Math.min`, which was written when `strongDesignated` was 0.86 —
