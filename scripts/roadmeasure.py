@@ -11,6 +11,7 @@ Three sources, all matched the same way:
   roadlog.geojson   CRAB county road log -- bail-out space per side, ADT + year
   funcclass.geojson WSDOT non-state functional class -- class, owner
   aadt.geojson      WSDOT traffic counts -- ADT + year, state routes
+  hpms.geojson      FHWA HPMS -- ADT + year, the only source for city streets
 
 MATCHING RULE, and why it is this and not something simpler.
 
@@ -230,23 +231,65 @@ def length_m(coords):
     return total
 
 
-class RoadMeasures:
-    """All three sources together, resolved into one set of per-way values."""
+# Which inventory a traffic count came from. Stored per edge, shown on the card,
+# and used to break ties -- so the values are part of the data format, not a
+# presentation detail. See ADT_SOURCE_* in scripts/build_graph.py.
+ADT_SOURCE_NONE = 0
+ADT_SOURCE_COUNTY = 1     # CRAB county road log, a measured count
+ADT_SOURCE_STATE = 2      # WSDOT traffic counts, a measured count
+ADT_SOURCE_HPMS = 3       # FHWA HPMS; MODELLED on non-state roads, not counted
 
-    def __init__(self, roadlog=None, funcclass=None, aadt=None):
+# A measured count and a modelled estimate are not the same claim, so where two
+# sources describe one road the choice between them needs a stated reason rather
+# than an accident of evaluation order.
+#
+# THE RULE: the most recent count wins; where the years tie, a measured count
+# beats a modelled one.
+#
+# Recency is the tiebreaker because neither source is systematically better than
+# the other. On the 27,279 graph edges where the county road log and HPMS both
+# land, the median ratio between them is exactly 1.00 -- no bias in either
+# direction, just scatter. With nothing to separate them on accuracy, the count
+# taken closer to today is the better description of the road today.
+#
+# A count with no recorded year is treated as older than any dated one. It
+# cannot be shown with a year, so it must not displace something that can.
+MEASURED_SOURCES = (ADT_SOURCE_COUNTY, ADT_SOURCE_STATE)
+
+
+def _better_count(candidate, incumbent):
+    """Should `candidate` replace `incumbent`? Both are (adt, year, source)."""
+    if incumbent is None:
+        return True
+    _, cand_year, cand_src = candidate
+    _, held_year, held_src = incumbent
+    cand_year = cand_year or 0
+    held_year = held_year or 0
+    if cand_year != held_year:
+        return cand_year > held_year
+    return (cand_src in MEASURED_SOURCES) and (held_src not in MEASURED_SOURCES)
+
+
+class RoadMeasures:
+    """All four sources together, resolved into one set of per-way values."""
+
+    def __init__(self, roadlog=None, funcclass=None, aadt=None, hpms=None):
         self.roadlog = MeasureIndex(roadlog, 'CRAB road log')
         self.funcclass = MeasureIndex(funcclass, 'functional class')
         self.aadt = MeasureIndex(aadt, 'WSDOT AADT')
+        self.hpms = MeasureIndex(hpms, 'FHWA HPMS')
 
     def __bool__(self):
-        return bool(self.roadlog) or bool(self.funcclass) or bool(self.aadt)
+        return (bool(self.roadlog) or bool(self.funcclass)
+                or bool(self.aadt) or bool(self.hpms))
 
     def match(self, coords):
         """-> dict of measurements for one OSM way (may be empty).
 
         Keys, all optional:
           adt, adty   traffic volume and the year it was counted
-          adtSrc      'county' | 'state' -- which inventory the count came from
+          adtSrc      ADT_SOURCE_* -- which inventory the count came from,
+                      resolved by _better_count above
           edge        bail-out space per side, ft (CRAB, derived)
           edgeClamp   1 when the lane-width clamp was applied to get it
           shP         reported PAVED shoulder, ft (CRAB, ~15% of rows)
@@ -254,13 +297,12 @@ class RoadMeasures:
           owner       FHWA roadway owner code (1 state, 2 county, 3 town, 4 city)
         """
         out = {}
+        count = None   # (adt, year, source), resolved by _better_count
 
         log = self.roadlog.match(coords) if self.roadlog else None
         if log:
             if log.get('adt'):
-                out['adt'] = int(log['adt'])
-                out['adty'] = log.get('adty')
-                out['adtSrc'] = 'county'
+                count = (int(log['adt']), log.get('adty'), ADT_SOURCE_COUNTY)
             edge = log.get('edge')
             if edge is not None:
                 out['edge'] = float(edge)
@@ -268,20 +310,36 @@ class RoadMeasures:
             if log.get('shP') is not None:
                 out['shP'] = float(log['shP'])
 
-        # A current state-route count beats a county count, which can be from
-        # the 1970s. Only replaces it when there is actually a number.
         state = self.aadt.match(coords) if self.aadt else None
         if state and state.get('adt'):
-            out['adt'] = int(state['adt'])
-            out['adty'] = state.get('adty')
-            out['adtSrc'] = 'state'
+            cand = (int(state['adt']), state.get('adty'), ADT_SOURCE_STATE)
+            if _better_count(cand, count):
+                count = cand
+
+        hpms = self.hpms.match(coords) if self.hpms else None
+        if hpms:
+            if hpms.get('adt'):
+                cand = (int(hpms['adt']), hpms.get('adty'), ADT_SOURCE_HPMS)
+                if _better_count(cand, count):
+                    count = cand
+            # HPMS carries a functional class for state routes, which WSDOT's
+            # non-state layer by definition does not. Only fills a gap.
+            if hpms.get('fc') and not out.get('fc'):
+                out['fc'] = int(hpms['fc'])
+            if hpms.get('owner') and not out.get('owner'):
+                out['owner'] = int(hpms['owner'])
 
         fc = self.funcclass.match(coords) if self.funcclass else None
         if fc:
+            # The dedicated layer wins over HPMS for class and owner: it is the
+            # current publication, where the HPMS release is from 2018.
             if fc.get('fc'):
                 out['fc'] = int(fc['fc'])
             if fc.get('owner'):
                 out['owner'] = int(fc['owner'])
+
+        if count:
+            out['adt'], out['adty'], out['adtSrc'] = count
 
         return out
 
@@ -289,3 +347,4 @@ class RoadMeasures:
         self.roadlog.report()
         self.funcclass.report()
         self.aadt.report()
+        self.hpms.report()

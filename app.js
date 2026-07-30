@@ -355,7 +355,7 @@ function tileMeasures(p) {
   if (p.adt) {
     out.adt = p.adt;
     if (p.ay) out.adty = p.ay;
-    out.adtState = p.as ? 1 : 0;
+    out.adtSrc = p.asrc || ADT_SOURCE_COUNTY;
   }
   if (p.es != null) {
     out.edge = p.es;
@@ -6967,6 +6967,22 @@ const FUNCTIONAL_CLASS_NAME = {
   7: 'Local street',
 };
 const ROAD_OWNER_NAME = { 1: 'State', 2: 'County', 3: 'Town', 4: 'City' };
+// Which inventory a traffic count came from. Mirrors ADT_SOURCE_* in
+// scripts/roadmeasure.py and the decoder in router-worker.js.
+//
+// The label matters as much as the number. A county or state count was
+// measured; HPMS models its non-state volumes rather than counting them, so
+// "hpms" is a weaker claim than the other two and the card must not let them
+// read alike. Where sources overlap the most recent wins, and on a tie a
+// measured count beats a modelled one.
+const ADT_SOURCE_COUNTY = 1;
+const ADT_SOURCE_STATE = 2;
+const ADT_SOURCE_HPMS = 3;
+const ADT_SOURCE_NAME = {
+  [ADT_SOURCE_COUNTY]: 'county',
+  [ADT_SOURCE_STATE]: 'state',
+  [ADT_SOURCE_HPMS]: 'HPMS est',
+};
 
 // Rows for the measurements imported from the CRAB road log, WSDOT's functional
 // class layer and WSDOT's traffic counts.
@@ -6985,10 +7001,10 @@ function measurementRows(measures) {
   if (!measures) return [];
   const rows = [];
   if (measures.adt != null) {
-    // County and state counts are the same kind of fact and are shown the same
-    // way; the tag says which inventory it came from. The year does the work of
-    // flagging an old count -- "1977" needs no adjective.
-    const source = measures.adtState ? 'state' : 'county';
+    // The tag says which inventory the count came from, and for HPMS that it is
+    // an estimate. The year does the work of flagging an old count -- "1977"
+    // needs no adjective.
+    const source = ADT_SOURCE_NAME[measures.adtSrc] || 'county';
     const when = measures.adty ? ` ${measures.adty}` : '';
     rows.push(['Traffic', `${measures.adt.toLocaleString()}/day (${source}${when})`]);
   }

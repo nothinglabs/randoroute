@@ -26,6 +26,9 @@ let eLanes, eLts;
 // source, and FHWA functional class with the owner. Carried to the card; none
 // of it prices a route.
 let eEdgeSpace, eCountyShoulder, eAdt, eAdtMeta, eClassOwner;
+// Format 12 only. Which inventory a count came from; a format 11 graph carries
+// only the older single "from the state" bit, handled below.
+let eAdtSource;
 
 let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
@@ -50,7 +53,13 @@ const PROHIBITED_SHOULDER = -128;
 const MEASURE_UNKNOWN = 255;
 const EDGE_SPACE_CLAMPED = 128;
 const ADT_YEAR_EPOCH = 1940;
-const ADT_SOURCE_STATE = 128;
+// Format 11 packed provenance as one bit of edgeAdtMeta; format 12 gives it a
+// byte, because three sources do not fit in one bit and because a modelled HPMS
+// estimate is a different claim from a measured count.
+const ADT_META_STATE_BIT = 128;
+const ADT_SOURCE_COUNTY = 1;
+const ADT_SOURCE_STATE = 2;
+const ADT_SOURCE_HPMS = 3;
 
 function edgeMeasures(i) {
   if (!eAdt) return null;
@@ -65,9 +74,12 @@ function edgeMeasures(i) {
   if (eAdt[i]) {
     out.adt = eAdt[i];
     const meta = eAdtMeta[i];
-    const year = meta & ~ADT_SOURCE_STATE;
+    const year = meta & ~ADT_META_STATE_BIT;
     if (year) out.adty = ADT_YEAR_EPOCH + year;
-    out.adtState = meta & ADT_SOURCE_STATE ? 1 : 0;
+    // A format 11 graph only knew state-or-not; map that onto the new codes so
+    // a rider on a cached graph still gets a correctly labelled card.
+    out.adtSrc = eAdtSource ? eAdtSource[i]
+      : (meta & ADT_META_STATE_BIT ? ADT_SOURCE_STATE : ADT_SOURCE_COUNTY);
   }
   const classOwner = eClassOwner[i];
   if (classOwner & 15) out.fc = classOwner & 15;
@@ -127,13 +139,14 @@ function loadGraph(buf) {
   // graph already cached on riders' phones, and the next data rebuild upgrades
   // them without a coordinated deploy.
   const magic = dv.getUint32(0, false);
-  // 'BGRA' is format 10, 'BGRB' format 11. Each only ever appends, so a newer
-  // reader still understands an older graph and a rider is never stranded on a
-  // cached one; the fields it lacks simply read as "not known".
-  const hasMeasures = magic === 0x42475242;
+  // 'BGRA' is format 10, 'BGRB' 11, 'BGRC' 12. Each only ever appends, so a
+  // newer reader still understands an older graph and a rider is never stranded
+  // on a cached one; the fields it lacks simply read as "not known".
+  const hasAdtSource = magic === 0x42475243;
+  const hasMeasures = magic === 0x42475242 || hasAdtSource;
   const hasTrafficStress = magic === 0x42475241 || hasMeasures;
   if (magic !== 0x42475239 && !hasTrafficStress) {
-    throw new Error('bad graph magic (want BGR9, BGRA or BGRB)');
+    throw new Error('bad graph magic (want BGR9, BGRA, BGRB or BGRC)');
   }
   N = dv.getUint32(4, true); E = dv.getUint32(8, true); D = dv.getUint32(12, true);
   const G = dv.getUint32(16, true), U = dv.getUint32(20, true), B = dv.getUint32(24, true);
@@ -163,6 +176,7 @@ function loadGraph(buf) {
   eCountyShoulder = hasMeasures ? u8(E) : null;
   eAdt = hasMeasures ? u16(E) : null;
   eAdtMeta = hasMeasures ? u8(E) : null;
+  eAdtSource = hasAdtSource ? u8(E) : null;
   eClassOwner = hasMeasures ? u8(E) : null;
   eHazAB = u8(E); eHazBA = u8(E);
   pad2();

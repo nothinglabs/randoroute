@@ -16,10 +16,11 @@ Included edges:
 One-way streets are honored for bikes (oneway / junction=roundabout, with
 oneway:bicycle=no overriding; oneway=-1 reverses the edge).
 
-Binary layout (little-endian), after header 'BGRB' + N,E,D,G,U,B (u32).
-'BGRB' is format 11; the magic is four bytes, so 11 is written as the hex
-digit B. Readers must keep accepting 'BGR9' (which lacks the arrays marked
-"format 10") and 'BGRA' (which lacks those marked "format 11") — see
+Binary layout (little-endian), after header 'BGRC' + N,E,D,G,U,B (u32).
+'BGRC' is format 12; the magic is four bytes, so 12 is written as the hex
+digit C. Readers must keep accepting 'BGR9' (which lacks the arrays marked
+"format 10"), 'BGRA' (which lacks those marked "format 11") and 'BGRB'
+(which lacks those marked "format 12") — see
 router-worker.js. A rider keeps routing on the graph already cached on their
 phone, and the next data rebuild upgrades them without a coordinated deploy.
   nodeLon f32[N], nodeLat f32[N]
@@ -57,9 +58,16 @@ phone, and the next data rebuild upgrades them without a coordinated deploy.
                  it deliberately does not feed the shoulder rule),
   edgeAdt u16[E] (format 11; annual average daily traffic, 0 = unknown,
                  saturating at 65535),
-  edgeAdtMeta u8[E] (format 11; bits 0-6 = count year minus 1940, 0 = unknown;
-                 bit 7 = the count came from WSDOT state-route data rather
-                 than a county road log),
+  edgeAdtMeta u8[E] (format 11; bits 0-6 = count year minus 1940, 0 = unknown.
+                 Bit 7 was a single "came from the state" flag in format 11 and
+                 is unused in format 12, which needs three source values and so
+                 gives them their own byte),
+  edgeAdtSource u8[E] (format 12; 0 unknown, 1 county road log, 2 WSDOT state
+                 count, 3 FHWA HPMS. Kept separate rather than squeezed into
+                 edgeAdtMeta because the year needs all seven of its bits to
+                 span 1940-2035, and because a modelled HPMS estimate is a
+                 different kind of claim from a measured count -- worth a field
+                 of its own rather than a spare bit),
   edgeClassOwner u8[E] (format 11; bits 0-3 = FHWA functional class 1-7,
                  0 = unclassified; bits 4-7 = FHWA roadway owner, 1 state,
                  2 county, 3 town, 4 city, 0 unknown),
@@ -146,7 +154,12 @@ EDGE_SPACE_CLAMPED = 128   # bit 7 of edgeEdgeSpace
 # collision between a value and "no value" is not a thing to leave in a format.
 EDGE_SPACE_MAX_FT = 126
 ADT_YEAR_EPOCH = 1940      # the oldest count in the CRAB log
-ADT_SOURCE_STATE = 128     # bit 7 of edgeAdtMeta
+# Format 12 moves the count's provenance into its own byte. Mirrors
+# ADT_SOURCE_* in scripts/roadmeasure.py and the decoder in router-worker.js.
+ADT_SOURCE_NONE = 0
+ADT_SOURCE_COUNTY = 1
+ADT_SOURCE_STATE = 2
+ADT_SOURCE_HPMS = 3
 
 
 def pack_edge_space(ft, clamped):
@@ -162,13 +175,11 @@ def pack_county_shoulder(ft):
     return max(0, min(254, int(round(ft))))
 
 
-def pack_adt_meta(year, from_state):
-    year_bits = 0
-    if year is not None:
-        offset = int(year) - ADT_YEAR_EPOCH
-        if 0 < offset <= 127:
-            year_bits = offset
-    return year_bits | (ADT_SOURCE_STATE if from_state else 0)
+def pack_adt_meta(year):
+    if year is None:
+        return 0
+    offset = int(year) - ADT_YEAR_EPOCH
+    return offset if 0 < offset <= 127 else 0
 
 
 def pack_class_owner(functional_class, owner):
@@ -1003,12 +1014,13 @@ def directional_curve_hazard(coords, ele_at, speed, shoulder, facility):
 
 
 def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=None,
-          urban_areas=None, roadlog=None, funcclass=None, aadt=None):
+          urban_areas=None, roadlog=None, funcclass=None, aadt=None, hpms=None):
     wsdot = load_blts_index(blts) if blts else None
     # The statewide measurements: traffic volume and bail-out space off the
     # state highway system, where until now we had nothing but estimates.
     print('loading road measurements...', flush=True)
-    measures = RoadMeasures(roadlog=roadlog, funcclass=funcclass, aadt=aadt)
+    measures = RoadMeasures(roadlog=roadlog, funcclass=funcclass, aadt=aadt,
+                            hpms=hpms)
     restriction_index = load_restriction_index(restrictions) if restrictions else None
     speed_index = load_official_index(legal_speeds, 'speed') if legal_speeds else None
     facility_index = load_official_index(facilities, 'facility') if facilities else None
@@ -1061,6 +1073,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     eLanes = array('B'); eLts = array('B')
     eEdgeSpace = array('B'); eCountyShoulder = array('B')
     eAdt = array('H'); eAdtMeta = array('B'); eClassOwner = array('B')
+    eAdtSource = array('B')
     eHazStartAB = array('H'); eHazEndAB = array('H')
     eHazStartBA = array('H'); eHazEndBA = array('H')
     eOff = array('I'); eCnt = array('H')
@@ -1243,6 +1256,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             e_county_sh = MEASURE_UNKNOWN
                             e_adt = 0
                             e_adt_meta = 0
+                            e_adt_source = 0
                             e_class_owner = 0
                             if measures and not is_ferry:
                                 m = measures.match(coords)
@@ -1251,8 +1265,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                                               m.get('edgeClamp'))
                                     e_county_sh = pack_county_shoulder(m.get('shP'))
                                     e_adt = max(0, min(65535, int(m.get('adt') or 0)))
-                                    e_adt_meta = pack_adt_meta(
-                                        m.get('adty'), m.get('adtSrc') == 'state')
+                                    e_adt_meta = pack_adt_meta(m.get('adty'))
+                                    e_adt_source = int(m.get('adtSrc') or 0)
                                     e_class_owner = pack_class_owner(
                                         m.get('fc'), m.get('owner'))
                             asc, des = (0.0, 0.0) if is_ferry else edge_climb(coords, ele_at)
@@ -1274,7 +1288,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                             edge_class, edge_facility, edge_official, edge_surface,
                                             edge_lanes, edge_lts,
                                             edge_space, edge_county_sh, edge_adt,
-                                            edge_adt_meta, edge_class_owner,
+                                            edge_adt_meta, edge_adt_source,
+                                            edge_class_owner,
                                             edge_asc, edge_des, ab, ba):
                                 eAsc.append(min(int(edge_asc), 65535)); eDes.append(min(int(edge_des), 65535))
                                 eA.append(a); eB.append(b); eLen.append(length)
@@ -1289,6 +1304,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 eEdgeSpace.append(edge_space)
                                 eCountyShoulder.append(edge_county_sh)
                                 eAdt.append(edge_adt); eAdtMeta.append(edge_adt_meta)
+                                eAdtSource.append(edge_adt_source)
                                 eClassOwner.append(edge_class_owner)
                                 eHazAB.append(ab[0]); eHazBA.append(ba[0])
                                 eHazStartAB.append(ab[1]); eHazEndAB.append(ab[2])
@@ -1299,7 +1315,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             append_edge(eflags, espeed, espeed_ba, esh, esh_ba, limited_dir,
                                         attrs['road_class'], efacility, eofficial, attrs['surface'],
                                         elanes, elts,
-                                        e_space, e_county_sh, e_adt, e_adt_meta, e_class_owner,
+                                        e_space, e_county_sh, e_adt, e_adt_meta,
+                                        e_adt_source, e_class_owner,
                                         asc, des, haz_ab, haz_ba)
                             if attrs['mtb']:
                                 mtb_edges[0] += 1
@@ -1367,7 +1384,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     # JS typed-array views need 4-byte alignment: pad after the byte arrays
     # and after the u16 arrays. The name blob goes LAST
     # so everything before it stays aligned.
-    parts = [b'BGRB', struct.pack('<IIIIII', N, E, D, G, U, B),
+    parts = [b'BGRC', struct.pack('<IIIIII', N, E, D, G, U, B),
              node_lon.tobytes(), node_lat.tobytes(), nEle.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((4 - off % 4) % 4))
@@ -1385,7 +1402,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     # conditionally, because a pad the reader does not also apply is silent
     # corruption of every field after it.
     assert sum(len(p) for p in parts) % 2 == 0, 'edgeAdt must start 2-byte aligned'
-    parts += [eAdt.tobytes(), eAdtMeta.tobytes(), eClassOwner.tobytes(),
+    parts += [eAdt.tobytes(), eAdtMeta.tobytes(), eAdtSource.tobytes(),
+              eClassOwner.tobytes(),
               eHazAB.tobytes(), eHazBA.tobytes()]
     off = sum(len(p) for p in parts)
     parts.append(b'\x00' * ((2 - off % 2) % 2))
@@ -1427,6 +1445,8 @@ if __name__ == '__main__':
                     help='WSDOT non-state functional class (scripts/build_funcclass.py)')
     ap.add_argument('--aadt', default='data/aadt.geojson',
                     help='WSDOT traffic counts (scripts/build_aadt.py)')
+    ap.add_argument('--hpms', default='data/hpms.geojson',
+                    help='FHWA HPMS public release (scripts/build_hpms.py)')
     args = ap.parse_args()
     build(args.src, args.out, args.blts, args.restrictions, args.legal_speeds, args.facilities,
-          args.urban_areas, args.roadlog, args.funcclass, args.aadt)
+          args.urban_areas, args.roadlog, args.funcclass, args.aadt, args.hpms)

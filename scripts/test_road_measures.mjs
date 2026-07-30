@@ -40,7 +40,8 @@ function constsOf(src, names) {
 const ctx = {};
 vm.createContext(ctx);
 vm.runInContext(constsOf(workerSrc,
-  ['MEASURE_UNKNOWN', 'EDGE_SPACE_CLAMPED', 'ADT_YEAR_EPOCH', 'ADT_SOURCE_STATE']), ctx);
+  ['MEASURE_UNKNOWN', 'EDGE_SPACE_CLAMPED', 'ADT_YEAR_EPOCH', 'ADT_META_STATE_BIT',
+   'ADT_SOURCE_COUNTY', 'ADT_SOURCE_STATE', 'ADT_SOURCE_HPMS']), ctx);
 vm.runInContext(lift(workerSrc, 'edgeMeasures', 'router-worker.js'), ctx);
 
 // edgeMeasures reads the module-level typed arrays; give it one-element ones.
@@ -49,24 +50,27 @@ function unpack(row) {
   ctx.eCountyShoulder = Uint8Array.from([row.countyShoulder]);
   ctx.eAdt = Uint16Array.from([row.adt]);
   ctx.eAdtMeta = Uint8Array.from([row.adtMeta]);
+  ctx.eAdtSource = Uint8Array.from([row.adtSource]);
   ctx.eClassOwner = Uint8Array.from([row.classOwner]);
   return ctx.edgeMeasures(0);
 }
 
 /* --------------------------------------------- pack with the real Python code */
 const CASES = [
-  { edge: 5.0, clamp: 1, shP: null, adt: 2357, year: 2016, state: false, fc: 6, owner: 2 },
-  { edge: 0.0, clamp: 0, shP: 0.0, adt: 140, year: 1999, state: false, fc: 7, owner: 2 },
-  { edge: 12.0, clamp: 0, shP: 8.0, adt: 14000, year: 2025, state: true, fc: 3, owner: 1 },
-  { edge: null, clamp: 0, shP: null, adt: 0, year: null, state: false, fc: 0, owner: 4 },
+  { edge: 5.0, clamp: 1, shP: null, adt: 2357, year: 2016, src: 1, fc: 6, owner: 2 },
+  { edge: 0.0, clamp: 0, shP: 0.0, adt: 140, year: 1999, src: 1, fc: 7, owner: 2 },
+  { edge: 12.0, clamp: 0, shP: 8.0, adt: 14000, year: 2025, src: 2, fc: 3, owner: 1 },
+  { edge: null, clamp: 0, shP: null, adt: 0, year: null, src: 0, fc: 0, owner: 4 },
+  // HPMS: a modelled estimate, which must stay distinguishable from a count.
+  { edge: null, clamp: 0, shP: null, adt: 10925, year: 2018, src: 3, fc: 3, owner: 4 },
   // 127 with the clamp bit set would be 255, the "not known" sentinel, so the
   // packer saturates one lower. Pinned here because the collision is silent.
   { edge: 127.0, expectEdge: 126, clamp: 1, shP: 254.0, adt: 65535, year: 2035,
-    state: true, fc: 7, owner: 4 },
+    src: 2, fc: 7, owner: 4 },
   // Year below the epoch, and a count with no year at all: both must decode to
   // "no year" rather than to a fictional one.
-  { edge: 3.0, clamp: 0, shP: null, adt: 900, year: 1939, state: false, fc: 5, owner: 2 },
-  { edge: 3.0, clamp: 0, shP: null, adt: 900, year: null, state: false, fc: 5, owner: 2 },
+  { edge: 3.0, clamp: 0, shP: null, adt: 900, year: 1939, src: 1, fc: 5, owner: 2 },
+  { edge: 3.0, clamp: 0, shP: null, adt: 900, year: null, src: 1, fc: 5, owner: 2 },
 ];
 
 const SCRIPTS = new URL('.', import.meta.url).pathname;
@@ -82,7 +86,8 @@ const py = [
   "        'space': bg.pack_edge_space(c['edge'], c['clamp']),",
   "        'countyShoulder': bg.pack_county_shoulder(c['shP']),",
   "        'adt': max(0, min(65535, int(c['adt'] or 0))),",
-  "        'adtMeta': bg.pack_adt_meta(c['year'], c['state']),",
+  "        'adtMeta': bg.pack_adt_meta(c['year']),",
+  "        'adtSource': c['src'],",
   "        'classOwner': bg.pack_class_owner(c['fc'], c['owner']),",
   '    })',
   'print(json.dumps(out))',
@@ -116,7 +121,7 @@ CASES.forEach((c, i) => {
     assert.equal(got.adt, undefined, `${label}: no count`);
   } else {
     assert.equal(got.adt, c.adt, `${label}: adt`);
-    assert.equal(got.adtState, c.state ? 1 : 0, `${label}: count source`);
+    assert.equal(got.adtSrc, c.src, `${label}: count source`);
     const expectYear = (c.year && c.year - 1940 > 0 && c.year - 1940 <= 127) ? c.year : undefined;
     assert.equal(got.adty, expectYear, `${label}: count year`);
   }
@@ -130,16 +135,17 @@ console.log(`PASS  ${checks} rows survive the Python pack -> JavaScript unpack r
 /* ------------------------- the tile shape and the segment shape must agree */
 const app = {};
 vm.createContext(app);
+vm.runInContext(constsOf(appSrc, ['ADT_SOURCE_COUNTY']), app);
 vm.runInContext(lift(appSrc, 'tileMeasures', 'app.js'), app);
 
 // The same road, once as a roads-tile feature and once as an edge in the graph.
-const tile = { adt: 2357, ay: 2016, as: 0, es: 5, ec: 1, cs: null, fc: 6, ow: 2 };
+const tile = { adt: 2357, ay: 2016, asrc: 1, es: 5, ec: 1, cs: null, fc: 6, ow: 2 };
 const fromTile = app.tileMeasures(tile);
 const fromEdge = unpack(packed[0]);
 assert.deepEqual(
-  { adt: fromTile.adt, adty: fromTile.adty, adtState: fromTile.adtState,
+  { adt: fromTile.adt, adty: fromTile.adty, adtSrc: fromTile.adtSrc,
     edge: fromTile.edge, edgeClamp: fromTile.edgeClamp, fc: fromTile.fc, owner: fromTile.owner },
-  { adt: fromEdge.adt, adty: fromEdge.adty, adtState: fromEdge.adtState,
+  { adt: fromEdge.adt, adty: fromEdge.adty, adtSrc: fromEdge.adtSrc,
     edge: fromEdge.edge, edgeClamp: fromEdge.edgeClamp, fc: fromEdge.fc, owner: fromEdge.owner },
   'a roads tile and a graph edge should describe one road identically');
 console.log('PASS  the tile shape and the graph-edge shape agree');
@@ -150,7 +156,9 @@ vm.createContext(rowsCtx);
 vm.runInContext(
   appSrc.match(/const FUNCTIONAL_CLASS_NAME = \{[\s\S]*?\n\};/)[0].replace('const ', 'var ') + '\n'
   + appSrc.match(/const ROAD_OWNER_NAME = \{[^}]*\};/)[0].replace('const ', 'var ') + '\n'
-  + appSrc.match(/const OSM_CLASS_TO_FUNCTIONAL = \{[\s\S]*?\n\};/)[0].replace('const ', 'var '),
+  + appSrc.match(/const OSM_CLASS_TO_FUNCTIONAL = \{[\s\S]*?\n\};/)[0].replace('const ', 'var ') + '\n'
+  + constsOf(appSrc, ['ADT_SOURCE_COUNTY', 'ADT_SOURCE_STATE', 'ADT_SOURCE_HPMS']) + '\n'
+  + appSrc.match(/const ADT_SOURCE_NAME = \{[\s\S]*?\n\};/)[0].replace('const ', 'var '),
   rowsCtx);
 vm.runInContext(lift(appSrc, 'measurementRows', 'app.js'), rowsCtx);
 vm.runInContext(lift(appSrc, 'roadClassRow', 'app.js'), rowsCtx);
@@ -168,13 +176,18 @@ for (const [label, value] of rows) {
     `row too long for a phone card: "${label}: ${value}"`);
 }
 
-const stateCount = rowsCtx.measurementRows({ adt: 14000, adty: 2025, adtState: 1 });
+const stateCount = rowsCtx.measurementRows({ adt: 14000, adty: 2025, adtSrc: 2 });
 assert.equal(Object.fromEntries(stateCount).Traffic, '14,000/day (state 2025)',
   'a state count is shown the same way, tagged as state');
-const oldCount = rowsCtx.measurementRows({ adt: 1200, adty: 1977, adtState: 0 });
+const oldCount = rowsCtx.measurementRows({ adt: 1200, adty: 1977, adtSrc: 1 });
 assert.equal(Object.fromEntries(oldCount).Traffic, '1,200/day (county 1977)',
   'the year alone flags an old count; it needs no adjective');
-const noYear = rowsCtx.measurementRows({ adt: 1200, adtState: 0 });
+const noYear = rowsCtx.measurementRows({ adt: 1200, adtSrc: 1 });
+
+// A modelled HPMS figure must never read like a measured count.
+const modelled = rowsCtx.measurementRows({ adt: 10925, adty: 2018, adtSrc: 3 });
+assert.equal(Object.fromEntries(modelled).Traffic, '10,925/day (HPMS est 2018)',
+  'an HPMS figure is labelled as an estimate, not shown like a tube count');
 assert.equal(Object.fromEntries(noYear).Traffic, '1,200/day (county)',
   'a count with no year says nothing rather than implying one');
 

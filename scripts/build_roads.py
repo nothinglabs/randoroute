@@ -33,7 +33,8 @@ Feature properties (short keys to keep the files small):
   su surface class (1 paved, 2 gravel, 3 rough)
   rc numeric road class      lts WSDOT bicycle level of traffic stress (1-4)
   adt annual average daily traffic   ay year that count was taken
-  as  1 = the count is WSDOT state-route data, else a county road log
+  asrc which inventory the count came from: 1 county road log, 2 WSDOT state
+      count, 3 FHWA HPMS (modelled on non-state roads, not measured)
   es  bail-out space per side, ft (CRAB, derived); ec 1 = lane clamp applied
   cs  county-reported PAVED shoulder, ft (display only, never a rule input)
   fc  FHWA functional class 1-7      ow FHWA owner (1 state 2 county 3 town 4 city)
@@ -152,7 +153,7 @@ def parse_shoulder_ft(tags):
 
 
 def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
-          aadt=None):
+          aadt=None, hpms=None):
     from build_graph import (EDGE_SIDEWALK, EDGE_SIDEWALK_NO, EDGE_URBAN,
                              LANES_CENTER_TURN, LANES_COUNT_MASK, ROAD_CLASS,
                              blts_match, collect_designated, is_urban_edge,
@@ -160,7 +161,8 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
                              sidewalk_flags, surface_class)
     designated = collect_designated(src)
     urban_index = load_urban_index(urban_areas)
-    measures = RoadMeasures(roadlog=roadlog, funcclass=funcclass, aadt=aadt)
+    measures = RoadMeasures(roadlog=roadlog, funcclass=funcclass, aadt=aadt,
+                            hpms=hpms)
     wsdot_index = load_blts_index(blts)
     print(f'{len(designated):,} designated-route member ways', flush=True)
     feats = []
@@ -242,8 +244,8 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
                 props['adt'] = int(m['adt'])
                 if m.get('adty'):
                     props['ay'] = int(m['adty'])
-                if m.get('adtSrc') == 'state':
-                    props['as'] = 1
+                if m.get('adtSrc'):
+                    props['asrc'] = int(m['adtSrc'])
             if m.get('edge') is not None:
                 props['es'] = round(float(m['edge']), 1)
                 if m.get('edgeClamp'):
@@ -390,6 +392,8 @@ if __name__ == '__main__':
                     help='WSDOT non-state functional class (scripts/build_funcclass.py)')
     ap.add_argument('--aadt', default='data/aadt.geojson',
                     help='WSDOT traffic counts (scripts/build_aadt.py)')
+    ap.add_argument('--hpms', default='data/hpms.geojson',
+                    help='FHWA HPMS public release (scripts/build_hpms.py)')
     args = ap.parse_args()
     build(args.src, args.out_prefix, args.urban_areas, args.blts,
-          args.roadlog, args.funcclass, args.aadt)
+          args.roadlog, args.funcclass, args.aadt, args.hpms)
