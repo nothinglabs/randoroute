@@ -272,7 +272,39 @@ and it needs a tiebreak against the county road log where both land. On the
 neither is systematically better; recency is the only tiebreaker with a reason
 behind it.
 
-**Not adopted. This is a decision, not a backlog item.**
+**Adopted.** Built and measured, the projection held exactly: 48,998 miles with
+a count, 51.8%. Coverage by class afterwards, with HPMS also supplying the
+functional class for state routes that WSDOT's non-state layer omits:
+
+| class | miles | with count |
+|---|---|---|
+| Interstate | 973 | **100%** |
+| Minor arterial | 5,302 | **94.7%** |
+| Principal arterial | 3,346 | **92.1%** |
+| Major collector | 14,668 | **87.1%** |
+| Freeway/expressway | 2,239 | 58.0% |
+| Minor collector | 30,809 | 46.6% |
+| Local street | 37,182 | 30.9% |
+
+Everything above minor collector is now between 87% and 100% covered. The 68,000
+miles still without a count are local and minor-collector road, which no agency
+counts and where calm-by-default remains the assumption.
+
+### Which count wins
+
+Four sources can describe one road, so the choice is a stated rule rather than
+an accident of evaluation order:
+
+> **The most recent count wins. Where the years tie, a measured count beats a
+> modelled one. A count with no recorded year never displaces a dated one.**
+
+Recency decides because neither source is systematically better. On the 27,279
+edges where the county road log and HPMS both land, the median ratio between
+them is exactly 1.00 — scatter, not bias. With nothing to separate them on
+accuracy, the count taken closer to today describes the road today. An undated
+count cannot be shown with a year, so it must not push aside one that can.
+
+`scripts/test_count_tiebreak.py` pins all eleven cases.
 
 ## Source 2: the city-street gap, and what closes it
 
