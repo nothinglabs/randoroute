@@ -475,10 +475,14 @@ tippecanoe-decode data/roads.pmtiles 13 1311 2858 | grep -c '"adt"'
 #   -> non-zero  (traffic counts reached the tiles)
 ```
 
-Then run the suite (`scripts/test_*.mjs`, `scripts/test_*.py`).
+Then run `npm test` — the whole suite, concurrently, in about six minutes.
 `test_route_portfolio.mjs` is the one that matters most: it catches a scoring
-change that severs a corridor. `test_native_shell.mjs` fails unless
-`npm run ios:prepare-shell` has been run — that is expected, not a regression.
+change that severs a corridor. `npm test <substring>` runs a subset.
+
+Tests that need a build tool the machine lacks report `SKIP`, not `PASS`; on a
+checkout without tippecanoe that is `test_basemap_coastline.py` and
+`test_directional_road_tiles.py`. The data tests need `pip install shapely
+osmium Pillow`, and the six browser tests need Playwright.
 
 Expect `graph2.bin.gz` to grow by roughly 6 bytes per edge before compression
 for the format-11 measurement arrays; measured, that was 556 KB compressed

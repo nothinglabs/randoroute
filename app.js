@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.465';
+const APP_VERSION = '2026-07-31.466';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -396,7 +396,8 @@ function sharrowOnly(p) {
 
 // The declarative twin of sharrowOnly(), for layer filters. MapLibre evaluates
 // filters in the renderer and cannot call the predicate above, so the two have
-// to be kept in step by hand; test_sharrow_not_infrastructure pins them.
+// to be kept in step by hand; test_safety_model.mjs sweeps the expression
+// against the shared model to catch them drifting.
 // A sharrow-only way must never be a tap target on the bike-infrastructure
 // layer. It is paint in a traffic lane, not a facility, and letting it win the
 // hit test short-circuits the whole ladder: scoreOSM gives it baseScore null,
@@ -5271,7 +5272,13 @@ const CAUTION_PULSE_PHASE = Math.PI / 2;
 // Resting geometry for the failure line, in one place so the pulse and the
 // stop-the-pulse path cannot drift apart.
 const FAIL_GLOW_REST = { width: 15, opacity: 0.34, blur: 3.5 };
+// Whether the halo has been moved off its resting values. Under reduced motion
+// it gets widened without a timer ever existing, so the timer cannot be the
+// thing that says "there is something to put back" -- and a route that never
+// failed should not have its failure layer painted at all.
+let failGlowRaised = false;
 function stopFailGlow() {
+  failGlowRaised = false;
   if (!map.getLayer('route-fail-glow')) return;
   map.setPaintProperty('route-fail-glow', 'line-width', FAIL_GLOW_REST.width);
   map.setPaintProperty('route-fail-glow', 'line-opacity', FAIL_GLOW_REST.opacity);
@@ -5300,9 +5307,11 @@ function setFailPulse(on) {
         map.setPaintProperty('route-fail-glow', 'line-width', 19);
         map.setPaintProperty('route-fail-glow', 'line-opacity', 0.48);
         map.setPaintProperty('route-fail-glow', 'line-blur', 4);
+        failGlowRaised = true;
       }
       return;
     }
+    failGlowRaised = true;
     let t = 0;
     failPulseTimer = setInterval(() => {
       t += ROUTE_PULSE_STEP;
@@ -5316,9 +5325,11 @@ function setFailPulse(on) {
       // halo thin enough to disappear against a busy basemap at full swell.
       map.setPaintProperty('route-fail-glow', 'line-blur', 3 + 4 * p);
     }, 80);
-  } else if (!on) {
-    // Not gated on the timer existing: under reduced motion there is no timer,
-    // but the halo was still widened and has to be put back.
+  } else if (!on && (failPulseTimer || failGlowRaised)) {
+    // Not gated on the timer alone: under reduced motion there is no timer, but
+    // the halo was still widened and has to be put back. Gated on something,
+    // though -- a route that never failed should leave the failure layer
+    // untouched rather than painting resting values over it.
     if (failPulseTimer) clearInterval(failPulseTimer);
     failPulseTimer = null;
     // Leave the halo at its resting size rather than wherever the last tick
@@ -8476,7 +8487,9 @@ function weightSlider(key, label, min, max, step) {
     suppressRoadInfo(1200);
     // Route-only, never the full map re-score: weights are read by the router
     // and by nothing that paints the map, so re-scoring every source mid-drag
-    // is guaranteed churn. test_weights_editor_cost pins this.
+    // is guaranteed churn. Not currently pinned by a test -- the check that
+    // claimed to was matching source text, and the real behaviour needs the
+    // browser (see test_weights_panel_ui.mjs for where it would belong).
     scheduleReroute();
   };
   input.addEventListener('input', commit);

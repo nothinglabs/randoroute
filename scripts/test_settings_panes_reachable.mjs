@@ -13,7 +13,10 @@
 // A magic height encodes a control COUNT, so it is wrong the moment anyone adds
 // one. Counting sliders here would repeat that mistake in test form. This
 // measures the thing that actually matters instead: can a thumb reach it.
-import { chromium } from 'playwright';
+// Playwright is installed globally in this container, not under the project, so
+// resolving it is the harness's job rather than each test file's.
+import { playwright, chromiumPath } from './testlib/harness.mjs';
+const { chromium } = await playwright();
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, dirname, resolve } from 'node:path';
@@ -42,7 +45,7 @@ const s = createServer(async (q, r) => {
 });
 await new Promise((r) => s.listen(0, r));
 const port = s.address().port;
-const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=swiftshader'] });
+const b = await chromium.launch({ executablePath: chromiumPath(), args: ['--use-gl=swiftshader'] });
 
 let pass = 0, fail = 0;
 const check = (n, ok, x = '') => { (ok ? pass++ : fail++); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${x ? '  -- ' + x : ''}`); };

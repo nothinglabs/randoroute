@@ -13,7 +13,10 @@
 // and back. This test serves the real archives twice -- once cleanly, once
 // through a server that refuses the FIRST read of every distinct byte range --
 // and requires the flaky run to render the same map as the clean one.
-import { chromium } from 'playwright';
+// Playwright is installed globally in this container, not under the project, so
+// resolving it is the harness's job rather than each test file's.
+import { playwright, chromiumPath } from './testlib/harness.mjs';
+const { chromium } = await playwright();
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, dirname, resolve } from 'node:path';
@@ -79,7 +82,7 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, r));
 const port = server.address().port;
 const browser = await chromium.launch({
-  executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  executablePath: chromiumPath(),
   args: ['--use-gl=swiftshader'],
 });
 

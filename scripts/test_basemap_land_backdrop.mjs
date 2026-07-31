@@ -21,7 +21,10 @@
 // preserved, so readPixels returns an all-black frame and every number taken
 // that way is meaningless. That mistake produced a confident, wrong "0% ocean"
 // during the investigation that led to this file.
-import { chromium } from 'playwright';
+// Playwright is installed globally in this container, not under the project, so
+// resolving it is the harness's job rather than each test file's.
+import { playwright, chromiumPath } from './testlib/harness.mjs';
+const { chromium } = await playwright();
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, dirname, resolve } from 'node:path';
@@ -75,7 +78,7 @@ print(ocean*100//tot, land*100//tot)
   return { ocean, land };
 }
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=swiftshader'] });
+const browser = await chromium.launch({ executablePath: chromiumPath(), args: ['--use-gl=swiftshader'] });
 const pg = await (await browser.newContext({ serviceWorkers: 'block', viewport: { width: 500, height: 500 } })).newPage();
 await pg.goto(`http://localhost:${port}/index.html`, { waitUntil: 'load' });
 await pg.waitForFunction(() => window.map && map.isStyleLoaded(), { timeout: 60000 });

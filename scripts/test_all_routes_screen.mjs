@@ -14,7 +14,10 @@
 //   4. Tapping a DISCARDED route actually loads it -- that path goes through
 //      the worker's portfolio cache, not the five already in hand, so it is the
 //      one that can silently do nothing.
-import { chromium } from 'playwright';
+// Playwright is installed globally in this container, not under the project, so
+// resolving it is the harness's job rather than each test file's.
+import { playwright, chromiumPath } from './testlib/harness.mjs';
+const { chromium } = await playwright();
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, dirname, resolve } from 'node:path';
@@ -43,7 +46,7 @@ const s = createServer(async (q, r) => {
 });
 await new Promise((r) => s.listen(0, r));
 const port = s.address().port;
-const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=swiftshader'] });
+const b = await chromium.launch({ executablePath: chromiumPath(), args: ['--use-gl=swiftshader'] });
 const pg = await (await b.newContext({ serviceWorkers: 'block', viewport: { width: 1280, height: 900 } })).newPage();
 const errs = []; pg.on('pageerror', (e) => errs.push(e.message));
 await pg.goto(`http://localhost:${port}/index.html`, { waitUntil: 'load' });
@@ -180,9 +183,14 @@ check('a north-south trip draws taller than wide',
   upright === thumbs.length,
   thumbs.map((t) => `${t.w}x${t.h}`).join(' '));
 
+// Measured against the viewBox each thumbnail actually declares, not against
+// inlined numbers. This assertion used to hardcode the 96x72 box and so failed
+// the moment the preview was resized, which says nothing about overflow.
+const [boxW, boxH] = (thumbs[0]?.viewBox || '0 0 0 0').split(' ').slice(2).map(Number);
+const overflowing = thumbs.filter((t) => t.w > boxW + 1 || t.h > boxH + 1);
 check('no thumbnail overflows its box',
-  thumbs.every((t) => t.w <= 97 && t.h <= 73),
-  JSON.stringify(thumbs.filter((t) => t.w > 97 || t.h > 73)));
+  boxW > 0 && boxH > 0 && overflowing.length === 0,
+  overflowing.length ? JSON.stringify(overflowing) : `box ${boxW}x${boxH}`);
 
 /* -------------------- tapping a DISCARDED route actually loads it ------- */
 const target = await pg.evaluate(() => {

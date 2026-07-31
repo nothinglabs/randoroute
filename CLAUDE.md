@@ -1,50 +1,44 @@
 # Working agreement
 
-## Tests are ON HOLD
+## Tests
 
-**Do not run the regression suite.** Every file matching `scripts/test_*` is on
-hold as of 2026-07-28. They pass, they take ~20 minutes, and running them after
-every change costs far more time than it has ever saved.
+`npm test` runs everything. About six minutes, and it is green.
 
-The rule:
+The hold that used to sit here is gone, along with what caused it. As of
+2026-07-31 the suite was 53 standalone scripts with no runner, ~20 minutes
+serial, and roughly 500 assertions that matched **regular expressions against
+the source text** of `app.js` and `router-worker.js` — pinning function
+signatures, brace placement and whitespace. Those broke on renames and passed
+through real regressions, which is what made running the suite feel worthless.
+They are deleted. What is left runs the code.
 
-- **Never** run all of `scripts/test_*` — not "to be safe", not "one last
-  check", not before a commit or a push.
-- Verify **only the specific change just made**, and only when the change has a
-  behaviour that can actually be observed. A one-line copy edit needs no test.
-- A new check written for the current change is fine to run while building it.
-  Once that work ships, the check joins the hold list and is not run again.
-- Regression coverage is deliberately deferred. Breaking an old route or an old
-  assertion is an accepted cost right now; it is not a reason to run the suite.
-- If a held test looks genuinely relevant to a bug under investigation, say so
-  and ask before running it. Do not run it unilaterally.
+The rules that remain:
 
-Taking the hold off is the user's call, and only the user's.
+- **Never assert on source text.** No `assert.match(appSrc, /…/)`. If a
+  behaviour cannot be observed by running something, it is not a test. Extract
+  and *evaluate* a function if you must (`scripts/test_route_pulse.mjs` does),
+  but assert on what it does, never on how it reads.
+- **Use `scripts/testlib/harness.mjs`.** It owns the graph load, the router
+  worker's fake-browser context, the static server, and Playwright resolution.
+  A new test should not rebuild any of that.
+- `safety-model.js` is `require()`-able as-is — its IIFE ends with
+  `}(typeof self !== 'undefined' ? self : this))` and in Node CJS `this` is
+  `module.exports`. Import it. Do not evaluate it in a hand-built sandbox.
+- Verify the specific change you made. `npm test <substring>` runs a subset.
+- A test that needs tooling the container lacks exits **77** and prints
+  `SKIP: <reason>`; the runner reports it as SKIP, not PASS. Two do this today
+  (`tippecanoe-decode`). Never make a missing tool look like coverage.
 
-### Held (33 files)
+The suite needs `shapely`, `osmium` and `Pillow` (`pip install shapely osmium
+Pillow`) for the data tests, and Playwright for the six browser tests.
 
-```
-scripts/test_basemap_coastline.py        scripts/test_road_geometry.py
-scripts/test_bikeroute_bounds.py         scripts/test_road_info.mjs
-scripts/test_caution_help.mjs            scripts/test_route_connector.mjs
-scripts/test_compressed_overlays.mjs     scripts/test_route_crossings.mjs
-scripts/test_desktop_controls.mjs        scripts/test_route_detail_actions.mjs
-scripts/test_directional_graph_data.mjs  scripts/test_route_portfolio.mjs
-scripts/test_directional_road_tiles.py   scripts/test_router_startup_readiness.mjs
-scripts/test_directional_wsdot.py        scripts/test_safety_model.mjs
-scripts/test_endpoint_selection.mjs      scripts/test_service_worker_updates.mjs
-scripts/test_grade_reporting.mjs         scripts/test_sharrow_not_space.mjs
-scripts/test_graph_format10.py           scripts/test_steep_grade_avoidance.mjs
-scripts/test_help_content.mjs            scripts/test_surface_graph_data.mjs
-scripts/test_native_shell.mjs            scripts/test_surface_preference.mjs
-scripts/test_navigation_guidance.mjs     scripts/test_tile_retry.mjs
-scripts/test_road_blocks.mjs             scripts/test_turn_preference.mjs
-scripts/test_urban_sidewalk_rules.mjs    scripts/test_weights_editor_cost.mjs
-scripts/test_wide_road_rule.mjs
-```
+### The long poles
 
-`test_native_shell.mjs` additionally cannot pass in the cloud container at all;
-it needs `npm run ios:prepare-shell` and `cap sync ios` on a Mac.
+`test_route_portfolio.mjs` (~240 s) and `test_corridor_severance.mjs` (~110 s)
+are the ones that matter most: they catch a scoring change that severs a
+corridor. `test_basemap_land_backdrop.mjs` (~330 s) renders real tiles. The
+runner runs files concurrently, so wall time is roughly the slowest file rather
+than the sum.
 
 ## Before the first commit of a session
 

@@ -9,6 +9,15 @@ from pathlib import Path
 
 from shapely.geometry import Point, shape
 
+import shutil
+
+# tippecanoe-decode is a build-time tool and is not present in every checkout
+# (the cloud container has no tippecanoe at all). Exit 77 -- the runner reads
+# that as SKIPPED, so a missing build tool never reads as a broken test.
+if shutil.which("tippecanoe-decode") is None:
+    print("SKIP: tippecanoe-decode is not installed")
+    raise SystemExit(77)
+
 
 ROOT = Path(__file__).resolve().parents[1]
 ROADS = ROOT / "data" / "roads.pmtiles"

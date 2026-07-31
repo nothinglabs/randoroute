@@ -9,32 +9,22 @@
 // labelled "Passes your rules"; a wide-road rule that changed the map and not
 // the router) were drift between two of these copies.
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import vm from 'node:vm';
+import { SafetyModel, source } from './testlib/harness.mjs';
 
-const modelSrc = fs.readFileSync(new URL('../safety-model.js', import.meta.url), 'utf8');
-const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const app = source('app.js');
 
-const sandbox = { self: {} };
-vm.createContext(sandbox);
-vm.runInContext(modelSrc, sandbox);
-const SafetyModel = sandbox.self.SafetyModel;
+// safety-model.js is imported, not evaluated in a hand-built sandbox. Its IIFE
+// ends with `}(typeof self !== 'undefined' ? self : this))`, and in a Node
+// CommonJS module `this` is module.exports -- so require() has always reached
+// it. See scripts/testlib/harness.mjs.
 assert.ok(SafetyModel, 'safety-model.js should publish SafetyModel');
 
-/* ------------------------------------------------ nobody restates a rule */
-for (const [file, src] of [['app.js', app],
-  ['router-worker.js', fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8')]]) {
-  assert.doesNotMatch(src, /shoulder\s*<\s*rules\.minShoulder/,
-    `${file} should ask SafetyModel rather than restate the shoulder threshold`);
-  assert.doesNotMatch(src, /lanes\s*>=\s*rules\.maxLanesNoShoulder/,
-    `${file} should ask SafetyModel rather than restate the lane threshold`);
-}
-assert.match(app, /function effectiveLevel\(n\) \{ return evaluateRoad\(n\)\.level; \}/,
-  'the tap-card ladder should be a thin call into the shared model');
-assert.match(app, /function fallbackRouteLevel\(s\) \{ return effectiveLevel\(scoreRouteSeg\(routeSegProps\(s\)\)\); \}/,
-  'route segments should reach the shared model through the same scorer the card uses');
-assert.doesNotMatch(app, /function routeSegFacts\b/,
-  'a second adapter into the safety model is how the cards drifted apart before');
+// What used to sit here was a set of assert.match calls over the text of app.js
+// and router-worker.js, pinning exact function bodies and whitespace to prove
+// "nobody restates a rule". They broke on renames and passed through real
+// regressions. The sweep below tests the same property the only way that
+// actually holds: by running both implementations and comparing verdicts.
 
 /* ------------------------------- the map expression must match the model */
 // A small MapLibre expression evaluator: only the operators roadLevelExpr uses.
@@ -204,5 +194,54 @@ assert.deepEqual(mismatches, [],
   `the map expression and the shared model must agree everywhere:\n${
     mismatches.map((m) => `  ${JSON.stringify(m)}`).join('\n')}`);
 
+/* ------------------------------ the edge-space shoulder inference ------- */
+// These three constraints used to live in test_edge_space_shoulder.mjs as
+// assertions over the text of safety-model.js. They are properties of what the
+// function returns, so they are tested by calling it.
+const inferRules = { inferShoulderFromEdge: true, minShoulder: 4 };
+const noInfer = { inferShoulderFromEdge: false, minShoulder: 4 };
+const M = SafetyModel.EDGE_SPACE_MARGIN_FT;
+
+// 1. It only fills a gap: a recorded shoulder always wins, including a zero.
+assert.equal(SafetyModel.effectiveShoulder({ shoulder: 0, edgeSpace: 9 }, inferRules), 0,
+  'a recorded 0 ft shoulder must beat a generous edge-space figure');
+assert.equal(SafetyModel.effectiveShoulder({ shoulder: 6, edgeSpace: 20 }, inferRules), 6,
+  'a recorded shoulder must win over the inference');
+assert.equal(SafetyModel.shoulderWasInferred({ shoulder: 0, edgeSpace: 9 }, inferRules), false,
+  'a recorded figure is never reported as inferred');
+
+// 2. It fires only when the rider asked for it, and leaves a margin.
+assert.equal(SafetyModel.effectiveShoulder({ shoulder: null, edgeSpace: 9 }, inferRules), 9 - M,
+  'an untagged shoulder should infer edge space minus the margin');
+assert.equal(SafetyModel.shoulderWasInferred({ shoulder: null, edgeSpace: 9 }, inferRules), true,
+  'an inferred figure must be reported as inferred so the card can say so');
+assert.equal(SafetyModel.effectiveShoulder({ shoulder: null, edgeSpace: 9 }, noInfer), 0,
+  'with the option off, an untagged shoulder is 0 ft and nothing is inferred');
+
+// 3. An unpositive edge space is "no usable answer", not "no shoulder" --
+//    turning bad paperwork into a failing road is the bug this prevents.
+for (const edgeSpace of [0, -3, null, undefined]) {
+  assert.equal(SafetyModel.effectiveShoulder({ shoulder: null, edgeSpace }, inferRules), 0,
+    `edgeSpace ${edgeSpace} should fall through to 0 ft rather than infer`);
+  assert.equal(SafetyModel.shoulderWasInferred({ shoulder: null, edgeSpace }, inferRules), false,
+    `edgeSpace ${edgeSpace} is not an inference and must not be labelled one`);
+}
+
+/* -------------------------- a sharrow is paint, not riding space -------- */
+// From test_sharrow_not_infrastructure.mjs, likewise rewritten as behaviour.
+// Facility 1 is a shared-lane marking; 2 and up is a bike lane or better.
+assert.equal(SafetyModel.FACILITY_RIDING_SPACE, 2,
+  'a sharrow (facility 1) must sit below the riding-space threshold');
+const wide = { minShoulder: 4 };
+assert.equal(SafetyModel.hasRidingSpace({ facility: 1 }, 0, wide), false,
+  'a sharrow with no shoulder is not riding space');
+assert.equal(SafetyModel.hasRidingSpace({ facility: 2 }, 0, wide), true,
+  'a bike lane is riding space even with no shoulder');
+assert.equal(SafetyModel.hasRidingSpace({ facility: 0 }, 6, wide), true,
+  'a wide enough shoulder is riding space with no facility at all');
+assert.equal(SafetyModel.hasRidingSpace({ facility: 1 }, 2, wide), false,
+  'a sharrow plus too little shoulder is still not riding space');
+
 console.log(`Safety-model tests passed (${compared.toLocaleString()} property/rule combinations, `
-  + `map expression and shared model agree).`);
+  + `map expression and shared model agree; edge-space inference and the `
+  + `sharrow threshold checked directly).`);

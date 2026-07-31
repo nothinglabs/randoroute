@@ -116,7 +116,7 @@ normalises its own storage into the same `facts` object and asks:
 | `app.js` `roadLevelExpr()` | — | vector road tiles (the map colours) |
 
 The fourth cannot share the code: MapLibre evaluates it declaratively in the
-renderer. It is instead cross-checked against the model over ~1.2M
+renderer. It is instead cross-checked against the model over 18.1M
 property/rule combinations by `scripts/test_safety_model.mjs`, which is how a
 divergence in the sidewalk-fallback branch was caught.
 
@@ -132,8 +132,8 @@ what riders were told and nothing about where they were sent.
 |---|---|---|
 | 1 | blue `#168ad1`, or yellow-green if it is bike network | passes your rules |
 | 2 | same as 1 | passes; kept distinct for routing |
-| 3 | amber `#a65300` | caution — ride it, but know what it is |
-| 4 | red `#b2182b` | fails your rules; excluded when *Only show routes fully matching* is on |
+| 3 | burnt orange `#c25d05` | caution — ride it, but know what it is |
+| 4 | maroon-red `#a51c30` | fails your rules; excluded when *Only show routes fully matching* is on |
 | 0 | grey `#999999` | not enough data to judge |
 
 ### Texture carries the verdict, not hue
@@ -914,7 +914,8 @@ shoulder — it may be gravel, rumble strip or ditch lip — which is what the 1
 margin is for, and why this is a rider-facing toggle rather than a silent
 improvement.
 
-Three constraints, all pinned by `test_edge_space_shoulder.mjs`:
+Three constraints, all pinned by `test_safety_model.mjs`, which calls
+`effectiveShoulder()` and `shoulderWasInferred()` rather than reading them:
 
 - **It only fills a gap.** A recorded shoulder always wins, including a
   recorded 0 ft, which is evidence of absence.
@@ -1042,7 +1043,9 @@ never be painted wholesale. The raw `cycleway*` tags survive into the tiles via
 `KEEP_TAGS`, so the filter is declarative and needed no tile rebuild.
 
 The road tiles (`ft >= 2`) and the ladder (`FACILITY_RIDING_SPACE`) were already
-correct. `test_sharrow_not_infrastructure.mjs` holds all five together.
+correct. `test_safety_model.mjs` holds them together: it checks the threshold through
+`hasRidingSpace()`, and its map-expression sweep covers every facility value
+against the shared ladder.
 
 Statewide the graph carries **385 mi of sharrow** against 7,884 mi of real
 facility, so this is a small correction in mileage and a large one in honesty.

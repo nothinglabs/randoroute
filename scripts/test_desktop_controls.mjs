@@ -2,7 +2,10 @@
 // Desktop-only map controls: the road card must open on a click and never on a
 // hover, and MapLibre's +/- buttons must sit clear of the app's own right-hand
 // buttons instead of underneath them.
-import { chromium } from 'playwright';
+// Playwright is installed globally in this container, not under the project, so
+// resolving it is the harness's job rather than each test file's.
+import { playwright, chromiumPath } from './testlib/harness.mjs';
+const { chromium } = await playwright();
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
@@ -21,7 +24,7 @@ const s=createServer(async(q,r)=>{try{
   const d=await readFile(full); r.writeHead(200,{'content-type':ct,'accept-ranges':'bytes'}); r.end(d);
 }catch{r.writeHead(404);r.end('x');}});
 await new Promise(r=>s.listen(0,r)); const port=s.address().port;
-const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--use-gl=swiftshader']});
+const b=await chromium.launch({executablePath: chromiumPath(),args:['--use-gl=swiftshader']});
 // A desktop viewport with a real mouse, so the hover media query matches.
 const pg=await (await b.newContext({serviceWorkers:'block',viewport:{width:1200,height:820},
   hasTouch:false, isMobile:false})).newPage();
