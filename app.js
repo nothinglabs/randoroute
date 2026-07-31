@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.476';
+const APP_VERSION = '2026-07-31.477';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -4858,6 +4858,9 @@ function renderRouteCard(m) {
     const box = card.querySelector('.rc-route-message');
     box.querySelector('strong').textContent = title;
     box.querySelector('span').textContent = message;
+    // Hidden when empty, the same way the hint is. The empty state is a title
+    // on its own now, and an empty <span> still takes a line box.
+    box.querySelector('span').hidden = !message;
     box.querySelector('small').textContent = hint;
     box.querySelector('small').hidden = !hint;
     moveControls();
@@ -4867,11 +4870,12 @@ function renderRouteCard(m) {
   if (!card) return;
   syncRouteDetailsWarningState(m);
   if (!m) {
-    showRouteMessage(
-      'Choose a start and destination',
-      'Use search or tap the map.',
-      'Route choices will appear above.',
-    );
+    // Title only. This used to add "Use search or tap the map", which reads as
+    // an instruction that works -- and it does not: a map tap sets a point only
+    // once FROM or TO has been armed, so a rider following it taps and nothing
+    // happens. Telling someone how to drive the interface here is also the
+    // wrong job for an empty state; saying what is missing is enough.
+    showRouteMessage('Choose a start and destination');
     return;
   }
   if (!m.ok) {
