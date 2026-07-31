@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.467';
+const APP_VERSION = '2026-07-31.468';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -7594,43 +7594,49 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
     : '';
   const spdTxt = spd != null ? `${spd} mph${n.est ? ' (est.)' : ''}` : 'This road';
   const area = n.urban ? 'urban' : 'rural';
-  // Whatever downgraded this road from a pass to a caution, named.
+  // The Why row explains; the Verdict row directly above it already states the
+  // outcome. So this text never re-states the verdict -- no "Fails:" prefix, no
+  // "passes your rules", and a caution clause that adds something the Verdict
+  // line did not already say rather than repeating its own words back.
   const cautionNote = verdict.caution && verdict.caution !== 'sidewalk-fallback'
-    ? ` — but it is ${CAUTION_CAUSE_PHRASE[verdict.caution] || CAUTION_CAUSE_NAME[verdict.caution]}`
-      + (verdict.caution === 'high-stress'
-        ? ` (${STRESS_AGENCY} rates it ${n.stressRating} of 4), so ride it with caution.`
-        : ', so ride it with caution.')
-    : '.';
+    ? (verdict.caution === 'high-stress'
+        ? ` ${STRESS_AGENCY} rates it ${n.stressRating} of 4 for traffic stress.`
+        : verdict.caution === 'limited-access'
+          ? ' Ride the shoulder past on- and off-ramps.'
+          : ` Take care: ${CAUTION_CAUSE_NAME[verdict.caution]}.`)
+    : '';
   const shoulderTxt = shInferred
-    ? `${sh} ft shoulder${shSource} is under your ${rules.minShoulder} ft minimum`
+    ? `${sh} ft shoulder${shSource}, under your ${rules.minShoulder} ft minimum`
     : shUnknown
-      ? `shoulder unknown — treated as 0 ft, under your ${rules.minShoulder} ft minimum`
-      : `${sh} ft shoulder is under your ${rules.minShoulder} ft minimum`;
+      ? `no shoulder recorded, so it counts as 0 ft against your ${rules.minShoulder} ft minimum`
+      : `${sh} ft shoulder, under your ${rules.minShoulder} ft minimum`;
 
   // Access facts sit outside the ladder: they describe how you may use the
   // road, not how it scores.
-  if (n.dismount) return 'Bicycle access is allowed here, but you must walk your bike.';
+  if (n.dismount) return 'Bikes are allowed, but you have to get off and walk.';
 
   switch (verdict.rule) {
     case 'prohibited':
       return n.wsdotBan
-        ? 'Fails: bikes prohibited — WSDOT permanent restriction.'
-        : 'Fails: bikes prohibited — OSM-tagged bicycle=no.';
+        ? 'Bikes are banned here — a permanent WSDOT restriction.'
+        : 'Bikes are banned here — the road is mapped as closed to cycling.';
     case 'ferry':
       return 'Crossing by ferry — road rules don’t apply on the boat.';
     case 'freeway':
       return rules.allowFreeways
-        ? 'Fails: limited-access freeway. You allow these as a last resort, so a route may still'
-          + ' use one — it is reported as failing, and strict matching excludes it.'
-        : 'Fails: limited-access freeway. Your settings never route over one.';
+        ? 'Limited-access freeway. You allow these as a last resort, so a route may use one,'
+          + ' but it still counts as failing.'
+        : 'Limited-access freeway. Your settings never route over one.';
     case 'infra':
+      // The Verdict row already says "Bike network — passes your rules", so
+      // this only has to name what kind of infrastructure it is.
       return verdict.level === 1
-        ? 'Dedicated or protected bike path — part of the bike network and passes your rules.'
+        ? 'Dedicated or protected bike path.'
         : verdict.level === 2
-        ? 'Bike lane or shared path — part of the bike network and passes your rules.'
-        : 'Bike infrastructure, with no rating recorded for its type.';
+        ? 'Bike lane or shared path.'
+        : 'Bike infrastructure, with no type recorded.';
     case 'speed-cap':
-      return `Fails: ${spdTxt} is over your ${rules.upperMaxSpeed} mph max.`;
+      return `${spdTxt} is over your ${rules.upperMaxSpeed} mph limit.`;
     case 'needs-space': {
       // Name every trigger that fired, not just the first. A road can be too
       // fast AND too busy, and being told only one of them invites a rider to
@@ -7643,32 +7649,35 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
         if (reason === 'traffic') return `${n.measures.adt.toLocaleString()} vehicles/day`;
         return `${FUNCTIONAL_CLASS_NAME[n.measures.fc] || 'major road'}, no count`;
       });
-      return `Fails: needs a bike lane or wide shoulder — ${why.join(', ')}.`;
+      return `Needs a bike lane or wide shoulder: ${why.join(', ')}.`;
     }
     case 'shares-lane':
-      return `${spdTxt} — nothing here demands space of its own,`
-        + ` so it passes without a shoulder${cautionNote}`;
+      // This rung means none of the space triggers fired -- not fast, not wide,
+      // not busy -- so all three are true and "slow and quiet" is accurate.
+      return spd != null
+        ? `${spdTxt} and light traffic, so no shoulder is needed.${cautionNote}`
+        : `Slow and quiet enough to share the lane, so no shoulder is needed.${cautionNote}`;
     case 'sidewalk-fallback':
-      return `${spdTxt}: ${shoulderTxt}. Your mapped-sidewalk fallback keeps it out of a`
-        + ' hard fail, but the router strongly avoids it.';
+      return `${spdTxt} with ${shoulderTxt}. A sidewalk is mapped alongside and you`
+        + ' allow that as a fallback, so routes avoid this road rather than reject it.';
 
     case 'unknown':
-      return 'No speed or shoulder data for this segment — not enough to judge it.';
+      return 'No speed or shoulder recorded here — not enough to judge it.';
     default:
       break;
   }
 
   // 'default': nothing failed and nothing shortcut it. Say what it met.
   const met = [];
-  if ((n.facility || 0) >= 2 || n.good_facility) met.push('has a bike lane or better');
-  else if (!shUnknown) met.push(`${sh} ft shoulder ≥ your ${rules.minShoulder} ft`);
-  else if (shInferred) met.push(`${sh} ft shoulder${shSource} ≥ your ${rules.minShoulder} ft`);
-  else met.push(`shoulder unknown — treated as 0 ft, meets your ${rules.minShoulder} ft minimum`);
+  if ((n.facility || 0) >= 2 || n.good_facility) met.push('Has a bike lane or better');
+  else if (!shUnknown) met.push(`${sh} ft shoulder, over your ${rules.minShoulder} ft minimum`);
+  else if (shInferred) met.push(`${sh} ft shoulder${shSource}, over your ${rules.minShoulder} ft minimum`);
+  else met.push(`No shoulder recorded, and this road is not fast or busy enough to need one`);
   if (spd != null)
     met.push(rules.noUpperLimit
-      ? `${spdTxt} — no speed cutoff set`
-      : `${spdTxt} within your ${rules.upperMaxSpeed} mph max`);
-  return `${met.join('; ')}${cautionNote}`;
+      ? `${spdTxt}, and you have set no speed limit`
+      : `${spdTxt}, under your ${rules.upperMaxSpeed} mph limit`);
+  return `${met.join('; ')}.${cautionNote}`;
 }
 
 const HIT_LAYERS = [];  // hit-layer ids, registered as sources attach
@@ -8812,11 +8821,8 @@ function buildRulesPanel() {
   advancedToolsCard.innerHTML = `
     <label class="rule-check" for="r-showAdvancedTools">
       <input type="checkbox" id="r-showAdvancedTools" ${uiPrefs.showAdvancedTools ? 'checked' : ''}>
-      <span>Show weights and all considered routes</span>
-    </label>
-    <p class="rule-note">Puts the ⚖ weights button and the “More” routes button on the
-      map. Display only — not part of any preset, and routes are unaffected. The
-      weights panel stays reachable from Settings ▸ Advanced either way.</p>`;
+      <span>Show weights and considered routes (advanced settings)</span>
+    </label>`;
   optionsHost.appendChild(advancedToolsCard);
   advancedToolsCard.querySelector('input').addEventListener('change', (e) => {
     uiPrefs.showAdvancedTools = e.target.checked;

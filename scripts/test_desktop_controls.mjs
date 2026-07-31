@@ -32,12 +32,15 @@ const errs=[]; pg.on('pageerror',e=>errs.push(e.message));
 await pg.goto(`http://localhost:${port}/index.html`,{waitUntil:'load'});
 await pg.waitForFunction(()=>window.map&&map.loaded&&map.loaded(),{timeout:30000}).catch(()=>{});
 await pg.evaluate(()=>map.jumpTo({center:[-122.3117,47.7200],zoom:16}));
-await pg.waitForTimeout(4000);
 let pass=0,fail=0;
 const check=(n,ok,x='')=>{(ok?pass++:fail++);console.log(`${ok?'PASS':'FAIL'}  ${n}${x?'  -- '+x:''}`);};
 
 // 1. Hover must not open the card; a click must.
-const road = await pg.evaluate(()=>{
+// Poll for a tappable road rather than sleeping a fixed 4 s and hoping. Tile
+// rendering is not on a clock: this runs alongside five other test files under
+// software GL, and a flat wait failed here when the machine was loaded. A flaky
+// test is worse than a slow one -- it teaches you to ignore a red run.
+const findRoad = ()=>pg.evaluate(()=>{
   const layers=HIT_LAYERS.filter(id=>map.getLayer(id)&&map.getLayoutProperty(id,'visibility')!=='none');
   const canvas=map.getCanvas();
   for(const f of map.queryRenderedFeatures({layers})){
@@ -57,6 +60,15 @@ const road = await pg.evaluate(()=>{
   }
   return null;
 });
+let road=null;
+for(let attempt=0; attempt<40 && !road; attempt++){
+  road=await findRoad();
+  if(!road) await pg.waitForTimeout(500);
+}
+if(!road){
+  console.log('FAIL  no tappable road rendered after 20 s -- tiles never arrived');
+  process.exit(1);
+}
 console.log('target road:', road.name);
 await pg.mouse.move(road.x, road.y); await pg.waitForTimeout(600);
 const afterHover = await pg.evaluate(()=>({

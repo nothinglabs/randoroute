@@ -517,8 +517,6 @@ body:not(.navigation-active) #navCard { display: none; }
    and is set apart so the pane's "changes override any preset" summary is not
    read as covering it. */
 #settingsOptions .rule-standalone { grid-column: 1 / -1; margin-top: 6px; border-color: #cbd9e2; background: #f3f8fa; }
-#settingsOptions .rule-note { margin: 3px 1px 0 21px; color: #5c6f7b; font: 500 10.5px/1.35 system-ui; }
-#settings-options #settingsOptions .rule-note { margin-left: 20px; font-size: 9.5px; line-height: 1.3; }
 .check-rule { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
 .check-rule label { font-weight: 600; cursor: pointer; }
 input[type="checkbox"] { width: 17px; height: 17px; }
