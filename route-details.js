@@ -1074,7 +1074,7 @@ function routePreviewStyle(seg) {
   if (Number(seg.level) === 3 || isMountainBikeTrail(seg)) return 'caution';
   if (!Number(seg.level)) return 'unknown';
   if (isBikeNetwork(seg)) return Number(seg.facility) === 5 ? 'trail' : 'bike';
-  return isDesignated(seg) ? 'designated' : 'pass';
+  return 'pass';
 }
 
 function routePreviewColor(seg) {
@@ -1245,7 +1245,6 @@ function initializeRoutePreviewMap() {
       filter: ['==', ['get', 'style'], style],
     });
     addRouteLayer('pass', { 'line-color': PASS_COLOR, 'line-width': 4.8 });
-    addRouteLayer('designated', { 'line-color': PASS_COLOR, 'line-width': 5.2, 'line-dasharray': [1.6, 1.15] });
     addRouteLayer('bike', { 'line-color': BIKE_NETWORK_COLOR, 'line-width': 4.8 });
     addRouteLayer('trail', { 'line-color': BIKE_NETWORK_COLOR, 'line-width': 5.2, 'line-dasharray': [.3, 1.1] });
     addRouteLayer('caution', { 'line-color': CAUTION_COLOR, 'line-width': 4.8 });

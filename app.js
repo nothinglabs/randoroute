@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.470';
+const APP_VERSION = '2026-07-31.471';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -39,7 +39,7 @@ const SIGNIFICANT_UNPAVED_M = 1609.344;
 const BIKE_NETWORK_COLOR = '#b7c900';
 // The designated-route ribbon: same family as the bike-network lime, duller,
 // because a signed route is advice rather than infrastructure.
-const DESIGNATED_COLOR = '#6f9400';
+const DESIGNATED_COLOR = '#5f8000';
 const COLORS = {
   1: '#168ad1', // passes rules
   2: '#168ad1', // passes rules (internal levels remain distinct for routing)
@@ -2186,10 +2186,17 @@ let soloPreviewTimer = null;
 // temporary version -- a preview is a glance, not a setting.
 let soloPreviewRestore = null;
 
+// The DRAWN route's layers: 'route' and 'route-*'. The boundary matters -- the
+// designated bike-route ribbon draws on a source called `routes`, whose layers
+// ('routes', 'routes__hit', 'routes__fail', 'routes__vh') a bare /^route/ also
+// matches. That bug hid the bike-route overlay during every solo preview, and
+// when the rider enabled bike routes it hid the one layer they had just asked
+// to see.
+const DRAWN_ROUTE_LAYER = /^route($|-)/;
 function routeLayerVisibility() {
   const seen = new Map();
   for (const layer of map.getStyle().layers) {
-    if (!/^route/.test(layer.id)) continue;
+    if (!DRAWN_ROUTE_LAYER.test(layer.id)) continue;
     // Record what each layer is actually set to. Several route layers rest at
     // 'none' by design (the highlights), and blanket-restoring them to visible
     // would switch on things the rider never asked for.
@@ -5217,7 +5224,11 @@ function routeVisualStyle(p) {
   const bike = p.infra === 1 || p.facility >= 2;
   if (bike && p.facility === 5) return 'trail';
   if (bike) return 'bike';
-  if (p.desig === 1) return 'designated';
+  // A signed bike route no longer changes the drawn route. It used to draw as
+  // dashed pass-blue, which a rider reasonably read as a distinct verdict when
+  // it only ever meant "passes, and there is a route number on a sign". The
+  // designated ribbon underneath already says that, in green, on the road
+  // itself -- one indicator instead of two saying different things.
   return 'pass';
 }
 
@@ -5601,13 +5612,6 @@ function drawRoute(coords, ferrySegs, segs) {
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: routeVerdictPaint(COLORS[1]),
     filter: ['==', ['get', 'style'], 'pass'],
-  });
-  map.addLayer({
-    id: 'route-designated', type: 'line', source: 'route-render',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { ...routeVerdictPaint(COLORS[2]), 'line-width': 7.2,
-             'line-dasharray': [1.6, 1.15] },
-    filter: ['==', ['get', 'style'], 'designated'],
   });
   map.addLayer({
     id: 'route-bike', type: 'line', source: 'route-render',

@@ -10,7 +10,7 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v445'; // bump when app shell changes
+const VERSION = 'v446'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -23,10 +23,10 @@ const SHELL = [
   './app.js',
   './safety-model.js',
   './basemap-style.js',
-  './route-details.js?v=398',
+  './route-details.js?v=446',
   './router-worker.js',
   './styles.css',
-  './route-details.css?v=439',
+  './route-details.css?v=446',
   './manifest.json',
   './vendor/maplibre-gl.js',
   './vendor/maplibre-gl.css',
