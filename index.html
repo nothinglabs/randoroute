@@ -352,7 +352,7 @@
     <ol>
       <li>Set <b>Start</b> and <b>Destination</b> by search or by tapping the map.</li>
       <li>In <b>Route</b>, view choices A–E. The letters identify routes; they are not safety grades.</li>
-      <li>Use <b>⋮</b> to add a waypoint (route through a point) or road block (avoid roads near a point). A road block dropped close to your route snaps onto it, so a near-enough tap still blocks the road you meant. You can also tap a segment of your route and press the small <b>🚧</b> button at the bottom right of the card that opens. It reads <b>Add</b>, or <b>Remove</b> if that spot already has one.</li>
+      <li>Use <b>⋮</b> to add a waypoint (route through a point) or a road block (avoid roads near a point). A road block can also be added or removed from a route segment’s card.</li>
       <li>Tap <b>Details</b> to inspect statistics, concerns, and route segments. Use <b>Settings</b> to change riding rules.</li>
       <li>Tap <b>Navigate</b> for GPS and voice guidance.</li>
     </ol>
@@ -467,20 +467,17 @@
         <li><b>Blue</b> — road that passes rules (speed and shoulder requirements).</li>
         <li><b>Red dashed</b> — Road that fails rules. A known rule conflict, freeway, or permanent bicycle restriction. Permanent bicycle restrictions are never routed.</li>
         <li><b>Amber</b> — Caution: a bike-legal limited-access highway or allowed mountain-bike trail. It deserves extra judgment.</li>
-        <li><b>Dashed olive-green</b> — Designated bike route: a signed or mapped bicycle corridor. It draws <b>underneath</b> everything else — the road, its safety colour, and your route all sit on top of it — because a signed route is context rather than a fact about the road under your wheels, and it never changes the verdict. It stays readable by being drawn wider than the road, so it reads as a band around it. The stretches of your route that follow a signed corridor get a wider green band beneath the route line, broad enough to read past both edges; only the parts you are actually riding get it.</li>
+        <li><b>Dashed olive-green</b> — Designated bike route: a signed or mapped bicycle corridor. It draws as a band beneath the road and does not change the road’s verdict. Where your route follows one, the band widens.</li>
         <li><b>Cross-slats</b> — confirmed unpaved surface. This overlays the route safety color.</li>
       </ul></section>
-      <section><h3>On a drawn route, the two verdicts worth a second look move</h3>
-      <p>Everything else on the line is still. The two that move do so in different ways, so you can tell them apart at a glance without comparing sizes.</p>
+      <section><h3>On a route, two verdicts move</h3>
       <ul>
-        <li><b>Caution — solid amber, with a halo that breathes outward.</b> The line itself holds still; a soft amber glow swells and fades around it, about a second and a half a cycle.</li>
-        <li><b>Fails rules — red rungs that travel along the line.</b> Short red ticks march steadily forward across a white casing, at a constant width.</li>
-        <li>One spreads sideways, the other moves along the road. If you have asked your phone to reduce motion, the caution halo simply holds wide and steady instead of breathing.</li>
+        <li><b>Caution</b> — solid amber, with a soft glow pulsing outward from it.</li>
+        <li><b>Fails rules</b> — red rungs travelling along the line.</li>
       </ul>
-      <h3>Switching a layer on blinks it</h3>
-      <p>Turning a map layer on flashes just that layer a few times, and drops your route underneath the other lines while it does. The flashing shows you which lines are the ones you just enabled. Sinking the route — it stays on screen, it just stops covering things — lets you see whether that layer runs along it, which is how you check whether a signed state bike route follows the way you are going. Everything else stays put.</p>
-      <ul>
-      </ul></section>
+      <p>Everything else on the route is still.</p></section>
+      <section><h3>Switching a layer on blinks it</h3>
+      <p>The layer flashes a few times and your route drops beneath the other lines, so you can see what you turned on and whether it follows your route.</p></section>
     </div>
   </dialog>
 
