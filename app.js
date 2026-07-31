@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.466';
+const APP_VERSION = '2026-07-31.467';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -5257,99 +5257,88 @@ function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-i
   targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
 }
 
-// Pulse animation for the parts of a route that need a second look: failures,
-// impossible to miss, and cautions, a quieter flicker beside them.
-let failPulseTimer = null;
+/* ------------------------------------------- the two route-line motions */
+// Motion has two axes on a line: ACROSS it and ALONG it. There are exactly two
+// verdicts that move, so each gets one axis and never the other. That is the
+// whole mechanism -- a rider tells them apart by the KIND of motion, with no
+// amplitude to compare.
+//
+// The two effects are written below as effects, named for what they do and
+// taking the layer they drive. Which verdict gets which is decided in
+// setRoutePulses() and nowhere else, so swapping them is one edit there rather
+// than a rename through this whole block. They have been swapped once already.
+//
+// Neither animates the verdict line's own opacity: fading translucent red or
+// amber over the basemap turns it muddy, which is how a rule failure ends up
+// looking like an unpaved or designated-route pattern. The halo is its own
+// layer under the white casing so its opacity never crosses the line colour.
 let detailSelectionPulseTimer = null;
 // Radians per 80 ms tick. A full throb is half a sine period, so this is about
 // 1.6 s end to end.
 const ROUTE_PULSE_STEP = 0.165;
-// The caution flicker runs a quarter period behind the failure throb. Sharing
-// one phase made the two read as a single animation across the whole route,
-// which is the opposite of the point: a caution and a failure are different
-// verdicts and should not breathe together.
-const CAUTION_PULSE_PHASE = Math.PI / 2;
-// Resting geometry for the failure line, in one place so the pulse and the
-// stop-the-pulse path cannot drift apart.
-const FAIL_GLOW_REST = { width: 15, opacity: 0.34, blur: 3.5 };
+
+/* --- effect one: a halo that swells sideways out of a still, solid line --- */
+// Resting geometry in one place so the pulse and the stop-the-pulse path cannot
+// drift apart.
+const HALO_REST = { width: 15, opacity: 0.34, blur: 3.5 };
+let haloPulseTimer = null;
 // Whether the halo has been moved off its resting values. Under reduced motion
 // it gets widened without a timer ever existing, so the timer cannot be the
-// thing that says "there is something to put back" -- and a route that never
-// failed should not have its failure layer painted at all.
-let failGlowRaised = false;
-function stopFailGlow() {
-  failGlowRaised = false;
-  if (!map.getLayer('route-fail-glow')) return;
-  map.setPaintProperty('route-fail-glow', 'line-width', FAIL_GLOW_REST.width);
-  map.setPaintProperty('route-fail-glow', 'line-opacity', FAIL_GLOW_REST.opacity);
-  map.setPaintProperty('route-fail-glow', 'line-blur', FAIL_GLOW_REST.blur);
+// thing that says "there is something to put back" -- and a route with no such
+// segment should not have that layer painted at all.
+let haloRaised = false;
+function stopHalo(layerId) {
+  haloRaised = false;
+  if (!map.getLayer(layerId)) return;
+  map.setPaintProperty(layerId, 'line-width', HALO_REST.width);
+  map.setPaintProperty(layerId, 'line-opacity', HALO_REST.opacity);
+  map.setPaintProperty(layerId, 'line-blur', HALO_REST.blur);
 }
-// A failure RADIATES; a caution MARCHES. Those are the two axes of motion
-// available, and giving each verdict one of them is what keeps them apart.
-//
-// Previously the failure throbbed in width while dashed [1.25, 1] — a broken
-// warm line on a white casing, animating, right beside a broken warm line on a
-// white casing, animating. The verdicts were distinct in the code and identical
-// to the eye. So the failure line is now SOLID and STILL, and everything that
-// moves happens in a blurred halo spreading sideways out of it. Nothing travels
-// along the line; that gesture belongs to caution alone.
-//
-// The core stays crisp and constant on purpose. Pulsing the line itself was
-// what made the failure hard to pin down at a glance, and a fading translucent
-// red over the blue basemap goes purple-gray, which is how a rule failure ends
-// up looking like an unpaved or designated-route pattern.
-function setFailPulse(on) {
-  if (on && !failPulseTimer) {
+function setHaloPulse(layerId, on) {
+  if (on && !haloPulseTimer) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      // The halo is the verdict, not the decoration: hold it wide and steady so
-      // a failure still reads without anything moving.
-      if (map.getLayer('route-fail-glow')) {
-        map.setPaintProperty('route-fail-glow', 'line-width', 19);
-        map.setPaintProperty('route-fail-glow', 'line-opacity', 0.48);
-        map.setPaintProperty('route-fail-glow', 'line-blur', 4);
-        failGlowRaised = true;
+      // The halo is the verdict, not decoration on top of it: hold it wide and
+      // steady so the segment still reads without anything moving.
+      if (map.getLayer(layerId)) {
+        map.setPaintProperty(layerId, 'line-width', 19);
+        map.setPaintProperty(layerId, 'line-opacity', 0.48);
+        map.setPaintProperty(layerId, 'line-blur', 4);
+        haloRaised = true;
       }
       return;
     }
-    failGlowRaised = true;
+    haloRaised = true;
     let t = 0;
-    failPulseTimer = setInterval(() => {
+    haloPulseTimer = setInterval(() => {
       t += ROUTE_PULSE_STEP;
-      if (!map.getLayer('route-fail-glow')) return;
+      if (!map.getLayer(layerId)) return;
       const p = Math.abs(Math.sin(t)); // 0..1 throb
       // Width, opacity and blur all rise together, so the halo reads as one
       // thing swelling outward rather than as an edge sliding around.
-      map.setPaintProperty('route-fail-glow', 'line-width', 13 + 13 * p);
-      map.setPaintProperty('route-fail-glow', 'line-opacity', 0.28 + 0.34 * p);
+      map.setPaintProperty(layerId, 'line-width', 13 + 13 * p);
+      map.setPaintProperty(layerId, 'line-opacity', 0.28 + 0.34 * p);
       // Blur grows more slowly than width on purpose. Matching them spread the
       // halo thin enough to disappear against a busy basemap at full swell.
-      map.setPaintProperty('route-fail-glow', 'line-blur', 3 + 4 * p);
+      map.setPaintProperty(layerId, 'line-blur', 3 + 4 * p);
     }, 80);
-  } else if (!on && (failPulseTimer || failGlowRaised)) {
+  } else if (!on && (haloPulseTimer || haloRaised)) {
     // Not gated on the timer alone: under reduced motion there is no timer, but
     // the halo was still widened and has to be put back. Gated on something,
-    // though -- a route that never failed should leave the failure layer
-    // untouched rather than painting resting values over it.
-    if (failPulseTimer) clearInterval(failPulseTimer);
-    failPulseTimer = null;
+    // though -- a clean route should leave the layer untouched rather than
+    // painting resting values over it.
+    if (haloPulseTimer) clearInterval(haloPulseTimer);
+    haloPulseTimer = null;
     // Leave the halo at its resting size rather than wherever the last tick
     // happened to stop.
-    stopFailGlow();
+    stopHalo(layerId);
   }
 }
 
-// Caution does not throb. A failure breathes in WIDTH; a caution's ticks TRAVEL
-// along the line. Two sizes of the same pulse read as "a bit less bad" rather
-// than as a different verdict, which is the whole point of distinguishing them.
-//
-// It also brings the route line into line with the map's own texture vocabulary,
-// documented above: prohibited is hazard-tape slashes, caution is perpendicular
-// ticks, passing is solid. The caution route line was drawing solid.
-//
+/* --- effect two: perpendicular ticks that travel along the line ---------- */
 // Movement comes from cycling the dash pattern rather than a dash offset, which
 // MapLibre has no paint property for. Each frame shifts the gap a little
 // further along, and the pattern repeats seamlessly at the end of the cycle.
-const CAUTION_TICKS = (() => {
+const TICK_FRAMES = (() => {
   const frames = [];
   const period = 4;      // tick + gap, in line widths
   const tick = 1;        // the tick itself
@@ -5360,33 +5349,42 @@ const CAUTION_TICKS = (() => {
   }
   return frames;
 })();
-let cautionPulseTimer = null;
-function setCautionPulse(on) {
-  if (on && !cautionPulseTimer) {
+let tickCrawlTimer = null;
+function setTickCrawl(layerId, on) {
+  if (on && !tickCrawlTimer) {
     let frame = 0;
-    cautionPulseTimer = setInterval(() => {
-      if (!map.getLayer('route-caution')) return;
-      map.setPaintProperty('route-caution', 'line-dasharray',
-        CAUTION_TICKS[frame % CAUTION_TICKS.length]);
+    tickCrawlTimer = setInterval(() => {
+      if (!map.getLayer(layerId)) return;
+      map.setPaintProperty(layerId, 'line-dasharray',
+        TICK_FRAMES[frame % TICK_FRAMES.length]);
       frame++;
     }, 110);
-  } else if (!on && cautionPulseTimer) {
-    clearInterval(cautionPulseTimer);
-    cautionPulseTimer = null;
-    if (map.getLayer('route-caution')) {
+  } else if (!on && tickCrawlTimer) {
+    clearInterval(tickCrawlTimer);
+    tickCrawlTimer = null;
+    if (map.getLayer(layerId)) {
       // At rest it keeps the ticks -- the texture carries the verdict whether or
       // not anything is moving, which is what makes it legible in a screenshot.
-      map.setPaintProperty('route-caution', 'line-dasharray', CAUTION_TICKS[0]);
+      map.setPaintProperty(layerId, 'line-dasharray', TICK_FRAMES[0]);
     }
   }
 }
 
+/* --- which verdict gets which -------------------------------------------- */
+// A CAUTION radiates: solid amber line, still, with a halo breathing out of it.
+// A FAILURE marches: red ticks travelling along the line.
+//
 // One call site for both, so a route can never leave one animating and the
-// other stopped.
+// other stopped. The layers referenced here must match the caps and dash set on
+// them where they are added -- ticks need butt caps or a short tick smears into
+// a lozenge, and a solid line wants round caps.
+const HALO_LAYER = 'route-caution-glow';
+const TICK_LAYER = 'route-fail';
 function setRoutePulses(renderData) {
   const features = (renderData && renderData.features) || [];
-  setFailPulse(features.some((f) => f.properties.style === 'fail'));
-  setCautionPulse(features.some((f) => f.properties.style === 'caution'));
+  const has = (style) => features.some((f) => f.properties.style === style);
+  setHaloPulse(HALO_LAYER, has('caution'));
+  setTickCrawl(TICK_LAYER, has('fail'));
 }
 
 // A report-item selection should retain the segment's own safety color. Pulse
@@ -5548,20 +5546,30 @@ function drawRoute(coords, ferrySegs, segs) {
   // A white casing under the caution line, pulsed with it. Width alone on an
   // amber line over a busy basemap was too easy to miss; the casing is most of
   // why the failure throb reads from across the screen.
+  // The breathing halo, under the white casing so it rings the line rather than
+  // washing over it. This is the whole of the caution animation -- see
+  // setHaloPulse for why the line itself does not move.
+  map.addLayer({
+    id: 'route-caution-glow', type: 'line', source: 'route-render',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': COLORS[3], 'line-width': HALO_REST.width,
+             'line-opacity': HALO_REST.opacity, 'line-blur': HALO_REST.blur },
+    filter: ['==', ['get', 'style'], 'caution'],
+  });
   map.addLayer({
     id: 'route-caution-casing', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    // Solid and still. The casing is what the ticks are read against, so it
-    // must not move with them.
+    // Solid and still. The casing is what the halo is read against, so it must
+    // not move with it.
     paint: { 'line-color': '#ffffff', 'line-width': 10.5, 'line-opacity': 0.9 },
     filter: ['==', ['get', 'style'], 'caution'],
   });
   map.addLayer({
     id: 'route-caution', type: 'line', source: 'route-render',
-    // Butt caps, not round: round caps smear a short tick into a lozenge and
-    // the pattern stops reading as rungs across the road.
-    layout: { 'line-cap': 'butt', 'line-join': 'round' },
-    paint: { ...routeVerdictPaint(COLORS[3]), 'line-dasharray': CAUTION_TICKS[0] },
+    // Round caps for a solid line. Butt caps were here for the travelling
+    // ticks; the ticks now belong to the failure.
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: routeVerdictPaint(COLORS[3]),
     filter: ['==', ['get', 'style'], 'caution'],
   });
   map.addLayer({
@@ -5570,26 +5578,20 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: routeVerdictPaint(COLORS[0]),
     filter: ['==', ['get', 'style'], 'unknown'],
   });
-  // The breathing halo, under the white casing so it rings the line rather than
-  // washing over it. This is the whole of the failure animation -- see
-  // setFailPulse for why the line itself no longer moves.
-  map.addLayer({
-    id: 'route-fail-glow', type: 'line', source: 'route-fail',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': COLORS[4], 'line-width': FAIL_GLOW_REST.width,
-             'line-opacity': FAIL_GLOW_REST.opacity, 'line-blur': FAIL_GLOW_REST.blur },
-  });
   map.addLayer({
     id: 'route-fail-casing', type: 'line', source: 'route-fail',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
+    // Solid and still: the casing is what the travelling ticks are read
+    // against, so it must not move with them.
     paint: { 'line-color': '#ffffff', 'line-width': 12, 'line-opacity': 0.8 },
   });
   map.addLayer({
     id: 'route-fail', type: 'line', source: 'route-fail',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    // Solid, not dashed. A broken warm line is caution's texture; sharing it
-    // was most of why the two verdicts looked alike.
-    paint: { 'line-color': COLORS[4], 'line-width': 6.5, 'line-opacity': 0.96 },
+    // Butt caps, not round: round caps smear a short tick into a lozenge and
+    // the pattern stops reading as rungs across the road.
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': COLORS[4], 'line-width': 6.5, 'line-opacity': 0.96,
+             'line-dasharray': TICK_FRAMES[0] },
   });
   ensureUnpavedSlatImage(map);
   ensureDismountMarkerImage(map);

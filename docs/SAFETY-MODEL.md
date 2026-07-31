@@ -227,39 +227,43 @@ still. They do not move the same way, and that is the point:
 
 | | texture | motion |
 |---|---|---|
-| **failure** | **solid**, red | **radiates sideways** — the line is still; a blurred red halo under the casing swells 13 → 26 px, 0.28 → 0.62 opacity, 3 → 7 blur, about 1.5 s a throb |
-| **caution** | perpendicular ticks, orange | **ticks travel along the line** — steady width, eight frames of dash pattern |
+| **caution** | **solid**, orange | **radiates sideways** — the line is still; a blurred orange halo under the casing swells 13 → 26 px, 0.28 → 0.62 opacity, 3 → 7 blur, about 1.5 s a throb |
+| **failure** | perpendicular ticks, red | **ticks travel along the line** — steady width, eight frames of dash pattern |
 
 Motion has two axes here: across the line and along it. Each verdict gets one,
-and never the other. Nothing about a failure travels along the route; that
-gesture is caution's alone.
+and never the other — nothing about the radiating verdict travels along the
+route, and nothing about the marching one swells sideways.
 
 An earlier version gave the caution a smaller version of the failure's throb.
 That reads as "a bit less bad", not as a different verdict — the rider has to
 compare two amplitudes to tell them apart, which is not something a glance can
 do. Two different *kinds* of motion need no comparison.
 
-A later version fixed the motion but not the texture: the failure line was
-drawn dashed `[1.25, 1]` on a white casing, directly beside caution's ticks on
-a white casing. Two broken warm lines on white, both animating, are one visual
-event however different the code is. The failure line is solid now, which is
-also what the map's own vocabulary says: caution is perpendicular ticks, and
-only the failure and a passing road are continuous.
+A later version fixed the motion but not the texture: both verdicts were drawn
+as broken warm lines on white casings, both animating, which is one visual event
+however different the code is. Only one of them may be dashed at a time.
 
-The failure's core line is deliberately constant — crisp, unmoving, full
-opacity. Pulsing the line itself is what made a failure hard to fix the eye on;
-moving the animation into a halo leaves something definite to look at.
+Which verdict gets which effect is a presentation choice, not a rule, and it has
+been swapped once. It is declared in `setRoutePulses()` — `HALO_LAYER` and
+`TICK_LAYER` — and nowhere else, so swapping is one edit. `test_route_pulse.mjs`
+reads the wiring from there rather than restating it: what the test pins is that
+the two motions differ in **kind** and that neither borrows the other's, not
+which verdict currently has which.
+
+The radiating verdict's core line is deliberately constant — crisp, unmoving,
+full opacity. Pulsing the line itself is what made a verdict hard to fix the eye
+on; moving the animation into a halo leaves something definite to look at.
 
 Neither verdict animates the *line's* opacity: fading translucent red or amber
 over the basemap turns it muddy and can make a rule failure read as an unpaved
-or designated-route pattern. The failure halo is a separate layer under the
-white casing, so its opacity never crosses the line colour.
+or designated-route pattern. The halo is a separate layer under the white
+casing, so its opacity never crosses the line colour.
 
 The halo's blur grows more slowly than its width (3 → 7 against 13 → 26).
 Matching them spread it thin enough at full swell that it vanished into a busy
 basemap, which is the opposite of what a failure should do.
 
-Under `prefers-reduced-motion` the failure halo holds wide and steady (19 px,
+Under `prefers-reduced-motion` the halo holds wide and steady (19 px,
 0.48 opacity) rather than disappearing — the halo *is* the verdict, not
 decoration on top of it.
 
