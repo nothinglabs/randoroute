@@ -147,7 +147,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .detail-item.safety-designated { border-left: 5px dashed #168ad1; }
 .detail-item.safety-pass { border-left: 5px solid #168ad1; }
 .detail-item.safety-caution { border-left: 5px solid #c25d05; }
-.detail-item.safety-fail { border-left: 5px solid #78121f; background: #fff3f0; }
+.detail-item.safety-fail { border-left: 5px solid #a51c30; background: #fff3f0; }
 .detail-item.safety-unknown { border-left: 5px solid #999; }
 .step-button { display: block; flex: 1 1 auto; min-width: 0; width: 100%; padding: 9px 5px 9px 10px; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; touch-action: manipulation; }
 .step-button:hover { background: rgba(44,123,182,.07); }
@@ -164,7 +164,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .safety-designated .step-safety { border: 1px dashed #168ad1; background: #eef7fd; color: #0c6099; }
 .safety-pass .step-safety { background: #168ad1; }
 .safety-caution .step-safety { background: #8e4600; color: #fff; }
-.safety-fail .step-safety { background: #78121f; }
+.safety-fail .step-safety { background: #a51c30; }
 .safety-unknown .step-safety { background: #777; }
 .detail-item .line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font: 700 14px/1.25 system-ui; }
 .detail-item .distance { color: #43515d; white-space: nowrap; }

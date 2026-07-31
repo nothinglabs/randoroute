@@ -149,15 +149,15 @@ hue separation:
 | bike lane | solid | `#b7c900` |
 | off-street trail | same lime, dark dashed centreline | `#b7c900` + `#4c5c00` |
 | passes | solid | `#168ad1` |
-| caution | perpendicular rungs in the danger red | `#c25d05` + `#78121f` |
-| fails | white diagonal slashes, like hazard tape | `#78121f` + white |
-| bikes prohibited | wide translucent dashed ribbon, over the verdict | `#78121f` at 42% |
+| caution | perpendicular rungs in the danger red | `#c25d05` + `#a51c30` |
+| fails | white diagonal slashes, like hazard tape | `#a51c30` + white |
+| bikes prohibited | wide translucent dashed ribbon, over the verdict | `#a51c30` at 42% |
 
 **The colours were chosen numerically, not by eye.** Search for the pair that
 maximises the *smallest* CIELAB distance between any two roles, evaluated under
 normal, deuteranope and protanope vision. The original amber left caution only
 **dE 13.2** from the bike-network lime — the weakest link in the palette, and
-the reason caution and green looked alike. `#c25d05` with `#78121f` pulls them
+the reason caution and green looked alike. `#c25d05` with `#a51c30` pulls them
 apart, and both keep the conventional warning/danger reading.
 
 The governing pair is **caution against the bike-network lime under
@@ -227,21 +227,41 @@ still. They do not move the same way, and that is the point:
 
 | | texture | motion |
 |---|---|---|
-| **failure** | dashes, red | **breathes in width** — 6.5 → 9.5 px, casing 12.5 → 14.5, about 1.5 s a throb |
+| **failure** | **solid**, red | **radiates sideways** — the line is still; a blurred red halo under the casing swells 13 → 26 px, 0.28 → 0.62 opacity, 3 → 7 blur, about 1.5 s a throb |
 | **caution** | perpendicular ticks, orange | **ticks travel along the line** — steady width, eight frames of dash pattern |
+
+Motion has two axes here: across the line and along it. Each verdict gets one,
+and never the other. Nothing about a failure travels along the route; that
+gesture is caution's alone.
 
 An earlier version gave the caution a smaller version of the failure's throb.
 That reads as "a bit less bad", not as a different verdict — the rider has to
 compare two amplitudes to tell them apart, which is not something a glance can
 do. Two different *kinds* of motion need no comparison.
 
-It also puts the route line back in step with the map's texture vocabulary,
-where caution has always been perpendicular ticks and only a passing road is
-solid. The caution route line had been drawing solid.
+A later version fixed the motion but not the texture: the failure line was
+drawn dashed `[1.25, 1]` on a white casing, directly beside caution's ticks on
+a white casing. Two broken warm lines on white, both animating, are one visual
+event however different the code is. The failure line is solid now, which is
+also what the map's own vocabulary says: caution is perpendicular ticks, and
+only the failure and a passing road are continuous.
 
-Both animate size or pattern, never opacity: fading translucent red or amber
+The failure's core line is deliberately constant — crisp, unmoving, full
+opacity. Pulsing the line itself is what made a failure hard to fix the eye on;
+moving the animation into a halo leaves something definite to look at.
+
+Neither verdict animates the *line's* opacity: fading translucent red or amber
 over the basemap turns it muddy and can make a rule failure read as an unpaved
-or designated-route pattern.
+or designated-route pattern. The failure halo is a separate layer under the
+white casing, so its opacity never crosses the line colour.
+
+The halo's blur grows more slowly than its width (3 → 7 against 13 → 26).
+Matching them spread it thin enough at full swell that it vanished into a busy
+basemap, which is the opposite of what a failure should do.
+
+Under `prefers-reduced-motion` the failure halo holds wide and steady (19 px,
+0.48 opacity) rather than disappearing — the halo *is* the verdict, not
+decoration on top of it.
 
 A caution at rest keeps its ticks. The texture carries the verdict whether or
 not anything is moving, so it still reads in a screenshot.

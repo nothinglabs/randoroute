@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.463';
+const APP_VERSION = '2026-07-31.464';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -58,8 +58,14 @@ const COLORS = {
   // Separation from the maroon fail rungs drawn over it falls as it deepens but
   // stays far above every other pair, so lime is what sets the floor.
   3: '#c25d05', // caution — deep burnt orange, the conventional "warning"
-  4: '#78121f', // fails   — deep maroon-red, conventional "danger", and dark
-                //           enough to stay apart from the lime by lightness
+  // Was #78121f, which read as near-black against the basemap rather than as
+  // red. Lifted to L* 36 while staying in the maroon family, measured the same
+  // way as the orange above: the fail rung's own weakest pair is fail against
+  // the designated-route green under deuteranopia, and that falls 40.9 -> 29.6,
+  // still far clear of the palette's binding pair. Going further (#b42318 and
+  // brighter) drops it to 14.5 and fail starts colliding with designated.
+  4: '#a51c30', // fails   — maroon-red, conventional "danger", dark enough to
+                //           stay apart from the lime by lightness
   0: '#999999', // insufficient data
 };
 function opaqueColorOverWhite(hex, opacity) {
@@ -1320,7 +1326,7 @@ const FAIL_COLOR = '#9aa0a6';
  * The colours themselves were chosen numerically: search for the pair that
  * maximises the SMALLEST CIELAB distance between any two roles, evaluated under
  * normal, deuteranope and protanope vision. The original amber and red left the
- * caution barely separated from the bike-network lime; #c25d05 with #78121f
+ * caution barely separated from the bike-network lime; #c25d05 with #a51c30
  * pulls it clear, and both keep the conventional warning/danger reading. The
  * governing pair and the measurements are recorded at COLORS above.
  *
@@ -5247,32 +5253,62 @@ const ROUTE_PULSE_STEP = 0.165;
 // which is the opposite of the point: a caution and a failure are different
 // verdicts and should not breathe together.
 const CAUTION_PULSE_PHASE = Math.PI / 2;
+// Resting geometry for the failure line, in one place so the pulse and the
+// stop-the-pulse path cannot drift apart.
+const FAIL_GLOW_REST = { width: 15, opacity: 0.34, blur: 3.5 };
+function stopFailGlow() {
+  if (!map.getLayer('route-fail-glow')) return;
+  map.setPaintProperty('route-fail-glow', 'line-width', FAIL_GLOW_REST.width);
+  map.setPaintProperty('route-fail-glow', 'line-opacity', FAIL_GLOW_REST.opacity);
+  map.setPaintProperty('route-fail-glow', 'line-blur', FAIL_GLOW_REST.blur);
+}
+// A failure RADIATES; a caution MARCHES. Those are the two axes of motion
+// available, and giving each verdict one of them is what keeps them apart.
+//
+// Previously the failure throbbed in width while dashed [1.25, 1] — a broken
+// warm line on a white casing, animating, right beside a broken warm line on a
+// white casing, animating. The verdicts were distinct in the code and identical
+// to the eye. So the failure line is now SOLID and STILL, and everything that
+// moves happens in a blurred halo spreading sideways out of it. Nothing travels
+// along the line; that gesture belongs to caution alone.
+//
+// The core stays crisp and constant on purpose. Pulsing the line itself was
+// what made the failure hard to pin down at a glance, and a fading translucent
+// red over the blue basemap goes purple-gray, which is how a rule failure ends
+// up looking like an unpaved or designated-route pattern.
 function setFailPulse(on) {
   if (on && !failPulseTimer) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      // The halo is the verdict, not the decoration: hold it wide and steady so
+      // a failure still reads without anything moving.
+      if (map.getLayer('route-fail-glow')) {
+        map.setPaintProperty('route-fail-glow', 'line-width', 19);
+        map.setPaintProperty('route-fail-glow', 'line-opacity', 0.48);
+        map.setPaintProperty('route-fail-glow', 'line-blur', 4);
+      }
+      return;
+    }
     let t = 0;
     failPulseTimer = setInterval(() => {
       t += ROUTE_PULSE_STEP;
-      if (!map.getLayer('route-fail')) return;
+      if (!map.getLayer('route-fail-glow')) return;
       const p = Math.abs(Math.sin(t)); // 0..1 throb
-      // Pulse size, not visibility. Fading translucent red over the blue
-      // basemap turns it purple-gray and can make a rule failure look like an
-      // unpaved or designated-route pattern.
-      map.setPaintProperty('route-fail', 'line-opacity', 0.92 + 0.08 * p);
-      map.setPaintProperty('route-fail', 'line-width', 6.5 + 3 * p);
-      map.setPaintProperty('route-fail-casing', 'line-width', 12.5 + 2 * p);
-      map.setPaintProperty('route-fail-casing', 'line-opacity', 0.9 + 0.08 * p);
+      // Width, opacity and blur all rise together, so the halo reads as one
+      // thing swelling outward rather than as an edge sliding around.
+      map.setPaintProperty('route-fail-glow', 'line-width', 13 + 13 * p);
+      map.setPaintProperty('route-fail-glow', 'line-opacity', 0.28 + 0.34 * p);
+      // Blur grows more slowly than width on purpose. Matching them spread the
+      // halo thin enough to disappear against a busy basemap at full swell.
+      map.setPaintProperty('route-fail-glow', 'line-blur', 3 + 4 * p);
     }, 80);
-  } else if (!on && failPulseTimer) {
-    clearInterval(failPulseTimer);
+  } else if (!on) {
+    // Not gated on the timer existing: under reduced motion there is no timer,
+    // but the halo was still widened and has to be put back.
+    if (failPulseTimer) clearInterval(failPulseTimer);
     failPulseTimer = null;
-    // Leave the layer at its resting size rather than wherever the last tick
+    // Leave the halo at its resting size rather than wherever the last tick
     // happened to stop.
-    if (map.getLayer('route-fail')) {
-      map.setPaintProperty('route-fail', 'line-opacity', 0.96);
-      map.setPaintProperty('route-fail', 'line-width', 6.5);
-      map.setPaintProperty('route-fail-casing', 'line-width', 12);
-      map.setPaintProperty('route-fail-casing', 'line-opacity', 0.8);
-    }
+    stopFailGlow();
   }
 }
 
@@ -5508,6 +5544,15 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: routeVerdictPaint(COLORS[0]),
     filter: ['==', ['get', 'style'], 'unknown'],
   });
+  // The breathing halo, under the white casing so it rings the line rather than
+  // washing over it. This is the whole of the failure animation -- see
+  // setFailPulse for why the line itself no longer moves.
+  map.addLayer({
+    id: 'route-fail-glow', type: 'line', source: 'route-fail',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': COLORS[4], 'line-width': FAIL_GLOW_REST.width,
+             'line-opacity': FAIL_GLOW_REST.opacity, 'line-blur': FAIL_GLOW_REST.blur },
+  });
   map.addLayer({
     id: 'route-fail-casing', type: 'line', source: 'route-fail',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -5516,8 +5561,9 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addLayer({
     id: 'route-fail', type: 'line', source: 'route-fail',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': COLORS[4], 'line-width': 6.5, 'line-opacity': 0.96,
-             'line-dasharray': [1.25, 1] },
+    // Solid, not dashed. A broken warm line is caution's texture; sharing it
+    // was most of why the two verdicts looked alike.
+    paint: { 'line-color': COLORS[4], 'line-width': 6.5, 'line-opacity': 0.96 },
   });
   ensureUnpavedSlatImage(map);
   ensureDismountMarkerImage(map);
@@ -6353,7 +6399,10 @@ function candidateShapeBounds(all) {
   return { minX: minX - padX, maxX: maxX + padX, minY: minY - padY, maxY: maxY + padY };
 }
 
-const THUMB_W = 96, THUMB_H = 72;
+// Kept in step with .all-route-thumb in styles.css: the viewBox and the CSS box
+// scale together, so the route drawing grows while the stroke widths below stay
+// the same weight on screen.
+const THUMB_W = 124, THUMB_H = 93;
 function candidateThumbSvg(c, bounds) {
   if (!c.shape?.pts?.length || !bounds) {
     return `<svg class="all-route-thumb" viewBox="0 0 ${THUMB_W} ${THUMB_H}" aria-hidden="true"></svg>`;
