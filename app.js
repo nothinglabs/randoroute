@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.471';
+const APP_VERSION = '2026-07-31.472';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2175,7 +2175,55 @@ function setBackgroundUnpavedVisible(on) {
 //
 // Only on enable. Turning a layer off needs no preview: the thing you wanted to
 // see is the map without it, and you are already looking at that.
-const SOLO_PREVIEW_MS = 500;
+// Clearing is instant; revealing fades. A rider reads a sudden blank as "the
+// map cleared" without needing to watch it happen, but things POPPING back is
+// what made this feel abrupt -- so both reveals are eased in and nothing snaps
+// on. Total is shorter than the flat half-second hold it replaces.
+const SOLO_FADE_MS = 120;   // each fade-in
+const SOLO_HOLD_MS = 150;   // isolated dwell after the reveal completes
+// Paint property carrying opacity, per layer type. A layer type not listed here
+// simply does not fade; it is switched with the rest and that is fine.
+const OPACITY_PROP = { line: 'line-opacity', fill: 'fill-opacity',
+  circle: 'circle-opacity', symbol: 'icon-opacity', background: null, raster: null };
+
+// Fade a set of layers up from nothing to whatever they are already set to.
+// Their target may be a plain number OR a zoom expression -- setPaintProperty
+// restores either exactly, so the original is captured and handed straight
+// back rather than being rebuilt.
+function fadeLayersIn(ids) {
+  const restore = [];
+  for (const id of ids) {
+    const layer = map.getLayer(id);
+    if (!layer) continue;
+    const prop = OPACITY_PROP[layer.type];
+    if (!prop) continue;
+    const target = map.getPaintProperty(id, prop);
+    // An opacity of 0 is a hit-testing layer that is meant to be invisible.
+    // Fading it "in" would reveal it.
+    if (target === 0) continue;
+    map.setPaintProperty(id, prop + '-transition', { duration: 0, delay: 0 });
+    map.setPaintProperty(id, prop, 0);
+    restore.push([id, prop, target === undefined ? 1 : target]);
+  }
+  if (!restore.length) return;
+  // Next frame, so the 0 is committed before the eased value replaces it.
+  requestAnimationFrame(() => {
+    for (const [id, prop, target] of restore) {
+      if (!map.getLayer(id)) continue;
+      map.setPaintProperty(id, prop + '-transition', { duration: SOLO_FADE_MS, delay: 0 });
+      map.setPaintProperty(id, prop, target);
+    }
+  });
+}
+
+// Everything the preview draws or restores. The basemap never participates --
+// it is the ground the rider is orienting against, and blinking it is
+// disorienting rather than informative.
+function soloFadeableLayerIds() {
+  return map.getStyle().layers
+    .filter((l) => !/^(background|basemap)/.test(l.id))
+    .map((l) => l.id);
+}
 // The keys this can dim, in the order buildSourcePanel lists them. Deliberately
 // derived from `display` rather than a second hand-kept list.
 const SOLO_LAYER_KEYS = ['offstreetTrails', 'bikeFacilities', 'meetRules', 'failRules',
@@ -2221,6 +2269,7 @@ function endSoloPreview() {
   for (const [id, visibility] of routeVis) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
   }
+  fadeLayersIn(soloFadeableLayerIds());
 }
 
 function startSoloPreview(key) {
@@ -2239,7 +2288,8 @@ function startSoloPreview(key) {
   for (const id of soloPreviewRestore.routeVis.keys()) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
   }
-  soloPreviewTimer = setTimeout(endSoloPreview, SOLO_PREVIEW_MS);
+  fadeLayersIn(soloFadeableLayerIds());
+  soloPreviewTimer = setTimeout(endSoloPreview, SOLO_FADE_MS + SOLO_HOLD_MS);
 }
 
 function setMapLayerVisible(key, on) {
@@ -5408,6 +5458,10 @@ function setHaloPulse(layerId, on) {
     haloPulseTimer = setInterval(() => {
       t += ROUTE_PULSE_STEP;
       if (!map.getLayer(layerId)) return;
+      // Hold still while a solo preview is fading layers. Both write
+      // line-opacity, and an 80 ms throb would out-run the eased fade and make
+      // this one layer pop back while everything else eases in.
+      if (soloPreviewRestore) return;
       const p = Math.abs(Math.sin(t)); // 0..1 throb
       // Width, opacity and blur all rise together, so the halo reads as one
       // thing swelling outward rather than as an edge sliding around.
@@ -5451,6 +5505,7 @@ function setTickCrawl(layerId, on) {
     let frame = 0;
     tickCrawlTimer = setInterval(() => {
       if (!map.getLayer(layerId)) return;
+      if (soloPreviewRestore) return;   // see setHaloPulse
       map.setPaintProperty(layerId, 'line-dasharray',
         TICK_FRAMES[frame % TICK_FRAMES.length]);
       frame++;
