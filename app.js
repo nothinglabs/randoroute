@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.475';
+const APP_VERSION = '2026-07-31.476';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -42,32 +42,15 @@ const BIKE_NETWORK_COLOR = RoutePalette.bikeNetwork;
 const DESIGNATED_COLOR = RoutePalette.designated;
 const COLORS = RoutePalette.LEVEL;
 
-// The signed-route ribbon's width, widened while a route is drawn.
-//
-// At its resting width the ribbon is narrower than the route line, so on the
-// stretch a rider most wants to check -- "is the way I am going actually a
-// signed route?" -- it hides under the very line that raises the question.
-// Widening it while a route exists makes it read past both edges instead.
-// National corridors (`ncn`) stay wider than regional ones at every zoom, and
-// the boost scales both rather than flattening that distinction.
-const DESIGNATED_ROUTE_BOOST = 1.5;
+// The background signed-route ribbon keeps ONE width, always. An earlier
+// version widened this whole layer while a route was drawn, which fattened
+// every signed corridor in the state rather than the stretch being ridden.
+// The route's own designated band (route-designated-band) does that job now,
+// from the route's own geometry.
 function designatedRibbonWidth() {
-  const k = routeIsDisplayed ? DESIGNATED_ROUTE_BOOST : 1;
-  const at = (ncn, rcn) => ['match', ['get', 't'], 'ncn', ncn * k, rcn * k];
+  const at = (ncn, rcn) => ['match', ['get', 't'], 'ncn', ncn, rcn];
   return ['interpolate', ['linear'], ['zoom'],
     6, at(5.4, 3.5), 10, at(10.5, 6.5), 14, at(18, 11.3)];
-}
-// Called wherever a route appears or disappears; applyDisplayMode sets the same
-// value, so a rescore mid-route cannot quietly reset it to the narrow one.
-function syncDesignatedRibbonWidth() {
-  // clearRoute() can run before the style finishes loading (a shared route
-  // opened from a link does exactly that), and getLayer on a half-built style
-  // is not safe to call.
-  if (!map || !map.isStyleLoaded || !map.isStyleLoaded()) return;
-  const src = SOURCES.find((s) => s.id === 'routes');
-  if (src && map.getLayer(src.id)) {
-    map.setPaintProperty(src.id, 'line-width', designatedRibbonWidth());
-  }
 }
 
 function opaqueColorOverWhite(hex, opacity) {
@@ -5294,6 +5277,36 @@ function buildRouteRenderData(sdata) {
   return { type: 'FeatureCollection', features };
 }
 
+// The stretches of THIS route that follow a signed bike route, merged into runs.
+//
+// Deliberately built from the route's own segments rather than by widening the
+// background ribbon layer: that layer covers every signed corridor in the
+// state, and widening it made unrelated corridors fatten across the whole map
+// whenever any route was drawn. Only the part you are actually riding should
+// stand out.
+function buildRouteDesignatedData(sdata) {
+  const features = [];
+  let current = null;
+  for (const feature of sdata.features) {
+    const coordinates = feature.geometry?.coordinates;
+    if (feature.properties?.desig !== 1 || !(coordinates?.length >= 2)) {
+      current = null;
+      continue;
+    }
+    const previous = current?.geometry.coordinates.at(-1);
+    if (current && sameRouteCoordinate(previous, coordinates[0])) {
+      current.geometry.coordinates.push(...coordinates.slice(1));
+      continue;
+    }
+    current = {
+      type: 'Feature', properties: {},
+      geometry: { type: 'LineString', coordinates: coordinates.slice() },
+    };
+    features.push(current);
+  }
+  return { type: 'FeatureCollection', features };
+}
+
 // Surface is an independent, rider-preference attribute rather than a safety
 // verdict. Keep the normal lime/blue/amber/red route color intact and draw
 // repeated cross-slats over only the edges OSM positively tags as gravel or
@@ -5553,8 +5566,6 @@ function setDetailSelectionPulse(on) {
 
 function drawRoute(coords, ferrySegs, segs) {
   routeIsDisplayed = Array.isArray(coords) && coords.length >= 2;
-  // The signed-route ribbon widens under a drawn route so it still reads.
-  syncDesignatedRibbonWidth();
   clearRouteHighlight();
   const data = { type: 'Feature', properties: {},
     geometry: { type: 'LineString', coordinates: coords } };
@@ -5585,6 +5596,7 @@ function drawRoute(coords, ferrySegs, segs) {
     features: renderData.features.filter((f) => f.properties.style === 'fail') };
   const emptyHighlights = { type: 'FeatureCollection', features: [] };
   const emptyLine = { type: 'FeatureCollection', features: [] };
+  const designatedData = buildRouteDesignatedData(sdata);
   const srcExisting = map.getSource('route');
   if (srcExisting) {
     srcExisting.setData(data);
@@ -5593,6 +5605,7 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-render').setData(renderData);
     map.getSource('route-fail').setData(failData);
     map.getSource('route-unpaved').setData(unpavedData);
+    map.getSource('route-designated').setData(designatedData);
     map.getSource('route-dismount').setData(dismountData);
     map.getSource('route-highlight-marker').setData(emptyHighlights);
     map.getSource('route-detail-marker').setData(emptyHighlights);
@@ -5608,6 +5621,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-render', { type: 'geojson', data: renderData });
   map.addSource('route-fail', { type: 'geojson', data: failData });
   map.addSource('route-unpaved', { type: 'geojson', data: unpavedData });
+  map.addSource('route-designated', { type: 'geojson', data: designatedData });
   map.addSource('route-dismount', { type: 'geojson', data: dismountData });
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
@@ -5647,6 +5661,20 @@ function drawRoute(coords, ferrySegs, segs) {
   });
   const routeVerdictPaint = (color) => ({
     'line-color': color, 'line-width': 6.5, 'line-opacity': 1,
+  });
+  // Wider than the route line and its casing, so it reads as a band the route
+  // is riding along rather than something hiding underneath it. Added before
+  // any verdict layer: the route's own colour must stay on top, because the
+  // ribbon is context and the verdict is the answer.
+  map.addLayer({
+    id: 'route-designated-band', type: 'line', source: 'route-designated',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': DESIGNATED_COLOR,
+      'line-opacity': 0.85,
+      'line-width': ['interpolate', ['linear'], ['zoom'],
+        6, 9, 10, 16, 14, 26],
+    },
   });
   map.addLayer({
     id: 'route-pass', type: 'line', source: 'route-render',
@@ -6326,7 +6354,6 @@ function reverseRoute() {
 
 function clearRoute() {
   routeIsDisplayed = false;
-  syncDesignatedRibbonWidth();
   exitSharedRoute();
   showRouteActionToast('');
   stopTurnNavigation(false);
