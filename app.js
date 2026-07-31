@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.478';
+const APP_VERSION = '2026-07-31.479';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -49,8 +49,12 @@ const COLORS = RoutePalette.LEVEL;
 // from the route's own geometry.
 function designatedRibbonWidth() {
   const at = (ncn, rcn) => ['match', ['get', 't'], 'ncn', ncn, rcn];
+  // Wider than it used to be. This is now an underlay beneath the road, so its
+  // whole visible contribution is what shows past the road line: too narrow and
+  // it disappears under the road entirely. National corridors stay wider than
+  // regional ones at every zoom.
   return ['interpolate', ['linear'], ['zoom'],
-    6, at(5.4, 3.5), 10, at(10.5, 6.5), 14, at(18, 11.3)];
+    6, at(7, 4.6), 10, at(13.5, 8.5), 14, at(23, 14.5)];
 }
 
 function opaqueColorOverWhite(hex, opacity) {
@@ -5665,6 +5669,31 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: { 'line-color': '#102a43', 'line-width': 17, 'line-opacity': 0.78,
              'line-blur': 0.55 },
   });
+  // Between the shadow and the white casing, deliberately.
+  //
+  // Added after the verdict layers it was previously ahead of, it was still
+  // beneath them -- but it was also drawn over route-casing, the 12.5 px white
+  // line that separates the route from whatever it crosses. At 26 px it
+  // swallowed that casing whole, so on a signed stretch the route line sat
+  // straight on dark green and read as darkened. It was an underlay in stacking
+  // order and an overlay to the eye.
+  //
+  // Here the casing draws back over it, so the route looks the same as it does
+  // anywhere else and the green shows only beyond the casing's edge -- which is
+  // the whole of what a band should be.
+  map.addLayer({
+    id: 'route-designated-band', type: 'line', source: 'route-designated',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': DESIGNATED_COLOR,
+      'line-opacity': 0.85,
+      // Narrower than it was. The visible green is whatever exceeds the 12.5 px
+      // casing, so 20 px leaves a ~3.75 px edge each side: enough to read, not
+      // enough to compete with the verdict colour it is context for.
+      'line-width': ['interpolate', ['linear'], ['zoom'],
+        6, 7, 10, 12, 14, 20],
+    },
+  });
   map.addLayer({
     id: 'route-casing', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -5672,20 +5701,6 @@ function drawRoute(coords, ferrySegs, segs) {
   });
   const routeVerdictPaint = (color) => ({
     'line-color': color, 'line-width': 6.5, 'line-opacity': 1,
-  });
-  // Wider than the route line and its casing, so it reads as a band the route
-  // is riding along rather than something hiding underneath it. Added before
-  // any verdict layer: the route's own colour must stay on top, because the
-  // ribbon is context and the verdict is the answer.
-  map.addLayer({
-    id: 'route-designated-band', type: 'line', source: 'route-designated',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: {
-      'line-color': DESIGNATED_COLOR,
-      'line-opacity': 0.85,
-      'line-width': ['interpolate', ['linear'], ['zoom'],
-        6, 9, 10, 16, 14, 26],
-    },
   });
   map.addLayer({
     id: 'route-pass', type: 'line', source: 'route-render',
