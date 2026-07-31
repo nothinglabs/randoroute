@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.464';
+const APP_VERSION = '2026-07-31.465';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -779,6 +779,20 @@ if (savedWeightsVersion < 7) {
 }
 const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 
+// Chrome the rider can put away. Deliberately NOT part of any preset and not
+// checked by activeRoutingPreset(): a preset describes how routes are chosen,
+// and hiding a button changes nothing about that. Applying a preset must leave
+// this alone, and turning it off must not knock the rider off their preset.
+//
+// Off hides the two advanced entry points on the map — the weights button and
+// the "More" routes button — and nothing else. The weights panel itself stays
+// reachable from Settings > Advanced, so this tidies the map rather than
+// removing the feature.
+const uiPrefs = {
+  showAdvancedTools: typeof savedState?.showAdvancedTools === 'boolean'
+    ? savedState.showAdvancedTools : true,
+};
+
 // Voice guidance is a local device preference, not part of a shared route.
 // Automatic recovery is intentionally disabled for now. Keep the dormant mode
 // parsing and recovery functions so the selector can be restored later without
@@ -974,6 +988,7 @@ function saveStateNow() {
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
       navigationOffRouteMode: navVoice.offRouteMode,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
+      showAdvancedTools: uiPrefs.showAdvancedTools,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
       route: routing.start && routing.end
@@ -6338,6 +6353,7 @@ function renderRouteOptionControls() {
 // why", so it lists the rejects alongside the offers with the stage that
 // dropped each one.
 function moreRoutesButtonHtml() {
+  if (!uiPrefs.showAdvancedTools) return '';
   const all = routing.allCandidates || [];
   if (all.length <= (routing.options?.length || 0)) return '';
   const extra = all.length - (routing.options?.length || 0);
@@ -8771,6 +8787,28 @@ function buildRulesPanel() {
   check('allowSidewalkFallback', 'Allow sidewalk fallback');
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');
+
+  // Deliberately below the rules and visually separated: everything above
+  // decides where the route goes and overrides a preset in doing so. This only
+  // decides what the map shows, so it must not call syncPresetSelection() --
+  // hiding a button is not a departure from a preset.
+  const advancedToolsCard = document.createElement('div');
+  advancedToolsCard.className = 'check-rule rule-card rule-standalone';
+  advancedToolsCard.innerHTML = `
+    <label class="rule-check" for="r-showAdvancedTools">
+      <input type="checkbox" id="r-showAdvancedTools" ${uiPrefs.showAdvancedTools ? 'checked' : ''}>
+      <span>Show weights and all considered routes</span>
+    </label>
+    <p class="rule-note">Puts the ⚖ weights button and the “More” routes button on the
+      map. Display only — not part of any preset, and routes are unaffected. The
+      weights panel stays reachable from Settings ▸ Advanced either way.</p>`;
+  optionsHost.appendChild(advancedToolsCard);
+  advancedToolsCard.querySelector('input').addEventListener('change', (e) => {
+    uiPrefs.showAdvancedTools = e.target.checked;
+    suppressRoadInfo(900);
+    syncAdvancedToolsVisibility();
+    saveStateSoon();
+  });
   // Lanes slider: its TOP position means "no limit" rather than a count, the
   // same idiom the upper-speed cutoff uses. The setting reads "more lanes
   // than", so the number shown is the widest road that still passes.
@@ -9159,6 +9197,16 @@ function openRoutingWeights() {
   buildRoutingWeightsEditor();
   document.getElementById('weightsDialog').showModal();
 }
+
+// The map's two advanced entry points appear and disappear together, because
+// they are the same decision: whether the rider wants the router's workings on
+// screen. The "More" button lives inside markup the chooser rebuilds, so it is
+// re-rendered rather than toggled.
+function syncAdvancedToolsVisibility() {
+  const weightsButton = document.getElementById('appWeightsBtn');
+  if (weightsButton) weightsButton.hidden = !uiPrefs.showAdvancedTools;
+  renderRouteOptionControls();
+}
 // A weight left off its default silently changes every route, and the panel is
 // several taps away from wherever the surprise shows up. Mark the button.
 function syncWeightsTunedBadge() {
@@ -9177,6 +9225,7 @@ document.getElementById('routeOptions').addEventListener('click', (e) => {
   if (e.target.closest('#moreRoutesBtn')) openAllRoutes();
 });
 syncWeightsTunedBadge();
+syncAdvancedToolsVisibility();
 document.getElementById('layersHelpBtn').addEventListener('click', () =>
   document.getElementById('layersHelpDialog').showModal());
 document.getElementById('routesHelpBtn').addEventListener('click', () => {

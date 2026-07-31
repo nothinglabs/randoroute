@@ -513,6 +513,12 @@ body:not(.navigation-active) #navCard { display: none; }
 #settings-options #settingsOptions .rule-card { min-height: 0; padding: 3px 6px; }
 #settings-options #settingsOptions .rule-check { gap: 5px; font-size: 10.5px; line-height: 1.1; }
 #settings-options #settingsOptions input[type="checkbox"] { width: 15px; height: 15px; }
+/* A display-only setting that sits outside the preset system. It spans the grid
+   and is set apart so the pane's "changes override any preset" summary is not
+   read as covering it. */
+#settingsOptions .rule-standalone { grid-column: 1 / -1; margin-top: 6px; border-color: #cbd9e2; background: #f3f8fa; }
+#settingsOptions .rule-note { margin: 3px 1px 0 21px; color: #5c6f7b; font: 500 10.5px/1.35 system-ui; }
+#settings-options #settingsOptions .rule-note { margin-left: 20px; font-size: 9.5px; line-height: 1.3; }
 .check-rule { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
 .check-rule label { font-weight: 600; cursor: pointer; }
 input[type="checkbox"] { width: 17px; height: 17px; }
@@ -842,6 +848,10 @@ body.navigation-active #routeBar { display: none; }
    Settings > Advanced; this is the shortcut for tuning against the map you are
    looking at, which is how it actually gets used. */
 #appWeightsBtn { top: calc(env(safe-area-inset-top) + 132px); font: 700 16px/1 system-ui; }
+/* The display:grid above wins on ID specificity, so the UA's [hidden] rule
+   cannot hide this on its own. "Show weights and all considered routes" needs
+   this to bite. */
+#appWeightsBtn[hidden] { display: none; }
 #appWeightsBtn.tuned { border-color: #d8a447; background: #fff6e4; color: #96590a; }
 .app-help-update { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px 10px; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e1e7eb; }
 .app-help-version { margin: 0 !important; color: #56616a; font: 650 12px/1.2 system-ui; }
