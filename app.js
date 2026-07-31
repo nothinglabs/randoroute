@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.482';
+const APP_VERSION = '2026-07-31.483';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -8351,15 +8351,19 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   // Add or remove a road block on the road being read about, without dismissing
   // the card, finding the arm button and tapping the map again.
   //
-  // At the END of the bottom action row, pushed right with margin-left:auto.
-  // It sat in the row's normal order at first, which put an action on YOUR
-  // route among the two links OUT of the app (Street View, Google Maps) and
-  // made it read as a third destination; then under the ✕, which was tidy but
-  // silent -- a 34 px gutter has no room for a word. Here it is set apart by
-  // position rather than by leaving, and there is room to say which it does.
+  // Pinned to the card's bottom-right corner, mirroring the ✕ in the top-right.
   //
-  // In normal flow rather than absolutely positioned, so it can never land on
-  // top of the links beside it on a narrow card.
+  // Three earlier placements and why each was wrong: in the action row's normal
+  // order it sat among Street View and Google Maps, the two links OUT of the
+  // app, so an action on your route read as a third destination. Under the ✕ it
+  // was set apart but silent -- a 34 px gutter has no room for a word. At the
+  // row's right end it was still inside the card's 43 px right padding, so it
+  // stopped short of the corner and read as trailing the links rather than
+  // owning its own place.
+  //
+  // Absolute, so it escapes that padding and sits flush. It cannot collide with
+  // the links: the card already reserves that 43 px gutter for the close
+  // button, and the action row never reaches into it.
   const existingBlock = roadBlockNear({ lng: svLng, lat: svLat });
   // Removing is always offered when there is something to remove. Adding is
   // offered only when it would work: a block needs both endpoints set, and a
@@ -8392,7 +8396,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       }
     });
     toggle.append(label, blockBtn);
-    mapActions.append(toggle);
+    readoutEl.append(toggle);
   }
   readoutEl.append(close, heading, table, mapActions);
   readoutEl.classList.add('show');
