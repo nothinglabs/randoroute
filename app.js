@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.481';
+const APP_VERSION = '2026-07-31.482';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6351,6 +6351,22 @@ function snapToDrawnRoute(lngLat) {
   return map.unproject([best.x, best.y]);
 }
 
+// The block a press of the card's button would land on, if any. Measured from
+// the point Add would actually place -- the snapped one -- so the question the
+// button answers is exactly "would pressing this again put a second block on
+// top of the first?", which is what makes Add/Remove the right pair.
+function roadBlockNear(lngLat, withinPx = 30) {
+  const target = map.project(snapToDrawnRoute(lngLat));
+  let found = null;
+  let best = Infinity;
+  for (const block of routing.blocks) {
+    const p = map.project(block.pt);
+    const distance = Math.hypot(p.x - target.x, p.y - target.y);
+    if (distance < best && distance <= withinPx) { best = distance; found = block; }
+  }
+  return found;
+}
+
 function addRoadBlock(lngLat, { allowPastLimit = false, snap = true } = {}) {
   if (snap) lngLat = snapToDrawnRoute(lngLat);
   exitSharedRoute();
@@ -8332,28 +8348,42 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   mapLink.textContent = 'Google Maps ↗';
   mapLink.setAttribute('aria-label', 'Open this location in Google Maps');
   mapActions.append(streetViewBtn, mapLink);
-  readoutEl.append(close, heading, table, mapActions);
-
-  // Blocking the road you are reading about, without dismissing the card,
-  // finding the arm button and tapping the map again.
+  // Add or remove a road block on the road being read about, without dismissing
+  // the card, finding the arm button and tapping the map again.
   //
-  // In the top-right gutter under the ✕ rather than in the row of actions at
-  // the bottom. That row is where the two links OUT of the app live -- Street
-  // View and Google Maps -- and this is neither a link nor external; sitting
-  // among them it read as a third destination. The card already reserves a
-  // 43 px right gutter for the close button, so nothing has to move to make
-  // room and no content runs underneath.
+  // At the END of the bottom action row, pushed right with margin-left:auto.
+  // It sat in the row's normal order at first, which put an action on YOUR
+  // route among the two links OUT of the app (Street View, Google Maps) and
+  // made it read as a third destination; then under the ✕, which was tidy but
+  // silent -- a 34 px gutter has no room for a word. Here it is set apart by
+  // position rather than by leaving, and there is room to say which it does.
   //
-  // Only offered when it would do something: a block needs both endpoints set,
-  // and a route may carry at most MAX_ROAD_BLOCKS of them.
-  if (routing.start && routing.end && routing.blocks.length < MAX_ROAD_BLOCKS) {
+  // In normal flow rather than absolutely positioned, so it can never land on
+  // top of the links beside it on a narrow card.
+  const existingBlock = roadBlockNear({ lng: svLng, lat: svLat });
+  // Removing is always offered when there is something to remove. Adding is
+  // offered only when it would work: a block needs both endpoints set, and a
+  // route may carry at most MAX_ROAD_BLOCKS.
+  const canAdd = routing.start && routing.end && routing.blocks.length < MAX_ROAD_BLOCKS;
+  if (existingBlock || canAdd) {
+    const toggle = document.createElement('div');
+    toggle.className = 'road-block-toggle';
+    const label = document.createElement('span');
+    label.className = 'road-block-toggle-label';
+    label.textContent = existingBlock ? 'Remove' : 'Add';
     const blockBtn = document.createElement('button');
     blockBtn.type = 'button';
     blockBtn.className = 'road-block-add';
     blockBtn.innerHTML = '<span aria-hidden="true">🚧</span>';
-    blockBtn.title = 'Add a road block here and route around it';
-    blockBtn.setAttribute('aria-label', 'Add a road block here');
+    blockBtn.title = existingBlock
+      ? 'Remove the road block here' : 'Add a road block here and route around it';
+    blockBtn.setAttribute('aria-label', blockBtn.title);
     blockBtn.addEventListener('click', () => {
+      if (existingBlock) {
+        removeRoadBlock(existingBlock);
+        dismissRoadInfo();
+        return;
+      }
       // The point that opened the card, snapped onto the route the same way a
       // placement tapped on the map is.
       if (addRoadBlock({ lng: svLng, lat: svLat })) {
@@ -8361,8 +8391,10 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         setRouteStatus('Road block added — routing around it');
       }
     });
-    readoutEl.append(blockBtn);
+    toggle.append(label, blockBtn);
+    mapActions.append(toggle);
   }
+  readoutEl.append(close, heading, table, mapActions);
   readoutEl.classList.add('show');
   if (anchorPoint) positionRoadInfoNear(anchorPoint);
 }

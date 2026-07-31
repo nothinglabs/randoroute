@@ -591,13 +591,14 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .streetview-launch:hover { background: #075aa9; }
 .streetview-launch:focus-visible { outline: 3px solid #75bdf4; outline-offset: 2px; }
-/* Directly under the close button, in the gutter the card already reserves for
-   it. Same footprint as the ✕ so the two read as one column of card controls. */
+/* Last in the bottom action row and pushed to its right edge, so an action on
+   the route is set apart from the two links that leave the app. */
+.road-block-toggle { display: flex; flex-direction: column; align-items: center; gap: 1px; margin-left: auto; }
+.road-block-toggle-label { color: #6b5310; font: 800 8px/1 system-ui; letter-spacing: .04em; text-transform: uppercase; }
 .road-block-add {
-  position: absolute; top: 47px; right: 7px;
-  display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
-  border: 1px solid #d8c48c; border-radius: 8px; background: #fdf6e3;
-  font: 15px/1 system-ui; cursor: pointer;
+  display: grid; place-items: center; width: 28px; height: 28px; padding: 0;
+  border: 1px solid #d8c48c; border-radius: 7px; background: #fdf6e3;
+  font: 13px/1 system-ui; cursor: pointer;
 }
 .road-block-add:hover { background: #f7ead0; }
 .road-block-add:focus-visible { outline: 3px solid #e0c983; outline-offset: 2px; }
