@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.468';
+const APP_VERSION = '2026-07-31.469';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -834,7 +834,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'weekend-wanderer',
     label: 'Weekend Wanderer',
     audience: 'For day riders who want slower roads with practical flexibility.',
-    blurb: 'Slower roads, flexible; concerns pulse red.',
+    blurb: 'Slower roads, flexible; more roads come back as amber cautions.',
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
@@ -969,6 +969,12 @@ const sharedRoute = readSharedRoute();
 
 let saveTimer = null;
 let stateDirty = false;
+// A layer's rider-chosen visibility. While the solo preview is running, the
+// live `display` flags are a temporary glance rather than a setting, so
+// anything that persists or reports state must read through this.
+function savedLayer(key) {
+  return soloPreviewRestore ? soloPreviewRestore.flags[key] : display[key];
+}
 function saveStateNow() {
   clearTimeout(saveTimer);
   saveTimer = null;
@@ -978,10 +984,14 @@ function saveStateNow() {
   try {
     localStorage.setItem(STATE_KEY, JSON.stringify({
       rules, passFail: display.passFail,
-      unpavedBackground: display.unpavedBackground,
+      // savedLayer(), not display[], so a solo preview -- which dims every other
+      // layer for half a second -- can never be written to disk as the rider's
+      // choice. A save can land mid-preview from the debounce or from the tab
+      // going to the background.
+      unpavedBackground: savedLayer('unpavedBackground'),
       mapLayers: Object.fromEntries(['offstreetTrails', 'bikeFacilities', 'meetRules',
         'failRules', 'caution', 'designated', 'bikesProhibited']
-        .map((key) => [key, display[key]])),
+        .map((key) => [key, savedLayer(key)])),
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
@@ -2157,14 +2167,89 @@ function setBackgroundUnpavedVisible(on) {
   saveStateSoon();
 }
 
+/* --------------------------------------------- solo preview on enable */
+// Turning a layer ON briefly shows it ALONE -- every other layer and the drawn
+// route drop out for half a second -- so a rider can see what they just
+// enabled. On a busy map a newly drawn layer is otherwise indistinguishable
+// from everything already there.
+//
+// Only on enable. Turning a layer off needs no preview: the thing you wanted to
+// see is the map without it, and you are already looking at that.
+const SOLO_PREVIEW_MS = 500;
+// The keys this can dim, in the order buildSourcePanel lists them. Deliberately
+// derived from `display` rather than a second hand-kept list.
+const SOLO_LAYER_KEYS = ['offstreetTrails', 'bikeFacilities', 'meetRules', 'failRules',
+  'caution', 'designated', 'bikesProhibited', 'unpavedBackground'];
+let soloPreviewTimer = null;
+// The true rider-chosen state, held while a preview is showing something else.
+// Everything that persists or re-reads `display` must see THIS, never the
+// temporary version -- a preview is a glance, not a setting.
+let soloPreviewRestore = null;
+
+function routeLayerVisibility() {
+  const seen = new Map();
+  for (const layer of map.getStyle().layers) {
+    if (!/^route/.test(layer.id)) continue;
+    // Record what each layer is actually set to. Several route layers rest at
+    // 'none' by design (the highlights), and blanket-restoring them to visible
+    // would switch on things the rider never asked for.
+    seen.set(layer.id, map.getLayoutProperty(layer.id, 'visibility') || 'visible');
+  }
+  return seen;
+}
+
+function endSoloPreview() {
+  if (!soloPreviewRestore) return;
+  const { flags, routeVis } = soloPreviewRestore;
+  soloPreviewRestore = null;
+  clearTimeout(soloPreviewTimer);
+  soloPreviewTimer = null;
+  Object.assign(display, flags);
+  applyDisplayModeAll();
+  const osm = SOURCES.find((src) => src.id === 'osm');
+  if (osm && map.getLayer(backgroundUnpavedId(osm))) {
+    map.setLayoutProperty(backgroundUnpavedId(osm), 'visibility',
+      display.unpavedBackground ? 'visible' : 'none');
+  }
+  for (const [id, visibility] of routeVis) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+  }
+}
+
+function startSoloPreview(key) {
+  // A second toggle during a preview restores the first one before capturing,
+  // so the saved state is always the rider's, never a half-dimmed snapshot.
+  endSoloPreview();
+  const flags = Object.fromEntries(SOLO_LAYER_KEYS.map((k) => [k, display[k]]));
+  soloPreviewRestore = { flags, routeVis: routeLayerVisibility() };
+  for (const k of SOLO_LAYER_KEYS) if (k !== key) display[k] = false;
+  applyDisplayModeAll();
+  const osm = SOURCES.find((src) => src.id === 'osm');
+  if (osm && map.getLayer(backgroundUnpavedId(osm))) {
+    map.setLayoutProperty(backgroundUnpavedId(osm), 'visibility',
+      key === 'unpavedBackground' ? 'visible' : 'none');
+  }
+  for (const id of soloPreviewRestore.routeVis.keys()) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+  }
+  soloPreviewTimer = setTimeout(endSoloPreview, SOLO_PREVIEW_MS);
+}
+
 function setMapLayerVisible(key, on) {
+  // Read the rider's real setting, not whatever a running preview is showing.
+  const wasOn = savedLayer(key);
+  const enabling = !!on && !wasOn;
+  endSoloPreview();
   if (key === 'unpavedBackground') {
     setBackgroundUnpavedVisible(on);
-    return;
+  } else {
+    display[key] = !!on;
+    applyDisplayModeAll();
+    saveStateSoon();
   }
-  display[key] = !!on;
-  applyDisplayModeAll();
-  saveStateSoon();
+  if (enabling && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    startSoloPreview(key);
+  }
 }
 
 /* --------------------------------------------------------- routing */
@@ -8334,6 +8419,12 @@ function updateSourceCount(src) {
 
 function buildSourcePanel() {
   const host = document.getElementById('sources');
+  // Clear first. Every other panel builder does; this one appended, so a second
+  // call would stack a duplicate set of eight toggles carrying duplicate DOM
+  // ids, and getElementById would then answer with a stale row whose checkbox
+  // no longer tracks the layer. Only called once today, which is exactly why it
+  // had never shown up.
+  host.replaceChildren();
   host.className = 'layer-toggle-grid';
   const items = [
     ['offstreetTrails', 'Off-street trails', 'trail'],
@@ -8350,7 +8441,7 @@ function buildSourcePanel() {
     row.className = 'layer-toggle';
     row.id = `layer-${key}`;
     row.innerHTML = `
-      <input type="checkbox" id="chk-layer-${key}" ${display[key] ? 'checked' : ''}>
+      <input type="checkbox" id="chk-layer-${key}" ${savedLayer(key) ? 'checked' : ''}>
       <label for="chk-layer-${key}"><span class="layer-toggle-swatch ${swatch}" aria-hidden="true"></span><span>${label}</span></label>`;
     host.appendChild(row);
     row.querySelector('input').addEventListener('change', (e) =>
