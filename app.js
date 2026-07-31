@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.472';
+const APP_VERSION = '2026-07-31.473';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -2167,79 +2167,39 @@ function setBackgroundUnpavedVisible(on) {
   saveStateSoon();
 }
 
-/* --------------------------------------------- solo preview on enable */
-// Turning a layer ON briefly shows it ALONE -- every other layer and the drawn
-// route drop out for half a second -- so a rider can see what they just
-// enabled. On a busy map a newly drawn layer is otherwise indistinguishable
-// from everything already there.
+/* ------------------------------------------- blink a layer on enable */
+// Turning a layer ON blinks it -- off, on, off, on -- while the drawn route is
+// hidden. Two things a rider wants to know at that moment: which lines on this
+// busy map are the ones I just switched on, and does that layer run along my
+// route? Blinking answers the first because only the new layer moves. Hiding
+// the route answers the second: a signed state bike route drawn under a route
+// line is invisible until the route line gets out of the way.
 //
-// Only on enable. Turning a layer off needs no preview: the thing you wanted to
-// see is the map without it, and you are already looking at that.
-// Clearing is instant; revealing fades. A rider reads a sudden blank as "the
-// map cleared" without needing to watch it happen, but things POPPING back is
-// what made this feel abrupt -- so both reveals are eased in and nothing snaps
-// on. Total is shorter than the flat half-second hold it replaces.
-const SOLO_FADE_MS = 120;   // each fade-in
-const SOLO_HOLD_MS = 150;   // isolated dwell after the reveal completes
-// Paint property carrying opacity, per layer type. A layer type not listed here
-// simply does not fade; it is switched with the rest and that is fine.
-const OPACITY_PROP = { line: 'line-opacity', fill: 'fill-opacity',
-  circle: 'circle-opacity', symbol: 'icon-opacity', background: null, raster: null };
-
-// Fade a set of layers up from nothing to whatever they are already set to.
-// Their target may be a plain number OR a zoom expression -- setPaintProperty
-// restores either exactly, so the original is captured and handed straight
-// back rather than being rebuilt.
-function fadeLayersIn(ids) {
-  const restore = [];
-  for (const id of ids) {
-    const layer = map.getLayer(id);
-    if (!layer) continue;
-    const prop = OPACITY_PROP[layer.type];
-    if (!prop) continue;
-    const target = map.getPaintProperty(id, prop);
-    // An opacity of 0 is a hit-testing layer that is meant to be invisible.
-    // Fading it "in" would reveal it.
-    if (target === 0) continue;
-    map.setPaintProperty(id, prop + '-transition', { duration: 0, delay: 0 });
-    map.setPaintProperty(id, prop, 0);
-    restore.push([id, prop, target === undefined ? 1 : target]);
-  }
-  if (!restore.length) return;
-  // Next frame, so the 0 is committed before the eased value replaces it.
-  requestAnimationFrame(() => {
-    for (const [id, prop, target] of restore) {
-      if (!map.getLayer(id)) continue;
-      map.setPaintProperty(id, prop + '-transition', { duration: SOLO_FADE_MS, delay: 0 });
-      map.setPaintProperty(id, prop, target);
-    }
-  });
-}
-
-// Everything the preview draws or restores. The basemap never participates --
-// it is the ground the rider is orienting against, and blinking it is
-// disorienting rather than informative.
-function soloFadeableLayerIds() {
-  return map.getStyle().layers
-    .filter((l) => !/^(background|basemap)/.test(l.id))
-    .map((l) => l.id);
-}
-// The keys this can dim, in the order buildSourcePanel lists them. Deliberately
-// derived from `display` rather than a second hand-kept list.
+// Nothing else is touched. An earlier version dimmed every OTHER layer for half
+// a second, which answered "which is new" by removing the context you needed to
+// judge it against -- and the road network under your route is exactly that
+// context.
+//
+// Only on enable. Turning a layer off needs no cue: the thing you wanted to see
+// is the map without it, and you are already looking at that.
+const BLINK_MS = 90;
+// Ends on `true`, so the layer is left visible no matter where this stops.
+const BLINK_STEPS = [false, true, false, true];
+// The keys this can blink, in the order buildSourcePanel lists them.
 const SOLO_LAYER_KEYS = ['offstreetTrails', 'bikeFacilities', 'meetRules', 'failRules',
   'caution', 'designated', 'bikesProhibited', 'unpavedBackground'];
 let soloPreviewTimer = null;
-// The true rider-chosen state, held while a preview is showing something else.
+// The true rider-chosen state, held while a blink is showing something else.
 // Everything that persists or re-reads `display` must see THIS, never the
-// temporary version -- a preview is a glance, not a setting.
+// mid-blink version -- a blink is a cue, not a setting.
 let soloPreviewRestore = null;
 
 // The DRAWN route's layers: 'route' and 'route-*'. The boundary matters -- the
 // designated bike-route ribbon draws on a source called `routes`, whose layers
 // ('routes', 'routes__hit', 'routes__fail', 'routes__vh') a bare /^route/ also
-// matches. That bug hid the bike-route overlay during every solo preview, and
-// when the rider enabled bike routes it hid the one layer they had just asked
-// to see.
+// matches. That bug hid the bike-route overlay during every preview, and when
+// the rider enabled bike routes it hid the one layer they had just asked to
+// see -- which is precisely the ribbon this effect now exists to reveal.
 const DRAWN_ROUTE_LAYER = /^route($|-)/;
 function routeLayerVisibility() {
   const seen = new Map();
@@ -2253,11 +2213,26 @@ function routeLayerVisibility() {
   return seen;
 }
 
+// Show or hide exactly what one layer key controls, without persisting it.
+// unpavedBackground hangs off its own layer rather than the display filters.
+function paintLayerKey(key, on) {
+  if (key === 'unpavedBackground') {
+    display.unpavedBackground = on;
+    const osm = SOURCES.find((src) => src.id === 'osm');
+    if (osm && map.getLayer(backgroundUnpavedId(osm))) {
+      map.setLayoutProperty(backgroundUnpavedId(osm), 'visibility', on ? 'visible' : 'none');
+    }
+    return;
+  }
+  display[key] = on;
+  applyDisplayModeAll();
+}
+
 function endSoloPreview() {
   if (!soloPreviewRestore) return;
   const { flags, routeVis } = soloPreviewRestore;
   soloPreviewRestore = null;
-  clearTimeout(soloPreviewTimer);
+  clearInterval(soloPreviewTimer);
   soloPreviewTimer = null;
   Object.assign(display, flags);
   applyDisplayModeAll();
@@ -2269,27 +2244,22 @@ function endSoloPreview() {
   for (const [id, visibility] of routeVis) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
   }
-  fadeLayersIn(soloFadeableLayerIds());
 }
 
 function startSoloPreview(key) {
-  // A second toggle during a preview restores the first one before capturing,
-  // so the saved state is always the rider's, never a half-dimmed snapshot.
+  // A second toggle mid-blink restores the first before capturing, so the held
+  // state is always the rider's, never a half-blinked snapshot.
   endSoloPreview();
   const flags = Object.fromEntries(SOLO_LAYER_KEYS.map((k) => [k, display[k]]));
   soloPreviewRestore = { flags, routeVis: routeLayerVisibility() };
-  for (const k of SOLO_LAYER_KEYS) if (k !== key) display[k] = false;
-  applyDisplayModeAll();
-  const osm = SOURCES.find((src) => src.id === 'osm');
-  if (osm && map.getLayer(backgroundUnpavedId(osm))) {
-    map.setLayoutProperty(backgroundUnpavedId(osm), 'visibility',
-      key === 'unpavedBackground' ? 'visible' : 'none');
-  }
   for (const id of soloPreviewRestore.routeVis.keys()) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
   }
-  fadeLayersIn(soloFadeableLayerIds());
-  soloPreviewTimer = setTimeout(endSoloPreview, SOLO_FADE_MS + SOLO_HOLD_MS);
+  let step = 0;
+  soloPreviewTimer = setInterval(() => {
+    if (step >= BLINK_STEPS.length) { endSoloPreview(); return; }
+    paintLayerKey(key, BLINK_STEPS[step++]);
+  }, BLINK_MS);
 }
 
 function setMapLayerVisible(key, on) {
