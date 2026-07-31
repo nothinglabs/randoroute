@@ -25,6 +25,48 @@ cost may never make a road pass or fail — that is the verdict's job alone.
 **This file is the specification, not a summary of the code.** If the code and
 this file disagree, the code is wrong.
 
+## The facts contract
+
+The ladder was always shared. **The object handed to it was not**, and that is
+where every "two views disagree about one road" bug came from.
+
+`app.js` built the facts shape from normalised props, `router-worker.js` built
+its own from typed arrays, and each of the five scorers filled whichever subset
+its author remembered. Nothing checked them, because a forgotten field is not an
+error in JavaScript — it is `undefined`, which the model reads as *unknown*,
+which is a perfectly valid answer. Two shipped consequences:
+
+- **SR 104 at Kingston** drew as failing, the card said *"nothing here demands
+  space of its own"*, and the route over it coloured as passing. `scoreBLTS`
+  never put AADT into the facts, so the card ignored a count it was printing two
+  lines below the verdict.
+- **`factsOf` read `n.facility` and no scorer ever set it**, so on every card a
+  separated path and a painted lane were the same road.
+
+Neither was a logic error. Both were omissions that looked like data.
+
+What now enforces it, all in `safety-model.js`:
+
+| piece | job |
+|---|---|
+| `FACT_KEYS` | the entire vocabulary — 16 facts, nothing else is a fact |
+| `factsFrom(n)` | the only supported builder from normalised props; fills every key |
+| `sealFacts(f)` | the same guarantee for builders that assemble directly, like the worker's `edgeFacts` |
+| `missingFactKeys(f)` | how a test catches an omission at its source |
+| `SOURCE_FACTS` | which facts each source *can* supply — a written-down gap, not an accidental one |
+
+`test_fact_contract.mjs` holds every source to that declaration against **real
+tile and graph data**: a fact claimed but never populated is a broken adapter, a
+fact populated but not claimed means the table is stale, and shared facts must
+agree on type and units across sources.
+
+Two things it caught immediately. `scoreBLTS` was assigning WSDOT's **LTS stress
+rating** to `baseScore`, which `factsFrom` maps to `infraScore` — the model's
+answer to "how good is this bike infrastructure". Two unrelated meanings in one
+field, inert only because `infra` is false for that source. And `good_facility`,
+a coarse "there is something here" flag, was *lowering* a known facility level
+to the riding-space floor; it may now only raise one.
+
 ## One definition, four readers
 
 The ladder lives in **`safety-model.js`** and nowhere else. Each caller

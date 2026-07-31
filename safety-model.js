@@ -46,6 +46,122 @@
   // shared travel lane and satisfies nothing.
   var FACILITY_RIDING_SPACE = 2;
 
+  // ---- the facts contract ---------------------------------------------
+  // Every caller asks the ladder the same question, so every caller must build
+  // the same object. This used to be written out separately in app.js and
+  // router-worker.js, and the two drifted: a scorer that forgot a field simply
+  // produced `undefined`, the model read it as "unknown", and the road silently
+  // got a different verdict in that view than in every other. That is how a
+  // state highway came to read "nothing here demands space of its own" on the
+  // card while the map drew it failing -- the card's builder never carried the
+  // traffic count.
+  //
+  // FACT_KEYS is the whole vocabulary. factsFrom() is the only supported way to
+  // build one, and it fills every key explicitly so a missing input is a
+  // recorded `null` rather than an absent property.
+  var FACT_KEYS = ['prohibited', 'ferry', 'freeway', 'infra', 'infraScore',
+    'facility', 'limitedAccess', 'speed', 'shoulder', 'edgeSpace', 'lanes',
+    'sidewalk', 'urban', 'stressRating', 'adt', 'fc'];
+
+  function num(value) {
+    return value == null || value === '' || isNaN(Number(value)) ? null : Number(value);
+  }
+
+  // `n` is a source's normalised props. Anything a source cannot supply must be
+  // absent or null here; the point is that the RESULT always has every key.
+  function factsFrom(n) {
+    n = n || {};
+    var measures = n.measures || null;
+    var facility = num(n.facility);
+    if (facility == null) facility = 0;
+    // good_facility is a source's coarse "there is a bike facility here" flag.
+    // It may only RAISE the level to the riding-space floor, never lower a
+    // known one: a source that reports a separated lane (4) must not be pulled
+    // down to 2 because its coarse flag happens to be set.
+    if (n.good_facility && facility < FACILITY_RIDING_SPACE) facility = FACILITY_RIDING_SPACE;
+    return {
+      prohibited: !!n.prohibited,
+      ferry: !!n.ferry,
+      freeway: !!n.freeway,
+      infra: !!n.infra,
+      infraScore: num(n.baseScore),
+      facility: facility,
+      limitedAccess: !!n.limited_access,
+      speed: num(n.maxspeed_num),
+      shoulder: num(n.shoulder_width),
+      // Per-side county edge space, the input to the shoulder guess.
+      edgeSpace: measures ? num(measures.edge) : null,
+      lanes: num(n.lanes) || 0,
+      sidewalk: n.sidewalk || null,
+      urban: !!n.urban,
+      stressRating: num(n.stressRating),
+      // The busy trigger reads a measured count where there is one and the
+      // functional class where there is not.
+      adt: measures ? num(measures.adt) : null,
+      fc: measures ? num(measures.fc) : null,
+    };
+  }
+
+  // Defaults for a key a builder did not set. These are not "unknown" for the
+  // booleans and counts -- a road with no lane count has zero lanes, not an
+  // unknowable number -- so they have to be stated rather than left to
+  // `undefined`, which reads as false-y in some places and null-ish in others.
+  var FACT_DEFAULTS = {
+    prohibited: false, ferry: false, freeway: false, infra: false, urban: false,
+    facility: 0, lanes: 0,
+    infraScore: null, limitedAccess: false, speed: null, shoulder: null,
+    edgeSpace: null, sidewalk: null, stressRating: null, adt: null, fc: null,
+  };
+
+  // For builders that assemble facts directly rather than from normalised props
+  // -- router-worker.js reads typed arrays, so it cannot use factsFrom(). This
+  // guarantees the same complete shape, and missingFactKeys() lets a test catch
+  // the omission at the point it happens rather than as a mystery verdict.
+  function sealFacts(facts) {
+    var out = {};
+    for (var i = 0; i < FACT_KEYS.length; i++) {
+      var k = FACT_KEYS[i];
+      out[k] = facts && facts[k] !== undefined ? facts[k] : FACT_DEFAULTS[k];
+    }
+    return out;
+  }
+  function missingFactKeys(facts) {
+    var out = [];
+    for (var i = 0; i < FACT_KEYS.length; i++) {
+      if (!facts || facts[FACT_KEYS[i]] === undefined) out.push(FACT_KEYS[i]);
+    }
+    return out;
+  }
+
+  // Which facts a source is ABLE to supply. A gap here is a declared property of
+  // the data, not an oversight, and test_fact_contract holds each source to it:
+  // a fact listed but never populated is a broken adapter, and a fact populated
+  // but not listed means this table is out of date. Either way the mismatch is
+  // caught instead of surfacing as two views disagreeing about one road.
+  var SOURCE_FACTS = {
+    // Full OSM road network -- the only source that carries everything.
+    roads: ['prohibited', 'freeway', 'facility', 'limitedAccess', 'speed',
+      'shoulder', 'edgeSpace', 'lanes', 'sidewalk', 'urban', 'stressRating',
+      'adt', 'fc'],
+    // WSDOT state highways. No sidewalk survey, no functional class, and its
+    // own AADT rather than the conflated one.
+    blts: ['prohibited', 'freeway', 'facility', 'limitedAccess', 'speed',
+      'shoulder', 'lanes', 'urban', 'stressRating', 'adt'],
+    // OSM bike infrastructure. A facility, judged by TYPE: it carries no speed,
+    // no lane count and no traffic, and the `infra` rung answers before any of
+    // those would be consulted.
+    osm: ['prohibited', 'infra', 'infraScore', 'facility', 'shoulder'],
+    // A drawn route's segments, built from graph edges.
+    routeseg: ['ferry', 'freeway', 'infra', 'infraScore', 'facility',
+      'limitedAccess', 'speed', 'shoulder', 'edgeSpace', 'lanes', 'sidewalk',
+      'urban', 'stressRating', 'adt', 'fc'],
+    // The router, straight off the binary graph.
+    edge: ['prohibited', 'ferry', 'freeway', 'infra', 'infraScore', 'facility',
+      'limitedAccess', 'speed', 'shoulder', 'edgeSpace', 'lanes', 'sidewalk',
+      'urban', 'stressRating', 'adt', 'fc'],
+  };
+
+
   // Level of Traffic Stress at or above this is high stress. The scale is
   // 1-4 low to high; 4 is "suitable only for the strong and fearless".
   var STRESS_CAUTION_AT = 4;
@@ -318,6 +434,11 @@
     trafficNeedsSpace: trafficNeedsSpace,
     sidewalkFallbackApplies: sidewalkFallbackApplies,
     noShoulderMaxSpeed: noShoulderMaxSpeed,
+    FACT_KEYS: FACT_KEYS,
+    SOURCE_FACTS: SOURCE_FACTS,
+    factsFrom: factsFrom,
+    sealFacts: sealFacts,
+    missingFactKeys: missingFactKeys,
     effectiveShoulder: effectiveShoulder,
     shoulderWasInferred: shoulderWasInferred,
     EDGE_SPACE_MARGIN_FT: EDGE_SPACE_MARGIN_FT,

@@ -382,7 +382,11 @@ function edgeFacts(i, forward) {
   const flags = eFlags[i];
   const shoulder = edgeShoulder(i, forward);
   const official = eOfficial[i];
-  return {
+  // Sealed through the shared model: this builder reads typed arrays rather
+  // than normalised props, so it cannot use factsFrom(), and hand-built shapes
+  // are exactly what drifted before. sealFacts fills anything added to
+  // FACT_KEYS later, and test_fact_contract fails if this omits one.
+  return SafetyModel.sealFacts({
     prohibited: shoulder === PROHIBITED_SHOULDER,
     ferry: !!(flags & 32),
     freeway: !!(flags & 4),
@@ -407,7 +411,7 @@ function edgeFacts(i, forward) {
     // disagree with the line under it once already.
     adt: eAdt && eAdt[i] ? eAdt[i] : null,
     fc: eClassOwner && (eClassOwner[i] & 15) ? (eClassOwner[i] & 15) : null,
-  };
+  });
 }
 
 function edgeLevel(i, rules, forward) {

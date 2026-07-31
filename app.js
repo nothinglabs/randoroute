@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.461';
+const APP_VERSION = '2026-07-30.462';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -297,11 +297,35 @@ function isWsdotInterstate(routeIdentifier) {
   return !!match && WSDOT_INTERSTATE_ROUTES.has(match[1]);
 }
 
+// WSDOT names its facility types; the rest of the app speaks the shared 0-5
+// level. Without this the card could only ever say "there is something here",
+// so a shared-use path and a painted lane scored alike.
+const WSDOT_FACILITY_LEVEL = {
+  'Shared-Use Path': 5,
+  'Sidepath': 5,
+  'One-Way Separated Bike Lane': 4,
+  'Two-Way Separated Bike Lane': 4,
+  'Buffered Bike Lane': 3,
+  'Bike Lane': 2,
+};
+function wsdotFacilityLevel(type) {
+  if (!type || type === 'nan') return 0;
+  return WSDOT_FACILITY_LEVEL[type] || 0;
+}
+
 function scoreBLTS(p) {
-  // WSDOT already computed LTS_Bicycle (1-4). Use it directly; missing => unknown.
+  // WSDOT already computed LTS_Bicycle (1-4). It is a STRESS RATING, and it
+  // belongs in stressRating alone.
+  //
+  // It used to be assigned to baseScore as well, which factsFrom maps to
+  // `infraScore` -- the model's answer to "how good is this bike
+  // infrastructure". Two unrelated meanings in one field. It was inert only
+  // because `infra` is false for this source, so the infra rung never read it;
+  // anything that ever set infra here would have turned a stress rating of 4
+  // into a level-4 verdict by a route the ladder never intended.
   const lts = p.LTS_Bicycle;
   return {
-    baseScore: lts == null ? null : lts,
+    baseScore: null,
     stressRating: lts == null ? null : lts,
     lanes: p.LaneCount || 0,
     shoulder_width: p.ShoulderWidth == null ? null : p.ShoulderWidth,
@@ -312,6 +336,7 @@ function scoreBLTS(p) {
     freeway: isWsdotInterstate(p.RouteIdentifier),
     limited_access: !!p.LimitedAccess,
     good_facility: !!(p.BikeFacilityType && p.BikeFacilityType.length),
+    facility: wsdotFacilityLevel(p.BikeFacilityType),
     infra: false,
     desig: p.Designated === 1, // on a designated bike route (USBR / regional)
     urban: p.Urban === 1,
@@ -459,6 +484,10 @@ function scoreRoad(p) {
     // Paint in a shared lane is not space of your own, so a sharrow (ft 1)
     // must not satisfy a shoulder rule the way a bike lane (ft 2+) does.
     good_facility: p.ft >= 2 || (p.f === 1 && p.ft == null),
+    // The LEVEL, not just the flag. factsOf read `n.facility` and no scorer
+    // ever set it, so every card collapsed a separated path and a painted lane
+    // into the same road.
+    facility: p.ft == null ? 0 : p.ft,
     infra: false,
     lanes: p.ln || 0,
     ctl: p.ctl === 1,
@@ -519,30 +548,8 @@ function spaceReasons(n) { return SafetyModel.spaceReasons(factsOf(n), rules); }
 // Normalised source props -> the shared ladder's facts shape. Every scorer
 // (scoreOSM/scoreRoad/scoreBLTS/scoreRouteSeg) already produces this vocabulary;
 // this is the single adapter between it and safety-model.js.
-function factsOf(n) {
-  return {
-    prohibited: !!n.prohibited,
-    ferry: !!n.ferry,
-    freeway: !!n.freeway,
-    infra: !!n.infra,
-    infraScore: n.baseScore == null ? null : n.baseScore,
-    facility: n.good_facility ? Math.max(2, Number(n.facility) || 0) : (Number(n.facility) || 0),
-    limitedAccess: !!n.limited_access,
-    speed: n.maxspeed_num == null ? null : n.maxspeed_num,
-    shoulder: n.shoulder_width == null ? null : n.shoulder_width,
-    // Same field the map's `es` property carries, so the card and the paint
-    // expression infer from one number.
-    edgeSpace: n.measures && n.measures.edge != null ? n.measures.edge : null,
-    lanes: Number(n.lanes) || 0,
-    sidewalk: n.sidewalk || null,
-    urban: !!n.urban,
-    stressRating: n.stressRating == null ? null : Number(n.stressRating),
-    // The busy rule reads a count when there is one and the road's class when
-    // there is not. Both ride along on the normalised measurements.
-    adt: n.measures && n.measures.adt != null ? n.measures.adt : null,
-    fc: n.measures && n.measures.fc ? n.measures.fc : null,
-  };
-}
+function factsOf(n) { return SafetyModel.factsFrom(n); }
+
 
 function evaluateRoad(n) { return SafetyModel.evaluate(factsOf(n), rules); }
 function effectiveLevel(n) { return evaluateRoad(n).level; }
@@ -5063,6 +5070,7 @@ function scoreRouteSeg(p) {
     freeway: p.fw === 1,
     limited_access: p.lim === 1 || p.fw === 1,
     good_facility: facility >= 2,
+    facility,
     infra: p.infra === 1 || facility >= 4,
     lanes: p.lanes || 0,
     ctl: p.centerTurnLane === true || p.ctl === 1,
