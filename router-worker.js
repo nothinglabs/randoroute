@@ -210,6 +210,16 @@ function loadGraph(buf) {
   searchDist = new Float64Array(D);
   searchPrevArc = new Int32Array(D);
   searchStamp = new Int32Array(D);
+  // The fastest ferry actually in this graph. Ferries skip every cost
+  // multiplier and sail at their own speed, so the heuristic has to clear them;
+  // assuming the field's 255 mph ceiling would slow every search for a boat
+  // that does not exist. One pass, at load, not per search.
+  maxFerryMps = 0;
+  for (let i = 0; i < E; i++) {
+    if (!(eFlags[i] & 32)) continue;
+    const mps = Math.max(eSpeed[i], 3) * 0.44704;
+    if (mps > maxFerryMps) maxFerryMps = mps;
+  }
   // Terminal detection for ferry boarding: a node touching any land edge.
   // (Mid-water junctions where ferry routes cross have only ferry edges.)
   nodeHasLand = new Uint8Array(N);
@@ -425,7 +435,9 @@ function edgeLevel(i, rules, forward) {
 const V_ROAD = 5.6;   // ~12.5 mph
 const V_MAX = 12.0;   // ~27 mph downhill cap
 const V_MIN = 1.3;    // steep-climb floor (~3 mph)
-const V_DISMOUNT = 1.15; // ~2.6 mph while walking a bike
+const V_DISMOUNT = 1.15;
+// The most this can discount an edge. heuristicSpeed() depends on it.
+const SPEED_STRESS_FLOOR = 0.25; // ~2.6 mph while walking a bike
 const DISMOUNT_ENTRY_PENALTY_S = 4 * 60;
 // A* heuristic speed: must not undershoot any effective edge speed, including
 // fast ferries and the strongest cost bonuses, or A* loses optimality.
@@ -433,7 +445,49 @@ const DISMOUNT_ENTRY_PENALTY_S = 4 * 60;
 // low-stress comfort bonus) = 57.0 m/s. Keep ample headroom so the heuristic
 // remains admissible; the facility sliders bottom out at 0.20, which would be
 // 12 / (0.20 x 0.78 x 0.9) = 85.5 m/s and still clears 160.
-const V_HEUR = 160.0;
+// A* heuristic speed. h(n) = distance / V_HEUR, so this must not undershoot the
+// effective speed of ANY edge -- speed divided by whatever multipliers shrink
+// its cost -- or A* stops returning the cheapest route.
+//
+// It used to be the fixed 160, chosen from a worst case that omitted
+// speedStress's 0.25 floor. One constant cannot fit: measured against the
+// shipped graph, Direct needs 48, Balanced 105 and Low stress 171. So 160 was
+// simultaneously three times too loose for Direct -- costing search that buys
+// nothing -- and 7% too tight for Low stress, where it made the heuristic
+// inadmissible and the returned route merely near-optimal.
+//
+// Derived per search instead, from the live weights. O(1), and it tracks the
+// weight sliders, which a constant never could: at their minimums the true
+// requirement is 1200.
+const FERRY_MAX_MPS_FALLBACK = 114.0;   // a u8 mph field caps at 255 mph
+let maxFerryMps = FERRY_MAX_MPS_FALLBACK;
+
+// The cost multipliers that can drop BELOW 1, and therefore raise an edge's
+// effective speed. Everything else in the cost chain is >= 1 and cannot.
+//
+// The gating matters and is why this is not one product: speedStress returns
+// 1.0 for off-street and ferry edges (fl & (8|32)), and `residential` is
+// skipped for the same, so the deepest discount an off-street edge can reach is
+// its facility bonus alone. On-street edges get speedStress and residential but
+// can never claim the path bonus. Taking the worse of the two cases keeps the
+// bound tight without assuming which tags the data happens to carry.
+function heuristicSpeed(mode, prefResidential) {
+  const comfy = mode === 'direct' ? 1
+    : mode === 'low' ? activeWeights.comfyRoadLowStress : activeWeights.comfyRoadBalanced;
+  const level = Math.min(1, comfy);
+  // On-street: a facility bonus OR a designation bonus, never both.
+  const onStreetBonus = Math.min(1,
+    activeWeights.facilityShared, activeWeights.facilityLane,
+    activeWeights.facilityBuffered, activeWeights.facilitySeparated,
+    activeWeights.strongDesignated, activeWeights.designated);
+  const residential = prefResidential ? Math.min(1, activeWeights.residential) : 1;
+  const onStreet = SPEED_STRESS_FLOOR * onStreetBonus * residential * level;
+  // Off-street: no speedStress, no residential, but the path bonus is available.
+  const offStreet = Math.min(1, activeWeights.facilityPath) * level;
+  const slowest = Math.min(onStreet, offStreet);
+  // Ferries bypass every one of those and sail at their own speed.
+  return Math.max(V_MAX / slowest, maxFerryMps / level);
+}
 // Designated bike routes (USBR / regional, edge flag 64) get a modest cost
 // bonus. A recorded physical bike facility always gets the stronger bonus;
 // designation is useful route context, but is not itself infrastructure.
@@ -672,7 +726,7 @@ function speedStress(mode, fl, spd, freeMax, shoulder) {
   const belowKey = mode === 'direct'
     ? 'speedBelowDirect'
     : mode === 'low' ? 'speedBelowLowStress' : 'speedBelowBalanced';
-  return Math.max(0.25, 1 - activeWeights[belowKey] * -delta);
+  return Math.max(SPEED_STRESS_FLOOR, 1 - activeWeights[belowKey] * -delta);
 }
 
 // Seconds to ride edge i in the given direction (forward = a->b).
@@ -934,7 +988,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   }
   const generation = searchGeneration;
   const heap = makeHeap(4096);
-  const h = (n) => havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / V_HEUR;
+  const vHeur = heuristicSpeed(mode, prefResidential);
+  const h = (n) => havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / vHeur;
   const START_ARC = -1;
   heap.push(h(s.node), START_ARC);
 
