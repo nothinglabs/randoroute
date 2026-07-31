@@ -193,10 +193,10 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .all-route-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; width: 100%; padding: 11px 12px; border: 1px solid #d7e2e8; border-radius: 11px; background: #fff; text-align: left; cursor: pointer; }
 .all-route-row > .all-route-thumb { grid-row: 1 / span 2; align-self: start; }
 .all-route-row > .all-route-why, .all-route-row > .all-route-stage-why { grid-column: 2; }
-.all-route-thumb { width: 124px; height: 93px; border: 1px solid #e4ecf1; border-radius: 8px; background: #f7fafb; }
+.all-route-thumb { width: var(--thumb-w); height: var(--thumb-h); border: 1px solid #e4ecf1; border-radius: 8px; background: #f7fafb; }
 .all-route-thumb path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .all-route-thumb .thumb-base { stroke: #0a66c2; stroke-width: 2.1; }
-.all-route-thumb .thumb-caution { stroke: #c25d05; stroke-width: 2.6; }
+.all-route-thumb .thumb-caution { stroke: var(--verdict-caution); stroke-width: 2.6; }
 .all-route-thumb .thumb-fail { stroke: #b2182b; stroke-width: 3; }
 .all-route-thumb .thumb-start { fill: #fff; stroke: #1c6b3a; stroke-width: 2; }
 .all-route-thumb .thumb-end { fill: #fff; stroke: #b34b3f; stroke-width: 2; }
@@ -216,7 +216,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .all-route-badge.stage-cut { background: #eef2f4; color: #5b6d78; }
 .all-route-stats { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 7px; color: #52636d; font: 550 11.5px/1.4 system-ui; }
 .all-route-stats b { color: #22384a; font-weight: 800; }
-.all-route-stats .lvl-caution b { color: #c25d05; }
+.all-route-stats .lvl-caution b { color: var(--verdict-caution); }
 .all-route-stats .lvl-fail b { color: #b2182b; }
 .all-route-stats .lvl-fac b { color: #6f7a00; }
 .all-route-why, .all-route-stage-why { margin: 6px 0 0; color: #5c6f7b; font: 500 11px/1.45 system-ui; }
@@ -226,7 +226,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   .all-routes-body { width: calc(100% - 18px); }
   .all-route-stats { gap: 3px 10px; font-size: 11px; }
   /* Narrow phones: the sketch keeps its place but gives up width to the text. */
-  .all-route-thumb { width: 94px; height: 70px; }
+  .all-route-thumb { width: calc(var(--thumb-w) * var(--thumb-phone-scale));
+                     height: calc(var(--thumb-h) * var(--thumb-phone-scale)); }
   .all-route-row { gap: 4px 9px; }
 }
 #routeOptions button:disabled { cursor: default; opacity: .64; }
@@ -414,7 +415,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .layers-intro span { font: 600 11px/1.25 system-ui; }
 .tab-help-btn, .layers-help-btn, .settings-tabs .settings-help-btn { display: grid; place-items: center; flex: 0 0 23px; width: 23px; height: 23px; min-height: 23px; max-height: 23px; padding: 0; border: 1px solid #b8cbd8; border-radius: 50%; background: #f7fafb; color: #0a66c2; font: 800 13px/1 system-ui; cursor: pointer; }
 .layers-special-note { position: relative; margin: 7px 0 0; padding: 7px 8px 7px 33px; border: 1px solid #c9dce9; border-radius: 8px; background: #f1f7fb; color: #425d70; font: 600 10.5px/1.35 system-ui; }
-.layers-special-note > span { position: absolute; top: 12px; left: 8px; width: 17px; height: 6px; border-radius: 2px; background: repeating-linear-gradient(90deg,#168ad1 0 4px,transparent 4px 7px); }
+.layers-special-note > span { position: absolute; top: 12px; left: 8px; width: 17px; height: 6px; border-radius: 2px; background: repeating-linear-gradient(90deg,var(--verdict-pass) 0 4px,transparent 4px 7px); }
 .layers-special-note b { color: #195d91; }
 .source-note-prominent { font-size: 11px; line-height: 1.35; }
 .source-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; min-height: 25px; }
@@ -431,21 +432,21 @@ body:not(.navigation-active) #navCard { display: none; }
 .layer-toggle label::after { content: "OFF"; flex: 0 0 auto; padding: 3px 5px; border-radius: 999px; background: #697983; color: #fff; font: 800 8px/1 system-ui; letter-spacing: .03em; }
 .layer-toggle input:checked + label { border-color: #2586c2; background: #e3f2fa; color: #0b5689; box-shadow: inset 0 0 0 1px #8fc6e5; }
 .layer-toggle input:checked + label::after { content: "ON"; background: #0877b9; }
-.layer-toggle input:focus-visible + label { outline: 2px solid #168ad1; outline-offset: 2px; }
+.layer-toggle input:focus-visible + label { outline: 2px solid var(--verdict-pass); outline-offset: 2px; }
 .layer-toggle-swatch { flex: 0 0 21px; width: 21px; height: 7px; border-radius: 2px; background: #999; }
-.layer-toggle-swatch.trail { background: repeating-linear-gradient(90deg,#4c5c00 0 3px,#b7c900 3px 6px); }
-.layer-toggle-swatch.facility { background: #b7c900; }
-.layer-toggle-swatch.meets { background: #168ad1; }
+.layer-toggle-swatch.trail { background: repeating-linear-gradient(90deg,var(--trail-centreline) 0 3px,var(--bike-network) 3px 6px); }
+.layer-toggle-swatch.facility { background: var(--bike-network); }
+.layer-toggle-swatch.meets { background: var(--verdict-pass); }
 /* The legend swatches must be the map's own vocabulary: a failing road is red
    with white diagonal slashes, a caution is light amber with white rungs, and
    bikes-prohibited keeps its own dashed line. Colours track COLORS[] in app.js
    -- test_help_content.mjs asserts they stay in step. */
-.layer-toggle-swatch.fails { background: repeating-linear-gradient(115deg,#a51c30 0 3px,#fff 3px 5px); }
+.layer-toggle-swatch.fails { background: repeating-linear-gradient(115deg,var(--verdict-fail) 0 3px,#fff 3px 5px); }
 /* Prohibited is a translucent ribbon laid OVER the safety colouring, so its
    swatch shows the same: a wide, pale dashed band, not a solid line. */
-.layer-toggle-swatch.prohibited { background: repeating-linear-gradient(90deg,rgba(165,28,48,.45) 0 5px,transparent 5px 8px); }
-.layer-toggle-swatch.caution { background: repeating-linear-gradient(90deg,#c25d05 0 4px,#a51c30 4px 6px); }
-.layer-toggle-swatch.designated { background: repeating-linear-gradient(90deg,#5f8000 0 5px,transparent 5px 8px); opacity: .7; }
+.layer-toggle-swatch.prohibited { background: repeating-linear-gradient(90deg,rgba(var(--verdict-fail-rgb), .45) 0 5px,transparent 5px 8px); }
+.layer-toggle-swatch.caution { background: repeating-linear-gradient(90deg,var(--verdict-caution) 0 4px,var(--verdict-fail) 4px 6px); }
+.layer-toggle-swatch.designated { background: repeating-linear-gradient(90deg,var(--designated) 0 5px,transparent 5px 8px); opacity: .7; }
 .layer-toggle-swatch.unpaved { border: 1px solid #536672; background: repeating-linear-gradient(90deg,transparent 0 3px,#536672 3px 5px); }
 
 .rule { margin: 12px 0; }

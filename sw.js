@@ -10,7 +10,9 @@
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
-const VERSION = 'v449'; // bump when app shell changes
+importScripts('./build-version.js');
+
+const VERSION = 'v450'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -21,6 +23,8 @@ const SHELL = [
   './street-view-embed.html',
   './route-details.html',
   './app.js',
+  './palette.js',
+  './build-version.js',
   './safety-model.js',
   './basemap-style.js',
   './route-details.js?v=446',
@@ -42,10 +46,7 @@ const SHELL = [
   './icons/apple-touch-icon.png',
 ];
 
-// Must match GRAPH_DATA_VERSION in app.js. Bump when the graph is rebuilt: the
-// cache below is keyed by URL, so a graph whose bytes changed under an unchanged
-// name would otherwise be served from cache forever.
-const GRAPH_DATA_VERSION = '2026-07-30-service-links';
+// From build-version.js, which index.html loads too. Bump it there.
 
 const DATA = [
   './data/bikeroutes.geojson.gz',

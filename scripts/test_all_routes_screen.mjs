@@ -50,8 +50,12 @@ const b = await chromium.launch({ executablePath: chromiumPath(), args: ['--use-
 const pg = await (await b.newContext({ serviceWorkers: 'block', viewport: { width: 1280, height: 900 } })).newPage();
 const errs = []; pg.on('pageerror', (e) => errs.push(e.message));
 await pg.goto(`http://localhost:${port}/index.html`, { waitUntil: 'load' });
-await pg.waitForFunction(() => window.map && map.loaded && map.loaded(), { timeout: 40000 }).catch(() => {});
-await pg.waitForFunction(() => typeof routing !== 'undefined' && routing.ready, { timeout: 60000 });
+// Generous on purpose. Six browser files run concurrently under software GL,
+// so startup here competes for CPU with five other Chromiums; a wait tuned for
+// an idle machine fails on a busy one and reads as a bug in the app.
+pg.setDefaultTimeout(180000);
+await pg.waitForFunction(() => window.map && map.loaded && map.loaded(), { timeout: 120000 }).catch(() => {});
+await pg.waitForFunction(() => typeof routing !== 'undefined' && routing.ready, { timeout: 180000 });
 
 let pass = 0, fail = 0;
 const check = (n, ok, x = '') => { (ok ? pass++ : fail++); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${x ? '  -- ' + x : ''}`); };

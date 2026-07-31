@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.474';
+const APP_VERSION = '2026-07-31.475';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -24,8 +24,9 @@ const GRAPH_FORMAT_VERSION = 'bgr10-1';
 // unchanged. The service worker serves /data/ cache-first and ignores the query
 // string, so without this a rider keeps the graph they first downloaded forever
 // -- and a rebuilt graph silently never reaches them.
-// Must match GRAPH_DATA_VERSION in sw.js.
-const GRAPH_DATA_VERSION = '2026-07-30-service-links';
+// Defined once in build-version.js, which sw.js importScripts() as well -- the
+// two used to spell it out separately with comments pointing at each other.
+const GRAPH_DATA_VERSION = self.GRAPH_DATA_VERSION;
 const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
@@ -33,41 +34,14 @@ const OFFICIAL_URBAN = 64;
 const SIGNIFICANT_UNPAVED_M = 1609.344;
 
 /* ---------------------------------------------------------------- palette */
-// One visual verdict system. Internal levels 1 and 2 retain different routing
-// costs but share blue; a passing bike-network edge is promoted to lime.
-// Caution is amber, failure is red, and insufficient data is gray.
-const BIKE_NETWORK_COLOR = '#b7c900';
-// The designated-route ribbon: same family as the bike-network lime, duller,
-// because a signed route is advice rather than infrastructure.
-const DESIGNATED_COLOR = '#5f8000';
-const COLORS = {
-  1: '#168ad1', // passes rules
-  2: '#168ad1', // passes rules (internal levels remain distinct for routing)
-  // Chosen by maximising the smallest CIELAB distance between any two roles
-  // across normal, deuteranope and protanope vision. The binding pair is
-  // caution against the bike-network lime under deuteranopia, where a bright
-  // orange and that lime converge.
-  //
-  // An earlier note here claimed the orange was as deep as it could go without
-  // losing lime separation. That was backwards: measured, darkening the orange
-  // *raises* the weakest pair, because it pulls away from the lime by lightness
-  // rather than by hue, which is the axis deuteranopia flattens.
-  //   #e8760a  lime 14.9  fail 59.3
-  //   #c25d05  lime 18.3  fail 46.3   <- here
-  //   #b85604  lime 21.0  fail 42.7
-  // Separation from the maroon fail rungs drawn over it falls as it deepens but
-  // stays far above every other pair, so lime is what sets the floor.
-  3: '#c25d05', // caution — deep burnt orange, the conventional "warning"
-  // Was #78121f, which read as near-black against the basemap rather than as
-  // red. Lifted to L* 36 while staying in the maroon family, measured the same
-  // way as the orange above: the fail rung's own weakest pair is fail against
-  // the designated-route green under deuteranopia, and that falls 40.9 -> 29.6,
-  // still far clear of the palette's binding pair. Going further (#b42318 and
-  // brighter) drops it to 14.5 and fail starts colliding with designated.
-  4: '#a51c30', // fails   — maroon-red, conventional "danger", dark enough to
-                //           stay apart from the lime by lightness
-  0: '#999999', // insufficient data
-};
+// One visual verdict system, defined once in palette.js and read here. The
+// values, and the colour-blindness measurements behind them, live there and in
+// docs/SAFETY-MODEL.md -- not in four places that have to be kept in step by
+// hand, which is what they used to be.
+const BIKE_NETWORK_COLOR = RoutePalette.bikeNetwork;
+const DESIGNATED_COLOR = RoutePalette.designated;
+const COLORS = RoutePalette.LEVEL;
+
 // The signed-route ribbon's width, widened while a route is drawn.
 //
 // At its resting width the ribbon is narrower than the route line, so on the
@@ -6586,10 +6560,20 @@ function candidateShapeBounds(all) {
   return { minX: minX - padX, maxX: maxX + padX, minY: minY - padY, maxY: maxY + padY };
 }
 
-// Kept in step with .all-route-thumb in styles.css: the viewBox and the CSS box
-// scale together, so the route drawing grows while the stroke widths below stay
-// the same weight on screen.
+// The route-preview sketch. The SVG viewBox and the CSS box have to scale
+// together -- that is what keeps the stroke weights a constant weight on screen
+// while the drawing grows -- so the CSS reads these rather than repeating them.
+// A comment asking a human to keep two numbers in step is not a mechanism.
 const THUMB_W = 124, THUMB_H = 93;
+// Narrow phones give width back to the text. One factor, applied to both axes,
+// so the aspect ratio cannot drift from the viewBox.
+const THUMB_PHONE_SCALE = 0.76;
+(function publishThumbSize() {
+  const style = document.documentElement.style;
+  style.setProperty('--thumb-w', `${THUMB_W}px`);
+  style.setProperty('--thumb-h', `${THUMB_H}px`);
+  style.setProperty('--thumb-phone-scale', String(THUMB_PHONE_SCALE));
+}());
 function candidateThumbSvg(c, bounds) {
   if (!c.shape?.pts?.length || !bounds) {
     return `<svg class="all-route-thumb" viewBox="0 0 ${THUMB_W} ${THUMB_H}" aria-hidden="true"></svg>`;

@@ -12,12 +12,15 @@ const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
 const OFFICIAL_URBAN = 64;
 const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
-const BIKE_NETWORK_COLOR = '#b7c900';
-const PASS_COLOR = '#168ad1';
-// Keep in step with COLORS[3] in app.js. Lightened from #a65300, which sat at
-// the same tone as the fail red and vanished under red-green colour blindness.
-const CAUTION_COLOR = '#c25d05';
-const FAIL_COLOR = '#78121f';
+// Read from palette.js, not restated. These four used to be spelled out here,
+// and FAIL_COLOR sat at #78121f for a whole session after the map moved to
+// #a51c30 -- so this report drew a different red from the map it describes.
+// The comment that used to sit here said "Keep in step with COLORS[3] in
+// app.js", which is the whole problem: a comment is not a mechanism.
+const BIKE_NETWORK_COLOR = RoutePalette.bikeNetwork;
+const PASS_COLOR = RoutePalette.pass;
+const CAUTION_COLOR = RoutePalette.caution;
+const FAIL_COLOR = RoutePalette.fail;
 let routePreviewMap = null;
 let routePreviewFailPulseTimer = null;
 const REQUEST_PARAMS = new URLSearchParams(window.location.search);
