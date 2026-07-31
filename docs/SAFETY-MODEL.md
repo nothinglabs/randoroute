@@ -802,7 +802,8 @@ the shoulder rung at all, so this does not fail quiet streets for lacking a tag.
 
 ### Inferring a shoulder from edge space
 
-`inferShoulderFromEdge` (off by default). Where OSM recorded no shoulder but the
+`inferShoulderFromEdge` (**on** by default; it shipped off and was switched on
+once the effect was measured). Where OSM recorded no shoulder but the
 CRAB road log logged edge space, the space **less 1 ft** counts as shoulder.
 
 Edge space is what is left of the operational width once the lanes are removed,
@@ -828,10 +829,17 @@ the harshest reading available. It used to cut both ways, back when a rider
 could switch the zero off and an inference could turn "unknown, not held against
 it" into "known narrow".
 
-Measured on the shipped graph at Randonneur defaults: 20,891 mi carry edge space
-with no recorded shoulder; turning the toggle on moves **9,545 edges / 1,696 mi**,
-all of them 4→2 (9,401) or 3→2 (144), and **nothing gets worse** — because the
-default is pessimistic, so there is no "unknown" left to lose.
+Measured on the shipped graph at Randonneur defaults: of 102,121 network miles,
+20,892 carry edge space with no recorded shoulder. The inference moves
+**9,548 edges / 1,696 mi**, all of them 4→2 (9,404) or 3→2 (144), and **nothing
+gets worse** — zero is already the floor. Failing mileage across the network
+drops from **14,906 mi to 13,220 mi**, an 11% reduction.
+
+That measurement is why it is on by default. Only ~7% of road features carry a
+shoulder tag, so with the zero floor unconditional the map would otherwise call
+most of the network failing on *absence of data* rather than on evidence. Where
+the county logged edge space there is real evidence, and using it is strictly
+better than pretending the road has nothing.
 
 **A physical facility always speaks for itself.** If an edge has one, its
 `facility*` weight applies and designation is not consulted. These used to

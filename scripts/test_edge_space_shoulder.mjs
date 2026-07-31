@@ -150,8 +150,15 @@ const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 
 assert.match(worker, /edgeSpace:/,
   'edgeFacts must supply edgeSpace or the router will score differently from the map');
 
-/* ------------------------------------ the toggle is off by default */
-assert.match(appSrc, /inferShoulderFromEdge: false/,
-  'this loosens the shoulder rule, so it must be opt-in');
+/* ------------------------------------ the toggle is on by default */
+// It shipped off, then was turned on once the effect had been measured: an
+// untagged shoulder is unconditionally 0 ft and only ~7% of road features carry
+// a shoulder tag, so without this the map asserts failure from absence of data
+// across most of the network. Pinned so the default is a decision rather than
+// something that drifts.
+assert.match(appSrc, /inferShoulderFromEdge: true/,
+  'the edge-space inference is on by default');
+assert.doesNotMatch(appSrc, /inferShoulderFromEdge: false/,
+  'no leftover false default');
 
 console.log('ok - edge-space inference fills gaps only, and the map mirrors it');

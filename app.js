@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.459';
+const APP_VERSION = '2026-07-30.460';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -92,10 +92,19 @@ const DEFAULT_RULES = Object.freeze({
   allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
   preferPaved: true,    // strongly prefer pavement by default; unpaved remains available
   minShoulder: 4,       // ft; below this a road gets penalized
-  // Off by default. It LOOSENS the shoulder rule -- a road that recorded no
-  // shoulder can now clear it on derived evidence -- so it is the rider's call,
-  // not a silent improvement.
-  inferShoulderFromEdge: false,
+  // On. It loosens the shoulder rule -- a road that recorded no shoulder can
+  // clear it on derived evidence -- which is why it shipped off first and was
+  // turned on deliberately once the effect had been measured.
+  //
+  // The case for on: an untagged shoulder is unconditionally 0 ft, and only
+  // 7.5% of road features carry a shoulder tag, so without this the map asserts
+  // failure from absence of data across most of the network. Where the county
+  // logged edge space we have real evidence, and using it is strictly better
+  // than treating the road as having nothing. It can only ever be kinder --
+  // zero is already the floor -- and a recorded shoulder always wins.
+  //
+  // No preset overrides this, so all three inherit it.
+  inferShoulderFromEdge: true,
   // mph; at/below this a road passes without a shoulder. One number, town or
   // country: a 35 mph lane with no shoulder is the same lane whether or not a
   // Census polygon contains it, and the old 30/35 split asked a rider to hold an
