@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.479';
+const APP_VERSION = '2026-07-31.480';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -6315,7 +6315,44 @@ function roadBlockMarkerElement() {
   return element;
 }
 
-function addRoadBlock(lngLat, { allowPastLimit = false } = {}) {
+// A road block is an instruction about the route you are looking at: "not this
+// way". A tap a few pixels off the line still means that road, so snap onto the
+// drawn route when the tap is within a finger's reach of it. Measured in SCREEN
+// pixels, not degrees, so the tolerance is the same at every zoom -- a fixed
+// distance in degrees is a city block at z11 and a doorway at z17.
+//
+// A tap that is genuinely somewhere else is left where it landed: blocking a
+// road you are not currently routed over is legitimate, and dragging every
+// block onto the route would make that impossible.
+const BLOCK_SNAP_PX = 34;
+function snapToDrawnRoute(lngLat) {
+  const coords = routing.last?.ok ? routing.last.coords : null;
+  if (!Array.isArray(coords) || coords.length < 2) return lngLat;
+  const point = map.project(lngLat);
+  let best = null;
+  let bestDistance = Infinity;
+  for (let i = 1; i < coords.length; i++) {
+    const a = map.project(coords[i - 1]);
+    const b = map.project(coords[i]);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lengthSq = dx * dx + dy * dy;
+    // Projection of the tap onto this segment, clamped to its ends so a tap
+    // beyond a segment snaps to its nearer endpoint rather than off into the
+    // line's infinite extension.
+    let t = lengthSq ? ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSq : 0;
+    t = Math.max(0, Math.min(1, t));
+    const x = a.x + t * dx;
+    const y = a.y + t * dy;
+    const distance = Math.hypot(point.x - x, point.y - y);
+    if (distance < bestDistance) { bestDistance = distance; best = { x, y }; }
+  }
+  if (!best || bestDistance > BLOCK_SNAP_PX) return lngLat;
+  return map.unproject([best.x, best.y]);
+}
+
+function addRoadBlock(lngLat, { allowPastLimit = false, snap = true } = {}) {
+  if (snap) lngLat = snapToDrawnRoute(lngLat);
   exitSharedRoute();
   if (!allowPastLimit && routing.blocks.length >= MAX_ROAD_BLOCKS) {
     routing.arm = null;
@@ -8294,6 +8331,28 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   mapLink.className = 'road-map-link';
   mapLink.textContent = 'Google Maps ↗';
   mapLink.setAttribute('aria-label', 'Open this location in Google Maps');
+  // Blocking the road you are reading about, without hunting for the arm button
+  // and tapping the map again. Only offered when it would do something: a block
+  // needs both endpoints, and there is a cap on how many a route may carry.
+  const canBlock = routing.start && routing.end
+    && routing.blocks.length < MAX_ROAD_BLOCKS;
+  if (canBlock) {
+    const blockBtn = document.createElement('button');
+    blockBtn.type = 'button';
+    blockBtn.className = 'road-block-add';
+    blockBtn.innerHTML = 'Add <span aria-hidden="true">🚧</span>';
+    blockBtn.title = 'Add a road block here and route around it';
+    blockBtn.setAttribute('aria-label', 'Add a road block here');
+    blockBtn.addEventListener('click', () => {
+      // Placed from the card, so the point is the tap that opened it, snapped
+      // onto the route the same way a map placement is.
+      if (addRoadBlock({ lng: svLng, lat: svLat })) {
+        dismissRoadInfo();
+        setRouteStatus('Road block added — routing around it');
+      }
+    });
+    mapActions.append(blockBtn);
+  }
   mapActions.append(streetViewBtn, mapLink);
   readoutEl.append(close, heading, table, mapActions);
   readoutEl.classList.add('show');

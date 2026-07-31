@@ -591,6 +591,13 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .streetview-launch:hover { background: #075aa9; }
 .streetview-launch:focus-visible { outline: 3px solid #75bdf4; outline-offset: 2px; }
+.road-block-add {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 34px; padding: 6px 9px;
+  border: 1px solid #c9b26a; border-radius: 7px; background: #fdf6e3; color: #6b5310;
+  font: 750 11.5px/1 system-ui; cursor: pointer; white-space: nowrap;
+}
+.road-block-add:hover { background: #f8ecd0; }
+.road-block-add:focus-visible { outline: 3px solid #e0c983; outline-offset: 2px; }
 .road-map-link { color: #0a66c2; font: 750 11.5px/1 system-ui; text-decoration: none; white-space: nowrap; }
 .road-map-link:hover { text-decoration: underline; }
 
