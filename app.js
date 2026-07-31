@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.477';
+const APP_VERSION = '2026-07-31.478';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -554,9 +554,16 @@ const SOURCES = [
     name: 'Designated routes (USBR & regional)',
     url: 'data/bikeroutes.geojson.gz',
     scorer: scoreRouteOverlay,
-    // Keep the informational ribbon above ordinary road/facility scoring, but
-    // below hard bicycle restrictions and known closures.
-    zRank: 2.5,
+    // An underlay, beneath everything. A signed route is CONTEXT -- it says a
+    // corridor is recommended, not what the road under your wheels is like --
+    // so it must never sit on top of the thing it is context for. At 2.5 it
+    // drew over ordinary road and facility scoring, which put an advisory
+    // ribbon above the safety verdict it does not determine.
+    //
+    // Below `roads` (0), so it is now the bottom of the data stack. It stays
+    // visible because it is drawn far wider than a road line: it reads as a
+    // band around the road rather than a stripe over it.
+    zRank: -1,
     ribbon: true,  // informational overlay: identical in both display modes
     enabled: true,
     fc: null,
@@ -623,7 +630,7 @@ const SOURCES = [
     sourceLayer: 'roads',
     count: 338650, // baked at build time (tiles don't carry a global count)
     scorer: scoreRoad,
-    zRank: 0,      // bottom: authoritative layers draw on top
+    zRank: 0,      // above the designated underlay; authoritative layers draw on top
     expr: true,    // scored via map expressions (works identically on tiles)
     // Category-specific opacity still declutters ordinary roads by class.
     // Starting the layer at zero lets a bike facility appear whenever its
