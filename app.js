@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.480';
+const APP_VERSION = '2026-07-31.481';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -8331,30 +8331,38 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   mapLink.className = 'road-map-link';
   mapLink.textContent = 'Google Maps ↗';
   mapLink.setAttribute('aria-label', 'Open this location in Google Maps');
-  // Blocking the road you are reading about, without hunting for the arm button
-  // and tapping the map again. Only offered when it would do something: a block
-  // needs both endpoints, and there is a cap on how many a route may carry.
-  const canBlock = routing.start && routing.end
-    && routing.blocks.length < MAX_ROAD_BLOCKS;
-  if (canBlock) {
+  mapActions.append(streetViewBtn, mapLink);
+  readoutEl.append(close, heading, table, mapActions);
+
+  // Blocking the road you are reading about, without dismissing the card,
+  // finding the arm button and tapping the map again.
+  //
+  // In the top-right gutter under the ✕ rather than in the row of actions at
+  // the bottom. That row is where the two links OUT of the app live -- Street
+  // View and Google Maps -- and this is neither a link nor external; sitting
+  // among them it read as a third destination. The card already reserves a
+  // 43 px right gutter for the close button, so nothing has to move to make
+  // room and no content runs underneath.
+  //
+  // Only offered when it would do something: a block needs both endpoints set,
+  // and a route may carry at most MAX_ROAD_BLOCKS of them.
+  if (routing.start && routing.end && routing.blocks.length < MAX_ROAD_BLOCKS) {
     const blockBtn = document.createElement('button');
     blockBtn.type = 'button';
     blockBtn.className = 'road-block-add';
-    blockBtn.innerHTML = 'Add <span aria-hidden="true">🚧</span>';
+    blockBtn.innerHTML = '<span aria-hidden="true">🚧</span>';
     blockBtn.title = 'Add a road block here and route around it';
     blockBtn.setAttribute('aria-label', 'Add a road block here');
     blockBtn.addEventListener('click', () => {
-      // Placed from the card, so the point is the tap that opened it, snapped
-      // onto the route the same way a map placement is.
+      // The point that opened the card, snapped onto the route the same way a
+      // placement tapped on the map is.
       if (addRoadBlock({ lng: svLng, lat: svLat })) {
         dismissRoadInfo();
         setRouteStatus('Road block added — routing around it');
       }
     });
-    mapActions.append(blockBtn);
+    readoutEl.append(blockBtn);
   }
-  mapActions.append(streetViewBtn, mapLink);
-  readoutEl.append(close, heading, table, mapActions);
   readoutEl.classList.add('show');
   if (anchorPoint) positionRoadInfoNear(anchorPoint);
 }
