@@ -592,11 +592,16 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .streetview-launch:hover { background: #075aa9; }
 .streetview-launch:focus-visible { outline: 3px solid #75bdf4; outline-offset: 2px; }
 /* The card's bottom-right corner, mirroring the close button in the top-right.
-   Right-aligned rather than centred so the wider REMOVE label grows leftward
-   into the gutter the card already reserves, instead of past its edge. */
+   The label is centred over the button, so the stack is inset far enough that
+   the wider REMOVE -- which overhangs the 28 px button on both sides -- still
+   clears the card edge. */
 .road-block-toggle {
-  position: absolute; right: 6px; bottom: 6px;
-  display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  /* Fixed width, wide enough for REMOVE. Without it the column sizes to its
+     widest child, so the button sat 11 px from the card edge under ADD and
+     15.2 px under REMOVE -- it shifted sideways every time the label changed.
+     A fixed box keeps the button still and lets either label centre over it. */
+  position: absolute; right: 7px; bottom: 6px; width: 38px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
 }
 .road-block-toggle-label { color: #6b5310; font: 800 7.5px/1 system-ui; letter-spacing: .02em; text-transform: uppercase; }
 .road-block-add {
