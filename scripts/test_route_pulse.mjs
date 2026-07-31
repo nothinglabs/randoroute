@@ -61,6 +61,9 @@ vm.runInContext([
   appSrc.match(/const TICK_FRAMES = \(\(\) => \{[\s\S]*?\}\)\(\);/)[0].replace('const ', 'var '),
   'var haloPulseTimer = null, detailSelectionPulseTimer = null, tickCrawlTimer = null;',
   'var haloRaised = false;',
+  // The pulses hold still while the solo layer preview is fading, so they read
+  // that flag. Null here: this file tests the pulses, and no preview is running.
+  'var soloPreviewRestore = null;',
   lift('stopHalo'),
   lift('setHaloPulse'), lift('setTickCrawl'), lift('setRoutePulses'),
 ].join('\n'), ctx);
