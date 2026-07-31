@@ -62,6 +62,28 @@ function evalExpr(expr, props) {
     case '<=': return v(args[0]) <= v(args[1]);
     case '>': return v(args[0]) > v(args[1]);
     case '>=': return v(args[0]) >= v(args[1]);
+    // The edge-space inference introduced arithmetic and set membership. Without
+    // these the evaluator threw, and the sweep quietly never exercised that
+    // branch -- which now ships ON for The Randonneur.
+    case 'max': return Math.max(...args.map((a) => Number(v(a))));
+    case 'min': return Math.min(...args.map((a) => Number(v(a))));
+    case '-': return args.length === 1 ? -Number(v(args[0])) : Number(v(args[0])) - Number(v(args[1]));
+    case '+': return args.reduce((acc, a) => acc + Number(v(a)), 0);
+    case 'literal': return args[0];
+    case 'in': {
+      const needle = v(args[0]);
+      const hay = v(args[1]);
+      return Array.isArray(hay) ? hay.includes(needle) : String(hay).includes(String(needle));
+    }
+    case 'match': {
+      const input = v(args[0]);
+      for (let i = 1; i + 1 < args.length; i += 2) {
+        const label = args[i];
+        const hit = Array.isArray(label) ? label.includes(input) : label === input;
+        if (hit) return v(args[i + 1]);
+      }
+      return v(args[args.length - 1]);
+    }
     default: throw new Error(`roadLevelExpr uses an operator this test cannot evaluate: ${op}`);
   }
 }
@@ -86,6 +108,10 @@ const tileToFacts = (p) => ({
   stressRating: p.lts || null,
   adt: p.adt === undefined ? null : p.adt,
   fc: p.fc === undefined ? null : p.fc,
+  // County edge space per side, the input to the shoulder guess. Omitting it
+  // here made the model blind to a property the map expression reads, which
+  // reported as a map/model divergence when the divergence was in this adapter.
+  edgeSpace: p.es === undefined ? null : p.es,
 });
 
 const RULE_SETS = [];
@@ -103,6 +129,16 @@ for (const maxLanes of [2, 4, 6]) {
             minShoulder: 4, lanesNoShoulderOver: maxLanes,
             allowSidewalkFallback: sidewalk, busyNoShoulder: busy,
             maxSpeedNoShoulder: noShoulderMax, ...cap,
+            inferShoulderFromEdge: false,
+          });
+          // The same set with the shoulder guess on. It ships on for The
+          // Randonneur, so leaving it out meant the shipped configuration was
+          // never compared between the map and the model.
+          RULE_SETS.push({
+            minShoulder: 4, lanesNoShoulderOver: maxLanes,
+            allowSidewalkFallback: sidewalk, busyNoShoulder: busy,
+            maxSpeedNoShoulder: noShoulderMax, ...cap,
+            inferShoulderFromEdge: true,
           });
         }
       }
@@ -124,7 +160,11 @@ for (const s of [undefined, 20, 25, 30, 35, 45, 55]) {
               { lts: 4 }, { lts: 3 }, { lts: 1 }, { lts: 4, l: 1 }, { lts: 4, g: 1 },
               { adt: 200 }, { adt: 3000 }, { adt: 20000 },
               { fc: 3 }, { fc: 5 }, { fc: 7 },
-              { adt: 200, fc: 3 }, { adt: 20000, fc: 7 }]) {
+              { adt: 200, fc: 3 }, { adt: 20000, fc: 7 },
+              // `es` is county edge space per side, the input to the shoulder
+              // guess. 0 must infer nothing; 1 is entirely eaten by the margin.
+              { es: 0 }, { es: 1 }, { es: 3 }, { es: 6 }, { es: 12 },
+              { es: 6, adt: 20000 }, { es: 2, fc: 3 }]) {
               const p = { u, ln, ft, k, ...extra };
               if (s !== undefined) p.s = s;
               if (w !== undefined) p.w = w;
@@ -148,7 +188,11 @@ for (const ruleSet of RULE_SETS) {
     compared++;
     if (fromMap !== fromModel && mismatches.length < 8) {
       mismatches.push({ props: p, rules: {
-        maxLanes: ruleSet.maxLanesNoShoulder,
+        lanesOver: ruleSet.lanesNoShoulderOver,
+        minShoulder: ruleSet.minShoulder,
+        maxSpeedNoShoulder: ruleSet.maxSpeedNoShoulder,
+        busy: ruleSet.busyNoShoulder,
+        guessShoulder: ruleSet.inferShoulderFromEdge,
         sidewalk: ruleSet.allowSidewalkFallback,
         cap: ruleSet.noUpperLimit ? 'none' : ruleSet.upperMaxSpeed,
       }, map: fromMap, model: fromModel });

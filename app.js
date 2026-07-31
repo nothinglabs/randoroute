@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.460';
+const APP_VERSION = '2026-07-30.461';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -103,7 +103,11 @@ const DEFAULT_RULES = Object.freeze({
   // than treating the road as having nothing. It can only ever be kinder --
   // zero is already the floor -- and a recorded shoulder always wins.
   //
-  // No preset overrides this, so all three inherit it.
+  // On for The Randonneur, which inherits DEFAULT_RULES wholesale -- keeping it
+  // here is also what makes a fresh install match that preset. Weekend Wanderer
+  // and Casual Cruiser switch it off: both exist to honour slower roads
+  // literally, and Casual Cruiser filters routes to fully matching road, where a
+  // guessed shoulder must not be what lets a road in.
   inferShoulderFromEdge: true,
   // mph; at/below this a road passes without a shoulder. One number, town or
   // country: a 35 mph lane with no shoulder is the same lane whether or not a
@@ -311,6 +315,16 @@ function scoreBLTS(p) {
     infra: false,
     desig: p.Designated === 1, // on a designated bike route (USBR / regional)
     urban: p.Urban === 1,
+    // WSDOT carries its own AADT on 85% of segments, and the card has always
+    // PRINTED it -- while the verdict ignored it, because scoreBLTS never put it
+    // into the facts. So a state highway with 4,122 vehicles/day and no shoulder
+    // read "nothing here demands space of its own" on the card while the road
+    // tile, which does see the count, drew it as failing. Reported from the
+    // field on SR 104 at Kingston.
+    //
+    // No functional class in this source; the count is the stronger signal
+    // anyway and the model prefers it wherever both exist.
+    measures: p.AADT == null ? null : { adt: Number(p.AADT) },
   };
 }
 
@@ -800,6 +814,9 @@ const ROUTING_PRESETS = Object.freeze([
       upperMaxSpeed: 45,
       noUpperLimit: false,
       requireSafe: false,
+      // Randonneur only. This preset is for riders who want slower roads honoured
+      // literally, so a shoulder it infers rather than reads is not good enough.
+      inferShoulderFromEdge: false,
     }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
@@ -815,6 +832,10 @@ const ROUTING_PRESETS = Object.freeze([
       upperMaxSpeed: 35,
       noUpperLimit: false,
       requireSafe: true,
+      // Randonneur only -- and especially not here, where requireSafe means a
+      // route is filtered to fully matching road. An inferred shoulder must not
+      // be what lets a road into that set.
+      inferShoulderFromEdge: false,
     }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
@@ -8451,7 +8472,7 @@ function presetInfoRows(preset) {
     ['Rule matching', presetRules.requireSafe
       ? 'Required, except short access blocks (~1,000 ft) at your start, waypoints, and destination; no route is shown otherwise.'
       : 'Not required; a route may include rule-failing segments to complete it.'],
-    ['Infer shoulder from edge space', presetRules.inferShoulderFromEdge
+    ['Guess shoulder width when undocumented', presetRules.inferShoulderFromEdge
       ? `Where no shoulder is recorded but the county logged edge space, ${SafetyModel.EDGE_SPACE_MARGIN_FT} ft is subtracted and the rest counts as shoulder.`
       : 'Off. Only a recorded shoulder counts.'],
     ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],
@@ -8639,7 +8660,7 @@ function buildRulesPanel() {
   check('preferPaved', 'Strongly prefer paved surfaces');
   check('allowSidewalkFallback', 'Allow sidewalk fallback');
   check('requireSafe', 'Only show routes fully matching safety rules');
-  check('inferShoulderFromEdge', 'Infer shoulder from edge space when none is recorded');
+  check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');
   // Lanes slider: its TOP position means "no limit" rather than a count, the
   // same idiom the upper-speed cutoff uses. The setting reads "more lanes
   // than", so the number shown is the widest road that still passes.

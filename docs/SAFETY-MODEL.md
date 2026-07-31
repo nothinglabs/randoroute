@@ -802,8 +802,11 @@ the shoulder rung at all, so this does not fail quiet streets for lacking a tag.
 
 ### Inferring a shoulder from edge space
 
-`inferShoulderFromEdge` (**on** by default; it shipped off and was switched on
-once the effect was measured). Where OSM recorded no shoulder but the
+`inferShoulderFromEdge` — *"Guess shoulder width from other data when it isn't
+documented"*. **On for The Randonneur only.** Weekend Wanderer and Casual
+Cruiser switch it off: both exist to honour slower roads literally, and Casual
+Cruiser filters routes to fully matching road, where a guessed shoulder must not
+be what admits one. Where OSM recorded no shoulder but the
 CRAB road log logged edge space, the space **less 1 ft** counts as shoulder.
 
 Edge space is what is left of the operational width once the lanes are removed,

@@ -150,15 +150,41 @@ const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 
 assert.match(worker, /edgeSpace:/,
   'edgeFacts must supply edgeSpace or the router will score differently from the map');
 
-/* ------------------------------------ the toggle is on by default */
-// It shipped off, then was turned on once the effect had been measured: an
-// untagged shoulder is unconditionally 0 ft and only ~7% of road features carry
-// a shoulder tag, so without this the map asserts failure from absence of data
-// across most of the network. Pinned so the default is a decision rather than
-// something that drifts.
-assert.match(appSrc, /inferShoulderFromEdge: true/,
-  'the edge-space inference is on by default');
-assert.doesNotMatch(appSrc, /inferShoulderFromEdge: false/,
-  'no leftover false default');
+/* -------------------------- on for The Randonneur, off for the other two */
+// Randonneur spreads DEFAULT_RULES wholesale, so the base default being `true`
+// is both what turns it on there and what keeps a fresh install matching that
+// preset. The other two opt out: they exist to honour slower roads literally,
+// and Casual Cruiser filters routes to fully matching road, where a guessed
+// shoulder must not be what admits one.
+//
+// Checked per block rather than on the whole file, because `false` now appears
+// legitimately in two presets.
+function block(marker) {
+  const at = appSrc.indexOf(marker);
+  assert.notStrictEqual(at, -1, `app.js no longer contains ${marker}`);
+  const open = appSrc.indexOf('{', at);
+  let depth = 0, i = open;
+  for (; i < appSrc.length; i++) {
+    const c = appSrc[i];
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (!depth) break; }
+  }
+  return appSrc.slice(open, i + 1);
+}
+assert.match(block('const DEFAULT_RULES'), /inferShoulderFromEdge: true/,
+  'the base default is on, which is what The Randonneur inherits');
+const presets = appSrc.slice(appSrc.indexOf('const ROUTING_PRESETS'),
+  appSrc.indexOf('function validRoutePoint'));
+for (const id of ['weekend-wanderer', 'casual-cruiser']) {
+  const at = presets.indexOf(`id: '${id}'`);
+  assert.notStrictEqual(at, -1, `preset ${id} not found`);
+  const next = presets.indexOf('    {', at);
+  const chunk = presets.slice(at, next === -1 ? presets.length : next);
+  assert.match(chunk, /inferShoulderFromEdge: false/,
+    `${id} must opt out of the shoulder guess`);
+}
+assert.doesNotMatch(presets.slice(presets.indexOf("id: 'randonneur'"),
+  presets.indexOf("id: 'weekend-wanderer'")), /inferShoulderFromEdge/,
+  'Randonneur should inherit the default rather than restating it');
 
 console.log('ok - edge-space inference fills gaps only, and the map mirrors it');
