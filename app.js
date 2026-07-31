@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-31.473';
+const APP_VERSION = '2026-07-31.474';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -68,6 +68,34 @@ const COLORS = {
                 //           stay apart from the lime by lightness
   0: '#999999', // insufficient data
 };
+// The signed-route ribbon's width, widened while a route is drawn.
+//
+// At its resting width the ribbon is narrower than the route line, so on the
+// stretch a rider most wants to check -- "is the way I am going actually a
+// signed route?" -- it hides under the very line that raises the question.
+// Widening it while a route exists makes it read past both edges instead.
+// National corridors (`ncn`) stay wider than regional ones at every zoom, and
+// the boost scales both rather than flattening that distinction.
+const DESIGNATED_ROUTE_BOOST = 1.5;
+function designatedRibbonWidth() {
+  const k = routeIsDisplayed ? DESIGNATED_ROUTE_BOOST : 1;
+  const at = (ncn, rcn) => ['match', ['get', 't'], 'ncn', ncn * k, rcn * k];
+  return ['interpolate', ['linear'], ['zoom'],
+    6, at(5.4, 3.5), 10, at(10.5, 6.5), 14, at(18, 11.3)];
+}
+// Called wherever a route appears or disappears; applyDisplayMode sets the same
+// value, so a rescore mid-route cannot quietly reset it to the narrow one.
+function syncDesignatedRibbonWidth() {
+  // clearRoute() can run before the style finishes loading (a shared route
+  // opened from a link does exactly that), and getLayer on a half-built style
+  // is not safe to call.
+  if (!map || !map.isStyleLoaded || !map.isStyleLoaded()) return;
+  const src = SOURCES.find((s) => s.id === 'routes');
+  if (src && map.getLayer(src.id)) {
+    map.setPaintProperty(src.id, 'line-width', designatedRibbonWidth());
+  }
+}
+
 function opaqueColorOverWhite(hex, opacity) {
   const value = String(hex).replace('#', '');
   const channel = (offset) => parseInt(value.slice(offset, offset + 2), 16);
@@ -1860,11 +1888,7 @@ function applyDisplayMode(src) {
     // road passing the rider's own rules, so it reads as family with the lime
     // without claiming to BE bike infrastructure.
     map.setPaintProperty(src.id, 'line-color', DESIGNATED_COLOR);
-    map.setPaintProperty(src.id, 'line-width',
-      ['interpolate', ['linear'], ['zoom'],
-        6, ['match', ['get', 't'], 'ncn', 5.4, 3.5],
-        10, ['match', ['get', 't'], 'ncn', 10.5, 6.5],
-        14, ['match', ['get', 't'], 'ncn', 18, 11.3]]);
+    map.setPaintProperty(src.id, 'line-width', designatedRibbonWidth());
     map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.4));
     map.setPaintProperty(src.id, 'line-dasharray', [2, 1.4]);
     if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
@@ -2168,12 +2192,14 @@ function setBackgroundUnpavedVisible(on) {
 }
 
 /* ------------------------------------------- blink a layer on enable */
-// Turning a layer ON blinks it -- off, on, off, on -- while the drawn route is
-// hidden. Two things a rider wants to know at that moment: which lines on this
-// busy map are the ones I just switched on, and does that layer run along my
-// route? Blinking answers the first because only the new layer moves. Hiding
-// the route answers the second: a signed state bike route drawn under a route
-// line is invisible until the route line gets out of the way.
+// Turning a layer ON blinks it -- off, on, off, on -- and drops the drawn route
+// beneath every overlay while it does. Two things a rider wants to know at that
+// moment: which lines on this busy map are the ones I just switched on, and
+// does that layer run along my route? Blinking answers the first because only
+// the new layer moves. Sinking the route answers the second: a signed state
+// bike route is drawn under the route line and is invisible exactly where it
+// matters most. The route stays on screen throughout -- it is the thing being
+// compared against, so hiding it would defeat the comparison.
 //
 // Nothing else is touched. An earlier version dimmed every OTHER layer for half
 // a second, which answered "which is new" by removing the context you needed to
@@ -2201,16 +2227,34 @@ let soloPreviewRestore = null;
 // the rider enabled bike routes it hid the one layer they had just asked to
 // see -- which is precisely the ribbon this effect now exists to reveal.
 const DRAWN_ROUTE_LAYER = /^route($|-)/;
-function routeLayerVisibility() {
-  const seen = new Map();
-  for (const layer of map.getStyle().layers) {
-    if (!DRAWN_ROUTE_LAYER.test(layer.id)) continue;
-    // Record what each layer is actually set to. Several route layers rest at
-    // 'none' by design (the highlights), and blanket-restoring them to visible
-    // would switch on things the rider never asked for.
-    seen.set(layer.id, map.getLayoutProperty(layer.id, 'visibility') || 'visible');
+// Where each drawn-route layer sits in the stack, as (layer, the first
+// non-route layer above it). Restoring against that anchor rather than against
+// a neighbouring route layer means the whole group can be moved and put back
+// exactly, in one pass, without the intermediate positions mattering.
+function routeLayerOrder() {
+  const ids = map.getStyle().layers.map((l) => l.id);
+  const order = [];
+  for (let i = 0; i < ids.length; i++) {
+    if (!DRAWN_ROUTE_LAYER.test(ids[i])) continue;
+    let j = i + 1;
+    while (j < ids.length && DRAWN_ROUTE_LAYER.test(ids[j])) j++;
+    order.push([ids[i], ids[j]]);   // undefined anchor = move to the very top
   }
-  return seen;
+  return order;
+}
+
+// Sink the drawn route beneath every overlay for the length of a blink. The
+// route is NOT hidden -- a rider needs it there to judge whether the blinking
+// layer follows it -- it just stops covering the thing it is being compared
+// against. A signed bike route is drawn under the route line and is otherwise
+// invisible exactly where it matters most.
+function sinkRouteLayers(order) {
+  const anchor = map.getStyle().layers.find((l) => !/^(background|basemap)/.test(l.id));
+  if (!anchor) return;
+  for (const [id] of order) if (map.getLayer(id)) map.moveLayer(id, anchor.id);
+}
+function restoreRouteLayers(order) {
+  for (const [id, before] of order) if (map.getLayer(id)) map.moveLayer(id, before);
 }
 
 // Show or hide exactly what one layer key controls, without persisting it.
@@ -2230,7 +2274,7 @@ function paintLayerKey(key, on) {
 
 function endSoloPreview() {
   if (!soloPreviewRestore) return;
-  const { flags, routeVis } = soloPreviewRestore;
+  const { flags, routeOrder } = soloPreviewRestore;
   soloPreviewRestore = null;
   clearInterval(soloPreviewTimer);
   soloPreviewTimer = null;
@@ -2241,9 +2285,7 @@ function endSoloPreview() {
     map.setLayoutProperty(backgroundUnpavedId(osm), 'visibility',
       display.unpavedBackground ? 'visible' : 'none');
   }
-  for (const [id, visibility] of routeVis) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
-  }
+  restoreRouteLayers(routeOrder);
 }
 
 function startSoloPreview(key) {
@@ -2251,10 +2293,8 @@ function startSoloPreview(key) {
   // state is always the rider's, never a half-blinked snapshot.
   endSoloPreview();
   const flags = Object.fromEntries(SOLO_LAYER_KEYS.map((k) => [k, display[k]]));
-  soloPreviewRestore = { flags, routeVis: routeLayerVisibility() };
-  for (const id of soloPreviewRestore.routeVis.keys()) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
-  }
+  soloPreviewRestore = { flags, routeOrder: routeLayerOrder() };
+  sinkRouteLayers(soloPreviewRestore.routeOrder);
   let step = 0;
   soloPreviewTimer = setInterval(() => {
     if (step >= BLINK_STEPS.length) { endSoloPreview(); return; }
@@ -5539,6 +5579,8 @@ function setDetailSelectionPulse(on) {
 
 function drawRoute(coords, ferrySegs, segs) {
   routeIsDisplayed = Array.isArray(coords) && coords.length >= 2;
+  // The signed-route ribbon widens under a drawn route so it still reads.
+  syncDesignatedRibbonWidth();
   clearRouteHighlight();
   const data = { type: 'Feature', properties: {},
     geometry: { type: 'LineString', coordinates: coords } };
@@ -6309,6 +6351,8 @@ function reverseRoute() {
 }
 
 function clearRoute() {
+  routeIsDisplayed = false;
+  syncDesignatedRibbonWidth();
   exitSharedRoute();
   showRouteActionToast('');
   stopTurnNavigation(false);

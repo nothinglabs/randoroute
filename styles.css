@@ -443,7 +443,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .layer-toggle-swatch.fails { background: repeating-linear-gradient(115deg,#a51c30 0 3px,#fff 3px 5px); }
 /* Prohibited is a translucent ribbon laid OVER the safety colouring, so its
    swatch shows the same: a wide, pale dashed band, not a solid line. */
-.layer-toggle-swatch.prohibited { background: repeating-linear-gradient(90deg,rgba(120,18,31,.45) 0 5px,transparent 5px 8px); }
+.layer-toggle-swatch.prohibited { background: repeating-linear-gradient(90deg,rgba(165,28,48,.45) 0 5px,transparent 5px 8px); }
 .layer-toggle-swatch.caution { background: repeating-linear-gradient(90deg,#c25d05 0 4px,#a51c30 4px 6px); }
 .layer-toggle-swatch.designated { background: repeating-linear-gradient(90deg,#5f8000 0 5px,transparent 5px 8px); opacity: .7; }
 .layer-toggle-swatch.unpaved { border: 1px solid #536672; background: repeating-linear-gradient(90deg,transparent 0 3px,#536672 3px 5px); }
