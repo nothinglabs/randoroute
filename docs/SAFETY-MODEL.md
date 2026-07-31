@@ -25,6 +25,42 @@ cost may never make a road pass or fail — that is the verdict's job alone.
 **This file is the specification, not a summary of the code.** If the code and
 this file disagree, the code is wrong.
 
+## A shoulder can depend on which way you ride
+
+WSDOT surveys each **direction** of a state highway separately, and the two
+genuinely disagree. On SR 104 at Kingston one point carries 0 ft one way and
+5–6 ft the other; across 56 segments there the values are 0 ft ×20, 6 ft ×21,
+5 ft ×9. Measured on the shipped graph:
+
+| | edges | miles |
+|---|---|---|
+| shoulder differs by direction | 58,995 | — |
+| **verdict** differs by direction | 10,656 | 333 |
+| passes one way, **fails** the other | 2,564 | 45 |
+
+The direction is encoded in WSDOT's route id: `i` for increasing milepost, `d`
+for decreasing. 712 routes carry both.
+
+**The route was always right.** `router-worker.js` scores each segment with
+`edgeFacts(edge, forward)` and carries `edgeShoulder(edge, forward)`, so a drawn
+route has always reflected the direction of travel, and the graph stores `esh`
+and `esh_ba` separately for exactly this.
+
+**The card was not.** It printed whichever of the two WSDOT features the tap
+landed on, with nothing indicating a second answer existed — so a road could
+read *"Shoulder 0 ft"* above *"Passes your rules"* while the router used 6 ft for
+the way you were actually going. It now names both when they disagree, and says
+nothing extra when they agree.
+
+**The background road layer stays worst-case.** It draws one line for a road
+with two answers, and of the two the safe reading is the one that can never make
+a road look better than it might be.
+
+Precedence for the shoulder itself, in `build_graph.py`: OSM tags are the base,
+WSDOT `ShoulderWidth` overrides per direction where a match exists, and the CRAB
+county paved shoulder is deliberately **never** written into it — it travels in
+its own field so that adding a source cannot quietly move a road across a rule.
+
 ## The facts contract
 
 The ladder was always shared. **The object handed to it was not**, and that is

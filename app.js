@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-07-30.462';
+const APP_VERSION = '2026-07-30.463';
 // Increment whenever router-worker.js changes the binary graph contract. It
 // keeps a just-updated worker from receiving a graph cached by an older
 // service worker during the first post-update load.
@@ -7766,6 +7766,59 @@ function streetViewRoadHeading(feature, lngLat) {
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
+// WSDOT surveys each DIRECTION of a state highway separately, and the two
+// genuinely disagree: on SR 104 at Kingston the same point carries 0 ft one way
+// and 5-6 ft the other. Across the graph, 58,995 edges have a
+// direction-dependent shoulder and 2,564 pass one way while failing the other.
+//
+// The route line has always been right about this -- the worker scores each
+// segment with edgeShoulder(edge, forward), in the direction of travel. The
+// CARD was not: it printed whichever of the two features the tap happened to
+// hit, with nothing saying a second answer existed.
+//
+// The direction is in the route id: WSDOT suffixes `i` for increasing milepost
+// and `d` for decreasing. Two features sharing a route number but differing in
+// that suffix are the two sides of one road.
+function wsdotDirectionLabel(routeIdentifier) {
+  const id = String(routeIdentifier || '');
+  if (/i$/i.test(id)) return 'increasing mileposts';
+  if (/d$/i.test(id)) return 'decreasing mileposts';
+  return null;
+}
+function wsdotRouteBase(routeIdentifier) {
+  return String(routeIdentifier || '').replace(/[id]$/i, '');
+}
+// The opposite-direction segment under the same screen point, when it reports a
+// different shoulder. Returns null when there is no sibling or they agree.
+function wsdotOppositeShoulder(point, p) {
+  if (!point || !map.getLayer('blts__hit')) return null;
+  const base = wsdotRouteBase(p.RouteIdentifier);
+  if (!base) return null;
+  const pad = 8;
+  const feats = map.queryRenderedFeatures(
+    [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]],
+    { layers: ['blts__hit'] });
+  for (const f of feats) {
+    const q = f.properties;
+    if (wsdotRouteBase(q.RouteIdentifier) !== base) continue;
+    if (String(q.RouteIdentifier) === String(p.RouteIdentifier)) continue;
+    if (q.ShoulderWidth == null || q.ShoulderWidth === p.ShoulderWidth) continue;
+    return q;
+  }
+  return null;
+}
+// "6 ft" when both directions agree or only one is known; otherwise both, each
+// named, because a single number would be a claim the data does not support.
+function wsdotShoulderText(point, p) {
+  if (p.ShoulderWidth == null) return null;
+  const other = wsdotOppositeShoulder(point, p);
+  if (!other) return `${p.ShoulderWidth} ft`;
+  const here = wsdotDirectionLabel(p.RouteIdentifier);
+  const there = wsdotDirectionLabel(other.RouteIdentifier);
+  if (!here || !there) return `${p.ShoulderWidth} ft here, ${other.ShoulderWidth} ft the other way`;
+  return `${p.ShoulderWidth} ft (${here}), ${other.ShoulderWidth} ft (${there})`;
+}
+
 function renderReadout(feature, lngLat, anchorPoint = null) {
   resetRoadInfoPosition();
   const src = HIT_SRC[feature.layer.id];
@@ -7891,7 +7944,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Speed limit', p.SpeedLimit != null ? p.SpeedLimit + ' mph' : null],
       ['Lanes', p.LaneCount],
       ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
-      ['Shoulder', p.ShoulderWidth != null ? p.ShoulderWidth + ' ft' : null],
+      ['Shoulder', wsdotShoulderText(anchorPoint, p)],
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', wsdotSidewalkAt(lngLat)],
       ['Bike facility', p.BikeFacilityType],
