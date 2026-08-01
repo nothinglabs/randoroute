@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-01.490';
+const APP_VERSION = '2026-08-01.491';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1272,10 +1272,19 @@ map.on('error', (event) => {
 // Compute normalized props once per feature (cached on _n), then effective level.
 function rescore(src) {
   if (!src.fc) return;
+  // setData() re-uploads the whole collection and re-tiles it on the worker:
+  // 250 ms for the 38k OSM features, 130 ms for the 55k WSDOT ones. A rules
+  // change ran that for EVERY source, whether or not the change could touch
+  // them -- and a shoulder rule cannot move a designated-route ribbon. Scoring
+  // the features is the cheap part (under 25 ms); re-uploading them is not, so
+  // only do it when a verdict actually moved.
+  let moved = false;
   for (const f of src.fc.features) {
     if (!f.properties._n) f.properties._n = src.scorer(f.properties);
-    f.properties.level = effectiveLevel(f.properties._n);
+    const level = effectiveLevel(f.properties._n);
+    if (level !== f.properties.level) { f.properties.level = level; moved = true; }
   }
+  if (!moved) return;
   const mapSrc = map.getSource(src.id);
   if (mapSrc) mapSrc.setData(src.fc);
 }
@@ -1493,7 +1502,7 @@ function ensureLayer(src) {
   }
   const SL = src.vector ? { 'source-layer': src.sourceLayer } : {};
   if (src.closure) {
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: src.id + '__line', type: 'line', source: mapSourceId,
       minzoom: 10,
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
@@ -1501,7 +1510,7 @@ function ensureLayer(src) {
                'line-dasharray': [1.2, 1.1] },
       filter: ['==', ['geometry-type'], 'LineString'],
     }, beforeId);
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: src.id, type: 'circle', source: mapSourceId,
       minzoom: 10,
       paint: { 'circle-radius': 9, 'circle-color': COLORS[4],
@@ -1513,7 +1522,7 @@ function ensureLayer(src) {
   }
   // Two dashed overlays are added first so the solid main layer draws on top
   // where lines overlap. Each is shown in only one display mode.
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: failId(src), // pass/fail mode: roads with data that don't qualify
     type: 'line',
     source: mapSourceId,
@@ -1528,7 +1537,7 @@ function ensureLayer(src) {
     },
     filter: ['all', ['>=', ['get', 'level'], display.passMax + 1], ['<=', ['get', 'level'], 4]],
   }, beforeId);
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: vhId(src), // color-ramp mode: level 4 shown dashed to read as "not passable"
     type: 'line',
     source: mapSourceId,
@@ -1547,7 +1556,7 @@ function ensureLayer(src) {
     },
     filter: ['==', ['get', 'level'], 4],
   }, beforeId);
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: src.id,
     type: 'line',
     source: mapSourceId,
@@ -1576,7 +1585,7 @@ function ensureLayer(src) {
   // a road is wide enough to show a pattern at all.
   if (src.id === 'roads') {
     const levelExpr = src.expr ? roadLevelExpr() : ['get', 'level'];
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: cautionId(src),
       type: 'line',
       source: mapSourceId,
@@ -1590,7 +1599,7 @@ function ensureLayer(src) {
       },
       filter: ['==', levelExpr, 3],
     }, beforeId);
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: slashId(src),
       type: 'line',
       source: mapSourceId,
@@ -1608,7 +1617,7 @@ function ensureLayer(src) {
   // Added last so the regulatory ribbon sits above this source's own colours
   // and textures rather than under them.
   if (src.id === 'roads' || src.id === 'osm') {
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: prohibitedId(src),
       type: 'line',
       source: mapSourceId,
@@ -1632,7 +1641,7 @@ function ensureLayer(src) {
     }, beforeId);
   }
   if (src.id === 'osm') {
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: trailId(src),
       type: 'line',
       source: mapSourceId,
@@ -1646,7 +1655,7 @@ function ensureLayer(src) {
       },
       filter: ['boolean', false],
     }, beforeId);
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: trailDotsId(src),
       type: 'line',
       source: mapSourceId,
@@ -1669,7 +1678,7 @@ function ensureLayer(src) {
     // Show the same cross-slat language used by an active route, but do not
     // imply anything about features whose surface is absent or unknown.
     ensureUnpavedSlatImage(map, 'background-unpaved-slats');
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: backgroundUnpavedId(src),
       type: 'symbol',
       source: mapSourceId,
@@ -1693,7 +1702,7 @@ function ensureLayer(src) {
     // Keep dotted paths as easy to inspect as ordinary streets.  This sits
     // directly on the source geometry (not the gaps between rendered dots),
     // so a trail remains hoverable across its full length.
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: trailHitId(src),
       type: 'line',
       source: mapSourceId,
@@ -1707,7 +1716,7 @@ function ensureLayer(src) {
       },
       filter: OSM_TRAIL_EXPR,
     }, beforeId);
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: trailLabelId(src),
       type: 'symbol',
       source: mapSourceId,
@@ -1735,7 +1744,7 @@ function ensureLayer(src) {
   // but their matching OSM tile still supplies sidewalk context for a WSDOT
   // road-info card.  This transparent layer is queried only on demand.
   if (src.id === 'roads') {
-    map.addLayer({
+    forgetStyleValues(); map.addLayer({
       id: stateSidewalkProbeId,
       type: 'line',
       source: mapSourceId,
@@ -1752,7 +1761,7 @@ function ensureLayer(src) {
   }
   // Invisible wide line on top — a forgiving hover target so you don't have to
   // land pixel-perfect on the thin visible line. Transparent, so no visual change.
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: hitId(src),
     type: 'line',
     source: mapSourceId,
@@ -1772,6 +1781,40 @@ function ensureLayer(src) {
 
 // Checkboxes control painted lines only. Invisible hit targets remain active
 // so hiding a visual layer never removes data from street-information popups.
+// Setting a paint property, filter or layout property marks the layer dirty and
+// makes MapLibre re-parse the expression and redraw -- whether or not the value
+// actually changed. applyDisplayMode() rebuilds every expression for every
+// source from scratch every time, so ONE layer toggle handed the renderer 94
+// style changes of which 90 were identical to what was already there. The blink
+// preview then does the whole thing five times over.
+//
+// So remember what was last written to each layer property and skip the rest.
+// The comparison is against what this file last SET, not what MapLibre reports,
+// because the map normalises expressions on the way in and a round-trip would
+// compare two different shapes and never match.
+const lastStyleValue = new Map();
+function forgetStyleValues(layerId) {
+  if (layerId == null) { lastStyleValue.clear(); return; }
+  const prefix = `${layerId}\u0000`;
+  for (const key of lastStyleValue.keys()) if (key.startsWith(prefix)) lastStyleValue.delete(key);
+}
+function styleValueChanged(layerId, prop, value) {
+  const key = `${layerId}\u0000${prop}`;
+  const next = JSON.stringify(value === undefined ? null : value);
+  if (lastStyleValue.get(key) === next) return false;
+  lastStyleValue.set(key, next);
+  return true;
+}
+function setPaint(layerId, prop, value) {
+  if (styleValueChanged(layerId, `paint.${prop}`, value)) map.setPaintProperty(layerId, prop, value);
+}
+function setLayout(layerId, prop, value) {
+  if (styleValueChanged(layerId, `layout.${prop}`, value)) map.setLayoutProperty(layerId, prop, value);
+}
+function setLayerFilter(layerId, value) {
+  if (styleValueChanged(layerId, 'filter', value)) map.setFilter(layerId, value);
+}
+
 function updateVisibility(src) {
   // Dense visual sources use the layers' native minzoom, which updates
   // reliably throughout wheel, trackpad, touch, keyboard, and programmatic
@@ -1781,36 +1824,36 @@ function updateVisibility(src) {
     : true;
   if (src.closure) {
     for (const id of [src.id, src.id + '__line']) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+      if (map.getLayer(id)) setLayout(id, 'visibility', on ? 'visible' : 'none');
     }
     return;
   }
-  if (map.getLayer(src.id)) map.setLayoutProperty(src.id, 'visibility', on ? 'visible' : 'none');
+  if (map.getLayer(src.id)) setLayout(src.id, 'visibility', on ? 'visible' : 'none');
   if (src.id === 'roads' && map.getLayer(stateSidewalkProbeId))
-    map.setLayoutProperty(stateSidewalkProbeId, 'visibility', 'visible');
-  if (map.getLayer(trailId(src))) map.setLayoutProperty(trailId(src), 'visibility',
+    setLayout(stateSidewalkProbeId, 'visibility', 'visible');
+  if (map.getLayer(trailId(src))) setLayout(trailId(src), 'visibility',
     display.offstreetTrails ? 'visible' : 'none');
-  if (map.getLayer(trailDotsId(src))) map.setLayoutProperty(trailDotsId(src), 'visibility',
+  if (map.getLayer(trailDotsId(src))) setLayout(trailDotsId(src), 'visibility',
     display.offstreetTrails ? 'visible' : 'none');
   if (map.getLayer(backgroundUnpavedId(src)))
-    map.setLayoutProperty(backgroundUnpavedId(src), 'visibility',
+    setLayout(backgroundUnpavedId(src), 'visibility',
       display.unpavedBackground ? 'visible' : 'none');
-  if (map.getLayer(trailHitId(src))) map.setLayoutProperty(trailHitId(src), 'visibility', 'visible');
+  if (map.getLayer(trailHitId(src))) setLayout(trailHitId(src), 'visibility', 'visible');
   if (src.fixed) { // overlay has no mode-specific layers to manage beyond the main one
-    if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', 'visible');
-    if (map.getLayer(failId(src))) map.setLayoutProperty(failId(src), 'visibility', 'none');
-    if (map.getLayer(vhId(src))) map.setLayoutProperty(vhId(src), 'visibility', 'none');
+    if (map.getLayer(hitId(src))) setLayout(hitId(src), 'visibility', 'visible');
+    if (map.getLayer(failId(src))) setLayout(failId(src), 'visibility', 'none');
+    if (map.getLayer(vhId(src))) setLayout(vhId(src), 'visibility', 'none');
     return;
   }
-  if (map.getLayer(hitId(src))) map.setLayoutProperty(hitId(src), 'visibility', 'visible');
+  if (map.getLayer(hitId(src))) setLayout(hitId(src), 'visibility', 'visible');
   if (map.getLayer(failId(src)))
-    map.setLayoutProperty(failId(src), 'visibility',
+    setLayout(failId(src), 'visibility',
       display.failRules && display.passFail ? 'visible' : 'none');
   if (map.getLayer(vhId(src)))
-    map.setLayoutProperty(vhId(src), 'visibility',
+    setLayout(vhId(src), 'visibility',
       display.failRules && !display.passFail ? 'visible' : 'none');
   if (map.getLayer(prohibitedId(src)))
-    map.setLayoutProperty(prohibitedId(src), 'visibility',
+    setLayout(prohibitedId(src), 'visibility',
       display.bikesProhibited ? 'visible' : 'none');
 }
 
@@ -1837,7 +1880,7 @@ function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
   if (src.closure) {
     if (map.getLayer(src.id + '__line')) {
-      map.setPaintProperty(src.id + '__line', 'line-opacity', backgroundLineOpacity(0.92));
+      setPaint(src.id + '__line', 'line-opacity', backgroundLineOpacity(0.92));
     }
     updateVisibility(src);
     return;
@@ -1846,17 +1889,17 @@ function applyDisplayMode(src) {
     // Designation is useful context, not physical infrastructure: show it as
     // a translucent dashed corridor above ordinary safety/facility coloring.
     // Regulatory restrictions and closures retain the two higher z-ranks.
-    map.setFilter(src.id, null);
+    setLayerFilter(src.id, null);
     // A relative of the bike-network lime, deliberately duller and translucent:
     // a signed route is a recommendation whose usability still depends on the
     // road passing the rider's own rules, so it reads as family with the lime
     // without claiming to BE bike infrastructure.
-    map.setPaintProperty(src.id, 'line-color', DESIGNATED_COLOR);
-    map.setPaintProperty(src.id, 'line-width', designatedRibbonWidth());
-    map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.4));
-    map.setPaintProperty(src.id, 'line-dasharray', [2, 1.4]);
-    if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
-    if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
+    setPaint(src.id, 'line-color', DESIGNATED_COLOR);
+    setPaint(src.id, 'line-width', designatedRibbonWidth());
+    setPaint(src.id, 'line-opacity', backgroundLineOpacity(0.4));
+    setPaint(src.id, 'line-dasharray', [2, 1.4]);
+    if (map.getLayer(failId(src))) setLayerFilter(failId(src), ['boolean', false]);
+    if (map.getLayer(vhId(src))) setLayerFilter(vhId(src), ['boolean', false]);
     updateVisibility(src);
     return;
   }
@@ -1866,29 +1909,29 @@ function applyDisplayMode(src) {
     // one another. State-highway verdicts are conflated onto the matching OSM
     // road centerline in roads.pmtiles, producing one aligned visual road.
     for (const id of [src.id, failId(src), vhId(src)]) {
-      if (map.getLayer(id)) map.setFilter(id, ['boolean', false]);
+      if (map.getLayer(id)) setLayerFilter(id, ['boolean', false]);
     }
-    if (map.getLayer(hitId(src))) map.setFilter(hitId(src), osmHitFilter(src));
+    if (map.getLayer(hitId(src))) setLayerFilter(hitId(src), osmHitFilter(src));
     updateVisibility(src);
     return;
   }
   if (src.fixed) {
     // Regulatory overlay: exempt from the rules, but drawn with the SAME
     // color coding as any failing road in the current display mode.
-    map.setFilter(src.id, null);
+    setLayerFilter(src.id, null);
     if (display.passFail) {
-      map.setPaintProperty(src.id, 'line-color', FAIL_COLOR);
-      map.setPaintProperty(src.id, 'line-dasharray', [2, 2]);
-      map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.4, 14, 2.6]);
-      map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.65));
+      setPaint(src.id, 'line-color', FAIL_COLOR);
+      setPaint(src.id, 'line-dasharray', [2, 2]);
+      setPaint(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 0.8, 10, 1.4, 14, 2.6]);
+      setPaint(src.id, 'line-opacity', backgroundLineOpacity(0.65));
     } else {
-      map.setPaintProperty(src.id, 'line-color', COLORS[4]);
-      map.setPaintProperty(src.id, 'line-dasharray', [2, 1.5]);
-      map.setPaintProperty(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7]);
-      map.setPaintProperty(src.id, 'line-opacity', backgroundLineOpacity(0.9));
+      setPaint(src.id, 'line-color', COLORS[4]);
+      setPaint(src.id, 'line-dasharray', [2, 1.5]);
+      setPaint(src.id, 'line-width', ['interpolate', ['linear'], ['zoom'], 6, 1.1, 10, 1.9, 14, 3.7]);
+      setPaint(src.id, 'line-opacity', backgroundLineOpacity(0.9));
     }
-    if (map.getLayer(failId(src))) map.setFilter(failId(src), ['boolean', false]);
-    if (map.getLayer(vhId(src))) map.setFilter(vhId(src), ['boolean', false]);
+    if (map.getLayer(failId(src))) setLayerFilter(failId(src), ['boolean', false]);
+    if (map.getLayer(vhId(src))) setLayerFilter(vhId(src), ['boolean', false]);
     updateVisibility(src);
     return;
   }
@@ -1938,21 +1981,21 @@ function applyDisplayMode(src) {
   // these deliberately fine visual strokes.
   if (display.passFail) {
     const passFilter = visibleRoadCategoryFilter(src, lvl);
-    map.setFilter(src.id, src.id === 'osm' ? ['boolean', false] : and(passFilter));
-    map.setPaintProperty(src.id, 'line-color', alignRoadClasses
+    setLayerFilter(src.id, src.id === 'osm' ? ['boolean', false] : and(passFilter));
+    setPaint(src.id, 'line-color', alignRoadClasses
       ? opaqueRoadColorExpr(src, PASS_COLOR, backgroundLineOpacity(0.95))
       : PASS_COLOR);
-    map.setPaintProperty(src.id, 'line-opacity', opacity(0.95));
-    map.setPaintProperty(src.id, 'line-width', safetyRoadWidth(src));
+    setPaint(src.id, 'line-opacity', opacity(0.95));
+    setPaint(src.id, 'line-width', safetyRoadWidth(src));
   } else {
     // Solid ramp for passing levels (and unknown); level 4 goes to the dashed vh layer.
     const verdictFilter = visibleRoadCategoryFilter(src, lvl);
-    map.setFilter(src.id, src.id === 'osm' ? ['boolean', false] : and(verdictFilter));
-    map.setPaintProperty(src.id, 'line-color', alignRoadClasses
+    setLayerFilter(src.id, src.id === 'osm' ? ['boolean', false] : and(verdictFilter));
+    setPaint(src.id, 'line-color', alignRoadClasses
       ? opaqueBackgroundVerdictColorExpr(src, lvl)
       : verdictColorExpr(src, lvl));
-    map.setPaintProperty(src.id, 'line-opacity', opacity(0.9));
-    map.setPaintProperty(src.id, 'line-width', safetyRoadWidth(src));
+    setPaint(src.id, 'line-opacity', opacity(0.9));
+    setPaint(src.id, 'line-width', safetyRoadWidth(src));
   }
   const visibleTrail = display.offstreetTrails
     ? (display.passFail
@@ -1960,28 +2003,28 @@ function applyDisplayMode(src) {
       : ['all', ['!=', lvl, 4], OSM_TRAIL_EXPR])
     : ['boolean', false];
   if (map.getLayer(trailId(src))) {
-    map.setFilter(trailId(src), and(visibleTrail));
-    map.setPaintProperty(trailId(src), 'line-color', display.passFail ? PASS_COLOR : BIKE_NETWORK_COLOR);
-    map.setPaintProperty(trailId(src), 'line-opacity', backgroundLineOpacity(0.95));
+    setLayerFilter(trailId(src), and(visibleTrail));
+    setPaint(trailId(src), 'line-color', display.passFail ? PASS_COLOR : BIKE_NETWORK_COLOR);
+    setPaint(trailId(src), 'line-opacity', backgroundLineOpacity(0.95));
   }
   if (map.getLayer(trailDotsId(src))) {
-    map.setFilter(trailDotsId(src), and(visibleTrail));
-    map.setPaintProperty(trailDotsId(src), 'line-color', display.passFail ? '#3f5200' : '#4c5c00');
-    map.setPaintProperty(trailDotsId(src), 'line-opacity', backgroundLineOpacity(0.95));
+    setLayerFilter(trailDotsId(src), and(visibleTrail));
+    setPaint(trailDotsId(src), 'line-color', display.passFail ? '#3f5200' : '#4c5c00');
+    setPaint(trailDotsId(src), 'line-opacity', backgroundLineOpacity(0.95));
   }
   if (map.getLayer(backgroundUnpavedId(src))) {
-    map.setFilter(backgroundUnpavedId(src), and(OSM_CONFIRMED_UNPAVED_EXPR));
+    setLayerFilter(backgroundUnpavedId(src), and(OSM_CONFIRMED_UNPAVED_EXPR));
   }
-  if (map.getLayer(trailHitId(src))) map.setFilter(trailHitId(src), and(visibleTrail));
+  if (map.getLayer(trailHitId(src))) setLayerFilter(trailHitId(src), and(visibleTrail));
   if (map.getLayer(failId(src))) {
     const failFilter = ['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4]];
-    map.setFilter(failId(src), and(src.id === 'osm'
+    setLayerFilter(failId(src), and(src.id === 'osm'
       ? ['all', failFilter, OSM_TRAIL_EXPR] : failFilter));
-    map.setPaintProperty(failId(src), 'line-color', alignRoadClasses
+    setPaint(failId(src), 'line-color', alignRoadClasses
       ? opaqueRoadColorExpr(src, FAIL_COLOR, backgroundLineOpacity(0.65))
       : FAIL_COLOR);
-    map.setPaintProperty(failId(src), 'line-width', safetyRoadWidth(src));
-    map.setPaintProperty(failId(src), 'line-opacity', opacity(0.65));
+    setPaint(failId(src), 'line-width', safetyRoadWidth(src));
+    setPaint(failId(src), 'line-opacity', opacity(0.65));
   }
   // A prohibited road is a FAILING road -- the strongest kind -- so it keeps its
   // failure colouring and the prohibition rides on top as a translucent ribbon.
@@ -1991,12 +2034,12 @@ function applyDisplayMode(src) {
     ? ['all', ['==', lvl, 4], OSM_TRAIL_EXPR]
     : ['==', lvl, 4];
   if (map.getLayer(vhId(src))) {
-    map.setFilter(vhId(src), and(failFilter));
-    map.setPaintProperty(vhId(src), 'line-color', alignRoadClasses
+    setLayerFilter(vhId(src), and(failFilter));
+    setPaint(vhId(src), 'line-color', alignRoadClasses
       ? opaqueRoadColorExpr(src, COLORS[4], backgroundLineOpacity(0.9))
       : COLORS[4]);
-    map.setPaintProperty(vhId(src), 'line-width', safetyRoadWidth(src));
-    map.setPaintProperty(vhId(src), 'line-opacity', opacity(0.9));
+    setPaint(vhId(src), 'line-width', safetyRoadWidth(src));
+    setPaint(vhId(src), 'line-opacity', opacity(0.9));
   }
   // Texture overlays. They are decoration on the road below, so they take the
   // SAME filter, the same width and the same class-masked opacity as the line
@@ -2005,25 +2048,25 @@ function applyDisplayMode(src) {
   // Above PATTERN_MIN_ZOOM the slash replaces the dash rather than stacking on
   // it, so exactly one representation of a failure draws at any zoom.
   if (map.getLayer(slashId(src))) {
-    map.setFilter(slashId(src), and(failFilter));
-    map.setPaintProperty(slashId(src), 'line-width', safetyRoadWidth(src));
-    map.setPaintProperty(slashId(src), 'line-opacity', opacity(0.95));
-    map.setLayoutProperty(slashId(src), 'visibility',
+    setLayerFilter(slashId(src), and(failFilter));
+    setPaint(slashId(src), 'line-width', safetyRoadWidth(src));
+    setPaint(slashId(src), 'line-opacity', opacity(0.95));
+    setLayout(slashId(src), 'visibility',
       display.failRules ? 'visible' : 'none');
   }
   if (map.getLayer(cautionId(src))) {
-    map.setFilter(cautionId(src), and(['all', ['==', lvl, 3],
+    setLayerFilter(cautionId(src), and(['all', ['==', lvl, 3],
       visibleRoadCategoryFilter(src, lvl)]));
-    map.setPaintProperty(cautionId(src), 'line-width', safetyRoadWidth(src));
-    map.setPaintProperty(cautionId(src), 'line-opacity', opacity(0.95));
-    map.setLayoutProperty(cautionId(src), 'visibility',
+    setPaint(cautionId(src), 'line-width', safetyRoadWidth(src));
+    setPaint(cautionId(src), 'line-opacity', opacity(0.95));
+    setLayout(cautionId(src), 'visibility',
       display.caution ? 'visible' : 'none');
   }
   if (alignRoadClasses) {
     // At a junction, draw ordinary passing roads first and physical bicycle
     // facilities last. Their opaque flat-ended fills then meet cleanly instead
     // of leaving a blue spur on top of the lime corridor.
-    map.setLayoutProperty(src.id, 'line-sort-key',
+    setLayout(src.id, 'line-sort-key',
       ['case', bikeNetworkExpr(src), 3,
         ['match', lvl, 3, 2, [1, 2], 1, 0]]);
   }
@@ -2033,7 +2076,7 @@ function applyDisplayMode(src) {
     // instead of a thinner overlapping target being returned first.
     const mainHitFilter = src.id === 'osm'
       ? ['all', OSM_NOT_TRAIL_EXPR, ['!', sharrowOnlyExpr()]] : ['boolean', true];
-    map.setFilter(hitId(src), src.id === 'osm' ? and(mainHitFilter) : null);
+    setLayerFilter(hitId(src), src.id === 'osm' ? and(mainHitFilter) : null);
     const normalHitWidth = ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22];
     const knownRoadClass = ['any',
       ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR, ROAD_CLASS_LOCAL_EXPR];
@@ -2050,7 +2093,7 @@ function applyDisplayMode(src) {
       16,
       ['case', knownRoadClass, 22, 0],
     ];
-    map.setPaintProperty(hitId(src), 'line-width',
+    setPaint(hitId(src), 'line-width',
       alignRoadClasses ? classAlignedHitWidth : normalHitWidth);
   }
   updateVisibility(src);
@@ -2066,7 +2109,17 @@ async function jsonAssetResponse(response, url) {
   // Some web servers transparently decode a .gz resource. Accept both forms
   // so the same build works from GitHub Pages and inside the native shell.
   const compressed = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
-  if (!compressed) return JSON.parse(new TextDecoder().decode(bytes));
+  if (!compressed) return new Response(bytes).json();
+  // The browser can gunzip and parse this itself, in native code, straight from
+  // the bytes. Doing it in JS meant fflate inflating 5.7 MB to a 30 MB array,
+  // strFromU8 turning that into a 30 MB string (60 MB of UTF-16), and only then
+  // parsing -- half a second of blocked main thread during startup, for the
+  // overlays alone. The routing graph has been decompressed this way for a
+  // while; the map data had not caught up.
+  if (typeof DecompressionStream === 'function') {
+    const gunzipped = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Response(gunzipped).json();
+  }
   if (!window.fflate?.gunzipSync || !window.fflate?.strFromU8) {
     throw new Error('compressed map-data decoder unavailable');
   }
@@ -2149,7 +2202,7 @@ function setBackgroundUnpavedVisible(on) {
   display.unpavedBackground = !!on;
   const osm = SOURCES.find((src) => src.id === 'osm');
   if (osm && map.getLayer(backgroundUnpavedId(osm))) {
-    map.setLayoutProperty(backgroundUnpavedId(osm), 'visibility',
+    setLayout(backgroundUnpavedId(osm), 'visibility',
       display.unpavedBackground ? 'visible' : 'none');
   }
   saveStateSoon();
@@ -2228,7 +2281,7 @@ function paintLayerKey(key, on) {
     display.unpavedBackground = on;
     const osm = SOURCES.find((src) => src.id === 'osm');
     if (osm && map.getLayer(backgroundUnpavedId(osm))) {
-      map.setLayoutProperty(backgroundUnpavedId(osm), 'visibility', on ? 'visible' : 'none');
+      setLayout(backgroundUnpavedId(osm), 'visibility', on ? 'visible' : 'none');
     }
     return;
   }
@@ -2246,7 +2299,7 @@ function endSoloPreview() {
   applyDisplayModeAll();
   const osm = SOURCES.find((src) => src.id === 'osm');
   if (osm && map.getLayer(backgroundUnpavedId(osm))) {
-    map.setLayoutProperty(backgroundUnpavedId(osm), 'visibility',
+    setLayout(backgroundUnpavedId(osm), 'visibility',
       display.unpavedBackground ? 'visible' : 'none');
   }
   restoreRouteLayers(routeOrder);
@@ -5443,9 +5496,9 @@ let haloRaised = false;
 function stopHalo(layerId) {
   haloRaised = false;
   if (!map.getLayer(layerId)) return;
-  map.setPaintProperty(layerId, 'line-width', HALO_REST.width);
-  map.setPaintProperty(layerId, 'line-opacity', HALO_REST.opacity);
-  map.setPaintProperty(layerId, 'line-blur', HALO_REST.blur);
+  setPaint(layerId, 'line-width', HALO_REST.width);
+  setPaint(layerId, 'line-opacity', HALO_REST.opacity);
+  setPaint(layerId, 'line-blur', HALO_REST.blur);
 }
 function setHaloPulse(layerId, on) {
   if (on && !haloPulseTimer) {
@@ -5453,9 +5506,9 @@ function setHaloPulse(layerId, on) {
       // The halo is the verdict, not decoration on top of it: hold it wide and
       // steady so the segment still reads without anything moving.
       if (map.getLayer(layerId)) {
-        map.setPaintProperty(layerId, 'line-width', 19);
-        map.setPaintProperty(layerId, 'line-opacity', 0.48);
-        map.setPaintProperty(layerId, 'line-blur', 4);
+        setPaint(layerId, 'line-width', 19);
+        setPaint(layerId, 'line-opacity', 0.48);
+        setPaint(layerId, 'line-blur', 4);
         haloRaised = true;
       }
       return;
@@ -5472,11 +5525,11 @@ function setHaloPulse(layerId, on) {
       const p = Math.abs(Math.sin(t)); // 0..1 throb
       // Width, opacity and blur all rise together, so the halo reads as one
       // thing swelling outward rather than as an edge sliding around.
-      map.setPaintProperty(layerId, 'line-width', 13 + 13 * p);
-      map.setPaintProperty(layerId, 'line-opacity', 0.28 + 0.34 * p);
+      setPaint(layerId, 'line-width', 13 + 13 * p);
+      setPaint(layerId, 'line-opacity', 0.28 + 0.34 * p);
       // Blur grows more slowly than width on purpose. Matching them spread the
       // halo thin enough to disappear against a busy basemap at full swell.
-      map.setPaintProperty(layerId, 'line-blur', 3 + 4 * p);
+      setPaint(layerId, 'line-blur', 3 + 4 * p);
     }, 80);
   } else if (!on && (haloPulseTimer || haloRaised)) {
     // Not gated on the timer alone: under reduced motion there is no timer, but
@@ -5513,7 +5566,7 @@ function setTickCrawl(layerId, on) {
     tickCrawlTimer = setInterval(() => {
       if (!map.getLayer(layerId)) return;
       if (soloPreviewRestore) return;   // see setHaloPulse
-      map.setPaintProperty(layerId, 'line-dasharray',
+      setPaint(layerId, 'line-dasharray',
         TICK_FRAMES[frame % TICK_FRAMES.length]);
       frame++;
     }, 110);
@@ -5523,7 +5576,7 @@ function setTickCrawl(layerId, on) {
     if (map.getLayer(layerId)) {
       // At rest it keeps the ticks -- the texture carries the verdict whether or
       // not anything is moving, which is what makes it legible in a screenshot.
-      map.setPaintProperty(layerId, 'line-dasharray', TICK_FRAMES[0]);
+      setPaint(layerId, 'line-dasharray', TICK_FRAMES[0]);
     }
   }
 }
@@ -5552,7 +5605,7 @@ function setDetailSelectionPulse(on) {
   if (on && !detailSelectionPulseTimer) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       if (map.getLayer('route-detail-highlight')) {
-        map.setPaintProperty('route-detail-highlight', 'line-opacity', 0.55);
+        setPaint('route-detail-highlight', 'line-opacity', 0.55);
       }
       return;
     }
@@ -5561,15 +5614,15 @@ function setDetailSelectionPulse(on) {
       if (!map.getLayer('route-detail-highlight')) return;
       t += 0.16;
       const p = Math.abs(Math.sin(t));
-      map.setPaintProperty('route-detail-highlight', 'line-opacity', 0.35 + 0.35 * p);
-      map.setPaintProperty('route-detail-highlight', 'line-width', 15 + 4 * p);
+      setPaint('route-detail-highlight', 'line-opacity', 0.35 + 0.35 * p);
+      setPaint('route-detail-highlight', 'line-width', 15 + 4 * p);
     }, 80);
   } else if (!on) {
     if (detailSelectionPulseTimer) clearInterval(detailSelectionPulseTimer);
     detailSelectionPulseTimer = null;
     if (map.getLayer('route-detail-highlight')) {
-      map.setPaintProperty('route-detail-highlight', 'line-opacity', 0.45);
-      map.setPaintProperty('route-detail-highlight', 'line-width', 16);
+      setPaint('route-detail-highlight', 'line-opacity', 0.45);
+      setPaint('route-detail-highlight', 'line-width', 16);
     }
   }
 }
@@ -5643,18 +5696,18 @@ function drawRoute(coords, ferrySegs, segs) {
   // The optional route-to-start remains a separate violet line. It sits under
   // the planned route so their meeting point reads as a clean handoff rather
   // than changing the planned route's safety colors.
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-connector-casing', type: 'line', source: 'route-connector',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-width': 10, 'line-opacity': 0.96 },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-connector', type: 'line', source: 'route-connector',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#7b2cbf', 'line-width': 6, 'line-opacity': 1,
              'line-dasharray': [2.2, 1.15] },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-shadow', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     // This is also an opaque-enough mask for background safety sources. State
@@ -5676,7 +5729,7 @@ function drawRoute(coords, ferrySegs, segs) {
   // Here the casing draws back over it, so the route looks the same as it does
   // anywhere else and the green shows only beyond the casing's edge -- which is
   // the whole of what a band should be.
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-designated-band', type: 'line', source: 'route-designated',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
@@ -5689,7 +5742,7 @@ function drawRoute(coords, ferrySegs, segs) {
         6, 7, 10, 12, 14, 20],
     },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-casing', type: 'line', source: 'route',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-width': 12.5, 'line-opacity': 0.99 },
@@ -5697,25 +5750,25 @@ function drawRoute(coords, ferrySegs, segs) {
   const routeVerdictPaint = (color) => ({
     'line-color': color, 'line-width': 6.5, 'line-opacity': 1,
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-pass', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: routeVerdictPaint(COLORS[1]),
     filter: ['==', ['get', 'style'], 'pass'],
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-bike', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: routeVerdictPaint(BIKE_NETWORK_COLOR),
     filter: ['==', ['get', 'style'], 'bike'],
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-bike-trail', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { ...routeVerdictPaint(BIKE_NETWORK_COLOR), 'line-width': 7.2 },
     filter: ['==', ['get', 'style'], 'trail'],
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-bike-trail-dots', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#687d00', 'line-width': 2.2, 'line-opacity': 0.96,
@@ -5728,14 +5781,14 @@ function drawRoute(coords, ferrySegs, segs) {
   // The breathing halo, under the white casing so it rings the line rather than
   // washing over it. This is the whole of the caution animation -- see
   // setHaloPulse for why the line itself does not move.
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-caution-glow', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': COLORS[3], 'line-width': HALO_REST.width,
              'line-opacity': HALO_REST.opacity, 'line-blur': HALO_REST.blur },
     filter: ['==', ['get', 'style'], 'caution'],
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-caution-casing', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     // Solid and still. The casing is what the halo is read against, so it must
@@ -5743,7 +5796,7 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: { 'line-color': '#ffffff', 'line-width': 10.5, 'line-opacity': 0.9 },
     filter: ['==', ['get', 'style'], 'caution'],
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-caution', type: 'line', source: 'route-render',
     // Round caps for a solid line. Butt caps were here for the travelling
     // ticks; the ticks now belong to the failure.
@@ -5751,20 +5804,20 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: routeVerdictPaint(COLORS[3]),
     filter: ['==', ['get', 'style'], 'caution'],
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-unknown', type: 'line', source: 'route-render',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: routeVerdictPaint(COLORS[0]),
     filter: ['==', ['get', 'style'], 'unknown'],
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-fail-casing', type: 'line', source: 'route-fail',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     // Solid and still: the casing is what the travelling ticks are read
     // against, so it must not move with them.
     paint: { 'line-color': '#ffffff', 'line-width': 12, 'line-opacity': 0.8 },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-fail', type: 'line', source: 'route-fail',
     // Butt caps, not round: round caps smear a short tick into a lozenge and
     // the pattern stops reading as rungs across the road.
@@ -5774,7 +5827,7 @@ function drawRoute(coords, ferrySegs, segs) {
   });
   ensureUnpavedSlatImage(map);
   ensureDismountMarkerImage(map);
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-unpaved-slats', type: 'symbol', source: 'route-unpaved',
     layout: {
       'symbol-placement': 'line', 'symbol-spacing': 10,
@@ -5787,40 +5840,40 @@ function drawRoute(coords, ferrySegs, segs) {
     },
     paint: { 'icon-opacity': 0.7 },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-dismount-halo', type: 'circle', source: 'route-dismount',
     paint: { 'circle-radius': 12, 'circle-color': '#fff7d6', 'circle-opacity': .96,
       'circle-stroke-color': '#8a5600', 'circle-stroke-width': 1.5 },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-dismount-marker', type: 'symbol', source: 'route-dismount',
     layout: { 'icon-image': 'route-dismount-marker-icon', 'icon-size': 1,
       'icon-allow-overlap': true, 'icon-ignore-placement': true },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-ferry', type: 'line', source: 'route-ferry',
     paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.9,
              'line-dasharray': [0.6, 1.8] },
   });
   setRoutePulses(renderData);
   // Ridden portion of the route darkens during navigation.
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-progress', type: 'line', source: 'route-progress',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#17262f', 'line-width': 7.6, 'line-opacity': 0.26 },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-highlight-halo', type: 'line', source: 'route-seg',
     layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
     paint: { 'line-color': '#fff4a3', 'line-width': 16, 'line-opacity': 0.78,
              'line-blur': 2 },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-highlight', type: 'line', source: 'route-seg',
     layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
     paint: { 'line-color': '#ffd400', 'line-width': 8, 'line-opacity': 1 },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-detail-highlight', type: 'line', source: 'route-detail-selection',
     layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
     paint: { 'line-color': '#ffd45c', 'line-width': 16, 'line-opacity': 0.45,
@@ -5829,7 +5882,7 @@ function drawRoute(coords, ferrySegs, segs) {
   // A short highlighted edge can be less than a pixel long at the current
   // zoom. One marker per contiguous highlighted stretch gives it an obvious
   // location without filling long stretches with repeated dots.
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-highlight-marker-halo', type: 'circle', source: 'route-highlight-marker',
     layout: { visibility: 'none' },
     paint: {
@@ -5837,7 +5890,7 @@ function drawRoute(coords, ferrySegs, segs) {
       'circle-color': '#fff4a3', 'circle-opacity': 0.92, 'circle-blur': 0.18,
     },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-detail-marker-halo', type: 'circle', source: 'route-detail-marker',
     layout: { visibility: 'none' },
     paint: {
@@ -5845,7 +5898,7 @@ function drawRoute(coords, ferrySegs, segs) {
       'circle-color': '#1f2933', 'circle-opacity': 0.86,
     },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-detail-marker', type: 'circle', source: 'route-detail-marker',
     layout: { visibility: 'none' },
     paint: {
@@ -5853,7 +5906,7 @@ function drawRoute(coords, ferrySegs, segs) {
       'circle-color': '#ffffff', 'circle-opacity': 1,
     },
   });
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-highlight-marker', type: 'circle', source: 'route-highlight-marker',
     layout: { visibility: 'none' },
     paint: {
@@ -5864,7 +5917,7 @@ function drawRoute(coords, ferrySegs, segs) {
   });
   // Invisible wide tap target over the route — topmost, so tapping the route
   // inspects the route segment rather than whatever layer is underneath.
-  map.addLayer({
+  forgetStyleValues(); map.addLayer({
     id: 'route-seg-hit', type: 'line', source: 'route-seg',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#000', 'line-opacity': 0,
@@ -5929,7 +5982,7 @@ function clearRouteHighlight() {
   for (const id of ['route-highlight-halo', 'route-highlight', 'route-detail-highlight-halo',
     'route-detail-highlight', 'route-highlight-marker-halo', 'route-highlight-marker',
     'route-detail-marker-halo', 'route-detail-marker']) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+    if (map.getLayer(id)) setLayout(id, 'visibility', 'none');
   }
   document.querySelectorAll('[data-highlight]').forEach((b) => {
     b.classList.remove('active');
@@ -5942,14 +5995,14 @@ function toggleRouteHighlight(key) {
   if (routeHighlightKey === key) { clearRouteHighlight(); return; }
   routeHighlightKey = key;
   for (const id of ['route-highlight-halo', 'route-highlight']) {
-    map.setFilter(id, ROUTE_HIGHLIGHT_FILTERS[key]);
-    map.setLayoutProperty(id, 'visibility', 'visible');
+    setLayerFilter(id, ROUTE_HIGHLIGHT_FILTERS[key]);
+    setLayout(id, 'visibility', 'visible');
   }
   const markerFeatures = routeHighlightMarkers(key);
   const markerSource = map.getSource('route-highlight-marker');
   if (markerSource) markerSource.setData({ type: 'FeatureCollection', features: markerFeatures });
   for (const id of ['route-highlight-marker-halo', 'route-highlight-marker']) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', markerFeatures.length ? 'visible' : 'none');
+    if (map.getLayer(id)) setLayout(id, 'visibility', markerFeatures.length ? 'visible' : 'none');
   }
   document.querySelectorAll('[data-highlight]').forEach((b) => {
     const active = b.dataset.highlight === key;
@@ -5991,7 +6044,7 @@ function showRouteStepOnMap(startIndex, endIndex, coordStart = null, coordEnd = 
     type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: selected },
   });
   for (const id of ['route-detail-highlight-halo', 'route-detail-highlight']) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', selected.length >= 2 ? 'visible' : 'none');
+    if (map.getLayer(id)) setLayout(id, 'visibility', selected.length >= 2 ? 'visible' : 'none');
   }
   const markerPoint = selected[Math.floor(selected.length / 2)];
   const markerSource = map.getSource('route-detail-marker');
@@ -6000,7 +6053,7 @@ function showRouteStepOnMap(startIndex, endIndex, coordStart = null, coordEnd = 
     features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: markerPoint } }],
   });
   for (const id of ['route-detail-marker-halo', 'route-detail-marker']) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', markerPoint ? 'visible' : 'none');
+    if (map.getLayer(id)) setLayout(id, 'visibility', markerPoint ? 'visible' : 'none');
   }
   setDetailSelectionPulse(selected.length >= 2);
 

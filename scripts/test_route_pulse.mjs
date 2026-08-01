@@ -53,6 +53,14 @@ const ctx = {
   setInterval: (fn, ms) => { ticks.push({ fn, ms }); return ticks.length; },
   clearInterval: (h) => { if (h) ticks[h - 1] = null; },
 };
+// app.js writes style through these rather than touching the map directly, so
+// that a value identical to the one already set can be skipped. The pulses go
+// through them too -- every frame genuinely differs, so nothing is skipped, but
+// routing them around the memo would leave it remembering a value the map no
+// longer has, and the next real write would be dropped as a no-op.
+ctx.setPaint = (id, prop, value) => ctx.map.setPaintProperty(id, prop, value);
+ctx.setLayout = (id, prop, value) => { /* the pulses set no layout properties */ };
+ctx.setLayerFilter = () => { /* nor filters */ };
 vm.createContext(ctx);
 vm.runInContext([
   constOf('ROUTE_PULSE_STEP'),
