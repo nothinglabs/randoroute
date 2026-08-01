@@ -14,7 +14,7 @@
 // at the top level.
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
-import { readFile, readFileSync } from 'node:fs';
+import { createReadStream, readFile, readFileSync } from 'node:fs';
 import { readFile as readFileAsync, stat } from 'node:fs/promises';
 import { existsSync, readFileSync as readSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
@@ -147,9 +147,23 @@ const TYPES = {
 /**
  * Serves the repo with byte-range support, which PMTiles requires -- without
  * 206 responses the basemap silently renders as open ocean.
+ *
+ * Ranges are STREAMED off disk. Reading the whole file and slicing it, which
+ * this used to do, means a 45 MB read per tile: it made the archives
+ * unservable (Node refuses past its string limit under load) and it made every
+ * measurement of tile latency a measurement of the test server instead.
+ *
+ * `offline` makes every request fail the way a dropped connection does, so a
+ * test can assert what the app still does without a network.
  */
-export async function serveRepo() {
+export async function serveRepo({ offline = false } = {}) {
+  const state = { offline, requests: [] };
   const server = createServer(async (req, res) => {
+    state.requests.push({ url: req.url, range: req.headers.range || null, at: Date.now() });
+    // Destroying the socket is what a dropped connection looks like. Destroying
+    // only the request leaves the browser waiting for a response that never
+    // comes, which hangs a test instead of failing it.
+    if (state.offline) { req.socket?.destroy(); return; }
     try {
       let path = decodeURIComponent(req.url.split('?')[0]);
       if (path === '/') path = '/index.html';
@@ -159,23 +173,35 @@ export async function serveRepo() {
       const range = req.headers.range && /^bytes=(\d+)-(\d*)$/.exec(req.headers.range);
       if (range) {
         const from = +range[1];
-        const to = range[2] ? +range[2] : info.size - 1;
-        const slice = (await readFileAsync(full)).subarray(from, to + 1);
+        const to = Math.min(range[2] ? +range[2] : info.size - 1, info.size - 1);
+        if (from > to) {
+          res.writeHead(416, { 'content-range': `bytes */${info.size}` });
+          return res.end();
+        }
         res.writeHead(206, {
           'content-type': type, 'accept-ranges': 'bytes',
           'content-range': `bytes ${from}-${to}/${info.size}`,
-          'content-length': slice.length,
+          'content-length': to - from + 1,
         });
-        return res.end(slice);
+        return createReadStream(full, { start: from, end: to }).pipe(res);
       }
-      res.writeHead(200, { 'content-type': type, 'accept-ranges': 'bytes' });
-      res.end(await readFileAsync(full));
+      res.writeHead(200, {
+        'content-type': type, 'accept-ranges': 'bytes', 'content-length': info.size,
+      });
+      createReadStream(full).pipe(res);
     } catch { res.writeHead(404); res.end('not found'); }
   });
   await new Promise((r) => server.listen(0, r));
   const port = server.address().port;
-  return { server, port, url: `http://localhost:${port}/index.html`,
-           close: () => server.close() };
+  return {
+    server, port, url: `http://localhost:${port}/index.html`,
+    // Pull the plug. Everything already cached keeps working; anything that
+    // reaches for the network gets what a phone in a valley gets.
+    goOffline() { state.offline = true; },
+    goOnline() { state.offline = false; },
+    get requests() { return state.requests; },
+    close: () => server.close(),
+  };
 }
 
 /* ------------------------------------------------------------- browser */

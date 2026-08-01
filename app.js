@@ -15,18 +15,14 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-01.489';
-// Increment whenever router-worker.js changes the binary graph contract. It
-// keeps a just-updated worker from receiving a graph cached by an older
-// service worker during the first post-update load.
-const GRAPH_FORMAT_VERSION = 'bgr10-1';
-// Bump whenever data/graph2.bin.gz is REBUILT, even when its format is
-// unchanged. The service worker serves /data/ cache-first and ignores the query
-// string, so without this a rider keeps the graph they first downloaded forever
-// -- and a rebuilt graph silently never reaches them.
-// Defined once in build-version.js, which sw.js importScripts() as well -- the
-// two used to spell it out separately with comments pointing at each other.
+const APP_VERSION = '2026-08-01.490';
+// All three defined once in build-version.js, which sw.js importScripts() as
+// well. The version numbers used to be spelled out separately here with
+// comments pointing at the other file, and the URL still was -- in a spelling
+// the worker's precache never matched.
+const GRAPH_FORMAT_VERSION = self.GRAPH_FORMAT_VERSION;
 const GRAPH_DATA_VERSION = self.GRAPH_DATA_VERSION;
+const GRAPH_URL = self.GRAPH_URL;
 const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
@@ -2489,8 +2485,7 @@ async function ensureRouter() {
   try {
     showRouterProgress('Downloading Washington roads, trails, ferries, and elevation data…');
     await purgeStaleGraphCache();
-    const res = await fetch(
-      `data/graph2.bin.gz?format=${GRAPH_FORMAT_VERSION}&gv=${GRAPH_DATA_VERSION}`);
+    const res = await fetch(GRAPH_URL);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     let buf = await readRoutingGraphResponse(res);
     showRouterProgress('Checking and unpacking the routing map…');

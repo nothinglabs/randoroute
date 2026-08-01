@@ -12,7 +12,7 @@
  */
 importScripts('./build-version.js');
 
-const VERSION = 'v464'; // bump when app shell changes
+const VERSION = 'v465'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -46,7 +46,8 @@ const SHELL = [
   './icons/apple-touch-icon.png',
 ];
 
-// From build-version.js, which index.html loads too. Bump it there.
+// GRAPH_DATA_VERSION and GRAPH_URL come from build-version.js, which
+// index.html loads too. Bump them there.
 
 const DATA = [
   './data/bikeroutes.geojson.gz',
@@ -56,7 +57,7 @@ const DATA = [
   './data/route_closures.geojson.gz',
   './data/roads.pmtiles',
   './data/basemap.pmtiles',
-  `./data/graph2.bin.gz?gv=${GRAPH_DATA_VERSION}`,
+  `./${GRAPH_URL}`,
   './data/places.json',
 ];
 // Small, release-generated overlays can change without changing the 100+ MB
