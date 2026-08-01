@@ -107,9 +107,13 @@ for (const [title, blurb, items] of groups) {
 const modeIds = [...modes].map(([id]) => id);
 assert.deepStrictEqual(modeIds, ['Direct', 'Balanced', 'LowStress'],
   'the editor mode ids must be the weight-key suffixes the worker assembles');
-for (const id of modeIds) {
-  assert.ok(workerSrc.includes(`'${id}'`),
-    `router-worker.js never produces the suffix ${id}; modeSuffix() and the editor disagree`);
-}
+// Ask modeSuffix() rather than searching the worker's text for the strings: a
+// grep passes on a suffix that appears in a comment and fails on one the
+// function builds, which is backwards on both counts.
+const si = workerSrc.indexOf('function modeSuffix');
+vm.runInContext(workerSrc.slice(si, workerSrc.indexOf('\n}', si) + 2)
+  + '\nglobalThis.suffixes = ["direct", "balanced", "low"].map(modeSuffix);', wbox);
+assert.deepStrictEqual([...wbox.suffixes].sort(), [...modeIds].sort(),
+  'modeSuffix() and the weights editor disagree about the mode suffixes');
 
 console.log(`ok - ${editor.length} weights, all reachable, app and worker agree`);

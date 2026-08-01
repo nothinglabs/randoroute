@@ -353,13 +353,35 @@ function roadBlockEdgeSet(points) {
   return blocked.size ? blocked : null;
 }
 
+function rulesSignature(rules) {
+  let out = '';
+  for (const key of Object.keys(rules || {}).sort()) {
+    if (key === 'requireSafe') continue;
+    out += `${key}=${rules[key]};`;
+  }
+  return out;
+}
+// Road blocks change which edges the bound may cross, so they belong in its key
+// too. Set once per request from the raw marker positions.
+let activeBlockSignature = '';
+
 function withRoadBlocks(points, rules, work) {
   const prior = activeRoadBlockEdges;
+  const priorSignature = activeBlockSignature;
   activeRoadBlockEdges = roadBlockEdgeSet(points);
+  // The safety verdicts and the A* goal potentials are built against the blocks
+  // and rules in force. Rather than throw them away when the request ends,
+  // record what they were built for: a rider dragging a pin sends the same
+  // rules and the same blocks, and re-earning all of it every time was most of
+  // what made moving one end of a route cost as much as drawing it.
+  activeBlockSignature = JSON.stringify(points || []);
+  useVerdictCache(rules);
+  useNoShoulderMax(rules);
   try {
     return work();
   } finally {
     activeRoadBlockEdges = prior;
+    activeBlockSignature = priorSignature;
   }
 }
 
@@ -426,6 +448,71 @@ function edgeFacts(i, forward) {
 
 function edgeLevel(i, rules, forward) {
   return SafetyModel.level(edgeFacts(i, forward), rules);
+}
+
+// The same answers, remembered. Both of these rebuild a facts object and walk
+// the safety ladder, and the inner loop asks for them on every relaxation --
+// three times per edge, across twenty searches, plus the backward passes. They
+// depend only on the edge, the direction and the rider's rules, and the rules
+// do not move for the life of a request.
+//
+// A discovery lens passes its own stricter rules object; those calls miss and
+// fall through, which is correct -- they are a small minority and they must not
+// read an answer scored under different rules.
+//
+// One byte per directed edge: three bits of verdict, one saying the byte is
+// filled, one for the sidewalk fallback, and a three-bit generation so a new
+// request costs a counter bump rather than clearing 1.7M entries. Every eighth
+// request pays the clear.
+const VERDICT_KNOWN = 8;
+const VERDICT_SIDEWALK_FALLBACK = 16;
+let verdictCache = null, verdictGeneration = 1, verdictRules = null, verdictKey = null;
+function useVerdictCache(rules) {
+  if (!verdictCache) verdictCache = new Uint8Array(2 * E);
+  const key = rulesSignature(rules);
+  // Dragging a route pin sends the same rules in a new object. Keeping the
+  // verdicts across that turns a re-route into forward searching alone.
+  if (key !== verdictKey) {
+    verdictGeneration = (verdictGeneration + 1) & 7;
+    if (!verdictGeneration) { verdictCache.fill(0); verdictGeneration = 1; }
+    verdictKey = key;
+  }
+  verdictRules = rules;
+}
+function edgeVerdict(i, rules, forward) {
+  const slot = 2 * i + (forward ? 0 : 1);
+  const packed = verdictCache[slot];
+  if ((packed >>> 5) === verdictGeneration && (packed & VERDICT_KNOWN)) return packed;
+  // Both answers come off one facts object. Building it is the expensive part
+  // -- it is a fresh sealed record of fifteen fields -- and asking the two
+  // questions separately built it twice.
+  const facts = edgeFacts(i, forward);
+  const value = VERDICT_KNOWN | SafetyModel.level(facts, rules)
+    | (SafetyModel.sidewalkFallbackApplies(facts,
+      SafetyModel.effectiveShoulder(facts, rules), rules) ? VERDICT_SIDEWALK_FALLBACK : 0);
+  verdictCache[slot] = (verdictGeneration << 5) | value;
+  return value;
+}
+function edgeLevelFor(i, rules, forward) {
+  if (rules !== verdictRules) return edgeLevel(i, rules, forward);
+  return edgeVerdict(i, rules, forward) & 7;
+}
+function sidewalkFallbackFor(i, rules, forward) {
+  if (rules !== verdictRules) return sidewalkFallbackApplies(i, rules, forward);
+  return (edgeVerdict(i, rules, forward) & VERDICT_SIDEWALK_FALLBACK) !== 0;
+}
+// noShoulderMaxSpeed() reads only whether the edge is inside an urban area, so
+// for one rider's rules it has exactly two answers. It was being recomputed,
+// with a fresh object argument, on every relaxation.
+let noShoulderMaxRules = null, noShoulderMaxPair = [0, 0];
+function useNoShoulderMax(rules) {
+  noShoulderMaxRules = rules;
+  noShoulderMaxPair = [SafetyModel.noShoulderMaxSpeed({ urban: false }, rules),
+    SafetyModel.noShoulderMaxSpeed({ urban: true }, rules)];
+}
+function edgeNoShoulderMaxFor(i, rules) {
+  if (rules !== noShoulderMaxRules) return edgeNoShoulderMax(i, rules);
+  return noShoulderMaxPair[(eOfficial[i] & EDGE_URBAN) ? 1 : 0];
 }
 
 /* ------------------------------------------------ time model */
@@ -540,8 +627,21 @@ function modeSuffix(mode) {
   return mode === 'direct' ? 'Direct' : mode === 'low' ? 'LowStress' : 'Balanced';
 }
 let activeWeights = { ...DEFAULT_WEIGHTS };
+let weightsSignature = '';
 function useWeights(source) {
+  const previous = activeWeights;
   activeWeights = { ...DEFAULT_WEIGHTS };
+  applyWeights(source);
+  // Everything derived from the weights -- the per-edge cost floors, the goal
+  // potentials, the per-mode weight records -- is keyed on this epoch. Bumping
+  // it unconditionally discarded all of that on every request, including the
+  // many requests that send exactly the weights the last one did.
+  const signature = JSON.stringify(activeWeights);
+  if (signature === weightsSignature) { activeWeights = previous; return; }
+  weightsSignature = signature;
+  weightsEpoch++;
+}
+function applyWeights(source) {
   if (!source || typeof source !== 'object') return;
   const zeroOkay = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
     'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -580,10 +680,38 @@ function isDismountEdge(i) {
 // 3x surcharge can make it lose to a known narrow-shoulder rule failure.
 // Average terminal wait folded into a ferry leg, applied once when boarding
 // from land (mid-water route junctions don't re-charge it).
-function hazardMult(mode, severity) {
+
+// Every mode-scaled weight this mode uses, resolved once. These were reached by
+// building a key string -- 'busyLight' + modeSuffix(mode) -- and looking it up
+// on a plain object, on every edge relaxation, several times over. Same numbers;
+// the concatenation was the cost.
+const modeWeightBy = { direct: null, balanced: null, low: null };
+let modeWeightEpoch = -1;
+function modeWeights(mode) {
+  if (modeWeightEpoch !== weightsEpoch) {
+    modeWeightBy.direct = modeWeightBy.balanced = modeWeightBy.low = null;
+    modeWeightEpoch = weightsEpoch;
+  }
+  const cached = modeWeightBy[mode];
+  if (cached) return cached;
+  const s = modeSuffix(mode);
+  const record = {
+    curve: [1, activeWeights['curve' + s + '1'] || 1, activeWeights['curve' + s + '2'] || 1,
+      activeWeights['curve' + s + '3'] || 1],
+    busyLight: activeWeights['busyLight' + s],
+    busyMedium: activeWeights['busyMedium' + s],
+    busyHeavy: activeWeights['busyHeavy' + s],
+    wideRoad: activeWeights['wideRoad' + s],
+    stressedRoad: activeWeights['stressedRoad' + s],
+    limitedAccess: activeWeights['limitedAccess' + s],
+  };
+  modeWeightBy[mode] = record;
+  return record;
+}
+
+function hazardMult(weights, severity) {
   if (!severity) return 1;
-  const prefix = 'curve' + modeSuffix(mode);
-  return activeWeights[prefix + Math.min(3, severity)] || 1;
+  return weights.curve[Math.min(3, severity)];
 }
 
 // How much traffic is on this road? Three sources answer that question, in
@@ -631,17 +759,16 @@ function measuredTrafficTier(i) {
     : fc === 5 ? TIER_TERTIARY : TIER_NONE;
 }
 
-function trafficTierMult(tier, suffix) {
-  if (tier === TIER_TERTIARY) return activeWeights['busyLight' + suffix];
-  if (tier === TIER_SECONDARY) return activeWeights['busyMedium' + suffix];
-  if (tier === TIER_PRIMARY) return activeWeights['busyHeavy' + suffix];
+function trafficTierMult(tier, weights) {
+  if (tier === TIER_TERTIARY) return weights.busyLight;
+  if (tier === TIER_SECONDARY) return weights.busyMedium;
+  if (tier === TIER_PRIMARY) return weights.busyHeavy;
   return 1;
 }
 
-function majorRoadMult(i, mode, forward) {
+function majorRoadMult(i, weights, forward) {
   if (eFacility[i] >= 1 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
-  const suffix = modeSuffix(mode);
-  const osm = trafficTierMult(osmTrafficTier(i), suffix);
+  const osm = trafficTierMult(osmTrafficTier(i), weights);
   // `useMeasuredTraffic` blends from the OSM answer toward the measured one. At 0
   // this function is byte-for-byte the old behaviour, which is the point: the
   // measurements can be switched off from the desktop weight editor and ridden
@@ -650,7 +777,7 @@ function majorRoadMult(i, mode, forward) {
   if (!blend) return osm;
   const tier = measuredTrafficTier(i);
   if (tier == null) return osm;
-  return osm + blend * (trafficTierMult(tier, suffix) - osm);
+  return osm + blend * (trafficTierMult(tier, weights) - osm);
 }
 
 // Lane count and WSDOT's own stress rating, for the roads where speed has
@@ -668,7 +795,7 @@ function majorRoadMult(i, mode, forward) {
 // would risk severing corridors. Any recorded facility exempts the edge.
 const LANES_COUNT_MASK = 63;
 const LANES_CENTER_TURN = 64;
-function trafficStressMult(i, mode, forward) {
+function trafficStressMult(i, weights, forward) {
   if (!eLanes && !eLts) return 1;
   // Only physical separation earns a full exemption. Paint does not shrink the
   // road: 15th Ave NE carries a bike lane along much of its five-lane length,
@@ -677,7 +804,6 @@ function trafficStressMult(i, mode, forward) {
   // halves the cost rather than clearing it.
   if (eFacility[i] >= 4 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
   const paintRelief = eFacility[i] >= 2 ? 0.5 : 1;
-  const suffix = modeSuffix(mode);
   const packed = eLanes ? eLanes[i] : 0;
   const lanes = packed & LANES_COUNT_MASK;
   // A centre turn lane is the signature of a wide suburban arterial, so three
@@ -688,9 +814,9 @@ function trafficStressMult(i, mode, forward) {
   // two signals describe the same road, so take the stronger rather than
   // multiplying them together.
   const stress = lts >= 4 ? 1 : lts === 3 ? 0.5 : 0;
-  const wideMult = wide ? 1 + (activeWeights['wideRoad' + suffix] - 1) * paintRelief : 1;
+  const wideMult = wide ? 1 + (weights.wideRoad - 1) * paintRelief : 1;
   const stressMult = stress
-    ? 1 + (activeWeights['stressedRoad' + suffix] - 1) * stress * paintRelief : 1;
+    ? 1 + (weights.stressedRoad - 1) * stress * paintRelief : 1;
   return Math.max(wideMult, stressMult);
 }
 
@@ -932,6 +1058,284 @@ function modeMult(mode, lvl) {
   /* low */ return lvl === 4 ? activeWeights.failRoadLowStress : lvl === 1 ? activeWeights.comfyRoadLowStress : 1.0;
 }
 
+/* ------------------------------------------------------------ goal potential
+ * A* needs a lower bound on the cost still to come. A straight line divided by
+ * the fastest cost-speed any edge could reach is a legal bound and a nearly
+ * worthless one: that speed is ~171 m/s against a real riding speed near 5, so
+ * the bound is ~3% of the truth and every profile search degenerates into a
+ * Dijkstra across the state. A portfolio runs about twenty of them.
+ *
+ * Instead: a backward Dijkstra from the leg's goal over a per-edge cost LOWER
+ * BOUND -- the real cost function with the smallest number substituted wherever
+ * the search's answer cannot be known from the edge alone. What it settles is
+ * an exact lower bound on the remaining cost from that node, typically within
+ * 10-20% of the truth rather than a factor of thirty.
+ *
+ * One pass per riding mode, since a bound loose enough for Direct is worth
+ * little to a Low-stress search whose roads cost several times more, and one
+ * more for the discovery lens when a search uses one. The twelve profiles in a
+ * portfolio share a leg's goal four to a mode, so each pass is paid once and
+ * spent several times over.
+ *
+ * This cannot change a route. The potential is used only as h(n), it is a lower
+ * bound by construction, and it is consistent (a shortest-path distance under
+ * costs that never exceed the real ones), so A* still returns the cheapest path
+ * under each profile's own cost function. scripts/test_route_potential.mjs
+ * checks the bound against the real cost on every edge of the real graph; that
+ * inequality is the whole of the argument, and it has been wrong once already.
+ */
+
+// A cached potential is quantised to sixteen bits. It bounds a number of
+// seconds in the thousands, so a step of a few hundredths of a second costs it
+// nothing, while holding several of these as full float arrays did cost
+// something real on a phone. Rounding is downward, the safe direction for a
+// lower bound.
+const POTENTIAL_UNSETTLED = 0xffff;
+// The working arrays, allocated once and reused. A potential is built, read off
+// and quantised; doing that with a fresh megabyte allocation several times per
+// request is pure garbage.
+//
+// Double precision, deliberately. Accumulating the pass in floats cost a
+// relative error that grows with the number of edges summed, and on a 400 km
+// route -- a hundred thousand edges deep -- it drifted far enough above the
+// true distance to overshoot, which showed up as routes costing a few seconds
+// more than the cheapest available. Doubles make that error ~1e-11, and the
+// quantisation below rounds DOWN, so the stored bound is a bound.
+let potentialWork = null, potentialSettled = null;
+// Belt and braces on the read: `stored * scale` is one more rounding step, and
+// a thousandth is orders of magnitude more than it can be off by while still
+// leaving the heuristic ~99.9% of its strength.
+const POTENTIAL_SAFETY = 0.999;
+// How far past the start node the backward pass keeps going. The forward search
+// looks at nodes whose remaining true cost runs up to the whole trip's cost, a
+// little beyond where the start settles; carrying on briefly gives those nodes
+// a real bound instead of the flat frontier value.
+const POTENTIAL_MARGIN = 1.15;
+
+// Every edge touching a node, both ways. The routing CSR is directed -- a
+// one-way edge appears only at the end it leaves -- so walking backward from
+// the goal over that table would miss the ways INTO a node and could overstate
+// what remains, which is exactly the error A* cannot tolerate.
+let incStart = null, incEdge = null;
+function buildIncidence() {
+  if (incStart) return;
+  const start = new Uint32Array(N + 1);
+  for (let i = 0; i < E; i++) { start[eA[i]]++; start[eB[i]]++; }
+  let sum = 0;
+  for (let n = 0; n < N; n++) { const degree = start[n]; start[n] = sum; sum += degree; }
+  start[N] = sum;
+  const cursor = start.slice(0, N);
+  const edges = new Uint32Array(sum);
+  for (let i = 0; i < E; i++) {
+    edges[cursor[eA[i]]++] = i;
+    edges[cursor[eB[i]]++] = i;
+  }
+  incStart = start; incEdge = edges;
+}
+
+// The cheapest THIS MODE could price an edge, in either direction, whatever the
+// rider's bike-route and residential preferences.
+//
+// Tightness is the whole game. A bound four times under the truth prunes almost
+// nothing, so this is the real cost function with the smallest possible number
+// substituted wherever the search's answer is not knowable per edge, and one
+// bound per mode rather than one shared by all three -- a bound loose enough for
+// Direct is worth little to a Low-stress search, whose roads cost several times
+// more. Only turn friction, the dismount entry charge, the ferry boarding wait,
+// the alternative-corridor penalty and the exempted-access surcharge are dropped
+// outright: all are >= 0 and none belongs to a single edge in isolation.
+//
+// Priced one directed edge at a time, on demand. Pricing all 858k edges three
+// times over cost more than the search it was meant to save, and the backward
+// pass evaluates each direction at most once anyway -- it meets an edge from
+// each of its two ends, and each meeting is one direction of travel.
+let floorKey = '', floorSetup = null;
+let weightsEpoch = 0;
+// Everything the bound reads, as one string.
+//
+// `requireSafe` is deliberately excluded. It only removes edges from the forward
+// search, which can raise a route's real cost and never lower it, so a bound
+// built without it still holds -- and leaving it out lets the strict "fully
+// matching" probe reuse what the ordinary profiles already built instead of
+// paying for three more backward passes to reach the same answer.
+//
+// Everything keyed on the rider's rules keys on this, so none of it depends on
+// the order the callers happen to run in. Handing a bound built under one rule
+// set to a search using another is exactly the mistake that would quietly cost
+// optimality without failing any test.
+function boundSignature(rules) {
+  return `${weightsEpoch}|${activeBlockSignature}|${rulesSignature(rules)}`;
+}
+function useEdgeCostFloors(rules, searchRules, mode) {
+  const key = `${mode}|${boundSignature(rules)}|${boundSignature(searchRules)}`;
+  if (floorKey === key) return;
+  // modeMult comes from the edge's own verdict, scored under the rules the
+  // search will actually price against. Flooring it at the comfortable-road
+  // bonus instead -- the obvious shortcut, since the verdict is the expensive
+  // part -- left the Low-stress bound five times under the truth: it priced a
+  // failing road at 0.9 where the search charges 30.
+  //
+  // Scoring it under the RIDER's rules and assuming a discovery lens could only
+  // push a road further DOWN the ladder was also wrong, and quietly cost
+  // optimality on exactly the searches that use a lens. The ladder is not
+  // monotone in rule strictness: a 35 mph road with no shoulder fails against a
+  // 35 mph limit but only cautions against 30. So a lens gets its own floors,
+  // and its own potential.
+  const limitedFloor = Math.min(1, modeWeights(mode).limitedAccess);
+  const freewayFloor = Math.min(1, activeWeights.freeway);
+  const mtbFloor = Math.min(1, activeWeights.mtbTrail);
+  const designatedFloor = Math.min(1, activeWeights.strongDesignated, activeWeights.designated);
+  const residentialFloor = Math.min(1, activeWeights.residential);
+  const facility = [1, activeWeights.facilityShared, activeWeights.facilityLane,
+    activeWeights.facilityBuffered, activeWeights.facilitySeparated, activeWeights.facilityPath]
+    .map((weight) => Math.min(1, weight));
+  // speedStress only discounts a road with no riding space signed BELOW the
+  // rider's comfort speed, in proportion to how far below. Reading that per
+  // edge rather than assuming the 0.25 floor everywhere is most of the reason
+  // this bound is worth building at all.
+  const belowRate = mode === 'direct' ? activeWeights.speedBelowDirect
+    : mode === 'low' ? activeWeights.speedBelowLowStress : activeWeights.speedBelowBalanced;
+  const noShoulderMax = [SafetyModel.noShoulderMaxSpeed({ urban: false }, searchRules),
+    SafetyModel.noShoulderMaxSpeed({ urban: true }, searchRules)];
+  const climbRate = activeWeights[mode === 'direct' ? 'climbDirectSecPerM'
+    : mode === 'low' ? 'climbLowStressSecPerM' : 'climbBalancedSecPerM'];
+
+  floorKey = key;
+  floorSetup = { rules, searchRules, mode, weights: modeWeights(mode), limitedFloor,
+    freewayFloor, mtbFloor, designatedFloor, residentialFloor, facility, belowRate,
+    noShoulderMax, climbRate };
+}
+
+function edgeCostFloor(i, forward) {
+  const { rules, searchRules, mode, weights, limitedFloor, freewayFloor, mtbFloor,
+    designatedFloor, residentialFloor, facility, belowRate, noShoulderMax, climbRate } = floorSetup;
+  const fl = eFlags[i];
+  // The verdict the SEARCH prices against, and the verdict the RIDER's own
+  // rules give. They are the same for every ordinary profile, and differ only
+  // under a discovery lens -- which reprices a road without restating it.
+  const searchLevel = edgeLevelFor(i, searchRules, forward);
+  const level = searchRules === rules ? searchLevel : edgeLevelFor(i, rules, forward);
+  let m = modeMult(mode, searchLevel);
+  if (!(m < Infinity)) return Infinity;
+  if (fl & 4) m *= freewayFloor;
+  if (eOfficial[i] & EDGE_MTB) m *= mtbFloor;
+  if (!(fl & (8 | 32 | 4)) && isResidential(i)) m *= residentialFloor;
+  if (!(fl & (32 | 4)) && !isDismountEdge(i) && level < 4) {
+    // A facility bonus OR a designation bonus, never both, and never on a
+    // ferry, freeway or dismount link. The rider may have set neither
+    // preference, so take whichever of the two prices the edge lower.
+    m *= eFacility[i] ? (facility[eFacility[i]] ?? 1) : ((fl & 64) ? designatedFloor : 1);
+  }
+  if (!(fl & (8 | 32))) {
+    const below = noShoulderMax[(eOfficial[i] & EDGE_URBAN) ? 1 : 0] - edgeSpeed(i, forward);
+    if (below > 0 && !(edgeShoulder(i, forward) > 0)) {
+      m *= Math.max(SPEED_STRESS_FLOOR, 1 - belowRate * below);
+    }
+  }
+  // Everything the search charges ON TOP of the base time, read from this edge
+  // rather than floored at 1. These are what make a Low-stress bound
+  // meaningfully stronger than a Direct one.
+  m *= hazardMult(weights, edgeHazard(i, forward) || 0);
+  m *= majorRoadMult(i, weights, forward);
+  m *= trafficStressMult(i, weights, forward);
+  m *= sidewalkExposureMult(i, mode, forward);
+  if (edgeLimited(i, forward)) m *= limitedFloor;
+  let climb = 0;
+  if (!(fl & 32)) {
+    const asc = forward ? eAsc[i] : eDes[i];
+    const des = forward ? eDes[i] : eAsc[i];
+    const netAsc = Math.max(0, asc - des);
+    const steepness = 1 + Math.max(0, netAsc / Math.max(1, eLen[i]) - 0.04) * 8;
+    climb = (netAsc * steepness + Math.max(0, asc - netAsc) * 0.5) * climbRate;
+  }
+  return (edgeTimeS(i, forward) + climb) * m
+    + steepUphillAvoidanceS(i, forward, mode) + surfacePreferenceS(i, rules);
+}
+
+// Keyed by goal node, mode and the bound signature, so a potential is only ever
+// handed to a search it was actually built for -- and survives into the next
+// request when nothing it depends on has moved.
+//
+// Three modes times a leg's goal. A ferry trip reaches seven: the adaptive
+// corridor probe re-searches each land section between crossings, and those
+// have goals of their own.
+const POTENTIAL_CACHE_MAX = 8;
+const potentialCache = new Map();
+
+function goalPotential(goalNode, startNode, rules, searchRules, mode) {
+  const cacheKey = `${goalNode}|${mode}|${boundSignature(rules)}|${boundSignature(searchRules)}`;
+  const cached = potentialCache.get(cacheKey);
+  if (cached) {
+    // Move to the back: the ferry probes visit a handful of one-shot goals, and
+    // evicting by insertion order let them push out the goal the other twenty
+    // searches keep asking for.
+    potentialCache.delete(cacheKey);
+    potentialCache.set(cacheKey, cached);
+    return cached;
+  }
+  buildIncidence();
+  useEdgeCostFloors(rules, searchRules, mode);
+  if (!potentialWork) { potentialWork = new Float64Array(N); potentialSettled = new Uint8Array(N); }
+  const dist = potentialWork, settled = potentialSettled;
+  dist.fill(Infinity); settled.fill(0);
+  const heap = makeHeap(4096);
+  dist[goalNode] = 0;
+  heap.push(0, goalNode);
+  // Legality the whole request agrees on. Anything profile-specific is left
+  // permissive: allowing an edge the forward search refuses only lowers the
+  // bound, which stays admissible.
+  const noMtb = !rules?.allowMtbTrails;
+  const noFreeway = !rules?.allowFreeways;
+  const blocked = activeRoadBlockEdges;
+  let frontier = 0, limit = Infinity;
+  while (heap.size) {
+    frontier = heap.topKey;
+    if (frontier > limit) break;
+    const u = heap.pop();
+    if (settled[u]) continue;
+    settled[u] = 1;
+    if (u === startNode) limit = frontier * POTENTIAL_MARGIN;
+    const du = dist[u];
+    for (let k = incStart[u]; k < incStart[u + 1]; k++) {
+      const ei = incEdge[k];
+      const fl = eFlags[ei];
+      if (blocked?.has(ei)) continue;
+      if (noFreeway && (fl & 4)) continue;
+      if (noMtb && (eOfficial[ei] & EDGE_MTB)) continue;
+      // This walks the arc BACKWARD: v is where a route would be coming from,
+      // so the traversal under test is v -> u and `forward` is read off v.
+      const fromA = eA[ei] !== u;
+      const v = fromA ? eA[ei] : eB[ei];
+      if (settled[v] || v === u) continue;
+      // One-way edges may only be entered from the end they leave.
+      if ((fl & 16) && !fromA) continue;
+      if (edgeShoulder(ei, fromA) === PROHIBITED_SHOULDER) continue;
+      const nd = du + edgeCostFloor(ei, fromA);
+      // An excluded edge prices at Infinity and never wins. Push the value as
+      // STORED, so a node's heap key and its recorded distance cannot disagree
+      // by a rounding step.
+      if (nd < dist[v]) { dist[v] = nd; heap.push(dist[v], v); }
+    }
+  }
+  // Only settled nodes hold a true distance; a tentative value is an upper
+  // bound on the distance from the goal and would break admissibility.
+  // Distances settle in increasing order, so everything left unsettled is at
+  // least as far from the goal as the point the pass stopped at.
+  const scale = frontier > 0 ? frontier / (POTENTIAL_UNSETTLED - 1) : 1;
+  const stored = new Uint16Array(N);
+  for (let n = 0; n < N; n++) {
+    stored[n] = settled[n]
+      ? Math.min(POTENTIAL_UNSETTLED - 1, Math.floor(dist[n] / scale))
+      : POTENTIAL_UNSETTLED;
+  }
+  const potential = { dist: stored, scale, beyond: frontier * POTENTIAL_SAFETY };
+  if (potentialCache.size >= POTENTIAL_CACHE_MAX) {
+    potentialCache.delete(potentialCache.keys().next().value);
+  }
+  potentialCache.set(cacheKey, potential);
+  return potential;
+}
+
 function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   startSnap, endSnap, diversityEdges = null, diversityFactor = 1, searchRules = rules,
   blockedCrossingEdges = null, crossingRetry = 0) {
@@ -988,8 +1392,19 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   }
   const generation = searchGeneration;
   const heap = makeHeap(4096);
+  const modeW = modeWeights(mode);
   const vHeur = heuristicSpeed(mode, prefResidential);
-  const h = (n) => havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / vHeur;
+  // Two admissible bounds; take the stronger. The potential is far and away the
+  // better one wherever it reaches, and the straight line still covers what the
+  // backward pass stopped short of.
+  const potential = goalPotential(t.node, s.node, rules, searchRules, mode);
+  const potDist = potential.dist, potBeyond = potential.beyond;
+  const potScale = potential.scale * POTENTIAL_SAFETY;
+  const h = (n) => {
+    const straight = havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / vHeur;
+    const settled = potDist[n];
+    return Math.max(straight, settled === POTENTIAL_UNSETTLED ? potBeyond : settled * potScale);
+  };
   const START_ARC = -1;
   heap.push(h(s.node), START_ARC);
 
@@ -1004,7 +1419,17 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     const incomingEdge = incomingArc === START_ARC ? -1 : outEdge[incomingArc];
     for (let a = outStart[u]; a < outStart[u + 1]; a++) {
       const v = outTarget[a];
-      if (searchStamp[a] === -generation) continue;
+      // A settled arc may still be improvable. Skipping it outright -- pure
+      // label-setting A* -- is only sound when the heuristic is CONSISTENT, not
+      // merely a lower bound, and the goal potential is stored quantised, so it
+      // is a hair off consistent. Left alone, that showed up as routes costing
+      // a few seconds more than the cheapest on 400 km trips: the search had
+      // settled an arc and would never look at it again.
+      //
+      // The guard below rules out the overwhelming majority for free, since no
+      // edge costs less than nothing: if the walk to here already costs as much
+      // as the arc's recorded distance, nothing downstream can improve it.
+      if (searchStamp[a] === -generation && du >= searchDist[a]) continue;
       const ei = outEdge[a];
       if (activeRoadBlockEdges?.has(ei)) continue;
       // An immediate reversal can never improve a positive-cost route and
@@ -1022,7 +1447,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // This setting controls whether a true freeway can be used at all. When it
       // can, its level and cost still make it a route failure and last resort.
       if (!rules.allowFreeways && (fl & 4)) continue;
-      const actualLevel = edgeLevel(ei, rules, forward);
+      const actualLevel = edgeLevelFor(ei, rules, forward);
       // "Only show routes fully matching safety rules": failing roads become
       // impassable in EVERY mode, so profiles choose only among matching
       // paths — except the short access blocks at a leg's own endpoints,
@@ -1034,7 +1459,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       const requiredSafeAccess = rules.requireSafe && actualLevel === 4;
       // Discovery lenses may price an otherwise-allowed edge more
       // conservatively, but they never change legality or reported safety.
-      const searchLevel = edgeLevel(ei, searchRules, forward);
+      const searchLevel = edgeLevelFor(ei, searchRules, forward);
       const mult = modeMult(mode, searchLevel);
       if (mult === Infinity) continue;
       let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode);
@@ -1044,22 +1469,19 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // any reasonable fully-safe approach must still win.
       if (requiredSafeAccess) cost *= 30;
       cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
-        edgeNoShoulderMax(ei, searchRules), edgeShoulder(ei, forward));
-      cost *= hazardMult(mode, edgeHazard(ei, forward) || 0);
-      cost *= majorRoadMult(ei, mode, forward);
-      cost *= trafficStressMult(ei, mode, forward);
+        edgeNoShoulderMaxFor(ei, searchRules), edgeShoulder(ei, forward));
+      cost *= hazardMult(modeW, edgeHazard(ei, forward) || 0);
+      cost *= majorRoadMult(ei, modeW, forward);
+      cost *= trafficStressMult(ei, modeW, forward);
       cost *= sidewalkExposureMult(ei, mode, forward);
-      if (sidewalkFallbackApplies(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
+      if (sidewalkFallbackFor(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
       if (fl & 4) cost *= activeWeights.freeway;
       // Every other signal costs more as the profile gets friendlier, and this
       // one must too: limitedAccessLowStress sat at 1.0, so the low-stress profile applied
       // no penalty at all to a bike-legal limited-access highway -- less than
       // balanced. The friendliest route was the one most willing to put a rider
       // on a highway shoulder.
-      if (edgeLimited(ei, forward)) {
-        cost *= activeWeights[mode === 'direct'
-          ? 'limitedAccessDirect' : mode === 'low' ? 'limitedAccessLowStress' : 'limitedAccessBalanced'];
-      }
+      if (edgeLimited(ei, forward)) cost *= modeW.limitedAccess;
       if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
       // Bonuses never apply to ferries, freeways, or WSDOT limited-access
       // highways: preference must not erase their access/caution costs. For
@@ -2235,6 +2657,9 @@ function makeHeap(cap) {
   let keys = new Float64Array(cap), vals = new Int32Array(cap), n = 0;
   return {
     get size() { return n; },
+    // The smallest key still in the heap. Dijkstra needs it to drop stale
+    // entries and to know the distance it has settled up to.
+    get topKey() { return n ? keys[0] : Infinity; },
     push(k, v) {
       if (n === keys.length) {
         const k2 = new Float64Array(n * 2), v2 = new Int32Array(n * 2);

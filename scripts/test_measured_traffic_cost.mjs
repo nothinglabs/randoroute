@@ -47,7 +47,10 @@ function setEdge({ cls = 0, adt = 0, fc = 0, facility = 0 }) {
 }
 function mult(mode, weights) {
   vm.runInContext(`useWeights(${JSON.stringify(weights || {})})`, context);
-  return vm.runInContext(`majorRoadMult(0, '${mode}', true)`, context);
+  // The cost functions take the mode's resolved weight record rather than the
+  // mode name: building 'busyHeavy' + suffix per edge relaxation was costing
+  // real time in the router's innermost loop.
+  return vm.runInContext(`majorRoadMult(0, modeWeights('${mode}'), true)`, context);
 }
 
 const W = vm.runInContext('DEFAULT_WEIGHTS', context);
