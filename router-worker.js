@@ -376,7 +376,6 @@ function withRoadBlocks(points, rules, work) {
   // what made moving one end of a route cost as much as drawing it.
   activeBlockSignature = JSON.stringify(points || []);
   useVerdictCache(rules);
-  useNoShoulderMax(rules);
   try {
     return work();
   } finally {
@@ -466,23 +465,52 @@ function edgeLevel(i, rules, forward) {
 // request pays the clear.
 const VERDICT_KNOWN = 8;
 const VERDICT_SIDEWALK_FALLBACK = 16;
-let verdictCache = null, verdictGeneration = 1, verdictRules = null, verdictKey = null;
-function useVerdictCache(rules) {
-  if (!verdictCache) verdictCache = new Uint8Array(2 * E);
+// Two rule sets are in play at once. The rider's own hold the first slot for
+// the life of a request; the second belongs to whichever conservative discovery
+// lens is searching, which is a different object with genuinely different
+// answers. With one slot, every relaxation of the discovery searches missed and
+// rebuilt the facts object -- an eighth of the router's whole running time.
+const verdictSlots = [
+  { cache: null, generation: 1, rules: null, key: null, noShoulderMax: [0, 0] },
+  { cache: null, generation: 1, rules: null, key: null, noShoulderMax: [0, 0] },
+];
+function useVerdictSlot(slot, rules) {
+  if (!slot.cache) slot.cache = new Uint8Array(2 * E);
   const key = rulesSignature(rules);
+  // noShoulderMaxSpeed() reads only whether the edge is inside an urban area,
+  // so for one rule set it has exactly two answers. It was being recomputed,
+  // with a fresh object argument, on every relaxation.
+  slot.noShoulderMax = [SafetyModel.noShoulderMaxSpeed({ urban: false }, rules),
+    SafetyModel.noShoulderMaxSpeed({ urban: true }, rules)];
   // Dragging a route pin sends the same rules in a new object. Keeping the
   // verdicts across that turns a re-route into forward searching alone.
-  if (key !== verdictKey) {
-    verdictGeneration = (verdictGeneration + 1) & 7;
-    if (!verdictGeneration) { verdictCache.fill(0); verdictGeneration = 1; }
-    verdictKey = key;
+  if (key !== slot.key) {
+    slot.generation = (slot.generation + 1) & 7;
+    if (!slot.generation) { slot.cache.fill(0); slot.generation = 1; }
+    slot.key = key;
   }
-  verdictRules = rules;
+  slot.rules = rules;
+  return slot;
 }
-function edgeVerdict(i, rules, forward) {
-  const slot = 2 * i + (forward ? 0 : 1);
-  const packed = verdictCache[slot];
-  if ((packed >>> 5) === verdictGeneration && (packed & VERDICT_KNOWN)) return packed;
+function useVerdictCache(rules) { useVerdictSlot(verdictSlots[0], rules); }
+// Identity is the fast path, taken on every relaxation. Anything else is a rule
+// set we have not seen as an object yet, and pays one signature to find its
+// slot -- by signature, so the strict "fully matching" probe, which differs
+// only by requireSafe and so scores identically, joins the slot that already
+// holds those answers instead of evicting the lens from the other one.
+function verdictSlotFor(rules) {
+  if (rules === verdictSlots[0].rules) return verdictSlots[0];
+  if (rules === verdictSlots[1].rules) return verdictSlots[1];
+  const key = rulesSignature(rules);
+  for (const slot of verdictSlots) {
+    if (slot.key === key) { slot.rules = rules; return slot; }
+  }
+  return useVerdictSlot(verdictSlots[1], rules);
+}
+function edgeVerdict(slot, i, rules, forward) {
+  const at = 2 * i + (forward ? 0 : 1);
+  const packed = slot.cache[at];
+  if ((packed >>> 5) === slot.generation && (packed & VERDICT_KNOWN)) return packed;
   // Both answers come off one facts object. Building it is the expensive part
   // -- it is a fresh sealed record of fifteen fields -- and asking the two
   // questions separately built it twice.
@@ -490,29 +518,17 @@ function edgeVerdict(i, rules, forward) {
   const value = VERDICT_KNOWN | SafetyModel.level(facts, rules)
     | (SafetyModel.sidewalkFallbackApplies(facts,
       SafetyModel.effectiveShoulder(facts, rules), rules) ? VERDICT_SIDEWALK_FALLBACK : 0);
-  verdictCache[slot] = (verdictGeneration << 5) | value;
+  slot.cache[at] = (slot.generation << 5) | value;
   return value;
 }
 function edgeLevelFor(i, rules, forward) {
-  if (rules !== verdictRules) return edgeLevel(i, rules, forward);
-  return edgeVerdict(i, rules, forward) & 7;
+  return edgeVerdict(verdictSlotFor(rules), i, rules, forward) & 7;
 }
 function sidewalkFallbackFor(i, rules, forward) {
-  if (rules !== verdictRules) return sidewalkFallbackApplies(i, rules, forward);
-  return (edgeVerdict(i, rules, forward) & VERDICT_SIDEWALK_FALLBACK) !== 0;
-}
-// noShoulderMaxSpeed() reads only whether the edge is inside an urban area, so
-// for one rider's rules it has exactly two answers. It was being recomputed,
-// with a fresh object argument, on every relaxation.
-let noShoulderMaxRules = null, noShoulderMaxPair = [0, 0];
-function useNoShoulderMax(rules) {
-  noShoulderMaxRules = rules;
-  noShoulderMaxPair = [SafetyModel.noShoulderMaxSpeed({ urban: false }, rules),
-    SafetyModel.noShoulderMaxSpeed({ urban: true }, rules)];
+  return (edgeVerdict(verdictSlotFor(rules), i, rules, forward) & VERDICT_SIDEWALK_FALLBACK) !== 0;
 }
 function edgeNoShoulderMaxFor(i, rules) {
-  if (rules !== noShoulderMaxRules) return edgeNoShoulderMax(i, rules);
-  return noShoulderMaxPair[(eOfficial[i] & EDGE_URBAN) ? 1 : 0];
+  return verdictSlotFor(rules).noShoulderMax[(eOfficial[i] & EDGE_URBAN) ? 1 : 0];
 }
 
 /* ------------------------------------------------ time model */
@@ -952,10 +968,16 @@ function turnPreferenceS(incomingEdge, node, outgoingEdge, mode) {
   const outgoing = eA[outgoingEdge] === node ? eBearingA[outgoingEdge] : eBearingB[outgoingEdge];
   const inbound = (inboundAway + 180) % 360;
   const delta = Math.abs((outgoing - inbound + 540) % 360 - 180);
-  const incomingName = eName[incomingEdge];
-  const sameRoad = incomingName === eName[outgoingEdge]
-    && nameOff[incomingName + 1] > nameOff[incomingName];
-  if (delta < 30 || (sameRoad && delta < 70)) return 0;
+  // Straight continuations are the common case and cost nothing, so decide
+  // that before reading the road names -- which only matter for the wider
+  // same-road bend below.
+  if (delta < 30) return 0;
+  if (delta < 70) {
+    const incomingName = eName[incomingEdge];
+    const sameRoad = incomingName === eName[outgoingEdge]
+      && nameOff[incomingName + 1] > nameOff[incomingName];
+    if (sameRoad) return 0;
+  }
   const key = mode === 'direct' ? 'turnDirectSec'
     : mode === 'low' ? 'turnLowStressSec' : 'turnBalancedSec';
   const base = activeWeights[key];
@@ -1195,8 +1217,7 @@ function useEdgeCostFloors(rules, searchRules, mode) {
   // this bound is worth building at all.
   const belowRate = mode === 'direct' ? activeWeights.speedBelowDirect
     : mode === 'low' ? activeWeights.speedBelowLowStress : activeWeights.speedBelowBalanced;
-  const noShoulderMax = [SafetyModel.noShoulderMaxSpeed({ urban: false }, searchRules),
-    SafetyModel.noShoulderMaxSpeed({ urban: true }, searchRules)];
+  const noShoulderMax = verdictSlotFor(searchRules).noShoulderMax;
   const climbRate = activeWeights[mode === 'direct' ? 'climbDirectSecPerM'
     : mode === 'low' ? 'climbLowStressSecPerM' : 'climbBalancedSecPerM'];
 
@@ -1400,10 +1421,20 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const potential = goalPotential(t.node, s.node, rules, searchRules, mode);
   const potDist = potential.dist, potBeyond = potential.beyond;
   const potScale = potential.scale * POTENTIAL_SAFETY;
+  // Where the backward pass reached, its answer is what matters: it runs some
+  // twenty to thirty times the straight line, which is only worth consulting
+  // out past the edge of the potential. Taking the larger of the two everywhere
+  // meant a haversine -- two sines, two cosines, an arcsine and a square root
+  // -- on every single node expansion, to change the answer essentially never.
+  //
+  // Dropping it costs consistency, not admissibility: both are lower bounds, so
+  // either alone is legal, but a heuristic assembled piecewise is not
+  // necessarily monotone. The search reopens a settled arc when a cheaper walk
+  // to it turns up, which is what makes admissibility enough.
   const h = (n) => {
-    const straight = havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / vHeur;
     const settled = potDist[n];
-    return Math.max(straight, settled === POTENTIAL_UNSETTLED ? potBeyond : settled * potScale);
+    if (settled !== POTENTIAL_UNSETTLED) return settled * potScale;
+    return Math.max(havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / vHeur, potBeyond);
   };
   const START_ARC = -1;
   heap.push(h(s.node), START_ARC);
