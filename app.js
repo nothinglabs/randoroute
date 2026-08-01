@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-01.492';
+const APP_VERSION = '2026-08-01.493';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -282,26 +282,18 @@ function cautionBackgroundLineOpacity() {
 // caution -- "ride it with caution" on a road bikes may not use at all. WSDOT
 // numbers Interstates with these seven route prefixes, so recover the fact from
 // the route id: 11,098 of the 55,271 segments.
-const WSDOT_INTERSTATE_ROUTES = new Set(['005', '082', '090', '182', '205', '405', '705']);
-function isWsdotInterstate(routeIdentifier) {
+const INTERSTATE_ROUTE_PREFIXES = new Set(Region.interstateRoutePrefixes);
+function isInterstateRoute(routeIdentifier) {
   const match = /^(\d{3})/.exec(String(routeIdentifier || ''));
-  return !!match && WSDOT_INTERSTATE_ROUTES.has(match[1]);
+  return !!match && INTERSTATE_ROUTE_PREFIXES.has(match[1]);
 }
 
 // WSDOT names its facility types; the rest of the app speaks the shared 0-5
 // level. Without this the card could only ever say "there is something here",
 // so a shared-use path and a painted lane scored alike.
-const WSDOT_FACILITY_LEVEL = {
-  'Shared-Use Path': 5,
-  'Sidepath': 5,
-  'One-Way Separated Bike Lane': 4,
-  'Two-Way Separated Bike Lane': 4,
-  'Buffered Bike Lane': 3,
-  'Bike Lane': 2,
-};
-function wsdotFacilityLevel(type) {
+function agencyFacilityLevel(type) {
   if (!type || type === 'nan') return 0;
-  return WSDOT_FACILITY_LEVEL[type] || 0;
+  return Region.facilityLevels[type] || 0;
 }
 
 function scoreBLTS(p) {
@@ -324,10 +316,10 @@ function scoreBLTS(p) {
     prohibited: !!p.Prohibited, // overlaps a WSDOT permanent bike restriction
     wsdotBan: !!p.Prohibited,
     restricted: false,
-    freeway: isWsdotInterstate(p.RouteIdentifier),
+    freeway: isInterstateRoute(p.RouteIdentifier),
     limited_access: !!p.LimitedAccess,
     good_facility: !!(p.BikeFacilityType && p.BikeFacilityType.length),
-    facility: wsdotFacilityLevel(p.BikeFacilityType),
+    facility: agencyFacilityLevel(p.BikeFacilityType),
     infra: false,
     desig: p.Designated === 1, // on a designated bike route (USBR / regional)
     urban: p.Urban === 1,
@@ -571,7 +563,7 @@ const SOURCES = [
   },
   {
     id: 'blts',
-    name: 'WSDOT BLTS (state highways)',
+    name: Region.stressLayerName,
     url: 'data/blts.geojson.gz',
     scorer: scoreBLTS,
     zRank: 1,
@@ -594,7 +586,7 @@ const SOURCES = [
   },
   {
     id: 'restrict',
-    name: 'Bikes prohibited (WSDOT)',
+    name: Region.restrictionLayerName,
     url: 'data/bike_restrictions.geojson.gz',
     scorer: scoreRestrict,
     zRank: 3,     // always on top
@@ -1016,7 +1008,7 @@ window.addEventListener('pagehide', saveStateNow);
 const map = new maplibregl.Map({
   container: 'map',
   style: BikeBasemap.createStyle(),
-  center: (savedState && savedState.view && savedState.view.c) || [-122.3321, 47.6062],
+  center: (savedState && savedState.view && savedState.view.c) || Region.defaultCenter,
   zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
   maxZoom: 17,
   maxPitch: 0,
@@ -2470,7 +2462,7 @@ async function readRoutingGraphResponse(response) {
       const percent = Math.min(100, Math.floor((received / total) * 10) * 10);
       if (percent >= announcedPercent + 10) {
         announcedPercent = percent;
-        showRouterProgress(`Downloading Washington roads and trails · ${percent}%`);
+        showRouterProgress(`Downloading ${Region.name} roads and trails · ${percent}%`);
       }
     }
   }
@@ -2536,7 +2528,7 @@ async function ensureRouter() {
   setRouteActionsOpen(false);
   updateArmButtons();
   try {
-    showRouterProgress('Downloading Washington roads, trails, ferries, and elevation data…');
+    showRouterProgress(`Downloading ${Region.name} roads, trails, ferries, and elevation data…`);
     await purgeStaleGraphCache();
     const res = await fetch(GRAPH_URL);
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -7279,11 +7271,8 @@ let onlinePlaceLastRequestAt = 0;
 const ONLINE_PLACE_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 const ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS = 1100;
 const ONLINE_PLACE_RESULT_LIMIT = 6;
-// The router only covers Washington; drop any hit outside it so a route is
-// always possible.
-const WA_BBOX = { minLon: -124.9, maxLon: -116.8, minLat: 45.5, maxLat: 49.1 };
-const inWashington = (lon, lat) => lon >= WA_BBOX.minLon && lon <= WA_BBOX.maxLon
-  && lat >= WA_BBOX.minLat && lat <= WA_BBOX.maxLat;
+// The router only covers the region this build ships; drop any hit outside it
+// so a search result is always somewhere a route can reach.
 
 // Bias the search toward wherever the map is currently looking so a generic
 // query ("Fred Meyer", "hardware store") returns nearby matches rather than
@@ -7330,7 +7319,7 @@ async function searchOnlinePlaces(query) {
         lon: Number(item.lon), lat: Number(item.lat), source: 'online',
       }))
       .filter((item) => item.name && Number.isFinite(item.lon) && Number.isFinite(item.lat))
-      .filter((item) => inWashington(item.lon, item.lat));
+      .filter((item) => Region.contains(item.lon, item.lat));
     if (onlinePlaceCache.size >= 50) onlinePlaceCache.delete(onlinePlaceCache.keys().next().value);
     onlinePlaceCache.set(normalized, matches);
   }
@@ -7356,7 +7345,7 @@ function onlinePlaceResultName(item) {
   if (!primary || primary === houseNumber) primary = streetAddress || displayParts[0] || '';
   const city = String(address.city || address.town || address.village || address.municipality
     || address.hamlet || '').trim();
-  const state = String(address.state || 'Washington').trim();
+  const state = String(address.state || Region.name).trim();
   const parts = [primary];
   if (city && city.toLowerCase() !== primary.toLowerCase()) parts.push(city);
   if (state && !parts.some((part) => part.toLowerCase() === state.toLowerCase())) parts.push(state);
@@ -7671,7 +7660,7 @@ const readoutEl = document.getElementById('readout');
 // The safety model never learns this: it only sees `stressRating` on the
 // published 1-4 Level of Traffic Stress scale. Adding another state means
 // filling that field from their DOT and changing this label. Nothing else.
-const STRESS_AGENCY = 'WSDOT';
+const STRESS_AGENCY = Region.stressAgency;
 
 // Headline form, e.g. "Caution — limited-access highway".
 const CAUTION_CAUSE_NAME = {
@@ -7914,7 +7903,7 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
   switch (verdict.rule) {
     case 'prohibited':
       return n.wsdotBan
-        ? 'Bikes are banned here — a permanent WSDOT restriction.'
+        ? `Bikes are banned here — a permanent ${Region.restrictionAgency} restriction.`
         : 'Bikes are banned here — the road is mapped as closed to cycling.';
     case 'ferry':
       return 'Crossing by ferry — road rules don’t apply on the boat.';
@@ -8162,20 +8151,13 @@ function streetViewRoadHeading(feature, lngLat) {
 // The direction is in the route id: WSDOT suffixes `i` for increasing milepost
 // and `d` for decreasing. Two features sharing a route number but differing in
 // that suffix are the two sides of one road.
-function wsdotDirectionLabel(routeIdentifier) {
-  const id = String(routeIdentifier || '');
-  if (/i$/i.test(id)) return 'increasing mileposts';
-  if (/d$/i.test(id)) return 'decreasing mileposts';
-  return null;
-}
-function wsdotRouteBase(routeIdentifier) {
-  return String(routeIdentifier || '').replace(/[id]$/i, '');
-}
+const routeDirectionLabel = (routeIdentifier) => Region.routeDirection(routeIdentifier);
+const routeBaseId = (routeIdentifier) => Region.routeBase(routeIdentifier);
 // The opposite-direction segment under the same screen point, when it reports a
 // different shoulder. Returns null when there is no sibling or they agree.
 function wsdotOppositeShoulder(point, p) {
   if (!point || !map.getLayer('blts__hit')) return null;
-  const base = wsdotRouteBase(p.RouteIdentifier);
+  const base = routeBaseId(p.RouteIdentifier);
   if (!base) return null;
   const pad = 8;
   const feats = map.queryRenderedFeatures(
@@ -8183,7 +8165,7 @@ function wsdotOppositeShoulder(point, p) {
     { layers: ['blts__hit'] });
   for (const f of feats) {
     const q = f.properties;
-    if (wsdotRouteBase(q.RouteIdentifier) !== base) continue;
+    if (routeBaseId(q.RouteIdentifier) !== base) continue;
     if (String(q.RouteIdentifier) === String(p.RouteIdentifier)) continue;
     if (q.ShoulderWidth == null || q.ShoulderWidth === p.ShoulderWidth) continue;
     return q;
@@ -8196,8 +8178,8 @@ function wsdotShoulderText(point, p) {
   if (p.ShoulderWidth == null) return null;
   const other = wsdotOppositeShoulder(point, p);
   if (!other) return `${p.ShoulderWidth} ft`;
-  const here = wsdotDirectionLabel(p.RouteIdentifier);
-  const there = wsdotDirectionLabel(other.RouteIdentifier);
+  const here = routeDirectionLabel(p.RouteIdentifier);
+  const there = routeDirectionLabel(other.RouteIdentifier);
   if (!here || !there) return `${p.ShoulderWidth} ft here, ${other.ShoulderWidth} ft the other way`;
   return `${p.ShoulderWidth} ft (${here}), ${other.ShoulderWidth} ft (${there})`;
 }
@@ -8238,7 +8220,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Access', p.dismount === 1 ? 'Dismount required — walk your bike.' : null],
         ...routeVerdict,
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
-        ['Speed source', p.official & 1 ? 'WSDOT legal speed' : null],
+        ['Speed source', p.official & 1 ? `${Region.speedAgency} legal speed` : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
         ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
         ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
@@ -8251,7 +8233,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
         ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
         ['Bike facility', FACILITY_NAME[p.facility] || null],
-        ['Facility source', p.official & 2 ? 'WSDOT Active Transportation Data' : null],
+        ['Facility source', p.official & 2 ? Region.facilitySourceName : null],
         ['Surface (OSM)', routeSurfaceLabel(p.surface)],
         ['Route choice', routeClassNote(p)],
         ['Type', p.infra ? 'Dedicated bike infrastructure' : (p.fw || p.lim) ? 'Limited-access highway' : null],
@@ -8270,11 +8252,11 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Note', 'A designation is not necessarily a bike facility. The scored road or facility supplies the safety verdict and takes visual precedence.'],
     ];
   } else if (src.id === 'restrict') {
-    title = 'Bikes prohibited (WSDOT)';
+    title = Region.restrictionLayerName;
     rows = [
       ['Route', p.Route ? 'SR ' + String(p.Route).replace(/^0+/, '') : p.RouteIdentifier],
       ['Verdict', 'Red dashed — Fails your rules'],
-      ['Why', 'Permanent bicycle restriction by official WSDOT traffic action.'],
+      ['Why', `Permanent bicycle restriction by official ${Region.restrictionAgency} traffic action.`],
       ['Direction', p.Direction],
       ['Mileposts', p.BeginMile != null ? `${p.BeginMile} – ${p.EndMile}` : null],
       ['Note', p.Comment],
@@ -8291,7 +8273,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Width', p.width != null ? `${p.width} m` : null],
     ];
   } else if (src.id === 'roads') {
-    title = p.d ? 'Road (OSM geometry + WSDOT data)' : 'Road (OSM)';
+    title = p.d ? `Road (OSM geometry + ${Region.speedAgency} data)` : 'Road (OSM)';
     rows = [
       ['Name', p.n],
       ...common,
@@ -8314,12 +8296,12 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Bike facility', FACILITY_NAME[p.ft] || (p.f ? 'Recorded bike facility' : null)],
       ['Surface (OSM)', routeSurfaceLabel(p.su)],
       ['Route choice', routeClassNote({ roadClass: p.rc, facility: p.ft || (p.f ? 1 : 0) })],
-      ['Road data', p.d ? 'WSDOT directions combined conservatively for map display' : null],
+      ['Road data', p.d ? `${Region.speedAgency} directions combined conservatively for map display` : null],
       ['Limited access', p.m || p.l ? 'yes' : null],
-      ['Bikes prohibited', p.b ? (p.d ? 'yes (OSM or WSDOT)' : 'yes (OSM tag)') : null],
+      ['Bikes prohibited', p.b ? (p.d ? `yes (OSM or ${Region.restrictionAgency})` : 'yes (OSM tag)') : null],
     ];
   } else {
-    title = 'Road segment (WSDOT)';
+    title = `Road segment (${Region.stressAgency})`;
     rows = [
       ['Route', p.RouteIdentifier],
       ...common,

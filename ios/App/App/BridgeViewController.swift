@@ -11,7 +11,8 @@ final class BridgeViewController: CAPBridgeViewController {
 }
 
 @objc(NativeNavigationPlugin)
-final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManagerDelegate {
+final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManagerDelegate,
+                                   AVSpeechSynthesizerDelegate {
     private struct RoutePoint {
         let latitude: Double
         let longitude: Double
@@ -73,6 +74,10 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
 
     override func load() {
         locationManager.delegate = self
+        // Without a delegate nothing knows when a prompt has finished, so the
+        // audio session stayed active -- and .duckOthers kept the rider's music
+        // quiet from the first turn instruction until they stopped navigating.
+        speechSynthesizer.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager.distanceFilter = 3
         locationManager.activityType = .fitness
@@ -85,23 +90,39 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         )
     }
 
+    // CLLocationManager.locationServicesEnabled() can block, and Apple documents
+    // that calling it on the main thread may hang the app. Every entry point
+    // here did, inside a DispatchQueue.main.async -- so the hang landed on the
+    // two moments that matter most: opening the app and starting navigation.
+    private func requireLocationServices(_ call: CAPPluginCall, then body: @escaping () -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let enabled = CLLocationManager.locationServicesEnabled()
+            DispatchQueue.main.async {
+                guard enabled else {
+                    call.reject("Location Services are disabled on this iPhone.")
+                    return
+                }
+                body()
+            }
+        }
+    }
+
     @objc func getStatus(_ call: CAPPluginCall) {
-        DispatchQueue.main.async {
-            call.resolve([
-                "servicesEnabled": CLLocationManager.locationServicesEnabled(),
-                "authorization": self.authorizationName(self.locationManager.authorizationStatus),
-                "accuracy": self.accuracyName(self.locationManager.accuracyAuthorization),
-                "tracking": self.tracking
-            ])
+        DispatchQueue.global(qos: .userInitiated).async {
+            let enabled = CLLocationManager.locationServicesEnabled()
+            DispatchQueue.main.async {
+                call.resolve([
+                    "servicesEnabled": enabled,
+                    "authorization": self.authorizationName(self.locationManager.authorizationStatus),
+                    "accuracy": self.accuracyName(self.locationManager.accuracyAuthorization),
+                    "tracking": self.tracking
+                ])
+            }
         }
     }
 
     @objc func getCurrentPosition(_ call: CAPPluginCall) {
-        DispatchQueue.main.async {
-            guard CLLocationManager.locationServicesEnabled() else {
-                call.reject("Location Services are disabled on this iPhone.")
-                return
-            }
+        requireLocationServices(call) {
             switch self.locationManager.authorizationStatus {
             case .denied, .restricted:
                 call.reject("Location permission is blocked. Enable it in Settings.")
@@ -118,11 +139,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     }
 
     @objc func startTracking(_ call: CAPPluginCall) {
-        DispatchQueue.main.async {
-            guard CLLocationManager.locationServicesEnabled() else {
-                call.reject("Location Services are disabled on this iPhone.")
-                return
-            }
+        requireLocationServices(call) {
             self.configureRoute(from: call)
             switch self.locationManager.authorizationStatus {
             case .denied, .restricted:
@@ -758,6 +775,26 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         utterance.voice = bestNavigationVoice(language: language)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.96
         return utterance
+    }
+
+    // AVSpeechSynthesizerDelegate. Both endings matter: a cancelled prompt --
+    // which happens on every instruction that interrupts the last one -- would
+    // otherwise leave the session active exactly like a finished one.
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        releaseAudioSessionWhenIdle()
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        releaseAudioSessionWhenIdle()
+    }
+
+    private func releaseAudioSessionWhenIdle() {
+        // A new prompt may already be speaking; ducking must persist through it.
+        guard !speechSynthesizer.isSpeaking else { return }
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: .notifyOthersOnDeactivation
+        )
     }
 
     private func speakText(_ text: String, language: String = "en-US") {

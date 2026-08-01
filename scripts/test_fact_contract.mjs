@@ -28,6 +28,7 @@
 //      the table is stale.
 //   3. Sources that share a fact must agree on its type and units.
 import assert from 'node:assert';
+import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import zlib from 'node:zlib';
@@ -77,6 +78,11 @@ for (const [source, keys] of Object.entries(SM.SOURCE_FACTS)) {
 /* ---- 3. hold each source to its declaration, on REAL data ------------- */
 // Lift the scorers out of app.js and run them over properties taken from the
 // shipped graph, which is the only place real attribute combinations live.
+// The scorers read the agency's own vocabulary -- its facility names, its
+// route-id spelling -- from region.js rather than from literals inlined beside
+// them, so the sandbox needs it too.
+const { Region } = createRequire(import.meta.url)(
+  new URL('../region.js', import.meta.url).pathname);
 const box = vm.createContext({ console });
 function lift(startMarker, endMarker) {
   const i = appSrc.indexOf(startMarker);
@@ -87,15 +93,14 @@ vm.runInContext([
   'const SafetyModel = globalThis.SM;',
   lift('const OSM_PROTECTED', '\nfunction scoreOSM'),
   lift('function scoreOSM', '\n// Full OSM road network'),
-  lift('const WSDOT_INTERSTATE_ROUTES', '\nconst WSDOT_FACILITY_LEVEL'),
-  lift('const WSDOT_FACILITY_LEVEL', '\n// OSM bike infrastructure'),
+  lift('const INTERSTATE_ROUTE_PREFIXES', '\n// OSM bike infrastructure'),
   lift('function scoreRoad', '\nfunction scoreRouteOverlay'),
   lift('const ADT_SOURCE_COUNTY', '\nconst ADT_SOURCE_NAME'),
   lift('function tileMeasures', '\nfunction '),
   lift('const OFFICIAL_DISMOUNT', '\nconst SIGNIFICANT_UNPAVED_M'),
   lift('function scoreRouteSeg', '\n// '),
   'globalThis.OUT = { scoreOSM, scoreRoad, scoreBLTS, scoreRouteSeg };',
-].join('\n'), Object.assign(box, { SM }));
+].join('\n'), Object.assign(box, { SM, Region }));
 const { scoreOSM, scoreRoad, scoreBLTS, scoreRouteSeg } = box.OUT;
 
 // Real WSDOT properties.

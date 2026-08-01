@@ -12,7 +12,7 @@
  */
 importScripts('./build-version.js');
 
-const VERSION = 'v467'; // bump when app shell changes
+const VERSION = 'v468'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -24,6 +24,7 @@ const SHELL = [
   './route-details.html',
   './app.js',
   './palette.js',
+  './region.js',
   './build-version.js',
   './safety-model.js',
   './basemap-style.js',

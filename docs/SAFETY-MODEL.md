@@ -592,8 +592,9 @@ To add, say, Arizona:
 1. Write a build step that produces an LTS 1–4 per edge from ADOT's data,
    normalising their scale to 1–4 if it differs, into the same `eLanes`-adjacent
    `eLts` byte that `scripts/build_blts.py` fills today.
-2. Change `STRESS_AGENCY` in `app.js` — the one place the name is written. It
-   feeds the road card, the setting label and the explanation text.
+2. Change `stressAgency` in `region.js` — the one place the name is written. It
+   feeds the road card, the setting label and the explanation text. (It used to
+   say "one place in `app.js`"; it was nine, until `region.js` existed.)
 3. Nothing else. The rung, the modifier, the map expression, the help list and
    the tests all work unchanged.
 

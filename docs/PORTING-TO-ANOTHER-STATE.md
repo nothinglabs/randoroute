@@ -9,6 +9,44 @@ only about getting a new state's data into it.
 
 ---
 
+## 0. The one file to change
+
+Everything about *which state this build covers* lives in **`region.js`**: the
+bounding box a place search filters against, where the map opens, the agency
+name printed on every road card, and the agency's own spelling of its route ids
+and facility types.
+
+```js
+name: 'Washington',
+bounds: { minLon: -124.9, maxLon: -116.8, minLat: 45.5, maxLat: 49.1 },
+defaultCenter: [-122.3321, 47.6062],
+stressAgency: 'WSDOT',        // publishes the 1-4 Level of Traffic Stress
+restrictionAgency: 'WSDOT',   // publishes permanent bicycle prohibitions
+speedAgency: 'WSDOT',         // publishes legal speed limits
+interstateRoutePrefixes: [...],  // if the agency hides the fact in its ids
+facilityLevels: { ... },         // the agency's vocabulary -> the shared 0-5
+routeBase / routeDirection,      // how the agency spells a directional route
+```
+
+`scripts/test_region_portable.mjs` serves the app a *different* region and
+checks it follows: the map opens on the new centre, the coverage filter moves,
+the cards name the new agency, and the new facility vocabulary is the one that
+scores. Run it after editing `region.js` and it will tell you whether anything
+is still reaching around the config.
+
+Note the bounding box is a rectangle and a state border usually is not.
+Washington's reaches over the Columbia into Portland, deliberately: a few
+unroutable Oregon search results are better than clipping Vancouver and
+Longview. Size yours the same way.
+
+What is NOT in `region.js`, because it is not state-specific: the safety ladder,
+the routing cost model, the map styling, the weights. Those are in
+`safety-model.js`, `router-worker.js` and `app.js` and should need no edits at
+all. If a port finds itself changing one of them, that is worth a second look --
+it usually means a state fact leaked into shared logic.
+
+---
+
 ## 1. What already works everywhere
 
 Do not re-solve these. They are national and Washington-agnostic:
