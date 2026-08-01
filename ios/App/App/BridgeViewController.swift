@@ -1,3 +1,11 @@
+// The only native-only code in this app. Everything else is the shared web app,
+// which `npm test` covers on the same bytes iOS ships.
+//
+// See docs/IOS-HANDOFF.md before changing anything here. It lists what was
+// changed WITHOUT a compiler (the audio session release, moving
+// locationServicesEnabled off the main thread), what was found and left alone
+// (stopTracking resolving a cancelled start; getCurrentPosition hanging when
+// the permission dialog is dismissed), and what needs a device to judge at all.
 import AVFoundation
 import Capacitor
 import CoreLocation

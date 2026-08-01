@@ -34,7 +34,13 @@ npm run ios:open
 `ios:sync` assembles the complete web runtime and statewide data into
 `mobile-shell/` before copying it into the Xcode project. The current payload
 is about 159 MB uncompressed and has no GitHub Pages or online-basemap runtime
-dependency.
+dependency. `mobile-shell/` is generated — never edit it by hand.
+
+**Read `docs/IOS-HANDOFF.md` before touching the native code.** The only
+native-only file is `ios/App/App/BridgeViewController.swift`; everything else is
+the shared web app that `npm test` covers. The handoff lists changes that were
+made without a Swift compiler available and still need a build, two known bugs
+left deliberately unfixed, and the parts that only a device can judge.
 
 ## Features
 
