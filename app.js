@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-01.491';
+const APP_VERSION = '2026-08-01.492';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9644,6 +9644,9 @@ offerSharedRouteTip();
 
 let pendingUpdateWorker = null;
 let deferredUpdateWorker = null;
+// Set the moment the rider takes an update, so the handover that follows is
+// known to be one they asked for even on a page that started uncontrolled.
+let updateAccepted = false;
 function offerUpdate(worker) {
   if (!worker || worker === deferredUpdateWorker || !navigator.serviceWorker.controller) return;
   pendingUpdateWorker = worker;
@@ -9666,9 +9669,15 @@ async function setupAutomaticUpdates() {
     watch(reg.installing);
     reg.addEventListener('updatefound', () => watch(reg.installing));
 
+    // Reload when a new worker takes over a page that was ALREADY being driven
+    // by one, or when the rider just asked for the update. On a first install
+    // the worker calls clients.claim(), which fires controllerchange too --
+    // reloading there threw away a freshly started app for nothing and cost
+    // every first visit a second full load.
+    const wasControlled = !!navigator.serviceWorker.controller;
     let reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloading) return;
+      if (reloading || !(wasControlled || updateAccepted)) return;
       reloading = true;
       saveStateNow();
       location.reload();
@@ -9693,6 +9702,10 @@ async function setupAutomaticUpdates() {
 
 document.getElementById('getUpdateBtn').addEventListener('click', () => {
   saveStateNow();
+  updateAccepted = true;
+  // Take the banner down on the way out. Leaving it up through the handover
+  // made a successful update look like it was being offered all over again.
+  document.getElementById('updatePrompt').hidden = true;
   if (pendingUpdateWorker) pendingUpdateWorker.postMessage({ type: 'SKIP_WAITING' });
 });
 document.getElementById('updateLaterBtn').addEventListener('click', () => {
@@ -9765,7 +9778,25 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
     // registration that resolves immediately.
     if (!reg && navigator.serviceWorker) reg = await navigator.serviceWorker.getRegistration();
     if (!reg) throw new Error('service worker unavailable');
+    // An update already sitting on the registration needs no network at all.
+    if (reg.waiting) {
+      status.textContent = 'Update ready.';
+      offerUpdate(reg.waiting);
+      document.getElementById('appHelpDialog')?.close();
+      return;
+    }
     const publishedVersion = await publishedAppVersion();
+    // The usual answer is "you are up to date", and it is one small fetch away.
+    // Waiting on the whole install dance to say so left the rider watching an
+    // unchanging "Checking..." for the better part of a minute on a phone.
+    // Still ask the browser to look, in the background, in case a worker
+    // changed without the marker moving.
+    if (publishedVersion === APP_VERSION) {
+      reg.update().catch(() => {});
+      status.textContent = `You have the latest version (v${APP_VERSION}).`;
+      return;
+    }
+    status.textContent = `Version v${publishedVersion} found — fetching it…`;
     // Revalidate the worker script at its real URL first. Safari can hold
     // sw.js in the HTTP cache, and reg.update() then byte-compares the new
     // release against that stale copy, concludes nothing changed, and reports
@@ -9774,25 +9805,22 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
     try {
       await fetch('./sw.js', { cache: 'reload' });
     } catch { /* offline; reg.update() will fail the same way and be reported */ }
-    let updateWorker = waitForUpdateWorker(reg);
+    const updateWorker = waitForUpdateWorker(reg);
     await reg.update();
+    status.textContent = `Version v${publishedVersion} found — installing…`;
     // reg.update() resolving does not guarantee the new worker has appeared on
     // the registration yet, and a phone on a slow connection routinely needs
     // longer than one event turn. Poll rather than read once.
-    let fresh = reg.waiting || reg.installing || await updateWorker
+    //
+    // There used to be a second attempt here that re-registered the worker
+    // under `./sw.js?release=<version>`, to get past a CDN still serving the
+    // old plain URL. It worked, and it is why every update asked twice: the
+    // registration was left on a versioned URL, the next load registered the
+    // NEXT version's URL, and a changed script URL is an update in its own
+    // right. `updateViaCache: 'none'` plus the revalidation above covers the
+    // staleness without renaming the script.
+    const fresh = reg.waiting || reg.installing || await updateWorker
       || await settledUpdateWorker(reg);
-    if (!fresh && publishedVersion !== APP_VERSION) {
-      // The release marker can update before GitHub Pages' cached plain sw.js
-      // URL. A versioned script URL forces the browser/CDN to retrieve the
-      // worker that belongs to the published release.
-      updateWorker = waitForUpdateWorker(reg);
-      reg = await navigator.serviceWorker.register(
-        `./sw.js?release=${encodeURIComponent(publishedVersion)}`,
-        { scope: './', updateViaCache: 'none' },
-      );
-      fresh = reg.waiting || reg.installing || await updateWorker
-        || await settledUpdateWorker(reg);
-    }
     if (fresh) {
       status.textContent = 'Update found — installing…';
       if (reg.waiting) offerUpdate(reg.waiting);
@@ -9811,8 +9839,12 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
     }
   } catch (e) {
     status.textContent = 'Could not check right now — make sure you are online and try again.';
+  } finally {
+    // In a finally, because the quick answers above return early: without it
+    // the button re-enabled only on the slow path, so the first check left it
+    // dead for the rest of the session.
+    btn.disabled = false;
   }
-  btn.disabled = false;
 });
 
 

@@ -157,9 +157,20 @@ const TYPES = {
  * test can assert what the app still does without a network.
  */
 export async function serveRepo({ offline = false } = {}) {
-  const state = { offline, requests: [] };
+  const state = { offline, requests: [], overrides: new Map() };
   const server = createServer(async (req, res) => {
     state.requests.push({ url: req.url, range: req.headers.range || null, at: Date.now() });
+    // Publishing a release, from the browser's point of view, is nothing more
+    // than these bytes changing. Overriding them is how a test can deploy.
+    const path = decodeURIComponent(req.url.split('?')[0]);
+    if (state.overrides.has(path)) {
+      const body = state.overrides.get(path);
+      res.writeHead(200, {
+        'content-type': TYPES[extname(path)] || 'application/octet-stream',
+        'content-length': Buffer.byteLength(body),
+      });
+      return res.end(body);
+    }
     // Destroying the socket is what a dropped connection looks like. Destroying
     // only the request leaves the browser waiting for a response that never
     // comes, which hangs a test instead of failing it.
@@ -199,6 +210,8 @@ export async function serveRepo({ offline = false } = {}) {
     // reaches for the network gets what a phone in a valley gets.
     goOffline() { state.offline = true; },
     goOnline() { state.offline = false; },
+    publish(path, body) { state.overrides.set(path, body); },
+    unpublish(path) { state.overrides.delete(path); },
     get requests() { return state.requests; },
     close: () => server.close(),
   };
