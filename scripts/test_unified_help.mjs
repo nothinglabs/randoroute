@@ -1,57 +1,101 @@
 #!/usr/bin/env node
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
+// The six help topics live in one dialog with one tab strip, instead of six
+// separate dialogs. This checks that in the built page: which tabs exist, that
+// each one really has content behind it, that the six entry points around the
+// app land on the right tab, and that none of the old dialogs are still there.
+//
+// It used to check the same things by matching regular expressions against
+// index.html, app.js and styles.css -- `/settingsHelpBtn[\s\S]{0,160}
+// openHelp\('settings'\)/` and friends. Those pass on a comment, fail on a
+// rename, and say nothing about whether the button opens anything. The layout
+// claims they made about the stylesheet are measured in
+// test_unified_help_ui.mjs, against the rendered box.
+import { chromiumPath, playwright, serveRepo } from './testlib/harness.mjs';
 
-const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
-const styles = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+const { chromium } = await playwright();
+const site = await serveRepo();
+const browser = await chromium.launch({
+  executablePath: chromiumPath(), args: ['--use-gl=swiftshader'],
+});
+const page = await (await browser.newContext({
+  serviceWorkers: 'block', viewport: { width: 390, height: 844 },
+  hasTouch: true, isMobile: true,
+})).newPage();
+const errors = [];
+page.on('pageerror', (error) => errors.push(error.message));
 
-assert.equal((html.match(/<dialog id="helpDialog"/g) || []).length, 1,
-  'all help topics must share one help dialog');
+let passed = 0, failed = 0;
+const check = (name, ok, detail = '') => {
+  if (ok) { passed++; console.log(`PASS  ${name}`); return; }
+  failed++;
+  console.log(`FAIL  ${name}${detail ? `  -- ${detail}` : ''}`);
+};
 
-const topics = ['getting-started', 'routes', 'layers', 'settings', 'save-share', 'technical'];
-assert.deepEqual([...html.matchAll(/data-help-tab="([^"]+)"/g)].map((match) => match[1]), topics,
-  'the unified help tabs must include every existing help destination in a stable order');
+await page.goto(site.url, { waitUntil: 'load' });
+await page.waitForFunction(() => typeof openHelp === 'function', { timeout: 60000 });
 
-for (const source of [
-  'appHelpTemplate', 'routeTipsTemplate', 'layersHelpTemplate',
-  'settingsHelpTemplate', 'routesHelpTemplate', 'techDetailsTemplate',
-]) {
-  assert.ok(html.includes(`<template id="${source}">`), `${source} content source is missing`);
-  assert.ok(html.includes(`data-help-source="${source}"`), `${source} is not attached to a help panel`);
-}
+const TOPICS = ['getting-started', 'routes', 'layers', 'settings', 'save-share', 'technical'];
 
-for (const button of ['appHelpBtn', 'routeTipsBtn', 'layersHelpBtn', 'settingsHelpBtn', 'routesHelpBtn']) {
-  assert.ok(html.includes(`id="${button}"`), `${button} entry point must remain in place`);
-}
+const structure = await page.evaluate(() => ({
+  dialogs: document.querySelectorAll('dialog#helpDialog').length,
+  tabs: [...document.querySelectorAll('[data-help-tab]')].map((tab) => tab.dataset.helpTab),
+  // A panel with no children is a tab that opens onto nothing, which is what a
+  // renamed template id would produce.
+  panels: [...document.querySelectorAll('.help-panel[data-help-source]')].map((panel) => ({
+    source: panel.dataset.helpSource,
+    children: panel.childElementCount,
+    words: panel.textContent.trim().split(/\s+/).length,
+  })),
+}));
+check('all help topics share one dialog', structure.dialogs === 1, `${structure.dialogs} found`);
+check('the tab strip carries every topic, in a stable order',
+  structure.tabs.join(',') === TOPICS.join(','), structure.tabs.join(','));
+check('every tab has real content behind it', structure.panels.length === TOPICS.length
+  && structure.panels.every((panel) => panel.children > 0 && panel.words > 20),
+  JSON.stringify(structure.panels));
 
-const mappings = [
-  [/appHelpBtn[\s\S]{0,120}openHelp\('getting-started'\)/, 'app help'],
-  [/routeTipsBtn[\s\S]{0,100}openRouteTips/, 'route help'],
-  [/layersHelpBtn[\s\S]{0,120}openHelp\('layers'\)/, 'layers help'],
-  [/settingsHelpBtn[\s\S]{0,160}openHelp\('settings'\)/, 'settings help'],
-  [/routesHelpBtn[\s\S]{0,180}openHelp\('save-share'\)/, 'save and share help'],
-  [/techDetailsBtn[\s\S]{0,120}openHelp\('technical'\)/, 'technical help'],
+// The six ways into help, each of which must land on its own topic.
+const ENTRY_POINTS = [
+  ['appHelpBtn', 'getting-started'],
+  ['routeTipsBtn', 'routes'],
+  ['layersHelpBtn', 'layers'],
+  ['settingsHelpBtn', 'settings'],
+  ['routesHelpBtn', 'save-share'],
+  ['techDetailsBtn', 'technical'],
 ];
-for (const [pattern, label] of mappings) assert.match(app, pattern, `${label} must open its associated tab`);
-
-for (const legacy of [
-  'appHelpDialog', 'routeTipsDialog', 'layersHelpDialog',
-  'settingsHelpDialog', 'routesHelpDialog', 'techDetailsDialog',
-]) {
-  assert.ok(!html.includes(`id="${legacy}"`), `${legacy} must not remain as a separate dialog`);
-  assert.ok(!app.includes(`getElementById('${legacy}')`), `${legacy} must not remain in app behavior`);
+for (const [buttonId, topic] of ENTRY_POINTS) {
+  const result = await page.evaluate((id) => {
+    document.getElementById('helpDialog')?.close();
+    const button = document.getElementById(id);
+    if (!button) return { missing: true };
+    button.click();
+    const dialog = document.getElementById('helpDialog');
+    const selected = [...document.querySelectorAll('[data-help-tab]')]
+      .find((tab) => tab.getAttribute('aria-selected') === 'true');
+    const panel = selected && document.getElementById(selected.getAttribute('aria-controls'));
+    return {
+      open: !!dialog?.open,
+      topic: selected?.dataset.helpTab || null,
+      visible: !!panel && !panel.hidden,
+      title: document.getElementById('helpDialogTitle')?.textContent || '',
+    };
+  }, buttonId);
+  check(`${buttonId} opens help on "${topic}"`,
+    !result.missing && result.open && result.topic === topic && result.visible && result.title,
+    JSON.stringify(result));
 }
+await page.evaluate(() => document.getElementById('helpDialog')?.close());
 
-assert.match(app, /\['ArrowLeft', 'ArrowRight', 'Home', 'End'\]/,
-  'the tab list must support keyboard navigation');
-assert.match(styles, /\.help-dialog\[open\][^{]*\{[^}]*display:\s*flex/,
-  'the unified help view must use its fixed header and scrollable article layout');
-assert.match(styles, /\.help-tabs[^}]*overflow-x:\s*auto/,
-  'desktop help tabs may retain their compact overflow fallback');
-assert.match(styles, /@media \(max-width:\s*600px\)[\s\S]*?\.help-tabs\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3/,
-  'all six phone tabs must be visible in a two-row grid without swiping');
-assert.match(styles, /\.help-panels[^}]*overflow-y:\s*auto/,
-  'only the active help article should scroll');
+// The old dialogs are gone -- not merely unreferenced in the markup, but not
+// in the document at all, and not reachable from the app either.
+const legacy = await page.evaluate(() => ['appHelpDialog', 'routeTipsDialog',
+  'layersHelpDialog', 'settingsHelpDialog', 'routesHelpDialog', 'techDetailsDialog']
+  .filter((id) => document.getElementById(id)));
+check('none of the six old dialogs survive', legacy.length === 0, legacy.join(', '));
 
-console.log('Unified tabbed help tests passed.');
+check('opening every help topic raises no errors', errors.length === 0, errors.join(' | '));
+
+await browser.close();
+site.close();
+console.log(`\n${passed} passed${failed ? `, ${failed} FAILED` : ''}`);
+process.exitCode = failed ? 1 : 0;

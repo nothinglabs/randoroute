@@ -64,12 +64,14 @@ assert.doesNotMatch(JSON.stringify(outside), /urban|rural/i,
 
 assert.doesNotMatch(details, /(?:Urban|Rural) no-shoulder limit|\$\{context\} no-shoulder limit/,
   'Route Details must not contain the removed per-area limit labels');
-assert.match(details, /mapped sidewalk fallback/,
-  'sidewalk concern metadata should describe the fallback, not an area category');
-assert.match(app, /measures:\s*s\.measures\s*\|\|\s*null/,
-  'Route Details storage must retain the facts used by the shared safety model');
-assert.doesNotMatch(worker, /noShoulderMax\s*\[/,
-  'the router must cache one no-shoulder value, not an urban/rural pair');
+// The three claims that used to sit here -- that route-details says "mapped
+// sidewalk fallback", that app.js stores `measures: s.measures || null`, and
+// that the worker no longer indexes a noShoulderMax pair -- were regular
+// expressions over source text. They pin spellings, not behaviour. The first
+// two are checked by running the code in
+// test_single_shoulder_limit_copy_ui.mjs; the third is what
+// test_route_potential.mjs proves properly, by requiring the routing bound to
+// hold on every edge under the one limit.
 assert.doesNotMatch(readme,
   /Urban \/ rural max speed without shoulder|urban versus rural no-shoulder|urban\/rural no-shoulder/,
   'current documentation must not describe the removed split');
