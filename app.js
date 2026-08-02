@@ -5611,14 +5611,13 @@ function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-i
 
 function ensureFerryMarkerImage(targetMap, imageId = 'route-ferry-marker-icon') {
   if (targetMap.hasImage(imageId)) return;
-  // A side-view ferry inside a blue transit badge. The former front view had
-  // two square windows inside a white circular halo, which read as a ghost
-  // face at map scale. This silhouette keeps the windows in a horizontal row
-  // and includes a long hull, bow, and waves, so its meaning survives at 32 px.
+  // A wide, unbadged side-view ferry. A rounded transit badge made the boat
+  // feel like a tiny face or app icon; the white keyline here lets the actual
+  // vessel silhouette sit directly on any basemap while remaining legible.
   // Draw at 2x for clean edges on Retina displays while staying fully offline.
-  const width = 64, height = 64;
+  const width = 80, height = 52;
   const data = new Uint8Array(width * height * 4);
-  const blue = [18, 91, 139, 255], white = [255, 255, 255, 255];
+  const blue = [10, 102, 167, 255], white = [255, 255, 255, 255];
   const paint = (x, y, color) => {
     if (x < 0 || x >= width || y < 0 || y >= height) return;
     const offset = (y * width + x) * 4;
@@ -5639,32 +5638,45 @@ function ensureFerryMarkerImage(targetMap, imageId = 'route-ferry-marker-icon') 
       for (let x = left; x <= right; x++) paint(x, y, color);
     }
   };
+  const polygon = (points, color) => {
+    const minY = Math.max(0, Math.floor(Math.min(...points.map((point) => point[1]))));
+    const maxY = Math.min(height - 1, Math.ceil(Math.max(...points.map((point) => point[1]))));
+    const minX = Math.max(0, Math.floor(Math.min(...points.map((point) => point[0]))));
+    const maxX = Math.min(width - 1, Math.ceil(Math.max(...points.map((point) => point[0]))));
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        let inside = false;
+        for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+          const [xi, yi] = points[i], [xj, yj] = points[j];
+          if ((yi > y) !== (yj > y)
+              && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+        }
+        if (inside) paint(x, y, color);
+      }
+    }
+  };
 
-  // Self-contained badge: its white rim replaces the old separate circle halo.
-  roundedRect(1, 1, 62, 62, 14, white);
-  roundedRect(5, 5, 58, 58, 11, blue);
+  // White outer silhouette first, then a slightly inset blue vessel. The long
+  // horizontal cabin and four-window row are unmistakably a ferry side view.
+  rect(35, 2, 40, 10, white);
+  roundedRect(22, 6, 50, 17, 4, white);
+  roundedRect(11, 13, 59, 31, 5, white);
+  polygon([[5, 27], [75, 27], [65, 43], [18, 43]], white);
 
-  // Side-view superstructure, mast, and three windows. Keeping the cabin left
-  // of center leaves a visibly long bow, so the badge cannot read as a bus.
-  rect(16, 11, 19, 18, white);
-  rect(9, 18, 38, 21, white);
-  rect(11, 22, 36, 34, white);
-  rect(15, 25, 20, 30, blue);
-  rect(23, 25, 28, 30, blue);
-  rect(31, 25, 34, 30, blue);
+  rect(37, 3, 38, 10, blue);
+  roundedRect(25, 9, 47, 18, 2, blue);
+  roundedRect(14, 16, 57, 29, 3, blue);
+  polygon([[10, 30], [70, 30], [62, 39], [21, 39]], blue);
+  rect(18, 19, 25, 23, white);
+  rect(29, 19, 36, 23, white);
+  rect(40, 19, 47, 23, white);
+  rect(51, 19, 55, 23, white);
+  rect(13, 27, 66, 29, white);
 
-  // Long side-on hull with a raised bow at the right. Each lower row narrows
-  // toward the keel, preserving the boat shape even after map scaling.
-  for (let y = 34; y <= 46; y++) {
-    const depth = y - 34;
-    const left = 7 + Math.floor(depth * .75);
-    const right = 59 - depth;
-    for (let x = left; x <= right; x++) paint(x, y, white);
-  }
-  // Three offset wave strokes reinforce that this is a ferry, not a building.
-  rect(10, 51, 23, 53, white);
-  rect(27, 51, 41, 53, white);
-  rect(45, 51, 55, 53, white);
+  // Two broken wave rows keep the symbol nautical without putting it inside
+  // another enclosing shape.
+  for (const [left, right] of [[11, 25], [30, 45], [50, 67]]) rect(left, 45, right, 47, white);
+  for (const [left, right] of [[13, 25], [31, 45], [51, 65]]) rect(left, 45, right, 45, blue);
   targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 2 });
 }
 

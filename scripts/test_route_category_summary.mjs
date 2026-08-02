@@ -105,8 +105,21 @@ assert.deepEqual(JSON.parse(JSON.stringify(ferryMarkers.features[0].geometry.coo
 assert.ok(app.includes("id: 'route-ferry-marker'")
   && app.includes("'icon-image': 'route-ferry-marker-icon'"),
   'the selected route must render the offline ferry icon');
-assert.ok(app.includes('const width = 64, height = 64') && app.includes('{ pixelRatio: 2 }'),
-  'the ferry marker must use the Retina-sized transit badge');
+const ferryImageContext = {};
+vm.createContext(ferryImageContext);
+vm.runInContext(functionSource(app, 'ensureFerryMarkerImage'), ferryImageContext);
+let ferryImage;
+ferryImageContext.ensureFerryMarkerImage({
+  hasImage: () => false,
+  addImage: (id, image, options) => { ferryImage = { id, image, options }; },
+});
+assert.equal(ferryImage.id, 'route-ferry-marker-icon');
+assert.deepEqual(JSON.parse(JSON.stringify({ width: ferryImage.image.width,
+  height: ferryImage.image.height, pixelRatio: ferryImage.options.pixelRatio })),
+{ width: 80, height: 52, pixelRatio: 2 },
+'the ferry marker must use the wide Retina-sized boat silhouette');
+assert.equal(ferryImage.image.data[3], 0,
+  'the ferry marker corner must remain transparent instead of becoming a badge');
 assert.ok(!app.includes("id: 'route-ferry-marker-halo'"),
   'the ferry badge must not sit inside the ghost-like circular halo');
 assert.match(styles, /route-details-dialog-head[^}]+safe-area-inset-top/,
