@@ -77,7 +77,10 @@ for (const label of labels) {
   assert.ok(details.includes(label), `Route Details is missing ${label}`);
 }
 assert.ok(details.includes('Incline over 5%'), 'Route Details is missing the independent incline metric');
-assert.ok(details.includes('At least 55 mph'), 'Route Details is missing the 55+ mph road metric');
+assert.ok(details.includes('At least <strong>55 mph</strong>'),
+  'Route Details is missing the bold 55+ mph road metric');
+assert.ok(!details.includes('Avg. limit') && !details.includes('Max limit'),
+  'Route Details must omit average and maximum speed-limit rows');
 assert.ok(details.includes('<b>Ferry</b>') && details.includes('<b>Dismount</b>'),
   'Route Details summary must include ferry and dismount metrics when present');
 assert.ok(!details.includes('a confirmed ≥'),
