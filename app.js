@@ -5611,31 +5611,61 @@ function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-i
 
 function ensureFerryMarkerImage(targetMap, imageId = 'route-ferry-marker-icon') {
   if (targetMap.hasImage(imageId)) return;
-  // A compact ferry silhouette in RGBA pixels works offline and does not rely
-  // on an emoji font or hosted symbol set.
-  const width = 24, height = 18;
+  // A side-view ferry inside a blue transit badge. The former front view had
+  // two square windows inside a white circular halo, which read as a ghost
+  // face at map scale. This silhouette keeps the windows in a horizontal row
+  // and includes a long hull, bow, and waves, so its meaning survives at 32 px.
+  // Draw at 2x for clean edges on Retina displays while staying fully offline.
+  const width = 64, height = 64;
   const data = new Uint8Array(width * height * 4);
-  const blue = [26, 88, 130, 255], white = [255, 255, 255, 255];
+  const blue = [18, 91, 139, 255], white = [255, 255, 255, 255];
   const paint = (x, y, color) => {
     if (x < 0 || x >= width || y < 0 || y >= height) return;
     const offset = (y * width + x) * 4;
     data[offset] = color[0]; data[offset + 1] = color[1];
     data[offset + 2] = color[2]; data[offset + 3] = color[3];
   };
-  for (let x = 6; x <= 17; x++) paint(x, 3, blue);
-  for (let y = 4; y <= 10; y++) for (let x = 5; x <= 18; x++) paint(x, y, blue);
-  for (let y = 6; y <= 8; y++) {
-    for (let x = 7; x <= 9; x++) paint(x, y, white);
-    for (let x = 14; x <= 16; x++) paint(x, y, white);
+  const roundedRect = (left, top, right, bottom, radius, color) => {
+    for (let y = top; y <= bottom; y++) {
+      for (let x = left; x <= right; x++) {
+        const cx = Math.max(left + radius, Math.min(right - radius, x));
+        const cy = Math.max(top + radius, Math.min(bottom - radius, y));
+        if ((x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2) paint(x, y, color);
+      }
+    }
+  };
+  const rect = (left, top, right, bottom, color) => {
+    for (let y = top; y <= bottom; y++) {
+      for (let x = left; x <= right; x++) paint(x, y, color);
+    }
+  };
+
+  // Self-contained badge: its white rim replaces the old separate circle halo.
+  roundedRect(1, 1, 62, 62, 14, white);
+  roundedRect(5, 5, 58, 58, 11, blue);
+
+  // Side-view superstructure, mast, and three windows. Keeping the cabin left
+  // of center leaves a visibly long bow, so the badge cannot read as a bus.
+  rect(16, 11, 19, 18, white);
+  rect(9, 18, 38, 21, white);
+  rect(11, 22, 36, 34, white);
+  rect(15, 25, 20, 30, blue);
+  rect(23, 25, 28, 30, blue);
+  rect(31, 25, 34, 30, blue);
+
+  // Long side-on hull with a raised bow at the right. Each lower row narrows
+  // toward the keel, preserving the boat shape even after map scaling.
+  for (let y = 34; y <= 46; y++) {
+    const depth = y - 34;
+    const left = 7 + Math.floor(depth * .75);
+    const right = 59 - depth;
+    for (let x = left; x <= right; x++) paint(x, y, white);
   }
-  for (let y = 10; y <= 14; y++) {
-    const inset = y - 10;
-    for (let x = 1 + inset; x <= 22 - inset; x++) paint(x, y, blue);
-  }
-  for (let x = 2; x <= 8; x++) paint(x, 16, blue);
-  for (let x = 11; x <= 16; x++) paint(x, 16, blue);
-  for (let x = 19; x <= 22; x++) paint(x, 16, blue);
-  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
+  // Three offset wave strokes reinforce that this is a ferry, not a building.
+  rect(10, 51, 23, 53, white);
+  rect(27, 51, 41, 53, white);
+  rect(45, 51, 55, 53, white);
+  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 2 });
 }
 
 /* ------------------------------------------- the two route-line motions */
@@ -6033,11 +6063,6 @@ function drawRoute(coords, ferrySegs, segs) {
     id: 'route-ferry', type: 'line', source: 'route-ferry',
     paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.9,
              'line-dasharray': [0.6, 1.8] },
-  });
-  forgetStyleValues(); map.addLayer({
-    id: 'route-ferry-marker-halo', type: 'circle', source: 'route-ferry-marker',
-    paint: { 'circle-radius': 15, 'circle-color': '#ffffff', 'circle-opacity': .96,
-      'circle-stroke-color': '#4f7893', 'circle-stroke-width': 1.5 },
   });
   forgetStyleValues(); map.addLayer({
     id: 'route-ferry-marker', type: 'symbol', source: 'route-ferry-marker',

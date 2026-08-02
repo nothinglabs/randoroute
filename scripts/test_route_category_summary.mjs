@@ -100,6 +100,10 @@ assert.deepEqual(JSON.parse(JSON.stringify(ferryMarkers.features[0].geometry.coo
 assert.ok(app.includes("id: 'route-ferry-marker'")
   && app.includes("'icon-image': 'route-ferry-marker-icon'"),
   'the selected route must render the offline ferry icon');
+assert.ok(app.includes('const width = 64, height = 64') && app.includes('{ pixelRatio: 2 }'),
+  'the ferry marker must use the Retina-sized transit badge');
+assert.ok(!app.includes("id: 'route-ferry-marker-halo'"),
+  'the ferry badge must not sit inside the ghost-like circular halo');
 assert.match(styles, /route-details-dialog-head[^}]+safe-area-inset-top/,
   'the embedded Details header must reserve the iOS top safe area');
 assert.match(styles, /\.route-details-dialog\s*\{\s*position:\s*fixed;\s*inset:\s*0;/,
