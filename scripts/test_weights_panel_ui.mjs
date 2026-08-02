@@ -134,7 +134,11 @@ check('revert restores exactly the default',
 // phone. Presence alone did not catch it, so this checks geometry.
 const revertBox = await pg.evaluate(() => {
   const input = document.querySelector('#routingWeightsEditor input[data-weight="facilityPath"]');
-  input.value = String(Number(input.min));
+  // Away from the default, in whichever direction has room. Driving it to the
+  // min silently did nothing on the day the default became the min, and the
+  // geometry below then measured a hidden button's empty rectangle.
+  input.value = String(Number(input.value) === Number(input.min)
+    ? Number(input.max) : Number(input.min));
   input.dispatchEvent(new Event('input', { bubbles: true }));
   const row = input.closest('.weight-row');
   const revert = row.querySelector('.weight-revert');

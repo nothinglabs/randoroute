@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.515';
+const APP_VERSION = '2026-08-02.516';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2569,6 +2569,13 @@ async function ensureRouter() {
 }
 
 const fmtMi = (m) => (m / 1609.34).toFixed(1);
+// A tenth of a mile stops carrying information once the number reaches double
+// digits: "24.3 mi of gravel" is precision the underlying surface data does not
+// have, and it reads as a measurement rather than an estimate.
+const fmtMiles = (m) => {
+  const miles = m / 1609.34;
+  return miles >= 10 ? String(Math.round(miles)) : miles.toFixed(1);
+};
 const fmtFt = (m) => Math.round(m * 3.28084).toLocaleString();
 const fmtDist = (m) => m < 160.934 ? `${fmtFt(m)} ft` : `${fmtMi(m)} mi`;
 function fmtDur(s) {
@@ -5088,12 +5095,12 @@ function renderRouteCard(m) {
   const ridingM = Math.max(1, ROUTE_CATEGORY_KEYS.reduce((sum, key) => sum + stats.categoryM[key], 0));
   const categoryPct = routeCategoryPercentages(stats.categoryM);
   const inclineOver5Pct = routePercent(stats.inclineOver5M, ridingM, true);
-  const unpavedMiles = `${fmtMi(stats.unpavedM)} mi`;
+  const unpavedMiles = `${fmtMiles(stats.unpavedM)} mi`;
   const hasSignificantUnpaved = stats.unpavedM > SIGNIFICANT_UNPAVED_M;
   const hasSteepGradeWarning = Number(m.maxGradePct) > 18;
   const unpavedMetric = hasSignificantUnpaved
-    ? `<button class="rc-secondary-item rc-ride-unpaved-warning" id="rcUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span>Unpaved</span><span class="rc-unpaved-alert-mark" aria-hidden="true">!</span></button>`
-    : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span>Unpaved</span></span>`;
+    ? `<button class="rc-secondary-item rc-ride-unpaved-warning" id="rcUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span class="rc-secondary-label">Unpaved</span><span class="rc-unpaved-alert-mark" aria-hidden="true">!</span></button>`
+    : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span class="rc-secondary-label">Unpaved</span></span>`;
   const categoryRows = [
     ['trail', 'Trails'],
     ['bike', 'Bike Lane'],
@@ -5111,7 +5118,7 @@ function renderRouteCard(m) {
       <div class="rc-elevation-column">
         <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas><button id="rcElevGradeWarning" class="rc-elev-grade-warning" type="button" aria-label="Route has a sustained grade over 18 percent. View route details." ${hasSteepGradeWarning ? '' : 'hidden'}><span aria-hidden="true">!</span> Details</button></div>
         <div class="rc-secondary-metrics">
-          <span class="rc-secondary-item rc-incline-item"><span class="rc-incline-swatch" aria-hidden="true">↗</span><b>${inclineOver5Pct}</b><span>Incline over 5%</span></span>
+          <span class="rc-secondary-item rc-incline-item"><span class="rc-incline-swatch" aria-hidden="true">↗</span><b>${inclineOver5Pct}</b><span class="rc-secondary-label">Incline over 5%</span></span>
           <span class="rc-secondary-divider" aria-hidden="true"></span>
           ${unpavedMetric}
         </div>
@@ -5588,11 +5595,24 @@ function ensureUnpavedSlatImage(targetMap, imageId = 'route-unpaved-slats') {
   targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
 }
 
+// The one route marker a rider must not miss: past it they have to get off and
+// walk. It used to render 18 CSS px, small enough to be mistaken for map
+// furniture. The geometry below is the same warning triangle, expressed against
+// a scale factor and drawn at DISMOUNT_MARKER_SCALE times the old resolution,
+// so the icon is both larger on screen and sharper on a phone: the bitmap is
+// declared at pixelRatio 2, which halves it back to DISMOUNT_MARKER_PX.
+//
+// Raster rather than a text glyph because the offline style ships no font
+// glyphs, so a symbol layer with `text-field` would draw nothing.
+const DISMOUNT_MARKER_SCALE = 3;
+const DISMOUNT_MARKER_PX = 18 * DISMOUNT_MARKER_SCALE / 2;   // 27 CSS px
+// The halo behind it, which is also what a tap is measured against. A little
+// wider than the triangle so the edges of the icon are comfortably inside it.
+const DISMOUNT_MARKER_HIT_PX = Math.round(DISMOUNT_MARKER_PX / 2) + 4;   // 18 px radius
 function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-icon') {
   if (targetMap.hasImage(imageId)) return;
-  // Use a small raster warning icon instead of a text glyph so it works with
-  // both our local raster style and hosted styles that do not expose glyphs.
-  const width = 18, height = 18;
+  const s = DISMOUNT_MARKER_SCALE;
+  const width = 18 * s, height = 18 * s;
   const data = new Uint8Array(width * height * 4);
   const paint = (x, y, color) => {
     if (x < 0 || x >= width || y < 0 || y >= height) return;
@@ -5600,17 +5620,19 @@ function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-i
     data[offset] = color[0]; data[offset + 1] = color[1];
     data[offset + 2] = color[2]; data[offset + 3] = color[3];
   };
-  for (let y = 1; y < 17; y++) {
-    const half = Math.max(1, Math.floor((y - 1) * .5) + 1);
-    for (let x = 9 - half; x <= 9 + half; x++) paint(x, y, [138, 86, 0, 255]);
+  const row = (y, half, color) => {
+    for (let x = Math.round(9 * s - half); x <= Math.round(9 * s + half); x++) paint(x, y, color);
+  };
+  for (let y = s; y < 17 * s; y++) row(y, Math.max(s, (y - s) * .5 + s), [138, 86, 0, 255]);
+  for (let y = 3 * s; y < 15 * s; y++) row(y, Math.max(s, (y - 2 * s) * .47), [239, 176, 37, 255]);
+  const barLeft = Math.round(8 * s), barRight = Math.round(10 * s) - 1;
+  for (let y = 6 * s; y < 11 * s; y++) {
+    for (let x = barLeft; x <= barRight; x++) paint(x, y, [81, 47, 0, 255]);
   }
-  for (let y = 3; y < 15; y++) {
-    const half = Math.max(1, Math.floor((y - 2) * .47));
-    for (let x = 9 - half; x <= 9 + half; x++) paint(x, y, [239, 176, 37, 255]);
+  for (let y = 12.6 * s; y < 14 * s; y++) {
+    for (let x = barLeft; x <= barRight; x++) paint(x, Math.round(y), [81, 47, 0, 255]);
   }
-  for (let y = 6; y < 11; y++) { paint(8, y, [81, 47, 0, 255]); paint(9, y, [81, 47, 0, 255]); }
-  paint(8, 13, [81, 47, 0, 255]); paint(9, 13, [81, 47, 0, 255]);
-  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
+  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 2 });
 }
 
 function ensureFerryMarkerImage(targetMap, imageId = 'route-ferry-marker-icon') {
@@ -6067,7 +6089,9 @@ function drawRoute(coords, ferrySegs, segs) {
   });
   forgetStyleValues(); map.addLayer({
     id: 'route-dismount-halo', type: 'circle', source: 'route-dismount',
-    paint: { 'circle-radius': 12, 'circle-color': '#fff7d6', 'circle-opacity': .96,
+    // Sized to the icon it sits behind, and it doubles as the marker's tap
+    // target: featureAt() widens its search when a tap lands inside this circle.
+    paint: { 'circle-radius': DISMOUNT_MARKER_HIT_PX, 'circle-color': '#fff7d6', 'circle-opacity': .96,
       'circle-stroke-color': '#8a5600', 'circle-stroke-width': 1.5 },
   });
   forgetStyleValues(); map.addLayer({
@@ -8258,12 +8282,24 @@ function attachHover(src, layerId) {
 // A scored feature therefore wins over a ribbon regardless of draw order, and
 // the road card names the route anyway via routeBadgeAt. A ribbon still answers
 // when nothing scored is under the tap.
+// True when the tap landed inside a dismount marker's halo. A circle layer is
+// hit-tested against its rendered radius, so this asks the question the rider
+// is asking: "did I tap the warning triangle?"
+function dismountMarkerAt(point) {
+  if (!map.getLayer('route-dismount-halo')) return false;
+  return map.queryRenderedFeatures([[point.x, point.y], [point.x, point.y]],
+    { layers: ['route-dismount-halo'] }).length > 0;
+}
+
 function featureAt(point) {
   const layers = HIT_LAYERS.filter(
     (id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none'
   );
   if (!layers.length) return null;
-  const pad = 6;
+  // Tapping the dismount marker has to answer, and the marker is wider than the
+  // route line under it -- a tap on the triangle's corner would otherwise miss
+  // the line and return whatever road happened to be behind it.
+  const pad = dismountMarkerAt(point) ? DISMOUNT_MARKER_HIT_PX : 6;
   const feats = map.queryRenderedFeatures(
     [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]],
     { layers }
@@ -8974,9 +9010,12 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'Only reachable where a freeway shoulder is legally open to bikes and nothing else connects.' },
   ]],
   ['Bike infrastructure and quiet streets', 'Bonuses, not rules. Below 1 makes a mile feel shorter to the router, so it will ride further to use one.', [
-    { key: 'facilityPath', label: 'Shared-use path or trail', min: .2, max: 1.1, step: .01,
+    // The floors sit below the defaults on purpose. When the shipped default IS
+    // the floor the slider only moves one way, so a rider who wants trails
+    // sought out even harder has no control left to move.
+    { key: 'facilityPath', label: 'Shared-use path or trail', min: .1, max: 1.1, step: .01,
       hint: 'Fully separated from traffic. The strongest bonus there is.' },
-    { key: 'facilitySeparated', label: 'Separated bike lane', min: .2, max: 1.1, step: .01,
+    { key: 'facilitySeparated', label: 'Separated bike lane', min: .15, max: 1.1, step: .01,
       hint: 'Physical barrier between you and the traffic lane.' },
     { key: 'facilityBuffered', label: 'Buffered bike lane', min: .2, max: 1.1, step: .01,
       hint: 'Painted buffer, no barrier.' },

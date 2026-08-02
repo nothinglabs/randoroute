@@ -97,6 +97,14 @@ for (const [title, blurb, items] of groups) {
       const d = defaults[key];
       assert.ok(d >= item.min && d <= item.max,
         `${item.label}: default ${key}=${d} is outside the slider range ${item.min}-${item.max}`);
+      // A default that IS an endpoint leaves the slider able to move only one
+      // way, so the preference the control exists to strengthen cannot be
+      // strengthened. useMeasuredTraffic is the one deliberate two-state
+      // control here; everything else is a continuous preference.
+      if (key === 'useMeasuredTraffic') continue;
+      assert.ok(d > item.min && d < item.max,
+        `${item.label}: default ${key}=${d} sits at an end of its ${item.min}-${item.max}`
+        + ' range, so the slider can only move one way');
     }
   }
 }

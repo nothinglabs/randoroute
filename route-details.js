@@ -172,6 +172,13 @@ document.getElementById('backToMap').addEventListener('click', () => {
 });
 
 function fmtMi(m) { return (m / 1609.34).toFixed(1); }
+// A tenth of a mile stops carrying information once the number reaches double
+// digits: "24.3 mi of gravel" is precision the underlying surface data does not
+// have, and it reads as a measurement rather than an estimate.
+function fmtMiles(m) {
+  const miles = m / 1609.34;
+  return miles >= 10 ? String(Math.round(miles)) : miles.toFixed(1);
+}
 function fmtFt(m) { return Math.round(m * 3.28084).toLocaleString(); }
 function fmtDist(m) { return m < 160.934 ? `${fmtFt(m)} ft` : `${fmtMi(m)} mi`; }
 function fmtDur(s) {
@@ -1452,7 +1459,7 @@ if (!hasRoute) {
   unpavedRouteWarning.hidden = !hasSignificantUnpaved;
   if (hasSignificantUnpaved) {
     document.getElementById('unpavedWarningText').textContent =
-      `This route has ${fmtMi(routeStats.unpavedM)} mi of unpaved surface.`;
+      `This route has ${fmtMiles(routeStats.unpavedM)} mi of unpaved surface.`;
   }
   speedShoulderNote.hidden = false;
   speedShoulderNote.innerHTML = `<b>${speedMiles(routeStats.highSpeedNoBikeAccommodationOrShoulderM)}</b> on ≥30 mph roads without bike accommodation or a ≥${routeStats.minShoulderFt} ft shoulder`;
@@ -1608,7 +1615,8 @@ if (!hasRoute) {
       distance: fmtDist(curveHazards.reduce((sum, item) => sum + item.lenM, 0)),
       sectionId: 'concern-uphill-curves',
     });
-    if (unpavedM) notes.push({ label: concernTitles.unpaved, distance: fmtDist(unpavedM), sectionId: 'concern-unpaved' });
+    if (unpavedM) notes.push({ label: concernTitles.unpaved, sectionId: 'concern-unpaved',
+      distance: unpavedM < 160.934 ? fmtDist(unpavedM) : `${fmtMiles(unpavedM)} mi` });
     if (sidewalkFallbacks.length) notes.push({
       label: concernTitles.sidewalkFallback,
       distance: fmtDist(sidewalkFallbacks.reduce((sum, item) => sum + item.lenM, 0)),

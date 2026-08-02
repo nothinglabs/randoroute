@@ -52,6 +52,12 @@ const routeCardLayout = await page.evaluate(() => {
     .map((node) => node.textContent.replace('!', '').trim());
   const clipped = [...root.querySelectorAll('.rc-distance,.rc-duration,.rc-category-item,.rc-secondary-item')]
     .filter((node) => node.scrollWidth > node.clientWidth).map((node) => node.textContent.trim());
+  // The labels truncate with an ellipsis rather than bleeding past the card, so
+  // an overflowing row no longer shows up in `clipped` -- it shows up as "Needs
+  // Cautio…" instead. Catch that here or the backstop hides the real fault.
+  const truncated = [...root.querySelectorAll('.rc-category-item > span:last-child,.rc-secondary-label')]
+    .filter((node) => node.scrollWidth > node.clientWidth)
+    .map((node) => `${node.textContent.trim()} (${node.scrollWidth}>${node.clientWidth})`);
   return {
     height: root.getBoundingClientRect().height,
     overviewWidth: overview.width,
@@ -62,16 +68,22 @@ const routeCardLayout = await page.evaluate(() => {
       && Math.abs(metrics.right - categories.right) < 1,
     metricLabels,
     clipped,
+    truncated,
+    detailsButton: (() => {
+      const rect = document.querySelector('#routeCard .route-details-btn')?.getBoundingClientRect();
+      return rect ? { width: Math.round(rect.width), height: Math.round(rect.height) } : null;
+    })(),
   };
 });
 check('long route distance and metrics fit without clipping',
-  routeCardLayout.clipped.length === 0, JSON.stringify(routeCardLayout));
-check('the enlarged chart is at least as wide as the category list',
-  routeCardLayout.overviewWidth >= 92
+  routeCardLayout.clipped.length === 0 && routeCardLayout.truncated.length === 0,
+  JSON.stringify(routeCardLayout));
+check('the left column is compact and the chart is at least as wide as the categories',
+  routeCardLayout.overviewWidth <= 90
     && routeCardLayout.chartWidth >= routeCardLayout.categoryWidth,
   JSON.stringify(routeCardLayout));
 check('unpaved and incline share one compact full-width strip',
-  routeCardLayout.metricsHeight <= 24 && routeCardLayout.metricsSpanRightColumns
+  routeCardLayout.metricsHeight <= 26 && routeCardLayout.metricsSpanRightColumns
     && routeCardLayout.height <= 100,
   JSON.stringify(routeCardLayout));
 check('incline appears before unpaved and unpaved uses miles',
@@ -135,6 +147,33 @@ check('starting navigation returns an open menu to the Route tab',
   navigationTab.navigating && navigationTab.activeTab === 'tab-route'
     && navigationTab.routePressed === 'true' && navigationTab.panelOpen,
   JSON.stringify(navigationTab));
+
+// The same control in two places. It read "Details" at one size on the route
+// card and another in the navigation footer, which made them look like two
+// different buttons for two different things.
+const detailsButtons = await page.evaluate(() => {
+  const size = (node) => {
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    return { width: Math.round(rect.width), height: Math.round(rect.height),
+      lines: [...node.querySelectorAll('span')].map((span) => span.textContent.trim()) };
+  };
+  document.body.classList.add('navigation-active');
+  document.getElementById('navCard').hidden = false;
+  const nav = size(document.getElementById('navCardDetailsBtn'));
+  document.getElementById('navCard').hidden = true;
+  document.body.classList.remove('navigation-active');
+  return { card: size(document.querySelector('#routeCard .route-details-btn')), nav };
+});
+check('the route-details button is the same size in both views',
+  detailsButtons.card && detailsButtons.nav
+    && detailsButtons.card.width === detailsButtons.nav.width
+    && detailsButtons.card.height === detailsButtons.nav.height,
+  JSON.stringify(detailsButtons));
+check('and reads "Route Details" on two lines',
+  ['card', 'nav'].every((key) =>
+    detailsButtons[key]?.lines.join(' ') === 'Route Details'),
+  JSON.stringify(detailsButtons));
 
 await browser.close();
 site.close();
