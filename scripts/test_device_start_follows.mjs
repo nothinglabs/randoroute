@@ -1,0 +1,130 @@
+#!/usr/bin/env node
+// A start set from "use my location" is a statement about where the rider IS.
+// Nothing used to notice when that stopped being true.
+//
+// Reported from the road: stop a ride that began where you were standing, pick
+// a new destination later and miles away, and the route is drawn from where you
+// were standing. Not an error message, not a stale pin the rider might spot --
+// a complete, plausible route with no relation to them.
+//
+// So a new destination re-reads the position. The distinction that has to hold
+// is between a start the DEVICE gave and a start the RIDER chose: the first
+// follows them, the second is a decision and must never move on its own.
+import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
+
+const site = await serveRepo();
+const browser = await launchBrowser();
+const page = await appPage(browser, site.port);
+
+let passed = 0, failed = 0;
+const check = (name, ok, detail = '') => {
+  if (ok) { passed++; console.log(`PASS  ${name}`); return; }
+  failed++;
+  console.log(`FAIL  ${name}${detail ? `  -- ${detail}` : ''}`);
+};
+
+// Stand in for the device so the position can be moved between steps.
+await page.evaluate(() => {
+  window.__here = { lng: -122.3321, lat: 47.6062 };
+  window.__locationFails = false;
+  window.getFreshDevicePosition = () => (window.__locationFails
+    ? Promise.reject(new Error('Location permission is blocked'))
+    : Promise.resolve({ coords: {
+      longitude: window.__here.lng, latitude: window.__here.lat, accuracy: 8,
+    }, timestamp: Date.now() }));
+});
+
+const settle = () => page.waitForFunction(
+  () => !(document.getElementById('routeActionText')?.textContent || '').includes('Updating start'),
+  { timeout: 15000 }).catch(() => {});
+
+const plan = (fromDevice, at = { lng: -122.3321, lat: 47.6062 }) => page.evaluate(([device, here]) => {
+  clearRoute();
+  window.__here = here;
+  setRoutePoint('start', { lng: window.__here.lng, lat: window.__here.lat },
+    device ? 'My location' : 'Pike Place Market', { fromDevice: device });
+  setRoutePoint('end', { lng: -122.2015, lat: 47.6101 }, 'Bellevue');
+}, [fromDevice, at]);
+
+const readStart = () => page.evaluate(() => ({
+  start: routing.start.map((v) => +v.toFixed(4)),
+  name: routing.startName,
+  follows: routing.startFromDevice,
+  notice: `${document.getElementById('routeActionText')?.textContent || ''} `
+    + `${document.getElementById('routeActionDetail')?.textContent || ''}`,
+}));
+
+/* ------------------------------- a device start follows a new destination */
+await plan(true);
+await settle();
+const planted = await readStart();
+check('a start from the device is marked as one', planted.follows === true,
+  JSON.stringify(planted));
+
+// The rider stops, rides ten miles, and picks somewhere new.
+await page.evaluate(() => { window.__here = { lng: -122.2015, lat: 47.6740 }; });
+await page.evaluate(() => setRoutePoint('end', { lng: -122.1215, lat: 47.6740 }, 'Redmond'));
+await settle();
+const moved = await readStart();
+check('choosing a new destination moves the start to where the rider now is',
+  moved.start[0] === -122.2015 && moved.start[1] === 47.674, JSON.stringify(moved));
+check('and it is still a device start, so it keeps following',
+  moved.follows === true && moved.name === 'My location', JSON.stringify(moved));
+check('the rider is told the start moved', /moved to your location/i.test(moved.notice),
+  moved.notice);
+
+/* -------------------------------- a start the rider chose is left alone */
+await plan(false);
+await settle();
+await page.evaluate(() => { window.__here = { lng: -122.1215, lat: 47.6740 }; });
+await page.evaluate(() => setRoutePoint('end', { lng: -122.1015, lat: 47.6640 }, 'Elsewhere'));
+await settle();
+const chosen = await readStart();
+check('a start the rider picked does not move under them',
+  chosen.start[0] === -122.3321 && chosen.name === 'Pike Place Market',
+  JSON.stringify(chosen));
+
+/* --------------------------------------------- standing still is not news */
+await plan(true);
+await settle();
+await page.evaluate(() => {
+  // Ten metres away: the same place, as far as a rider is concerned.
+  window.__here = { lng: -122.33218, lat: 47.6062 };
+  setRoutePoint('end', { lng: -122.2515, lat: 47.6101 }, 'Somewhere else');
+});
+await settle();
+const still = await readStart();
+check('a rider who has not moved gets no announcement about it',
+  !/moved to your location/i.test(still.notice), JSON.stringify(still));
+
+/* ------------------------------------------- and a failure is not silent */
+await plan(true);
+await settle();
+await page.evaluate(() => {
+  window.__locationFails = true;
+  setRoutePoint('end', { lng: -122.2515, lat: 47.6301 }, 'Nowhere');
+});
+await page.waitForFunction(() => /Could not update your location/i
+  .test(document.getElementById('routeActionText')?.textContent || ''), { timeout: 15000 })
+  .catch(() => {});
+const failedFix = await readStart();
+check('a start that could not be updated says so rather than pretending',
+  /Could not update your location/i.test(failedFix.notice), JSON.stringify(failedFix));
+check('and the route is still calculated from the start it has',
+  failedFix.start[0] === -122.3321, JSON.stringify(failedFix));
+
+/* --------------------------------------------- clearing forgets the flag */
+const cleared = await page.evaluate(() => {
+  window.__locationFails = false;
+  clearRoute();
+  return routing.startFromDevice;
+});
+check('clearing the route forgets that the start followed the device',
+  cleared === false, String(cleared));
+
+check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
+
+await browser.close();
+site.close();
+console.log(`\n${passed} passed${failed ? `, ${failed} FAILED` : ''}`);
+process.exitCode = failed ? 1 : 0;

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.521';
+const APP_VERSION = '2026-08-02.522';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -904,6 +904,7 @@ function normalizeStoredRoute(route) {
   return {
     s: route.s, e: route.e, v: [...vias], b: [...blocks],
     sn: normalizeEndpointName(route.sn), en: normalizeEndpointName(route.en),
+    sd: route.sd === true,
   };
 }
 
@@ -1005,6 +1006,7 @@ function saveStateNow() {
             s: routing.start, e: routing.end, v: routing.vias.map((x) => x.pt),
             b: routing.blocks.map((x) => x.pt),
             sn: routing.startName, en: routing.endName,
+            sd: routing.startFromDevice,
           } : null,
     }));
     stateDirty = false;
@@ -2351,7 +2353,7 @@ function setMapLayerVisible(key, on) {
 const routing = {
   arm: null,                 // 'start' | 'end' — next map tap sets that point
   start: null, end: null,    // [lng, lat]
-  startName: null, endName: null,
+  startName: null, endName: null, startFromDevice: false,
   vias: [],                  // intermediate stops: { pt: [lng,lat], marker }
   blocks: [],                // avoided road locations: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
@@ -4942,6 +4944,7 @@ function activateNewRouteFromCurrentLocation(result) {
   }
   routing.start = start;
   routing.startName = 'Current location';
+  routing.startFromDevice = true;
   routing.arm = null;
   routing.startMarker?.setLngLat(start);
   for (const via of routing.vias) {
@@ -6777,7 +6780,7 @@ function clearWaypointsForEndpointChange(kind, lngLat) {
   return true;
 }
 
-function setRoutePoint(kind, lngLat, name = 'Point on map') {
+function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false } = {}) {
   exitSharedRoute();
   const previous = routing[kind];
   if (!Array.isArray(previous) || previous[0] !== lngLat.lng || previous[1] !== lngLat.lat) {
@@ -6786,6 +6789,10 @@ function setRoutePoint(kind, lngLat, name = 'Point on map') {
   clearWaypointsForEndpointChange(kind, lngLat);
   routing[kind] = [lngLat.lng, lngLat.lat];
   routing[`${kind}Name`] = normalizeEndpointName(name) || 'Point on map';
+  // A start taken from the device is a statement about where the rider IS. A
+  // start they tapped or searched for is a place they chose, and must not move
+  // under them. Only the first kind follows.
+  if (kind === 'start') routing.startFromDevice = !!fromDevice;
   const mk = kind + 'Marker';
   if (routing[mk]) routing[mk].setLngLat(lngLat);
   else {
@@ -6801,6 +6808,52 @@ function setRoutePoint(kind, lngLat, name = 'Point on map') {
   }
   computeRoute();
   updateArmButtons();
+  if (kind === 'end') refreshDeviceStartForNewDestination();
+}
+
+/* A start set from "use my location" goes stale the moment the rider moves,
+ * and nothing used to notice. Stop a ride that began where you were standing,
+ * pick a new destination an hour later and twenty miles away, and the route is
+ * drawn from where you were standing -- a plan with no relation to the rider,
+ * offered without a word.
+ *
+ * So choosing a new destination re-reads the position, and only for a start
+ * that came from the device in the first place. A start the rider tapped or
+ * searched for is a decision, and decisions are not overwritten.
+ *
+ * The route from the old start is still calculated straight away rather than
+ * waiting: a fix can take fifteen seconds or never arrive, and an immediate
+ * answer that corrects itself beats a blank screen that might not.
+ */
+const DEVICE_START_MOVED_M = 30;
+let deviceStartRequest = 0;
+async function refreshDeviceStartForNewDestination() {
+  // Navigation owns the origin while it is running, and a shared link is
+  // someone else's plan.
+  if (!routing.startFromDevice || turnNav.active || routing.sharedLoading) return;
+  const request = ++deviceStartRequest;
+  // The toast rather than the status line: computeRoute() owns the status line
+  // and writes over it the moment the route comes back, which is exactly when
+  // this has something to report.
+  showRouteActionToast('Updating start to your location…', { busy: true, duration: 0 });
+  try {
+    const pos = await getFreshDevicePosition();
+    if (request !== deviceStartRequest || !routing.startFromDevice) return;
+    const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
+    if (Array.isArray(routing.start)
+        && navDistanceM(routing.start, [lngLat.lng, lngLat.lat]) <= DEVICE_START_MOVED_M) {
+      showRouteActionToast('');
+      return;
+    }
+    setRoutePoint('start', lngLat, 'My location', { fromDevice: true });
+    showRouteActionToast('Start moved to your location', { duration: 4000 });
+  } catch (e) {
+    if (request !== deviceStartRequest) return;
+    // Say so. Silence here is what produced the original fault: a route from
+    // somewhere the rider no longer was, presented as though it were current.
+    showRouteActionToast('Could not update your location', {
+      detail: 'The route still starts from the pin on the map.', duration: 7000 });
+  }
 }
 
 function enableLongPressEndpointMove(kind, marker) {
@@ -7133,6 +7186,9 @@ function reverseRoute() {
   routing.startName = routing.endName;
   routing.end = start;
   routing.endName = startName;
+  // The position that was the rider's own is now the destination, and the new
+  // start is a place. Neither follows the device any more.
+  routing.startFromDevice = false;
   routing.vias.reverse();
   routing.startMarker?.setLngLat(routing.start);
   routing.endMarker?.setLngLat(routing.end);
@@ -7154,6 +7210,7 @@ function clearRoute() {
   setRouteActionsOpen(false);
   routing.start = routing.end = null;
   routing.startName = routing.endName = null;
+  routing.startFromDevice = false;
   routing.pendingRoute = false;
   routing.routeRequestActive = false;
   routing.reqId++; // a route already being calculated must not reappear after clear
@@ -7656,7 +7713,7 @@ function buildRoutingPanel() {
     if (saveStateNow()) consumeSharedRouteHash();
   } else if (savedState && normalizeStoredRoute(savedState.route)) {
     const rt = normalizeStoredRoute(savedState.route);
-    setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn);
+    setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn, { fromDevice: rt.sd });
     for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
     for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
@@ -8321,7 +8378,7 @@ function buildPlacePicker() {
     setRouteStatus('Locating…');
     getFreshDevicePosition().then((pos) => {
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
-      setRoutePoint(placeTarget, lngLat, 'My location');
+      setRoutePoint(placeTarget, lngLat, 'My location', { fromDevice: true });
       routing.arm = null;
       updateArmButtons();
       closePlacePicker(false);
