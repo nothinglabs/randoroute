@@ -2,19 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#009E73" />
   <title>Route details · Just Rolling Along</title>
   <script src="palette.js"></script>
+  <script src="region.js"></script>
+  <script src="safety-model.js"></script>
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
-  <link rel="stylesheet" href="route-details.css?v=446" />
+  <link rel="stylesheet" href="route-details.css?v=447" />
 </head>
 <body>
   <main>
     <nav id="routeOptionTabs" class="route-option-tabs" role="tablist" aria-label="Route choices" hidden></nav>
     <section id="routeQuickSummary" class="route-quick-summary" aria-label="Route summary" hidden>
       <div id="summary" class="route-summary-main"></div>
-      <div id="summaryMix" class="route-summary-mix" title="Percent of riding distance; colors match the map legend"></div>
+      <div id="summaryMix" class="route-summary-mix" title="Five map categories total 100% of non-ferry riding distance"></div>
     </section>
     <section id="panel-stats" class="detail-panel detail-stats" role="tabpanel" aria-labelledby="tab-stats">
       <button id="unpavedRouteWarning" class="unpaved-route-warning" type="button" hidden><span class="unpaved-warning-message"><strong>Warning:</strong> <span id="unpavedWarningText"></span></span><span class="unpaved-warning-action">Make sure you’re comfortable riding it. Tap to review.</span></button>
@@ -83,6 +85,6 @@
   <script src="vendor/maplibre-gl.js"></script>
   <script src="vendor/pmtiles.js"></script>
   <script src="basemap-style.js"></script>
-  <script src="route-details.js?v=446"></script>
+  <script src="route-details.js?v=449"></script>
 </body>
 </html>

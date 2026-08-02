@@ -11,6 +11,7 @@ const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
 const OFFICIAL_URBAN = 64;
+const PROHIBITED_SHOULDER = -128;
 const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 // Read from palette.js, not restated. These four used to be spelled out here,
 // and FAIL_COLOR sat at #78121f for a whole session after the map moved to
@@ -31,6 +32,7 @@ const MAX_CREDIBLE_GRADE_PCT = 40;
 const SUSTAINED_GRADE_WINDOW_M = 100;
 const STEEP_UPHILL_CONCERN_PCT = 10;
 const SIGNIFICANT_UNPAVED_M = 1609.344;
+const ROUTE_CATEGORY_KEYS = ['trail', 'bike', 'pass', 'caution', 'fail'];
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 const FACILITY_NAME = {
   1: 'shared lane', 2: 'bike lane', 3: 'buffered bike lane',
@@ -44,7 +46,13 @@ const ROAD_CLASS_NAME = {
 };
 function isBikeNetwork(seg) {
   const flags = seg.flags || 0;
-  return !!(flags & FLAG_INFRA) || (seg.facility || 0) >= 1;
+  // Facility 1 is a sharrow in the route graph. It remains a shared road and
+  // must not become lime or inflate the bike-lane percentage.
+  return !!(flags & FLAG_INFRA) || (seg.facility || 0) >= 2;
+}
+
+function isOffStreetTrail(seg) {
+  return Number(seg?.facility) === 5;
 }
 
 function isDesignated(seg) {
@@ -59,10 +67,23 @@ function isDismountSegment(seg) {
   return !!seg?.dismount || !!((seg?.official || 0) & OFFICIAL_DISMOUNT);
 }
 
-// One speed, urban or rural. The older keys are still read so a rider arriving
-// with saved settings keeps a sensible limit; rural wins, because the single
-// default is the old rural value. Mirrors SafetyModel.noShoulderMaxSpeed, which
-// this file cannot import -- it runs in the route-details window.
+// One non-ferry segment belongs to exactly one of these five map categories.
+// The ordering mirrors routeVisualStyle() in app.js, including its special
+// treatment for crossings and allowed mountain-bike trails.
+function routeDisplayCategory(seg) {
+  if (!seg || ((seg.flags || 0) & FLAG_FERRY)) return null;
+  if (ROUTE_CATEGORY_KEYS.includes(seg.displayCategory)) return seg.displayCategory;
+  if (seg.crossing === 1) return 'pass';
+  if (Number(seg.level) === 4) return 'fail';
+  if (Number(seg.level) === 3 || isMountainBikeTrail(seg)) return 'caution';
+  if (isOffStreetTrail(seg)) return 'trail';
+  if (isBikeNetwork(seg)) return 'bike';
+  return 'pass';
+}
+
+// One speed everywhere. The older per-area keys are read only so a rider with
+// saved settings from an earlier release keeps a sensible value. Mirrors
+// SafetyModel.noShoulderMaxSpeed in the parent app.
 function noShoulderMaxSpeed(seg, rules = {}) {
   return Number(rules.maxSpeedNoShoulder)
     || Number(rules.ruralMaxSpeedNoShoulder)
@@ -71,23 +92,72 @@ function noShoulderMaxSpeed(seg, rules = {}) {
     || 35;
 }
 
+// Rebuild the same complete facts record the map and router score. Route
+// Details used to carry its own partial shoulder test here; that left old
+// exemptions (sharrows, designated routes, and the removed urban/rural split)
+// in concern cards after the shared safety model had moved on.
+function routeSegmentFacts(seg) {
+  const flags = seg?.flags || 0;
+  const official = seg?.official || 0;
+  const facility = Number(seg?.facility) || 0;
+  const measures = seg?.measures || null;
+  return window.SafetyModel.sealFacts({
+    prohibited: Number(seg?.sh) === PROHIBITED_SHOULDER,
+    ferry: !!(flags & FLAG_FERRY),
+    freeway: !!(flags & FLAG_FREEWAY),
+    infra: !!(flags & FLAG_INFRA) || facility >= 4,
+    infraScore: 1,
+    facility,
+    limitedAccess: !!(flags & FLAG_LIMITED_ACCESS),
+    speed: flags & FLAG_FERRY ? null : Number(seg?.mph) || null,
+    shoulder: Number(seg?.sh) >= 0 ? Number(seg.sh) : null,
+    edgeSpace: measures?.edge ?? null,
+    lanes: Number(seg?.lanes) || 0,
+    sidewalk: official & OFFICIAL_SIDEWALK ? 'present'
+      : official & OFFICIAL_SIDEWALK_NO ? 'absent' : null,
+    urban: !!(official & OFFICIAL_URBAN),
+    stressRating: Number(seg?.lts) || null,
+    adt: measures?.adt ?? null,
+    fc: measures?.fc ?? null,
+  });
+}
+
 function isSidewalkFallbackSegment(seg, rules = {}) {
-  if (!rules.allowSidewalkFallback || !((seg?.official || 0) & OFFICIAL_SIDEWALK)
-      || (seg?.facility || 0) >= 1 || !(seg?.mph > noShoulderMaxSpeed(seg, rules))) return false;
-  let shoulder = Number(seg?.sh);
-  if (shoulder < 0 && rules.unknownShoulderZero) shoulder = 0;
-  return Number.isFinite(shoulder) && shoulder < (Number(rules.minShoulder) || 4);
+  const facts = routeSegmentFacts(seg);
+  return window.SafetyModel.sidewalkFallbackApplies(
+    facts, window.SafetyModel.effectiveShoulder(facts, rules), rules);
+}
+
+// The worker stores the exact SafetyModel caution cause. The inference below
+// keeps route data made by an older app readable, while `other` is a deliberate
+// last line of defence: an amber segment must never disappear from Concerns
+// merely because a new cause was added elsewhere first.
+function routeCautionCause(seg, rules = {}) {
+  if (seg?.cautionCause) return seg.cautionCause;
+  if (isSidewalkFallbackSegment(seg, rules)) return 'sidewalk-fallback';
+  if (!(seg?.flags & FLAG_FREEWAY) && (seg?.flags & FLAG_LIMITED_ACCESS)) return 'limited-access';
+  if (Number(seg?.lts) >= (window.SafetyModel?.STRESS_CAUTION_AT || 4)) return 'high-stress';
+  if (isDismountSegment(seg)) return 'dismount';
+  if (isMountainBikeTrail(seg)) return 'mountain-bike';
+  return routeDisplayCategory(seg) === 'caution' ? 'other' : null;
+}
+
+function cautionConcernKind(seg, rules = {}) {
+  if (routeDisplayCategory(seg) !== 'caution') return null;
+  const cause = routeCautionCause(seg, rules);
+  return ['limited-access', 'sidewalk-fallback', 'high-stress', 'dismount', 'mountain-bike']
+    .includes(cause) ? cause : 'other';
 }
 
 function safetyVerdict(seg) {
-  if (seg.level === 4) return { label: 'Fails rules', className: 'fail' };
-  if (isSidewalkFallbackSegment(seg, details?.rules)) return { label: 'Sidewalk fallback', className: 'caution' };
-  if (isMountainBikeTrail(seg)) return { label: 'Mountain-bike trail', className: 'caution' };
-  if (seg.level === 3) return { label: 'Caution', className: 'caution' };
-  if (!seg.level) return { label: 'Insufficient data', className: 'unknown' };
-  if (seg.bikeNetworkAll ?? isBikeNetwork(seg)) return { label: 'Bike network', className: 'bike' };
-  if (seg.designatedAll ?? isDesignated(seg)) return { label: 'Designated route', className: 'designated' };
-  return { label: 'Passes rules', className: 'pass' };
+  if (seg.level === 4) return { label: 'Road fails rules', className: 'fail' };
+  if (isSidewalkFallbackSegment(seg, details?.rules)
+      || isMountainBikeTrail(seg) || seg.level === 3) {
+    return { label: 'Use caution', className: 'caution' };
+  }
+  if (seg.trailAll ?? isOffStreetTrail(seg)) return { label: 'Off-street trail', className: 'trail' };
+  if (seg.bikeNetworkAll ?? isBikeNetwork(seg)) return { label: 'Road with bike lane', className: 'bike' };
+  return { label: 'Other road passing rules', className: 'pass' };
 }
 
 const embeddedDetails = window.self !== window.top;
@@ -167,22 +237,51 @@ function routePercent(meters, total, preciseSmall = false) {
   if (preciseSmall && pct > 99 && pct < 100) return `${pct.toFixed(1)}%`;
   return `${Math.round(pct)}%`;
 }
+function routeCategoryPercentages(categoryM) {
+  const total = ROUTE_CATEGORY_KEYS.reduce((sum, key) => sum + (Number(categoryM?.[key]) || 0), 0);
+  const out = Object.fromEntries(ROUTE_CATEGORY_KEYS.map((key) => [key, 0]));
+  if (!(total > 0)) return out;
+  const rows = ROUTE_CATEGORY_KEYS.map((key, index) => {
+    const meters = Math.max(0, Number(categoryM?.[key]) || 0);
+    const raw = 100 * meters / total;
+    return { key, index, meters, raw, value: meters > 0 ? Math.max(1, Math.floor(raw)) : 0 };
+  });
+  let assigned = rows.reduce((sum, row) => sum + row.value, 0);
+  while (assigned < 100) {
+    const row = [...rows].sort((a, b) =>
+      (b.raw - b.value) - (a.raw - a.value) || a.index - b.index)[0];
+    row.value++; assigned++;
+  }
+  while (assigned > 100) {
+    const row = [...rows].filter((candidate) => candidate.value > (candidate.meters > 0 ? 1 : 0))
+      .sort((a, b) => (b.value - b.raw) - (a.value - a.raw) || b.value - a.value)[0];
+    if (!row) break;
+    row.value--; assigned--;
+  }
+  for (const row of rows) out[row.key] = row.value;
+  return out;
+}
 function routeSummaryStats(segs, minShoulderFt = 4) {
   const levels = [0, 0, 0, 0, 0];
-  let bikeNetworkM = 0, roadM = 0, roadSpeedM = 0, unpavedM = 0, dismountM = 0;
-  let maxRoadSpeedMph = 0, roadAtOrAbove45M = 0, roadAtOrAbove35M = 0;
+  let bikeNetworkM = 0, roadM = 0, roadSpeedM = 0, unpavedM = 0, dismountM = 0, ferryM = 0;
+  let inclineOver5M = 0;
+  const categoryM = Object.fromEntries(ROUTE_CATEGORY_KEYS.map((key) => [key, 0]));
+  let maxRoadSpeedMph = 0, roadAtOrAbove55M = 0, roadAtOrAbove45M = 0, roadAtOrAbove35M = 0;
   let highSpeedNoBikeAccommodationOrShoulderM = 0;
   minShoulderFt = Number.isFinite(Number(minShoulderFt))
-    ? Math.max(0, Number(minShoulderFt)) : 4;
+    ? Math.max(2, Number(minShoulderFt)) : 4;
   for (const seg of segs || []) {
     const flags = seg.flags || 0;
-    if (flags & FLAG_FERRY) continue;
     const len = Number(seg.lenM) || 0;
+    if (flags & FLAG_FERRY) { ferryM += len; continue; }
     const level = Number(seg.level) || 0;
     if (level >= 1 && level <= 4) levels[level] += len;
     if (isConfirmedUnpavedSurface(seg.surface)) unpavedM += len;
+    if (credibleSegmentGradePct(seg) > 5) inclineOver5M += len;
     if (isDismountSegment(seg)) dismountM += len;
-    if ((flags & FLAG_INFRA) || (seg.facility || 0) >= 1) bikeNetworkM += len;
+    const category = routeDisplayCategory(seg);
+    if (Object.prototype.hasOwnProperty.call(categoryM, category)) categoryM[category] += len;
+    if ((flags & FLAG_INFRA) || (seg.facility || 0) >= 2) bikeNetworkM += len;
     // Every road speed counts here, including roads with bike lanes. Dedicated
     // paths have no motor-vehicle speed in the graph and are not road speeds.
     const mph = Number(seg.mph);
@@ -190,9 +289,10 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
       roadM += len;
       roadSpeedM += mph * len;
       maxRoadSpeedMph = Math.max(maxRoadSpeedMph, mph);
+      if (mph >= 55) roadAtOrAbove55M += len;
       if (mph >= 45) roadAtOrAbove45M += len;
       if (mph >= 35) roadAtOrAbove35M += len;
-      const hasBikeAccommodation = (seg.facility || 0) >= 1;
+      const hasBikeAccommodation = (seg.facility || 0) >= 2;
       const shoulderFt = Number(seg.sh);
       if (mph >= 30 && !hasBikeAccommodation
           && !(Number.isFinite(shoulderFt) && shoulderFt >= minShoulderFt)) {
@@ -201,10 +301,11 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
     }
   }
   return {
-    levels, bikeNetworkM, unpavedM, dismountM,
+    levels, categoryM, bikeNetworkM, unpavedM, inclineOver5M, dismountM, ferryM,
     avgRoadSpeedMph: roadM > 0 ? Math.round(roadSpeedM / roadM) : null,
     maxRoadSpeedMph: roadM > 0 ? Math.round(maxRoadSpeedMph) : null,
-    roadAtOrAbove45M, roadAtOrAbove35M, highSpeedNoBikeAccommodationOrShoulderM,
+    roadAtOrAbove55M, roadAtOrAbove45M, roadAtOrAbove35M,
+    highSpeedNoBikeAccommodationOrShoulderM,
     minShoulderFt,
   };
 }
@@ -311,35 +412,38 @@ function isHighway(seg) {
     && (seg.mph >= 45 || HIGHWAY_NAME.test(seg.name || ''));
 }
 function failReason(seg, rules) {
-  const f = seg.flags || 0;
-  if (f & FLAG_FREEWAY) return 'Limited-access freeway — last resort only';
-  if (!rules.noUpperLimit && seg.mph > rules.upperMaxSpeed) {
-    return `Above your ${rules.upperMaxSpeed} mph maximum`;
-  }
-  let shoulder = seg.sh;
-  if (shoulder < 0 && rules.unknownShoulderZero) shoulder = 0;
-  if ((seg.facility || 0) < 1 && !(f & FLAG_DESIGNATED)
-      && shoulder >= 0 && shoulder < rules.minShoulder) {
-    return seg.sh < 0 ? 'Shoulder unknown — treated as 0 ft'
-      : `${shoulder} ft shoulder — below your ${rules.minShoulder} ft minimum`;
+  const facts = routeSegmentFacts(seg);
+  const verdict = window.SafetyModel.evaluate(facts, rules);
+  if (verdict.rule === 'prohibited') return 'Bicycles are prohibited';
+  if (verdict.rule === 'freeway') return 'Limited-access freeway — last resort only';
+  if (verdict.rule === 'speed-cap') return `Above your ${rules.upperMaxSpeed} mph maximum`;
+  if (verdict.rule === 'needs-space') {
+    if (window.SafetyModel.shoulderWasInferred(facts, rules))
+      return `${verdict.shoulder} ft inferred shoulder — below your ${rules.minShoulder} ft minimum`;
+    return seg.sh < 0 ? `No shoulder recorded — below your ${rules.minShoulder} ft minimum`
+      : `${verdict.shoulder} ft shoulder — below your ${rules.minShoulder} ft minimum`;
   }
   return 'Does not meet your selected riding rules';
 }
 
 function failedRoadDetails(seg, rules) {
   const flags = seg.flags || 0;
-  const failsSpeed = !rules.noUpperLimit && seg.mph > rules.upperMaxSpeed;
-  let shoulder = seg.sh;
-  if (shoulder < 0 && rules.unknownShoulderZero) shoulder = 0;
-  const failsShoulder = (seg.facility || 0) < 1 && !(flags & FLAG_DESIGNATED)
-    && shoulder >= 0 && shoulder < rules.minShoulder;
+  const safetyFacts = routeSegmentFacts(seg);
+  const verdict = window.SafetyModel.evaluate(safetyFacts, rules);
+  const spaceReasons = verdict.rule === 'needs-space'
+    ? window.SafetyModel.spaceReasons(safetyFacts, rules) : [];
   const facts = [];
   if (seg.mph > 0) facts.push(`${seg.mph} mph`);
-  if (failsShoulder) {
-    const context = (seg.official || 0) & OFFICIAL_URBAN ? 'Urban' : 'Rural';
-    facts.push(`${context} no-shoulder limit: ${noShoulderMaxSpeed(seg, rules)} mph`);
-  }
-  if (seg.sh >= 0 && !failsShoulder) facts.push(`${seg.sh} ft shoulder`);
+  if (spaceReasons.includes('speed'))
+    facts.push(`Shoulder or bike lane required above ${noShoulderMaxSpeed(seg, rules)} mph`);
+  if (spaceReasons.includes('lanes'))
+    facts.push(`${seg.lanes} lanes — bike space required above ${rules.lanesNoShoulderOver}`);
+  if (spaceReasons.includes('traffic') && seg.measures?.adt)
+    facts.push(`${Number(seg.measures.adt).toLocaleString()} vehicles/day`);
+  if (spaceReasons.includes('class')) facts.push('Busy-road class requires bike space');
+  if (seg.sh >= 0) facts.push(`${seg.sh} ft shoulder`);
+  else if (window.SafetyModel.shoulderWasInferred(safetyFacts, rules))
+    facts.push(`${verdict.shoulder} ft inferred shoulder`);
   if (FACILITY_NAME[seg.facility]) facts.push(FACILITY_NAME[seg.facility]);
   if (!(flags & FLAG_FREEWAY) && (flags & FLAG_LIMITED_ACCESS)) facts.push('Limited access');
   else if (ROAD_CLASS_NAME[seg.roadClass]) facts.push(ROAD_CLASS_NAME[seg.roadClass]);
@@ -622,6 +726,7 @@ function buildRouteSteps(segs, directions = []) {
       last.mph = Math.max(last.mph, seg.mph || 0);
       last.level = Math.max(last.level, seg.level || 0);
       last.bikeNetworkAll = last.bikeNetworkAll && isBikeNetwork(seg);
+      last.trailAll = last.trailAll && isOffStreetTrail(seg);
       last.designatedAll = last.designatedAll && isDesignated(seg);
       last.hazard = Math.max(last.hazard || 0, seg.hazard || 0);
       last.crossingM += seg.crossing ? Number(seg.lenM) || 0 : 0;
@@ -644,6 +749,7 @@ function buildRouteSteps(segs, directions = []) {
         mph: seg.mph || 0,
         level: seg.level || 0,
         bikeNetworkAll: isBikeNetwork(seg),
+        trailAll: isOffStreetTrail(seg),
         designatedAll: isDesignated(seg),
         hazard: seg.hazard || 0,
         crossingM: seg.crossing ? Number(seg.lenM) || 0 : 0,
@@ -672,6 +778,7 @@ function buildRouteSteps(segs, directions = []) {
       previous.level = Math.max(previous.level, bridge.level, next.level);
       previous.bikeNetworkAll = previous.bikeNetworkAll
         && bridge.bikeNetworkAll && next.bikeNetworkAll;
+      previous.trailAll = previous.trailAll && bridge.trailAll && next.trailAll;
       previous.designatedAll = previous.designatedAll
         && bridge.designatedAll && next.designatedAll;
       previous.hazard = Math.max(previous.hazard || 0, bridge.hazard || 0, next.hazard || 0);
@@ -747,10 +854,7 @@ function speedProfileSegments(segs) {
     if (!Number.isFinite(mph) || mph <= 0) continue;
     profile.push({
       startM, endM: distanceM, mph,
-      color: Number(seg.level) === 4 ? 'fail'
-        : Number(seg.level) === 3 ? 'caution'
-          : Number(seg.level) === 0 ? 'unknown'
-            : isBikeNetwork(seg) ? 'bike' : 'pass',
+      color: routeDisplayCategory(seg),
     });
   }
   return profile;
@@ -823,8 +927,8 @@ function drawSpeedProfile(canvas) {
     else if (mph % 20 === 0) ctx.fillText(`${mph}`, padL + 3, y - 5);
   }
   const colors = {
-    bike: BIKE_NETWORK_COLOR, pass: PASS_COLOR, caution: CAUTION_COLOR,
-    fail: FAIL_COLOR, unknown: '#98a2ad',
+    trail: BIKE_NETWORK_COLOR, bike: BIKE_NETWORK_COLOR, pass: PASS_COLOR,
+    caution: CAUTION_COLOR, fail: FAIL_COLOR,
   };
   let previous = null;
   for (const segment of segments) {
@@ -1066,18 +1170,12 @@ function routePreviewPoints() {
 }
 
 const ROUTE_PREVIEW_STYLES = {
-  pass: PASS_COLOR, designated: PASS_COLOR, bike: BIKE_NETWORK_COLOR,
-  trail: BIKE_NETWORK_COLOR, caution: CAUTION_COLOR, fail: FAIL_COLOR,
-  unknown: '#98a2ad',
+  pass: PASS_COLOR, bike: BIKE_NETWORK_COLOR, trail: BIKE_NETWORK_COLOR,
+  caution: CAUTION_COLOR, fail: FAIL_COLOR,
 };
 
 function routePreviewStyle(seg) {
-  if (!seg || seg.crossing === 1) return 'pass';
-  if (Number(seg.level) === 4) return 'fail';
-  if (Number(seg.level) === 3 || isMountainBikeTrail(seg)) return 'caution';
-  if (!Number(seg.level)) return 'unknown';
-  if (isBikeNetwork(seg)) return Number(seg.facility) === 5 ? 'trail' : 'bike';
-  return 'pass';
+  return routeDisplayCategory(seg) || 'pass';
 }
 
 function routePreviewColor(seg) {
@@ -1319,25 +1417,35 @@ if (!hasRoute) {
   const steepGrades = consolidateConcernItems(sustainedUphillGradeConcerns(segs)
     .map((item) => ({ ...item, riskScore: Number(item.maxGradePct) || 0 })));
   const steepUphillM = steepGrades.reduce((sum, item) => sum + item.lenM, 0);
-  const ridingM = Math.max(1, totals.distM - (totals.ferryM || 0));
-  const bikePct = routePercent(routeStats.bikeNetworkM, ridingM);
-  const passPct = routePercent((routeStats.levels[1] || 0) + (routeStats.levels[2] || 0), ridingM, true);
-  const cautionPct = routePercent(routeStats.levels[3] || 0, ridingM, true);
-  const failPct = routePercent(totals.failM || 0, ridingM, true);
+  const ridingM = Math.max(1,
+    ROUTE_CATEGORY_KEYS.reduce((sum, key) => sum + routeStats.categoryM[key], 0));
+  const categoryPct = routeCategoryPercentages(routeStats.categoryM);
   const unpavedPct = routePercent(routeStats.unpavedM, ridingM, true);
+  const inclineOver5Pct = routePercent(routeStats.inclineOver5M, ridingM, true);
   const hasSignificantUnpaved = routeStats.unpavedM > SIGNIFICANT_UNPAVED_M;
   const unpavedSummaryMetric = hasSignificantUnpaved
-    ? `<button class="route-summary-mix-item mix-unpaved-warning" id="summaryUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</button>`
-    : `<span class="route-summary-mix-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>`;
+    ? `<button class="route-summary-secondary-item mix-unpaved-warning" id="summaryUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></button>`
+    : `<span class="route-summary-secondary-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></span>`;
+  const categoryRows = [
+    ['trail', 'Off-street trails'],
+    ['bike', 'Roads with bike lanes'],
+    ['pass', 'Roads that pass rules'],
+    ['caution', 'Roads that need caution'],
+    ['fail', 'Roads that fail rules'],
+  ].map(([key, label]) => `<span class="route-summary-category-item category-${key}"><span class="route-summary-category-swatch ${key}" aria-hidden="true"></span><b>${categoryPct[key]}%</b><span>${label}</span></span>`).join('');
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
-  summary.innerHTML = `<strong>${fmtMi(totals.distM)} mi</strong><small>${fmtDur(totals.timeS)}</small>`;
+  const tripNotes = [
+    routeStats.ferryM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⛴</span><b>Ferry</b> ${fmtMi(routeStats.ferryM)} mi</span>` : '',
+    routeStats.dismountM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⚠</span><b>Dismount</b> ${fmtMi(routeStats.dismountM)} mi</span>` : '',
+  ].filter(Boolean).join('');
+  summary.innerHTML = `<strong>${fmtMi(totals.distM)} mi</strong><small>${fmtDur(totals.timeS)}</small>${tripNotes}`;
   summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span><span class="elevation-metric"><b>10%+ uphill</b><strong>${fmtMi(steepUphillM)} mi</strong></span>`;
   elevationSteepWarning.hidden = !(maxGradePct > 18);
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
-  summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>Avg. limit</span><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>Max limit</span><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>At least 35 mph</span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span><span class="speed-limit-metric"><span>At least 45 mph</span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span>`;
-  summaryMix.innerHTML = `<div class="route-summary-mix-items"><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="route-summary-mix-item"><span class="route-summary-swatch" style="background:${PASS_COLOR}"></span><b>${passPct}</b> pass rules</span><span class="route-summary-mix-item ${routeStats.levels[3] > 0 ? 'mix-caution' : ''}"><span class="route-summary-swatch" style="background:${CAUTION_COLOR}"></span><b>${cautionPct}</b> caution</span><span class="route-summary-mix-item ${totals.failM > 0 ? 'mix-fail' : ''}"><span class="route-summary-swatch" style="background:${FAIL_COLOR}"></span><b>${failPct}</b> fail rules</span>${unpavedSummaryMetric}${totals.ferryM > 0 ? `<span class="route-summary-mix-item mix-ferry"><span class="route-summary-ferry-swatch" aria-hidden="true">⛴︎</span><b>${fmtMi(totals.ferryM)} mi</b> ferry</span>` : ''}${routeStats.dismountM > 0 ? '<span class="route-summary-mix-item mix-dismount">⚠ <b>Dismount</b> — walk</span>' : ''}</div>`;
+  summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>Avg. limit</span><b>${hasRoadSpeed ? `${routeStats.avgRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>Max limit</span><b>${hasRoadSpeed ? `${routeStats.maxRoadSpeedMph} mph` : 'N/A'}</b></span><span class="speed-limit-metric"><span>At least 35 mph</span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span><span class="speed-limit-metric"><span>At least 45 mph</span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span><span class="speed-limit-metric"><span>At least 55 mph</span><b>${speedMiles(routeStats.roadAtOrAbove55M)}</b></span>`;
+  summaryMix.innerHTML = `<div class="route-summary-mix-items">${categoryRows}</div><div class="route-summary-secondary">${unpavedSummaryMetric}<span class="route-summary-secondary-divider" aria-hidden="true"></span><span class="route-summary-secondary-item"><span class="route-summary-incline-swatch" aria-hidden="true">↗</span><b>${inclineOver5Pct}</b><span>Incline over 5%</span></span></div>`;
   document.getElementById('summaryUnpavedWarningLink')?.addEventListener('click', () => {
     selectDetailTab('concerns');
     requestAnimationFrame(() => scrollToConcernSection('concern-unpaved'));
@@ -1348,7 +1456,7 @@ if (!hasRoute) {
       `This route has ${fmtMi(routeStats.unpavedM)} mi of unpaved surface.`;
   }
   speedShoulderNote.hidden = false;
-  speedShoulderNote.innerHTML = `<b>${speedMiles(routeStats.highSpeedNoBikeAccommodationOrShoulderM)}</b> on ≥30 mph roads without bike accommodation or a confirmed ≥${routeStats.minShoulderFt} ft shoulder`;
+  speedShoulderNote.innerHTML = `<b>${speedMiles(routeStats.highSpeedNoBikeAccommodationOrShoulderM)}</b> on ≥30 mph roads without bike accommodation or a ≥${routeStats.minShoulderFt} ft shoulder`;
   const speedProfile = document.getElementById('speedProfile');
   const speedSegments = speedProfileSegments(segs);
   speedProfile.hidden = !speedSegments.length;
@@ -1389,7 +1497,8 @@ if (!hasRoute) {
     riskScore: 1000 + (Number(s.mph) || 0),
   })));
   const limitedAccess = consolidateConcernItems(sections(segs,
-    (s) => !(s.flags & FLAG_FREEWAY) && !!(s.flags & FLAG_LIMITED_ACCESS), (s) => ({
+    (s) => !(s.flags & FLAG_FREEWAY) && (!!(s.flags & FLAG_LIMITED_ACCESS)
+      || cautionConcernKind(s, rules) === 'limited-access'), (s) => ({
       name: roadName(s),
       meta: [s.mph ? `${s.mph} mph` : null, 'limited-access highway'].filter(Boolean).join(' · '),
       riskScore: Number(s.mph) || 0,
@@ -1407,20 +1516,36 @@ if (!hasRoute) {
       + (Number(s.mph) || 0) * 100
       + Math.max(0, (Number(rules.minShoulder) || 4) - Math.max(0, Number(s.sh) || 0)),
   })));
-  const dismounts = consolidateConcernItems(sections(segs, isDismountSegment, (s) => ({
+  const dismounts = consolidateConcernItems(sections(segs,
+    (s) => isDismountSegment(s) || cautionConcernKind(s, rules) === 'dismount', (s) => ({
     name: roadName(s), meta: 'Dismount required — walk your bike',
     riskScore: Number(s.lenM) || 0,
   })));
-  const sidewalkFallbacks = consolidateConcernItems(sections(segs, (s) => isSidewalkFallbackSegment(s, rules), (s) => ({
+  const sidewalkFallbacks = consolidateConcernItems(sections(segs,
+    (s) => isSidewalkFallbackSegment(s, rules)
+      || cautionConcernKind(s, rules) === 'sidewalk-fallback', (s) => ({
     name: roadName(s),
-    meta: `${s.mph} mph · ${(s.official || 0) & OFFICIAL_URBAN ? 'urban' : 'rural'} road`,
+    meta: `${s.mph} mph · mapped sidewalk fallback`,
     riskScore: Number(s.mph) || 0,
   })));
-  const mountainBike = consolidateConcernItems(sections(segs, isMountainBikeTrail, (s) => ({
+  const mountainBike = consolidateConcernItems(sections(segs,
+    (s) => isMountainBikeTrail(s) || cautionConcernKind(s, rules) === 'mountain-bike', (s) => ({
     name: roadName(s),
     meta: `Allowed mountain-bike trail · ${s.mtb ? 'OSM MTB tag' : 'OSM MTB route'}`,
     riskScore: Number(s.mtb) || 0,
   })));
+  const highStress = consolidateConcernItems(sections(segs,
+    (s) => cautionConcernKind(s, rules) === 'high-stress', (s) => ({
+      name: roadName(s),
+      meta: `${window.Region?.stressAgency || 'Transportation agency'} rates it ${Number(s.lts) || 4} of 4 for traffic stress`,
+      riskScore: Number(s.lts) || 4,
+    })));
+  const otherCautions = consolidateConcernItems(sections(segs,
+    (s) => cautionConcernKind(s, rules) === 'other', (s) => ({
+      name: roadName(s),
+      meta: 'Marked “Use caution” on the route',
+      riskScore: Number(s.mph) || 0,
+    })));
   const unpaved = consolidateConcernItems(sections(segs,
     (s) => isConfirmedUnpavedSurface(s.surface), (s) => ({
       name: roadName(s),
@@ -1450,18 +1575,24 @@ if (!hasRoute) {
     dismount: 'Dismount points — walk your bike',
     steepGrades: 'Steep uphill grades\n(over 10%)',
     limitedAccess: 'Limited-access highways',
+    highStress: 'Officially rated high-stress roads',
     mountainBike: 'Mountain-bike trails',
     curveHazards: 'Possible limited-visibility uphill curves',
     unpaved: 'Unpaved surfaces',
     sidewalkFallback: 'Sidewalk fallback',
+    otherCautions: 'Other route cautions',
   };
 
   alert.hidden = false;
   alert.classList.remove('good', 'caution');
-  if (failing.length || dismounts.length || sidewalkFallbacks.length || mountainBike.length || limitedAccess.length || curveHazards.length || steepGrades.length || unpaved.length) {
+  if (failing.length || dismounts.length || sidewalkFallbacks.length || mountainBike.length
+      || limitedAccess.length || highStress.length || otherCautions.length
+      || curveHazards.length || steepGrades.length || unpaved.length) {
     const failingM = failing.reduce((sum, item) => sum + item.lenM, 0);
     const dismountM = dismounts.reduce((sum, item) => sum + item.lenM, 0);
     const limitedM = limitedAccess.reduce((sum, item) => sum + item.lenM, 0);
+    const highStressM = highStress.reduce((sum, item) => sum + item.lenM, 0);
+    const otherCautionM = otherCautions.reduce((sum, item) => sum + item.lenM, 0);
     const mountainBikeM = mountainBike.reduce((sum, item) => sum + item.lenM, 0);
     const unpavedM = unpaved.reduce((sum, item) => sum + item.lenM, 0);
     if (!failingM) alert.classList.add('caution');
@@ -1470,6 +1601,8 @@ if (!hasRoute) {
     if (dismountM) notes.push({ label: concernTitles.dismount, distance: fmtDist(dismountM), sectionId: 'concern-dismount' });
     if (steepGrades.length) notes.push({ label: concernTitles.steepGrades, distance: fmtDist(steepUphillM), sectionId: 'concern-steep-grades' });
     if (limitedM) notes.push({ label: concernTitles.limitedAccess, distance: fmtDist(limitedM), sectionId: 'concern-limited-access' });
+    if (highStressM) notes.push({ label: concernTitles.highStress, distance: fmtDist(highStressM), sectionId: 'concern-high-stress' });
+    if (otherCautionM) notes.push({ label: concernTitles.otherCautions, distance: fmtDist(otherCautionM), sectionId: 'concern-other-cautions' });
     if (mountainBikeM) notes.push({ label: concernTitles.mountainBike, distance: fmtDist(mountainBikeM), sectionId: 'concern-mountain-bike' });
     if (curveHazards.length) notes.push({
       label: concernTitles.curveHazards,
@@ -1530,12 +1663,15 @@ if (!hasRoute) {
   if (steepGrades.length) renderSection(report, concernTitles.steepGrades, steepGrades, '', 'caution', false, 'concern-steep-grades', 'Note: May contain errors due to data quality.', true);
   if (freeways.length) renderSection(report, 'Freeways', freeways, '', 'freeway', false, 'concern-freeways', '', true);
   if (limitedAccess.length) renderSection(report, concernTitles.limitedAccess, limitedAccess, '', 'caution', false, 'concern-limited-access', '', true);
+  if (highStress.length) renderSection(report, concernTitles.highStress, highStress, '', 'caution', false, 'concern-high-stress', 'Official Level of Traffic Stress is road context, not a failure of your rules.', true);
+  if (otherCautions.length) renderSection(report, concernTitles.otherCautions, otherCautions, '', 'caution', false, 'concern-other-cautions', 'These segments are shown so every amber route section has a matching concern item.', true);
   if (mountainBike.length) renderSection(report, concernTitles.mountainBike, mountainBike, '', 'caution', false, 'concern-mountain-bike', '', true);
   if (curveHazards.length) renderSection(report, concernTitles.curveHazards, curveHazards, '', 'caution', false, 'concern-uphill-curves', '', true);
   if (unpaved.length) renderSection(report, concernTitles.unpaved, unpaved, '', 'caution', false, 'concern-unpaved', 'Known unpaved surfaces receive a modest route-choice cost; Settings can make the preference strong.', true);
   if (highways.length) renderSection(report, 'Highways', highways, '', '', false, 'concern-highways', '', true);
   if (sidewalkFallbacks.length) renderSection(report, concernTitles.sidewalkFallback, sidewalkFallbacks, '', 'caution', false, 'concern-sidewalk-fallback', 'Uses mapped sidewalks as a route fallback.', true);
-  if (!freeways.length && !limitedAccess.length && !highways.length && !dismounts.length && !sidewalkFallbacks.length && !failing.length && !unpaved.length && !mountainBike.length
+  if (!freeways.length && !limitedAccess.length && !highStress.length && !otherCautions.length
+      && !highways.length && !dismounts.length && !sidewalkFallbacks.length && !failing.length && !unpaved.length && !mountainBike.length
       && !curveHazards.length && !steepGrades.length) {
     report.innerHTML = '<div class="no-route">No dismount, freeway, limited-access highway, unpaved, highway, steep-grade, or rule-failing sections were found on this route.</div>';
   }

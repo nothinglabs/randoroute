@@ -42,11 +42,10 @@ Two rules decoded from the live service:
 
   * WSDOTUrbanRuralCode is NOT a boolean. It is an urban-area identifier: 1-67
     name individual urbanized areas, 98 and 99 mean rural. It is carried as a
-    cross-check only. Our own Census 2020 point-in-polygon test remains the sole
-    driver of the urban speed rule, because WSDOT's urban/rural descends from
-    the FHWA *adjusted* urban boundary -- the Census line smoothed and extended,
-    then approved for federal-aid purposes -- and is generally the larger of the
-    two. See docs/plan-county-road-log.md.
+    cross-check only. The app's Census 2020 point-in-polygon flag is descriptive
+    area context, not a switch between safety limits. WSDOT's urban/rural
+    boundary descends from the larger FHWA *adjusted* urban boundary. See
+    docs/plan-county-road-log.md.
 
 Usage:
   python3 scripts/build_funcclass.py --out data/funcclass.geojson

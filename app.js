@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-01.496';
+const APP_VERSION = '2026-08-01.501';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -28,6 +28,9 @@ const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
 const OFFICIAL_URBAN = 64;
 const SIGNIFICANT_UNPAVED_M = 1609.344;
+const MIN_REPORTED_GRADE_M = 20;
+const MAX_CREDIBLE_GRADE_PCT = 40;
+const ROUTE_CATEGORY_KEYS = ['trail', 'bike', 'pass', 'caution', 'fail'];
 
 /* ---------------------------------------------------------------- palette */
 // One visual verdict system, defined once in palette.js and read here. The
@@ -72,6 +75,14 @@ function isConfirmedUnpavedSurface(surface) {
 }
 function isDismountSegment(segment) {
   return !!segment?.dismount || !!((segment?.official || 0) & OFFICIAL_DISMOUNT);
+}
+
+function credibleRouteSegmentGradePct(segment) {
+  const grade = Number(segment?.gradePct);
+  const len = Number(segment?.lenM);
+  if (!Number.isFinite(grade) || !Number.isFinite(len)
+      || len < MIN_REPORTED_GRADE_M || Math.abs(grade) > MAX_CREDIBLE_GRADE_PCT) return 0;
+  return grade;
 }
 
 /* ------------------------------------------------- riding-rules state */
@@ -125,7 +136,7 @@ const rules = { ...DEFAULT_RULES };
 // would pick over turning the rule off entirely.
 const MAX_LANES_NO_LIMIT = 6;
 const RULE_NUMBER_LIMITS = {
-  minShoulder: [0, 10],
+  minShoulder: [2, 10],
   lanesNoShoulderOver: [1, MAX_LANES_NO_LIMIT],
   busyNoShoulder: [0, 4],
   maxSpeedNoShoulder: [15, 45],
@@ -140,7 +151,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   designated: 0.94, strongDesignated: 0.5, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.5, facilityBuffered: 0.45,
-  facilitySeparated: 0.4, facilityPath: 0.3,
+  facilitySeparated: 0.3, facilityPath: 0.2,
   mtbTrail: 6,
   freeway: 60,
   limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
@@ -2621,27 +2632,54 @@ function measureProps(m) {
 // through the same scorer the map and the card use.
 function fallbackRouteLevel(s) { return effectiveLevel(scoreRouteSeg(routeSegProps(s))); }
 
+// Preserve WHY a route segment is amber, not only the amber level. Route
+// Details uses this to guarantee that every caution rendered on the route has
+// a matching item under Concerns. New worker payloads provide the exact cause;
+// the evaluation keeps older payloads useful.
+function routeSegmentCautionCause(s) {
+  if (s?.cautionCause) return s.cautionCause;
+  const verdict = evaluateRoad(scoreRouteSeg(routeSegProps(s)));
+  if (verdict.level === 3 && verdict.caution) return verdict.caution;
+  if (s?.mtb) return 'mountain-bike';
+  return routeSegmentDisplayCategory(s) === 'caution' ? 'other' : null;
+}
+
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 function isHighwaySegment(s) {
   const flags = s.flags || 0;
   return !(flags & (4 | 8 | 32)) && (s.mph >= 45 || HIGHWAY_NAME.test(s.name || ''));
 }
 
+function routeSegmentDisplayCategory(s) {
+  const level = s.level || fallbackRouteLevel(s);
+  const props = routeSegProps(s);
+  props.level = level;
+  return routeVisualStyle(props);
+}
+
 function routeSummaryStats(m) {
   const levels = [0, 0, 0, 0, 0];
   let highwayM = 0, freewayM = 0, limitedAccessM = 0, bikeNetworkM = 0, mtbM = 0, dismountM = 0;
-  let roadM = 0, roadSpeedM = 0, unpavedM = 0;
+  let roadM = 0, roadSpeedM = 0, unpavedM = 0, inclineOver5M = 0;
+  const categoryM = Object.fromEntries(ROUTE_CATEGORY_KEYS.map((key) => [key, 0]));
   for (const s of m.segs || []) {
     const flags = s.flags || 0;
     const len = Number(s.lenM) || 0;
     if (flags & 32) continue; // ferry is reported separately, not a riding safety level
     if (isConfirmedUnpavedSurface(s.surface)) unpavedM += len;
+    if (credibleRouteSegmentGradePct(s) > 5) inclineOver5M += len;
     const level = s.level || fallbackRouteLevel(s);
     if (level >= 1 && level <= 4) levels[level] += len;
-    // Physical facilities only (lime on the map) — designation alone can be a
-    // plain road, and Route Details' "Bike network" verdict draws this line
-    // the same way.
-    if ((flags & 8) || (s.facility || 0) >= 1) bikeNetworkM += len;
+    // Use the selected route's actual paint classifier. These five buckets are
+    // mutually exclusive, so the percentages beside the map describe exactly
+    // one visible style per metre instead of counting lime stretches again as
+    // generic passing roads. Explicit level 0 from an older stored route is
+    // rescored through the current ladder rather than creating a sixth row.
+    const category = routeSegmentDisplayCategory(s);
+    if (Object.prototype.hasOwnProperty.call(categoryM, category)) categoryM[category] += len;
+    // Physical facilities only. A sharrow is paint in the shared travel lane,
+    // so it is not part of this legacy aggregate either.
+    if ((flags & 8) || (s.facility || 0) >= 2) bikeNetworkM += len;
     // Include every road speed, including roads with bike lanes. Dedicated
     // paths carry no motor-vehicle speed and are not part of this road average.
     const mph = Number(s.mph);
@@ -2656,9 +2694,39 @@ function routeSummaryStats(m) {
     else if (isHighwaySegment(s)) highwayM += len;
   }
   return {
-    levels, highwayM, freewayM, limitedAccessM, bikeNetworkM, mtbM, dismountM, unpavedM,
+    levels, categoryM, highwayM, freewayM, limitedAccessM, bikeNetworkM, mtbM, dismountM,
+    unpavedM, inclineOver5M,
     avgRoadSpeedMph: roadM > 0 ? Math.round(roadSpeedM / roadM) : null,
   };
+}
+
+// Whole-number percentages are easier to scan in the compact route chooser.
+// Allocate rounding remainders as a group so the five displayed values always
+// add to exactly 100. A category with real distance keeps at least 1%, avoiding
+// a misleading "0%" beside a visible short amber or red segment.
+function routeCategoryPercentages(categoryM) {
+  const total = ROUTE_CATEGORY_KEYS.reduce((sum, key) => sum + (Number(categoryM?.[key]) || 0), 0);
+  const out = Object.fromEntries(ROUTE_CATEGORY_KEYS.map((key) => [key, 0]));
+  if (!(total > 0)) return out;
+  const rows = ROUTE_CATEGORY_KEYS.map((key, index) => {
+    const meters = Math.max(0, Number(categoryM?.[key]) || 0);
+    const raw = 100 * meters / total;
+    return { key, index, meters, raw, value: meters > 0 ? Math.max(1, Math.floor(raw)) : 0 };
+  });
+  let assigned = rows.reduce((sum, row) => sum + row.value, 0);
+  while (assigned < 100) {
+    const row = [...rows].sort((a, b) =>
+      (b.raw - b.value) - (a.raw - a.value) || a.index - b.index)[0];
+    row.value++; assigned++;
+  }
+  while (assigned > 100) {
+    const row = [...rows].filter((candidate) => candidate.value > (candidate.meters > 0 ? 1 : 0))
+      .sort((a, b) => (b.value - b.raw) - (a.value - a.raw) || b.value - a.value)[0];
+    if (!row) break;
+    row.value--; assigned--;
+  }
+  for (const row of rows) out[row.key] = row.value;
+  return out;
 }
 
 function routePercent(meters, total, preciseSmall = false) {
@@ -2802,21 +2870,25 @@ function storeRouteDetails(m) {
         failM: m.failM, desigM: m.desigM, facilityM: m.facilityM, ferryM: m.ferryM,
         mtbM: m.mtbM || 0, dismountM: m.dismountM || 0, hazardM: m.hazardM || 0,
       },
-      // Keep the detailed report compact: it only needs road attributes and
-      // lengths plus downsampled geometry for the small route preview.
+      // Keep the detailed report compact, but retain every fact the shared
+      // safety model needs so a concern card explains the same verdict the
+      // router produced.
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
         dismount: isDismountSegment(s),
         surface: Number.isInteger(s.surface) ? s.surface : 0,
-        roadClass: s.roadClass || 0, c0: s.c0, c1: s.c1,
+        roadClass: s.roadClass || 0, lanes: Number(s.lanes) || 0,
+        measures: s.measures || null, c0: s.c0, c1: s.c1,
         locationStart: locationAt(s.c0), locationEnd: locationAt(s.c1),
         crossing: s.crossing ? 1 : 0,
         hazard: s.hazard || 0,
         hazardLenM: s.hazardLenM || 0, hazC0: s.hazC0, hazC1: s.hazC1,
         hazardLocationStart: locationAt(s.hazC0), hazardLocationEnd: locationAt(s.hazC1),
         gradePct: s.gradePct || 0, timeS: Number(s.timeS) || 0,
+        lts: Number(s.lts) || 0, cautionCause: routeSegmentCautionCause(s),
         level: s.level || fallbackRouteLevel(s), lenM: Number(s.lenM) || 0,
+        displayCategory: routeSegmentDisplayCategory(s),
       })),
     }));
   } catch (e) { /* storage unavailable — the map still works normally */ }
@@ -3479,9 +3551,71 @@ function selectRouteDetailsOption(index, detailTab = null) {
   openRouteDetails(detailTab);
 }
 
-function openRouteTips() {
-  const dialog = document.getElementById('routeTipsDialog');
+const HELP_TOPIC_TITLES = {
+  'getting-started': 'Getting started',
+  routes: 'Routes',
+  layers: 'Map layers & data',
+  settings: 'Routing settings',
+  'save-share': 'Save & share routes',
+  technical: 'Technical details',
+};
+
+function initializeHelpCenter() {
+  document.querySelectorAll('.help-panel[data-help-source]').forEach((panel) => {
+    if (panel.childElementCount) return;
+    const template = document.getElementById(panel.dataset.helpSource);
+    if (!(template instanceof HTMLTemplateElement)) return;
+    const sourceBody = template.content.querySelector('.full-help-body');
+    const sourceElements = sourceBody
+      ? [...sourceBody.children]
+      : [...template.content.children].filter((child) => !child.matches('.dialog-head, .full-help-head'));
+    panel.append(...sourceElements.map((child) => child.cloneNode(true)));
+  });
+
+  const tabs = [...document.querySelectorAll('[data-help-tab]')];
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => selectHelpTab(tab.dataset.helpTab));
+    tab.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const current = tabs.indexOf(tab);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+        : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      tabs[next].focus();
+      selectHelpTab(tabs[next].dataset.helpTab);
+    });
+  });
+}
+
+function selectHelpTab(topic) {
+  const requested = HELP_TOPIC_TITLES[topic] ? topic : 'getting-started';
+  if (requested === 'settings') buildCautionCauseHelp();
+  const tabs = [...document.querySelectorAll('[data-help-tab]')];
+  let selectedTab = null;
+  tabs.forEach((tab) => {
+    const selected = tab.dataset.helpTab === requested;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    if (selected) selectedTab = tab;
+    const panel = document.getElementById(tab.getAttribute('aria-controls'));
+    if (panel) panel.hidden = !selected;
+  });
+  document.getElementById('helpDialogTitle').textContent = HELP_TOPIC_TITLES[requested];
+  const panels = document.getElementById('helpPanels');
+  if (panels) panels.scrollTop = 0;
+  requestAnimationFrame(() => selectedTab?.scrollIntoView({ block: 'nearest', inline: 'center' }));
+}
+
+function openHelp(topic = 'getting-started') {
+  selectHelpTab(topic);
+  const dialog = document.getElementById('helpDialog');
   if (dialog?.showModal && !dialog.open) dialog.showModal();
+}
+
+initializeHelpCenter();
+
+function openRouteTips() {
+  openHelp('routes');
 }
 
 window.addEventListener('message', (event) => {
@@ -4947,38 +5081,38 @@ function renderRouteCard(m) {
     return;
   }
   const stats = routeSummaryStats(m);
-  const ridingM = Math.max(1, m.distM - (m.ferryM || 0));
-  const bikePct = routePercent(stats.bikeNetworkM, ridingM);
-  const passPct = routePercent((stats.levels[1] || 0) + (stats.levels[2] || 0), ridingM, true);
-  const cautionPct = routePercent(stats.levels[3] || 0, ridingM, true);
-  const failPct = routePercent(m.failM || 0, ridingM, true);
+  const ridingM = Math.max(1, ROUTE_CATEGORY_KEYS.reduce((sum, key) => sum + stats.categoryM[key], 0));
+  const categoryPct = routeCategoryPercentages(stats.categoryM);
   const unpavedPct = routePercent(stats.unpavedM, ridingM, true);
+  const inclineOver5Pct = routePercent(stats.inclineOver5M, ridingM, true);
   const hasSignificantUnpaved = stats.unpavedM > SIGNIFICANT_UNPAVED_M;
-  const containsDismount = stats.dismountM > 0;
-  const averageSpeedLimit = stats.avgRoadSpeedMph == null ? 'N/A' : `${stats.avgRoadSpeedMph} mph`;
   const hasSteepGradeWarning = Number(m.maxGradePct) > 18;
   const unpavedMetric = hasSignificantUnpaved
-    ? `<button class="rc-ride-item rc-ride-unpaved-warning" id="rcUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved<span class="rc-unpaved-alert-mark" aria-hidden="true">!</span></button>`
-    : `<span class="rc-ride-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b> unpaved</span>`;
-  const mtbNotice = stats.mtbM > 0
-    ? `<div class="rc-warn rc-mtb">⚠ ${fmtDist(stats.mtbM)} on mountain-bike trail</div>`
-    : '';
+    ? `<button class="rc-secondary-item rc-ride-unpaved-warning" id="rcUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span><span class="rc-unpaved-alert-mark" aria-hidden="true">!</span></button>`
+    : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></span>`;
+  const categoryRows = [
+    ['trail', 'Off-street trails'],
+    ['bike', 'Roads with bike lanes'],
+    ['pass', 'Roads that pass rules'],
+    ['caution', 'Roads that need caution'],
+    ['fail', 'Roads that fail rules'],
+  ].map(([key, label]) => `<span class="rc-category-item rc-category-${key}"><span class="rc-category-swatch ${key}" aria-hidden="true"></span><b>${categoryPct[key]}%</b><span>${label}</span></span>`).join('');
   card.innerHTML = `
     <div id="routeControlsSlot"></div>
     <div class="rc-route-summary">
-      <div class="rc-details-wrap">
-        <div class="rc-speed-limit"><b>${averageSpeedLimit}</b><span>Avg. Road<br>Speed Limit</span></div>
+      <div class="rc-overview">
+        <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
         <div id="routeDetailsSlot"></div>
       </div>
-      <div class="rc-summary-content">
-        <div class="rc-summary-row">
-          <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas><button id="rcElevGradeWarning" class="rc-elev-grade-warning" type="button" aria-label="Route has a sustained grade over 18 percent. View route details." ${hasSteepGradeWarning ? '' : 'hidden'}><span aria-hidden="true">!</span> See Details</button></div>
-          <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
-        </div>
-        ${mtbNotice}<div class="rc-bottom-stats">
-          <div class="rc-ride-mix" title="Percent of riding distance; colors match the map"><div class="rc-ride-items${containsDismount ? ' has-dismount' : ''}"><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${BIKE_NETWORK_COLOR}"></span><b>${bikePct}</b> trails / lanes</span><span class="rc-ride-item"><span class="rc-mix-swatch" style="background:${COLORS[1]}"></span><b>${passPct}</b> pass rules</span><span class="rc-ride-item ${stats.levels[3] > 0 ? 'rc-ride-caution' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[3]}"></span><b>${cautionPct}</b> caution</span><span class="rc-ride-item ${m.failM > 0 ? 'rc-ride-fail' : ''}"><span class="rc-mix-swatch" style="background:${COLORS[4]}"></span><b>${failPct}</b> fail rules</span>${unpavedMetric}${containsDismount ? '<span class="rc-ride-item rc-ride-dismount" title="Walk your bike through a short route section"><span aria-hidden="true">⚠</span> Dismount</span>' : ''}</div></div>
+      <div class="rc-elevation-column">
+        <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas><button id="rcElevGradeWarning" class="rc-elev-grade-warning" type="button" aria-label="Route has a sustained grade over 18 percent. View route details." ${hasSteepGradeWarning ? '' : 'hidden'}><span aria-hidden="true">!</span> Details</button></div>
+        <div class="rc-secondary-metrics">
+          ${unpavedMetric}
+          <span class="rc-secondary-divider" aria-hidden="true"></span>
+          <span class="rc-secondary-item rc-incline-item"><span class="rc-incline-swatch" aria-hidden="true">↗</span><b>${inclineOver5Pct}</b><span>Incline over 5%</span></span>
         </div>
       </div>
+      <div class="rc-category-list" title="Percent of non-ferry riding distance; categories match the selected route and total 100%">${categoryRows}</div>
     </div>`;
   moveControls();
   moveDetails();
@@ -5292,6 +5426,10 @@ function routeVisualStyle(p) {
   if (p.crossing === 1) return 'pass';
   if (effectiveLevel(scoreRouteSeg(p)) === 4) return 'fail';
   if (p.level === 3) return 'caution';
+  // Allowed mountain-bike trails are a caution everywhere the route is shown.
+  // Route Details already rendered them this way; keep the main map and its
+  // five-category totals in the same visual vocabulary.
+  if (p.mtb === 1) return 'caution';
   if (p.level === 0) return 'unknown';
   // facility 1 is a sharrow: paint in a shared traffic lane, not a facility of
   // your own. It gets no lime, matching bikeNetworkExpr() for the road tiles.
@@ -5414,6 +5552,20 @@ function buildRouteDismountData(sdata) {
   return { type: 'FeatureCollection', features };
 }
 
+// One marker per ferry leg, placed near its visual midpoint. The dashed ferry
+// line remains useful at a glance; the boat makes its meaning explicit.
+function buildRouteFerryMarkerData(ferrySegs) {
+  const features = [];
+  for (const coordinates of ferrySegs || []) {
+    if (!Array.isArray(coordinates) || !coordinates.length) continue;
+    const point = coordinates[Math.floor((coordinates.length - 1) / 2)];
+    if (!Array.isArray(point) || point.length < 2) continue;
+    features.push({ type: 'Feature', properties: {},
+      geometry: { type: 'Point', coordinates: point.slice(0, 2) } });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
 function ensureUnpavedSlatImage(targetMap, imageId = 'route-unpaved-slats') {
   if (targetMap.hasImage(imageId)) return;
   // Fixed-size symbols stay stable across zoom levels. Dense, narrow bars read
@@ -5454,6 +5606,35 @@ function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-i
   }
   for (let y = 6; y < 11; y++) { paint(8, y, [81, 47, 0, 255]); paint(9, y, [81, 47, 0, 255]); }
   paint(8, 13, [81, 47, 0, 255]); paint(9, 13, [81, 47, 0, 255]);
+  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
+}
+
+function ensureFerryMarkerImage(targetMap, imageId = 'route-ferry-marker-icon') {
+  if (targetMap.hasImage(imageId)) return;
+  // A compact ferry silhouette in RGBA pixels works offline and does not rely
+  // on an emoji font or hosted symbol set.
+  const width = 24, height = 18;
+  const data = new Uint8Array(width * height * 4);
+  const blue = [26, 88, 130, 255], white = [255, 255, 255, 255];
+  const paint = (x, y, color) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return;
+    const offset = (y * width + x) * 4;
+    data[offset] = color[0]; data[offset + 1] = color[1];
+    data[offset + 2] = color[2]; data[offset + 3] = color[3];
+  };
+  for (let x = 6; x <= 17; x++) paint(x, 3, blue);
+  for (let y = 4; y <= 10; y++) for (let x = 5; x <= 18; x++) paint(x, y, blue);
+  for (let y = 6; y <= 8; y++) {
+    for (let x = 7; x <= 9; x++) paint(x, y, white);
+    for (let x = 14; x <= 16; x++) paint(x, y, white);
+  }
+  for (let y = 10; y <= 14; y++) {
+    const inset = y - 10;
+    for (let x = 1 + inset; x <= 22 - inset; x++) paint(x, y, blue);
+  }
+  for (let x = 2; x <= 8; x++) paint(x, 16, blue);
+  for (let x = 11; x <= 16; x++) paint(x, 16, blue);
+  for (let x = 19; x <= 22; x++) paint(x, 16, blue);
   targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
 }
 
@@ -5646,6 +5827,7 @@ function drawRoute(coords, ferrySegs, segs) {
   const renderData = buildRouteRenderData(sdata);
   const unpavedData = buildRouteUnpavedData(sdata);
   const dismountData = buildRouteDismountData(sdata);
+  const ferryMarkerData = buildRouteFerryMarkerData(ferrySegs);
   // Failing portions (scored live against the current rules) pulse red on top.
   // These use the same merged geometry as the visible route so their dashes
   // remain continuous rather than restarting at every graph edge.
@@ -5664,6 +5846,7 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-unpaved').setData(unpavedData);
     map.getSource('route-designated').setData(designatedData);
     map.getSource('route-dismount').setData(dismountData);
+    map.getSource('route-ferry-marker').setData(ferryMarkerData);
     map.getSource('route-highlight-marker').setData(emptyHighlights);
     map.getSource('route-detail-marker').setData(emptyHighlights);
     map.getSource('route-detail-selection').setData(emptyLine);
@@ -5680,6 +5863,7 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-unpaved', { type: 'geojson', data: unpavedData });
   map.addSource('route-designated', { type: 'geojson', data: designatedData });
   map.addSource('route-dismount', { type: 'geojson', data: dismountData });
+  map.addSource('route-ferry-marker', { type: 'geojson', data: ferryMarkerData });
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-selection', { type: 'geojson', data: emptyLine });
@@ -5821,6 +6005,7 @@ function drawRoute(coords, ferrySegs, segs) {
   });
   ensureUnpavedSlatImage(map);
   ensureDismountMarkerImage(map);
+  ensureFerryMarkerImage(map);
   forgetStyleValues(); map.addLayer({
     id: 'route-unpaved-slats', type: 'symbol', source: 'route-unpaved',
     layout: {
@@ -5848,6 +6033,16 @@ function drawRoute(coords, ferrySegs, segs) {
     id: 'route-ferry', type: 'line', source: 'route-ferry',
     paint: { 'line-color': '#ffffff', 'line-width': 5, 'line-opacity': 0.9,
              'line-dasharray': [0.6, 1.8] },
+  });
+  forgetStyleValues(); map.addLayer({
+    id: 'route-ferry-marker-halo', type: 'circle', source: 'route-ferry-marker',
+    paint: { 'circle-radius': 15, 'circle-color': '#ffffff', 'circle-opacity': .96,
+      'circle-stroke-color': '#4f7893', 'circle-stroke-width': 1.5 },
+  });
+  forgetStyleValues(); map.addLayer({
+    id: 'route-ferry-marker', type: 'symbol', source: 'route-ferry-marker',
+    layout: { 'icon-image': 'route-ferry-marker-icon', 'icon-size': 1,
+      'icon-allow-overlap': true, 'icon-ignore-placement': true },
   });
   setRoutePulses(renderData);
   // Ridden portion of the route darkens during navigation.
@@ -7097,6 +7292,8 @@ function buildSavedRoutes() {
   const importUrlInput = document.getElementById('importShareUrl');
   const loadShareRoute = document.getElementById('loadShareRouteBtn');
   const importStatus = document.getElementById('importRouteStatus');
+  const deleteDialog = document.getElementById('deleteSavedRouteDialog');
+  let pendingDelete = null;
   if (!host) return;
 
   const setShareAvailability = () => {
@@ -7123,7 +7320,7 @@ function buildSavedRoutes() {
     if (!list.length) {
       const empty = document.createElement('div');
       empty.className = 'hint';
-      empty.textContent = 'Saved routes stay on this device.';
+      empty.textContent = 'No saved routes yet. Saved routes stay on this device.';
       host.appendChild(empty);
     }
     list.forEach((saved, index) => {
@@ -7133,7 +7330,14 @@ function buildSavedRoutes() {
       row.className = 'saved-row';
       const load = document.createElement('button');
       load.className = 'saved-load';
-      load.textContent = name;
+      load.type = 'button';
+      const savedName = document.createElement('span');
+      savedName.className = 'saved-route-name';
+      savedName.textContent = name;
+      const loadAction = document.createElement('span');
+      loadAction.className = 'saved-route-action';
+      loadAction.textContent = 'Load ›';
+      load.append(savedName, loadAction);
       load.disabled = !route;
       load.addEventListener('click', () => {
         const current = loadSavedRoutes()[index];
@@ -7170,16 +7374,26 @@ function buildSavedRoutes() {
       remove.setAttribute('aria-label', `Delete ${name}`);
       remove.textContent = '✕';
       remove.addEventListener('click', () => {
-        const current = loadSavedRoutes();
-        current.splice(index, 1);
-        storeSavedRoutes(current);
-        render();
-        document.getElementById('savedRoutesStatus').textContent = `Deleted ${name}.`;
+        pendingDelete = { index, name };
+        document.getElementById('deleteSavedRouteText').textContent =
+          `Delete “${name}” from the saved routes on this device?`;
+        if (!deleteDialog.open) deleteDialog.showModal();
       });
       row.append(load, remove);
       host.appendChild(row);
     });
   };
+  document.getElementById('confirmDeleteSavedRoute').addEventListener('click', () => {
+    const request = pendingDelete;
+    pendingDelete = null;
+    deleteDialog.close();
+    if (!request) return;
+    const current = loadSavedRoutes();
+    current.splice(request.index, 1);
+    storeSavedRoutes(current);
+    render();
+    document.getElementById('savedRoutesStatus').textContent = `Deleted ${request.name}.`;
+  });
   document.getElementById('routeLibraryBtn').addEventListener('click', () => {
     render();
     dialog.showModal();
@@ -7936,7 +8150,7 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
         if (reason === 'traffic') return `${n.measures.adt.toLocaleString()} vehicles/day`;
         return `${FUNCTIONAL_CLASS_NAME[n.measures.fc] || 'major road'}, no count`;
       });
-      return `Needs a bike lane or wide shoulder: ${why.join(', ')}.`;
+      return `Needs a bike lane or a safe-ish-width shoulder: ${why.join(', ')}.`;
     }
     case 'shares-lane':
       // This rung means none of the space triggers fired -- not fast, not wide,
@@ -8943,7 +9157,7 @@ function presetInfoRows(preset) {
     ['Road is busier than', (() => {
       const lvl = SafetyModel.busyLevel(presetRules);
       return lvl.id
-        ? `${lvl.label}, about ${lvl.adt.toLocaleString()} vehicles a day, needs a bike lane or wide shoulder. Where no count exists the road's class stands in.`
+        ? `${lvl.label}, about ${lvl.adt.toLocaleString()} vehicles a day, needs a bike lane or a safe-ish-width shoulder. Where no count exists the road's class stands in.`
         : 'Traffic volume is not used.';
     })()],
     ['Official stress rating', `A ${STRESS_AGENCY} Level of Traffic Stress of 4 always marks a road`
@@ -9228,12 +9442,12 @@ function buildRulesPanel() {
   // space of its own.
   const spaceHeading = document.createElement('p');
   spaceHeading.className = 'rule-group-head';
-  spaceHeading.textContent = 'Require a bike lane or wide shoulder whenever:';
+  spaceHeading.textContent = 'Require a bike lane or safe-ish width shoulder.';
   slidersHost.appendChild(spaceHeading);
   slider('maxSpeedNoShoulder', 'Speed limit is over', 15, 45, 5, ' mph', 'rule-sub');
   lanesSlider();
   busySlider();
-  slider('minShoulder', 'Minimum shoulder width to count as safe-ish', 0, 10, 1, ' ft');
+  slider('minShoulder', 'Minimum shoulder width to count as safe-ish', 2, 10, 1, ' ft');
 
   // Upper speed cutoff: one slider, whose TOP position means "no cutoff"
   // (replaces the old separate "No speed cutoff" checkbox).
@@ -9308,10 +9522,10 @@ function buildRulesPanel() {
     });
     document.getElementById('settingsHelpBtn').addEventListener('click', () => {
       buildCautionCauseHelp();
-      document.getElementById('settingsHelpDialog').showModal();
+      openHelp('settings');
     });
     document.getElementById('settingsAdvancedWeightsBtn').addEventListener('click', () => {
-      const helpDialog = document.getElementById('settingsHelpDialog');
+      const helpDialog = document.getElementById('helpDialog');
       if (helpDialog.open) helpDialog.close();
       openRoutingWeights();
     });
@@ -9537,21 +9751,15 @@ if (nativeAppVersionOnly) {
   document.getElementById('updateCheckStatus').hidden = true;
 }
 document.getElementById('appHelpBtn').addEventListener('click', () =>
-  document.getElementById('appHelpDialog').showModal());
-document.getElementById('techDetailsBtn').addEventListener('click', () => {
-  document.getElementById('appHelpDialog').close();
-  document.getElementById('techDetailsDialog').showModal();
-});
-document.getElementById('techDetailsBackBtn').addEventListener('click', () => {
-  document.getElementById('techDetailsDialog').close();
-  document.getElementById('appHelpDialog').showModal();
-});
+  openHelp('getting-started'));
+document.getElementById('techDetailsBtn').addEventListener('click', () => openHelp('technical'));
 // The weights panel is reachable two ways on purpose: from Settings > Advanced,
 // where a reader finds it while reading about what it does, and from the map,
 // where it gets used -- tuning a weight is only meaningful while you can watch
 // the route it changes.
 function openRoutingWeights() {
   buildRoutingWeightsEditor();
+  syncWeightsTunedBadge();
   document.getElementById('weightsDialog').showModal();
 }
 
@@ -9568,13 +9776,21 @@ function syncAdvancedToolsVisibility() {
 // several taps away from wherever the surprise shows up. Mark the button.
 function syncWeightsTunedBadge() {
   const button = document.getElementById('appWeightsBtn');
-  if (!button) return;
   const off = Object.keys(DEFAULT_ROUTING_WEIGHTS)
     .filter((key) => routingWeights[key] !== DEFAULT_ROUTING_WEIGHTS[key]);
-  button.classList.toggle('tuned', off.length > 0);
-  button.title = off.length
-    ? `Advanced routing weights (${off.length} changed from default)`
-    : 'Advanced routing weights';
+  if (button) {
+    button.classList.toggle('tuned', off.length > 0);
+    button.title = off.length
+      ? `Advanced routing weights (${off.length} changed from default)`
+      : 'Advanced routing weights';
+  }
+  const notice = document.getElementById('weightsModifiedNotice');
+  if (notice) {
+    notice.hidden = off.length === 0;
+    notice.textContent = off.length === 1
+      ? 'Weights have been modified (1 change)'
+      : `Weights have been modified (${off.length} changes)`;
+  }
 }
 document.getElementById('appWeightsBtn').addEventListener('click', openRoutingWeights);
 // Delegated: #moreRoutesBtn is rebuilt every time the chooser re-renders.
@@ -9584,10 +9800,10 @@ document.getElementById('routeOptions').addEventListener('click', (e) => {
 syncWeightsTunedBadge();
 syncAdvancedToolsVisibility();
 document.getElementById('layersHelpBtn').addEventListener('click', () =>
-  document.getElementById('layersHelpDialog').showModal());
+  openHelp('layers'));
 document.getElementById('routesHelpBtn').addEventListener('click', () => {
   document.getElementById('routesDialog').close();
-  document.getElementById('routesHelpDialog').showModal();
+  openHelp('save-share');
 });
 
 function isStandaloneApp() {
@@ -9766,7 +9982,7 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
     if (reg.waiting) {
       status.textContent = 'Update ready.';
       offerUpdate(reg.waiting);
-      document.getElementById('appHelpDialog')?.close();
+      document.getElementById('helpDialog')?.close();
       return;
     }
     const publishedVersion = await publishedAppVersion();
@@ -9813,7 +10029,7 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
       });
       // The update prompt renders under this modal dialog; close it so the
       // "Get update?" banner is visible.
-      document.getElementById('appHelpDialog')?.close();
+      document.getElementById('helpDialog')?.close();
     } else if (publishedVersion !== APP_VERSION) {
       status.textContent = `Version v${publishedVersion} is published but has not reached this device yet.`
         + ' A release can take a couple of minutes to propagate. Try again shortly,'

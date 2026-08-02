@@ -253,19 +253,16 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-route-message.error { margin-top: 5px; padding: 6px 8px; border-left: 3px solid #c5685d; border-radius: 7px; background: #fff5f3; color: #79443d; }
 #routeCard .rc-route-message.error strong { color: #9d2f25; }
 #routeCard .rc-route-message.error small { color: #76544f; }
-#routeCard .rc-main { display: grid; justify-items: end; gap: 1px; color: #111; }
+#routeCard .rc-main { display: grid; justify-items: center; gap: 1px; color: #111; text-align: center; white-space: nowrap; }
 #routeCard .rc-distance { font: 700 21px/1.15 system-ui; white-space: nowrap; }
 #routeCard .rc-duration { color: #555; font: 600 15.5px/1.15 system-ui; white-space: nowrap; }
-#routeCard .rc-route-summary { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: stretch; gap: 10px; margin-top: 6px; }
-#routeCard .rc-summary-content { min-width: 0; }
-#routeCard .rc-details-wrap { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end; gap: 5px; align-self: stretch; }
-#routeCard .rc-speed-limit { display: grid; width: 64px; gap: 1px; color: #667782; font: 750 9px/1.1 system-ui; text-align: center; }
-#routeCard .rc-speed-limit b { color: #223c4b; font: 800 13px/1.1 system-ui; }
-#routeCard .rc-summary-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 0; }
-#routeCard .rc-main { flex: none; text-align: right; white-space: nowrap; }
-/* Tiny elevation sparkline occupies the slot the climb text used, so the card
-   height and the Details button position are unchanged. */
-#routeCard .rc-elev-wrap { position: relative; flex: 1 1 auto; min-width: 0; max-width: 220px; height: 54px; border: 1px solid #e4ebf0; border-radius: 7px; background: #fbfcfd; overflow: hidden; }
+#routeCard .rc-route-summary { display: grid; grid-template-columns: 66px minmax(0, .92fr) minmax(0, 1.38fr); align-items: stretch; gap: 6px; min-height: 84px; margin-top: 6px; }
+#routeCard .rc-overview { display: flex; min-width: 0; flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; }
+#routeCard .rc-overview .route-details-btn { width: 100%; min-width: 0; min-height: 38px; padding: 0 5px; }
+#routeCard .rc-elevation-column { display: grid; grid-template-rows: 54px 27px; align-content: center; gap: 3px; min-width: 0; }
+/* The chart gives a little width to the five map categories. Its height stays
+   at the old 54 px, preserving the Route sheet's overall height. */
+#routeCard .rc-elev-wrap { position: relative; min-width: 0; height: 54px; border: 1px solid #e4ebf0; border-radius: 7px; background: #fbfcfd; overflow: hidden; }
 #routeCard .rc-elev-canvas { display: block; width: 100%; height: 100%; }
 #routeCard .rc-elev-grade-warning { position: absolute; z-index: 1; right: 3px; bottom: 3px; display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 3px 6px; border: 1px solid #db8076; border-radius: 5px; background: rgba(255,246,244,.94); color: #b42318; font: 850 10px/1 system-ui; letter-spacing: .01em; cursor: pointer; }
 #routeCard .rc-elev-grade-warning span { display: grid; place-items: center; width: 12px; height: 12px; border-radius: 50%; background: #c33327; color: #fff; font-size: 9px; }
@@ -273,35 +270,36 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-elev-grade-warning[hidden] { display: none; }
 #routeCard .rc-details-hidden { display: none; }
 #routeCard .rc-sub { margin-top: 3px; font-size: 12px; color: #555; }
-#routeCard .rc-ride-mix { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; min-width: 0; min-height: 26px; margin-top: 3px; color: #52616b; font: 600 9.5px/1.15 system-ui; }
-/* The desktop side panel is deliberately narrow.  Use the same compact two-row
-   pattern as phones so the five percentage labels—and an optional dismount
-   status—stay legible instead of being squeezed into five tiny columns. */
-#routeCard .rc-ride-items { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 3px 5px; min-width: 0; }
-/* Labels wrap inside their own cell rather than running past it. Holding these
-   on one line let the longest token ("100.0% pass rules") overhang the grid at
-   every phone width, so the card clipped its own right edge. The swatch stays
-   glued to the number it belongs to. */
-#routeCard .rc-ride-item { min-width: 0; overflow-wrap: break-word; text-align: center; }
-#routeCard .rc-ride-items:not(.has-dismount) .rc-ride-item:first-child { grid-column: span 2; }
-#routeCard .rc-ride-mix b { color: #223c4b; font-weight: 800; }
-#routeCard .rc-mix-swatch { display: inline-block; width: 12px; height: 7px; margin-right: 4px; border-radius: 2px; vertical-align: -0.5px; }
-/* A short horizontal sample gives the unpaved slats enough room to read as a
-   texture, while still fitting the route card's compact percentage grid. */
-#routeCard .rc-unpaved-swatch { display: inline-block; width: 12px; height: 7px; margin-right: 4px; border: 1px solid #536672; border-radius: 1px; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); vertical-align: -0.5px; }
-#routeCard .rc-ride-caution, #routeCard .rc-ride-caution b { color: #813e00; }
-#routeCard .rc-ride-fail, #routeCard .rc-ride-fail b { color: #b42318; }
+#routeCard .rc-category-list { display: grid; grid-template-rows: repeat(5, minmax(0, 1fr)); align-items: center; gap: 1px; min-width: 0; color: #344d5c; }
+#routeCard .rc-category-item { display: grid; grid-template-columns: 15px 30px minmax(0, 1fr); align-items: center; gap: 3px; min-width: 0; font: 680 9.75px/1.08 system-ui; }
+#routeCard .rc-category-item > span:last-child { min-width: 0; overflow-wrap: normal; }
+#routeCard .rc-category-item b { color: #172838; font: 850 11.5px/1 system-ui; text-align: right; white-space: nowrap; }
+#routeCard .rc-category-caution, #routeCard .rc-category-caution b { color: #813e00; }
+#routeCard .rc-category-fail, #routeCard .rc-category-fail b { color: #a51c30; }
+#routeCard .rc-category-swatch { display: block; width: 15px; height: 7px; border-radius: 2px; }
+#routeCard .rc-category-swatch.trail { height: 8px; background-color: var(--bike-network); background-image: radial-gradient(circle, var(--trail-dots) 0 1.4px, transparent 1.6px); background-position: 1px center; background-size: 5px 8px; }
+#routeCard .rc-category-swatch.bike { background: var(--bike-network); }
+#routeCard .rc-category-swatch.pass { background: var(--verdict-pass); }
+#routeCard .rc-category-swatch.caution { background: var(--verdict-caution); }
+#routeCard .rc-category-swatch.fail { border: 1px solid var(--verdict-fail); background: repeating-linear-gradient(135deg, var(--verdict-fail) 0 3px, #ef8d99 3px 5px); }
+#routeCard .rc-secondary-metrics { display: grid; grid-template-columns: minmax(0, .9fr) 1px minmax(0, 1.25fr); align-items: center; gap: 4px; min-width: 0; color: #415867; }
+#routeCard .rc-secondary-item { position: relative; display: inline-grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); align-items: center; justify-content: stretch; column-gap: 3px; row-gap: 0; min-width: 0; font: 650 9.25px/1 system-ui; white-space: nowrap; }
+#routeCard .rc-secondary-item > :first-child { grid-row: 1 / 3; }
+#routeCard .rc-secondary-item b { grid-column: 2; align-self: end; color: #172838; font: 850 11.5px/1 system-ui; text-align: left; }
+#routeCard .rc-secondary-item b + span { grid-column: 2; align-self: start; }
+#routeCard .rc-secondary-divider { align-self: stretch; width: 1px; background: #d8e1e7; }
+#routeCard .rc-unpaved-swatch { display: inline-block; width: 14px; height: 8px; border: 1px solid #536672; border-radius: 1px; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); }
+#routeCard .rc-incline-swatch { display: grid; place-items: center; width: 15px; height: 11px; overflow: hidden; color: #0a66c2; font: 900 17px/9px system-ui; }
 #routeCard button.rc-ride-unpaved-warning { appearance: none; margin: 0; padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
 #routeCard .rc-ride-unpaved-warning, #routeCard .rc-ride-unpaved-warning b { color: #b42318; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
 #routeCard button.rc-ride-unpaved-warning:focus-visible { border-radius: 3px; outline: 2px solid #1671b8; outline-offset: 2px; }
-#routeCard .rc-unpaved-alert-mark { display: inline-grid; place-items: center; width: 10px; height: 10px; margin-left: 3px; border-radius: 50%; background: #b42318; color: #fff; font: 850 8px/10px system-ui; text-decoration: none; vertical-align: 1px; }
+#routeCard .rc-unpaved-alert-mark { position: absolute; top: 0; right: 0; display: inline-grid; place-items: center; width: 9px; height: 9px; border-radius: 50%; background: #b42318; color: #fff; font: 850 7px/9px system-ui; text-decoration: none; }
 #routeCard .rc-warning-cue-attention { animation: route-card-warning-cue-flash 1s ease-in-out; }
 @keyframes route-card-warning-cue-flash {
   0%, 100% { opacity: 1; }
   18%, 75% { opacity: 1; filter: saturate(1.25); }
   46% { opacity: .28; filter: saturate(.65); }
 }
-#routeCard .rc-ride-dismount { color: #8a4900; font-weight: 800; }
 
 /* ---- Navigating Route panel: the Route tab while turn-by-turn is active. ---- */
 /* Pin the Route tab's height so switching between planning and navigating does
@@ -338,30 +336,22 @@ body:not(.navigation-active) #navCard { display: none; }
 #routeCard .rc-legs { margin-top: 6px; border-top: 1px dashed #e0e0e0; padding-top: 5px; }
 #routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
-#routeCard .rc-bottom-stats { flex: 1; min-width: 0; text-align: right; }
-@media (max-width: 460px) {
-  #routeCard .rc-ride-items { gap: 3px 4px; }
-}
-/* A 360 px phone leaves only one narrow third-column beside the two-column
-   trails/lanes label. Tighten the inline tokens—not the card itself—so every
-   percentage remains readable and the Route sheet never gains a horizontal
-   scrollbar. */
 @media (max-width: 375px) {
-  #routeCard .rc-ride-mix { font-size: 8.75px; }
-  #routeCard .rc-ride-items { gap: 3px 2px; }
-  #routeCard .rc-mix-swatch, #routeCard .rc-unpaved-swatch { width: 10px; margin-right: 2px; }
+  #routeCard .rc-route-summary { grid-template-columns: 62px minmax(0, .82fr) minmax(0, 1.38fr); gap: 4px; }
+  #routeCard .rc-distance { font-size: 19px; }
+  #routeCard .rc-duration { font-size: 13.5px; }
+  #routeCard .rc-category-item { grid-template-columns: 12px 24px minmax(0, 1fr); gap: 2px; font-size: 8px; }
+  #routeCard .rc-category-item b { font-size: 10px; }
+  #routeCard .rc-category-swatch { width: 12px; }
+  #routeCard .rc-secondary-metrics { gap: 2px; }
+  #routeCard .rc-secondary-item { column-gap: 2px; font-size: 8px; }
+  #routeCard .rc-secondary-item b { font-size: 10.5px; }
+  #routeCard .rc-unpaved-swatch, #routeCard .rc-incline-swatch { width: 11px; }
 }
-/* Two columns give every metric a real label-width budget on legacy 320 px
-   phones. The prior three-column layout stayed inside the viewport but its
-   nowrap labels painted over one another. */
 @media (max-width: 340px) {
-  #routeCard .rc-route-summary { gap: 7px; }
-  #routeCard .rc-summary-row { gap: 5px; }
-  #routeCard .rc-distance { font-size: 20px; }
-  #routeCard .rc-duration { font-size: 14.5px; }
-  #routeCard .rc-ride-mix { font-size: 9px; }
-  #routeCard .rc-ride-items { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 6px; }
-  #routeCard .rc-ride-items:not(.has-dismount) .rc-ride-item:first-child { grid-column: auto; }
+  #routeCard .rc-route-summary { grid-template-columns: 58px minmax(0, .76fr) minmax(0, 1.4fr); gap: 3px; }
+  #routeCard .rc-category-item { font-size: 7.25px; }
+  #routeCard .rc-secondary-item { font-size: 7.5px; }
 }
 #routeCard canvas { display: block; }
 @media (min-width: 721px) {
@@ -370,11 +360,12 @@ body:not(.navigation-active) #navCard { display: none; }
   .tab { padding: 0 12px 10px; }
   #routeCard .rc-distance { font-size: 24px; }
   #routeCard .rc-duration { font-size: 16.5px; }
-  #routeCard .rc-elev-wrap { max-width: 300px; }
-  #routeCard .rc-route-summary { gap: 12px; }
-  #routeCard .rc-summary-row { gap: 10px; }
-  #routeCard .rc-ride-mix { font-size: 10px; }
-  #routeCard .rc-ride-items { gap: 4px 8px; }
+  #routeCard .rc-route-summary { grid-template-columns: 74px minmax(0, .9fr) minmax(0, 1.4fr); gap: 8px; }
+  #routeCard .rc-category-item { grid-template-columns: 17px 31px minmax(0, 1fr); gap: 4px; font-size: 10px; }
+  #routeCard .rc-category-item b { font-size: 12px; }
+  #routeCard .rc-category-swatch { width: 17px; height: 8px; }
+  #routeCard .rc-secondary-item { font-size: 9.5px; }
+  #routeCard .rc-secondary-item b { font-size: 12px; }
   #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
   #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }
@@ -398,16 +389,21 @@ body:not(.navigation-active) #navCard { display: none; }
 
 .saved-row { display: flex; gap: 6px; margin: 5px 0; }
 .saved-row .saved-load {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  text-align: left; padding: 9px 12px;
-  border: 1px solid #e6e6e6; border-radius: 10px; background: #fff;
-  font: 500 13px system-ui; color: #222; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  flex: 1; min-width: 0; text-align: left; padding: 10px 12px;
+  border: 1.5px solid #8dbbdc; border-radius: 10px; background: #f2f8fc;
+  font: 700 13px system-ui; color: #174f79; cursor: pointer;
 }
+.saved-row .saved-load:hover { border-color: #0a66c2; background: #e6f2fa; }
+.saved-route-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-route-action { flex: 0 0 auto; color: #0a66c2; font: 850 10px/1 system-ui; letter-spacing: .04em; text-transform: uppercase; }
 .saved-row .saved-load:disabled { opacity: .5; cursor: default; }
 .saved-row .saved-del {
   width: 36px; border: 1px solid #e6e6e6; border-radius: 10px;
   background: #fff; color: #999; cursor: pointer;
 }
+.saved-routes-section { margin-top: 10px; padding-top: 9px; border-top: 1px solid #e4e7eb; }
+.saved-routes-instruction, .import-route-instruction { margin: 3px 0 6px; color: #667784; font: 11px/1.35 system-ui; }
 
 /* ------------------------------------------------------------ layers etc. */
 .layers-intro { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 5px 1px 4px; color: #667680; }
@@ -968,10 +964,10 @@ body.navigation-active #routeBar { display: none; }
 .map-dialog::backdrop { background: rgba(0,0,0,.25); }
 .route-details-dialog { width: min(96vw, 860px); height: min(92dvh, 860px); max-width: none; max-height: none; margin: auto; padding: 0; overflow: hidden; border: none; border-radius: 16px; background: #f4f7f9; box-shadow: 0 14px 44px rgba(0,0,0,.32); }
 .route-details-dialog::backdrop { background: rgba(18,42,60,.42); }
-.route-details-dialog-head { display: flex; align-items: center; justify-content: flex-start; height: 42px; padding: 0 16px; border-bottom: 1px solid #dbe4ea; background: #fff; color: #334a58; font: 750 14px system-ui; }
-#routeDetailsFrame { display: block; width: 100%; height: calc(100% - 42px); border: none; background: #f4f7f9; }
+.route-details-dialog-head { display: flex; align-items: center; justify-content: flex-start; height: calc(42px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 16px 0; border-bottom: 1px solid #dbe4ea; background: #fff; color: #334a58; font: 750 14px system-ui; }
+#routeDetailsFrame { display: block; width: 100%; height: calc(100% - 42px - env(safe-area-inset-top)); border: none; background: #f4f7f9; }
 @media (max-width: 720px) {
-  .route-details-dialog { width: 100vw; height: var(--app-height, 100dvh); margin: 0; border-radius: 0; }
+  .route-details-dialog { position: fixed; inset: 0; width: 100vw; height: var(--app-height, 100dvh); margin: 0; border-radius: 0; }
 }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .dialog-head h2 { margin: 0; border: none; padding: 0; font-size: 14px; color: #222; text-transform: none; letter-spacing: 0; }
@@ -1003,6 +999,7 @@ body.navigation-active #routeBar { display: none; }
 .save-route-form input { min-width: 0; flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; font: 13px system-ui; }
 .share-route { margin-top: 10px; padding-top: 9px; border-top: 1px solid #e4e7eb; }
 .import-route { margin-top: 10px; padding-top: 9px; border-top: 1px solid #e4e7eb; }
+.import-route-bottom { margin-top: 13px; padding: 11px 10px 2px; border: 1px solid #d7e2e8; border-radius: 10px; background: #f7f9fa; }
 .share-route-title { font: 700 11px system-ui; color: #444; }
 .share-route-actions { display: flex; gap: 7px; margin-top: 6px; }
 .share-route-actions button { flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; font: 600 12px system-ui; cursor: pointer; }
@@ -1019,6 +1016,8 @@ body.navigation-active #routeBar { display: none; }
 .clear-route-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .remove-route-marker-dialog { border-top: 4px solid #a65300; }
 .remove-route-marker-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
+.delete-saved-route-dialog { border-top: 4px solid #b42318; }
+.delete-saved-route-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .shared-route-tip { border-top: 4px solid #0a66c2; }
 .shared-route-tip p { margin: 12px 0 2px; font: 13px/1.45 system-ui; color: #444; }
 .routes-help-dialog section { margin-top: 12px; }
@@ -1037,7 +1036,6 @@ body.navigation-active #routeBar { display: none; }
 .app-help-dialog p { margin: 0; color: #667784; font: 11.5px/1.4 system-ui; }
 .app-help-dialog .app-help-note { margin: 10px 0 5px; color: #405562; }
 .full-help-dialog { width: 100vw; height: var(--app-height, 100dvh); max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: #f4f7f9; color: #1d2935; }
-#routeTipsDialog { width: min(calc(100vw - 20px), 760px); height: min(90dvh, 780px); max-height: calc(100dvh - 20px); margin: auto; border: 1px solid #d8e2e8; border-radius: 16px; box-shadow: 0 16px 48px rgba(18,42,60,.28); }
 .full-help-dialog::backdrop { background: rgba(18,42,60,.42); }
 .full-help-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: max(10px, env(safe-area-inset-top)) 18px 10px; border-bottom: 1px solid #d8e2e8; background: rgba(255,255,255,.96); }
 .full-help-head span { display: block; color: #667784; font: 700 10px/1.2 system-ui; letter-spacing: .08em; text-transform: uppercase; }
@@ -1052,7 +1050,17 @@ body.navigation-active #routeBar { display: none; }
 .full-help-body p, .full-help-body li { color: #52616d; font: 13px/1.48 system-ui; }
 .full-help-body p { margin: 0; }
 .full-help-body ul { display: grid; gap: 5px; margin: 7px 0; padding-left: 20px; }
-.tech-details-back { min-height: 34px; padding: 0 10px; border: 1px solid #bfd0da; border-radius: 8px; background: #f6fafc; color: #245b78; font: 750 11px/1 system-ui; cursor: pointer; white-space: nowrap; }
+.help-dialog[open] { display: flex; flex-direction: column; overflow: hidden; overscroll-behavior: none; }
+.help-dialog > .full-help-head { position: relative; flex: none; }
+.help-tabs { flex: none; display: flex; gap: 6px; min-height: 48px; padding: 6px max(10px, env(safe-area-inset-left)); overflow-x: auto; overscroll-behavior-x: contain; border-bottom: 1px solid #d8e2e8; background: #fff; scrollbar-width: none; }
+.help-tabs::-webkit-scrollbar { display: none; }
+.help-tabs button { flex: 0 0 auto; min-height: 36px; padding: 0 13px; border: 1px solid #cbd9e1; border-radius: 999px; background: #f4f7f9; color: #526675; font: 750 12px/1 system-ui; white-space: nowrap; cursor: pointer; touch-action: manipulation; }
+.help-tabs button[aria-selected="true"] { border-color: #0a66c2; background: #0a66c2; box-shadow: 0 1px 4px rgba(10,102,194,.22); color: #fff; }
+.help-tabs button:focus-visible { outline: 3px solid rgba(10,102,194,.28); outline-offset: 1px; }
+.help-panels { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.help-panel[hidden] { display: none; }
+#helpPanelGettingStarted > ol { margin-top: 0; padding: 14px 14px 14px 36px; border: 1px solid #dce5ea; border-radius: 11px; background: #fff; color: #52616d; font-size: 13px; }
+#helpPanelGettingStarted > .app-help-note { margin: 10px 0; padding: 12px 14px; border: 1px solid #dce5ea; border-radius: 11px; background: #fff; color: #405562; font-size: 13px; }
 .tech-details-body a { color: #0a66c2; text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .tech-details-body a:hover { text-decoration-thickness: 2px; }
 .tech-details-body section { box-shadow: 0 1px 3px rgba(32,57,71,.04); }
@@ -1079,6 +1087,7 @@ body.navigation-active #routeBar { display: none; }
 .sv-coverage-note b { color: #ffd376; font-weight: 850; }
 .weights-reset { min-height: 38px; padding: 0 15px; border: 1px solid #b34b3f; border-radius: 9px; background: #fff4f2; color: #9f352a; font: 750 12px system-ui; cursor: pointer; }
 .weights-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 18px 0 max(34px, env(safe-area-inset-bottom)); }
+.weights-modified-notice { margin: 0 0 12px; padding: 11px 13px; border: 1px solid #d59a3b; border-left: 5px solid #b66a00; border-radius: 9px; background: #fff4df; color: #714000; font: 850 15px/1.2 system-ui; }
 .weights-body > .help-lead { max-width: 850px; margin: 0 0 14px; color: #435967; font: 650 13px/1.45 system-ui; }
 .weights-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: start; }
 .weights-group { padding: 13px; border: 1px solid #d7e2e8; border-radius: 11px; background: #fff; box-shadow: 0 1px 3px rgba(32,57,71,.05); }
@@ -1116,15 +1125,8 @@ body.navigation-active #routeBar { display: none; }
      used on a phone at the roadside rather than only at a desk. */
   .weight-row input { height: 26px; }
   .weight-revert { width: 26px; height: 26px; }
-}
-/* Route Information is a centered sheet already inset from the screen edge.
-   Give its title bar an explicit box height so iOS cannot add the viewport
-   safe-area inset to this scroll container and create a blank white band. */
-#routeTipsDialog > .full-help-head {
-  box-sizing: border-box;
-  min-height: 64px;
-  height: 64px;
-  padding: 10px 12px;
+  .help-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; min-height: auto; overflow: visible; }
+  .help-tabs button { width: 100%; min-height: 34px; padding: 4px 5px; font-size: 11px; line-height: 1.1; white-space: normal; }
 }
 .dialog-actions .danger { border-color: #b42318; background: #c52b22; color: #fff; }
 .dialog-actions .dialog-primary { border-color: #0a66c2; background: #0a66c2; color: #fff; }

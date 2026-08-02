@@ -161,19 +161,25 @@ check('a changed row stays two rows tall', revertBox.rowHeight < 70,
 /* --------------------------------- 5. the tuned badge tracks off-defaults */
 const badge = await pg.evaluate(() => {
   const button = document.getElementById('appWeightsBtn');
+  const notice = document.getElementById('weightsModifiedNotice');
   const clean = button.classList.contains('tuned');
+  const noticeClean = notice.hidden;
   const input = document.querySelector('#routingWeightsEditor input[data-weight="uphillFactor"]');
   input.value = String(Number(input.max));
   input.dispatchEvent(new Event('input', { bubbles: true }));
   const dirty = button.classList.contains('tuned');
   const title = button.title;
+  const noticeDirty = !notice.hidden && notice.textContent.includes('Weights have been modified');
   input.closest('.weight-row').querySelector('.weight-revert').click();
-  return { clean, dirty, title, backToClean: button.classList.contains('tuned') };
+  return { clean, dirty, title, noticeClean, noticeDirty,
+    backToClean: button.classList.contains('tuned'), noticeBackToClean: notice.hidden };
 });
 check('the map button is unmarked at defaults', badge.clean === false);
 check('the map button marks itself once a weight is off default',
   badge.dirty === true && /changed/.test(badge.title), badge.title);
 check('and clears again when reverted', badge.backToClean === false);
+check('the page-level modified header follows the same state',
+  badge.noticeClean && badge.noticeDirty && badge.noticeBackToClean, JSON.stringify(badge));
 
 /* ------------------------------------- 6. Settings opens the same dialog */
 await pg.evaluate(() => document.getElementById('weightsDialog').close());

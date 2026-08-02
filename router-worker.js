@@ -384,10 +384,6 @@ function withRoadBlocks(points, rules, work) {
   }
 }
 
-function edgeNoShoulderMax(i, rules) {
-  return SafetyModel.noShoulderMaxSpeed({ urban: !!(eOfficial[i] & EDGE_URBAN) }, rules);
-}
-
 function edgeSpeed(i, forward) {
   return forward ? eSpeed[i] : eSpeedBA[i];
 }
@@ -471,17 +467,15 @@ const VERDICT_SIDEWALK_FALLBACK = 16;
 // answers. With one slot, every relaxation of the discovery searches missed and
 // rebuilt the facts object -- an eighth of the router's whole running time.
 const verdictSlots = [
-  { cache: null, generation: 1, rules: null, key: null, noShoulderMax: [0, 0] },
-  { cache: null, generation: 1, rules: null, key: null, noShoulderMax: [0, 0] },
+  { cache: null, generation: 1, rules: null, key: null, noShoulderMax: 0 },
+  { cache: null, generation: 1, rules: null, key: null, noShoulderMax: 0 },
 ];
 function useVerdictSlot(slot, rules) {
   if (!slot.cache) slot.cache = new Uint8Array(2 * E);
   const key = rulesSignature(rules);
-  // noShoulderMaxSpeed() reads only whether the edge is inside an urban area,
-  // so for one rule set it has exactly two answers. It was being recomputed,
-  // with a fresh object argument, on every relaxation.
-  slot.noShoulderMax = [SafetyModel.noShoulderMaxSpeed({ urban: false }, rules),
-    SafetyModel.noShoulderMaxSpeed({ urban: true }, rules)];
+  // One value applies to every edge. Cache it per rule set instead of resolving
+  // the compatibility keys on every relaxation.
+  slot.noShoulderMax = SafetyModel.noShoulderMaxSpeed({}, rules);
   // Dragging a route pin sends the same rules in a new object. Keeping the
   // verdicts across that turns a re-route into forward searching alone.
   if (key !== slot.key) {
@@ -527,8 +521,8 @@ function edgeLevelFor(i, rules, forward) {
 function sidewalkFallbackFor(i, rules, forward) {
   return (edgeVerdict(verdictSlotFor(rules), i, rules, forward) & VERDICT_SIDEWALK_FALLBACK) !== 0;
 }
-function edgeNoShoulderMaxFor(i, rules) {
-  return verdictSlotFor(rules).noShoulderMax[(eOfficial[i] & EDGE_URBAN) ? 1 : 0];
+function edgeNoShoulderMaxFor(rules) {
+  return verdictSlotFor(rules).noShoulderMax;
 }
 
 /* ------------------------------------------------ time model */
@@ -604,7 +598,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   designated: 0.94, strongDesignated: 0.5, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.5, facilityBuffered: 0.45,
-  facilitySeparated: 0.4, facilityPath: 0.3,
+  facilitySeparated: 0.3, facilityPath: 0.2,
   mtbTrail: 6,
   freeway: 60,
   limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
@@ -1248,7 +1242,7 @@ function edgeCostFloor(i, forward) {
     m *= eFacility[i] ? (facility[eFacility[i]] ?? 1) : ((fl & 64) ? designatedFloor : 1);
   }
   if (!(fl & (8 | 32))) {
-    const below = noShoulderMax[(eOfficial[i] & EDGE_URBAN) ? 1 : 0] - edgeSpeed(i, forward);
+    const below = noShoulderMax - edgeSpeed(i, forward);
     if (below > 0 && !(edgeShoulder(i, forward) > 0)) {
       m *= Math.max(SPEED_STRESS_FLOOR, 1 - belowRate * below);
     }
@@ -1500,7 +1494,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // any reasonable fully-safe approach must still win.
       if (requiredSafeAccess) cost *= 30;
       cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
-        edgeNoShoulderMaxFor(ei, searchRules), edgeShoulder(ei, forward));
+        edgeNoShoulderMaxFor(searchRules), edgeShoulder(ei, forward));
       cost *= hazardMult(modeW, edgeHazard(ei, forward) || 0);
       cost *= majorRoadMult(ei, modeW, forward);
       cost *= trafficStressMult(ei, modeW, forward);
@@ -1646,7 +1640,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
         && isResidential(ei)) residentialM += eLen[ei];
     if (eFlags[ei] & 4) freewayM += eLen[ei];
     else if (edgeLimited(ei, forward)) limitedAccessM += eLen[ei];
-    const level = edgeLevel(ei, rules, forward);
+    const verdict = SafetyModel.evaluate(edgeFacts(ei, forward), rules);
+    const level = verdict.level;
     levelM[level] += eLen[ei];
     if (level === 4) failM += eLen[ei];
     const hazard = edgeHazard(ei, forward);
@@ -1670,7 +1665,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       mph: edgeSpeed(ei, forward), sh: edgeShoulder(ei, forward),
       flags: eFlags[ei] | (edgeLimited(ei, forward) ? 128 : 0), roadClass: eClass[ei],
       facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
-      dismount: isDismountEdge(ei), level,
+      dismount: isDismountEdge(ei), level, cautionCause: verdict.caution || null,
       surface: eSurface[ei], surfaceLabel: SURFACE_LABEL[eSurface[ei]] || SURFACE_LABEL[SURFACE_UNKNOWN],
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),

@@ -14,7 +14,25 @@ import UIKit
 @objc(BridgeViewController)
 final class BridgeViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
+        lockWebPageScale()
         bridge?.registerPluginInstance(NativeNavigationPlugin())
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Reset a scale left behind by an interrupted system gesture or an
+        // older build, then keep WKWebView's own page pinch disabled. MapLibre
+        // handles its map pinch in JavaScript, so map zoom remains available.
+        lockWebPageScale()
+    }
+
+    private func lockWebPageScale() {
+        guard let webView else { return }
+        let scrollView = webView.scrollView
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = 1
+        scrollView.setZoomScale(1, animated: false)
+        scrollView.pinchGestureRecognizer?.isEnabled = false
     }
 }
 

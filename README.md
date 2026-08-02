@@ -75,9 +75,9 @@ left deliberately unfixed, and the parts that only a device can judge.
     designation satisfies the shoulder rule; turn this off to apply the same
     speed and shoulder limits as every other road.
   - *Min shoulder width* — a known shoulder under this fails a road.
-  - *Urban / rural max speed without shoulder* — a road at or below its local
-    threshold passes without a shoulder. Census urban areas use the urban
-    threshold; all other areas use the rural threshold.
+  - *Speed limit is over* — above one statewide rider-selected speed, a road
+    must offer a sufficiently wide shoulder or a bike lane. Census area context
+    does not change the limit.
   - *Allow sidewalk fallback* — a mapped sidewalk can meet the shoulder rule
     as an amber, strongly-deprioritized fallback. It does not bypass bicycle
     restrictions, freeways, or the upper-speed limit.
@@ -152,8 +152,8 @@ rider's rules. They are distinct from true OSM motorways/freeways, which drive
 the freeway toggle and remain last-resort route failures.
 
 The build also assigns `Urban=1` when a segment midpoint lies in a 2020 Census
-urban-area polygon. This is the same context the routing graph uses for the
-urban versus rural no-shoulder speed rule; other segments are rural.
+urban-area polygon. This is retained as descriptive context on road cards; it
+does not select a different shoulder or speed rule.
 
 ### WSDOT Permanent Bike Restrictions → `data/bike_restrictions.geojson` (81 segments)
 
@@ -272,8 +272,9 @@ circles, so a rebuild needs the current `build_roads.py` *and* the current
 tiling command.
 
 The build also records compact OSM sidewalk state (`k`) and 2020 Census urban
-area context (`u`). They let the map use the same urban/rural no-shoulder rules
-as the routing graph without adding a large runtime data layer.
+area context (`u`). Sidewalk state participates in the optional sidewalk
+fallback; Census area is descriptive context and does not change the rider's
+single no-shoulder speed limit.
 
 Served as **PMTiles** — a single static vector-tile file read via HTTP range
 requests (no tile server). The browser fetches only the small tiles in view,

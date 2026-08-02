@@ -379,7 +379,8 @@ Keep codes 1-7 only.
 mean rural**. It therefore says *which* urban area, which is more than our own
 flag knows.
 
-**Our Census flag stays the sole driver of the urban speed rule.** WSDOT's
+**The Census flag remains the app's displayed area context.** It used to drive
+an urban speed rule, but the app now has one no-shoulder speed limit everywhere. WSDOT's
 urban/rural distinction descends from the FHWA *adjusted* urban area boundary:
 the Census line, smoothed to follow identifiable features and extended to
 capture growth, then approved by FHWA — the boundary that federal-aid

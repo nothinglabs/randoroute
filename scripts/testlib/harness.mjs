@@ -224,14 +224,20 @@ export async function serveRepo({ offline = false } = {}) {
 // bump broke six files at once.
 export function chromiumPath() {
   for (const candidate of [
+    process.env.CHROMIUM_PATH,
     '/opt/pw-browsers/chromium/chrome-linux/chrome',
     '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  ]) if (existsSync(candidate)) return candidate;
+  ]) if (candidate && existsSync(candidate)) return candidate;
   return undefined; // let Playwright find its own
 }
 
 export async function playwright() {
-  for (const path of ['playwright', '/opt/node22/lib/node_modules/playwright/index.js']) {
+  for (const path of [
+    process.env.PLAYWRIGHT_MODULE_PATH,
+    'playwright',
+    '/opt/node22/lib/node_modules/playwright/index.js',
+  ]) {
+    if (!path) continue;
     try {
       const mod = await import(path);
       return mod.chromium ? mod : mod.default;

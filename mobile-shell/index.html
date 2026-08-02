@@ -2,7 +2,7 @@
 <html lang="en" data-app-runtime="native">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>Just Rolling Along</title>
   <!-- Before the stylesheets: it publishes the palette as CSS custom
        properties, so no rule needs a hardcoded colour fallback. -->
@@ -251,12 +251,35 @@
     <div id="savedRoutesStatus" class="sr-only" role="status" aria-live="polite"></div>
   </dialog>
 
-  <dialog id="routesHelpDialog" class="map-dialog routes-help-dialog" aria-label="Save and share routes help">
-    <div class="dialog-head"><h2>Save &amp; share routes</h2><button class="dialog-close" data-close="routesHelpDialog" aria-label="Close">✕</button></div>
+  <dialog id="helpDialog" class="full-help-dialog help-dialog" aria-labelledby="helpDialogTitle">
+    <div class="full-help-head">
+      <div><span>Help center</span><h2 id="helpDialogTitle">Help</h2></div>
+      <div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="helpDialog" aria-label="Close help">✕</button></div>
+    </div>
+    <nav id="helpTabs" class="help-tabs" role="tablist" aria-label="Help topics">
+      <button id="helpTabGettingStarted" type="button" role="tab" data-help-tab="getting-started" aria-controls="helpPanelGettingStarted" aria-selected="true">Getting started</button>
+      <button id="helpTabRoutes" type="button" role="tab" data-help-tab="routes" aria-controls="helpPanelRoutes" aria-selected="false" tabindex="-1">Routes</button>
+      <button id="helpTabLayers" type="button" role="tab" data-help-tab="layers" aria-controls="helpPanelLayers" aria-selected="false" tabindex="-1">Layers</button>
+      <button id="helpTabSettings" type="button" role="tab" data-help-tab="settings" aria-controls="helpPanelSettings" aria-selected="false" tabindex="-1">Settings</button>
+      <button id="helpTabSaveShare" type="button" role="tab" data-help-tab="save-share" aria-controls="helpPanelSaveShare" aria-selected="false" tabindex="-1">Save &amp; share</button>
+      <button id="helpTabTechnical" type="button" role="tab" data-help-tab="technical" aria-controls="helpPanelTechnical" aria-selected="false" tabindex="-1">Technical</button>
+    </nav>
+    <div id="helpPanels" class="help-panels">
+      <div id="helpPanelGettingStarted" class="help-panel full-help-body app-help-dialog" role="tabpanel" aria-labelledby="helpTabGettingStarted" data-help-source="appHelpTemplate"></div>
+      <div id="helpPanelRoutes" class="help-panel full-help-body" role="tabpanel" aria-labelledby="helpTabRoutes" data-help-source="routeTipsTemplate" hidden></div>
+      <div id="helpPanelLayers" class="help-panel full-help-body" role="tabpanel" aria-labelledby="helpTabLayers" data-help-source="layersHelpTemplate" hidden></div>
+      <div id="helpPanelSettings" class="help-panel full-help-body" role="tabpanel" aria-labelledby="helpTabSettings" data-help-source="settingsHelpTemplate" hidden></div>
+      <div id="helpPanelSaveShare" class="help-panel full-help-body routes-help-dialog" role="tabpanel" aria-labelledby="helpTabSaveShare" data-help-source="routesHelpTemplate" hidden></div>
+      <div id="helpPanelTechnical" class="help-panel full-help-body tech-details-body" role="tabpanel" aria-labelledby="helpTabTechnical" data-help-source="techDetailsTemplate" hidden></div>
+    </div>
+  </dialog>
+
+  <template id="routesHelpTemplate">
+    <div class="dialog-head"><h2>Save &amp; share routes</h2></div>
     <section><h3>Save on this device</h3><p>Name the current route and tap <b>Save</b>. Saved routes appear below; tap one to reopen it. They stay in this browser on this device.</p></section>
     <section><h3>Share a link</h3><p><b>Copy share link</b> or <b>Share</b> sends start/destination pins, waypoints, road blocks, and routing setup in the link. Anyone with the link can open it.</p></section>
     <section><h3>Open a shared route</h3><p>Paste a shared route link and tap <b>Load</b>. It appears as <b>As Shared</b> without changing your own saved settings. Shared links are intended to reproduce the original path, but map or routing-data updates can produce a different result.</p></section>
-  </dialog>
+  </template>
 
   <dialog id="routeProblemDialog" class="map-dialog route-problem-dialog" aria-label="Point is outside the routing network">
     <div class="dialog-head"><h2>Point is outside the routing network</h2><button class="dialog-close" data-close="routeProblemDialog" aria-label="Close">✕</button></div>
@@ -334,8 +357,7 @@
     <div class="dialog-actions"><button data-close="sharedRouteTip">Got it</button></div>
   </dialog>
 
-  <dialog id="settingsHelpDialog" class="full-help-dialog settings-help-dialog" aria-label="Routing settings help">
-    <div class="full-help-head"><div><span>Help</span><h2>Routing settings</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="settingsHelpDialog" aria-label="Close">✕</button></div></div>
+  <template id="settingsHelpTemplate">
     <div class="full-help-body">
     <section><h3>Presets</h3><p>A preset replaces your active rules and route preferences. Use its <b>Rules</b> button to review the full setup. Adjusting any control switches to custom rules.</p><ul class="help-list">
       <li><b>The Randonneur</b> — widest choice of routes; looser rules and fewer roads flagged as failing.</li>
@@ -370,7 +392,7 @@
     </ul></section>
     <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Usually leave these alone.</b> Presets and Limits are the intended controls. Weights are soft preferences for testing and fine-tuning; unusual values can create long or unintuitive routes. They never override bicycle prohibitions or hard Limits, and <b>Reset all defaults</b> restores them.</p><button id="settingsAdvancedWeightsBtn" type="button">Open advanced weights</button></section>
     </div>
-  </dialog>
+  </template>
 
   <dialog id="presetInfoDialog" class="map-dialog preset-info-dialog" aria-labelledby="presetInfoTitle">
     <div class="dialog-head"><h2 id="presetInfoTitle"></h2><button class="dialog-close" data-close="presetInfoDialog" aria-label="Close">✕</button></div>
@@ -378,8 +400,8 @@
     <ul id="presetInfoDetails" class="preset-info-details"></ul>
   </dialog>
 
-  <dialog id="appHelpDialog" class="map-dialog app-help-dialog" aria-label="How to use the app">
-    <div class="dialog-head"><h2>Plan your route</h2><button class="dialog-close" data-close="appHelpDialog" aria-label="Close">✕</button></div>
+  <template id="appHelpTemplate">
+    <div class="dialog-head"><h2>Plan your route</h2></div>
     <ol>
       <li>Set <b>Start</b> and <b>Destination</b> by search or by tapping the map.</li>
       <li>In <b>Route</b>, view choices A–E. The letters identify routes; they are not safety grades.</li>
@@ -396,17 +418,9 @@
       </div>
     </div>
     <p id="updateCheckStatus" class="app-help-update-status" role="status" aria-live="polite"></p>
-  </dialog>
+  </template>
 
-  <dialog id="techDetailsDialog" class="full-help-dialog tech-details-dialog" aria-labelledby="techDetailsTitle">
-    <div class="full-help-head">
-      <div><span>Help</span><h2 id="techDetailsTitle">Technical details</h2></div>
-      <div class="full-help-head-actions">
-        <span class="help-scroll-hint">Scroll ↓</span>
-        <button id="techDetailsBackBtn" class="tech-details-back" type="button">← Help</button>
-        <button class="dialog-close" data-close="techDetailsDialog" aria-label="Close technical details">✕</button>
-      </div>
-    </div>
+  <template id="techDetailsTemplate">
     <div class="full-help-body tech-details-body">
       <p class="help-lead">The map is a custom, locally stored vector map. It does not use Google or CARTO basemap tiles. The installed web app downloads the statewide map for offline use, and the iOS app bundles the same map files.</p>
 
@@ -458,10 +472,9 @@
         <p>The app ships snapshots of these public datasets rather than querying them live. Source coverage, precision, and update schedules vary. The map’s source attribution remains visible on map previews, and links above lead to source, license, or project information.</p>
       </section>
     </div>
-  </dialog>
+  </template>
 
-  <dialog id="layersHelpDialog" class="full-help-dialog" aria-label="Map data and layers help">
-    <div class="full-help-head"><div><span>Help</span><h2>Map layers &amp; data</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="layersHelpDialog" aria-label="Close">✕</button></div></div>
+  <template id="layersHelpTemplate">
     <div class="full-help-body">
       <p class="help-lead">Toggling layers only changes what is drawn. Routing and street details always use all available data.</p>
       <section><h3>Data sources</h3><ul>
@@ -475,10 +488,9 @@
       <section><h3>How choices are made</h3><p>The app tests several time, safety, and road-preference combinations, removes near-duplicates, and shows up to five meaningfully different routes. Freeways are a last resort, legal limited-access highways are cautions, and permanent bicycle restrictions are impassable. A physical bike facility gets a stronger routing benefit than designation alone.</p><details class="technical-note"><summary>Technical data notes</summary><p>Missing speed limits use a road-class estimate, and the street popup identifies estimates. Roads tagged <b>bicycle=no</b> are excluded. A <b>bicycle=dismount</b> link is a walk-bike connection with a strong route cost and a map marker. Explicit MTB paths are excluded by default and can be enabled with a strong penalty. Higher OSM road classes add soft costs when no bike facility is recorded; this is a traffic-volume proxy, not a rule failure. Census urban-area context makes fast roads without bike space less acceptable in built-up areas; it is not traffic-count data. Explicit <code>sidewalk=no</code> adds a small soft cost.</p></details></section>
       <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. Missing data is not proof that a shoulder, facility, traffic condition, surface, crossing control, or sight line is absent. Outside a selected route, unpaved cross-slats appear only on bike-infrastructure and trail features that already include confirmed OSM surface data. A selected route may identify additional unpaved road segments. Short crossings are inferred from route geometry and do not confirm a signal or crosswalk. Use local signs and conditions; this is a planning aid, not a guarantee of safety.</p></section>
     </div>
-  </dialog>
+  </template>
 
-  <dialog id="routeTipsDialog" class="full-help-dialog" aria-labelledby="routeTipsTitle">
-    <div class="full-help-head"><div><span>Route help</span><h2 id="routeTipsTitle">Route information</h2></div><div class="full-help-head-actions"><span class="help-scroll-hint">Scroll ↓</span><button class="dialog-close" data-close="routeTipsDialog" aria-label="Close routing tips">✕</button></div></div>
+  <template id="routeTipsTemplate">
     <div class="full-help-body">
       <section><h3>Choose Route</h3><ul>
         <li>The app can show up to five routes, ordered shortest to longest as A–E. It automatically selects the best match for your settings, which may not be A.</li>
@@ -509,7 +521,7 @@
       <section><h3>Switching a layer on blinks it</h3>
       <p>The layer flashes a few times and your route drops beneath the other lines, so you can see what you turned on and whether it follows your route.</p></section>
     </div>
-  </dialog>
+  </template>
 
   <dialog id="routeDetailsDialog" class="route-details-dialog" aria-labelledby="routeDetailsDialogTitle">
     <div class="route-details-dialog-head"><span id="routeDetailsDialogTitle">Route Details</span></div>

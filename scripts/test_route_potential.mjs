@@ -50,7 +50,7 @@ const probe = `
       let cost = (edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode)) * mult;
       if (rules.requireSafe && actualLevel === 4) cost *= 30;
       cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
-        edgeNoShoulderMaxFor(ei, searchRules), edgeShoulder(ei, forward));
+        edgeNoShoulderMaxFor(searchRules), edgeShoulder(ei, forward));
       cost *= hazardMult(modeW, edgeHazard(ei, forward) || 0);
       cost *= majorRoadMult(ei, modeW, forward);
       cost *= trafficStressMult(ei, modeW, forward);

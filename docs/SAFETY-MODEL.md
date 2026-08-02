@@ -380,7 +380,7 @@ Speed, lanes and traffic are three ways of asking one question: **how much of
 this lane is actually available to a rider?** They are therefore a single rung,
 and the settings read as one sentence in the panel:
 
-> **Require a bike lane or wide shoulder whenever:**
+> **Require a bike lane or safe-ish width shoulder.**
 > Speed limit is over — `maxSpeedNoShoulder`
 > Lanes of traffic more than — `lanesNoShoulderOver`
 > Road is busier than — `busyNoShoulder`
@@ -390,7 +390,7 @@ and the settings read as one sentence in the panel:
 The three triggers are **ORed**. Any one of them means the road needs space of
 its own; the road then fails only if it does not have any. `spaceReasons()`
 returns *every* trigger that fired, and the card names all of them — "Fails:
-needs a bike lane or wide shoulder — 45 mph, 4 lanes". Naming only the first
+needs a bike lane or a safe-ish-width shoulder — 45 mph, 4 lanes". Naming only the first
 would invite a rider to change the wrong setting.
 
 **They were separate rungs and the ordering was a bug.** A `wide-road` rung sat
@@ -778,8 +778,8 @@ is a separate decision, not yet taken.
 **Their definition of "urban" is not adopted.** WSDOT's urban/rural descends
 from the FHWA *adjusted* urban boundary — the Census line smoothed and extended,
 then approved for federal-aid purposes — and is generally larger than ours. Our
-own Census 2020 point-in-polygon test remains the sole driver of the urban speed
-rule. WSDOT's call is carried only so a disagreement can be seen.
+own Census 2020 point-in-polygon flag remains the displayed area context.
+Neither boundary selects a speed or shoulder rule.
 
 ### One speed limit, not two
 
@@ -823,7 +823,7 @@ named as permissions or preferences and change only where you are sent — which
 is what their names promise.
 
 The three rung-6 triggers plus `minShoulder` are presented as one indented group
-under the heading **"Require a bike lane or wide shoulder whenever:"**, because
+under the heading **"Require a bike lane or safe-ish width shoulder."**, because
 they are one rule read as one sentence. Presenting them as four independent
 sliders was what let the old speed/lane ordering hide.
 

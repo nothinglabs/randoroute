@@ -62,7 +62,7 @@ check('the worker is registered at a stable url', installed.active === 'sw.js',
 
 /* -------------------------------------------- checking with nothing to get */
 const answer = async () => page.evaluate(async () => {
-  document.getElementById('appHelpDialog')?.showModal?.();
+  document.getElementById('helpDialog')?.showModal?.();
   const status = document.getElementById('updateCheckStatus');
   status.textContent = '';
   document.getElementById('checkUpdatesBtn').click();
@@ -96,7 +96,7 @@ const promptShown = () => page.waitForFunction(() => {
 }, { timeout: 90000 }).then(() => true).catch(() => false);
 
 await page.evaluate(() => {
-  document.getElementById('appHelpDialog')?.showModal?.();
+  document.getElementById('helpDialog')?.showModal?.();
   document.getElementById('checkUpdatesBtn').click();
 });
 check('a published release is offered', await promptShown());
