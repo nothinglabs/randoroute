@@ -62,12 +62,19 @@ check('the route resolves into one run per safety level',
 check('every change is announced exactly once', spoken.heard.length === 5,
   JSON.stringify(spoken.heard));
 const texts = spoken.heard.map((h) => h.text);
-check('and each says what is coming and how far it runs',
+check('and each says what is coming, when, and how far it runs',
   texts[0] === 'Trail for next 1.0 miles.'
-  && texts[1] === 'Bike lane for next 1.0 miles.'
-  && texts[2] === 'Normal road for next 1.0 miles.'
-  && texts[3] === 'Caution. Heavy traffic for next 0.2 miles.'
-  && texts[4] === 'Warning. No shoulder for next 0.2 miles.',
+  && texts[1] === 'Bike lane in 150 feet, for 1.0 miles.'
+  && texts[2] === 'Normal road in 150 feet, for 1.0 miles.'
+  && texts[3] === 'Caution. Heavy traffic in 150 feet, for 0.2 miles.'
+  && texts[4] === 'Warning. No shoulder in 150 feet, for 0.2 miles.',
+  JSON.stringify(texts));
+// Reported from the road: "Trail for next 3.4 miles" spoken while the rider was
+// on an overpass over the freeway, 900 feet short of the trail. It read as a
+// claim about the road under them. A stretch that has not started says when it
+// does; only the one they are already in says "for next".
+check('a stretch still ahead says how far off it is, not "next"',
+  texts.slice(1).every((text) => / in [\d.]+ (feet|miles), for /.test(text)),
   JSON.stringify(texts));
 // Brevity is the feature. A rider cannot hold a list at 15 mph.
 check('nothing said is longer than a sentence',
@@ -97,10 +104,8 @@ const reasons = await page.evaluate(() => {
     const cumulative = [0, 800];
     const runs = buildRouteSafetyRuns(segs, cumulative);
     const run = runs[0];
-    const phrase = SAFETY_RUN_SPEECH[run.category];
-    return phrase
-      ? phrase(navDistanceText(run.endM - run.startM), SAFETY_REASON_SPEECH[run.reason])
-      : null;
+    return safetyRunSpeech(run.category, SAFETY_REASON_SPEECH[run.reason],
+      navDistanceText(run.endM - run.startM), null);
   };
   return {
     freeway: say({ flags: 4, level: 4, mph: 60, sh: 8 }),
@@ -149,7 +154,7 @@ check('a mountain-bike trail is named as one',
 check('a limited-access road is named as one',
   /Caution\. Limited access road for/.test(reasons.limited), reasons.limited);
 check('and with nothing specific to say, it stays plain rather than inventing one',
-  reasons.plain === 'Use caution next 0.5 miles', reasons.plain);
+  reasons.plain === 'Caution. Ride with care for next 0.5 miles.', reasons.plain);
 check('a mixed stretch reports the reason covering most of it',
   reasons.mixed === 'No shoulder', JSON.stringify(reasons.mixed));
 

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.520';
+const APP_VERSION = '2026-08-02.521';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3375,17 +3375,41 @@ const SAFETY_REASON_SPEECH = Object.freeze({
   'mountain-bike': 'Mountain bike trail',
 });
 
-// A full stop rather than a dash: speech engines read it as the pause a rider
-// hears as "listen to the next bit", and a dash is read aloud by some of them.
-const SAFETY_RUN_SPEECH = Object.freeze({
-  trail: (distance) => `Trail for next ${distance}`,
-  bike: (distance) => `Bike lane for next ${distance}`,
-  pass: (distance) => `Normal road for next ${distance}`,
-  caution: (distance, reason) => (reason
-    ? `Caution. ${reason} for next ${distance}` : `Use caution next ${distance}`),
-  fail: (distance, reason) => (reason
-    ? `Warning. ${reason} for next ${distance}` : `Warning - safety alert next ${distance}`),
+const SAFETY_RUN_HEAD = Object.freeze({
+  trail: 'Trail', bike: 'Bike lane', pass: 'Normal road',
+  caution: 'Caution', fail: 'Warning',
 });
+
+// Near enough that saying how far off it is would be noise rather than help.
+const SAFETY_RUN_HERE_M = 40;
+
+/* A sentence a rider can act on has three parts, and only two of them fit:
+ * WHAT is coming, WHEN it starts, and how LONG it lasts.
+ *
+ * It used to say what and how long -- "Trail for next 3.4 miles" -- which was
+ * fine while the warning came 90 m out and the rider was practically there. It
+ * is not fine now that it comes up to 400 m out: reported from the road, that
+ * sentence arrived while the rider was on an overpass over the freeway, and it
+ * read as a claim about the road under them rather than the one ahead.
+ *
+ * So when the stretch has not started, the sentence says when it does, and the
+ * "next" is dropped because it is no longer describing what they are on. Once
+ * they are in it -- joining a route mid-stretch -- the original wording is the
+ * accurate one.
+ *
+ * The full stop after the alert word is deliberate: speech engines read it as
+ * the pause a rider hears as "listen to the next bit", and some of them read a
+ * dash aloud.
+ */
+function safetyRunSpeech(category, reason, lengthText, aheadText) {
+  const head = SAFETY_RUN_HEAD[category];
+  if (!head) return null;
+  const what = category === 'caution' || category === 'fail'
+    ? `${head}. ${reason || (category === 'fail' ? 'Safety alert' : 'Ride with care')}`
+    : head;
+  return aheadText ? `${what} in ${aheadText}, for ${lengthText}.`
+    : `${what} for next ${lengthText}.`;
+}
 
 // Why this segment is amber or red, boiled down to one key. Null where there is
 // nothing specific to say, which keeps the plain wording rather than inventing
@@ -3480,20 +3504,21 @@ function maybeSpeakSafetyChange() {
   for (const run of runs) if (run.endM <= at) run.spoken = true;
   const run = runs.find((r) => !r.spoken);
   if (!run) return false;
-  const phrase = SAFETY_RUN_SPEECH[run.category];
   // How much of it is still ahead. Announced before the change these are the
   // same number; joining a route in the middle of a stretch, they are not, and
   // the honest one is what remains.
   const lengthM = run.endM - Math.max(at, run.startM);
-  if (!phrase || (lengthM < SAFETY_RUN_MIN_M
+  if (!SAFETY_RUN_HEAD[run.category] || (lengthM < SAFETY_RUN_MIN_M
       && run.category !== 'caution' && run.category !== 'fail')) {
     run.spoken = true;
     return false;
   }
-  if (run.startM - at > safetyRunLeadM()) return false;
+  const aheadM = run.startM - at;
+  if (aheadM > safetyRunLeadM()) return false;
   run.spoken = true;
-  speakNavigation(`${phrase(navDistanceText(lengthM), SAFETY_REASON_SPEECH[run.reason])}.`,
-    'safety');
+  speakNavigation(safetyRunSpeech(run.category, SAFETY_REASON_SPEECH[run.reason],
+    navDistanceText(lengthM),
+    aheadM >= SAFETY_RUN_HERE_M ? navDistanceText(aheadM) : null), 'safety');
   return true;
 }
 
@@ -4238,12 +4263,12 @@ function nativeNavigationRoutePayload() {
     // The web layer speaks these itself, on the same GPS path as the turn
     // prompts. They are sent so the native guide can too, for the case the web
     // path cannot cover -- a locked screen. See docs/IOS-HANDOFF.md.
-    safetyRuns: (route.safetyRuns || []).filter((run) => SAFETY_RUN_SPEECH[run.category])
+    safetyRuns: (route.safetyRuns || []).filter((run) => SAFETY_RUN_HEAD[run.category])
       .map((run) => ({
         startM: Number(run.startM) || 0,
         endM: Number(run.endM) || 0,
-        text: SAFETY_RUN_SPEECH[run.category](navDistanceText(run.endM - run.startM),
-          SAFETY_REASON_SPEECH[run.reason]),
+        text: safetyRunSpeech(run.category, SAFETY_REASON_SPEECH[run.reason],
+          navDistanceText(run.endM - run.startM), null),
       })),
   };
 }
@@ -10049,8 +10074,9 @@ function buildVoicePanel() {
   safety.className = 'check-rule rule-card';
   safety.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceSafetyLevels"
     ${navVoice.safetyLevels ? 'checked' : ''}><span>Announce route safety levels</span></label>
-    <p class="hint voice-safety-hint">Called out just before each change, with the one thing that
-    matters — "Bike lane for next 2.1 miles", "Warning. No shoulder for next 1.2 miles".</p>`;
+    <p class="hint voice-safety-hint">Called out ahead of each change, with the one thing that
+    matters — "Bike lane in 500 feet, for 2.1 miles", "Warning. No shoulder in 400 feet,
+    for 1.2 miles".</p>`;
   safety.querySelector('input').addEventListener('change', (e) => {
     navVoice.safetyLevels = e.target.checked;
     syncNativeVoiceStatusPreferences();
