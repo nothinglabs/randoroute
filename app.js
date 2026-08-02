@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.518';
+const APP_VERSION = '2026-08-02.519';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3742,9 +3742,17 @@ function navigationBannerInfo() {
     meta: routeMeta,
     kicker: turnNav.followingConnector ? 'To your route' : 'Turn-by-turn navigation',
   };
-  const remaining = Math.max(0, next.distanceM - turnNav.routeM);
+  const remaining = next.distanceM - turnNav.routeM;
+  // A maneuver stays on the banner for 60 m after the rider reaches it, so that
+  // a GPS fix arriving slightly late does not blank it mid-turn. Clamping the
+  // distance to zero and printing it read "In 25 feet" -- navDistanceText's
+  // floor -- so a turn the rider was already through still claimed to be a few
+  // steps ahead. Photographed on the Interurban Trail: forty metres past the
+  // junction, still promising the turn onto the street behind them.
   return {
-    headline: `In ${navDistanceText(remaining)} · ${navInstructionText(next)}`,
+    headline: remaining <= 5
+      ? `Now · ${navInstructionText(next)}`
+      : `In ${navDistanceText(remaining)} · ${navInstructionText(next)}`,
     meta: turnNav.followingConnector ? `${routeMeta} · Connector onto your route` : routeMeta,
     kicker: turnNav.followingConnector ? 'To your route' : 'Next maneuver',
   };

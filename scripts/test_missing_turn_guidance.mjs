@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-// The traffic circle at North 104th Street and Fremont Avenue North, ridden
-// four ways, on the real graph.
+// Maneuvers that went missing on one ride, reproduced on the real graph.
+//
+// Both were reported from the road, half a mile apart, and both were the same
+// failure from the rider's seat: a turn they had to make and were never told
+// about. The causes were different, which is why both are pinned here.
 //
 // Reported from the road: riding east on N 104th and leaving north on Fremont,
 // nothing was ever spoken. The banner had already moved on to the turn after
@@ -122,6 +125,55 @@ check('the opposite turn is announced exactly once', named.length === 1,
   JSON.stringify(rightTurn.spoken));
 check('and as the right turn it is, not as continuing straight',
   /Turn right onto North 104th Street/.test(named[0] || ''), named[0]);
+
+/* ------------------------------- the second report: the Interurban Trail
+ * Riding north on Fremont Avenue North, the route turns right onto North 110th
+ * Street and then LEFT onto the Interurban Trail. That street runs 30 m. Inside
+ * the 70 m window the trail turn was dropped, so the rider was told to turn
+ * right onto N 110th and then nothing at all -- and rode past the trail.
+ *
+ * Same rule, different junction, and a trail rather than a circle, so it gets
+ * its own leg rather than trusting the circle case to cover it.
+ */
+const FREMONT_SOUTH = [-122.35011, 47.70689];
+const TRAIL_NORTH = [-122.34810, 47.71287];
+const ontoTrail = await ride(FREMONT_SOUTH, TRAIL_NORTH);
+check('the short street before the trail is announced',
+  ontoTrail.spoken.some((line) => /Turn right onto North 110th Street/.test(line)),
+  JSON.stringify(ontoTrail.spoken));
+check('and so is the left onto the trail 30 m later',
+  ontoTrail.spoken.some((line) => /Turn left onto Interurban Trail/.test(line)),
+  JSON.stringify(ontoTrail.spoken));
+
+/* ------------------------------------------ and the banner tells the truth
+ * A maneuver stays on the banner for 60 m past it so a late fix cannot blank it
+ * mid-turn. The distance was clamped at zero and printed, and navDistanceText's
+ * floor is 25 feet -- so a turn the rider was already through kept promising to
+ * be a few steps ahead. Photographed forty metres up the trail.
+ */
+const banner = await page.evaluate(() => {
+  turnNav.active = true;
+  turnNav.arrived = false;
+  turnNav.message = '';
+  turnNav.followingConnector = false;
+  turnNav.route = buildTurnInstructions(routing.last);
+  turnNav.next = 0;
+  const first = turnNav.route.instructions[0];
+  const read = (routeM) => { turnNav.routeM = routeM; return navigationBannerInfo().headline; };
+  const out = {
+    ahead: read(Math.max(0, first.distanceM - 200)),
+    at: read(first.distanceM),
+    past: read(first.distanceM + 40),
+  };
+  turnNav.active = false;
+  return out;
+});
+check('a maneuver still ahead reports the distance to it',
+  /^In [\d.]+ (feet|miles) · /.test(banner.ahead), JSON.stringify(banner));
+check('one the rider has reached says so instead of "In 25 feet"',
+  banner.at.startsWith('Now · '), JSON.stringify(banner));
+check('and so does one they are already past', banner.past.startsWith('Now · '),
+  JSON.stringify(banner));
 
 check('no page errors', errors.length === 0, errors.join(' | '));
 
