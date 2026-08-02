@@ -1436,8 +1436,8 @@ if (!hasRoute) {
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
   const tripNotes = [
-    routeStats.ferryM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⛴</span><b>Ferry</b> ${fmtMi(routeStats.ferryM)} mi</span>` : '',
-    routeStats.dismountM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⚠</span><b>Dismount</b> ${fmtMi(routeStats.dismountM)} mi</span>` : '',
+    routeStats.ferryM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⛴︎</span><b>Ferry</b> ${fmtMi(routeStats.ferryM)} mi</span>` : '',
+    routeStats.dismountM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⚠︎</span><b>Dismount</b> ${fmtMi(routeStats.dismountM)} mi</span>` : '',
   ].filter(Boolean).join('');
   summary.innerHTML = `<strong>${fmtMi(totals.distM)} mi</strong><small>${fmtDur(totals.timeS)}</small>${tripNotes}`;
   summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span><span class="elevation-metric"><b>10%+ uphill</b><strong>${fmtMi(steepUphillM)} mi</strong></span>`;

@@ -41,6 +41,10 @@ await page.evaluate(() => localStorage.setItem('wa-bike-route-details-1', JSON.s
 await page.reload({ waitUntil: 'load' });
 const rendered = await page.evaluate(() => ({
   summary: document.getElementById('summary').textContent.replace(/\s+/g, ' ').trim(),
+  quickSummaryHeight: document.getElementById('routeQuickSummary').getBoundingClientRect().height,
+  categoryLabelLines: [...document.querySelectorAll('.route-summary-category-item > span:last-child')]
+    .map((label) => Math.round(label.getBoundingClientRect().height
+      / Number.parseFloat(getComputedStyle(label).lineHeight))),
   speed: document.getElementById('summaryRoadSpeed').textContent.replace(/\s+/g, ' ').trim(),
   speedLabels: [...document.querySelectorAll('#summaryRoadSpeed .speed-limit-metric > span')]
     .map((label) => ({ text: label.textContent.trim(), bold: label.querySelector('strong')?.textContent })),
@@ -48,6 +52,10 @@ const rendered = await page.evaluate(() => ({
 }));
 check('Stats summarizes ferry distance in miles', /Ferry 1\.0 mi/.test(rendered.summary), rendered.summary);
 check('Stats summarizes dismount distance', /Dismount 0\.2 mi/.test(rendered.summary), rendered.summary);
+check('the phone summary stays compact with ferry and dismount rows',
+  rendered.quickSummaryHeight <= 80, `${rendered.quickSummaryHeight}px`);
+check('all category labels stay on one line at phone width',
+  rendered.categoryLabelLines.every((lines) => lines === 1), JSON.stringify(rendered.categoryLabelLines));
 check('Speed Limits includes the 55+ mph row', /At least 55 mph\s*1\.0 mi/.test(rendered.speed), rendered.speed);
 check('Speed Limits omits average and maximum rows', !/Avg\. limit|Max limit/.test(rendered.speed), rendered.speed);
 check('the threshold speeds are bold inside their labels',
