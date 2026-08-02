@@ -1440,12 +1440,12 @@ if (!hasRoute) {
     routeStats.dismountM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⚠︎</span><b>Dismount</b> ${fmtMi(routeStats.dismountM)} mi</span>` : '',
   ].filter(Boolean).join('');
   summary.innerHTML = `<strong>${fmtMi(totals.distM)} mi</strong><small>${fmtDur(totals.timeS)}</small>${tripNotes}`;
-  summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span><span class="elevation-metric"><b>10%+ uphill</b><strong>${fmtMi(steepUphillM)} mi</strong></span>`;
+  summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span><span class="elevation-metric"><b>5%+ uphill</b><strong>${inclineOver5Pct} of route</strong></span><span class="elevation-metric"><b>10%+ uphill</b><strong>${fmtMi(steepUphillM)} mi</strong></span>`;
   elevationSteepWarning.hidden = !(maxGradePct > 18);
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
   summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>At least <strong>35 mph</strong></span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span><span class="speed-limit-metric"><span>At least <strong>45 mph</strong></span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span><span class="speed-limit-metric"><span>At least <strong>55 mph</strong></span><b>${speedMiles(routeStats.roadAtOrAbove55M)}</b></span>`;
-  summaryMix.innerHTML = `<div class="route-summary-mix-items">${categoryRows}</div><div class="route-summary-secondary">${unpavedSummaryMetric}<span class="route-summary-secondary-divider" aria-hidden="true"></span><span class="route-summary-secondary-item"><span class="route-summary-incline-swatch" aria-hidden="true">↗</span><b>${inclineOver5Pct}</b><span>Incline over 5%</span></span></div>`;
+  summaryMix.innerHTML = `<div class="route-summary-mix-items">${categoryRows}</div><div class="route-summary-secondary">${unpavedSummaryMetric}</div>`;
   document.getElementById('summaryUnpavedWarningLink')?.addEventListener('click', () => {
     selectDetailTab('concerns');
     requestAnimationFrame(() => scrollToConcernSection('concern-unpaved'));

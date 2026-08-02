@@ -76,7 +76,12 @@ for (const label of labels) {
   assert.ok(appCard.includes(label), `route card is missing ${label}`);
   assert.ok(details.includes(label), `Route Details is missing ${label}`);
 }
-assert.ok(details.includes('Incline over 5%'), 'Route Details is missing the independent incline metric');
+assert.ok(details.includes('<b>5%+ uphill</b><strong>${inclineOver5Pct} of route</strong>'),
+  'Route Details Elevation is missing the independent 5%+ uphill metric');
+assert.ok(!details.includes('Incline over 5%'),
+  'Route Details must not leave the 5% grade metric in its top summary');
+assert.ok(app.includes("['bikeFacilities', 'Bike lane', 'facility']"),
+  'Map Layers must label recorded bike facilities as Bike lane');
 assert.ok(details.includes('At least <strong>55 mph</strong>'),
   'Route Details is missing the bold 55+ mph road metric');
 assert.ok(!details.includes('Avg. limit') && !details.includes('Max limit'),

@@ -8912,7 +8912,7 @@ function buildSourcePanel() {
   host.className = 'layer-toggle-grid';
   const items = [
     ['offstreetTrails', 'Off-street trails', 'trail'],
-    ['bikeFacilities', 'Road with bike facility', 'facility'],
+    ['bikeFacilities', 'Bike lane', 'facility'],
     ['meetRules', 'Road meets safety rules', 'meets'],
     ['failRules', 'Road fails safety rules', 'fails'],
     ['caution', 'Caution — ride with care', 'caution'],
