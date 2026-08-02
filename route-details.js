@@ -67,6 +67,17 @@ function isDismountSegment(seg) {
   return !!seg?.dismount || !!((seg?.official || 0) & OFFICIAL_DISMOUNT);
 }
 
+// A stored segment does not always carry a level: an older release wrote none,
+// and level 0 means "not scored", not "fine". Trusting it printed a FREEWAY as
+// "Passes Rules" on this page while the map and the route card, which re-score,
+// drew it failing. Score it here the same way rather than believing the zero.
+// test_route_category_agreement.mjs holds the two classifiers together.
+function routeSegmentLevel(seg, rules = details?.rules || {}) {
+  const stored = Number(seg?.level) || 0;
+  if (stored >= 1 && stored <= 4) return stored;
+  return window.SafetyModel.evaluate(routeSegmentFacts(seg), rules).level;
+}
+
 // One non-ferry segment belongs to exactly one of these five map categories.
 // The ordering mirrors routeVisualStyle() in app.js, including its special
 // treatment for crossings and allowed mountain-bike trails.
@@ -74,8 +85,9 @@ function routeDisplayCategory(seg) {
   if (!seg || ((seg.flags || 0) & FLAG_FERRY)) return null;
   if (ROUTE_CATEGORY_KEYS.includes(seg.displayCategory)) return seg.displayCategory;
   if (seg.crossing === 1) return 'pass';
-  if (Number(seg.level) === 4) return 'fail';
-  if (Number(seg.level) === 3 || isMountainBikeTrail(seg)) return 'caution';
+  const level = routeSegmentLevel(seg);
+  if (level === 4) return 'fail';
+  if (level === 3 || isMountainBikeTrail(seg)) return 'caution';
   if (isOffStreetTrail(seg)) return 'trail';
   if (isBikeNetwork(seg)) return 'bike';
   return 'pass';
@@ -102,7 +114,12 @@ function routeSegmentFacts(seg) {
   const facility = Number(seg?.facility) || 0;
   const measures = seg?.measures || null;
   return window.SafetyModel.sealFacts({
-    prohibited: Number(seg?.sh) === PROHIBITED_SHOULDER,
+    // Never true here, and deliberately so: these are segments the router
+    // CHOSE, and it does not route over an edge bicycles are banned from.
+    // scoreRouteSeg() in app.js holds the same invariant, and the two have to
+    // agree -- reading the -128 sentinel on this side only meant the same
+    // segment could fail on this page and pass on the route card.
+    prohibited: false,
     ferry: !!(flags & FLAG_FERRY),
     freeway: !!(flags & FLAG_FREEWAY),
     infra: !!(flags & FLAG_INFRA) || facility >= 4,

@@ -812,6 +812,8 @@ const navVoice = {
     ? true : savedState.voiceStatusMiles,
   statusEta: !savedState || typeof savedState.voiceStatusEta !== 'boolean'
     ? true : savedState.voiceStatusEta,
+  safetyLevels: !savedState || typeof savedState.voiceSafetyLevels !== 'boolean'
+    ? true : savedState.voiceSafetyLevels,
   offRouteMode: AUTOMATIC_OFF_ROUTE_RECOVERY_ENABLED ? savedOffRouteRecoveryMode : 'guidance',
 };
 
@@ -992,6 +994,7 @@ function saveStateNow() {
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
+      voiceSafetyLevels: navVoice.safetyLevels,
       navigationOffRouteMode: navVoice.offRouteMode,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       showAdvancedTools: uiPrefs.showAdvancedTools,
@@ -2409,6 +2412,10 @@ function showRouteActionToast(text, { busy = false, detail = '', duration = 2200
 function showRouterProgress(detail, title = 'Loading routing engine') {
   setRouteStatus(detail || title);
   showRouteActionToast(title, { busy: true, detail, duration: 0 });
+  // On a first install the routing data is the long wait, and on iOS it can
+  // overlap the launch screen -- which then sat on a generic message with
+  // nothing to say. This no-ops once the app has taken over the screen.
+  window.__setAppLaunchStatus?.(detail || title);
 }
 
 // If the graph we want is not the one we last loaded, ask the worker to drop
@@ -2543,18 +2550,10 @@ async function ensureRouter() {
   try {
     showRouterProgress(`Downloading ${Region.name} roads, trails, ferries, and elevation data…`);
     await purgeStaleGraphCache();
-    const res = await fetch(GRAPH_URL);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    let buf = await readRoutingGraphResponse(res);
-    showRouterProgress('Checking and unpacking the routing map…');
-    const head = new Uint8Array(buf, 0, 2);
-    if (head[0] === 0x1f && head[1] === 0x8b) {
-      // Server delivered the gzip container raw — decompress ourselves.
-      showRouterProgress('Unpacking road, trail, ferry, and elevation data…');
-      const ds = new DecompressionStream('gzip');
-      buf = await new Response(new Blob([buf]).stream().pipeThrough(ds)).arrayBuffer();
-    }
-    showRouterProgress('Starting the on-device route engine…');
+    // The worker starts before the bytes arrive so it is warm when they do, and
+    // so the ~94 MB the gzip container expands to is allocated and inflated
+    // over there. Doing that here used to lock the UI thread for seconds during
+    // startup -- the exact window in which a rider taps the search box.
     routing.worker = new Worker('router-worker.js');
     routing.worker.onmessage = onRouterMessage;
     routing.worker.onerror = (event) => {
@@ -2562,6 +2561,10 @@ async function ensureRouter() {
       handleRouterFailure(event.message || 'routing worker stopped');
     };
     routing.worker.onmessageerror = () => handleRouterFailure('routing worker sent unreadable data');
+    const res = await fetch(GRAPH_URL);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const buf = await readRoutingGraphResponse(res);
+    showRouterProgress('Starting the on-device route engine…');
     routing.worker.postMessage({ type: 'graph', buffer: buf }, [buf]);
   } catch (e) {
     handleRouterFailure(`routing data could not load: ${e.message}`);
@@ -3229,9 +3232,76 @@ function buildTurnInstructions(m) {
   const segmentTimeS = segs.reduce((sum, seg) => sum + Math.max(0, Number(seg.timeS) || 0), 0);
   return {
     coords, cumulative, instructions, segs,
+    safetyRuns: buildRouteSafetyRuns(segs, cumulative),
     totalM: cumulative[cumulative.length - 1] || 0,
     totalTimeS: segmentTimeS || Math.max(0, Number(m.timeS) || 0),
   };
+}
+
+/* ------------------------------------------- safety levels, spoken aloud
+ * The five ways a stretch of route paints on the map, said out loud. A rider
+ * hearing "use caution next 3.4 miles" is being told exactly what the amber
+ * line already shows -- the point of the option is that they do not have to
+ * look at the screen to learn it.
+ */
+const SAFETY_RUN_SPEECH = Object.freeze({
+  trail: (distance) => `Trail for next ${distance}`,
+  bike: (distance) => `Bike lane for next ${distance}`,
+  pass: (distance) => `Normal road for next ${distance}`,
+  caution: (distance) => `Use caution next ${distance}`,
+  fail: (distance) => `Warning - safety alert next ${distance}`,
+});
+// Short runs of ordinary road are not worth interrupting for; short runs of
+// caution or rule failure are the whole reason a rider turned this on.
+const SAFETY_RUN_MIN_M = 250;
+// Spoken this far before the change, so the warning arrives while there is
+// still time to act on it.
+const SAFETY_RUN_LEAD_M = 90;
+
+// Consecutive segments that paint the same way, merged into runs, measured on
+// the same cumulative clock navigation already uses for turns.
+function buildRouteSafetyRuns(segs, cumulative) {
+  const runs = [];
+  for (const seg of segs || []) {
+    const startM = cumulative[seg.c0], endM = cumulative[seg.c1];
+    if (!Number.isFinite(startM) || !Number.isFinite(endM) || endM <= startM) continue;
+    // A ferry has no riding safety level. It ends the run rather than carrying
+    // "bike lane for the next four miles" across open water.
+    const category = (seg.flags || 0) & 32 ? 'ferry' : routeSegmentDisplayCategory(seg);
+    const last = runs[runs.length - 1];
+    if (last && last.category === category && Math.abs(last.endM - startM) < 1) last.endM = endM;
+    else runs.push({ category, startM, endM, spoken: false });
+  }
+  return runs;
+}
+
+// Returns true when it spoke, so the caller can hold the periodic status
+// update rather than stacking two announcements on one fix.
+function maybeSpeakSafetyChange(next, remainingToTurnM) {
+  if (!navVoice.safetyLevels || turnNav.arrived) return false;
+  const runs = turnNav.route?.safetyRuns;
+  if (!runs || !runs.length) return false;
+  const at = turnNav.routeM;
+  // Anything already behind the rider is not news, however it got there.
+  for (const run of runs) if (run.endM <= at) run.spoken = true;
+  const run = runs.find((r) => !r.spoken);
+  if (!run) return false;
+  const phrase = SAFETY_RUN_SPEECH[run.category];
+  // How much of it is still ahead. Announced before the change these are the
+  // same number; joining a route in the middle of a stretch, they are not, and
+  // the honest one is what remains.
+  const lengthM = run.endM - Math.max(at, run.startM);
+  if (!phrase || (lengthM < SAFETY_RUN_MIN_M
+      && run.category !== 'caution' && run.category !== 'fail')) {
+    run.spoken = true;
+    return false;
+  }
+  if (run.startM - at > SAFETY_RUN_LEAD_M) return false;
+  // Never talk over the turn itself; the run will still be there next fix.
+  if (next && remainingToTurnM <= 90) return false;
+  run.spoken = true;
+  speakNavigation(`${phrase(navDistanceText(lengthM))}.`);
+  return true;
 }
 
 // Leaving the route no longer triggers rerouting. The rider gets the
@@ -3964,6 +4034,15 @@ function nativeNavigationRoutePayload() {
       distanceM: Number(instruction.distanceM) || 0,
       text: navInstructionText(instruction),
     })),
+    // The web layer speaks these itself, on the same GPS path as the turn
+    // prompts. They are sent so the native guide can too, for the case the web
+    // path cannot cover -- a locked screen. See docs/IOS-HANDOFF.md.
+    safetyRuns: (route.safetyRuns || []).filter((run) => SAFETY_RUN_SPEECH[run.category])
+      .map((run) => ({
+        startM: Number(run.startM) || 0,
+        endM: Number(run.endM) || 0,
+        text: SAFETY_RUN_SPEECH[run.category](navDistanceText(run.endM - run.startM)),
+      })),
   };
 }
 
@@ -3975,6 +4054,7 @@ function nativeVoiceStatusPayload() {
     statusSpeed: navVoice.statusSpeed,
     statusMiles: navVoice.statusMiles,
     statusEta: navVoice.statusEta,
+    safetyLevels: navVoice.safetyLevels,
   };
 }
 
@@ -4829,7 +4909,7 @@ function updateTurnNavigation(pos) {
   }
   const next = instructions[turnNav.next];
   if (!next) {
-    maybeSpeakPeriodicUpdate(null, Infinity);
+    if (!maybeSpeakSafetyChange(null, Infinity)) maybeSpeakPeriodicUpdate(null, Infinity);
     refreshNavigationUI();
     return;
   }
@@ -4843,7 +4923,9 @@ function updateTurnNavigation(pos) {
   } else if (!next.approach && remaining <= 350) {
     next.approach = true;
     speakNavigation(`In ${navDistanceText(remaining)}, ${navInstructionText(next).toLowerCase()}.`);
-  } else {
+  } else if (!maybeSpeakSafetyChange(next, remaining)) {
+    // A safety change is news; the periodic status is a summary. Only one of
+    // them speaks on any one fix, and the change wins.
     maybeSpeakPeriodicUpdate(next, remaining);
   }
   refreshNavigationUI();
@@ -9658,6 +9740,19 @@ function buildVoicePanel() {
     saveStateSoon();
   });
   host.appendChild(headings);
+
+  const safety = document.createElement('div');
+  safety.className = 'check-rule rule-card';
+  safety.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceSafetyLevels"
+    ${navVoice.safetyLevels ? 'checked' : ''}><span>Announce route safety levels</span></label>
+    <p class="hint voice-safety-hint">Called out just before each change — "Bike lane for next
+    2.1 miles", "Use caution next 3.4 miles".</p>`;
+  safety.querySelector('input').addEventListener('change', (e) => {
+    navVoice.safetyLevels = e.target.checked;
+    syncNativeVoiceStatusPreferences();
+    saveStateSoon();
+  });
+  host.appendChild(safety);
 
   const choices = [[0, 'Never'], [1, 'Every minute'], [2, 'Every 2 minutes'],
     [3, 'Every 3 minutes'], [5, 'Every 5 minutes'], [10, 'Every 10 minutes'],

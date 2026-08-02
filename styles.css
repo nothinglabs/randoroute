@@ -1185,6 +1185,8 @@ body.navigation-active .maplibregl-user-location-accuracy-circle { display: none
 #settingsVoice .rule-card { padding: 6px 9px; }
 #settingsVoice .voice-status-grid .rule-check { line-height: 1.2; }
 #settingsVoice .voice-inline-head { min-height: 24px; }
+#settingsVoice .check-rule.rule-card { display: block; }
+#settingsVoice .voice-safety-hint { margin: 3px 0 0; line-height: 1.3; }
 
 /* Navigation locks route-shaping controls; the Navigate pane stays live. */
 #routeOptions button.nav-locked { opacity: .45; }

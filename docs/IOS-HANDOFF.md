@@ -96,6 +96,25 @@ promise. A timeout that rejects after, say, 30 s would close it.
 
 ---
 
+## 3b. Waiting for you: safety-level announcements in the background
+
+Settings → Voice has a new option, **Announce route safety levels**. On each
+change in how the route paints — trail, bike lane, ordinary road, caution, rule
+failure — the rider hears what is coming and how far it runs ("Use caution next
+3.4 miles"), spoken about 90 m before the change.
+
+It is decided in `maybeSpeakSafetyChange()` in `app.js`, on the **web** GPS
+path, alongside the turn prompts. So it behaves exactly as turn prompts do on
+iOS — and stops when they stop.
+
+The flag reaches the plugin: `nativeVoiceStatusPayload()` sends
+`safetyLevels`, and `startNativeNavigation` sends the same runs the web layer
+uses. **Nothing in `BridgeViewController.swift` reads either yet.** If the
+native guide is what speaks while the screen is locked, this option needs the
+same treatment there; the payload is already carrying what it would need.
+
+---
+
 ## 4. Not examined
 
 Not because they are fine — because reading them without running them tells you

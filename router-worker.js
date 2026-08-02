@@ -2719,13 +2719,40 @@ function makeHeap(cap) {
   };
 }
 
+// The graph ships gzipped: 32 MB on the wire, 94 MB in memory. Unpacking it
+// where it is used costs the UI thread nothing, and the UI thread is what
+// raises the keyboard -- doing it in the page meant a rider who tapped the
+// search box during startup waited seconds for it to appear.
+//
+// A caller that has already unpacked the container (every test does, and so
+// does a server that decoded Content-Encoding for us) still takes the
+// synchronous path below, so `ready` is posted before onmessage returns.
+const GZIP_MAGIC = 0x1f8b;
+function isGzip(buffer) {
+  if (!buffer || buffer.byteLength < 2) return false;
+  const head = new Uint8Array(buffer, 0, 2);
+  return ((head[0] << 8) | head[1]) === GZIP_MAGIC;
+}
+async function gunzip(buffer) {
+  const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Response(stream).arrayBuffer();
+}
+function receiveGraph(buffer) {
+  postMessage({ type: 'progress', phase: 'engine', detail: 'Reading the statewide routing map…' });
+  loadGraph(buffer);
+  postMessage({ type: 'ready', nodes: N, edges: E });
+}
+
 onmessage = (ev) => {
   const m = ev.data;
   try {
     if (m.type === 'graph') {
-      postMessage({ type: 'progress', phase: 'engine', detail: 'Reading the statewide routing map…' });
-      loadGraph(m.buffer);
-      postMessage({ type: 'ready', nodes: N, edges: E });
+      if (!isGzip(m.buffer)) { receiveGraph(m.buffer); return; }
+      postMessage({ type: 'progress', phase: 'engine',
+        detail: 'Unpacking road, trail, ferry, and elevation data…' });
+      gunzip(m.buffer)
+        .then((raw) => receiveGraph(raw))
+        .catch((e) => postMessage({ type: 'error', message: `graph: ${e && e.message || e}` }));
     } else if (m.type === 'route') {
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
