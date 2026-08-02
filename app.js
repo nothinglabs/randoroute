@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.516';
+const APP_VERSION = '2026-08-02.517';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3244,13 +3244,72 @@ function buildTurnInstructions(m) {
  * line already shows -- the point of the option is that they do not have to
  * look at the screen to learn it.
  */
+// One short phrase per reason, and only ever one of them. A rider on a bike
+// cannot hold a list: they need the single fact that changes what they do, and
+// they need it before the road does. "Heavy traffic, no shoulder" is the most
+// this says, and it says that only where the road is failing for a reason the
+// speed alone does not already imply.
+const SAFETY_REASON_SPEECH = Object.freeze({
+  prohibited: 'Bikes not allowed',
+  freeway: 'Freeway',
+  'high-speed': 'High speed limit',
+  'no-shoulder': 'No shoulder',
+  'busy-no-shoulder': 'Heavy traffic, no shoulder',
+  'wide-no-shoulder': 'Wide road, no shoulder',
+  'heavy-traffic': 'Heavy traffic',
+  'limited-access': 'Limited access road',
+  'sidewalk-fallback': 'Sidewalk riding',
+  dismount: 'Walk your bike',
+  'mountain-bike': 'Mountain bike trail',
+});
+
+// A full stop rather than a dash: speech engines read it as the pause a rider
+// hears as "listen to the next bit", and a dash is read aloud by some of them.
 const SAFETY_RUN_SPEECH = Object.freeze({
   trail: (distance) => `Trail for next ${distance}`,
   bike: (distance) => `Bike lane for next ${distance}`,
   pass: (distance) => `Normal road for next ${distance}`,
-  caution: (distance) => `Use caution next ${distance}`,
-  fail: (distance) => `Warning - safety alert next ${distance}`,
+  caution: (distance, reason) => (reason
+    ? `Caution. ${reason} for next ${distance}` : `Use caution next ${distance}`),
+  fail: (distance, reason) => (reason
+    ? `Warning. ${reason} for next ${distance}` : `Warning - safety alert next ${distance}`),
 });
+
+// Why this segment is amber or red, boiled down to one key. Null where there is
+// nothing specific to say, which keeps the plain wording rather than inventing
+// a reason.
+function routeSegmentSafetyReason(s) {
+  const scored = scoreRouteSeg(routeSegProps(s));
+  const verdict = evaluateRoad(scored);
+  if (verdict.level === 4) {
+    if (verdict.rule === 'prohibited') return 'prohibited';
+    if (verdict.rule === 'freeway') return 'freeway';
+    if (verdict.rule === 'speed-cap') return 'high-speed';
+    if (verdict.rule !== 'needs-space') return null;
+    // It needs space and has none. Name the trigger only where it adds
+    // something: a road fast enough to demand a shoulder is already understood
+    // to be fast, but "25 mph, five lanes" is not obvious from "no shoulder".
+    const reasons = SafetyModel.spaceReasons(factsOf(scored), rules);
+    if (reasons.includes('speed')) return 'no-shoulder';
+    if (reasons.includes('traffic') || reasons.includes('class')) return 'busy-no-shoulder';
+    if (reasons.includes('lanes')) return 'wide-no-shoulder';
+    return 'no-shoulder';
+  }
+  if (isDismountSegment(s)) return 'dismount';
+  const cause = routeSegmentCautionCause(s);
+  if (cause === 'high-stress') return 'heavy-traffic';
+  return SAFETY_REASON_SPEECH[cause] ? cause : null;
+}
+
+// The reason that covers the most of a stretch. A run can change its mind about
+// why it is amber; the rider is told the one that dominates it.
+function dominantRunReason(metresByReason) {
+  let best = null, most = 0;
+  for (const [reason, metres] of metresByReason) {
+    if (metres > most) { best = reason; most = metres; }
+  }
+  return best;
+}
 // Short runs of ordinary road are not worth interrupting for; short runs of
 // caution or rule failure are the whole reason a rider turned this on.
 const SAFETY_RUN_MIN_M = 250;
@@ -3269,9 +3328,18 @@ function buildRouteSafetyRuns(segs, cumulative) {
     // "bike lane for the next four miles" across open water.
     const category = (seg.flags || 0) & 32 ? 'ferry' : routeSegmentDisplayCategory(seg);
     const last = runs[runs.length - 1];
-    if (last && last.category === category && Math.abs(last.endM - startM) < 1) last.endM = endM;
-    else runs.push({ category, startM, endM, spoken: false });
+    let run = last;
+    if (last && last.category === category && Math.abs(last.endM - startM) < 1) {
+      last.endM = endM;
+    } else {
+      run = { category, startM, endM, spoken: false, reasons: new Map() };
+      runs.push(run);
+    }
+    if (category !== 'caution' && category !== 'fail') continue;
+    const reason = routeSegmentSafetyReason(seg);
+    if (reason) run.reasons.set(reason, (run.reasons.get(reason) || 0) + (endM - startM));
   }
+  for (const run of runs) run.reason = dominantRunReason(run.reasons);
   return runs;
 }
 
@@ -3300,7 +3368,7 @@ function maybeSpeakSafetyChange(next, remainingToTurnM) {
   // Never talk over the turn itself; the run will still be there next fix.
   if (next && remainingToTurnM <= 90) return false;
   run.spoken = true;
-  speakNavigation(`${phrase(navDistanceText(lengthM))}.`);
+  speakNavigation(`${phrase(navDistanceText(lengthM), SAFETY_REASON_SPEECH[run.reason])}.`);
   return true;
 }
 
@@ -4041,7 +4109,8 @@ function nativeNavigationRoutePayload() {
       .map((run) => ({
         startM: Number(run.startM) || 0,
         endM: Number(run.endM) || 0,
-        text: SAFETY_RUN_SPEECH[run.category](navDistanceText(run.endM - run.startM)),
+        text: SAFETY_RUN_SPEECH[run.category](navDistanceText(run.endM - run.startM),
+          SAFETY_REASON_SPEECH[run.reason]),
       })),
   };
 }
@@ -9745,8 +9814,8 @@ function buildVoicePanel() {
   safety.className = 'check-rule rule-card';
   safety.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceSafetyLevels"
     ${navVoice.safetyLevels ? 'checked' : ''}><span>Announce route safety levels</span></label>
-    <p class="hint voice-safety-hint">Called out just before each change — "Bike lane for next
-    2.1 miles", "Use caution next 3.4 miles".</p>`;
+    <p class="hint voice-safety-hint">Called out just before each change, with the one thing that
+    matters — "Bike lane for next 2.1 miles", "Warning. No shoulder for next 1.2 miles".</p>`;
   safety.querySelector('input').addEventListener('change', (e) => {
     navVoice.safetyLevels = e.target.checked;
     syncNativeVoiceStatusPreferences();
