@@ -48,13 +48,16 @@ const ctx = {
     osm__hit: { id: 'osm' },
   },
   map: {
-    getLayer: (id) => ({ id }),
+    getLayer: (id) => (id === 'route-dismount-halo' ? null : { id }),
     getLayoutProperty: () => 'visible',
     queryRenderedFeatures: () => rendered,
   },
+  // featureAt widens its reach over a dismount marker; there is none here, so
+  // the real function answers false and the ordinary tolerance applies.
+  DISMOUNT_MARKER_HIT_PX: 18,
 };
 vm.createContext(ctx);
-vm.runInContext(lift('featureAt'), ctx);
+vm.runInContext(`${lift('dismountMarkerAt')}\n${lift('featureAt')}`, ctx);
 
 const at = (...ids) => {
   rendered = ids.map((id) => ({ layer: { id } }));

@@ -72,7 +72,14 @@ function isDismountSegment(seg) {
 // "Passes Rules" on this page while the map and the route card, which re-score,
 // drew it failing. Score it here the same way rather than believing the zero.
 // test_route_category_agreement.mjs holds the two classifiers together.
-function routeSegmentLevel(seg, rules = details?.rules || {}) {
+// `details` is a const declared further down and read only at call time. The
+// typeof guard is for the tests, which lift these functions out of the file and
+// evaluate them where no route has been loaded at all.
+function activeDetailRules() {
+  return (typeof details !== 'undefined' && details && details.rules) || {};
+}
+
+function routeSegmentLevel(seg, rules = activeDetailRules()) {
   const stored = Number(seg?.level) || 0;
   if (stored >= 1 && stored <= 4) return stored;
   return window.SafetyModel.evaluate(routeSegmentFacts(seg), rules).level;
