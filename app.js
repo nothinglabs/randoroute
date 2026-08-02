@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.519';
+const APP_VERSION = '2026-08-02.520';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3425,9 +3425,21 @@ function dominantRunReason(metresByReason) {
 // Short runs of ordinary road are not worth interrupting for; short runs of
 // caution or rule failure are the whole reason a rider turned this on.
 const SAFETY_RUN_MIN_M = 250;
-// Spoken this far before the change, so the warning arrives while there is
-// still time to act on it.
-const SAFETY_RUN_LEAD_M = 90;
+// Far enough ahead to act on. Ninety metres was under fifteen seconds at riding
+// speed, and a safety level almost always changes AT a junction -- you turn
+// onto the trail, and the turn IS the change -- so the announcement was
+// competing with the maneuver prompt for the same moment and losing. It landed
+// after the road had already changed under the rider, which is no use to
+// anyone. Scale it with how fast they are actually going.
+const SAFETY_RUN_LEAD_S = 20;
+const SAFETY_RUN_LEAD_MIN_M = 150;
+const SAFETY_RUN_LEAD_MAX_M = 400;
+function safetyRunLeadM() {
+  const mph = Number(turnNav.speedMph);
+  const metresPerSecond = Number.isFinite(mph) && mph > 1 ? mph * 0.44704 : 5;
+  return Math.max(SAFETY_RUN_LEAD_MIN_M,
+    Math.min(SAFETY_RUN_LEAD_MAX_M, metresPerSecond * SAFETY_RUN_LEAD_S));
+}
 
 // Consecutive segments that paint the same way, merged into runs, measured on
 // the same cumulative clock navigation already uses for turns.
@@ -3456,8 +3468,10 @@ function buildRouteSafetyRuns(segs, cumulative) {
 }
 
 // Returns true when it spoke, so the caller can hold the periodic status
-// update rather than stacking two announcements on one fix.
-function maybeSpeakSafetyChange(next, remainingToTurnM) {
+// update rather than stacking two announcements on one fix. It no longer waits
+// for a gap in the maneuver prompts: the speech queue keeps the two from
+// cutting across each other, and waiting was what made this arrive late.
+function maybeSpeakSafetyChange() {
   if (!navVoice.safetyLevels || turnNav.arrived) return false;
   const runs = turnNav.route?.safetyRuns;
   if (!runs || !runs.length) return false;
@@ -3476,11 +3490,10 @@ function maybeSpeakSafetyChange(next, remainingToTurnM) {
     run.spoken = true;
     return false;
   }
-  if (run.startM - at > SAFETY_RUN_LEAD_M) return false;
-  // Never talk over the turn itself; the run will still be there next fix.
-  if (next && remainingToTurnM <= 90) return false;
+  if (run.startM - at > safetyRunLeadM()) return false;
   run.spoken = true;
-  speakNavigation(`${phrase(navDistanceText(lengthM), SAFETY_REASON_SPEECH[run.reason])}.`);
+  speakNavigation(`${phrase(navDistanceText(lengthM), SAFETY_REASON_SPEECH[run.reason])}.`,
+    'safety');
   return true;
 }
 
@@ -4374,7 +4387,120 @@ if ('speechSynthesis' in window) {
   });
 }
 
-function speakNavigation(text) {
+/* ------------------------------------------------- one voice, one queue
+ * Every prompt used to cut off whatever was mid-word. Both engines were told
+ * to: `synth.cancel()` here, `stopSpeaking(at: .immediate)` in the iOS plugin.
+ * It was called latest-wins, and on a ride it reads as the app talking over
+ * itself -- a maneuver truncated by a safety warning, a safety warning
+ * truncated by a status update, and the rider hearing neither of them whole.
+ *
+ * So nothing is handed to an engine while that engine is still speaking, and
+ * neither engine's own interrupt is reached. The queue lives here because it
+ * has to serve both, and because only this side knows which prompt matters
+ * more: a maneuver outranks a safety change, which outranks a status update.
+ * A higher-ranked prompt arriving mid-sentence is the one case where cutting in
+ * is right, and it is the only case that still does.
+ *
+ * Pacing differs by engine and cannot be made uniform. The web engine reports
+ * when an utterance ends. The iOS plugin's speak() resolves as soon as speech
+ * has STARTED -- `call.resolve()` sits directly after `speakText` -- so there
+ * the queue advances on an estimate, deliberately generous: a prompt a moment
+ * late beats a prompt cut in half.
+ */
+const SPEECH_RANK = { turn: 3, safety: 2, status: 1 };
+// A prompt that has waited this long is no longer about where the rider is.
+const SPEECH_STALE_MS = 15000;
+const speechQueue = [];
+let speechActive = null;
+let speechTimer = 0;
+
+// Roughly 2.6 words a second, which is where both engines are set, plus a beat
+// for the pause at the end.
+function speechDurationMs(text) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1400, words * 380 + 400);
+}
+
+function stopSpeechEngine() {
+  clearTimeout(speechTimer);
+  speechTimer = 0;
+  speechActive = null;
+  const plugin = nativeNavigationPlugin();
+  if (plugin?.stopSpeaking) { plugin.stopSpeaking().catch(() => {}); return; }
+  try { window.speechSynthesis?.cancel(); } catch (e) { /* nothing to stop */ }
+}
+
+function clearSpeechQueue() {
+  speechQueue.length = 0;
+  stopSpeechEngine();
+}
+
+function speakInBrowser(text, finish) {
+  if (!('speechSynthesis' in window)) {
+    turnNav.message = 'Voice is unavailable in this browser';
+    refreshNavigationUI();
+    finish();
+    return;
+  }
+  try {
+    const synth = window.speechSynthesis;
+    const utterance = navigationSpeechUtterance(text);
+    utterance.onend = finish;
+    utterance.onerror = finish;
+    synth.speak(utterance);
+    // resume() works around the mobile Safari/Chrome bug where the queue
+    // silently pauses.
+    synth.resume();
+    // An engine that never reports the end must not wedge the queue for the
+    // rest of the ride.
+    speechTimer = setTimeout(finish, speechDurationMs(text) + 4000);
+  } catch (e) { finish(); }
+}
+
+function speakThrough(text, done) {
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(speechTimer);
+    speechTimer = 0;
+    done();
+  };
+  const plugin = nativeNavigationPlugin();
+  if (plugin) {
+    speechTimer = setTimeout(finish, speechDurationMs(text));
+    plugin.speak({ text, language: navigator.language || 'en-US' }).catch(() => {
+      clearTimeout(speechTimer);
+      speechTimer = 0;
+      speakInBrowser(text, finish);
+    });
+    return;
+  }
+  speakInBrowser(text, finish);
+}
+
+function pumpSpeech() {
+  if (speechActive || !speechQueue.length) return;
+  const now = Date.now();
+  for (let i = speechQueue.length - 1; i >= 0; i--) {
+    if (now - speechQueue[i].queuedAt > SPEECH_STALE_MS) speechQueue.splice(i, 1);
+  }
+  if (!speechQueue.length) return;
+  // Highest rank first, and among equals the one that has waited longest --
+  // which is queue order, so a plain scan for the best rank is enough.
+  let pick = 0;
+  for (let i = 1; i < speechQueue.length; i++) {
+    if (speechQueue[i].rank > speechQueue[pick].rank) pick = i;
+  }
+  const item = speechQueue.splice(pick, 1)[0];
+  speechActive = item;
+  speakThrough(item.text, () => {
+    speechActive = null;
+    pumpSpeech();
+  });
+}
+
+function speakNavigation(text, kind = 'turn') {
   if (!text) return;
   const now = Date.now();
   // Guard against re-speaking the same phrase on back-to-back GPS fixes (the
@@ -4384,37 +4510,17 @@ function speakNavigation(text) {
   lastSpokenText = text;
   lastSpokenAt = now;
   turnNav.lastVoiceAt = now;
-  const nativePlugin = nativeNavigationPlugin();
-  if (nativePlugin) {
-    nativePlugin.speak({ text, language: navigator.language || 'en-US' }).catch(() => {
-      if (!('speechSynthesis' in window)) {
-        turnNav.message = 'Voice is unavailable on this device';
-        refreshNavigationUI();
-        return;
-      }
-      const utterance = navigationSpeechUtterance(text);
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-      window.speechSynthesis.resume();
-    });
-    return;
+  const rank = SPEECH_RANK[kind] || SPEECH_RANK.turn;
+  speechQueue.push({ text, rank, queuedAt: now });
+  // A maneuver does not wait behind a safety note or a status update: it is
+  // about something the rider must do in the next few seconds. That is the
+  // ONLY interrupt left. A safety change is content to wait its turn -- it is
+  // raised far enough ahead to afford the second or two -- and cutting across a
+  // status update to deliver it would be the same talking-over, one rung down.
+  if (speechActive && rank === SPEECH_RANK.turn && speechActive.rank < SPEECH_RANK.turn) {
+    stopSpeechEngine();
   }
-  if (!('speechSynthesis' in window)) {
-    turnNav.message = 'Voice is unavailable in this browser';
-    refreshNavigationUI();
-    return;
-  }
-  try {
-    const synth = window.speechSynthesis;
-    // Latest-wins: a new maneuver supersedes whatever is queued or mid-word, so
-    // cancel unconditionally. Only clearing `pending` left started utterances
-    // running and swallowed the fresh prompt. resume() works around the mobile
-    // Safari/Chrome bug where the queue silently pauses.
-    synth.cancel();
-    const utterance = navigationSpeechUtterance(text);
-    synth.speak(utterance);
-    synth.resume();
-  } catch (e) { /* the status line remains useful without speech */ }
+  pumpSpeech();
 }
 
 async function requestNavigationWakeLock() {
@@ -5098,25 +5204,32 @@ function updateTurnNavigation(pos) {
   }
   const next = instructions[turnNav.next];
   if (!next) {
-    if (!maybeSpeakSafetyChange(null, Infinity)) maybeSpeakPeriodicUpdate(null, Infinity);
+    if (!maybeSpeakSafetyChange()) maybeSpeakPeriodicUpdate(null, Infinity);
     refreshNavigationUI();
     return;
   }
   const remaining = next.distanceM - turnNav.routeM;
+  let spoke = false;
   if (!next.now && remaining <= 90) {
     // Inside the immediate window: speak only the turn itself, never both
     // the approach and the turn back-to-back.
     next.now = true;
     next.approach = true;
     speakNavigation(`${navInstructionText(next)}.`);
+    spoke = true;
   } else if (!next.approach && remaining <= 350) {
     next.approach = true;
     speakNavigation(`In ${navDistanceText(remaining)}, ${navInstructionText(next).toLowerCase()}.`);
-  } else if (!maybeSpeakSafetyChange(next, remaining)) {
-    // A safety change is news; the periodic status is a summary. Only one of
-    // them speaks on any one fix, and the change wins.
-    maybeSpeakPeriodicUpdate(next, remaining);
+    spoke = true;
   }
+  // The safety change gets its own schedule. It used to be reachable only when
+  // no maneuver prompt was due, which on a route where the road changes AT the
+  // junction meant it never got the moment it needed. Queued behind the
+  // maneuver, it can be raised whenever it comes due without cutting in.
+  if (maybeSpeakSafetyChange()) spoke = true;
+  // A safety change is news; the periodic status is a summary. The summary
+  // yields to both.
+  if (!spoke) maybeSpeakPeriodicUpdate(next, remaining);
   refreshNavigationUI();
 }
 
@@ -5153,7 +5266,7 @@ function maybeSpeakPeriodicUpdate(next, remainingToTurnM) {
     const remainS = remainingNavigationTimeS();
     if (remainS >= 45) parts.push(`about ${speakDuration(remainS)} left`);
   }
-  if (parts.length) speakNavigation(`${parts.join('. ')}.`);
+  if (parts.length) speakNavigation(`${parts.join('. ')}.`, 'status');
 }
 
 function handleTurnNavigationLocationError(error) {
@@ -5251,6 +5364,8 @@ function startTurnNavigation() {
 
 function stopTurnNavigation(announce = true) {
   if (!turnNav.active) return;
+  // Whatever was still waiting to be said is about a ride that has ended.
+  clearSpeechQueue();
   if (turnNav.watchId != null) navigator.geolocation?.clearWatch(turnNav.watchId);
   turnNav.watchId = null;
   nativeNavigationPlugin()?.stopTracking().catch(() => {});

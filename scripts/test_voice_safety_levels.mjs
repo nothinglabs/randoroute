@@ -51,7 +51,7 @@ const spoken = await page.evaluate(() => {
   for (let m = 0; m <= turnNav.route.totalM; m += 10) {
     turnNav.routeM = m;
     const before = said.length;
-    maybeSpeakSafetyChange(null, Infinity);
+    maybeSpeakSafetyChange();
     if (said.length > before) heard.push({ at: m, text: said[said.length - 1] });
   }
   return { heard, runs: turnNav.route.safetyRuns.map((r) => r.category) };
@@ -75,8 +75,17 @@ check('nothing said is longer than a sentence',
 // Each announcement lands before the stretch it describes, not after.
 const startsAt = [0, 1609, 3218, 4827, 5127];
 check('each is spoken before the change, not after it',
-  spoken.heard.every((h, i) => h.at <= startsAt[i] && startsAt[i] - h.at <= 100),
+  spoken.heard.every((h, i) => h.at <= startsAt[i]),
   JSON.stringify({ heard: spoken.heard.map((h) => h.at), startsAt }));
+// The lead used to be 90 m -- under fifteen seconds of riding, and it was
+// arriving after the road had changed. Far enough ahead to act on now, and not
+// so far that it describes somewhere else.
+check('and with real warning, not a few seconds',
+  spoken.heard.every((h, i) => i === 0 || startsAt[i] - h.at >= 140),
+  JSON.stringify({ leads: spoken.heard.map((h, i) => startsAt[i] - h.at) }));
+check('but not so early it is about somewhere else',
+  spoken.heard.every((h, i) => startsAt[i] - h.at <= 400),
+  JSON.stringify({ leads: spoken.heard.map((h, i) => startsAt[i] - h.at) }));
 
 /* ------------------------------------------ the concern, named specifically */
 // "Use caution" tells a rider to be careful without telling them what of. Each
@@ -156,19 +165,19 @@ const guards = await page.evaluate(() => {
 
   reset();
   navVoice.safetyLevels = false;
-  const offCount = maybeSpeakSafetyChange(null, Infinity) ? 1 : said.length;
+  const offCount = maybeSpeakSafetyChange() ? 1 : said.length;
 
   reset();
   navVoice.safetyLevels = true;
-  // A turn is 40 m away: the turn owns the rider's attention.
-  const duringTurn = maybeSpeakSafetyChange({ distanceM: 40 }, 40);
-
-  // ...and the run is still waiting once the turn is behind them.
-  const afterTurn = maybeSpeakSafetyChange({ distanceM: 900 }, 900);
+  // A turn coming up no longer holds this back. It used to, and because a
+  // safety level almost always changes AT a junction the announcement kept
+  // losing that moment to the maneuver prompt and arriving after the road had
+  // already changed. The speech queue is what keeps the two apart now.
+  const duringTurn = maybeSpeakSafetyChange();
 
   reset();
   turnNav.arrived = true;
-  const arrived = maybeSpeakSafetyChange(null, Infinity);
+  const arrived = maybeSpeakSafetyChange();
   turnNav.arrived = false;
 
   // A rider who joins the route halfway is told what they are on now, with the
@@ -176,17 +185,15 @@ const guards = await page.evaluate(() => {
   reset();
   turnNav.routeM = 3400;
   said.length = 0;
-  const joinedLate = maybeSpeakSafetyChange(null, Infinity);
+  const joinedLate = maybeSpeakSafetyChange();
   const joinedText = said[said.length - 1];
   const skipped = turnNav.route.safetyRuns.filter((r) => r.spoken).map((r) => r.category);
-  return { offCount, duringTurn, afterTurn, arrived, joinedLate, joinedText, skipped,
+  return { offCount, duringTurn, arrived, joinedLate, joinedText, skipped,
     said: [...said] };
 });
 check('the option off means silence', guards.offCount === 0, JSON.stringify(guards));
-check('a safety change never talks over an imminent turn', guards.duringTurn === false,
-  JSON.stringify(guards));
-check('and is still announced once the turn has passed', guards.afterTurn === true,
-  JSON.stringify(guards));
+check('an imminent turn no longer holds the safety change back',
+  guards.duringTurn === true, JSON.stringify(guards));
 check('nothing is announced after arrival', guards.arrived === false, JSON.stringify(guards));
 check('joining mid-route skips the stretches already behind',
   guards.skipped.join(',') === 'trail,bike,pass', JSON.stringify(guards));

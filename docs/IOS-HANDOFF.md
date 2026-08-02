@@ -96,6 +96,34 @@ promise. A timeout that rejects after, say, 30 s would close it.
 
 ---
 
+## 3a. The speech queue, and why `speakText` no longer interrupts
+
+`speakText` still does this:
+
+```swift
+if speechSynthesizer.isSpeaking {
+    speechSynthesizer.stopSpeaking(at: .immediate)
+}
+```
+
+That branch is now unreachable in normal use, and should stay that way. The web
+layer owns a queue (`speakNavigation` in `app.js`) and never hands the plugin a
+second utterance while one is playing — riders were hearing prompts cut off
+mid-word because both engines were set to latest-wins.
+
+The queue paces itself on an **estimate**, because `speak()` calls
+`call.resolve()` as soon as speech has started rather than when it ends. That
+is the weakest part of the arrangement: a prompt longer than the estimate gets
+its tail clipped by the next one.
+
+**If you want to fix it properly:** the plugin already conforms to
+`AVSpeechSynthesizerDelegate`. Add `notifyListeners("speechFinished", ...)` in
+`didFinish` and `didCancel`, and the web side can advance on the real event
+instead of a guess. Leave `stopSpeaking` as it is — it is still used
+deliberately, when a maneuver has to cut across a lower-priority prompt.
+
+---
+
 ## 3b. Waiting for you: safety-level announcements in the background
 
 Settings → Voice has a new option, **Announce route safety levels**. On each
