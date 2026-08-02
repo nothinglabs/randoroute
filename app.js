@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-01.493';
+const APP_VERSION = '2026-08-01.496';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1005,6 +1005,7 @@ function saveStateSoon() {
 }
 window.addEventListener('pagehide', saveStateNow);
 
+window.__setAppLaunchStatus?.('Opening local map data…');
 const map = new maplibregl.Map({
   container: 'map',
   style: BikeBasemap.createStyle(),
@@ -1014,6 +1015,7 @@ const map = new maplibregl.Map({
   maxPitch: 0,
   pitchWithRotate: false,
 });
+map.once('render', () => window.__setAppLaunchStatus?.('Drawing roads and trails…'));
 const finishAppLaunch = () => {
   clearTimeout(window.__appLaunchFallback);
   window.__dismissAppLaunchScreen?.();
@@ -9231,7 +9233,7 @@ function buildRulesPanel() {
   slider('maxSpeedNoShoulder', 'Speed limit is over', 15, 45, 5, ' mph', 'rule-sub');
   lanesSlider();
   busySlider();
-  slider('minShoulder', 'Minimum shoulder width to count', 0, 10, 1, ' ft');
+  slider('minShoulder', 'Minimum shoulder width to count as safe-ish', 0, 10, 1, ' ft');
 
   // Upper speed cutoff: one slider, whose TOP position means "no cutoff"
   // (replaces the old separate "No speed cutoff" checkbox).

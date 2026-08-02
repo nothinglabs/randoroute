@@ -36,7 +36,16 @@
     #appLaunchScreen .app-launch-content { text-align: center; }
     #appLaunchScreen .app-launch-bike { display: block; margin-bottom: 12px; font-size: 48px; line-height: 1; }
     #appLaunchScreen strong { display: block; font-size: 24px; line-height: 1.15; letter-spacing: -.02em; }
-    #appLaunchScreen .app-launch-status { display: block; margin-top: 9px; color: #60747f; font-size: 14px; font-weight: 650; }
+    #appLaunchScreen .app-launch-status {
+      display: block;
+      max-width: 290px;
+      min-height: 38px;
+      margin: 9px auto 0;
+      color: #60747f;
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.35;
+    }
     #appLaunchScreen .app-launch-spinner {
       display: block;
       width: 22px;
@@ -58,25 +67,44 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="panel-open">
-  <div id="appLaunchScreen" role="status" aria-live="polite" aria-label="Loading the map">
+  <div id="appLaunchScreen" role="status" aria-live="polite" aria-atomic="true">
     <div class="app-launch-content">
       <span class="app-launch-bike" aria-hidden="true">🚲</span>
       <strong>Just Rolling Along</strong>
-      <span class="app-launch-status">Preparing your map…</span>
+      <span id="appLaunchStatus" class="app-launch-status">Loading app files…</span>
       <span class="app-launch-spinner" aria-hidden="true"></span>
     </div>
   </div>
   <script>
+    const launchStatus = document.getElementById('appLaunchStatus');
+    window.__appLaunchStatusTimers = [];
+    window.__setAppLaunchStatus = (message) => {
+      if (document.documentElement.classList.contains('app-ready') || !launchStatus) return;
+      launchStatus.textContent = message;
+      for (const timer of window.__appLaunchStatusTimers) clearTimeout(timer);
+      window.__appLaunchStatusTimers = [
+        setTimeout(() => {
+          launchStatus.textContent = 'Still working — offline map files can take a moment…';
+        }, 5000),
+        setTimeout(() => {
+          launchStatus.textContent = 'Finishing the first map view…';
+        }, 12000),
+      ];
+    };
+    window.__setAppLaunchStatus(launchStatus.textContent);
+
     // No minimum splash duration: app.js calls this as soon as the first map
     // is usable. The fallback prevents a startup error from trapping the user
     // behind a permanent loading screen.
     window.__dismissAppLaunchScreen = () => {
       if (document.documentElement.classList.contains('app-ready')) return;
+      for (const timer of window.__appLaunchStatusTimers) clearTimeout(timer);
+      window.__appLaunchStatusTimers = [];
       document.documentElement.classList.add('app-ready');
       const launchScreen = document.getElementById('appLaunchScreen');
       launchScreen?.setAttribute('aria-hidden', 'true');
     };
-    window.__appLaunchFallback = setTimeout(window.__dismissAppLaunchScreen, 10000);
+    window.__appLaunchFallback = setTimeout(window.__dismissAppLaunchScreen, 30000);
   </script>
   <div id="map"></div>
   <button id="appHelpBtn" type="button" aria-label="How to use the app" title="How to use the app">?</button>
@@ -97,7 +125,7 @@
           <span class="endpoint-copy"><span class="endpoint-label">To</span><strong data-endpoint-value>Choose destination</strong></span>
         </button>
       </div>
-      <button id="rb-more" type="button" title="More route actions" aria-label="More route actions" aria-expanded="false" aria-controls="routeActionsMenu">⋮</button>
+      <button id="rb-more" type="button" title="More route actions" aria-label="More route actions" aria-expanded="false" aria-controls="routeActionsMenu"></button>
       <div id="routeActionsMenu" class="route-actions-menu" role="menu" hidden>
         <button id="rb-via" type="button" role="menuitem" title="Add waypoint"><span aria-hidden="true">＋</span><strong>Add waypoint</strong></button>
         <button id="rb-road-block" type="button" role="menuitem" title="Add a road block"><span aria-hidden="true">🚧</span><strong>Add road block</strong></button>
@@ -316,7 +344,7 @@
     </ul></section>
     <section><h3>Limits</h3><ul class="help-list">
       <li><b>Speed limit is over</b> — above this speed, a road must offer a shoulder or a bike lane. One limit everywhere: a road with no shoulder is the same road in town or out of it.</li>
-      <li><b>Minimum shoulder width to count</b> — the shoulder width a faster road must have. A bike lane or better satisfies this instead; a sharrow does not.</li>
+      <li><b>Minimum shoulder width to count as safe-ish</b> — the shoulder width a faster road must have. A bike lane or better satisfies this instead; a sharrow does not.</li>
       <li><b>Lanes of traffic more than</b> — above this many car lanes, a road must offer a shoulder or a bike lane or it fails. Turn lanes count. Set it to <b>No limit</b> to switch the rule off.</li>
       <li><b>Road is busier than</b> — above this much traffic, a road must offer a shoulder or a bike lane. Pick a familiar road type; the vehicles-per-day figure beside it is the same threshold in numbers. Where a road has no traffic count, its road class stands in for one, and the road card says which was used.</li>
       <li><b>Never allow roads faster than</b> — faster ordinary roads fail; dedicated bike infrastructure is exempt. Its top position is <b>no cutoff</b>, which leaves the shoulder rule in charge.</li>
@@ -529,11 +557,14 @@
         .catch((e) => console.warn('SW registration failed:', e));
     }
   </script>
+  <script>window.__setAppLaunchStatus?.('Loading the map renderer…');</script>
   <script src="vendor/maplibre-gl.js"></script>
   <script src="vendor/pmtiles.js"></script>
   <script src="vendor/fflate.js"></script>
+  <script>window.__setAppLaunchStatus?.('Loading the offline map style…');</script>
   <script src="basemap-style.js"></script>
   <script src="safety-model.js"></script>
+  <script>window.__setAppLaunchStatus?.('Starting the map…');</script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -4,6 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Just Rolling Along</title>
+  <!-- Before the stylesheets: it publishes the palette as CSS custom
+       properties, so no rule needs a hardcoded colour fallback. -->
+  <script src="palette.js"></script>
+  <!-- Which state this build covers: bounds, opening view, and what to
+       call the agency behind each enrichment. Before app.js, which reads it. -->
+  <script src="region.js"></script>
+  <script src="build-version.js"></script>
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#009E73" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -29,7 +36,16 @@
     #appLaunchScreen .app-launch-content { text-align: center; }
     #appLaunchScreen .app-launch-bike { display: block; margin-bottom: 12px; font-size: 48px; line-height: 1; }
     #appLaunchScreen strong { display: block; font-size: 24px; line-height: 1.15; letter-spacing: -.02em; }
-    #appLaunchScreen .app-launch-status { display: block; margin-top: 9px; color: #60747f; font-size: 14px; font-weight: 650; }
+    #appLaunchScreen .app-launch-status {
+      display: block;
+      max-width: 290px;
+      min-height: 38px;
+      margin: 9px auto 0;
+      color: #60747f;
+      font-size: 14px;
+      font-weight: 650;
+      line-height: 1.35;
+    }
     #appLaunchScreen .app-launch-spinner {
       display: block;
       width: 22px;
@@ -51,28 +67,48 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="panel-open">
-  <div id="appLaunchScreen" role="status" aria-live="polite" aria-label="Loading the map">
+  <div id="appLaunchScreen" role="status" aria-live="polite" aria-atomic="true">
     <div class="app-launch-content">
       <span class="app-launch-bike" aria-hidden="true">🚲</span>
       <strong>Just Rolling Along</strong>
-      <span class="app-launch-status">Preparing your map…</span>
+      <span id="appLaunchStatus" class="app-launch-status">Loading app files…</span>
       <span class="app-launch-spinner" aria-hidden="true"></span>
     </div>
   </div>
   <script>
+    const launchStatus = document.getElementById('appLaunchStatus');
+    window.__appLaunchStatusTimers = [];
+    window.__setAppLaunchStatus = (message) => {
+      if (document.documentElement.classList.contains('app-ready') || !launchStatus) return;
+      launchStatus.textContent = message;
+      for (const timer of window.__appLaunchStatusTimers) clearTimeout(timer);
+      window.__appLaunchStatusTimers = [
+        setTimeout(() => {
+          launchStatus.textContent = 'Still working — offline map files can take a moment…';
+        }, 5000),
+        setTimeout(() => {
+          launchStatus.textContent = 'Finishing the first map view…';
+        }, 12000),
+      ];
+    };
+    window.__setAppLaunchStatus(launchStatus.textContent);
+
     // No minimum splash duration: app.js calls this as soon as the first map
     // is usable. The fallback prevents a startup error from trapping the user
     // behind a permanent loading screen.
     window.__dismissAppLaunchScreen = () => {
       if (document.documentElement.classList.contains('app-ready')) return;
+      for (const timer of window.__appLaunchStatusTimers) clearTimeout(timer);
+      window.__appLaunchStatusTimers = [];
       document.documentElement.classList.add('app-ready');
       const launchScreen = document.getElementById('appLaunchScreen');
       launchScreen?.setAttribute('aria-hidden', 'true');
     };
-    window.__appLaunchFallback = setTimeout(window.__dismissAppLaunchScreen, 10000);
+    window.__appLaunchFallback = setTimeout(window.__dismissAppLaunchScreen, 30000);
   </script>
   <div id="map"></div>
   <button id="appHelpBtn" type="button" aria-label="How to use the app" title="How to use the app">?</button>
+  <button id="appWeightsBtn" type="button" aria-label="Advanced routing weights" title="Advanced routing weights">⚖</button>
 
   <div id="topToolbar">
     <button id="navStartButton" class="nav-start" type="button" disabled title="Set a route to navigate">
@@ -89,7 +125,7 @@
           <span class="endpoint-copy"><span class="endpoint-label">To</span><strong data-endpoint-value>Choose destination</strong></span>
         </button>
       </div>
-      <button id="rb-more" type="button" title="More route actions" aria-label="More route actions" aria-expanded="false" aria-controls="routeActionsMenu">⋮</button>
+      <button id="rb-more" type="button" title="More route actions" aria-label="More route actions" aria-expanded="false" aria-controls="routeActionsMenu"></button>
       <div id="routeActionsMenu" class="route-actions-menu" role="menu" hidden>
         <button id="rb-via" type="button" role="menuitem" title="Add waypoint"><span aria-hidden="true">＋</span><strong>Add waypoint</strong></button>
         <button id="rb-road-block" type="button" role="menuitem" title="Add a road block"><span aria-hidden="true">🚧</span><strong>Add road block</strong></button>
@@ -248,10 +284,23 @@
     </div>
   </dialog>
 
+  <dialog id="allRoutesDialog" class="full-help-dialog all-routes-dialog" aria-label="All routes considered">
+    <div class="full-help-head"><div><span>Troubleshooting</span><h2>All routes considered</h2></div><button class="dialog-close" data-close="allRoutesDialog" aria-label="Close all routes">✕</button></div>
+    <div class="all-routes-body">
+      <p class="all-routes-lead">Every route the portfolio built for these points — the ones offered on the map and the ones it discarded. Tap any to load it. <b>This is a diagnostic view:</b> a discarded route was discarded for a reason, and that reason is shown.</p>
+      <div id="allRoutesList" class="all-routes-list"></div>
+    </div>
+  </dialog>
+
   <dialog id="weightsDialog" class="full-help-dialog weights-dialog" aria-label="Advanced routing weights">
     <div class="full-help-head"><div><span>Advanced tool</span><h2>Routing weights</h2></div><div class="weights-head-actions"><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button><button class="dialog-close" data-close="weightsDialog" aria-label="Close routing weights">✕</button></div></div>
     <div class="weights-body">
-      <p class="help-lead"><b>Most riders should leave these at their defaults.</b> These are internal soft route-choice costs, not safety rules. Changes recalculate the current route and affect every generated option. Lower than 1 favors a feature; higher than 1 avoids it.</p>
+      <ul class="weights-key">
+        <li><b>Above 1 avoids, below 1 seeks out.</b> Each value multiplies how long a stretch of road looks to the router.</li>
+        <li><b>Never a safety rule.</b> These can't make a road legal or illegal, and never override your Limits.</li>
+        <li><b>Three sliders = three searches.</b> Every route is searched as Direct, Balanced and Low stress; that's what makes A–E differ. A slider only moves its own mode.</li>
+        <li><b>↺</b> resets one value, <b>Reset all defaults</b> resets everything. Changes re-route immediately.</li>
+      </ul>
       <div id="routingWeightsEditor" class="weights-groups"></div>
     </div>
   </dialog>
@@ -290,14 +339,14 @@
     <div class="full-help-body">
     <section><h3>Presets</h3><p>A preset replaces your active rules and route preferences. Use its <b>Rules</b> button to review the full setup. Adjusting any control switches to custom rules.</p><ul class="help-list">
       <li><b>The Randonneur</b> — widest choice of routes; looser rules and fewer roads flagged as failing.</li>
-      <li><b>Weekend Wanderer</b> — slower roads with practical flexibility; concerns pulse red.</li>
+      <li><b>Weekend Wanderer</b> — slower roads with practical flexibility; more roads come back as amber cautions.</li>
       <li><b>Casual Cruiser</b> — low-stress riding; routes must fully follow your safety rules.</li>
     </ul></section>
     <section><h3>Limits</h3><ul class="help-list">
-      <li><b>Urban max speed without shoulder or bike lane</b> — inside a Census urban area, roads at or below this pass without needing either.</li>
-      <li><b>Rural max speed without shoulder or bike lane</b> — the same limit outside urban areas, where a rider is usually more exposed but traffic is lighter.</li>
-      <li><b>Minimum shoulder if no bike lane</b> — the shoulder width a faster road must have. A bike lane or better satisfies this instead; a sharrow does not.</li>
-      <li><b>Lanes needing a shoulder or bike lane</b> — at this many car lanes and above, a road must offer a shoulder or a bike lane or it fails. Turn lanes count. Set it to <b>No limit</b> to switch the rule off.</li>
+      <li><b>Speed limit is over</b> — above this speed, a road must offer a shoulder or a bike lane. One limit everywhere: a road with no shoulder is the same road in town or out of it.</li>
+      <li><b>Minimum shoulder width to count as safe-ish</b> — the shoulder width a faster road must have. A bike lane or better satisfies this instead; a sharrow does not.</li>
+      <li><b>Lanes of traffic more than</b> — above this many car lanes, a road must offer a shoulder or a bike lane or it fails. Turn lanes count. Set it to <b>No limit</b> to switch the rule off.</li>
+      <li><b>Road is busier than</b> — above this much traffic, a road must offer a shoulder or a bike lane. Pick a familiar road type; the vehicles-per-day figure beside it is the same threshold in numbers. Where a road has no traffic count, its road class stands in for one, and the road card says which was used.</li>
       <li><b>Never allow roads faster than</b> — faster ordinary roads fail; dedicated bike infrastructure is exempt. Its top position is <b>no cutoff</b>, which leaves the shoulder rule in charge.</li>
     </ul></section>
     <section><h3>What makes a road caution?</h3>
@@ -306,14 +355,13 @@
     <section><h3>Options</h3><ul class="help-list">
       <li><b>Heavily prefer bike routes &amp; trails</b> — favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
       <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
-      <li><b>Trust designated bike routes</b> — lets a USBR or regional designation satisfy the shoulder rule. Speed limits and access restrictions still apply.</li>
       <li><b>Route over freeway as last resort (still shows as failing)</b> — a freeway always fails your rules. Off, routes never use one. On, one may be used as a heavily penalized last resort and is still reported as failing, so strict matching excludes it anyway.</li>
       <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided. Any use appears in Route Details.</li>
       <li><b>Strongly prefer paved surfaces</b> — favors paved roads and trails. Gravel and unpaved paths remain available, and missing surface data is not penalized.</li>
       <li><b>Allow sidewalk fallback</b> — lets an explicitly mapped sidewalk satisfy the shoulder rule. It remains strongly avoided and is called out in Route Details; it never overrides a bicycle restriction or speed cap.</li>
       <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
-      <li><b>Caution on roads WSDOT rates high stress</b> — the state transportation department publishes a Level of Traffic Stress from 1 to 4 for state highways. A 4 marks the road as caution. It never fails a road: most rated highway miles score 4, so failing on it would be indiscriminate.</li>
-      <li><b>Unknown shoulder = 0 ft</b> — if shoulder data is missing, treat it as 0 ft for rules purposes.</li>
+      <li><b>Guess shoulder width from other data when it isn’t documented</b> — the county road log records how much pavement is left over once the lanes are taken out, per side. That is somewhere to pull over, not necessarily somewhere to ride, so 1 ft is subtracted and the rest counts as shoulder. Only fills a gap: a recorded shoulder always wins, and a zero is ignored because it can mean a paperwork error rather than a measured absence. Cards say when a figure was guessed. <b>On for The Randonneur only.</b> An undocumented shoulder counts as 0 ft and only about 7% of roads document one, so without this the map calls a road failing on missing data rather than on evidence. Weekend Wanderer and Casual Cruiser leave it off: both exist to honour slower roads literally, and Casual Cruiser filters routes to fully matching road, where a guessed shoulder should not be what lets a road in.</li>
+      <li><b>Missing shoulder data</b> — always treated as 0 ft, and not adjustable. "No data" and "no shoulder" look the same from the saddle, so a fast road has to show a shoulder to pass rather than benefit from an absence of evidence. Slow roads never reach the shoulder rule at all.</li>
       </ul><p>Search always includes local offline results; the ⌕ button also tries an online lookup.</p></section>
     <section><h3>Voice navigation</h3><ul class="help-list">
       <li><b>Off-route</b> — gives direction and distance back to your route. Open the off-route notice to manually route back or create a new route.</li>
@@ -335,7 +383,6 @@
     <ol>
       <li>Set <b>Start</b> and <b>Destination</b> by search or by tapping the map.</li>
       <li>In <b>Route</b>, view choices A–E. The letters identify routes; they are not safety grades.</li>
-      <li>Use <b>⋮</b> to add a waypoint (route through a point) or road block (avoid roads near a point).</li>
       <li>Tap <b>Details</b> to inspect statistics, concerns, and route segments. Use <b>Settings</b> to change riding rules.</li>
       <li>Tap <b>Navigate</b> for GPS and voice guidance.</li>
     </ol>
@@ -448,11 +495,19 @@
         <li><b>Lime</b> — Bike network: a recorded bike facility (bike lane, etc.).</li>
         <li><b>Dotted lime</b> — off-street paths and shared-use trails.</li>
         <li><b>Blue</b> — road that passes rules (speed and shoulder requirements).</li>
-        <li><b>Red dashed</b> — Road that fails rules. A known rule conflict, freeway, or permanent bicycle restriction. <b>Failing lane segments pulse.</b> Permanent bicycle restrictions are never routed.</li>
+        <li><b>Red dashed</b> — Road that fails rules. A known rule conflict, freeway, or permanent bicycle restriction. Permanent bicycle restrictions are never routed.</li>
         <li><b>Amber</b> — Caution: a bike-legal limited-access highway or allowed mountain-bike trail. It deserves extra judgment.</li>
-        <li><b>Dashed light blue</b> — Designated bike route: a signed or mapped bicycle corridor. This is an additional overlay; it does not indicate a safety level.</li>
+        <li><b>Dashed olive-green</b> — Designated bike route: a signed or mapped bicycle corridor. It draws as a band beneath the road and does not change the road’s verdict. Where your route follows one, the band widens.</li>
         <li><b>Cross-slats</b> — confirmed unpaved surface. This overlays the route safety color.</li>
       </ul></section>
+      <section><h3>On a route, two verdicts move</h3>
+      <ul>
+        <li><b>Caution</b> — solid amber, with a soft glow pulsing outward from it.</li>
+        <li><b>Fails rules</b> — red rungs travelling along the line.</li>
+      </ul>
+      <p>Everything else on the route is still.</p></section>
+      <section><h3>Switching a layer on blinks it</h3>
+      <p>The layer flashes a few times and your route drops beneath the other lines, so you can see what you turned on and whether it follows your route.</p></section>
     </div>
   </dialog>
 
@@ -486,30 +541,30 @@
       || window.location.protocol === 'capacitor:'
       || Boolean(window.Capacitor?.isNativePlatform?.());
     if (!isNativeShell && 'serviceWorker' in navigator) {
-      // GitHub Pages caches an exact sw.js URL for up to ten minutes. Resolve
-      // the tiny, cache-busted release marker first so a newly published worker
-      // gets a distinct script URL immediately.
-      window.__swReady = fetch(`./version.json?register=${Date.now()}`, { cache: 'no-store' })
-        .then((response) => response.ok ? response.json() : null)
-        .catch(() => null)
-        .then((release) => {
-          const suffix = release?.version
-            ? `?release=${encodeURIComponent(release.version)}`
-            : '';
-          return navigator.serviceWorker.register(`./sw.js${suffix}`, {
-            scope: './',
-            updateViaCache: 'none',
-          });
-        })
+      // ONE script URL, forever. Putting the release in the URL -- to get past
+      // GitHub Pages caching an exact sw.js for ten minutes -- meant the URL
+      // changed on every release, and a changed URL is itself an update. So
+      // taking an update installed the new worker, reloaded, and the reload
+      // then registered a DIFFERENT url for the same bytes, which installed
+      // again and asked the rider a second time. Every single release.
+      //
+      // `updateViaCache: 'none'` is what actually defeats the CDN cache: it
+      // makes the browser bypass its HTTP cache when fetching this script for
+      // an update check. The manual check additionally revalidates it.
+      window.__swReady = navigator.serviceWorker
+        .register('./sw.js', { scope: './', updateViaCache: 'none' })
         .then((reg) => (navigator.serviceWorker.ready, reg))
         .catch((e) => console.warn('SW registration failed:', e));
     }
   </script>
+  <script>window.__setAppLaunchStatus?.('Loading the map renderer…');</script>
   <script src="vendor/maplibre-gl.js"></script>
   <script src="vendor/pmtiles.js"></script>
   <script src="vendor/fflate.js"></script>
+  <script>window.__setAppLaunchStatus?.('Loading the offline map style…');</script>
   <script src="basemap-style.js"></script>
   <script src="safety-model.js"></script>
+  <script>window.__setAppLaunchStatus?.('Starting the map…');</script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -748,8 +748,21 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #routeBar .route-endpoint.active .endpoint-label,
 #routeBar .route-endpoint.active .endpoint-copy strong { color: #075993; }
 #routeBar button:disabled { opacity: .38; cursor: default; }
-#routeBar #rb-more { width: 42px; }
-#routeBar #rb-more { font-size: 20px; line-height: 1; }
+#routeBar #rb-more {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  padding: 0;
+}
+#routeBar #rb-more::before {
+  content: "";
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 -6px 0 currentColor, 0 6px 0 currentColor;
+}
 .route-actions-menu {
   position: absolute;
   z-index: 3;

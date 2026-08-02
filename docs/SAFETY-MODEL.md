@@ -6,7 +6,7 @@ How a road gets its colour, its verdict, and its routing cost.
 
 **A setting that sounds objective must have an objective consequence.** If a
 control is named like a fact or a permission —
-*Minimum shoulder if no bike lane*, *Route over freeway as last resort (still shows as failing)*
+*Minimum shoulder width to count as safe-ish*, *Route over freeway as last resort (still shows as failing)*
 — then changing it must change the verdict shown on the map in a defined,
 reproducible way. A control that sounds like it governs safety but only nudges
 routing cost is a lie to the rider.
@@ -363,7 +363,7 @@ A **shoulder** at or above `minShoulder`, or a **bike lane or better**
 (`facility >= 2`). A sharrow is `facility == 1` and satisfies nothing: it is
 paint in a shared travel lane, not space of your own. That is why the speed
 sliders are named "…without shoulder or bike lane" and the width slider
-"Minimum shoulder if no bike lane" — those thresholds only bite a road that has
+"Minimum shoulder width to count as safe-ish" — those thresholds only bite a road that has
 neither.
 
 **`facility >= 2` must be the threshold in every implementation.** When it was
@@ -385,7 +385,7 @@ and the settings read as one sentence in the panel:
 > Lanes of traffic more than — `lanesNoShoulderOver`
 > Road is busier than — `busyNoShoulder`
 >
-> Minimum shoulder width to count — `minShoulder`
+> Minimum shoulder width to count as safe-ish — `minShoulder`
 
 The three triggers are **ORed**. Any one of them means the road needs space of
 its own; the road then fails only if it does not have any. `spaceReasons()`
@@ -808,7 +808,7 @@ even the urban/rural split, is still honoured behind both.
 | `maxSpeedNoShoulder` | Speed limit is over | rung 6, trigger 1 | via the verdict |
 | `lanesNoShoulderOver` | Lanes of traffic more than | rung 6, trigger 2 | also `wideRoad*` cost |
 | `busyNoShoulder` | Road is busier than | rung 6, trigger 3 | via the verdict |
-| `minShoulder` | Minimum shoulder width to count | what satisfies rung 6 | via the verdict |
+| `minShoulder` | Minimum shoulder width to count as safe-ish | what satisfies rung 6 | via the verdict |
 | `upperMaxSpeed` / `noUpperLimit` | Never allow roads faster than | rung 5 | via the verdict |
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 7 exists at all | ×1.9 / ×3.8 / ×8.0 |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
