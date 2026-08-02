@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.512';
+const APP_VERSION = '2026-08-02.513';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -5083,13 +5083,13 @@ function renderRouteCard(m) {
   const stats = routeSummaryStats(m);
   const ridingM = Math.max(1, ROUTE_CATEGORY_KEYS.reduce((sum, key) => sum + stats.categoryM[key], 0));
   const categoryPct = routeCategoryPercentages(stats.categoryM);
-  const unpavedPct = routePercent(stats.unpavedM, ridingM, true);
   const inclineOver5Pct = routePercent(stats.inclineOver5M, ridingM, true);
+  const unpavedMiles = `${fmtMi(stats.unpavedM)} mi`;
   const hasSignificantUnpaved = stats.unpavedM > SIGNIFICANT_UNPAVED_M;
   const hasSteepGradeWarning = Number(m.maxGradePct) > 18;
   const unpavedMetric = hasSignificantUnpaved
-    ? `<button class="rc-secondary-item rc-ride-unpaved-warning" id="rcUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span><span class="rc-unpaved-alert-mark" aria-hidden="true">!</span></button>`
-    : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></span>`;
+    ? `<button class="rc-secondary-item rc-ride-unpaved-warning" id="rcUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span>Unpaved</span><span class="rc-unpaved-alert-mark" aria-hidden="true">!</span></button>`
+    : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span>Unpaved</span></span>`;
   const categoryRows = [
     ['trail', 'Off-street trails'],
     ['bike', 'Bike Lane'],
@@ -5107,9 +5107,9 @@ function renderRouteCard(m) {
       <div class="rc-elevation-column">
         <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas><button id="rcElevGradeWarning" class="rc-elev-grade-warning" type="button" aria-label="Route has a sustained grade over 18 percent. View route details." ${hasSteepGradeWarning ? '' : 'hidden'}><span aria-hidden="true">!</span> Details</button></div>
         <div class="rc-secondary-metrics">
-          ${unpavedMetric}
-          <span class="rc-secondary-divider" aria-hidden="true"></span>
           <span class="rc-secondary-item rc-incline-item"><span class="rc-incline-swatch" aria-hidden="true">↗</span><b>${inclineOver5Pct}</b><span>Incline over 5%</span></span>
+          <span class="rc-secondary-divider" aria-hidden="true"></span>
+          ${unpavedMetric}
         </div>
       </div>
       <div class="rc-category-list" title="Percent of non-ferry riding distance; categories match the selected route and total 100%">${categoryRows}</div>

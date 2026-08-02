@@ -42,6 +42,8 @@ const routeCardLayout = await page.evaluate(() => {
   const chart = rect('#routeCard .rc-elev-wrap');
   const categories = rect('#routeCard .rc-category-list');
   const metrics = rect('#routeCard .rc-secondary-metrics');
+  const metricLabels = [...root.querySelectorAll('.rc-secondary-item')]
+    .map((node) => node.textContent.replace('!', '').trim());
   const clipped = [...root.querySelectorAll('.rc-distance,.rc-duration,.rc-category-item,.rc-secondary-item')]
     .filter((node) => node.scrollWidth > node.clientWidth).map((node) => node.textContent.trim());
   return {
@@ -52,6 +54,7 @@ const routeCardLayout = await page.evaluate(() => {
     metricsHeight: metrics.height,
     metricsSpanRightColumns: Math.abs(metrics.left - chart.left) < 1
       && Math.abs(metrics.right - categories.right) < 1,
+    metricLabels,
     clipped,
   };
 });
@@ -62,9 +65,13 @@ check('the chart yields width to the category list',
     && routeCardLayout.chartWidth < routeCardLayout.categoryWidth,
   JSON.stringify(routeCardLayout));
 check('unpaved and incline share one compact full-width strip',
-  routeCardLayout.metricsHeight <= 21 && routeCardLayout.metricsSpanRightColumns
-    && routeCardLayout.height <= 80,
+  routeCardLayout.metricsHeight <= 24 && routeCardLayout.metricsSpanRightColumns
+    && routeCardLayout.height <= 100,
   JSON.stringify(routeCardLayout));
+check('incline appears before unpaved and unpaved uses miles',
+  routeCardLayout.metricLabels[0]?.includes('Incline over 5%')
+    && routeCardLayout.metricLabels[1] === '1.1 miUnpaved',
+  JSON.stringify(routeCardLayout.metricLabels));
 await page.evaluate(() => localStorage.setItem('wa-bike-saved-routes-1', JSON.stringify([{
   name: 'Lake loop', s: [-122.34, 47.60], e: [-122.30, 47.64], v: [], b: [],
 }]))) ;
