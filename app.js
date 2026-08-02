@@ -5092,10 +5092,10 @@ function renderRouteCard(m) {
     : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></span>`;
   const categoryRows = [
     ['trail', 'Off-street trails'],
-    ['bike', 'Roads with bike lanes'],
-    ['pass', 'Roads that pass rules'],
-    ['caution', 'Roads that need caution'],
-    ['fail', 'Roads that fail rules'],
+    ['bike', 'Bike Lane'],
+    ['pass', 'Passes Rules'],
+    ['caution', 'Needs Caution'],
+    ['fail', 'Fails Rules'],
   ].map(([key, label]) => `<span class="rc-category-item rc-category-${key}"><span class="rc-category-swatch ${key}" aria-hidden="true"></span><b>${categoryPct[key]}%</b><span>${label}</span></span>`).join('');
   card.innerHTML = `
     <div id="routeControlsSlot"></div>

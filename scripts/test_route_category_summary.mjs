@@ -66,10 +66,10 @@ assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, flags: 32, level: 1
 
 const labels = [
   'Off-street trails',
-  'Roads with bike lanes',
-  'Roads that pass rules',
-  'Roads that need caution',
-  'Roads that fail rules',
+  'Bike Lane',
+  'Passes Rules',
+  'Needs Caution',
+  'Fails Rules',
 ];
 const appCard = functionSource(app, 'renderRouteCard');
 for (const label of labels) {
