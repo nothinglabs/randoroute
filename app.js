@@ -9259,7 +9259,13 @@ function buildPresetPanel() {
 function applyRoutingPreset(presetId) {
   const preset = ROUTING_PRESETS.find((item) => item.id === presetId);
   if (!preset) return;
-  if (!activeRoutingPreset() && !window.confirm(
+  const active = activeRoutingPreset();
+  // A fast double tap on the selected card used to rebuild every Settings
+  // control, rescore the statewide overlays, and start another portfolio
+  // search for no change at all. On iOS that needless burst can be enough for
+  // WebKit to terminate the page under memory pressure.
+  if (active?.id === preset.id) return;
+  if (!active && !window.confirm(
     `Apply ${preset.label}?\n\nThis will replace your custom routing rules and route preferences. Those custom settings will be lost.`
   )) return;
 
@@ -9272,11 +9278,12 @@ function applyRoutingPreset(presetId) {
   suppressRoadInfo(900);
   buildRulesPanel();
   refreshNavigationUI();
-  rescoreAll(false);
-  const osm = SOURCES.find((source) => source.id === 'osm');
-  if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
-  saveStateSoon();
-  if (routing.ready && routing.start && routing.end) computeRoute();
+  // Presets can move thousands of road features between verdict colors.
+  // Re-uploading those statewide collections synchronously for every tap, then
+  // immediately queuing a route search, was the same kind of main-thread and
+  // map-worker burst that made weight-slider drags unstable on iOS. The shared
+  // scheduler coalesces rapid preset changes into one recolor and one reroute.
+  scheduleRescore();
   showRouteActionToast(`${preset.label} applied`, { duration: 2200 });
 }
 

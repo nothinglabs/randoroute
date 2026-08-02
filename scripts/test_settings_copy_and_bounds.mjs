@@ -17,4 +17,16 @@ assert.ok(!html.includes('Never a safety rule.'),
 assert.ok(html.includes('id="weightsModifiedNotice"'),
   'the weights screen needs a page-level modified-state header');
 
-console.log('Settings copy and the 2 ft minimum shoulder bound are in place.');
+const applyPresetStart = app.indexOf('function applyRoutingPreset(');
+const applyPresetEnd = app.indexOf('\nfunction buildRulesPanel(', applyPresetStart);
+assert.ok(applyPresetStart >= 0 && applyPresetEnd > applyPresetStart,
+  'the routing preset handler must remain available');
+const applyPreset = app.slice(applyPresetStart, applyPresetEnd);
+assert.match(applyPreset, /active\?\.id\s*===\s*preset\.id/,
+  'reapplying the active preset must be a no-op');
+assert.match(applyPreset, /scheduleRescore\(\)/,
+  'preset changes must use the coalescing recolor/reroute scheduler');
+assert.doesNotMatch(applyPreset, /\brescoreAll\s*\(|\bcomputeRoute\s*\(|\bapplyDisplayMode\s*\(/,
+  'preset changes must not synchronously recolor statewide data or queue duplicate routes');
+
+console.log('Settings copy, bounds, and stable preset switching are in place.');
