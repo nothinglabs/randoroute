@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.513';
+const APP_VERSION = '2026-08-02.514';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4950,6 +4950,10 @@ function startTurnNavigation() {
   updateNavigationProgress();
   turnNav.message = 'Getting your location';
   settingsPaneSelect?.('voice');
+  // Navigation replaces the planning card with the live route card. If the
+  // mobile menu is open on Layers or Settings, show that new navigation UI
+  // immediately instead of leaving the rider in the old tab.
+  selectPanelTab('route');
   refreshNavigationUI();
   speakNavigation('Navigation started. Getting your location.');
   if (nativeNavigationPlugin()) {

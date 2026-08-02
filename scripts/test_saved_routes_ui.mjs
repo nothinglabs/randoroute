@@ -23,9 +23,9 @@ function check(name, ok, detail = '') {
 
 await page.goto(site.url, { waitUntil: 'load' });
 await page.waitForFunction(() => typeof loadSavedRoutes === 'function', { timeout: 60000 });
-await page.evaluate(() => renderRouteCard({
-  ok: true, distM: 85616, timeS: 16200, maxGradePct: 7,
-  segs: [
+await page.evaluate(() => {
+  const coords = Array.from({ length: 8 }, (_, index) => [-122.34 + index * .001, 47.60]);
+  const segs = [
     { lenM: 35958, flags: 8, facility: 5, level: 1, gradePct: 0 },
     { lenM: 5994, flags: 8, facility: 5, level: 1, gradePct: 7 },
     { lenM: 17123, facility: 2, level: 1, mph: 25, sh: 4 },
@@ -33,8 +33,14 @@ await page.evaluate(() => renderRouteCard({
     { lenM: 1712, level: 1, mph: 20, sh: 4, surface: 2 },
     { lenM: 4281, level: 3, mtb: true },
     { lenM: 856, level: 4, mph: 55, sh: 0 },
-  ],
-}));
+  ].map((segment, index) => ({ ...segment, c0: index, c1: index + 1 }));
+  const route = { ok: true, distM: 85616, timeS: 16200, maxGradePct: 7, coords, segs };
+  routing.last = route;
+  routing.pendingRoute = false;
+  routing.routeRequestActive = false;
+  renderRouteCard(route);
+  refreshNavigationUI();
+});
 const routeCardLayout = await page.evaluate(() => {
   const root = document.querySelector('#routeCard .rc-route-summary');
   const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
@@ -105,6 +111,30 @@ await page.click('#confirmDeleteSavedRoute');
 check('confirming removes the saved route', await page.evaluate(() =>
   loadSavedRoutes().length === 0 && document.querySelectorAll('.saved-row').length === 0));
 check('the saved-routes flow has no JavaScript errors', errors.length === 0, errors.join(' | '));
+
+const navigationTab = await page.evaluate(() => {
+  document.getElementById('routesDialog')?.close();
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+    watchPosition: () => 1,
+    clearWatch: () => {},
+  } });
+  document.body.classList.add('panel-open');
+  selectPanelTab('settings');
+  document.getElementById('navStartButton').click();
+  const active = document.querySelector('.tab.active');
+  const result = {
+    navigating: turnNav.active,
+    activeTab: active?.id,
+    routePressed: document.querySelector('#tabs [data-tab="route"]')?.getAttribute('aria-pressed'),
+    panelOpen: document.body.classList.contains('panel-open'),
+  };
+  stopTurnNavigation(false);
+  return result;
+});
+check('starting navigation returns an open menu to the Route tab',
+  navigationTab.navigating && navigationTab.activeTab === 'tab-route'
+    && navigationTab.routePressed === 'true' && navigationTab.panelOpen,
+  JSON.stringify(navigationTab));
 
 await browser.close();
 site.close();
