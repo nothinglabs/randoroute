@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.514';
+const APP_VERSION = '2026-08-02.515';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -5095,7 +5095,7 @@ function renderRouteCard(m) {
     ? `<button class="rc-secondary-item rc-ride-unpaved-warning" id="rcUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span>Unpaved</span><span class="rc-unpaved-alert-mark" aria-hidden="true">!</span></button>`
     : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span>Unpaved</span></span>`;
   const categoryRows = [
-    ['trail', 'Off-street trails'],
+    ['trail', 'Trails'],
     ['bike', 'Bike Lane'],
     ['pass', 'Passes Rules'],
     ['caution', 'Needs Caution'],

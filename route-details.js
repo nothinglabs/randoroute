@@ -1426,7 +1426,7 @@ if (!hasRoute) {
     ? `<button class="route-summary-secondary-item mix-unpaved-warning" id="summaryUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></button>`
     : `<span class="route-summary-secondary-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></span>`;
   const categoryRows = [
-    ['trail', 'Off-street trails'],
+    ['trail', 'Trails'],
     ['bike', 'Bike Lane'],
     ['pass', 'Passes Rules'],
     ['caution', 'Needs Caution'],

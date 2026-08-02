@@ -65,7 +65,7 @@ assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, flags: 32, level: 1
   'ferry distance is outside the five riding categories');
 
 const labels = [
-  'Off-street trails',
+  'Trails',
   'Bike Lane',
   'Passes Rules',
   'Needs Caution',

@@ -66,9 +66,9 @@ const routeCardLayout = await page.evaluate(() => {
 });
 check('long route distance and metrics fit without clipping',
   routeCardLayout.clipped.length === 0, JSON.stringify(routeCardLayout));
-check('the chart yields width to the category list',
+check('the enlarged chart is at least as wide as the category list',
   routeCardLayout.overviewWidth >= 92
-    && routeCardLayout.chartWidth < routeCardLayout.categoryWidth,
+    && routeCardLayout.chartWidth >= routeCardLayout.categoryWidth,
   JSON.stringify(routeCardLayout));
 check('unpaved and incline share one compact full-width strip',
   routeCardLayout.metricsHeight <= 24 && routeCardLayout.metricsSpanRightColumns
