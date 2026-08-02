@@ -76,8 +76,8 @@ for (const label of labels) {
   assert.ok(appCard.includes(label), `route card is missing ${label}`);
   assert.ok(details.includes(label), `Route Details is missing ${label}`);
 }
-assert.ok(details.includes('<b>5%+ uphill</b><strong>${inclineOver5Pct} of route</strong>'),
-  'Route Details Elevation is missing the independent 5%+ uphill metric');
+assert.ok(details.includes('<b>5%+ uphill</b><strong>${fmtMi(routeStats.inclineOver5M)} mi</strong>'),
+  'Route Details Elevation must report 5%+ uphill distance in miles');
 assert.ok(!details.includes('Incline over 5%'),
   'Route Details must not leave the 5% grade metric in its top summary');
 assert.ok(app.includes("['bikeFacilities', 'Bike lane', 'facility']"),

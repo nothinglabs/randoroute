@@ -59,8 +59,8 @@ check('Stats summarizes ferry distance in miles', /Ferry 1\.0 mi/.test(rendered.
 check('Stats summarizes dismount distance', /Dismount 0\.2 mi/.test(rendered.summary), rendered.summary);
 check('the 5% grade metric moved out of the top summary',
   !/Incline over 5%|5%\+ uphill/.test(rendered.quickSummary), rendered.quickSummary);
-check('Elevation includes the 5% grade percentage',
-  /5%\+ uphill\s*\d+(?:\.\d+)?% of route/.test(rendered.elevation), rendered.elevation);
+check('Elevation reports the 5%+ uphill distance in miles',
+  /5%\+ uphill\s*\d+(?:\.\d+)? mi/.test(rendered.elevation), rendered.elevation);
 check('the phone summary stays compact with ferry and dismount rows',
   rendered.quickSummaryHeight <= 80, `${rendered.quickSummaryHeight}px`);
 check('all category labels stay on one line at phone width',

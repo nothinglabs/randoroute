@@ -1421,7 +1421,6 @@ if (!hasRoute) {
     ROUTE_CATEGORY_KEYS.reduce((sum, key) => sum + routeStats.categoryM[key], 0));
   const categoryPct = routeCategoryPercentages(routeStats.categoryM);
   const unpavedPct = routePercent(routeStats.unpavedM, ridingM, true);
-  const inclineOver5Pct = routePercent(routeStats.inclineOver5M, ridingM, true);
   const hasSignificantUnpaved = routeStats.unpavedM > SIGNIFICANT_UNPAVED_M;
   const unpavedSummaryMetric = hasSignificantUnpaved
     ? `<button class="route-summary-secondary-item mix-unpaved-warning" id="summaryUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></button>`
@@ -1440,7 +1439,7 @@ if (!hasRoute) {
     routeStats.dismountM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⚠︎</span><b>Dismount</b> ${fmtMi(routeStats.dismountM)} mi</span>` : '',
   ].filter(Boolean).join('');
   summary.innerHTML = `<strong>${fmtMi(totals.distM)} mi</strong><small>${fmtDur(totals.timeS)}</small>${tripNotes}`;
-  summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span><span class="elevation-metric"><b>5%+ uphill</b><strong>${inclineOver5Pct} of route</strong></span><span class="elevation-metric"><b>10%+ uphill</b><strong>${fmtMi(steepUphillM)} mi</strong></span>`;
+  summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span><span class="elevation-metric"><b>5%+ uphill</b><strong>${fmtMi(routeStats.inclineOver5M)} mi</strong></span><span class="elevation-metric"><b>10%+ uphill</b><strong>${fmtMi(steepUphillM)} mi</strong></span>`;
   elevationSteepWarning.hidden = !(maxGradePct > 18);
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
