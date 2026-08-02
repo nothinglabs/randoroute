@@ -39,6 +39,15 @@ const check = (name, ok, detail = '') => {
   else { pass++; console.log(`PASS  ${name}${detail ? `  -- ${detail}` : ''}`); }
 };
 
+// The help screen and update decision read APP_VERSION, while the network
+// check reads version.json. Letting those drift made a fully updated device
+// keep calling itself .501 and claim every later release had not arrived.
+const appSource = readFileSync(join(ROOT, 'app.js'), 'utf8');
+const appVersion = /const APP_VERSION = '([^']+)'/.exec(appSource)?.[1] || '';
+const publishedMarker = JSON.parse(readFileSync(join(ROOT, 'version.json'), 'utf8')).version;
+check('the running app version matches the published release marker',
+  appVersion === publishedMarker, `${appVersion} vs ${publishedMarker}`);
+
 const navigations = [];
 page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) navigations.push(Date.now()); });
 
