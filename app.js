@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.517';
+const APP_VERSION = '2026-08-02.518';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3109,6 +3109,73 @@ function navOriginName(segs, currentIndex) {
   return '';
 }
 
+/* ------------------------------------------------------- traffic circles
+ * A neighbourhood traffic circle is SMALLER than the 20 m the bearing sampler
+ * looks across, and that single fact breaks guidance at both ends of it.
+ *
+ * Riding east into the circle at N 104th St and Fremont Ave N, a rider leaving
+ * north is making a plain left turn. But US circles run counter-clockwise, so
+ * the first thing they do is swing right; sampled 20 m ahead the geometry says
+ * "bearing right", which disagrees with the road being joined and gets the
+ * maneuver dropped by the guard below. Sampled 20 m BACK from the exit, the
+ * chord runs straight across the island and says "no turn at all". Between
+ * them the left turn onto Fremont disappeared -- reported from the road, with
+ * nothing spoken and the banner already naming the turn after it.
+ *
+ * Announcing the circle edge by edge is not the answer either; that was the
+ * earlier bug, and it produced a left and a right within a few metres of each
+ * other while the rider was mid-circle and could act on neither.
+ *
+ * So a circle is ONE maneuver, and its direction is the only one that means
+ * anything to a rider: from the road they arrive on to the road they leave on.
+ * Nothing inside is ever announced.
+ *
+ * There is no roundabout flag in the graph -- build_graph.py reads
+ * junction=roundabout for one-way only -- so this is recognised by shape: a run
+ * of short unnamed edges whose length far exceeds the distance it covers. A
+ * straight connector stub has a ratio near 1; going three quarters of the way
+ * around an island has a ratio near 3.
+ */
+const CIRCLE_EDGE_MAX_M = 30;
+const CIRCLE_RUN_MAX_M = 120;
+const CIRCLE_RUN_MIN_M = 12;
+const CIRCLE_CURL_RATIO = 1.4;
+
+function findTrafficCircles(segs, coords) {
+  const runs = [];
+  const shortStub = (seg) => !navRoadName(seg?.name)
+    && (Number(seg?.lenM) || 0) <= CIRCLE_EDGE_MAX_M;
+  for (let i = 0; i < segs.length; i++) {
+    if (!shortStub(segs[i])) continue;
+    let end = i, total = 0;
+    while (end < segs.length && shortStub(segs[end])
+        && total + (Number(segs[end].lenM) || 0) <= CIRCLE_RUN_MAX_M) {
+      total += Number(segs[end].lenM) || 0;
+      end++;
+    }
+    end--;
+    const entryIndex = Math.max(0, Math.min(coords.length - 1, segs[i].c0));
+    const exitIndex = Math.max(0, Math.min(coords.length - 1, segs[end].c1));
+    const across = navDistanceM(coords[entryIndex], coords[exitIndex]);
+    if (total >= CIRCLE_RUN_MIN_M && total >= CIRCLE_CURL_RATIO * Math.max(across, 1)) {
+      runs.push({ first: i, last: end, entryIndex, exitIndex });
+    }
+    i = end;
+  }
+  return runs;
+}
+
+// No "bear" here. A rider always physically turns out of a circle, and the
+// angle they are being given is the one between two streets, not the one their
+// wheel traces -- so it is a turn or it is straight through.
+function navCircleText(delta, road, heading) {
+  const onto = road ? ` onto ${road}` : '';
+  const toward = heading ? `, heading ${heading}` : '';
+  if (Math.abs(delta) >= 150) return `Go around the traffic circle${onto}${toward}`;
+  if (Math.abs(delta) < 20) return `Continue through the traffic circle${onto}${toward}`;
+  return `At the traffic circle, turn ${delta > 0 ? 'right' : 'left'}${onto}${toward}`;
+}
+
 function buildTurnInstructions(m) {
   const coords = m.coords || [];
   const cumulative = [0];
@@ -3118,6 +3185,35 @@ function buildTurnInstructions(m) {
   let lastRoad = '';
   let lastText = '';
   const segs = m.segs || [];
+  const circles = findTrafficCircles(segs, coords);
+  // Everything from entering a circle to leaving it belongs to the circle's own
+  // maneuver, so the ordinary junction loop stays out of that span entirely.
+  const insideCircle = (index) => circles.some((run) =>
+    index >= run.entryIndex && index <= run.exitIndex);
+  for (const run of circles) {
+    const entryM = cumulative[run.entryIndex];
+    const approach = routeBearingOver(coords, cumulative, entryM - TURN_BEARING_SPAN_M, entryM);
+    const exit = navDestinationSegment(segs, run.last);
+    const exitSeg = exit?.seg || segs[run.last + 1];
+    const exitM = cumulative[Math.max(0, Math.min(coords.length - 1,
+      exitSeg?.c0 ?? run.exitIndex))];
+    const along = routeBearingOver(coords, cumulative, exitM, exitM + TURN_BEARING_SPAN_M);
+    const road = navRoadName(exit?.name) || '';
+    const delta = navDelta(approach, along);
+    // Riding straight through on the street you were already on is not a
+    // maneuver. Saying so at every circle would be exactly the flood of noise
+    // that made per-edge announcements unusable.
+    const arrivedOn = navOriginName(segs, Math.max(0, run.first - 1));
+    if (Math.abs(delta) < 20 && road && arrivedOn
+        && road.toLowerCase() === arrivedOn.toLowerCase()) continue;
+    instructions.push({
+      distanceM: entryM,
+      coordIndex: run.entryIndex,
+      segmentIndex: exit?.index ?? run.last + 1,
+      text: navCircleText(delta, road, undefined),
+      heading: compassWord(along),
+    });
+  }
   for (const seg of segs) {
     if (seg.hazard) {
       const at = Math.max(0, seg.hazC0 ?? seg.c0);
@@ -3128,6 +3224,7 @@ function buildTurnInstructions(m) {
   for (let i = 0; i + 1 < segs.length; i++) {
     const next = segs[i + 1];
     const at = Math.max(1, Math.min(coords.length - 2, next.c0));
+    if (insideCircle(at)) continue;
     const junctionM = cumulative[at];
     const incoming = routeBearingOver(coords, cumulative, junctionM - TURN_BEARING_SPAN_M, junctionM);
     const outgoing = routeBearingOver(coords, cumulative, junctionM, junctionM + TURN_BEARING_SPAN_M);
@@ -3152,7 +3249,15 @@ function buildTurnInstructions(m) {
     // a straight entry to or exit from an off-street path is worth confirming.
     const pathTransition = navPathLike(segs[i]) !== navPathLike(next);
     const straightCrossing = !!next.crossing && Math.abs(delta) < 20;
-    const straightPathTransition = pathTransition && Math.abs(delta) < 20;
+    // "Continue onto X" is only meaningful when X starts here. navDestination-
+    // Segment looks up to 120 m ahead, and on a straight transition that named
+    // a road far past the junction: riding south on Fremont Avenue North, a
+    // median cut-through 130 m short of the corner announced "Continue onto
+    // North 104th Street", which then consumed the actual right turn onto it
+    // through the same-road repeat window below. A turn may name a road it is
+    // still approaching; going straight may not.
+    const straightPathTransition = pathTransition && Math.abs(delta) < 20
+      && (!destination || destination.index === i + 1);
     if (Math.abs(delta) < (sameRoad ? 50 : 20) && !straightCrossing && !straightPathTransition) continue;
     // A maneuver must never point the opposite way from the road it names. When
     // the named road is still a few edges ahead (a trail exit, a crossing, a
@@ -3197,8 +3302,15 @@ function buildTurnInstructions(m) {
           && Math.sign(delta) !== Math.sign(destinationDelta)) continue;
     }
     const distanceM = cumulative[at];
-    // Do not speak a chain of tiny graph-edge transitions as separate turns.
-    if (distanceM - lastM < 70) continue;
+    // Do not speak a chain of tiny graph-edge transitions as separate turns --
+    // but a maneuver onto a road the rider is not already on is not one of
+    // those, and this rule was eating them. Turning right onto N 104th Street
+    // 48 m before the traffic circle silenced the left onto Fremont Avenue
+    // North entirely: the rider was told the first turn and then nothing.
+    // Two real turns close together are two things a rider has to do.
+    const joiningNewRoad = !!to && to !== lastRoad
+      && (!from || to.toLowerCase() !== from.toLowerCase());
+    if (distanceM - lastM < 70 && !joiningNewRoad) continue;
     const crossingRoad = navRoadName(next.name);
     const text = straightCrossing
       ? `Continue across ${crossingRoad || 'the road'}`
