@@ -23,6 +23,48 @@ function check(name, ok, detail = '') {
 
 await page.goto(site.url, { waitUntil: 'load' });
 await page.waitForFunction(() => typeof loadSavedRoutes === 'function', { timeout: 60000 });
+await page.evaluate(() => renderRouteCard({
+  ok: true, distM: 85616, timeS: 16200, maxGradePct: 7,
+  segs: [
+    { lenM: 35958, flags: 8, facility: 5, level: 1, gradePct: 0 },
+    { lenM: 5994, flags: 8, facility: 5, level: 1, gradePct: 7 },
+    { lenM: 17123, facility: 2, level: 1, mph: 25, sh: 4 },
+    { lenM: 19702, level: 1, mph: 20, sh: 4 },
+    { lenM: 1712, level: 1, mph: 20, sh: 4, surface: 2 },
+    { lenM: 4281, level: 3, mtb: true },
+    { lenM: 856, level: 4, mph: 55, sh: 0 },
+  ],
+}));
+const routeCardLayout = await page.evaluate(() => {
+  const root = document.querySelector('#routeCard .rc-route-summary');
+  const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+  const overview = rect('#routeCard .rc-overview');
+  const chart = rect('#routeCard .rc-elev-wrap');
+  const categories = rect('#routeCard .rc-category-list');
+  const metrics = rect('#routeCard .rc-secondary-metrics');
+  const clipped = [...root.querySelectorAll('.rc-distance,.rc-duration,.rc-category-item,.rc-secondary-item')]
+    .filter((node) => node.scrollWidth > node.clientWidth).map((node) => node.textContent.trim());
+  return {
+    height: root.getBoundingClientRect().height,
+    overviewWidth: overview.width,
+    chartWidth: chart.width,
+    categoryWidth: categories.width,
+    metricsHeight: metrics.height,
+    metricsSpanRightColumns: Math.abs(metrics.left - chart.left) < 1
+      && Math.abs(metrics.right - categories.right) < 1,
+    clipped,
+  };
+});
+check('long route distance and metrics fit without clipping',
+  routeCardLayout.clipped.length === 0, JSON.stringify(routeCardLayout));
+check('the chart yields width to the category list',
+  routeCardLayout.overviewWidth >= 92
+    && routeCardLayout.chartWidth < routeCardLayout.categoryWidth,
+  JSON.stringify(routeCardLayout));
+check('unpaved and incline share one compact full-width strip',
+  routeCardLayout.metricsHeight <= 21 && routeCardLayout.metricsSpanRightColumns
+    && routeCardLayout.height <= 80,
+  JSON.stringify(routeCardLayout));
 await page.evaluate(() => localStorage.setItem('wa-bike-saved-routes-1', JSON.stringify([{
   name: 'Lake loop', s: [-122.34, 47.60], e: [-122.30, 47.64], v: [], b: [],
 }]))) ;
