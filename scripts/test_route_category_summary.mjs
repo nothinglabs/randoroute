@@ -44,8 +44,13 @@ for (const distances of [
 // functions run with a real SafetyModel on the window. Give the sandbox the
 // real one rather than a stand-in: the stress threshold they read is then the
 // shipped constant, and moving it moves this test with it.
+// The flag and official-bit vocabulary route-details.js reads, mirrored from
+// its own declarations at the top of that file.
 const categoryContext = {
-  FLAG_INFRA: 8, FLAG_FERRY: 32, OFFICIAL_MTB: 4,
+  FLAG_FACILITY: 2, FLAG_FREEWAY: 4, FLAG_INFRA: 8, FLAG_FERRY: 32,
+  FLAG_DESIGNATED: 64, FLAG_LIMITED_ACCESS: 128,
+  OFFICIAL_MTB: 4, OFFICIAL_DISMOUNT: 8, OFFICIAL_SIDEWALK: 16,
+  OFFICIAL_SIDEWALK_NO: 32, OFFICIAL_URBAN: 64,
   ROUTE_CATEGORY_KEYS: ['trail', 'bike', 'pass', 'caution', 'fail'],
   window: { SafetyModel },
 };

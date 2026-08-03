@@ -563,6 +563,32 @@
     return EXPR_OPS.pick(pairs, 0);
   }
 
+  /* ---- lime, once ------------------------------------------------------
+   *
+   * "Is this bike network?" -- the question behind the lime colour, the route
+   * card's percentage and the Route Details category. It was answered in five
+   * places: isBikeNetworkVerdict(), routeVisualStyle() and bikeNetworkExpr()
+   * in app.js, and isBikeNetwork() in route-details.js. Three of them had the
+   * separated-lane exemption and one did not, so a separated lane on a road
+   * rated 4 of 4 drew LIME on the map and read "not bike network" on the tap
+   * card for the same feature. Same shape of bug as the ladder, same fix.
+   *
+   * Lime is a recommendation, not an inventory: a painted lane on a road the
+   * agency rates worst-on-scale passes the rules and draws blue. Physical
+   * separation is the one credit a rating cannot take away.
+   */
+  var FACILITY_SEPARATED = 4;
+  function bikeNetworkRule(A, F) {
+    var separated = A.or([A.isTrue(F.infra), A.ge(F.facility, FACILITY_SEPARATED)]);
+    var painted = A.ge(F.facility, FACILITY_RIDING_SPACE);
+    var highStress = A.ge(F.stressRating, STRESS_CAUTION_AT);
+    return A.or([separated, A.and([painted, A.not(highStress)])]);
+  }
+  function isBikeNetwork(facts) { return bikeNetworkRule(JS_OPS, jsFacts(facts)); }
+  function bikeNetworkExpr(tileFacts) {
+    return bikeNetworkRule(EXPR_OPS, tileFacts(EXPR_OPS));
+  }
+
   /* Returns { level, rule, shoulder, limitedAccess }.
    *
    * `rule` names the rung that decided it, so the card's explanation is
@@ -614,6 +640,10 @@
     // The same ladder evaluate() just walked, compiled for a renderer that
     // cannot call it. See buildLadder().
     levelExpr: levelExpr,
+    // Lime, for the four callers that used to each decide it themselves.
+    FACILITY_SEPARATED: FACILITY_SEPARATED,
+    isBikeNetwork: isBikeNetwork,
+    bikeNetworkExpr: bikeNetworkExpr,
     level: level,
     hasRidingSpace: hasRidingSpace,
     BUSY_LEVELS: BUSY_LEVELS,

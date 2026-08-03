@@ -114,6 +114,55 @@ const spoken = await page.evaluate(() => {
 check('it is announced as a bike lane with the traffic named',
   /^Bike lane, heavy traffic in /.test(spoken.text), JSON.stringify(spoken));
 
+// The three places a rider can be told "this is bike network" -- the tap card,
+// the road tiles, and the drawn route -- must answer the same for one feature.
+// They did not: the card had no separated-lane exemption, so a separated lane
+// on a road rated 4 of 4 read "not bike network" while both paint paths drew
+// it lime. All three ask SafetyModel.isBikeNetwork now; this is what would
+// notice if one of them stopped.
+const agree = await page.evaluate(() => {
+  const ev = (e, props) => {
+    if (!Array.isArray(e)) return e;
+    const [op, ...a] = e; const v = (x) => ev(x, props);
+    switch (op) {
+      case 'get': return props[a[0]] === undefined ? null : props[a[0]];
+      case 'has': return props[a[0]] !== undefined;
+      case 'coalesce': { for (const x of a) { const q = v(x); if (q != null) return q; } return null; }
+      case 'case': {
+        for (let i = 0; i + 1 < a.length; i += 2) if (v(a[i]) === true) return v(a[i + 1]);
+        return v(a[a.length - 1]);
+      }
+      case 'all': return a.every((x) => v(x) === true);
+      case 'any': return a.some((x) => v(x) === true);
+      case '>=': return v(a[0]) >= v(a[1]);
+      case '<': return v(a[0]) < v(a[1]);
+      case '>': return v(a[0]) > v(a[1]);
+      case '==': return v(a[0]) === v(a[1]);
+      case '!': return v(a[0]) !== true;
+      default: throw new Error(`bikeNetworkExpr uses an operator this test cannot evaluate: ${op}`);
+    }
+  };
+  const expr = bikeNetworkExpr({ id: 'roads' });
+  const out = [];
+  for (const ft of [0, 1, 2, 3, 4, 5]) {
+    for (const lts of [null, 1, 3, 4]) {
+      const props = { ft, s: 40, w: 0, ln: 5 };
+      if (lts != null) props.lts = lts;
+      const card = isBikeNetworkVerdict(scoreRoad(props));
+      const tiles = ev(expr, props);
+      // 'trail' is bike network drawn dotted -- a shared-use path is the most
+      // bike-network thing there is, so both styles count here.
+      const style = routeVisualStyle({ level: 2, infra: 0, facility: ft, lts,
+        mtb: 0, crossing: 0, ferry: 0 });
+      const route = style === 'bike' || style === 'trail';
+      if (!(card === tiles && tiles === route)) out.push({ ft, lts, card, tiles, route });
+    }
+  }
+  return out;
+});
+check('the tap card, the tiles and the drawn route agree on what is bike network',
+  agree.length === 0, JSON.stringify(agree));
+
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 
 await browser.close();

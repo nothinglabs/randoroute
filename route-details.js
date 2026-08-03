@@ -45,17 +45,10 @@ const ROAD_CLASS_NAME = {
   10: 'trunk road', 11: 'trunk link', 12: 'motorway', 13: 'motorway link',
 };
 function isBikeNetwork(seg) {
-  const flags = seg.flags || 0;
-  // Facility 1 is a sharrow in the route graph. It remains a shared road and
-  // must not become lime or inflate the bike-lane percentage. Nor does a
-  // painted lane on a road rated 4 of 4 for traffic stress: it passes the
-  // rules, and it is not a lane worth advertising. Separated lanes and paths
-  // (4+) keep the credit whatever the rating says. Mirrors
-  // isBikeNetworkVerdict() and bikeNetworkExpr() in app.js.
-  if (flags & FLAG_INFRA) return true;
-  const facility = seg.facility || 0;
-  if (facility >= 4) return true;
-  return facility >= 2 && !(Number(seg.lts) >= (window.SafetyModel?.STRESS_CAUTION_AT || 4));
+  // The shared rule, off the same facts record the verdict is read from. This
+  // used to be a hand-mirrored copy of app.js's version, which is how the two
+  // came to disagree about a separated lane on a high-stress road.
+  return window.SafetyModel.isBikeNetwork(routeSegmentFacts(seg));
 }
 
 function isOffStreetTrail(seg) {
@@ -107,15 +100,12 @@ function routeDisplayCategory(seg) {
   return 'pass';
 }
 
-// One speed everywhere. The older per-area keys are read only so a rider with
-// saved settings from an earlier release keeps a sensible value. Mirrors
-// SafetyModel.noShoulderMaxSpeed in the parent app.
+// safety-model.js is loaded before this file, so ask it rather than keeping a
+// copy of the fallback chain here. The copy was correct today and would have
+// gone stale the first time that chain changed -- the card would then have
+// quoted one threshold while the verdict used another.
 function noShoulderMaxSpeed(seg, rules = {}) {
-  return Number(rules.maxSpeedNoShoulder)
-    || Number(rules.ruralMaxSpeedNoShoulder)
-    || Number(rules.urbanMaxSpeedNoShoulder)
-    || Number(rules.freeMaxSpeed)
-    || 35;
+  return window.SafetyModel.noShoulderMaxSpeed(routeSegmentFacts(seg), rules);
 }
 
 // Rebuild the same complete facts record the map and router score. Route

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-03.528';
+const APP_VERSION = '2026-08-03.529';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -661,10 +661,9 @@ for (const src of SOURCES) if (src.closure || src.alwaysOn) src.enabled = true;
 // low-to-high stress colors even for visitors with an older saved preference.
 display.passFail = false;
 
-// Level as a MapLibre expression for expression-scored sources. Mirrors
-// effectiveLevel() for road props (speed always present; flags optional).
-// Rules are baked in as constants — on any rule change we rebuild the
-// expression and re-apply paint/filters, which is instant at any data size.
+// Rules are baked into the compiled expression as constants, so on any rule
+// change we rebuild it and re-apply paint and filters -- instant at any data
+// size, and the reason the renderer cannot simply call the model per feature.
 /* How a roads.pmtiles feature answers the safety model's facts.
  *
  * This is the only place the road tile's schema is spelled out for painting,
@@ -1217,13 +1216,10 @@ function bikeNetworkExpr(src) {
   // a sharrow is not, so it is excluded explicitly.
   if (src.id === 'osm') return notSharedLaneExpr();
   if (src.id === 'roads') {
-    // ft 1 is a sharrow: paint in a shared lane, not a facility of your own.
-    // A painted lane (2-3) on a road rated 4 of 4 for traffic stress is not
-    // bike network either -- it passes, and it draws blue. Separated lanes and
-    // paths (4-5) keep their lime whatever the rating says.
-    return ['any', ['>=', ['coalesce', ['get', 'ft'], 0], 4],
-      ['all', ['>=', ['coalesce', ['get', 'ft'], 0], 2],
-        ['<', ['coalesce', ['get', 'lts'], 0], 4]]];
+    // Compiled from the same rule the cards ask, through the same tile adapter
+    // roadLevelExpr() uses -- so "is it lime" and "what level is it" can no
+    // longer be answered from two different readings of one feature.
+    return SafetyModel.bikeNetworkExpr(roadTileFacts);
   }
   if (src.id === 'blts') {
     // The source carries no sharrow value, so only the empty and literal 'nan'
@@ -1270,18 +1266,13 @@ function opaqueBackgroundVerdictColorExpr(src, levelExpr = ['get', 'level']) {
   ];
 }
 
-// Lime is a recommendation, not an inventory. A painted lane on a road the
-// agency rates 4 of 4 for traffic stress is space the rider is entitled to --
-// so the road passes, and the caution rung lets it go -- but it is not a lane
-// worth advertising, so it draws blue with the other passing roads. Physical
-// separation is exempt: `infra` is the credit that a rating cannot take away.
-function isHighStressVerdict(n) {
-  return Number(n && n.stressRating) >= SafetyModel.STRESS_CAUTION_AT;
-}
+// One definition, in safety-model.js, for the colour AND the percentage AND
+// the tiles. This used to decide it here and get it wrong: it had no
+// separated-lane exemption, so a separated lane on a road rated 4 of 4 read
+// "not bike network" on the tap card while the tiles and the route line both
+// drew it lime.
 function isBikeNetworkVerdict(n) {
-  if (!n) return false;
-  if (n.infra) return true;
-  return !!n.good_facility && !isHighStressVerdict(n);
+  return n ? SafetyModel.isBikeNetwork(SafetyModel.factsFrom(n)) : false;
 }
 
 /* -------------------------------------------------------- status UI */
@@ -5904,13 +5895,14 @@ function routeVisualStyle(p) {
   // five-category totals in the same visual vocabulary.
   if (p.mtb === 1) return 'caution';
   if (p.level === 0) return 'unknown';
-  // facility 1 is a sharrow: paint in a shared traffic lane, not a facility of
-  // your own. It gets no lime, matching bikeNetworkExpr() for the road tiles.
-  // Nor does a painted lane on a road rated worst-on-scale for traffic stress:
-  // it passes, and it is not bike network. Separation keeps its lime regardless.
-  const bike = p.infra === 1
-    || (p.facility >= 2 && !(Number(p.lts) >= SafetyModel.STRESS_CAUTION_AT))
-    || p.facility >= 4;
+  // The shared rule, so the drawn route cannot disagree with the tap card or
+  // the tiles about the same road. A sharrow (facility 1) is paint in a shared
+  // traffic lane and earns no lime from it.
+  const bike = SafetyModel.isBikeNetwork(SafetyModel.sealFacts({
+    infra: p.infra === 1,
+    facility: Number(p.facility) || 0,
+    stressRating: p.lts == null ? null : Number(p.lts),
+  }));
   if (bike && p.facility === 5) return 'trail';
   if (bike) return 'bike';
   // A signed bike route no longer changes the drawn route. It used to draw as
