@@ -23,8 +23,20 @@ const check = (name, ok, detail = '') => {
   console.log(`FAIL  ${name}${detail ? `  -- ${detail}` : ''}`);
 };
 
-// Stand in for the device so the position can be moved between steps.
+// Stand in for the device so the position can be moved between steps, and keep
+// a log of everything the toast says. The toast is one slot shared with the
+// router, so a routing result lands on top of a notice within a second or two --
+// which is fine for a rider who has already read it, and fatal for a test that
+// reads the slot afterwards. What has to be true is that the rider was TOLD.
 await page.evaluate(() => {
+  window.__notices = [];
+  setInterval(() => {
+    const text = `${document.getElementById('routeActionText')?.textContent || ''} `
+      + `${document.getElementById('routeActionDetail')?.textContent || ''}`;
+    if (text.trim() && window.__notices[window.__notices.length - 1] !== text) {
+      window.__notices.push(text);
+    }
+  }, 20);
   window.__here = { lng: -122.3321, lat: 47.6062 };
   window.__locationFails = false;
   window.getFreshDevicePosition = () => (window.__locationFails
@@ -40,6 +52,7 @@ const settle = () => page.waitForFunction(
 
 const plan = (fromDevice, at = { lng: -122.3321, lat: 47.6062 }) => page.evaluate(([device, here]) => {
   clearRoute();
+  window.__notices.length = 0;
   window.__here = here;
   setRoutePoint('start', { lng: window.__here.lng, lat: window.__here.lat },
     device ? 'My location' : 'Pike Place Market', { fromDevice: device });
@@ -50,9 +63,9 @@ const readStart = () => page.evaluate(() => ({
   start: routing.start.map((v) => +v.toFixed(4)),
   name: routing.startName,
   follows: routing.startFromDevice,
-  notice: `${document.getElementById('routeActionText')?.textContent || ''} `
-    + `${document.getElementById('routeActionDetail')?.textContent || ''}`,
+  notice: window.__notices.join(' | '),
 }));
+const forgetNotices = () => page.evaluate(() => { window.__notices.length = 0; });
 
 /* ------------------------------- a device start follows a new destination */
 await plan(true);
@@ -62,6 +75,7 @@ check('a start from the device is marked as one', planted.follows === true,
   JSON.stringify(planted));
 
 // The rider stops, rides ten miles, and picks somewhere new.
+await forgetNotices();
 await page.evaluate(() => { window.__here = { lng: -122.2015, lat: 47.6740 }; });
 await page.evaluate(() => setRoutePoint('end', { lng: -122.1215, lat: 47.6740 }, 'Redmond'));
 await settle();
@@ -76,6 +90,7 @@ check('the rider is told the start moved', /moved to your location/i.test(moved.
 /* -------------------------------- a start the rider chose is left alone */
 await plan(false);
 await settle();
+await forgetNotices();
 await page.evaluate(() => { window.__here = { lng: -122.1215, lat: 47.6740 }; });
 await page.evaluate(() => setRoutePoint('end', { lng: -122.1015, lat: 47.6640 }, 'Elsewhere'));
 await settle();
@@ -87,6 +102,7 @@ check('a start the rider picked does not move under them',
 /* --------------------------------------------- standing still is not news */
 await plan(true);
 await settle();
+await forgetNotices();
 await page.evaluate(() => {
   // Ten metres away: the same place, as far as a rider is concerned.
   window.__here = { lng: -122.33218, lat: 47.6062 };
@@ -100,13 +116,13 @@ check('a rider who has not moved gets no announcement about it',
 /* ------------------------------------------- and a failure is not silent */
 await plan(true);
 await settle();
+await forgetNotices();
 await page.evaluate(() => {
   window.__locationFails = true;
   setRoutePoint('end', { lng: -122.2515, lat: 47.6301 }, 'Nowhere');
 });
-await page.waitForFunction(() => /Could not update your location/i
-  .test(document.getElementById('routeActionText')?.textContent || ''), { timeout: 15000 })
-  .catch(() => {});
+await page.waitForFunction(() => window.__notices.some((text) =>
+  /Could not update your location/i.test(text)), { timeout: 15000 }).catch(() => {});
 const failedFix = await readStart();
 check('a start that could not be updated says so rather than pretending',
   /Could not update your location/i.test(failedFix.notice), JSON.stringify(failedFix));

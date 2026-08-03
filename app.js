@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.523';
+const APP_VERSION = '2026-08-02.524';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1167,12 +1167,32 @@ requestMapLocationRecenter('launch');
 // auto-follow; our own programmatic camera moves have no originalEvent.
 map.on('movestart', (e) => { if (turnNav.active && e.originalEvent) turnNav.cameraFollow = false; });
 map.on('moveend', (e) => { if (turnNav.active && e.originalEvent) scheduleNavigationFollowResume(); });
-// While navigating and panned away, the geolocate control re-centers on the
-// rider first instead of toggling tracking off. Capture on the map container
-// preempts the control's own click handler.
+/* The geolocate control belongs to MapLibre, and left to itself it calls
+ * navigator.geolocation. That is a SECOND location source, with its own
+ * permission: on the native app the WebView asks '"localhost" would like to use
+ * your current location' even though the plugin has been tracking the rider for
+ * miles. Photographed mid-ride, 3.4 miles in.
+ *
+ * Capturing on the container preempts the control's own handler. This used to
+ * cover two cases and fall through on a third -- navigating with the camera
+ * ALREADY following, which is the ordinary state of the screen -- so the one
+ * tap most likely to happen was the one that reached the web API.
+ *
+ * While navigating, the app has a live position and the button means "put me
+ * back in the middle", on every platform. There is nothing MapLibre's own
+ * geolocation could add, and a second GPS watcher costs battery for a fix the
+ * app already has.
+ */
 map.getContainer().addEventListener('click', (e) => {
   const btn = e.target.closest && e.target.closest('.maplibregl-ctrl-geolocate');
-  if (btn && nativeNavigationPlugin() && !turnNav.active) {
+  if (!btn) return;
+  if (turnNav.active) {
+    e.stopPropagation();
+    e.preventDefault();
+    recenterNavigationOnRider();
+    return;
+  }
+  if (nativeNavigationPlugin()) {
     e.stopPropagation();
     e.preventDefault();
     btn.classList.add('maplibregl-ctrl-geolocate-waiting');
@@ -1185,13 +1205,9 @@ map.getContainer().addEventListener('click', (e) => {
         ? 'Location permission is blocked in iPhone Settings.'
         : 'Could not get your location.', true);
     }).finally(() => btn.classList.remove('maplibregl-ctrl-geolocate-waiting'));
-    return;
   }
-  if (btn && turnNav.active && !turnNav.cameraFollow) {
-    e.stopPropagation();
-    e.preventDefault();
-    recenterNavigationOnRider();
-  }
+  // Off the native app and not navigating, the control's own behaviour is the
+  // right one and its permission prompt is expected.
 }, true);
 
 // Cycleway tag values that are paint in a shared traffic lane rather than space
