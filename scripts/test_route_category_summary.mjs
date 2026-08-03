@@ -81,10 +81,11 @@ assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 5, level:
 assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, flags: 32, level: 1 }), null,
   'ferry distance is outside the five riding categories');
 
-// "Trusted Bike Lanes" wraps to two lines in both category lists at phone width,
-// so both say "Trusted Lanes". The Layers legend, which has the room and is
-// where a rider meets the term, says it in full.
-const labels = ['Trails', 'Trusted Lanes', 'Passes Rules', 'Needs Caution', 'Fails Rules'];
+// The five labels both category lists use. Whether they FIT is a rendered
+// question and is measured in test_route_card_labels.mjs -- searching the
+// source for the string only proves someone typed it, which is what let
+// "Trusted Bike Lanes" ship truncated to "Trusted Bike La...".
+const labels = ['Trails', 'Trusted Bike Lane', 'Passes Rules', 'Needs Caution', 'Fails Rules'];
 const appCard = functionSource(app, 'renderRouteCard');
 for (const label of labels) {
   assert.ok(appCard.includes(label), `route card is missing ${label}`);

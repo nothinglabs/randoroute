@@ -1465,7 +1465,7 @@ if (!hasRoute) {
     : `<span class="route-summary-secondary-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></span>`;
   const categoryRows = [
     ['trail', 'Trails'],
-    ['bike', 'Trusted Lanes'],
+    ['bike', 'Trusted Bike Lane'],
     ['pass', 'Passes Rules'],
     ['caution', 'Needs Caution'],
     ['fail', 'Fails Rules'],

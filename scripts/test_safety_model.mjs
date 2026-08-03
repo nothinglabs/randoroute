@@ -78,20 +78,43 @@ function evalExpr(expr, props) {
   }
 }
 
-// Lift roadLevelExpr out of app.js and run it against a stubbed `rules`.
-const start = app.indexOf('function roadLevelExpr()');
-const end = app.indexOf('\n}', app.indexOf('return [\'case\', ...cases', start)) + 2;
-assert.ok(start > 0 && end > start, 'roadLevelExpr should be findable in app.js');
+// Lift the road tiles' fact adapter and the compile out of app.js, and run
+// them against a stubbed `rules`. Only the adapter is app.js's own work now --
+// the rungs live in SafetyModel and are compiled from the same definition
+// evaluate() walks, so what this sweep still has to prove is that the ADAPTER
+// reads a tile the way scoreRoad() does.
+function functionSource(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  assert.ok(start >= 0, `${name} should be findable in app.js`);
+  const brace = source.indexOf('{', start);
+  let depth = 0;
+  for (let index = brace; index < source.length; index++) {
+    if (source[index] === '{') depth++;
+    if (source[index] === '}' && --depth === 0) return source.slice(start, index + 1);
+  }
+  assert.fail(`${name} source was incomplete`);
+}
 const exprCtx = vm.createContext({ rules: null, SafetyModel,
   MAX_LANES_NO_LIMIT: SafetyModel.MAX_LANES_NO_LIMIT });
-vm.runInContext(`${app.slice(start, end)}; this.roadLevelExpr = roadLevelExpr;`, exprCtx);
+vm.runInContext([
+  functionSource(app, 'roadTileFacts'),
+  functionSource(app, 'roadLevelExpr'),
+  'this.roadLevelExpr = roadLevelExpr;',
+].join('\n'), exprCtx);
 
 // Road tiles carry: s speed, w shoulder, ln lanes, ft facility, k sidewalk,
 // u urban, l limited access, b prohibited, m freeway, g designated, lts stress.
 const tileToFacts = (p) => ({
   prohibited: p.b === 1, ferry: false, freeway: p.m === 1,
-  infra: false, infraScore: null, facility: p.ft || 0,
-  limitedAccess: p.l === 1, speed: p.s === undefined ? null : p.s,
+  infra: false, infraScore: null,
+  // scoreRoad() + factsFrom(): the recorded grade where there is one, and the
+  // WSDOT join's coarse `f` flag -- which carries no grade -- raised to the
+  // riding-space floor. This adapter used to read `ft` alone, which is why a
+  // whole class of state-highway facility went unswept while the map and the
+  // cards disagreed about it in the field.
+  facility: p.ft !== undefined ? p.ft
+    : (p.f === 1 ? SafetyModel.FACILITY_RIDING_SPACE : 0),
+  limitedAccess: p.m === 1 || p.l === 1, speed: p.s === undefined ? null : p.s,
   shoulder: p.w === undefined ? null : p.w, lanes: p.ln || 0,
   sidewalk: p.k === 1 ? 'present' : p.k === 2 ? 'absent' : null,
   urban: p.u === 1, designated: p.g === 1,
@@ -140,7 +163,11 @@ const PROPS = [];
 for (const s of [undefined, 20, 25, 30, 35, 45, 55]) {
   for (const w of [undefined, 0, 2, 4, 8]) {
     for (const ln of [0, 2, 3, 4, 5, 6]) {
-      for (const ft of [0, 1, 2, 4]) {
+      // `undefined` matters as much as the grades. build_roads.py writes `f`
+      // alone when the facility comes from the WSDOT join and `f`+`ft` when it
+      // comes from OSM tags, so a tile with no `ft` is a real road, not a
+      // hypothetical -- and it is the shape this sweep never used to produce.
+      for (const ft of [0, 1, 2, 4, undefined]) {
         for (const k of [0, 1, 2]) {
           for (const u of [0, 1]) {
             // adt and fc drive the busy trigger: a count when the tile has one,
@@ -155,10 +182,15 @@ for (const s of [undefined, 20, 25, 30, 35, 45, 55]) {
               // guess. 0 must infer nothing; 1 is entirely eaten by the margin.
               { es: 0 }, { es: 1 }, { es: 3 }, { es: 6 }, { es: 12 },
               { es: 6, adt: 20000 }, { es: 2, fc: 3 }]) {
-              const p = { u, ln, ft, k, ...extra };
+              const p = { u, ln, k, ...extra };
+              if (ft !== undefined) p.ft = ft;
               if (s !== undefined) p.s = s;
               if (w !== undefined) p.w = w;
               PROPS.push(p);
+              // The same road with the WSDOT facility flag set. With `ft` it
+              // changes nothing (the grade wins); without it, it is the only
+              // thing saying the road has riding space.
+              PROPS.push({ ...p, f: 1 });
             }
           }
         }

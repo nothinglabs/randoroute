@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-03.527';
+const APP_VERSION = '2026-08-03.528';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -665,82 +665,66 @@ display.passFail = false;
 // effectiveLevel() for road props (speed always present; flags optional).
 // Rules are baked in as constants — on any rule change we rebuild the
 // expression and re-apply paint/filters, which is instant at any data size.
-function roadLevelExpr() {
-  const spd = ['get', 's'];
-  // Limited access, or an official high-stress rating, turns a pass into a
-  // caution. Mirrors `softCaution` in safety-model.js -- including the bike
-  // lane exemption: the stress caution is for roads whose space is not the
-  // rider's, so a painted lane (ft 2+) is never cautioned for traffic. Without
-  // that clause the tiles drew amber over a road the model calls blue, which
-  // scripts/test_safety_model.mjs catches by sweeping both.
-  const softCaution = ['any', ['==', ['get', 'l'], 1],
-    ['all', ['>=', ['coalesce', ['get', 'lts'], 0], SafetyModel.STRESS_CAUTION_AT],
-      ['<', ['coalesce', ['get', 'ft'], 0], 2]]];
-  const passLevel = ['case', softCaution, 3, 1];
-  const ordinaryPassLevel = ['case', softCaution, 3, 2];
-  // One speed now, so no branch on the urban flag. Mirrors
-  // SafetyModel.noShoulderMaxSpeed, which this expression is cross-checked
-  // against by scripts/test_safety_model.mjs.
-  const noShoulderMax = rules.maxSpeedNoShoulder;
-  const cases = [];
-  const hasSpeed = ['has', 's'];
-  cases.push(['==', ['get', 'b'], 1], 4);                       // bikes prohibited
-  cases.push(['==', ['get', 'm'], 1], 4);                       // freeway: last-resort failure
-  if (!rules.noUpperLimit)                                      // absolute speed cap
-    cases.push(['all', hasSpeed, ['>', spd, rules.upperMaxSpeed]], 4);
-  // One rung, three triggers, mirroring SafetyModel.needsSpace. This is the
-  // implementation that cannot share the model's code -- MapLibre evaluates it
-  // declaratively in the renderer -- so scripts/test_safety_model.mjs sweeps
-  // both and compares.
-  const ridingSpace = ['any',
-    ['>=', ['coalesce', ['get', 'ft'], 0], 2],
-    ['>=', ['coalesce', ['get', 'w'], -1], rules.minShoulder]];
-  const tooFast = ['all', hasSpeed, ['>', spd, noShoulderMax]];
-  const tooWide = rules.lanesNoShoulderOver >= MAX_LANES_NO_LIMIT
-    ? false
-    : ['>', ['coalesce', ['get', 'ln'], 0], rules.lanesNoShoulderOver];
-  // A count decides when the tile carries one; otherwise the functional class
-  // stands in, where a SMALLER class number is a bigger road.
-  const busy = SafetyModel.busyLevel(rules);
-  const tooBusy = !busy.id ? false : ['case',
-    ['has', 'adt'], ['>', ['get', 'adt'], busy.adt],
-    ['all', ['has', 'fc'], ['<=', ['get', 'fc'], busy.fc]]];
-  const wantsSpace = ['any', tooFast, tooWide, tooBusy];
+/* How a roads.pmtiles feature answers the safety model's facts.
+ *
+ * This is the only place the road tile's schema is spelled out for painting,
+ * and it sits beside scoreRoad(), which answers the same questions for the tap
+ * card -- so the two are read together and a tile key that moves is caught in
+ * one place. Everything past this point is SafetyModel.buildLadder: the rungs
+ * are defined once and this record is the only thing the renderer supplies.
+ *
+ * A fact the road tiles cannot answer is a literal, and its rung folds out of
+ * the compiled expression instead of shipping a dead branch to MapLibre.
+ */
+function roadTileFacts() {
+  // Present-and-recorded. A tag the tile omits is unknown, not zero.
+  const tagged = (key) => ({ val: ['get', key], known: ['has', key] });
+  // Written only when non-zero, so absent and zero are the same statement:
+  // no measurement. Mirrors tileMeasures() and scoreRoad()'s `p.lts || null`.
+  const measured = (key) => ({
+    val: ['coalesce', ['get', key], 0],
+    known: ['>', ['coalesce', ['get', key], 0], 0],
+  });
+  const flag = (key) => ({ val: ['==', ['coalesce', ['get', key], 0], 1], known: true });
+  const fixed = (value) => ({ val: value, known: true });
+  return {
+    prohibited: flag('b'),
+    // Road tiles carry neither. Both rungs fold away.
+    ferry: fixed(false),
+    infra: fixed(false),
+    infraScore: { val: 0, known: false },
+    freeway: flag('m'),
+    // scoreRoad(), exactly: the graded facility where the tile records one,
+    // and otherwise the WSDOT join's coarse flag -- which carries no grade, so
+    // it can only assert riding space. Reading `ft` alone left every
+    // WSDOT-recorded facility invisible to the map while every card counted it.
+    facility: fixed(['case',
+      ['has', 'ft'], ['get', 'ft'],
+      ['==', ['coalesce', ['get', 'f'], 0], 1], SafetyModel.FACILITY_RIDING_SPACE,
+      0]),
+    limitedAccess: fixed(['any',
+      ['==', ['coalesce', ['get', 'm'], 0], 1],
+      ['==', ['coalesce', ['get', 'l'], 0], 1]]),
+    speed: tagged('s'),
+    shoulder: tagged('w'),
+    edgeSpace: tagged('es'),
+    lanes: fixed(['coalesce', ['get', 'ln'], 0]),
+    sidewalk: fixed(['case',
+      ['==', ['coalesce', ['get', 'k'], 0], 1], 'present',
+      ['==', ['coalesce', ['get', 'k'], 0], 2], 'absent',
+      '']),
+    urban: flag('u'),
+    stressRating: measured('lts'),
+    adt: measured('adt'),
+    fc: measured('fc'),
+  };
+}
 
-  // Pessimistic mode treats a missing shoulder as 0 ft; otherwise only a
-  // known-narrow shoulder fails.
-  //
-  // This must mirror effectiveShoulder() in safety-model.js rung for rung,
-  // including the order: recorded tag, then the edge-space inference, then the
-  // pessimistic zero. Nothing computed in JS can reach a paint expression, so
-  // the inference is rebuilt here declaratively against the tile's `es`
-  // property -- the same per-side number the model reads as facts.edgeSpace.
-  // Untagged is always 0 ft now; there is no optimistic branch left.
-  const unknownSh = 0;
-  const inferredSh = ['max', 0, ['-', ['get', 'es'], SafetyModel.EDGE_SPACE_MARGIN_FT]];
-  // `es > 0` mirrors inferredShoulder(): a zero can be a clamped data error
-  // rather than a measured absence, so it is not evidence of anything.
-  const hasEdgeSpace = ['all', ['has', 'es'], ['>', ['coalesce', ['get', 'es'], 0], 0]];
-  const sh = rules.inferShoulderFromEdge
-    ? ['case',
-      ['has', 'w'], ['get', 'w'],
-      hasEdgeSpace, inferredSh,
-      unknownSh]
-    : ['case', ['has', 'w'], ['get', 'w'], unknownSh];
-  const noSpace = ['all',
-    ['<', ['coalesce', ['get', 'ft'], 0], 2], ['<', sh, rules.minShoulder]];
-  if (rules.allowSidewalkFallback) {
-    // The fallback needs a KNOWN speed over the limit, as the shared model
-    // requires -- it answers the shoulder question, not the lane or traffic one.
-    cases.push(['all', wantsSpace, noSpace, tooFast, ['==', ['get', 'k'], 1]], 3);
-  }
-  cases.push(['all', wantsSpace, noSpace], 4);
-  // Needs space and has some: not the same as a quiet lane, so not its level.
-  cases.push(wantsSpace, ordinaryPassLevel);
-  cases.push(hasSpeed, passLevel);   // nothing demands space of its own
-  // Nothing known about any criterion. Only reachable with "Unknown shoulder =
-  // 0 ft" off, exactly as in the shared model.
-  return ['case', ...cases, ordinaryPassLevel];                  // meets criteria
+// The ladder, compiled for the renderer. MapLibre cannot call evaluate() per
+// feature, so this is the one thing that has to cross the gap -- and it crosses
+// it as a compilation of the same rungs, not a second transcription of them.
+function roadLevelExpr() {
+  return SafetyModel.levelExpr(rules, roadTileFacts);
 }
 
 /* ------------------------------------------------------------- map */
@@ -5581,7 +5565,7 @@ function renderRouteCard(m) {
     : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span class="rc-secondary-label">Unpaved</span></span>`;
   const categoryRows = [
     ['trail', 'Trails'],
-    ['bike', 'Trusted Lanes'],
+    ['bike', 'Trusted Bike Lane'],
     ['pass', 'Passes Rules'],
     ['caution', 'Needs Caution'],
     ['fail', 'Fails Rules'],

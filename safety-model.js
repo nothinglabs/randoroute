@@ -329,105 +329,277 @@
       && shoulder != null && shoulder < rules.minShoulder;
   }
 
+  /* ---- one ladder, two readers ----------------------------------------
+   *
+   * The rungs are written ONCE, against a tiny algebra, and read two ways:
+   * `evaluate()` walks them over a facts object and returns the full verdict;
+   * `levelExpr()` compiles the same rungs into a MapLibre expression for the
+   * road tiles, which the renderer evaluates without calling any of this code.
+   *
+   * That second reader is the whole reason this exists. MapLibre paints from
+   * declarative expressions -- it cannot call a JS function per feature -- so
+   * the ladder used to be TYPED OUT A SECOND TIME, in app.js roadLevelExpr().
+   * The two drifted, repeatedly, in production: a sharrowed road drawn red but
+   * labelled "Passes your rules"; a wide-road rule that moved the map and not
+   * the router; a bike lane on a high-stress road that the model passed and
+   * the tiles cautioned; and a WSDOT-recorded facility (tile `f`, no `ft`)
+   * that every card counted as riding space and the map did not. A sweep test
+   * caught them AFTERWARDS, one at a time, and only where the sweep happened
+   * to look. Deriving both readings from one definition is what stops them
+   * being able to differ at all.
+   *
+   * A ladder value is `{ val, known }` -- real values for `evaluate()`,
+   * MapLibre fragments for `levelExpr()`. Every threshold the ladder compares
+   * against comes from `rules`, so it is always a plain JS number; only the
+   * left-hand side changes shape between the two readers.
+   */
+
+  function jsValue(v) { return { val: v == null ? null : v, known: v != null }; }
+
+  var JS_OPS = {
+    value: jsValue,
+    and: function (parts) {
+      for (var i = 0; i < parts.length; i++) if (!parts[i]) return false;
+      return true;
+    },
+    or: function (parts) {
+      for (var i = 0; i < parts.length; i++) if (parts[i]) return true;
+      return false;
+    },
+    not: function (a) { return !a; },
+    known: function (v) { return v.known; },
+    isTrue: function (v) { return !!v.val; },
+    isText: function (v, text) { return v.val === text; },
+    // Known-and-compares. A null never satisfies a threshold: "no recorded
+    // speed" is not "under the limit", which is the distinction that keeps an
+    // untagged road off the slow-road rung.
+    gt: function (v, n) { return v.known && Number(v.val) > n; },
+    ge: function (v, n) { return v.known && Number(v.val) >= n; },
+    lt: function (v, n) { return v.known && Number(v.val) < n; },
+    le: function (v, n) { return v.known && Number(v.val) <= n; },
+    minusAtLeast: function (v, n, floor) {
+      return jsValue(Math.max(floor, Number(v.val) - n));
+    },
+    // First matching pair wins, exactly as the if-chain it replaces did.
+    pick: function (pairs, fallback) {
+      for (var i = 0; i < pairs.length; i++) if (pairs[i][0]) return pairs[i][1];
+      return fallback;
+    },
+    pickValue: function (pairs, fallback) {
+      for (var i = 0; i < pairs.length; i++) if (pairs[i][0]) return pairs[i][1];
+      return fallback;
+    },
+  };
+
+  // MapLibre fragments, folded wherever an operand is already a plain boolean.
+  // Folding is not cosmetic: a fact a source cannot supply arrives as a literal
+  // `false`, and folding is what deletes its rung from the emitted expression
+  // instead of shipping dead branches to the renderer.
+  function isBool(x) { return typeof x === 'boolean'; }
+
+  var EXPR_OPS = {
+    // A literal, in the same `{ val, known }` shape a tile fact arrives in --
+    // returning the bare number here compiled the shoulder fallback to `null`
+    // instead of 0 ft.
+    value: function (v) { return { val: v, known: v != null }; },
+    and: function (parts) {
+      var out = [];
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i] === false) return false;
+        if (parts[i] !== true) out.push(parts[i]);
+      }
+      if (!out.length) return true;
+      return out.length === 1 ? out[0] : ['all'].concat(out);
+    },
+    or: function (parts) {
+      var out = [];
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i] === true) return true;
+        if (parts[i] !== false) out.push(parts[i]);
+      }
+      if (!out.length) return false;
+      return out.length === 1 ? out[0] : ['any'].concat(out);
+    },
+    not: function (a) { return isBool(a) ? !a : ['!', a]; },
+    known: function (v) { return v.known; },
+    isTrue: function (v) { return isBool(v.val) ? v.val : v.val; },
+    isText: function (v, text) {
+      return v.known === false ? false : ['==', v.val, text];
+    },
+    gt: function (v, n) { return EXPR_OPS.and([v.known, ['>', v.val, n]]); },
+    ge: function (v, n) { return EXPR_OPS.and([v.known, ['>=', v.val, n]]); },
+    lt: function (v, n) { return EXPR_OPS.and([v.known, ['<', v.val, n]]); },
+    le: function (v, n) { return EXPR_OPS.and([v.known, ['<=', v.val, n]]); },
+    minusAtLeast: function (v, n, floor) {
+      return { val: ['max', floor, ['-', v.val, n]], known: true };
+    },
+    pick: function (pairs, fallback) {
+      var cases = [];
+      for (var i = 0; i < pairs.length; i++) {
+        if (pairs[i][0] === false) continue;
+        if (pairs[i][0] === true) return cases.length
+          ? ['case'].concat(cases, [pairs[i][1]]) : pairs[i][1];
+        cases.push(pairs[i][0], pairs[i][1]);
+      }
+      return cases.length ? ['case'].concat(cases, [fallback]) : fallback;
+    },
+    pickValue: function (pairs, fallback) {
+      var flat = [];
+      for (var i = 0; i < pairs.length; i++) flat.push([pairs[i][0], pairs[i][1].val]);
+      return { val: EXPR_OPS.pick(flat, fallback.val), known: true };
+    },
+  };
+
+  /* The ladder itself. `A` is one of the two op tables above; `F` is the facts,
+   * each entry a `{ val, known }` in that reader's representation.
+   *
+   * Returns the rungs in order plus the pieces `evaluate()` needs to name what
+   * it found -- so the label a card prints and the condition that produced the
+   * level are the same expression, not two that have to be kept in step. */
+  function buildLadder(A, F, rules) {
+    // Thresholds are pure functions of the rider's settings, so they are plain
+    // JS on both paths and never enter the algebra.
+    var minShoulder = Number(rules.minShoulder);
+    var noShoulderMax = noShoulderMaxSpeed(null, rules);
+    var busy = busyLevel(rules);
+    var lanesOver = Number(rules.lanesNoShoulderOver) || 0;
+
+    var paintedLane = A.ge(F.facility, FACILITY_RIDING_SPACE);
+    var highStress = A.ge(F.stressRating, STRESS_CAUTION_AT);
+    var limited = A.isTrue(F.limitedAccess);
+    // A bike lane is space the rider is entitled to, and the stress caution is
+    // for roads whose space is not theirs. See docs/SAFETY-MODEL.md.
+    var stressCaution = A.and([highStress, A.not(paintedLane)]);
+    var softCaution = A.or([limited, stressCaution]);
+
+    // effectiveShoulder(), rung for rung: a recorded tag, then the edge-space
+    // inference, then zero. The order is load-bearing -- fallback first and the
+    // inference could never fire.
+    var shoulderPairs = [[A.known(F.shoulder), F.shoulder]];
+    if (rules.inferShoulderFromEdge) {
+      // `> 0`, not `known`: build_roadlog.py clamps a negative leftover to 0,
+      // and a zero is a data error rather than a measured absence.
+      shoulderPairs.push([A.gt(F.edgeSpace, 0),
+        A.minusAtLeast(F.edgeSpace, EDGE_SPACE_MARGIN_FT, 0)]);
+    }
+    var shoulder = A.pickValue(shoulderPairs, A.value(0));
+
+    // One rung, three triggers: too fast, too wide, or too busy to share.
+    var tooFast = A.gt(F.speed, noShoulderMax);
+    var tooWide = (!lanesOver || lanesOver >= MAX_LANES_NO_LIMIT)
+      ? false : A.gt(F.lanes, lanesOver);
+    // A measured count decides where there is one; otherwise the functional
+    // class stands in, where a SMALLER number is a bigger road.
+    var tooBusy = !busy.id ? false
+      : A.or([A.gt(F.adt, busy.adt),
+        A.and([A.not(A.known(F.adt)), A.le(F.fc, busy.fc)])]);
+    var wantsSpace = A.or([tooFast, tooWide, tooBusy]);
+
+    var shoulderFails = A.and([A.not(paintedLane), A.lt(shoulder, minShoulder)]);
+    // The fallback answers the SHOULDER question, so it needs a known speed
+    // over the limit -- not the lane or traffic trigger.
+    var sidewalkFallback = !rules.allowSidewalkFallback ? false
+      : A.and([A.isText(F.sidewalk, 'present'), A.not(paintedLane), tooFast,
+        A.lt(shoulder, minShoulder)]);
+
+    var cautionOr = function (plain) { return A.pick([[softCaution, 3]], plain); };
+    var speedCap = rules.noUpperLimit ? false
+      : A.gt(F.speed, Number(rules.upperMaxSpeed));
+
+    return {
+      shoulder: shoulder,
+      limited: limited,
+      highStress: highStress,
+      stressCaution: stressCaution,
+      rungs: [
+        { rule: 'prohibited', when: A.isTrue(F.prohibited), level: 4 },
+        // On the boat, road rules do not apply.
+        { rule: 'ferry', when: A.isTrue(F.ferry), level: 2 },
+        // Whether the router may USE one is rules.allowFreeways, which is a
+        // routing permission and never a verdict.
+        { rule: 'freeway', when: A.isTrue(F.freeway), level: 4 },
+        // Dedicated infrastructure: its own type is the rating, so car speed
+        // and shoulder rules do not apply to it.
+        { rule: 'infra', when: A.isTrue(F.infra),
+          level: A.pick([[A.known(F.infraScore), F.infraScore.val]], 0) },
+        // Before the slow-road rung, so "Never allow roads faster than" means
+        // what it says.
+        { rule: 'speed-cap', when: speedCap, level: 4 },
+        { rule: 'sidewalk-fallback',
+          when: A.and([wantsSpace, shoulderFails, sidewalkFallback]), level: 3 },
+        { rule: 'needs-space', when: A.and([wantsSpace, shoulderFails]), level: 4 },
+        // Needs space and has some. Not the same as a quiet lane, so not its
+        // level.
+        { rule: 'default', when: wantsSpace, level: cautionOr(2) },
+        // Nothing about this road demands space of its own.
+        { rule: 'shares-lane', when: A.known(F.speed), level: cautionOr(1) },
+        { rule: 'default', when: true, level: cautionOr(2) },
+      ],
+    };
+  }
+
+  // The facts as `evaluate()` sees them: real values, straight off the record.
+  function jsFacts(facts) {
+    var out = {};
+    for (var i = 0; i < FACT_KEYS.length; i++) {
+      out[FACT_KEYS[i]] = jsValue(facts[FACT_KEYS[i]]);
+    }
+    // `lanes` and `facility` are counts with a real zero, never unknowns.
+    out.lanes = jsValue(Number(facts.lanes) || 0);
+    out.facility = jsValue(Number(facts.facility) || 0);
+    return out;
+  }
+
+  /* The ladder compiled for a tile source. `tileFacts` is a function the caller
+   * supplies -- it knows its own tile schema -- which returns the same fact
+   * record built from MapLibre fragments. A fact the source cannot answer comes
+   * back a literal `false`/unknown and its rung folds away. */
+  function levelExpr(rules, tileFacts) {
+    var built = buildLadder(EXPR_OPS, tileFacts(EXPR_OPS), rules);
+    var pairs = [];
+    for (var i = 0; i < built.rungs.length; i++) {
+      pairs.push([built.rungs[i].when, built.rungs[i].level]);
+    }
+    return EXPR_OPS.pick(pairs, 0);
+  }
+
   /* Returns { level, rule, shoulder, limitedAccess }.
    *
    * `rule` names the rung that decided it, so the card's explanation is
    * generated from the same evaluation that produced the colour. They cannot
    * disagree, which is the whole point of this module. */
   function evaluate(facts, rules) {
-    var limited = !!facts.limitedAccess;
-    var shoulder = effectiveShoulder(facts, rules);
-    // Two facts about a road can turn a pass into a caution without ever
-    // failing it. Neither can rescue a road that failed a rung above.
-    var highStress = Number(facts.stressRating) >= STRESS_CAUTION_AT;
-    // A road with a bike lane of any kind is not cautioned for traffic. The
-    // lane is space the rider is entitled to, which is a different thing from a
-    // shoulder, and the caution rung exists for roads whose space is not
-    // theirs. Uniform for every rider: this is a statement about what a bike
-    // lane IS, not a preference about how much risk to accept.
-    //
-    // It suppresses the stress caution ONLY. The hard rungs above are
-    // untouched, so a bike lane on a road over the rider's speed ceiling still
-    // fails, and it does not clear the limited-access caution, which is about
-    // ramps crossing the rider's path rather than about traffic. Physically
-    // separated lanes and paths never reach here -- they return at the `infra`
-    // rung above.
-    //
-    // What it does NOT do is make the road bike network. The rating is still
-    // reported in `highStress` below, and the colour logic withholds the lime
-    // on that basis: the road passes, and it is not a lane we would advertise.
-    var paintedLane = Number(facts.facility) >= 2;
-    // A limited-access highway is the more specific statement, so it wins the
-    // headline when both are true.
-    var softCaution = limited ? 'limited-access'
-      : (highStress && !paintedLane) ? 'high-stress' : null;
-    var out = function (level, rule, caution) {
-      return {
-        level: level, rule: rule, shoulder: shoulder, limitedAccess: limited,
-        highStress: highStress,
-        caution: level === 3 ? (caution || softCaution) : null,
-      };
-    };
-
-    if (facts.prohibited) return out(4, 'prohibited');
-    // On the boat, road rules do not apply.
-    if (facts.ferry) return out(2, 'ferry');
-    // A motorway is always a failure. Whether the router may use one anyway is
-    // rules.allowFreeways, which is a routing permission and never a verdict.
-    if (facts.freeway) return out(4, 'freeway');
-    // Dedicated infrastructure: its own type is the rating. Car speed and
-    // shoulder rules do not apply to a path.
-    if (facts.infra) return out(facts.infraScore == null ? 0 : facts.infraScore, 'infra');
-
+    var built = buildLadder(JS_OPS, jsFacts(facts), rules);
     // An official stress rating is deliberately NOT a rung of its own, and can
     // only ever caution. On WSDOT's data four in five rated segments are 4, so
     // as a pass/fail it would sever ~166k edges or blanket-amber every state
     // highway. As a modifier it downgrades a road that would otherwise pass and
     // leaves every failure and every dedicated path exactly as it was.
+    //
+    // A limited-access highway is the more specific statement, so it wins the
+    // headline when both are true. Both conditions come back from the ladder
+    // rather than being restated here: the label a card prints and the
+    // condition that set the level are then one expression, not two.
+    var softCaution = built.limited ? 'limited-access'
+      : built.stressCaution ? 'high-stress' : null;
 
-    // An absolute ceiling: it comes before the slow-road shortcut so
-    // "Never allow roads faster than" means what it says.
-    if (!rules.noUpperLimit && facts.speed != null && facts.speed > rules.upperMaxSpeed) {
-      return out(4, 'speed-cap');
+    for (var i = 0; i < built.rungs.length; i++) {
+      var rung = built.rungs[i];
+      if (!rung.when) continue;
+      // The sidewalk fallback is the one rung that names its own cause; every
+      // other level 3 is a soft caution on an otherwise passing road.
+      var caution = rung.rule === 'sidewalk-fallback' ? 'sidewalk-fallback' : softCaution;
+      return {
+        level: rung.level, rule: rung.rule,
+        shoulder: built.shoulder.val, limitedAccess: built.limited,
+        highStress: built.highStress,
+        caution: rung.level === 3 ? caution : null,
+      };
     }
-    // Before the slow-road rung: Seattle signed every arterial at 25 mph in
-    // 2020, so speed alone would pass a five-lane road outright.
-    //
-    // No designation of any kind can excuse a road here. A signed route is a
-    // recommendation by an agency, not a measurement of the road: Clallam's
-    // Olympic Discovery Trail alignment runs 58.8 mi along ordinary road,
-    // including US 101 at 60 mph with no shoulder. The rules below judge the
-    // road, and a route drawn along it does not change what it is.
-    // One rung, three triggers. Too fast, too wide, or too busy to share a
-    // lane -- all of them the same question, so they give the same answer and
-    // the card can name whichever applied.
-    //
-    // Speed and lanes used to be separate rungs, which meant a five-lane
-    // arterial signed at 25 mph passed on the speed rung after the lane rung
-    // had already been consulted. Merging them removes the ordering entirely.
-    if (needsSpace(facts, rules)) {
-      // shoulderFails, not !hasRidingSpace. With "Unknown shoulder = 0 ft"
-      // turned off, an untagged shoulder is not evidence of absence, so it must
-      // not fail -- and effectiveShoulder leaves it null to say so. Treating
-      // null as "no space" would quietly re-impose the pessimistic reading on a
-      // rider who switched it off.
-      if (shoulderFails(facts, shoulder, rules)) {
-        if (sidewalkFallbackApplies(facts, shoulder, rules)) {
-          return out(3, 'sidewalk-fallback', 'sidewalk-fallback');
-        }
-        return out(4, 'needs-space');
-      }
-      // It needs space and it has some. Not the same as a quiet lane, so it
-      // does not get the quiet lane's level.
-      return out(softCaution ? 3 : 2, 'default');
-    }
-    // Nothing about this road demands space of its own.
-    if (facts.speed != null) return out(softCaution ? 3 : 1, 'shares-lane');
-    // There was an 'unknown' rung here, reachable only when a rider turned off
-    // "Unknown shoulder = 0 ft". With that setting gone, effectiveShoulder()
-    // never returns null and the rung could never fire. Level 0 still exists
-    // for ferries and as a paint fallback; nothing in the ladder produces it.
-    return out(softCaution ? 3 : 2, 'default');
+    // Unreachable: the last rung is unconditional. Level 0 still exists for
+    // ferries and as a paint fallback; nothing in the ladder produces it.
+    return { level: 0, rule: 'default', shoulder: built.shoulder.val,
+      limitedAccess: built.limited, highStress: built.highStress, caution: null };
   }
 
   function level(facts, rules) { return evaluate(facts, rules).level; }
@@ -439,6 +611,9 @@
     RULES: RULES,
     CAUTION_CAUSES: CAUTION_CAUSES,
     evaluate: evaluate,
+    // The same ladder evaluate() just walked, compiled for a renderer that
+    // cannot call it. See buildLadder().
+    levelExpr: levelExpr,
     level: level,
     hasRidingSpace: hasRidingSpace,
     BUSY_LEVELS: BUSY_LEVELS,
