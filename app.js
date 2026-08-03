@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-03.534';
+const APP_VERSION = '2026-08-03.535';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -329,7 +329,11 @@ function scoreBLTS(p) {
     restricted: false,
     freeway: isInterstateRoute(p.RouteIdentifier),
     limited_access: !!p.LimitedAccess,
-    good_facility: !!(p.BikeFacilityType && p.BikeFacilityType.length),
+    // From the same grading as `facility`, not from the string's mere
+    // presence: WSDOT's literal 'nan' placeholder has length, and reading
+    // "non-empty" as "there is a lane here" made the card call three
+    // placeholder segments bike network while the tiles refused them.
+    good_facility: agencyFacilityLevel(p.BikeFacilityType) >= 2,
     facility: agencyFacilityLevel(p.BikeFacilityType),
     infra: false,
     desig: p.Designated === 1, // on a designated bike route (USBR / regional)
@@ -1211,27 +1215,56 @@ function notSharedLaneExpr() {
   return ['all', ...['cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right']
     .map((key) => ['!', ['in', ['coalesce', ['get', key], ''], ['literal', SHARED_LANE_VALUES]]])];
 }
+// How the WSDOT BLTS tiles answer the lime rule's facts. The source stores
+// its facility as a STRING (BikeFacilityType); the grade comes from
+// Region.facilityLevels, the same table agencyFacilityLevel() gives the tap
+// card -- built into the expression HERE rather than retyped, so the card and
+// the tiles cannot disagree about what a facility type is worth. Unknown
+// strings, '', and the literal 'nan' placeholder all fall to the match
+// default of 0, exactly as agencyFacilityLevel() treats them.
+//
+// The old hand-written expression had no grade at all: any valid type on an
+// LTS-4 road was refused lime, so a WSDOT "Two-Way Separated Bike Lane" on a
+// worst-rated highway drew blue on the tiles while the card called it bike
+// network. Compiling from the shared rule is what fixed that.
+function bltsTileFacts() {
+  const graded = ['match', ['coalesce', ['get', 'BikeFacilityType'], '']];
+  for (const [type, level] of Object.entries(Region.facilityLevels)) {
+    graded.push(type, level);
+  }
+  graded.push(0);
+  return {
+    infra: { val: false, known: true },
+    facility: { val: graded, known: true },
+    // Written only where WSDOT rated the segment; absent means "not rated",
+    // which must read as unknown rather than as a rating of zero.
+    stressRating: { val: ['coalesce', ['get', 'LTS_Bicycle'], 0],
+      known: ['>', ['coalesce', ['get', 'LTS_Bicycle'], 0], 0] },
+  };
+}
+
+// The OSM bike-infrastructure layer: every feature is dedicated infrastructure
+// by construction except a sharrow, which is paint in a shared traffic lane.
+// It carries no traffic rating and no facility grade, so under the shared rule
+// everything except `infra` is unknown and the compiled expression folds down
+// to exactly the sharrow test.
+function osmTileFacts() {
+  return {
+    infra: { val: notSharedLaneExpr(), known: true },
+    facility: { val: 0, known: false },
+    stressRating: { val: 0, known: false },
+  };
+}
+
+// One rule, three tile schemas. Each source answers the lime rule's facts in
+// its own vocabulary and SafetyModel.bikeNetworkExpr() compiles the SAME rule
+// over each -- the roads adapter is the one roadLevelExpr() also uses, so "is
+// it lime" and "what level is it" cannot be answered from two different
+// readings of one feature.
 function bikeNetworkExpr(src) {
-  // Every feature in this source is bike infrastructure by construction -- but
-  // a sharrow is not, so it is excluded explicitly.
-  if (src.id === 'osm') return notSharedLaneExpr();
-  if (src.id === 'roads') {
-    // Compiled from the same rule the cards ask, through the same tile adapter
-    // roadLevelExpr() uses -- so "is it lime" and "what level is it" can no
-    // longer be answered from two different readings of one feature.
-    return SafetyModel.bikeNetworkExpr(roadTileFacts);
-  }
-  if (src.id === 'blts') {
-    // The source carries no sharrow value, so only the empty and literal 'nan'
-    // placeholders need excluding -- 3 features whose facility type is the
-    // string "nan" would otherwise paint as infrastructure.
-    return ['all', ['has', 'BikeFacilityType'],
-      ['!', ['in', ['coalesce', ['get', 'BikeFacilityType'], ''], ['literal', ['', 'nan']]]],
-      // Same rule as the road tiles: a lane on a road WSDOT rates 4 of 4 is not
-      // advertised as bike network. This source carries no facility grade, so
-      // there is no separated-lane exemption to make here.
-      ['<', ['coalesce', ['get', 'LTS_Bicycle'], 0], 4]];
-  }
+  if (src.id === 'osm') return SafetyModel.bikeNetworkExpr(osmTileFacts);
+  if (src.id === 'roads') return SafetyModel.bikeNetworkExpr(roadTileFacts);
+  if (src.id === 'blts') return SafetyModel.bikeNetworkExpr(bltsTileFacts);
   return ['boolean', false];
 }
 

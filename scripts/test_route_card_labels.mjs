@@ -56,20 +56,22 @@ for (const width of [430, 390, 375, 360]) {
     check(`"${row.text}" fits at ${width}px`, row.scroll <= row.client + 1,
       `needs ${row.scroll}px, has ${row.client}px`);
   }
-  // The legend's own column, not the whole card: #routeControls (the A-E
-  // chooser) overhangs the card by 12px at every width and has done since
-  // before these labels existed. That is a real defect but a different one,
-  // and rolling it in here would make this file fail for a reason it does not
-  // test.
-  const listOverflow = await page.evaluate(() => {
-    const list = document.querySelector('#routeCard .rc-category-list');
+  // The whole card now, not just the legend's column. This used to scope
+  // itself around #routeControls, whose `margin: 5px -6px 0` bled into card
+  // padding that no longer existed -- the chooser row stuck 6px past the card
+  // on both sides at every width. That margin is fixed.
+  //
+  // scrollWidth, not per-child getBoundingClientRect: a child clipped by an
+  // ancestor's overflow:hidden still reports its full box, and clipping is a
+  // deliberate design tool here (the duration inside rc-overview, the grade
+  // badge inside the chart). What must not happen is the CARD scrolling
+  // sideways -- which is exactly what scrollWidth measures.
+  const overflow = await page.evaluate(() => {
     const card = document.getElementById('routeCard');
-    if (!list || !card) return null;
-    return Math.round(list.getBoundingClientRect().right
-      - card.getBoundingClientRect().right);
+    return card ? card.scrollWidth - card.clientWidth : null;
   });
-  check(`the legend stays inside the card at ${width}px`, listOverflow <= 1,
-    `overhangs by ${listOverflow}px`);
+  check(`the card does not scroll sideways at ${width}px`, overflow !== null && overflow <= 1,
+    `overflows by ${overflow}px`);
 }
 
 // The term a rider first meets in Layers is the full phrase, and that list has

@@ -250,7 +250,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   margin-bottom: 0;
   background: transparent;
 }
-#routeCard > #routeControls { margin: 5px -6px 0; padding-top: 0; border-top: none; }
+#routeCard > #routeControls { margin: 5px 0 0; padding-top: 0; border-top: none; }
 #routeCard .rc-route-message { display: grid; gap: 1px; padding: 5px 3px 1px; color: #60727d; }
 #routeCard .rc-route-message strong { color: #304b5a; font: 750 12px/1.2 system-ui; }
 #routeCard .rc-route-message span { font: 600 11px/1.3 system-ui; }

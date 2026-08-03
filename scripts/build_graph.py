@@ -92,6 +92,8 @@ import argparse
 import gzip
 import json
 import math
+import hashlib
+import os
 import re
 import struct
 import sys
@@ -1153,6 +1155,35 @@ def directional_curve_hazard(coords, ele_at, speed, shoulder, facility):
     return ab, ba
 
 
+def stamp_graph_version(graph_path,
+                        build_version_path=None):
+    """Derive GRAPH_DATA_VERSION from the artefact itself.
+
+    The version is what makes a rider's service worker fetch a rebuilt graph:
+    the cache is keyed by URL including `?gv=`, so an unchanged version means
+    the new graph is never downloaded and nothing looks wrong. build-version.js
+    was created because two hand-maintained copies of the version drifted --
+    and then the single copy was forgotten twice in one day across three
+    rebuilds. A comment saying "bump this" is an instruction; a hash of the
+    file is a mechanism. scripts/test_graph_version_stamp.mjs fails the suite
+    if the graph on disk does not match the stamped version, so a rebuild
+    without this stamp cannot ship quietly.
+    """
+    if build_version_path is None:
+        build_version_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                          '..', 'build-version.js')
+    digest = hashlib.sha256(open(graph_path, 'rb').read()).hexdigest()[:12]
+    version = f'sha-{digest}'
+    src_js = open(build_version_path).read()
+    out_js, count = re.subn(r"root\.GRAPH_DATA_VERSION = '[^']*';",
+                            f"root.GRAPH_DATA_VERSION = '{version}';", src_js, count=1)
+    if count != 1:
+        raise SystemExit('build-version.js has no GRAPH_DATA_VERSION line to stamp')
+    if out_js != src_js:
+        open(build_version_path, 'w').write(out_js)
+    print(f'  stamped GRAPH_DATA_VERSION = {version}', flush=True)
+
+
 def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=None,
           urban_areas=None, roadlog=None, funcclass=None, aadt=None, hpms=None):
     wsdot = load_blts_index(blts) if blts else None
@@ -1572,8 +1603,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     raw = b''.join(parts)
     with gzip.open(out, 'wb', compresslevel=9) as f:
         f.write(raw)
-    import os
     print(f'raw {len(raw):,} bytes -> {out} {os.path.getsize(out):,} bytes gz', flush=True)
+    stamp_graph_version(out)
 
 
 if __name__ == '__main__':

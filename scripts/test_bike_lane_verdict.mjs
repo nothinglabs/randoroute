@@ -163,6 +163,70 @@ const agree = await page.evaluate(() => {
 check('the tap card, the tiles and the drawn route agree on what is bike network',
   agree.length === 0, JSON.stringify(agree));
 
+// The other two tile schemas, now compiled from the same rule. The blts check
+// is card-vs-tiles agreement, because that pair had genuinely diverged: the
+// hand-written expression carried no facility grade, so a WSDOT separated
+// lane on an LTS-4 road drew blue while the tap card called it bike network.
+const others = await page.evaluate(() => {
+  const ev = (e, props) => {
+    if (!Array.isArray(e)) return e;
+    const [op, ...a] = e; const v = (x) => ev(x, props);
+    switch (op) {
+      case 'get': return props[a[0]] === undefined ? null : props[a[0]];
+      case 'has': return props[a[0]] !== undefined;
+      case 'coalesce': { for (const x of a) { const q = v(x); if (q != null) return q; } return null; }
+      case 'case': {
+        for (let i = 0; i + 1 < a.length; i += 2) if (v(a[i]) === true) return v(a[i + 1]);
+        return v(a[a.length - 1]);
+      }
+      case 'match': {
+        const input = v(a[0]);
+        for (let i = 1; i + 1 < a.length; i += 2) {
+          const label = a[i];
+          if (Array.isArray(label) ? label.includes(input) : label === input) return v(a[i + 1]);
+        }
+        return v(a[a.length - 1]);
+      }
+      case 'literal': return a[0];
+      case 'in': { const hay = v(a[1]); return Array.isArray(hay) && hay.includes(v(a[0])); }
+      case 'all': return a.every((x) => v(x) === true);
+      case 'any': return a.some((x) => v(x) === true);
+      case '>=': return v(a[0]) >= v(a[1]);
+      case '<': return v(a[0]) < v(a[1]);
+      case '>': return v(a[0]) > v(a[1]);
+      case '==': return v(a[0]) === v(a[1]);
+      case '!': return v(a[0]) !== true;
+      default: throw new Error(`bikeNetworkExpr uses an operator this test cannot evaluate: ${op}`);
+    }
+  };
+  const bltsExpr = bikeNetworkExpr({ id: 'blts' });
+  const bltsBad = [];
+  for (const type of ['', 'nan', ...Object.keys(Region.facilityLevels)]) {
+    for (const lts of [undefined, 1, 3, 4]) {
+      const props = {};
+      if (type !== '') props.BikeFacilityType = type;
+      if (lts !== undefined) props.LTS_Bicycle = lts;
+      const tiles = ev(bltsExpr, props);
+      const card = isBikeNetworkVerdict(scoreBLTS(props));
+      if (tiles !== card) bltsBad.push({ type, lts, tiles, card });
+    }
+  }
+  const osmExpr = bikeNetworkExpr({ id: 'osm' });
+  const osm = {
+    sharrow: ev(osmExpr, { cycleway: 'shared_lane' }),
+    sharrowRight: ev(osmExpr, { 'cycleway:right': 'shared_lane' }),
+    lane: ev(osmExpr, { cycleway: 'lane' }),
+    bare: ev(osmExpr, {}),
+  };
+  return { bltsBad, osm };
+});
+check('the WSDOT tiles and the tap card agree on every facility type and rating',
+  others.bltsBad.length === 0, JSON.stringify(others.bltsBad));
+check('the OSM infrastructure layer keeps lime for everything except sharrows',
+  others.osm.lane === true && others.osm.bare === true
+    && others.osm.sharrow === false && others.osm.sharrowRight === false,
+  JSON.stringify(others.osm));
+
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 
 await browser.close();

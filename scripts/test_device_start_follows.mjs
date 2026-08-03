@@ -29,14 +29,19 @@ const check = (name, ok, detail = '') => {
 // which is fine for a rider who has already read it, and fatal for a test that
 // reads the slot afterwards. What has to be true is that the rider was TOLD.
 await page.evaluate(() => {
+  // Record the CALLS, not the DOM. This used to poll the toast element every
+  // 20 ms, and under load the "start moved" toast could be shown and then
+  // overwritten by "Calculating route options" inside a single tick -- a
+  // once-in-a-few-runs flake. Wrapping the function the app tells riders
+  // through captures every notice deterministically, however briefly it was
+  // on screen; which is the thing this file actually asserts.
   window.__notices = [];
-  setInterval(() => {
-    const text = `${document.getElementById('routeActionText')?.textContent || ''} `
-      + `${document.getElementById('routeActionDetail')?.textContent || ''}`;
-    if (text.trim() && window.__notices[window.__notices.length - 1] !== text) {
-      window.__notices.push(text);
-    }
-  }, 20);
+  const realToast = window.showRouteActionToast;
+  window.showRouteActionToast = (text, opts) => {
+    const line = `${text || ''} ${opts?.detail || ''}`.trim();
+    if (line) window.__notices.push(line);
+    return realToast(text, opts);
+  };
   window.__here = { lng: -122.3321, lat: 47.6062 };
   window.__locationFails = false;
   window.getFreshDevicePosition = () => (window.__locationFails
