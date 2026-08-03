@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { SafetyModel } from './testlib/harness.mjs';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 const details = fs.readFileSync(new URL('../route-details.js', import.meta.url), 'utf8');
@@ -39,9 +40,14 @@ for (const distances of [
   }
 }
 
+// route-details.html loads safety-model.js before route-details.js, so these
+// functions run with a real SafetyModel on the window. Give the sandbox the
+// real one rather than a stand-in: the stress threshold they read is then the
+// shipped constant, and moving it moves this test with it.
 const categoryContext = {
   FLAG_INFRA: 8, FLAG_FERRY: 32, OFFICIAL_MTB: 4,
   ROUTE_CATEGORY_KEYS: ['trail', 'bike', 'pass', 'caution', 'fail'],
+  window: { SafetyModel },
 };
 vm.createContext(categoryContext);
 vm.runInContext([
@@ -57,6 +63,14 @@ vm.runInContext([
 assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 1, level: 1 }), 'pass',
   'a sharrow must remain an ordinary passing road');
 assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 2, level: 1 }), 'bike');
+// A painted lane on a road the state rates worst-on-scale passes the rules --
+// the caution rung is for roads whose space is not the rider's -- but it is not
+// a lane we advertise, so it counts with the ordinary passing roads. Separation
+// is exempt: that credit no rating can take away.
+assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 2, level: 2, lts: 4 }),
+  'pass', 'a bike lane on a high-stress road passes, and is not bike network');
+assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 4, level: 2, lts: 4 }),
+  'bike', 'a SEPARATED lane keeps its credit whatever the rating says');
 assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 5, level: 1 }), 'trail');
 assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 5, level: 3 }), 'caution',
   'a caution verdict must override facility styling');

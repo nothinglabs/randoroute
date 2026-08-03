@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-03.526';
+const APP_VERSION = '2026-08-03.527';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -668,9 +668,14 @@ display.passFail = false;
 function roadLevelExpr() {
   const spd = ['get', 's'];
   // Limited access, or an official high-stress rating, turns a pass into a
-  // caution. Mirrors `softCaution` in safety-model.js.
+  // caution. Mirrors `softCaution` in safety-model.js -- including the bike
+  // lane exemption: the stress caution is for roads whose space is not the
+  // rider's, so a painted lane (ft 2+) is never cautioned for traffic. Without
+  // that clause the tiles drew amber over a road the model calls blue, which
+  // scripts/test_safety_model.mjs catches by sweeping both.
   const softCaution = ['any', ['==', ['get', 'l'], 1],
-    ['>=', ['coalesce', ['get', 'lts'], 0], SafetyModel.STRESS_CAUTION_AT]];
+    ['all', ['>=', ['coalesce', ['get', 'lts'], 0], SafetyModel.STRESS_CAUTION_AT],
+      ['<', ['coalesce', ['get', 'ft'], 0], 2]]];
   const passLevel = ['case', softCaution, 3, 1];
   const ordinaryPassLevel = ['case', softCaution, 3, 2];
   // One speed now, so no branch on the urban flag. Mirrors
