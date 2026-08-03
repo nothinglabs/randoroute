@@ -932,6 +932,20 @@ const GRADUAL_UPHILL_AVOID_PCT = 9;
 const STEEP_UPHILL_AVOID_PCT = 12;
 const MIN_STEEP_AVOID_EDGE_M = 20;
 const MAX_STEEP_UPHILL_AVOID_S = 2400;
+// A route-choice cost has to stay proportional to the thing it is judging.
+// `lengthFactor` below was the existing attempt at that and it cannot win: it
+// falls off linearly in length while the curve rises quadratically in grade,
+// so a 24 m ramp at 17% still reached the 40-minute ceiling -- 0.24 * 10,045.
+// Avoiding a climb can be worth several times the effort of making it; it
+// cannot be worth forty minutes for ten seconds of riding.
+//
+// This matters most where the grade is not real. Per-edge ascent is sampled
+// from a TERRAIN model (edge_climb in build_graph.py) which knows nothing
+// about bridges or tunnels, so a flat trail deck over a gully records the
+// gully. Two reported Burke-Gilman detours were exactly that. Until the graph
+// carries a structure bit, this bound is what stops one phantom climb from
+// erasing a corridor.
+const MAX_STEEP_AVOID_TIME_MULT = 8;
 function steepUphillAvoidanceS(i, forward, mode) {
   if ((eFlags[i] & 32) || eLen[i] < MIN_STEEP_AVOID_EDGE_M) return 0;
   const asc = forward ? eAsc[i] : eDes[i];
@@ -948,6 +962,7 @@ function steepUphillAvoidanceS(i, forward, mode) {
   const modeFactor = mode === 'low' ? 1.35 : 1;
   const lengthFactor = Math.min(1, eLen[i] / 100);
   return Math.min(MAX_STEEP_UPHILL_AVOID_S,
+    MAX_STEEP_AVOID_TIME_MULT * edgeTimeS(i, forward),
     lengthFactor * modeFactor * (5 * gradualExcess * gradualExcess + 400 * steepExcess * steepExcess));
 }
 

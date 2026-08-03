@@ -15,6 +15,12 @@ const context = {
   eAsc: new Float32Array([9, 10, 12, 13, 14, 15, 0, 20]),
   eDes: new Float32Array([0, 0, 0, 0, 0, 0, 15, 0]),
   eLen: new Float32Array([100, 100, 100, 100, 100, 100, 100, 100]),
+  // The curve and the bound are separate claims, so they are tested
+  // separately. This block isolates the CURVE: an unreachable riding time
+  // means Math.min never picks the time bound, and the assertions below are
+  // about grade alone. The bound itself is asserted against real graph edges
+  // at the bottom of this file, where edgeTimeS is the real one.
+  edgeTimeS: () => Number.MAX_SAFE_INTEGER,
 };
 vm.createContext(context);
 vm.runInContext(worker.slice(start, end), context);
@@ -75,6 +81,34 @@ assert.ok(additive.total >= additive.penalty,
   'the facility bonus must not shrink the steep-grade penalty '
   + `(cost ${additive.total.toFixed(1)} < penalty ${additive.penalty.toFixed(1)}, `
   + `bonus ${additive.bonus})`);
+
+// The bound: a route-choice cost cannot exceed a fixed multiple of the time it
+// actually takes to ride the edge. Two Burke-Gilman detours were caused by a
+// phantom grade -- edge ascent is sampled from a TERRAIN model that knows
+// nothing about bridges, so a flat trail deck over a gully records the gully --
+// and a 17-second ramp was charging 19 minutes. Assert the invariant holds
+// everywhere, and that it actually binds somewhere, so it cannot quietly
+// become vacuous.
+const bound = w.run(`(() => {
+  let violations = 0, clipped = 0, worstClip = 0;
+  for (let e = 0; e < E; e++) {
+    for (const fwd of [true, false]) {
+      const penalty = steepUphillAvoidanceS(e, fwd, 'balanced');
+      if (!(penalty > 0)) continue;
+      const cap = MAX_STEEP_AVOID_TIME_MULT * edgeTimeS(e, fwd);
+      if (penalty > cap + 1e-6) violations++;
+      else if (Math.abs(penalty - cap) < 1e-6) {
+        clipped++;
+        worstClip = Math.max(worstClip, penalty);
+      }
+    }
+  }
+  return { violations, clipped, worstClip: Math.round(worstClip) };
+})()`);
+assert.equal(bound.violations, 0,
+  'no edge may cost more grade penalty than a multiple of its own riding time');
+assert.ok(bound.clipped > 0,
+  'the time bound should actually bind somewhere, or it is not doing anything');
 
 // Turn friction is a TRANSITION cost: it belongs to the pair of edges, not to
 // the edge, so it appears only when edgeCost is given the arrival state.
