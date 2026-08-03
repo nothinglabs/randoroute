@@ -67,13 +67,10 @@ assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 5, level:
 assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, flags: 32, level: 1 }), null,
   'ferry distance is outside the five riding categories');
 
-const labels = [
-  'Trails',
-  'Bike Lane',
-  'Passes Rules',
-  'Needs Caution',
-  'Fails Rules',
-];
+// "Trusted Bike Lanes" wraps to two lines in both category lists at phone width,
+// so both say "Trusted Lanes". The Layers legend, which has the room and is
+// where a rider meets the term, says it in full.
+const labels = ['Trails', 'Trusted Lanes', 'Passes Rules', 'Needs Caution', 'Fails Rules'];
 const appCard = functionSource(app, 'renderRouteCard');
 for (const label of labels) {
   assert.ok(appCard.includes(label), `route card is missing ${label}`);
@@ -83,8 +80,8 @@ assert.ok(details.includes('<b>5%+ uphill</b><strong>${fmtMi(routeStats.inclineO
   'Route Details Elevation must report 5%+ uphill distance in miles');
 assert.ok(!details.includes('Incline over 5%'),
   'Route Details must not leave the 5% grade metric in its top summary');
-assert.ok(app.includes("['bikeFacilities', 'Bike lane', 'facility']"),
-  'Map Layers must label recorded bike facilities as Bike lane');
+assert.ok(app.includes("['bikeFacilities', 'Trusted bike lanes', 'facility']"),
+  'Map Layers must label the lime bucket as trusted bike lanes');
 assert.ok(details.includes('At least <strong>55 mph</strong>'),
   'Route Details is missing the bold 55+ mph road metric');
 assert.ok(!details.includes('Avg. limit') && !details.includes('Max limit'),

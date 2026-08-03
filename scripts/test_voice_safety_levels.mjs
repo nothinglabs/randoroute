@@ -78,7 +78,7 @@ check('a stretch still ahead says how far off it is, not "next"',
   JSON.stringify(texts));
 // Brevity is the feature. A rider cannot hold a list at 15 mph.
 check('nothing said is longer than a sentence',
-  texts.every((text) => text.split(/\s+/).length <= 9), JSON.stringify(texts));
+  texts.every((text) => text.split(/\s+/).length <= 11), JSON.stringify(texts));
 // Each announcement lands before the stretch it describes, not after.
 const startsAt = [0, 1609, 3218, 4827, 5127];
 check('each is spoken before the change, not after it',
@@ -157,6 +157,42 @@ check('and with nothing specific to say, it stays plain rather than inventing on
   reasons.plain === 'Caution. Ride with care for next 0.5 miles.', reasons.plain);
 check('a mixed stretch reports the reason covering most of it',
   reasons.mixed === 'No shoulder', JSON.stringify(reasons.mixed));
+
+/* ------------------------- green, and still told what it runs alongside */
+// A trusted bike lane on a road the agency rates worst-on-scale is not a
+// caution -- the rider decided that -- but the rating is still a fact about the
+// road, and they asked to hear it. It rides as an aside rather than an alert.
+const headsUp = await page.evaluate(() => {
+  const say = (seg, trust) => {
+    const before = rules.trustBikeLanes;
+    rules.trustBikeLanes = trust;
+    const segs = [{ lenM: 3200, c0: 0, c1: 1, ...seg }];
+    const runs = buildRouteSafetyRuns(segs, [0, 3200]);
+    const run = runs[0];
+    rules.trustBikeLanes = before;
+    return { category: run.category, text: safetyRunSpeech(run.category,
+      SAFETY_REASON_SPEECH[run.reason], navDistanceText(3200), navDistanceText(150)) };
+  };
+  // No stored level -- the point is what the rider's rules make of the road.
+  const busyLane = { facility: 2, mph: 40, sh: 0, lanes: 5, lts: 4,
+    measures: { adt: 21000, fc: 3 } };
+  return {
+    trusted: say(busyLane, true),
+    untrusted: say(busyLane, false),
+    quiet: say({ facility: 2, mph: 25, sh: 4 }, true),
+    separated: say({ facility: 4, flags: 8, mph: 40, sh: 0, lts: 4 }, true),
+  };
+});
+check('a trusted bike lane is announced as a bike lane, not a caution',
+  headsUp.trusted.category === 'bike'
+    && /^Bike lane, heavy traffic in /.test(headsUp.trusted.text), JSON.stringify(headsUp));
+check('with it off the same road is the caution it was',
+  headsUp.untrusted.category === 'caution'
+    && /^Caution\. Heavy traffic in /.test(headsUp.untrusted.text), JSON.stringify(headsUp));
+check('a bike lane on a quiet road says nothing extra',
+  headsUp.quiet.text === 'Bike lane in 150 feet, for 2.0 miles.', JSON.stringify(headsUp));
+check('and a separated lane on a busy road carries the same heads-up',
+  /heavy traffic/.test(headsUp.separated.text), JSON.stringify(headsUp));
 
 /* -------------------------------------------- the guards around the feature */
 const guards = await page.evaluate(() => {

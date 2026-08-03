@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-02.524';
+const APP_VERSION = '2026-08-03.525';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -126,6 +126,17 @@ const DEFAULT_RULES = Object.freeze({
   // 2,000 vehicles a day or a major collector where there is no count.
   busyNoShoulder: 2,
   allowSidewalkFallback: true, // a mapped sidewalk can satisfy the shoulder rule, with caution
+  // "Always trust bike lanes (even on very busy roads)". A painted lane is
+  // space the rider is entitled to, and for a confident rider that settles it
+  // however the agency rates the road around it. On here, which means on for
+  // The Randonneur (it inherits DEFAULT_RULES wholesale) and on for a fresh
+  // install; Weekend Wanderer and Casual Cruiser switch it off, because the
+  // official rating is most worth hearing for the riders those presets are for.
+  //
+  // It changes the VERDICT and nothing else. Levels 2 and 3 cost the router
+  // exactly the same (modeMult), so no route moves; separated lanes and paths
+  // are green for everyone regardless, at a rung above this.
+  trustBikeLanes: true,
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
@@ -842,6 +853,9 @@ const ROUTING_PRESETS = Object.freeze([
       // Randonneur only. This preset is for riders who want slower roads honoured
       // literally, so a shoulder it infers rather than reads is not good enough.
       inferShoulderFromEdge: false,
+      // The official stress rating is exactly what a rider on this preset wants
+      // to be told about, so a painted lane does not silence it here.
+      trustBikeLanes: false,
     }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
@@ -861,6 +875,9 @@ const ROUTING_PRESETS = Object.freeze([
       // route is filtered to fully matching road. An inferred shoulder must not
       // be what lets a road into that set.
       inferShoulderFromEdge: false,
+      // The official stress rating is exactly what a rider on this preset wants
+      // to be told about, so a painted lane does not silence it here.
+      trustBikeLanes: false,
     }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
@@ -3422,9 +3439,14 @@ const SAFETY_RUN_HERE_M = 40;
 function safetyRunSpeech(category, reason, lengthText, aheadText) {
   const head = SAFETY_RUN_HEAD[category];
   if (!head) return null;
-  const what = category === 'caution' || category === 'fail'
+  const alert = category === 'caution' || category === 'fail';
+  // An alert leads with the word that makes a rider listen and then names the
+  // concern. A green stretch leads with what it is, and carries the concern as
+  // an aside -- "bike lane, heavy traffic" is the whole point of trusting a
+  // lane while still being told what it runs alongside.
+  const what = alert
     ? `${head}. ${reason || (category === 'fail' ? 'Safety alert' : 'Ride with care')}`
-    : head;
+    : `${head}${reason ? `, ${reason.toLowerCase()}` : ''}`;
   return aheadText ? `${what} in ${aheadText}, for ${lengthText}.`
     : `${what} for next ${lengthText}.`;
 }
@@ -3452,7 +3474,13 @@ function routeSegmentSafetyReason(s) {
   if (isDismountSegment(s)) return 'dismount';
   const cause = routeSegmentCautionCause(s);
   if (cause === 'high-stress') return 'heavy-traffic';
-  return SAFETY_REASON_SPEECH[cause] ? cause : null;
+  if (SAFETY_REASON_SPEECH[cause]) return cause;
+  // Green, and still worth a word. A trusted bike lane on a road the agency
+  // rates worst-on-scale is not a caution -- the rider decided that -- but they
+  // asked to be told, and `highStress` is reported at every level for exactly
+  // this. Trusting a lane is a decision about the colour, not a reason to stop
+  // saying what the road is.
+  return verdict.highStress ? 'heavy-traffic' : null;
 }
 
 // The reason that covers the most of a stretch. A run can change its mind about
@@ -3501,7 +3529,7 @@ function buildRouteSafetyRuns(segs, cumulative) {
       run = { category, startM, endM, spoken: false, reasons: new Map() };
       runs.push(run);
     }
-    if (category !== 'caution' && category !== 'fail') continue;
+    if (category === 'ferry') continue;
     const reason = routeSegmentSafetyReason(seg);
     if (reason) run.reasons.set(reason, (run.reasons.get(reason) || 0) + (endM - startM));
   }
@@ -5533,7 +5561,7 @@ function renderRouteCard(m) {
     : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span class="rc-secondary-label">Unpaved</span></span>`;
   const categoryRows = [
     ['trail', 'Trails'],
-    ['bike', 'Bike Lane'],
+    ['bike', 'Trusted Lanes'],
     ['pass', 'Passes Rules'],
     ['caution', 'Needs Caution'],
     ['fail', 'Fails Rules'],
@@ -8446,7 +8474,9 @@ const CAUTION_CAUSE_DETAIL = {
     + 'and you allow that as a fallback. Routes avoid it strongly.',
   'high-stress': 'The state transportation department rates this road at the top of the Level of '
     + 'Traffic Stress scale (4 of 4). It can only ever caution, never fail: most rated highway '
-    + 'miles score 4, so failing on it would be indiscriminate.',
+    + 'miles score 4, so failing on it would be indiscriminate. Turn on “Always trust bike '
+    + 'lanes” to stop it cautioning a road that has a bike lane — separated lanes and paths are '
+    + 'always trusted.',
   dismount: 'Bicycles are allowed, but you have to get off and walk.',
 };
 
@@ -9448,7 +9478,7 @@ function buildSourcePanel() {
   host.className = 'layer-toggle-grid';
   const items = [
     ['offstreetTrails', 'Off-street trails', 'trail'],
-    ['bikeFacilities', 'Bike lane', 'facility'],
+    ['bikeFacilities', 'Trusted bike lanes', 'facility'],
     ['meetRules', 'Road meets safety rules', 'meets'],
     ['failRules', 'Road fails safety rules', 'fails'],
     ['caution', 'Caution — ride with care', 'caution'],
@@ -9896,14 +9926,14 @@ function buildRulesPanel() {
     });
   };
 
-  const check = (key, label, state = rules, onChange = scheduleRescore) => {
+  const check = (key, label, state = rules, onChange = scheduleRescore, hint = '') => {
     const wrap = document.createElement('div');
     wrap.className = 'check-rule rule-card';
     wrap.innerHTML = `
       <label class="rule-check" for="r-${key}">
         <input type="checkbox" id="r-${key}" ${state[key] ? 'checked' : ''}>
         <span>${label}</span>
-      </label>`;
+      </label>${hint ? `<p class="hint rule-check-hint">${hint}</p>` : ''}`;
     optionsHost.appendChild(wrap);
     wrap.querySelector('input').addEventListener('change', (e) => {
       state[key] = e.target.checked;
@@ -9929,6 +9959,13 @@ function buildRulesPanel() {
     scheduleRescore();
   });
   check('preferPaved', 'Strongly prefer paved surfaces');
+  // The only rule here that does not move a route. Levels 2 and 3 cost the
+  // router the same, so this decides colour, percentages and what the voice
+  // says -- and the hint has to say so, or it reads as a safety rule.
+  check('trustBikeLanes', 'Always trust bike lanes (even on very busy roads)', rules, () => {
+    scheduleRescore();
+  }, 'Colour and announcements only — your route does not change. Separated lanes '
+    + 'and paths are always trusted, whatever this is set to.');
   check('allowSidewalkFallback', 'Allow sidewalk fallback');
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');

@@ -180,7 +180,7 @@ function safetyVerdict(seg) {
     return { label: 'Use caution', className: 'caution' };
   }
   if (seg.trailAll ?? isOffStreetTrail(seg)) return { label: 'Off-street trail', className: 'trail' };
-  if (seg.bikeNetworkAll ?? isBikeNetwork(seg)) return { label: 'Road with bike lane', className: 'bike' };
+  if (seg.bikeNetworkAll ?? isBikeNetwork(seg)) return { label: 'Trusted bike lane', className: 'bike' };
   return { label: 'Other road passing rules', className: 'pass' };
 }
 
@@ -1458,7 +1458,7 @@ if (!hasRoute) {
     : `<span class="route-summary-secondary-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></span>`;
   const categoryRows = [
     ['trail', 'Trails'],
-    ['bike', 'Bike Lane'],
+    ['bike', 'Trusted Lanes'],
     ['pass', 'Passes Rules'],
     ['caution', 'Needs Caution'],
     ['fail', 'Fails Rules'],

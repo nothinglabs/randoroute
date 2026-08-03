@@ -1186,6 +1186,8 @@ body.navigation-active .maplibregl-user-location-accuracy-circle { display: none
 #settingsVoice .voice-status-grid .rule-check { line-height: 1.2; }
 #settingsVoice .voice-inline-head { min-height: 24px; }
 #settingsVoice .check-rule.rule-card { display: block; }
+#settingsOptions .check-rule.rule-card:has(.rule-check-hint) { display: block; }
+.rule-check-hint { margin: 3px 0 0; line-height: 1.3; }
 #settingsVoice .voice-safety-hint { margin: 3px 0 0; line-height: 1.3; }
 
 /* Navigation locks route-shaping controls; the Navigate pane stays live. */

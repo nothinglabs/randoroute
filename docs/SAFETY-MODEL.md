@@ -310,7 +310,7 @@ consulted.
 | modifier | setting | why it can only caution |
 |---|---|---|
 | limited-access highway, bike-legal | — (a fact, not a choice) | the road meets your rules; the hazard is its type |
-| official stress rating ≥ 4 | — (a fact, not a choice) | see below |
+| official stress rating ≥ 4 | `trustBikeLanes` suppresses it where the road has a painted lane | see below |
 
 When both apply, limited-access wins the headline: it is the more specific
 statement about the road.
@@ -336,8 +336,44 @@ That makes it useless as a gate and valuable as a warning:
 68,190 edges (2,792 mi) move from pass to caution on the
 default preset; 6,088 (138 mi) on Casual Cruiser, where the tighter speed rules
 already fail most of them. It changes no routing cost and can sever nothing, because `requireSafe`
-excludes only level 4. There is no setting for it: an official rating is a fact
-about the road, and a caution costs the rider nothing to be told.
+excludes only level 4.
+
+### `trustBikeLanes` — the one rule that moves no route
+
+**"Always trust bike lanes (even on very busy roads)."** On for The Randonneur,
+which is also a fresh install; off for Weekend Wanderer and Casual Cruiser,
+whose riders are the ones the rating is most worth telling.
+
+A painted lane is space the rider is entitled to, and for a confident rider that
+settles it however the agency rates the road around it. The setting suppresses
+the **stress caution only**, and only where `facility >= 2`:
+
+- it cannot reach a rung above — a bike lane over the rider's speed ceiling
+  still fails, and so does a freeway or a prohibition;
+- it does not clear `limited-access`, which is about ramps crossing the rider's
+  path rather than about traffic (0 mi carry both today);
+- physically separated lanes and shared-use paths never reach it at all. They
+  return at the `infra` rung, above everything except `prohibited` and
+  `freeway`, for every rider whatever this is set to.
+
+**It is the only rule here that changes no route.** `modeMult` prices levels 2
+and 3 identically — only 4 is penalised and 1 gets the comfy-road bonus — and
+the traffic-stress penalty lives in `trafficStressMult`, which reads the rating
+directly and never asks the verdict. So this decides colour, the route card's
+percentages, and what the voice says. Nothing else. The settings hint says so,
+because a rule that looks like a safety rule and moves nothing would otherwise
+be read as one.
+
+Scale: **107 mi across 3,815 edges** — 4.3% of the high-stress cautions, of
+which 3,781 are a plain bike lane and 34 a buffered one. 3,802 of them land at
+level 2, which is cost-identical; thirteen land at level 1 and pick up the
+comfy-road bonus. That is the entire routing delta, and it rounds to zero miles.
+
+The rating is still reported whatever the verdict — `evaluate()` returns
+`highStress` at every level, the road card's traffic-stress row is
+unconditional, and the spoken safety announcement carries it as an aside
+("Bike lane, heavy traffic, in 500 feet, for 2.1 miles"). Trusting a lane is a
+decision about the colour, not a reason to stop saying what the road is.
 
 ### Rung 3 — freeways, and why the toggle is not a verdict
 
