@@ -229,6 +229,9 @@ EDGE_URBAN = 64
 # router-worker.js builds a segment's flags as `eFlags[ei] | 128` for
 # limited-access, so bit 7 there already means something else to the UI.
 EDGE_STRUCTURE = 128
+# Three DEM pixels. Shorter than this a structure's end-to-end rise is noise,
+# not slope -- see structure_climb().
+STRUCTURE_MIN_GRADE_M = 80
 # Surface is intentionally a tiny routing category rather than the original
 # OSM string.  It lets the client prefer pavement without treating incomplete
 # OSM tagging as an instruction to avoid a road.  Gravel rail trails remain
@@ -318,6 +321,18 @@ def structure_climb(coords, way_coords, ele_at):
     """
     total = line_len_m(way_coords)
     if total <= 0:
+        return 0.0, 0.0
+    # Below a few DEM samples there is no grade to measure. The z12 mosaic is
+    # about 26 m per pixel, so a 24 m bridge is ONE pixel: its two ends can
+    # land either side of the ravine and the "rise" is pure sampling artifact.
+    # This is most of the residue -- of the structures still reading steep
+    # after the ramp above, the median is 21 m long and the worst are 5-9 m.
+    #
+    # It is also the Burke-Gilman crossing at Ravenna (OSM way 4704942,
+    # bridge=yes, layer=1, TWO nodes). A two-node way is nothing but its own
+    # endpoints, so sharing the rise out along it changes nothing at all -- the
+    # ramp and the terrain are the same measurement.
+    if total < STRUCTURE_MIN_GRADE_M:
         return 0.0, 0.0
     rise = ele_at(*way_coords[-1]) - ele_at(*way_coords[0])
     delta = rise * (line_len_m(coords) / total)
