@@ -184,16 +184,29 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
 
     @objc func stopTracking(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            self.tracking = false
-            self.stopStatusUpdateTimer()
             self.pendingStartCall?.resolve(self.statusPayload())
             self.pendingStartCall = nil
-            self.locationManager.stopUpdatingLocation()
-            self.locationManager.allowsBackgroundLocationUpdates = false
-            self.locationManager.showsBackgroundLocationIndicator = false
-            self.clearRouteGuidance()
+            self.endTracking()
             call.resolve()
         }
+    }
+
+    /// Everything that ends a ride, in one place.
+    ///
+    /// There are two ways a ride finishes and they used to do different
+    /// things: stopTracking() -- the web layer asking -- tore the session
+    /// down, while arrival, which this guide decides for itself, set a flag,
+    /// spoke one sentence and stopped nothing at all. With the screen locked
+    /// the web layer is suspended and never sees the arrival, so nobody ever
+    /// called stopTracking, and the guide carried on giving directions to a
+    /// rider who had already finished.
+    private func endTracking() {
+        tracking = false
+        stopStatusUpdateTimer()
+        locationManager.stopUpdatingLocation()
+        locationManager.allowsBackgroundLocationUpdates = false
+        locationManager.showsBackgroundLocationIndicator = false
+        clearRouteGuidance()
     }
 
     @objc func updateVoiceSettings(_ call: CAPPluginCall) {
@@ -498,6 +511,11 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                nearest.routeM >= destination.distanceM - 45 {
                 arrived = true
                 speakText("You have arrived at your destination.")
+                // Arriving ends the ride here too, not just in the web layer,
+                // and the web layer is told so both agree the ride is over.
+                // finishTurnNavigation() on that side is idempotent.
+                notifyListeners("arrived", data: [:])
+                endTracking()
             } else if background {
                 maybeSpeakPeriodicStatus(
                     location: location,

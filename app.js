@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-03.531';
+const APP_VERSION = '2026-08-03.532';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4263,6 +4263,10 @@ function ensureNativeNavigationListeners() {
   nativeNavigationListenersReady = Promise.all([
     plugin.addListener('location', (position) => updateTurnNavigation(nativePositionEvent(position))),
     plugin.addListener('locationError', (error) => handleTurnNavigationLocationError(error)),
+    // The native guide decides arrival for itself when the screen is locked --
+    // this layer is suspended then and never sees the fixes that would let it
+    // notice. Without this the ride ended natively and stayed live here.
+    plugin.addListener('arrived', () => finishTurnNavigation()),
   ]).then(() => true).catch((error) => {
     nativeNavigationListenersReady = null;
     throw error;

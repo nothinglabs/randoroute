@@ -6,7 +6,7 @@ Swift changes are reasoned from Apple's documented behaviour and from reading
 `ios/App/App/BridgeViewController.swift`, and every one of them needs a build
 before it is believed.
 
-Start by building. If any of the three changes below does not compile, that is
+Start by building. If any of the four changes below does not compile, that is
 the most likely thing to be wrong with this file.
 
 ---
@@ -35,6 +35,40 @@ is generated — never edit it.
 ---
 
 ## 2. Changed, unverified — check these first
+
+### Arrival ended the announcement, not the ride (user-visible)
+
+Reported from a real ride: "arrived" was announced, and the guide carried on
+giving directions once the rider had biked past.
+
+The two ways a ride finishes did different things. `stopTracking()` -- the web
+layer asking -- tore the session down. Arrival, which this guide decides for
+itself, did this and nothing else:
+
+```swift
+arrived = true
+speakText("You have arrived at your destination.")
+```
+
+No `stopUpdatingLocation`, no `clearRouteGuidance`, and no word to the web
+layer. That matters most exactly where it was reported: with the screen locked
+the web layer is suspended and never sees the fixes that would let it notice
+arrival, so nothing ever called `stopTracking`, and `maybeSpeakPeriodicStatus`
+kept running.
+
+Now both paths go through one `endTracking()`, and arrival also fires
+`notifyListeners("arrived")`. `app.js` subscribes and calls
+`finishTurnNavigation()`, which is idempotent, so the two notices cannot fight
+if an unlocked ride sees both.
+
+**Verify:** lock the screen, ride to the destination, then keep riding past
+it. You should hear the arrival sentence and then nothing further -- no turn
+prompts, no periodic status. Check the blue background-location bar clears.
+Then do the same unlocked, where both halves notice, and confirm arrival is
+announced once rather than twice.
+
+The web half is covered by `scripts/test_navigation_arrival.mjs`, which fires
+the plugin event at a stubbed plugin; only the Swift side is unverified here.
 
 ### The audio session was never released (user-visible)
 
@@ -189,7 +223,7 @@ very little:
 
 ## 5. What the web suite already covers
 
-`npm test` — about 7 minutes, 64 files, and it runs the exact JS the native
+`npm test` — about 7 minutes, 65 files, and it runs the exact JS the native
 shell bundles. Worth running before blaming anything on iOS:
 
 - `test_offline_pwa.mjs` — service worker only, so **not** the native path
