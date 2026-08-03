@@ -42,32 +42,19 @@ const probe = `
       if (!rules.allowFreeways && (fl & 4)) continue;
       if ((fl & 16) && !forward) continue;
       const actualLevel = edgeLevelFor(ei, rules, forward);
-      const mult = modeMult(mode, edgeLevelFor(ei, searchRules, forward));
-      if (mult === Infinity) continue;
-      // routeLeg's cost, minus only the terms the bound openly drops: turn
-      // friction, the dismount entry charge, the ferry boarding wait and the
-      // alternative-corridor penalty. All four are >= 0 or >= 1.
-      let cost = (edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode)) * mult;
-      if (rules.requireSafe && actualLevel === 4) cost *= 30;
-      cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
-        edgeNoShoulderMaxFor(searchRules), edgeShoulder(ei, forward));
-      cost *= hazardMult(modeW, edgeHazard(ei, forward) || 0);
-      cost *= majorRoadMult(ei, modeW, forward);
-      cost *= trafficStressMult(ei, modeW, forward);
-      cost *= sidewalkExposureMult(ei, mode, forward);
-      if (sidewalkFallbackFor(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
-      if (fl & 4) cost *= activeWeights.freeway;
-      if (edgeLimited(ei, forward)) cost *= modeW.limitedAccess;
-      if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
-      if (!(fl & (32 | 4)) && !isDismountEdge(ei) && actualLevel < 4) {
-        cost *= eFacility[ei] ? facilityPrefMult(eFacility[ei])
-          : ((fl & 64) ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
-      }
-      if (prefResidential && !(fl & (8 | 32 | 4)) && !edgeLimited(ei, forward) && isResidential(ei)) {
-        cost *= activeWeights.residential;
-      }
-      cost += steepUphillAvoidanceS(ei, forward, mode);
-      cost += surfacePreferenceS(ei, rules);
+      if (modeMult(mode, edgeLevelFor(ei, searchRules, forward)) === Infinity) continue;
+      // routeLeg's own price for this edge, from routeLeg's own function.
+      // This block used to be a second transcription of that loop, kept in
+      // step by hand; it fell behind the moment a term was added, and every
+      // diagnostic anyone wrote became a third copy. Omitting the three
+      // path-dependent inputs (ferry boarding wait, dismount entry, turn
+      // friction) is deliberate and is exactly what the bound openly drops --
+      // all three are >= 0, so leaving them out keeps this comparison
+      // conservative.
+      const cost = edgeCost(ei, forward, {
+        mode, modeW, rules, searchRules, prefDesig, prefResidential,
+        requiredSafeAccess: rules.requireSafe && actualLevel === 4,
+      });
       checked++;
       const floor = edgeCostFloor(ei, forward);
       // A relative slack, because both sides are long products of doubles.

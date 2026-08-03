@@ -1221,6 +1221,113 @@ function useEdgeCostFloors(rules, searchRules, mode) {
     noShoulderMax, climbRate };
 }
 
+/* What the search charges to ride edge `ei` in one direction.
+ *
+ * This was written out inline in routeLeg's relaxation loop, and a second time
+ * in scripts/test_route_potential.mjs so that the A* lower bound could be
+ * checked against it. Two copies of the price of an edge: the test's copy fell
+ * behind the moment a term was added, and any diagnostic anyone wrote became a
+ * third. Everything that prices an edge calls this now.
+ *
+ * `ctx` carries the search's settings plus the three path-dependent inputs,
+ * which are the only reason this cannot be a pure function of the edge:
+ * `boardingWaitS` (a ferry costs its wait only where this end has land),
+ * `incomingEdge` and `fromNode` (a dismount run is charged once, and turn
+ * friction depends on what you turned off). Omit them and you get the
+ * edge-only price -- which is exactly what edgeCostFloor() has to bound.
+ */
+function edgeCost(ei, forward, ctx) {
+  const fl = eFlags[ei];
+  const actualLevel = edgeLevelFor(ei, ctx.rules, forward);
+  const searchLevel = ctx.searchRules === ctx.rules
+    ? actualLevel : edgeLevelFor(ei, ctx.searchRules, forward);
+  const mult = modeMult(ctx.mode, searchLevel);
+  if (!(mult < Infinity)) return Infinity;
+  let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, ctx.mode);
+  step += ctx.boardingWaitS || 0;   // ferry boarding, when this end has land
+  let cost = step * mult;
+  // An exempted terminal-access block is a last resort, never a shortcut:
+  // any reasonable fully-safe approach must still win.
+  if (ctx.requiredSafeAccess) cost *= 30;
+  cost *= speedStress(ctx.mode, fl, edgeSpeed(ei, forward),
+    edgeNoShoulderMaxFor(ctx.searchRules), edgeShoulder(ei, forward));
+  cost *= hazardMult(ctx.modeW, edgeHazard(ei, forward) || 0);
+  cost *= majorRoadMult(ei, ctx.modeW, forward);
+  cost *= trafficStressMult(ei, ctx.modeW, forward);
+  cost *= sidewalkExposureMult(ei, ctx.mode, forward);
+  if (sidewalkFallbackFor(ei, ctx.searchRules, forward)) cost *= sidewalkFallbackMult(ctx.mode);
+  if (fl & 4) cost *= activeWeights.freeway;
+  // Every other signal costs more as the profile gets friendlier, and this
+  // one must too: limitedAccessLowStress sat at 1.0, so the low-stress profile applied
+  // no penalty at all to a bike-legal limited-access highway -- less than
+  // balanced. The friendliest route was the one most willing to put a rider
+  // on a highway shoulder.
+  if (edgeLimited(ei, forward)) cost *= ctx.modeW.limitedAccess;
+  if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
+  // Bonuses never apply to ferries, freeways, or WSDOT limited-access
+  // highways: preference must not erase their access/caution costs. For
+  // an ordinary road, a physical facility beats designation alone; when
+  // both are present, use whichever benefit is stronger rather than
+  // stacking them into an outsized corridor bonus.
+  // A signed route is a recommendation, not a fact about the road, so the
+  // bonus is withheld from an edge that FAILS the rider's rules. It is not
+  // withheld from a caution: a caution means the rules are met with a
+  // caveat, and two of its three causes -- a limited-access highway and an
+  // official high-stress rating -- are facts about the road rather than
+  // anything the rider set.
+  //
+  // A WSDOT limited-access edge is no longer excluded either. Its penalty
+  // (limitedAccess*) is applied separately just above and stands
+  // on its own; withholding the bonus as well counted it twice, and left a
+  // signed shoulder route along a state highway priced identically to any
+  // other highway -- the case where a designation carries the most
+  // information for a touring rider.
+  //
+  // A physical facility now always speaks for itself rather than competing
+  // with designation through Math.min. That comparison was written when
+  // designation was 0.86, weaker than every facility weight; at 0.5 it
+  // silently inverted, making a signed road with no infrastructure beat a
+  // road with a painted bike lane (0.68).
+  if (!(fl & (32 | 4)) && !isDismountEdge(ei) && actualLevel < 4) {
+    const signed = fl & 64;
+    cost *= eFacility[ei]
+      ? facilityPrefMult(eFacility[ei])
+      : (signed ? activeWeights[ctx.prefDesig ? 'strongDesignated' : 'designated'] : 1);
+  }
+  if (ctx.prefResidential && !(fl & (8 | 32 | 4))
+      && !edgeLimited(ei, forward) && isResidential(ei)) {
+    cost *= activeWeights.residential;
+  }
+  // Alternative-corridor probes softly penalize ordinary road edges from
+  // one already-found path. Protected lanes and shared paths may remain a
+  // common trunk: leaving excellent infrastructure merely to be different
+  // creates fussy neighborhood detours instead of a useful alternative.
+  const protectedInfrastructure = (fl & 8) || eFacility[ei] >= 4;
+  if (ctx.diversityEdges?.has(ei) && !protectedInfrastructure && !(fl & 32)) {
+    cost *= ctx.diversityFactor;
+  }
+  // Grade is an independent rideability concern. Apply it after every
+  // safety, facility, residential, and alternate-corridor multiplier so
+  // a path bonus cannot shrink the penalty for a genuinely steep climb.
+  cost += steepUphillAvoidanceS(ei, forward, ctx.mode);
+  // Similarly, a designated trail remains eligible but should not erase
+  // the rider's explicit preference for pavement.
+  cost += surfacePreferenceS(ei, ctx.rules);
+  // Dismount access remains available to repair a genuinely connected
+  // cycling corridor, but entering it has a fixed interruption cost in
+  // addition to the walking time returned by edgeTimeS().  Because the
+  // search state includes the incoming edge, a continuous dismount run is
+  // charged once rather than once for every split graph edge.
+  if (isDismountEdge(ei) && (ctx.incomingEdge == null || ctx.incomingEdge < 0
+      || !isDismountEdge(ctx.incomingEdge))) {
+    cost += DISMOUNT_ENTRY_PENALTY_S;
+  }
+  // Turn friction is independent of the road entered: a bike facility or
+  // residential bonus should not make repeated intersection turns free.
+  if (ctx.fromNode != null) cost += turnPreferenceS(ctx.incomingEdge, ctx.fromNode, ei, ctx.mode);
+  return cost;
+}
+
 function edgeCostFloor(i, forward) {
   const { rules, searchRules, mode, weights, limitedFloor, freewayFloor, mtbFloor,
     designatedFloor, residentialFloor, facility, belowRate, noShoulderMax, climbRate } = floorSetup;
@@ -1484,90 +1591,14 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       const requiredSafeAccess = rules.requireSafe && actualLevel === 4;
       // Discovery lenses may price an otherwise-allowed edge more
       // conservatively, but they never change legality or reported safety.
-      const searchLevel = edgeLevelFor(ei, searchRules, forward);
-      const mult = modeMult(mode, searchLevel);
-      if (mult === Infinity) continue;
-      let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode);
-      if ((fl & 32) && nodeHasLand[u]) step += activeWeights.ferryWaitMin * 60; // boarding
-      let cost = step * mult;
-      // An exempted terminal-access block is a last resort, never a shortcut:
-      // any reasonable fully-safe approach must still win.
-      if (requiredSafeAccess) cost *= 30;
-      cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
-        edgeNoShoulderMaxFor(searchRules), edgeShoulder(ei, forward));
-      cost *= hazardMult(modeW, edgeHazard(ei, forward) || 0);
-      cost *= majorRoadMult(ei, modeW, forward);
-      cost *= trafficStressMult(ei, modeW, forward);
-      cost *= sidewalkExposureMult(ei, mode, forward);
-      if (sidewalkFallbackFor(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
-      if (fl & 4) cost *= activeWeights.freeway;
-      // Every other signal costs more as the profile gets friendlier, and this
-      // one must too: limitedAccessLowStress sat at 1.0, so the low-stress profile applied
-      // no penalty at all to a bike-legal limited-access highway -- less than
-      // balanced. The friendliest route was the one most willing to put a rider
-      // on a highway shoulder.
-      if (edgeLimited(ei, forward)) cost *= modeW.limitedAccess;
-      if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
-      // Bonuses never apply to ferries, freeways, or WSDOT limited-access
-      // highways: preference must not erase their access/caution costs. For
-      // an ordinary road, a physical facility beats designation alone; when
-      // both are present, use whichever benefit is stronger rather than
-      // stacking them into an outsized corridor bonus.
-      // A signed route is a recommendation, not a fact about the road, so the
-      // bonus is withheld from an edge that FAILS the rider's rules. It is not
-      // withheld from a caution: a caution means the rules are met with a
-      // caveat, and two of its three causes -- a limited-access highway and an
-      // official high-stress rating -- are facts about the road rather than
-      // anything the rider set.
-      //
-      // A WSDOT limited-access edge is no longer excluded either. Its penalty
-      // (limitedAccess*) is applied separately just above and stands
-      // on its own; withholding the bonus as well counted it twice, and left a
-      // signed shoulder route along a state highway priced identically to any
-      // other highway -- the case where a designation carries the most
-      // information for a touring rider.
-      //
-      // A physical facility now always speaks for itself rather than competing
-      // with designation through Math.min. That comparison was written when
-      // designation was 0.86, weaker than every facility weight; at 0.5 it
-      // silently inverted, making a signed road with no infrastructure beat a
-      // road with a painted bike lane (0.68).
-      if (!(fl & (32 | 4)) && !isDismountEdge(ei) && actualLevel < 4) {
-        const signed = fl & 64;
-        cost *= eFacility[ei]
-          ? facilityPrefMult(eFacility[ei])
-          : (signed ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
-      }
-      if (prefResidential && !(fl & (8 | 32 | 4))
-          && !edgeLimited(ei, forward) && isResidential(ei)) {
-        cost *= activeWeights.residential;
-      }
-      // Alternative-corridor probes softly penalize ordinary road edges from
-      // one already-found path. Protected lanes and shared paths may remain a
-      // common trunk: leaving excellent infrastructure merely to be different
-      // creates fussy neighborhood detours instead of a useful alternative.
-      const protectedInfrastructure = (fl & 8) || eFacility[ei] >= 4;
-      if (diversityEdges?.has(ei) && !protectedInfrastructure && !(fl & 32)) {
-        cost *= diversityFactor;
-      }
-      // Grade is an independent rideability concern. Apply it after every
-      // safety, facility, residential, and alternate-corridor multiplier so
-      // a path bonus cannot shrink the penalty for a genuinely steep climb.
-      cost += steepUphillAvoidanceS(ei, forward, mode);
-      // Similarly, a designated trail remains eligible but should not erase
-      // the rider's explicit preference for pavement.
-      cost += surfacePreferenceS(ei, rules);
-      // Dismount access remains available to repair a genuinely connected
-      // cycling corridor, but entering it has a fixed interruption cost in
-      // addition to the walking time returned by edgeTimeS().  Because the
-      // search state includes the incoming edge, a continuous dismount run is
-      // charged once rather than once for every split graph edge.
-      if (isDismountEdge(ei) && (incomingEdge < 0 || !isDismountEdge(incomingEdge))) {
-        cost += DISMOUNT_ENTRY_PENALTY_S;
-      }
-      // Turn friction is independent of the road entered: a bike facility or
-      // residential bonus should not make repeated intersection turns free.
-      cost += turnPreferenceS(incomingEdge, u, ei, mode);
+      const cost = edgeCost(ei, forward, {
+        mode, modeW, rules, searchRules, prefDesig, prefResidential,
+        diversityEdges, diversityFactor,
+        requiredSafeAccess,
+        boardingWaitS: (fl & 32) && nodeHasLand[u] ? activeWeights.ferryWaitMin * 60 : 0,
+        incomingEdge, fromNode: u,
+      });
+      if (!(cost < Infinity)) continue;
       const nd = du + cost;
       if (Math.abs(searchStamp[a]) !== generation || nd < searchDist[a]) {
         searchStamp[a] = generation;

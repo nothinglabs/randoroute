@@ -38,7 +38,10 @@ assert.equal(context.turnPreferenceS(0, 1, 1, 'low'), 15,
   'a right turn should receive the friendly-mode cost');
 assert.equal(context.turnPreferenceS(0, 1, 4, 'balanced'), 22,
   'a reversal should cost twice an ordinary turn');
-assert.match(worker, /cost \+= turnPreferenceS\(incomingEdge, u, ei, mode\)/,
-  'A* should include turn friction as a transition cost');
+// The behavioural half of this claim -- that edgeCost() charges turn friction
+// once and whole when given the arrival state -- is asserted against the real
+// graph in test_steep_grade_avoidance.mjs. Matching router-worker.js for the
+// literal call pinned a spelling: it broke when the cost moved into edgeCost()
+// and would have passed if the term had been dropped from the total.
 
 console.log('Turn preference tests passed.');
