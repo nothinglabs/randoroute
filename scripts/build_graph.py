@@ -232,6 +232,21 @@ EDGE_STRUCTURE = 128
 # Three DEM pixels. Shorter than this a structure's end-to-end rise is noise,
 # not slope -- see structure_climb().
 STRUCTURE_MIN_GRADE_M = 80
+# An `incline=` steeper than this is a typo, not a hill. The extract holds
+# values up to 208%.
+MAX_STATED_INCLINE_PCT = 30
+# A railway was graded for trains: mainline ruling grades sit near 2.2%, and
+# the Burke-Gilman states 1.0-1.2% for itself. Capping a converted corridor
+# here keeps every genuine rail grade untouched while putting a phantom well
+# under GRADUAL_UPHILL_AVOID_PCT (9), so a rail-trail can never be priced as a
+# steep climb.
+#
+# The known cost: where a trestle was removed the trail really does dip down
+# and back up, and this understates that. Those are short and rare, and the
+# alternative -- believing a DEM that reads 37.7% on a rail-trail -- was
+# routing riders off the corridor for miles.
+RAIL_TRAIL_MAX_GRADE_PCT = 5
+RAIL_TRAIL_RAILWAY = {'abandoned', 'disused', 'razed', 'dismantled'}
 # Surface is intentionally a tiny routing category rather than the original
 # OSM string.  It lets the client prefer pavement without treating incomplete
 # OSM tagging as an instruction to avoid a road.  Gravel rail trails remain
@@ -305,6 +320,69 @@ def load_dem():
             return int(mosaic[py, px])
         return 0
     return ele_at
+
+
+def is_structure_way(tags):
+    """A bridge or tunnel. `bridge=viaduct`, `bridge=trestle` and
+    `tunnel=building_passage` all count -- test the KEY, not the value. Only an
+    explicit "no" means the way is on the ground."""
+    return ((tags.get('bridge') not in (None, 'no'))
+            or (tags.get('tunnel') not in (None, 'no')))
+
+
+def parse_incline_pct(value):
+    """A stated incline as a percentage, or None if it does not state one.
+
+    OSM allows `up`, `down`, `steep` and degree values as well; only a plain
+    percentage is a number we can use. The sign is relative to the way's own
+    direction.
+    """
+    if not value:
+        return None
+    m = re.match(r'^\s*([+-]?\d+(?:\.\d+)?)\s*%\s*$', value)
+    if not m:
+        return None
+    pct = float(m.group(1))
+    if abs(pct) > MAX_STATED_INCLINE_PCT:
+        return None
+    return pct
+
+
+def edge_grade(coords, way_coords, tags, ele_at, is_ferry=False, reversed_way=False):
+    """(ascent, descent) for one edge -- the ONE answer to how much it climbs.
+
+    Three signals can speak to this and they used to be nowhere: the DEM walk
+    was the only voice, and it is the least reliable of them. In priority:
+
+    1. `incline=` -- OSM stating the grade outright. Rare (690 ways statewide
+       parse as a percentage) but authoritative where present. The Burke-Gilman
+       says 1.0% about itself while the terrain under it reads 16.9%.
+    2. A bridge or tunnel deck, which the DEM cannot see at all.
+    3. `railway=abandoned` and friends -- a corridor graded for trains, so its
+       grade is capped rather than replaced.
+
+    Anything else falls through to the terrain walk, which is right for an
+    ordinary road and wrong for everything a structure or an embankment does.
+    """
+    if is_ferry:
+        return 0.0, 0.0
+    length = line_len_m(coords)
+    stated = parse_incline_pct(tags.get('incline'))
+    if stated is not None:
+        # `incline` is signed along the way as drawn; oneway_dir() may have
+        # reversed the point list, which flips what "up" means.
+        if reversed_way:
+            stated = -stated
+        rise = length * stated / 100.0
+        return (max(0.0, rise), max(0.0, -rise))
+    if is_structure_way(tags):
+        asc, des = structure_climb(coords, way_coords, ele_at)
+    else:
+        asc, des = edge_climb(coords, ele_at)
+    if tags.get('railway') in RAIL_TRAIL_RAILWAY:
+        cap = length * RAIL_TRAIL_MAX_GRADE_PCT / 100.0
+        asc, des = min(asc, cap), min(des, cap)
+    return asc, des
 
 
 def structure_climb(coords, way_coords, ele_at):
@@ -1194,7 +1272,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                 densified_paths[0] += 1
                 pts = expanded
         ow = oneway_dir(tags)
-        if ow == -1:
+        reversed_way = ow == -1
+        if reversed_way:
             pts = pts[::-1]
             ow = 1
 
@@ -1220,11 +1299,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                  or (tags.get('ref') and REF_STATE.search(tags['ref'])))
         )
 
-        # `bridge=viaduct`, `bridge=trestle`, `tunnel=building_passage` and so
-        # on are all structures; test the KEY, not the value. Only an explicit
-        # "no" means the way is on the ground.
-        is_structure = ((tags.get('bridge') not in (None, 'no'))
-                        or (tags.get('tunnel') not in (None, 'no')))
+        is_structure = is_structure_way(tags)
 
         flags = ((1 if attrs['est'] else 0) | (2 if attrs['facility'] else 0)
                  | (4 if attrs['lim'] else 0) | (8 if attrs['infra'] else 0)
@@ -1343,17 +1418,9 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                     e_adt_source = int(m.get('adtSrc') or 0)
                                     e_class_owner = pack_class_owner(
                                         m.get('fc'), m.get('owner'))
-                            if is_ferry:
-                                asc, des = 0.0, 0.0
-                            elif is_structure:
-                                # A deck is a straight grade between its own
-                                # ends, which are the only two points on it
-                                # that sit on the ground the DEM describes.
-                                # Everything between is what the bridge exists
-                                # to ignore.
-                                asc, des = structure_climb(coords, way_coords, ele_at)
-                            else:
-                                asc, des = edge_climb(coords, ele_at)
+                            asc, des = edge_grade(coords, way_coords, tags, ele_at,
+                                                  is_ferry=is_ferry,
+                                                  reversed_way=reversed_way)
                             if is_ferry or attrs['infra']:
                                 haz_ab = haz_ba = (0, 0, 0)
                             else:
