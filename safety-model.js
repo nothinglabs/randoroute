@@ -340,24 +340,27 @@
     // Two facts about a road can turn a pass into a caution without ever
     // failing it. Neither can rescue a road that failed a rung above.
     var highStress = Number(facts.stressRating) >= STRESS_CAUTION_AT;
-    // `trustBikeLanes` -- "Always trust bike lanes (even on very busy roads)".
-    // A painted lane is space the rider is entitled to, and for some riders
-    // that settles it however the road around it is rated. It suppresses the
-    // stress caution ONLY: the hard rungs above are untouched, so a bike lane
-    // on a road over the rider's speed ceiling still fails, and it does not
-    // clear the limited-access caution, which is about ramps crossing the
-    // rider's path rather than about traffic. Physically separated lanes and
-    // paths never reach here at all -- they return at the `infra` rung above,
-    // for every rider, whatever this is set to.
+    // A road with a bike lane of any kind is not cautioned for traffic. The
+    // lane is space the rider is entitled to, which is a different thing from a
+    // shoulder, and the caution rung exists for roads whose space is not
+    // theirs. Uniform for every rider: this is a statement about what a bike
+    // lane IS, not a preference about how much risk to accept.
     //
-    // The rating itself is still reported, in `highStress` below and on the
-    // road card, whatever the verdict: trusting a lane is a decision about the
-    // colour, not a reason to stop saying what the road is.
-    var trustedPaint = !!rules.trustBikeLanes && Number(facts.facility) >= 2;
+    // It suppresses the stress caution ONLY. The hard rungs above are
+    // untouched, so a bike lane on a road over the rider's speed ceiling still
+    // fails, and it does not clear the limited-access caution, which is about
+    // ramps crossing the rider's path rather than about traffic. Physically
+    // separated lanes and paths never reach here -- they return at the `infra`
+    // rung above.
+    //
+    // What it does NOT do is make the road bike network. The rating is still
+    // reported in `highStress` below, and the colour logic withholds the lime
+    // on that basis: the road passes, and it is not a lane we would advertise.
+    var paintedLane = Number(facts.facility) >= 2;
     // A limited-access highway is the more specific statement, so it wins the
     // headline when both are true.
     var softCaution = limited ? 'limited-access'
-      : (highStress && !trustedPaint) ? 'high-stress' : null;
+      : (highStress && !paintedLane) ? 'high-stress' : null;
     var out = function (level, rule, caution) {
       return {
         level: level, rule: rule, shoulder: shoulder, limitedAccess: limited,

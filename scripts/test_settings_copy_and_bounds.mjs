@@ -100,47 +100,6 @@ check('re-picking the preset already in force changes nothing',
   reapply.same.unchanged, JSON.stringify(reapply));
 check('and picking a different one does', reapply.changedRules, JSON.stringify(reapply));
 
-/* ------------------------------------------ trusted bike lanes, per preset */
-// On for The Randonneur -- and so for a fresh install, which inherits the same
-// rules -- off for the two presets whose riders most want the official rating
-// told to them.
-const trust = await page.evaluate(async () => {
-  const apply = async (id) => {
-    applyRoutingPreset(id);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    return rules.trustBikeLanes;
-  };
-  const out = {
-    default: DEFAULT_RULES.trustBikeLanes,
-    randonneur: await apply('randonneur'),
-    wanderer: await apply('weekend-wanderer'),
-    cruiser: await apply('casual-cruiser'),
-  };
-  await apply('randonneur');
-  const box = document.getElementById('r-trustBikeLanes');
-  out.hasCheckbox = !!box;
-  out.hint = box?.closest('.check-rule')?.querySelector('.rule-check-hint')?.textContent || '';
-  if (box) {
-    box.checked = false;
-    box.dispatchEvent(new Event('change', { bubbles: true }));
-    out.afterUncheck = rules.trustBikeLanes;
-    box.checked = true;
-    box.dispatchEvent(new Event('change', { bubbles: true }));
-    out.afterRecheck = rules.trustBikeLanes;
-  }
-  return out;
-});
-check('The Randonneur trusts bike lanes, and so does a fresh install',
-  trust.randonneur === true && trust.default === true, JSON.stringify(trust));
-check('the other two presets do not',
-  trust.wanderer === false && trust.cruiser === false, JSON.stringify(trust));
-check('the setting has its own control', trust.hasCheckbox === true, JSON.stringify(trust));
-check('which drives the rule', trust.afterUncheck === false && trust.afterRecheck === true,
-  JSON.stringify(trust));
-// The only rule in this pane that moves no route, so it has to say so.
-check('and says plainly that it does not change the route',
-  /does not change/i.test(trust.hint), trust.hint);
-
 check('using the settings pane raises no errors', errors.length === 0, errors.join(' | '));
 
 await browser.close();

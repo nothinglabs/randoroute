@@ -47,8 +47,15 @@ const ROAD_CLASS_NAME = {
 function isBikeNetwork(seg) {
   const flags = seg.flags || 0;
   // Facility 1 is a sharrow in the route graph. It remains a shared road and
-  // must not become lime or inflate the bike-lane percentage.
-  return !!(flags & FLAG_INFRA) || (seg.facility || 0) >= 2;
+  // must not become lime or inflate the bike-lane percentage. Nor does a
+  // painted lane on a road rated 4 of 4 for traffic stress: it passes the
+  // rules, and it is not a lane worth advertising. Separated lanes and paths
+  // (4+) keep the credit whatever the rating says. Mirrors
+  // isBikeNetworkVerdict() and bikeNetworkExpr() in app.js.
+  if (flags & FLAG_INFRA) return true;
+  const facility = seg.facility || 0;
+  if (facility >= 4) return true;
+  return facility >= 2 && !(Number(seg.lts) >= (window.SafetyModel?.STRESS_CAUTION_AT || 4));
 }
 
 function isOffStreetTrail(seg) {

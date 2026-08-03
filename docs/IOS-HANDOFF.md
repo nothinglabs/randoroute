@@ -96,7 +96,30 @@ promise. A timeout that rejects after, say, 30 s would close it.
 
 ---
 
-## 3a. The speech queue, and why `speakText` no longer interrupts
+## 3a. Keeping the screen awake — there is no native code for it
+
+`isIdleTimerDisabled` appears **nowhere** in `ios/`. While navigating, the app
+holds the screen on through the WEB Screen Wake Lock API
+(`requestNavigationWakeLock` in `app.js`), which WKWebView has supported since
+iOS 16.4. It is requested when a ride starts, released when it stops, re-taken
+on `visibilitychange`, and now gated on a rider setting — **Settings → Voice →
+"Keep the screen awake while navigating"**, on by default.
+
+Until today the native path also cleared `screenMaySleep`, which is the flag
+behind the "Screen may sleep on this device" warning — so on iOS that warning
+could never appear, whether or not the lock had actually been taken. That is
+fixed: only the wake lock sets it now.
+
+**Worth doing on a Mac:** wire `UIApplication.shared.isIdleTimerDisabled` to
+`startTracking`/`stopTracking`, and expose a bridge call so the web setting can
+drive it. That is the reliable mechanism on iOS and does not depend on WKWebView
+exposing the web API. Whether the web lock actually works in the shipped shell
+is the first thing to measure — a ride where the screen locks after 30 s tells
+you it does not.
+
+---
+
+## 3a2. The speech queue, and why `speakText` no longer interrupts
 
 `speakText` still does this:
 
@@ -166,7 +189,7 @@ very little:
 
 ## 5. What the web suite already covers
 
-`npm test` — about 7 minutes, 42 files, and it runs the exact JS the native
+`npm test` — about 7 minutes, 64 files, and it runs the exact JS the native
 shell bundles. Worth running before blaming anything on iOS:
 
 - `test_offline_pwa.mjs` — service worker only, so **not** the native path

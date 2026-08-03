@@ -163,32 +163,29 @@ check('a mixed stretch reports the reason covering most of it',
 // caution -- the rider decided that -- but the rating is still a fact about the
 // road, and they asked to hear it. It rides as an aside rather than an alert.
 const headsUp = await page.evaluate(() => {
-  const say = (seg, trust) => {
-    const before = rules.trustBikeLanes;
-    rules.trustBikeLanes = trust;
+  const say = (seg) => {
     const segs = [{ lenM: 3200, c0: 0, c1: 1, ...seg }];
-    const runs = buildRouteSafetyRuns(segs, [0, 3200]);
-    const run = runs[0];
-    rules.trustBikeLanes = before;
+    const run = buildRouteSafetyRuns(segs, [0, 3200])[0];
     return { category: run.category, text: safetyRunSpeech(run.category,
-      SAFETY_REASON_SPEECH[run.reason], navDistanceText(3200), navDistanceText(150)) };
+      SAFETY_REASON_SPEECH[run.reason], navDistanceText(3200), navDistanceText(150),
+      run.hasLane) };
   };
   // No stored level -- the point is what the rider's rules make of the road.
   const busyLane = { facility: 2, mph: 40, sh: 0, lanes: 5, lts: 4,
     measures: { adt: 21000, fc: 3 } };
   return {
-    trusted: say(busyLane, true),
-    untrusted: say(busyLane, false),
-    quiet: say({ facility: 2, mph: 25, sh: 4 }, true),
-    separated: say({ facility: 4, flags: 8, mph: 40, sh: 0, lts: 4 }, true),
+    busyLane: say(busyLane),
+    quiet: say({ facility: 2, mph: 25, sh: 4 }),
+    separated: say({ facility: 4, flags: 8, mph: 40, sh: 0, lts: 4 }),
+    noLane: say({ mph: 25, sh: 4, lts: 4 }),
   };
 });
-check('a trusted bike lane is announced as a bike lane, not a caution',
-  headsUp.trusted.category === 'bike'
-    && /^Bike lane, heavy traffic in /.test(headsUp.trusted.text), JSON.stringify(headsUp));
-check('with it off the same road is the caution it was',
-  headsUp.untrusted.category === 'caution'
-    && /^Caution\. Heavy traffic in /.test(headsUp.untrusted.text), JSON.stringify(headsUp));
+check('a bike lane on a busy road is announced as a bike lane, not a caution',
+  headsUp.busyLane.category === 'pass'
+    && /^Bike lane, heavy traffic in /.test(headsUp.busyLane.text), JSON.stringify(headsUp));
+check('a busy road WITHOUT a lane is still the caution it was',
+  headsUp.noLane.category === 'caution'
+    && /^Caution\. Heavy traffic in /.test(headsUp.noLane.text), JSON.stringify(headsUp));
 check('a bike lane on a quiet road says nothing extra',
   headsUp.quiet.text === 'Bike lane in 150 feet, for 2.0 miles.', JSON.stringify(headsUp));
 check('and a separated lane on a busy road carries the same heads-up',

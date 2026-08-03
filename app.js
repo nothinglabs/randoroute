@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-03.525';
+const APP_VERSION = '2026-08-03.526';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -126,17 +126,6 @@ const DEFAULT_RULES = Object.freeze({
   // 2,000 vehicles a day or a major collector where there is no count.
   busyNoShoulder: 2,
   allowSidewalkFallback: true, // a mapped sidewalk can satisfy the shoulder rule, with caution
-  // "Always trust bike lanes (even on very busy roads)". A painted lane is
-  // space the rider is entitled to, and for a confident rider that settles it
-  // however the agency rates the road around it. On here, which means on for
-  // The Randonneur (it inherits DEFAULT_RULES wholesale) and on for a fresh
-  // install; Weekend Wanderer and Casual Cruiser switch it off, because the
-  // official rating is most worth hearing for the riders those presets are for.
-  //
-  // It changes the VERDICT and nothing else. Levels 2 and 3 cost the router
-  // exactly the same (modeMult), so no route moves; separated lanes and paths
-  // are green for everyone regardless, at a rung above this.
-  trustBikeLanes: true,
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
@@ -823,6 +812,8 @@ const navVoice = {
     ? true : savedState.voiceStatusMiles,
   statusEta: !savedState || typeof savedState.voiceStatusEta !== 'boolean'
     ? true : savedState.voiceStatusEta,
+  keepScreenAwake: !savedState || typeof savedState.keepScreenAwake !== 'boolean'
+    ? true : savedState.keepScreenAwake,
   safetyLevels: !savedState || typeof savedState.voiceSafetyLevels !== 'boolean'
     ? true : savedState.voiceSafetyLevels,
   offRouteMode: AUTOMATIC_OFF_ROUTE_RECOVERY_ENABLED ? savedOffRouteRecoveryMode : 'guidance',
@@ -853,9 +844,6 @@ const ROUTING_PRESETS = Object.freeze([
       // Randonneur only. This preset is for riders who want slower roads honoured
       // literally, so a shoulder it infers rather than reads is not good enough.
       inferShoulderFromEdge: false,
-      // The official stress rating is exactly what a rider on this preset wants
-      // to be told about, so a painted lane does not silence it here.
-      trustBikeLanes: false,
     }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
@@ -875,9 +863,6 @@ const ROUTING_PRESETS = Object.freeze([
       // route is filtered to fully matching road. An inferred shoulder must not
       // be what lets a road into that set.
       inferShoulderFromEdge: false,
-      // The official stress rating is exactly what a rider on this preset wants
-      // to be told about, so a painted lane does not silence it here.
-      trustBikeLanes: false,
     }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
@@ -1013,6 +998,7 @@ function saveStateNow() {
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
       voiceSafetyLevels: navVoice.safetyLevels,
+      keepScreenAwake: navVoice.keepScreenAwake,
       navigationOffRouteMode: navVoice.offRouteMode,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       showAdvancedTools: uiPrefs.showAdvancedTools,
@@ -1243,14 +1229,23 @@ function bikeNetworkExpr(src) {
   if (src.id === 'osm') return notSharedLaneExpr();
   if (src.id === 'roads') {
     // ft 1 is a sharrow: paint in a shared lane, not a facility of your own.
-    return ['>=', ['coalesce', ['get', 'ft'], 0], 2];
+    // A painted lane (2-3) on a road rated 4 of 4 for traffic stress is not
+    // bike network either -- it passes, and it draws blue. Separated lanes and
+    // paths (4-5) keep their lime whatever the rating says.
+    return ['any', ['>=', ['coalesce', ['get', 'ft'], 0], 4],
+      ['all', ['>=', ['coalesce', ['get', 'ft'], 0], 2],
+        ['<', ['coalesce', ['get', 'lts'], 0], 4]]];
   }
   if (src.id === 'blts') {
     // The source carries no sharrow value, so only the empty and literal 'nan'
     // placeholders need excluding -- 3 features whose facility type is the
     // string "nan" would otherwise paint as infrastructure.
     return ['all', ['has', 'BikeFacilityType'],
-      ['!', ['in', ['coalesce', ['get', 'BikeFacilityType'], ''], ['literal', ['', 'nan']]]]];
+      ['!', ['in', ['coalesce', ['get', 'BikeFacilityType'], ''], ['literal', ['', 'nan']]]],
+      // Same rule as the road tiles: a lane on a road WSDOT rates 4 of 4 is not
+      // advertised as bike network. This source carries no facility grade, so
+      // there is no separated-lane exemption to make here.
+      ['<', ['coalesce', ['get', 'LTS_Bicycle'], 0], 4]];
   }
   return ['boolean', false];
 }
@@ -1286,8 +1281,18 @@ function opaqueBackgroundVerdictColorExpr(src, levelExpr = ['get', 'level']) {
   ];
 }
 
+// Lime is a recommendation, not an inventory. A painted lane on a road the
+// agency rates 4 of 4 for traffic stress is space the rider is entitled to --
+// so the road passes, and the caution rung lets it go -- but it is not a lane
+// worth advertising, so it draws blue with the other passing roads. Physical
+// separation is exempt: `infra` is the credit that a rating cannot take away.
+function isHighStressVerdict(n) {
+  return Number(n && n.stressRating) >= SafetyModel.STRESS_CAUTION_AT;
+}
 function isBikeNetworkVerdict(n) {
-  return !!(n && (n.infra || n.good_facility));
+  if (!n) return false;
+  if (n.infra) return true;
+  return !!n.good_facility && !isHighStressVerdict(n);
 }
 
 /* -------------------------------------------------------- status UI */
@@ -3436,8 +3441,13 @@ const SAFETY_RUN_HERE_M = 40;
  * the pause a rider hears as "listen to the next bit", and some of them read a
  * dash aloud.
  */
-function safetyRunSpeech(category, reason, lengthText, aheadText) {
-  const head = SAFETY_RUN_HEAD[category];
+function safetyRunSpeech(category, reason, lengthText, aheadText, hasLane = false) {
+  // A road with a bike lane that draws blue -- because the agency rates it
+  // worst-on-scale -- is still a road with a bike lane. "Normal road" would be
+  // false to the rider's eyes. The colour answers "would we recommend this";
+  // the voice answers "what am I about to be riding on", and they are allowed
+  // to differ.
+  const head = category === 'pass' && hasLane ? 'Bike lane' : SAFETY_RUN_HEAD[category];
   if (!head) return null;
   const alert = category === 'caution' || category === 'fail';
   // An alert leads with the word that makes a rider listen and then names the
@@ -3526,14 +3536,19 @@ function buildRouteSafetyRuns(segs, cumulative) {
     if (last && last.category === category && Math.abs(last.endM - startM) < 1) {
       last.endM = endM;
     } else {
-      run = { category, startM, endM, spoken: false, reasons: new Map() };
+      run = { category, startM, endM, spoken: false, laneM: 0, reasons: new Map() };
       runs.push(run);
     }
     if (category === 'ferry') continue;
+    if ((seg.facility || 0) >= 2 || (seg.flags || 0) & 8) run.laneM += endM - startM;
     const reason = routeSegmentSafetyReason(seg);
     if (reason) run.reasons.set(reason, (run.reasons.get(reason) || 0) + (endM - startM));
   }
-  for (const run of runs) run.reason = dominantRunReason(run.reasons);
+  for (const run of runs) {
+    run.reason = dominantRunReason(run.reasons);
+    // Most of the stretch, not a token few metres of it.
+    run.hasLane = run.laneM > (run.endM - run.startM) / 2;
+  }
   return runs;
 }
 
@@ -3564,7 +3579,7 @@ function maybeSpeakSafetyChange() {
   run.spoken = true;
   speakNavigation(safetyRunSpeech(run.category, SAFETY_REASON_SPEECH[run.reason],
     navDistanceText(lengthM),
-    aheadM >= SAFETY_RUN_HERE_M ? navDistanceText(aheadM) : null), 'safety');
+    aheadM >= SAFETY_RUN_HERE_M ? navDistanceText(aheadM) : null, run.hasLane), 'safety');
   return true;
 }
 
@@ -4314,7 +4329,7 @@ function nativeNavigationRoutePayload() {
         startM: Number(run.startM) || 0,
         endM: Number(run.endM) || 0,
         text: safetyRunSpeech(run.category, SAFETY_REASON_SPEECH[run.reason],
-          navDistanceText(run.endM - run.startM), null),
+          navDistanceText(run.endM - run.startM), null, run.hasLane),
       })),
   };
 }
@@ -4348,7 +4363,6 @@ async function startNativeNavigationTracking() {
       return false;
     }
     turnNav.nativeTracking = true;
-    turnNav.screenMaySleep = false;
     if (status?.accuracy === 'reduced') {
       turnNav.message = 'Precise Location is off; navigation accuracy may be reduced';
       refreshNavigationUI();
@@ -4595,7 +4609,8 @@ function speakNavigation(text, kind = 'turn') {
 }
 
 async function requestNavigationWakeLock() {
-  if (!turnNav.active || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+  if (!turnNav.active || !navVoice.keepScreenAwake) return;
+  if (!navigator.wakeLock || document.visibilityState !== 'visible') return;
   try {
     turnNav.wakeLock = await navigator.wakeLock.request('screen');
     turnNav.screenMaySleep = false;
@@ -4605,7 +4620,7 @@ async function requestNavigationWakeLock() {
     if (turnNav.locationReady) turnNav.message = '';
   } catch (e) {
     turnNav.screenMaySleep = true;
-    if (turnNav.locationReady) turnNav.message = 'Screen may sleep on this browser';
+    if (turnNav.locationReady) turnNav.message = 'Screen may sleep on this device';
   }
   refreshNavigationUI();
 }
@@ -4760,7 +4775,7 @@ function useNearestPlannedRoute(reason = '', purpose = turnNav.connectorPurpose)
   if (offRouteDialog?.open) offRouteDialog.close();
   turnNav.connectorRequestId = null;
   turnNav.joinDecision = 'nearest';
-  turnNav.message = turnNav.screenMaySleep ? 'Screen may sleep on this browser' : '';
+  turnNav.message = turnNav.screenMaySleep ? 'Screen may sleep on this device' : '';
   turnNav.route = turnNav.plannedRoute;
   turnNav.followingConnector = false;
   turnNav.connectorRoute = null;
@@ -5264,7 +5279,7 @@ function updateTurnNavigation(pos) {
   turnNav.nearestPoint = nearest.point;
   turnNav.routeM = nearest.routeM;
   rememberPlannedRouteProgress();
-  turnNav.message = turnNav.screenMaySleep ? 'Screen may sleep on this browser' : '';
+  turnNav.message = turnNav.screenMaySleep ? 'Screen may sleep on this device' : '';
   updateNavigationProgress();
   const instructions = turnNav.route.instructions;
   // Passed maneuvers advance silently; announcing them late is noise.
@@ -5902,7 +5917,11 @@ function routeVisualStyle(p) {
   if (p.level === 0) return 'unknown';
   // facility 1 is a sharrow: paint in a shared traffic lane, not a facility of
   // your own. It gets no lime, matching bikeNetworkExpr() for the road tiles.
-  const bike = p.infra === 1 || p.facility >= 2;
+  // Nor does a painted lane on a road rated worst-on-scale for traffic stress:
+  // it passes, and it is not bike network. Separation keeps its lime regardless.
+  const bike = p.infra === 1
+    || (p.facility >= 2 && !(Number(p.lts) >= SafetyModel.STRESS_CAUTION_AT))
+    || p.facility >= 4;
   if (bike && p.facility === 5) return 'trail';
   if (bike) return 'bike';
   // A signed bike route no longer changes the drawn route. It used to draw as
@@ -8474,9 +8493,9 @@ const CAUTION_CAUSE_DETAIL = {
     + 'and you allow that as a fallback. Routes avoid it strongly.',
   'high-stress': 'The state transportation department rates this road at the top of the Level of '
     + 'Traffic Stress scale (4 of 4). It can only ever caution, never fail: most rated highway '
-    + 'miles score 4, so failing on it would be indiscriminate. Turn on “Always trust bike '
-    + 'lanes” to stop it cautioning a road that has a bike lane — separated lanes and paths are '
-    + 'always trusted.',
+    + 'miles score 4, so failing on it would be indiscriminate. A road with a bike lane is never '
+    + 'cautioned for this — you have space of your own — though a painted lane on a road rated '
+    + 'this high draws blue rather than lime.',
   dismount: 'Bicycles are allowed, but you have to get off and walk.',
 };
 
@@ -9959,13 +9978,6 @@ function buildRulesPanel() {
     scheduleRescore();
   });
   check('preferPaved', 'Strongly prefer paved surfaces');
-  // The only rule here that does not move a route. Levels 2 and 3 cost the
-  // router the same, so this decides colour, percentages and what the voice
-  // says -- and the hint has to say so, or it reads as a safety rule.
-  check('trustBikeLanes', 'Always trust bike lanes (even on very busy roads)', rules, () => {
-    scheduleRescore();
-  }, 'Colour and announcements only — your route does not change. Separated lanes '
-    + 'and paths are always trusted, whatever this is set to.');
   check('allowSidewalkFallback', 'Allow sidewalk fallback');
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');
@@ -10179,6 +10191,25 @@ function buildVoicePanel() {
     saveStateSoon();
   });
   host.appendChild(headings);
+
+  const awake = document.createElement('div');
+  awake.className = 'check-rule rule-card';
+  awake.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-keepScreenAwake"
+    ${navVoice.keepScreenAwake ? 'checked' : ''}><span>Keep the screen awake while navigating</span></label>
+    <p class="hint voice-safety-hint">Only while a route is running, and only while the app is in
+    front. Off saves battery, but the phone will lock on its usual timer.</p>`;
+  awake.querySelector('input').addEventListener('change', (e) => {
+    navVoice.keepScreenAwake = e.target.checked;
+    if (e.target.checked) requestNavigationWakeLock();
+    else {
+      releaseNavigationWakeLock();
+      // The rider asked for this, so it is not a problem to warn them about.
+      turnNav.screenMaySleep = false;
+      if (turnNav.active) refreshNavigationUI();
+    }
+    saveStateSoon();
+  });
+  host.appendChild(awake);
 
   const safety = document.createElement('div');
   safety.className = 'check-rule rule-card';

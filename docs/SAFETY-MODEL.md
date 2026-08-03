@@ -310,7 +310,7 @@ consulted.
 | modifier | setting | why it can only caution |
 |---|---|---|
 | limited-access highway, bike-legal | — (a fact, not a choice) | the road meets your rules; the hazard is its type |
-| official stress rating ≥ 4 | `trustBikeLanes` suppresses it where the road has a painted lane | see below |
+| official stress rating ≥ 4 | — (a fact, not a choice); never applies where the road has a bike lane | see below |
 
 When both apply, limited-access wins the headline: it is the more specific
 statement about the road.
@@ -338,15 +338,14 @@ default preset; 6,088 (138 mi) on Casual Cruiser, where the tighter speed rules
 already fail most of them. It changes no routing cost and can sever nothing, because `requireSafe`
 excludes only level 4.
 
-### `trustBikeLanes` — the one rule that moves no route
+### A bike lane means the road passes — and is not therefore bike network
 
-**"Always trust bike lanes (even on very busy roads)."** On for The Randonneur,
-which is also a fresh install; off for Weekend Wanderer and Casual Cruiser,
-whose riders are the ones the rating is most worth telling.
+The stress caution is for roads whose space is not the rider's. A bike lane of
+any kind is space that is, so the caution never applies to one. This is uniform
+for every rider and has no setting: it is a statement about what a bike lane IS,
+not a preference about how much risk to accept.
 
-A painted lane is space the rider is entitled to, and for a confident rider that
-settles it however the agency rates the road around it. The setting suppresses
-the **stress caution only**, and only where `facility >= 2`:
+It suppresses the stress caution ONLY:
 
 - it cannot reach a rung above — a bike lane over the rider's speed ceiling
   still fails, and so does a freeway or a prohibition;
@@ -354,26 +353,34 @@ the **stress caution only**, and only where `facility >= 2`:
   path rather than about traffic (0 mi carry both today);
 - physically separated lanes and shared-use paths never reach it at all. They
   return at the `infra` rung, above everything except `prohibited` and
-  `freeway`, for every rider whatever this is set to.
+  `freeway`.
 
-**It is the only rule here that changes no route.** `modeMult` prices levels 2
-and 3 identically — only 4 is penalised and 1 gets the comfy-road bonus — and
-the traffic-stress penalty lives in `trafficStressMult`, which reads the rating
-directly and never asks the verdict. So this decides colour, the route card's
-percentages, and what the voice says. Nothing else. The settings hint says so,
-because a rule that looks like a safety rule and moves nothing would otherwise
-be read as one.
+**But the road does not become bike network.** Lime is a recommendation, not an
+inventory. A painted lane on a road the agency rates 4 of 4 draws **blue**, with
+the other passing roads: the rider is entitled to that space, and it is not a
+lane worth advertising. `isBikeNetworkVerdict()` withholds the credit on the
+rating, `bikeNetworkExpr()` says the same thing to the renderer for the `roads`
+and `blts` tiles, and `isBikeNetwork()` in route-details.js mirrors both.
+Separated lanes and paths are exempt — physical separation IS the credit, and a
+rating cannot take it away.
+
+**No route moves.** `modeMult` prices levels 2 and 3 identically — only 4 is
+penalised and 1 gets the comfy-road bonus — and the traffic-stress penalty lives
+in `trafficStressMult`, which reads the rating directly and never asks the
+verdict. The facility bonus is likewise priced from the facility, not the
+colour. So this decides the verdict, the colour, the route card's percentages
+and what the voice says, and nothing else.
 
 Scale: **107 mi across 3,815 edges** — 4.3% of the high-stress cautions, of
-which 3,781 are a plain bike lane and 34 a buffered one. 3,802 of them land at
-level 2, which is cost-identical; thirteen land at level 1 and pick up the
-comfy-road bonus. That is the entire routing delta, and it rounds to zero miles.
+which 3,781 are a plain bike lane and 34 a buffered one.
 
 The rating is still reported whatever the verdict — `evaluate()` returns
 `highStress` at every level, the road card's traffic-stress row is
-unconditional, and the spoken safety announcement carries it as an aside
-("Bike lane, heavy traffic, in 500 feet, for 2.1 miles"). Trusting a lane is a
-decision about the colour, not a reason to stop saying what the road is.
+unconditional, and the spoken announcement carries it as an aside. The voice
+describes the ROAD rather than the colour, so one of these draws blue and is
+still announced as a bike lane:
+
+    Bike lane, heavy traffic in 500 feet, for 2.1 miles.
 
 ### Rung 3 — freeways, and why the toggle is not a verdict
 
