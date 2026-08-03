@@ -214,6 +214,21 @@ EDGE_SIDEWALK_NO = 32
 # Census 2020 Urban Areas distinguish built-up road context from rural roads
 # without tying routing to a local jurisdiction's traffic-count feed.
 EDGE_URBAN = 64
+
+# A bridge or tunnel deck, from the OSM `bridge`/`tunnel` tags.
+#
+# This exists because edge_climb() below asks a TERRAIN model for elevation:
+# it walks the geometry sampling a DEM, which describes the ground, not the
+# structure standing over it. A flat trail deck across a gully therefore
+# recorded the gully as real climb -- the Burke-Gilman bridge at Matthews
+# Beach read 15%, and Mine Creek Trestle on the Palouse to Cascades read
+# 37.7% on a rail-trail graded to about 2%. Downstream that is priced as a
+# climb, and routes detoured off perfectly flat trail onto surface streets.
+#
+# It rides in eOfficial rather than eFlags because eFlags has no bit left:
+# router-worker.js builds a segment's flags as `eFlags[ei] | 128` for
+# limited-access, so bit 7 there already means something else to the UI.
+EDGE_STRUCTURE = 128
 # Surface is intentionally a tiny routing category rather than the original
 # OSM string.  It lets the client prefer pavement without treating incomplete
 # OSM tagging as an instruction to avoid a road.  Gravel rail trails remain
@@ -287,6 +302,26 @@ def load_dem():
             return int(mosaic[py, px])
         return 0
     return ele_at
+
+
+def structure_climb(coords, way_coords, ele_at):
+    """(ascent, descent) for one edge of a bridge or tunnel.
+
+    edge_climb() samples the terrain under the way. On a structure that is the
+    wrong surface entirely, so take the deck instead: a straight grade between
+    the ends of the whole structure -- the only two points on it that meet the
+    ground -- shared out by how much of the structure this edge spans.
+
+    The whole way matters, not this edge: a long bridge is split at its
+    junction nodes, and those interior nodes hang over the gully. Measuring an
+    interior edge against its own endpoints would sample mid-air.
+    """
+    total = line_len_m(way_coords)
+    if total <= 0:
+        return 0.0, 0.0
+    rise = ele_at(*way_coords[-1]) - ele_at(*way_coords[0])
+    delta = rise * (line_len_m(coords) / total)
+    return (max(0.0, delta), max(0.0, -delta))
 
 
 def edge_climb(coords, ele_at, step_m=60.0):
@@ -1148,6 +1183,11 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
             pts = pts[::-1]
             ow = 1
 
+        # The structure end to end, after any reversal above, so
+        # structure_climb() measures the deck between the points where it
+        # meets the ground rather than between two nodes hanging over a gully.
+        way_coords = [(x, y) for _, x, y in pts]
+
         is_ferry = attrs.get('ferry', False)
         if is_ferry:
             # Crossing speed from the whole-way duration; keep the default for
@@ -1164,6 +1204,12 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
             and (tags.get('highway') in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}
                  or (tags.get('ref') and REF_STATE.search(tags['ref'])))
         )
+
+        # `bridge=viaduct`, `bridge=trestle`, `tunnel=building_passage` and so
+        # on are all structures; test the KEY, not the value. Only an explicit
+        # "no" means the way is on the ground.
+        is_structure = ((tags.get('bridge') not in (None, 'no'))
+                        or (tags.get('tunnel') not in (None, 'no')))
 
         flags = ((1 if attrs['est'] else 0) | (2 if attrs['facility'] else 0)
                  | (4 if attrs['lim'] else 0) | (8 if attrs['infra'] else 0)
@@ -1191,7 +1237,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             efacility = attrs['facility']
                             elanes = attrs.get('lanes', 0)
                             elts = 0
-                            eofficial = ((EDGE_MTB if attrs['mtb'] else 0)
+                            eofficial = ((EDGE_STRUCTURE if is_structure else 0)
+                                         | (EDGE_MTB if attrs['mtb'] else 0)
                                          | (EDGE_DISMOUNT if attrs.get('dismount') else 0)
                                          | sidewalk_flags(tags)
                                          | (EDGE_URBAN if is_urban_edge(coords, urban_index) else 0))
@@ -1281,7 +1328,17 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                     e_adt_source = int(m.get('adtSrc') or 0)
                                     e_class_owner = pack_class_owner(
                                         m.get('fc'), m.get('owner'))
-                            asc, des = (0.0, 0.0) if is_ferry else edge_climb(coords, ele_at)
+                            if is_ferry:
+                                asc, des = 0.0, 0.0
+                            elif is_structure:
+                                # A deck is a straight grade between its own
+                                # ends, which are the only two points on it
+                                # that sit on the ground the DEM describes.
+                                # Everything between is what the bridge exists
+                                # to ignore.
+                                asc, des = structure_climb(coords, way_coords, ele_at)
+                            else:
+                                asc, des = edge_climb(coords, ele_at)
                             if is_ferry or attrs['infra']:
                                 haz_ab = haz_ba = (0, 0, 0)
                             else:
