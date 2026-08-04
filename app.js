@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.539';
+const APP_VERSION = '2026-08-04.540';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2201,6 +2201,11 @@ async function jsonAssetResponse(response, url) {
   return JSON.parse(window.fflate.strFromU8(window.fflate.gunzipSync(bytes)));
 }
 
+// Deliberately quiet on progress: every source loads once at startup, so
+// "Loading X…" / "X: N segments" toasts were startup chatter stacked on top
+// of the routing-engine progress notice that already owns that moment. The
+// Layers panel's per-source counts report the same numbers at leisure; only
+// a FAILURE is worth a toast.
 async function loadSource(src) {
   if (src.loaded || src.loading) return;
   if (src.vector) {
@@ -2208,11 +2213,9 @@ async function loadSource(src) {
     ensureLayer(src);
     src.loaded = true;
     updateSourceCount(src);
-    setStatus(`${src.name}: streaming tiles`);
     return;
   }
   src.loading = true;
-  setStatus(`Loading ${src.name}…`, true);
   try {
     let fc;
     if (src.urlPattern) {
@@ -2234,7 +2237,6 @@ async function loadSource(src) {
         const part = await jsonAssetResponse(res, partUrl);
         // (no spread: pushing 200k+ args at once overflows the call stack)
         for (const f of part.features) features.push(f);
-        setStatus(`Loading ${src.name}… ${features.length.toLocaleString()} segments`, true);
       }
       fc = { type: 'FeatureCollection', features };
     } else {
@@ -2256,7 +2258,6 @@ async function loadSource(src) {
     ensureLayer(src);
     if (src.expr) src.fc = null; // expression-scored: the map keeps its own copy
     src.loaded = true;
-    setStatus(`${src.name}: ${src.count.toLocaleString()} segments`);
     updateSourceCount(src);
   } catch (e) {
     setStatus(`Failed to load ${src.name} (${e.message})`, true);
@@ -2564,11 +2565,17 @@ async function readRoutingGraphResponse(response) {
 // Off-network start/end pins matter, but not enough to hold route-card space
 // permanently: surface them as a passing toast, with the full note kept in
 // Route Details.
+//
+// 600 ft: under that, "your pin is a couple of blocks off the network" is
+// normal life -- a pin in a park, a house up a driveway -- and warning about
+// it on most routes made the toast furniture. It fires only where the walk
+// to the route is long enough to genuinely surprise.
+const SNAP_NOTE_MIN_M = 182.88; // 600 ft
 function notifySnapDistance(m) {
   if (!m || !m.ok) return;
   const notes = [];
-  if (Number(m.snapStartM) > 80) notes.push(`Start connects ${fmtDist(m.snapStartM)} away`);
-  if (Number(m.snapEndM) > 80) notes.push(`Destination connects ${fmtDist(m.snapEndM)} away`);
+  if (Number(m.snapStartM) >= SNAP_NOTE_MIN_M) notes.push(`Start connects ${fmtDist(m.snapStartM)} away`);
+  if (Number(m.snapEndM) >= SNAP_NOTE_MIN_M) notes.push(`Destination connects ${fmtDist(m.snapEndM)} away`);
   if (notes.length) showRouteActionToast(`⚠ ${notes.join(' · ')}`, { duration: 5000 });
 }
 
@@ -5842,13 +5849,20 @@ function computeRoute() {
   routing.routeRequestActive = true;
   routing.reqId++;
   setRouteStatus('Routing…');
-  showRouteActionToast(routing.last?.ok ? 'Recalculating route' : 'Calculating route options', {
-    busy: true,
-    detail: routing.last?.ok
-      ? 'Reapplying your safety rules and route preferences…'
-      : 'Testing safer, quicker, and bike-friendly alternatives…',
-    duration: 0,
-  });
+  // The route chooser shows its own "Comparing routes…" pill while it loads.
+  // When that pill is on screen -- panel open on the Route tab, which is how
+  // every startup restore and most pin drops look -- a floating banner saying
+  // the same thing is a second spinner, so it only shows when the chooser
+  // cannot (panel closed, mid-navigation reroutes).
+  if (!document.getElementById('routeOptions')?.offsetParent) {
+    showRouteActionToast(routing.last?.ok ? 'Recalculating route' : 'Calculating route options', {
+      busy: true,
+      detail: routing.last?.ok
+        ? 'Reapplying your safety rules and route preferences…'
+        : 'Testing safer, quicker, and bike-friendly alternatives…',
+      duration: 0,
+    });
+  }
   setRouteOptionsLoading(true);
   saveStateSoon();
   const points = [routing.start, ...routing.vias.map((v) => v.pt), routing.end];
