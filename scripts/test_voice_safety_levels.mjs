@@ -65,7 +65,7 @@ const texts = spoken.heard.map((h) => h.text);
 check('and each says what is coming, when, and how far it runs',
   texts[0] === 'Trail for next 1.0 miles.'
   && texts[1] === 'Bike lane in 150 feet, for 1.0 miles.'
-  && texts[2] === 'Normal road in 150 feet, for 1.0 miles.'
+  && texts[2] === 'Road in 150 feet, for 1.0 miles.'
   && texts[3] === 'Caution. Heavy traffic in 150 feet, for 0.2 miles.'
   && texts[4] === 'Warning. No shoulder in 150 feet, for 0.2 miles.',
   JSON.stringify(texts));
@@ -236,7 +236,7 @@ check('nothing is announced after arrival', guards.arrived === false, JSON.strin
 check('joining mid-route skips the stretches already behind',
   guards.skipped.join(',') === 'trail,bike,pass', JSON.stringify(guards));
 check('and reports what is left of the stretch, not its full length',
-  guards.joinedLate === true && guards.joinedText === 'Normal road for next 0.9 miles.',
+  guards.joinedLate === true && guards.joinedText === 'Road for next 0.9 miles.',
   JSON.stringify(guards));
 
 const persisted = await page.evaluate(() => {

@@ -74,6 +74,36 @@ for (const width of [430, 390, 375, 360]) {
     `overflows by ${overflow}px`);
 }
 
+// A 400-mile route's numbers are the widest thing the left column will ever
+// hold, and at a fixed 72px they clipped: "418.7 mi" lost its 4 and the
+// duration its "Est." behind rc-overview's overflow:hidden. The column grows
+// to its content now, taking the room from the chart, and this is what keeps
+// that true.
+await page.setViewportSize({ width: 390, height: 860 });
+const long = await page.evaluate(() => {
+  renderRouteCard({ ok: true, distM: 673741, timeS: 133680, segs: [], coords: [],
+    levelM: [0, 300000, 250000, 90000, 5000], ferryM: 0, failM: 5000,
+    categoryM: { trail: 74000, bike: 13500, pass: 458000, caution: 121000, fail: 6741 },
+    maxGradePct: 9, unpavedM: 64000, inclineOver5M: 20000 });
+  const card = document.getElementById('routeCard');
+  card.hidden = false;
+  const overview = card.querySelector('.rc-overview').getBoundingClientRect();
+  const fits = (sel) => {
+    const el = card.querySelector(sel);
+    const r = el.getBoundingClientRect();
+    return { text: el.textContent, clipped: r.left < overview.left - 1
+      || r.right > overview.right + 1 || el.scrollWidth > el.clientWidth + 1 };
+  };
+  return { distance: fits('.rc-distance'), duration: fits('.rc-duration'),
+    cardOverflow: card.scrollWidth - card.clientWidth };
+});
+check(`a 400-mile distance is not clipped ("${long.distance.text}")`,
+  long.distance.clipped === false, JSON.stringify(long));
+check(`nor its duration ("${long.duration.text}")`,
+  long.duration.clipped === false, JSON.stringify(long));
+check('and the card still does not scroll sideways', long.cardOverflow <= 1,
+  `overflows by ${long.cardOverflow}px`);
+
 // The term a rider first meets in Layers is the full phrase, and that list has
 // the room for it.
 const legend = await page.evaluate(() => {

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.536';
+const APP_VERSION = '2026-08-04.537';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3429,7 +3429,9 @@ const SAFETY_REASON_SPEECH = Object.freeze({
 });
 
 const SAFETY_RUN_HEAD = Object.freeze({
-  trail: 'Trail', bike: 'Bike lane', pass: 'Normal road',
+  // 'Road', not 'Normal road': the extra word says nothing a rider can act
+  // on, and every syllable in a voice prompt competes with traffic.
+  trail: 'Trail', bike: 'Bike lane', pass: 'Road',
   caution: 'Caution', fail: 'Warning',
 });
 
@@ -3456,7 +3458,7 @@ const SAFETY_RUN_HERE_M = 40;
  */
 function safetyRunSpeech(category, reason, lengthText, aheadText, hasLane = false) {
   // A road with a bike lane that draws blue -- because the agency rates it
-  // worst-on-scale -- is still a road with a bike lane. "Normal road" would be
+  // worst-on-scale -- is still a road with a bike lane. Plain "Road" would be
   // false to the rider's eyes. The colour answers "would we recommend this";
   // the voice answers "what am I about to be riding on", and they are allowed
   // to differ.

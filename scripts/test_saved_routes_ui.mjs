@@ -79,8 +79,10 @@ check('long route distance and metrics fit without clipping',
   routeCardLayout.clipped.length === 0 && routeCardLayout.truncated.length === 0,
   JSON.stringify(routeCardLayout));
 check('the left column is compact and the chart is at least as wide as the categories',
+  // 1px of slack: the two right-hand tracks are 1fr each, and the grid can
+  // hand one of them a sub-pixel more depending on what the left column took.
   routeCardLayout.overviewWidth <= 90
-    && routeCardLayout.chartWidth >= routeCardLayout.categoryWidth,
+    && routeCardLayout.chartWidth >= routeCardLayout.categoryWidth - 1,
   JSON.stringify(routeCardLayout));
 check('unpaved and incline share one compact full-width strip',
   routeCardLayout.metricsHeight <= 26 && routeCardLayout.metricsSpanRightColumns
