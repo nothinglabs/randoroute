@@ -95,5 +95,33 @@ if (reply?.ok) {
     reply.dismountM > 0, JSON.stringify({ dismountM: reply.dismountM }));
 }
 
+// Seattle's Pier 50: the Southworth/Kingston/Bremerton fast ferries and both
+// water taxis board here, and the terminal's ONLY land access is a chain of
+// bicycle=dismount sidewalk hops. When the walk-link sidewalk exclusion
+// swallowed those, the terminal was reachable solely by arriving on another
+// boat -- Seattle->Southworth rode six miles through West Seattle to catch a
+// water taxi BACK to a dock 600 m from the start. Land access must stay a
+// short walk from Pioneer Square, and the crossing must use the fast ferry.
+w.messages.length = 0;
+const pier = w.post({ type: 'route', id: 'pier50',
+  points: [[-122.3320, 47.6025], [-122.3392, 47.6012]],
+  rules: RULES, mode: 'balanced' });
+check('Pier 50 is reachable from downtown by land', pier?.ok === true,
+  JSON.stringify({ ok: pier?.ok, reason: pier?.reason }));
+if (pier?.ok) {
+  check(`and it is a short walk-in, not a voyage: ${(pier.distM / 1000).toFixed(2)} km (need < 2 km)`,
+    pier.distM < 2000 && pier.ferryM === 0,
+    JSON.stringify({ distM: pier.distM, ferryM: pier.ferryM }));
+  check('walked where the terminal says to walk', pier.dismountM > 0,
+    JSON.stringify({ dismountM: pier.dismountM }));
+}
+w.messages.length = 0;
+const southworth = w.post({ type: 'route', id: 'southworth',
+  points: [[-122.3320, 47.6025], [-122.4950, 47.5127]],
+  rules: RULES, mode: 'balanced' });
+check('Seattle to Southworth sails from Pier 50 rather than detouring to Fauntleroy',
+  southworth?.ok === true && southworth.distM < 19500 && southworth.ferryM > 15000,
+  JSON.stringify({ ok: southworth?.ok, distM: southworth?.distM, ferryM: southworth?.ferryM }));
+
 console.log(`\n${passed} passed${failed ? `, ${failed} FAILED` : ''}`);
 process.exitCode = failed ? 1 : 0;

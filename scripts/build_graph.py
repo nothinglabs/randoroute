@@ -1010,11 +1010,26 @@ def classify_way(tags):
     # every urban street is noise, not connectivity -- as do ways that exclude
     # pedestrians. bicycle=dismount says the same thing explicitly, and was
     # previously dropped here unless it also carried a designation.
+    #
+    # The sidewalk exclusion yields to an EXPLICIT bicycle=dismount: that tag
+    # on a sidewalk is a mapper deliberately putting the way on the bike
+    # network, not default sidewalk noise. CROSSINGS are admitted outright:
+    # a crossing is the sub-20 m stitch that joins a kept footway network to
+    # the street it crosses, and excluding them severs exactly that stitch.
+    #
+    # Seattle's Pier 50 is why both matter. The only land access to the
+    # Southworth/Kingston/Bremerton fast ferries and both water taxis is a
+    # chain of bicycle=dismount sidewalks plus one untagged crossing of the
+    # waterfront promenade -- and the Colman Dock vehicle loop beside it is
+    # one-way OUTBOUND (the inbound lanes are bicycle=no), so with the chain
+    # dropped the terminal could be left by land but never entered: the
+    # router answered Seattle->Southworth by riding six miles through West
+    # Seattle to ferry BACK to a dock 600 m from the start.
     walk_link = (
         hw in ('footway', 'path')
         and bike in (None, 'dismount')
         and foot not in ('no', 'private')
-        and tags.get('footway') not in ('sidewalk', 'crossing')
+        and (tags.get('footway') != 'sidewalk' or bike == 'dismount')
     )
     infra = (
         hw == 'cycleway'

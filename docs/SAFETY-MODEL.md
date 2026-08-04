@@ -913,7 +913,7 @@ or illegal. Every multiplier applied to an edge, in `router-worker.js`:
 **Route Remix** scales this whole table at request time without editing it:
 the rider's tuned weights stay stored as-is, and `remixedRoutingWeights()` in
 `app.js` sends the router a copy with every subjective multiplier raised to a
-power (0.22 for "more direct", 1.35 for "more safety-focused") and the
+power (0.22 for "more direct", 1.2 for "more safety-focused") and the
 per-mph speed rates scaled linearly. Physics (climb/turn seconds, ferry wait,
 elevation factors), the freeway and mountain-bike last-resort walls, and the
 safety RULES are untouched — a remix changes which legal routes are offered,

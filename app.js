@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.542';
+const APP_VERSION = '2026-08-04.543';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2438,7 +2438,11 @@ const ROUTE_REMIX_MODES = Object.freeze({
   // mostly time and distance with mild nudges left.
   direct: { exponent: 0.22, label: 'More direct routes', hint: 'May be less safe' },
   recommended: { exponent: 1, label: 'Recommended routes', hint: 'The normal balance of safety and practicality' },
-  safe: { exponent: 1.35, label: 'More safety-focused routes', hint: 'May be longer' },
+  // 1.2, down from 1.35: log-space scaling explodes the LARGE walls (the 30x
+  // low-stress fail wall became ~99x), and on a cross-state trip that bought
+  // forty-mile trail detours and ferry triangles. 1.2 keeps the lean
+  // (30x -> ~59x) without pricing whole regions off the map.
+  safe: { exponent: 1.2, label: 'More safety-focused routes', hint: 'May be longer' },
 });
 const REMIX_SCALED_MULTIPLIERS = Object.freeze([
   'failRoadDirect', 'failRoadBalanced', 'failRoadLowStress',
