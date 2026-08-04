@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.555';
+const APP_VERSION = '2026-08-04.556';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6440,18 +6440,32 @@ function ensureRouteMarkerImages(targetMap) {
     b.disc(10.5 * s, 10.5 * s, 0.55 * s, hub);
     add('route-marker-traffic', b);
   }
-  { // unpaved: outlined boulders on a ground line. Round-with-outline reads
-    // as stones where plain discs read as dots -- and nothing here may look
-    // like the steep badge's peaks.
+  { // unpaved: a serrated ground profile -- the steep badge's mountain
+    // flattened into a wide band of small jagged teeth. Reads "rough
+    // surface" where the tall twin peaks read "climb".
     const b = paintMarkerBadge([92, 78, 60, 255]);
-    const s = b.s, light = [152, 127, 92, 255], mid = [124, 102, 74, 255],
-      dark = [84, 68, 49, 255];
-    b.stroke(3.7 * s, 11.4 * s, 12.3 * s, 11.4 * s, 0.75 * s, dark);  // the ground
-    b.disc(6.9 * s, 8.2 * s, 2.8 * s, dark);           // big boulder, outlined
-    b.disc(6.9 * s, 8.2 * s, 2.05 * s, light);
-    b.disc(11 * s, 9.5 * s, 1.95 * s, dark);           // smaller stone, outlined
-    b.disc(11 * s, 9.5 * s, 1.25 * s, mid);
-    b.disc(3.8 * s, 10.4 * s, 0.85 * s, dark);         // a loose pebble
+    const s = b.s, dark = [104, 85, 61, 255], deep = [84, 68, 49, 255];
+    const tooth = (px, py, half, baseY, color) => {
+      const top = Math.round(py), bottom = Math.round(baseY);
+      for (let y = top; y <= bottom; y++) {
+        const grow = ((y - top) / Math.max(1, bottom - top)) * half;
+        for (let x = Math.round(px - grow); x <= Math.round(px + grow); x++) {
+          if (b.inside(x, y)) b.paint(x, y, color);
+        }
+      }
+    };
+    // Alternating tooth heights give the ragged edge; the solid band under
+    // them makes it one surface rather than a row of tiny mountains.
+    tooth(3.9 * s, 8.4 * s, 1.3 * s, 10.2 * s, dark);
+    tooth(6 * s, 7.2 * s, 1.4 * s, 10.2 * s, deep);
+    tooth(8.1 * s, 8.6 * s, 1.3 * s, 10.2 * s, dark);
+    tooth(10.1 * s, 7.5 * s, 1.4 * s, 10.2 * s, deep);
+    tooth(12 * s, 8.7 * s, 1.2 * s, 10.2 * s, dark);
+    for (let y = Math.round(10.2 * s); y <= Math.round(11.7 * s); y++) {
+      for (let x = Math.round(3 * s); x <= Math.round(13 * s); x++) {
+        if (b.inside(x, y)) b.paint(x, y, y > 11 * s ? deep : dark);
+      }
+    }
     add('route-marker-unpaved', b);
   }
   { // odd: a bold question mark -- "this is not an ordinary road".
