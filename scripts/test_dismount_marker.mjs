@@ -46,8 +46,17 @@ const plan = await page.evaluate(() => {
     flat: build(19, () => ({ gradePct: 0 })).other.length,
     blip: build(1, () => ({ gradePct: 14 }), .0004).other.length,
     absurd: build(19, () => ({ gradePct: 60 })).other.length,
-    traffic: build(19, () => ({ measures: { adt: 21000 } })).other
-      .every((m) => m.kind === 'traffic'),
+    traffic: (() => {
+      const m = build(19, () => ({ measures: { adt: 21000 } })).other;
+      return m.length > 0 && m.every((x) => x.kind === 'traffic');
+    })(),
+    // The car starts at the tier that starts driving cautions -- "a busy
+    // through road" -- not only at main-highway volumes.
+    busyTraffic: (() => {
+      const m = build(19, () => ({ measures: { adt: 6500 } })).other;
+      return m.length > 0 && m.every((x) => x.kind === 'traffic');
+    })(),
+    quietTraffic: build(19, () => ({ measures: { adt: 4000 } })).other.length,
     trafficOnInfra: build(19, () => ({ flags: 8, measures: { adt: 21000 } })).other.length,
     rocks: build(19, () => ({ surface: 2 })).other.every((m) => m.kind === 'unpaved'),
     odd: build(19, () => ({ mtb: true })).other.every((m) => m.kind === 'odd'),
@@ -75,6 +84,10 @@ check('flat riding carries none', plan.flat === 0, String(plan.flat));
 check('a 30 m spike is noise, not a climb', plan.blip === 0, String(plan.blip));
 check('an incredible grade is the data error it is', plan.absurd === 0, String(plan.absurd));
 check('heavy traffic on a road gets the car', plan.traffic === true);
+check('and so does busy-through-road traffic, where cautions begin',
+  plan.busyTraffic === true);
+check('while a genuinely quiet road stays unbadged', plan.quietTraffic === 0,
+  String(plan.quietTraffic));
 check('but a busy road BESIDE separated infra does not badge the infra',
   plan.trafficOnInfra === 0, String(plan.trafficOnInfra));
 check('confirmed unpaved gets the rocks', plan.rocks === true);

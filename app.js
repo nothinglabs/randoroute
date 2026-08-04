@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.554';
+const APP_VERSION = '2026-08-04.555';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6192,7 +6192,10 @@ const FERRY_GRADE_BLACKOUT_M = 250;
 // dominating a statewide view.
 const ROUTE_MARKER_SIZE_BY_ZOOM = ['interpolate', ['linear'], ['zoom'],
   9, 0.98, 12, 1.3, 14, 1.66, 16.5, 2.2];
-const HEAVY_TRAFFIC_ADT = 15000; // the safety model's heavy tier
+// The car flags traffic at the tier that starts driving cautions and rule
+// failures -- the safety model's "busy through road" (6,000/day) -- not just
+// full main-highway volumes.
+const HEAVY_TRAFFIC_ADT = SafetyModel.BUSY_LEVELS[3].adt;
 function routeMarkerKinds(p) {
   const kinds = [];
   if (p.ferry === 1) return kinds;
@@ -6259,8 +6262,12 @@ function buildRouteMarkerData(sdata) {
           const target = Math.max(minNext, pos);
           if (target > pos + d) break;
           const t = d > 0 ? (target - pos) / d : 0;
-          const kind = pick(Math.round(target / ROUTE_MARKER_SPACING_M), active);
-          const point = { type: 'Feature', properties: { kind },
+          const slot = Math.round(target / ROUTE_MARKER_SPACING_M);
+          const kind = pick(slot, active);
+          // `slot` doubles as the collision priority: with a stable sort key
+          // the placer culls the SAME markers at every zoom, so zooming thins
+          // a chain monotonically instead of toggling which icon a spot shows.
+          const point = { type: 'Feature', properties: { kind, slot },
             geometry: { type: 'Point',
               coordinates: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] } };
           (kind === 'walk' ? walk : other).push(point);
@@ -6926,8 +6933,11 @@ function drawRoute(coords, ferrySegs, segs) {
       'icon-size': ROUTE_MARKER_SIZE_BY_ZOOM,
       // allow-overlap false is the crowding control: the symbol placer culls
       // whatever would collide, so zooming out thins the chain instead of
-      // piling badges on badges.
+      // piling badges on badges. The slot sort key keeps the culling stable
+      // across zooms -- without it, which marker survives is arbitrary and a
+      // spot flickers between kinds as the rider zooms.
       'icon-allow-overlap': false, 'icon-ignore-placement': false,
+      'symbol-sort-key': ['get', 'slot'],
     },
   });
   forgetStyleValues(); map.addLayer({
@@ -6942,7 +6952,8 @@ function drawRoute(coords, ferrySegs, segs) {
     id: 'route-dismount-marker', type: 'symbol', source: 'route-dismount',
     layout: { 'icon-image': 'route-dismount-marker-icon',
       'icon-size': ROUTE_MARKER_SIZE_BY_ZOOM,
-      'icon-allow-overlap': false, 'icon-ignore-placement': false },
+      'icon-allow-overlap': false, 'icon-ignore-placement': false,
+      'symbol-sort-key': ['get', 'slot'] },
   });
   forgetStyleValues(); map.addLayer({
     id: 'route-ferry', type: 'line', source: 'route-ferry',
