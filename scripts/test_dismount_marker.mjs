@@ -111,6 +111,43 @@ check('and so does a synthesised walk link', styles.synthesised === 'caution',
 check('while a ridable trail keeps its lime', styles.ordinaryTrail === 'trail',
   JSON.stringify(styles));
 
+// Steep climbing gets its own marker chain: a 10%+ wall should be obvious at
+// a glance -- a de-facto hiking trail must not look like ordinary lime -- but
+// spaced, so a long climb reads as a chain rather than a smear.
+const steep = await page.evaluate(() => {
+  const build = (stepLng, count, gradePct) => {
+    const lat = 47.55;
+    const coords = Array.from({ length: count + 1 }, (_, i) => [-122.30 + i * stepLng, lat]);
+    const segs = coords.slice(0, -1).map((_, i) => ({
+      lenM: 150, c0: i, c1: i + 1, level: 1, mph: 25, sh: 4, gradePct }));
+    const sdata = {
+      type: 'FeatureCollection',
+      features: segs.map((seg) => ({ type: 'Feature',
+        properties: routeSegProps(seg),
+        geometry: { type: 'LineString',
+          coordinates: coords.slice(seg.c0, seg.c1 + 1) } })),
+    };
+    return buildRouteSteepData(sdata).features.map((f) => f.geometry.coordinates);
+  };
+  const gapM = (a, b) => Math.hypot((b[0] - a[0]) * 75200, (b[1] - a[1]) * 111320);
+  const climb = build(.002, 19, 12);   // ~2.8 km of 12%
+  const gaps = climb.slice(1).map((p, i) => Math.round(gapM(climb[i], p)));
+  return {
+    climbCount: climb.length, gaps,
+    flat: build(.002, 19, 0).length,
+    blip: build(.0004, 1, 14).length,  // ~30 m spike: noise, not a climb
+    absurd: build(.002, 19, 60).length, // beyond the credibility cap
+  };
+});
+check(`a 2.8 km 12% climb carries a chain of markers (${steep.climbCount})`,
+  steep.climbCount >= 3 && steep.climbCount <= 5, JSON.stringify(steep));
+check('spaced apart, never crowded',
+  steep.gaps.every((g) => g >= 600), JSON.stringify(steep.gaps));
+check('flat riding carries none', steep.flat === 0, JSON.stringify(steep));
+check('a 30 m spike is noise, not a climb', steep.blip === 0, JSON.stringify(steep));
+check('and an incredible grade is treated as the data error it is',
+  steep.absurd === 0, JSON.stringify(steep));
+
 check('drawing the marker raises no page errors', page.pageErrors.length === 0,
   page.pageErrors.join(' | '));
 
