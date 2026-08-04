@@ -906,7 +906,9 @@ the "busy through road" level, 6,000+/day, where cautions begin — but only
 where the stretch draws as caution or a bare pass, never on trusted
 bike/trail paint, a serrated-ground icon on confirmed-unpaved surface, and
 a question mark on technical ways, one icon per slot even where causes
-overlap.) Only
+overlap. A rules-failing stretch that carries none of those gets a red !
+— one per contiguous failed area, two on a long one — whose whole job is
+to draw the tap that opens the card naming the failed rule.) Only
 tagged dismounts raise the louder warnings: the "Dismount" mileage in the
 stats and the spoken "Walk your bike" (a synthesised stretch is silent in
 the voice). A warning at every synthesised park connector would teach the

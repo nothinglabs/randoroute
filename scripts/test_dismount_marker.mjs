@@ -75,6 +75,19 @@ const plan = await page.evaluate(() => {
         kinds: [...new Set(m.other.map((x) => x.kind))].sort() };
     })(),
     walkChain: build(19, () => ({ dismount: true, official: 8 })).walk.length,
+    // The ! on rules failures: one per contiguous failed area, two on a long
+    // one, none where another badge already invites the tap, none for slivers.
+    failLong: build(19, () => ({ level: 4, mph: 50, sh: 0 })).other
+      .filter((m) => m.kind === 'fail').length,
+    failShort: build(5, () => ({ level: 4, mph: 50, sh: 0 })).other
+      .filter((m) => m.kind === 'fail').length,
+    failSteep: (() => {
+      const m = build(19, () => ({ level: 4, mph: 50, sh: 0, gradePct: 12 })).other;
+      return { fails: m.filter((x) => x.kind === 'fail').length,
+        steeps: m.filter((x) => x.kind === 'steep').length };
+    })(),
+    failBlip: build(1, () => ({ level: 4, mph: 50, sh: 0 }), .0004).other
+      .filter((m) => m.kind === 'fail').length,
     // A steep reading against a ferry slip is shoreline DEM artifact --
     // Clinton's flat dock booked 11% -- so the mountain is blind near a leg.
     dockSteep: build(19, (i) => (i < 5 ? { flags: 32 }
@@ -110,6 +123,14 @@ check('a steep AND unpaved stretch still gets one icon per slot',
   JSON.stringify(plan.mixed));
 check('a long walked stretch carries a chain of walkers',
   plan.walkChain >= 3 && plan.walkChain <= 5, String(plan.walkChain));
+check('a long failed stretch carries two !, not a chain', plan.failLong === 2,
+  String(plan.failLong));
+check('a short failed stretch carries one', plan.failShort === 1,
+  String(plan.failShort));
+check('where the mountain already invites the tap, the ! stays away',
+  plan.failSteep.fails === 0 && plan.failSteep.steeps >= 3,
+  JSON.stringify(plan.failSteep));
+check('a failed sliver stays quiet', plan.failBlip === 0, String(plan.failBlip));
 check('a steep reading at a ferry slip is artifact: no mountain on the dock',
   plan.dockSteep === 0, String(plan.dockSteep));
 check('while the same climb clear of the slip keeps its mountain',

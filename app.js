@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.557';
+const APP_VERSION = '2026-08-04.558';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6196,7 +6196,12 @@ const ROUTE_MARKER_SIZE_BY_ZOOM = ['interpolate', ['linear'], ['zoom'],
 // failures -- the safety model's "busy through road" (6,000/day) -- not just
 // full main-highway volumes.
 const HEAVY_TRAFFIC_ADT = SafetyModel.BUSY_LEVELS[3].adt;
-function routeMarkerKinds(p) {
+// The ! on a rules-failing stretch: one at the middle of a contiguous failed
+// area (two on a long one), only where no other badge is already telling a
+// story. Its job is to draw the tap that opens the card naming the rule.
+const FAIL_MARKER_MIN_RUN_M = 120;
+const FAIL_MARKER_SECOND_AT_M = 2500;
+function routeMarkerKinds(p, style) {
   const kinds = [];
   if (p.ferry === 1) return kinds;
   if (p.dismount === 1) kinds.push('walk');
@@ -6208,7 +6213,6 @@ function routeMarkerKinds(p) {
     // trusted bike/trail paint keeps its lime unbadged, however busy the road
     // beside the lane; the car appears where the road is a caution, or where
     // that traffic is part of why it draws as a bare pass instead.
-    const style = routeVisualStyle(p);
     if (style === 'caution' || style === 'pass') kinds.push('traffic');
   }
   if (isConfirmedUnpavedSurface(p.surface)) kinds.push('unpaved');
@@ -6217,11 +6221,13 @@ function routeMarkerKinds(p) {
 }
 function buildRouteMarkerData(sdata) {
   const feats = (sdata.features || []).map((feature) => {
+    const p = feature.properties || {};
     const coords = feature.geometry?.coordinates || [];
     let lenM = 0;
     for (let i = 1; i < coords.length; i++) lenM += markerSpanM(coords[i - 1], coords[i]);
-    return { kinds: routeMarkerKinds(feature.properties || {}), coords, lenM,
-      ferry: (feature.properties || {}).ferry === 1 };
+    const style = p.ferry === 1 ? null : routeVisualStyle(p);
+    return { kinds: routeMarkerKinds(p, style), coords, lenM,
+      ferry: p.ferry === 1, fail: style === 'fail' };
   });
   // A dock reads steep when it is not: the z12 DEM smears the shoreline bluff
   // onto the flats at a slip, and Clinton's flat terminal road booked 11%
@@ -6285,6 +6291,42 @@ function buildRouteMarkerData(sdata) {
       pos += d;
     }
   });
+  // The ! for rules failures sits outside the spacing clock: one per
+  // contiguous failed area (two on a long one), placed only where no chained
+  // badge already invites the tap. Slot -1 gives it top collision priority.
+  const pointAt = (f, span, m) => {
+    let at = span.startM;
+    for (let i = 1; i < f.coords.length; i++) {
+      const a = f.coords[i - 1], b = f.coords[i], d = markerSpanM(a, b);
+      if (m <= at + d || i === f.coords.length - 1) {
+        const t = d > 0 ? Math.min(1, Math.max(0, (m - at) / d)) : 0;
+        return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      }
+      at += d;
+    }
+    return f.coords[0] || null;
+  };
+  const placeFailMarks = (startIdx, endIdx) => {
+    const runStartM = spans[startIdx].startM, runLenM = spans[endIdx].endM - runStartM;
+    if (runLenM < FAIL_MARKER_MIN_RUN_M) return;
+    const targets = runLenM >= FAIL_MARKER_SECOND_AT_M
+      ? [runStartM + runLenM / 3, runStartM + 2 * runLenM / 3]
+      : [runStartM + runLenM / 2];
+    for (const target of targets) {
+      const index = spans.findIndex((span) => target >= span.startM && target <= span.endM);
+      if (index < 0 || qualified[index].length) continue;
+      const at = pointAt(feats[index], spans[index], target);
+      if (!at) continue;
+      other.push({ type: 'Feature', properties: { kind: 'fail', slot: -1 },
+        geometry: { type: 'Point', coordinates: at } });
+    }
+  };
+  let failStart = -1;
+  feats.forEach((f, i) => {
+    if (f.fail && failStart < 0) failStart = i;
+    if (!f.fail && failStart >= 0) { placeFailMarks(failStart, i - 1); failStart = -1; }
+  });
+  if (failStart >= 0) placeFailMarks(failStart, feats.length - 1);
   return { walk: { type: 'FeatureCollection', features: walk },
     other: { type: 'FeatureCollection', features: other } };
 }
@@ -6474,6 +6516,14 @@ function ensureRouteMarkerImages(targetMap) {
       }
     }
     add('route-marker-unpaved', b);
+  }
+  { // fail: a bold exclamation -- "a rule failed here; tap for which".
+    const b = paintMarkerBadge([176, 32, 32, 255]);
+    const s = b.s, ink = [176, 32, 32, 255];
+    b.stroke(8 * s, 4.7 * s, 8 * s, 6 * s, 2 * s, ink);
+    b.stroke(8 * s, 6 * s, 8 * s, 9.3 * s, 1.6 * s, ink);
+    b.disc(8 * s, 11.9 * s, 1.1 * s, ink);
+    add('route-marker-fail', b);
   }
   { // odd: a bold question mark -- "this is not an ordinary road".
     const b = paintMarkerBadge([54, 79, 96, 255]);
