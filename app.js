@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.553';
+const APP_VERSION = '2026-08-04.554';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6191,7 +6191,7 @@ const FERRY_GRADE_BLACKOUT_M = 250;
 // Badges grow as the rider zooms in, so they stay readable up close without
 // dominating a statewide view.
 const ROUTE_MARKER_SIZE_BY_ZOOM = ['interpolate', ['linear'], ['zoom'],
-  9, 0.75, 12, 1, 14, 1.28, 16.5, 1.7];
+  9, 0.98, 12, 1.3, 14, 1.66, 16.5, 2.2];
 const HEAVY_TRAFFIC_ADT = 15000; // the safety model's heavy tier
 function routeMarkerKinds(p) {
   const kinds = [];
