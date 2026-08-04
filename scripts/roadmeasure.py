@@ -39,6 +39,9 @@ import json
 import math
 import os
 
+import numpy as np
+import shapely
+
 from shapely.geometry import LineString, Point
 from shapely.strtree import STRtree
 
@@ -54,6 +57,7 @@ BEARING_TOL_DEG = 40.0
 # an endpoint is where an edge meets roads it is not part of.
 SAMPLE_COUNT = 5
 SAMPLE_FRACS = tuple((i + 0.5) / SAMPLE_COUNT for i in range(SAMPLE_COUNT))
+_SAMPLE_FRACS_ARR = np.array(SAMPLE_FRACS)
 # How many samples the source layer must cover, between all of its aligned
 # segments, to claim the way: a simple majority.
 #
@@ -145,43 +149,80 @@ class MeasureIndex:
             self.props.append(f.get('properties') or {})
         if self.geoms:
             self.tree = STRtree(self.geoms)
+            # Source-line lengths, once. match() needs each candidate's length
+            # for its bearing window, and shapely computes the whole array in
+            # one C call here instead of one Python call per pair there.
+            self._lengths = shapely.length(self.tree.geometries)
         print(f"  {label}: {len(self.geoms):,} segments", flush=True)
 
     def __bool__(self):
         return self.tree is not None
 
-    def match(self, coords):
+    def match(self, coords, shared=None):
         """Best source properties for one OSM way, or None.
 
         Matches when the source layer's aligned segments together cover a
         majority of the way's sample points, each within MATCH_M and aligned
         within BEARING_TOL_DEG where it was sampled. Reports the values of
         whichever single segment covers the most of it.
+
+        `shared` is (sample_points, way_bearing) from RoadMeasures.match():
+        four layers sample one way at the same five fractions, so the sampling
+        is done once and handed to each rather than rebuilt per layer.
+
+        The loop this replaces asked shapely one question per sample point and
+        then per (segment, sample) pair -- five queries, then a distance, a
+        projection, two interpolations and a bearing for every pair, each call
+        paying shapely's per-call Python ceremony. Half the whole graph build
+        was that ceremony. Every question is now asked once, over arrays, with
+        the same numbers coming back: batched STRtree queries return pairs in
+        the same per-point traversal order the loop saw, so even the
+        tie-breaks below choose identically.
         """
         if self.tree is None or len(coords) < 2:
             return None
-        line = LineString(coords)
-        if line.length == 0:
-            return None
-        points = [line.interpolate(f, normalized=True) for f in SAMPLE_FRACS]
-        way_bearing = _bearing(coords[0], coords[-1])
+        if shared is None:
+            line = LineString(coords)
+            if line.length == 0:
+                return None
+            points = shapely.line_interpolate_point(
+                line, _SAMPLE_FRACS_ARR, normalized=True)
+            way_bearing = _bearing(coords[0], coords[-1])
+        else:
+            points, way_bearing = shared
 
         # Which samples does each nearby segment cover? A segment is only
         # credited with a sample it is genuinely beside AND aligned with, so a
-        # crossing street can never accumulate coverage.
+        # crossing street can never accumulate coverage. dwithin IS the
+        # distance test -- the old loop re-checked g.distance(point) after it,
+        # which could never reject.
+        pi, gi = self.tree.query(points, predicate='dwithin', distance=MATCH_DEG)
+        if len(gi) == 0:
+            self.misses += 1
+            return None
+        glines = self.tree.geometries[gi]
+        pts = points[pi]
+        lengths = self._lengths[gi]
+        # _line_bearing_near(), elementwise: project each sample onto its
+        # candidate, take a short window either side, and read the heading.
+        at = shapely.line_locate_point(glines, pts)
+        step = np.minimum(lengths / 2, MATCH_DEG * 4)
+        lo = shapely.line_interpolate_point(glines, np.maximum(0.0, at - step))
+        hi = shapely.line_interpolate_point(glines, np.minimum(lengths, at + step))
+        lox, loy = shapely.get_x(lo), shapely.get_y(lo)
+        hix, hiy = shapely.get_x(hi), shapely.get_y(hi)
+        with np.errstate(invalid='ignore'):
+            x = (hix - lox) * np.cos(np.radians((loy + hiy) / 2))
+            y = hiy - loy
+            src_bearing = np.degrees(np.arctan2(x, y))
+            d = np.abs((src_bearing - way_bearing + 180) % 360 - 180)
+            gap = np.minimum(d, 180 - d)
+        keep = ((lengths > 0) & ~((lox == hix) & (loy == hiy))
+                & (gap <= BEARING_TOL_DEG))
+
         covered = {}
-        for index, point in enumerate(points):
-            for gi in self.tree.query(point, predicate='dwithin', distance=MATCH_DEG):
-                gi = int(gi)
-                g = self.geoms[gi]
-                if g.distance(point) > MATCH_DEG:
-                    continue
-                src_bearing = _line_bearing_near(g, point)
-                if src_bearing is None:
-                    continue
-                if _bearing_gap(way_bearing, src_bearing) > BEARING_TOL_DEG:
-                    continue
-                covered.setdefault(gi, set()).add(index)
+        for k in np.flatnonzero(keep):
+            covered.setdefault(int(gi[k]), set()).add(int(pi[k]))
 
         if not covered:
             self.misses += 1
@@ -299,7 +340,20 @@ class RoadMeasures:
         out = {}
         count = None   # (adt, year, source), resolved by _better_count
 
-        log = self.roadlog.match(coords) if self.roadlog else None
+        # One sampling for all four layers: they interpolate the same way at
+        # the same five fractions, so building the line and its sample points
+        # per layer did the identical work four times over.
+        line = LineString(coords) if len(coords) >= 2 else None
+        if line is None or line.length == 0:
+            shared = None
+        else:
+            shared = (shapely.line_interpolate_point(
+                line, _SAMPLE_FRACS_ARR, normalized=True),
+                _bearing(coords[0], coords[-1]))
+        if shared is None:
+            return out
+
+        log = self.roadlog.match(coords, shared) if self.roadlog else None
         if log:
             if log.get('adt'):
                 count = (int(log['adt']), log.get('adty'), ADT_SOURCE_COUNTY)
@@ -310,13 +364,13 @@ class RoadMeasures:
             if log.get('shP') is not None:
                 out['shP'] = float(log['shP'])
 
-        state = self.aadt.match(coords) if self.aadt else None
+        state = self.aadt.match(coords, shared) if self.aadt else None
         if state and state.get('adt'):
             cand = (int(state['adt']), state.get('adty'), ADT_SOURCE_STATE)
             if _better_count(cand, count):
                 count = cand
 
-        hpms = self.hpms.match(coords) if self.hpms else None
+        hpms = self.hpms.match(coords, shared) if self.hpms else None
         if hpms:
             if hpms.get('adt'):
                 cand = (int(hpms['adt']), hpms.get('adty'), ADT_SOURCE_HPMS)
@@ -329,7 +383,7 @@ class RoadMeasures:
             if hpms.get('owner') and not out.get('owner'):
                 out['owner'] = int(hpms['owner'])
 
-        fc = self.funcclass.match(coords) if self.funcclass else None
+        fc = self.funcclass.match(coords, shared) if self.funcclass else None
         if fc:
             # The dedicated layer wins over HPMS for class and owner: it is the
             # current publication, where the HPMS release is from 2018.

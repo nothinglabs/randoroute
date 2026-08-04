@@ -100,6 +100,8 @@ import sys
 from array import array
 
 import osmium
+import numpy as np
+import shapely
 from shapely.geometry import LineString, Point, shape
 from shapely.strtree import STRtree
 
@@ -299,6 +301,15 @@ def load_dem():
         xs.add(int(x)); ys.add(int(y))
     x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
     W, H = (x1 - x0 + 1) * 256, (y1 - y0 + 1) * 256
+    # Decoding 5,673 PNGs takes ~15 s and produces exactly the same array every
+    # build, so the assembled mosaic is cached beside the tiles. The tile count
+    # in the name is the invalidation: fetch_dem.sh only ever adds tiles.
+    cache = f'{DEM_DIR}/_mosaic_{DEM_Z}_{len(files)}.npy'
+    if os.path.exists(cache):
+        mosaic = np.load(cache)
+        if mosaic.shape == (H, W):
+            print(f'  DEM mosaic: {len(files)} tiles, {W}x{H} px (cached)', flush=True)
+            return _dem_lookup(mosaic, x0, y0, W, H)
     mosaic = np.zeros((H, W), dtype=np.int16)
     n = 0
     for f in files:
@@ -312,7 +323,15 @@ def load_dem():
         mosaic[(y - y0) * 256:(y - y0 + 1) * 256, (x - x0) * 256:(x - x0 + 1) * 256] = \
             np.clip(ele, -32000, 32000).astype(np.int16)
         n += 1
+    try:
+        np.save(cache, mosaic)
+    except OSError:
+        pass   # a full disk costs the cache, not the build
     print(f'  DEM mosaic: {n} tiles, {W}x{H} px', flush=True)
+    return _dem_lookup(mosaic, x0, y0, W, H)
+
+
+def _dem_lookup(mosaic, x0, y0, W, H):
     scale = 2 ** DEM_Z
     def ele_at(lon, lat):
         fx = (lon + 180) / 360 * scale
@@ -540,15 +559,18 @@ def _route_numbers(*values):
     return {int(v) for value in values for v in re.findall(r'\d+', str(value or ''))}
 
 
+_SAMPLE_FRACS = np.array([0.2, 0.5, 0.8])
+
+
 def sampled_points(coords):
     """Three interior points keep nearby crossings from becoming matches."""
     line = LineString(coords)
     if line.length == 0:
-        return []
-    return [line.interpolate(frac, normalized=True) for frac in (0.2, 0.5, 0.8)]
+        return None
+    return shapely.line_interpolate_point(line, _SAMPLE_FRACS, normalized=True)
 
 
-def official_match(coords, tags, index, max_deg=WSDOT_MATCH_DEG):
+def official_match(coords, tags, index, max_deg=WSDOT_MATCH_DEG, points=None):
     """Return the best official attribute matched along the edge.
 
     A matching route number permits normal WSDOT/OSM centerline offsets. With
@@ -556,25 +578,35 @@ def official_match(coords, tags, index, max_deg=WSDOT_MATCH_DEG):
     strict tolerance. This rejects roads that merely cross official linework.
     """
     tree, geoms, attrs = index
-    points = sampled_points(coords)
-    if not points:
+    if points is None:
+        points = sampled_points(coords)
+    if points is None:
         return None
     # Only explicit route refs relax the spatial tolerance. A numbered local
     # street name (for example, "40th Avenue") is not evidence that it is
     # WSDOT route 40.
     edge_routes = _route_numbers(tags.get('ref'))
-    candidates = set()
-    for point in points:
-        candidates.update(int(i) for i in tree.query(point.buffer(max_deg)))
+    # One batched dwithin, replacing a buffer polygon and a bbox query PER
+    # SAMPLE POINT. The buffer produced a candidate superset (its bbox catches
+    # segments whose true distance exceeds max_deg); every extra candidate had
+    # all three distances over max_deg and fell to close_count < 2 below, so
+    # the tighter candidate set decides identically.
+    _, hits = tree.query(points, predicate='dwithin', distance=max_deg)
+    if len(hits) == 0:
+        return None
+    candidates = np.unique(hits)
+    # The whole candidates-by-samples distance matrix in one call.
+    distances = shapely.distance(tree.geometries[candidates][:, None],
+                                 points[None, :])
     best = None
-    for gi in candidates:
-        distances = [geoms[gi].distance(point) for point in points]
+    for row, gi in enumerate(candidates):
+        gi = int(gi)
         same_route = attrs[gi]['route'] is not None and attrs[gi]['route'] in edge_routes
-        close_count = sum(distance <= (max_deg if same_route else WSDOT_STRICT_DEG)
-                          for distance in distances)
+        close_count = int(np.count_nonzero(
+            distances[row] <= (max_deg if same_route else WSDOT_STRICT_DEG)))
         if close_count < 2:
             continue
-        score = sum(sorted(distances)[:2])
+        score = float(np.sum(np.sort(distances[row])[:2]))
         if best is None or score < best[0]:
             best = (score, attrs[gi])
     return best[1] if best else None
@@ -591,19 +623,24 @@ def is_restricted_edge(coords, tags, index):
     edge_routes = _route_numbers(tags.get('ref'), tags.get('name'))
     strict = 0.00004  # ~4 m
     # Check every simplified geometry point, not only an edge midpoint: a
-    # restriction boundary can fall inside a graph edge.
-    for x, y in coords:
-        point = Point(x, y)
-        for gi in tree.query(point.buffer(WSDOT_MATCH_DEG)):
-            distance = geoms[gi].distance(point)
-            if distance <= strict:
-                return True
-            if distance <= WSDOT_MATCH_DEG and routes[gi] in edge_routes:
-                return True
+    # restriction boundary can fall inside a graph edge. One batched query for
+    # the whole vertex list -- this used to buffer and query PER VERTEX against
+    # a tree of 84 restriction segments, which made the rarest layer in the
+    # build one of its most-called code paths.
+    pts = shapely.points(coords)
+    pi, gi = tree.query(pts, predicate='dwithin', distance=WSDOT_MATCH_DEG)
+    if len(gi) == 0:
+        return False
+    distances = shapely.distance(tree.geometries[gi], pts[pi])
+    if np.any(distances <= strict):
+        return True
+    for k in np.flatnonzero(distances <= WSDOT_MATCH_DEG):
+        if routes[int(gi[k])] in edge_routes:
+            return True
     return False
 
 
-def blts_matches(coords, tags, index):
+def blts_matches(coords, tags, index, points=None):
     """Best WSDOT BLTS attributes for a->b and b->a travel.
 
     Same discipline as official_match/is_restricted_edge: a shared route
@@ -616,22 +653,30 @@ def blts_matches(coords, tags, index):
     which severed continuous bike routes like NE Ravenna Blvd under I-5.
     """
     tree, geoms, attrs = index
-    points = sampled_points(coords)
-    if not points:
+    if points is None:
+        points = sampled_points(coords)
+    if points is None:
         return None, None
     edge_routes = _route_numbers(tags.get('ref'))
     best = {'i': None, 'd': None, None: None}
-    candidates = set()
-    for point in points:
-        candidates.update(int(i) for i in tree.query(point.buffer(WSDOT_MATCH_DEG)))
-    for gi in candidates:
-        distances = [geoms[gi].distance(point) for point in points]
+    # Batched exactly as official_match() above; see the note there for why
+    # the tighter dwithin candidate set decides identically to the old
+    # per-point buffer queries.
+    _, hits = tree.query(points, predicate='dwithin', distance=WSDOT_MATCH_DEG)
+    if len(hits) == 0:
+        return None, None
+    candidates = np.unique(hits)
+    all_distances = shapely.distance(tree.geometries[candidates][:, None],
+                                     points[None, :])
+    for row, gi in enumerate(candidates):
+        gi = int(gi)
+        distances = all_distances[row]
         same_route = attrs[gi]['route'] is not None and attrs[gi]['route'] in edge_routes
-        close_count = sum(distance <= (WSDOT_MATCH_DEG if same_route else WSDOT_STRICT_DEG)
-                          for distance in distances)
+        close_count = int(np.count_nonzero(
+            distances <= (WSDOT_MATCH_DEG if same_route else WSDOT_STRICT_DEG)))
         if close_count < 2:
             continue
-        score = sum(sorted(distances)[:2])
+        score = float(np.sum(np.sort(distances)[:2]))
         direction = attrs[gi]['direction']
         if best[direction] is None or score < best[direction][0]:
             best[direction] = (score, attrs[gi], geoms[gi])
@@ -1368,8 +1413,16 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 restricted_edges[0] += 1
                                 seg = [p]
                                 continue  # WSDOT permanent bike restriction
+                            # One sampling of this segment for all three
+                            # matchers below; they interpolate the same line at
+                            # the same three fractions.
+                            sample_pts = sampled_points(coords) if (
+                                wsdot_candidate
+                                or (speed_index and not attrs['infra'] and not is_ferry)
+                                or (facility_index and not is_ferry)) else None
                             if wsdot_candidate:
-                                match_ab, match_ba = blts_matches(coords, tags, wsdot)
+                                match_ab, match_ba = blts_matches(coords, tags, wsdot,
+                                                                  points=sample_pts)
                                 if match_ab is not None or match_ba is not None:
                                     for direction, match in enumerate((match_ab, match_ba)):
                                         if match is None:
@@ -1405,7 +1458,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                         eflags &= ~1  # measured, not estimated
                                     conflated[0] += 1
                             if speed_index and not attrs['infra'] and not is_ferry:
-                                match = official_match(coords, tags, speed_index)
+                                match = official_match(coords, tags, speed_index,
+                                                       points=sample_pts)
                                 if match is not None:
                                     espeed = min(match['value'], 255)
                                     espeed_ba = espeed
@@ -1413,7 +1467,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                     eofficial |= OFFICIAL_SPEED
                                     official_speeds[0] += 1
                             if facility_index and not is_ferry:
-                                match = official_match(coords, tags, facility_index)
+                                match = official_match(coords, tags, facility_index,
+                                                       points=sample_pts)
                                 if match is not None:
                                     official_type = match['value']
                                     # Shared-use paths belong on OSM path topology;
@@ -1604,7 +1659,15 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     with gzip.open(out, 'wb', compresslevel=9) as f:
         f.write(raw)
     print(f'raw {len(raw):,} bytes -> {out} {os.path.getsize(out):,} bytes gz', flush=True)
-    stamp_graph_version(out)
+    # Only the shipping artefact stamps the version. A profiling or test build
+    # writing elsewhere must not rewrite build-version.js with a hash of a
+    # graph riders will never be served.
+    default_out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               '..', 'data', 'graph2.bin.gz')
+    if os.path.abspath(out) == os.path.abspath(default_out):
+        stamp_graph_version(out)
+    else:
+        print(f'  not the shipping graph path; GRAPH_DATA_VERSION left alone', flush=True)
 
 
 if __name__ == '__main__':
