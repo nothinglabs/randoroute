@@ -97,18 +97,25 @@ check('offered candidates are marked offered',
 /* ------------------------------------------- the button and the screen */
 const btn = await pg.$('#moreRoutesBtn');
 check('a More button sits after the offered routes', !!btn);
+// The row's tail is [last letter, More, Remix]: More directly follows the
+// lettered options, and Route Remix sits beside it at the end.
 const placement = await pg.evaluate(() => {
   const more = document.getElementById('moreRoutesBtn');
+  const remix = document.getElementById('routeRemixBtn');
   const buttons = [...document.querySelectorAll('#routeOptions button')];
-  const last = buttons[buttons.length - 1];
-  const prev = buttons[buttons.length - 2];
-  return { isLast: last === more,
-    rightOfPrev: more.getBoundingClientRect().left >= prev.getBoundingClientRect().left,
-    distinct: getComputedStyle(more).backgroundColor
-      !== getComputedStyle(prev).backgroundColor };
+  const lastLetter = buttons[buttons.indexOf(more) - 1];
+  const paint = (el) => el && getComputedStyle(el).backgroundColor;
+  return {
+    order: buttons[buttons.length - 2] === more && buttons[buttons.length - 1] === remix,
+    rightOfLetters: more.getBoundingClientRect().left >= lastLetter.getBoundingClientRect().left,
+    moreDistinct: paint(more) !== paint(lastLetter),
+    remixDistinct: paint(remix) !== paint(lastLetter) && paint(remix) !== paint(more),
+  };
 });
-check('More comes after the last route', placement.isLast && placement.rightOfPrev);
-check('More is styled apart from the lettered routes', placement.distinct);
+check('More comes after the last route, with Remix beside it',
+  placement.order && placement.rightOfLetters, JSON.stringify(placement));
+check('More is styled apart from the lettered routes', placement.moreDistinct);
+check('and so is Remix, apart from both', placement.remixDistinct);
 
 await pg.click('#moreRoutesBtn');
 await pg.waitForTimeout(400);
