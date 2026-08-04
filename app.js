@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.543';
+const APP_VERSION = '2026-08-04.544';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2488,6 +2488,7 @@ const routing = {
   blocks: [],                // avoided road locations: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false, pendingRoute: false, routeRequestActive: false,
+  loadedGraphVersion: null, // sha of the graph bytes the router actually has
   mode: ['direct', 'balanced', 'low'].includes(savedState?.mode)
     ? savedState.mode : 'balanced', // 'direct' | 'balanced' | 'low'
   profileId: ROUTE_PROFILE_IDS.has(savedState?.profileId)
@@ -2707,6 +2708,16 @@ async function ensureRouter() {
     const res = await fetch(GRAPH_URL);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const buf = await readRoutingGraphResponse(res);
+    // The version the router ACTUALLY loaded, from the bytes themselves --
+    // GRAPH_DATA_VERSION only says what the shell asked for, and the one
+    // failure worth diagnosing is precisely when an older service worker
+    // serves stale bytes for the new URL. Hash before transfer neuters buf.
+    try {
+      const digest = await crypto.subtle.digest('SHA-256', buf);
+      routing.loadedGraphVersion = 'sha-' + [...new Uint8Array(digest)].slice(0, 6)
+        .map((b) => b.toString(16).padStart(2, '0')).join('');
+    } catch { routing.loadedGraphVersion = null; }
+    syncGraphVersionLine();
     showRouterProgress('Starting the on-device route engine…');
     routing.worker.postMessage({ type: 'graph', buffer: buf }, [buf]);
   } catch (e) {
@@ -5812,7 +5823,12 @@ function onRouterMessage(ev) {
       : m.phase === 'reroute' ? 'Updating route' : 'Calculating route options';
     showRouterProgress(m.detail || 'Working…', title);
   } else if (m.type === 'ready') {
-    markGraphDataLoaded();
+    // Only a graph whose BYTES match the expected stamp counts as loaded;
+    // marking a stale one done is what made the self-heal one-shot before.
+    // No hash (crypto unavailable) keeps the old always-mark behaviour.
+    if (!routing.loadedGraphVersion || routing.loadedGraphVersion === GRAPH_DATA_VERSION) {
+      markGraphDataLoaded();
+    }
     routing.ready = true;
     routing.loading = false;
     routing.pendingRoute = false;
@@ -10576,7 +10592,19 @@ document.getElementById('layersToggle').addEventListener('click', () => {
 // Dialog close buttons and the version shown inside Getting Started help.
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () =>
   document.getElementById(b.dataset.close).close()));
-document.getElementById('appVersion').textContent = 'v' + APP_VERSION;
+// One line answers both "what app is this" and "what map is it routing on".
+// The map half reports the hash of the bytes the router loaded, so a stale
+// service-worker cache shows up as STALE here instead of as a weird route.
+function syncGraphVersionLine() {
+  const el = document.getElementById('appVersion');
+  if (!el) return;
+  const loaded = routing.loadedGraphVersion;
+  const graph = !loaded ? `map ${GRAPH_DATA_VERSION} (loading)`
+    : loaded === GRAPH_DATA_VERSION ? `map ${loaded}`
+    : `map ${loaded} — STALE, expected ${GRAPH_DATA_VERSION}`;
+  el.textContent = `v${APP_VERSION} · ${graph}`;
+}
+syncGraphVersionLine();
 const nativeAppVersionOnly = document.documentElement.dataset.appRuntime === 'native'
   || window.location.protocol === 'capacitor:'
   || Boolean(window.Capacitor?.isNativePlatform?.());

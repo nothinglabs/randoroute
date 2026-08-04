@@ -64,6 +64,18 @@ check(`the toast sits low on the map (${Math.round(bands.normal * 100)}vh, need 
 check(`and lower still while the place picker is open (${Math.round(bands.picking * 100)}vh, need ≥ 50vh)`,
   bands.picking >= 0.50, JSON.stringify(bands));
 
+// The about line reports the map data the router ACTUALLY loaded -- hashed
+// from the bytes -- so a stale service-worker cache reads STALE there
+// instead of surfacing as an inexplicable route. Here they must agree.
+await page.waitForFunction(() => /map sha-[0-9a-f]{12}$/
+  .test(document.getElementById('appVersion').textContent), { timeout: 90000 });
+const version = await page.evaluate(() => ({
+  line: document.getElementById('appVersion').textContent,
+  expected: `v${APP_VERSION} · map ${self.GRAPH_DATA_VERSION}`,
+}));
+check('the about line names the loaded map data, matching the shipped stamp',
+  version.line === version.expected, JSON.stringify(version));
+
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 
 await browser.close();
