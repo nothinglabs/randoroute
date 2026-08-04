@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.541';
+const APP_VERSION = '2026-08-04.542';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2421,8 +2421,8 @@ function setMapLayerVisible(key, on) {
  * pruning considers excessive. Remix answers that WITHOUT touching the
  * rules (verdicts and colours are untouched) and WITHOUT editing the tuned
  * weights: at request time every subjective safety multiplier is scaled in
- * log space (w^k), so under `direct` a 9× wall softens to ~2.7× and a 0.21
- * trail bonus flattens to ~0.5, while `safe` deepens both. The additive
+ * log space (w^k), so under `direct` a 9× wall softens to ~1.6× and a 0.21
+ * trail bonus flattens to ~0.7, while `safe` deepens both. The additive
  * per-mph speed rates scale linearly. Physics stays physics: climb and turn
  * seconds, ferry wait, elevation factors are untouched, as are the freeway
  * and mountain-bike last-resort walls.
@@ -2433,7 +2433,10 @@ function setMapLayerVisible(key, on) {
  * keep it.
  */
 const ROUTE_REMIX_MODES = Object.freeze({
-  direct: { exponent: 0.45, label: 'More direct routes', hint: 'May be less safe' },
+  // 0.22 after field testing found 0.45 too timid: the 9× balanced failing
+  // wall drops to ~1.6× and heavy-traffic pressure to ~1.1×, so the search is
+  // mostly time and distance with mild nudges left.
+  direct: { exponent: 0.22, label: 'More direct routes', hint: 'May be less safe' },
   recommended: { exponent: 1, label: 'Recommended routes', hint: 'The normal balance of safety and practicality' },
   safe: { exponent: 1.35, label: 'More safety-focused routes', hint: 'May be longer' },
 });

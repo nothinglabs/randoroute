@@ -33,6 +33,12 @@ check('direct softens the failing-road wall toward neutral',
   transform.direct.failRoadBalanced < transform.base.failRoadBalanced
     && transform.direct.failRoadBalanced > 1,
   `${transform.base.failRoadBalanced} -> ${transform.direct.failRoadBalanced}`);
+// Field testing found the first cut (exponent 0.45, wall ~2.7×) too timid to
+// surface the direct routes it exists for. Under default weights the 9×
+// balanced wall must land under 2× -- mostly time and distance, mild nudges.
+check('and aggressively so: the default 9x wall lands under 2x',
+  transform.base.failRoadBalanced !== 9 || transform.direct.failRoadBalanced < 2,
+  `${transform.base.failRoadBalanced} -> ${transform.direct.failRoadBalanced}`);
 check('and flattens the trail attraction toward neutral',
   transform.direct.facilityPath > transform.base.facilityPath
     && transform.direct.facilityPath < 1,
