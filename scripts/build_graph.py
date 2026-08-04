@@ -1257,8 +1257,16 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     phase('pass 1: scanning ways...')
     refcount = {}
     kept_ways = 0
+    last_way_id = [0]
+
     def count_way_refs(obj):
         nonlocal kept_ways
+        # sorted(results) in the parallel commit stands in for file order;
+        # this is the proof it may.
+        if obj.id <= last_way_id[0]:
+            raise SystemExit('ways are not id-sorted; parallel commit order '
+                             'would not be file order')
+        last_way_id[0] = obj.id
         # 5.2M ways in the extract, 343k of them roads. classify_way() can
         # only keep a way with a highway tag or a ferry route, so ask the
         # C-side tag list those two questions before building a Python dict
@@ -1341,8 +1349,15 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     # iterates every source node, which is extremely slow for this statewide
     # extract.  SimpleHandler keeps the location index in libosmium and streams
     # each completed way directly into the existing edge builder.
-    def process_way(obj):
-        nonlocal oneway_arcs
+    def compute_way(obj):
+        """Everything about one way that needs no shared state.
+
+        Returns a list of run specs, or None. All matching, climbing and
+        hazard work happens here; commit_runs() below is the only place graph
+        node ids are assigned and arrays appended. The split exists so this
+        half can run in forked workers while the commit stays sequential --
+        the byte layout of the graph IS the commit order.
+        """
         # Same cheap C-side gate as pass 1: no highway tag and not a ferry
         # means classify_way() cannot keep it.
         t = obj.tags
@@ -1402,6 +1417,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                  | (16 if ow == 1 else 0) | (32 if is_ferry else 0)
                  | (64 if obj.id in designated else 0))
         sh = -1 if attrs['sh'] is None else max(-1, min(127, attrs['sh']))
+        name_str = tags.get('name') or tags.get('ref')
+        way_runs = []
 
         seg = [pts[0]]
         for p in pts[1:]:
@@ -1414,9 +1431,15 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                     if length > 0.5:
                         if len(coords) > 3:
                             coords = simplify_line(coords)
-                        a = gnode(seg[0][0], *coords[0])
-                        b = gnode(seg[-1][0], *coords[-1])
-                        if a != b or length > 10:  # drop degenerate micro-loops
+                        aref, bref = seg[0][0], seg[-1][0]
+                        # Same node id iff same OSM ref, so the micro-loop
+                        # test needs no graph ids. The old path interned both
+                        # endpoints BEFORE dropping the edge; the False spec
+                        # keeps that: commit interns and appends nothing.
+                        kept = aref != bref or length > 10
+                        if not kept:
+                            way_runs.append((aref, coords[0], bref, coords[-1], False))
+                        elif True:
                             espeed, espeed_ba = attrs['speed'], attrs['speed']
                             esh, esh_ba, eflags = sh, sh, flags
                             limited_dir = 0
@@ -1431,6 +1454,9 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             if (restriction_index and not attrs['infra']
                                     and is_restricted_edge(coords, tags, restriction_index)):
                                 restricted_edges[0] += 1
+                                # The pre-split code had already interned both
+                                # endpoints by this point; keep those nodes.
+                                way_runs.append((aref, coords[0], bref, coords[-1], False))
                                 seg = [p]
                                 continue  # WSDOT permanent bike restriction
                             # One sampling of this segment for all three
@@ -1535,59 +1561,147 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 hazard_shoulder = min(known_shoulders) if known_shoulders else -1
                                 haz_ab, haz_ba = directional_curve_hazard(
                                     coords, ele_at, hazard_speed, hazard_shoulder, efacility)
-                            geom_off = len(gLon)
-                            geom_cnt = min(len(coords), 65535)
-                            for x, y in coords[:geom_cnt]:
-                                gLon.append(x); gLat.append(y)
-
-                            def append_edge(edge_flags, edge_speed, edge_speed_ba,
-                                            edge_sh, edge_sh_ba, edge_limited_dir,
-                                            edge_class, edge_facility, edge_official, edge_surface,
-                                            edge_lanes, edge_lts,
-                                            edge_space, edge_county_sh, edge_adt,
-                                            edge_adt_meta, edge_adt_source,
-                                            edge_class_owner,
-                                            edge_asc, edge_des, ab, ba):
-                                eAsc.append(min(int(edge_asc), 65535)); eDes.append(min(int(edge_des), 65535))
-                                eA.append(a); eB.append(b); eLen.append(length)
-                                eSpeed.append(edge_speed); eSpeedBA.append(edge_speed_ba)
-                                eFlags.append(edge_flags)
-                                eSh.append(edge_sh); eShBA.append(edge_sh_ba)
-                                eLimitedDir.append(edge_limited_dir)
-                                eClass.append(edge_class)
-                                eFacility.append(edge_facility); eOfficial.append(edge_official)
-                                eSurface.append(edge_surface)
-                                eLanes.append(edge_lanes); eLts.append(edge_lts)
-                                eEdgeSpace.append(edge_space)
-                                eCountyShoulder.append(edge_county_sh)
-                                eAdt.append(edge_adt); eAdtMeta.append(edge_adt_meta)
-                                eAdtSource.append(edge_adt_source)
-                                eClassOwner.append(edge_class_owner)
-                                eHazAB.append(ab[0]); eHazBA.append(ba[0])
-                                eHazStartAB.append(ab[1]); eHazEndAB.append(ab[2])
-                                eHazStartBA.append(ba[1]); eHazEndBA.append(ba[2])
-                                eName.append(name_idx(tags.get('name') or tags.get('ref')))
-                                eOff.append(geom_off); eCnt.append(geom_cnt)
-
-                            append_edge(eflags, espeed, espeed_ba, esh, esh_ba, limited_dir,
-                                        attrs['road_class'], efacility, eofficial, attrs['surface'],
-                                        elanes, elts,
-                                        e_space, e_county_sh, e_adt, e_adt_meta,
-                                        e_adt_source, e_class_owner,
-                                        asc, des, haz_ab, haz_ba)
-                            if attrs['mtb']:
-                                mtb_edges[0] += 1
-                            if haz_ab[0] or haz_ba[0]:
-                                hazard_edges[0] += 1
-                            if ow == 1:
-                                oneway_arcs += 1
+                            way_runs.append((
+                                aref, coords[0], bref, coords[-1], True,
+                                length, coords, eflags, espeed, espeed_ba,
+                                esh, esh_ba, limited_dir, attrs['road_class'],
+                                efacility, eofficial, attrs['surface'],
+                                elanes, elts, e_space, e_county_sh, e_adt,
+                                e_adt_meta, e_adt_source, e_class_owner,
+                                asc, des, haz_ab, haz_ba,
+                                attrs['mtb'], ow == 1, name_str))
                 seg = [p]
+        return way_runs or None
 
-    class GraphWayHandler(osmium.SimpleHandler):
-        def way(self, obj):
-            process_way(obj)
+    def commit_runs(runs):
+        """Assign node ids and append every array, in one place.
 
-    GraphWayHandler().apply_file(src, locations=True)
+        The per-array append sequences ARE the artefact: this must run over
+        ways in file order whether the specs were computed here or in a
+        worker.
+        """
+        nonlocal oneway_arcs
+        for r in runs:
+            a = gnode(r[0], *r[1])
+            b = gnode(r[2], *r[3])
+            if not r[4]:
+                continue
+            (length, coords, eflags, espeed, espeed_ba, esh, esh_ba,
+             limited_dir, road_class, efacility, eofficial, surface,
+             elanes, elts, e_space, e_county_sh, e_adt, e_adt_meta,
+             e_adt_source, e_class_owner, asc, des, haz_ab, haz_ba,
+             is_mtb, is_oneway, name_str) = r[5:]
+            geom_off = len(gLon)
+            geom_cnt = min(len(coords), 65535)
+            for x, y in coords[:geom_cnt]:
+                gLon.append(x); gLat.append(y)
+            eAsc.append(min(int(asc), 65535)); eDes.append(min(int(des), 65535))
+            eA.append(a); eB.append(b); eLen.append(length)
+            eSpeed.append(espeed); eSpeedBA.append(espeed_ba)
+            eFlags.append(eflags)
+            eSh.append(esh); eShBA.append(esh_ba)
+            eLimitedDir.append(limited_dir)
+            eClass.append(road_class)
+            eFacility.append(efacility); eOfficial.append(eofficial)
+            eSurface.append(surface)
+            eLanes.append(elanes); eLts.append(elts)
+            eEdgeSpace.append(e_space)
+            eCountyShoulder.append(e_county_sh)
+            eAdt.append(e_adt); eAdtMeta.append(e_adt_meta)
+            eAdtSource.append(e_adt_source)
+            eClassOwner.append(e_class_owner)
+            eHazAB.append(haz_ab[0]); eHazBA.append(haz_ba[0])
+            eHazStartAB.append(haz_ab[1]); eHazEndAB.append(haz_ab[2])
+            eHazStartBA.append(haz_ba[1]); eHazEndBA.append(haz_ba[2])
+            eName.append(name_idx(name_str))
+            eOff.append(geom_off); eCnt.append(geom_cnt)
+            if is_mtb:
+                mtb_edges[0] += 1
+            if haz_ab[0] or haz_ba[0]:
+                hazard_edges[0] += 1
+            if is_oneway:
+                oneway_arcs += 1
+
+    workers = int(os.environ.get('GRAPH_BUILD_WORKERS', '0') or 0) \
+        or min(4, os.cpu_count() or 1)
+    if workers > 1:
+        # Compute in K forked workers sharded by way id; commit sequentially
+        # in ascending id, which IS file order (pbf ways are id-sorted; pass 1
+        # asserts it). Fork shares the DEM mosaic, the layer trees and the
+        # pass-1 refcount as copy-on-write, so workers start instantly.
+        import multiprocessing
+        ctx = multiprocessing.get_context('fork')
+        queue = ctx.Queue(maxsize=64)
+
+        def run_worker(shard):
+            buf = []
+
+            def flush():
+                nonlocal buf
+                if buf:
+                    queue.put(('runs', buf))
+                    buf = []   # rebind: the feeder thread pickles lazily
+
+            class WorkerHandler(osmium.SimpleHandler):
+                def way(self, obj):
+                    nonlocal buf
+                    if obj.id % workers != shard:
+                        return
+                    runs = compute_way(obj)
+                    if runs is not None:
+                        buf.append((obj.id, runs))
+                        if len(buf) >= 400:
+                            flush()
+
+            WorkerHandler().apply_file(src, locations=True)
+            flush()
+            layer_stats = [
+                (layer.hits, layer.misses, layer.matched_m) if layer else None
+                for layer in (measures.roadlog, measures.funcclass,
+                              measures.aadt, measures.hpms)]
+            queue.put(('done',
+                       [conflated[0], restricted_edges[0], official_speeds[0],
+                        official_facilities[0], densified_paths[0]],
+                       layer_stats))
+
+        procs = [ctx.Process(target=run_worker, args=(shard,), daemon=True)
+                 for shard in range(workers)]
+        for proc in procs:
+            proc.start()
+        results = {}
+        done = 0
+        while done < workers:
+            kind, *payload = queue.get()
+            if kind == 'runs':
+                for way_id, runs in payload[0]:
+                    results[way_id] = runs
+            else:
+                counts, layer_stats = payload
+                for target, delta in zip((conflated, restricted_edges,
+                                          official_speeds, official_facilities,
+                                          densified_paths), counts):
+                    target[0] += delta
+                for layer, stat in zip((measures.roadlog, measures.funcclass,
+                                        measures.aadt, measures.hpms),
+                                       layer_stats):
+                    if layer and stat:
+                        layer.hits += stat[0]
+                        layer.misses += stat[1]
+                        layer.matched_m += stat[2]
+                done += 1
+        for proc in procs:
+            proc.join()
+        for way_id in sorted(results):
+            commit_runs(results[way_id])
+        results = None
+    else:
+        class GraphWayHandler(osmium.SimpleHandler):
+            def way(self, obj):
+                runs = compute_way(obj)
+                if runs is not None:
+                    commit_runs(runs)
+
+        GraphWayHandler().apply_file(src, locations=True)
 
     N, E, G = len(node_lon), len(eA), len(gLon)
     print(f'  nodes {N:,}  edges {E:,}  geom vertices {G:,}  oneway edges {oneway_arcs:,}', flush=True)
