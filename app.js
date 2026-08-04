@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.550';
+const APP_VERSION = '2026-08-04.551';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3660,6 +3660,13 @@ function buildRouteSafetyRuns(segs, cumulative) {
     }
     if (category === 'ferry') continue;
     if ((seg.facility || 0) >= 2 || (seg.flags || 0) & 8) run.laneM += endM - startM;
+    // Synthesised walk links draw amber but stay out of the voice: the rider
+    // chose that split deliberately, and a spoken "Caution" at every quiet
+    // park connector is the noise the tagged-only rule exists to prevent.
+    if (isDismountSegment(seg) && !isTaggedDismountSegment(seg)
+        && (seg.level || 0) < 3 && !seg.mtb) {
+      run.quietWalkM = (run.quietWalkM || 0) + (endM - startM);
+    }
     const reason = routeSegmentSafetyReason(seg);
     if (reason) run.reasons.set(reason, (run.reasons.get(reason) || 0) + (endM - startM));
   }
@@ -3667,6 +3674,8 @@ function buildRouteSafetyRuns(segs, cumulative) {
     run.reason = dominantRunReason(run.reasons);
     // Most of the stretch, not a token few metres of it.
     run.hasLane = run.laneM > (run.endM - run.startM) / 2;
+    run.quietWalk = run.category === 'caution' && !run.reason
+      && (run.quietWalkM || 0) > (run.endM - run.startM) / 2;
   }
   return runs;
 }
@@ -3688,7 +3697,7 @@ function maybeSpeakSafetyChange() {
   // same number; joining a route in the middle of a stretch, they are not, and
   // the honest one is what remains.
   const lengthM = run.endM - Math.max(at, run.startM);
-  if (!SAFETY_RUN_HEAD[run.category] || (lengthM < SAFETY_RUN_MIN_M
+  if (!SAFETY_RUN_HEAD[run.category] || run.quietWalk || (lengthM < SAFETY_RUN_MIN_M
       && run.category !== 'caution' && run.category !== 'fail')) {
     run.spoken = true;
     return false;
@@ -4447,7 +4456,7 @@ function nativeNavigationRoutePayload() {
     // The web layer speaks these itself, on the same GPS path as the turn
     // prompts. They are sent so the native guide can too, for the case the web
     // path cannot cover -- a locked screen. See docs/IOS-HANDOFF.md.
-    safetyRuns: (route.safetyRuns || []).filter((run) => SAFETY_RUN_HEAD[run.category])
+    safetyRuns: (route.safetyRuns || []).filter((run) => SAFETY_RUN_HEAD[run.category] && !run.quietWalk)
       .map((run) => ({
         startM: Number(run.startM) || 0,
         endM: Number(run.endM) || 0,
@@ -6046,6 +6055,11 @@ function routeVisualStyle(p) {
   // even though route totals and Route Details count it as passing.
   if (p.crossing === 1) return 'pass';
   if (effectiveLevel(scoreRouteSeg(p)) === 4) return 'fail';
+  // Walking is a caution wherever the route is shown. A dismount stretch --
+  // tagged or synthesised -- used to draw as lime trail, which read as the
+  // best riding on the route while actually being a hike. Amber makes a long
+  // walked section obvious at every zoom; the walker chain says why.
+  if (p.dismount === 1) return 'caution';
   if (p.level === 3) return 'caution';
   // Allowed mountain-bike trails are a caution everywhere the route is shown.
   // Route Details already rendered them this way; keep the main map and its
@@ -6172,6 +6186,8 @@ const ROUTE_MARKER_SPACING_M = 700;
 // technical ways matter even when short.
 const ROUTE_MARKER_MIN_RUN_M = { walk: 60, steep: 100, traffic: 400, unpaved: 400, odd: 60 };
 const ROUTE_MARKER_KINDS = ['walk', 'steep', 'traffic', 'unpaved', 'odd'];
+// No mountain within this distance of a ferry leg: dockside DEM is artifact.
+const FERRY_GRADE_BLACKOUT_M = 250;
 const HEAVY_TRAFFIC_ADT = 15000; // the safety model's heavy tier
 function routeMarkerKinds(p) {
   const kinds = [];
@@ -6190,8 +6206,25 @@ function buildRouteMarkerData(sdata) {
     const coords = feature.geometry?.coordinates || [];
     let lenM = 0;
     for (let i = 1; i < coords.length; i++) lenM += markerSpanM(coords[i - 1], coords[i]);
-    return { kinds: routeMarkerKinds(feature.properties || {}), coords, lenM };
+    return { kinds: routeMarkerKinds(feature.properties || {}), coords, lenM,
+      ferry: (feature.properties || {}).ferry === 1 };
   });
+  // A dock reads steep when it is not: the z12 DEM smears the shoreline bluff
+  // onto the flats at a slip, and Clinton's flat terminal road booked 11%
+  // over 116 m of pier. Grades measured this close to a ferry leg are
+  // artifact, so the mountain is blind there.
+  let at = 0;
+  const spans = feats.map((f) => { const span = { startM: at, endM: at + f.lenM }; at = span.endM; return span; });
+  const ferries = spans.filter((span, i) => feats[i].ferry);
+  if (ferries.length) {
+    feats.forEach((f, i) => {
+      const steep = f.kinds.indexOf('steep');
+      if (steep < 0) return;
+      const near = ferries.some((ferry) => spans[i].startM < ferry.endM + FERRY_GRADE_BLACKOUT_M
+        && spans[i].endM > ferry.startM - FERRY_GRADE_BLACKOUT_M);
+      if (near) f.kinds.splice(steep, 1);
+    });
+  }
   // A kind qualifies on a feature when its CONTIGUOUS run is long enough --
   // a 15 m sliver inside a long climb still counts as climb.
   const qualified = feats.map(() => []);
@@ -9543,7 +9576,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   const streetViewBtn = document.createElement('button');
   streetViewBtn.type = 'button';
   streetViewBtn.className = 'streetview-launch';
-  streetViewBtn.setAttribute('aria-label', GOOGLE_MAPS_EMBED_KEY
+  streetViewBtn.setAttribute('aria-label', STREET_VIEW_IN_APP
     ? 'Open Street View in this app' : 'Open Street View in Google Maps');
   streetViewBtn.textContent = 'Google Street View';
   streetViewBtn.addEventListener('click', () => openStreetView(svLat, svLng, svHeading));
@@ -9622,6 +9655,13 @@ readoutEl.addEventListener('click', (e) => {
 // key (that API has no usage charges); set it here to enable the in-app view.
 const GOOGLE_MAPS_EMBED_KEY = 'AIzaSyBQZNQ4jPlLjOH3efOD228wOjayupCfa6Y';
 const NATIVE_STREET_VIEW_BRIDGE = 'https://nothinglabs.github.io/clauding/street-view-embed.html';
+// iOS kills the whole web process rather than let a page hold two WebGL
+// scenes this heavy: Google's panorama stacked on the map's own context took
+// the app down at launch. On any iOS device Street View opens in the OS
+// browser sheet instead -- one tap back, and it cannot take the app with it.
+const IOS_DEVICE = /iP(hone|ad|od)/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const STREET_VIEW_IN_APP = Boolean(GOOGLE_MAPS_EMBED_KEY) && !IOS_DEVICE;
 
 function googleMapsPointUrl(lat, lng) {
   return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
@@ -9643,7 +9683,7 @@ function setStreetViewLoadStatus(message = '', warning = false) {
 
 function openStreetView(lat, lng, heading = null) {
   const external = googleStreetViewUrl(lat, lng, heading);
-  if (!GOOGLE_MAPS_EMBED_KEY) {
+  if (!STREET_VIEW_IN_APP) {
     // A real link click (not window.open with a features string, which iOS
     // turns into a chrome-laden popup window) so the OS opens its clean in-app
     // browser — on an installed PWA that comes with a Done button back to here.

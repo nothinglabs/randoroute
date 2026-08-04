@@ -897,8 +897,10 @@ network connected (bit 8 without 128). Both are priced identically (walking
 pace plus a six-minute entry penalty), both are listed in the route-concerns
 report, and both carry walking-figure markers on the drawn route: the route
 marker pass chains them about 700 m apart along the whole walked stretch, so
-a long one cannot sit off screen behind a single entry pin. The route line
-itself keeps its normal verdict colours — the walker is the flag. (The same
+a long one cannot sit off screen behind a single entry pin. BOTH also draw
+as caution (amber) wherever a route is shown — a walked stretch must never
+read as prime lime trail, and colour is the warning that works at every
+zoom, with the walker chain saying why. (The same
 pass places mountain icons on 10%+ climbs, a car on heavy-traffic roads
 without separated infra, rocks on confirmed-unpaved surface, and a question
 mark on technical ways, one icon per slot even where causes overlap.) Only

@@ -58,6 +58,12 @@ const plan = await page.evaluate(() => {
         kinds: [...new Set(m.other.map((x) => x.kind))].sort() };
     })(),
     walkChain: build(19, () => ({ dismount: true, official: 8 })).walk.length,
+    // A steep reading against a ferry slip is shoreline DEM artifact --
+    // Clinton's flat dock booked 11% -- so the mountain is blind near a leg.
+    dockSteep: build(19, (i) => (i < 5 ? { flags: 32 }
+      : (i === 5 || i === 6 ? { gradePct: 14 } : {}))).other.length,
+    inlandSteep: build(19, (i) => (i < 5 ? { flags: 32 }
+      : (i === 12 || i === 13 ? { gradePct: 14 } : {}))).other.length,
   };
 });
 check(`a 2.8 km 12% climb carries a chain of mountains (${plan.climbCount})`,
@@ -79,6 +85,10 @@ check('a steep AND unpaved stretch still gets one icon per slot',
   JSON.stringify(plan.mixed));
 check('a long walked stretch carries a chain of walkers',
   plan.walkChain >= 3 && plan.walkChain <= 5, String(plan.walkChain));
+check('a steep reading at a ferry slip is artifact: no mountain on the dock',
+  plan.dockSteep === 0, String(plan.dockSteep));
+check('while the same climb clear of the slip keeps its mountain',
+  plan.inlandSteep >= 1, String(plan.inlandSteep));
 
 /* --------------------------------- drawn on the map, with the tap target */
 const drawn = await page.evaluate(async () => {
@@ -135,6 +145,25 @@ check('and so does tapping its edge, clear of the route line',
 check('the marker owns the taps that land on it', taps.onCentre && taps.onEdge,
   JSON.stringify(taps));
 check('and no others', !taps.onBeyond && !taps.onElsewhere, JSON.stringify(taps));
+
+// Every walked stretch draws AMBER on the route, tagged or synthesised: a
+// dismount that painted as lime trail read as the best riding on the route
+// while actually being a hike. The colour makes a long walked section
+// obvious at every zoom; the walker chain says why.
+const styles = await page.evaluate(() => ({
+  tagged: routeVisualStyle(routeSegProps({ lenM: 150, mph: 0, sh: -1, flags: 8,
+    facility: 5, level: 1, official: 136, dismount: true })),
+  synthesised: routeVisualStyle(routeSegProps({ lenM: 150, mph: 0, sh: -1, flags: 8,
+    facility: 5, level: 1, official: 8, dismount: true })),
+  ordinaryTrail: routeVisualStyle(routeSegProps({ lenM: 150, mph: 0, sh: -1, flags: 8,
+    facility: 5, level: 1, official: 0 })),
+}));
+check('a tagged dismount stretch draws caution', styles.tagged === 'caution',
+  JSON.stringify(styles));
+check('and so does a synthesised walk link', styles.synthesised === 'caution',
+  JSON.stringify(styles));
+check('while a ridable trail keeps its lime', styles.ordinaryTrail === 'trail',
+  JSON.stringify(styles));
 
 check('drawing the markers raises no page errors', page.pageErrors.length === 0,
   page.pageErrors.join(' | '));

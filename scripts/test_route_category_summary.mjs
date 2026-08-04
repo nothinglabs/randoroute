@@ -59,6 +59,7 @@ vm.runInContext([
   functionSource(details, 'isBikeNetwork'),
   functionSource(details, 'isOffStreetTrail'),
   functionSource(details, 'isMountainBikeTrail'),
+  functionSource(details, 'isDismountSegment'),
   functionSource(details, 'activeDetailRules'),
   functionSource(details, 'routeSegmentFacts'),
   functionSource(details, 'routeSegmentLevel'),

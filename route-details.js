@@ -106,7 +106,9 @@ function routeDisplayCategory(seg) {
   if (seg.crossing === 1) return 'pass';
   const level = routeSegmentLevel(seg);
   if (level === 4) return 'fail';
-  if (level === 3 || isMountainBikeTrail(seg)) return 'caution';
+  // Walking is a caution here too, or an older stored route would paint its
+  // dismount stretches lime while the live map paints them amber.
+  if (level === 3 || isMountainBikeTrail(seg) || isDismountSegment(seg)) return 'caution';
   if (isOffStreetTrail(seg)) return 'trail';
   if (isBikeNetwork(seg)) return 'bike';
   return 'pass';
