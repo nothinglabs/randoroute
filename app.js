@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.551';
+const APP_VERSION = '2026-08-04.552';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6188,6 +6188,10 @@ const ROUTE_MARKER_MIN_RUN_M = { walk: 60, steep: 100, traffic: 400, unpaved: 40
 const ROUTE_MARKER_KINDS = ['walk', 'steep', 'traffic', 'unpaved', 'odd'];
 // No mountain within this distance of a ferry leg: dockside DEM is artifact.
 const FERRY_GRADE_BLACKOUT_M = 250;
+// Badges grow a little as the rider zooms in, so they stay readable up close
+// without dominating a statewide view.
+const ROUTE_MARKER_SIZE_BY_ZOOM = ['interpolate', ['linear'], ['zoom'],
+  9, 0.72, 12, 0.88, 14, 1, 16.5, 1.22];
 const HEAVY_TRAFFIC_ADT = 15000; // the safety model's heavy tier
 function routeMarkerKinds(p) {
   const kinds = [];
@@ -6399,26 +6403,48 @@ function ensureRouteMarkerImages(targetMap) {
     peak(10.4 * b.s, 4.4 * b.s, 4.6 * b.s, [90, 62, 8, 255]);
     add('route-marker-steep', b);
   }
-  { // traffic: a facing car -- body, roof, two wheels.
+  { // traffic: a side-view car -- rounded chassis, glazed cabin, two wheels.
     const b = paintMarkerBadge([140, 28, 28, 255]);
-    const s = b.s, car = [164, 32, 32, 255];
-    for (let y = Math.round(7.4 * s); y <= Math.round(10.6 * s); y++) {
-      for (let x = Math.round(3.4 * s); x <= Math.round(12.6 * s); x++) b.paint(x, y, car);
+    const s = b.s, body = [176, 32, 32, 255], glass = [223, 236, 244, 255],
+      tyre = [36, 26, 26, 255], hub = [205, 205, 210, 255];
+    // Cabin: a trapezoid, windshield raked toward the front (right).
+    for (let y = Math.round(5.3 * s); y <= Math.round(7.9 * s); y++) {
+      const t = (y - 5.3 * s) / (2.6 * s);
+      const left = 5.4 * s - 0.5 * s * t, right = 9.8 * s + 1.5 * s * t;
+      for (let x = Math.round(left); x <= Math.round(right); x++) b.paint(x, y, body);
     }
-    for (let y = Math.round(4.8 * s); y <= Math.round(7.4 * s); y++) {
-      const inset = (Math.round(7.4 * s) - y) * 0.55;
-      for (let x = Math.round(5 * s + inset); x <= Math.round(11 * s - inset); x++) b.paint(x, y, car);
+    // Chassis with rounded nose and tail.
+    for (let y = Math.round(7.9 * s); y <= Math.round(10.3 * s); y++) {
+      for (let x = Math.round(3.3 * s); x <= Math.round(12.7 * s); x++) b.paint(x, y, body);
     }
-    b.disc(5.4 * s, 11 * s, 1.25 * s, [40, 20, 20, 255]);
-    b.disc(10.6 * s, 11 * s, 1.25 * s, [40, 20, 20, 255]);
+    b.disc(4 * s, 9.1 * s, 1.2 * s, body);
+    b.disc(12 * s, 9.1 * s, 1.2 * s, body);
+    // Two windows split by the door pillar.
+    for (let y = Math.round(5.9 * s); y <= Math.round(7.6 * s); y++) {
+      const t = (y - 5.9 * s) / (1.7 * s);
+      const right = 9.7 * s + 1 * s * t;
+      for (let x = Math.round(6.1 * s); x <= Math.round(right); x++) {
+        if (Math.abs(x - 8.1 * s) > 0.4 * s) b.paint(x, y, glass);
+      }
+    }
+    b.disc(5.5 * s, 10.5 * s, 1.45 * s, tyre);
+    b.disc(10.5 * s, 10.5 * s, 1.45 * s, tyre);
+    b.disc(5.5 * s, 10.5 * s, 0.55 * s, hub);
+    b.disc(10.5 * s, 10.5 * s, 0.55 * s, hub);
     add('route-marker-traffic', b);
   }
-  { // unpaved: three rocks.
+  { // unpaved: outlined boulders on a ground line. Round-with-outline reads
+    // as stones where plain discs read as dots -- and nothing here may look
+    // like the steep badge's peaks.
     const b = paintMarkerBadge([92, 78, 60, 255]);
-    const s = b.s, rock = [122, 102, 74, 255], dark = [92, 78, 60, 255];
-    b.disc(5.6 * s, 9.6 * s, 2.1 * s, rock);
-    b.disc(10.2 * s, 9.9 * s, 1.8 * s, dark);
-    b.disc(8 * s, 6.4 * s, 1.6 * s, dark);
+    const s = b.s, light = [152, 127, 92, 255], mid = [124, 102, 74, 255],
+      dark = [84, 68, 49, 255];
+    b.stroke(3.7 * s, 11.4 * s, 12.3 * s, 11.4 * s, 0.75 * s, dark);  // the ground
+    b.disc(6.9 * s, 8.2 * s, 2.8 * s, dark);           // big boulder, outlined
+    b.disc(6.9 * s, 8.2 * s, 2.05 * s, light);
+    b.disc(11 * s, 9.5 * s, 1.95 * s, dark);           // smaller stone, outlined
+    b.disc(11 * s, 9.5 * s, 1.25 * s, mid);
+    b.disc(3.8 * s, 10.4 * s, 0.85 * s, dark);         // a loose pebble
     add('route-marker-unpaved', b);
   }
   { // odd: a bold question mark -- "this is not an ordinary road".
@@ -6897,20 +6923,26 @@ function drawRoute(coords, ferrySegs, segs) {
     id: 'route-marker', type: 'symbol', source: 'route-marker',
     layout: {
       'icon-image': ['concat', 'route-marker-', ['get', 'kind']],
-      'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'icon-size': ROUTE_MARKER_SIZE_BY_ZOOM,
+      // allow-overlap false is the crowding control: the symbol placer culls
+      // whatever would collide, so zooming out thins the chain instead of
+      // piling badges on badges.
+      'icon-allow-overlap': false, 'icon-ignore-placement': false,
     },
   });
   forgetStyleValues(); map.addLayer({
     id: 'route-dismount-halo', type: 'circle', source: 'route-dismount',
-    // Sized to the icon it sits behind, and it doubles as the marker's tap
-    // target: featureAt() widens its search when a tap lands inside this circle.
-    paint: { 'circle-radius': DISMOUNT_MARKER_HIT_PX, 'circle-color': '#fff7d6', 'circle-opacity': .96,
-      'circle-stroke-color': '#8a5600', 'circle-stroke-width': 1.5 },
+    // The marker's TAP TARGET, not a visual: featureAt() widens its search
+    // when a tap lands inside this circle. The cream disc it used to draw
+    // made the walker read twice the size of its sibling badges.
+    paint: { 'circle-radius': DISMOUNT_MARKER_HIT_PX, 'circle-color': '#fff7d6',
+      'circle-opacity': 0, 'circle-stroke-width': 0 },
   });
   forgetStyleValues(); map.addLayer({
     id: 'route-dismount-marker', type: 'symbol', source: 'route-dismount',
-    layout: { 'icon-image': 'route-dismount-marker-icon', 'icon-size': 1,
-      'icon-allow-overlap': true, 'icon-ignore-placement': true },
+    layout: { 'icon-image': 'route-dismount-marker-icon',
+      'icon-size': ROUTE_MARKER_SIZE_BY_ZOOM,
+      'icon-allow-overlap': false, 'icon-ignore-placement': false },
   });
   forgetStyleValues(); map.addLayer({
     id: 'route-ferry', type: 'line', source: 'route-ferry',
