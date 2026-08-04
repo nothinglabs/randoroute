@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.558';
+const APP_VERSION = '2026-08-04.559';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6520,9 +6520,9 @@ function ensureRouteMarkerImages(targetMap) {
   { // fail: a bold exclamation -- "a rule failed here; tap for which".
     const b = paintMarkerBadge([176, 32, 32, 255]);
     const s = b.s, ink = [176, 32, 32, 255];
-    b.stroke(8 * s, 4.7 * s, 8 * s, 6 * s, 2 * s, ink);
-    b.stroke(8 * s, 6 * s, 8 * s, 9.3 * s, 1.6 * s, ink);
-    b.disc(8 * s, 11.9 * s, 1.1 * s, ink);
+    b.stroke(8 * s, 5.3 * s, 8 * s, 6.2 * s, 1.7 * s, ink);
+    b.stroke(8 * s, 6.2 * s, 8 * s, 9 * s, 1.4 * s, ink);
+    b.disc(8 * s, 11.2 * s, 0.95 * s, ink);
     add('route-marker-fail', b);
   }
   { // odd: a bold question mark -- "this is not an ordinary road".
