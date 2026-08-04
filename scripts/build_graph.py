@@ -796,10 +796,9 @@ def is_urban_edge(coords, index):
         return False
     tree, geoms = index
     midpoint = LineString(coords).interpolate(0.5, normalized=True)
-    for candidate in tree.query(midpoint):
-        if geoms[int(candidate)].covers(midpoint):
-            return True
-    return False
+    # covered_by IS covers with the arguments swapped, evaluated inside the
+    # one query instead of per candidate polygon out here.
+    return len(tree.query(midpoint, predicate='covered_by')) > 0
 
 
 def collect_designated(src):
@@ -1257,7 +1256,14 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     kept_ways = 0
     def count_way_refs(obj):
         nonlocal kept_ways
-        tags = {t.k: t.v for t in obj.tags}
+        # 5.2M ways in the extract, 343k of them roads. classify_way() can
+        # only keep a way with a highway tag or a ferry route, so ask the
+        # C-side tag list those two questions before building a Python dict
+        # of every tag on every building outline in the state.
+        t = obj.tags
+        if 'highway' not in t and t.get('route') != 'ferry':
+            return
+        tags = {tag.k: tag.v for tag in t}
         if classify_way(tags) is None:
             return
         kept_ways += 1
@@ -1334,7 +1340,12 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     # each completed way directly into the existing edge builder.
     def process_way(obj):
         nonlocal oneway_arcs
-        tags = {t.k: t.v for t in obj.tags}
+        # Same cheap C-side gate as pass 1: no highway tag and not a ferry
+        # means classify_way() cannot keep it.
+        t = obj.tags
+        if 'highway' not in t and t.get('route') != 'ferry':
+            return
+        tags = {tag.k: tag.v for tag in t}
         attrs = classify_way(tags)
         if attrs is None:
             return
@@ -1357,6 +1368,12 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
         # structure_climb() measures the deck between the points where it
         # meets the ground rather than between two nodes hanging over a gully.
         way_coords = [(x, y) for _, x, y in pts]
+        # One coarse question per WAY -- is any measured source anywhere near
+        # its bounding box? -- before the per-run matchers ask four precise
+        # ones per split. Statewide, most ways are nowhere near a measured
+        # road: the layers hit 16-36% of runs, so the majority of the 3.4M
+        # per-run layer queries were spent proving absence.
+        has_measures = bool(measures) and measures.near(way_coords)
 
         is_ferry = attrs.get('ferry', False)
         if is_ferry:
@@ -1493,7 +1510,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             e_adt_meta = 0
                             e_adt_source = 0
                             e_class_owner = 0
-                            if measures and not is_ferry:
+                            if has_measures and not is_ferry:
                                 m = measures.match(coords)
                                 if m:
                                     e_space = pack_edge_space(m.get('edge'),

@@ -319,10 +319,43 @@ class RoadMeasures:
         self.funcclass = MeasureIndex(funcclass, 'functional class')
         self.aadt = MeasureIndex(aadt, 'WSDOT AADT')
         self.hpms = MeasureIndex(hpms, 'FHWA HPMS')
+        self._gate = None
 
     def __bool__(self):
         return (bool(self.roadlog) or bool(self.funcclass)
                 or bool(self.aadt) or bool(self.hpms))
+
+    def near(self, coords):
+        """Is any source segment's envelope within MATCH_M of this way's box?
+
+        A bbox-only superset of what the per-layer dwithin queries can match:
+        envelopes are expanded by MATCH_DEG when the gate tree is built, so a
+        False here proves every layer would return None for every run of the
+        way. One cheap query replacing four precise ones per split run.
+        """
+        gate = self._gate_tree()
+        if gate is None:
+            return False
+        xs = [c[0] for c in coords]; ys = [c[1] for c in coords]
+        probe = shapely.box(min(xs), min(ys), max(xs), max(ys))
+        return len(gate.query(probe)) > 0
+
+    def _gate_tree(self):
+        if self._gate is not None:
+            return self._gate or None
+        boxes = []
+        for layer in (self.roadlog, self.funcclass, self.aadt, self.hpms):
+            if layer and layer.tree is not None:
+                b = shapely.bounds(layer.tree.geometries)
+                boxes.append(b + [-MATCH_DEG, -MATCH_DEG, MATCH_DEG, MATCH_DEG])
+        if not boxes:
+            self._gate = False
+            return None
+        import numpy as _np
+        all_b = _np.concatenate(boxes)
+        self._gate = STRtree(shapely.box(all_b[:, 0], all_b[:, 1],
+                                         all_b[:, 2], all_b[:, 3]))
+        return self._gate
 
     def match(self, coords):
         """-> dict of measurements for one OSM way (may be empty).
