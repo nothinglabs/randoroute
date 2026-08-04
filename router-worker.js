@@ -535,7 +535,9 @@ const V_MIN = 1.3;    // steep-climb floor (~3 mph)
 const V_DISMOUNT = 1.15;
 // The most this can discount an edge. heuristicSpeed() depends on it.
 const SPEED_STRESS_FLOOR = 0.25; // ~2.6 mph while walking a bike
-const DISMOUNT_ENTRY_PENALTY_S = 4 * 60;
+// 6 minutes, raised from 4 by field feedback: routes leaned on walk links a
+// little too readily once the network was fully connected.
+const DISMOUNT_ENTRY_PENALTY_S = 6 * 60;
 // A* heuristic speed: must not undershoot any effective edge speed, including
 // fast ferries and the strongest cost bonuses, or A* loses optimality.
 // Worst case: V_MAX 12 / (0.30 path facility x 0.78 residential x 0.9

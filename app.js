@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.549';
+const APP_VERSION = '2026-08-04.550';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3660,13 +3660,6 @@ function buildRouteSafetyRuns(segs, cumulative) {
     }
     if (category === 'ferry') continue;
     if ((seg.facility || 0) >= 2 || (seg.flags || 0) & 8) run.laneM += endM - startM;
-    // Synthesised walk links draw amber but stay out of the voice: the rider
-    // chose that split deliberately, and a spoken "Caution" at every quiet
-    // park connector is the noise the tagged-only rule exists to prevent.
-    if (isDismountSegment(seg) && !isTaggedDismountSegment(seg)
-        && (seg.level || 0) < 3 && !seg.mtb) {
-      run.quietWalkM = (run.quietWalkM || 0) + (endM - startM);
-    }
     const reason = routeSegmentSafetyReason(seg);
     if (reason) run.reasons.set(reason, (run.reasons.get(reason) || 0) + (endM - startM));
   }
@@ -3674,8 +3667,6 @@ function buildRouteSafetyRuns(segs, cumulative) {
     run.reason = dominantRunReason(run.reasons);
     // Most of the stretch, not a token few metres of it.
     run.hasLane = run.laneM > (run.endM - run.startM) / 2;
-    run.quietWalk = run.category === 'caution' && !run.reason
-      && (run.quietWalkM || 0) > (run.endM - run.startM) / 2;
   }
   return runs;
 }
@@ -3697,7 +3688,7 @@ function maybeSpeakSafetyChange() {
   // same number; joining a route in the middle of a stretch, they are not, and
   // the honest one is what remains.
   const lengthM = run.endM - Math.max(at, run.startM);
-  if (!SAFETY_RUN_HEAD[run.category] || run.quietWalk || (lengthM < SAFETY_RUN_MIN_M
+  if (!SAFETY_RUN_HEAD[run.category] || (lengthM < SAFETY_RUN_MIN_M
       && run.category !== 'caution' && run.category !== 'fail')) {
     run.spoken = true;
     return false;
@@ -4456,7 +4447,7 @@ function nativeNavigationRoutePayload() {
     // The web layer speaks these itself, on the same GPS path as the turn
     // prompts. They are sent so the native guide can too, for the case the web
     // path cannot cover -- a locked screen. See docs/IOS-HANDOFF.md.
-    safetyRuns: (route.safetyRuns || []).filter((run) => SAFETY_RUN_HEAD[run.category] && !run.quietWalk)
+    safetyRuns: (route.safetyRuns || []).filter((run) => SAFETY_RUN_HEAD[run.category])
       .map((run) => ({
         startM: Number(run.startM) || 0,
         endM: Number(run.endM) || 0,
@@ -6055,12 +6046,6 @@ function routeVisualStyle(p) {
   // even though route totals and Route Details count it as passing.
   if (p.crossing === 1) return 'pass';
   if (effectiveLevel(scoreRouteSeg(p)) === 4) return 'fail';
-  // Walking is a caution wherever the route is shown. A dismount stretch --
-  // tagged or synthesised -- used to draw as lime trail, which read as the
-  // best riding on the route while actually being a hike; the entry marker
-  // alone could sit miles off screen. Amber says "something changes here"
-  // at every zoom, and the tap card still explains exactly what.
-  if (p.dismount === 1) return 'caution';
   if (p.level === 3) return 'caution';
   // Allowed mountain-bike trails are a caution everywhere the route is shown.
   // Route Details already rendered them this way; keep the main map and its
@@ -6173,84 +6158,90 @@ function buildRouteUnpavedData(sdata) {
   };
 }
 
-// Dismounts are marked once at the entry to every continuous run.  The route
-// line keeps its normal safety color; this marker communicates an access
-// instruction without turning a legal walk-bike link into a rule failure.
-// Only TAGGED dismounts get a marker -- feature properties carry the official
-// byte, so the same helper the stats use decides here.
-function buildRouteDismountData(sdata) {
-  const features = [];
-  let inDismount = false;
-  for (const feature of sdata.features) {
-    const dismount = isTaggedDismountSegment(feature.properties);
-    if (dismount && !inDismount) {
-      const point = feature.geometry?.coordinates?.[0];
-      if (Array.isArray(point) && point.length >= 2) {
-        features.push({ type: 'Feature', properties: { name: feature.properties?.name || '' },
-          geometry: { type: 'Point', coordinates: point } });
+/* Route markers: one vocabulary, one planner. Five things a rider wants
+ * flagged on the line itself -- walking (any dismount), a 10%+ wall, heavy
+ * traffic, unpaved surface, and a technical/odd way -- share one spacing
+ * clock (~700 m) so the map never drowns in icons. Where several apply to
+ * the same stretch, ONE is picked per slot, deterministically pseudo-random
+ * by slot index so a redraw never reshuffles and long shared stretches show
+ * a mix rather than a single kind winning everywhere.
+ */
+const ROUTE_MARKER_SPACING_M = 700;
+// Below these run lengths a signal is a blip (or a DEM/data artefact), not a
+// stretch worth an icon. Traffic and surface need real length; walking and
+// technical ways matter even when short.
+const ROUTE_MARKER_MIN_RUN_M = { walk: 60, steep: 100, traffic: 400, unpaved: 400, odd: 60 };
+const ROUTE_MARKER_KINDS = ['walk', 'steep', 'traffic', 'unpaved', 'odd'];
+const HEAVY_TRAFFIC_ADT = 15000; // the safety model's heavy tier
+function routeMarkerKinds(p) {
+  const kinds = [];
+  if (p.ferry === 1) return kinds;
+  if (p.dismount === 1) kinds.push('walk');
+  const grade = Number(p.gradePct);
+  if (Number.isFinite(grade) && grade >= STEEP_MARKER_GRADE_PCT
+      && grade <= MAX_CREDIBLE_GRADE_PCT) kinds.push('steep');
+  if (p.infra !== 1 && Number(p.adt) >= HEAVY_TRAFFIC_ADT) kinds.push('traffic');
+  if (isConfirmedUnpavedSurface(p.surface)) kinds.push('unpaved');
+  if (p.mtb === 1) kinds.push('odd');
+  return kinds;
+}
+function buildRouteMarkerData(sdata) {
+  const feats = (sdata.features || []).map((feature) => {
+    const coords = feature.geometry?.coordinates || [];
+    let lenM = 0;
+    for (let i = 1; i < coords.length; i++) lenM += markerSpanM(coords[i - 1], coords[i]);
+    return { kinds: routeMarkerKinds(feature.properties || {}), coords, lenM };
+  });
+  // A kind qualifies on a feature when its CONTIGUOUS run is long enough --
+  // a 15 m sliver inside a long climb still counts as climb.
+  const qualified = feats.map(() => []);
+  for (const kind of ROUTE_MARKER_KINDS) {
+    let start = 0;
+    while (start < feats.length) {
+      if (!feats[start].kinds.includes(kind)) { start++; continue; }
+      let end = start, total = 0;
+      while (end < feats.length && feats[end].kinds.includes(kind)) { total += feats[end].lenM; end++; }
+      if (total >= ROUTE_MARKER_MIN_RUN_M[kind]) {
+        for (let i = start; i < end; i++) qualified[i].push(kind);
       }
+      start = end;
     }
-    inDismount = dismount;
   }
-  return { type: 'FeatureCollection', features };
+  const walk = [], other = [];
+  // Knuth's multiplicative hash over the slot index: stable across redraws,
+  // uncorrelated enough that mixed stretches show mixed icons.
+  const pick = (slot, kinds) => kinds[((slot * 2654435761) >>> 0) % kinds.length];
+  let pos = 0, minNext = ROUTE_MARKER_SPACING_M / 4;
+  feats.forEach((f, index) => {
+    const active = qualified[index];
+    for (let i = 1; i < f.coords.length; i++) {
+      const a = f.coords[i - 1], b = f.coords[i];
+      const d = markerSpanM(a, b);
+      if (active.length) {
+        while (true) {
+          const target = Math.max(minNext, pos);
+          if (target > pos + d) break;
+          const t = d > 0 ? (target - pos) / d : 0;
+          const kind = pick(Math.round(target / ROUTE_MARKER_SPACING_M), active);
+          const point = { type: 'Feature', properties: { kind },
+            geometry: { type: 'Point',
+              coordinates: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] } };
+          (kind === 'walk' ? walk : other).push(point);
+          minNext = target + ROUTE_MARKER_SPACING_M;
+          if (!(d > 0)) break;
+        }
+      }
+      pos += d;
+    }
+  });
+  return { walk: { type: 'FeatureCollection', features: walk },
+    other: { type: 'FeatureCollection', features: other } };
 }
 
-// Steep climbing, marked where it happens. The elevation chart says a route
-// climbs; it cannot say WHERE the 10%+ walls sit, and a de-facto hiking
-// trail should be obvious at a glance on the map itself. Markers are laid
-// along each qualifying climb with a fixed along-route spacing so a long
-// wall reads as a chain without crowding into noise.
 const STEEP_MARKER_GRADE_PCT = 10;
-// Shorter than this a 10% reading is a bump (or one noisy DEM pixel pair),
-// not a climb worth an icon.
-const STEEP_MARKER_MIN_RUN_M = 100;
-const STEEP_MARKER_SPACING_M = 700;
 function markerSpanM(a, b) {
   const kx = 111320 * Math.cos(((a[1] + b[1]) / 2) * Math.PI / 180);
   return Math.hypot((b[0] - a[0]) * kx, (b[1] - a[1]) * 111320);
-}
-function buildRouteSteepData(sdata) {
-  const features = [];
-  let run = null;
-  const flush = () => {
-    const done = run; run = null;
-    if (!done || done.lenM < STEEP_MARKER_MIN_RUN_M) return;
-    // One icon at the midpoint of a short climb; a chain every SPACING on a
-    // long one, centred so the first and last icon sit inside the climb.
-    let target = done.lenM <= STEEP_MARKER_SPACING_M
-      ? done.lenM / 2 : (done.lenM % STEEP_MARKER_SPACING_M) / 2 + STEEP_MARKER_SPACING_M / 2;
-    let at = 0;
-    for (let i = 1; i < done.coords.length && target <= done.lenM; i++) {
-      const a = done.coords[i - 1], b = done.coords[i];
-      const d = markerSpanM(a, b);
-      while (d > 0 && at + d >= target) {
-        const t = (target - at) / d;
-        features.push({ type: 'Feature', properties: {},
-          geometry: { type: 'Point',
-            coordinates: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] } });
-        target += STEEP_MARKER_SPACING_M;
-      }
-      at += d;
-    }
-  };
-  for (const feature of sdata.features) {
-    const p = feature.properties || {};
-    const coords = feature.geometry?.coordinates || [];
-    const grade = Number(p.gradePct);
-    // Uphill in the travel direction, and within the credibility cap the
-    // grade pipeline already applies to reported numbers.
-    const steep = p.ferry !== 1 && Number.isFinite(grade)
-      && grade >= STEEP_MARKER_GRADE_PCT && grade <= MAX_CREDIBLE_GRADE_PCT
-      && coords.length >= 2;
-    if (!steep) { flush(); continue; }
-    if (!run) run = { coords: [coords[0]], lenM: 0 };
-    for (let i = 1; i < coords.length; i++) {
-      run.lenM += markerSpanM(coords[i - 1], coords[i]);
-      run.coords.push(coords[i]);
-    }
-  }
-  flush();
-  return { type: 'FeatureCollection', features };
 }
 
 // One marker per ferry leg, placed near its visual midpoint. The dashed ferry
@@ -6299,68 +6290,116 @@ const DISMOUNT_MARKER_PX = 18 * DISMOUNT_MARKER_SCALE / 2;   // 27 CSS px
 // The halo behind it, which is also what a tap is measured against. A little
 // wider than the triangle so the edges of the icon are comfortably inside it.
 const DISMOUNT_MARKER_HIT_PX = Math.round(DISMOUNT_MARKER_PX / 2) + 4;   // 18 px radius
+// A walking figure on the amber badge: the sign says get off and walk. This
+// replaced the warning triangle when dismount markers became a spaced chain
+// along the walked stretch -- a triangle repeated every 700 m read as a
+// string of alarms, where a walker repeated reads as "you are walking here".
 function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-icon') {
   if (targetMap.hasImage(imageId)) return;
-  const s = DISMOUNT_MARKER_SCALE;
-  const width = 18 * s, height = 18 * s;
-  const data = new Uint8Array(width * height * 4);
-  const paint = (x, y, color) => {
-    if (x < 0 || x >= width || y < 0 || y >= height) return;
-    const offset = (y * width + x) * 4;
-    data[offset] = color[0]; data[offset + 1] = color[1];
-    data[offset + 2] = color[2]; data[offset + 3] = color[3];
-  };
-  const row = (y, half, color) => {
-    for (let x = Math.round(9 * s - half); x <= Math.round(9 * s + half); x++) paint(x, y, color);
-  };
-  for (let y = s; y < 17 * s; y++) row(y, Math.max(s, (y - s) * .5 + s), [138, 86, 0, 255]);
-  for (let y = 3 * s; y < 15 * s; y++) row(y, Math.max(s, (y - 2 * s) * .47), [239, 176, 37, 255]);
-  const barLeft = Math.round(8 * s), barRight = Math.round(10 * s) - 1;
-  for (let y = 6 * s; y < 11 * s; y++) {
-    for (let x = barLeft; x <= barRight; x++) paint(x, y, [81, 47, 0, 255]);
-  }
-  for (let y = 12.6 * s; y < 14 * s; y++) {
-    for (let x = barLeft; x <= barRight; x++) paint(x, Math.round(y), [81, 47, 0, 255]);
-  }
-  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 2 });
+  const b = paintMarkerBadge([138, 86, 0, 255]);
+  const s = b.s, ink = [81, 47, 0, 255];
+  b.disc(8.7 * s, 4.4 * s, 1.15 * s, ink);          // head
+  b.stroke(8.5 * s, 5.6 * s, 7.9 * s, 9 * s, 1.6 * s, ink);   // torso, leaning in
+  b.stroke(8.2 * s, 6.6 * s, 10 * s, 8.3 * s, 1.1 * s, ink);  // arm forward
+  b.stroke(7.9 * s, 9 * s, 9.7 * s, 12.2 * s, 1.3 * s, ink);  // striding leg
+  b.stroke(7.9 * s, 9 * s, 6.3 * s, 12.2 * s, 1.3 * s, ink);  // trailing leg
+  targetMap.addImage(imageId, { width: b.width, height: b.height, data: b.data },
+    { pixelRatio: 2 });
 }
 
-// A little mountain on a white badge: the steep-climb marker. Same pixel-art
-// approach as the dismount triangle -- the offline style ships no font
-// glyphs, so this must be a raster.
+// The route-marker badge family: one round badge, four glyphs, pixel-painted
+// because the offline style ships no font glyphs. Integer rows/columns only
+// throughout -- a fractional index into the pixel buffer paints nothing.
 const STEEP_MARKER_SCALE = 3;
-function ensureSteepMarkerImage(targetMap, imageId = 'route-steep-marker-icon') {
-  if (targetMap.hasImage(imageId)) return;
+function paintMarkerBadge(ringColor) {
   const s = STEEP_MARKER_SCALE;
   const width = 16 * s, height = 16 * s;
   const data = new Uint8Array(width * height * 4);
   const paint = (x, y, color) => {
+    x = Math.round(x); y = Math.round(y);
     if (x < 0 || x >= width || y < 0 || y >= height) return;
     const offset = (y * width + x) * 4;
     data[offset] = color[0]; data[offset + 1] = color[1];
     data[offset + 2] = color[2]; data[offset + 3] = color[3];
   };
   const cx = 8 * s, cy = 8 * s, r = 7.6 * s;
-  const ring = [90, 62, 8, 255], badge = [255, 251, 240, 255];
+  const badge = [255, 251, 240, 255];
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const d = Math.hypot(x - cx, y - cy);
-      if (d <= r) paint(x, y, d >= r - 1.4 * s ? ring : badge);
+      if (d <= r) paint(x, y, d >= r - 1.4 * s ? ringColor : badge);
     }
   }
-  // Two peaks, the main one right of centre; a hill profile reads as
-  // "mountain" at 16 px where an arrow reads as "north". Integer rows only:
-  // a fractional y indexes the pixel buffer between pixels and paints nothing.
-  const peak = (px, py, half, color) => {
-    const top = Math.round(py), bottom = Math.round(12 * s);
-    for (let y = top; y <= bottom; y++) {
-      const grow = ((y - top) / (bottom - top)) * half;
-      for (let x = Math.round(px - grow); x <= Math.round(px + grow); x++) paint(x, y, color);
+  const disc = (px, py, pr, color) => {
+    for (let y = Math.round(py - pr); y <= Math.round(py + pr); y++) {
+      for (let x = Math.round(px - pr); x <= Math.round(px + pr); x++) {
+        if (Math.hypot(x - px, y - py) <= pr) paint(x, y, color);
+      }
     }
   };
-  peak(6 * s, 6.4 * s, 4.4 * s, [138, 86, 0, 255]);
-  peak(10.4 * s, 4.4 * s, 4.6 * s, [90, 62, 8, 255]);
-  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 2 });
+  const stroke = (x1, y1, x2, y2, w, color) => {
+    const steps = Math.max(2, Math.round(Math.hypot(x2 - x1, y2 - y1)));
+    for (let i = 0; i <= steps; i++) {
+      disc(x1 + (x2 - x1) * (i / steps), y1 + (y2 - y1) * (i / steps), w / 2, color);
+    }
+  };
+  const inside = (x, y) =>
+    Math.hypot(Math.round(x) - cx, Math.round(y) - cy) <= r - 1.4 * s;
+  return { s, width, height, data, paint, disc, stroke, inside };
+}
+function ensureRouteMarkerImages(targetMap) {
+  if (targetMap.hasImage('route-marker-steep')) return;
+  const add = (id, b) => targetMap.addImage(id,
+    { width: b.width, height: b.height, data: b.data }, { pixelRatio: 2 });
+  { // steep: two peaks; a hill profile reads as "mountain" at 16 px.
+    const b = paintMarkerBadge([90, 62, 8, 255]);
+    const peak = (px, py, half, color) => {
+      const top = Math.round(py), bottom = Math.round(12 * b.s);
+      for (let y = top; y <= bottom; y++) {
+        const grow = ((y - top) / (bottom - top)) * half;
+        for (let x = Math.round(px - grow); x <= Math.round(px + grow); x++) {
+          if (b.inside(x, y)) b.paint(x, y, color);
+        }
+      }
+    };
+    peak(6 * b.s, 6.4 * b.s, 4.4 * b.s, [138, 86, 0, 255]);
+    peak(10.4 * b.s, 4.4 * b.s, 4.6 * b.s, [90, 62, 8, 255]);
+    add('route-marker-steep', b);
+  }
+  { // traffic: a facing car -- body, roof, two wheels.
+    const b = paintMarkerBadge([140, 28, 28, 255]);
+    const s = b.s, car = [164, 32, 32, 255];
+    for (let y = Math.round(7.4 * s); y <= Math.round(10.6 * s); y++) {
+      for (let x = Math.round(3.4 * s); x <= Math.round(12.6 * s); x++) b.paint(x, y, car);
+    }
+    for (let y = Math.round(4.8 * s); y <= Math.round(7.4 * s); y++) {
+      const inset = (Math.round(7.4 * s) - y) * 0.55;
+      for (let x = Math.round(5 * s + inset); x <= Math.round(11 * s - inset); x++) b.paint(x, y, car);
+    }
+    b.disc(5.4 * s, 11 * s, 1.25 * s, [40, 20, 20, 255]);
+    b.disc(10.6 * s, 11 * s, 1.25 * s, [40, 20, 20, 255]);
+    add('route-marker-traffic', b);
+  }
+  { // unpaved: three rocks.
+    const b = paintMarkerBadge([92, 78, 60, 255]);
+    const s = b.s, rock = [122, 102, 74, 255], dark = [92, 78, 60, 255];
+    b.disc(5.6 * s, 9.6 * s, 2.1 * s, rock);
+    b.disc(10.2 * s, 9.9 * s, 1.8 * s, dark);
+    b.disc(8 * s, 6.4 * s, 1.6 * s, dark);
+    add('route-marker-unpaved', b);
+  }
+  { // odd: a bold question mark -- "this is not an ordinary road".
+    const b = paintMarkerBadge([54, 79, 96, 255]);
+    const s = b.s, ink = [54, 79, 96, 255];
+    // hook of the ?: an arc from the left shoulder over the top to mid-right
+    for (let deg = -180; deg <= 55; deg += 4) {
+      const a = deg * Math.PI / 180;
+      b.disc(8 * s + Math.cos(a) * 2.6 * s, 6 * s + Math.sin(a) * 2.6 * s, 0.85 * s, ink);
+    }
+    b.stroke(9.3 * s, 7.6 * s, 8 * s, 9.6 * s, 1.7 * s, ink);
+    b.disc(8 * s, 12.2 * s, 1.05 * s, ink);
+    add('route-marker-odd', b);
+  }
 }
 
 function ensureFerryMarkerImage(targetMap, imageId = 'route-ferry-marker-icon') {
@@ -6622,8 +6661,7 @@ function drawRoute(coords, ferrySegs, segs) {
   }) };
   const renderData = buildRouteRenderData(sdata);
   const unpavedData = buildRouteUnpavedData(sdata);
-  const dismountData = buildRouteDismountData(sdata);
-  const steepData = buildRouteSteepData(sdata);
+  const routeMarkers = buildRouteMarkerData(sdata);
   const ferryMarkerData = buildRouteFerryMarkerData(ferrySegs);
   // Failing portions (scored live against the current rules) pulse red on top.
   // These use the same merged geometry as the visible route so their dashes
@@ -6642,8 +6680,8 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-fail').setData(failData);
     map.getSource('route-unpaved').setData(unpavedData);
     map.getSource('route-designated').setData(designatedData);
-    map.getSource('route-dismount').setData(dismountData);
-    map.getSource('route-steep').setData(steepData);
+    map.getSource('route-dismount').setData(routeMarkers.walk);
+    map.getSource('route-marker').setData(routeMarkers.other);
     map.getSource('route-ferry-marker').setData(ferryMarkerData);
     map.getSource('route-highlight-marker').setData(emptyHighlights);
     map.getSource('route-detail-marker').setData(emptyHighlights);
@@ -6660,8 +6698,8 @@ function drawRoute(coords, ferrySegs, segs) {
   map.addSource('route-fail', { type: 'geojson', data: failData });
   map.addSource('route-unpaved', { type: 'geojson', data: unpavedData });
   map.addSource('route-designated', { type: 'geojson', data: designatedData });
-  map.addSource('route-dismount', { type: 'geojson', data: dismountData });
-  map.addSource('route-steep', { type: 'geojson', data: steepData });
+  map.addSource('route-dismount', { type: 'geojson', data: routeMarkers.walk });
+  map.addSource('route-marker', { type: 'geojson', data: routeMarkers.other });
   map.addSource('route-ferry-marker', { type: 'geojson', data: ferryMarkerData });
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
@@ -6804,7 +6842,7 @@ function drawRoute(coords, ferrySegs, segs) {
   });
   ensureUnpavedSlatImage(map);
   ensureDismountMarkerImage(map);
-  ensureSteepMarkerImage(map);
+  ensureRouteMarkerImages(map);
   ensureFerryMarkerImage(map);
   forgetStyleValues(); map.addLayer({
     id: 'route-unpaved-slats', type: 'symbol', source: 'route-unpaved',
@@ -6819,12 +6857,15 @@ function drawRoute(coords, ferrySegs, segs) {
     },
     paint: { 'icon-opacity': 0.7 },
   });
-  // Below the dismount marker: where a stretch is both walked and steep, the
-  // access instruction outranks the terrain note.
+  // Below the walk marker: where a stretch is both walked and something
+  // else, the planner already picked one kind per slot; layer order only
+  // decides rare exact overlaps, and the access instruction wins those.
   forgetStyleValues(); map.addLayer({
-    id: 'route-steep-marker', type: 'symbol', source: 'route-steep',
-    layout: { 'icon-image': 'route-steep-marker-icon', 'icon-size': 1,
-      'icon-allow-overlap': true, 'icon-ignore-placement': true },
+    id: 'route-marker', type: 'symbol', source: 'route-marker',
+    layout: {
+      'icon-image': ['concat', 'route-marker-', ['get', 'kind']],
+      'icon-size': 1, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+    },
   });
   forgetStyleValues(); map.addLayer({
     id: 'route-dismount-halo', type: 'circle', source: 'route-dismount',

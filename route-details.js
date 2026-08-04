@@ -106,9 +106,7 @@ function routeDisplayCategory(seg) {
   if (seg.crossing === 1) return 'pass';
   const level = routeSegmentLevel(seg);
   if (level === 4) return 'fail';
-  // Walking is a caution here too, or an older stored route would paint its
-  // dismount stretches lime while the live map paints them amber.
-  if (level === 3 || isMountainBikeTrail(seg) || isDismountSegment(seg)) return 'caution';
+  if (level === 3 || isMountainBikeTrail(seg)) return 'caution';
   if (isOffStreetTrail(seg)) return 'trail';
   if (isBikeNetwork(seg)) return 'bike';
   return 'pass';
@@ -1232,7 +1230,7 @@ function routePreviewEdges(points) {
     while (segmentAt + 1 < segs.length && routeIndex >= Number(segs[segmentAt]?.c1)) segmentAt++;
     const seg = segs[segmentAt];
     return { style: routePreviewStyle(seg), unpaved: isConfirmedUnpavedSurface(seg?.surface),
-      dismount: isTaggedDismountSegment(seg) };
+      dismount: isDismountSegment(seg) };
   });
 }
 

@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-// The dismount marker is the one route symbol a rider cannot afford to miss:
-// past it they have to get off and walk. It drew at 18 CSS px -- small enough
-// to read as map furniture -- and it had no tap area of its own, so a tap on
-// the triangle's corner missed the route line underneath and answered with
-// whatever road happened to be behind it.
+// Route markers: one vocabulary, one spacing clock, never a pile of icons.
 //
-// Both are geometry, so both are checked as geometry: the size of the bitmap
-// the map actually holds, and what a tap at a measured offset returns.
+// Walking, steep climbing, heavy traffic, unpaved surface, and technical
+// ways each flag on the route line itself, ~700 m apart, and where several
+// apply to one stretch exactly ONE icon is placed per slot. The walking
+// marker keeps its enlarged tap target: a tap on the figure answers with the
+// segment underneath.
 import { appPage, chromiumPath, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const site = await serveRepo();
@@ -20,51 +19,98 @@ const check = (name, ok, detail = '') => {
   console.log(`FAIL  ${name}${detail ? `  -- ${detail}` : ''}`);
 };
 
-// A short east-west route with two walked stretches: the middle third is
-// TAGGED bicycle=dismount (official 8|128), the final segment is a walk link
-// the graph build synthesised from an untagged footway (priced as dismount,
-// no tag). Only the tagged stretch may draw a marker -- a triangle at every
-// synthesised park-path connector would teach riders to ignore the one that
-// stands for a real sign.
+/* ------------------------------------------------ the planner, direct */
+const plan = await page.evaluate(() => {
+  const build = (count, propsFor, stepLng = .002) => {
+    const lat = 47.55;
+    const coords = Array.from({ length: count + 1 }, (_, i) => [-122.30 + i * stepLng, lat]);
+    const sdata = {
+      type: 'FeatureCollection',
+      features: coords.slice(0, -1).map((_, i) => ({ type: 'Feature',
+        properties: routeSegProps({ lenM: 150, c0: i, c1: i + 1, level: 1,
+          mph: 25, sh: 4, ...propsFor(i) }),
+        geometry: { type: 'LineString', coordinates: coords.slice(i, i + 2) } })),
+    };
+    const out = buildRouteMarkerData(sdata);
+    return { walk: out.walk.features.map((f) => f.geometry.coordinates),
+      other: out.other.features.map((f) => ({ kind: f.properties.kind,
+        at: f.geometry.coordinates })) };
+  };
+  const gapM = (a, b) => Math.hypot((b[0] - a[0]) * 75200, (b[1] - a[1]) * 111320);
+  const climb = build(19, () => ({ gradePct: 12 }));
+  const gaps = climb.other.slice(1).map((m, i) => Math.round(gapM(climb.other[i].at, m.at)));
+  return {
+    climbCount: climb.other.length,
+    climbKinds: [...new Set(climb.other.map((m) => m.kind))],
+    gaps,
+    flat: build(19, () => ({ gradePct: 0 })).other.length,
+    blip: build(1, () => ({ gradePct: 14 }), .0004).other.length,
+    absurd: build(19, () => ({ gradePct: 60 })).other.length,
+    traffic: build(19, () => ({ measures: { adt: 21000 } })).other
+      .every((m) => m.kind === 'traffic'),
+    trafficOnInfra: build(19, () => ({ flags: 8, measures: { adt: 21000 } })).other.length,
+    rocks: build(19, () => ({ surface: 2 })).other.every((m) => m.kind === 'unpaved'),
+    odd: build(19, () => ({ mtb: true })).other.every((m) => m.kind === 'odd'),
+    // Steep AND unpaved together: one icon per slot, never two.
+    mixed: (() => {
+      const m = build(19, () => ({ gradePct: 12, surface: 2 }));
+      return { count: m.other.length,
+        kinds: [...new Set(m.other.map((x) => x.kind))].sort() };
+    })(),
+    walkChain: build(19, () => ({ dismount: true, official: 8 })).walk.length,
+  };
+});
+check(`a 2.8 km 12% climb carries a chain of mountains (${plan.climbCount})`,
+  plan.climbCount >= 3 && plan.climbCount <= 5
+    && plan.climbKinds.join() === 'steep', JSON.stringify(plan.climbKinds));
+check('spaced apart, never crowded', plan.gaps.every((g) => g >= 600),
+  JSON.stringify(plan.gaps));
+check('flat riding carries none', plan.flat === 0, String(plan.flat));
+check('a 30 m spike is noise, not a climb', plan.blip === 0, String(plan.blip));
+check('an incredible grade is the data error it is', plan.absurd === 0, String(plan.absurd));
+check('heavy traffic on a road gets the car', plan.traffic === true);
+check('but a busy road BESIDE separated infra does not badge the infra',
+  plan.trafficOnInfra === 0, String(plan.trafficOnInfra));
+check('confirmed unpaved gets the rocks', plan.rocks === true);
+check('a technical way gets the question mark', plan.odd === true);
+check('a steep AND unpaved stretch still gets one icon per slot',
+  plan.mixed.count >= 3 && plan.mixed.count <= 5
+    && plan.mixed.kinds.every((k) => k === 'steep' || k === 'unpaved'),
+  JSON.stringify(plan.mixed));
+check('a long walked stretch carries a chain of walkers',
+  plan.walkChain >= 3 && plan.walkChain <= 5, String(plan.walkChain));
+
+/* --------------------------------- drawn on the map, with the tap target */
 const drawn = await page.evaluate(async () => {
   const lat = 47.60;
   const coords = Array.from({ length: 7 }, (_, i) => [-122.34 + i * .002, lat]);
   const segs = coords.slice(0, -1).map((_, i) => ({
     lenM: 150, c0: i, c1: i + 1, level: 1, mph: 25, sh: 4,
-    dismount: (i >= 2 && i <= 3) || i === 5,
-    official: i >= 2 && i <= 3 ? 136 : i === 5 ? 8 : 0,
+    dismount: i >= 2 && i <= 3, official: i >= 2 && i <= 3 ? 136 : 0,
   }));
   map.jumpTo({ center: [-122.34 + 3 * .002, lat], zoom: 15 });
   drawRoute(coords, [], segs);
-  // A timeout alongside idle: the walked stretch draws caution now, and the
-  // caution halo's breathing animation can keep a map from ever going idle.
   await new Promise((resolve) => { map.once('idle', resolve); setTimeout(resolve, 8000); });
   const image = map.style.getImage('route-dismount-marker-icon');
-  // querySourceFeatures answers per tile and may repeat a feature that straddles
-  // a boundary, so count distinct positions rather than returned features.
   const markers = map.querySourceFeatures('route-dismount');
   window.__markerAt = markers[0]?.geometry.coordinates;
   return {
     markerCount: new Set(markers.map((f) => String(f.geometry.coordinates))).size,
     markerLng: markers[0]?.geometry.coordinates?.[0],
     hasSource: !!map.getSource('route-dismount'),
-    // What the map holds, divided by the ratio it will draw at: CSS pixels.
     cssPx: image ? Math.round(image.data.width / image.pixelRatio) : 0,
     haloRadius: map.getPaintProperty('route-dismount-halo', 'circle-radius'),
   };
 });
-check('only the tagged stretch carries a marker -- the synthesised walk link stays quiet',
-  drawn.markerCount === 1 && drawn.hasSource, JSON.stringify(drawn));
-check('and it sits at the tagged stretch’s entry',
-  Math.abs((drawn.markerLng ?? 99) - (-122.34 + 2 * .002)) < .0005,
+check('the walked stretch carries a walker on the map',
+  drawn.markerCount >= 1 && drawn.hasSource, JSON.stringify(drawn));
+check('inside the walked stretch, not somewhere else',
+  drawn.markerLng > -122.34 + 2 * .002 - .0002 && drawn.markerLng < -122.34 + 4 * .002 + .0002,
   `marker at lng ${drawn.markerLng}`);
-check('the marker draws well above the old 18 px', drawn.cssPx >= 24,
-  `${drawn.cssPx} CSS px`);
+check('the icon draws well above the old 18 px', drawn.cssPx >= 24, `${drawn.cssPx} CSS px`);
 check('the halo is sized to cover it', drawn.haloRadius * 2 >= drawn.cssPx,
   `radius ${drawn.haloRadius} against a ${drawn.cssPx} px icon`);
 
-// Tap the marker off-centre -- far enough from the route line that the line's
-// own tap target would miss, but inside the triangle a rider is aiming at.
 const taps = await page.evaluate((radius) => {
   const at = map.project(window.__markerAt);
   const inspect = (dx, dy) => {
@@ -72,8 +118,6 @@ const taps = await page.evaluate((radius) => {
     return feature ? { layer: feature.layer.id, dismount: feature.properties.dismount } : null;
   };
   const onMarker = (dx, dy) => dismountMarkerAt({ x: at.x + dx, y: at.y + dy });
-  // Somewhere on the route with no marker, to prove the widened reach belongs
-  // to the marker rather than to every tap on the map.
   const elsewhere = map.project([window.__markerAt[0] + .004, window.__markerAt[1]]);
   return {
     centre: inspect(0, 0),
@@ -84,7 +128,7 @@ const taps = await page.evaluate((radius) => {
     onElsewhere: dismountMarkerAt({ x: elsewhere.x, y: elsewhere.y }),
   };
 }, drawn.haloRadius);
-check('tapping the centre of the marker reports the dismount',
+check('tapping the walker reports the dismount',
   taps.centre?.layer === 'route-seg-hit' && taps.centre?.dismount === 1, JSON.stringify(taps));
 check('and so does tapping its edge, clear of the route line',
   taps.edge?.layer === 'route-seg-hit' && taps.edge?.dismount === 1, JSON.stringify(taps));
@@ -92,63 +136,7 @@ check('the marker owns the taps that land on it', taps.onCentre && taps.onEdge,
   JSON.stringify(taps));
 check('and no others', !taps.onBeyond && !taps.onElsewhere, JSON.stringify(taps));
 
-// Every walked stretch draws AMBER on the route, tagged or synthesised: a
-// dismount that painted as lime trail read as the best riding on the route
-// while actually being a hike, with the entry marker possibly miles off
-// screen. The marker stays tagged-only; the colour warns everywhere.
-const styles = await page.evaluate(() => ({
-  tagged: routeVisualStyle(routeSegProps({ lenM: 150, mph: 0, sh: -1, flags: 8,
-    facility: 5, level: 1, official: 136, dismount: true })),
-  synthesised: routeVisualStyle(routeSegProps({ lenM: 150, mph: 0, sh: -1, flags: 8,
-    facility: 5, level: 1, official: 8, dismount: true })),
-  ordinaryTrail: routeVisualStyle(routeSegProps({ lenM: 150, mph: 0, sh: -1, flags: 8,
-    facility: 5, level: 1, official: 0 })),
-}));
-check('a tagged dismount stretch draws caution', styles.tagged === 'caution',
-  JSON.stringify(styles));
-check('and so does a synthesised walk link', styles.synthesised === 'caution',
-  JSON.stringify(styles));
-check('while a ridable trail keeps its lime', styles.ordinaryTrail === 'trail',
-  JSON.stringify(styles));
-
-// Steep climbing gets its own marker chain: a 10%+ wall should be obvious at
-// a glance -- a de-facto hiking trail must not look like ordinary lime -- but
-// spaced, so a long climb reads as a chain rather than a smear.
-const steep = await page.evaluate(() => {
-  const build = (stepLng, count, gradePct) => {
-    const lat = 47.55;
-    const coords = Array.from({ length: count + 1 }, (_, i) => [-122.30 + i * stepLng, lat]);
-    const segs = coords.slice(0, -1).map((_, i) => ({
-      lenM: 150, c0: i, c1: i + 1, level: 1, mph: 25, sh: 4, gradePct }));
-    const sdata = {
-      type: 'FeatureCollection',
-      features: segs.map((seg) => ({ type: 'Feature',
-        properties: routeSegProps(seg),
-        geometry: { type: 'LineString',
-          coordinates: coords.slice(seg.c0, seg.c1 + 1) } })),
-    };
-    return buildRouteSteepData(sdata).features.map((f) => f.geometry.coordinates);
-  };
-  const gapM = (a, b) => Math.hypot((b[0] - a[0]) * 75200, (b[1] - a[1]) * 111320);
-  const climb = build(.002, 19, 12);   // ~2.8 km of 12%
-  const gaps = climb.slice(1).map((p, i) => Math.round(gapM(climb[i], p)));
-  return {
-    climbCount: climb.length, gaps,
-    flat: build(.002, 19, 0).length,
-    blip: build(.0004, 1, 14).length,  // ~30 m spike: noise, not a climb
-    absurd: build(.002, 19, 60).length, // beyond the credibility cap
-  };
-});
-check(`a 2.8 km 12% climb carries a chain of markers (${steep.climbCount})`,
-  steep.climbCount >= 3 && steep.climbCount <= 5, JSON.stringify(steep));
-check('spaced apart, never crowded',
-  steep.gaps.every((g) => g >= 600), JSON.stringify(steep.gaps));
-check('flat riding carries none', steep.flat === 0, JSON.stringify(steep));
-check('a 30 m spike is noise, not a climb', steep.blip === 0, JSON.stringify(steep));
-check('and an incredible grade is treated as the data error it is',
-  steep.absurd === 0, JSON.stringify(steep));
-
-check('drawing the marker raises no page errors', page.pageErrors.length === 0,
+check('drawing the markers raises no page errors', page.pageErrors.length === 0,
   page.pageErrors.join(' | '));
 
 await browser.close();
