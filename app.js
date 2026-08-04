@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.537';
+const APP_VERSION = '2026-08-04.538';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -10216,8 +10216,7 @@ function buildVoicePanel() {
   awake.className = 'check-rule rule-card';
   awake.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-keepScreenAwake"
     ${navVoice.keepScreenAwake ? 'checked' : ''}><span>Keep the screen awake while navigating</span></label>
-    <p class="hint voice-safety-hint">Only while a route is running, and only while the app is in
-    front. Off saves battery, but the phone will lock on its usual timer.</p>`;
+    <p class="hint voice-safety-hint">Off saves battery.</p>`;
   awake.querySelector('input').addEventListener('change', (e) => {
     navVoice.keepScreenAwake = e.target.checked;
     if (e.target.checked) requestNavigationWakeLock();
@@ -10235,9 +10234,7 @@ function buildVoicePanel() {
   safety.className = 'check-rule rule-card';
   safety.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceSafetyLevels"
     ${navVoice.safetyLevels ? 'checked' : ''}><span>Announce route safety levels</span></label>
-    <p class="hint voice-safety-hint">Called out ahead of each change, with the one thing that
-    matters — "Bike lane in 500 feet, for 2.1 miles", "Warning. No shoulder in 400 feet,
-    for 1.2 miles".</p>`;
+    <p class="hint voice-safety-hint">"Bike lane in 500 feet, for 2.1 miles."</p>`;
   safety.querySelector('input').addEventListener('change', (e) => {
     navVoice.safetyLevels = e.target.checked;
     syncNativeVoiceStatusPreferences();

@@ -47,6 +47,17 @@ const rendered = await page.evaluate(() => ({
   categoryLabelLines: [...document.querySelectorAll('.route-summary-category-item > span:last-child')]
     .map((label) => Math.round(label.getBoundingClientRect().height
       / Number.parseFloat(getComputedStyle(label).lineHeight))),
+  // The mix is one aligned column: every row -- the five categories AND the
+  // unpaved line -- shares a right edge for its percentage and a left edge for
+  // its label, with visible space between them. The shipped mess this guards
+  // against read "11%Trails" across two ragged columns.
+  mixAlignment: [...document.querySelectorAll(
+    '.route-summary-category-item, .route-summary-secondary-item')].map((item) => {
+    const pct = item.querySelector('b').getBoundingClientRect();
+    const label = item.querySelector('span:last-child').getBoundingClientRect();
+    return { pctRight: Math.round(pct.right), labelLeft: Math.round(label.left),
+      gap: Math.round(label.left - pct.right) };
+  }),
   categorySwatches: [...document.querySelectorAll('.route-summary-category-swatch')]
     .map((swatch) => ({ width: swatch.getBoundingClientRect().width,
       height: swatch.getBoundingClientRect().height })),
@@ -61,8 +72,20 @@ check('the 5% grade metric moved out of the top summary',
   !/Incline over 5%|5%\+ uphill/.test(rendered.quickSummary), rendered.quickSummary);
 check('Elevation reports the 5%+ uphill distance in miles',
   /5%\+ uphill\s*\d+(?:\.\d+)? mi/.test(rendered.elevation), rendered.elevation);
-check('the phone summary stays compact with ferry and dismount rows',
-  rendered.quickSummaryHeight <= 80, `${rendered.quickSummaryHeight}px`);
+// One aligned row per category costs more height than the old two-column cram
+// (which is why the cram existed); ~110px is the single-column layout, and the
+// bound flags a regression that stacks or wraps rows rather than sub-pixel
+// drift.
+check('the phone summary stays a single compact card',
+  rendered.quickSummaryHeight <= 118, `${rendered.quickSummaryHeight}px`);
+check('every mix row aligns its percentage and its label to shared edges',
+  rendered.mixAlignment.length === 6
+    && rendered.mixAlignment.every(({ pctRight, labelLeft }) =>
+      pctRight === rendered.mixAlignment[0].pctRight
+      && labelLeft === rendered.mixAlignment[0].labelLeft),
+  JSON.stringify(rendered.mixAlignment));
+check('and no percentage is glued to its label',
+  rendered.mixAlignment.every(({ gap }) => gap >= 3), JSON.stringify(rendered.mixAlignment));
 check('all category labels stay on one line at phone width',
   rendered.categoryLabelLines.every((lines) => lines === 1), JSON.stringify(rendered.categoryLabelLines));
 check('the five route-category color swatches are large enough to scan',

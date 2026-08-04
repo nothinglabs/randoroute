@@ -17,7 +17,7 @@ main { width: min(100%, 760px); margin: 0 auto; }
 .eyebrow { margin: 0 0 4px; color: #667784; font: 700 11px system-ui; letter-spacing: .06em; text-transform: uppercase; }
 h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .summary { margin: 7px 0 0; color: #52616d; font: 500 15px/1.45 system-ui; }
-.route-quick-summary { display: grid; grid-template-columns: minmax(82px, .48fr) minmax(0, 1.52fr); align-items: center; gap: 4px; margin: 0 0 8px; padding: 6px 8px; border: 1px solid #cddde7; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.05); }
+.route-quick-summary { display: grid; grid-template-columns: minmax(96px, max-content) minmax(0, 1fr); align-items: center; gap: 12px; margin: 0 0 8px; padding: 7px 10px; border: 1px solid #cddde7; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.05); }
 .route-quick-summary[hidden] { display: none; }
 .route-summary-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(145px, 46%); align-items: stretch; gap: 6px 8px; margin-top: 10px; padding: 10px; border: 1px solid #dce5ea; border-radius: 13px; background: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.04); }
 .route-summary-card[hidden], .elevation-preview[hidden], .elevation-preview-empty[hidden] { display: none; }
@@ -33,11 +33,15 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-sub .elevation-metric { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 5px; }
 .route-summary-sub b { color: #607482; font: 800 9px/1.1 system-ui; letter-spacing: .04em; text-transform: uppercase; }
 .route-summary-sub strong { min-width: 0; color: #294655; font: 800 12px/1.15 system-ui; }
-.route-summary-mix { display: grid; align-content: center; gap: 3px; min-width: 0; color: #52616b; font: 650 9.1px/1.1 system-ui; letter-spacing: -.008em; }
-.route-summary-mix-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 2px 4px; min-width: 0; }
-.route-summary-category-item { display: grid; grid-template-columns: 18px 21px minmax(0, 1fr); align-items: center; gap: 1px; min-width: 0; white-space: nowrap; }
+/* One aligned column: swatch, right-aligned percentage, label. The fixed
+   percentage column is what keeps rows aligned -- each item is its own grid,
+   so a max-content column would re-rag them ("11%Trails"). 36px clears the
+   widest value the code emits, "<0.1%". */
+.route-summary-mix { display: grid; align-content: center; gap: 4px; min-width: 0; color: #52616b; font: 700 10.5px/1.15 system-ui; }
+.route-summary-mix-items { display: grid; gap: 3px; min-width: 0; }
+.route-summary-category-item { display: grid; grid-template-columns: 18px 36px minmax(0, 1fr); align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
 .route-summary-category-item > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.route-summary-mix b { color: #223c4b; font: 850 10.4px/1 system-ui; text-align: right; white-space: nowrap; }
+.route-summary-mix b { color: #223c4b; font: 850 11.5px/1 system-ui; text-align: right; white-space: nowrap; }
 .route-summary-mix .category-caution, .route-summary-mix .category-caution b { color: #813e00; }
 .route-summary-mix .category-fail, .route-summary-mix .category-fail b { color: #a51c30; }
 .route-summary-category-swatch { display: block; width: 18px; height: 9px; border-radius: 2px; }
@@ -46,12 +50,15 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-category-swatch.pass { background: var(--verdict-pass); }
 .route-summary-category-swatch.caution { background: var(--verdict-caution); }
 .route-summary-category-swatch.fail { border: 1px solid var(--verdict-fail); background: repeating-linear-gradient(135deg, var(--verdict-fail) 0 3px, #ef8d99 3px 5px); }
-.route-summary-secondary { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; min-width: 0; padding-top: 3px; border-top: 1px solid #e1e9ee; }
-.route-summary-secondary-item { display: inline-grid; grid-template-columns: auto auto minmax(0, auto); align-items: center; justify-content: center; gap: 2px; min-width: 0; color: #415867; white-space: nowrap; }
+/* The unpaved row sits in the same three columns as the categories above it,
+   under a hairline, instead of centring itself on its own axis. */
+.route-summary-secondary { min-width: 0; padding-top: 4px; border-top: 1px solid #e1e9ee; }
+.route-summary-secondary-item { display: grid; grid-template-columns: 18px 36px minmax(0, 1fr); align-items: center; gap: 5px; width: 100%; min-width: 0; color: #415867; text-align: left; white-space: nowrap; }
 .route-summary-mix button.mix-unpaved-warning { appearance: none; margin: 0; padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
-.route-summary-mix .mix-unpaved-warning, .route-summary-mix .mix-unpaved-warning b { color: #b42318; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
+.route-summary-mix .mix-unpaved-warning, .route-summary-mix .mix-unpaved-warning b { color: #b42318; }
+.route-summary-mix .mix-unpaved-warning > span:last-child { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
 .route-summary-mix button.mix-unpaved-warning:focus-visible { border-radius: 3px; outline: 2px solid #1671b8; outline-offset: 2px; }
-.route-summary-unpaved-swatch { display: inline-block; width: 13px; height: 8px; border: 1px solid #536672; border-radius: 1px; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); }
+.route-summary-unpaved-swatch { display: inline-block; justify-self: center; width: 13px; height: 8px; border: 1px solid #536672; border-radius: 1px; background: repeating-linear-gradient(90deg, transparent 0 2px, #536672 2px 3px); }
 .unpaved-route-warning { display: block; width: 100%; margin: 0 0 8px; padding: 8px 10px; appearance: none; border: 1px solid #e5a39a; border-left: 4px solid #c33327; border-radius: 8px; background: #fff1ef; color: #84251c; cursor: pointer; text-align: left; }
 .unpaved-route-warning[hidden] { display: none; }
 .unpaved-warning-message { display: block; font: 750 11px/1.25 system-ui; }
