@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.556';
+const APP_VERSION = '2026-08-04.557';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6203,7 +6203,14 @@ function routeMarkerKinds(p) {
   const grade = Number(p.gradePct);
   if (Number.isFinite(grade) && grade >= STEEP_MARKER_GRADE_PCT
       && grade <= MAX_CREDIBLE_GRADE_PCT) kinds.push('steep');
-  if (p.infra !== 1 && Number(p.adt) >= HEAVY_TRAFFIC_ADT) kinds.push('traffic');
+  if (Number(p.adt) >= HEAVY_TRAFFIC_ADT) {
+    // The car marks traffic the rider actually bears. A stretch still earning
+    // trusted bike/trail paint keeps its lime unbadged, however busy the road
+    // beside the lane; the car appears where the road is a caution, or where
+    // that traffic is part of why it draws as a bare pass instead.
+    const style = routeVisualStyle(p);
+    if (style === 'caution' || style === 'pass') kinds.push('traffic');
+  }
   if (isConfirmedUnpavedSurface(p.surface)) kinds.push('unpaved');
   if (p.mtb === 1) kinds.push('odd');
   return kinds;

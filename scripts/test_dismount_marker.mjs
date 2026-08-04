@@ -58,6 +58,14 @@ const plan = await page.evaluate(() => {
     })(),
     quietTraffic: build(19, () => ({ measures: { adt: 4000 } })).other.length,
     trafficOnInfra: build(19, () => ({ flags: 8, measures: { adt: 21000 } })).other.length,
+    // A trusted bike lane keeps its lime unbadged however busy the road
+    // beside it -- but a lane demoted to caution by a high stress rating
+    // carries the car again.
+    trafficOnBikeLane: build(19, () => ({ facility: 2, measures: { adt: 21000 } })).other.length,
+    trafficOnStressedLane: (() => {
+      const m = build(19, () => ({ facility: 2, lts: 4, measures: { adt: 21000 } })).other;
+      return m.length > 0 && m.every((x) => x.kind === 'traffic');
+    })(),
     rocks: build(19, () => ({ surface: 2 })).other.every((m) => m.kind === 'unpaved'),
     odd: build(19, () => ({ mtb: true })).other.every((m) => m.kind === 'odd'),
     // Steep AND unpaved together: one icon per slot, never two.
@@ -90,6 +98,10 @@ check('while a genuinely quiet road stays unbadged', plan.quietTraffic === 0,
   String(plan.quietTraffic));
 check('but a busy road BESIDE separated infra does not badge the infra',
   plan.trafficOnInfra === 0, String(plan.trafficOnInfra));
+check('a trusted bike lane on a busy road stays unbadged',
+  plan.trafficOnBikeLane === 0, String(plan.trafficOnBikeLane));
+check('a bike lane demoted to caution by its stress rating carries the car',
+  plan.trafficOnStressedLane === true);
 check('confirmed unpaved gets the rocks', plan.rocks === true);
 check('a technical way gets the question mark', plan.odd === true);
 check('a steep AND unpaved stretch still gets one icon per slot',

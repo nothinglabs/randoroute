@@ -902,9 +902,11 @@ as caution (amber) wherever a route is shown — a walked stretch must never
 read as prime lime trail, and colour is the warning that works at every
 zoom, with the walker chain saying why. (The same
 pass places mountain icons on 10%+ climbs, a car on busy-tier traffic —
-the "busy through road" level, 6,000+/day, where cautions begin — without
-separated infra, rocks on confirmed-unpaved surface, and a question
-mark on technical ways, one icon per slot even where causes overlap.) Only
+the "busy through road" level, 6,000+/day, where cautions begin — but only
+where the stretch draws as caution or a bare pass, never on trusted
+bike/trail paint, a serrated-ground icon on confirmed-unpaved surface, and
+a question mark on technical ways, one icon per slot even where causes
+overlap.) Only
 tagged dismounts raise the louder warnings: the "Dismount" mileage in the
 stats and the spoken "Walk your bike" (a synthesised stretch is silent in
 the voice). A warning at every synthesised park connector would teach the
