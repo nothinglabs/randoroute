@@ -1230,10 +1230,13 @@ def stamp_graph_version(graph_path,
 
 def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=None,
           urban_areas=None, roadlog=None, funcclass=None, aadt=None, hpms=None):
+    t0 = __import__('time').monotonic()
+    def phase(msg):
+        print(f'[{__import__("time").monotonic() - t0:7.1f}s] {msg}', flush=True)
     wsdot = load_blts_index(blts) if blts else None
     # The statewide measurements: traffic volume and bail-out space off the
     # state highway system, where until now we had nothing but estimates.
-    print('loading road measurements...', flush=True)
+    phase('loading road measurements...')
     measures = RoadMeasures(roadlog=roadlog, funcclass=funcclass, aadt=aadt,
                             hpms=hpms)
     restriction_index = load_restriction_index(restrictions) if restrictions else None
@@ -1245,13 +1248,13 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
         print('  WARNING: no DEM tiles found — building without elevation', flush=True)
         ele_at = lambda lon, lat: 0
     # ---- pass 0: route-relation membership
-    print('pass 0: designated and mountain-bike route relations...', flush=True)
+    phase('pass 0: designated and mountain-bike route relations...')
     designated = collect_designated(src)
     mtb_route_members = collect_mtb_route_members(src)
     print(f'  {len(designated):,} designated member ways; {len(mtb_route_members):,} MTB member ways', flush=True)
 
     # ---- pass 1: which ways are kept; count node references to find junctions
-    print('pass 1: scanning ways...', flush=True)
+    phase('pass 1: scanning ways...')
     refcount = {}
     kept_ways = 0
     def count_way_refs(obj):
@@ -1283,7 +1286,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     print(f'  kept {kept_ways:,} ways, {len(refcount):,} referenced nodes', flush=True)
 
     # ---- pass 2: build edges split at junctions
-    print('pass 2: building edges...', flush=True)
+    phase('pass 2: building edges...')
     node_index = {}          # osm node id -> graph node index
     node_lon = array('f'); node_lat = array('f')
     eA = array('I'); eB = array('I'); eLen = array('f')
@@ -1618,7 +1621,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     print(f'  directed arcs {D:,}', flush=True)
 
     # ---- write
-    print('writing...', flush=True)
+    phase('writing...')
     # Name string table: per-edge u32 index -> [offsets u32[U+1]] + utf-8 blob.
     name_blob = bytearray()
     name_offs = array('I', [0])
