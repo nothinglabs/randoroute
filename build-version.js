@@ -24,7 +24,7 @@
  * when router-worker.js changes the binary contract. Once, here.
  */
 (function (root) {
-  root.GRAPH_DATA_VERSION = 'sha-19031d7cfbca';
+  root.GRAPH_DATA_VERSION = 'sha-12ed13252e86';
   // Keeps a just-updated worker from being handed a graph cached by an older
   // service worker during the first post-update load.
   root.GRAPH_FORMAT_VERSION = 'bgr10-1';

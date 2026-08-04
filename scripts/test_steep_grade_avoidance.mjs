@@ -10,6 +10,9 @@ const end = worker.indexOf('// Fixed intersection friction', start);
 assert.ok(start >= 0 && end > start, 'steep-grade avoidance helper source was not found');
 
 const context = {
+  // The synthetic edges are all ridable; the dismount exemption is asserted
+  // against the real graph below.
+  isDismountEdge: () => false,
   eFlags: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 32]),
   // 9%, 10%, 12%, 13%, 14%, 15%, downhill 15%, and a ferry respectively.
   eAsc: new Float32Array([9, 10, 12, 13, 14, 15, 0, 20]),
@@ -109,6 +112,28 @@ assert.equal(bound.violations, 0,
   'no edge may cost more grade penalty than a multiple of its own riding time');
 assert.ok(bound.clipped > 0,
   'the time bound should actually bind somewhere, or it is not doing anything');
+
+// A dismount edge never takes the grade penalty: it is already priced as
+// walking, entry penalty included, and the avoidance curve exists to price
+// the transition to walking that a dismount edge has already made. These are
+// also exactly the edges whose grades are DEM noise -- untagged footways on
+// gorge walls and park slopes.
+const dismountSteep = w.run(`(() => {
+  for (let e = 0; e < E; e++) {
+    if (!(eOfficial[e] & EDGE_DISMOUNT)) continue;
+    const L = Math.max(eLen[e], 1);
+    if (eLen[e] < 20) continue;
+    if (100 * Math.max(eAsc[e], eDes[e]) / L <= 12) continue;
+    return { edge: e, grade: Math.round(100 * Math.max(eAsc[e], eDes[e]) / L),
+      penalty: Math.max(steepUphillAvoidanceS(e, true, 'balanced'),
+                        steepUphillAvoidanceS(e, false, 'balanced')) };
+  }
+  return null;
+})()`);
+assert.ok(dismountSteep, 'the graph should carry a steep dismount edge to assert on');
+assert.equal(dismountSteep.penalty, 0,
+  `a dismount edge must not take the grade penalty (edge ${dismountSteep.edge}, `
+  + `${dismountSteep.grade}%, got ${dismountSteep.penalty}s)`);
 
 // Turn friction is a TRANSITION cost: it belongs to the pair of edges, not to
 // the edge, so it appears only when edgeCost is given the arrival state.

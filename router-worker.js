@@ -947,7 +947,14 @@ const MAX_STEEP_UPHILL_AVOID_S = 2400;
 // erasing a corridor.
 const MAX_STEEP_AVOID_TIME_MULT = 8;
 function steepUphillAvoidanceS(i, forward, mode) {
-  if ((eFlags[i] & 32) || eLen[i] < MIN_STEEP_AVOID_EDGE_M) return 0;
+  // Not on a dismount edge: this penalty exists to price the point where a
+  // grade forces a rider OFF the bike ("even a 14%+ stretch can be walked"),
+  // and a dismount edge is already priced as walking, entry penalty included.
+  // Charging avoidance on top double-counted the same fact -- and did it
+  // exactly where grades are least trustworthy, the untagged footways whose
+  // DEM samples read gorge walls and park slopes as the path.
+  if ((eFlags[i] & 32) || isDismountEdge(i)
+      || eLen[i] < MIN_STEEP_AVOID_EDGE_M) return 0;
   const asc = forward ? eAsc[i] : eDes[i];
   const des = forward ? eDes[i] : eAsc[i];
   const gradePct = 100 * Math.max(0, asc - des) / Math.max(eLen[i], 1);

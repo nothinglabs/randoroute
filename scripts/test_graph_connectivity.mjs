@@ -1,0 +1,81 @@
+#!/usr/bin/env node
+// The graph is one network, not an archipelago.
+//
+// Untagged footways and paths -- the connective tissue of parks and
+// footbridges -- used to be excluded from the graph entirely, which severed it
+// into 5,417 components: 33,391 stranded nodes, 1,248 islands that contained
+// dedicated trail a rider could see on the map but never be routed onto.
+// Spokane's Riverfront footbridge was a 14-node island; crossing the river
+// beside a 64 m span cost a 5.8 km street detour.
+//
+// They are walk-your-bike links now, and this holds the repair: connectivity
+// is measured on the shipped graph, and the specific crossing that exposed the
+// problem must price as a crossing, not a detour.
+import { routerWorker } from './testlib/harness.mjs';
+
+let passed = 0, failed = 0;
+const check = (name, ok, detail = '') => {
+  if (ok) { passed++; console.log(`PASS  ${name}`); return; }
+  failed++;
+  console.log(`FAIL  ${name}${detail ? `  -- ${detail}` : ''}`);
+};
+
+const w = routerWorker();
+check('the graph loads', w.ready);
+
+const conn = w.run(`(() => {
+  const parent = new Int32Array(N);
+  for (let i = 0; i < N; i++) parent[i] = i;
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  for (let e = 0; e < E; e++) {
+    const a = find(eA[e]), b = find(eB[e]);
+    if (a !== b) parent[a] = b;
+  }
+  const size = new Map(), trail = new Map();
+  for (let n = 0; n < N; n++) { const r = find(n); size.set(r, (size.get(r) || 0) + 1); }
+  for (let e = 0; e < E; e++) {
+    if (!((eFlags[e] & 8) || eFacility[e] >= 4)) continue;
+    const r = find(eA[e]); trail.set(r, (trail.get(r) || 0) + 1);
+  }
+  const comps = [...size.values()].sort((a, b) => b - a);
+  const largest = comps[0];
+  let largestRoot = null;
+  for (const [r, n] of size) if (n === largest) { largestRoot = r; break; }
+  let trailIslands = 0;
+  for (const r of trail.keys()) if (r !== largestRoot) trailIslands++;
+  return { nodes: N, components: comps.length, largest,
+    largestPct: 100 * largest / N, trailIslands };
+})()`);
+
+// Measured states: before the walk links 95.56% / 1,248 trail islands; after
+// them (with the walk-only prune) 96.28% / 954, with 154k more nodes in the
+// main network. The thresholds guard the achieved state: a regression to the
+// old classifier -- or a prune that starts eating real trail -- fails loudly,
+// while ordinary extract drift does not flap.
+check(`the main component holds ${conn.largestPct.toFixed(2)}% of nodes (need > 96%)`,
+  conn.largestPct > 96, JSON.stringify(conn));
+check(`trail-bearing islands: ${conn.trailIslands} (need < 1100)`,
+  conn.trailIslands < 1100, JSON.stringify(conn));
+
+// The crossing that exposed all of this: over the Spokane River beside the
+// Riverfront footbridge. A route between banks must use a crossing -- any
+// crossing -- rather than a many-kilometre street detour.
+const RULES = { minShoulder: 4, maxSpeedNoShoulder: 25, upperMaxSpeed: 45,
+  noUpperLimit: true, lanesNoShoulderOver: 4, busyNoShoulder: 2,
+  allowSidewalkFallback: true, allowFreeways: true, allowMtbTrails: false,
+  inferShoulderFromEdge: false, requireSafe: false };
+w.messages.length = 0;
+const reply = w.post({ type: 'route', id: 'riverfront',
+  points: [[-117.42290, 47.66380], [-117.42290, 47.66230]],
+  rules: RULES, mode: 'balanced' });
+check('a route crosses the Spokane River at Riverfront Park', reply?.ok === true,
+  JSON.stringify({ ok: reply?.ok, reason: reply?.reason }));
+if (reply?.ok) {
+  check(`and it is a crossing, not a detour: ${(reply.distM / 1000).toFixed(2)} km (need < 1.5 km)`,
+    reply.distM < 1500, `${reply.distM} m`);
+  check('and it dismounts rather than pretending the footbridge is ridable',
+    reply.dismountM > 0, JSON.stringify({ dismountM: reply.dismountM }));
+}
+
+console.log(`\n${passed} passed${failed ? `, ${failed} FAILED` : ''}`);
+process.exitCode = failed ? 1 : 0;

@@ -991,6 +991,26 @@ def classify_way(tags):
         and (tags.get('motor_vehicle') in ('no', 'private')
              or tags.get('access') in ('no', 'private'))
     )
+    # An untagged standalone footway or path -- no bicycle tag at all -- is
+    # the connective tissue of parks and footbridges, and leaving it out
+    # severed the graph into 5,417 components: 33,391 stranded nodes, 1,248
+    # islands containing dedicated trail. Spokane's Riverfront footbridge was
+    # a 14-node island reachable only by a 5.8 km street detour around a 64 m
+    # span.
+    #
+    # They join the graph as WALK-YOUR-BIKE links: the dismount flag prices
+    # them at walking speed plus the fixed entry penalty and announces the
+    # walk, so they repair connectivity without ever being a shortcut. Tagged
+    # sidewalks and crossings stay out -- a parallel walking network beside
+    # every urban street is noise, not connectivity -- as do ways that exclude
+    # pedestrians. bicycle=dismount says the same thing explicitly, and was
+    # previously dropped here unless it also carried a designation.
+    walk_link = (
+        hw in ('footway', 'path')
+        and bike in (None, 'dismount')
+        and foot not in ('no', 'private')
+        and tags.get('footway') not in ('sidewalk', 'crossing')
+    )
     infra = (
         hw == 'cycleway'
         or (hw == 'path' and bike in ('designated', 'yes'))
@@ -998,11 +1018,12 @@ def classify_way(tags):
         or (hw == 'bridleway' and bike in ('designated', 'yes'))
         or (hw == 'track' and bike in ('designated', 'yes'))
         or designated_bike_service
+        or walk_link
     )
     if infra:
         return {'speed': 0, 'est': False, 'facility': FACILITY_PATH, 'lim': False,
                 'infra': True, 'sh': None, 'road_class': 0, 'surface': surface_class(tags),
-                'lanes': 0, 'dismount': dismount}
+                'lanes': 0, 'dismount': dismount or walk_link}
     if hw not in DRIVE:
         return None
 
@@ -1702,6 +1723,80 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                     commit_runs(runs)
 
         GraphWayHandler().apply_file(src, locations=True)
+
+    # ---- prune pure walk-link components.
+    # Walk links exist to CONNECT: a footbridge or park path that joins two
+    # ridable networks. Admitting untagged footways also imported thousands of
+    # self-contained pedestrian webs -- campus paths, park loops -- that touch
+    # nothing ridable. Left in, they exploded the component count from 5,417
+    # to 41,051 and gave route snapping 37k pedestrian islands to mis-snap
+    # onto. A component with no ridable edge at all cannot be part of any
+    # route, so it is dropped whole; any walk link that touches a ridable
+    # network survives, which is the entire point of having them.
+    parent = list(range(len(node_lon)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i in range(len(eA)):
+        ra, rb = find(eA[i]), find(eB[i])
+        if ra != rb:
+            parent[ra] = rb
+    rideable_roots = set()
+    for i in range(len(eA)):
+        if not ((eOfficial[i] & EDGE_DISMOUNT) and (eFlags[i] & 8)):
+            rideable_roots.add(find(eA[i]))
+    keep_edge = [find(eA[i]) in rideable_roots for i in range(len(eA))]
+    dropped = len(keep_edge) - sum(keep_edge)
+    if dropped:
+        node_map = {}
+        new_node_lon = array('f'); new_node_lat = array('f'); new_nEle = array('h')
+
+        def remap(old):
+            idx = node_map.get(old)
+            if idx is None:
+                idx = len(new_node_lon)
+                node_map[old] = idx
+                new_node_lon.append(node_lon[old])
+                new_node_lat.append(node_lat[old])
+                new_nEle.append(nEle[old])
+            return idx
+
+        new_gLon = array('f'); new_gLat = array('f')
+        per_edge = [eA, eB, eLen, eSpeed, eSpeedBA, eFlags, eSh, eShBA,
+                    eLimitedDir, eClass, eFacility, eOfficial, eSurface,
+                    eLanes, eLts, eEdgeSpace, eCountyShoulder, eAdt, eAdtMeta,
+                    eAdtSource, eClassOwner, eHazAB, eHazBA, eHazStartAB,
+                    eHazEndAB, eHazStartBA, eHazEndBA, eName, eOff, eCnt,
+                    eAsc, eDes]
+        new_arrays = [array(a.typecode) for a in per_edge]
+        for i in range(len(eA)):
+            if not keep_edge[i]:
+                continue
+            off = len(new_gLon)
+            for g in range(eOff[i], eOff[i] + eCnt[i]):
+                new_gLon.append(gLon[g]); new_gLat.append(gLat[g])
+            for src_arr, dst_arr in zip(per_edge, new_arrays):
+                if src_arr is eA:
+                    dst_arr.append(remap(eA[i]))
+                elif src_arr is eB:
+                    dst_arr.append(remap(eB[i]))
+                elif src_arr is eOff:
+                    dst_arr.append(off)
+                else:
+                    dst_arr.append(src_arr[i])
+        (eA, eB, eLen, eSpeed, eSpeedBA, eFlags, eSh, eShBA, eLimitedDir,
+         eClass, eFacility, eOfficial, eSurface, eLanes, eLts, eEdgeSpace,
+         eCountyShoulder, eAdt, eAdtMeta, eAdtSource, eClassOwner, eHazAB,
+         eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eName, eOff,
+         eCnt, eAsc, eDes) = new_arrays
+        node_lon, node_lat, nEle = new_node_lon, new_node_lat, new_nEle
+        gLon, gLat = new_gLon, new_gLat
+        print(f'  pruned {dropped:,} edges in walk-only components', flush=True)
+    parent = None
 
     N, E, G = len(node_lon), len(eA), len(gLon)
     print(f'  nodes {N:,}  edges {E:,}  geom vertices {G:,}  oneway edges {oneway_arcs:,}', flush=True)
