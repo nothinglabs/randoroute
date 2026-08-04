@@ -57,6 +57,24 @@ check(`the main component holds ${conn.largestPct.toFixed(2)}% of nodes (need > 
 check(`trail-bearing islands: ${conn.trailIslands} (need < 1100)`,
   conn.trailIslands < 1100, JSON.stringify(conn));
 
+// The two kinds of walked edge stay distinguishable in the shipped graph:
+// bit 8 prices an edge as a dismount, bit 128 records that a mapper actually
+// wrote bicycle=dismount. The app warns (marker, stats, voice) only on the
+// tagged ones, so a graph that stopped stamping the tag -- or stamped it on
+// edges that are not dismounts at all -- would silently break that split.
+const tags = w.run(`(() => {
+  let tagged = 0, priced = 0, orphanTag = 0;
+  for (let e = 0; e < E; e++) {
+    if (eOfficial[e] & 8) priced++;
+    if (eOfficial[e] & 128) { tagged++; if (!(eOfficial[e] & 8)) orphanTag++; }
+  }
+  return { tagged, priced, orphanTag };
+})()`);
+check(`bicycle=dismount tags are stamped: ${tags.tagged} tagged of ${tags.priced} priced`,
+  tags.tagged > 0 && tags.tagged < tags.priced, JSON.stringify(tags));
+check('and the tag never appears on an edge that is not priced as a dismount',
+  tags.orphanTag === 0, JSON.stringify(tags));
+
 // The crossing that exposed all of this: over the Spokane River beside the
 // Riverfront footbridge. A route between banks must use a crossing -- any
 // crossing -- rather than a many-kilometre street detour.

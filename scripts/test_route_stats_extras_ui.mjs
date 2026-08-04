@@ -28,8 +28,14 @@ await page.evaluate(() => localStorage.setItem('wa-bike-route-details-1', JSON.s
   rules: { minShoulder: 4 },
   segs: [
     { name: 'Ferry', mph: 15, sh: -1, flags: 32, level: 2, lenM: 1609 },
+    // A walk link the build synthesised (dismount priced, official bit 8
+    // only) and a stretch a mapper tagged bicycle=dismount (bits 8|128).
+    // The Dismount stat counts only the second; the concerns report lists
+    // both.
     { name: 'Walk link', mph: 10, sh: 4, flags: 0, official: 8, dismount: true,
       level: 3, lenM: 400, displayCategory: 'caution' },
+    { name: 'Tagged dismount', mph: 10, sh: 4, flags: 0, official: 136, dismount: true,
+      level: 3, lenM: 160, displayCategory: 'caution' },
     { name: '35 road', mph: 35, sh: 4, flags: 0, level: 1, lenM: 1609,
       displayCategory: 'pass' },
     { name: '45 road', mph: 45, sh: 4, flags: 0, level: 1, lenM: 1609,
@@ -65,9 +71,19 @@ const rendered = await page.evaluate(() => ({
   speedLabels: [...document.querySelectorAll('#summaryRoadSpeed .speed-limit-metric > span')]
     .map((label) => ({ text: label.textContent.trim(), bold: label.querySelector('strong')?.textContent })),
   shoulder: document.getElementById('speedShoulderNote').textContent.replace(/\s+/g, ' ').trim(),
+  dismountConcern: document.getElementById('concern-dismount')?.textContent.replace(/\s+/g, ' ') || '',
 }));
 check('Stats summarizes ferry distance in miles', /Ferry 1\.0 mi/.test(rendered.summary), rendered.summary);
-check('Stats summarizes dismount distance', /Dismount 0\.2 mi/.test(rendered.summary), rendered.summary);
+check('the Dismount stat counts only the tagged stretch', /Dismount 0\.1 mi/.test(rendered.summary),
+  rendered.summary);
+check('the synthesised walk link stays out of that number', !/Dismount 0\.[23] mi/.test(rendered.summary),
+  rendered.summary);
+// The section renders collapsed, so the header is what a rider first sees:
+// its total and count must cover BOTH stretches (400 m + 160 m ≈ 0.3 mi),
+// proving the walk link the stats exclude is still reported here.
+check('while the concerns report keeps both walked stretches',
+  /0\.3 mi/.test(rendered.dismountConcern) && /2 items/.test(rendered.dismountConcern),
+  rendered.dismountConcern.slice(0, 200));
 check('the 5% grade metric moved out of the top summary',
   !/Incline over 5%|5%\+ uphill/.test(rendered.quickSummary), rendered.quickSummary);
 check('Elevation reports the 5%+ uphill distance in miles',

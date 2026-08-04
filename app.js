@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.538';
+const APP_VERSION = '2026-08-04.539';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -27,6 +27,7 @@ const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
 const OFFICIAL_URBAN = 64;
+const OFFICIAL_DISMOUNT_TAG = 128;
 const SIGNIFICANT_UNPAVED_M = 1609.344;
 const MIN_REPORTED_GRADE_M = 20;
 const MAX_CREDIBLE_GRADE_PCT = 40;
@@ -75,6 +76,19 @@ function isConfirmedUnpavedSurface(surface) {
 }
 function isDismountSegment(segment) {
   return !!segment?.dismount || !!((segment?.official || 0) & OFFICIAL_DISMOUNT);
+}
+// Only the dismounts a mapper wrote down (bicycle=dismount) warn out loud --
+// the map marker, the Dismount mileage, the voice. The walk links the graph
+// build synthesises from untagged footways price and report identically
+// otherwise, but a warning at every park-path connector would teach riders to
+// ignore the marker that matters.
+//
+// Both bits, not just the tag bit: 128 meant "bridge or tunnel" in the graph
+// one data version back, and a route stored under that graph would otherwise
+// read its bridges as dismounts until the rider next routes.
+function isTaggedDismountSegment(segment) {
+  const need = OFFICIAL_DISMOUNT | OFFICIAL_DISMOUNT_TAG;
+  return (((segment?.official || 0) & need) === need);
 }
 
 function credibleRouteSegmentGradePct(segment) {
@@ -2751,7 +2765,7 @@ function routeSummaryStats(m) {
       roadSpeedM += mph * len;
     }
     if (s.mtb || ((s.official || 0) & 4)) mtbM += len;
-    if (isDismountSegment(s)) dismountM += len;
+    if (isTaggedDismountSegment(s)) dismountM += len;
     if (flags & 4) freewayM += len;
     else if (flags & 128) limitedAccessM += len;
     else if (isHighwaySegment(s)) highwayM += len;
@@ -3496,7 +3510,9 @@ function routeSegmentSafetyReason(s) {
     if (reasons.includes('lanes')) return 'wide-no-shoulder';
     return 'no-shoulder';
   }
-  if (isDismountSegment(s)) return 'dismount';
+  // Tagged dismounts only: a spoken "Walk your bike" at every synthesised
+  // park-path connector would drown the ones a sign actually enforces.
+  if (isTaggedDismountSegment(s)) return 'dismount';
   const cause = routeSegmentCautionCause(s);
   if (cause === 'high-stress') return 'heavy-traffic';
   if (SAFETY_REASON_SPEECH[cause]) return cause;
@@ -6043,11 +6059,13 @@ function buildRouteUnpavedData(sdata) {
 // Dismounts are marked once at the entry to every continuous run.  The route
 // line keeps its normal safety color; this marker communicates an access
 // instruction without turning a legal walk-bike link into a rule failure.
+// Only TAGGED dismounts get a marker -- feature properties carry the official
+// byte, so the same helper the stats use decides here.
 function buildRouteDismountData(sdata) {
   const features = [];
   let inDismount = false;
   for (const feature of sdata.features) {
-    const dismount = feature.properties?.dismount === 1;
+    const dismount = isTaggedDismountSegment(feature.properties);
     if (dismount && !inDismount) {
       const point = feature.geometry?.coordinates?.[0];
       if (Array.isArray(point) && point.length >= 2) {

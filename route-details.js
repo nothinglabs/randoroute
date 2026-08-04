@@ -11,6 +11,7 @@ const OFFICIAL_DISMOUNT = 8;
 const OFFICIAL_SIDEWALK = 16;
 const OFFICIAL_SIDEWALK_NO = 32;
 const OFFICIAL_URBAN = 64;
+const OFFICIAL_DISMOUNT_TAG = 128;
 const PROHIBITED_SHOULDER = -128;
 const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 // Read from palette.js, not restated. These four used to be spelled out here,
@@ -65,6 +66,17 @@ function isMountainBikeTrail(seg) {
 
 function isDismountSegment(seg) {
   return !!seg?.dismount || !!((seg?.official || 0) & OFFICIAL_DISMOUNT);
+}
+
+// A mapper wrote bicycle=dismount, as opposed to a walk link the graph build
+// synthesised from an untagged footway. Warnings -- the Dismount mileage up
+// top and the preview markers -- show only these; the concerns report keeps
+// listing every stretch that will be walked. Both bits, not just the tag bit:
+// 128 meant "bridge or tunnel" one graph data version back, and this page
+// renders stored routes that can predate the rebuild.
+function isTaggedDismountSegment(seg) {
+  const need = OFFICIAL_DISMOUNT | OFFICIAL_DISMOUNT_TAG;
+  return (((seg?.official || 0) & need) === need);
 }
 
 // A stored segment does not always carry a level: an older release wrote none,
@@ -306,7 +318,7 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
     if (level >= 1 && level <= 4) levels[level] += len;
     if (isConfirmedUnpavedSurface(seg.surface)) unpavedM += len;
     if (credibleSegmentGradePct(seg) > 5) inclineOver5M += len;
-    if (isDismountSegment(seg)) dismountM += len;
+    if (isTaggedDismountSegment(seg)) dismountM += len;
     const category = routeDisplayCategory(seg);
     if (Object.prototype.hasOwnProperty.call(categoryM, category)) categoryM[category] += len;
     if ((flags & FLAG_INFRA) || (seg.facility || 0) >= 2) bikeNetworkM += len;
@@ -1218,7 +1230,7 @@ function routePreviewEdges(points) {
     while (segmentAt + 1 < segs.length && routeIndex >= Number(segs[segmentAt]?.c1)) segmentAt++;
     const seg = segs[segmentAt];
     return { style: routePreviewStyle(seg), unpaved: isConfirmedUnpavedSurface(seg?.surface),
-      dismount: isDismountSegment(seg) };
+      dismount: isTaggedDismountSegment(seg) };
   });
 }
 

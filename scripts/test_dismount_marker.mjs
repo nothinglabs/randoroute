@@ -20,13 +20,19 @@ const check = (name, ok, detail = '') => {
   console.log(`FAIL  ${name}${detail ? `  -- ${detail}` : ''}`);
 };
 
-// A short east-west route whose middle third must be walked.
+// A short east-west route with two walked stretches: the middle third is
+// TAGGED bicycle=dismount (official 8|128), the final segment is a walk link
+// the graph build synthesised from an untagged footway (priced as dismount,
+// no tag). Only the tagged stretch may draw a marker -- a triangle at every
+// synthesised park-path connector would teach riders to ignore the one that
+// stands for a real sign.
 const drawn = await page.evaluate(async () => {
   const lat = 47.60;
   const coords = Array.from({ length: 7 }, (_, i) => [-122.34 + i * .002, lat]);
   const segs = coords.slice(0, -1).map((_, i) => ({
     lenM: 150, c0: i, c1: i + 1, level: 1, mph: 25, sh: 4,
-    dismount: i >= 2 && i <= 3,
+    dismount: (i >= 2 && i <= 3) || i === 5,
+    official: i >= 2 && i <= 3 ? 136 : i === 5 ? 8 : 0,
   }));
   map.jumpTo({ center: [-122.34 + 3 * .002, lat], zoom: 15 });
   drawRoute(coords, [], segs);
@@ -38,14 +44,18 @@ const drawn = await page.evaluate(async () => {
   window.__markerAt = markers[0]?.geometry.coordinates;
   return {
     markerCount: new Set(markers.map((f) => String(f.geometry.coordinates))).size,
+    markerLng: markers[0]?.geometry.coordinates?.[0],
     hasSource: !!map.getSource('route-dismount'),
     // What the map holds, divided by the ratio it will draw at: CSS pixels.
     cssPx: image ? Math.round(image.data.width / image.pixelRatio) : 0,
     haloRadius: map.getPaintProperty('route-dismount-halo', 'circle-radius'),
   };
 });
-check('the route carries one dismount marker', drawn.markerCount === 1 && drawn.hasSource,
-  JSON.stringify(drawn));
+check('only the tagged stretch carries a marker -- the synthesised walk link stays quiet',
+  drawn.markerCount === 1 && drawn.hasSource, JSON.stringify(drawn));
+check('and it sits at the tagged stretch’s entry',
+  Math.abs((drawn.markerLng ?? 99) - (-122.34 + 2 * .002)) < .0005,
+  `marker at lng ${drawn.markerLng}`);
 check('the marker draws well above the old 18 px', drawn.cssPx >= 24,
   `${drawn.cssPx} CSS px`);
 check('the halo is sized to cover it', drawn.haloRadius * 2 >= drawn.cssPx,

@@ -889,6 +889,17 @@ makes a road caution?" is **generated from it** by `buildCautionCauseHelp()`, so
 a fifth cause cannot be added without appearing in help. A test asserts every
 entry has both a name and a description.
 
+A dismount is one of two things in the graph, and the app treats them
+differently. **Tagged** — a mapper wrote `bicycle=dismount`; the edge carries
+`official` bit 128 alongside the pricing bit 8. **Synthesised** — a walk link
+the graph build created from an untagged footway or path purely to keep the
+network connected (bit 8 without 128). Both are priced identically (walking
+pace plus the entry penalty) and both are listed in the route-concerns
+report, but only tagged dismounts raise warnings: the map marker, the
+"Dismount" mileage in the stats, and the spoken "Walk your bike". A warning
+at every synthesised park connector would teach the rider to ignore the one
+that stands for a real sign.
+
 Note that the causes carry very different routing costs — a sidewalk fallback is
 ×8 in low-stress mode, a high-stress rating is priced through
 `trafficStressMult`, and a limited-access caution is barely priced at all. Amber

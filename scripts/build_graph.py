@@ -36,9 +36,11 @@ phone, and the next data rebuild upgrades them without a coordinated deploy.
   edgeFacility u8[E] (0=none, 1=shared lane, 2=bike lane,
                       3=buffered lane, 4=separated lane, 5=shared-use path),
   edgeOfficial u8[E] (1=WSDOT legal speed, 2=WSDOT facility,
-                      4=explicit mountain-bike path, 8=bicycle=dismount,
+                      4=explicit mountain-bike path, 8=priced as dismount,
                       16=mapped sidewalk, 32=explicitly no sidewalk,
-                      64=Census urban area),
+                      64=Census urban area, 128=literal bicycle=dismount tag --
+                      bit 8 without 128 is a synthesised walk link, which the
+                      app keeps out of dismount warnings),
   edgeSurface u8[E] (0=unknown, 1=paved, 2=gravel/compacted,
                      3=rough unpaved),
   edgeLanes u8[E] (format 10; bits 0-5 = through lanes, 0 = not tagged;
@@ -219,20 +221,23 @@ EDGE_SIDEWALK_NO = 32
 # without tying routing to a local jurisdiction's traffic-count feed.
 EDGE_URBAN = 64
 
-# A bridge or tunnel deck, from the OSM `bridge`/`tunnel` tags.
+# A LITERAL ``bicycle=dismount`` tag, as distinct from the walk-your-bike
+# links the build synthesises out of untagged footways and paths. Both carry
+# EDGE_DISMOUNT and price identically -- walking pace plus the entry penalty --
+# but the app's dismount warnings (map marker, stats lines, voice) show only
+# where a mapper actually recorded the requirement; the synthesised links stay
+# quiet everywhere except the route-concerns report. The two are otherwise
+# byte-identical, so without this bit the distinction dies at build time.
 #
-# This exists because edge_climb() below asks a TERRAIN model for elevation:
-# it walks the geometry sampling a DEM, which describes the ground, not the
-# structure standing over it. A flat trail deck across a gully therefore
-# recorded the gully as real climb -- the Burke-Gilman bridge at Matthews
-# Beach read 15%, and Mine Creek Trestle on the Palouse to Cascades read
-# 37.7% on a rail-trail graded to about 2%. Downstream that is priced as a
-# climb, and routes detoured off perfectly flat trail onto surface streets.
+# This bit previously stamped EDGE_STRUCTURE (bridge/tunnel decks). Nothing
+# ever read it back: the structure fact is consumed during the build, where
+# edge_grade() overrides the terrain sample under a deck, and the corrected
+# grades are what ship. Re-stamp it if a runtime consumer ever appears.
 #
 # It rides in eOfficial rather than eFlags because eFlags has no bit left:
 # router-worker.js builds a segment's flags as `eFlags[ei] | 128` for
 # limited-access, so bit 7 there already means something else to the UI.
-EDGE_STRUCTURE = 128
+EDGE_DISMOUNT_TAG = 128
 # Three DEM pixels. Shorter than this a structure's end-to-end rise is noise,
 # not slope -- see structure_climb().
 STRUCTURE_MIN_GRADE_M = 80
@@ -948,7 +953,7 @@ def classify_way(tags):
         return {'speed': FERRY_DEFAULT_MPH, 'est': True, 'facility': FACILITY_NONE, 'lim': False,
                 'infra': False, 'sh': None, 'road_class': 0, 'ferry': True,
                 'duration': tags.get('duration'), 'surface': SURFACE_UNKNOWN,
-                'lanes': 0, 'dismount': dismount}
+                'lanes': 0, 'dismount': dismount, 'dismount_tag': dismount}
 
     cycleways = [tags[k] for k in CYCLEWAY_KEYS if tags.get(k)]
 
@@ -1021,9 +1026,12 @@ def classify_way(tags):
         or walk_link
     )
     if infra:
+        # `dismount` prices the edge; `dismount_tag` records whether a mapper
+        # actually wrote bicycle=dismount, which is the only dismount the app
+        # warns about out loud.
         return {'speed': 0, 'est': False, 'facility': FACILITY_PATH, 'lim': False,
                 'infra': True, 'sh': None, 'road_class': 0, 'surface': surface_class(tags),
-                'lanes': 0, 'dismount': dismount or walk_link}
+                'lanes': 0, 'dismount': dismount or walk_link, 'dismount_tag': dismount}
     if hw not in DRIVE:
         return None
 
@@ -1036,7 +1044,7 @@ def classify_way(tags):
         'facility': osm_facility(), 'lim': hw in LIMITED,
         'infra': False, 'sh': parse_shoulder_ft(tags),
         'road_class': ROAD_CLASS[hw], 'surface': surface_class(tags),
-        'lanes': lane_class(tags), 'dismount': dismount,
+        'lanes': lane_class(tags), 'dismount': dismount, 'dismount_tag': dismount,
     }
 
 
@@ -1431,8 +1439,6 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                  or (tags.get('ref') and REF_STATE.search(tags['ref'])))
         )
 
-        is_structure = is_structure_way(tags)
-
         flags = ((1 if attrs['est'] else 0) | (2 if attrs['facility'] else 0)
                  | (4 if attrs['lim'] else 0) | (8 if attrs['infra'] else 0)
                  | (16 if ow == 1 else 0) | (32 if is_ferry else 0)
@@ -1467,7 +1473,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             efacility = attrs['facility']
                             elanes = attrs.get('lanes', 0)
                             elts = 0
-                            eofficial = ((EDGE_STRUCTURE if is_structure else 0)
+                            eofficial = ((EDGE_DISMOUNT_TAG if attrs.get('dismount_tag') else 0)
                                          | (EDGE_MTB if attrs['mtb'] else 0)
                                          | (EDGE_DISMOUNT if attrs.get('dismount') else 0)
                                          | sidewalk_flags(tags)
