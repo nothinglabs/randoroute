@@ -2418,6 +2418,13 @@ function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, se
     const alternative = routeLeg(startPoint, endPoint, rules, 'balanced', true, true,
       startSnap, endSnap, new Set(direct.edgeIds), activeWeights.diversityBalanced, searchRules);
     if (!alternative.ok || !meaningfullyDifferent(alternative, original)) continue;
+    // This probe re-imagines the LAND sections of a ferry itinerary; the
+    // seed's boats are spliced back in verbatim. An "alternative" that
+    // itself boards a ferry can sail back across water the seed already
+    // crossed -- the five-boat Seattle->Walla Walla hybrid rode the
+    // Tahlequah ferry twice, once from the seed and once from the
+    // alternative -- so a land section's replacement must stay on land.
+    if (alternative.ferryM > 0) continue;
     const quickest = Math.min(original.timeS, direct.timeS);
     if (alternative.timeS > quickest * 1.85 + 300
         && alternative.failM + 80 >= Math.min(original.failM, direct.failM)) continue;
