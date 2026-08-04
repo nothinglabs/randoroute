@@ -1745,6 +1745,96 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
 
         GraphWayHandler().apply_file(src, locations=True)
 
+    # ---- stitch same-name seams.
+    # Two consecutive ways of one named road or trail sometimes meet without
+    # sharing an OSM node: adjacent endpoints a metre apart, drawn by
+    # different mappers. The graph inherits the break. The Palouse to
+    # Cascades trail was severed exactly this way twice near the Snoqualmie
+    # Tunnel -- 0-1 m gaps between same-named trail ways -- leaving a
+    # 100-node island and no short Seattle -> Snoqualmie Pass route at all
+    # (every option detoured 113+ miles). A way endpoint within 2 m of
+    # another endpoint of the SAME name is that mapping seam, not a real
+    # gap; stitch it with a short edge copying a neighbour's attributes.
+    # Unnamed endpoints are left alone: without the name there is no
+    # evidence the two ends belong together (a fence line and a road end
+    # can sit 2 m apart on purpose).
+    STITCH_MAX_M = 2.0
+    def stitch_named_seams():
+        by_name = {}
+        for e in range(len(eA)):
+            nid = eName[e]
+            if nid == 0 or (eFlags[e] & 32):
+                continue
+            for n in (eA[e], eB[e]):
+                by_name.setdefault(nid, {}).setdefault(n, e)
+        # Skip only pairs that already share a DIRECT edge. An earlier draft
+        # skipped same-component pairs, which defeated itself: the Palouse to
+        # Cascades island had TWO seams, and stitching the first put both
+        # sides of the second in one component -- connected, via a 145-mile
+        # detour -- so the second seam stayed open and so did the detour.
+        existing = set()
+        for e in range(len(eA)):
+            a, b = eA[e], eB[e]
+            existing.add((a, b) if a < b else (b, a))
+        CELL = 3e-5  # ~3.3 m of latitude; pairs checked across 3x3 cells
+        stitched = 0
+        for nid, nodes in by_name.items():
+            if len(nodes) < 2:
+                continue
+            grid = {}
+            for n in nodes:
+                grid.setdefault((int(node_lon[n] / CELL), int(node_lat[n] / CELL)),
+                                []).append(n)
+            for (cx, cy), bucket in grid.items():
+                candidates = []
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        candidates.extend(grid.get((cx + dx, cy + dy), []))
+                for n1 in bucket:
+                    for n2 in candidates:
+                        if n2 <= n1 or ((n1, n2) if n1 < n2 else (n2, n1)) in existing:
+                            continue
+                        mid = math.radians((node_lat[n1] + node_lat[n2]) / 2)
+                        d = math.hypot(
+                            (node_lon[n2] - node_lon[n1]) * 111320 * math.cos(mid),
+                            (node_lat[n2] - node_lat[n1]) * 111320)
+                        if d > STITCH_MAX_M:
+                            continue
+                        t = nodes[n1]
+                        # Never bridge around a WSDOT prohibition.
+                        if PROHIBITED_SHOULDER in (eSh[t], eShBA[t],
+                                                   eSh[nodes[n2]], eShBA[nodes[n2]]):
+                            continue
+                        geom_off = len(gLon)
+                        gLon.append(node_lon[n1]); gLat.append(node_lat[n1])
+                        gLon.append(node_lon[n2]); gLat.append(node_lat[n2])
+                        eAsc.append(0); eDes.append(0)
+                        eA.append(n1); eB.append(n2)
+                        eLen.append(max(d, 0.5))
+                        eSpeed.append(eSpeed[t]); eSpeedBA.append(eSpeedBA[t])
+                        eFlags.append(eFlags[t] & ~16)  # a seam is never oneway
+                        eSh.append(eSh[t]); eShBA.append(eShBA[t])
+                        eLimitedDir.append(0)
+                        eClass.append(eClass[t])
+                        eFacility.append(eFacility[t]); eOfficial.append(eOfficial[t])
+                        eSurface.append(eSurface[t])
+                        eLanes.append(eLanes[t]); eLts.append(eLts[t])
+                        eEdgeSpace.append(eEdgeSpace[t])
+                        eCountyShoulder.append(eCountyShoulder[t])
+                        eAdt.append(eAdt[t]); eAdtMeta.append(eAdtMeta[t])
+                        eAdtSource.append(eAdtSource[t])
+                        eClassOwner.append(eClassOwner[t])
+                        eHazAB.append(0); eHazBA.append(0)
+                        eHazStartAB.append(0); eHazEndAB.append(0)
+                        eHazStartBA.append(0); eHazEndBA.append(0)
+                        eName.append(nid)
+                        eOff.append(geom_off); eCnt.append(2)
+                        existing.add((n1, n2) if n1 < n2 else (n2, n1))
+                        stitched += 1
+        print(f'  stitched {stitched:,} same-name seams (<= {STITCH_MAX_M} m)',
+              flush=True)
+    stitch_named_seams()
+
     # ---- prune pure walk-link components.
     # Walk links exist to CONNECT: a footbridge or park path that joins two
     # ridable networks. Admitting untagged footways also imported thousands of

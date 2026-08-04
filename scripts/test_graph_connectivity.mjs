@@ -123,5 +123,24 @@ check('Seattle to Southworth sails from Pier 50 rather than detouring to Fauntle
   southworth?.ok === true && southworth.distM < 19500 && southworth.ferryM > 15000,
   JSON.stringify({ ok: southworth?.ok, distM: southworth?.distM, ferryM: southworth?.ferryM }));
 
+// The Palouse to Cascades trail was severed twice near the Snoqualmie Tunnel
+// by same-name mapping seams -- consecutive trail ways whose endpoints sit a
+// metre apart without sharing an OSM node. The build stitches those now, and
+// this is the ride that noticed: North Bend to Hyak is ~20 trail miles, and
+// with the seams open every route was a 120-mile detour over other passes.
+w.messages.length = 0;
+const pass = w.post({ type: 'route', id: 'hyak',
+  points: [[-121.7860, 47.4920], [-121.3980, 47.3930]],
+  rules: RULES, mode: 'direct' });
+check('North Bend reaches Hyak', pass?.ok === true,
+  JSON.stringify({ ok: pass?.ok, reason: pass?.reason }));
+if (pass?.ok) {
+  check(`by the trail, not a 120-mile detour: ${(pass.distM / 1609).toFixed(1)} mi (need < 35 mi)`,
+    pass.distM < 56000, `${Math.round(pass.distM)} m`);
+  check('and it rides the Palouse to Cascades corridor',
+    (pass.segs || []).some((s) => /Palouse to Cascades|Snoqualmie Tunnel/i.test(s.name || '')),
+    JSON.stringify([...new Set((pass.segs || []).map((s) => s.name))].slice(0, 8)));
+}
+
 console.log(`\n${passed} passed${failed ? `, ${failed} FAILED` : ''}`);
 process.exitCode = failed ? 1 : 0;
