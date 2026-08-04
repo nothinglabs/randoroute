@@ -188,6 +188,12 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
    than the lettered options beside it, so nobody taps it expecting route F. */
 #routeOptions button.route-option-more { flex: 1.9 1 0; border-color: #7b2cbf; background: #f4ecfd; color: #5f1fa8; font: 800 9.5px/1.05 system-ui; letter-spacing: .02em; }
 #routeOptions button.route-option-more:hover { background: #ece0fb; }
+/* Route Remix sits beside More. Teal against More's purple; solid fill while
+   a non-default mode is active so a remixed portfolio is visibly remixed. */
+#routeOptions button.route-option-remix { flex: 1.9 1 0; border-color: #0a7d63; background: #eafaf4; color: #056a52; font: 800 9.5px/1.05 system-ui; letter-spacing: .02em; }
+#routeOptions button.route-option-remix:hover { background: #ddf4ea; }
+#routeOptions button.route-option-remix.remix-active { border-color: #056a52; background: #0a8b6d; color: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.16); }
+#routeOptions button.route-option-remix.remix-active:hover { background: #0a7d63; }
 
 /* ---------------------------------------------- all routes considered */
 .all-routes-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(900px, calc(100% - 24px)); margin: 0 auto; padding: 16px 0 max(34px, env(safe-area-inset-bottom)); }
@@ -982,6 +988,17 @@ body.navigation-active #routeBar { display: none; }
 #routesDialog .dialog-close { width: 34px; height: 34px; font-size: 17px; }
 #savedRoutes { max-height: min(32dvh, 300px); overflow-y: auto; overscroll-behavior: contain; }
 .map-dialog::backdrop { background: rgba(0,0,0,.25); }
+.remix-dialog { width: min(92vw, 400px); }
+.remix-intro { margin: 8px 0 10px; color: #52616d; font: 600 12.5px/1.35 system-ui; }
+.remix-choices { display: grid; gap: 7px; margin: 0 0 12px; }
+.remix-choice { display: grid; gap: 2px; width: 100%; padding: 10px 12px; border: 1px solid #c6d6e2; border-radius: 10px; background: #f8fbfd; text-align: left; cursor: pointer; }
+.remix-choice:hover { border-color: #8dc2e5; background: #eff6fb; }
+.remix-choice.current { border-color: #0a66c2; background: #e8f2fb; box-shadow: inset 0 0 0 1px #0a66c2; }
+.remix-choice-label { display: flex; align-items: center; gap: 8px; color: #1d3547; font: 800 13.5px/1.2 system-ui; }
+.remix-current-badge { padding: 2px 7px; border-radius: 999px; background: #0a66c2; color: #fff; font: 800 9px/1.1 system-ui; letter-spacing: .04em; text-transform: uppercase; }
+.remix-choice-hint { color: #5a6c79; font: 600 11.5px/1.3 system-ui; }
+.remix-sticky { display: flex; align-items: center; gap: 7px; color: #24384a; font: 700 12.5px/1.25 system-ui; cursor: pointer; }
+.remix-reset-note { margin: 6px 0 0; color: #677885; font: 600 10.5px/1.35 system-ui; }
 .route-details-dialog { width: min(96vw, 860px); height: min(92dvh, 860px); max-width: none; max-height: none; margin: auto; padding: 0; overflow: hidden; border: none; border-radius: 16px; background: #f4f7f9; box-shadow: 0 14px 44px rgba(0,0,0,.32); }
 .route-details-dialog::backdrop { background: rgba(18,42,60,.42); }
 .route-details-dialog-head { display: flex; align-items: center; justify-content: flex-start; height: calc(42px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 16px 0; border-bottom: 1px solid #dbe4ea; background: #fff; color: #334a58; font: 750 14px system-ui; }

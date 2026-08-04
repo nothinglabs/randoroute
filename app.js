@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.540';
+const APP_VERSION = '2026-08-04.541';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1000,6 +1000,7 @@ function saveStateNow() {
         .map((key) => [key, savedLayer(key)])),
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
+      remix: routing.remix, remixSticky: routing.remixSticky,
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
@@ -2413,6 +2414,62 @@ function setMapLayerVisible(key, on) {
 }
 
 /* --------------------------------------------------------- routing */
+/* Route Remix: one knob over the whole portfolio's temperament.
+ *
+ * The weights are reasonable, and still a rider sometimes knows a route
+ * exists that the portfolio is not offering -- or wants the safer detour the
+ * pruning considers excessive. Remix answers that WITHOUT touching the
+ * rules (verdicts and colours are untouched) and WITHOUT editing the tuned
+ * weights: at request time every subjective safety multiplier is scaled in
+ * log space (w^k), so under `direct` a 9× wall softens to ~2.7× and a 0.21
+ * trail bonus flattens to ~0.5, while `safe` deepens both. The additive
+ * per-mph speed rates scale linearly. Physics stays physics: climb and turn
+ * seconds, ferry wait, elevation factors are untouched, as are the freeway
+ * and mountain-bike last-resort walls.
+ *
+ * The knob is a per-trip nudge, not a setting: unless the rider pins it
+ * with "always use this mode", changing start or destination snaps it back
+ * to Recommended. Waypoints and road blocks refine the SAME trip, so they
+ * keep it.
+ */
+const ROUTE_REMIX_MODES = Object.freeze({
+  direct: { exponent: 0.45, label: 'More direct routes', hint: 'May be less safe' },
+  recommended: { exponent: 1, label: 'Recommended routes', hint: 'The normal balance of safety and practicality' },
+  safe: { exponent: 1.35, label: 'More safety-focused routes', hint: 'May be longer' },
+});
+const REMIX_SCALED_MULTIPLIERS = Object.freeze([
+  'failRoadDirect', 'failRoadBalanced', 'failRoadLowStress',
+  'comfyRoadBalanced', 'comfyRoadLowStress',
+  'designated', 'strongDesignated', 'residential',
+  'facilityShared', 'facilityLane', 'facilityBuffered', 'facilitySeparated', 'facilityPath',
+  'limitedAccessDirect', 'limitedAccessBalanced', 'limitedAccessLowStress',
+  'curveDirect1', 'curveDirect2', 'curveDirect3',
+  'curveBalanced1', 'curveBalanced2', 'curveBalanced3',
+  'curveLowStress1', 'curveLowStress2', 'curveLowStress3',
+  'busyLightDirect', 'busyLightBalanced', 'busyLightLowStress',
+  'busyMediumDirect', 'busyMediumBalanced', 'busyMediumLowStress',
+  'busyHeavyDirect', 'busyHeavyBalanced', 'busyHeavyLowStress',
+  'wideRoadDirect', 'wideRoadBalanced', 'wideRoadLowStress',
+  'stressedRoadDirect', 'stressedRoadBalanced', 'stressedRoadLowStress',
+]);
+const REMIX_SCALED_RATES = Object.freeze(['speedOverBalanced', 'speedOverLowStress',
+  'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress']);
+function remixedRoutingWeights(mode = routing.remix) {
+  const k = ROUTE_REMIX_MODES[mode]?.exponent ?? 1;
+  const weights = { ...routingWeights };
+  if (k === 1) return weights;
+  // Same bounds validRoutingWeights enforces on rider input, so a remix of an
+  // already-extreme tuned weight cannot leave the worker's sane range.
+  const bound = (value) => Math.min(120, Math.max(0.1, value));
+  for (const key of REMIX_SCALED_MULTIPLIERS) {
+    if (Number.isFinite(weights[key])) weights[key] = +bound(Math.pow(weights[key], k)).toFixed(4);
+  }
+  for (const key of REMIX_SCALED_RATES) {
+    if (Number.isFinite(weights[key])) weights[key] = +(weights[key] * k).toFixed(5);
+  }
+  return weights;
+}
+
 // Fully client-side: A* over a prebuilt graph (data/graph.bin.gz) in a web
 // worker. No routing server. Costs come from the CURRENT riding rules; the
 // route recomputes when the rules change.
@@ -2432,6 +2489,11 @@ const routing = {
     ? savedState.prefDesig : DEFAULT_ROUTE_PREFERENCES.prefDesig, // force this preference across every route option
   prefResidential: savedState && typeof savedState.prefResidential === 'boolean'
     ? savedState.prefResidential : DEFAULT_ROUTE_PREFERENCES.prefResidential,
+  // See ROUTE_REMIX_MODES. Restored across restarts; without the sticky pin
+  // it lasts only until the next start/destination change.
+  remix: ['direct', 'recommended', 'safe'].includes(savedState?.remix)
+    ? savedState.remix : 'recommended',
+  remixSticky: savedState?.remixSticky === true,
   reqId: 0,
   compareStartedAt: 0,
   selectRecommendedNext: false,
@@ -5876,7 +5938,7 @@ function computeRoute() {
       profileLabel: selected?.label,
       prefDesignated: routing.prefDesig || !!selected?.prefDesignated,
       prefResidential: routing.prefResidential || !!selected?.prefResidential,
-      weights: { ...routingWeights },
+      weights: remixedRoutingWeights(),
     });
   } else {
     routing.compareStartedAt = performance.now();
@@ -5891,7 +5953,9 @@ function computeRoute() {
       forceDesignated: rec ? !!rec.prefDesig : routing.prefDesig,
       forceResidential: rec ? !!rec.prefResidential : routing.prefResidential,
       preferredProfileId: rec ? (rec.profileId || routing.profileId) : routing.profileId,
-      weights: { ...(rec?.weights || routingWeights) },
+      // A shared route reproduces the SENDER's search exactly; remix applies
+      // only to searches made with the rider's own weights.
+      weights: rec?.weights ? { ...rec.weights } : remixedRoutingWeights(),
     });
   }
 }
@@ -6900,6 +6964,10 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
   const previous = routing[kind];
   if (!Array.isArray(previous) || previous[0] !== lngLat.lng || previous[1] !== lngLat.lat) {
     routing.selectRecommendedNext = true;
+    // A new start or destination is a new trip, and an unpinned remix does
+    // not survive it. Waypoints and road blocks never come through here --
+    // they refine the same trip and keep the remix.
+    if (!routing.remixSticky) routing.remix = 'recommended';
   }
   clearWaypointsForEndpointChange(kind, lngLat);
   routing[kind] = [lngLat.lng, lngLat.lat];
@@ -7326,6 +7394,7 @@ function clearRoute() {
   routing.start = routing.end = null;
   routing.startName = routing.endName = null;
   routing.startFromDevice = false;
+  if (!routing.remixSticky) routing.remix = 'recommended';
   routing.pendingRoute = false;
   routing.routeRequestActive = false;
   routing.reqId++; // a route already being calculated must not reappear after clear
@@ -7444,7 +7513,7 @@ function setRouteOptionsLoading(loading) {
   } else if (!loading && current) {
     current.remove();
   }
-  host.querySelectorAll('button[data-route-option]').forEach((button) => {
+  host.querySelectorAll('button[data-route-option], #routeRemixBtn').forEach((button) => {
     button.disabled = loading || turnNav.active;
   });
   refreshNavigationUI();
@@ -7481,7 +7550,64 @@ function renderRouteOptionControls() {
       aria-pressed="${active}" aria-label="${option.asShared ? 'Shared route' : `Choose route ${index + 1}: ${label}`}"
       title="${title}"${turnNav.active ? ' aria-disabled="true"' : ''}>
       <span>${shortLabel}</span></button>`;
-  }).join('') + moreRoutesButtonHtml();
+  }).join('') + moreRoutesButtonHtml() + remixButtonHtml();
+}
+
+// "Route Remix" -- the whole phrase is in the label and the dialog title; the
+// button itself says "Remix" because the chooser row shares a phone's width
+// with five lettered options. Tinted whenever a non-default mode is active,
+// so a remixed portfolio can never look like the normal one.
+function remixButtonHtml() {
+  const active = routing.remix !== 'recommended';
+  const mode = ROUTE_REMIX_MODES[routing.remix] || ROUTE_REMIX_MODES.recommended;
+  return `<button type="button" id="routeRemixBtn" class="route-option-remix${active ? ' remix-active' : ''}"
+    title="Route Remix — currently: ${mode.label}"
+    aria-label="Route Remix — currently ${mode.label}"><span>Remix</span></button>`;
+}
+
+function openRouteRemix() {
+  const dialog = document.getElementById('remixDialog');
+  if (!dialog) return;
+  buildRemixChoices();
+  const sticky = document.getElementById('remixStickyCheck');
+  if (sticky) sticky.checked = routing.remixSticky;
+  if (!dialog.open) dialog.showModal();
+}
+
+// Rebuilt on every open so the "Current" badge is always the live state.
+function buildRemixChoices() {
+  const host = document.getElementById('remixChoices');
+  if (!host) return;
+  host.replaceChildren();
+  for (const [id, mode] of Object.entries(ROUTE_REMIX_MODES)) {
+    const current = routing.remix === id;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `remix-choice${current ? ' current' : ''}`;
+    button.dataset.remix = id;
+    button.setAttribute('aria-pressed', String(current));
+    button.innerHTML = `<span class="remix-choice-label">${mode.label}`
+      + `${current ? '<span class="remix-current-badge">Current</span>' : ''}</span>`
+      + `<span class="remix-choice-hint">${mode.hint}</span>`;
+    button.addEventListener('click', () => applyRouteRemix(id));
+    host.appendChild(button);
+  }
+}
+
+function applyRouteRemix(id) {
+  if (!ROUTE_REMIX_MODES[id]) return;
+  routing.remixSticky = !!document.getElementById('remixStickyCheck')?.checked;
+  const changed = routing.remix !== id;
+  routing.remix = id;
+  saveStateSoon();
+  document.getElementById('remixDialog')?.close();
+  renderRouteOptionControls();
+  if (changed) {
+    // The new portfolio's own recommendation is the point of remixing; keeping
+    // whatever letter happened to be selected would be arbitrary.
+    routing.selectRecommendedNext = true;
+    computeRoute();
+  }
 }
 
 // Every candidate the portfolio built, not just the five that fit. Purely a
@@ -10495,9 +10621,17 @@ function syncWeightsTunedBadge() {
   }
 }
 document.getElementById('appWeightsBtn').addEventListener('click', openRoutingWeights);
-// Delegated: #moreRoutesBtn is rebuilt every time the chooser re-renders.
+// Delegated: #moreRoutesBtn and #routeRemixBtn are rebuilt every time the
+// chooser re-renders.
 document.getElementById('routeOptions').addEventListener('click', (e) => {
   if (e.target.closest('#moreRoutesBtn')) openAllRoutes();
+  if (e.target.closest('#routeRemixBtn')) openRouteRemix();
+});
+// Pinning or unpinning the CURRENT mode is a decision on its own; it must not
+// need a mode click to stick.
+document.getElementById('remixStickyCheck')?.addEventListener('change', (e) => {
+  routing.remixSticky = e.target.checked;
+  saveStateSoon();
 });
 syncWeightsTunedBadge();
 syncAdvancedToolsVisibility();
