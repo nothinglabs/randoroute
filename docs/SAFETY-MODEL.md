@@ -895,10 +895,13 @@ differently. **Tagged** — a mapper wrote `bicycle=dismount`; the edge carries
 the graph build created from an untagged footway or path purely to keep the
 network connected (bit 8 without 128). Both are priced identically (walking
 pace plus the entry penalty) and both are listed in the route-concerns
-report, but only tagged dismounts raise warnings: the map marker, the
-"Dismount" mileage in the stats, and the spoken "Walk your bike". A warning
-at every synthesised park connector would teach the rider to ignore the one
-that stands for a real sign.
+report, and BOTH draw as caution (amber) wherever a route is shown — a
+walked stretch must never read as prime lime trail, and the entry marker
+alone can sit off screen on a long one. Only tagged dismounts raise the
+louder warnings: the map marker, the "Dismount" mileage in the stats, and
+the spoken "Walk your bike" (a synthesised stretch's amber is silent in the
+voice). A warning at every synthesised park connector would teach the rider
+to ignore the one that stands for a real sign.
 
 Note that the causes carry very different routing costs — a sidewalk fallback is
 ×8 in low-stress mode, a high-stress rating is priced through

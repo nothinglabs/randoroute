@@ -36,7 +36,9 @@ const drawn = await page.evaluate(async () => {
   }));
   map.jumpTo({ center: [-122.34 + 3 * .002, lat], zoom: 15 });
   drawRoute(coords, [], segs);
-  await new Promise((resolve) => map.once('idle', resolve));
+  // A timeout alongside idle: the walked stretch draws caution now, and the
+  // caution halo's breathing animation can keep a map from ever going idle.
+  await new Promise((resolve) => { map.once('idle', resolve); setTimeout(resolve, 8000); });
   const image = map.style.getImage('route-dismount-marker-icon');
   // querySourceFeatures answers per tile and may repeat a feature that straddles
   // a boundary, so count distinct positions rather than returned features.
@@ -89,6 +91,25 @@ check('and so does tapping its edge, clear of the route line',
 check('the marker owns the taps that land on it', taps.onCentre && taps.onEdge,
   JSON.stringify(taps));
 check('and no others', !taps.onBeyond && !taps.onElsewhere, JSON.stringify(taps));
+
+// Every walked stretch draws AMBER on the route, tagged or synthesised: a
+// dismount that painted as lime trail read as the best riding on the route
+// while actually being a hike, with the entry marker possibly miles off
+// screen. The marker stays tagged-only; the colour warns everywhere.
+const styles = await page.evaluate(() => ({
+  tagged: routeVisualStyle(routeSegProps({ lenM: 150, mph: 0, sh: -1, flags: 8,
+    facility: 5, level: 1, official: 136, dismount: true })),
+  synthesised: routeVisualStyle(routeSegProps({ lenM: 150, mph: 0, sh: -1, flags: 8,
+    facility: 5, level: 1, official: 8, dismount: true })),
+  ordinaryTrail: routeVisualStyle(routeSegProps({ lenM: 150, mph: 0, sh: -1, flags: 8,
+    facility: 5, level: 1, official: 0 })),
+}));
+check('a tagged dismount stretch draws caution', styles.tagged === 'caution',
+  JSON.stringify(styles));
+check('and so does a synthesised walk link', styles.synthesised === 'caution',
+  JSON.stringify(styles));
+check('while a ridable trail keeps its lime', styles.ordinaryTrail === 'trail',
+  JSON.stringify(styles));
 
 check('drawing the marker raises no page errors', page.pageErrors.length === 0,
   page.pageErrors.join(' | '));

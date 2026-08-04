@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.546';
+const APP_VERSION = '2026-08-04.547';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3660,6 +3660,13 @@ function buildRouteSafetyRuns(segs, cumulative) {
     }
     if (category === 'ferry') continue;
     if ((seg.facility || 0) >= 2 || (seg.flags || 0) & 8) run.laneM += endM - startM;
+    // Synthesised walk links draw amber but stay out of the voice: the rider
+    // chose that split deliberately, and a spoken "Caution" at every quiet
+    // park connector is the noise the tagged-only rule exists to prevent.
+    if (isDismountSegment(seg) && !isTaggedDismountSegment(seg)
+        && (seg.level || 0) < 3 && !seg.mtb) {
+      run.quietWalkM = (run.quietWalkM || 0) + (endM - startM);
+    }
     const reason = routeSegmentSafetyReason(seg);
     if (reason) run.reasons.set(reason, (run.reasons.get(reason) || 0) + (endM - startM));
   }
@@ -3667,6 +3674,8 @@ function buildRouteSafetyRuns(segs, cumulative) {
     run.reason = dominantRunReason(run.reasons);
     // Most of the stretch, not a token few metres of it.
     run.hasLane = run.laneM > (run.endM - run.startM) / 2;
+    run.quietWalk = run.category === 'caution' && !run.reason
+      && (run.quietWalkM || 0) > (run.endM - run.startM) / 2;
   }
   return runs;
 }
@@ -3688,7 +3697,7 @@ function maybeSpeakSafetyChange() {
   // same number; joining a route in the middle of a stretch, they are not, and
   // the honest one is what remains.
   const lengthM = run.endM - Math.max(at, run.startM);
-  if (!SAFETY_RUN_HEAD[run.category] || (lengthM < SAFETY_RUN_MIN_M
+  if (!SAFETY_RUN_HEAD[run.category] || run.quietWalk || (lengthM < SAFETY_RUN_MIN_M
       && run.category !== 'caution' && run.category !== 'fail')) {
     run.spoken = true;
     return false;
@@ -4447,7 +4456,7 @@ function nativeNavigationRoutePayload() {
     // The web layer speaks these itself, on the same GPS path as the turn
     // prompts. They are sent so the native guide can too, for the case the web
     // path cannot cover -- a locked screen. See docs/IOS-HANDOFF.md.
-    safetyRuns: (route.safetyRuns || []).filter((run) => SAFETY_RUN_HEAD[run.category])
+    safetyRuns: (route.safetyRuns || []).filter((run) => SAFETY_RUN_HEAD[run.category] && !run.quietWalk)
       .map((run) => ({
         startM: Number(run.startM) || 0,
         endM: Number(run.endM) || 0,
@@ -6046,6 +6055,12 @@ function routeVisualStyle(p) {
   // even though route totals and Route Details count it as passing.
   if (p.crossing === 1) return 'pass';
   if (effectiveLevel(scoreRouteSeg(p)) === 4) return 'fail';
+  // Walking is a caution wherever the route is shown. A dismount stretch --
+  // tagged or synthesised -- used to draw as lime trail, which read as the
+  // best riding on the route while actually being a hike; the entry marker
+  // alone could sit miles off screen. Amber says "something changes here"
+  // at every zoom, and the tap card still explains exactly what.
+  if (p.dismount === 1) return 'caution';
   if (p.level === 3) return 'caution';
   // Allowed mountain-bike trails are a caution everywhere the route is shown.
   // Route Details already rendered them this way; keep the main map and its
