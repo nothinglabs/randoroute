@@ -46,10 +46,13 @@ const DRY = [
   { name: 'Vancouver WA', at: [-122.6615, 45.6387] },
 ];
 
-// A tight ring around each centre: a hole with a straight edge running through
-// a city shows up as some probes covered and others bare, which a single
-// centre-point sample would miss half the time.
-const OFFSETS = [[0, 0], [0.004, 0], [-0.004, 0], [0, 0.003], [0, -0.003]];
+// A tight ring around each centre, in PIXELS. The first version offset in
+// degrees (±0.004° lon), which at z16 projects ~290 m -- outside a phone
+// viewport -- and queryRenderedFeatures legitimately returns nothing for an
+// off-canvas point. Two Bellingham probes sat at px 583 and 824 on a 420x800
+// screen and reported the city as ocean while it rendered perfectly. Pixel
+// offsets stay on-screen at every zoom and latitude by construction.
+const OFFSETS = [[0, 0], [120, 0], [-120, 0], [0, 100], [0, -100]];
 
 for (const place of DRY) {
   const probes = await page.evaluate(async ([centre, offsets]) => {
@@ -61,11 +64,12 @@ for (const place of DRY) {
     });
     const has = (point, layer) => (map.getLayer(layer)
       ? map.queryRenderedFeatures(point, { layers: [layer] }).length : 0);
+    const middle = map.project(centre);
     return offsets.map(([dx, dy]) => {
-      const at = [centre[0] + dx, centre[1] + dy];
-      const point = map.project(at);
+      const point = { x: middle.x + dx, y: middle.y + dy };
+      const at = map.unproject([point.x, point.y]);
       return {
-        at,
+        at: [at.lng, at.lat],
         land: has(point, 'basemap-land') + has(point, 'basemap-land-detail'),
         water: has(point, 'basemap-water'),
       };
