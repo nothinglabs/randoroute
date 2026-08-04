@@ -910,7 +910,8 @@ is one colour over several meanings, which is why the card names which.
 Subjective by design: it chooses among *legal* roads and never makes one legal
 or illegal. Every multiplier applied to an edge, in `router-worker.js`:
 
-**Route Remix** scales this whole table at request time without editing it:
+**Route Remix** (the chooser row's "More" button, titled "Show me routes
+that are…") scales this whole table at request time without editing it:
 the rider's tuned weights stay stored as-is, and `remixedRoutingWeights()` in
 `app.js` sends the router a copy with every subjective multiplier raised to a
 power (0.22 for "more direct", 1.2 for "more safety-focused") and the

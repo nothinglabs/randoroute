@@ -186,10 +186,9 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeOptions button.active { border-color: #8dc2e5; background: #0a66c2; color: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.16); }
 /* Not a route: a way in. Deliberately reads as a different KIND of control
    than the lettered options beside it, so nobody taps it expecting route F. */
-#routeOptions button.route-option-more { flex: 1.9 1 0; border-color: #7b2cbf; background: #f4ecfd; color: #5f1fa8; font: 800 9.5px/1.05 system-ui; letter-spacing: .02em; }
-#routeOptions button.route-option-more:hover { background: #ece0fb; }
-/* Route Remix sits beside More. Teal against More's purple; solid fill while
-   a non-default mode is active so a remixed portfolio is visibly remixed. */
+/* "More" opens the route-mix dialog. Teal against the blue letters; solid
+   fill while a non-default mode is active so a remixed portfolio is visibly
+   remixed. */
 #routeOptions button.route-option-remix { flex: 1.9 1 0; border-color: #0a7d63; background: #eafaf4; color: #056a52; font: 800 9.5px/1.05 system-ui; letter-spacing: .02em; }
 #routeOptions button.route-option-remix:hover { background: #ddf4ea; }
 #routeOptions button.route-option-remix.remix-active { border-color: #056a52; background: #0a8b6d; color: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.16); }
@@ -1123,6 +1122,8 @@ body.navigation-active #routeBar { display: none; }
 .sv-coverage-note { margin: 0; padding: 9px 11px; border: 1px solid rgba(255,211,118,.72); border-left: 4px solid #f0b44d; border-radius: 9px; background: rgba(16,27,35,.94); box-shadow: 0 2px 10px rgba(0,0,0,.28); color: #f6fafc; font: 700 12px/1.35 system-ui; text-align: center; }
 .sv-coverage-note b { color: #ffd376; font-weight: 850; }
 .weights-reset { min-height: 38px; padding: 0 15px; border: 1px solid #b34b3f; border-radius: 9px; background: #fff4f2; color: #9f352a; font: 750 12px system-ui; cursor: pointer; }
+.weights-considered { min-height: 38px; padding: 0 15px; border: 1px solid #7aaed5; border-radius: 9px; background: #edf6fc; color: #075b9f; font: 750 12px system-ui; cursor: pointer; }
+.weights-considered:disabled { opacity: .45; cursor: default; }
 .weights-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 18px 0 max(34px, env(safe-area-inset-bottom)); }
 .weights-modified-notice { margin: 0 0 12px; padding: 11px 13px; border: 1px solid #d59a3b; border-left: 5px solid #b66a00; border-radius: 9px; background: #fff4df; color: #714000; font: 850 15px/1.2 system-ui; }
 .weights-body > .help-lead { max-width: 850px; margin: 0 0 14px; color: #435967; font: 650 13px/1.45 system-ui; }
@@ -1156,7 +1157,7 @@ body.navigation-active #routeBar { display: none; }
 @media (max-width: 600px) {
   .full-help-head { padding-left: 12px; padding-right: 10px; }
   .full-help-head h2 { font-size: 17px; }
-  .weights-reset { padding: 0 9px; font-size: 10.5px; }
+  .weights-reset, .weights-considered { padding: 0 9px; font-size: 10.5px; }
   .weights-groups { grid-template-columns: 1fr; }
   /* Thumb-sized targets: this panel is reachable from the map now, so it gets
      used on a phone at the roadside rather than only at a desk. */

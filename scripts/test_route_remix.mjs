@@ -151,9 +151,9 @@ const ui = await page.evaluate(() => {
   dialog?.close();
   return out;
 });
-check('the Remix button renders in the chooser row', ui.buttonExists === true, JSON.stringify(ui));
+check('the route-mix More button renders in the chooser row', ui.buttonExists === true, JSON.stringify(ui));
 check('untinted while on Recommended', ui.defaultTint === false, JSON.stringify(ui));
-check('its label names the current mode', /Route Remix/.test(ui.title), ui.title);
+check('its label names the current mode', /Show me routes that are/.test(ui.title), ui.title);
 check('tapping it opens the dialog', ui.dialogOpen === true, JSON.stringify(ui));
 check('which offers all three modes with Recommended marked current',
   ui.choices.length === 3 && ui.choices.find((c) => c.id === 'recommended')?.current === true
@@ -165,6 +165,23 @@ check('picking safety-focused applies it and closes the dialog',
 check('and the button shows a remix is active', ui.tintAfterPick === true, JSON.stringify(ui));
 check('reopening marks the new mode as current', ui.currentAfterReopen === 'safe', JSON.stringify(ui));
 check('the pin checkbox works without picking a mode', ui.stickyAfterCheck === true, JSON.stringify(ui));
+
+// With no trip routed, the weights page's considered-routes button explains
+// itself by being disabled instead of opening an empty list.
+const considered = await page.evaluate(() => {
+  routing.allCandidates = [];
+  openRoutingWeights();
+  const button = document.getElementById('moreRoutesBtn');
+  const out = { disabledWithoutTrip: button?.disabled === true };
+  document.getElementById('weightsDialog')?.close();
+  routing.allCandidates = [{}];
+  openRoutingWeights();
+  out.enabledWithTrip = button?.disabled === false;
+  document.getElementById('weightsDialog')?.close();
+  return out;
+});
+check('considered-routes sleeps until a trip is routed',
+  considered.disabledWithoutTrip && considered.enabledWithTrip, JSON.stringify(considered));
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 

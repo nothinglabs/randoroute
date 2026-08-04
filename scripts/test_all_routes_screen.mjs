@@ -95,32 +95,40 @@ check('offered candidates are marked offered',
   state.stages.join(','));
 
 /* ------------------------------------------- the button and the screen */
-const btn = await pg.$('#moreRoutesBtn');
-check('a More button sits after the offered routes', !!btn);
-// The row's tail is [last letter, More, Remix]: More directly follows the
-// lettered options, and Route Remix sits beside it at the end.
+// The chooser's tail is the route-mix "More" button; the considered-routes
+// screen lives on the WEIGHTS page now, beside the rest of the router's
+// workings, and only wakes once a trip is routed.
 const placement = await pg.evaluate(() => {
-  const more = document.getElementById('moreRoutesBtn');
   const remix = document.getElementById('routeRemixBtn');
   const buttons = [...document.querySelectorAll('#routeOptions button')];
-  const lastLetter = buttons[buttons.indexOf(more) - 1];
+  const lastLetter = buttons[buttons.indexOf(remix) - 1];
   const paint = (el) => el && getComputedStyle(el).backgroundColor;
   return {
-    order: buttons[buttons.length - 2] === more && buttons[buttons.length - 1] === remix,
-    rightOfLetters: more.getBoundingClientRect().left >= lastLetter.getBoundingClientRect().left,
-    moreDistinct: paint(more) !== paint(lastLetter),
-    remixDistinct: paint(remix) !== paint(lastLetter) && paint(remix) !== paint(more),
+    inChooser: !!remix && !document.querySelector('#routeOptions #moreRoutesBtn'),
+    last: buttons[buttons.length - 1] === remix,
+    rightOfLetters: remix.getBoundingClientRect().left >= lastLetter.getBoundingClientRect().left,
+    distinct: paint(remix) !== paint(lastLetter),
+    label: remix?.textContent.trim(),
   };
 });
-check('More comes after the last route, with Remix beside it',
-  placement.order && placement.rightOfLetters, JSON.stringify(placement));
-check('More is styled apart from the lettered routes', placement.moreDistinct);
-check('and so is Remix, apart from both', placement.remixDistinct);
+check('the chooser row ends with the route-mix More button, and only that',
+  placement.inChooser && placement.last && placement.rightOfLetters
+    && placement.label === 'More', JSON.stringify(placement));
+check('styled apart from the lettered routes', placement.distinct);
 
+const weights = await pg.evaluate(() => {
+  openRoutingWeights();
+  const button = document.getElementById('moreRoutesBtn');
+  return { present: !!button, enabled: !button.disabled,
+    label: button?.textContent.trim() };
+});
+check('the weights page carries the considered-routes button, awake for this trip',
+  weights.present && weights.enabled && /considered/i.test(weights.label),
+  JSON.stringify(weights));
 await pg.click('#moreRoutesBtn');
 await pg.waitForTimeout(400);
 const opened = await pg.evaluate(() => document.getElementById('allRoutesDialog').open);
-check('tapping More opens the screen', opened);
+check('tapping it opens the screen', opened);
 
 const rows = await pg.evaluate(() => {
   const list = [...document.querySelectorAll('.all-route-row')];

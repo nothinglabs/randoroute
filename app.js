@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.545';
+const APP_VERSION = '2026-08-04.546';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1212,7 +1212,7 @@ map.getContainer().addEventListener('click', (e) => {
     }).catch((error) => {
       const blocked = /blocked|denied|permission/i.test(String(error?.message || error));
       setStatus(blocked
-        ? 'Location permission is blocked in iPhone Settings.'
+        ? 'Location permission is blocked in your device Settings.'
         : 'Could not get your location.', true);
     }).finally(() => btn.classList.remove('maplibregl-ctrl-geolocate-waiting'));
   }
@@ -2432,17 +2432,18 @@ function setMapLayerVisible(key, on) {
  * to Recommended. Waypoints and road blocks refine the SAME trip, so they
  * keep it.
  */
+// Labels complete the dialog's title, "Show me routes that are…".
 const ROUTE_REMIX_MODES = Object.freeze({
   // 0.22 after field testing found 0.45 too timid: the 9× balanced failing
   // wall drops to ~1.6× and heavy-traffic pressure to ~1.1×, so the search is
   // mostly time and distance with mild nudges left.
-  direct: { exponent: 0.22, label: 'More direct routes', hint: 'May be less safe' },
-  recommended: { exponent: 1, label: 'Recommended routes', hint: 'The normal balance of safety and practicality' },
+  direct: { exponent: 0.22, label: 'More direct', hint: 'May be less safe' },
+  recommended: { exponent: 1, label: 'Recommended', hint: 'The normal balance of safety and practicality' },
   // 1.2, down from 1.35: log-space scaling explodes the LARGE walls (the 30x
   // low-stress fail wall became ~99x), and on a cross-state trip that bought
   // forty-mile trail detours and ferry triangles. 1.2 keeps the lean
   // (30x -> ~59x) without pricing whole regions off the map.
-  safe: { exponent: 1.2, label: 'More safety-focused routes', hint: 'May be longer' },
+  safe: { exponent: 1.2, label: 'More safety-focused', hint: 'May be longer' },
 });
 const REMIX_SCALED_MULTIPLIERS = Object.freeze([
   'failRoadDirect', 'failRoadBalanced', 'failRoadLowStress',
@@ -7573,19 +7574,20 @@ function renderRouteOptionControls() {
       aria-pressed="${active}" aria-label="${option.asShared ? 'Shared route' : `Choose route ${index + 1}: ${label}`}"
       title="${title}"${turnNav.active ? ' aria-disabled="true"' : ''}>
       <span>${shortLabel}</span></button>`;
-  }).join('') + moreRoutesButtonHtml() + remixButtonHtml();
+  }).join('') + remixButtonHtml();
 }
 
-// "Route Remix" -- the whole phrase is in the label and the dialog title; the
-// button itself says "Remix" because the chooser row shares a phone's width
-// with five lettered options. Tinted whenever a non-default mode is active,
-// so a remixed portfolio can never look like the normal one.
+// "More" opens the remix dialog -- "Show me routes that are…". Tinted
+// whenever a non-default mode is active, so a remixed portfolio can never
+// look like the normal one. (The all-candidates troubleshooting screen this
+// button's name used to open now lives on the weights page, where the rest
+// of the router's workings already are.)
 function remixButtonHtml() {
   const active = routing.remix !== 'recommended';
   const mode = ROUTE_REMIX_MODES[routing.remix] || ROUTE_REMIX_MODES.recommended;
   return `<button type="button" id="routeRemixBtn" class="route-option-remix${active ? ' remix-active' : ''}"
-    title="Route Remix — currently: ${mode.label}"
-    aria-label="Route Remix — currently ${mode.label}"><span>Remix</span></button>`;
+    title="Show me routes that are… (currently: ${mode.label})"
+    aria-label="More route choices — currently showing ${mode.label}"><span>More</span></button>`;
 }
 
 function openRouteRemix() {
@@ -7631,20 +7633,6 @@ function applyRouteRemix(id) {
     routing.selectRecommendedNext = true;
     computeRoute();
   }
-}
-
-// Every candidate the portfolio built, not just the five that fit. Purely a
-// troubleshooting view: it exists to answer "what am I not being shown, and
-// why", so it lists the rejects alongside the offers with the stage that
-// dropped each one.
-function moreRoutesButtonHtml() {
-  if (!uiPrefs.showAdvancedTools) return '';
-  const all = routing.allCandidates || [];
-  if (all.length <= (routing.options?.length || 0)) return '';
-  const extra = all.length - (routing.options?.length || 0);
-  return `<button type="button" id="moreRoutesBtn" class="route-option-more"
-    title="Show all ${all.length} routes the router built, including the ${extra} it did not offer"
-    aria-label="More routes: show all ${all.length} considered"><span>More</span></button>`;
 }
 
 // The stage that removed a candidate, in the order the pipeline applies them.
@@ -8655,7 +8643,7 @@ function buildPlacePicker() {
       if (code === 'STALE_FIX' || code === 'IMPRECISE_FIX' || code === 3) {
         message = 'Still getting a GPS fix — try again in a moment';
       } else if (/blocked|denied|permission/i.test(String(error?.message || error))) {
-        message = 'Location permission is blocked in iPhone Settings';
+        message = 'Location permission is blocked in your device Settings';
       } else {
         message = 'Could not get your location';
       }
@@ -10623,13 +10611,18 @@ document.getElementById('techDetailsBtn').addEventListener('click', () => openHe
 function openRoutingWeights() {
   buildRoutingWeightsEditor();
   syncWeightsTunedBadge();
+  // The considered-routes screen only has something to say once a trip has
+  // been routed; until then the button explains itself instead of opening
+  // an empty list.
+  const considered = document.getElementById('moreRoutesBtn');
+  if (considered) considered.disabled = !(routing.allCandidates || []).length;
   document.getElementById('weightsDialog').showModal();
 }
 
 // The map's two advanced entry points appear and disappear together, because
 // they are the same decision: whether the rider wants the router's workings on
-// screen. The "More" button lives inside markup the chooser rebuilds, so it is
-// re-rendered rather than toggled.
+// screen. The considered-routes screen rides along: its button lives on the
+// weights page, so hiding that page hides it too.
 function syncAdvancedToolsVisibility() {
   const weightsButton = document.getElementById('appWeightsBtn');
   if (weightsButton) weightsButton.hidden = !uiPrefs.showAdvancedTools;
@@ -10656,12 +10649,13 @@ function syncWeightsTunedBadge() {
   }
 }
 document.getElementById('appWeightsBtn').addEventListener('click', openRoutingWeights);
-// Delegated: #moreRoutesBtn and #routeRemixBtn are rebuilt every time the
-// chooser re-renders.
+// Delegated: #routeRemixBtn is rebuilt every time the chooser re-renders.
 document.getElementById('routeOptions').addEventListener('click', (e) => {
-  if (e.target.closest('#moreRoutesBtn')) openAllRoutes();
   if (e.target.closest('#routeRemixBtn')) openRouteRemix();
 });
+// Static markup on the weights page; openRoutingWeights() keeps its
+// disabled state in step with whether a trip is currently routed.
+document.getElementById('moreRoutesBtn')?.addEventListener('click', openAllRoutes);
 // Pinning or unpinning the CURRENT mode is a decision on its own; it must not
 // need a mode click to stick.
 document.getElementById('remixStickyCheck')?.addEventListener('change', (e) => {
