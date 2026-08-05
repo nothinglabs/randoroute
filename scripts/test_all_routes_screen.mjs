@@ -242,6 +242,41 @@ if (target) {
   check('and it joins the chooser so you can switch back', after.inChooser);
 }
 
+/* --------- the frozen lineup: a refinement keeps letters and recipes ----- */
+// The chooser policy: letters pin to search recipes for the life of a trip.
+// A road block re-runs the SAME recipes under the SAME letters -- including
+// the considered-routes pick parked above -- and keeps the selected route, so
+// the rider sees what their change did instead of a reshuffled portfolio.
+await pg.evaluate(() => {
+  document.querySelector('#routeOptions button[data-route-option="0"]')?.click();
+});
+const beforePin = await pg.evaluate(() => ({
+  pin: routing.pinnedLetters.map((entry) => ({ ...entry })),
+  selected: routing.last?.optimization?.profileId,
+}));
+check('the trip carries a pinned lineup, grown by the considered-routes pick',
+  beforePin.pin.length >= 6 && !!beforePin.selected, JSON.stringify(beforePin));
+await pg.evaluate(() => addRoadBlock({ lng: -122.28, lat: 47.80 }));
+await pg.waitForFunction(() => routing.lastRequestPinned === true
+  && !document.getElementById('routeOptions')?.classList.contains('loading'),
+{ timeout: 300000 });
+const afterPin = await pg.evaluate(() => ({
+  pin: routing.pinnedLetters.map((entry) => ({ ...entry })),
+  selected: routing.last?.optimization?.profileId,
+  missing: routing.missingLetters,
+  chooserLetters: [...document.querySelectorAll('#routeOptions button[data-route-option] span, #routeOptions button.route-option-missing span')]
+    .map((span) => span.textContent.trim()),
+}));
+check('a road block keeps every letter bound to its recipe',
+  JSON.stringify(afterPin.pin) === JSON.stringify(beforePin.pin), JSON.stringify(afterPin));
+check('and keeps the selected route selected',
+  afterPin.selected === beforePin.selected
+    || afterPin.missing.some((entry) => entry.profileId === beforePin.selected),
+  JSON.stringify({ before: beforePin.selected, after: afterPin.selected, missing: afterPin.missing }));
+check('every pinned letter renders, routable or not',
+  afterPin.chooserLetters.length >= afterPin.pin.length,
+  JSON.stringify(afterPin.chooserLetters));
+
 check('no page errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await b.close(); s.close();
 console.log(`\n${pass} passed, ${fail} failed`);

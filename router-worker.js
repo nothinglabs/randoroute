@@ -2484,7 +2484,7 @@ let lastCandidates = null;
 let lastCandidatesKey = null;
 
 function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false,
-    progress = null, requestSignature = null) {
+    progress = null, requestSignature = null, pinned = null) {
   const started = Date.now();
   // Identifies this exact request, so a tap on the "More" screen that arrives
   // after the rider changed something is refused rather than answered from a
@@ -2721,7 +2721,31 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     while (replaceAt >= 0 && required.includes(selected[replaceAt])) replaceAt--;
     if (replaceAt >= 0) selected.splice(replaceAt, 1, candidate);
   }
-  const presented = presentAsLetters(selected.slice(0, 5), recommended);
+  let presented = presentAsLetters(selected.slice(0, 5), recommended);
+
+  // A PINNED request holds a trip's lettered lineup steady while the rider
+  // refines it -- waypoints, road blocks, settings. Present exactly the pinned
+  // recipes under their pinned letters: no re-ranking, no down-select, no
+  // letter shuffle. The full pipeline above still ran, so the troubleshooting
+  // record and the recommended flag stay truthful; a pinned recipe that found
+  // no route this time is reported in `missing` rather than silently swapped.
+  const missing = [];
+  if (Array.isArray(pinned) && pinned.length) {
+    presented = [];
+    for (const entry of pinned) {
+      const candidate = raw.find((c) => c._profile.id === entry.profileId);
+      if (!candidate) {
+        missing.push({ letter: entry.letter, profileId: entry.profileId });
+        continue;
+      }
+      candidate._outcome = {
+        label: `Route ${entry.letter}`,
+        reason: `Held from this trip's lineup. ${outcomeSnapshot(candidate)}.`,
+        recommended: candidate === recommended,
+      };
+      presented.push(candidate);
+    }
+  }
 
   // ---- the troubleshooting record -------------------------------------
   // Mark every candidate with the stage that dropped it, so the "More" screen
@@ -2768,6 +2792,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   endPhase('ranking');
   return {
     ok: true, options: presented.map(publicCandidate), ms: Date.now() - started,
+    missing,
     timings: { ...phaseMs, totalMs: Date.now() - started },
     candidatesKey: String(routeKey),
     allCandidates: allCandidates.map((candidate) => ({
@@ -2884,7 +2909,7 @@ onmessage = (ev) => {
         !!m.forceResidential, m.weights || null, m.blocks || null]);
       const result = withRoadBlocks(m.blocks, m.rules, () => routeOptions(pts, m.rules,
         !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress,
-        signature));
+        signature, m.pinned));
       postMessage({ type: 'route-options', id: m.id, ...result });
     } else if (m.type === 'route-candidate') {
       // Full geometry for one candidate the "More" screen listed. Served from

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.572';
+const APP_VERSION = '2026-08-05.573';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2562,6 +2562,12 @@ const routing = {
   reqId: 0,
   compareStartedAt: 0,
   selectRecommendedNext: false,
+  // The trip's frozen chooser lineup: [{ letter, profileId }]. Created by each
+  // fresh (re-lettering) search, held across refinements. missingLetters are
+  // pinned recipes the latest refinement could not route.
+  pinnedLetters: null,
+  missingLetters: null,
+  lastRequestPinned: false,
   options: [],
   // Summaries of every candidate the last portfolio built, offered or not, for
   // the "More" screen. Full geometry is fetched from the worker on tap.
@@ -5878,6 +5884,27 @@ function onRouterMessage(ev) {
     routing.options = m.options;
     routing.allCandidates = Array.isArray(m.allCandidates) ? m.allCandidates : [];
     routing.candidatesKey = m.candidatesKey || null;
+    if (routing.lastRequestPinned) {
+      // A refinement under a frozen lineup: same letters, same recipes. A
+      // recipe that found nothing keeps its letter in the chooser, greyed --
+      // an honest empty slot, never a silently substituted route.
+      routing.missingLetters = Array.isArray(m.missing) ? m.missing : [];
+      const previous = routing.last?.optimization?.profileId;
+      const lost = previous
+        && routing.missingLetters.find((entry) => entry.profileId === previous);
+      if (lost) {
+        showRouteActionToast(`Route ${lost.letter} found no route with your changes`,
+          { duration: 3200 });
+      }
+    } else if (!routing.sharedActive) {
+      // A fresh search re-letters: pin the new lineup for this trip's
+      // refinements. See the chooser policy note in computeRoute().
+      routing.pinnedLetters = m.options.map((option) => ({
+        letter: (option.optimization?.label || '').replace(/^Route /, ''),
+        profileId: option.optimization?.profileId,
+      })).filter((entry) => entry.letter.length === 1 && entry.profileId);
+      routing.missingLetters = [];
+    }
     let selected;
     if (routing.sharedActive) {
       // The sender's exact route is the option matching their profile; it goes
@@ -5904,6 +5931,14 @@ function onRouterMessage(ev) {
     // active selection and the rider can switch back without re-opening More.
     routing.options = [...(routing.options || []).filter((o) =>
       o.optimization?.profileId !== m.option.optimization?.profileId), m.option];
+    // An explicitly chosen candidate joins the trip's frozen lineup under its
+    // own letter, so refinements keep re-running it like any pinned recipe.
+    const chosenId = m.option.optimization?.profileId;
+    const chosenLetter = (m.option.optimization?.label || '').replace(/^Route /, '');
+    if (routing.pinnedLetters && chosenId && chosenLetter
+        && !routing.pinnedLetters.some((entry) => entry.profileId === chosenId)) {
+      routing.pinnedLetters.push({ letter: chosenLetter, profileId: chosenId });
+    }
     activateRouteOption(m.option, true);
     renderRouteOptionControls();
   } else if (m.type === 'route') {
@@ -5980,6 +6015,15 @@ function computeRoute() {
     // path reproduces exactly. The map still colors it with the receiver's
     // current rules (colors are re-scored client-side).
     const rec = routing.sharedActive ? routing.sharedRecipe : null;
+    // The chooser policy: a trip's lettered lineup is FROZEN between explicit
+    // re-searches. A refinement -- waypoint, road block, settings change --
+    // re-runs the same recipes and keeps the same letters, so the rider sees
+    // what their change did to the routes they were already comparing. Only a
+    // start/destination change (reverse included) or a pick in the ⋮ dialog
+    // re-ranks and re-letters; both set selectRecommendedNext.
+    const pinned = !rec && !routing.selectRecommendedNext && routing.pinnedLetters?.length
+      ? routing.pinnedLetters.map((entry) => ({ ...entry })) : null;
+    routing.lastRequestPinned = !!pinned;
     routing.worker.postMessage({
       type: 'route-options', id: routing.reqId, points,
       blocks: routing.blocks?.map((block) => block.pt) || [],
@@ -5987,6 +6031,7 @@ function computeRoute() {
       forceDesignated: rec ? !!rec.prefDesig : routing.prefDesig,
       forceResidential: rec ? !!rec.prefResidential : routing.prefResidential,
       preferredProfileId: rec ? (rec.profileId || routing.profileId) : routing.profileId,
+      pinned,
       // A shared route reproduces the SENDER's search exactly; remix applies
       // only to searches made with the rider's own weights.
       weights: rec?.weights ? { ...rec.weights } : remixedRoutingWeights(),
@@ -7572,6 +7617,8 @@ function clearRoute() {
   drawRoute([]);
   routing.last = null;
   routing.options = [];
+  routing.pinnedLetters = null;
+  routing.missingLetters = null;
   clearStoredRouteDetails();
   renderRouteOptionControls();
   renderRouteCard(null);
@@ -7694,7 +7741,7 @@ function renderRouteOptionControls() {
   // The shared route sits in its own slot after the lettered options, which
   // stay sequential A, B, C, D… by position.
   const sharedInPlay = routing.options.some((o) => o.asShared);
-  host.innerHTML = routing.options.map((option, index) => {
+  const buttonHtml = (option, index) => {
     const optimization = option.optimization || {};
     const label = option.asShared ? 'As Shared' : (optimization.label || `Option ${index + 1}`);
     const only = routing.options.length === 1;
@@ -7713,7 +7760,35 @@ function renderRouteOptionControls() {
       aria-pressed="${active}" aria-label="${option.asShared ? 'Shared route' : `Choose route ${index + 1}: ${label}`}"
       title="${title}"${turnNav.active ? ' aria-disabled="true"' : ''}>
       <span>${shortLabel}</span></button>`;
-  }).join('') + remixButtonHtml();
+  };
+  let cells;
+  if (routing.pinnedLetters?.length && !sharedInPlay) {
+    // A frozen lineup renders in PIN order. A pinned recipe the latest
+    // refinement could not route keeps its letter as a greyed, disabled slot:
+    // the honest statement of what the rider's change did to that route.
+    const byProfile = new Map(routing.options.map((option, index) =>
+      [option.optimization?.profileId, index]));
+    const unroutable = new Set((routing.missingLetters || []).map((e) => e.profileId));
+    cells = [];
+    for (const entry of routing.pinnedLetters) {
+      const index = byProfile.get(entry.profileId);
+      if (index != null) {
+        cells.push(buttonHtml(routing.options[index], index));
+        byProfile.delete(entry.profileId);
+      } else if (unroutable.has(entry.profileId)) {
+        cells.push(`<button type="button" class="route-option-missing" disabled
+          title="Route ${entry.letter} found no route with your current changes"
+          aria-label="Route ${entry.letter}: no route with your current changes">
+          <span>${entry.letter}</span></button>`);
+      }
+    }
+    // Anything outside the pin (a candidate parked from the considered-routes
+    // screen mid-reply) still renders rather than vanishing.
+    for (const [, index] of byProfile) cells.push(buttonHtml(routing.options[index], index));
+  } else {
+    cells = routing.options.map(buttonHtml);
+  }
+  host.innerHTML = cells.join('') + remixButtonHtml();
 }
 
 // "More" opens the remix dialog -- "Show me routes that are…". Tinted
