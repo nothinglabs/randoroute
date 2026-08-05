@@ -41,6 +41,13 @@ const check=(n,ok,x='')=>{(ok?pass++:fail++);console.log(`${ok?'PASS':'FAIL'}  $
 // software GL, and a flat wait failed here when the machine was loaded. A flaky
 // test is worse than a slow one -- it teaches you to ignore a red run.
 const findRoad = ()=>pg.evaluate(()=>{
+  // Only accept a road once every in-view tile is final. While ideal tiles are
+  // still arriving, MapLibre renders an overzoomed parent whose simplified
+  // geometry can sit tens of pixels from the real road (17th Ave NE has a
+  // mid-block jog the parent smooths straight through — the swap moved it
+  // 56 px). A pixel validated against the parent stops answering the moment
+  // the ideal tile lands, so clicking it races the tile loader.
+  if(!map.areTilesLoaded()) return null;
   const layers=HIT_LAYERS.filter(id=>map.getLayer(id)&&map.getLayoutProperty(id,'visibility')!=='none');
   const canvas=map.getCanvas();
   for(const f of map.queryRenderedFeatures({layers})){
@@ -61,12 +68,20 @@ const findRoad = ()=>pg.evaluate(()=>{
   return null;
 });
 let road=null;
-for(let attempt=0; attempt<40 && !road; attempt++){
+for(let attempt=0; attempt<80 && !road; attempt++){
   road=await findRoad();
+  if(road){
+    // areTilesLoaded() flips true when the last tile ARRIVES, one frame before
+    // the renderer presents it -- queries still answer from the overzoomed
+    // parent for that beat, then the swap lands. Give the renderer a moment
+    // and only keep a pixel that still answers afterwards.
+    await pg.waitForTimeout(300);
+    if(!await pg.evaluate((pt)=>!!featureAt({x:pt.x,y:pt.y}), road)) road=null;
+  }
   if(!road) await pg.waitForTimeout(500);
 }
 if(!road){
-  console.log('FAIL  no tappable road rendered after 20 s -- tiles never arrived');
+  console.log('FAIL  no tappable road rendered after 40 s -- tiles never arrived');
   process.exit(1);
 }
 console.log('target road:', road.name);
