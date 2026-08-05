@@ -2751,8 +2751,20 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // rider cannot properly ride costs a second, whichever way it fails them.
   // The walking time itself is already inside timeS, so this stacks the
   // judgment on top of the slowness.
+  //
+  // Ride QUALITY gets a vote too, at a fifth the rate: every riding meter
+  // that is neither trail nor trusted lane (facilityM counts facility >= 2,
+  // so sharrows never qualify; ferries are removed as not-riding) costs a
+  // fifth of a second. Sized from the field: 31.8 mi / 2h39 at 64%
+  // trails-and-lanes was starred over 36.1 mi / 3h00 at 90% -- the star
+  // saved 21 minutes by spending 12 extra kilometers alongside traffic,
+  // and the rider's verdict was "I'd rather be recommended routes like
+  // this" about the other one. At 0.2 s/m, a mile of ordinary road is
+  // worth about five and a half minutes of detour on better ground.
+  const NETWORK_GAP_PRICE_S_PER_M = 0.2;
   const recommendationScore = (route) =>
-    route.timeS + (route.failM + (route.dismountM || 0)) * FAIL_AVOID_PRICE_S_PER_M;
+    route.timeS + (route.failM + (route.dismountM || 0)) * FAIL_AVOID_PRICE_S_PER_M
+    + Math.max(0, route.distM - route.ferryM - route.facilityM) * NETWORK_GAP_PRICE_S_PER_M;
   let recommended = null;
   for (const route of recommendationPool) {
     if (!recommended) { recommended = route; continue; }

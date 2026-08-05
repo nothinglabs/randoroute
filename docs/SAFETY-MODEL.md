@@ -971,8 +971,14 @@ portfolio and takes its recommendation afresh.
 **The recommended route** (the starred letter) is chosen from the candidates
 whose every leg stays within a practical detour of the quickest option
 (1.35× distance + 800 m, 1.4× time + 5 min per leg), by minimizing
-`time + 1 s × failing meters` — fail avoidance pays a PRICE rather than
-holding a veto. Under the old lexicographic rule any reduction in absolute
+`time + 1 s × (failing + dismount meters) + 0.2 s × ordinary-riding meters`
+— where ordinary-riding meters are everything that is neither trail nor
+trusted lane (facility ≥ 2; sharrows never qualify, ferries are removed as
+not-riding). Fail avoidance pays a PRICE rather than holding a veto, and
+ride QUALITY has a vote at a fifth the rate: a mile of road alongside
+traffic is worth about five and a half minutes of detour on better ground,
+sized from a field case where the star saved 21 minutes by spending 12
+extra kilometers off the bike network and the rider wanted the other route. Under the old lexicographic rule any reduction in absolute
 failing meters beat any amount of time inside that window, which on
 Seattle–Everett starred a 40.4 mi / 3h19 route over 33.0 mi / 2h43 to avoid
 651 m of failing shoulder — a difference that rounds to the same "1% fails"

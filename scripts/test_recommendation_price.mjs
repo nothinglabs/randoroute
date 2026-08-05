@@ -11,9 +11,10 @@ const DEFAULT_RULES = { allowFreeways: true, allowMtbTrails: false, preferPaved:
   minShoulder: 4, inferShoulderFromEdge: true, maxSpeedNoShoulder: 35,
   lanesNoShoulderOver: 3, busyNoShoulder: 2, allowSidewalkFallback: true,
   upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false };
-// Must match FAIL_AVOID_PRICE_S_PER_M in router-worker.js; the assertion
-// below is what breaks if the two drift.
+// Must match FAIL_AVOID_PRICE_S_PER_M and NETWORK_GAP_PRICE_S_PER_M in
+// router-worker.js; the assertion below is what breaks if they drift.
 const PRICE_S_PER_M = 1;
+const NETWORK_GAP_PRICE_S_PER_M = 0.2;
 
 const w = routerWorker();
 const reply = w.post({ type: 'route-options', id: 'star', rules: DEFAULT_RULES,
@@ -24,9 +25,12 @@ const offered = reply.options.map((option) => ({
   label: option.optimization.label,
   recommended: !!option.optimization.recommended,
   timeS: option.timeS, failM: option.failM, dismountM: option.dismountM || 0,
-  // Dismount meters carry the same price as failing meters: a meter the
-  // rider cannot properly ride costs a second, whichever way it fails them.
-  score: option.timeS + (option.failM + (option.dismountM || 0)) * PRICE_S_PER_M,
+  // Dismount meters carry the same price as failing meters (a meter the
+  // rider cannot properly ride costs a second, whichever way it fails
+  // them), and every riding meter that is neither trail nor trusted lane
+  // costs a fifth of one -- ride quality has a vote.
+  score: option.timeS + (option.failM + (option.dismountM || 0)) * PRICE_S_PER_M
+    + Math.max(0, option.distM - option.ferryM - option.facilityM) * NETWORK_GAP_PRICE_S_PER_M,
 }));
 const star = offered.find((option) => option.recommended);
 assert.ok(star, 'one offered route should carry the recommendation');
