@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
 const start = worker.indexOf('function turnPreferenceS');
-const end = worker.indexOf('function routeGradeStats', start);
+const end = worker.indexOf('function reportedGradePct', start);
 assert.ok(start >= 0 && end > start, 'turn preference helper source was not found');
 
 const context = {

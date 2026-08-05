@@ -91,13 +91,15 @@ function lift(startMarker, endMarker) {
 }
 vm.runInContext([
   'const SafetyModel = globalThis.SM;',
+  // The bit constants and shared predicates scoreRouteSeg leans on live in
+  // route-common.js now; the file is self-contained, so inject it whole.
+  fs.readFileSync(ROOT + 'route-common.js', 'utf8'),
   lift('const OSM_PROTECTED', '\nfunction scoreOSM'),
   lift('function scoreOSM', '\n// Full OSM road network'),
   lift('const INTERSTATE_ROUTE_PREFIXES', '\n// OSM bike infrastructure'),
   lift('function scoreRoad', '\nfunction scoreRouteOverlay'),
   lift('const ADT_SOURCE_COUNTY', '\nconst ADT_SOURCE_NAME'),
   lift('function tileMeasures', '\nfunction '),
-  lift('const OFFICIAL_DISMOUNT', '\nconst SIGNIFICANT_UNPAVED_M'),
   lift('function scoreRouteSeg', '\n// '),
   'globalThis.OUT = { scoreOSM, scoreRoad, scoreBLTS, scoreRouteSeg };',
 ].join('\n'), Object.assign(box, { SM, Region }));

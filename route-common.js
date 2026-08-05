@@ -202,3 +202,23 @@ function googleStreetViewUrl(lat, lng, heading = null) {
   const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}${headingParam}`;
 }
+
+// Classic scripts share the names above through the page's (or worker's)
+// global lexical scope. A sandbox that evaluates each file inside a wrapper
+// function -- as some tests do -- gets no such sharing, so attach everything
+// to the global object too, the same trick safety-model.js's IIFE uses.
+(function attach(root) {
+  Object.assign(root, {
+    FLAG_FACILITY, FLAG_FREEWAY, FLAG_INFRA, FLAG_FERRY, FLAG_DESIGNATED,
+    FLAG_LIMITED_ACCESS, OFFICIAL_MTB, OFFICIAL_DISMOUNT, OFFICIAL_SIDEWALK,
+    OFFICIAL_SIDEWALK_NO, OFFICIAL_URBAN, OFFICIAL_DISMOUNT_TAG,
+    PROHIBITED_SHOULDER, SURFACE_LABEL, ROUTE_CATEGORY_KEYS,
+    ROUTE_CATEGORY_LABELS, HIGHWAY_NAME, SIGNIFICANT_UNPAVED_M,
+    STEEP_GRADE_WARNING_PCT, ROUTE_DETAILS_KEY, MIN_REPORTED_GRADE_M,
+    MAX_CREDIBLE_GRADE_PCT, SUSTAINED_GRADE_WINDOW_M,
+    isConfirmedUnpavedSurface, isDismountSegment, isTaggedDismountSegment,
+    credibleSegmentGradePct, sustainedUphillGradeSamples, routeGradeStats,
+    fmtMi, fmtMiles, fmtFt, fmtDist, fmtDur, routePercent,
+    routeCategoryPercentages, googleStreetViewUrl,
+  });
+}(typeof self !== 'undefined' ? self : globalThis));
