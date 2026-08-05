@@ -12,8 +12,12 @@
 'use strict';
 
 // The verdict ladder is defined once, in safety-model.js, and shared with the
-// app so a road cannot score differently here than it reads on the map.
+// app so a road cannot score differently here than it reads on the map. The
+// same goes for the segment bitfields and the grade math in route-common.js:
+// the numbers this worker stores and the numbers the pages recompute must be
+// one implementation.
 importScripts('safety-model.js');
+importScripts('route-common.js');
 
 let N = 0, E = 0, D = 0;
 let nodeLon, nodeLat, nodeEle;
@@ -44,9 +48,9 @@ let activeRoadBlockEdges = null;
 
 const _dec = new TextDecoder();
 // The signed shoulder byte normally ranges from -1 (unknown) to 127 ft.
-// -128 is reserved by the migration tool for a WSDOT permanent bike
-// restriction. It is a hard graph exclusion, never a routing penalty.
-const PROHIBITED_SHOULDER = -128;
+// PROHIBITED_SHOULDER (-128, from route-common.js) is reserved by the
+// migration tool for a WSDOT permanent bike restriction. It is a hard graph
+// exclusion, never a routing penalty.
 // Format 11 packing, mirroring scripts/build_graph.py. 255 means "not known",
 // which is not the same as zero: a county that never separately inventoried a
 // shoulder is not asserting the road has none.
@@ -117,7 +121,6 @@ const SURFACE_UNKNOWN = 0;
 const SURFACE_PAVED = 1;
 const SURFACE_GRAVEL = 2;
 const SURFACE_ROUGH = 3;
-const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 function edgeName(i) {
   const id = eName[i];
   return _dec.decode(nameBytes.subarray(nameOff[id], nameOff[id + 1]));
@@ -1005,16 +1008,9 @@ function turnPreferenceS(incomingEdge, node, outgoingEdge, mode) {
 }
 
 // DEM elevations are stored as whole meters, while OSM can split a road into
-// graph fragments only a few meters long. Calculating grade on those tiny
-// fragments turns ordinary one-meter elevation quantization into impossible
-// values (for example, 180%). Report only grades sustained over enough
-// horizontal distance to be meaningful, and reject obvious DEM artifacts.
-const MIN_REPORTED_GRADE_M = 20;
-const MAX_CREDIBLE_GRADE_PCT = 40;
-// A single 20 m graph edge can still reflect a small DEM step. Route maxima
-// therefore use the steepest sustained 100 m of riding instead.
-const SUSTAINED_GRADE_WINDOW_M = 100;
-
+// graph fragments only a few meters long, where quantization turns into
+// impossible grades. The credibility rules (MIN_REPORTED_GRADE_M and friends)
+// and the shared grade math live in route-common.js.
 function reportedGradePct(netRiseM, lenM) {
   const rise = Number(netRiseM);
   const len = Number(lenM);
@@ -1022,69 +1018,6 @@ function reportedGradePct(netRiseM, lenM) {
   const grade = 100 * rise / len;
   if (!Number.isFinite(grade) || Math.abs(grade) > MAX_CREDIBLE_GRADE_PCT) return 0;
   return Math.round(10 * grade) / 10;
-}
-
-function credibleSegmentGradePct(seg) {
-  const grade = Number(seg?.gradePct);
-  const len = Number(seg?.lenM);
-  if (!Number.isFinite(grade) || !Number.isFinite(len)
-      || len < MIN_REPORTED_GRADE_M || Math.abs(grade) > MAX_CREDIBLE_GRADE_PCT) return 0;
-  return grade;
-}
-
-function sustainedUphillGradeSamples(segs) {
-  const samples = [];
-  const window = [];
-  let windowM = 0;
-  let windowRiseM = 0;
-  for (let index = 0; index < (segs || []).length; index++) {
-    const seg = segs[index];
-    if ((seg.flags || 0) & 32) {
-      window.length = 0;
-      windowM = 0;
-      windowRiseM = 0;
-      continue;
-    }
-    const lenM = Number(seg.lenM) || 0;
-    if (!(lenM > 0)) continue;
-    const gradePct = credibleSegmentGradePct(seg);
-    window.push({ index, lenM, gradePct });
-    windowM += lenM;
-    windowRiseM += lenM * gradePct / 100;
-    while (windowM > SUSTAINED_GRADE_WINDOW_M && window.length) {
-      const first = window[0];
-      const trimM = Math.min(windowM - SUSTAINED_GRADE_WINDOW_M, first.lenM);
-      first.lenM -= trimM;
-      windowM -= trimM;
-      windowRiseM -= trimM * first.gradePct / 100;
-      if (first.lenM <= .001) window.shift();
-    }
-    if (windowM >= SUSTAINED_GRADE_WINDOW_M && window.length) {
-      samples.push({ startIndex: window[0].index, endIndex: index,
-        gradePct: 100 * windowRiseM / windowM, lenM: windowM });
-    }
-  }
-  return samples;
-}
-
-function routeGradeStats(segs) {
-  let uphillM = 0;
-  let uphillRiseM = 0;
-  for (const seg of segs || []) {
-    if ((seg.flags || 0) & 32) continue;
-    const grade = credibleSegmentGradePct(seg);
-    const len = Number(seg.lenM) || 0;
-    if (grade > 0.5 && len > 0) {
-      uphillM += len;
-      uphillRiseM += len * grade / 100;
-    }
-  }
-  const maxGradePct = sustainedUphillGradeSamples(segs)
-    .reduce((max, sample) => Math.max(max, sample.gradePct), 0);
-  return {
-    avgUphillPct: uphillM > 0 ? Math.round(10 * 100 * uphillRiseM / uphillM) / 10 : 0,
-    maxGradePct: Math.round(10 * maxGradePct) / 10,
-  };
 }
 
 /* ------------------------------------------------ riding modes */

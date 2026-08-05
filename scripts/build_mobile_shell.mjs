@@ -11,6 +11,7 @@ const files = [
   'app.js',
   'basemap-style.js',
   'marker-icons.js',
+  'route-common.js',
   'palette.js',
   'region.js',
   'build-version.js',

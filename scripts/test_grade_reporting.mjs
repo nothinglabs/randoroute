@@ -3,14 +3,18 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
+// The credibility rules and the shared grade math live in route-common.js
+// (one implementation for the worker and both pages); reportedGradePct is the
+// worker's own, built on the same shared constants.
+const common = fs.readFileSync(new URL('../route-common.js', import.meta.url), 'utf8');
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
-const start = worker.indexOf('const MIN_REPORTED_GRADE_M');
-const end = worker.indexOf('/* ------------------------------------------------ riding modes', start);
+const start = worker.indexOf('function reportedGradePct(');
+const end = worker.indexOf('\n}', start) + 2;
 assert.ok(start >= 0 && end > start, 'grade-reporting helper source was not found');
 
 const context = {};
 vm.createContext(context);
-vm.runInContext(worker.slice(start, end), context);
+vm.runInContext(common + '\n' + worker.slice(start, end), context);
 
 assert.equal(context.reportedGradePct(1.8, 1), 0,
   'whole-meter elevation noise on a tiny edge must not become a 180% grade');

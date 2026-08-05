@@ -36,9 +36,12 @@ function lift(name) {
   throw new Error(`unterminated ${name}`);
 }
 
+// The OFFICIAL_* bit constants live in route-common.js, shared by the app,
+// the details page and the worker.
+const commonSrc = fs.readFileSync(here('../route-common.js'), 'utf8');
 const OFFICIAL = /const OFFICIAL_[A-Z_]+ = [^;]+;/g;
-const officials = appSrc.match(OFFICIAL) || [];
-assert.ok(officials.length >= 3, 'app.js should define the OFFICIAL_* bit constants');
+const officials = commonSrc.match(OFFICIAL) || [];
+assert.ok(officials.length >= 3, 'route-common.js should define the OFFICIAL_* bit constants');
 
 const ctx = { self: {}, SafetyModel, rules: {} };
 vm.createContext(ctx);

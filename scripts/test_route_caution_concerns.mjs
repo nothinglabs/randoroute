@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const common = fs.readFileSync(new URL('../route-common.js', import.meta.url), 'utf8');
 const details = fs.readFileSync(new URL('../route-details.js', import.meta.url), 'utf8');
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
 const safetyModel = fs.readFileSync(new URL('../safety-model.js', import.meta.url), 'utf8');
@@ -42,7 +43,7 @@ vm.runInContext([
   functionSource(details, 'isBikeNetwork'),
   functionSource(details, 'isOffStreetTrail'),
   functionSource(details, 'isMountainBikeTrail'),
-  functionSource(details, 'isDismountSegment'),
+  functionSource(common, 'isDismountSegment'),
   functionSource(details, 'activeDetailRules'),
   functionSource(details, 'routeSegmentLevel'),
   functionSource(details, 'routeDisplayCategory'),

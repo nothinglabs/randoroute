@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { SafetyModel } from './testlib/harness.mjs';
 
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+const common = fs.readFileSync(new URL('../route-common.js', import.meta.url), 'utf8');
 const details = fs.readFileSync(new URL('../route-details.js', import.meta.url), 'utf8');
 const detailsHtml = fs.readFileSync(new URL('../route-details.html', import.meta.url), 'utf8');
 const styles = fs.readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
@@ -23,7 +24,7 @@ function functionSource(source, name) {
 
 const percentageContext = {};
 vm.createContext(percentageContext);
-vm.runInContext(`const ROUTE_CATEGORY_KEYS = ['trail', 'bike', 'pass', 'caution', 'fail'];\n${functionSource(app, 'routeCategoryPercentages')}`, percentageContext);
+vm.runInContext(`const ROUTE_CATEGORY_KEYS = ['trail', 'bike', 'pass', 'caution', 'fail'];\n${functionSource(common, 'routeCategoryPercentages')}`, percentageContext);
 
 for (const distances of [
   { trail: 370, bike: 490, pass: 130, caution: 10, fail: 0 },
@@ -59,7 +60,7 @@ vm.runInContext([
   functionSource(details, 'isBikeNetwork'),
   functionSource(details, 'isOffStreetTrail'),
   functionSource(details, 'isMountainBikeTrail'),
-  functionSource(details, 'isDismountSegment'),
+  functionSource(common, 'isDismountSegment'),
   functionSource(details, 'activeDetailRules'),
   functionSource(details, 'routeSegmentFacts'),
   functionSource(details, 'routeSegmentLevel'),
@@ -93,10 +94,18 @@ assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, flags: 32, level: 1
 // "Trusted Bike Lanes" ship truncated to "Trusted Bike La...".
 const labels = ['Trails', 'Trusted Bike Lane', 'Passes Rules', 'Needs Caution', 'Fails Rules'];
 const appCard = functionSource(app, 'renderRouteCard');
-for (const label of labels) {
-  assert.ok(appCard.includes(label), `route card is missing ${label}`);
-  assert.ok(details.includes(label), `Route Details is missing ${label}`);
-}
+// Both category lists render from the shared ROUTE_CATEGORY_LABELS table in
+// route-common.js -- assert the table carries the five labels and that both
+// renderers actually read it rather than restating the strings.
+const labelContext = {};
+vm.createContext(labelContext);
+vm.runInContext(common.replace(/\bconst /g, 'var '), labelContext);
+assert.deepEqual([...labelContext.ROUTE_CATEGORY_LABELS].map(([, label]) => String(label)),
+  labels, 'ROUTE_CATEGORY_LABELS must carry the five category labels in order');
+assert.ok(appCard.includes('ROUTE_CATEGORY_LABELS'),
+  'the route card must render the shared label table');
+assert.ok(details.includes('ROUTE_CATEGORY_LABELS'),
+  'Route Details must render the shared label table');
 assert.ok(details.includes('<b>5%+ uphill</b><strong>${fmtMi(routeStats.inclineOver5M)} mi</strong>'),
   'Route Details Elevation must report 5%+ uphill distance in miles');
 assert.ok(!details.includes('Incline over 5%'),

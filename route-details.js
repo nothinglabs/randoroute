@@ -1,19 +1,6 @@
-const ROUTE_DETAILS_KEY = 'wa-bike-route-details-1';
+// Bitfields, category keys, grade credibility, formatters and the shared
+// predicates all come from route-common.js, one home for the three consumers.
 const ROUTE_DETAILS_POSITION_KEY = 'wa-bike-route-details-position-1';
-const FLAG_FACILITY = 2;
-const FLAG_FREEWAY = 4;
-const FLAG_INFRA = 8;
-const FLAG_FERRY = 32;
-const FLAG_DESIGNATED = 64;
-const FLAG_LIMITED_ACCESS = 128;
-const OFFICIAL_MTB = 4;
-const OFFICIAL_DISMOUNT = 8;
-const OFFICIAL_SIDEWALK = 16;
-const OFFICIAL_SIDEWALK_NO = 32;
-const OFFICIAL_URBAN = 64;
-const OFFICIAL_DISMOUNT_TAG = 128;
-const PROHIBITED_SHOULDER = -128;
-const SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 // Read from palette.js, not restated. These four used to be spelled out here,
 // and FAIL_COLOR sat at #78121f for a whole session after the map moved to
 // #a51c30 -- so this report drew a different red from the map it describes.
@@ -28,13 +15,7 @@ let routePreviewFailPulseTimer = null;
 const REQUEST_PARAMS = new URLSearchParams(window.location.search);
 const REQUESTED_DETAIL_TAB = REQUEST_PARAMS.get('tab');
 const REQUESTED_CONCERN = REQUEST_PARAMS.get('concern');
-const MIN_REPORTED_GRADE_M = 20;
-const MAX_CREDIBLE_GRADE_PCT = 40;
-const SUSTAINED_GRADE_WINDOW_M = 100;
 const STEEP_UPHILL_CONCERN_PCT = 10;
-const SIGNIFICANT_UNPAVED_M = 1609.344;
-const ROUTE_CATEGORY_KEYS = ['trail', 'bike', 'pass', 'caution', 'fail'];
-const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 const FACILITY_NAME = {
   // A sharrow is paint in a shared traffic lane; the caveat travels with the
   // name here just as it does on the main map's road card.
@@ -64,21 +45,6 @@ function isDesignated(seg) {
 
 function isMountainBikeTrail(seg) {
   return !!seg.mtb || !!((seg.official || 0) & OFFICIAL_MTB);
-}
-
-function isDismountSegment(seg) {
-  return !!seg?.dismount || !!((seg?.official || 0) & OFFICIAL_DISMOUNT);
-}
-
-// A mapper wrote bicycle=dismount, as opposed to a walk link the graph build
-// synthesised from an untagged footway. Warnings -- the Dismount mileage up
-// top and the preview markers -- show only these; the concerns report keeps
-// listing every stretch that will be walked. Both bits, not just the tag bit:
-// 128 meant "bridge or tunnel" one graph data version back, and this page
-// renders stored routes that can predate the rebuild.
-function isTaggedDismountSegment(seg) {
-  const need = OFFICIAL_DISMOUNT | OFFICIAL_DISMOUNT_TAG;
-  return (((seg?.official || 0) & need) === need);
 }
 
 // A stored segment does not always carry a level: an older release wrote none,
@@ -208,20 +174,6 @@ document.getElementById('backToMap').addEventListener('click', () => {
   window.location.href = 'index.html';
 });
 
-function fmtMi(m) { return (m / 1609.34).toFixed(1); }
-// A tenth of a mile stops carrying information once the number reaches double
-// digits: "24.3 mi of gravel" is precision the underlying surface data does not
-// have, and it reads as a measurement rather than an estimate.
-function fmtMiles(m) {
-  const miles = m / 1609.34;
-  return miles >= 10 ? String(Math.round(miles)) : miles.toFixed(1);
-}
-function fmtFt(m) { return Math.round(m * 3.28084).toLocaleString(); }
-function fmtDist(m) { return m < 160.934 ? `${fmtFt(m)} ft` : `${fmtMi(m)} mi`; }
-function fmtDur(s) {
-  const min = Math.round(s / 60);
-  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} m`;
-}
 function lngLat(point) {
   if (!Array.isArray(point) || point.length < 2) return null;
   const lng = Number(point[0]), lat = Number(point[1]);
@@ -236,10 +188,6 @@ function surfaceLabel(surface) {
   return Number.isInteger(value) && value >= 0 && value < SURFACE_LABEL.length
     ? SURFACE_LABEL[value] : SURFACE_LABEL[0];
 }
-function isConfirmedUnpavedSurface(surface) {
-  const value = Number(surface);
-  return value === 2 || value === 3;
-}
 function itemStreetViewHeading(item) {
   const start = lngLat(item.locationStart);
   const end = lngLat(item.locationEnd);
@@ -252,10 +200,6 @@ function itemStreetViewHeading(item) {
     - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
-function googleStreetViewUrl([lng, lat], heading = null) {
-  const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
-  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}${headingParam}`;
-}
 function openItemStreetView(item) {
   const location = itemLocation(item);
   if (!location) return;
@@ -266,44 +210,12 @@ function openItemStreetView(item) {
     return;
   }
   const link = document.createElement('a');
-  link.href = googleStreetViewUrl(location, heading);
+  link.href = googleStreetViewUrl(lat, lng, heading);
   link.target = '_blank';
   link.rel = 'noopener';
   document.body.append(link);
   link.click();
   link.remove();
-}
-function routePercent(meters, total, preciseSmall = false) {
-  if (!(meters > 0) || !(total > 0)) return '0%';
-  const pct = Math.min(100, 100 * meters / total);
-  if (preciseSmall && pct < 0.1) return '<0.1%';
-  if (preciseSmall && pct < 1) return `${pct.toFixed(1)}%`;
-  if (preciseSmall && pct > 99 && pct < 100) return `${pct.toFixed(1)}%`;
-  return `${Math.round(pct)}%`;
-}
-function routeCategoryPercentages(categoryM) {
-  const total = ROUTE_CATEGORY_KEYS.reduce((sum, key) => sum + (Number(categoryM?.[key]) || 0), 0);
-  const out = Object.fromEntries(ROUTE_CATEGORY_KEYS.map((key) => [key, 0]));
-  if (!(total > 0)) return out;
-  const rows = ROUTE_CATEGORY_KEYS.map((key, index) => {
-    const meters = Math.max(0, Number(categoryM?.[key]) || 0);
-    const raw = 100 * meters / total;
-    return { key, index, meters, raw, value: meters > 0 ? Math.max(1, Math.floor(raw)) : 0 };
-  });
-  let assigned = rows.reduce((sum, row) => sum + row.value, 0);
-  while (assigned < 100) {
-    const row = [...rows].sort((a, b) =>
-      (b.raw - b.value) - (a.raw - a.value) || a.index - b.index)[0];
-    row.value++; assigned++;
-  }
-  while (assigned > 100) {
-    const row = [...rows].filter((candidate) => candidate.value > (candidate.meters > 0 ? 1 : 0))
-      .sort((a, b) => (b.value - b.raw) - (a.value - a.raw) || b.value - a.value)[0];
-    if (!row) break;
-    row.value--; assigned--;
-  }
-  for (const row of rows) out[row.key] = row.value;
-  return out;
 }
 function routeSummaryStats(segs, minShoulderFt = 4) {
   const levels = [0, 0, 0, 0, 0];
@@ -353,71 +265,6 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
     roadAtOrAbove55M, roadAtOrAbove45M, roadAtOrAbove35M,
     highSpeedNoBikeAccommodationOrShoulderM,
     minShoulderFt,
-  };
-}
-function credibleSegmentGradePct(seg) {
-  const grade = Number(seg?.gradePct);
-  const len = Number(seg?.lenM);
-  if (!Number.isFinite(grade) || !Number.isFinite(len)
-      || len < MIN_REPORTED_GRADE_M || Math.abs(grade) > MAX_CREDIBLE_GRADE_PCT) return 0;
-  return grade;
-}
-
-function sustainedUphillGradeSamples(segs) {
-  const samples = [];
-  const window = [];
-  let windowM = 0;
-  let windowRiseM = 0;
-  for (let index = 0; index < (segs || []).length; index++) {
-    const seg = segs[index];
-    if ((seg.flags || 0) & FLAG_FERRY) {
-      window.length = 0;
-      windowM = 0;
-      windowRiseM = 0;
-      continue;
-    }
-    const lenM = Number(seg.lenM) || 0;
-    if (!(lenM > 0)) continue;
-    const gradePct = credibleSegmentGradePct(seg);
-    window.push({ index, lenM, gradePct });
-    windowM += lenM;
-    windowRiseM += lenM * gradePct / 100;
-    while (windowM > SUSTAINED_GRADE_WINDOW_M && window.length) {
-      const first = window[0];
-      const trimM = Math.min(windowM - SUSTAINED_GRADE_WINDOW_M, first.lenM);
-      first.lenM -= trimM;
-      windowM -= trimM;
-      windowRiseM -= trimM * first.gradePct / 100;
-      if (first.lenM <= .001) window.shift();
-    }
-    if (windowM >= SUSTAINED_GRADE_WINDOW_M && window.length) {
-      samples.push({ startIndex: window[0].index, endIndex: index,
-        gradePct: 100 * windowRiseM / windowM, lenM: windowM });
-    }
-  }
-  return samples;
-}
-
-function routeGradeStats(segs) {
-  let uphillM = 0;
-  let uphillRiseM = 0;
-  for (const seg of segs || []) {
-    if ((seg.flags || 0) & FLAG_FERRY) continue;
-    const grade = credibleSegmentGradePct(seg);
-    const len = Number(seg.lenM) || 0;
-    if (grade > 0.5 && len > 0) {
-      uphillM += len;
-      uphillRiseM += len * grade / 100;
-    }
-  }
-  const maxGradePct = sustainedUphillGradeSamples(segs)
-    .reduce((max, sample) => Math.max(max, sample.gradePct), 0);
-  return {
-    // Rounded exactly as the worker rounds them: the stored copy and this
-    // recomputed one feed the same display and the same >18% warning, and an
-    // unrounded 18.04 here warned where the worker's 18.0 did not.
-    avgUphillPct: uphillM > 0 ? Math.round(10 * 100 * uphillRiseM / uphillM) / 10 : 0,
-    maxGradePct: Math.round(10 * maxGradePct) / 10,
   };
 }
 
@@ -1436,13 +1283,8 @@ if (!hasRoute) {
   const unpavedSummaryMetric = hasSignificantUnpaved
     ? `<button class="route-summary-secondary-item mix-unpaved-warning" id="summaryUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></button>`
     : `<span class="route-summary-secondary-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></span>`;
-  const categoryRows = [
-    ['trail', 'Trails'],
-    ['bike', 'Trusted Bike Lane'],
-    ['pass', 'Passes Rules'],
-    ['caution', 'Needs Caution'],
-    ['fail', 'Fails Rules'],
-  ].map(([key, label]) => `<span class="route-summary-category-item category-${key}"><span class="route-summary-category-swatch ${key}" aria-hidden="true"></span><b>${categoryPct[key]}%</b><span>${label}</span></span>`).join('');
+  const categoryRows = ROUTE_CATEGORY_LABELS
+    .map(([key, label]) => `<span class="route-summary-category-item category-${key}"><span class="route-summary-category-swatch ${key}" aria-hidden="true"></span><b>${categoryPct[key]}%</b><span>${label}</span></span>`).join('');
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
   const tripNotes = [
@@ -1451,7 +1293,7 @@ if (!hasRoute) {
   ].filter(Boolean).join('');
   summary.innerHTML = `<strong>${fmtMi(totals.distM)} mi</strong><small>${fmtDur(totals.timeS)}</small>${tripNotes}`;
   summarySub.innerHTML = `<span class="elevation-metric"><b>Climb</b><strong>↗ ${fmtFt(totals.ascentM)} ft</strong></span><span class="elevation-metric"><b>Descent</b><strong>↘ ${fmtFt(totals.descentM)} ft</strong></span><span class="elevation-metric"><b>Avg. grade</b><strong>${avgUphillPct.toFixed(1)}% uphill</strong></span><span class="elevation-metric"><b>Max grade</b><strong>${maxGradePct.toFixed(1)}%</strong></span><span class="elevation-metric"><b>5%+ uphill</b><strong>${fmtMi(routeStats.inclineOver5M)} mi</strong></span><span class="elevation-metric"><b>10%+ uphill</b><strong>${fmtMi(steepUphillM)} mi</strong></span>`;
-  elevationSteepWarning.hidden = !(maxGradePct > 18);
+  elevationSteepWarning.hidden = !(maxGradePct > STEEP_GRADE_WARNING_PCT);
   const hasRoadSpeed = routeStats.avgRoadSpeedMph != null;
   const speedMiles = (meters) => hasRoadSpeed ? `${fmtMi(meters)} mi` : 'N/A';
   summaryRoadSpeed.innerHTML = `<span class="speed-limit-metric"><span>At least <strong>35 mph</strong></span><b>${speedMiles(routeStats.roadAtOrAbove35M)}</b></span><span class="speed-limit-metric"><span>At least <strong>45 mph</strong></span><b>${speedMiles(routeStats.roadAtOrAbove45M)}</b></span><span class="speed-limit-metric"><span>At least <strong>55 mph</strong></span><b>${speedMiles(routeStats.roadAtOrAbove55M)}</b></span>`;

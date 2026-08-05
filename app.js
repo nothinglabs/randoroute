@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.561';
+const APP_VERSION = '2026-08-05.562';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -23,15 +23,9 @@ const APP_VERSION = '2026-08-05.561';
 const GRAPH_FORMAT_VERSION = self.GRAPH_FORMAT_VERSION;
 const GRAPH_DATA_VERSION = self.GRAPH_DATA_VERSION;
 const GRAPH_URL = self.GRAPH_URL;
-const OFFICIAL_DISMOUNT = 8;
-const OFFICIAL_SIDEWALK = 16;
-const OFFICIAL_SIDEWALK_NO = 32;
-const OFFICIAL_URBAN = 64;
-const OFFICIAL_DISMOUNT_TAG = 128;
-const SIGNIFICANT_UNPAVED_M = 1609.344;
-const MIN_REPORTED_GRADE_M = 20;
-const MAX_CREDIBLE_GRADE_PCT = 40;
-const ROUTE_CATEGORY_KEYS = ['trail', 'bike', 'pass', 'caution', 'fail'];
+// Segment bitfields, category keys, grade credibility, the shared formatters
+// and predicates: all in route-common.js, shared with the Route Details page
+// and the router worker so three copies cannot drift again.
 
 /* ---------------------------------------------------------------- palette */
 // One visual verdict system, defined once in palette.js and read here. The
@@ -64,39 +58,10 @@ function opaqueColorOverWhite(hex, opacity) {
   return `#${[channel(0), channel(2), channel(4)]
     .map((component) => blend(component).toString(16).padStart(2, '0')).join('')}`;
 }
-const ROUTE_SURFACE_LABEL = ['Unknown', 'Paved', 'Gravel / compacted', 'Unpaved'];
 function routeSurfaceLabel(surface) {
   const value = Number(surface);
-  return Number.isInteger(value) && value >= 0 && value < ROUTE_SURFACE_LABEL.length
-    ? ROUTE_SURFACE_LABEL[value] : ROUTE_SURFACE_LABEL[0];
-}
-function isConfirmedUnpavedSurface(surface) {
-  const value = Number(surface);
-  return value === 2 || value === 3;
-}
-function isDismountSegment(segment) {
-  return !!segment?.dismount || !!((segment?.official || 0) & OFFICIAL_DISMOUNT);
-}
-// Only the dismounts a mapper wrote down (bicycle=dismount) warn out loud --
-// the map marker, the Dismount mileage, the voice. The walk links the graph
-// build synthesises from untagged footways price and report identically
-// otherwise, but a warning at every park-path connector would teach riders to
-// ignore the marker that matters.
-//
-// Both bits, not just the tag bit: 128 meant "bridge or tunnel" in the graph
-// one data version back, and a route stored under that graph would otherwise
-// read its bridges as dismounts until the rider next routes.
-function isTaggedDismountSegment(segment) {
-  const need = OFFICIAL_DISMOUNT | OFFICIAL_DISMOUNT_TAG;
-  return (((segment?.official || 0) & need) === need);
-}
-
-function credibleRouteSegmentGradePct(segment) {
-  const grade = Number(segment?.gradePct);
-  const len = Number(segment?.lenM);
-  if (!Number.isFinite(grade) || !Number.isFinite(len)
-      || len < MIN_REPORTED_GRADE_M || Math.abs(grade) > MAX_CREDIBLE_GRADE_PCT) return 0;
-  return grade;
+  return Number.isInteger(value) && value >= 0 && value < SURFACE_LABEL.length
+    ? SURFACE_LABEL[value] : SURFACE_LABEL[0];
 }
 
 /* ------------------------------------------------- riding-rules state */
@@ -2726,22 +2691,6 @@ async function ensureRouter() {
   }
 }
 
-const fmtMi = (m) => (m / 1609.34).toFixed(1);
-// A tenth of a mile stops carrying information once the number reaches double
-// digits: "24.3 mi of gravel" is precision the underlying surface data does not
-// have, and it reads as a measurement rather than an estimate.
-const fmtMiles = (m) => {
-  const miles = m / 1609.34;
-  return miles >= 10 ? String(Math.round(miles)) : miles.toFixed(1);
-};
-const fmtFt = (m) => Math.round(m * 3.28084).toLocaleString();
-const fmtDist = (m) => m < 160.934 ? `${fmtFt(m)} ft` : `${fmtMi(m)} mi`;
-function fmtDur(s) {
-  const min = Math.round(s / 60);
-  if (min < 60) return `${min} min`;
-  return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} m`;
-}
-
 // The worker hands back segments carrying a `flags` bitfield; the map's tap
 // layer carries the same facts already unpacked. Both shapes existed, and each
 // grew its own adapter into the safety model — which is how a route card came
@@ -2809,7 +2758,6 @@ function routeSegmentCautionCause(s) {
   return routeSegmentDisplayCategory(s) === 'caution' ? 'other' : null;
 }
 
-const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 function isHighwaySegment(s) {
   const flags = s.flags || 0;
   return !(flags & (4 | 8 | 32)) && (s.mph >= 45 || HIGHWAY_NAME.test(s.name || ''));
@@ -2832,7 +2780,7 @@ function routeSummaryStats(m) {
     const len = Number(s.lenM) || 0;
     if (flags & 32) continue; // ferry is reported separately, not a riding safety level
     if (isConfirmedUnpavedSurface(s.surface)) unpavedM += len;
-    if (credibleRouteSegmentGradePct(s) > 5) inclineOver5M += len;
+    if (credibleSegmentGradePct(s) > 5) inclineOver5M += len;
     const level = s.level || fallbackRouteLevel(s);
     if (level >= 1 && level <= 4) levels[level] += len;
     // Use the selected route's actual paint classifier. These five buckets are
@@ -2865,45 +2813,6 @@ function routeSummaryStats(m) {
   };
 }
 
-// Whole-number percentages are easier to scan in the compact route chooser.
-// Allocate rounding remainders as a group so the five displayed values always
-// add to exactly 100. A category with real distance keeps at least 1%, avoiding
-// a misleading "0%" beside a visible short amber or red segment.
-function routeCategoryPercentages(categoryM) {
-  const total = ROUTE_CATEGORY_KEYS.reduce((sum, key) => sum + (Number(categoryM?.[key]) || 0), 0);
-  const out = Object.fromEntries(ROUTE_CATEGORY_KEYS.map((key) => [key, 0]));
-  if (!(total > 0)) return out;
-  const rows = ROUTE_CATEGORY_KEYS.map((key, index) => {
-    const meters = Math.max(0, Number(categoryM?.[key]) || 0);
-    const raw = 100 * meters / total;
-    return { key, index, meters, raw, value: meters > 0 ? Math.max(1, Math.floor(raw)) : 0 };
-  });
-  let assigned = rows.reduce((sum, row) => sum + row.value, 0);
-  while (assigned < 100) {
-    const row = [...rows].sort((a, b) =>
-      (b.raw - b.value) - (a.raw - a.value) || a.index - b.index)[0];
-    row.value++; assigned++;
-  }
-  while (assigned > 100) {
-    const row = [...rows].filter((candidate) => candidate.value > (candidate.meters > 0 ? 1 : 0))
-      .sort((a, b) => (b.value - b.raw) - (a.value - a.raw) || b.value - a.value)[0];
-    if (!row) break;
-    row.value--; assigned--;
-  }
-  for (const row of rows) out[row.key] = row.value;
-  return out;
-}
-
-function routePercent(meters, total, preciseSmall = false) {
-  if (!(meters > 0) || !(total > 0)) return '0%';
-  const pct = Math.min(100, 100 * meters / total);
-  if (preciseSmall && pct < 0.1) return '<0.1%';
-  if (preciseSmall && pct < 1) return `${pct.toFixed(1)}%`;
-  if (preciseSmall && pct > 99 && pct < 100) return `${pct.toFixed(1)}%`;
-  return `${Math.round(pct)}%`;
-}
-
-const ROUTE_DETAILS_KEY = 'wa-bike-route-details-1';
 function clearStoredRouteDetails() {
   try { localStorage.removeItem(ROUTE_DETAILS_KEY); } catch (e) { /* nonfatal */ }
 }
@@ -5702,17 +5611,12 @@ function renderRouteCard(m) {
   const inclineOver5Pct = routePercent(stats.inclineOver5M, ridingM, true);
   const unpavedMiles = `${fmtMiles(stats.unpavedM)} mi`;
   const hasSignificantUnpaved = stats.unpavedM > SIGNIFICANT_UNPAVED_M;
-  const hasSteepGradeWarning = Number(m.maxGradePct) > 18;
+  const hasSteepGradeWarning = Number(m.maxGradePct) > STEEP_GRADE_WARNING_PCT;
   const unpavedMetric = hasSignificantUnpaved
     ? `<button class="rc-secondary-item rc-ride-unpaved-warning" id="rcUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span class="rc-secondary-label">Unpaved</span><span class="rc-unpaved-alert-mark" aria-hidden="true">!</span></button>`
     : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span class="rc-secondary-label">Unpaved</span></span>`;
-  const categoryRows = [
-    ['trail', 'Trails'],
-    ['bike', 'Trusted Bike Lane'],
-    ['pass', 'Passes Rules'],
-    ['caution', 'Needs Caution'],
-    ['fail', 'Fails Rules'],
-  ].map(([key, label]) => `<span class="rc-category-item rc-category-${key}"><span class="rc-category-swatch ${key}" aria-hidden="true"></span><b>${categoryPct[key]}%</b><span>${label}</span></span>`).join('');
+  const categoryRows = ROUTE_CATEGORY_LABELS
+    .map(([key, label]) => `<span class="rc-category-item rc-category-${key}"><span class="rc-category-swatch ${key}" aria-hidden="true"></span><b>${categoryPct[key]}%</b><span>${label}</span></span>`).join('');
   card.innerHTML = `
     <div id="routeControlsSlot"></div>
     <div class="rc-route-summary">
@@ -5721,7 +5625,7 @@ function renderRouteCard(m) {
         <div id="routeDetailsSlot"></div>
       </div>
       <div class="rc-elevation-column">
-        <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas><button id="rcElevGradeWarning" class="rc-elev-grade-warning" type="button" aria-label="Route has a sustained grade over 18 percent. View route details." ${hasSteepGradeWarning ? '' : 'hidden'}><span aria-hidden="true">!</span> Details</button></div>
+        <div class="rc-elev-wrap"><canvas id="rcElevCanvas" class="rc-elev-canvas"></canvas><button id="rcElevGradeWarning" class="rc-elev-grade-warning" type="button" aria-label="Route has a sustained grade over ${STEEP_GRADE_WARNING_PCT} percent. View route details." ${hasSteepGradeWarning ? '' : 'hidden'}><span aria-hidden="true">!</span> Details</button></div>
         <div class="rc-secondary-metrics">
           <span class="rc-secondary-item rc-incline-item"><span class="rc-incline-swatch" aria-hidden="true">↗</span><b>${inclineOver5Pct}</b><span class="rc-secondary-label">Incline over 5%</span></span>
           <span class="rc-secondary-divider" aria-hidden="true"></span>
@@ -5743,7 +5647,8 @@ function renderRouteCard(m) {
 function routeHasDetailsWarning(route) {
   if (!route?.ok) return false;
   const stats = routeSummaryStats(route);
-  return Number(route.maxGradePct) > 18 || stats.unpavedM > SIGNIFICANT_UNPAVED_M;
+  return Number(route.maxGradePct) > STEEP_GRADE_WARNING_PCT
+    || stats.unpavedM > SIGNIFICANT_UNPAVED_M;
 }
 
 function syncRouteDetailsWarningState(route, { flash = false } = {}) {
@@ -5765,7 +5670,7 @@ function flashRouteCardWarnings(route) {
   if (turnNav.active || !route?.ok) return;
   const stats = routeSummaryStats(route);
   const targets = [];
-  if (Number(route.maxGradePct) > 18) targets.push(document.getElementById('rcElevGradeWarning'));
+  if (Number(route.maxGradePct) > STEEP_GRADE_WARNING_PCT) targets.push(document.getElementById('rcElevGradeWarning'));
   if (stats.unpavedM > SIGNIFICANT_UNPAVED_M) {
     targets.push(document.querySelector('#routeCard .rc-ride-unpaved-warning'));
   }
@@ -9603,11 +9508,6 @@ const STREET_VIEW_IN_APP = Boolean(GOOGLE_MAPS_EMBED_KEY) && !IOS_DEVICE;
 
 function googleMapsPointUrl(lat, lng) {
   return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
-}
-
-function googleStreetViewUrl(lat, lng, heading = null) {
-  const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
-  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat.toFixed(6)},${lng.toFixed(6)}${headingParam}`;
 }
 
 let streetViewLoadTimer = null;
