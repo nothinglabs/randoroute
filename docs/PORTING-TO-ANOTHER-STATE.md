@@ -121,6 +121,43 @@ collect the thing, then find their org.
    on city and county roads.
 4. **A bicycle level-of-traffic-stress rating**, if the state publishes one.
 
+### Classify each source before trusting it
+
+A DOT is not one publisher. The same fact will appear in several of its
+products, so sort every layer you find into one of four kinds before deciding
+what reads it:
+
+| kind | Washington example | what it is | trust it for |
+|---|---|---|---|
+| **inventory** | BLTS roadway attributes (shoulder, lanes, speed) | measured conditions, often directional | its own measurements |
+| **registry** | Active Transportation bike facilities | the maintained system of record for one asset class, status-carrying, snapshot-dated | that asset class, nothing else |
+| **derived analysis** | the BLTS 1–4 stress rating | a computed product, frozen at its analysis date, bundling COPIES of its inputs | the derived value only |
+| **counts** | state AADT service, HPMS | periodic measurements with a year | volume, with provenance |
+
+The trap this taxonomy exists to prevent: **a derived product ships copies of
+its inputs, and a copy looks exactly like a second, confirming source.**
+WSDOT's BLTS carries a `BikeFacilityType` field — it is the facilities
+registry photocopied on the analysis date, equal or staler, never independent
+evidence. For a long while the road card read facilities from the photocopy
+while the router read the registry, and the two disagreed about the same road.
+When two layers from one agency overlap, find which is the original and read
+that fact from it alone; the copy corroborates nothing.
+
+Precedence, once classified:
+
+1. **An explicit OSM tag beats an agency inventory.** A mapper who wrote
+   `shoulder:width` looked at that spot; the inventory interpolated a route
+   segment (we have a documented case of a booked 4 ft shoulder that Street
+   View shows as 1–2 ft). Agency data fills OSM's gaps; it does not overrule
+   people on the ground. Speed already works this way — WSDOT fills only
+   OSM-estimated values.
+2. **Registry beats analysis-copy** for the registry's own domain, always.
+3. **A derived rating may only ever caution.** See `docs/SAFETY-MODEL.md` on
+   why the stress rating is a modifier, not a rung of its own.
+4. **Measured counts beat modelled ones** (county and state counts before
+   HPMS), and the provenance ships with the number so the card can say which
+   inventory answered.
+
 ---
 
 ## 3. Conflating a source onto OSM
@@ -248,6 +285,16 @@ nested object on a route feature returns from the tap layer as a string and
 reads as `undefined` everywhere. A shared reader is not enough on its own — the
 data has to survive the trip to reach it. Flatten measurements onto the feature
 under the same key names the tiles use.
+
+**The tile build and the graph build are one decision layer.** They consume the
+same sources to describe the same roads to the same rider, so every shared
+constant, parser, and precedence decision lives in `build_graph.py` and is
+IMPORTED by `build_roads.py`, never restated. When each kept its own copy, four
+decisions drifted — km/h parsing, buffered-lane detection, whether WSDOT speed
+beats a real OSM tag, whether a bike lane clears the limited-access caution —
+and the card quietly disagreed with the router. `scripts/test_build_parity.py`
+enforces the sharing; when a port adds a new source, its precedence decision
+goes in `build_graph.py` once and the parity test grows a line.
 
 ---
 
