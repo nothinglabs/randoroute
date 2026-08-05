@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.573';
+const APP_VERSION = '2026-08-05.574';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1651,6 +1651,10 @@ function ensureLayer(src) {
                'circle-stroke-color': '#fff', 'circle-stroke-width': 2 },
       filter: ['==', ['geometry-type'], 'Point'],
     }, beforeId);
+    // The markers answer taps like everything else on the map: the circle and
+    // the closed stretch itself both open the closure card.
+    attachHover(src, src.id);
+    attachHover(src, src.id + '__line');
     updateVisibility(src);
     return;
   }
@@ -9422,6 +9426,47 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   resetRoadInfoPosition();
   const src = HIT_SRC[feature.layer.id];
   const p = feature.properties;
+  if (src.closure) {
+    // The one overlay that cannot be switched off must be able to explain
+    // itself: these circles were the only marks on the map a tap ignored,
+    // which is how a bus loop in Everett became a field mystery.
+    const rows = [
+      ['Name', p.name || 'Closed route segment'],
+      ['Why', p.reason || null],
+      ['Affects', p.routes || null],
+      ['Source', 'Reported in OpenStreetMap — the router already avoids it'],
+    ].filter(([, value]) => value != null && value !== '');
+    readoutEl.replaceChildren();
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'readout-close';
+    closeBtn.setAttribute('aria-label', 'Close road information');
+    closeBtn.textContent = '✕';
+    const head = document.createElement('div');
+    head.className = 'rt-title';
+    const dot = document.createElement('span');
+    dot.className = 'rt-swatch';
+    dot.setAttribute('role', 'img');
+    dot.style.backgroundColor = COLORS[4];
+    dot.setAttribute('aria-label', 'Route closure map color');
+    const headText = document.createElement('span');
+    headText.textContent = 'Route closure (OSM)';
+    head.append(dot, headText);
+    const tbl = document.createElement('table');
+    for (const [key, value] of rows) {
+      const tr = document.createElement('tr');
+      const keyCell = document.createElement('td');
+      keyCell.className = 'k';
+      keyCell.textContent = key;
+      const valueCell = document.createElement('td');
+      valueCell.textContent = String(value);
+      tr.append(keyCell, valueCell);
+      tbl.appendChild(tr);
+    }
+    readoutEl.append(closeBtn, head, tbl);
+    readoutEl.classList.add('show');
+    if (anchorPoint) positionRoadInfoNear(anchorPoint);
+    return;
+  }
   const n = src.scorer(p);            // recompute normalized props from this feature
   // One evaluation drives the headline, the reason, and the colour. It used to
   // read p.level (the router's answer) for the headline and re-derive the

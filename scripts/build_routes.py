@@ -164,6 +164,15 @@ def route_way_is_open(tags):
 
 def closure_reason(tags):
     """Return a human-readable closure reason, if this member is blocked."""
+    # Bus-only service ways are transit infrastructure, not closed route: a
+    # rider was never meant to use them, so flagging them tells a rider
+    # nothing. Everett Station's bus loop is a member of a signed route
+    # relation, and it drew "route closure" circles at a transit center.
+    if tags.get('highway') == 'busway' or (
+            tags.get('highway') == 'service'
+            and (tags.get('bus') in ('yes', 'designated')
+                 or tags.get('psv') in ('yes', 'designated'))):
+        return None
     if tags.get('destroyed:highway'):
         return tags.get('note') or 'Road destroyed or closed'
     if tags.get('highway') in ('construction', 'proposed'):
