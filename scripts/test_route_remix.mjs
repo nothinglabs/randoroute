@@ -4,8 +4,12 @@
 // The knob must actually reach the router (as scaled weights on the request),
 // it must never touch the safety rules, and it must snap back to Recommended
 // when the trip changes -- a new start or destination -- while surviving the
-// refinements of the SAME trip (waypoints, road blocks) and the rider's
-// explicit "always use this mode" pin.
+// refinements of the SAME trip (waypoints, road blocks).
+//
+// Also swept here: WHICH route stays selected across recomputes. Endpoint
+// changes (including reverse) take a fresh recommendation; waypoints, road
+// blocks and settings changes keep the rider's current choice so the impact
+// of the change stays visible on the route they were looking at.
 import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const site = await serveRepo();
@@ -84,18 +88,13 @@ check('the rules ride along completely unchanged',
 /* --------------------------------------------------- reset semantics */
 const resets = await page.evaluate(() => {
   const out = {};
-  routing.remix = 'direct'; routing.remixSticky = false;
+  routing.remix = 'direct';
   setRoutePoint('end', { lng: -122.30, lat: 47.63 });
   out.endpointChange = routing.remix;
 
-  routing.remix = 'direct'; routing.remixSticky = true;
-  setRoutePoint('end', { lng: -122.29, lat: 47.64 });
-  out.stickyEndpointChange = routing.remix;
-
-  routing.remixSticky = false;
   routing.remix = 'safe';
   // Re-setting the SAME destination is not a trip change.
-  setRoutePoint('end', { lng: -122.29, lat: 47.64 });
+  setRoutePoint('end', { lng: -122.30, lat: 47.63 });
   out.samePoint = routing.remix;
 
   addVia({ lng: -122.305, lat: 47.625 });
@@ -107,32 +106,69 @@ const resets = await page.evaluate(() => {
   out.afterClear = routing.remix;
   return out;
 });
-check('changing the destination snaps an unpinned remix back to Recommended',
+check('changing the destination snaps the remix back to Recommended',
   resets.endpointChange === 'recommended', JSON.stringify(resets));
-check('the "always use this mode" pin survives the same change',
-  resets.stickyEndpointChange === 'direct', JSON.stringify(resets));
 check('re-setting the identical point changes nothing',
   resets.samePoint === 'safe', JSON.stringify(resets));
 check('a waypoint keeps the remix -- it refines the same trip',
   resets.afterWaypoint === 'safe', JSON.stringify(resets));
 check('so does a road block', resets.afterBlock === 'safe', JSON.stringify(resets));
-check('clearing the route resets an unpinned remix',
+check('clearing the route resets the remix',
   resets.afterClear === 'recommended', JSON.stringify(resets));
+
+/* ------------------------------------ which route survives a recompute */
+// The selection policy, exercised through the real entry points with the
+// worker stubbed so no reply ever consumes the flag.
+const stickiness = await page.evaluate(() => {
+  const out = {};
+  routing.worker = { postMessage: () => {} };
+  routing.ready = true;
+  setRoutePoint('start', { lng: -122.335, lat: 47.61 });
+  setRoutePoint('end', { lng: -122.31, lat: 47.62 });
+  routing.selectRecommendedNext = false; // as after a delivered portfolio
+
+  addVia({ lng: -122.32, lat: 47.615 });
+  out.afterWaypoint = routing.selectRecommendedNext;
+  addRoadBlock({ lng: -122.322, lat: 47.617 });
+  out.afterBlock = routing.selectRecommendedNext;
+
+  reverseRoute();
+  out.afterReverse = routing.selectRecommendedNext;
+
+  routing.selectRecommendedNext = false;
+  setRoutePoint('end', { lng: -122.29, lat: 47.64 });
+  out.afterNewEnd = routing.selectRecommendedNext;
+  clearRoute();
+  return out;
+});
+check('waypoints and road blocks keep the selected route',
+  stickiness.afterWaypoint === false && stickiness.afterBlock === false,
+  JSON.stringify(stickiness));
+check('reversing takes a fresh recommendation -- both endpoints changed',
+  stickiness.afterReverse === true, JSON.stringify(stickiness));
+check('so does any new destination', stickiness.afterNewEnd === true,
+  JSON.stringify(stickiness));
 
 /* -------------------------------------------------- the button + dialog */
 const ui = await page.evaluate(() => {
-  routing.remix = 'recommended'; routing.remixSticky = false;
+  routing.remix = 'recommended';
+  routing.worker = { postMessage: () => {} };
+  routing.ready = true;
+  routing.start = [-122.335, 47.61];
+  routing.end = [-122.31, 47.62];
   routing.options = [{ optimization: { label: 'Route A', recommended: true } }];
   routing.last = routing.options[0];
   renderRouteOptionControls();
   const out = {};
   const button = document.getElementById('routeRemixBtn');
   out.buttonExists = !!button;
+  out.glyph = button?.textContent.trim();
   out.defaultTint = button?.classList.contains('remix-active');
   out.title = button?.title || '';
   button?.click();
   const dialog = document.getElementById('remixDialog');
   out.dialogOpen = dialog?.open === true;
+  out.stickyGone = !document.getElementById('remixStickyCheck');
   out.choices = [...document.querySelectorAll('.remix-choice')].map((c) => ({
     id: c.dataset.remix, current: c.classList.contains('current'),
     badge: !!c.querySelector('.remix-current-badge'),
@@ -141,20 +177,27 @@ const ui = await page.evaluate(() => {
   out.afterPick = routing.remix;
   out.dialogClosedAfterPick = dialog?.open === false;
   out.tintAfterPick = document.getElementById('routeRemixBtn')?.classList.contains('remix-active');
-  // Reopen: the Current badge must have moved, and the pin must hold alone.
+  out.repickAfterPick = routing.selectRecommendedNext;
+  // The pick started a real recompute, which disables the chooser until the
+  // router replies; the stub never replies, so stand in for the reply.
+  setRouteOptionsLoading(false);
+  // Reopen and pick the mode that is ALREADY current: still a regeneration.
+  routing.selectRecommendedNext = false;
   document.getElementById('routeRemixBtn')?.click();
   out.currentAfterReopen = document.querySelector('.remix-choice.current')?.dataset.remix;
-  const sticky = document.getElementById('remixStickyCheck');
-  sticky.checked = true;
-  sticky.dispatchEvent(new Event('change'));
-  out.stickyAfterCheck = routing.remixSticky;
-  dialog?.close();
+  document.querySelector('.remix-choice[data-remix="safe"]')?.click();
+  out.repickSameMode = routing.selectRecommendedNext;
+  out.dialogClosedAfterSame = dialog?.open === false;
+  routing.remix = 'recommended';
+  clearRoute();
   return out;
 });
-check('the route-mix More button renders in the chooser row', ui.buttonExists === true, JSON.stringify(ui));
+check('the route-mix button renders in the chooser row as a vertical ellipsis',
+  ui.buttonExists === true && ui.glyph === '⋮', JSON.stringify(ui));
 check('untinted while on Recommended', ui.defaultTint === false, JSON.stringify(ui));
 check('its label names the current mode', /Show me routes that are/.test(ui.title), ui.title);
 check('tapping it opens the dialog', ui.dialogOpen === true, JSON.stringify(ui));
+check('the "Make this the default" pin is gone', ui.stickyGone === true, JSON.stringify(ui));
 check('which offers all three modes with Recommended marked current',
   ui.choices.length === 3 && ui.choices.find((c) => c.id === 'recommended')?.current === true
     && ui.choices.find((c) => c.id === 'recommended')?.badge === true
@@ -163,8 +206,11 @@ check('which offers all three modes with Recommended marked current',
 check('picking safety-focused applies it and closes the dialog',
   ui.afterPick === 'safe' && ui.dialogClosedAfterPick === true, JSON.stringify(ui));
 check('and the button shows a remix is active', ui.tintAfterPick === true, JSON.stringify(ui));
+check('and the portfolio regenerates with a fresh recommendation',
+  ui.repickAfterPick === true, JSON.stringify(ui));
 check('reopening marks the new mode as current', ui.currentAfterReopen === 'safe', JSON.stringify(ui));
-check('the pin checkbox works without picking a mode', ui.stickyAfterCheck === true, JSON.stringify(ui));
+check('re-picking the CURRENT mode still regenerates and re-picks',
+  ui.repickSameMode === true && ui.dialogClosedAfterSame === true, JSON.stringify(ui));
 
 // With no trip routed, the weights page's considered-routes button explains
 // itself by being disabled instead of opening an empty list.

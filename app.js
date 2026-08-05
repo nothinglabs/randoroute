@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.571';
+const APP_VERSION = '2026-08-05.572';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1002,7 +1002,7 @@ function saveStateNow() {
         .map((key) => [key, savedLayer(key)])),
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
-      remix: routing.remix, remixSticky: routing.remixSticky,
+      remix: routing.remix,
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
@@ -2553,11 +2553,12 @@ const routing = {
     ? savedState.prefDesig : DEFAULT_ROUTE_PREFERENCES.prefDesig, // force this preference across every route option
   prefResidential: savedState && typeof savedState.prefResidential === 'boolean'
     ? savedState.prefResidential : DEFAULT_ROUTE_PREFERENCES.prefResidential,
-  // See ROUTE_REMIX_MODES. Restored across restarts; without the sticky pin
-  // it lasts only until the next start/destination change.
+  // See ROUTE_REMIX_MODES. Restored across restarts, but only until the next
+  // start/destination change -- a remix is an inspection of this trip, not a
+  // standing preference. (The "Make this the default" pin is gone: a rider
+  // who wants a permanent temperament tunes the weights themselves.)
   remix: ['direct', 'recommended', 'safe'].includes(savedState?.remix)
     ? savedState.remix : 'recommended',
-  remixSticky: savedState?.remixSticky === true,
   reqId: 0,
   compareStartedAt: 0,
   selectRecommendedNext: false,
@@ -7119,10 +7120,10 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
   const previous = routing[kind];
   if (!Array.isArray(previous) || previous[0] !== lngLat.lng || previous[1] !== lngLat.lat) {
     routing.selectRecommendedNext = true;
-    // A new start or destination is a new trip, and an unpinned remix does
-    // not survive it. Waypoints and road blocks never come through here --
-    // they refine the same trip and keep the remix.
-    if (!routing.remixSticky) routing.remix = 'recommended';
+    // A new start or destination is a new trip, and a remix does not survive
+    // it. Waypoints and road blocks never come through here -- they refine
+    // the same trip and keep both the remix and the selected route.
+    routing.remix = 'recommended';
   }
   clearWaypointsForEndpointChange(kind, lngLat);
   routing[kind] = [lngLat.lng, lngLat.lat];
@@ -7530,6 +7531,13 @@ function reverseRoute() {
   routing.vias.reverse();
   routing.startMarker?.setLngLat(routing.start);
   routing.endMarker?.setLngLat(routing.end);
+  // Reversing changes both endpoints, and the policy for endpoint changes is
+  // a fresh recommendation: the best route northbound is not "whatever letter
+  // was selected southbound" -- rankings legitimately differ by direction,
+  // and holding a profile across the flip relabeled it mid-air (the rider
+  // watched E become D). Waypoints, road blocks and settings changes keep the
+  // current choice instead, so their impact on the SAME route stays visible.
+  routing.selectRecommendedNext = true;
 
   clearRouteHighlight();
   updateArmButtons();
@@ -7549,7 +7557,7 @@ function clearRoute() {
   routing.start = routing.end = null;
   routing.startName = routing.endName = null;
   routing.startFromDevice = false;
-  if (!routing.remixSticky) routing.remix = 'recommended';
+  routing.remix = 'recommended';
   routing.pendingRoute = false;
   routing.routeRequestActive = false;
   routing.reqId++; // a route already being calculated must not reappear after clear
@@ -7718,15 +7726,13 @@ function remixButtonHtml() {
   const mode = ROUTE_REMIX_MODES[routing.remix] || ROUTE_REMIX_MODES.recommended;
   return `<button type="button" id="routeRemixBtn" class="route-option-remix${active ? ' remix-active' : ''}"
     title="Show me routes that are… (currently: ${mode.label})"
-    aria-label="More route choices — currently showing ${mode.label}"><span>More</span></button>`;
+    aria-label="More route choices — currently showing ${mode.label}"><span>⋮</span></button>`;
 }
 
 function openRouteRemix() {
   const dialog = document.getElementById('remixDialog');
   if (!dialog) return;
   buildRemixChoices();
-  const sticky = document.getElementById('remixStickyCheck');
-  if (sticky) sticky.checked = routing.remixSticky;
   if (!dialog.open) dialog.showModal();
 }
 
@@ -7752,18 +7758,17 @@ function buildRemixChoices() {
 
 function applyRouteRemix(id) {
   if (!ROUTE_REMIX_MODES[id]) return;
-  routing.remixSticky = !!document.getElementById('remixStickyCheck')?.checked;
-  const changed = routing.remix !== id;
   routing.remix = id;
   saveStateSoon();
   document.getElementById('remixDialog')?.close();
   renderRouteOptionControls();
-  if (changed) {
-    // The new portfolio's own recommendation is the point of remixing; keeping
-    // whatever letter happened to be selected would be arbitrary.
-    routing.selectRecommendedNext = true;
-    computeRoute();
-  }
+  // Tapping a mode -- INCLUDING the one already current -- rebuilds the
+  // portfolio and takes its recommendation afresh. Picking a mode is asking
+  // "what would you offer me?", and the honest answer to that question is
+  // never "whatever letter you already had selected". Closing with the X is
+  // the way out that changes nothing.
+  routing.selectRecommendedNext = true;
+  computeRoute();
 }
 
 // The stage that removed a candidate, in the order the pipeline applies them.
@@ -10814,12 +10819,6 @@ document.getElementById('routeOptions').addEventListener('click', (e) => {
 // Static markup on the weights page; openRoutingWeights() keeps its
 // disabled state in step with whether a trip is currently routed.
 document.getElementById('moreRoutesBtn')?.addEventListener('click', openAllRoutes);
-// Pinning or unpinning the CURRENT mode is a decision on its own; it must not
-// need a mode click to stick.
-document.getElementById('remixStickyCheck')?.addEventListener('change', (e) => {
-  routing.remixSticky = e.target.checked;
-  saveStateSoon();
-});
 syncWeightsTunedBadge();
 syncAdvancedToolsVisibility();
 document.getElementById('layersHelpBtn').addEventListener('click', () =>
