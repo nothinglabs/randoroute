@@ -48,6 +48,21 @@ const publishedMarker = JSON.parse(readFileSync(join(ROOT, 'version.json'), 'utf
 check('the running app version matches the published release marker',
   appVersion === publishedMarker, `${appVersion} vs ${publishedMarker}`);
 
+// The service worker precaches by exact URL string, so every versioned asset
+// reference in route-details.html must appear verbatim in sw.js's SHELL. A
+// bumped ?v= on one side and not the other leaves the precached copy
+// unreachable -- the same bug build-version.js documents for GRAPH_URL.
+const detailsHtml = readFileSync(join(ROOT, 'route-details.html'), 'utf8');
+const swSource = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+const versionedRefs = [...detailsHtml.matchAll(/(?:src|href)="([^"]+\?v=\d+)"/g)]
+  .map((m) => m[1]);
+check('route-details.html references versioned assets', versionedRefs.length >= 2,
+  JSON.stringify(versionedRefs));
+for (const ref of versionedRefs) {
+  check(`sw.js precaches ${ref}`, swSource.includes(`'./${ref}'`),
+    'bump the ?v= in BOTH route-details.html and sw.js SHELL');
+}
+
 const navigations = [];
 page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) navigations.push(Date.now()); });
 

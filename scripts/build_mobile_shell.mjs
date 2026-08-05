@@ -10,6 +10,7 @@ const files = [
   'styles.css',
   'app.js',
   'basemap-style.js',
+  'marker-icons.js',
   'palette.js',
   'region.js',
   'build-version.js',

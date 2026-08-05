@@ -208,7 +208,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .all-route-thumb path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .all-route-thumb .thumb-base { stroke: #0a66c2; stroke-width: 2.1; }
 .all-route-thumb .thumb-caution { stroke: var(--verdict-caution); stroke-width: 2.6; }
-.all-route-thumb .thumb-fail { stroke: #b2182b; stroke-width: 3; }
+.all-route-thumb .thumb-fail { stroke: var(--verdict-fail); stroke-width: 3; }
 .all-route-thumb .thumb-start { fill: #fff; stroke: #1c6b3a; stroke-width: 2; }
 .all-route-thumb .thumb-end { fill: #fff; stroke: #b34b3f; stroke-width: 2; }
 .all-route-row:hover { border-color: #9fc4dc; }
@@ -228,7 +228,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .all-route-stats { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 7px; color: #52636d; font: 550 11.5px/1.4 system-ui; }
 .all-route-stats b { color: #22384a; font-weight: 800; }
 .all-route-stats .lvl-caution b { color: var(--verdict-caution); }
-.all-route-stats .lvl-fail b { color: #b2182b; }
+.all-route-stats .lvl-fail b { color: var(--verdict-fail); }
 .all-route-stats .lvl-fac b { color: #6f7a00; }
 .all-route-why, .all-route-stage-why { margin: 6px 0 0; color: #5c6f7b; font: 500 11px/1.45 system-ui; }
 .all-route-stage-why { color: #6b5330; }
@@ -296,7 +296,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-category-item > span:last-child { min-width: 0; padding-left: 2px; overflow: hidden; overflow-wrap: normal; text-overflow: ellipsis; }
 #routeCard .rc-category-item b { color: #172838; font: 850 11.8px/1 system-ui; text-align: right; white-space: nowrap; }
 #routeCard .rc-category-caution, #routeCard .rc-category-caution b { color: #813e00; }
-#routeCard .rc-category-fail, #routeCard .rc-category-fail b { color: #a51c30; }
+#routeCard .rc-category-fail, #routeCard .rc-category-fail b { color: var(--verdict-fail); }
 #routeCard .rc-category-swatch { display: block; width: 12px; height: 8px; border-radius: 2px; }
 #routeCard .rc-category-swatch.trail { height: 9px; background-color: var(--bike-network); background-image: radial-gradient(circle, var(--trail-dots) 0 1.4px, transparent 1.6px); background-position: 1px center; background-size: 5px 8px; }
 #routeCard .rc-category-swatch.bike { background: var(--bike-network); }

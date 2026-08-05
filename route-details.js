@@ -36,7 +36,9 @@ const SIGNIFICANT_UNPAVED_M = 1609.344;
 const ROUTE_CATEGORY_KEYS = ['trail', 'bike', 'pass', 'caution', 'fail'];
 const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
 const FACILITY_NAME = {
-  1: 'shared lane', 2: 'bike lane', 3: 'buffered bike lane',
+  // A sharrow is paint in a shared traffic lane; the caveat travels with the
+  // name here just as it does on the main map's road card.
+  1: 'sharrow (no dedicated space)', 2: 'bike lane', 3: 'buffered bike lane',
   4: 'separated bike lane', 5: 'shared-use path',
 };
 const ROAD_CLASS_NAME = {
@@ -316,7 +318,9 @@ function routeSummaryStats(segs, minShoulderFt = 4) {
     const flags = seg.flags || 0;
     const len = Number(seg.lenM) || 0;
     if (flags & FLAG_FERRY) { ferryM += len; continue; }
-    const level = Number(seg.level) || 0;
+    // routeSegmentLevel, not the raw stored byte: a stored zero is "not
+    // scored", and this file's own rule is to rescore it, not trust it.
+    const level = routeSegmentLevel(seg);
     if (level >= 1 && level <= 4) levels[level] += len;
     if (isConfirmedUnpavedSurface(seg.surface)) unpavedM += len;
     if (credibleSegmentGradePct(seg) > 5) inclineOver5M += len;
@@ -409,8 +413,11 @@ function routeGradeStats(segs) {
   const maxGradePct = sustainedUphillGradeSamples(segs)
     .reduce((max, sample) => Math.max(max, sample.gradePct), 0);
   return {
-    avgUphillPct: uphillM > 0 ? 100 * uphillRiseM / uphillM : 0,
-    maxGradePct,
+    // Rounded exactly as the worker rounds them: the stored copy and this
+    // recomputed one feed the same display and the same >18% warning, and an
+    // unrounded 18.04 here warned where the worker's 18.0 did not.
+    avgUphillPct: uphillM > 0 ? Math.round(10 * 100 * uphillRiseM / uphillM) / 10 : 0,
+    maxGradePct: Math.round(10 * maxGradePct) / 10,
   };
 }
 
@@ -1293,46 +1300,8 @@ function routePreviewRenderData() {
   return { points, colored: { type: 'FeatureCollection', features }, unpaved, dismount };
 }
 
-function ensureUnpavedSlatImage(targetMap) {
-  const imageId = 'route-preview-unpaved-slats';
-  if (targetMap.hasImage(imageId)) return;
-  const width = 2, height = 12;
-  const data = new Uint8Array(width * height * 4);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const offset = (y * width + x) * 4;
-      data[offset] = 35;
-      data[offset + 1] = 54;
-      data[offset + 2] = 66;
-      data[offset + 3] = 218;
-    }
-  }
-  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
-}
-
-function ensureDismountMarkerImage(targetMap) {
-  const imageId = 'route-preview-dismount-marker-icon';
-  if (targetMap.hasImage(imageId)) return;
-  const width = 18, height = 18;
-  const data = new Uint8Array(width * height * 4);
-  const paint = (x, y, color) => {
-    if (x < 0 || x >= width || y < 0 || y >= height) return;
-    const offset = (y * width + x) * 4;
-    data[offset] = color[0]; data[offset + 1] = color[1];
-    data[offset + 2] = color[2]; data[offset + 3] = color[3];
-  };
-  for (let y = 1; y < 17; y++) {
-    const half = Math.max(1, Math.floor((y - 1) * .5) + 1);
-    for (let x = 9 - half; x <= 9 + half; x++) paint(x, y, [138, 86, 0, 255]);
-  }
-  for (let y = 3; y < 15; y++) {
-    const half = Math.max(1, Math.floor((y - 2) * .47));
-    for (let x = 9 - half; x <= 9 + half; x++) paint(x, y, [239, 176, 37, 255]);
-  }
-  for (let y = 6; y < 11; y++) { paint(8, y, [81, 47, 0, 255]); paint(9, y, [81, 47, 0, 255]); }
-  paint(8, 13, [81, 47, 0, 255]); paint(9, 13, [81, 47, 0, 255]);
-  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
-}
+// Both preview images come from marker-icons.js -- the same painters the main
+// map uses, so the preview cannot drift back to the retired warning triangle.
 
 function setRoutePreviewFailPulse(on) {
   if (on && !routePreviewFailPulseTimer) {
@@ -1393,8 +1362,8 @@ function initializeRoutePreviewMap() {
     addRouteLayer('caution', { 'line-color': CAUTION_COLOR, 'line-width': 4.8 });
     addRouteLayer('fail', { 'line-color': FAIL_COLOR, 'line-width': 4.8, 'line-dasharray': [1.5, 1] });
     addRouteLayer('unknown', { 'line-color': '#98a2ad', 'line-width': 4.8 });
-    ensureUnpavedSlatImage(routePreviewMap);
-    ensureDismountMarkerImage(routePreviewMap);
+    ensureUnpavedSlatImage(routePreviewMap, 'route-preview-unpaved-slats');
+    ensureDismountMarkerImage(routePreviewMap, 'route-preview-dismount-marker-icon');
     routePreviewMap.addLayer({ id: 'route-preview-unpaved-slats', type: 'symbol', source: 'route-preview-unpaved',
       layout: {
         'symbol-placement': 'line', 'symbol-spacing': 10,

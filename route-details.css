@@ -43,7 +43,7 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 .route-summary-category-item > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .route-summary-mix b { color: #223c4b; font: 850 11.5px/1 system-ui; text-align: right; white-space: nowrap; }
 .route-summary-mix .category-caution, .route-summary-mix .category-caution b { color: #813e00; }
-.route-summary-mix .category-fail, .route-summary-mix .category-fail b { color: #a51c30; }
+.route-summary-mix .category-fail, .route-summary-mix .category-fail b { color: var(--verdict-fail); }
 .route-summary-category-swatch { display: block; width: 18px; height: 9px; border-radius: 2px; }
 .route-summary-category-swatch.trail { height: 10px; background-color: var(--bike-network); background-image: radial-gradient(circle, var(--trail-dots) 0 1.5px, transparent 1.7px); background-position: 1px center; background-size: 6px 10px; }
 .route-summary-category-swatch.bike { background: var(--bike-network); }
