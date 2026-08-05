@@ -12,7 +12,7 @@
  */
 importScripts('./build-version.js');
 
-const VERSION = 'v555'; // bump when app shell changes
+const VERSION = 'v556'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -161,7 +161,7 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   if (url.origin === location.origin && url.pathname.endsWith('.pmtiles')) {
-    e.respondWith(pmtilesOnlineFirst(e.request));
+    e.respondWith(pmtilesCacheFirst(e.request));
   } else if (url.origin === location.origin && url.pathname.endsWith('/data/graph2.bin.gz')) {
     // The one /data/ asset whose query string matters: it carries the graph's
     // build version, and ignoring it served a stale routing graph forever.
@@ -186,18 +186,23 @@ async function cacheFirst(name, req, ignoreSearch = false) {
   return res;
 }
 
-async function pmtilesOnlineFirst(req) {
+async function pmtilesCacheFirst(req) {
+  // CACHE-FIRST, reversed from the original online-first. Field Network-tab
+  // evidence: every online range round-trip to Pages measured 700-1100 ms,
+  // and one zoom level crossing asks for DOZENS of ranges -- that was the
+  // "laggy zoom" report. The complete archive stored at installation serves
+  // the same range locally in about a millisecond. The memory worry that
+  // motivated online-first is obsolete: a Blob is a disk-backed handle, not
+  // resident bytes, and the offline path has materialized these same
+  // handles all along. Freshness rides the activation stamp refresh
+  // (ARCHIVE_VERSIONS), exactly as the offline copies always have; the
+  // network remains the path for an archive the install never finished
+  // (pmtilesRangeResponse fetches and stores the whole file on a miss).
   try {
-    const response = await fetch(req);
-    // A PMTiles range read must remain a range response. GitHub Pages supports
-    // this directly, avoiding a 35–44 MB cached-archive Blob for every tile.
-    if (response.ok && (!req.headers.get('Range') || response.status === 206)) {
-      return response;
-    }
+    return await pmtilesRangeResponse(req);
   } catch (e) {
-    // Offline: fall through to the complete archive stored at installation.
+    return fetch(req);
   }
-  return pmtilesRangeResponse(req);
 }
 
 async function precacheData() {
