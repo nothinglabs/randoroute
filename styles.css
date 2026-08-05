@@ -910,7 +910,7 @@ body.navigation-active #routeBar { display: none; }
 #appWeightsBtn[hidden] { display: none; }
 #appWeightsBtn.tuned { border-color: #d8a447; background: #fff6e4; color: #96590a; }
 .app-help-update { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px 10px; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e1e7eb; }
-.app-help-version { margin: 0 !important; color: #56616a; font: 650 12px/1.2 system-ui; }
+.app-help-version { margin: 0 !important; color: #56616a; font: 650 12px/1.35 system-ui; white-space: pre-line; }
 .app-help-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 #checkUpdatesBtn, #techDetailsBtn { flex: none; padding: 6px 9px; border: 1px solid #c9d7e0; border-radius: 8px; background: #f6fafc; color: #0a66c2; font: 700 10.5px system-ui; cursor: pointer; }
 #techDetailsBtn { border-color: #a9c4d5; background: #eef7fb; color: #245b78; }

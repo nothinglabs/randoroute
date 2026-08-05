@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.578';
+const APP_VERSION = '2026-08-05.579';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -5873,10 +5873,17 @@ function onRouterMessage(ev) {
     }
     routing.routeRequestActive = false;
     document.body.dataset.routeOptionsMs = String(Math.round(Number(m.ms) || 0));
-    // The per-phase breakdown, for diagnosing a slow platform from its own
-    // console: which phase ate the time is the fact that matters, and it
-    // cannot be reconstructed after the fact.
-    if (m.timings) console.log('[route-options] phase timings (ms)', m.timings);
+    // The per-phase breakdown, for diagnosing a slow platform: which phase
+    // ate the time is the fact that matters, and it cannot be reconstructed
+    // after the fact. Held on routing state and shown on the Settings page
+    // (syncGraphVersionLine) -- the console.log alone proved unfindable in
+    // the field -- and mirrored onto the body dataset for tests and DevTools.
+    if (m.timings) {
+      console.log('[route-options] phase timings (ms)', m.timings);
+      routing.lastTimings = m.timings;
+      document.body.dataset.routeOptionsTimings = JSON.stringify(m.timings);
+      syncGraphVersionLine();
+    }
     setRouteOptionsLoading(false);
     if (!m.ok || !Array.isArray(m.options) || !m.options.length) {
       showRouteActionToast('Could not calculate that route', { duration: 2600 });
@@ -10878,6 +10885,10 @@ document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('cli
 // One line answers both "what app is this" and "what map is it routing on".
 // The map half reports the hash of the bytes the router loaded, so a stale
 // service-worker cache shows up as STALE here instead of as a weird route.
+// A third line appears once a route has been compared: the last search's
+// per-phase timings, so a "why is my laptop slower than my phone" report
+// can be read straight off the Settings page on any device -- the console
+// line logging the same numbers proved unfindable in the field.
 function syncGraphVersionLine() {
   const el = document.getElementById('appVersion');
   if (!el) return;
@@ -10885,7 +10896,13 @@ function syncGraphVersionLine() {
   const graph = !loaded ? `map ${GRAPH_DATA_VERSION} (loading)`
     : loaded === GRAPH_DATA_VERSION ? `map ${loaded}`
     : `map ${loaded} — STALE, expected ${GRAPH_DATA_VERSION}`;
-  el.textContent = `v${APP_VERSION} · ${graph}`;
+  const t = routing.lastTimings;
+  const phases = t ? ['snap', 'profiles', 'corridors', 'discovery', 'ferries',
+    'matching', 'ranking'].filter((k) => t[k] >= 50)
+    .map((k) => `${k} ${(t[k] / 1000).toFixed(1)}`).join(', ') : '';
+  el.textContent = `v${APP_VERSION} · ${graph}`
+    + (t ? `\nlast route search ${(t.totalMs / 1000).toFixed(1)}s`
+      + (phases ? ` (${phases})` : '') : '');
 }
 syncGraphVersionLine();
 const nativeAppVersionOnly = document.documentElement.dataset.appRuntime === 'native'
