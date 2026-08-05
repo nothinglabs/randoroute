@@ -2658,8 +2658,27 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // ordinary profiles remains eligible to be recommended as before.
   const ordinaryPractical = practicalChoices.filter((route) => !route._profile.fullyMatchingProbe);
   const recommendationPool = ordinaryPractical.length ? ordinaryPractical : practicalChoices;
-  let recommended = recommendationPool.reduce((best, route) =>
-    !best || compareSafety(route, best) < 0 ? route : best, null);
+  // The star pays a PRICE for fail avoidance instead of granting it a veto.
+  // This used to be compareSafety() -- lexicographic, so any reduction in
+  // absolute failing meters beat any amount of time within the practical
+  // window. On Seattle-Everett that recommended 40.4 mi / 3h19 over
+  // 33.0 mi / 2h43 to avoid 651 m of failing shoulder: a 36-minute detour
+  // for a difference that rounds to the same "1% fails" on both cards. At
+  // one second per meter, avoiding a full mile of failing road is worth up
+  // to ~27 minutes of extra riding -- and no more. Ties still break toward
+  // the strictly safer route, and the strictly safest candidate keeps its
+  // own lettered slot regardless (safestOverall, below).
+  const FAIL_AVOID_PRICE_S_PER_M = 1;
+  const recommendationScore = (route) =>
+    route.timeS + route.failM * FAIL_AVOID_PRICE_S_PER_M;
+  let recommended = null;
+  for (const route of recommendationPool) {
+    if (!recommended) { recommended = route; continue; }
+    const delta = recommendationScore(route) - recommendationScore(recommended);
+    if (delta < 0 || (delta === 0 && compareSafety(route, recommended) < 0)) {
+      recommended = route;
+    }
+  }
   // The rider's rules outrank a modest time saving: when the practical
   // recommendation still carries failing distance but a fully matching
   // route (including the strict probe) exists within a wider-but-sane

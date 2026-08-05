@@ -950,9 +950,25 @@ power (0.22 for "more direct", 1.2 for "more safety-focused") and the
 per-mph speed rates scaled linearly. Physics (climb/turn seconds, ferry wait,
 elevation factors), the freeway and mountain-bike last-resort walls, and the
 safety RULES are untouched — a remix changes which legal routes are offered,
-never how any road is judged or coloured. Unless pinned with "always use this
-mode", the remix resets to Recommended whenever start or destination changes;
-waypoints and road blocks keep it.
+never how any road is judged or coloured. A remix is an inspection of the
+current trip, not a standing preference: it resets to Recommended whenever
+start or destination changes (reversing counts); waypoints and road blocks
+keep it. Picking any mode — including the one already current — rebuilds the
+portfolio and takes its recommendation afresh.
+
+**The recommended route** (the starred letter) is chosen from the candidates
+whose every leg stays within a practical detour of the quickest option
+(1.35× distance + 800 m, 1.4× time + 5 min per leg), by minimizing
+`time + 1 s × failing meters` — fail avoidance pays a PRICE rather than
+holding a veto. Under the old lexicographic rule any reduction in absolute
+failing meters beat any amount of time inside that window, which on
+Seattle–Everett starred a 40.4 mi / 3h19 route over 33.0 mi / 2h43 to avoid
+651 m of failing shoulder — a difference that rounds to the same "1% fails"
+on both route cards. At one second per meter, avoiding a mile of failing
+road is worth up to ~27 minutes of extra riding, no more. Ties break toward
+the strictly safer route; the strictly safest candidate keeps its own
+lettered slot regardless, and a fully rules-matching route still takes the
+star from a failing one within its own wider bound (1.8× distance per leg).
 
 | influence | function / weight | what it expresses |
 |---|---|---|
