@@ -81,6 +81,9 @@ function workerGlobals(messages) {
     Int32Array, Uint8Array, Uint8ClampedArray, Uint16Array, Uint32Array,
     console, isNaN, isFinite, parseInt, parseFloat, Number, String, Boolean,
     Array, Object, Error, RangeError, TypeError, Promise, Symbol, BigInt,
+    // Browsers give workers timers; the cache pre-warm sweeps in setTimeout
+    // chunks so a real request only ever waits for the current slice.
+    setTimeout, clearTimeout,
     postMessage(message) { messages.push(message); },
   };
 }

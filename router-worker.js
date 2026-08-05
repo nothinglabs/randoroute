@@ -1374,7 +1374,12 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
  * slots, because adaptive-corridor probing alternates two configurations
  * (direct and balanced) per candidate -- one slot would thrash on exactly
  * the request this exists to speed up. */
-const COST_CACHE_SLOTS = 4;
+// Twelve, not four: the profile grid is 3 modes x 4 preference combos = 12
+// distinct cache keys per rules configuration, and with only 4 slots every
+// portfolio evicted its own working set while it ran. Storage is Float32 --
+// per-arc seconds need 7 digits of precision, not 16 -- so twelve slots cost
+// about what four Float64 slots did (~16 MB each at 2.6M arcs).
+const COST_CACHE_SLOTS = 12;
 // See the h() comment in routeLeg: found-route cost is bounded by this factor
 // times the optimum. 1.0 = exact A*.
 const SEARCH_OVERSHOOT = 1.15;
@@ -1388,12 +1393,68 @@ function arcCostCache(key) {
     }
   }
   const slot = costCacheSlots.length < COST_CACHE_SLOTS
-    ? { key: '', mul: new Float64Array(D), add: new Float32Array(D), divOk: new Uint8Array(D) }
+    ? { key: '', mul: new Float32Array(D), add: new Float32Array(D), divOk: new Uint8Array(D) }
     : costCacheSlots.pop();
   slot.key = key;
   slot.mul.fill(NaN);   // NaN = not yet computed; a real cost is never NaN
   costCacheSlots.unshift(slot);
   return slot;
+}
+
+/* ---- idle cache pre-warm -------------------------------------------------
+ * Fills the per-arc cost cache for the profile grid's configurations while
+ * nobody is waiting, so the FIRST search of a session runs at the speed a
+ * long-lived app reaches organically. Field diagnosis behind it: a Mac's
+ * fresh tab took 16.8 s where a phone that had routed all evening took 3.5 s
+ * -- matching (uncached compute) identical, search phases 3-12x apart. The
+ * fill is EXACTLY what the search would compute and store (same key, same
+ * edgeCostParts, same Float32 rounding), so warmed and organic results are
+ * indistinguishable. Chunked with setTimeout(0) so a real request arriving
+ * mid-warm waits only for the current slice; a newer warm-up (rules changed)
+ * cancels the old one via the token. */
+let prewarmToken = 0;
+function prewarmArcCosts(rules, configs, id) {
+  const token = ++prewarmToken;
+  const started = Date.now();
+  let configIndex = 0, u = 0, filled = 0;
+  const CHUNK_NODES = 30000;
+  const step = () => {
+    if (token !== prewarmToken) return;
+    const config = configs[configIndex];
+    if (!config) {
+      postMessage({ type: 'prewarm-done', id, filled, ms: Date.now() - started });
+      return;
+    }
+    const modeW = modeWeights(config.mode);
+    const costKey = `${config.mode}|${config.prefDesig ? 1 : 0}${config.prefResidential ? 1 : 0}`
+      + `|${boundSignature(rules)}|=`;
+    const { mul: cMul, add: cAdd, divOk: cDivOk } = arcCostCache(costKey);
+    const stop = Math.min(N, u + CHUNK_NODES);
+    for (; u < stop; u++) {
+      for (let a = outStart[u]; a < outStart[u + 1]; a++) {
+        if (cMul[a] === cMul[a]) continue;
+        const ei = outEdge[a];
+        const fl = eFlags[ei];
+        const forward = eA[ei] === u;
+        // The same admission gates the search applies; an arc it would skip
+        // stays NaN and is filled organically if a config ever admits it.
+        if (edgeShoulder(ei, forward) === PROHIBITED_SHOULDER) continue;
+        if (!rules.allowMtbTrails && (eOfficial[ei] & EDGE_MTB)) continue;
+        if (!rules.allowFreeways && (fl & 4)) continue;
+        const actualLevel = edgeLevelFor(ei, rules, forward);
+        cMul[a] = edgeCostParts(ei, forward, config.mode, modeW, rules, rules,
+          config.prefDesig, config.prefResidential,
+          (fl & 32) && nodeHasLand[u] ? activeWeights.ferryWaitMin * 60 : 0,
+          rules.requireSafe && actualLevel === 4);
+        cAdd[a] = partsSteep + partsSurf;
+        cDivOk[a] = partsDivOk;
+        filled++;
+      }
+    }
+    if (u >= N) { configIndex++; u = 0; }
+    setTimeout(step, 0);
+  };
+  step();
 }
 
 function edgeCostFloor(i, forward) {
@@ -1684,12 +1745,16 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // conservatively, but they never change legality or reported safety.
       let mulC = cMul[a];
       if (mulC !== mulC) {
-        cMul[a] = mulC = edgeCostParts(ei, forward, mode, modeW, rules,
+        cMul[a] = edgeCostParts(ei, forward, mode, modeW, rules,
           searchRules, prefDesig, prefResidential,
           (fl & 32) && nodeHasLand[u] ? activeWeights.ferryWaitMin * 60 : 0,
           rules.requireSafe && actualLevel === 4);
         cAdd[a] = partsSteep + partsSurf;
         cDivOk[a] = partsDivOk;
+        // Read BACK through the Float32 store: the filling search must price
+        // an arc exactly as every later cache hit will, or a cold and a warm
+        // run of the same request could disagree in the last float digit.
+        mulC = cMul[a];
       }
       let cost = diversityEdges && cDivOk[a] && diversityEdges.has(ei)
         ? mulC * diversityFactor : mulC;
@@ -3020,7 +3085,27 @@ onmessage = (ev) => {
         prefResidential: !!m.prefResidential,
       };
       postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }) });
+    } else if (m.type === 'prewarm') {
+      useWeights(m.weights);
+      // The full profile grid: 3 modes x 4 preference combos, the twelve
+      // keys the portfolio will ask for. Chunked and cancellable. A caller
+      // may narrow the sweep (tests warm one config to stay fast).
+      let configs = Array.isArray(m.configs) && m.configs.length ? m.configs : null;
+      if (!configs) {
+        configs = [];
+        for (const mode of ['direct', 'balanced', 'low']) {
+          for (const prefDesig of [false, true]) {
+            for (const prefResidential of [false, true]) {
+              configs.push({ mode, prefDesig, prefResidential });
+            }
+          }
+        }
+      }
+      prewarmArcCosts(m.rules, configs, m.id);
     } else if (m.type === 'route-options') {
+      // A real request outranks background warming; the search itself warms
+      // whatever the cancelled sweep had not reached.
+      prewarmToken++;
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const progress = (detail) => postMessage({ type: 'progress', phase: 'route', id: m.id, detail });

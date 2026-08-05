@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.580';
+const APP_VERSION = '2026-08-05.581';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -991,6 +991,7 @@ function savedLayer(key) {
   return soloPreviewRestore ? soloPreviewRestore.flags[key] : display[key];
 }
 function saveStateNow() {
+  flushStoreRouteDetails();
   clearTimeout(saveTimer);
   saveTimer = null;
   // An untouched older tab must not overwrite a newer tab's route when a
@@ -1462,6 +1463,7 @@ function scheduleRescore() {
   _ruleRouteTimer = setTimeout(() => {
     _ruleRouteTimer = null;
     if (routing.ready && routing.start && routing.end) computeRoute();
+    else schedulePrewarm();
   }, 700);
 }
 
@@ -1477,7 +1479,20 @@ function scheduleReroute() {
   _ruleRouteTimer = setTimeout(() => {
     _ruleRouteTimer = null;
     if (routing.ready && routing.start && routing.end) computeRoute();
+    else schedulePrewarm();
   }, 700);
+}
+
+// Ask the router to fill its per-arc cost cache for the current settings
+// while nobody is waiting, so the FIRST search of a session runs at the
+// speed a long-lived app reaches organically (field: fresh Mac tab 16.8 s
+// vs warmed-up phone 3.5 s for the same trip). Only when no trip is set --
+// an actual search warms the cache better than any sweep.
+function schedulePrewarm() {
+  if (!routing.ready || !routing.worker) return;
+  if (routing.start && routing.end) return;
+  routing.worker.postMessage({ type: 'prewarm', id: ++routing.reqId,
+    rules: { ...rules }, weights: remixedRoutingWeights() });
 }
 
 const FAIL_COLOR = '#9aa0a6';
@@ -3038,6 +3053,21 @@ function routeDetailsOptionTabs(selected) {
           || `Route ${index + 1}`;
     return { index, label, selected: option === selected };
   }).filter(Boolean);
+}
+
+let _storeDetailsTimer = null;
+let _storeDetailsOption = null;
+function scheduleStoreRouteDetails(option) {
+  _storeDetailsOption = option;
+  clearTimeout(_storeDetailsTimer);
+  _storeDetailsTimer = setTimeout(flushStoreRouteDetails, 400);
+}
+function flushStoreRouteDetails() {
+  clearTimeout(_storeDetailsTimer);
+  _storeDetailsTimer = null;
+  const option = _storeDetailsOption;
+  _storeDetailsOption = null;
+  if (option) storeRouteDetails(option);
 }
 
 function storeRouteDetails(m) {
@@ -5894,6 +5924,7 @@ function onRouterMessage(ev) {
     }
     renderRouteCard(routing.last);
     computeRoute();
+    schedulePrewarm();
   } else if (m.type === 'route-options') {
     if (m.id !== routing.reqId) return;
     const remaining = 400 - (performance.now() - routing.compareStartedAt);
@@ -7671,6 +7702,7 @@ function clearRoute() {
   routing.last = null;
   routing.options = [];
   routing.pinnedLetters = null;
+  schedulePrewarm();
   routing.missingLetters = null;
   clearStoredRouteDetails();
   renderRouteOptionControls();
@@ -8120,7 +8152,11 @@ function activateRouteOption(option, updateNavigation = false) {
   const shouldFlashWarning = !warningWasActive && routeHasDetailsWarning(option);
   syncRouteDetailsWarningState(option, { flash: shouldFlashWarning });
   if (shouldFlashWarning) flashRouteCardWarnings(option);
-  storeRouteDetails(option);
+  // Deferred: the compact report re-derives a verdict for every segment and
+  // stringifies the lot (~60 ms of a ~100 ms letter switch on a long route).
+  // A rider flipping A-B-C-D pays it once at settle instead of per tap, and
+  // nothing can read it stale -- openRouteDetails() re-stores before loading.
+  scheduleStoreRouteDetails(option);
   drawRoute(option.coords, option.ferrySegs, option.segs);
   consumePendingRouteStepHighlight();
   setRouteStatus(`${fmtMi(option.distM)} mi · ${option.optimization?.label || 'route choice'}`);
