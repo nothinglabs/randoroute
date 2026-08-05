@@ -174,6 +174,7 @@ const thumbs = await pg.evaluate(() => {
       dots: svg ? svg.querySelectorAll('circle').length : 0,
       nan: (base?.getAttribute('d') || '').includes('NaN'),
       viewBox: svg?.getAttribute('viewBox'),
+      d: base?.getAttribute('d') || '',
     };
   });
 });
@@ -184,14 +185,20 @@ check('each thumbnail marks a start and an end',
   thumbs.every((t) => t.dots === 2), thumbs.map((t) => t.dots).join(','));
 check('thumbnails share one viewBox',
   new Set(thumbs.map((t) => t.viewBox)).size === 1, thumbs[0]?.viewBox);
-// Routes between the same two points share endpoints, so their extent along the
-// travel axis is near-identical by construction -- comparing that would prove
-// nothing. What separates them is how far each WANDERS off the direct line, so
-// compare the cross-axis extent.
-const wander = thumbs.map((t) => Math.min(t.w, t.h));
+// Routes between the same two points share endpoints -- and, under weights
+// that pull every profile toward the same trail corridor, often share their
+// cross-axis extent too. Five genuinely different Mukilteo routes (16-93%
+// shared points) all spanned 23 px here, their real widths within 150 m of
+// each other over an 11 km band. A bounding box cannot see HOW a route
+// wanders inside the band, so compare the drawn geometry itself: the offered
+// candidates are meaningfully-different routes by the portfolio's own
+// dedupe, and each must arrive as its own distinct polyline. (Discarded
+// rows are excluded: literal duplicates rightly draw identically.)
+const offeredThumbs = thumbs.filter((t, i) => rows[i]?.offered);
+const distinctPaths = new Set(offeredThumbs.map((t) => t.d)).size;
 check('routes that wander differently draw differently',
-  Math.max(...wander) - Math.min(...wander) >= 4,
-  `cross-axis extents ${wander.join(',')}`);
+  offeredThumbs.length >= 2 && distinctPaths === offeredThumbs.length,
+  `${distinctPaths} distinct paths among ${offeredThumbs.length} offered thumbnails`);
 // Aspect. Seattle -> Mukilteo is ~0.34 degrees north-south against ~0.04 east
 // -west, so every sketch must be clearly TALLER than it is wide. This is the
 // assertion that catches a sheared projection: mixing degrees on one axis with
