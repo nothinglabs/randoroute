@@ -30,4 +30,12 @@
   root.GRAPH_FORMAT_VERSION = 'bgr10-1';
   root.GRAPH_URL = `data/graph2.bin.gz?format=${root.GRAPH_FORMAT_VERSION}`
     + `&gv=${root.GRAPH_DATA_VERSION}`;
+  // The tile archives get the same treatment the graph got, for the same
+  // reason: the offline copies are cached by URL and were otherwise refreshed
+  // only by reinstalling the app. sw.js compares these stamps on activation
+  // and refetches an archive whose stamp changed. Stamped by
+  // scripts/stamp_tiles_version.mjs after a tile rebuild -- run it, never
+  // hand-edit.
+  root.ROADS_TILES_VERSION = 'sha-dd29b387e828';
+  root.BASEMAP_TILES_VERSION = 'sha-77136fe2672a';
 }(typeof self !== 'undefined' ? self : this));

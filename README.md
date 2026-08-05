@@ -239,6 +239,7 @@ tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
   --simplification=8 --simplify-only-low-zooms \
   --read-parallel data/roads-1.geojson data/roads-2.geojson
 rm data/roads-*.geojson  # intermediate
+node scripts/stamp_tiles_version.mjs  # so installed PWAs refresh their offline copy
 ```
 
 `--simplify-only-low-zooms` is required, not a preference. The app draws these

@@ -12,7 +12,7 @@
  */
 importScripts('./build-version.js');
 
-const VERSION = 'v538'; // bump when app shell changes
+const VERSION = 'v539'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -64,11 +64,31 @@ const DATA = [
   './data/places.json',
 ];
 // Small, release-generated overlays can change without changing the 100+ MB
-// statewide archives. Refresh these explicitly while retaining the rest of
-// DATA_CACHE across UI releases.
+// statewide archives. Refresh ALL of them on every activation while retaining
+// the big archives across UI releases -- "check for updates" must really
+// deliver everything new, and these together are a few MB.
 const ALWAYS_REFRESH_DATA = new Set([
   './data/bikeroutes.geojson.gz',
+  './data/blts.geojson.gz',
+  './data/bikeinfra.geojson.gz',
+  './data/bike_restrictions.geojson.gz',
+  './data/route_closures.geojson.gz',
+  './data/places.json',
 ]);
+
+// The big archives refresh only when their content stamp (build-version.js)
+// changes. The stamp of the cached copy is stored as a marker entry beside
+// the archive; no marker means an install that predates stamping, which
+// counts as stale -- one refresh, then it is stamped like everything else.
+const ARCHIVE_VERSIONS = {
+  './data/roads.pmtiles': ROADS_TILES_VERSION,
+  './data/basemap.pmtiles': BASEMAP_TILES_VERSION,
+};
+// Markers live under a distinct pathname, never a query string: the archive
+// lookups use ignoreSearch, so a `?stamp` variant of the same path could be
+// returned AS the archive. Nothing ever fetches this path; it exists only as
+// a Cache API key.
+const archiveMarker = (path) => new Request(path.replace('./data/', './data/.stamp/'));
 
 // cache.addAll() is all-or-nothing: one dropped request on a phone fails the
 // whole install, the new worker never reaches the waiting state, and the app
@@ -132,6 +152,10 @@ self.addEventListener('activate', (e) => {
       .then(() => purgeStaleGraph())
       .then(() => refreshReleaseData())
       .then(() => self.clients.claim())
+      // AFTER claiming: a stale 40+ MB archive must never delay the update
+      // taking control. waitUntil keeps the worker alive while it refreshes;
+      // failure keeps the old archive, and the next activation retries.
+      .then(() => refreshStaleArchives())
   );
 });
 
@@ -187,6 +211,31 @@ async function precacheData() {
     const request = new Request(path, { cache: 'reload' });
     const hit = await cache.match(request, { ignoreSearch: true });
     if (!hit) await cache.add(request);
+    // Record which stamp this archive copy corresponds to, so a later
+    // activation can tell fresh from stale without re-downloading.
+    if (path in ARCHIVE_VERSIONS) {
+      await cache.put(archiveMarker(path), new Response(ARCHIVE_VERSIONS[path]));
+    }
+  }
+}
+
+// Refresh a big archive only when its content stamp changed. Keeps the old
+// copy if the download fails, so offline never gets worse than it was.
+async function refreshStaleArchives() {
+  const cache = await caches.open(DATA_CACHE);
+  for (const [path, version] of Object.entries(ARCHIVE_VERSIONS)) {
+    const marker = await cache.match(archiveMarker(path));
+    const cachedVersion = marker ? await marker.text() : null;
+    if (cachedVersion === version) continue;
+    try {
+      const response = await fetch(new Request(path, { cache: 'reload' }));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await cache.put(path, response);
+      await cache.put(archiveMarker(path), new Response(version));
+      pmtilesBlobPromises.delete(new URL(path, location.href).pathname);
+    } catch (error) {
+      console.warn(`Could not refresh ${path}:`, error);
+    }
   }
 }
 
