@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // The per-arc cost cache is a pure memo: it must never change WHICH routes
-// come back, only how fast. Two hazards are pinned here. Float32 storage --
+// come back, only how fast. Three hazards are pinned here. Float32 storage --
 // the filling search must price an arc exactly as every later cache hit will
 // (the fill reads back through the store), or a cold and a warm run of the
-// same request could disagree in the last float digit and flip a tie. And
-// the idle pre-warm -- a sweep-filled cache must be indistinguishable from
-// an organically filled one.
+// same request could disagree in the last float digit and flip a tie. The
+// idle pre-warm -- a sweep-filled cache must be indistinguishable from an
+// organically filled one. And requireSafe -- deliberately absent from the
+// cache key, so a strict request shares slots with ordinary ones; its x30
+// access surcharge must be applied live and never stored, or one strict
+// search would bend every ordinary search that follows.
 import assert from 'node:assert/strict';
 import { routerWorker } from './testlib/harness.mjs';
 
@@ -43,5 +46,15 @@ const sweptReply = swept.post(request('swept'));
 assert.equal(signature(sweptReply), signature(cold),
   'a pre-warmed run must return exactly the cold run’s routes');
 
-console.log(`Cache parity holds: cold, warm and pre-warmed runs agree on `
-  + `${cold.options.length} routes (${done.filled.toLocaleString()} arcs swept).`);
+// Toggle "fully matching" on, route, toggle it off, route again: the
+// ordinary answer must be exactly what a fresh worker gives. A stored
+// surcharge would surface here as a warm-only detour around a short
+// failing crossing the cold run accepted.
+const toggled = routerWorker({ fresh: true });
+toggled.post({ ...request('strict'), rules: { ...RULES, requireSafe: true } });
+const afterStrict = toggled.post(request('after-strict'));
+assert.equal(signature(afterStrict), signature(cold),
+  'an ordinary run after a requireSafe run must match a fresh worker');
+
+console.log(`Cache parity holds: cold, warm, pre-warmed and strict-toggled runs `
+  + `agree on ${cold.options.length} routes (${done.filled.toLocaleString()} arcs swept).`);

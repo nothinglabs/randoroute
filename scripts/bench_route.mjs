@@ -13,6 +13,9 @@
 //   2026-08-05  pre-optimization        short 79.0 s   long 214.7 s
 //   2026-08-05  cost cache + weighted   short 53.9 s   long ~112 s
 //               A* (SEARCH_OVERSHOOT 1.15, exact when diversity probing)
+//   2026-08-05  12-slot Float32 cache   short cold 32 s, repeat 9.8 s
+//   2026-08-05  15 slots (grid + lens)  short cold 32 s, repeat 4.2 s
+//               -- repeats no longer re-derive discovery keys
 // Candidate distances that move more than ~1% from a previous run mean the
 // change was not perf-neutral -- stop and look before trusting the timing.
 import { routerWorker } from './testlib/harness.mjs';

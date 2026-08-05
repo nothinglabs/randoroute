@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.583';
+const APP_VERSION = '2026-08-05.584';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1496,7 +1496,10 @@ function schedulePrewarm() {
   if (!routing.ready || !routing.worker) return;
   if (routing.start && routing.end) return;
   routing.worker.postMessage({ type: 'prewarm', id: ++routing.reqId,
-    rules: { ...rules }, weights: remixedRoutingWeights() });
+    rules: { ...rules }, weights: remixedRoutingWeights(),
+    // The discovery-lens sweep warms discover-quick under the rider's own
+    // preference combo -- the same one a real request would search with.
+    prefDesignated: routing.prefDesig, prefResidential: routing.prefResidential });
 }
 
 const FAIL_COLOR = '#9aa0a6';

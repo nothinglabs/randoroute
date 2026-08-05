@@ -1374,12 +1374,17 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
  * slots, because adaptive-corridor probing alternates two configurations
  * (direct and balanced) per candidate -- one slot would thrash on exactly
  * the request this exists to speed up. */
-// Twelve, not four: the profile grid is 3 modes x 4 preference combos = 12
-// distinct cache keys per rules configuration, and with only 4 slots every
-// portfolio evicted its own working set while it ran. Storage is Float32 --
-// per-arc seconds need 7 digits of precision, not 16 -- so twelve slots cost
-// about what four Float64 slots did (~16 MB each at 2.6M arcs).
-const COST_CACHE_SLOTS = 12;
+// Fifteen: the profile grid is 3 modes x 4 preference combos = 12 distinct
+// cache keys per rules configuration, and the discovery lens adds 3 more
+// (direct/low/balanced under the stricter searchRules signature). At 12 slots
+// a request's own tail evicted the head of its working set -- LRU over 15
+// keys cycling through 12 slots re-derived several configs on EVERY repeat
+// request; discovery alone re-paid ~4 s per search. Storage is Float32 --
+// per-arc seconds need 7 digits of precision, not 16 -- so a slot is ~16 MB
+// at 2.6M arcs. The strict fully-matching probe does NOT need a slot of its
+// own: requireSafe is excluded from the key on purpose, and its surcharge is
+// applied live in the relaxation, never stored (see the fill below).
+const COST_CACHE_SLOTS = 15;
 // See the h() comment in routeLeg: found-route cost is bounded by this factor
 // times the optimum. 1.0 = exact A*.
 const SEARCH_OVERSHOOT = 1.15;
@@ -1426,8 +1431,21 @@ function prewarmArcCosts(rules, configs, id) {
       return;
     }
     const modeW = modeWeights(config.mode);
+    // Seed the rider's rules into the first verdict slot exactly as a real
+    // request does. Without this the rider rules land in the SECOND slot --
+    // and a lens config then evicts them per arc, ping-ponging one slot
+    // between two rule sets: two signature hashes and a generation bump per
+    // arc, verdict bytes never retained. Profiled at 10x the sweep's cost.
+    useVerdictCache(rules);
+    // A `lens` config warms a discovery key: same rider rules, priced through
+    // the conservative searchRules -- the exact key addDiscoveryCandidates
+    // will ask for. The requireSafe surcharge is never stored (see the
+    // relaxation fill), so no strict config exists to warm. One lens OBJECT
+    // per config, not per chunk: the verdict slots key on identity first.
+    const lens = config.lens ? (config._lens ??= conservativeDiscoveryRules(rules)) : null;
+    const searchRules = lens || rules;
     const costKey = `${config.mode}|${config.prefDesig ? 1 : 0}${config.prefResidential ? 1 : 0}`
-      + `|${boundSignature(rules)}|=`;
+      + `|${boundSignature(rules)}|${lens ? boundSignature(lens) : '='}`;
     const { mul: cMul, add: cAdd, divOk: cDivOk } = arcCostCache(costKey);
     const stop = Math.min(N, u + CHUNK_NODES);
     for (; u < stop; u++) {
@@ -1441,11 +1459,10 @@ function prewarmArcCosts(rules, configs, id) {
         if (edgeShoulder(ei, forward) === PROHIBITED_SHOULDER) continue;
         if (!rules.allowMtbTrails && (eOfficial[ei] & EDGE_MTB)) continue;
         if (!rules.allowFreeways && (fl & 4)) continue;
-        const actualLevel = edgeLevelFor(ei, rules, forward);
-        cMul[a] = edgeCostParts(ei, forward, config.mode, modeW, rules, rules,
+        cMul[a] = edgeCostParts(ei, forward, config.mode, modeW, rules, searchRules,
           config.prefDesig, config.prefResidential,
           (fl & 32) && nodeHasLand[u] ? activeWeights.ferryWaitMin * 60 : 0,
-          rules.requireSafe && actualLevel === 4);
+          false);
         cAdd[a] = partsSteep + partsSurf;
         cDivOk[a] = partsDivOk;
         filled++;
@@ -1511,10 +1528,14 @@ function edgeCostFloor(i, forward) {
 // handed to a search it was actually built for -- and survives into the next
 // request when nothing it depends on has moved.
 //
-// Three modes times a leg's goal. A ferry trip reaches seven: the adaptive
+// Three modes times a leg's goal, plus three more under the discovery lens.
+// A ferry trip adds several one-shot section goals on top: the adaptive
 // corridor probe re-searches each land section between crossings, and those
-// have goals of their own.
-const POTENTIAL_CACHE_MAX = 8;
+// have goals of their own. Sized so a ferry trip's tail cannot evict the six
+// keys the next request of the same trip will ask for again -- a potential is
+// a bounded backward Dijkstra, cheap to hold (a Uint16 per node) and slow to
+// rebuild.
+const POTENTIAL_CACHE_MAX = 12;
 const potentialCache = new Map();
 
 function goalPotential(goalNode, startNode, rules, searchRules, mode) {
@@ -1749,10 +1770,14 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // conservatively, but they never change legality or reported safety.
       let mulC = cMul[a];
       if (mulC !== mulC) {
+        // The requireSafe access surcharge is applied LIVE below, never
+        // stored: rulesSignature excludes requireSafe (so the strict probe
+        // shares this slot with the ordinary config), and a stored x30 would
+        // poison the shared slot for every later ordinary search.
         cMul[a] = edgeCostParts(ei, forward, mode, modeW, rules,
           searchRules, prefDesig, prefResidential,
           (fl & 32) && nodeHasLand[u] ? activeWeights.ferryWaitMin * 60 : 0,
-          rules.requireSafe && actualLevel === 4);
+          false);
         cAdd[a] = partsSteep + partsSurf;
         cDivOk[a] = partsDivOk;
         // Read BACK through the Float32 store: the filling search must price
@@ -1762,6 +1787,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       }
       let cost = diversityEdges && cDivOk[a] && diversityEdges.has(ei)
         ? mulC * diversityFactor : mulC;
+      // An exempted terminal-access block is a last resort, never a shortcut
+      // (multiplicative, so applying it here equals applying it inside the
+      // chain; the additive terms below are rightly exempt).
+      if (rules.requireSafe && actualLevel === 4) cost *= 30;
       cost += cAdd[a];
       if (isDismountEdge(ei) && (incomingEdge < 0 || !isDismountEdge(incomingEdge))) {
         cost += DISMOUNT_ENTRY_PENALTY_S;
@@ -3091,9 +3120,12 @@ onmessage = (ev) => {
       postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }) });
     } else if (m.type === 'prewarm') {
       useWeights(m.weights);
-      // The full profile grid: 3 modes x 4 preference combos, the twelve
-      // keys the portfolio will ask for. Chunked and cancellable. A caller
-      // may narrow the sweep (tests warm one config to stay fast).
+      // The full working set: the 3-mode x 4-preference grid, then the three
+      // discovery-lens keys the request's tail asks for (discover-quick uses
+      // the rider's own preference combo; gentle and alternative always run
+      // friendly). Grid first -- it serves every search; the lens keys only
+      // serve the discovery phase. Chunked and cancellable. A caller may
+      // narrow the sweep (tests warm one config to stay fast).
       let configs = Array.isArray(m.configs) && m.configs.length ? m.configs : null;
       if (!configs) {
         configs = [];
@@ -3103,6 +3135,12 @@ onmessage = (ev) => {
               configs.push({ mode, prefDesig, prefResidential });
             }
           }
+        }
+        if (conservativeDiscoveryRules(m.rules || {})) {
+          configs.push({ mode: 'direct', prefDesig: !!m.prefDesignated,
+            prefResidential: !!m.prefResidential, lens: true });
+          configs.push({ mode: 'low', prefDesig: true, prefResidential: true, lens: true });
+          configs.push({ mode: 'balanced', prefDesig: true, prefResidential: true, lens: true });
         }
       }
       prewarmArcCosts(m.rules, configs, m.id);
