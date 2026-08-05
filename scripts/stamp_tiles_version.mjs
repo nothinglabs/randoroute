@@ -22,6 +22,7 @@ const stamp = (name) => {
 const versions = {
   ROADS_TILES_VERSION: stamp('roads.pmtiles'),
   BASEMAP_TILES_VERSION: stamp('basemap.pmtiles'),
+  OVERLAY_TILES_VERSION: stamp('overlays.pmtiles'),
 };
 
 const path = join(ROOT, 'build-version.js');

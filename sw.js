@@ -12,7 +12,7 @@
  */
 importScripts('./build-version.js');
 
-const VERSION = 'v543'; // bump when app shell changes
+const VERSION = 'v544'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -54,12 +54,11 @@ const SHELL = [
 
 const DATA = [
   './data/bikeroutes.geojson.gz',
-  './data/blts.geojson.gz',
-  './data/bikeinfra.geojson.gz',
   './data/bike_restrictions.geojson.gz',
   './data/route_closures.geojson.gz',
   './data/roads.pmtiles',
   './data/basemap.pmtiles',
+  './data/overlays.pmtiles',
   `./${GRAPH_URL}`,
   './data/places.json',
 ];
@@ -69,8 +68,6 @@ const DATA = [
 // deliver everything new, and these together are a few MB.
 const ALWAYS_REFRESH_DATA = new Set([
   './data/bikeroutes.geojson.gz',
-  './data/blts.geojson.gz',
-  './data/bikeinfra.geojson.gz',
   './data/bike_restrictions.geojson.gz',
   './data/route_closures.geojson.gz',
   './data/places.json',
@@ -83,6 +80,7 @@ const ALWAYS_REFRESH_DATA = new Set([
 const ARCHIVE_VERSIONS = {
   './data/roads.pmtiles': ROADS_TILES_VERSION,
   './data/basemap.pmtiles': BASEMAP_TILES_VERSION,
+  './data/overlays.pmtiles': OVERLAY_TILES_VERSION,
 };
 // Markers live under a distinct pathname, never a query string: the archive
 // lookups use ignoreSearch, so a `?stamp` variant of the same path could be

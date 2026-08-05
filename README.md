@@ -239,8 +239,16 @@ tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
   --simplification=8 --simplify-only-low-zooms \
   --read-parallel data/roads-1.geojson data/roads-2.geojson
 rm data/roads-*.geojson  # intermediate
+python3 scripts/build_overlay_tiles.py  # bike-infrastructure + WSDOT BLTS overlay tiles
 node scripts/stamp_tiles_version.mjs  # so installed PWAs refresh their offline copy
 ```
+
+`build_overlay_tiles.py` turns `bikeinfra.geojson.gz` and `blts.geojson.gz`
+into `data/overlays.pmtiles` (two layers, every attribute preserved -- the tap
+cards re-score a tapped feature's raw properties). It applies the sharrow-only
+drop at build time and prints the per-layer feature counts, which are baked
+into `SOURCES` in app.js. The two `.geojson.gz` files stay in the repo as this
+build's inputs; the app itself no longer fetches them.
 
 `--simplify-only-low-zooms` is required, not a preference. The app draws these
 tiles far past their z13 maximum, so whatever z13 keeps is what a rider sees at

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.570';
+const APP_VERSION = '2026-08-05.571';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -562,7 +562,16 @@ const SOURCES = [
   {
     id: 'blts',
     name: Region.stressLayerName,
-    url: 'data/blts.geojson.gz',
+    // Vector tiles (shared archive with the OSM bike-infrastructure layer):
+    // as GeoJSON these two overlays held ~440 MB of a ~1 GB renderer between
+    // the retained parse, the map worker's serialized copy and its geojson-vt
+    // index -- for data the rider only sees a viewport of. Same move, same
+    // reasons as roads.geojson -> roads.pmtiles. Bump ?v= with sw.js VERSION
+    // when the archive is rebuilt (scripts/build_overlay_tiles.py).
+    vector: 'pmtiles://data/overlays.pmtiles?v=1',
+    mapSourceId: 'overlays',
+    sourceLayer: 'blts',
+    count: 55271, // baked by build_overlay_tiles.py (tiles carry no global count)
     scorer: scoreBLTS,
     zRank: 1,
     minVisibleZoom: BikeBasemap.ROAD_MIN_ZOOM.major,
@@ -584,11 +593,15 @@ const SOURCES = [
   {
     id: 'osm',
     name: 'OSM bike infrastructure',
-    url: 'data/bikeinfra.geojson.gz',
+    vector: 'pmtiles://data/overlays.pmtiles?v=1',
+    mapSourceId: 'overlays',
+    sourceLayer: 'bikeinfra',
+    count: 37788, // baked by build_overlay_tiles.py, after the sharrow-only drop
     scorer: scoreOSM,
     zRank: 2,
     minVisibleZoom: BikeBasemap.ROAD_MIN_ZOOM.major,
     enabled: true,
+    expr: true,   // levels compile from osmTileFacts; tiles carry no `level`
     fc: null,
     loading: false,
   },
@@ -721,6 +734,16 @@ function roadTileFacts() {
 // it as a compilation of the same rungs, not a second transcription of them.
 function roadLevelExpr() {
   return SafetyModel.levelExpr(rules, roadTileFacts);
+}
+
+// The same compile for whichever expression-scored source is asking. blts
+// never asks -- applyDisplayMode() filters its painted layers off before the
+// level is consulted -- so only the two sources that actually paint by level
+// need a facts adapter here. osmTileFacts is defined with the lime-rule
+// adapters below the map setup; by the time any layer paints it exists.
+function levelExprFor(src) {
+  if (src.id === 'osm') return SafetyModel.levelExpr(rules, osmTileFacts);
+  return roadLevelExpr();
 }
 
 /* ------------------------------------------------------------- map */
@@ -1229,23 +1252,74 @@ function bltsTileFacts() {
 
 // The OSM bike-infrastructure layer: every feature is dedicated infrastructure
 // by construction except a sharrow, which is paint in a shared traffic lane.
-// It carries no traffic rating and no facility grade, so under the shared rule
-// everything except `infra` is unknown and the compiled expression folds down
-// to exactly the sharrow test.
+// It carries no speed, traffic or lane data, so the whole needs-space family
+// folds out of the compiled ladder and what remains is: prohibited, then the
+// infrastructure's own score, then the shares-everything default.
 //
-// The MODEL'S sharrow test, not a blunter one. This used to veto lime for any
-// feature carrying a shared-lane value in ANY cycleway tag, which demoted 309
-// ways the card rightly calls bike network -- mostly streets with a real
-// painted lane one direction and a sharrow the other, plus dedicated paths
-// tagged with stray sharrow paint. sharrowOnly() asks the model's question --
-// a sharrow AND no facility of its own -- and a pure sharrow still never gets
-// here: it is dropped from this source at load and earns no riding-space
-// credit on the roads layer.
+// `infra` uses the MODEL'S sharrow test, not a blunter one. An earlier
+// expression vetoed lime for any feature carrying a shared-lane value in ANY
+// cycleway tag, which demoted 309 ways the card rightly calls bike network --
+// mostly streets with a real painted lane one direction and a sharrow the
+// other, plus dedicated paths tagged with stray sharrow paint. sharrowOnly()
+// asks the model's question -- a sharrow AND no facility of its own -- and a
+// pure sharrow still never gets here: it is dropped from the tiles at build
+// (scripts/build_overlay_tiles.py) and earns no riding-space credit on the
+// roads layer.
+//
+// `infraScore` is scoreOSM()'s if-chain compiled branch for branch, with -1
+// standing in for its null ("dedicated infrastructure, type unscored"), so a
+// tile feature and a tapped card cannot disagree about what a way is worth.
+// test_safety_model.mjs sweeps the two against each other over the real data.
 function osmTileFacts() {
+  const bike = ['coalesce', ['get', 'bicycle'], ''];
+  const hw = ['coalesce', ['get', 'highway'], ''];
+  // Tag precedence mirrors osmCycleway(): right before left.
+  const cw = ['coalesce', ['get', 'cycleway'], ['get', 'cycleway:both'],
+    ['get', 'cycleway:right'], ['get', 'cycleway:left'], ''];
+  const dedicated = ['in', hw,
+    ['literal', ['cycleway', 'path', 'footway', 'bridleway', 'track', 'service']]];
+  const bikeish = ['any',
+    ['in', hw, ['literal', ['cycleway', 'path', 'bridleway', 'track', 'service']]],
+    ['has', 'cycleway'], ['has', 'cycleway:both'],
+    ['has', 'cycleway:right'], ['has', 'cycleway:left']];
+  const prohibited = ['all', ['==', bike, 'no'], bikeish];
+  const yesOrDesignated = ['in', bike, ['literal', ['designated', 'yes']]];
+  const motorless = ['any',
+    ['in', ['coalesce', ['get', 'motor_vehicle'], ''], ['literal', ['no', 'private']]],
+    ['in', ['coalesce', ['get', 'access'], ''], ['literal', ['no', 'private']]]];
+  // scoreOSM()'s final fallback: a null-scored dedicated way is still a
+  // dedicated way. Reached from the sharrow branch and from no-branch-matched.
+  const dedicatedOrNull = ['case', dedicated, 2, -1];
+  const baseScore = ['case',
+    prohibited, 4,
+    ['all', ['==', hw, 'cycleway'], ['!=', bike, 'no']], 1,
+    ['all', ['==', hw, 'path'], yesOrDesignated], 1,
+    ['all', ['==', hw, 'footway'], yesOrDesignated], 2,
+    ['all', ['==', hw, 'bridleway'], yesOrDesignated], 2,
+    ['all', ['==', hw, 'track'], yesOrDesignated], 2,
+    ['all', ['==', hw, 'service'], ['==', bike, 'designated'], motorless], 1,
+    ['in', cw, ['literal', ['track', 'separated', 'opposite_track']]], 1,
+    ['==', cw, 'shared_lane'], dedicatedOrNull,
+    ['==', cw, 'lane'], 2,
+    dedicatedOrNull];
+  const unknownNum = { val: 0, known: false };
   return {
+    prohibited: { val: prohibited, known: true },
+    ferry: { val: false, known: true },
+    freeway: { val: false, known: true },
     infra: { val: ['!', sharrowOnlyExpr()], known: true },
-    facility: { val: 0, known: false },
-    stressRating: { val: 0, known: false },
+    infraScore: { val: baseScore, known: ['!=', baseScore, -1] },
+    facility: unknownNum,
+    limitedAccess: { val: false, known: true },
+    speed: unknownNum,
+    shoulder: unknownNum,
+    edgeSpace: unknownNum,
+    lanes: unknownNum,
+    sidewalk: { val: '', known: false },
+    urban: { val: false, known: true },
+    stressRating: unknownNum,
+    adt: unknownNum,
+    fc: unknownNum,
   };
 }
 
@@ -1995,7 +2069,7 @@ function applyDisplayMode(src) {
     updateVisibility(src);
     return;
   }
-  const lvl = src.expr ? roadLevelExpr() : ['get', 'level'];
+  const lvl = src.expr ? levelExprFor(src) : ['get', 'level'];
   // These sources carry an OSM highway class, so their colored road interiors
   // can follow the exact same major/medium/local zoom thresholds as the
   // locally rendered street underneath.
@@ -2229,14 +2303,11 @@ async function loadSource(src) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       fc = await jsonAssetResponse(res, src.url);
     }
-    // A road whose only bike credential is a sharrow is not bike
-    // infrastructure. Dropping it here lets the road layer underneath draw and
-    // answer taps with the speed, shoulder and lane data this source lacks --
-    // demoting it in place would score it grey for "no data" on a road we know
-    // plenty about.
-    if (src.id === 'osm') {
-      fc = { ...fc, features: fc.features.filter((f) => !sharrowOnly(f.properties)) };
-    }
+    // The bike-infrastructure sharrow-only drop that used to happen here now
+    // happens when the overlay tiles are built (scripts/build_overlay_tiles.py)
+    // -- the source streams from vector tiles and never passes through this
+    // path. sharrowOnly() stays above as the model's predicate: the hit-layer
+    // filters compile from its expression twin.
     src.count = Number.isFinite(fc.routeCount) ? fc.routeCount : fc.features.length;
     src.fc = fc;
     if (!src.expr) rescore(src); // sets .level on every feature

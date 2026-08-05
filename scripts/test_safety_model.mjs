@@ -10,6 +10,8 @@
 // the router) were drift between two of these copies.
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { SafetyModel, source } from './testlib/harness.mjs';
 
 const app = source('app.js');
@@ -225,6 +227,72 @@ for (const ruleSet of RULE_SETS) {
 assert.deepEqual(mismatches, [],
   `the map expression and the shared model must agree everywhere:\n${
     mismatches.map((m) => `  ${JSON.stringify(m)}`).join('\n')}`);
+
+/* -------- the OSM bike-infrastructure expression must match scoreOSM ---- */
+// The overlay tiles carry no precomputed `level`: the layer's verdict and its
+// lime both compile from osmTileFacts, while the tap card runs scoreOSM() on
+// the same feature's properties. Sweep the two over the REAL statewide data
+// rather than a synthetic grid -- what matters here is string tag
+// combinations, and the data holds stranger ones than a grid would guess.
+const osmCtx = vm.createContext({ rules: null, SafetyModel });
+const constSource = (name) => {
+  const m = app.match(new RegExp(`const ${name} = new Set\\(\\[[\\s\\S]*?\\]\\);`));
+  assert.ok(m, `${name} should be findable in app.js`);
+  return m[0];
+};
+vm.runInContext([
+  constSource('OSM_PROTECTED'),
+  constSource('OSM_LANE'),
+  constSource('DEDICATED_INFRA_HW'),
+  functionSource(app, 'osmCycleway'),
+  functionSource(app, 'sharrowOnly'),
+  functionSource(app, 'scoreOSM'),
+  functionSource(app, 'sharrowOnlyExpr'),
+  functionSource(app, 'osmTileFacts'),
+  'this.api = { scoreOSM, sharrowOnly, osmTileFacts, sharrowOnlyExpr };',
+].join('\n'), osmCtx);
+
+const bikeinfra = JSON.parse(gunzipSync(readFileSync(
+  new URL('../data/bikeinfra.geojson.gz', import.meta.url))));
+// The tiles hold the post-drop set (build_overlay_tiles.py mirrors
+// sharrowOnly), and tippecanoe drops null-valued attributes -- so the sweep
+// strips them too, or it would compare a shape the renderer never sees.
+const tileProps = (f) => Object.fromEntries(
+  Object.entries(f.properties).filter(([, v]) => v != null));
+const keptWays = bikeinfra.features.map(tileProps)
+  .filter((p) => !osmCtx.api.sharrowOnly(p));
+assert.ok(keptWays.length > 30000, `the sweep should cover the real layer, `
+  + `not a stub (${keptWays.length} ways)`);
+
+// Two rule sets: the shipped defaults, and a strict set -- the osm ladder is
+// rules-independent today, and sweeping both is what CATCHES a future rung
+// that quietly makes it rules-dependent on one side only.
+for (const osmRules of [
+  { minShoulder: 4, maxSpeedNoShoulder: 35, upperMaxSpeed: 45, noUpperLimit: true,
+    lanesNoShoulderOver: 3, busyNoShoulder: 2, allowSidewalkFallback: true,
+    inferShoulderFromEdge: true },
+  { minShoulder: 6, maxSpeedNoShoulder: 25, upperMaxSpeed: 35, noUpperLimit: false,
+    lanesNoShoulderOver: 2, busyNoShoulder: 4, allowSidewalkFallback: false,
+    inferShoulderFromEdge: false },
+]) {
+  const levelE = SafetyModel.levelExpr(osmRules, osmCtx.api.osmTileFacts);
+  const limeE = SafetyModel.bikeNetworkExpr(osmCtx.api.osmTileFacts);
+  const osmMismatches = [];
+  for (const p of keptWays) {
+    const facts = SafetyModel.factsFrom(osmCtx.api.scoreOSM(p));
+    const modelLevel = SafetyModel.level(facts, osmRules);
+    const mapLevel = evalExpr(levelE, p);
+    const modelLime = SafetyModel.isBikeNetwork(facts);
+    const mapLime = evalExpr(limeE, p) === true;
+    compared++;
+    if ((mapLevel !== modelLevel || mapLime !== modelLime) && osmMismatches.length < 8) {
+      osmMismatches.push({ props: p, mapLevel, modelLevel, mapLime, modelLime });
+    }
+  }
+  assert.deepEqual(osmMismatches, [],
+    `osmTileFacts and scoreOSM must agree on every real way:\n${
+      osmMismatches.map((m) => `  ${JSON.stringify(m)}`).join('\n')}`);
+}
 
 /* ------------------------------ the edge-space shoulder inference ------- */
 // These three constraints used to live in test_edge_space_shoulder.mjs as
