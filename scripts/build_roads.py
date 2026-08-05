@@ -49,47 +49,25 @@ Usage: python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
 import argparse
 import json
 import os
-import re
 
 import osmium
 from shapely.geometry import LineString
 
+# One decision, one home: every constant and parser this build shares with the
+# routing-graph build is IMPORTED from build_graph, never restated. The two
+# outputs describe the same roads to the same app, and while each file kept
+# its own copies they drifted -- km/h speeds parsed differently, and
+# cycleway:buffer=yes counted as buffered in the graph but plain in the tile.
+from build_graph import (DEFAULT_MPH, DRIVE, EDGE_SIDEWALK, EDGE_SIDEWALK_NO,
+                         FACILITY_LANE, LANES_CENTER_TURN, LANES_COUNT_MASK,
+                         LIMITED, REF_STATE, ROAD_CLASS, SIMPLIFY_DEG,
+                         WSDOT_ALWAYS_CLASSES, blts_match, collect_designated,
+                         is_urban_edge, lane_class, load_blts_index,
+                         load_urban_index, osm_facility_class, parse_mph,
+                         parse_shoulder_ft, sidewalk_flags, surface_class)
 from roadmeasure import RoadMeasures
 from roadmeasure import length_m as measure_length_m
 
-CLASSES = {
-    'motorway', 'motorway_link', 'trunk', 'trunk_link',
-    'primary', 'primary_link', 'secondary', 'secondary_link',
-    'tertiary', 'tertiary_link', 'unclassified', 'residential', 'living_street',
-}
-# Class-based speed defaults (mph) for ways with no usable maxspeed tag.
-DEFAULT_MPH = {
-    'motorway': 65, 'motorway_link': 45,
-    'trunk': 55, 'trunk_link': 40,
-    'primary': 50, 'primary_link': 35,
-    'secondary': 45, 'secondary_link': 35,
-    'tertiary': 35, 'tertiary_link': 30,
-    'unclassified': 35, 'residential': 25, 'living_street': 15,
-}
-LIMITED = {'motorway', 'motorway_link'}
-# Ways covered by the WSDOT BLTS layer (state highways). Flagged d=1 so the app
-# can hide the OSM duplicate while the (data-rich) WSDOT source is enabled —
-# otherwise OSM's unknown-shoulder "pass" visually masks WSDOT's measured fail.
-WSDOT_CLASSES = {'motorway', 'motorway_link', 'trunk', 'trunk_link'}
-REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA)[-\s]?\d+', re.I)
-FACILITY = {'lane', 'shared_lane', 'buffered_lane', 'track', 'separated',
-            'opposite_lane', 'opposite_track'}
-CYCLEWAY_KEYS = ('cycleway', 'cycleway:both', 'cycleway:right', 'cycleway:left')
-# Same ladder build_graph stores per edge, so the street card and the route card
-# describe one road the same way instead of "yes" versus "Buffered bike lane".
-OSM_FACILITY = {
-    'shared_lane': 1,
-    'lane': 2, 'opposite_lane': 2,
-    'buffered_lane': 3,
-    'track': 4, 'separated': 4, 'opposite_track': 4,
-}
-
-SIMPLIFY_DEG = 0.00005   # ~5 m
 COORD_DECIMALS = 5
 # A closed ring is a traffic circle, roundabout, or loop. Douglas-Peucker
 # measures deviation from the chord joining the retained end points, and on a
@@ -121,44 +99,8 @@ def compact_coords(coords):
     decimals = RING_COORD_DECIMALS if closed else COORD_DECIMALS
     return [[round(x, decimals), round(y, decimals)] for x, y in line.coords]
 
-_num = re.compile(r'^\s*(\d+(?:\.\d+)?)')
-
-
-def parse_mph(v):
-    """'35 mph' -> 35; bare numbers treated as mph (US tagging practice)."""
-    if not v:
-        return None
-    first = v.split(';')[0].strip().lower()
-    m = _num.match(first)
-    if not m:
-        return None  # 'signals', 'none', 'variable', ...
-    val = float(m.group(1))
-    if 'km/h' in first or 'kmh' in first or 'kph' in first:
-        val *= 0.621371
-    return int(round(val))
-
-
-def parse_shoulder_ft(tags):
-    """Real shoulder data only. shoulder=no -> 0 ft (known-bad); widths are meters."""
-    s = tags.get('shoulder')
-    if s in ('no', 'none'):
-        return 0
-    for k in ('shoulder:width', 'shoulder:both:width', 'shoulder:right:width'):
-        v = tags.get(k)
-        if v:
-            m = _num.match(v)
-            if m:
-                return int(round(float(m.group(1)) * 3.28084))
-    return None
-
-
 def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
           aadt=None, hpms=None):
-    from build_graph import (EDGE_SIDEWALK, EDGE_SIDEWALK_NO, EDGE_URBAN,
-                             LANES_CENTER_TURN, LANES_COUNT_MASK, ROAD_CLASS,
-                             blts_match, collect_designated, is_urban_edge,
-                             lane_class, load_blts_index, load_urban_index,
-                             sidewalk_flags, surface_class)
     designated = collect_designated(src)
     urban_index = load_urban_index(urban_areas)
     measures = RoadMeasures(roadlog=roadlog, funcclass=funcclass, aadt=aadt,
@@ -218,12 +160,17 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
         props = dict(base_props)
         if match is not None:
             props['d'] = 1
-            if match['spd']:
+            # Precedence mirrors build_graph exactly (its lines are the
+            # reference): the card and the router must answer alike.
+            # WSDOT speed fills a gap; a real OSM maxspeed tag keeps winning.
+            if match['spd'] and props.get('e'):
                 props['s'] = int(match['spd'])
                 props.pop('e', None)
             if match['sh'] is not None:
                 props['w'] = int(match['sh'])
-            if match['limited']:
+            # A road with a bike lane or better carries no limited-access
+            # caution, exactly as the graph decides it.
+            if match['limited'] and int(props.get('ft') or 0) < FACILITY_LANE:
                 props['l'] = 1
             if match.get('lts'):
                 props['lts'] = int(match['lts'])
@@ -266,7 +213,7 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
         nonlocal kept, skipped_private
         tags = {t.k: t.v for t in obj.tags}
         hw = tags.get('highway')
-        if hw not in CLASSES:
+        if hw not in DRIVE:
             return
         # Mode-specific tags override the blanket access default: keep roads
         # closed to general traffic but explicitly open to bikes.
@@ -287,11 +234,12 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
             p['s'] = spd
         if hw in LIMITED:
             p['m'] = 1
-        if tags.get('bicycle') in ('no', 'dismount'):
+        # Only an outright ban is "prohibited". bicycle=dismount is legal to
+        # walk, and the graph routes it as a walk link; painting it as
+        # bikes-banned made the map contradict the router about the same way.
+        if tags.get('bicycle') == 'no':
             p['b'] = 1
-        facility = 0
-        for k in CYCLEWAY_KEYS:
-            facility = max(facility, OSM_FACILITY.get(tags.get(k), 0))
+        facility = osm_facility_class(tags)
         if facility:
             p['f'] = 1
             p['ft'] = facility
@@ -321,7 +269,7 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
             p['k'] = 1
         elif sidewalk & EDGE_SIDEWALK_NO:
             p['k'] = 2
-        wsdot_candidate = (hw in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}
+        wsdot_candidate = (hw in WSDOT_ALWAYS_CLASSES
                            or (tags.get('ref') and REF_STATE.search(tags['ref'])))
         if not wsdot_candidate:
             for run_coords, meas in measured_runs(coords):

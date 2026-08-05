@@ -142,9 +142,12 @@ ROAD_CLASS = {
 CYCLEWAY_KEYS = ('cycleway', 'cycleway:both', 'cycleway:right', 'cycleway:left')
 SIMPLIFY_DEG = 0.00005  # ~5 m — match the locally rendered road geometry
 _num = re.compile(r'^\s*(\d+(?:\.\d+)?)')
-# Edges eligible for WSDOT conflation: state-highway-ish classes or state refs.
-WSDOT_CLASSES = {'motorway', 'motorway_link', 'trunk', 'trunk_link',
-                 'primary', 'primary_link', 'secondary', 'secondary_link'}
+# State-highway classes that are ALWAYS WSDOT-conflation candidates; anything
+# else qualifies only by carrying a state route ref. Shared with
+# build_roads.py so the tile and the graph agree on which ways get the WSDOT
+# treatment. (A wider dead list used to sit here documenting a conflation
+# scope twice as broad as the real gate.)
+WSDOT_ALWAYS_CLASSES = frozenset({'motorway', 'motorway_link', 'trunk', 'trunk_link'})
 REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA)[-\s]?\d+', re.I)
 WSDOT_MATCH_DEG = 0.00035  # ~30 m
 WSDOT_STRICT_DEG = 0.00009  # ~8–10 m; safe without a shared route number
@@ -765,6 +768,27 @@ def parse_shoulder_ft(tags):
     return None
 
 
+def osm_facility_class(tags):
+    """The typed bike-facility ladder, one rung per OSM cycleway vocabulary.
+
+    Shared with build_roads.py, so the street card and the route card describe
+    one road the same way instead of "yes" versus "Buffered bike lane" -- and
+    so cycleway:buffer=yes cannot count as buffered in one and plain in the
+    other, which is exactly what happened while each file kept its own copy.
+    """
+    values = {tags[k] for k in CYCLEWAY_KEYS if tags.get(k)}
+    if values & {'track', 'separated', 'opposite_track'}:
+        return FACILITY_SEPARATED
+    if 'buffered_lane' in values or any(
+            tags.get(f'{key}:buffer') == 'yes' for key in CYCLEWAY_KEYS):
+        return FACILITY_BUFFERED
+    if values & {'lane', 'opposite_lane'}:
+        return FACILITY_LANE
+    if 'shared_lane' in values:
+        return FACILITY_SHARED
+    return FACILITY_NONE
+
+
 def sidewalk_flags(tags):
     """Compact OSM sidewalk state: present, explicitly absent, or unknown."""
     values = [tags.get('sidewalk')]
@@ -955,19 +979,6 @@ def classify_way(tags):
                 'duration': tags.get('duration'), 'surface': SURFACE_UNKNOWN,
                 'lanes': 0, 'dismount': dismount, 'dismount_tag': dismount}
 
-    cycleways = [tags[k] for k in CYCLEWAY_KEYS if tags.get(k)]
-
-    def osm_facility():
-        values = set(cycleways)
-        if values & {'track', 'separated', 'opposite_track'}:
-            return FACILITY_SEPARATED
-        if 'buffered_lane' in values or any(tags.get(f'{key}:buffer') == 'yes' for key in CYCLEWAY_KEYS):
-            return FACILITY_BUFFERED
-        if values & {'lane', 'opposite_lane'}:
-            return FACILITY_LANE
-        if 'shared_lane' in values:
-            return FACILITY_SHARED
-        return FACILITY_NONE
 
     # Rideable dedicated infrastructure (mirrors build_osm.py classify).
     # Tracks need explicit bike permission: a bicycle=yes track is often the
@@ -1056,7 +1067,7 @@ def classify_way(tags):
         spd = DEFAULT_MPH[hw]
     return {
         'speed': min(spd, 255), 'est': est,
-        'facility': osm_facility(), 'lim': hw in LIMITED,
+        'facility': osm_facility_class(tags), 'lim': hw in LIMITED,
         'infra': False, 'sh': parse_shoulder_ft(tags),
         'road_class': ROAD_CLASS[hw], 'surface': surface_class(tags),
         'lanes': lane_class(tags), 'dismount': dismount, 'dismount_tag': dismount,
@@ -1450,7 +1461,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
 
         wsdot_candidate = (
             wsdot is not None and not attrs['infra'] and not is_ferry
-            and (tags.get('highway') in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}
+            and (tags.get('highway') in WSDOT_ALWAYS_CLASSES
                  or (tags.get('ref') and REF_STATE.search(tags['ref'])))
         )
 
