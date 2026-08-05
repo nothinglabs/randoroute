@@ -4,7 +4,11 @@
 
   const FONT_STACK = 'Klokantech Noto Sans Regular';
   const CONTEXT_URL = 'pmtiles://data/basemap.pmtiles?v=5';
-  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=21';
+  // Must be the SAME ?v as app.js's roads source: two spellings of one
+  // archive are two browser-cache entries and two PMTiles instances, so a
+  // first visit fetched the 80 MB file twice. The service worker normalizes
+  // /data/ URLs, which is why installed PWAs never showed the double fetch.
+  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=24';
   let protocol = null;
 
   // A PMTiles tile is a byte-range read. On a phone one of those can fail for

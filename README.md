@@ -423,33 +423,27 @@ Results include distance, duration, total climb/descent, and an elevation
 profile. No routing server; the native app works immediately offline and the
 installed PWA works offline after its initial data installation completes.
 
-## PENDING REBUILD — traffic-stress data (read this before rebuilding)
+## Rebuilding the traffic-stress data
 
-**Status: the code is shipped and live; the data is not.** Lane counts and
-WSDOT traffic-stress ratings are read, scored, and displayed by the app right
-now, but every value is empty until `data/graph2.bin.gz` and
-`data/roads.pmtiles` are rebuilt from the OSM extract. Until then the app
-behaves exactly as it did before — nothing is broken and nothing is waiting on
-a coordinated deploy.
+**Status: shipped, data included.** Lane counts and WSDOT traffic-stress
+ratings are live end to end — the shipped `data/graph2.bin.gz` (format
+`BGRC`) carries populated `edgeLanes`/`edgeLts` arrays (376k edges with lane
+counts, 180k with an LTS rating), and `data/roads.pmtiles` carries the
+`ln`/`adt`/`ctl` properties behind the road card. This section stays as the
+recipe for the NEXT data refresh.
 
-### Why
-
-Seattle signed every arterial at 25 mph in 2020, so speed no longer separates a
-five-lane arterial from the side street beside it. On 15th Ave NE, 27 of 51 OSM
-ways carry four or more lanes and 17 of those are tagged 25 mph — while 21 of
-its two-lane ways are *also* 25 mph. Two stretches are four lanes tagged merely
-`highway=tertiary`. Lane count still separates them, and OSM tags it on ~100% of
-`secondary` (in both Seattle and rural Kittitas samples) against 3-5% of
-`residential` — present exactly where it matters. Separately, WSDOT already
-publishes a finished `LTS_Bicycle` rating (1-4) in `data/blts.geojson` that the
-build simply never read.
+Background for the design: Seattle signed every arterial at 25 mph in 2020,
+so speed no longer separates a five-lane arterial from the side street beside
+it. Lane count still does, and OSM tags it on ~100% of `secondary` against
+3-5% of `residential` — present exactly where it matters. WSDOT separately
+publishes a finished `LTS_Bicycle` rating (1-4) in `data/blts.geojson`.
 
 ### What to run
 
 Both archives, from the same extract, in this order:
 
 ```bash
-# 1. Routing graph -- adds edgeLanes + edgeLts, writes format 10 ('BGRA')
+# 1. Routing graph -- writes the current format (magic 'BGRC', format 12)
 python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
 
 # 2. Road tiles -- adds the `ln`/`ctl` properties behind the road card
@@ -473,7 +467,7 @@ for what happens without it.
 ### Then bump every version, or riders keep the old data
 
 ```
-app.js            APP_VERSION, GRAPH_FORMAT_VERSION ('bgr9-1' -> 'bgr10-1')
+app.js            APP_VERSION; GRAPH_FORMAT_VERSION only if the LAYOUT changed
 app.js            roads.pmtiles?v=          <- and the SAME number in
 basemap-style.js  roads.pmtiles?v=             both files
 sw.js             VERSION, DATA_CACHE, route-details.{js,css}?v=
@@ -491,7 +485,7 @@ python3 scripts/test_graph_format10.py   # layout + reader-offset contract
 node scripts/test_road_measures.mjs      # Python packs, JavaScript unpacks
 node scripts/test_card_model_shared.mjs  # both cards read one adapter
 python3 -c "import gzip;print(gzip.open('data/graph2.bin.gz','rb').read(4))"
-#   -> b'BGRB'   (an older magic means build_graph.py did not pick up the change)
+#   -> b'BGRC'   (an older magic means build_graph.py did not pick up the change)
 tippecanoe-decode data/roads.pmtiles 13 1311 2858 | grep -c '"ln"'
 #   -> non-zero  (lane counts reached the tiles)
 tippecanoe-decode data/roads.pmtiles 13 1311 2858 | grep -c '"adt"'
@@ -513,8 +507,8 @@ for the format-11 measurement arrays; measured, that was 556 KB compressed
 
 ### Notes for whoever does this
 
-- **Old graphs keep working.** `router-worker.js` accepts `BGR9`, `BGRA` and
-  `BGRB`; each format only ever appends, so on an older graph the newer arrays
+- **Old graphs keep working.** `router-worker.js` accepts `BGR9`, `BGRA`,
+  `BGRB` and `BGRC`; each format only ever appends, so on an older graph the newer arrays
   read as null, every value reports as "not known", and scoring is what it was.
   A rider is never stranded on the copy already cached on their phone.
 - **The scoring is a soft cost, never a rule failure.** Four lanes with a
