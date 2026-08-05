@@ -549,11 +549,22 @@ def load_official_index(path, kind):
                 continue
         lines = [geometry['coordinates']] if geometry['type'] == 'LineString' else geometry['coordinates']
         route = _route_number(props.get('RouteIdentifier'))
+        # The registry's construction detail rides along for the road card:
+        # buffer width, separation material, which side(s). The graph reads
+        # only 'value'; the tile build shows the rest with provenance.
+        extra = {}
+        if kind == 'facility':
+            if props.get('BikeFacilityBufferWidth'):
+                extra['bufferFt'] = round(float(props['BikeFacilityBufferWidth']), 1)
+            if props.get('BikeFacilitySeparationMaterial'):
+                extra['material'] = str(props['BikeFacilitySeparationMaterial'])
+            if props.get('BikeFacilitySides'):
+                extra['sides'] = str(props['BikeFacilitySides'])
         for coords in lines:
             if len(coords) < 2:
                 continue
             geoms.append(LineString(coords))
-            attrs.append({'value': int(value), 'route': route})
+            attrs.append({'value': int(value), 'route': route, **extra})
     print(f'  WSDOT {kind} index: {len(geoms):,} segments', flush=True)
     return STRtree(geoms), geoms, attrs
 
@@ -709,6 +720,11 @@ def blts_match(coords, tags, index):
     return {
         'sh': min((match['sh'] for match in matches if match['sh'] is not None),
                   default=None),
+        # The better direction too, so a card can label the collapse: the map
+        # paints the worse side, but "1 ft southbound, 6 ft northbound" is a
+        # different fact from "1 ft".
+        'shMax': max((match['sh'] for match in matches if match['sh'] is not None),
+                     default=None),
         'spd': max((match['spd'] for match in matches if match['spd']), default=None),
         'prohibited': any(match['prohibited'] for match in matches),
         'limited': any(match['limited'] for match in matches),
@@ -1531,7 +1547,15 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                                 esh = PROHIBITED_SHOULDER
                                             else:
                                                 esh_ba = PROHIBITED_SHOULDER
-                                        elif match['sh'] is not None:
+                                        # A mapper who wrote a shoulder tag
+                                        # looked at THAT road; the inventory
+                                        # interpolated a route segment (booked
+                                        # 4 ft near Indian Mary Rd where Street
+                                        # View shows 1-2 ft). The inventory
+                                        # fills OSM's gaps and never overrules
+                                        # an explicit tag -- including an
+                                        # explicit zero.
+                                        elif match['sh'] is not None and attrs['sh'] is None:
                                             shoulder = max(-1, min(127, int(match['sh'])))
                                             if direction == 0:
                                                 esh = shoulder

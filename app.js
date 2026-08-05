@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.563';
+const APP_VERSION = '2026-08-05.564';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -493,6 +493,7 @@ function tileMeasures(p) {
     if (p.ec) out.edgeClamp = 1;
   }
   if (p.cs != null) out.countySh = p.cs;
+  if (p.csl) out.countySurface = p.csl;
   if (p.fc) out.fc = p.fc;
   if (p.ow) out.owner = p.ow;
   return Object.keys(out).length ? out : null;
@@ -2701,6 +2702,7 @@ function routeSegProps(s, routeIndex) {
   const flags = s.flags || 0;
   return {
     name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
+    shBack: Number.isFinite(Number(s.shBack)) ? Number(s.shBack) : null,
     e: flags & 1 ? 1 : 0, fac: flags & 2 ? 1 : 0, fw: flags & 4 ? 1 : 0,
     lim: flags & 128 ? 1 : 0,
     hazard: s.hazard || 0, gradePct: s.gradePct || 0, crossing: s.crossing ? 1 : 0,
@@ -8853,6 +8855,11 @@ function measurementRows(measures) {
   if (measures.countySh != null) {
     rows.push(['Shoulder', `${measures.countySh} ft (county)`]);
   }
+  // The county's certified surface type. Display only, like every measurement
+  // here: it earns model influence after field-testing, not before.
+  if (measures.countySurface) {
+    rows.push(['Surface', `${measures.countySurface} (county road log)`]);
+  }
   return rows;
 }
 
@@ -9275,7 +9282,9 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
         ...routeVerdict,
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
         ['Speed source', p.official & 1 ? `${Region.speedAgency} legal speed` : null],
-        ['Shoulder', p.sh >= 0 ? `${p.sh} ft` : null],
+        ['Shoulder', p.sh >= 0 ? `${p.sh} ft${p.shBack != null && p.shBack >= 0
+          && p.shBack !== p.sh
+          ? ` your direction (${p.shBack} ft the other way)` : ''}` : null],
         ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
         ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
         // One builder, so the route card and the tap card cannot describe the
@@ -9336,7 +9345,14 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       // exclusive to the route card: both need elevation along a direction of
       // travel, which the map tiles do not carry.
       ['Speed limit', p.s != null ? `${p.s} mph${p.e ? ' (estimated from class)' : ''}` : null],
-      ['Shoulder', p.w != null ? p.w + ' ft' : null],
+      // `w` keeps the WORSE direction (it is what the map paints); `w2` is
+      // the better one when the inventory recorded the two sides differently.
+      // An unlabelled collapse reads as this card contradicting a route card
+      // that shows the direction actually ridden.
+      ['Shoulder', p.w != null
+        ? `${p.w} ft${p.w2 != null ? `–${p.w2} ft, varies by direction` : ''}`
+          + `${p.wsh ? ` (${Region.stressAgency} inventory)` : ''}`
+        : null],
       // Where a city has signed its arterials at the same limit as its side
       // streets, lane count is the thing that still tells them apart.
       ['Lanes', p.ln ? `${p.ln}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
@@ -9347,7 +9363,15 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
       ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
-      ['Bike facility', FACILITY_NAME[p.ft] || (p.f ? 'Recorded bike facility' : null)],
+      // Typed from OSM or the official WSDOT registry (fo=1); the registry's
+      // construction detail rides along when it recorded any.
+      ['Bike facility', FACILITY_NAME[p.ft]
+        ? FACILITY_NAME[p.ft]
+          + [p.fbw ? `${p.fbw} ft buffer` : null, p.fsm || null,
+            p.fsd ? `${String(p.fsd).toLowerCase()} side(s)` : null]
+            .filter(Boolean).map((part) => `, ${part}`).join('')
+          + (p.fo ? ` (${Region.facilitySourceName})` : '')
+        : (p.f ? 'Recorded bike facility' : null)],
       ['Surface (OSM)', routeSurfaceLabel(p.su)],
       ['Route choice', routeClassNote({ roadClass: p.rc, facility: p.ft || (p.f ? 1 : 0) })],
       ['Road data', p.d ? `${Region.speedAgency} directions combined conservatively for map display` : null],

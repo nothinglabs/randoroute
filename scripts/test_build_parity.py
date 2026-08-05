@@ -35,7 +35,8 @@ def check(name, ok, detail=''):
 for symbol in ('parse_mph', 'parse_shoulder_ft', 'osm_facility_class',
                'DEFAULT_MPH', 'DRIVE', 'LIMITED', 'REF_STATE',
                'WSDOT_ALWAYS_CLASSES', 'SIMPLIFY_DEG', 'ROAD_CLASS',
-               'surface_class', 'lane_class', 'sidewalk_flags', 'blts_match'):
+               'surface_class', 'lane_class', 'sidewalk_flags', 'blts_match',
+               'load_official_index', 'official_match', 'FACILITY_PATH'):
     check(f'{symbol} is shared, not copied',
           getattr(build_roads, symbol) is getattr(build_graph, symbol))
 

@@ -22,7 +22,13 @@ Feature properties (short keys to keep the files small):
   h  highway class          s  speed mph (actual or estimated)
   e  1 = speed estimated    f  1 = has bike facility (cycleway lane/track)
   b  1 = bikes prohibited   m  1 = limited access (motorway)
-  w  shoulder width, ft (only when OSM has real shoulder data; shoulder=no -> 0)
+  w  shoulder width, ft (OSM tag first, else WSDOT inventory; shoulder=no -> 0)
+  wsh 1 = shoulder came from the WSDOT inventory (provenance for the card)
+  w2 the BETTER direction's WSDOT shoulder when the two sides differ (w keeps
+     the worse for the map colour; the card labels the spread)
+  fo 1 = facility from the official WSDOT registry; fbw buffer ft;
+     fsm separation material; fsd which side(s)
+  csl county-certified surface type (CRAB road log; display only)
   n  name                   r  ref (route number)
   g  1 = on a designated bike route (USBR / regional trail)
   k  sidewalk state (1=present, 2=explicitly absent)
@@ -59,12 +65,14 @@ from shapely.geometry import LineString
 # its own copies they drifted -- km/h speeds parsed differently, and
 # cycleway:buffer=yes counted as buffered in the graph but plain in the tile.
 from build_graph import (DEFAULT_MPH, DRIVE, EDGE_SIDEWALK, EDGE_SIDEWALK_NO,
-                         FACILITY_LANE, LANES_CENTER_TURN, LANES_COUNT_MASK,
-                         LIMITED, REF_STATE, ROAD_CLASS, SIMPLIFY_DEG,
-                         WSDOT_ALWAYS_CLASSES, blts_match, collect_designated,
-                         is_urban_edge, lane_class, load_blts_index,
-                         load_urban_index, osm_facility_class, parse_mph,
-                         parse_shoulder_ft, sidewalk_flags, surface_class)
+                         FACILITY_LANE, FACILITY_PATH, LANES_CENTER_TURN,
+                         LANES_COUNT_MASK, LIMITED, REF_STATE, ROAD_CLASS,
+                         SIMPLIFY_DEG, WSDOT_ALWAYS_CLASSES, blts_match,
+                         collect_designated, is_urban_edge, lane_class,
+                         load_blts_index, load_official_index,
+                         load_urban_index, official_match, osm_facility_class,
+                         parse_mph, parse_shoulder_ft, sidewalk_flags,
+                         surface_class)
 from roadmeasure import RoadMeasures
 from roadmeasure import length_m as measure_length_m
 
@@ -100,12 +108,22 @@ def compact_coords(coords):
     return [[round(x, decimals), round(y, decimals)] for x, y in line.coords]
 
 def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
-          aadt=None, hpms=None):
+          aadt=None, hpms=None, facilities=None):
     designated = collect_designated(src)
     urban_index = load_urban_index(urban_areas)
     measures = RoadMeasures(roadlog=roadlog, funcclass=funcclass, aadt=aadt,
                             hpms=hpms)
     wsdot_index = load_blts_index(blts)
+    # The SAME typed facilities registry the routing graph reads, so the road
+    # card and the router describe one facility. The input is a git-ignored
+    # fetch (scripts/fetch_wsdot_graph_data.py); a build without it still
+    # runs, minus the official facility enrichment.
+    facility_index = None
+    if facilities and os.path.exists(facilities):
+        facility_index = load_official_index(facilities, 'facility')
+    elif facilities:
+        print(f'WARNING: {facilities} not present; building without the '
+              'official facilities registry', flush=True)
     print(f'{len(designated):,} designated-route member ways', flush=True)
     feats = []
     kept = skipped_private = 0
@@ -113,8 +131,8 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
     def wsdot_values(match):
         if match is None:
             return None
-        return (match['spd'], match['sh'], match['limited'],
-                match['facility'], match['prohibited'])
+        return (match['spd'], match['sh'], match['shMax'], match['limited'],
+                match['prohibited'])
 
     # Graph edges are split at junctions and average ~190 m, while an OSM way
     # can run for kilometres. Matching a measurement to the whole way would give
@@ -166,8 +184,17 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
             if match['spd'] and props.get('e'):
                 props['s'] = int(match['spd'])
                 props.pop('e', None)
-            if match['sh'] is not None:
+            # And WSDOT shoulder fills a gap too -- an explicit OSM tag,
+            # including an explicit zero, keeps winning. `wsh` marks the
+            # inventory as the source so the card can say so; `w2` carries the
+            # better direction when the two sides differ, because `w` keeps
+            # the worse one for the map colour and an unlabelled collapse
+            # reads as a card contradicting the route.
+            if match['sh'] is not None and 'w' not in props:
                 props['w'] = int(match['sh'])
+                props['wsh'] = 1
+                if match['shMax'] is not None and int(match['shMax']) != int(match['sh']):
+                    props['w2'] = int(match['shMax'])
             # A road with a bike lane or better carries no limited-access
             # caution, exactly as the graph decides it.
             if match['limited'] and int(props.get('ft') or 0) < FACILITY_LANE:
@@ -176,8 +203,9 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
                 props['lts'] = int(match['lts'])
             if match.get('lanes') and not props.get('ln'):
                 props['ln'] = int(match['lanes'])
-            if match['facility']:
-                props['f'] = 1
+            # The BLTS facility field is the registry photocopied on the
+            # analysis date; the registry itself (matched in process_way)
+            # answers the facility question for the card and the router alike.
             if match['prohibited']:
                 props['b'] = 1
         if is_urban_edge(cc, urban_index):
@@ -199,6 +227,8 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
                     props['ec'] = 1
             if m.get('shP') is not None:
                 props['cs'] = round(float(m['shP']), 1)
+            if m.get('surfC'):
+                props['csl'] = m['surfC']
             if m.get('fc'):
                 props['fc'] = int(m['fc'])
             if m.get('owner'):
@@ -243,6 +273,22 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
         if facility:
             p['f'] = 1
             p['ft'] = facility
+        # The official WSDOT facilities registry, exactly as the graph applies
+        # it: typed, Status=Existing, and an official record overrides the OSM
+        # tag (build_graph.py's own precedence). Shared-use paths belong on
+        # path topology, and this build carries roads only.
+        if facility_index:
+            official = official_match(coords, tags, facility_index)
+            if official is not None and official['value'] != FACILITY_PATH:
+                p['f'] = 1
+                p['ft'] = int(official['value'])
+                p['fo'] = 1
+                if official.get('bufferFt'):
+                    p['fbw'] = official['bufferFt']
+                if official.get('material'):
+                    p['fsm'] = official['material']
+                if official.get('sides'):
+                    p['fsd'] = official['sides']
         surface = surface_class(tags)
         if surface:
             p['su'] = surface
@@ -342,6 +388,10 @@ if __name__ == '__main__':
                     help='WSDOT traffic counts (scripts/build_aadt.py)')
     ap.add_argument('--hpms', default='data/hpms.geojson',
                     help='FHWA HPMS public release (scripts/build_hpms.py)')
+    ap.add_argument('--facilities', default='data/wsdot_bike_facilities.geojson',
+                    help='official WSDOT bike facilities registry '
+                         '(scripts/fetch_wsdot_graph_data.py); same input the '
+                         'graph build reads')
     args = ap.parse_args()
     build(args.src, args.out_prefix, args.urban_areas, args.blts,
-          args.roadlog, args.funcclass, args.aadt, args.hpms)
+          args.roadlog, args.funcclass, args.aadt, args.hpms, args.facilities)

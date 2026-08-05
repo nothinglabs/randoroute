@@ -280,6 +280,20 @@ ADT_SOURCE_COUNTY = 1     # CRAB county road log, a measured count
 ADT_SOURCE_STATE = 2      # WSDOT traffic counts, a measured count
 ADT_SOURCE_HPMS = 3       # FHWA HPMS; MODELLED on non-state roads, not counted
 
+# CRAB's ThruLaneSurface codes, decoded for the card. All 115,850 log rows
+# carry one. An unknown code passes through raw rather than being dropped --
+# a strange label is honest; a silent absence is not.
+CRAB_SURFACE_LABEL = {
+    'ACP': 'Paved (asphalt)',
+    'HMA': 'Paved (asphalt)',
+    'APC': 'Paved (asphalt over concrete)',
+    'PCC': 'Paved (concrete)',
+    'BST': 'Chip seal',
+    'GRV': 'Gravel',
+    'GRD': 'Graded dirt',
+    'UNI': 'Unimproved',
+}
+
 # A measured count and a modelled estimate are not the same claim, so where two
 # sources describe one road the choice between them needs a stated reason rather
 # than an accident of evaluation order.
@@ -396,6 +410,13 @@ class RoadMeasures:
                 out['edgeClamp'] = 1 if log.get('clamped') else 0
             if log.get('shP') is not None:
                 out['shP'] = float(log['shP'])
+            # The county's certified surface type, display-only with CRAB
+            # provenance. Fetched from the start; consumed only since the
+            # fetched-vs-used audit found it. The log stores CRAB's codes;
+            # decode here so a card never shows a rider "BST".
+            if log.get('surface'):
+                out['surfC'] = CRAB_SURFACE_LABEL.get(
+                    str(log['surface']).upper(), str(log['surface']))
 
         state = self.aadt.match(coords, shared) if self.aadt else None
         if state and state.get('adt'):

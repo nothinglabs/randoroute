@@ -1651,6 +1651,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     }
     segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
       mph: edgeSpeed(ei, forward), sh: edgeShoulder(ei, forward),
+      // The other direction's shoulder, so a card can say "(your direction)"
+      // when the two sides differ instead of silently contradicting the road
+      // card, which shows the worse of the two.
+      shBack: edgeShoulder(ei, !forward),
       flags: eFlags[ei] | (edgeLimited(ei, forward) ? 128 : 0), roadClass: eClass[ei],
       facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
       dismount: isDismountEdge(ei), level, cautionCause: verdict.caution || null,
