@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.577';
+const APP_VERSION = '2026-08-05.578';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -898,6 +898,13 @@ const ROUTE_PROFILE_IDS = new Set([
   'discover-quick', 'discover-gentle', 'discover-alternative', 'adaptive-corridor',
   'fully-matching',
 ]);
+// Adaptive ferry itineraries carry UNIQUE suffixed ids (adaptive-corridor,
+// adaptive-corridor-2, ...) because one portfolio can hold several and every
+// structure downstream keys candidates by profile id. Validation accepts the
+// family, not just the bare name.
+function validRouteProfileId(id) {
+  return ROUTE_PROFILE_IDS.has(id) || /^adaptive-corridor-\d+$/.test(String(id || ''));
+}
 function legacyRouteProfile(mode) {
   if (mode === 'direct') return 'quick';
   if (mode === 'low') return 'gentle';
@@ -939,7 +946,7 @@ function decodeSharedRouteToken(token) {
         sn: normalizeEndpointName(data.a), en: normalizeEndpointName(data.b),
       },
       mode: ['direct', 'balanced', 'low'].includes(data.m) ? data.m : null,
-      profileId: ROUTE_PROFILE_IDS.has(data.o) ? data.o : null,
+      profileId: validRouteProfileId(data.o) ? data.o : null,
       prefDesig: typeof data.p === 'boolean' ? data.p : null,
       prefResidential: typeof data.q === 'boolean' ? data.q : null,
       rules: sharedRules,
@@ -2551,7 +2558,7 @@ const routing = {
   loadedGraphVersion: null, // sha of the graph bytes the router actually has
   mode: ['direct', 'balanced', 'low'].includes(savedState?.mode)
     ? savedState.mode : 'balanced', // 'direct' | 'balanced' | 'low'
-  profileId: ROUTE_PROFILE_IDS.has(savedState?.profileId)
+  profileId: validRouteProfileId(savedState?.profileId)
     ? savedState.profileId : legacyRouteProfile(savedState?.mode),
   prefDesig: savedState && typeof savedState.prefDesig === 'boolean'
     ? savedState.prefDesig : DEFAULT_ROUTE_PREFERENCES.prefDesig, // force this preference across every route option
@@ -5903,10 +5910,15 @@ function onRouterMessage(ev) {
     } else if (!routing.sharedActive) {
       // A fresh search re-letters: pin the new lineup for this trip's
       // refinements. See the chooser policy note in computeRoute().
+      // Duplicate profile ids are dropped defensively -- the lineup keys by
+      // id, and a worker from before adaptive itineraries carried unique
+      // suffixes could hand back two candidates under one id.
+      const seenProfiles = new Set();
       routing.pinnedLetters = m.options.map((option) => ({
         letter: (option.optimization?.label || '').replace(/^Route /, ''),
         profileId: option.optimization?.profileId,
-      })).filter((entry) => entry.letter.length === 1 && entry.profileId);
+      })).filter((entry) => entry.letter.length === 1 && entry.profileId
+        && !seenProfiles.has(entry.profileId) && seenProfiles.add(entry.profileId));
       routing.missingLetters = [];
     }
     let selected;
@@ -8350,7 +8362,7 @@ function buildSavedRoutes() {
           rescoreAll(false);
         }
         routing.mode = ['direct', 'balanced', 'low'].includes(current.mode) ? current.mode : routing.mode;
-        routing.profileId = ROUTE_PROFILE_IDS.has(current.profileId)
+        routing.profileId = validRouteProfileId(current.profileId)
           ? current.profileId : legacyRouteProfile(current.mode || routing.mode);
         routing.prefDesig = typeof current.prefDesig === 'boolean' ? current.prefDesig : routing.prefDesig;
         routing.prefResidential = typeof current.prefResidential === 'boolean'

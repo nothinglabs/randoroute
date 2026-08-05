@@ -34,6 +34,18 @@ const reply = w.post({ type: 'route-options', id: 'ww',
 check('the portfolio answers', reply?.ok === true && (reply.options || []).length >= 3,
   JSON.stringify({ ok: reply?.ok, count: reply?.options?.length }));
 
+// Every candidate keys downstream state -- the chooser's pinned lineup, the
+// candidate cache, selection stickiness -- by profile id, and this pass can
+// build several adaptive itineraries in one portfolio. Two candidates
+// sharing one id scrambled the route letters in the field (A, B, E, D), so
+// uniqueness across the WHOLE candidate record is a contract, not a nicety.
+{
+  const ids = (reply.allCandidates || []).map((candidate) => candidate.profileId);
+  check('every candidate carries a unique profile id',
+    new Set(ids).size === ids.length,
+    ids.filter((id, index) => ids.indexOf(id) !== index).join(', ') || '(none duplicated)');
+}
+
 for (const option of reply.options || []) {
   const label = `${option.optimization?.label} [${option.optimization?.profileId}]`;
   // A repeated boat is the same ferry name over the same unordered pair of

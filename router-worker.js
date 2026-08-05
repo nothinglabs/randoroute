@@ -2544,7 +2544,15 @@ function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, se
     }
     const hybrid = mergeRouteParts(parts, seed.snapStartM, seed.snapEndM);
     hybrid._profile = {
-      id: 'adaptive-corridor',
+      // UNIQUE per candidate. This pass can produce several adaptive
+      // itineraries in one portfolio, and everything downstream -- the
+      // chooser's pinned lineup, the candidate cache, selection stickiness --
+      // keys candidates by profile id. Two candidates sharing one id
+      // scrambled the route letters the first time a ferry trip offered two
+      // adaptives (the chooser rendered A, B, E, D). Matching code tests
+      // startsWith('adaptive-corridor').
+      id: `adaptive-corridor${raw.some((r) => r._profile.id.startsWith('adaptive-corridor'))
+        ? `-${raw.filter((r) => r._profile.id.startsWith('adaptive-corridor')).length + 1}` : ''}`,
       label: 'Adaptive corridor', mode: 'balanced', prefDesig: true, prefResidential: true,
       order: seed._profile.order + 0.08 + landIndex * 0.01,
       alternativeCorridor: true,
@@ -2689,7 +2697,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const preferred = unique.find((r) => r._profile.id === preferredProfileId);
   const bothPreferences = unique.find((r) => r._profile.prefDesig && r._profile.prefResidential);
   const fullyMatching = unique.find((r) => r._profile.fullyMatchingRules);
-  const adaptiveCorridor = unique.find((r) => r._profile.id === 'adaptive-corridor');
+  const adaptiveCorridor = unique.find((r) => r._profile.id.startsWith('adaptive-corridor'));
   const protectedCandidates = new Set([
     preferred, bothPreferences, fullyMatching, adaptiveCorridor,
   ].filter(Boolean));
