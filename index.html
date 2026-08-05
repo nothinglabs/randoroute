@@ -511,8 +511,10 @@
   <template id="routeTipsTemplate">
     <div class="full-help-body">
       <section><h3>Choose Route</h3><ul>
-        <li>The app can show up to five routes, ordered shortest to longest as A–E. It automatically selects the best match for your settings, which may not be A.</li>
-        <li>Tap A–E to show distance, estimated time, elevation, and the route’s road and safety information.</li>
+        <li>The app offers up to five routes, ordered shortest to longest as A–E. It automatically selects the best match for your settings, which may not be A.</li>
+        <li>Letters stay bound to the same kind of route while you adjust waypoints or road blocks, so you can see the impact of a change. Changing start or destination — reversing included — deals a fresh lineup.</li>
+        <li>The <b>⋮</b> button offers a different mix of routes (same safety rules and colors). Loading a route from <b>Considered routes</b> in Advanced weights can add letters past E.</li>
+        <li>Tap a letter to show distance, estimated time, elevation, and the route’s road and safety information.</li>
         <li>Tap <b>Details</b> to see in-depth information on the route.</li>
       </ul></section>
       <section><h3>Details</h3><ul>
@@ -525,7 +527,7 @@
         <li><b>Lime</b> — Trusted bike lane: a bike facility we would send you down without a caveat. Separated lanes and shared-use paths always qualify. A painted lane on a road the state rates worst-on-scale for traffic stress does not — that road still <b>passes</b>, and draws blue.</li>
         <li><b>Dotted lime</b> — off-street paths and shared-use trails.</li>
         <li><b>Blue</b> — road that passes rules (speed and shoulder requirements).</li>
-        <li><b>Red dashed</b> — Road that fails rules. A known rule conflict, freeway, or permanent bicycle restriction. Permanent bicycle restrictions are never routed.</li>
+        <li><b>Red dashed</b> — Road that fails rules. A known rule conflict, freeway, or permanent bicycle restriction — or a walk-your-bike stretch longer than about 100 m, which is treated as a failure rather than a caution. Permanent bicycle restrictions are never routed.</li>
         <li><b>Amber</b> — Caution. Several different things put a road here; <b>Settings → Help</b> lists every one of them, generated from the safety model itself. A verdict outranks the facility: a road that cautions or fails draws amber or red even where it has a bike lane.</li>
         <li><b>Dashed olive-green</b> — Designated bike route: a signed or mapped bicycle corridor. It draws as a band beneath the road and does not change the road’s verdict. Where your route follows one, the band widens.</li>
         <li><b>Cross-slats</b> — confirmed unpaved surface. This overlays the route safety color.</li>

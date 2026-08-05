@@ -33,7 +33,7 @@ npm run ios:open
 
 `ios:sync` assembles the complete web runtime and statewide data into
 `mobile-shell/` before copying it into the Xcode project. The current payload
-is about 159 MB uncompressed and has no GitHub Pages or online-basemap runtime
+is about 144 MB uncompressed and has no GitHub Pages or online-basemap runtime
 dependency. `mobile-shell/` is generated — never edit it by hand.
 
 **Read `docs/IOS-HANDOFF.md` before touching the native code.** The only
@@ -48,7 +48,7 @@ left deliberately unfixed, and the parts that only a device can judge.
   land, water, parks, street geometry, street names, and place labels all work
   without a tile server.
 - Five independent **data-source toggles**:
-  - *Designated routes (USBR & regional)* — a dashed blue corridor beneath
+  - *Designated routes (USBR & regional)* — a dashed olive-green band beneath
     the scored road or facility verdict.
   - *WSDOT BLTS (state highways)* — one rating per state-highway segment.
   - *OSM bike infrastructure* — cycleways, bike lanes, shared paths/trails.
@@ -59,10 +59,12 @@ left deliberately unfixed, and the parts that only a device can judge.
     Missing speed limits are estimated from road class and labeled as estimates
     in the readout.
 - One verdict system on the background network and planned route: yellow-lime
-  = a physical bike facility that passes, dashed blue = a designated bicycle
-  route that passes, solid blue = another road that passes, amber = bike-legal
-  limited-access caution, red **dashed** = fails / unavailable, and gray =
-  insufficient data. Off-street paths/trails use a lime line with a fine
+  = a physical bike facility that passes, solid blue = another road that
+  passes, amber = caution (limited access, dismount, sidewalk fallback, and
+  other causes — the in-app help lists them, generated from the safety model),
+  red **dashed** = fails / unavailable, and gray = insufficient data. A dashed
+  olive-green band beneath a road marks a designated bicycle route — context,
+  never a verdict. Off-street paths/trails use a lime line with a fine
   dotted center, while on-street bike accommodations are solid. A failing
   portion of a planned route pulses dark red.
 - **Riding rules** — controls that re-score and re-color the map **live,
@@ -123,10 +125,10 @@ Each scored source gets a solid verdict layer plus a red-dashed level-4
 overlay. The two passing levels remain distinct for routing costs but share the
 same blue map verdict unless the edge has a physical bike facility, which is
 lime. Off-street bicycle paths and trails use a dotted-center lime line;
-on-street accommodations remain solid. Designated routes get a dashed blue ribbon below
-the verdict layer, so their useful corridor context remains recognizable
-without implying that designation alone is infrastructure or masking caution
-or failure.
+on-street accommodations remain solid. Designated routes get a dashed
+olive-green band below the verdict layer, so their useful corridor context
+remains recognizable without implying that designation alone is
+infrastructure or masking caution or failure.
 
 ## Data (build-time)
 
@@ -316,8 +318,8 @@ python3 scripts/build_routes.py --src data/washington-latest.osm.pbf
 U.S. Bicycle Routes (USBR 10, 20, 87, 95, 97, …) and regional rail-trails
 (Burke-Gilman, Centennial, Palouse to Cascades, …), extracted from OSM
 `route=bicycle` relations (`network=ncn`/`rcn`; local greenways are skipped
-as noise at state scale). Drawn as an orange ribbon *under* the scoring
-layers — the designation is information, not a safety verdict. The readout
+as noise at state scale). Drawn as a dashed olive-green band *under* the
+scoring layers — the designation is information, not a safety verdict. The readout
 adds a "Bike route" line to any road a designated route follows. WSDOT
 publishes these only as PDF maps; OSM carries the same designations as data.
 
@@ -394,9 +396,14 @@ TIME (a grade-aware speed model). Each request probes a matrix of direct,
 balanced, and low-stress costs with and without bike-route and residential
 preferences. Near-duplicates and dominated choices are removed, leaving up to
 five useful alternatives labeled **Route A–E**, ordered from shortest to
-longest. The app initially selects the safest candidate that stays within a
-practical per-leg detour of the quickest result, so the recommended route may
-have any letter. Each selected route
+longest. Among practical candidates the app stars the one with the best
+priced balance — riding time plus a heavy price on rule-failing and dismount
+meters and a light price on ordinary riding without a bike facility — so the
+recommended route may have any letter. For the life of a trip each letter
+stays bound to the same kind of route: adjusting waypoints or road blocks
+keeps the lineup, while changing start or destination (reversing included) or
+picking a different mix from the ⋮ menu deals a new one; loading a discarded
+candidate from the Considered-routes screen can add letters past E. Each selected route
 shows a compact ride mix: the share of riding distance on physical bike
 trails and lanes (lime on the map, with matching legend swatches) and the
 shares that pass, need caution, or fail the current rules. The trails/lanes
@@ -491,14 +498,14 @@ tippecanoe-decode data/roads.pmtiles 13 1311 2858 | grep -c '"adt"'
 #   -> non-zero  (traffic counts reached the tiles)
 ```
 
-Then run `npm test` — the whole suite, concurrently, in about six minutes.
-`test_route_portfolio.mjs` is the one that matters most: it catches a scoring
-change that severs a corridor. `npm test <substring>` runs a subset.
+Then run `npm test` — the whole suite, concurrently, in about sixteen
+minutes. `test_route_portfolio.mjs` is the one that matters most: it catches
+a scoring change that severs a corridor. `npm test <substring>` runs a subset.
 
 Tests that need a build tool the machine lacks report `SKIP`, not `PASS`; on a
 checkout without tippecanoe that is `test_basemap_coastline.py` and
 `test_directional_road_tiles.py`. The data tests need `pip install shapely
-osmium Pillow`, and the six browser tests need Playwright.
+osmium Pillow`, and the thirteen browser tests need Playwright.
 
 Expect `graph2.bin.gz` to grow by roughly 6 bytes per edge before compression
 for the format-11 measurement arrays; measured, that was 556 KB compressed
