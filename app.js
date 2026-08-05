@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.569';
+const APP_VERSION = '2026-08-05.570';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -382,8 +382,11 @@ function osmHitFilter(src) {
 }
 
 function sharrowOnlyExpr() {
+  // Tag precedence mirrors osmCycleway(): right before left. The two readers
+  // disagreed only on a way tagged differently per side, but that is exactly
+  // the lane-one-way sharrow-the-other case where the answer matters.
   const cw = ['coalesce', ['get', 'cycleway'], ['get', 'cycleway:both'],
-    ['get', 'cycleway:left'], ['get', 'cycleway:right'], ''];
+    ['get', 'cycleway:right'], ['get', 'cycleway:left'], ''];
   return ['all',
     ['==', cw, 'shared_lane'],
     ['!', ['in', ['coalesce', ['get', 'highway'], ''],
@@ -1196,16 +1199,6 @@ map.getContainer().addEventListener('click', (e) => {
   // right one and its permission prompt is expected.
 }, true);
 
-// Cycleway tag values that are paint in a shared traffic lane rather than space
-// of a rider's own. build_osm.py scores `shared_lane` as 2, the same as a
-// painted lane, so the OSM source cannot be trusted to have excluded it and the
-// raw tag is filtered here instead. The tags survive into the tiles via
-// KEEP_TAGS, so this needs no rebuild.
-const SHARED_LANE_VALUES = ['shared_lane', 'share_busway', 'opposite_share_busway'];
-function notSharedLaneExpr() {
-  return ['all', ...['cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right']
-    .map((key) => ['!', ['in', ['coalesce', ['get', key], ''], ['literal', SHARED_LANE_VALUES]]])];
-}
 // How the WSDOT BLTS tiles answer the lime rule's facts. The source stores
 // its facility as a STRING (BikeFacilityType); the grade comes from
 // Region.facilityLevels, the same table agencyFacilityLevel() gives the tap
@@ -1239,9 +1232,18 @@ function bltsTileFacts() {
 // It carries no traffic rating and no facility grade, so under the shared rule
 // everything except `infra` is unknown and the compiled expression folds down
 // to exactly the sharrow test.
+//
+// The MODEL'S sharrow test, not a blunter one. This used to veto lime for any
+// feature carrying a shared-lane value in ANY cycleway tag, which demoted 309
+// ways the card rightly calls bike network -- mostly streets with a real
+// painted lane one direction and a sharrow the other, plus dedicated paths
+// tagged with stray sharrow paint. sharrowOnly() asks the model's question --
+// a sharrow AND no facility of its own -- and a pure sharrow still never gets
+// here: it is dropped from this source at load and earns no riding-space
+// credit on the roads layer.
 function osmTileFacts() {
   return {
-    infra: { val: notSharedLaneExpr(), known: true },
+    infra: { val: ['!', sharrowOnlyExpr()], known: true },
     facility: { val: 0, known: false },
     stressRating: { val: 0, known: false },
   };
