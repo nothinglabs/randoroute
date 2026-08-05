@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.567';
+const APP_VERSION = '2026-08-05.568';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -5766,6 +5766,10 @@ function onRouterMessage(ev) {
     }
     routing.routeRequestActive = false;
     document.body.dataset.routeOptionsMs = String(Math.round(Number(m.ms) || 0));
+    // The per-phase breakdown, for diagnosing a slow platform from its own
+    // console: which phase ate the time is the fact that matters, and it
+    // cannot be reconstructed after the fact.
+    if (m.timings) console.log('[route-options] phase timings (ms)', m.timings);
     setRouteOptionsLoading(false);
     if (!m.ok || !Array.isArray(m.options) || !m.options.length) {
       showRouteActionToast('Could not calculate that route', { duration: 2600 });
