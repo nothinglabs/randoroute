@@ -650,8 +650,8 @@ const DEFAULT_WEIGHTS = Object.freeze({
   failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   designated: 0.94, strongDesignated: 0.5, residential: 0.78,
-  facilityShared: 0.82, facilityLane: 0.36, facilityBuffered: 0.32,
-  facilitySeparated: 0.31, facilityPath: 0.21,
+  facilityShared: 0.82, facilityLane: 0.4, facilityBuffered: 0.36,
+  facilitySeparated: 0.29, facilityPath: 0.16,
   mtbTrail: 6,
   freeway: 60,
   limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
@@ -1452,7 +1452,11 @@ function prewarmArcCosts(rules, configs, id) {
       }
     }
     if (u >= N) { configIndex++; u = 0; }
-    setTimeout(step, 0);
+    // A real pause, not just a yield: the sweep shares CPU cores with the
+    // MAP workers parsing tiles, and a zero-delay chain starved them while
+    // the rider browsed the map before routing (field: slow tile reloads on
+    // zoom). Warming a few seconds slower costs nobody anything.
+    setTimeout(step, 12);
   };
   step();
 }

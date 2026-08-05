@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.581';
+const APP_VERSION = '2026-08-05.582';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -129,8 +129,12 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   designated: 0.94, strongDesignated: 0.5, residential: 0.78,
-  facilityShared: 0.82, facilityLane: 0.36, facilityBuffered: 0.32,
-  facilitySeparated: 0.31, facilityPath: 0.21,
+  // Regraded from field riding 2026-08-05: full separation pulls harder
+  // (path 0.21 -> 0.16, separated 0.31 -> 0.29) while paint alone pulls
+  // less (buffered 0.32 -> 0.36, lane 0.36 -> 0.40) -- the rider's tuned
+  // values applied as shipped defaults.
+  facilityShared: 0.82, facilityLane: 0.4, facilityBuffered: 0.36,
+  facilitySeparated: 0.29, facilityPath: 0.16,
   mtbTrail: 6,
   freeway: 60,
   limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
