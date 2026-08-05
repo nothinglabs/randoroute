@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.575';
+const APP_VERSION = '2026-08-05.576';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11122,7 +11122,11 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
     if (!reg) throw new Error('service worker unavailable');
     // An update already sitting on the registration needs no network at all.
     if (reg.waiting) {
-      status.textContent = 'Update ready.';
+      // An explicit check is fresh consent to be asked: without clearing the
+      // deferral, a rider who once tapped "Not now" got "Update ready." as
+      // dead-end text with no button anywhere -- ready how? do what?
+      deferredUpdateWorker = null;
+      status.textContent = 'Update ready — tap “Restart to update”.';
       offerUpdate(reg.waiting);
       document.getElementById('helpDialog')?.close();
       return;

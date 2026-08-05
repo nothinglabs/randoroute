@@ -541,6 +541,54 @@ const SPEED_STRESS_FLOOR = 0.25; // ~2.6 mph while walking a bike
 // 6 minutes, raised from 4 by field feedback: routes leaned on walk links a
 // little too readily once the network was fully connected.
 const DISMOUNT_ENTRY_PENALTY_S = 6 * 60;
+// Search-cost multiplier on the walked time of a dismount stretch (the ETA
+// keeps the honest walking time). See the note at its use in edgeCostParts.
+const DISMOUNT_WALK_COST_MULT = 4;
+// Above this, a single dismount EDGE prices even harsher in the search: long
+// edges are how long unrideable trails appear in the graph, and the rider
+// bushwhacked one once because a router shrugged at it.
+const DISMOUNT_LONG_EDGE_M = 100;
+const DISMOUNT_LONG_EDGE_MULT = 8;
+// A CONTIGUOUS tagged-dismount run longer than this reports as FAILING the
+// rules, not merely caution: a gate or a dock approach is a shrug, a real
+// stretch of signed trail you cannot ride is a route that failed to be a
+// bike route. Runs at or under it stay caution. TAGGED only (`official`
+// carries both the pricing bit and the bicycle=dismount tag bit): the walk
+// links the graph build synthesises from untagged footways stay amber
+// whatever their length -- red at every park connector would teach the
+// rider to ignore the red that stands for a real sign. Well above
+// CROSSING_MAX_M, so a failing dismount run can never be mistaken for an
+// intersection crossing.
+const DISMOUNT_FAIL_RUN_M = 100;
+const EDGE_DISMOUNT_TAG = 128;
+const taggedDismountSeg = (seg) =>
+  (seg.official & (EDGE_DISMOUNT | EDGE_DISMOUNT_TAG)) === (EDGE_DISMOUNT | EDGE_DISMOUNT_TAG);
+
+// Walk the finished segment list, find contiguous tagged-dismount runs over
+// the threshold, and escalate them from caution to fail -- adjusting the
+// level tallies in place and returning the failing meters added. Shared by
+// the route builder and the summary rebuilder so the two cannot disagree.
+function escalateLongDismounts(segs, levelM) {
+  let addedFailM = 0;
+  for (let i = 0; i < segs.length;) {
+    if (!taggedDismountSeg(segs[i])) { i++; continue; }
+    let end = i, runM = 0;
+    while (end < segs.length && taggedDismountSeg(segs[end])) { runM += segs[end].lenM; end++; }
+    if (runM > DISMOUNT_FAIL_RUN_M) {
+      for (let j = i; j < end; j++) {
+        const seg = segs[j];
+        if (seg.level === 4) continue;
+        levelM[seg.level] -= seg.lenM;
+        levelM[4] += seg.lenM;
+        addedFailM += seg.lenM;
+        seg.level = 4;
+        seg.cautionCause = null;
+      }
+    }
+    i = end;
+  }
+  return addedFailM;
+}
 // A* heuristic speed: must not undershoot any effective edge speed, including
 // fast ferries and the strongest cost bonuses, or A* loses optimality.
 // Worst case: V_MAX 12 / (0.30 path facility x 0.78 residential x 0.9
@@ -1255,6 +1303,18 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // on a highway shoulder.
   if (edgeLimited(ei, forward)) cost *= modeW.limitedAccess;
   if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
+  // Walking the bike is a bad OUTCOME, not merely a slow one. Dismount
+  // stretches already cost their real walking time (V_DISMOUNT) plus the
+  // six-minute entry below; this multiplier is the judgment on top, sized so
+  // a gate or a short transition stays a shrug while a fifth of a mile of
+  // "trail" you cannot ride prices like something to genuinely route around.
+  // Proportional by construction: it scales the walked seconds themselves,
+  // and a LONG dismount edge -- how a long unrideable trail appears in the
+  // graph -- escalates further still.
+  if (isDismountEdge(ei)) {
+    cost *= eLen[ei] > DISMOUNT_LONG_EDGE_M
+      ? DISMOUNT_LONG_EDGE_MULT : DISMOUNT_WALK_COST_MULT;
+  }
   // Bonuses never apply to ferries, freeways, or WSDOT limited-access
   // highways: preference must not erase their access/caution costs. For
   // an ordinary road, a physical facility beats designation alone; when
@@ -1712,7 +1772,15 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     if (eFlags[ei] & 4) freewayM += eLen[ei];
     else if (edgeLimited(ei, forward)) limitedAccessM += eLen[ei];
     const verdict = SafetyModel.evaluate(edgeFacts(ei, forward), rules);
-    const level = verdict.level;
+    // A dismount stretch reports as CAUTION in the route's numbers and its
+    // segments, matching the amber it is drawn with and the walker markers
+    // over it -- unless the road fails outright anyway. When dismount is what
+    // elevated the level, it is also the cause the Concerns list names
+    // ('dismount' is already in SafetyModel.CAUTION_CAUSES).
+    const dismountHere = isDismountEdge(ei);
+    const level = dismountHere && verdict.level < 3 ? 3 : verdict.level;
+    const cautionCause = level !== 3 ? null
+      : (verdict.level < 3 ? 'dismount' : (verdict.caution || (dismountHere ? 'dismount' : null)));
     levelM[level] += eLen[ei];
     if (level === 4) failM += eLen[ei];
     const hazard = edgeHazard(ei, forward);
@@ -1740,7 +1808,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       shBack: edgeShoulder(ei, !forward),
       flags: eFlags[ei] | (edgeLimited(ei, forward) ? 128 : 0), roadClass: eClass[ei],
       facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
-      dismount: isDismountEdge(ei), level, cautionCause: verdict.caution || null,
+      dismount: dismountHere, level, cautionCause,
       surface: eSurface[ei], surfaceLabel: SURFACE_LABEL[eSurface[ei]] || SURFACE_LABEL[SURFACE_UNKNOWN],
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
@@ -1810,6 +1878,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       s, t, diversityEdges, diversityFactor, searchRules, blocked, crossingRetry + 1);
   }
   const ferrySegs = ferryRanges.map(([a, b]) => coords.slice(a, b + 1));
+  failM += escalateLongDismounts(segs, levelM);
   const gradeStats = routeGradeStats(segs);
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
@@ -1889,6 +1958,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
     ds.push(prof[prof.length - 1]);
     prof = ds;
   }
+  failM += escalateLongDismounts(segs, levelM);
   const gradeStats = routeGradeStats(segs);
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
@@ -1953,12 +2023,16 @@ function routeFragment(source, startEdge, endEdge, rules) {
         && isResidential(ei)) residentialM += eLen[ei];
     if (eFlags[ei] & 4) freewayM += eLen[ei];
     else if (edgeLimited(ei, forward)) limitedAccessM += eLen[ei];
-    const level = edgeLevel(ei, rules, forward);
+    // Same dismount-as-caution elevation as the primary route builder above,
+    // so a rebuilt summary cannot disagree with the original one.
+    const rawLevel = edgeLevel(ei, rules, forward);
+    const level = isDismountEdge(ei) && rawLevel < 3 ? 3 : rawLevel;
     levelM[level] += eLen[ei];
     if (level === 4) failM += eLen[ei];
     hazardM += Number(seg.hazardLenM) || 0;
     profile.push([distM, nodeEle[nodeIds[index + 1]]]);
   }
+  failM += escalateLongDismounts(segs, levelM);
   const gradeStats = routeGradeStats(segs);
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM,
@@ -2020,6 +2094,7 @@ function mergeRouteParts(parts, snapStartM, snapEndM) {
     downsampled.push(prof[prof.length - 1]);
     prof = downsampled;
   }
+  failM += escalateLongDismounts(segs, levelM);
   const gradeStats = routeGradeStats(segs);
   const merged = {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
@@ -2118,6 +2193,9 @@ function compareSafety(a, b) {
   if (a.freewayM !== b.freewayM) return a.freewayM - b.freewayM;
   if ((a.mtbM || 0) !== (b.mtbM || 0)) return (a.mtbM || 0) - (b.mtbM || 0);
   if ((a.hazardM || 0) !== (b.hazardM || 0)) return (a.hazardM || 0) - (b.hazardM || 0);
+  // A mandatory walk outranks a limited-access caution: it is the more
+  // concrete compromise -- the rider is off the bike, not merely warned.
+  if ((a.dismountM || 0) !== (b.dismountM || 0)) return (a.dismountM || 0) - (b.dismountM || 0);
   if (a.limitedAccessM !== b.limitedAccessM) return a.limitedAccessM - b.limitedAccessM;
   return a.aggression - b.aggression || a.timeS - b.timeS;
 }
@@ -2669,8 +2747,12 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // the strictly safer route, and the strictly safest candidate keeps its
   // own lettered slot regardless (safestOverall, below).
   const FAIL_AVOID_PRICE_S_PER_M = 1;
+  // Dismount meters carry the same price as failing meters: a meter the
+  // rider cannot properly ride costs a second, whichever way it fails them.
+  // The walking time itself is already inside timeS, so this stacks the
+  // judgment on top of the slowness.
   const recommendationScore = (route) =>
-    route.timeS + route.failM * FAIL_AVOID_PRICE_S_PER_M;
+    route.timeS + (route.failM + (route.dismountM || 0)) * FAIL_AVOID_PRICE_S_PER_M;
   let recommended = null;
   for (const route of recommendationPool) {
     if (!recommended) { recommended = route; continue; }

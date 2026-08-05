@@ -23,8 +23,10 @@ assert.ok(reply.ok && reply.options.length >= 2, 'a portfolio should come back')
 const offered = reply.options.map((option) => ({
   label: option.optimization.label,
   recommended: !!option.optimization.recommended,
-  timeS: option.timeS, failM: option.failM,
-  score: option.timeS + option.failM * PRICE_S_PER_M,
+  timeS: option.timeS, failM: option.failM, dismountM: option.dismountM || 0,
+  // Dismount meters carry the same price as failing meters: a meter the
+  // rider cannot properly ride costs a second, whichever way it fails them.
+  score: option.timeS + (option.failM + (option.dismountM || 0)) * PRICE_S_PER_M,
 }));
 const star = offered.find((option) => option.recommended);
 assert.ok(star, 'one offered route should carry the recommendation');

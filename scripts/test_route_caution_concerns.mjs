@@ -67,6 +67,7 @@ const cases = [
   [{ level: 3, displayCategory: 'caution', official: 16, mph: 45, sh: 0,
     cautionCause: 'sidewalk-fallback' }, 'sidewalk-fallback'],
   [{ level: 1, displayCategory: 'caution', mtb: true }, 'mountain-bike'],
+  [{ level: 3, displayCategory: 'caution', dismount: 1, cautionCause: 'dismount' }, 'dismount'],
   [{ level: 3, displayCategory: 'caution', cautionCause: 'future-new-cause' }, 'other'],
   [{ level: 3, displayCategory: 'caution' }, 'other'],
 ];
@@ -77,8 +78,31 @@ for (const [segment, expected] of cases) {
 assert.equal(context.cautionConcernKind({ level: 2, displayCategory: 'pass' }, rules), null,
   'an ordinary passing segment must not become a concern');
 
-assert.match(worker, /cautionCause:\s*verdict\.caution\s*\|\|\s*null/,
-  'the router must retain the exact SafetyModel caution cause');
+// The router's own segments must carry the cause, not merely the level --
+// checked by ROUTING, not by reading the worker's source (which is what this
+// used to do, and which broke on a refactor while proving nothing). The dock
+// approach at Mukilteo is a real sub-threshold dismount, so the route is
+// guaranteed one amber segment whose cause is 'dismount'.
+{
+  const { routerWorker } = await import('./testlib/harness.mjs');
+  const w = routerWorker();
+  const reply = w.post({ type: 'route', id: 'cause', mode: 'balanced',
+    points: [[-122.3321, 47.6062], [-122.3046, 47.9494]],
+    rules: { allowFreeways: true, allowMtbTrails: false, preferPaved: true,
+      minShoulder: 4, inferShoulderFromEdge: true, maxSpeedNoShoulder: 35,
+      lanesNoShoulderOver: 3, busyNoShoulder: 2, allowSidewalkFallback: true,
+      upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false } });
+  assert.ok(reply.ok && Array.isArray(reply.segs) && reply.segs.length,
+    'the router should produce a segmented route');
+  const amber = reply.segs.filter((seg) => seg.level === 3);
+  assert.ok(amber.length, 'the dock approach should yield at least one amber segment');
+  const uncaused = amber.filter((seg) => !seg.cautionCause);
+  assert.equal(uncaused.length, 0,
+    `every amber segment must name its cause; missing on: ${
+      uncaused.slice(0, 3).map((seg) => seg.name || '(unnamed)').join(', ')}`);
+  assert.ok(amber.some((seg) => seg.cautionCause === 'dismount'),
+    'the dock approach dismount must be an amber segment with the dismount cause');
+}
 assert.match(app, /lts:\s*Number\(s\.lts\)\s*\|\|\s*0,\s*cautionCause:\s*routeSegmentCautionCause\(s\)/,
   'Route Details storage must retain stress ratings and caution causes');
 for (const contract of [

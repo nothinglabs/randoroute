@@ -903,8 +903,20 @@ A dismount is one of two things in the graph, and the app treats them
 differently. **Tagged** — a mapper wrote `bicycle=dismount`; the edge carries
 `official` bit 128 alongside the pricing bit 8. **Synthesised** — a walk link
 the graph build created from an untagged footway or path purely to keep the
-network connected (bit 8 without 128). Both are priced identically (walking
-pace plus a six-minute entry penalty), both are listed in the route-concerns
+network connected (bit 8 without 128). Both are priced identically — walking
+pace, a six-minute entry penalty, and a ×4 search-cost multiplier on the
+walked time (×8 on an edge over 100 m, which is how a long unrideable trail
+appears in the graph): walking the bike is a bad outcome, not merely a slow
+one, and the multiplier is proportional by construction because it scales the
+walked seconds themselves. Both count as CAUTION in the route's level
+percentages (matching the amber they draw), and both are priced into the
+recommendation at the same one second per meter as failing road. One
+judgment applies to tagged dismounts alone: a contiguous tagged run longer
+than 100 m reports as FAILING the rules — a gate or a dock approach is a
+shrug; a real stretch of signed trail you cannot ride is a route that failed
+to be a bike route. Synthesised walk links stay amber whatever their length:
+red at every park connector would teach the rider to ignore the red that
+stands for a real sign. Both kinds are listed in the route-concerns
 report, and both carry walking-figure markers on the drawn route: the route
 marker pass chains them about 700 m apart along the whole walked stretch, so
 a long one cannot sit off screen behind a single entry pin. BOTH also draw

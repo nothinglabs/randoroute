@@ -962,6 +962,14 @@ body.navigation-active #routeBar { display: none; }
   .route-actions-menu { right: -1px; width: 210px; }
   #mobileNavDock { display: block; position: absolute; z-index: 15; left: 66px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
   body.panel-open #mobileNavDock { left: 10px; bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
+  /* The scale bar (and attribution) ride above the open bottom sheet exactly
+   * like the Navigate dock. They were mounted at the map's true bottom edge,
+   * which the sheet covers whenever a route is on screen -- so the scale
+   * existed and was almost never visible. */
+  body.panel-open #map .maplibregl-ctrl-bottom-right,
+  body.panel-open #map .maplibregl-ctrl-bottom-left {
+    bottom: calc(var(--mobile-panel-height, 0px) + 2px);
+  }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group { margin-top: calc(env(safe-area-inset-top) + 10px); border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.22); }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 42px; height: 42px; border-radius: 12px; }
   #panelOpen { left: 10px; right: auto; }
