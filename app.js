@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.586';
+const APP_VERSION = '2026-08-05.587';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2665,7 +2665,7 @@ function setRouteStatus(t) {
 }
 
 let routeActionToastTimer = null;
-function showRouteActionToast(text, { busy = false, detail = '', duration = 2200 } = {}) {
+function showRouteActionToast(text, { busy = false, detail = '', duration = 2200, progress = null } = {}) {
   const toast = document.getElementById('routeActionToast');
   const label = document.getElementById('routeActionText');
   const detailLabel = document.getElementById('routeActionDetail');
@@ -2674,15 +2674,30 @@ function showRouteActionToast(text, { busy = false, detail = '', duration = 2200
   label.textContent = text || '';
   detailLabel.textContent = detail || '';
   detailLabel.hidden = !detail;
+  // The percentage bar rides in the same toast the phase text uses, so the
+  // rider sees one notice, not two. Only the route calculation supplies a
+  // fraction; every other caller leaves the bar hidden.
+  const bar = document.getElementById('routeActionProgress');
+  const showBar = typeof progress === 'number' && progress >= 0;
+  if (bar) {
+    bar.hidden = !showBar;
+    if (showBar) {
+      const pct = Math.round(Math.max(0, Math.min(1, progress)) * 100);
+      const fill = document.getElementById('routeActionProgressFill');
+      if (fill) fill.style.width = `${pct}%`;
+      const pctLabel = document.getElementById('routeActionProgressPct');
+      if (pctLabel) pctLabel.textContent = `${pct}%`;
+    }
+  }
   toast.classList.toggle('busy', busy);
-  toast.classList.toggle('has-detail', !!detail);
+  toast.classList.toggle('has-detail', !!detail || showBar);
   toast.hidden = !text;
   if (text && duration > 0) routeActionToastTimer = setTimeout(() => { toast.hidden = true; }, duration);
 }
 
-function showRouterProgress(detail, title = 'Loading routing engine') {
+function showRouterProgress(detail, title = 'Loading routing engine', progress = null) {
   setRouteStatus(detail || title);
-  showRouteActionToast(title, { busy: true, detail, duration: 0 });
+  showRouteActionToast(title, { busy: true, detail, duration: 0, progress });
   // On a first install the routing data is the long wait, and on iOS it can
   // overlap the launch screen -- which then sat on a generic message with
   // nothing to say. This no-ops once the app has taken over the screen.
@@ -5919,7 +5934,14 @@ function onRouterMessage(ev) {
     if (m.id != null && m.id !== routing.reqId) return;
     const title = m.phase === 'engine' ? 'Loading routing engine'
       : m.phase === 'reroute' ? 'Updating route' : 'Calculating route options';
-    showRouterProgress(m.detail || 'Working…', title);
+    // The worker's fractions are monotone by construction; clamp anyway so a
+    // re-ordered delivery can never make the bar step backward.
+    let frac = typeof m.frac === 'number' ? m.frac : null;
+    if (frac != null) {
+      if (routing.progressReq !== m.id) { routing.progressReq = m.id; routing.progressFrac = 0; }
+      frac = routing.progressFrac = Math.max(routing.progressFrac, frac);
+    }
+    showRouterProgress(m.detail || 'Working…', title, frac);
   } else if (m.type === 'ready') {
     // Only a graph whose BYTES match the expected stamp counts as loaded;
     // marking a stale one done is what made the self-heal one-shot before.

@@ -2516,7 +2516,7 @@ function addDiscoveryCandidates(raw, points, rules, forceDesig, forceResidential
     prefDesig: forceDesig, prefResidential: forceResidential, order: 0.48,
     discoveryMaxSpeed,
   };
-  progress?.('Trying discovery profiles on calmer roads… (1 of 2)');
+  progress?.('Trying discovery profiles on calmer roads… (1 of 2)', 0.63);
   const direct = route(points, rules, directProfile.mode, directProfile.prefDesig,
     directProfile.prefResidential, snaps, null, 1, searchRules);
   if (!direct.ok) return searchRules;
@@ -2528,7 +2528,7 @@ function addDiscoveryCandidates(raw, points, rules, forceDesig, forceResidential
     id: 'discover-gentle', label: 'Low-speed discovery', mode: 'low',
     prefDesig: true, prefResidential: true, order: 2.28, discoveryMaxSpeed,
   };
-  progress?.('Trying discovery profiles on calmer roads… (2 of 2)');
+  progress?.('Trying discovery profiles on calmer roads… (2 of 2)', 0.72);
   const low = route(points, rules, lowProfile.mode, lowProfile.prefDesig,
     lowProfile.prefResidential, snaps, null, 1, searchRules);
   // A discovery lens should uncover a plausible corridor, not reserve a slot
@@ -2634,7 +2634,7 @@ function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, se
   for (let landIndex = 0; landIndex < landRanges.length; landIndex++) {
     const range = landRanges[landIndex], original = originalLandParts[landIndex];
     if (!original || original.distM < 1000) continue;
-    progress?.(`Refining the land sections of a ferry itinerary… (${landIndex + 1} of ${landRanges.length})`);
+    progress?.(`Refining the land sections of a ferry itinerary… (${landIndex + 1} of ${landRanges.length})`, 0.62 + 0.26 * (landIndex / landRanges.length));
     const startNode = seed.nodeIds[range.start], endNode = seed.nodeIds[range.end];
     const startPoint = [nodeLon[startNode], nodeLat[startNode]];
     const endPoint = [nodeLon[endNode], nodeLat[endNode]];
@@ -2723,7 +2723,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   let firstFailure = null;
   for (let pi = 0; pi < profiles.length; pi++) {
     const profile = profiles[pi];
-    progress?.(`Testing route profiles… (${pi + 1} of ${profiles.length})`);
+    progress?.(`Testing route profiles… (${pi + 1} of ${profiles.length})`, 0.03 + 0.37 * (pi / profiles.length));
     const result = route(points, rules, profile.mode, profile.prefDesig, profile.prefResidential, snaps);
     if (!result.ok) {
       if (!firstFailure) firstFailure = result;
@@ -2737,7 +2737,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   }
   if (!raw.length) return firstFailure || { ok: false, reason: 'No route options were found.' };
   endPhase('profiles');
-  progress?.('Looking for genuinely different route corridors…');
+  progress?.('Looking for genuinely different route corridors…', 0.4);
 
   // Cost profiles can all converge on the same one or two corridors even
   // where a reasonable parallel route exists. If that happens, run a small
@@ -2765,7 +2765,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     ];
     for (let ci = 0; ci < probes.length; ci++) {
       const probe = probes[ci];
-      progress?.(`Exploring alternative corridors… (${ci + 1} of ${probes.length})`);
+      progress?.(`Exploring alternative corridors… (${ci + 1} of ${probes.length})`, 0.41 + 0.17 * (ci / probes.length));
       const profile = { ...probe, label: 'Alternative corridor', alternativeCorridor: true };
       delete profile.seed; delete profile.factor;
       const result = route(points, rules, profile.mode, profile.prefDesig,
@@ -2778,16 +2778,17 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   }
 
   endPhase('corridors');
-  progress?.('Trying discovery profiles on calmer roads…');
+  progress?.('Trying discovery profiles on calmer roads…', 0.6);
   const discoveryRules = addDiscoveryCandidates(raw, points, rules,
     forceDesig, forceResidential, snaps, progress);
   endPhase('discovery');
   if (points.length === 2) {
-    progress?.('Probing ferry corridors and terminals…');
+    progress?.('Probing ferry corridors and terminals…',
+      raw.some((c) => c.ferryM > 0) ? 0.62 : 0.8);
     addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, discoveryRules, progress);
     endPhase('ferries');
   }
-  progress?.('Checking for a practical route that fully matches your rules…');
+  progress?.('Checking for a practical route that fully matches your rules…', 0.9);
   ensureFullyMatchingCandidate(raw, points, rules, snaps);
   endPhase('matching');
 
@@ -2838,7 +2839,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
         && (other.timeS < candidate.timeS - 5 || safety < 0);
     }));
   const choices = useful.length ? useful : unique;
-  progress?.('Comparing safety, travel time, and route variety…');
+  progress?.('Comparing safety, travel time, and route variety…', 0.96);
 
   const fastestOverall = choices.reduce((best, route) => route.timeS < best.timeS ? route : best, choices[0]);
   const safestOverall = choices.reduce((best, route) => compareSafety(route, best) < 0 ? route : best, choices[0]);
@@ -3188,8 +3189,9 @@ onmessage = (ev) => {
       prewarmToken++;
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
-      const progress = (detail) => postMessage({ type: 'progress', phase: 'route', id: m.id, detail });
-      progress('Testing faster, safer, and bike-friendly route profiles…');
+      const progress = (detail, frac) => postMessage({ type: 'progress', phase: 'route', id: m.id,
+        detail, frac: typeof frac === 'number' ? frac : undefined });
+      progress('Testing faster, safer, and bike-friendly route profiles…', 0.02);
       // Everything that can change the portfolio goes into the signature.
       const signature = JSON.stringify([pts, m.rules, !!m.forceDesignated,
         !!m.forceResidential, m.weights || null, m.blocks || null]);
