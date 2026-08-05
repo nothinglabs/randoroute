@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.585';
+const APP_VERSION = '2026-08-05.586';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1495,8 +1495,15 @@ function scheduleReroute() {
 function schedulePrewarm() {
   if (!routing.ready || !routing.worker) return;
   if (routing.start && routing.end) return;
+  // A phone gets a lite sweep: three cost slots instead of fifteen, so idle
+  // browsing does not carry the full cache allocation before any route is
+  // asked for. iPadOS reports itself as MacIntel with touch, hence the
+  // maxTouchPoints check; deviceMemory covers low-RAM Android.
+  const constrained = /iPad|iPhone|iPod|Android/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    || (navigator.deviceMemory > 0 && navigator.deviceMemory <= 4);
   routing.worker.postMessage({ type: 'prewarm', id: ++routing.reqId,
-    rules: { ...rules }, weights: remixedRoutingWeights(),
+    rules: { ...rules }, weights: remixedRoutingWeights(), lite: constrained,
     // The discovery-lens sweep warms discover-quick under the rider's own
     // preference combo -- the same one a real request would search with.
     prefDesignated: routing.prefDesig, prefResidential: routing.prefResidential });

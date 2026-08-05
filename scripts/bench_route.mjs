@@ -16,6 +16,8 @@
 //   2026-08-05  12-slot Float32 cache   short cold 32 s, repeat 9.8 s
 //   2026-08-05  15 slots (grid + lens)  short cold 32 s, repeat 4.2 s
 //               -- repeats no longer re-derive discovery keys
+//   2026-08-05  6 floor slots           short cold 29 s, moved pin 5.7 s
+//               (was 14.3 s), repeat 3.9 s -- floors survive key switches
 // Candidate distances that move more than ~1% from a previous run mean the
 // change was not perf-neutral -- stop and look before trusting the timing.
 import { routerWorker } from './testlib/harness.mjs';

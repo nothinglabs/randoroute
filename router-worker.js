@@ -1171,7 +1171,19 @@ function buildIncidence() {
 // pass evaluates each direction at most once anyway -- it meets an edge from
 // each of its two ends, and each meeting is one direction of travel.
 let floorKey = '', floorSetup = null;
-let floorValues = null;   // Float64Array(2E), NaN = not yet computed for floorKey
+let floorValues = null;   // the active slot's Float32Array(2E), NaN = not yet computed
+// Floors are a pure function of (edge, direction, key), and the same keys are
+// asked for again and again: the six (mode x lens) keys cycle within one
+// request, a ferry trip alternates two of them per land section, and a moved
+// pin re-asks all six with only the goal changed. One shared array meant every
+// key switch threw the previous key's floors away -- profiled at two thirds of
+// each backward pass, ~10 s of a moved-pin request in the dev container. One
+// slot per key instead, LRU over six. Float32, not Float64: a stored floor is
+// never accumulated (the pass sums distances in doubles), and the half-ulp a
+// store can round UP is ~1e-7 relative -- absorbed a thousand times over by
+// POTENTIAL_SAFETY. ~11 MB per slot at 2.7M directed edges.
+const FLOOR_SLOTS = 6;
+const floorSlots = [];
 let weightsEpoch = 0;
 // Everything the bound reads, as one string.
 //
@@ -1191,11 +1203,19 @@ function boundSignature(rules) {
 function useEdgeCostFloors(rules, searchRules, mode) {
   const key = `${mode}|${boundSignature(rules)}|${boundSignature(searchRules)}`;
   if (floorKey === key) return;
-  // The floor of an edge is a pure function of (edge, direction, this key).
-  // The ferry probes build potentials for many one-shot goals under ONE key,
-  // so caching floor VALUES saves re-deriving them per goal.
-  if (!floorValues) floorValues = new Float64Array(2 * E);
-  floorValues.fill(NaN);
+  let slot = null;
+  for (let i = 0; i < floorSlots.length; i++) {
+    if (floorSlots[i].key === key) { slot = floorSlots.splice(i, 1)[0]; break; }
+  }
+  if (!slot) {
+    slot = floorSlots.length < FLOOR_SLOTS
+      ? { key: '', values: new Float32Array(2 * E) }
+      : floorSlots.pop();
+    slot.key = key;
+    slot.values.fill(NaN);
+  }
+  floorSlots.unshift(slot);
+  floorValues = slot.values;
   // modeMult comes from the edge's own verdict, scored under the rules the
   // search will actually price against. Flooring it at the comfortable-road
   // bonus instead -- the obvious shortcut, since the verdict is the expensive
@@ -1588,7 +1608,13 @@ function goalPotential(goalNode, startNode, rules, searchRules, mode) {
       if (edgeShoulder(ei, fromA) === PROHIBITED_SHOULDER) continue;
       const fi = ei * 2 + (fromA ? 1 : 0);
       let floorC = floorValues[fi];
-      if (floorC !== floorC) { floorC = edgeCostFloor(ei, fromA); floorValues[fi] = floorC; }
+      if (floorC !== floorC) {
+        // Read BACK through the Float32 store: a pass that fills a floor and a
+        // later pass that reuses it must price the arc identically, or two
+        // builds of the same potential could differ in the last digit.
+        floorValues[fi] = edgeCostFloor(ei, fromA);
+        floorC = floorValues[fi];
+      }
       const nd = du + floorC;
       // An excluded edge prices at Infinity and never wins. Push the value as
       // STORED, so a node's heap key and its recorded distance cannot disagree
@@ -3127,6 +3153,18 @@ onmessage = (ev) => {
       // serve the discovery phase. Chunked and cancellable. A caller may
       // narrow the sweep (tests warm one config to stay fast).
       let configs = Array.isArray(m.configs) && m.configs.length ? m.configs : null;
+      if (!configs && m.lite) {
+        // A phone browsing the map should not have 300+ MB of cost slots
+        // allocated by an idle sweep (field: a crash-and-reload right after
+        // an update, when both cache generations were also resident). Warm
+        // only the rider's own preference combo -- three slots; a real
+        // search allocates and warms the rest organically.
+        configs = [];
+        for (const mode of ['direct', 'balanced', 'low']) {
+          configs.push({ mode, prefDesig: !!m.prefDesignated,
+            prefResidential: !!m.prefResidential });
+        }
+      }
       if (!configs) {
         configs = [];
         for (const mode of ['direct', 'balanced', 'low']) {
