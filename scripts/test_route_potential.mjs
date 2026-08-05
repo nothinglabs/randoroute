@@ -196,9 +196,15 @@ for (const leg of LEGS) {
       const fast = legCost(worker, rules, leg, mode, false, true);
       if (!fast.ok) continue;
       const best = legCost(dijkstra, rules, leg, mode, false, true);
-      assert.ok(fast.cost <= best.cost + 1e-6,
+      // The search runs weighted A*: SEARCH_OVERSHOOT bounds how far above
+      // the true optimum a found route may cost. That bound IS the contract
+      // -- a violation means the heuristic is not admissible even after the
+      // weighting, which the overshoot cannot excuse.
+      const overshoot = Number(/const SEARCH_OVERSHOOT = ([\d.]+);/.exec(workerSrc)?.[1]) || 1;
+      assert.ok(fast.cost <= best.cost * overshoot + 1e-6,
         `${leg[0]} / ${label} / ${mode}: A* returned a route costing ${fast.cost.toFixed(4)}`
-        + ` when ${best.cost.toFixed(4)} was available (${fast.distM}m against ${best.distM}m).`
+        + ` when ${best.cost.toFixed(4)} was available (${fast.distM}m against ${best.distM}m,`
+        + ` bound ${overshoot}x).`
         + ' The heuristic is not admissible, or the search settled an arc it should have revisited.');
       compared++;
     }

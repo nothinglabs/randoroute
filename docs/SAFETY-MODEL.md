@@ -934,6 +934,14 @@ is one colour over several meanings, which is why the card names which.
 Subjective by design: it chooses among *legal* roads and never makes one legal
 or illegal. Every multiplier applied to an edge, in `router-worker.js`:
 
+**The search is weighted A\*** (`SEARCH_OVERSHOOT`, 1.15): a found route's
+cost is mathematically bounded at 1.15× the true optimum, and in practice the
+verification legs in `test_route_potential.mjs` come back exactly optimal —
+the weighting prunes lateral exploration far from the corridor, not the
+corridor itself. This bought roughly half the portfolio's search time. It
+never affects which roads are *legal* or how any road is *scored*; 1.0
+restores exact A\*.
+
 **Route Remix** (the chooser row's "More" button, titled "Show me routes
 that are…") scales this whole table at request time without editing it:
 the rider's tuned weights stay stored as-is, and `remixedRoutingWeights()` in

@@ -1123,6 +1123,7 @@ function buildIncidence() {
 // pass evaluates each direction at most once anyway -- it meets an edge from
 // each of its two ends, and each meeting is one direction of travel.
 let floorKey = '', floorSetup = null;
+let floorValues = null;   // Float64Array(2E), NaN = not yet computed for floorKey
 let weightsEpoch = 0;
 // Everything the bound reads, as one string.
 //
@@ -1142,6 +1143,11 @@ function boundSignature(rules) {
 function useEdgeCostFloors(rules, searchRules, mode) {
   const key = `${mode}|${boundSignature(rules)}|${boundSignature(searchRules)}`;
   if (floorKey === key) return;
+  // The floor of an edge is a pure function of (edge, direction, this key).
+  // The ferry probes build potentials for many one-shot goals under ONE key,
+  // so caching floor VALUES saves re-deriving them per goal.
+  if (!floorValues) floorValues = new Float64Array(2 * E);
+  floorValues.fill(NaN);
   // modeMult comes from the edge's own verdict, scored under the rules the
   // search will actually price against. Flooring it at the comfortable-road
   // bonus instead -- the obvious shortcut, since the verdict is the expensive
@@ -1194,32 +1200,60 @@ function useEdgeCostFloors(rules, searchRules, mode) {
  * edge-only price -- which is exactly what edgeCostFloor() has to bound.
  */
 function edgeCost(ei, forward, ctx) {
+  const mul = edgeCostParts(ei, forward, ctx.mode, ctx.modeW, ctx.rules,
+    ctx.searchRules, ctx.prefDesig, ctx.prefResidential,
+    ctx.boardingWaitS || 0, !!ctx.requiredSafeAccess);
+  if (!(mul < Infinity)) return Infinity;
+  let cost = mul;
+  if (ctx.diversityEdges?.has(ei) && partsDivOk) cost *= ctx.diversityFactor;
+  cost += partsSteep;
+  cost += partsSurf;
+  if (isDismountEdge(ei) && (ctx.incomingEdge == null || ctx.incomingEdge < 0
+      || !isDismountEdge(ctx.incomingEdge))) {
+    cost += DISMOUNT_ENTRY_PENALTY_S;
+  }
+  if (ctx.fromNode != null) cost += turnPreferenceS(ctx.incomingEdge, ctx.fromNode, ei, ctx.mode);
+  return cost;
+}
+
+/* The arc-deterministic pieces of edgeCost, split out so the relaxation loop
+ * can cache them per arc: `mul` is the whole multiplicative chain (including
+ * the ferry boarding wait and the required-safe-access surcharge, both fixed
+ * per arc), `steep`/`surf` the per-arc additive terms, `divOk` whether an
+ * alternative-corridor diversity penalty may apply. What stays out is exactly
+ * what depends on more than the arc and the search config: the diversity
+ * factor itself (per candidate), the dismount entry charge and turn friction
+ * (per transition). edgeCost() above recombines them in the original order,
+ * so the cached path and the reference path price an edge identically. */
+let partsSteep = 0, partsSurf = 0, partsDivOk = 0;
+function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
+    prefDesig, prefResidential, boardingWaitS, requiredSafeAccess) {
   const fl = eFlags[ei];
-  const actualLevel = edgeLevelFor(ei, ctx.rules, forward);
-  const searchLevel = ctx.searchRules === ctx.rules
-    ? actualLevel : edgeLevelFor(ei, ctx.searchRules, forward);
-  const mult = modeMult(ctx.mode, searchLevel);
-  if (!(mult < Infinity)) return Infinity;
-  let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, ctx.mode);
-  step += ctx.boardingWaitS || 0;   // ferry boarding, when this end has land
+  const actualLevel = edgeLevelFor(ei, rules, forward);
+  const searchLevel = searchRules === rules
+    ? actualLevel : edgeLevelFor(ei, searchRules, forward);
+  const mult = modeMult(mode, searchLevel);
+  if (!(mult < Infinity)) { partsSteep = 0; partsSurf = 0; partsDivOk = 0; return Infinity; }
+  let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode);
+  step += boardingWaitS;   // ferry boarding, when this end has land
   let cost = step * mult;
   // An exempted terminal-access block is a last resort, never a shortcut:
   // any reasonable fully-safe approach must still win.
-  if (ctx.requiredSafeAccess) cost *= 30;
-  cost *= speedStress(ctx.mode, fl, edgeSpeed(ei, forward),
-    edgeNoShoulderMaxFor(ctx.searchRules), edgeShoulder(ei, forward));
-  cost *= hazardMult(ctx.modeW, edgeHazard(ei, forward) || 0);
-  cost *= majorRoadMult(ei, ctx.modeW, forward);
-  cost *= trafficStressMult(ei, ctx.modeW, forward);
-  cost *= sidewalkExposureMult(ei, ctx.mode, forward);
-  if (sidewalkFallbackFor(ei, ctx.searchRules, forward)) cost *= sidewalkFallbackMult(ctx.mode);
+  if (requiredSafeAccess) cost *= 30;
+  cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
+    edgeNoShoulderMaxFor(searchRules), edgeShoulder(ei, forward));
+  cost *= hazardMult(modeW, edgeHazard(ei, forward) || 0);
+  cost *= majorRoadMult(ei, modeW, forward);
+  cost *= trafficStressMult(ei, modeW, forward);
+  cost *= sidewalkExposureMult(ei, mode, forward);
+  if (sidewalkFallbackFor(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
   if (fl & 4) cost *= activeWeights.freeway;
   // Every other signal costs more as the profile gets friendlier, and this
   // one must too: limitedAccessLowStress sat at 1.0, so the low-stress profile applied
   // no penalty at all to a bike-legal limited-access highway -- less than
   // balanced. The friendliest route was the one most willing to put a rider
   // on a highway shoulder.
-  if (edgeLimited(ei, forward)) cost *= ctx.modeW.limitedAccess;
+  if (edgeLimited(ei, forward)) cost *= modeW.limitedAccess;
   if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
   // Bonuses never apply to ferries, freeways, or WSDOT limited-access
   // highways: preference must not erase their access/caution costs. For
@@ -1249,9 +1283,9 @@ function edgeCost(ei, forward, ctx) {
     const signed = fl & 64;
     cost *= eFacility[ei]
       ? facilityPrefMult(eFacility[ei])
-      : (signed ? activeWeights[ctx.prefDesig ? 'strongDesignated' : 'designated'] : 1);
+      : (signed ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
   }
-  if (ctx.prefResidential && !(fl & (8 | 32 | 4))
+  if (prefResidential && !(fl & (8 | 32 | 4))
       && !edgeLimited(ei, forward) && isResidential(ei)) {
     cost *= activeWeights.residential;
   }
@@ -1259,30 +1293,47 @@ function edgeCost(ei, forward, ctx) {
   // one already-found path. Protected lanes and shared paths may remain a
   // common trunk: leaving excellent infrastructure merely to be different
   // creates fussy neighborhood detours instead of a useful alternative.
+  // (The factor itself is applied by the caller -- it varies per candidate.)
   const protectedInfrastructure = (fl & 8) || eFacility[ei] >= 4;
-  if (ctx.diversityEdges?.has(ei) && !protectedInfrastructure && !(fl & 32)) {
-    cost *= ctx.diversityFactor;
-  }
-  // Grade is an independent rideability concern. Apply it after every
+  // Grade is an independent rideability concern, applied after every
   // safety, facility, residential, and alternate-corridor multiplier so
   // a path bonus cannot shrink the penalty for a genuinely steep climb.
-  cost += steepUphillAvoidanceS(ei, forward, ctx.mode);
+  partsSteep = steepUphillAvoidanceS(ei, forward, mode);
   // Similarly, a designated trail remains eligible but should not erase
   // the rider's explicit preference for pavement.
-  cost += surfacePreferenceS(ei, ctx.rules);
-  // Dismount access remains available to repair a genuinely connected
-  // cycling corridor, but entering it has a fixed interruption cost in
-  // addition to the walking time returned by edgeTimeS().  Because the
-  // search state includes the incoming edge, a continuous dismount run is
-  // charged once rather than once for every split graph edge.
-  if (isDismountEdge(ei) && (ctx.incomingEdge == null || ctx.incomingEdge < 0
-      || !isDismountEdge(ctx.incomingEdge))) {
-    cost += DISMOUNT_ENTRY_PENALTY_S;
-  }
-  // Turn friction is independent of the road entered: a bike facility or
-  // residential bonus should not make repeated intersection turns free.
-  if (ctx.fromNode != null) cost += turnPreferenceS(ctx.incomingEdge, ctx.fromNode, ei, ctx.mode);
+  partsSurf = surfacePreferenceS(ei, rules);
+  partsDivOk = !protectedInfrastructure && !(fl & 32) ? 1 : 0;
   return cost;
+}
+
+/* Per-arc cost cache. A portfolio request runs dozens of searches over the
+ * same arcs, and profiling put over half its time in re-deriving the same
+ * per-arc prices. An arc's `mul`/`add`/`divOk` are pure functions of the arc
+ * and the search configuration, so they are computed once per configuration
+ * and reused; the transition terms stay live in the relaxation loop. Two
+ * slots, because adaptive-corridor probing alternates two configurations
+ * (direct and balanced) per candidate -- one slot would thrash on exactly
+ * the request this exists to speed up. */
+const COST_CACHE_SLOTS = 4;
+// See the h() comment in routeLeg: found-route cost is bounded by this factor
+// times the optimum. 1.0 = exact A*.
+const SEARCH_OVERSHOOT = 1.15;
+const costCacheSlots = [];
+function arcCostCache(key) {
+  for (let i = 0; i < costCacheSlots.length; i++) {
+    if (costCacheSlots[i].key === key) {
+      const slot = costCacheSlots.splice(i, 1)[0];
+      costCacheSlots.unshift(slot);
+      return slot;
+    }
+  }
+  const slot = costCacheSlots.length < COST_CACHE_SLOTS
+    ? { key: '', mul: new Float64Array(D), add: new Float32Array(D), divOk: new Uint8Array(D) }
+    : costCacheSlots.pop();
+  slot.key = key;
+  slot.mul.fill(NaN);   // NaN = not yet computed; a real cost is never NaN
+  costCacheSlots.unshift(slot);
+  return slot;
 }
 
 function edgeCostFloor(i, forward) {
@@ -1389,7 +1440,10 @@ function goalPotential(goalNode, startNode, rules, searchRules, mode) {
       // One-way edges may only be entered from the end they leave.
       if ((fl & 16) && !fromA) continue;
       if (edgeShoulder(ei, fromA) === PROHIBITED_SHOULDER) continue;
-      const nd = du + edgeCostFloor(ei, fromA);
+      const fi = ei * 2 + (fromA ? 1 : 0);
+      let floorC = floorValues[fi];
+      if (floorC !== floorC) { floorC = edgeCostFloor(ei, fromA); floorValues[fi] = floorC; }
+      const nd = du + floorC;
       // An excluded edge prices at Infinity and never wins. Push the value as
       // STORED, so a node's heap key and its recorded distance cannot disagree
       // by a rounding step.
@@ -1472,6 +1526,9 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const generation = searchGeneration;
   const heap = makeHeap(4096);
   const modeW = modeWeights(mode);
+  const costKey = `${mode}|${prefDesig ? 1 : 0}${prefResidential ? 1 : 0}`
+    + `|${boundSignature(rules)}|${searchRules === rules ? '=' : boundSignature(searchRules)}`;
+  const { mul: cMul, add: cAdd, divOk: cDivOk } = arcCostCache(costKey);
   const vHeur = heuristicSpeed(mode, prefResidential);
   // Two admissible bounds; take the stronger. The potential is far and away the
   // better one wherever it reaches, and the straight line still covers what the
@@ -1489,10 +1546,19 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   // either alone is legal, but a heuristic assembled piecewise is not
   // necessarily monotone. The search reopens a settled arc when a cheaper walk
   // to it turns up, which is what makes admissibility enough.
+  // Bounded overshoot: scaling an admissible heuristic by this factor turns
+  // A* into weighted A*, whose found route costs AT MOST this factor times
+  // the true optimum -- a hard mathematical bound, not a heuristic hope. In
+  // practice the potential is tight along the corridor the route actually
+  // takes, so the found routes are nearly always identical; what the factor
+  // prunes is lateral exploration far from the goal. 1.0 restores exact A*.
+  // Chosen with the rider's explicit trade: large speedups for at-most-minor
+  // route differences, never a capability loss.
   const h = (n) => {
     const settled = potDist[n];
-    if (settled !== POTENTIAL_UNSETTLED) return settled * potScale;
-    return Math.max(havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / vHeur, potBeyond);
+    const bound = settled !== POTENTIAL_UNSETTLED ? settled * potScale
+      : Math.max(havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / vHeur, potBeyond);
+    return bound * SEARCH_OVERSHOOT;
   };
   const START_ARC = -1;
   heap.push(h(s.node), START_ARC);
@@ -1545,16 +1611,27 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
         && !blockedCrossingEdges?.has(ei);
       if (rules.requireSafe && actualLevel === 4 && !terminalAccessEdge(ei)
           && !provisionalCrossing) continue;
-      const requiredSafeAccess = rules.requireSafe && actualLevel === 4;
+      // The arc-deterministic price, cached per search configuration; the
+      // transition terms (diversity per candidate, dismount entry and turn
+      // friction per arrival) are applied live, exactly as edgeCost() does.
       // Discovery lenses may price an otherwise-allowed edge more
       // conservatively, but they never change legality or reported safety.
-      const cost = edgeCost(ei, forward, {
-        mode, modeW, rules, searchRules, prefDesig, prefResidential,
-        diversityEdges, diversityFactor,
-        requiredSafeAccess,
-        boardingWaitS: (fl & 32) && nodeHasLand[u] ? activeWeights.ferryWaitMin * 60 : 0,
-        incomingEdge, fromNode: u,
-      });
+      let mulC = cMul[a];
+      if (mulC !== mulC) {
+        cMul[a] = mulC = edgeCostParts(ei, forward, mode, modeW, rules,
+          searchRules, prefDesig, prefResidential,
+          (fl & 32) && nodeHasLand[u] ? activeWeights.ferryWaitMin * 60 : 0,
+          rules.requireSafe && actualLevel === 4);
+        cAdd[a] = partsSteep + partsSurf;
+        cDivOk[a] = partsDivOk;
+      }
+      let cost = diversityEdges && cDivOk[a] && diversityEdges.has(ei)
+        ? mulC * diversityFactor : mulC;
+      cost += cAdd[a];
+      if (isDismountEdge(ei) && (incomingEdge < 0 || !isDismountEdge(incomingEdge))) {
+        cost += DISMOUNT_ENTRY_PENALTY_S;
+      }
+      cost += turnPreferenceS(incomingEdge, u, ei, mode);
       if (!(cost < Infinity)) continue;
       const nd = du + cost;
       if (Math.abs(searchStamp[a]) !== generation || nd < searchDist[a]) {
