@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.568';
+const APP_VERSION = '2026-08-05.569';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -565,7 +565,17 @@ const SOURCES = [
     minVisibleZoom: BikeBasemap.ROAD_MIN_ZOOM.major,
     alwaysOn: true, // permanent street-details source; not a Layers checkbox
     enabled: true,
-    fc: null,     // cached FeatureCollection (loaded once)
+    // This source PAINTS nothing: applyDisplayMode filters its visible layers
+    // to false because state-highway verdicts are conflated onto the matching
+    // centerline in roads.pmtiles. It exists for hit testing and the tap
+    // card, which re-scores the tapped feature's properties directly. Yet it
+    // was the one source whose per-feature `level` actually moves with the
+    // rider's rules, so every rules change re-scored 55k features and
+    // re-uploaded the whole 20 MB collection to the map worker -- the largest
+    // single memory spike a slider drag produced, for zero visible change.
+    // expr marks it "no precomputed levels": rescore skips it entirely.
+    expr: true,
+    fc: null,
     loading: false,
   },
   {
@@ -1320,6 +1330,12 @@ function rescore(src) {
   // them -- and a shoulder rule cannot move a designated-route ribbon. Scoring
   // the features is the cheap part (under 25 ms); re-uploading them is not, so
   // only do it when a verdict actually moved.
+  //
+  // The sources still here all score to RULES-INDEPENDENT levels (an OSM path
+  // is judged by its type, a restriction is always prohibited), so after the
+  // load-time pass `moved` stays false and no upload ever recurs. WSDOT BLTS
+  // -- the one source whose levels do move with the rules -- paints nothing
+  // and is expression-flagged, so a rules change now uploads no data at all.
   let moved = false;
   for (const f of src.fc.features) {
     if (!f.properties._n) f.properties._n = src.scorer(f.properties);

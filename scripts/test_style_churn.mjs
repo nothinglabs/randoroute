@@ -102,11 +102,18 @@ const gesture = await page.evaluate(() => window.__count(() => {
 }));
 check('a layer toggle stays well under the old 470 writes', gesture < 200, `${gesture} writes`);
 
-/* ------------------------- a rules change only re-uploads what it moved */
+/* ----------------------------- a rules change re-uploads NOTHING at all */
 // rescore() used to call setData() on every GeoJSON source whichever rule
 // moved, re-uploading and re-tiling 55k WSDOT and 38k OSM features to redraw
-// them exactly as they already were. A shoulder rule cannot change a
-// designated-route ribbon.
+// them exactly as they already were. The sources that remain fc-scored all
+// carry rules-INDEPENDENT verdicts (an OSM path is judged by its type, a
+// restriction is always prohibited), and WSDOT BLTS -- the one source whose
+// levels do move with the rules -- paints nothing and is expression-flagged.
+// A rules change therefore recolors purely by rebuilding expressions: style
+// writes yes, data uploads no. An upload appearing here means a scored source
+// regressed into the setData path and slider drags are re-tiling statewide
+// collections again -- the memory spike that used to get the tab killed on
+// iOS during a drag.
 const uploads = await page.evaluate(() => {
   const counted = {};
   for (const src of SOURCES) {
@@ -115,15 +122,21 @@ const uploads = await page.evaluate(() => {
     const original = mapSource.setData.bind(mapSource);
     mapSource.setData = (data) => { counted[src.id] = (counted[src.id] || 0) + 1; return original(data); };
   }
-  const run = (fn) => { for (const k of Object.keys(counted)) delete counted[k]; fn(); return { ...counted }; };
+  const run = (fn) => {
+    for (const k of Object.keys(counted)) delete counted[k];
+    window.__writes = 0; fn();
+    return { uploads: { ...counted }, writes: window.__writes };
+  };
   const changed = run(() => { rules.minShoulder = rules.minShoulder === 4 ? 6 : 4; rescoreAll(false); });
   const unchanged = run(() => rescoreAll(false));
   return { changed, unchanged };
 });
 check('re-running an unchanged rules pass re-uploads nothing',
-  Object.keys(uploads.unchanged).length === 0, JSON.stringify(uploads.unchanged));
-check('a real rule change still re-uploads what it moved',
-  Object.keys(uploads.changed).length > 0, JSON.stringify(uploads.changed));
+  Object.keys(uploads.unchanged.uploads).length === 0, JSON.stringify(uploads.unchanged.uploads));
+check('a real rule change uploads no data either -- recoloring is all expressions',
+  Object.keys(uploads.changed.uploads).length === 0, JSON.stringify(uploads.changed.uploads));
+check('but it does rewrite the style expressions', uploads.changed.writes > 0,
+  `${uploads.changed.writes} writes`);
 
 await browser.close();
 site.close();
