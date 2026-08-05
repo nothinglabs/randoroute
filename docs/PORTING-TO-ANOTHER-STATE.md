@@ -189,6 +189,17 @@ data already fetched.
 way. A way runs far past the stretch a source follows, so counting all of it
 roughly doubles the number and makes any over-match check fire on healthy data.
 
+**Inventories are directional; carry it all the way through.** A state route
+inventory usually records each direction separately (Washington spells it in
+the route id suffix), and the two sides genuinely differ — one direction of a
+highway can have a 6 ft shoulder while the other has 1 ft. The graph stores
+both directions per edge, the router scores the direction of travel, and the
+tiles collapse to the *worst* of the two for display — and the card must label
+that collapse, or the road card and the route card show different numbers for
+one road with no explanation. Note OSM's shoulder tags are effectively
+non-directional (`shoulder:width` describes the road), so an explicit OSM tag
+sets both directions when it wins.
+
 ---
 
 ## 4. Measure before adopting, always
@@ -210,6 +221,13 @@ Watch for the inverse too. HPMS looked like it would transform coverage based on
 one corridor — Pioneer Way in Puyallup went 17% → 77%. Statewide it was 35.4% →
 42.4%, because that corridor is a city principal arterial, which is precisely
 HPMS's sweet spot and not representative. **One road is never a measurement.**
+
+**And audit fetched-versus-consumed once the imports settle.** Every field a
+fetcher pulls should either have a consumer or a line in a known-backlog list.
+This project fetched the county road log's certified surface type (paved vs
+gravel, statewide — exactly where OSM's `surface` tagging is thinnest) and then
+forgot it for months, because nothing tracked the difference between "on disk"
+and "used". The audit is one grep per fetcher's field list.
 
 ---
 
@@ -298,7 +316,44 @@ goes in `build_graph.py` once and the parity test grows a line.
 
 ---
 
-## 8. Operating notes
+## 8. Terrain and topology pitfalls that will recur in any state
+
+None of these are Washington facts; they are what elevation rasters and OSM
+topology do everywhere. Each cost a real bug here.
+
+- **Shoreline DEM smear.** A z12 elevation mosaic (~26 m/pixel) blends a
+  waterfront bluff onto the flats beside it: Clinton's dead-flat ferry pier
+  booked an 11% grade over 116 m. Ferry edges themselves get zero grade, and
+  the app additionally refuses to show a steep marker within 250 m of a ferry
+  leg. Expect the same artifact at every waterline.
+- **Structures need deck grades, not terrain.** The ground under a bridge is a
+  ravine; sample the deck as a straight grade between the structure's ends
+  (`structure_climb`), and below a few DEM samples' length there is no grade to
+  measure at all — a 24 m bridge is one pixel.
+- **`incline=` is authoritative where present.** The Burke-Gilman says 1.0%
+  about itself while the terrain under it reads 16.9%. Rail-trails without the
+  tag get capped: a corridor graded for trains never exceeded ~2%.
+- **Same-name mapping seams sever corridors.** Two consecutive trail ways whose
+  endpoints sit a metre apart without sharing a node read as connected on every
+  map and are disconnected in every graph. Here that severed the state's main
+  cross-mountain trail and turned a 20-mile ride into a 120-mile detour. The
+  build stitches endpoint pairs of same-name ways within 2 m — and skips only
+  pairs that already share a direct edge, *not* same-component pairs, because
+  after the first seam stitches, the second seam's ends are "connected" via the
+  detour and a component check defeats itself.
+- **Untagged footways are connective tissue.** Excluding them shattered the
+  graph into 5,417 components and orphaned 1,248 trail islands. They enter as
+  walk-your-bike links. After any classifier change, check the largest
+  component still holds >96% of nodes (`test_graph_connectivity.mjs`).
+- **Terminals hide behind dismount tags.** A ferry terminal's only land access
+  is often a chain of `bicycle=dismount` sidewalk hops; a walk-link exclusion
+  quietly made Seattle's Pier 50 reachable only by arriving on another boat.
+  Route to every terminal from land after a rebuild — the connectivity test
+  does.
+
+---
+
+## 9. Operating notes
 
 The dev container is reclaimed after a short idle period and takes everything
 untracked with it — this happened seven times in one session. Consequences:
