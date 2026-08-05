@@ -145,12 +145,22 @@ that fact from it alone; the copy corroborates nothing.
 
 Precedence, once classified:
 
-1. **An explicit OSM tag beats an agency inventory.** A mapper who wrote
-   `shoulder:width` looked at that spot; the inventory interpolated a route
-   segment (we have a documented case of a booked 4 ft shoulder that Street
-   View shows as 1–2 ft). Agency data fills OSM's gaps; it does not overrule
-   people on the ground. Speed already works this way — WSDOT fills only
-   OSM-estimated values.
+1. **An explicit OSM tag beats an agency inventory — including an explicit
+   zero.** A mapper who wrote `shoulder:width` looked at that spot; the
+   inventory interpolated a route segment (we have a documented case of a
+   booked 4 ft shoulder that Street View shows as 1–2 ft). `shoulder=no` is
+   knowledge, not absence: an inventory overwriting a mapper's "there is no
+   shoulder" with a booked width is the most dangerous direction this
+   precedence can fail in, and in Washington explicit zeros were the
+   MAJORITY of the tagged ways (1,325 of 2,186). Agency data fills OSM's
+   gaps; it does not overrule people on the ground. Speed already works this
+   way — WSDOT fills only OSM-estimated values.
+1b. **Measure a precedence change's blast radius before shipping it.** One
+   pass over the extract counting the ways where the two sources both speak
+   (for the shoulder flip: 813 WSDOT-candidate ways statewide, out of 1.15M)
+   tells you whether you are about to re-score a corridor or the whole
+   network — and gives the field tester a number to check the change
+   against.
 2. **Registry beats analysis-copy** for the registry's own domain, always.
 3. **A derived rating may only ever caution.** See `docs/SAFETY-MODEL.md` on
    why the stress rating is a modifier, not a rung of its own.
