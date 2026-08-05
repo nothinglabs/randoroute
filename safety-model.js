@@ -166,10 +166,15 @@
   // 1-4 low to high; 4 is "suitable only for the strong and fearless".
   var STRESS_CAUTION_AT = 4;
 
+  // At or under this recorded speed limit a street is slow enough to share
+  // whatever its shoulder, lane count, traffic count or stress rating say.
+  // Nobody needs riding space of their own at parking-lot speeds.
+  var SLOW_STREET_MAX_MPH = 15;
+
   // Every rung, in order. The first that matches wins. `rule` is what the card
   // explains and what tests assert on, so these keys are part of the contract.
   var RULES = ['prohibited', 'ferry', 'freeway', 'infra', 'speed-cap',
-    'needs-space', 'sidewalk-fallback', 'shares-lane', 'default'];
+    'slow-street', 'needs-space', 'sidewalk-fallback', 'shares-lane', 'default'];
 
   // How busy a road has to be before it needs space of its own. A rider picks a
   // familiar road type, not a number: nobody has an intuition for "3,000
@@ -525,6 +530,15 @@
         // Before the slow-road rung, so "Never allow roads faster than" means
         // what it says.
         { rule: 'speed-cap', when: speedCap, level: 4 },
+        // A RECORDED limit at or under SLOW_STREET_MAX_MPH overrides the whole
+        // needs-space family below it AND the high-stress caution: at these
+        // speeds the rider shares whatever space there is. Only the recorded
+        // limit counts -- an unknown speed never earns this shortcut -- and a
+        // limited-access caution survives it (a 15 mph ramp is still a ramp).
+        { rule: 'slow-street',
+          when: A.and([A.known(F.speed), A.gt(F.speed, 0),
+            A.le(F.speed, SLOW_STREET_MAX_MPH)]),
+          level: A.pick([[limited, 3]], 1) },
         { rule: 'sidewalk-fallback',
           when: A.and([wantsSpace, shoulderFails, sidewalkFallback]), level: 3 },
         { rule: 'needs-space', when: A.and([wantsSpace, shoulderFails]), level: 4 },
@@ -648,6 +662,7 @@
     hasRidingSpace: hasRidingSpace,
     BUSY_LEVELS: BUSY_LEVELS,
     busyLevel: busyLevel,
+    SLOW_STREET_MAX_MPH: SLOW_STREET_MAX_MPH,
     needsSpace: needsSpace,
     spaceReasons: spaceReasons,
     speedNeedsSpace: speedNeedsSpace,

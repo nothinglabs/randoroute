@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-04.559';
+const APP_VERSION = '2026-08-05.560';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9235,6 +9235,9 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
         : 'Bike infrastructure, with no type recorded.';
     case 'speed-cap':
       return `${spdTxt} is over your ${rules.upperMaxSpeed} mph limit.`;
+    case 'slow-street':
+      return `${spdTxt} — slow enough to share the lane, so the shoulder and`
+        + ` traffic rules don't apply.${cautionNote}`;
     case 'needs-space': {
       // Name every trigger that fired, not just the first. A road can be too
       // fast AND too busy, and being told only one of them invites a rider to
