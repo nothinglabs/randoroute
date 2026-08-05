@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.579';
+const APP_VERSION = '2026-08-05.580';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1540,6 +1540,7 @@ const prohibitedId = (src) => src.id + '__prohibited';
 const cautionId = (src) => src.id + '__caution';
 const slashId = (src) => src.id + '__slash';
 const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
+const trailBaseId = (src) => src.id + '__trail-base'; // always-on neutral trail casing
 const trailId = (src) => src.id + '__trail'; // lime base for off-street OSM bike paths/trails
 const trailDotsId = (src) => src.id + '__trail-dots'; // fine dotted trail centerline
 const trailHitId = (src) => src.id + '__trail-hit'; // dedicated wide target for dotted trails
@@ -1786,6 +1787,28 @@ function ensureLayer(src) {
     }, beforeId);
   }
   if (src.id === 'osm') {
+    // The always-on neutral ghost of every trail. The basemap draws every
+    // ROAD's grey casing no matter which safety layers are on, but it never
+    // learned to draw paths -- so with "Off-street trails" switched off a
+    // trail was a floating name over literally nothing (field report: the
+    // Interurban Trail label over blank ground). Same rule as roads now:
+    // toggles control the safety/network COLORING, never whether a way
+    // exists. The lime treatment still draws over this when the layer is on.
+    forgetStyleValues(); map.addLayer({
+      id: trailBaseId(src),
+      type: 'line',
+      source: mapSourceId,
+      ...SL,
+      minzoom: BikeBasemap.ROAD_MIN_ZOOM.local,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        // The basemap's minor-road grey, a step narrower: reads as "a way
+        // exists here", claims nothing about its quality.
+        'line-color': '#c9c9c2',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.1, 14, 2, 17, 3.2],
+      },
+      filter: OSM_TRAIL_EXPR,
+    }, beforeId);
     forgetStyleValues(); map.addLayer({
       id: trailId(src),
       type: 'line',
@@ -1976,6 +1999,7 @@ function updateVisibility(src) {
   if (map.getLayer(src.id)) setLayout(src.id, 'visibility', on ? 'visible' : 'none');
   if (src.id === 'roads' && map.getLayer(stateSidewalkProbeId))
     setLayout(stateSidewalkProbeId, 'visibility', 'visible');
+  if (map.getLayer(trailBaseId(src))) setLayout(trailBaseId(src), 'visibility', 'visible');
   if (map.getLayer(trailId(src))) setLayout(trailId(src), 'visibility',
     display.offstreetTrails ? 'visible' : 'none');
   if (map.getLayer(trailDotsId(src))) setLayout(trailDotsId(src), 'visibility',
@@ -2159,6 +2183,12 @@ function applyDisplayMode(src) {
   }
   if (map.getLayer(backgroundUnpavedId(src))) {
     setLayerFilter(backgroundUnpavedId(src), and(OSM_CONFIRMED_UNPAVED_EXPR));
+  }
+  // The neutral ghost keeps pace with the MTB/hiking exclusions but never
+  // with the trails toggle: a way the router would not use stays off the
+  // map entirely; a way it would use always at least exists.
+  if (map.getLayer(trailBaseId(src))) {
+    setLayerFilter(trailBaseId(src), and(OSM_TRAIL_EXPR));
   }
   if (map.getLayer(trailHitId(src))) setLayerFilter(trailHitId(src), and(visibleTrail));
   if (map.getLayer(failId(src))) {

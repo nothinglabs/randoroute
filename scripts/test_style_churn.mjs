@@ -131,6 +131,23 @@ const uploads = await page.evaluate(() => {
   const unchanged = run(() => rescoreAll(false));
   return { changed, unchanged };
 });
+/* ------------------- a trail is never NOTHING: the neutral ghost stays -- */
+// The basemap draws every road's casing regardless of toggles, but paths
+// live only in the bike-infrastructure overlay -- switching "Off-street
+// trails" off used to leave a trail as a floating name over blank ground.
+// The toggle controls the lime network treatment; the neutral ghost stays.
+const ghost = await page.evaluate(() => {
+  setMapLayerVisible('offstreetTrails', false);
+  const off = map.getLayoutProperty('osm__trail-base', 'visibility');
+  const limeOff = map.getLayoutProperty('osm__trail', 'visibility');
+  setMapLayerVisible('offstreetTrails', true);
+  const on = map.getLayoutProperty('osm__trail-base', 'visibility');
+  return { exists: !!map.getLayer('osm__trail-base'), off, limeOff, on };
+});
+check('the neutral trail ghost survives the trails toggle',
+  ghost.exists && ghost.off === 'visible' && ghost.on === 'visible' && ghost.limeOff === 'none',
+  JSON.stringify(ghost));
+
 check('re-running an unchanged rules pass re-uploads nothing',
   Object.keys(uploads.unchanged.uploads).length === 0, JSON.stringify(uploads.unchanged.uploads));
 check('a real rule change uploads no data either -- recoloring is all expressions',
