@@ -1208,7 +1208,7 @@ function useEdgeCostFloors(rules, searchRules, mode) {
     if (floorSlots[i].key === key) { slot = floorSlots.splice(i, 1)[0]; break; }
   }
   if (!slot) {
-    slot = floorSlots.length < FLOOR_SLOTS
+    slot = floorSlots.length < floorSlotCap
       ? { key: '', values: new Float32Array(2 * E) }
       : floorSlots.pop();
     slot.key = key;
@@ -1405,6 +1405,18 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
 // own: requireSafe is excluded from the key on purpose, and its surcharge is
 // applied live in the relaxation, never stored (see the fill below).
 const COST_CACHE_SLOTS = 15;
+// A constrained device (the app decides and says so via a 'configure'
+// message) gets hard caps on every large cache instead of the full working
+// set. Field: an iPhone's startup -- which auto-computes the saved trip and
+// so allocates EVERY cache in one burst, on top of the map renderer -- began
+// crash-looping ("a problem repeatedly occurred") once the caches grew to
+// ~400 MB. Caps trade warm-repeat speed for surviving startup: an evicted
+// config is re-derived in a few seconds; a killed page loses everything.
+// Caps only bound NEW allocation; they never free existing slots, so a
+// mid-session 'configure' cannot invalidate a slot a search is using.
+let costSlotCap = COST_CACHE_SLOTS;
+let floorSlotCap = FLOOR_SLOTS;
+let potentialCap = 12;  // mirrors POTENTIAL_CACHE_MAX, declared below
 // See the h() comment in routeLeg: found-route cost is bounded by this factor
 // times the optimum. 1.0 = exact A*.
 const SEARCH_OVERSHOOT = 1.15;
@@ -1417,7 +1429,7 @@ function arcCostCache(key) {
       return slot;
     }
   }
-  const slot = costCacheSlots.length < COST_CACHE_SLOTS
+  const slot = costCacheSlots.length < costSlotCap
     ? { key: '', mul: new Float32Array(D), add: new Float32Array(D), divOk: new Uint8Array(D) }
     : costCacheSlots.pop();
   slot.key = key;
@@ -1634,7 +1646,7 @@ function goalPotential(goalNode, startNode, rules, searchRules, mode) {
       : POTENTIAL_UNSETTLED;
   }
   const potential = { dist: stored, scale, beyond: frontier * POTENTIAL_SAFETY };
-  if (potentialCache.size >= POTENTIAL_CACHE_MAX) {
+  while (potentialCache.size >= Math.min(POTENTIAL_CACHE_MAX, potentialCap)) {
     potentialCache.delete(potentialCache.keys().next().value);
   }
   potentialCache.set(cacheKey, potential);
@@ -3145,6 +3157,15 @@ onmessage = (ev) => {
         prefResidential: !!m.prefResidential,
       };
       postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }) });
+    } else if (m.type === 'configure') {
+      // Sent once at startup, before any search allocates. See the cap
+      // comment at COST_CACHE_SLOTS: a phone survives startup by holding
+      // fewer slots and re-deriving evicted configs instead.
+      if (m.constrained) {
+        costSlotCap = Math.min(costSlotCap, 8);
+        floorSlotCap = Math.min(floorSlotCap, 2);
+        potentialCap = Math.min(potentialCap, 6);
+      }
     } else if (m.type === 'prewarm') {
       useWeights(m.weights);
       // The full working set: the 3-mode x 4-preference grid, then the three

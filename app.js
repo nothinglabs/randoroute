@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-05.588';
+const APP_VERSION = '2026-08-06.589';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1492,18 +1492,22 @@ function scheduleReroute() {
 // speed a long-lived app reaches organically (field: fresh Mac tab 16.8 s
 // vs warmed-up phone 3.5 s for the same trip). Only when no trip is set --
 // an actual search warms the cache better than any sweep.
+// One answer for every memory decision: phones and iPads (iPadOS reports
+// itself as MacIntel with touch, hence the maxTouchPoints check) plus low-RAM
+// Android via deviceMemory. Drives the worker's cache caps and the lite
+// prewarm; a wrong "true" costs a few seconds of re-derived cache on repeat
+// searches, a wrong "false" risks the startup crash loop.
+function isConstrainedDevice() {
+  return /iPad|iPhone|iPod|Android/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    || (navigator.deviceMemory > 0 && navigator.deviceMemory <= 4);
+}
+
 function schedulePrewarm() {
   if (!routing.ready || !routing.worker) return;
   if (routing.start && routing.end) return;
-  // A phone gets a lite sweep: three cost slots instead of fifteen, so idle
-  // browsing does not carry the full cache allocation before any route is
-  // asked for. iPadOS reports itself as MacIntel with touch, hence the
-  // maxTouchPoints check; deviceMemory covers low-RAM Android.
-  const constrained = /iPad|iPhone|iPod|Android/i.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-    || (navigator.deviceMemory > 0 && navigator.deviceMemory <= 4);
   routing.worker.postMessage({ type: 'prewarm', id: ++routing.reqId,
-    rules: { ...rules }, weights: remixedRoutingWeights(), lite: constrained,
+    rules: { ...rules }, weights: remixedRoutingWeights(), lite: isConstrainedDevice(),
     // The discovery-lens sweep warms discover-quick under the rider's own
     // preference combo -- the same one a real request would search with.
     prefDesignated: routing.prefDesig, prefResidential: routing.prefResidential });
@@ -2847,6 +2851,11 @@ async function ensureRouter() {
     // over there. Doing that here used to lock the UI thread for seconds during
     // startup -- the exact window in which a rider taps the search box.
     routing.worker = new Worker('router-worker.js');
+    // Before anything can allocate: a phone's startup computes the saved trip
+    // while the map renderer is also at its hungriest, and the worker's full
+    // cache complement tipped WebKit into killing the page over and over
+    // ("a problem repeatedly occurred"). Capped caches re-derive instead.
+    if (isConstrainedDevice()) routing.worker.postMessage({ type: 'configure', constrained: true });
     routing.worker.onmessage = onRouterMessage;
     routing.worker.onerror = (event) => {
       event.preventDefault?.();
