@@ -38,5 +38,5 @@
   // hand-edit.
   root.ROADS_TILES_VERSION = 'sha-dd29b387e828';
   root.BASEMAP_TILES_VERSION = 'sha-77136fe2672a';
-  root.OVERLAY_TILES_VERSION = 'sha-2a96d6f74657';
+  root.OVERLAY_TILES_VERSION = 'sha-04c278da789b';
 }(typeof self !== 'undefined' ? self : this));

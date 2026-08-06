@@ -74,6 +74,20 @@ def main():
     # is the bike network itself, and a trail that vanishes when zoomed out
     # is data loss, not decluttering. --coalesce merges same-attribute
     # segments instead.
+    # Below z9 a tile covers a county or more, and these low-zoom tiles used
+    # to carry the ENTIRE statewide dataset each (no drop-densest, by design).
+    # Loading them bucketed ~93k features per zoom level crossed -- measured
+    # as WebKit killing the page on zoom-out (phone and Mac Safari alike).
+    # What a statewide view actually shows is the trail network, so below z9
+    # bikeinfra keeps only off-street ways and blts (which paints nothing --
+    # it exists for tap cards, and taps only resolve from z9 up) is dropped
+    # entirely. From z9 every feature is present, exactly as before.
+    low_zoom_filter = json.dumps({
+        'bikeinfra': ['any', ['>=', '$zoom', 9],
+                      ['in', 'highway', 'cycleway', 'path', 'footway',
+                       'bridleway', 'track', 'service']],
+        'blts': ['all', ['>=', '$zoom', 9]],
+    })
     cmd = [
         'tippecanoe', '-o', str(out), '--force',
         '-Z4', '-z13',
@@ -81,6 +95,7 @@ def main():
         '--simplification=8', '--simplify-only-low-zooms',
         '--no-feature-limit', '--no-tile-size-limit',
         '--read-parallel',
+        '-j', low_zoom_filter,
         '-L', f'bikeinfra:{tmp_bi}',
         '-L', f'blts:{tmp_bl}',
     ]

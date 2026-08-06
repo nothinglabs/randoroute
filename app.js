@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-06.591';
+const APP_VERSION = '2026-08-06.592';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -572,7 +572,7 @@ const SOURCES = [
     // index -- for data the rider only sees a viewport of. Same move, same
     // reasons as roads.geojson -> roads.pmtiles. Bump ?v= with sw.js VERSION
     // when the archive is rebuilt (scripts/build_overlay_tiles.py).
-    vector: 'pmtiles://data/overlays.pmtiles?v=1',
+    vector: 'pmtiles://data/overlays.pmtiles?v=2',
     mapSourceId: 'overlays',
     sourceLayer: 'blts',
     count: 55271, // baked by build_overlay_tiles.py (tiles carry no global count)
@@ -597,7 +597,7 @@ const SOURCES = [
   {
     id: 'osm',
     name: 'OSM bike infrastructure',
-    vector: 'pmtiles://data/overlays.pmtiles?v=1',
+    vector: 'pmtiles://data/overlays.pmtiles?v=2',
     mapSourceId: 'overlays',
     sourceLayer: 'bikeinfra',
     count: 37788, // baked by build_overlay_tiles.py, after the sharrow-only drop
@@ -1054,6 +1054,15 @@ const map = new maplibregl.Map({
   maxZoom: 17,
   maxPitch: 0,
   pitchWithRotate: false,
+  // A bounded tile cache everywhere. Zooming out crosses many zoom levels,
+  // and the default cache retains each level's tiles -- with the overlay
+  // archive carrying the full statewide bike network per low-zoom tile,
+  // that retention is what pushed WebKit over the edge (field: reliable
+  // crash on zoom-out just after boot on the phone, and a Mac Safari tab
+  // reloaded for "significant memory"). Evicted tiles come back instantly
+  // from the service worker's cache-first archives, so the cost of a small
+  // cache is a refetch that has already been measured as instant.
+  maxTileCacheSize: isConstrainedDevice() ? 16 : 64,
 });
 map.once('render', () => window.__setAppLaunchStatus?.('Drawing roads and trails…'));
 const finishAppLaunch = () => {
@@ -1492,15 +1501,19 @@ function scheduleReroute() {
 // speed a long-lived app reaches organically (field: fresh Mac tab 16.8 s
 // vs warmed-up phone 3.5 s for the same trip). Only when no trip is set --
 // an actual search warms the cache better than any sweep.
-// One answer for every memory decision: phones and iPads (iPadOS reports
-// itself as MacIntel with touch, hence the maxTouchPoints check) plus low-RAM
-// Android via deviceMemory. Drives the worker's cache caps and the lite
-// prewarm; a wrong "true" costs a few seconds of re-derived cache on repeat
-// searches, a wrong "false" risks the startup crash loop.
+// One answer for every memory decision. Phones and iPads (iPadOS reports
+// itself as MacIntel with touch, hence the maxTouchPoints check), low-RAM
+// Android via deviceMemory -- and EVERY Safari, desktop included: WebKit
+// enforces a per-tab memory ceiling that Chromium does not, and a Mac
+// Safari tab was reloaded "because it was using significant memory" with
+// the full cache complement. Drives the worker's cache caps, the lite
+// prewarm, and the tile-cache cap; a wrong "true" costs a few seconds of
+// re-derived cache on repeat searches, a wrong "false" risks the kill.
 function isConstrainedDevice() {
   return /iPad|iPhone|iPod|Android/i.test(navigator.userAgent)
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-    || (navigator.deviceMemory > 0 && navigator.deviceMemory <= 4);
+    || (navigator.deviceMemory > 0 && navigator.deviceMemory <= 4)
+    || /^Apple/.test(navigator.vendor || '');
 }
 
 function schedulePrewarm() {
@@ -1573,6 +1586,13 @@ const prohibitedId = (src) => src.id + '__prohibited';
 const cautionId = (src) => src.id + '__caution';
 const slashId = (src) => src.id + '__slash';
 const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
+// Invisible tap targets draw nothing yet bucket every feature their tiles
+// carry -- and the overlay archive deliberately carries the FULL statewide
+// bike network in each low-zoom tile. Bucketing all of it several zoom
+// levels over, purely so a statewide tap could return a card about a road a
+// mile from the finger, is what tipped phones into the zoom-out crash. Below
+// this zoom the visible layers still paint; taps just don't resolve.
+const TAP_TARGET_MIN_ZOOM = 9;
 const trailBaseId = (src) => src.id + '__trail-base'; // always-on neutral trail casing
 const trailId = (src) => src.id + '__trail'; // lime base for off-street OSM bike paths/trails
 const trailDotsId = (src) => src.id + '__trail-dots'; // fine dotted trail centerline
@@ -1908,7 +1928,7 @@ function ensureLayer(src) {
       type: 'line',
       source: mapSourceId,
       ...SL,
-      minzoom: 0,
+      minzoom: TAP_TARGET_MIN_ZOOM,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': '#000',
@@ -1950,7 +1970,7 @@ function ensureLayer(src) {
       type: 'line',
       source: mapSourceId,
       ...SL,
-      minzoom: src.minVisibleZoom || 0,
+      minzoom: Math.max(TAP_TARGET_MIN_ZOOM, src.minVisibleZoom || 0),
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': '#000',
@@ -1967,7 +1987,7 @@ function ensureLayer(src) {
     type: 'line',
     source: mapSourceId,
     ...SL,
-    minzoom: src.minVisibleZoom || 0,
+    minzoom: Math.max(TAP_TARGET_MIN_ZOOM, src.minVisibleZoom || 0),
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       'line-color': '#000',
@@ -11073,6 +11093,10 @@ function openRoutingWeights() {
 function syncAdvancedToolsVisibility() {
   const weightsButton = document.getElementById('appWeightsBtn');
   if (weightsButton) weightsButton.hidden = !uiPrefs.showAdvancedTools;
+  // The zoom buttons sit below the right-edge column at a fixed offset, and
+  // the column is one button taller while the weights tool is shown -- the
+  // offset has to follow or the two overlap (field screenshot: ⚖ over "+").
+  document.body.classList.toggle('map-tools-extended', !!uiPrefs.showAdvancedTools);
   renderRouteOptionControls();
 }
 // A weight left off its default silently changes every route, and the panel is

@@ -189,7 +189,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 /* "More" opens the route-mix dialog. Teal against the blue letters; solid
    fill while a non-default mode is active so a remixed portfolio is visibly
    remixed. */
-#routeOptions button.route-option-remix { flex: 1 1 0; border-color: #0a7d63; background: #eafaf4; color: #056a52; font: 800 16px/1 system-ui; }
+#routeOptions button.route-option-remix { flex: 1 1 0; border-color: #056a52; border-width: 1.5px; background: #eafaf4; color: #044d3c; font: 900 21px/1 system-ui; }
 #routeOptions button.route-option-remix:hover { background: #ddf4ea; }
 #routeOptions button.route-option-missing { opacity: .4; text-decoration: line-through; cursor: not-allowed; }
 #routeOptions button.route-option-remix.remix-active { border-color: #056a52; background: #0a8b6d; color: #fff; box-shadow: 0 1px 2px rgba(18,42,60,.16); }
@@ -567,6 +567,9 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 /* The desktop zoom buttons share this corner with the app's own absolutely
    positioned Layers (52px) and Help (94px) buttons. Start below both. */
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 102px; }
+/* One more button in the column (⚖, advanced tools on): push the zoom
+   controls below it instead of letting the two stacks overlap. */
+body.map-tools-extended #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 146px; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group button { width: 34px; height: 34px; }
 /* Keep the compact OpenStreetMap attribution button comfortably inside the
    viewport edge without shifting the scale control above it. */
