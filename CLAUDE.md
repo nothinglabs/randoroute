@@ -61,11 +61,11 @@ kept the real history, so committing from a stale tree would silently delete
 work. Check first, every session:
 
 ```
-git fetch origin claude/help-2zed4z
-git log --oneline HEAD..origin/claude/help-2zed4z     # must be empty
+git fetch origin main
+git log --oneline HEAD..origin/main     # must be empty
 ```
 
-If it is not empty, `git reset --hard origin/claude/help-2zed4z` before doing
+If it is not empty, `git reset --hard origin/main` before doing
 anything else.
 
 ## Other standing rules

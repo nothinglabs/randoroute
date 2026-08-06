@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-06.600';
+const APP_VERSION = '2026-08-06.601';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9931,7 +9931,7 @@ readoutEl.addEventListener('click', (e) => {
 // new tab as before. The key is a public, HTTP-referrer-restricted Embed API
 // key (that API has no usage charges); set it here to enable the in-app view.
 const GOOGLE_MAPS_EMBED_KEY = 'AIzaSyBQZNQ4jPlLjOH3efOD228wOjayupCfa6Y';
-const NATIVE_STREET_VIEW_BRIDGE = 'https://nothinglabs.github.io/clauding/street-view-embed.html';
+const NATIVE_STREET_VIEW_BRIDGE = 'https://nothinglabs.github.io/randoroute/street-view-embed.html';
 // iOS kills the whole web process rather than let a page hold two WebGL
 // scenes this heavy: Google's panorama stacked on the map's own context took
 // the app down at launch. On any iOS device Street View opens in the OS
