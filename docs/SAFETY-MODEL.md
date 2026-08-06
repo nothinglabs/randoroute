@@ -985,6 +985,20 @@ sets keep their cache epoch (`useWeights` is content-keyed), so the
 main → lens → main round trip inside a request costs nothing in cache
 warmth and the lens's own arc costs cache under its own epoch.
 
+**Adaptive ferry hybrids.** On a ferry trip, a dedicated pass re-searches the
+LAND sections of an itinerary one at a time under the conservative discovery
+lens and splices the seed's boats back verbatim, producing "same ferries,
+calmer crossing" hybrids. Three seeds are refined: the safest itinerary, the
+best-priced one, and the rider's MAINSTREAM one — the best-priced whose
+failing share is under 5%. The last exists because the first two can both
+miss it: on Seattle → Port Townsend the safest seed built an 88.7 mi hybrid
+and the best-priced seed a 10%-failing sprint's, while the starred 71 mi
+route — whose traffic-heavy Whidbey section was the whole complaint — was
+refined by neither until it seeded its own 77.5 mi becalmed hybrid. Each
+distinct boat plan keeps TWO representatives in the seed pool (safest and
+best-priced); keeping only the safest had hidden the mainstream candidate
+behind a calmer sibling with the same ferries.
+
 **The recommended route** (the starred letter) is chosen from the candidates
 whose every leg stays within a practical detour of the quickest option
 (1.5× distance + 800 m, 1.4× time + 5 min per leg — time is the binding

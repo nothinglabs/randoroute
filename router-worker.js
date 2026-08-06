@@ -2491,6 +2491,7 @@ function candidateSummary(candidate) {
     distM: candidate.distM,
     timeS: candidate.timeS,
     failM: candidate.failM,
+    refinedFrom: candidate._profile.refinedFrom || null,
     levelM: candidate.levelM,
     facilityM: candidate.facilityM,
     desigM: candidate.desigM,
@@ -2615,6 +2616,36 @@ function ensureFullyMatchingCandidate(raw, points, rules, snaps) {
   return result;
 }
 
+// The star pays a PRICE for fail avoidance instead of granting it a veto.
+// This used to be compareSafety() -- lexicographic, so any reduction in
+// absolute failing meters beat any amount of time within the practical
+// window. On Seattle-Everett that recommended 40.4 mi / 3h19 over
+// 33.0 mi / 2h43 to avoid 651 m of failing shoulder: a 36-minute detour
+// for a difference that rounds to the same "1% fails" on both cards. At
+// one second per meter, avoiding a full mile of failing road is worth up
+// to ~27 minutes of extra riding -- and no more. Ties still break toward
+// the strictly safer route, and the strictly safest candidate keeps its
+// own lettered slot regardless (safestOverall, below).
+const FAIL_AVOID_PRICE_S_PER_M = 1;
+// Dismount meters carry the same price as failing meters: a meter the
+// rider cannot properly ride costs a second, whichever way it fails them.
+// The walking time itself is already inside timeS, so this stacks the
+// judgment on top of the slowness.
+//
+// Ride QUALITY gets a vote too, at a fifth the rate: every riding meter
+// that is neither trail nor trusted lane (facilityM counts facility >= 2,
+// so sharrows never qualify; ferries are removed as not-riding) costs a
+// fifth of a second. Sized from the field: 31.8 mi / 2h39 at 64%
+// trails-and-lanes was starred over 36.1 mi / 3h00 at 90% -- the star
+// saved 21 minutes by spending 12 extra kilometers alongside traffic,
+// and the rider's verdict was "I'd rather be recommended routes like
+// this" about the other one. At 0.2 s/m, a mile of ordinary road is
+// worth about five and a half minutes of detour on better ground.
+const NETWORK_GAP_PRICE_S_PER_M = 0.2;
+const recommendationScore = (route) =>
+  route.timeS + (route.failM + (route.dismountM || 0)) * FAIL_AVOID_PRICE_S_PER_M
+  + Math.max(0, route.distM - route.ferryM - route.facilityM) * NETWORK_GAP_PRICE_S_PER_M;
+
 function ferryEdgeGroups(routeResult) {
   const groups = [];
   for (let index = 0; index < routeResult.edgeIds.length; index++) {
@@ -2637,17 +2668,55 @@ function ferrySignature(routeResult) {
 // edges in the graph; no places or coordinates are special-cased.
 function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, searchRules, progress = null) {
   if (!searchRules) return;
+  // TWO representatives per distinct boat plan: the safest AND the best
+  // priced. Keeping only the safest hid exactly the candidate the rider is
+  // starred onto -- quick-friendly shared a ferry signature with a calmer
+  // sibling, so the mainstream itinerary was never available to refine.
   const itinerarySeeds = new Map();
   for (const candidate of raw) {
     if (candidate._profile.discoveryMaxSpeed) continue;
     const signature = ferrySignature(candidate);
     if (!signature) continue;
-    const current = itinerarySeeds.get(signature);
-    if (!current || compareSafety(candidate, current) < 0) itinerarySeeds.set(signature, candidate);
+    const entry = itinerarySeeds.get(signature) || {};
+    if (!entry.safest || compareSafety(candidate, entry.safest) < 0) entry.safest = candidate;
+    if (!entry.practical
+        || recommendationScore(candidate) < recommendationScore(entry.practical)) {
+      entry.practical = candidate;
+    }
+    itinerarySeeds.set(signature, entry);
   }
   if (!itinerarySeeds.size) return;
-  const seed = [...itinerarySeeds.values()].reduce((best, candidate) =>
+  const seedPool = [...new Set([...itinerarySeeds.values()]
+    .flatMap((entry) => [entry.safest, entry.practical]))];
+  const safestSeed = seedPool.reduce((best, candidate) =>
     compareSafety(candidate, best) < 0 ? candidate : best);
+  // Refine the PRACTICAL itinerary too. Seeding only the safest one built
+  // hybrids on top of its long calm legs -- on Seattle -> Port Townsend the
+  // adaptive hybrid landed at 88.7 mi, nearly the longest offering, while
+  // the rider's ask was the opposite composition: the starred 71 mi route
+  // with ONLY its traffic-heavy Whidbey section becalmed. The best-priced
+  // seed produces exactly those hybrids; the ladder then carries both
+  // families and dedupe drops whichever collapsed together.
+  const practicalSeed = seedPool.reduce((best, candidate) =>
+    recommendationScore(candidate) < recommendationScore(best) ? candidate : best);
+  // And the rider's MAINSTREAM itinerary: the best-priced can be a bold one
+  // (on Seattle -> Port Townsend it was a 10%-failing sprint), and the
+  // itinerary the star actually sits on -- practical AND broadly within the
+  // rules -- refined by neither seed above. Its becalmed hybrid is the one
+  // the rider keeps asking for.
+  const lowFailSeed = seedPool.filter((candidate) => candidate.failM <= candidate.distM * 0.05)
+    .reduce((best, candidate) =>
+      !best || recommendationScore(candidate) < recommendationScore(best) ? candidate : best, null);
+  const seeds = new Set([safestSeed, practicalSeed]);
+  if (lowFailSeed) seeds.add(lowFailSeed);
+  for (const seed of seeds) {
+    refineFerrySeed(seed, raw, rules, forceDesig, forceResidential, searchRules, progress);
+  }
+}
+
+// One seed's land sections, re-searched under the conservative lens; the
+// seed's boats are spliced back verbatim.
+function refineFerrySeed(seed, raw, rules, forceDesig, forceResidential, searchRules, progress) {
   const ferryGroups = ferryEdgeGroups(seed);
   const landRanges = [];
   const ferryParts = [];
@@ -2711,6 +2780,9 @@ function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, se
       label: 'Adaptive corridor', mode: 'balanced', prefDesig: true, prefResidential: true,
       order: seed._profile.order + 0.08 + landIndex * 0.01,
       alternativeCorridor: true,
+      // Which itinerary this hybrid refined -- the More screen and any
+      // diagnosis want to know whose legs it inherited.
+      refinedFrom: seed._profile.id,
       discoveryMaxSpeed: SafetyModel.noShoulderMaxSpeed({}, searchRules),
     };
     hybrid.aggression = routeAggression(hybrid);
@@ -2956,35 +3028,6 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // ordinary profiles remains eligible to be recommended as before.
   const ordinaryPractical = practicalChoices.filter((route) => !route._profile.fullyMatchingProbe);
   const recommendationPool = ordinaryPractical.length ? ordinaryPractical : practicalChoices;
-  // The star pays a PRICE for fail avoidance instead of granting it a veto.
-  // This used to be compareSafety() -- lexicographic, so any reduction in
-  // absolute failing meters beat any amount of time within the practical
-  // window. On Seattle-Everett that recommended 40.4 mi / 3h19 over
-  // 33.0 mi / 2h43 to avoid 651 m of failing shoulder: a 36-minute detour
-  // for a difference that rounds to the same "1% fails" on both cards. At
-  // one second per meter, avoiding a full mile of failing road is worth up
-  // to ~27 minutes of extra riding -- and no more. Ties still break toward
-  // the strictly safer route, and the strictly safest candidate keeps its
-  // own lettered slot regardless (safestOverall, below).
-  const FAIL_AVOID_PRICE_S_PER_M = 1;
-  // Dismount meters carry the same price as failing meters: a meter the
-  // rider cannot properly ride costs a second, whichever way it fails them.
-  // The walking time itself is already inside timeS, so this stacks the
-  // judgment on top of the slowness.
-  //
-  // Ride QUALITY gets a vote too, at a fifth the rate: every riding meter
-  // that is neither trail nor trusted lane (facilityM counts facility >= 2,
-  // so sharrows never qualify; ferries are removed as not-riding) costs a
-  // fifth of a second. Sized from the field: 31.8 mi / 2h39 at 64%
-  // trails-and-lanes was starred over 36.1 mi / 3h00 at 90% -- the star
-  // saved 21 minutes by spending 12 extra kilometers alongside traffic,
-  // and the rider's verdict was "I'd rather be recommended routes like
-  // this" about the other one. At 0.2 s/m, a mile of ordinary road is
-  // worth about five and a half minutes of detour on better ground.
-  const NETWORK_GAP_PRICE_S_PER_M = 0.2;
-  const recommendationScore = (route) =>
-    route.timeS + (route.failM + (route.dismountM || 0)) * FAIL_AVOID_PRICE_S_PER_M
-    + Math.max(0, route.distM - route.ferryM - route.facilityM) * NETWORK_GAP_PRICE_S_PER_M;
   let recommended = null;
   for (const route of recommendationPool) {
     if (!recommended) { recommended = route; continue; }
