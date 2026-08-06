@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-06.589';
+const APP_VERSION = '2026-08-06.590';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2695,6 +2695,10 @@ function showRouteActionToast(text, { busy = false, detail = '', duration = 2200
   }
   toast.classList.toggle('busy', busy);
   toast.classList.toggle('has-detail', !!detail || showBar);
+  // While the bar shows, the toast keeps ONE size: phase messages wrap to
+  // one line or two, and letting the box grow and shrink with each message
+  // made the whole dialog jitter through a calculation.
+  toast.classList.toggle('has-progress', showBar);
   toast.hidden = !text;
   if (text && duration > 0) routeActionToastTimer = setTimeout(() => { toast.hidden = true; }, duration);
 }

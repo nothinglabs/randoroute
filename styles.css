@@ -841,6 +841,9 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #routeActionDetail { color: #527084; font: 600 10.5px/1.3 system-ui; }
 #routeActionDetail[hidden] { display: none; }
 .route-action-progress { display: flex; align-items: center; gap: 7px; margin-top: 3px; min-width: 220px; }
+/* One size for the whole calculation: the detail line reserves two lines of
+   height whether the current phase message fills them or not. */
+.route-action-toast.has-progress #routeActionDetail { display: block; min-height: 28px; }
 .route-action-progress[hidden] { display: none; }
 .route-action-progress-track { flex: 1; height: 6px; border-radius: 3px; background: #d5e6f1; overflow: hidden; }
 #routeActionProgressFill { display: block; height: 100%; width: 0%; border-radius: 3px; background: #0a66c2; transition: width .3s ease; }
