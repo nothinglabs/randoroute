@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-06.590';
+const APP_VERSION = '2026-08-06.591';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -5972,8 +5972,28 @@ function onRouterMessage(ev) {
       showRouteActionToast('');
     }
     renderRouteCard(routing.last);
-    computeRoute();
-    schedulePrewarm();
+    // One peak at a time on a phone. Boot restores the camera -- often the
+    // statewide view, the renderer's hungriest tile burst -- at the same
+    // moment the saved trip would start allocating search caches, and the
+    // two peaks TOGETHER kept killing the page even after the caches alone
+    // were capped (field: crash on boot, zoomed out, twice). Let the
+    // renderer land its opening tiles first; the route follows within
+    // seconds either way, and the 8 s stop means a slow tile server can
+    // never hold routing hostage.
+    if (isConstrainedDevice() && typeof map?.loaded === 'function' && !map.loaded()) {
+      let started = false;
+      const startRouting = () => {
+        if (started) return;
+        started = true;
+        computeRoute();
+        schedulePrewarm();
+      };
+      map.once('idle', startRouting);
+      setTimeout(startRouting, 8000);
+    } else {
+      computeRoute();
+      schedulePrewarm();
+    }
   } else if (m.type === 'route-options') {
     if (m.id !== routing.reqId) return;
     const remaining = 400 - (performance.now() - routing.compareStartedAt);
