@@ -2712,6 +2712,69 @@ function addAdaptiveFerryCandidates(raw, rules, forceDesig, forceResidential, se
   for (const seed of seeds) {
     refineFerrySeed(seed, raw, rules, forceDesig, forceResidential, searchRules, progress);
   }
+  // CROSS-BREED same-boat candidates: the pool can already hold one route
+  // with the better mainland and another with the better island, and no
+  // search will ever produce their combination -- field case (Seattle ->
+  // Port Townsend): the practical hybrid rode trail all the way to Mukilteo
+  // but crossed Whidbey direct, a calm full-length candidate crossed
+  // Whidbey beautifully and wasted the mainland, and neither letter offered
+  // both. Two routes sharing a ferry signature cut at identical terminal
+  // nodes, so their land sections splice WITHOUT a single new search: take
+  // the practical representative, swap in the safest one's section, one
+  // section at a time. Dedupe, the reasonable-time bound and selection
+  // judge the offspring like any other candidate.
+  for (const entry of itinerarySeeds.values()) {
+    if (!entry.practical || !entry.safest || entry.practical === entry.safest) continue;
+    crossBreedFerryCandidates(entry.practical, entry.safest, raw, rules);
+  }
+}
+
+// Splice one land section of `donor` into `base`. Both share a ferry
+// signature, so every section boundary is the same terminal node.
+function crossBreedFerryCandidates(base, donor, raw, rules) {
+  const baseGroups = ferryEdgeGroups(base);
+  const donorGroups = ferryEdgeGroups(donor);
+  if (!baseGroups.length || baseGroups.length !== donorGroups.length) return;
+  const cut = (route, groups) => {
+    const landRanges = [];
+    const ferryParts = [];
+    let cursor = 0;
+    for (const group of groups) {
+      landRanges.push({ start: cursor, end: group.start });
+      ferryParts.push(routeFragment(route, group.start, group.end, rules));
+      cursor = group.end;
+    }
+    landRanges.push({ start: cursor, end: route.edgeIds.length });
+    return { landParts: landRanges.map(({ start, end }) => routeFragment(route, start, end, rules)),
+      ferryParts };
+  };
+  const basePieces = cut(base, baseGroups);
+  const donorPieces = cut(donor, donorGroups);
+  for (let landIndex = 0; landIndex < basePieces.landParts.length; landIndex++) {
+    const mine = basePieces.landParts[landIndex];
+    const theirs = donorPieces.landParts[landIndex];
+    if (!mine || !theirs || theirs.distM < 1000) continue;
+    if (!meaningfullyDifferent(theirs, mine)) continue;
+    const parts = [];
+    for (let index = 0; index < basePieces.landParts.length; index++) {
+      const landPart = index === landIndex ? theirs : basePieces.landParts[index];
+      if (landPart) parts.push(landPart);
+      if (index < basePieces.ferryParts.length && basePieces.ferryParts[index]) {
+        parts.push(basePieces.ferryParts[index]);
+      }
+    }
+    const hybrid = mergeRouteParts(parts, base.snapStartM, base.snapEndM);
+    hybrid._profile = {
+      id: `adaptive-corridor${raw.some((r) => r._profile.id.startsWith('adaptive-corridor'))
+        ? `-${raw.filter((r) => r._profile.id.startsWith('adaptive-corridor')).length + 1}` : ''}`,
+      label: 'Adaptive corridor', mode: 'balanced', prefDesig: true, prefResidential: true,
+      order: base._profile.order + 0.06 + landIndex * 0.01,
+      alternativeCorridor: true,
+      refinedFrom: `${base._profile.id}+${donor._profile.id}`,
+    };
+    hybrid.aggression = routeAggression(hybrid);
+    raw.push(hybrid);
+  }
 }
 
 // One seed's land sections, re-searched under the conservative lens; the
