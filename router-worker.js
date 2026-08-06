@@ -2968,10 +2968,18 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       recommended = route;
     }
   }
-  // The rider's rules outrank a modest time saving: when the practical
-  // recommendation still carries failing distance but a fully matching
+  // The rider's rules outrank a MODEST time saving: when the practical
+  // recommendation still carries failing distance and a fully matching
   // route (including the strict probe) exists within a wider-but-sane
-  // detour, recommend the matching route instead.
+  // detour, prefer the matching route -- but the switch itself pays the
+  // price test. As an unconditional veto this rule undid the priced star:
+  // Phinney Ridge -> Mukilteo starred a 40.1 mi / 3h22 zero-fail loop over
+  // a 30.7 mi / 2h33 route whose 1% of failing distance prices at about
+  // eight minutes -- a 49-minute detour taken automatically, inside the
+  // veto's 1.8x window. Zero-fail is now worth at most ten minutes of
+  // score on top of what fail meters already charge; the best matching
+  // candidate is chosen by the same score, not by lexicographic safety.
+  const MATCHING_OVERRIDE_PRICE_S = 600;
   if (recommended && recommended.failM > 0.5) {
     const matchingPractical = choices.filter((route) => route.failM <= 0.5
       && route.legs.length === fastestOverall.legs.length
@@ -2981,8 +2989,11 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
           && leg.timeS <= quickestLeg.timeS * 1.85 + 600;
       }));
     const bestMatching = matchingPractical.reduce((best, route) =>
-      !best || compareSafety(route, best) < 0 ? route : best, null);
-    if (bestMatching) recommended = bestMatching;
+      !best || recommendationScore(route) < recommendationScore(best) ? route : best, null);
+    if (bestMatching && recommendationScore(bestMatching)
+        <= recommendationScore(recommended) + MATCHING_OVERRIDE_PRICE_S) {
+      recommended = bestMatching;
+    }
   }
   const boundedPreferred = (!hasStops || !preferred || boundedChoices.includes(preferred)
     || preferred === safestOverall) ? preferred : null;

@@ -1002,8 +1002,13 @@ Seattle–Everett starred a 40.4 mi / 3h19 route over 33.0 mi / 2h43 to avoid
 on both route cards. At one second per meter, avoiding a mile of failing
 road is worth up to ~27 minutes of extra riding, no more. Ties break toward
 the strictly safer route; the strictly safest candidate keeps its own
-lettered slot regardless, and a fully rules-matching route still takes the
-star from a failing one within its own wider bound (1.8× distance per leg).
+lettered slot regardless. A fully rules-matching route can still take the
+star from a failing one within a wider bound (1.8× distance per leg), but
+the switch pays the same price test: zero-fail is worth at most ten extra
+minutes of score beyond what the fail meters already charged. As an
+unconditional veto this override once starred a 40.1 mi / 3h22 zero-fail
+loop over a 30.7 mi / 2h33 route carrying ~1% failing distance — a
+49-minute detour taken automatically.
 
 | influence | function / weight | what it expresses |
 |---|---|---|
