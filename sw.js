@@ -12,7 +12,7 @@
  */
 importScripts('./build-version.js');
 
-const VERSION = 'v567'; // bump when app shell changes
+const VERSION = 'v568'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -191,10 +191,11 @@ async function pmtilesCacheFirst(req) {
   // evidence: every online range round-trip to Pages measured 700-1100 ms,
   // and one zoom level crossing asks for DOZENS of ranges -- that was the
   // "laggy zoom" report. The complete archive stored at installation serves
-  // the same range locally in about a millisecond. The memory worry that
-  // motivated online-first is obsolete: a Blob is a disk-backed handle, not
-  // resident bytes, and the offline path has materialized these same
-  // handles all along. Freshness rides the activation stamp refresh
+  // the same range locally in about a millisecond. Ranges are answered from
+  // bounded chunk entries (see pmtilesRangeResponse) -- the first version of
+  // this memoized whole-archive Blobs on the claim that a Blob is a
+  // disk-backed handle, and WebKit disagreed in the field with constant
+  // zoom-time page kills. Freshness rides the activation stamp refresh
   // (ARCHIVE_VERSIONS), exactly as the offline copies always have; the
   // network remains the path for an archive the install never finished
   // (pmtilesRangeResponse fetches and stores the whole file on a miss).
@@ -235,7 +236,9 @@ async function refreshStaleArchives() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       await cache.put(path, response);
       await cache.put(archiveMarker(path), new Response(version));
-      pmtilesBlobPromises.delete(new URL(path, location.href).pathname);
+      // The chunk entries mirror a specific archive copy; a refreshed copy
+      // invalidates them and the next range request rebuilds from it.
+      await purgePmtilesChunks(cache, new URL(path, location.href).pathname);
     } catch (error) {
       console.warn(`Could not refresh ${path}:`, error);
     }
@@ -269,47 +272,128 @@ async function refreshReleaseData() {
   }
 }
 
-const pmtilesBlobPromises = new Map();
+/* Ranges are served from fixed-size CHUNK cache entries, never from a
+ * whole-archive Blob. The previous design memoized full.blob() per archive
+ * "because a Blob is a disk-backed handle" -- on WebKit that assumption
+ * failed in the field: zooming (the moment range requests flow) brought
+ * constant page kills on iPhone and Mac Safari alike, with ~140 MB of
+ * archive blobs pinned in the worker for its lifetime. Chunking bounds the
+ * worst case per request to two 8 MB entries, transient and collectable.
+ *
+ * Chunk entries live under `<archive>__chunk-N` pathnames (own pathname, so
+ * the archive's own ignoreSearch matches can never collide with them, same
+ * pattern as ./data/.stamp/ markers), plus an `__chunkindex` entry recording
+ * {size, chunkBytes, chunks}. They are built ONCE per archive copy by
+ * STREAMING the cached response -- the whole archive never exists in memory
+ * -- and rebuilt after refreshStaleArchives replaces a stale copy. */
+const PMTILES_CHUNK_BYTES = 8 * 1024 * 1024;
+const chunkRequest = (pathname, i) => new Request(`${pathname}__chunk-${i}`);
+const chunkIndexRequest = (pathname) => new Request(`${pathname}__chunkindex`);
+
+async function purgePmtilesChunks(cache, pathname) {
+  for (const request of await cache.keys()) {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith(`${pathname}__chunk`)) await cache.delete(request);
+  }
+}
+
+// One chunking per archive at a time: the first zoom fires DOZENS of range
+// requests at once, and letting each stream its own copy of an 80 MB archive
+// would recreate the very spike this exists to remove.
+const chunkingInFlight = new Map();
+function ensurePmtilesChunks(cache, pathname, fullRequest) {
+  let inFlight = chunkingInFlight.get(pathname);
+  if (!inFlight) {
+    inFlight = buildPmtilesChunks(cache, pathname, fullRequest)
+      .finally(() => chunkingInFlight.delete(pathname));
+    chunkingInFlight.set(pathname, inFlight);
+  }
+  return inFlight;
+}
+
+async function buildPmtilesChunks(cache, pathname, fullRequest) {
+  const cachedIndex = await cache.match(chunkIndexRequest(pathname));
+  if (cachedIndex) return cachedIndex.json();
+  const full = await cache.match(fullRequest, { ignoreVary: true, ignoreSearch: true });
+  if (!full) throw new Error(`no cached archive to chunk for ${pathname}`);
+  const reader = full.body.getReader();
+  const pending = [];
+  let pendingBytes = 0, written = 0, size = 0;
+  const drain = async (final) => {
+    while (pendingBytes >= PMTILES_CHUNK_BYTES || (final && pendingBytes > 0)) {
+      const take = Math.min(PMTILES_CHUNK_BYTES, pendingBytes);
+      const out = new Uint8Array(take);
+      let at = 0;
+      while (at < take) {
+        const head = pending[0];
+        const use = Math.min(head.length, take - at);
+        out.set(use === head.length ? head : head.subarray(0, use), at);
+        at += use;
+        if (use === head.length) pending.shift();
+        else pending[0] = head.subarray(use);
+      }
+      pendingBytes -= take;
+      await cache.put(chunkRequest(pathname, written), new Response(out));
+      written++;
+    }
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    pending.push(value);
+    pendingBytes += value.length;
+    await drain(false);
+  }
+  await drain(true);
+  const meta = { size, chunkBytes: PMTILES_CHUNK_BYTES, chunks: written };
+  await cache.put(chunkIndexRequest(pathname), new Response(JSON.stringify(meta)));
+  return meta;
+}
 
 async function pmtilesRangeResponse(req) {
   const cache = await caches.open(DATA_CACHE);
   const fullRequest = new Request(req.url, { method: 'GET' });
   let full = await cache.match(fullRequest, { ignoreVary: true, ignoreSearch: true });
   if (!full) {
-    full = await fetch(fullRequest);
-    if (!full.ok) return full;
-    await cache.put(fullRequest, full.clone());
+    const fetched = await fetch(fullRequest);
+    if (!fetched.ok) return fetched;
+    await cache.put(fullRequest, fetched.clone());
+    full = fetched;
   }
   const range = req.headers.get('Range');
   if (!range) return full;
   const match = /^bytes=(\d+)-(\d*)$/i.exec(range);
   if (!match) return new Response(null, { status: 416 });
-  const archiveKey = new URL(req.url).pathname;
-  let blobPromise = pmtilesBlobPromises.get(archiveKey);
-  if (!blobPromise) {
-    blobPromise = full.blob().catch((error) => {
-      pmtilesBlobPromises.delete(archiveKey);
-      throw error;
-    });
-    pmtilesBlobPromises.set(archiveKey, blobPromise);
-  }
-  const blob = await blobPromise;
+  const pathname = new URL(req.url).pathname;
+  const meta = await ensurePmtilesChunks(cache, pathname, fullRequest);
   const start = Number(match[1]);
-  const requestedEnd = match[2] ? Number(match[2]) : blob.size - 1;
-  const end = Math.min(requestedEnd, blob.size - 1);
-  if (start > end || start >= blob.size) {
+  const requestedEnd = match[2] ? Number(match[2]) : meta.size - 1;
+  const end = Math.min(requestedEnd, meta.size - 1);
+  if (start > end || start >= meta.size) {
     return new Response(null, {
       status: 416,
-      headers: { 'Content-Range': `bytes */${blob.size}` },
+      headers: { 'Content-Range': `bytes */${meta.size}` },
     });
   }
-  const slice = blob.slice(start, end + 1);
-  return new Response(slice, {
+  const firstChunk = Math.floor(start / meta.chunkBytes);
+  const lastChunk = Math.floor(end / meta.chunkBytes);
+  const parts = [];
+  for (let i = firstChunk; i <= lastChunk; i++) {
+    const entry = await cache.match(chunkRequest(pathname, i));
+    if (!entry) throw new Error(`missing chunk ${i} for ${pathname}`);
+    const blob = await entry.blob();
+    const chunkStart = i * meta.chunkBytes;
+    parts.push(blob.slice(Math.max(0, start - chunkStart),
+      Math.min(blob.size, end + 1 - chunkStart)));
+  }
+  const body = parts.length === 1 ? parts[0] : new Blob(parts);
+  return new Response(body, {
     status: 206,
     headers: {
       'Accept-Ranges': 'bytes',
-      'Content-Range': `bytes ${start}-${end}/${blob.size}`,
-      'Content-Length': String(slice.size),
+      'Content-Range': `bytes ${start}-${end}/${meta.size}`,
+      'Content-Length': String(end - start + 1),
       'Content-Type': full.headers.get('Content-Type') || 'application/octet-stream',
     },
   });
