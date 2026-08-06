@@ -1199,7 +1199,7 @@ let floorValues = null;   // the active slot's Float32Array(2E), NaN = not yet c
 // never accumulated (the pass sums distances in doubles), and the half-ulp a
 // store can round UP is ~1e-7 relative -- absorbed a thousand times over by
 // POTENTIAL_SAFETY. ~11 MB per slot at 2.7M directed edges.
-const FLOOR_SLOTS = 7;
+const FLOOR_SLOTS = 8;
 const floorSlots = [];
 let weightsEpoch = 0;
 // Everything the bound reads, as one string.
@@ -1414,7 +1414,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
 // Fifteen: the profile grid is 3 modes x 4 preference combos = 12 distinct
 // cache keys per rules configuration, and the discovery lens adds 3 more
 // (direct/low/balanced under the stricter searchRules signature), and the
-// direct-lens probe one more under its own weights epoch. At 12 slots
+// two direct-lens probes two more under their own weights epoch. At 12 slots
 // a request's own tail evicted the head of its working set -- LRU over 15
 // keys cycling through 12 slots re-derived several configs on EVERY repeat
 // request; discovery alone re-paid ~4 s per search. Storage is Float32 --
@@ -1422,7 +1422,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
 // at 2.6M arcs. The strict fully-matching probe does NOT need a slot of its
 // own: requireSafe is excluded from the key on purpose, and its surcharge is
 // applied live in the relaxation, never stored (see the fill below).
-const COST_CACHE_SLOTS = 16;
+const COST_CACHE_SLOTS = 17;
 // A constrained device (the app decides and says so via a 'configure'
 // message) gets hard caps on every large cache instead of the full working
 // set. Field: an iPhone's startup -- which auto-computes the saved trip and
@@ -1585,7 +1585,7 @@ function edgeCostFloor(i, forward) {
 // keys the next request of the same trip will ask for again -- a potential is
 // a bounded backward Dijkstra, cheap to hold (a Uint16 per node) and slow to
 // rebuild.
-const POTENTIAL_CACHE_MAX = 13;
+const POTENTIAL_CACHE_MAX = 14;
 const potentialCache = new Map();
 
 function goalPotential(goalNode, startNode, rules, searchRules, mode) {
@@ -2829,16 +2829,36 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     useWeights(lensWeights);
     if (weightsSignature !== mainSignature) {
       progress?.('Trying a more direct lens…', 0.76);
+      // Two lens candidates. The direct one finds the aggressive end --
+      // useful, but on Duck Pond -> Kenmore it was ALSO the only lens find,
+      // a 6.5 mi route that is 51% failing, and with nothing moderate
+      // inside the practical window the star had to sit on it. The remix
+      // menu's genuinely better middle routes come from DIVERSITY under the
+      // flattened weights (its alt probes found 17% failing where friendly
+      // preferences alone just re-found the aggressive corridor), so the
+      // second candidate is a diversity probe seeded off the first: balanced
+      // and friendly, pushed off the aggressive corridor's own edges.
       const lensProfile = { id: 'direct-lens', label: 'More-direct lens', mode: 'direct',
         prefDesig: forceDesig, prefResidential: forceResidential, order: 0.46, directLens: true };
-      const found = route(points, rules, lensProfile.mode, lensProfile.prefDesig,
+      const direct = route(points, rules, lensProfile.mode, lensProfile.prefDesig,
         lensProfile.prefResidential, snaps);
-      useWeights(mainWeights);
-      if (found.ok) {
-        found._profile = lensProfile;
-        found.aggression = routeAggression(found);
-        raw.push(found);
+      if (direct.ok) {
+        direct._profile = lensProfile;
+        direct.aggression = routeAggression(direct);
+        raw.push(direct);
+        const moderateProfile = { id: 'direct-lens-friendly', label: 'More-direct lens',
+          mode: 'balanced', prefDesig: true, prefResidential: true, order: 1.46,
+          alternativeCorridor: true, directLens: true };
+        const moderate = route(points, rules, moderateProfile.mode, moderateProfile.prefDesig,
+          moderateProfile.prefResidential, snaps,
+          new Set(direct.edgeIds), activeWeights.diversityBalanced);
+        if (moderate.ok) {
+          moderate._profile = moderateProfile;
+          moderate.aggression = routeAggression(moderate);
+          raw.push(moderate);
+        }
       }
+      useWeights(mainWeights);
     } else {
       useWeights(mainWeights);
     }
@@ -2918,12 +2938,17 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const boundedSafer = boundedChoices.reduce((best, route) =>
     !best || compareSafety(route, best) < 0 ? route : best, null);
   // The recommended route is not necessarily the absolute safest or shortest.
-  // Choose the safest result whose every leg stays within a practical detour
+  // Choose from the results whose every leg stays within a practical detour
   // of the quickest option; the stricter choices remain available as letters.
+  // Distance allows 1.5x where time allows 1.4x: time is the real
+  // practicality bound, and a tighter 1.35x distance clause once stranded
+  // the star on a 56%-failing corridor because the 17%-failing alternative
+  // -- WITHIN the time window -- was 1.55x its distance. A route the rider
+  // can ride in comparable time is practical, however the miles divide.
   const practicalChoices = choices.filter((route) =>
     route.legs.length === fastestOverall.legs.length && route.legs.every((leg, index) => {
       const quickestLeg = fastestOverall.legs[index];
-      return leg.distM <= quickestLeg.distM * 1.35 + 800
+      return leg.distM <= quickestLeg.distM * 1.5 + 800
         && leg.timeS <= quickestLeg.timeS * 1.4 + 300;
     }));
   // The extra strict probe is an availability guarantee, not an instruction

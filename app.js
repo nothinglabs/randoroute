@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-06.597';
+const APP_VERSION = '2026-08-06.598';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -907,7 +907,7 @@ const ROUTE_PROFILE_IDS = new Set([
 // structure downstream keys candidates by profile id. Validation accepts the
 // family, not just the bare name.
 function validRouteProfileId(id) {
-  return ROUTE_PROFILE_IDS.has(id) || id === 'direct-lens'
+  return ROUTE_PROFILE_IDS.has(id) || String(id || '').startsWith('direct-lens')
     || /^adaptive-corridor-\d+$/.test(String(id || ''));
 }
 function legacyRouteProfile(mode) {

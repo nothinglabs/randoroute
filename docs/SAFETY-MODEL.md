@@ -987,7 +987,9 @@ warmth and the lens's own arc costs cache under its own epoch.
 
 **The recommended route** (the starred letter) is chosen from the candidates
 whose every leg stays within a practical detour of the quickest option
-(1.35× distance + 800 m, 1.4× time + 5 min per leg), by minimizing
+(1.5× distance + 800 m, 1.4× time + 5 min per leg — time is the binding
+clause; a tighter distance bound once stranded the star on a 56%-failing
+corridor), by minimizing
 `time + 1 s × (failing + dismount meters) + 0.2 s × ordinary-riding meters`
 — where ordinary-riding meters are everything that is neither trail nor
 trusted lane (facility ≥ 2; sharrows never qualify, ferries are removed as
