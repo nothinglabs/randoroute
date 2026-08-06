@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-06.593';
+const APP_VERSION = '2026-08-06.594';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1055,15 +1055,15 @@ const map = new maplibregl.Map({
   maxZoom: 17,
   maxPitch: 0,
   pitchWithRotate: false,
-  // A bounded tile cache everywhere. Zooming out crosses many zoom levels,
-  // and the default cache retains each level's tiles -- with the overlay
-  // archive carrying the full statewide bike network per low-zoom tile,
-  // that retention is what pushed WebKit over the edge (field: reliable
-  // crash on zoom-out just after boot on the phone, and a Mac Safari tab
-  // reloaded for "significant memory"). Evicted tiles come back instantly
-  // from the service worker's cache-first archives, so the cost of a small
-  // cache is a refetch that has already been measured as instant.
-  maxTileCacheSize: isConstrainedDevice() ? 16 : 64,
+  // NO maxTileCacheSize override. A 16-tile cap shipped briefly (v.592) on
+  // the theory that retained tiles were the zoom-out memory spike -- and the
+  // field verdict was immediate: "constant crashes, seems to be about when I
+  // zoom, used to not". Bounding retention forces every zoom to re-fetch,
+  // re-parse and RE-BUCKET tiles the default cache would have kept, and that
+  // per-zoom allocation spike is worse for WebKit than the retention it
+  // saved. The real zoom-out fix is upstream: the overlay archive keeps only
+  // trails below z9 and the invisible tap layers floor at z9, so low-zoom
+  // tiles are small enough for the default cache policy to handle.
 });
 map.once('render', () => window.__setAppLaunchStatus?.('Drawing roads and trails…'));
 const finishAppLaunch = () => {
