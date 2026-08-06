@@ -3217,9 +3217,18 @@ onmessage = (ev) => {
       // comment at COST_CACHE_SLOTS: a phone survives startup by holding
       // fewer slots and re-deriving evicted configs instead.
       if (m.constrained) {
+        // Only the arc-cost slots stay capped. Floors and potentials came
+        // back once v.595 stopped the service worker pinning whole archives:
+        // ~70 MB total for the moved-pin re-search win (measured: potentials
+        // fell from ~10 s to ~2 s of a moved-pin request in the container).
+        // The cost cap is the honest stability trade that remains: 8 slots
+        // under a 16-key working set is sequential LRU, so cross-request
+        // reuse is nil and a LONG trip's repeat re-derives its corridor's
+        // arc costs each time (~3x slower than uncapped on Everett; short
+        // trips barely notice). Lifting it means +174 MB on a phone --
+        // roughly the entire headroom the v.595 fix freed -- so it stays
+        // until stability has soaked long enough to spend that deliberately.
         costSlotCap = Math.min(costSlotCap, 8);
-        floorSlotCap = Math.min(floorSlotCap, 2);
-        potentialCap = Math.min(potentialCap, 6);
       }
     } else if (m.type === 'prewarm') {
       useWeights(m.weights);
