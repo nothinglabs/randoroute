@@ -1,0 +1,35 @@
+name: Deploy Pages
+
+# Replaces GitHub's built-in "pages build and deployment" workflow, which
+# stopped acquiring runners after the repo was renamed to randoroute
+# (build jobs sat queued 15 minutes and were cancelled, 2026-08-06).
+# Requires Settings → Pages → Source set to "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
