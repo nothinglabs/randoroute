@@ -68,7 +68,7 @@ const plan = await page.evaluate(() => {
     })(),
     rocks: build(19, () => ({ surface: 2 })).other.every((m) => m.kind === 'unpaved'),
     odd: build(19, () => ({ mtb: true })).other.every((m) => m.kind === 'odd'),
-    // Steep AND unpaved together: one icon per slot, never two.
+    // Steep AND unpaved together: one CLUSTERED badge per slot naming both.
     mixed: (() => {
       const m = build(19, () => ({ gradePct: 12, surface: 2 }));
       return { count: m.other.length,
@@ -117,9 +117,9 @@ check('a bike lane demoted to caution by its stress rating carries the car',
   plan.trafficOnStressedLane === true);
 check('confirmed unpaved gets the rocks', plan.rocks === true);
 check('a technical way gets the question mark', plan.odd === true);
-check('a steep AND unpaved stretch still gets one icon per slot',
+check('a steep AND unpaved stretch clusters both kinds in every slot',
   plan.mixed.count >= 3 && plan.mixed.count <= 5
-    && plan.mixed.kinds.every((k) => k === 'steep' || k === 'unpaved'),
+    && plan.mixed.kinds.length === 1 && plan.mixed.kinds[0] === 'steep+unpaved',
   JSON.stringify(plan.mixed));
 check('a long walked stretch carries a chain of walkers',
   plan.walkChain >= 3 && plan.walkChain <= 5, String(plan.walkChain));

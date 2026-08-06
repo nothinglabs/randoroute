@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-06.599';
+const APP_VERSION = '2026-08-06.600';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6489,9 +6489,9 @@ function buildRouteMarkerData(sdata) {
     }
   }
   const walk = [], other = [];
-  // Knuth's multiplicative hash over the slot index: stable across redraws,
-  // uncorrelated enough that mixed stretches show mixed icons.
-  const pick = (slot, kinds) => kinds[((slot * 2654435761) >>> 0) % kinds.length];
+  // Canonical order for a clustered badge id: marker-icons composites every
+  // combination joined with '+' in exactly this order.
+  const comboOrder = { steep: 0, traffic: 1, unpaved: 2, odd: 3 };
   let pos = 0, minNext = ROUTE_MARKER_SPACING_M / 4;
   feats.forEach((f, index) => {
     const active = qualified[index];
@@ -6504,7 +6504,16 @@ function buildRouteMarkerData(sdata) {
           if (target > pos + d) break;
           const t = d > 0 ? (target - pos) / d : 0;
           const slot = Math.round(target / ROUTE_MARKER_SPACING_M);
-          const kind = pick(slot, active);
+          // EVERY active kind shows: one clustered badge instead of a hash
+          // pick per slot, which let a car hide the hill sharing its spot
+          // (field report). Where a walk chain overlaps other kinds, slots
+          // alternate so both stay visible along the run.
+          const others = active.filter((k) => k !== 'walk');
+          const combined = others.slice()
+            .sort((k1, k2) => comboOrder[k1] - comboOrder[k2]).join('+');
+          const kind = active.includes('walk')
+            ? (others.length && slot % 2 === 1 ? combined : 'walk')
+            : combined;
           // `slot` doubles as the collision priority: with a stable sort key
           // the placer culls the SAME markers at every zoom, so zooming thins
           // a chain monotonically instead of toggling which icon a spot shows.

@@ -88,8 +88,12 @@ function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-i
 
 function ensureRouteMarkerImages(targetMap) {
   if (targetMap.hasImage('route-marker-steep')) return;
-  const add = (id, b) => targetMap.addImage(id,
-    { width: b.width, height: b.height, data: b.data }, { pixelRatio: 2 });
+  const painted = {};
+  const add = (id, b) => {
+    painted[id] = b;
+    targetMap.addImage(id,
+      { width: b.width, height: b.height, data: b.data }, { pixelRatio: 2 });
+  };
   { // steep: two peaks; a hill profile reads as "mountain" at 16 px.
     const b = paintMarkerBadge([90, 62, 8, 255]);
     const peak = (px, py, half, color) => {
@@ -183,4 +187,44 @@ function ensureRouteMarkerImages(targetMap) {
     b.disc(8 * s, 12.2 * s, 1.05 * s, ink);
     add('route-marker-odd', b);
   }
+  // Combined badges: a spot can be steep AND trafficked, and one badge must
+  // not hide the other -- the marker chain emits every active kind as ONE
+  // clustered image (field: "a traffic icon will seem to hide that there is
+  // a hill at the same spot"). Every combination is composited eagerly, in
+  // canonical order; buildRouteMarkerData joins kinds with '+' in the same
+  // order. Leftmost badge paints last so the primary kind sits on top of
+  // the overlap seam.
+  const COMBO_KINDS = ['steep', 'traffic', 'unpaved', 'odd'];
+  const overlap = Math.round(4 * STEEP_MARKER_SCALE);
+  const composite = (parts) => {
+    const w = parts[0].width, h = parts[0].height, step = w - overlap;
+    const width = w + step * (parts.length - 1);
+    const data = new Uint8Array(width * h * 4);
+    for (let index = parts.length - 1; index >= 0; index--) {
+      const part = parts[index], x0 = index * step;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const srcAt = (y * part.width + x) * 4;
+          if (part.data[srcAt + 3] === 0) continue;
+          const dst = (y * width + x0 + x) * 4;
+          data[dst] = part.data[srcAt]; data[dst + 1] = part.data[srcAt + 1];
+          data[dst + 2] = part.data[srcAt + 2]; data[dst + 3] = part.data[srcAt + 3];
+        }
+      }
+    }
+    return { width, height: h, data };
+  };
+  const combos = (list, from) => {
+    for (let i = from; i < COMBO_KINDS.length; i++) {
+      const next = [...list, COMBO_KINDS[i]];
+      if (next.length > 1) {
+        targetMap.addImage('route-marker-' + next.join('+'),
+          (({ width, height, data }) => ({ width, height, data }))(
+            composite(next.map((kind) => painted['route-marker-' + kind]))),
+          { pixelRatio: 2 });
+      }
+      combos(next, i + 1);
+    }
+  };
+  combos([], 0);
 }

@@ -12,7 +12,7 @@
  */
 importScripts('./build-version.js');
 
-const VERSION = 'v572'; // bump when app shell changes
+const VERSION = 'v573'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -202,8 +202,38 @@ async function pmtilesCacheFirst(req) {
   try {
     return await pmtilesRangeResponse(req);
   } catch (e) {
-    return fetch(req);
+    return rangeSafeNetworkFallback(req);
   }
+}
+
+// The fallback must never hand PMTiles a 200 for a ranged request: Safari's
+// HTTP cache is known to answer a Range fetch with the whole cached 200,
+// and PMTiles hard-fails on it ("server does not support byte serving" --
+// the field toast said all roads could not load). Bypass the HTTP cache,
+// and if a 200 still comes back, synthesize the 206 by slicing it.
+async function rangeSafeNetworkFallback(req) {
+  const res = await fetch(req, { cache: 'no-store' });
+  const range = req.headers.get('Range');
+  if (!range || res.status === 206 || !res.ok) return res;
+  const match = /^bytes=(\d+)-(\d*)$/i.exec(range);
+  if (!match) return res;
+  const buf = await res.arrayBuffer();
+  const start = Number(match[1]);
+  const end = Math.min(match[2] ? Number(match[2]) : buf.byteLength - 1, buf.byteLength - 1);
+  if (start > end || start >= buf.byteLength) {
+    return new Response(null, {
+      status: 416,
+      headers: { 'Content-Range': `bytes */${buf.byteLength}` },
+    });
+  }
+  return new Response(buf.slice(start, end + 1), {
+    status: 206,
+    headers: {
+      'Accept-Ranges': 'bytes',
+      'Content-Range': `bytes ${start}-${end}/${buf.byteLength}`,
+      'Content-Type': res.headers.get('Content-Type') || 'application/octet-stream',
+    },
+  });
 }
 
 async function precacheData() {
@@ -316,36 +346,18 @@ async function buildPmtilesChunks(cache, pathname, fullRequest) {
   if (cachedIndex) return cachedIndex.json();
   const full = await cache.match(fullRequest, { ignoreVary: true, ignoreSearch: true });
   if (!full) throw new Error(`no cached archive to chunk for ${pathname}`);
-  const reader = full.body.getReader();
-  const pending = [];
-  let pendingBytes = 0, written = 0, size = 0;
-  const drain = async (final) => {
-    while (pendingBytes >= PMTILES_CHUNK_BYTES || (final && pendingBytes > 0)) {
-      const take = Math.min(PMTILES_CHUNK_BYTES, pendingBytes);
-      const out = new Uint8Array(take);
-      let at = 0;
-      while (at < take) {
-        const head = pending[0];
-        const use = Math.min(head.length, take - at);
-        out.set(use === head.length ? head : head.subarray(0, use), at);
-        at += use;
-        if (use === head.length) pending.shift();
-        else pending[0] = head.subarray(use);
-      }
-      pendingBytes -= take;
-      await cache.put(chunkRequest(pathname, written), new Response(out));
-      written++;
-    }
-  };
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.length;
-    pending.push(value);
-    pendingBytes += value.length;
-    await drain(false);
+  // blob() + slice, not body streaming: reading a cached response as a Blob
+  // is the one primitive the v.583 era PROVED works on Safari, while cached
+  // response streams are the flakier corner of WebKit's Cache API. Each
+  // slice materializes at most one 8 MB piece.
+  const blob = await full.blob();
+  const size = blob.size;
+  let written = 0;
+  for (let offset = 0; offset < size; offset += PMTILES_CHUNK_BYTES) {
+    const piece = await blob.slice(offset, Math.min(size, offset + PMTILES_CHUNK_BYTES)).arrayBuffer();
+    await cache.put(chunkRequest(pathname, written), new Response(piece));
+    written++;
   }
-  await drain(true);
   const meta = { size, chunkBytes: PMTILES_CHUNK_BYTES, chunks: written };
   await cache.put(chunkIndexRequest(pathname), new Response(JSON.stringify(meta)));
   return meta;
@@ -381,7 +393,12 @@ async function pmtilesRangeResponse(req) {
   const parts = [];
   for (let i = firstChunk; i <= lastChunk; i++) {
     const entry = await cache.match(chunkRequest(pathname, i));
-    if (!entry) throw new Error(`missing chunk ${i} for ${pathname}`);
+    if (!entry) {
+      // A killed worker can leave a torn chunk set; purge so the NEXT
+      // request rebuilds cleanly, and let this one fall back to network.
+      await purgePmtilesChunks(cache, pathname);
+      throw new Error(`missing chunk ${i} for ${pathname}`);
+    }
     const blob = await entry.blob();
     const chunkStart = i * meta.chunkBytes;
     parts.push(blob.slice(Math.max(0, start - chunkStart),
@@ -393,7 +410,6 @@ async function pmtilesRangeResponse(req) {
     headers: {
       'Accept-Ranges': 'bytes',
       'Content-Range': `bytes ${start}-${end}/${meta.size}`,
-      'Content-Length': String(end - start + 1),
       'Content-Type': full.headers.get('Content-Type') || 'application/octet-stream',
     },
   });
