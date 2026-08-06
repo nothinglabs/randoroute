@@ -691,6 +691,14 @@ function modeSuffix(mode) {
 }
 let activeWeights = { ...DEFAULT_WEIGHTS };
 let weightsSignature = '';
+// A weight set KEEPS its epoch. The direct-lens probe switches weights inside
+// every request (main -> lens -> main); with a plain counter that round trip
+// minted two fresh epochs per request, and since every cache key embeds the
+// epoch, it silently invalidated every cost slot, floor slot and potential on
+// every search. Content-keyed epochs make the round trip free: returning to a
+// known set restores its old epoch, and the lens set caches under its own.
+const weightsEpochBySignature = new Map();
+let weightsEpochCounter = 0;
 function useWeights(source) {
   const previous = activeWeights;
   activeWeights = { ...DEFAULT_WEIGHTS };
@@ -702,7 +710,16 @@ function useWeights(source) {
   const signature = JSON.stringify(activeWeights);
   if (signature === weightsSignature) { activeWeights = previous; return; }
   weightsSignature = signature;
-  weightsEpoch++;
+  let epoch = weightsEpochBySignature.get(signature);
+  if (epoch == null) {
+    epoch = ++weightsEpochCounter;
+    weightsEpochBySignature.set(signature, epoch);
+    // Bounded: a rider dragging a weight slider mints signatures freely.
+    if (weightsEpochBySignature.size > 32) {
+      weightsEpochBySignature.delete(weightsEpochBySignature.keys().next().value);
+    }
+  }
+  weightsEpoch = epoch;
 }
 function applyWeights(source) {
   if (!source || typeof source !== 'object') return;
@@ -1182,7 +1199,7 @@ let floorValues = null;   // the active slot's Float32Array(2E), NaN = not yet c
 // never accumulated (the pass sums distances in doubles), and the half-ulp a
 // store can round UP is ~1e-7 relative -- absorbed a thousand times over by
 // POTENTIAL_SAFETY. ~11 MB per slot at 2.7M directed edges.
-const FLOOR_SLOTS = 6;
+const FLOOR_SLOTS = 7;
 const floorSlots = [];
 let weightsEpoch = 0;
 // Everything the bound reads, as one string.
@@ -1396,7 +1413,8 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
  * the request this exists to speed up. */
 // Fifteen: the profile grid is 3 modes x 4 preference combos = 12 distinct
 // cache keys per rules configuration, and the discovery lens adds 3 more
-// (direct/low/balanced under the stricter searchRules signature). At 12 slots
+// (direct/low/balanced under the stricter searchRules signature), and the
+// direct-lens probe one more under its own weights epoch. At 12 slots
 // a request's own tail evicted the head of its working set -- LRU over 15
 // keys cycling through 12 slots re-derived several configs on EVERY repeat
 // request; discovery alone re-paid ~4 s per search. Storage is Float32 --
@@ -1404,7 +1422,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
 // at 2.6M arcs. The strict fully-matching probe does NOT need a slot of its
 // own: requireSafe is excluded from the key on purpose, and its surcharge is
 // applied live in the relaxation, never stored (see the fill below).
-const COST_CACHE_SLOTS = 15;
+const COST_CACHE_SLOTS = 16;
 // A constrained device (the app decides and says so via a 'configure'
 // message) gets hard caps on every large cache instead of the full working
 // set. Field: an iPhone's startup -- which auto-computes the saved trip and
@@ -1567,7 +1585,7 @@ function edgeCostFloor(i, forward) {
 // keys the next request of the same trip will ask for again -- a potential is
 // a bounded backward Dijkstra, cheap to hold (a Uint16 per node) and slow to
 // rebuild.
-const POTENTIAL_CACHE_MAX = 12;
+const POTENTIAL_CACHE_MAX = 13;
 const potentialCache = new Map();
 
 function goalPotential(goalNode, startNode, rules, searchRules, mode) {
@@ -2496,6 +2514,7 @@ function publicCandidate(candidate) {
       prefDesignated: _profile.prefDesig,
       prefResidential: _profile.prefResidential,
       alternativeCorridor: !!_profile.alternativeCorridor,
+      directLens: !!_profile.directLens,
       discoveryMaxSpeed: _profile.discoveryMaxSpeed || null,
       fullyMatchingRules: !!_profile.fullyMatchingRules,
       fullyMatchingProbe: !!_profile.fullyMatchingProbe,
@@ -2706,7 +2725,8 @@ let lastCandidates = null;
 let lastCandidatesKey = null;
 
 function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false,
-    progress = null, requestSignature = null, pinned = null) {
+    progress = null, requestSignature = null, pinned = null,
+    mainWeights = null, lensWeights = null) {
   const started = Date.now();
   // Identifies this exact request, so a tap on the "More" screen that arrives
   // after the rider changed something is refused rather than answered from a
@@ -2794,6 +2814,36 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const discoveryRules = addDiscoveryCandidates(raw, points, rules,
     forceDesig, forceResidential, snaps, progress);
   endPhase('discovery');
+  // The more-direct lens: the exact flattening the route-mix "More direct"
+  // applies, run as ONE ordinary candidate inside every portfolio. Field case
+  // (Ravenna -> Phinney Ridge): all nineteen normal candidates collapsed onto
+  // one greenway corridor -- the facility pull owns every profile AND every
+  // diversity probe on a short trip -- while the flattened search found a
+  // genuinely shorter corridor the rider had to know to ask for. This is a
+  // search preference only: safety metrics, map colors and the star's pricing
+  // all come from the rider's unchanged rules, and the ordinary dedupe decides
+  // whether what the lens found is actually different. Skipped when the rider
+  // has already remixed onto these exact weights (the signatures match).
+  if (lensWeights) {
+    const mainSignature = weightsSignature;
+    useWeights(lensWeights);
+    if (weightsSignature !== mainSignature) {
+      progress?.('Trying a more direct lens…', 0.76);
+      const lensProfile = { id: 'direct-lens', label: 'More-direct lens', mode: 'direct',
+        prefDesig: forceDesig, prefResidential: forceResidential, order: 0.46, directLens: true };
+      const found = route(points, rules, lensProfile.mode, lensProfile.prefDesig,
+        lensProfile.prefResidential, snaps);
+      useWeights(mainWeights);
+      if (found.ok) {
+        found._profile = lensProfile;
+        found.aggression = routeAggression(found);
+        raw.push(found);
+      }
+    } else {
+      useWeights(mainWeights);
+    }
+  }
+  endPhase('lens');
   if (points.length === 2) {
     progress?.('Probing ferry corridors and terminals…',
       raw.some((c) => c.ferryM > 0) ? 0.62 : 0.8);
@@ -2944,14 +2994,19 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // stops the rider actually chose, not several variations of the same loop.
   const selectionChoices = hasStops ? choices.filter((route) => boundedChoices.includes(route)
     || route === safestOverall || route === boundedPreferred) : choices;
+  // Six lettered slots, up from five: the direct-lens candidate widened the
+  // portfolio's real variety, and the extra slot lets it surface without
+  // pushing an ordinary choice out. Interior picks fill to two under the cap
+  // so the endpoints (shortest, longest) keep their seats.
+  const MAX_OFFERED = 6;
   const selected = [];
-  if (selectionChoices.length <= 5) {
+  if (selectionChoices.length <= MAX_OFFERED) {
     selected.push(...selectionChoices);
   } else {
     selected.push(selectionChoices[0]);
     const last = selectionChoices[selectionChoices.length - 1];
     const pool = selectionChoices.slice(1, -1);
-    while (selected.length < 4 && pool.length) {
+    while (selected.length < MAX_OFFERED - 2 && pool.length) {
       let bestIndex = 0, bestScore = -Infinity;
       for (let i = 0; i < pool.length; i++) {
         const candidate = pool[i];
@@ -2971,7 +3026,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     boundedBothPreferences, boundedPreferred, fullyMatching, adaptiveCorridor].filter(Boolean))];
   for (const candidate of required) {
     if (selected.includes(candidate)) continue;
-    if (selected.length < 5) {
+    if (selected.length < MAX_OFFERED) {
       selected.push(candidate);
       continue;
     }
@@ -2979,7 +3034,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     while (replaceAt >= 0 && required.includes(selected[replaceAt])) replaceAt--;
     if (replaceAt >= 0) selected.splice(replaceAt, 1, candidate);
   }
-  let presented = presentAsLetters(selected.slice(0, 5), recommended);
+  let presented = presentAsLetters(selected.slice(0, MAX_OFFERED), recommended);
 
   // A PINNED request holds a trip's lettered lineup steady while the rider
   // refines it -- waypoints, road blocks, settings. Present exactly the pinned
@@ -3218,7 +3273,7 @@ onmessage = (ev) => {
         !!m.forceResidential, m.weights || null, m.blocks || null]);
       const result = withRoadBlocks(m.blocks, m.rules, () => routeOptions(pts, m.rules,
         !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress,
-        signature, m.pinned));
+        signature, m.pinned, m.weights || null, m.remixProbeWeights || null));
       postMessage({ type: 'route-options', id: m.id, ...result });
     } else if (m.type === 'route-candidate') {
       // Full geometry for one candidate the "More" screen listed. Served from

@@ -968,6 +968,23 @@ start or destination changes (reversing counts); waypoints and road blocks
 keep it. Picking any mode — including the one already current — rebuilds the
 portfolio and takes its recommendation afresh.
 
+**The direct-lens candidate.** Every ordinary portfolio also runs ONE search
+under the "more direct" flattening (the exact transform above, exponent
+0.22), joining the pool as the `direct-lens` profile before dedupe and
+ranking. It exists because the facility pull can own every profile at once:
+on Ravenna → Phinney Ridge all nineteen normal candidates collapsed onto one
+greenway corridor while the flattened search found a genuinely shorter one
+the rider previously had to discover through the remix menu. Like the
+discovery lens, it is a search preference only — safety metrics, colours and
+the star's pricing come from the rider's unchanged rules and weights, so a
+bold lens route is offered with its failing meters reported honestly and
+almost never starred. The lens is skipped when the rider has already remixed
+onto those exact weights. The portfolio offers up to SIX letters (A–F) so
+the lens's find does not push an ordinary choice out. In the worker, weight
+sets keep their cache epoch (`useWeights` is content-keyed), so the
+main → lens → main round trip inside a request costs nothing in cache
+warmth and the lens's own arc costs cache under its own epoch.
+
 **The recommended route** (the starred letter) is chosen from the candidates
 whose every leg stays within a practical detour of the quickest option
 (1.35× distance + 800 m, 1.4× time + 5 min per leg), by minimizing
@@ -1004,7 +1021,7 @@ star from a failing one within its own wider bound (1.8× distance per leg).
 | residential street | `residential` | quieter grid |
 | climbing | `climb*SecPerM`, `uphillFactor` | time model plus a preference |
 | turns | `turn*Sec` | fewer manoeuvres |
-| route diversity | `diversity*` | keeps the five offered routes genuinely different |
+| route diversity | `diversity*` | keeps the six offered routes genuinely different |
 
 ### Bonuses
 
@@ -1133,7 +1150,7 @@ prices off the count rather than merely extending the proxy to more roads.
 
 Weights live in `DEFAULT_WEIGHTS` (`router-worker.js`), mirrored in `app.js` so
 the desktop weight editor stays reproducible. Three modes — direct, balanced,
-low-stress — scale most of them; that is what makes routes A–E differ.
+low-stress — scale most of them; that is what makes routes A–F differ.
 
 Every mode-scaled weight **ends** in its mode: `Direct`, `Balanced`,
 `LowStress`. One function, `modeSuffix()`, builds that suffix, so a new mode
@@ -1190,7 +1207,7 @@ facility, so this is a small correction in mileage and a large one in honesty.
 ## The "More" screen — all routes considered
 
 A troubleshooting view, reached from the **More** button after Route E. It lists
-every candidate the portfolio built for the current points: the five offered and
+every candidate the portfolio built for the current points: the six offered and
 everything discarded, each with the reason it was built and the reason it was
 dropped.
 
@@ -1199,13 +1216,13 @@ each candidate is tagged with the earliest stage it failed to reach:
 
 | stage | meaning |
 |---|---|
-| `offered` | one of the five on the map |
-| `not-chosen` | survived every filter; five slots were filled by more distinct routes |
+| `offered` | one of the routes on the map |
+| `not-chosen` | survived every filter; the slots were filled by more distinct routes |
 | `dominated` | another option shares the corridor and is no slower and no less safe |
 | `duplicate` | effectively the same roads as a named option |
 | `too-slow` | far slower than the quickest without being safer |
 
-Offered routes keep their A–E letters; extras continue F, G, … and fall back to
+Offered routes keep their A–F letters; extras continue G, H, … and fall back to
 numbering past Z.
 
 **Payload.** Candidate *summaries* ship with every route reply (~5 KB); full

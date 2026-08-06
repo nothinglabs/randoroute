@@ -395,8 +395,10 @@ The app routes **fully client-side**: A* in a web worker over estimated riding
 TIME (a grade-aware speed model). Each request probes a matrix of direct,
 balanced, and low-stress costs with and without bike-route and residential
 preferences. Near-duplicates and dominated choices are removed, leaving up to
-five useful alternatives labeled **Route A–E**, ordered from shortest to
-longest. Among practical candidates the app stars the one with the best
+six useful alternatives labeled **Route A–F**, ordered from shortest to
+longest. One candidate is searched under a "more direct" lens (the same
+flattening the route-mix menu applies), so a quicker-but-bolder corridor
+reaches the lineup without the rider asking for it. Among practical candidates the app stars the one with the best
 priced balance — riding time plus a heavy price on rule-failing and dismount
 meters and a light price on ordinary riding without a bike facility — so the
 recommended route may have any letter. For the life of a trip each letter

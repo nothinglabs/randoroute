@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-06.592';
+const APP_VERSION = '2026-08-06.593';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -907,7 +907,8 @@ const ROUTE_PROFILE_IDS = new Set([
 // structure downstream keys candidates by profile id. Validation accepts the
 // family, not just the bare name.
 function validRouteProfileId(id) {
-  return ROUTE_PROFILE_IDS.has(id) || /^adaptive-corridor-\d+$/.test(String(id || ''));
+  return ROUTE_PROFILE_IDS.has(id) || id === 'direct-lens'
+    || /^adaptive-corridor-\d+$/.test(String(id || ''));
 }
 function legacyRouteProfile(mode) {
   if (mode === 'direct') return 'quick';
@@ -3038,9 +3039,12 @@ function optimizationDescription(optimization) {
   const discovery = optimization.discoveryMaxSpeed
     ? ` Found with a ${optimization.discoveryMaxSpeed} mph no-shoulder search; map colors use your settings.`
     : '';
+  const lens = optimization.directLens
+    ? ' Found with a more-direct search; safety results still use your settings.'
+    : '';
   const matching = optimization.fullyMatchingRules
     ? ' Every segment matches your safety rules.' : '';
-  return `${optimization.reason ? `${optimization.reason} ` : ''}${method}${discovery}${matching}`;
+  return `${optimization.reason ? `${optimization.reason} ` : ''}${method}${discovery}${lens}${matching}`;
 }
 function optimizationMethodDescription(optimization) {
   const base = optimization.mode === 'direct'
@@ -6208,6 +6212,11 @@ function computeRoute() {
       // A shared route reproduces the SENDER's search exactly; remix applies
       // only to searches made with the rider's own weights.
       weights: rec?.weights ? { ...rec.weights } : remixedRoutingWeights(),
+      // The direct-lens candidate: every ordinary portfolio also searches
+      // once under the "More direct" flattening, so its variety shows up
+      // without the rider knowing to ask. Not for shared routes -- those
+      // reproduce the sender's exact search.
+      remixProbeWeights: rec ? null : remixedRoutingWeights('direct'),
     });
   }
 }
