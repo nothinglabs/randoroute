@@ -38,6 +38,7 @@ const compact = await page.evaluate(() => {
     detailsHidden: details?.hidden,
     tableHiddenInsideDetails: !!details?.querySelector('table'),
     stopPresent: Boolean(readout.querySelector('.map-point-stop')),
+    locationOnlyCard: readout.classList.contains('place-action-card'),
     compactHeight: Math.round(readout.getBoundingClientRect().height),
   };
 });
@@ -48,6 +49,8 @@ check('Start and End are the primary actions before the trip has endpoints',
   compact.actions.join('|') === 'Start|End', JSON.stringify(compact.actions));
 check('technical rows exist but begin hidden behind Details',
   compact.detailsHidden && compact.tableHiddenInsideDetails, JSON.stringify(compact));
+check('a road tap remains a road-details card, not a searched-place card',
+  compact.locationOnlyCard === false);
 check('Add stop stays out of the way until the trip has both endpoints',
   compact.stopPresent === false);
 check('the collapsed phone card stays compact', compact.compactHeight < 155,

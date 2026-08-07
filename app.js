@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.615';
+const APP_VERSION = '2026-08-07.616';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2670,6 +2670,7 @@ const routing = {
   arm: null,                 // 'start' | 'end' — next map tap sets that point
   start: null, end: null,    // [lng, lat]
   startName: null, endName: null, startFromDevice: false,
+  startDefaultsToDevice: false,
   vias: [],                  // ordered stops: { pt: [lng,lat], name, marker }
   blocks: [],                // avoided road locations: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
@@ -7513,8 +7514,31 @@ function consumePendingRouteStepHighlight() {
 }
 
 function routeEndpointDisplayName(kind) {
+  if (kind === 'start' && !routing.start && routing.startDefaultsToDevice) {
+    return 'Current location';
+  }
   if (!routing[kind]) return kind === 'start' ? 'Choose start' : 'Choose destination';
   return normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map';
+}
+
+let defaultStartRequest = 0;
+async function resolveDefaultStartFromDevice() {
+  if (routing.start || !routing.startDefaultsToDevice || !routing.end) return;
+  const request = ++defaultStartRequest;
+  showRouteActionToast('Getting your current location…', { busy: true, duration: 0 });
+  try {
+    const pos = await getFreshDevicePosition();
+    if (request !== defaultStartRequest || routing.start || !routing.startDefaultsToDevice) return;
+    setRoutePoint('start', {
+      lng: pos.coords.longitude, lat: pos.coords.latitude,
+    }, 'My location', { fromDevice: true });
+    showRouteActionToast('Starting from your current location', { duration: 2600 });
+  } catch (error) {
+    if (request !== defaultStartRequest || !routing.startDefaultsToDevice) return;
+    showRouteActionToast('Could not get your current location', {
+      detail: 'Tap From to search for a starting point, or try again.', duration: 7000,
+    });
+  }
 }
 
 function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false } = {}) {
@@ -7528,7 +7552,11 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
   // A start taken from the device is a statement about where the rider IS. A
   // start they tapped or searched for is a place they chose, and must not move
   // under them. Only the first kind follows.
-  if (kind === 'start') routing.startFromDevice = !!fromDevice;
+  if (kind === 'start') {
+    routing.startFromDevice = !!fromDevice;
+    routing.startDefaultsToDevice = false;
+    defaultStartRequest++;
+  }
   const mk = kind + 'Marker';
   if (routing[mk]) routing[mk].setLngLat(lngLat);
   else {
@@ -7544,7 +7572,10 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
   }
   computeRoute();
   updateArmButtons();
-  if (kind === 'end') refreshDeviceStartForNewDestination();
+  if (kind === 'end') {
+    refreshDeviceStartForNewDestination();
+    resolveDefaultStartFromDevice();
+  }
 }
 
 /* A start set from "use my location" goes stale the moment the rider moves,
@@ -8102,6 +8133,44 @@ function reverseRoute() {
   saveStateSoon();
 }
 
+function removeRouteEndpoint(kind) {
+  if (!['start', 'end'].includes(kind)) return false;
+  const isDefaultStart = kind === 'start' && routing.startDefaultsToDevice;
+  if (!routing[kind] && !isDefaultStart) return false;
+  exitSharedRoute();
+  stopTurnNavigation(false);
+  closePlacePicker();
+  dismissRoadInfo();
+  showRouteActionToast('');
+  routing.reqId++;
+  routing.pendingRoute = false;
+  routing.routeRequestActive = false;
+  routing[kind] = null;
+  routing[`${kind}Name`] = null;
+  const markerKey = `${kind}Marker`;
+  routing[markerKey]?.remove();
+  routing[markerKey] = null;
+  if (kind === 'start') {
+    routing.startFromDevice = false;
+    routing.startDefaultsToDevice = false;
+    defaultStartRequest++;
+  }
+  routeIsDisplayed = false;
+  drawRoute([]);
+  routing.last = null;
+  routing.options = [];
+  routing.pinnedLetters = null;
+  routing.missingLetters = null;
+  clearStoredRouteDetails();
+  setRouteOptionsLoading(false);
+  renderRouteOptionControls();
+  renderRouteCard(null);
+  updateArmButtons();
+  setRouteStatus(kind === 'start' ? 'Start removed' : 'Destination removed');
+  saveStateSoon();
+  return true;
+}
+
 function clearRoute() {
   routeIsDisplayed = false;
   exitSharedRoute();
@@ -8112,6 +8181,8 @@ function clearRoute() {
   routing.start = routing.end = null;
   routing.startName = routing.endName = null;
   routing.startFromDevice = false;
+  routing.startDefaultsToDevice = false;
+  defaultStartRequest++;
   routing.pendingRoute = false;
   routing.routeRequestActive = false;
   routing.reqId++; // a route already being calculated must not reappear after clear
@@ -8141,10 +8212,13 @@ function updateArmButtons() {
   for (const kind of ['start', 'end']) {
     const button = document.getElementById(`rb-${kind}`);
     if (!button) continue;
-    const isSet = Boolean(routing[kind]);
+    const isDefaultStart = kind === 'start' && !routing.start && routing.startDefaultsToDevice;
+    const isSet = Boolean(routing[kind]) || isDefaultStart;
     const endpointName = kind === 'start' ? 'start' : 'destination';
     button.classList.toggle('set', isSet);
-    button.title = isSet ? `Show ${endpointName} on the map`
+    button.classList.toggle('default-current-location', isDefaultStart);
+    button.title = isDefaultStart ? 'Current location is the default — tap to choose another start'
+      : isSet ? `Show ${endpointName} on the map`
       : `Search the map to choose ${endpointName}`;
     button.setAttribute('aria-label', button.title);
     button.disabled = false;
@@ -8154,6 +8228,11 @@ function updateArmButtons() {
   const canReorderEndpoints = Boolean(routing.start && routing.end && !turnNav.active);
   document.querySelectorAll('[data-endpoint-move]').forEach((button) => {
     button.disabled = !canReorderEndpoints;
+  });
+  document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
+    const kind = button.dataset.endpointRemove;
+    button.hidden = !routing[kind]
+      && !(kind === 'start' && routing.startDefaultsToDevice);
   });
   renderRouteStops();
 }
@@ -8525,6 +8604,9 @@ function buildRoutingPanel() {
   document.querySelectorAll('[data-endpoint-move]').forEach((button) => {
     button.addEventListener('click', () => swapEndpointWithAdjacentStop(button.dataset.endpointMove));
   });
+  document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
+    button.addEventListener('click', () => removeRouteEndpoint(button.dataset.endpointRemove));
+  });
   document.getElementById('navStartButton').addEventListener('click', () => {
     if (turnNav.active) stopTurnNavigation();
     else startTurnNavigation();
@@ -8590,6 +8672,12 @@ function buildRoutingPanel() {
       { lng: p[0], lat: p[1] }, { allowPastLimit: true, name: rt.vn?.[index] });
     for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
+  } else {
+    // A blank planner reads naturally as "Current location → somewhere" but
+    // does not touch GPS during launch or the first search. Resolve the origin
+    // only after the rider actually chooses a destination.
+    routing.startDefaultsToDevice = true;
+    updateArmButtons();
   }
 }
 
@@ -9040,16 +9128,11 @@ function showPlaceOnMap(point, name = 'Point on map', { searchResult = false } =
     if (rendered || token !== searchResultOpenToken) return;
     rendered = true;
     const lngLat = { lng, lat };
-    renderMapTapCard({
-      displayTitle: routeName,
-      detailsTitle: routeName,
+    renderPlaceActionCard({
       pointName: routeName,
-      summary: searchResult ? 'Search result — choose how it belongs in your trip.'
-        : 'Trip location — choose a role or open Details.',
-      rows: [], lngLat, anchorPoint: map.project(lngLat),
-      swatchColor: searchResult ? '#7a3fc2' : '#52656f',
-      swatchLabel: searchResult ? 'Search result marker' : 'Trip location marker',
-      allowRoadBlock: false,
+      lngLat,
+      anchorPoint: map.project(lngLat),
+      searchResult,
     });
     readoutPinned = true;
   };
@@ -9717,6 +9800,36 @@ function positionRoadInfoNear(point) {
   readoutEl.style.top = `${Math.round(viewportTop - parentRect.top)}px`;
 }
 
+// A searched place has a real pin that must stay visible while the rider
+// decides what it means. Put the compact action card wholly above or below
+// that pin with a deliberate gap; the road-details card instead remains
+// centred near its (unmarked) tap.
+function positionPlaceCardAwayFromPin(point) {
+  const edgeGap = 10;
+  const pinGap = 40;
+  const mapRect = map.getContainer().getBoundingClientRect();
+  const parentRect = readoutEl.offsetParent?.getBoundingClientRect() || { left: 0, top: 0 };
+  readoutEl.classList.add('near-tap');
+  readoutEl.style.left = '0px';
+  readoutEl.style.right = 'auto';
+  readoutEl.style.top = '0px';
+  readoutEl.style.bottom = 'auto';
+  const cardRect = readoutEl.getBoundingClientRect();
+  const tapX = mapRect.left + point.x;
+  const tapY = mapRect.top + point.y;
+  const minLeft = mapRect.left + edgeGap;
+  const maxLeft = Math.max(minLeft, mapRect.right - edgeGap - cardRect.width);
+  const viewportLeft = Math.min(maxLeft, Math.max(minLeft, tapX - cardRect.width / 2));
+  const belowTop = tapY + pinGap;
+  const aboveTop = tapY - pinGap - cardRect.height;
+  const canFitBelow = belowTop + cardRect.height <= mapRect.bottom - edgeGap;
+  const minTop = mapRect.top + edgeGap;
+  const maxTop = Math.max(minTop, mapRect.bottom - edgeGap - cardRect.height);
+  const viewportTop = Math.min(maxTop, Math.max(minTop, canFitBelow ? belowTop : aboveTop));
+  readoutEl.style.left = `${Math.round(viewportLeft - parentRect.left)}px`;
+  readoutEl.style.top = `${Math.round(viewportTop - parentRect.top)}px`;
+}
+
 // Google otherwise chooses an arbitrary initial panorama direction, which is
 // often toward a building or ditch. Find the feature segment nearest the tap
 // and use its bearing so Street View starts looking along the road instead.
@@ -9845,36 +9958,9 @@ function compactReadoutSummary(rows, fallback = '') {
     || 'Use this point in your trip, or open Details.';
 }
 
-function renderMapTapCard({
-  displayTitle, detailsTitle = displayTitle, pointName, summary, rows, lngLat, anchorPoint,
-  swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
-}) {
+function mapPointRouteActions(lngLat, routeName) {
   const lat = Number(lngLat.lat);
   const lng = Number(lngLat.lng);
-  const routeName = normalizeEndpointName(pointName) || 'Point on map';
-
-  readoutEl.replaceChildren();
-  const close = document.createElement('button');
-  close.className = 'readout-close';
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close map point');
-  close.textContent = '✕';
-
-  const heading = document.createElement('div');
-  heading.className = 'rt-title';
-  const swatch = document.createElement('span');
-  swatch.className = 'rt-swatch';
-  swatch.setAttribute('role', 'img');
-  swatch.style.backgroundColor = swatchColor;
-  swatch.setAttribute('aria-label', swatchLabel);
-  const headingText = document.createElement('span');
-  headingText.textContent = displayTitle;
-  heading.append(swatch, headingText);
-
-  const summaryText = document.createElement('p');
-  summaryText.className = 'readout-summary';
-  summaryText.textContent = summary;
-
   const routeActions = document.createElement('div');
   routeActions.className = 'readout-route-actions';
   const routeButton = (className, text, label, handler) => {
@@ -9907,9 +9993,8 @@ function renderMapTapCard({
       button.title = 'Pause navigation to edit the route';
     }
   }
-  const showAddStop = Boolean(routing.start && routing.end);
   routeActions.append(start, end);
-  if (showAddStop) {
+  if (routing.start && routing.end) {
     const canAddStop = !turnNav.active && routing.vias.length < MAX_ROUTE_STOPS;
     stop.disabled = !canAddStop;
     stop.title = turnNav.active ? 'Pause navigation to edit the route'
@@ -9919,6 +10004,65 @@ function renderMapTapCard({
   } else {
     routeActions.classList.add('two-actions');
   }
+  return routeActions;
+}
+
+function renderPlaceActionCard({ pointName, lngLat, anchorPoint, searchResult = false }) {
+  resetRoadInfoPosition();
+  const routeName = normalizeEndpointName(pointName) || 'Point on map';
+  readoutEl.classList.add('place-action-card');
+  readoutEl.replaceChildren();
+  const close = document.createElement('button');
+  close.className = 'readout-close';
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Close map location');
+  close.textContent = '✕';
+  const heading = document.createElement('div');
+  heading.className = 'rt-title';
+  const pin = document.createElement('span');
+  pin.className = 'rt-swatch place-action-pin';
+  pin.setAttribute('aria-hidden', 'true');
+  pin.style.backgroundColor = searchResult ? '#7a3fc2' : '#52656f';
+  const headingText = document.createElement('span');
+  headingText.textContent = routeName;
+  heading.append(pin, headingText);
+  readoutEl.append(close, heading, mapPointRouteActions(lngLat, routeName));
+  readoutEl.classList.add('show');
+  if (anchorPoint) positionPlaceCardAwayFromPin(anchorPoint);
+}
+
+function renderMapTapCard({
+  displayTitle, detailsTitle = displayTitle, pointName, summary, rows, lngLat, anchorPoint,
+  swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
+}) {
+  const lat = Number(lngLat.lat);
+  const lng = Number(lngLat.lng);
+  const routeName = normalizeEndpointName(pointName) || 'Point on map';
+
+  readoutEl.classList.remove('place-action-card');
+  readoutEl.replaceChildren();
+  const close = document.createElement('button');
+  close.className = 'readout-close';
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Close map point');
+  close.textContent = '✕';
+
+  const heading = document.createElement('div');
+  heading.className = 'rt-title';
+  const swatch = document.createElement('span');
+  swatch.className = 'rt-swatch';
+  swatch.setAttribute('role', 'img');
+  swatch.style.backgroundColor = swatchColor;
+  swatch.setAttribute('aria-label', swatchLabel);
+  const headingText = document.createElement('span');
+  headingText.textContent = displayTitle;
+  heading.append(swatch, headingText);
+
+  const summaryText = document.createElement('p');
+  summaryText.className = 'readout-summary';
+  summaryText.textContent = summary;
+
+  const routeActions = mapPointRouteActions({ lng, lat }, routeName);
 
   const detailsToggle = document.createElement('button');
   detailsToggle.type = 'button';

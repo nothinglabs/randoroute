@@ -31,7 +31,13 @@ const initial = await page.evaluate(() => {
       .map((element) => `${element.querySelector('.endpoint-label')?.textContent} ${element.querySelector('.endpoint-copy strong')?.textContent}`),
     oldControlsGone: !document.getElementById('rb-via') && !document.getElementById('rb-more')
       && !document.getElementById('routeActionsMenu'),
-    endpointArrows: document.querySelectorAll('.route-endpoint-row .route-stop-action').length,
+    endpointControls: document.querySelectorAll('.route-endpoint-row .route-stop-action').length,
+    endpointWidth: Math.round(card.width),
+    viewportWidth: innerWidth,
+    actionBoxes: [...document.querySelectorAll('.route-stop-action')].slice(0, 3).map((button) => {
+      const box = button.getBoundingClientRect();
+      return { width: Math.round(box.width), height: Math.round(box.height) };
+    }),
     markerNumbers: routing.vias.map((via) =>
       via.marker.getElement().querySelector('.waypoint-marker-number')?.textContent),
     cardInsidePhone: card.left >= 0 && card.right <= innerWidth,
@@ -42,11 +48,15 @@ check('the main card shows start, named stops, and destination in trip order',
   initial.itinerary.join(' | ') === 'From Seattle | Stop 1 Mukilteo | Stop 2 Point on map | To Port Townsend',
   JSON.stringify(initial.itinerary));
 check('the overflow menu and direct Add stop row are replaced by itinerary arrows and search',
-  initial.oldControlsGone && initial.endpointArrows === 4, JSON.stringify(initial));
+  initial.oldControlsGone && initial.endpointControls === 6, JSON.stringify(initial));
 check('map stop pins use the same itinerary numbers',
   initial.markerNumbers.join(',') === '1,2', JSON.stringify(initial.markerNumbers));
 check('the itinerary and search button fit the phone viewport',
   initial.cardInsidePhone && initial.searchInsidePhone, JSON.stringify(initial));
+check('the itinerary spans the phone and its arrow/delete targets are finger-sized',
+  initial.endpointWidth >= initial.viewportWidth * .78
+    && initial.actionBoxes.every((box) => box.width >= 36 && box.height >= 40),
+  JSON.stringify(initial));
 
 await page.locator('[data-via-edit="0"]').focus();
 check('routine route UI refreshes do not steal focus from a stop control', await page.evaluate(() => {
@@ -136,12 +146,25 @@ const searchChoice = await page.evaluate(() => ({
   route: JSON.stringify({ start: routing.start, end: routing.end, vias: routing.vias.map((via) => via.pt) }),
   actions: [...document.querySelectorAll('#readout .readout-route-actions button')]
     .map((button) => button.textContent),
+  hasDetails: Boolean(document.querySelector('#readout .readout-details-toggle')),
+  compact: document.getElementById('readout').classList.contains('place-action-card'),
+  cardHeight: Math.round(document.getElementById('readout').getBoundingClientRect().height),
+  overlapsPin: (() => {
+    const card = document.getElementById('readout').getBoundingClientRect();
+    const pin = document.querySelector('.search-result-marker').getBoundingClientRect();
+    return !(card.bottom <= pin.top || pin.bottom <= card.top
+      || card.right <= pin.left || pin.right <= card.left);
+  })(),
 }));
 check('a search result is indicated on the map without silently changing the trip',
   searchChoice.indicator === 1 && searchChoice.route === routeBeforeSearchChoice,
   JSON.stringify(searchChoice));
 check('the searched point offers all three trip roles when endpoints already exist',
   searchChoice.actions.join('|') === 'Start|End|Add stop', JSON.stringify(searchChoice.actions));
+check('a search result uses a compact location card with no road Details and never covers its pin',
+  searchChoice.compact && !searchChoice.hasDetails
+    && searchChoice.cardHeight < 105 && !searchChoice.overlapsPin,
+  JSON.stringify(searchChoice));
 
 await page.locator('#readout .readout-close').click();
 check('closing the searched point also removes its temporary indicator', await page.evaluate(() =>
@@ -174,6 +197,17 @@ check('a stop can be removed directly from the itinerary', await page.evaluate((
   routing.vias.length === 1
     && document.querySelectorAll('.route-stop-row').length === 1
     && document.querySelector('.route-stop-edit strong')?.textContent === 'Mukilteo'));
+
+await page.locator('[data-endpoint-remove="start"]').click();
+check('Start can be deleted without deleting the remaining itinerary', await page.evaluate(() =>
+  !routing.start && routing.endName === 'Port Townsend' && routing.vias.length === 1
+    && routing.last === null && !routing.startMarker));
+await page.locator('[data-via-index] .route-stop-remove').click();
+await page.locator('[data-endpoint-remove="end"]').click();
+check('endpoint and stop X buttons can delete every route item', await page.evaluate(() =>
+  !routing.start && !routing.end && routing.vias.length === 0
+    && document.querySelectorAll('.route-stop-row').length === 0
+    && document.querySelectorAll('[data-endpoint-remove]:not([hidden])').length === 0));
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 

@@ -121,9 +121,10 @@
             <span class="route-endpoint-marker" aria-hidden="true"></span>
             <span class="endpoint-copy"><span class="endpoint-label">From</span><strong data-endpoint-value>Choose start</strong></span>
           </button>
-          <div class="route-stop-actions" aria-label="Move start">
+          <div class="route-stop-actions" aria-label="Edit start">
             <button class="route-stop-action route-endpoint-up" type="button" aria-label="Start is already first" title="Start is already first" disabled>↑</button>
             <button class="route-stop-action route-endpoint-down" type="button" data-endpoint-move="start" aria-label="Move start later" title="Move start later">↓</button>
+            <button class="route-stop-action route-stop-remove route-endpoint-remove" type="button" data-endpoint-remove="start" aria-label="Remove start" title="Remove start">✕</button>
           </div>
         </div>
         <div id="routeStops" class="route-stops" aria-label="Ordered stops"></div>
@@ -132,9 +133,10 @@
             <span class="route-endpoint-marker" aria-hidden="true"></span>
             <span class="endpoint-copy"><span class="endpoint-label">To</span><strong data-endpoint-value>Choose destination</strong></span>
           </button>
-          <div class="route-stop-actions" aria-label="Move destination">
+          <div class="route-stop-actions" aria-label="Edit destination">
             <button class="route-stop-action route-endpoint-up" type="button" data-endpoint-move="end" aria-label="Move destination earlier" title="Move destination earlier">↑</button>
             <button class="route-stop-action route-endpoint-down" type="button" aria-label="Destination is already last" title="Destination is already last" disabled>↓</button>
+            <button class="route-stop-action route-stop-remove route-endpoint-remove" type="button" data-endpoint-remove="end" aria-label="Remove destination" title="Remove destination">✕</button>
           </div>
         </div>
       </div>

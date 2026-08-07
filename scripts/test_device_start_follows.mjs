@@ -55,6 +55,27 @@ const settle = () => page.waitForFunction(
   () => !(document.getElementById('routeActionText')?.textContent || '').includes('Updating start'),
   { timeout: 15000 }).catch(() => {});
 
+const defaultStart = await page.evaluate(() => ({
+  actual: routing.start,
+  displayed: document.querySelector('#rb-start [data-endpoint-value]')?.textContent,
+  defaultsToDevice: routing.startDefaultsToDevice,
+  removeVisible: !document.querySelector('[data-endpoint-remove="start"]')?.hidden,
+}));
+check('a blank planner defaults From to current location without requesting GPS yet',
+  !defaultStart.actual && defaultStart.displayed === 'Current location'
+    && defaultStart.defaultsToDevice && defaultStart.removeVisible,
+  JSON.stringify(defaultStart));
+await page.evaluate(() => setRoutePoint('end',
+  { lng: -122.2015, lat: 47.6101 }, 'Bellevue'));
+await page.waitForFunction(() => Boolean(routing.start), null, { timeout: 5000 });
+const resolvedDefault = await page.evaluate(() => ({
+  name: routing.startName, follows: routing.startFromDevice, start: routing.start,
+}));
+check('choosing a destination resolves the default From to a fresh device fix',
+  resolvedDefault.name === 'My location' && resolvedDefault.follows
+    && resolvedDefault.start[0] === -122.3321,
+  JSON.stringify(resolvedDefault));
+
 const plan = (fromDevice, at = { lng: -122.3321, lat: 47.6062 }) => page.evaluate(([device, here]) => {
   clearRoute();
   window.__notices.length = 0;
@@ -138,10 +159,10 @@ check('and the route is still calculated from the start it has',
 const cleared = await page.evaluate(() => {
   window.__locationFails = false;
   clearRoute();
-  return routing.startFromDevice;
+  return { follows: routing.startFromDevice, defaults: routing.startDefaultsToDevice };
 });
 check('clearing the route forgets that the start followed the device',
-  cleared === false, String(cleared));
+  !cleared.follows && !cleared.defaults, JSON.stringify(cleared));
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 
