@@ -1702,7 +1702,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       coords: [[nodeLon[s.node], nodeLat[s.node]]],
       distM: 0, timeS: 0, ascentM: 0, descentM: 0, failM: 0, ferryM: 0,
       ferrySegs: [], desigM: 0, residentialM: 0, freewayM: 0,
-      limitedAccessM: 0, facilityM: 0, mtbM: 0, dismountM: 0, hazardM: 0,
+      limitedAccessM: 0, facilityM: 0, trailM: 0, mtbM: 0, dismountM: 0, hazardM: 0,
       levelM: [0, 0, 0, 0, 0], edgeIds: [],
       nodeIds: [s.node],
       segs: [], profile: [[0, nodeEle[s.node]]],
@@ -1901,7 +1901,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
-  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0, dismountM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0;
+  let facilityM = 0, trailM = 0, mtbM = 0, dismountM = 0;
   for (const [ei, fromNode] of edges) {
     edgeIds.push(ei);
     const off = eOff[ei], cnt = eCnt[ei];
@@ -1930,6 +1931,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     // >= 2, not >= 1: facility 1 is a sharrow, which is paint in a shared lane
     // and must not count toward the route's bike-facility mileage.
     if (eFacility[ei] >= 2) facilityM += eLen[ei];
+    if (eFlags[ei] & 8) trailM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4)) && !edgeLimited(ei, forward)
@@ -2047,7 +2049,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const gradeStats = routeGradeStats(segs);
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, dismountM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, trailM,
+    mtbM, dismountM, hazardM,
     levelM, edgeIds, nodeIds, segs, ...gradeStats,
     profile, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
@@ -2084,7 +2087,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
   const coords = [], segs = [], ferrySegs = [], profile = [];
   const legSummaries = legs.map((l) => ({
     distM: l.distM, timeS: l.timeS, failM: l.failM,
-    desigM: l.desigM, facilityM: l.facilityM, mtbM: l.mtbM || 0,
+    desigM: l.desigM, facilityM: l.facilityM, trailM: l.trailM || 0, mtbM: l.mtbM || 0,
     dismountM: l.dismountM || 0, residentialM: l.residentialM,
     freewayM: l.freewayM, limitedAccessM: l.limitedAccessM, hazardM: l.hazardM || 0,
     avgUphillPct: l.avgUphillPct || 0, maxGradePct: l.maxGradePct || 0,
@@ -2093,7 +2096,8 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
-  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0, dismountM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0;
+  let facilityM = 0, trailM = 0, mtbM = 0, dismountM = 0;
   for (const leg of legs) {
     const cOff = coords.length ? coords.length - 1 : 0; // joint vertex is shared
     for (let j = coords.length ? 1 : 0; j < leg.coords.length; j++) coords.push(leg.coords[j]);
@@ -2108,7 +2112,8 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
     distM += leg.distM; timeS += leg.timeS; ascentM += leg.ascentM; descentM += leg.descentM;
     failM += leg.failM; ferryM += leg.ferryM; desigM += leg.desigM;
     residentialM += leg.residentialM; freewayM += leg.freewayM;
-    limitedAccessM += leg.limitedAccessM; facilityM += leg.facilityM; mtbM += leg.mtbM || 0;
+    limitedAccessM += leg.limitedAccessM; facilityM += leg.facilityM;
+    trailM += leg.trailM || 0; mtbM += leg.mtbM || 0;
     dismountM += leg.dismountM || 0;
     hazardM += leg.hazardM || 0; edgeIds.push(...leg.edgeIds);
     for (let j = nodeIds.length ? 1 : 0; j < leg.nodeIds.length; j++) nodeIds.push(leg.nodeIds[j]);
@@ -2127,7 +2132,8 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
   const gradeStats = routeGradeStats(segs);
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, dismountM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, trailM,
+    mtbM, dismountM, hazardM,
     levelM, edgeIds, nodeIds, segs, ...gradeStats,
     legs: legSummaries,
     profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
@@ -2160,7 +2166,8 @@ function routeFragment(source, startEdge, endEdge, rules) {
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
-  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0, dismountM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0;
+  let facilityM = 0, trailM = 0, mtbM = 0, dismountM = 0;
   for (let index = 0; index < sourceEdgeIds.length; index++) {
     const ei = sourceEdgeIds[index], fromNode = nodeIds[index];
     const forward = eA[ei] === fromNode;
@@ -2182,6 +2189,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
     // >= 2, not >= 1: facility 1 is a sharrow, which is paint in a shared lane
     // and must not count toward the route's bike-facility mileage.
     if (eFacility[ei] >= 2) facilityM += eLen[ei];
+    if (eFlags[ei] & 8) trailM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
     if (!(eFlags[ei] & (8 | 32 | 4)) && !edgeLimited(ei, forward)
@@ -2202,7 +2210,8 @@ function routeFragment(source, startEdge, endEdge, rules) {
   return {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM,
     ferrySegs: ferryRanges.map(([a, b]) => coords.slice(a, b + 1)),
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, dismountM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, trailM,
+    mtbM, dismountM, hazardM,
     levelM, edgeIds: sourceEdgeIds, nodeIds, segs, profile, ...gradeStats,
     snapStartM: 0, snapEndM: 0, ms: 0,
   };
@@ -2212,6 +2221,7 @@ function routeSummary(routeResult) {
   return {
     distM: routeResult.distM, timeS: routeResult.timeS, failM: routeResult.failM,
     desigM: routeResult.desigM, facilityM: routeResult.facilityM,
+    trailM: routeResult.trailM || 0,
     mtbM: routeResult.mtbM || 0, dismountM: routeResult.dismountM || 0,
     residentialM: routeResult.residentialM,
     freewayM: routeResult.freewayM, limitedAccessM: routeResult.limitedAccessM,
@@ -2230,7 +2240,8 @@ function mergeRouteParts(parts, snapStartM, snapEndM) {
   const levelM = [0, 0, 0, 0, 0];
   let distM = 0, timeS = 0, ascentM = 0, descentM = 0, failM = 0, ferryM = 0;
   let hazardM = 0;
-  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0, facilityM = 0, mtbM = 0, dismountM = 0;
+  let desigM = 0, residentialM = 0, freewayM = 0, limitedAccessM = 0;
+  let facilityM = 0, trailM = 0, mtbM = 0, dismountM = 0;
   for (const part of parts) {
     const cOff = coords.length ? coords.length - 1 : 0;
     for (let j = coords.length ? 1 : 0; j < part.coords.length; j++) coords.push(part.coords[j]);
@@ -2246,7 +2257,8 @@ function mergeRouteParts(parts, snapStartM, snapEndM) {
     distM += part.distM; timeS += part.timeS; ascentM += part.ascentM; descentM += part.descentM;
     failM += part.failM; ferryM += part.ferryM; desigM += part.desigM;
     residentialM += part.residentialM; freewayM += part.freewayM;
-    limitedAccessM += part.limitedAccessM; facilityM += part.facilityM; mtbM += part.mtbM || 0;
+    limitedAccessM += part.limitedAccessM; facilityM += part.facilityM;
+    trailM += part.trailM || 0; mtbM += part.mtbM || 0;
     dismountM += part.dismountM || 0;
     hazardM += part.hazardM || 0; edgeIds.push(...part.edgeIds);
     for (let j = nodeIds.length ? 1 : 0; j < part.nodeIds.length; j++) nodeIds.push(part.nodeIds[j]);
@@ -2263,7 +2275,8 @@ function mergeRouteParts(parts, snapStartM, snapEndM) {
   const gradeStats = routeGradeStats(segs);
   const merged = {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
-    desigM, residentialM, freewayM, limitedAccessM, facilityM, mtbM, dismountM, hazardM,
+    desigM, residentialM, freewayM, limitedAccessM, facilityM, trailM,
+    mtbM, dismountM, hazardM,
     levelM, edgeIds, nodeIds, segs, profile: prof, snapStartM, snapEndM, ...gradeStats,
     ms: Date.now() - started,
   };
@@ -2327,6 +2340,7 @@ function materialTradeoff(a, b) {
     || Math.abs((a.mtbM || 0) - (b.mtbM || 0)) >= 40
     || (!!a.dismountM !== !!b.dismountM)
     || Math.abs(a.facilityM - b.facilityM) >= routeScale
+    || Math.abs((a.trailM || 0) - (b.trailM || 0)) >= routeScale
     || Math.abs((a.hazardM || 0) - (b.hazardM || 0)) >= 50
     || Math.abs(a.desigM - b.desigM) >= routeScale
     || Math.abs(a.residentialM - b.residentialM) >= routeScale;
@@ -2347,7 +2361,11 @@ function routeAggression(r) {
   const stress = (levels[2] * 0.18 + levels[3] * 0.75 + levels[4] * 3.5
     + r.freewayM * 4 + r.limitedAccessM * 0.8 + (r.hazardM || 0) * 1.1
     + (r.mtbM || 0) * 1.25 + (r.dismountM ? 450 + r.dismountM * 1.5 : 0)) / ridingM;
-  const friendlyCoverage = (r.desigM * 0.12 + r.facilityM * 0.1 + r.residentialM * 0.08) / ridingM;
+  // A trail is not merely another kind of lane: it removes motor-traffic
+  // exposure altogether. Count physical facilities once, then give the
+  // off-street portion a second, larger comfort credit.
+  const friendlyCoverage = (r.desigM * 0.12 + r.facilityM * 0.08
+    + (r.trailM || 0) * 0.12 + r.residentialM * 0.08) / ridingM;
   return stress - friendlyCoverage;
 }
 
@@ -2429,7 +2447,9 @@ function profileExplanation(profile) {
   if (profile.crossBred) {
     return profile.crossBreedKind === 'ferry'
       ? 'Combined the practical and safer versions of the same ferry itinerary at shared terminals.'
-      : 'Combined sections of two existing candidates at an exact shared road junction.';
+      : profile.crossBreedKind === 'frontier'
+        ? 'Combined non-dominated sections from existing candidates at exact shared road junctions.'
+        : 'Combined sections of two existing candidates at an exact shared road junction.';
   }
   if (profile.fullyMatchingProbe) {
     return 'Strict probe: searched only road that fully matches your rules.';
@@ -2510,8 +2530,10 @@ function candidateSummary(candidate) {
     refinedFrom: candidate._profile.refinedFrom || null,
     crossBred: !!profile.crossBred,
     crossBreedKind: profile.crossBreedKind || null,
+    sectionFrontier: !!profile.sectionFrontier,
     levelM: candidate.levelM,
     facilityM: candidate.facilityM,
+    trailM: candidate.trailM || 0,
     desigM: candidate.desigM,
     residentialM: candidate.residentialM,
     unpavedM: candidate.unpavedM || 0,
@@ -2534,9 +2556,13 @@ function publicCandidate(candidate) {
       prefResidential: _profile.prefResidential,
       alternativeCorridor: !!_profile.alternativeCorridor,
       crossBred: !!_profile.crossBred,
+      sectionFrontier: !!_profile.sectionFrontier,
       directLens: !!_profile.directLens,
       discoveryMaxSpeed: _profile.discoveryMaxSpeed || null,
-      fullyMatchingRules: !!_profile.fullyMatchingRules,
+      // This describes the route RESULT, not merely whether it came from the
+      // strict probe. Ordinary searches often discover an all-matching route
+      // too, and the rider should be told the same truth about it.
+      fullyMatchingRules: candidate.failM <= 0.5,
       fullyMatchingProbe: !!_profile.fullyMatchingProbe,
       recommended: !!_outcome?.recommended,
     },
@@ -2651,19 +2677,22 @@ const FAIL_AVOID_PRICE_S_PER_M = 1;
 // The walking time itself is already inside timeS, so this stacks the
 // judgment on top of the slowness.
 //
-// Ride QUALITY gets a vote too, at a fifth the rate: every riding meter
-// that is neither trail nor trusted lane (facilityM counts facility >= 2,
-// so sharrows never qualify; ferries are removed as not-riding) costs a
-// fifth of a second. Sized from the field: 31.8 mi / 2h39 at 64%
+// Ride QUALITY gets a vote too. Every riding meter that is neither trail nor
+// trusted lane (facilityM counts facility >= 2, so sharrows never qualify;
+// ferries are removed as not-riding) costs a fifth of a second. A dedicated
+// trail earns another 0.12 s/m over a lane because it removes motor-traffic
+// exposure altogether. Sized from the field: 31.8 mi / 2h39 at 64%
 // trails-and-lanes was starred over 36.1 mi / 3h00 at 90% -- the star
 // saved 21 minutes by spending 12 extra kilometers alongside traffic,
 // and the rider's verdict was "I'd rather be recommended routes like
 // this" about the other one. At 0.2 s/m, a mile of ordinary road is
 // worth about five and a half minutes of detour on better ground.
 const NETWORK_GAP_PRICE_S_PER_M = 0.2;
+const TRAIL_BONUS_S_PER_M = 0.12;
 const recommendationScore = (route) =>
   route.timeS + (route.failM + (route.dismountM || 0)) * FAIL_AVOID_PRICE_S_PER_M
-  + Math.max(0, route.distM - route.ferryM - route.facilityM) * NETWORK_GAP_PRICE_S_PER_M;
+  + Math.max(0, route.distM - route.ferryM - route.facilityM) * NETWORK_GAP_PRICE_S_PER_M
+  - (route.trailM || 0) * TRAIL_BONUS_S_PER_M;
 
 function ferryEdgeGroups(routeResult) {
   const groups = [];
@@ -2825,6 +2854,213 @@ const GENERAL_CROSS_BREED_MAX_SEEDS = 10;
 const GENERAL_CROSS_BREED_MAX_RESULTS = 6;
 const GENERAL_CROSS_BREED_MIN_PART_M = 1000;
 
+// A second, more general composition pass searches only the compact UNION of
+// edges already found by strong candidates. It can switch parents more than
+// once at exact graph junctions, unlike the one-cut breeder below, while never
+// paying for another statewide search. Eight Pareto labels per union node keeps
+// the work and memory bounded on a phone. Ferry routes are grouped by their
+// exact boat-edge signature so composition can improve land sections without
+// silently changing, skipping, or repeating a crossing.
+const SECTION_FRONTIER_MAX_SEEDS = 10;
+const SECTION_FRONTIER_LABELS_PER_NODE = 8;
+const SECTION_FRONTIER_MAX_RESULTS = 6;
+const SECTION_FRONTIER_KEYS = [
+  'failM', 'dangerM', 'cautionM', 'gapM', 'nonTrailM', 'roughM',
+  'ascentM', 'timeS', 'distM',
+];
+
+function emptySectionFrontierMetrics() {
+  return { failM: 0, dangerM: 0, cautionM: 0, gapM: 0, nonTrailM: 0, roughM: 0,
+    ascentM: 0, timeS: 0, distM: 0 };
+}
+
+function addSectionFrontierMetrics(first, second) {
+  const total = {};
+  for (const key of SECTION_FRONTIER_KEYS) total[key] = first[key] + second[key];
+  return total;
+}
+
+function sectionFrontierDominates(first, second) {
+  let strictly = false;
+  for (const key of SECTION_FRONTIER_KEYS) {
+    if (first[key] > second[key]) return false;
+    if (first[key] < second[key]) strictly = true;
+  }
+  return strictly;
+}
+
+function compareSectionFrontierSafety(first, second) {
+  return first.failM - second.failM
+    || first.dangerM - second.dangerM
+    || first.cautionM - second.cautionM
+    || first.roughM - second.roughM
+    || first.gapM - second.gapM
+    || first.nonTrailM - second.nonTrailM
+    || first.ascentM - second.ascentM
+    || first.timeS - second.timeS;
+}
+
+function sectionFrontierPracticalScore(metrics) {
+  // This is only an exploration/ranking key inside the already-small union,
+  // not a new safety verdict. Failures and concrete danger lead; ordinary-road
+  // exposure, climbing and time keep the answer usable rather than absolute.
+  return metrics.timeS + metrics.failM * 2 + metrics.dangerM * 0.35
+    + metrics.cautionM * 0.2 + metrics.gapM * 0.08 + metrics.nonTrailM * 0.12
+    + metrics.roughM * 0.2
+    + metrics.ascentM * 0.6;
+}
+
+function selectSectionFrontierLabels(labels, limit = SECTION_FRONTIER_LABELS_PER_NODE) {
+  if (labels.length <= limit) return labels;
+  const chosen = [];
+  const add = (label) => { if (label && !chosen.includes(label)) chosen.push(label); };
+  const minimum = (compare) => labels.reduce((best, label) => compare(label, best) < 0 ? label : best);
+  add(minimum((a, b) => compareSectionFrontierSafety(a.metrics, b.metrics)));
+  add(minimum((a, b) => sectionFrontierPracticalScore(a.metrics)
+    - sectionFrontierPracticalScore(b.metrics)));
+  add(minimum((a, b) => a.metrics.cautionM - b.metrics.cautionM
+    || compareSectionFrontierSafety(a.metrics, b.metrics)));
+  add(minimum((a, b) => a.metrics.gapM - b.metrics.gapM
+    || compareSectionFrontierSafety(a.metrics, b.metrics)));
+  add(minimum((a, b) => a.metrics.nonTrailM - b.metrics.nonTrailM
+    || compareSectionFrontierSafety(a.metrics, b.metrics)));
+  add(minimum((a, b) => a.metrics.roughM - b.metrics.roughM
+    || a.metrics.timeS - b.metrics.timeS));
+  add(minimum((a, b) => a.metrics.ascentM - b.metrics.ascentM
+    || a.metrics.timeS - b.metrics.timeS));
+  add(minimum((a, b) => a.metrics.timeS - b.metrics.timeS));
+  for (const label of [...labels].sort((a, b) =>
+    sectionFrontierPracticalScore(a.metrics) - sectionFrontierPracticalScore(b.metrics))) {
+    if (chosen.length >= limit) break;
+    add(label);
+  }
+  return chosen.slice(0, limit);
+}
+
+// Generic bounded multi-objective search over directed candidate-path arcs.
+// Kept independent of the statewide graph so tiny fixture tests can exercise
+// the composition and dominance rules directly.
+function boundedSectionFrontierPaths(paths, startNode, endNode) {
+  const adjacency = new Map();
+  const seenArcs = new Set();
+  for (const path of paths) {
+    for (const arc of path) {
+      const key = `${arc.from}:${arc.to}:${arc.edge}`;
+      if (seenArcs.has(key)) continue;
+      seenArcs.add(key);
+      if (!adjacency.has(arc.from)) adjacency.set(arc.from, []);
+      adjacency.get(arc.from).push(arc);
+    }
+  }
+  const labels = [];
+  const atNode = new Map();
+  const heap = makeHeap(1024);
+  const start = { node: startNode, metrics: emptySectionFrontierMetrics(),
+    previous: -1, arc: null, active: true };
+  labels.push(start); atNode.set(startNode, [start]); heap.push(0, 0);
+
+  while (heap.size) {
+    const labelIndex = heap.pop(), label = labels[labelIndex];
+    if (!label?.active) continue;
+    for (const arc of adjacency.get(label.node) || []) {
+      const metrics = addSectionFrontierMetrics(label.metrics, arc.metrics);
+      let frontier = atNode.get(arc.to) || [];
+      if (frontier.some((other) => sectionFrontierDominates(other.metrics, metrics)
+          || SECTION_FRONTIER_KEYS.every((key) => other.metrics[key] === metrics[key]))) continue;
+      for (const other of frontier) {
+        if (sectionFrontierDominates(metrics, other.metrics)) other.active = false;
+      }
+      frontier = frontier.filter((other) => other.active);
+      const next = { node: arc.to, metrics, previous: labelIndex, arc, active: true };
+      labels.push(next); frontier.push(next);
+      const kept = selectSectionFrontierLabels(frontier);
+      if (!kept.includes(next)) next.active = false;
+      for (const other of frontier) if (!kept.includes(other)) other.active = false;
+      atNode.set(arc.to, kept);
+      if (next.active) heap.push(sectionFrontierPracticalScore(metrics), labels.length - 1);
+    }
+  }
+
+  return (atNode.get(endNode) || []).filter((label) => label.active).map((goal) => {
+    const arcs = [];
+    let label = goal;
+    while (label?.arc) {
+      arcs.push(label.arc);
+      label = labels[label.previous];
+    }
+    arcs.reverse();
+    return { arcs, metrics: goal.metrics };
+  });
+}
+
+function sectionFrontierArcMetrics(source, index) {
+  const edge = source.edgeIds[index], fromNode = source.nodeIds[index];
+  const seg = source.segs[index], len = eLen[edge], flags = eFlags[edge];
+  const forward = eA[edge] === fromNode;
+  const failM = seg.level === 4 ? len : 0;
+  const cautionM = seg.level === 3 ? len : 0;
+  const freewayM = flags & 4 ? len : 0;
+  const mtbM = eOfficial[edge] & EDGE_MTB ? len : 0;
+  const dismountM = isDismountEdge(edge) ? len : 0;
+  const hazardM = Number(seg.hazardLenM) || 0;
+  const limitedM = !(flags & 4) && edgeLimited(edge, forward) ? len : 0;
+  const gapM = flags & (8 | 32) || eFacility[edge] >= 2 ? 0 : len;
+  const nonTrailM = flags & (8 | 32) ? 0 : len;
+  const roughM = !(flags & 32) && eSurface[edge] >= SURFACE_GRAVEL ? len : 0;
+  return {
+    failM,
+    dangerM: failM * 8 + freewayM * 20 + mtbM * 6 + dismountM * 5
+      + hazardM * 2 + limitedM * 0.75,
+    cautionM, gapM, nonTrailM, roughM,
+    ascentM: forward ? eAsc[edge] : eDes[edge],
+    timeS: Number(seg.timeS) || edgeTimeS(edge, forward),
+    distM: len,
+  };
+}
+
+function sectionFrontierRouteMetrics(routeResult) {
+  let metrics = emptySectionFrontierMetrics();
+  for (let index = 0; index < routeResult.edgeIds.length; index++) {
+    metrics = addSectionFrontierMetrics(metrics,
+      sectionFrontierArcMetrics(routeResult, index));
+  }
+  return metrics;
+}
+
+function distinctSectionFrontierSeeds(candidates) {
+  const distinct = [];
+  for (const candidate of [...candidates].sort((a, b) =>
+    recommendationScore(a) - recommendationScore(b) || compareSafety(a, b))) {
+    if (candidate.edgeIds?.length > 1
+        && candidate.nodeIds?.length === candidate.edgeIds.length + 1
+        && new Set(candidate.nodeIds).size === candidate.nodeIds.length
+        && distinct.every((other) => meaningfullyDifferent(candidate, other))) {
+      distinct.push(candidate);
+    }
+  }
+  if (distinct.length <= SECTION_FRONTIER_MAX_SEEDS) return distinct;
+  const chosen = [];
+  const add = (candidate) => { if (candidate && !chosen.includes(candidate)) chosen.push(candidate); };
+  add(distinct[0]);
+  add(distinct.reduce((best, route) => route.timeS < best.timeS ? route : best));
+  add(distinct.reduce((best, route) => compareSafety(route, best) < 0 ? route : best));
+  const metrics = new Map(distinct.map((route) => [route, sectionFrontierRouteMetrics(route)]));
+  add(distinct.reduce((best, route) => metrics.get(route).cautionM < metrics.get(best).cautionM
+    ? route : best));
+  add(distinct.reduce((best, route) => route.ascentM < best.ascentM ? route : best));
+  while (chosen.length < SECTION_FRONTIER_MAX_SEEDS) {
+    let best = null, bestValue = -Infinity;
+    for (const candidate of distinct) {
+      if (chosen.includes(candidate)) continue;
+      const value = Math.min(...chosen.map((other) => 1 - edgeOverlap(candidate, other)));
+      if (value > bestValue) { best = candidate; bestValue = value; }
+    }
+    if (!best) break;
+    add(best);
+  }
+  return chosen;
+}
+
 function sharedCrossBreedCuts(first, second) {
   const secondIndex = new Map();
   for (let index = 1; index < second.nodeIds.length - 1; index++) {
@@ -2858,7 +3094,8 @@ function crossBreedWouldLoop(prefix, prefixCut, suffix, suffixCut) {
 }
 
 function crossBreedPrefixMetrics(route) {
-  const prefix = [{ distM: 0, timeS: 0, failM: 0, dismountM: 0, facilityM: 0 }];
+  const prefix = [{ distM: 0, timeS: 0, failM: 0, dismountM: 0,
+    facilityM: 0, trailM: 0 }];
   for (let index = 0; index < route.edgeIds.length; index++) {
     const previous = prefix[index], edge = route.edgeIds[index], seg = route.segs[index];
     const distM = previous.distM + eLen[edge];
@@ -2868,6 +3105,7 @@ function crossBreedPrefixMetrics(route) {
       failM: previous.failM + (seg.level === 4 ? eLen[edge] : 0),
       dismountM: previous.dismountM + (isDismountEdge(edge) ? eLen[edge] : 0),
       facilityM: previous.facilityM + (eFacility[edge] >= 2 ? eLen[edge] : 0),
+      trailM: previous.trailM + (eFlags[edge] & 8 ? eLen[edge] : 0),
     });
   }
   return prefix;
@@ -2878,11 +3116,12 @@ function crossBreedEstimate(prefixMetrics, prefixCut, suffixMetrics, suffixCut) 
   const suffixStart = suffixMetrics[suffixCut];
   const suffixEnd = suffixMetrics[suffixMetrics.length - 1];
   const combined = {};
-  for (const key of ['distM', 'timeS', 'failM', 'dismountM', 'facilityM']) {
+  for (const key of ['distM', 'timeS', 'failM', 'dismountM', 'facilityM', 'trailM']) {
     combined[key] = before[key] + suffixEnd[key] - suffixStart[key];
   }
   combined.score = combined.timeS + combined.failM + combined.dismountM
-    + Math.max(0, combined.distM - combined.facilityM) * NETWORK_GAP_PRICE_S_PER_M;
+    + Math.max(0, combined.distM - combined.facilityM) * NETWORK_GAP_PRICE_S_PER_M
+    - combined.trailM * TRAIL_BONUS_S_PER_M;
   return combined;
 }
 
@@ -3047,6 +3286,151 @@ function addGeneralCrossBreedCandidates(raw, rules) {
       crossBred: true,
       crossBreedKind: 'junction',
       refinedFrom: `${prefix._profile.id}+${suffix._profile.id}`,
+    };
+    raw.push(child);
+  }
+}
+
+function selectSectionFrontierPaths(paths) {
+  if (!paths.length) return [];
+  const fastest = paths.reduce((best, path) => path.metrics.timeS < best.metrics.timeS ? path : best);
+  const bounded = paths.filter((path) =>
+    path.metrics.timeS <= fastest.metrics.timeS * 1.85 + 600
+    && path.metrics.distM <= fastest.metrics.distM * 1.8 + 1600);
+  const choices = bounded.length ? bounded : paths;
+  const practical = choices.reduce((best, path) =>
+    sectionFrontierPracticalScore(path.metrics) < sectionFrontierPracticalScore(best.metrics)
+      ? path : best);
+  const safest = choices.reduce((best, path) =>
+    compareSectionFrontierSafety(path.metrics, best.metrics) < 0 ? path : best);
+  // Secondary endpoints may trade comfort, climbing and time, but may not buy
+  // them with materially more rule-failing road than the practical path.
+  const nearSafe = choices.filter((path) =>
+    path.metrics.failM <= Math.max(safest.metrics.failM + 80, practical.metrics.failM + 20));
+  const pool = nearSafe.length ? nearSafe : choices;
+  const selected = [];
+  const add = (path) => { if (path && !selected.includes(path)) selected.push(path); };
+  add(practical); add(safest);
+  add(pool.reduce((best, path) => path.metrics.cautionM < best.metrics.cautionM
+    || (path.metrics.cautionM === best.metrics.cautionM
+      && sectionFrontierPracticalScore(path.metrics) < sectionFrontierPracticalScore(best.metrics))
+    ? path : best));
+  add(pool.reduce((best, path) => path.metrics.gapM < best.metrics.gapM
+    || (path.metrics.gapM === best.metrics.gapM
+      && sectionFrontierPracticalScore(path.metrics) < sectionFrontierPracticalScore(best.metrics))
+    ? path : best));
+  add(pool.reduce((best, path) => path.metrics.nonTrailM < best.metrics.nonTrailM
+    || (path.metrics.nonTrailM === best.metrics.nonTrailM
+      && sectionFrontierPracticalScore(path.metrics) < sectionFrontierPracticalScore(best.metrics))
+    ? path : best));
+  add(pool.reduce((best, path) => path.metrics.ascentM < best.metrics.ascentM
+    || (path.metrics.ascentM === best.metrics.ascentM
+      && sectionFrontierPracticalScore(path.metrics) < sectionFrontierPracticalScore(best.metrics))
+    ? path : best));
+  return selected;
+}
+
+function materializeSectionFrontierPath(path, seeds, rules) {
+  if (!path?.arcs?.length) return null;
+  const runs = [];
+  for (const arc of path.arcs) {
+    const last = runs[runs.length - 1];
+    if (last && last.source === arc.source && last.end === arc.index) last.end++;
+    else runs.push({ source: arc.source, start: arc.index, end: arc.index + 1 });
+  }
+  const parts = runs.map((run) => routeFragment(seeds[run.source], run.start, run.end, rules));
+  if (parts.some((part) => !part)) return null;
+  const child = mergeRouteParts(parts, seeds[0].snapStartM, seeds[0].snapEndM);
+  child._sectionSources = [...new Set(runs.map((run) => run.source))]
+    .map((source) => seeds[source]._profile);
+  return child;
+}
+
+function addSectionFrontierCandidates(raw, rules) {
+  const groups = new Map();
+  for (const candidate of raw) {
+    if (candidate._profile.sectionFrontier) continue;
+    const signature = ferrySignature(candidate);
+    if (!groups.has(signature)) groups.set(signature, []);
+    groups.get(signature).push(candidate);
+  }
+  const pool = [];
+  for (const [signature, candidates] of groups) {
+    const seeds = distinctSectionFrontierSeeds(candidates);
+    if (seeds.length < 2) continue;
+    const startNode = seeds[0].nodeIds[0];
+    const endNode = seeds[0].nodeIds[seeds[0].nodeIds.length - 1];
+    if (!seeds.every((seed) => seed.nodeIds[0] === startNode
+        && seed.nodeIds[seed.nodeIds.length - 1] === endNode)) continue;
+    const paths = seeds.map((source, sourceIndex) => source.edgeIds.map((edge, index) => ({
+      from: source.nodeIds[index], to: source.nodeIds[index + 1], edge,
+      source: sourceIndex, index, metrics: sectionFrontierArcMetrics(source, index),
+    })));
+    const frontier = boundedSectionFrontierPaths(paths, startNode, endNode);
+    const existingMetrics = candidates.map((candidate) =>
+      [candidate, sectionFrontierRouteMetrics(candidate)]);
+    for (const path of selectSectionFrontierPaths(frontier)) {
+      const child = materializeSectionFrontierPath(path, seeds, rules);
+      if (!child || new Set(child.nodeIds).size !== child.nodeIds.length) continue;
+      if (ferrySignature(child) !== signature) continue;
+      if (raw.some((candidate) => !meaningfullyDifferent(child, candidate))) continue;
+      const childMetrics = sectionFrontierRouteMetrics(child);
+      if (existingMetrics.some(([, metrics]) => sectionFrontierDominates(metrics, childMetrics))) {
+        continue;
+      }
+      child._sectionMetrics = childMetrics;
+      child.aggression = routeAggression(child);
+      pool.push(child);
+    }
+  }
+  if (!pool.length) return;
+
+  const unique = [];
+  for (const child of pool.sort((a, b) =>
+    sectionFrontierPracticalScore(a._sectionMetrics)
+      - sectionFrontierPracticalScore(b._sectionMetrics)
+      || compareSectionFrontierSafety(a._sectionMetrics, b._sectionMetrics))) {
+    if (unique.every((other) => meaningfullyDifferent(child, other))) unique.push(child);
+  }
+  const chosen = [];
+  const add = (child) => {
+    if (child && chosen.length < SECTION_FRONTIER_MAX_RESULTS && !chosen.includes(child)) {
+      chosen.push(child);
+    }
+  };
+  add(unique[0]);
+  add(unique.reduce((best, child) =>
+    compareSectionFrontierSafety(child._sectionMetrics, best._sectionMetrics) < 0 ? child : best));
+  add(unique.reduce((best, child) =>
+    child._sectionMetrics.cautionM < best._sectionMetrics.cautionM ? child : best));
+  add(unique.reduce((best, child) =>
+    child._sectionMetrics.nonTrailM < best._sectionMetrics.nonTrailM ? child : best));
+  add(unique.reduce((best, child) =>
+    child._sectionMetrics.ascentM < best._sectionMetrics.ascentM ? child : best));
+  while (chosen.length < SECTION_FRONTIER_MAX_RESULTS) {
+    let best = null, bestValue = -Infinity;
+    for (const child of unique) {
+      if (chosen.includes(child)) continue;
+      const value = Math.min(...chosen.map((other) => 1 - edgeOverlap(child, other)));
+      if (value > bestValue) { best = child; bestValue = value; }
+    }
+    if (!best) break;
+    add(best);
+  }
+
+  for (let index = 0; index < chosen.length; index++) {
+    const child = chosen[index];
+    const sourceProfiles = child._sectionSources;
+    delete child._sectionSources;
+    delete child._sectionMetrics;
+    child._profile = {
+      id: `section-frontier${index ? `-${index + 1}` : ''}`,
+      label: 'Section frontier', mode: 'balanced',
+      prefDesig: sourceProfiles.some((profile) => profile.prefDesig),
+      prefResidential: sourceProfiles.some((profile) => profile.prefResidential),
+      order: 1.44 + index * 0.01,
+      alternativeCorridor: true, crossBred: true, crossBreedKind: 'frontier',
+      sectionFrontier: true, refinedFrom: sourceProfiles.map((profile) => profile.id).join('+'),
     };
     raw.push(child);
   }
@@ -3287,6 +3671,9 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     progress?.('Combining compatible route sections…', 0.93);
     addGeneralCrossBreedCandidates(raw, rules);
     endPhase('crossbreed');
+    progress?.('Building a safety-first section frontier…', 0.95);
+    addSectionFrontierCandidates(raw, rules);
+    endPhase('frontier');
   }
 
   const fastest = raw.reduce((best, r) => r.timeS < best.timeS ? r : best, raw[0]);
@@ -3318,7 +3705,9 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
 
   const preferred = unique.find((r) => r._profile.id === preferredProfileId);
   const bothPreferences = unique.find((r) => r._profile.prefDesig && r._profile.prefResidential);
-  const fullyMatching = unique.find((r) => r._profile.fullyMatchingRules);
+  const fullyMatching = unique.filter((route) => route.failM <= 0.5)
+    .reduce((best, route) => !best || recommendationScore(route) < recommendationScore(best)
+      ? route : best, null);
   const adaptiveCorridor = unique.find((r) => r._profile.id.startsWith('adaptive-corridor'));
   // Ferry cross-breeding can already contain the exact field-requested blend:
   // keep the practical mainland from one route and the safer island from
@@ -3328,10 +3717,12 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // the troubleshooting list.
   const ferryCrossBreed = unique.filter((r) => r._profile.crossBreedKind === 'ferry')
     .reduce((best, route) => !best || compareSafety(route, best) < 0 ? route : best, null);
+  const sectionFrontier = unique.filter((r) => r._profile.sectionFrontier)
+    .reduce((best, route) => !best || compareSafety(route, best) < 0 ? route : best, null);
   const combinedCorridor = unique.find((r) => r._profile.id.startsWith('combined-corridor'));
   const protectedCandidates = new Set([
     preferred, bothPreferences, fullyMatching, adaptiveCorridor, ferryCrossBreed,
-    combinedCorridor,
+    sectionFrontier, combinedCorridor,
   ].filter(Boolean));
   const useful = unique.filter((candidate) => protectedCandidates.has(candidate)
     || !unique.some((other) => {
@@ -3376,6 +3767,18 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       return leg.distM <= quickestLeg.distM * 1.5 + 800
         && leg.timeS <= quickestLeg.timeS * 1.4 + 300;
     }));
+  // Preserve the strongest practical off-street option explicitly. Trails and
+  // protected lanes used to share one aggregate, so a shorter lane-heavy route
+  // could crowd the Interurban-heavy choice out even though both "counted" as
+  // 100% bike network. Absolute trail distance is deliberate here: it answers
+  // the rider's useful question, "which sane option lets me stay away from
+  // traffic the longest?"
+  const trailRich = practicalChoices.reduce((best, route) => {
+    if (!best || (route.trailM || 0) > (best.trailM || 0)) return route;
+    if ((route.trailM || 0) === (best.trailM || 0)
+        && recommendationScore(route) < recommendationScore(best)) return route;
+    return best;
+  }, null);
   // The extra strict probe is an availability guarantee, not an instruction
   // to replace the normal recommendation. An all-matching route found by the
   // ordinary profiles remains eligible to be recommended as before.
@@ -3454,9 +3857,13 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     }
     if (selected.every((other) => meaningfullyDifferent(last, other))) selected.push(last);
   }
+  // A ferry composition already represents the important trail/safety section
+  // tradeoff on a boat trip. Prefer it over a second global trail extreme when
+  // the six slots cannot hold both; on ferry-free trips reserve `trailRich`.
+  const trailPortfolio = ferryCrossBreed || trailRich;
   const required = [...new Set([recommended, fastestOverall, safestOverall, boundedSafer,
-    boundedBothPreferences, boundedPreferred, fullyMatching, adaptiveCorridor, ferryCrossBreed,
-    combinedCorridor].filter(Boolean))];
+    sectionFrontier, trailPortfolio, boundedBothPreferences, boundedPreferred, fullyMatching,
+    ferryCrossBreed, adaptiveCorridor, combinedCorridor].filter(Boolean))];
   for (const candidate of required) {
     if (selected.includes(candidate)) continue;
     if (selected.length < MAX_OFFERED) {
@@ -3552,6 +3959,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       safest: safestOverall._profile.id, boundedSafer: boundedSafer?._profile.id,
       fullyMatching: fullyMatching?._profile.id, adaptiveCorridor: adaptiveCorridor?._profile.id,
       ferryCrossBreed: ferryCrossBreed?._profile.id,
+      sectionFrontier: sectionFrontier?._profile.id,
+      trailRich: trailRich?._profile.id,
       combinedCorridor: combinedCorridor?._profile.id,
       recommended: recommended?._profile.id,
     } : undefined,

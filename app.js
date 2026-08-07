@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.606';
+const APP_VERSION = '2026-08-07.608';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -904,15 +904,16 @@ const ROUTE_PROFILE_IDS = new Set([
   'gentle', 'gentle-bike', 'gentle-residential', 'friendly',
   'alt-quick', 'alt-balanced', 'alt-safer', 'alt-wide',
   'discover-quick', 'discover-gentle', 'discover-alternative', 'adaptive-corridor',
-  'combined-corridor', 'fully-matching',
+  'combined-corridor', 'section-frontier', 'fully-matching',
 ]);
-// Adaptive ferry and combined land itineraries carry UNIQUE suffixed ids
+// Adaptive ferry, combined land, and section-frontier itineraries carry UNIQUE suffixed ids
 // because one portfolio can hold several and every structure downstream keys
 // candidates by profile id. Validation accepts each family, not just its bare
 // name.
 function validRouteProfileId(id) {
   return ROUTE_PROFILE_IDS.has(id) || String(id || '').startsWith('direct-lens')
-    || /^(?:adaptive|combined)-corridor-\d+$/.test(String(id || ''));
+    || /^(?:adaptive|combined)-corridor-\d+$/.test(String(id || ''))
+    || /^section-frontier-\d+$/.test(String(id || ''));
 }
 function legacyRouteProfile(mode) {
   if (mode === 'direct') return 'quick';
@@ -2627,10 +2628,10 @@ function setMapLayerVisible(key, on) {
  * seconds, ferry wait, elevation factors are untouched, as are the freeway
  * and mountain-bike last-resort walls.
  *
- * The knob is a per-trip nudge, not a setting: unless the rider pins it
- * with "always use this mode", changing start or destination snaps it back
- * to Recommended. Waypoints and road blocks refine the SAME trip, so they
- * keep it.
+ * The knob is a per-trip nudge, not a setting: changing start or destination
+ * snaps it back to Recommended. Waypoints and road blocks refine the SAME
+ * trip, so they keep the knob even though a waypoint now regenerates the
+ * lettered route portfolio.
  */
 // Labels complete the dialog's title, "Show me routes that are…".
 const ROUTE_REMIX_MODES = Object.freeze({
@@ -3097,6 +3098,10 @@ function optimizationDescription(optimization) {
   return `${optimization.reason ? `${optimization.reason} ` : ''}${method}${discovery}${lens}${matching}`;
 }
 function optimizationMethodDescription(optimization) {
+  if (optimization.sectionFrontier) {
+    return 'Combines strong sections already found at exact shared road junctions, '
+      + 'favoring safety while keeping time, distance, hills, and surface practical.';
+  }
   const base = optimization.mode === 'direct'
     ? 'Prioritizes a quicker trip.'
     : optimization.mode === 'low'
@@ -6387,11 +6392,11 @@ function computeRoute() {
     // current rules (colors are re-scored client-side).
     const rec = routing.sharedActive ? routing.sharedRecipe : null;
     // The chooser policy: a trip's lettered lineup is FROZEN between explicit
-    // re-searches. A refinement -- waypoint, road block, settings change --
-    // re-runs the same recipes and keeps the same letters, so the rider sees
-    // what their change did to the routes they were already comparing. Only a
-    // start/destination change (reverse included) or a pick in the ⋮ dialog
-    // re-ranks and re-letters; both set selectRecommendedNext.
+    // re-searches. Road blocks and settings changes re-run the same recipes
+    // and keep the same letters, so the rider sees what their change did to
+    // the routes they were already comparing. Waypoint changes, endpoint
+    // changes (reverse included), and a pick in the ⋮ dialog regenerate,
+    // re-rank, and re-letter the full portfolio; they set selectRecommendedNext.
     const pinned = !rec && !routing.selectRecommendedNext && routing.pinnedLetters?.length
       ? routing.pinnedLetters.map((entry) => ({ ...entry })) : null;
     routing.lastRequestPinned = !!pinned;
@@ -7804,6 +7809,17 @@ function waypointMarkerElement() {
   return element;
 }
 
+function regenerateRoutesAfterWaypointChange() {
+  // A waypoint materially changes the shape of the trip. Search the full
+  // portfolio instead of asking every old letter/profile to survive the new
+  // constraint; otherwise recipes that no longer work become grey holes in
+  // the chooser. The new portfolio is free to recommend and letter routes
+  // from scratch. Route Remix remains a per-trip preference and is untouched.
+  routing.selectRecommendedNext = true;
+  routing.pinnedLetters = null;
+  routing.missingLetters = null;
+}
+
 function addVia(lngLat, { allowPastLimit = false } = {}) {
   exitSharedRoute();
   if (!allowPastLimit && routing.vias.length >= MAX_ROUTE_STOPS) {
@@ -7822,8 +7838,10 @@ function addVia(lngLat, { allowPastLimit = false } = {}) {
   marker.on('dragend', () => {
     const ll = marker.getLngLat();
     via.pt = [ll.lng, ll.lat];
+    regenerateRoutesAfterWaypointChange();
     computeRoute();
   });
+  regenerateRoutesAfterWaypointChange();
   computeRoute();
   updateArmButtons();
   return true;
@@ -7837,6 +7855,7 @@ function removeVia(via) {
   via.marker.remove();
   if (routing.arm === 'via') routing.arm = null;
   updateArmButtons();
+  regenerateRoutesAfterWaypointChange();
   computeRoute();
   showRouteActionToast('Waypoint removed · recalculating…', { busy: true, duration: 0 });
   saveStateSoon();
@@ -7965,8 +7984,9 @@ function reverseRoute() {
   // a fresh recommendation: the best route northbound is not "whatever letter
   // was selected southbound" -- rankings legitimately differ by direction,
   // and holding a profile across the flip relabeled it mid-air (the rider
-  // watched E become D). Waypoints, road blocks and settings changes keep the
-  // current choice instead, so their impact on the SAME route stays visible.
+  // watched E become D). Road blocks and settings changes keep the current
+  // choice instead. Waypoint changes also take a fresh recommendation because
+  // they regenerate the full route portfolio.
   routing.selectRecommendedNext = true;
 
   clearRouteHighlight();

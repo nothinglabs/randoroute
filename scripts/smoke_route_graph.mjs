@@ -59,14 +59,31 @@ function landSectionsM(option) {
   }
   return sections;
 }
+function facilityTypesM(option) {
+  const totals = { trail: 0, lane: 0, passingRoad: 0, cautionRoad: 0, failingRoad: 0 };
+  for (const seg of option.segs) {
+    const meters = Number(seg.lenM) || 0;
+    if (seg.flags & 32) continue;
+    if (seg.flags & 8) totals.trail += meters;
+    else if ((seg.facility || 0) >= 2) totals.lane += meters;
+    else if (seg.level === 4) totals.failingRoad += meters;
+    else if (seg.level === 3) totals.cautionRoad += meters;
+    else totals.passingRoad += meters;
+  }
+  return totals;
+}
 function matchesExpectation(option, expectation) {
   const miles = option.distM / 1609.344;
   if (expectation.crossBred != null
       && !!option.optimization?.crossBred !== !!expectation.crossBred) return false;
+  if (expectation.sectionFrontier != null
+      && !!option.optimization?.sectionFrontier !== !!expectation.sectionFrontier) return false;
   if (expectation.minDistanceMi != null && miles < expectation.minDistanceMi) return false;
   if (expectation.maxDistanceMi != null && miles > expectation.maxDistanceMi) return false;
   if (expectation.minFacilityMi != null
       && option.facilityM / 1609.344 < expectation.minFacilityMi) return false;
+  if (expectation.minTrailMi != null
+      && facilityTypesM(option).trail / 1609.344 < expectation.minTrailMi) return false;
   if (expectation.maxFailM != null && option.failM > expectation.maxFailM) return false;
   if (expectation.discoveryMaxSpeed != null
       && option.optimization.discoveryMaxSpeed !== expectation.discoveryMaxSpeed) return false;
@@ -125,12 +142,15 @@ for (let index = 0; index < scenarios.length; index++) {
     console.error('  RECOMMENDATION FAIL — expected exactly one recommended option');
     process.exitCode = 1;
   }
-  if (result.debug) console.log('  stages:', JSON.stringify(result.debug));
+  if (result.debug) {
+    console.log('  stages:', JSON.stringify(result.debug));
+    console.log('  phase ms:', JSON.stringify(result.timings));
+  }
   for (const option of result.options) {
     const probeText = scenario.probe
       ? `; ${Math.round(Math.min(...option.coords.map((p) => distanceM(p, scenario.probe))))} m from probe`
       : '';
-    console.log(`  ${option.optimization.label} [${option.optimization.profileId}; bike=${option.optimization.prefDesignated ? 'y' : 'n'}; residential=${option.optimization.prefResidential ? 'y' : 'n'}]: ${(option.distM / 1609.344).toFixed(1)} mi; `
+    console.log(`  ${option.optimization.label}${option.optimization.recommended ? ' ★' : ''} [${option.optimization.profileId}; bike=${option.optimization.prefDesignated ? 'y' : 'n'}; residential=${option.optimization.prefResidential ? 'y' : 'n'}]: ${(option.distM / 1609.344).toFixed(1)} mi; ${Math.round(option.timeS / 60)} min; `
       + `${Math.round(option.failM)} m fail; `
       + `${Math.round(option.hazardM || 0)} m curve caution; `
       + `${Math.round(option.freewayM)} m freeway; `
@@ -138,6 +158,14 @@ for (let index = 0; index < scenarios.length; index++) {
       + `${(option.desigM / 1609.344).toFixed(1)} mi designated; `
       + `${(option.facilityM / 1609.344).toFixed(1)} mi bike facility; `
       + `${(option.residentialM / 1609.344).toFixed(1)} mi residential${probeText}`);
+    if (scenario.printFacilityTypes) {
+      const types = facilityTypesM(option);
+      console.log(`    riding: ${(types.trail / 1609.344).toFixed(1)} mi trail | `
+        + `${(types.lane / 1609.344).toFixed(1)} mi trusted lane | `
+        + `${(types.passingRoad / 1609.344).toFixed(1)} mi passing road | `
+        + `${(types.cautionRoad / 1609.344).toFixed(1)} mi caution road | `
+        + `${(types.failingRoad / 1609.344).toFixed(1)} mi failing road`);
+    }
     if (scenario.printFerries) {
       const ferries = ferryNames(option);
       console.log(`    ferries: ${ferries.length ? ferries.join(' -> ') : 'none'}`);
@@ -213,6 +241,14 @@ for (let index = 0; index < scenarios.length; index++) {
     if (match) console.log(`  EXPECTATION PASS — ${match.optimization.label}`);
     else {
       console.error(`  EXPECTATION FAIL — ${JSON.stringify(scenario.expectAny)}`);
+      process.exitCode = 1;
+    }
+  }
+  for (const expectation of scenario.expectEach || []) {
+    const match = result.options.find((option) => matchesExpectation(option, expectation));
+    if (match) console.log(`  EXPECTATION PASS — ${match.optimization.label}`);
+    else {
+      console.error(`  EXPECTATION FAIL — ${JSON.stringify(expectation)}`);
       process.exitCode = 1;
     }
   }

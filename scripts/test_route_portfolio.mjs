@@ -55,6 +55,10 @@ const scenarios = [
     name: 'Portfolio: Phinney to Mukilteo keeps a fully matching corridor',
     points: [phinney, mukilteo],
     expectFullyMatching: true,
+    // The Interurban-heavy route is a field-quality contract, not just a high
+    // aggregate "trails / lanes" percentage. A shorter all-passing route may
+    // coexist, but cannot crowd this practical mostly-off-street choice out.
+    expectEach: [{ minTrailMi: 15, maxFailM: 400, maxDistanceMi: 35 }],
   },
   {
     ...common,
@@ -78,6 +82,10 @@ const scenarios = [
       landMinMi: [30, 32],
       landMaxMi: [42, 45],
     },
+    expectEach: [{
+      sectionFrontier: true,
+      ferries: ['Mukilteo-Clinton Ferry', 'Port Townsend-Coupeville Ferry'],
+    }],
   },
 ];
 

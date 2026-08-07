@@ -82,9 +82,16 @@ const state = await pg.evaluate(() => ({
     c.profileId?.startsWith('combined-corridor')).map((c) => ({
       id: c.profileId, why: c.why, from: c.refinedFrom, stage: c.stage,
     })),
+  frontier: (routing.allCandidates || []).filter((c) => c.sectionFrontier).map((c) => ({
+    id: c.profileId, why: c.why, from: c.refinedFrom, stage: c.stage,
+  })),
   combinedIdsValid: validRouteProfileId('combined-corridor')
     && validRouteProfileId('combined-corridor-2')
     && !validRouteProfileId('combined-corridor-not-a-number'),
+  frontierIdsValid: validRouteProfileId('section-frontier')
+    && validRouteProfileId('section-frontier-2')
+    && !validRouteProfileId('section-frontier-not-a-number'),
+  frontierDescription: optimizationMethodDescription({ sectionFrontier: true }),
 }));
 check('the portfolio reports more candidates than it offers',
   state.all > state.offered, `${state.all} built, ${state.offered} offered`);
@@ -112,6 +119,21 @@ check('combined corridors name both parents and explain the real junction splice
   JSON.stringify(state.combined));
 check('combined-corridor profile ids survive saved and shared route validation',
   state.combinedIdsValid);
+check('the generalized section frontier never contributes more than its bounded candidate set',
+  state.frontier.length <= 6,
+  JSON.stringify(state.frontier));
+check('when a useful section-frontier route exists, one reaches the six-letter chooser',
+  !state.frontier.length || state.frontier.some((c) => state.offeredIds.includes(c.id)),
+  JSON.stringify({ frontier: state.frontier, offered: state.offeredIds }));
+check('section-frontier routes name their sources and explain exact-junction composition',
+  state.frontier.every((c) => c.from?.includes('+')
+    && /non-dominated sections.*exact shared road junctions/i.test(c.why)),
+  JSON.stringify(state.frontier));
+check('section-frontier profile ids survive saved and shared route validation',
+  state.frontierIdsValid);
+check('section-frontier route details explain safety-first exact-junction composition',
+  /exact shared road junctions/i.test(state.frontierDescription)
+    && /safety/i.test(state.frontierDescription), state.frontierDescription);
 
 /* ------------------------------------------- the button and the screen */
 // The chooser's tail is the route-options "⚙︎" gear; the considered-routes

@@ -11,12 +11,27 @@ const DEFAULT_RULES = { allowFreeways: true, allowMtbTrails: false, preferPaved:
   minShoulder: 4, inferShoulderFromEdge: true, maxSpeedNoShoulder: 35,
   lanesNoShoulderOver: 3, busyNoShoulder: 2, allowSidewalkFallback: true,
   upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false };
-// Must match FAIL_AVOID_PRICE_S_PER_M and NETWORK_GAP_PRICE_S_PER_M in
+// Must match FAIL_AVOID_PRICE_S_PER_M, NETWORK_GAP_PRICE_S_PER_M and
+// TRAIL_BONUS_S_PER_M in
 // router-worker.js; the assertion below is what breaks if they drift.
 const PRICE_S_PER_M = 1;
 const NETWORK_GAP_PRICE_S_PER_M = 0.2;
+const TRAIL_BONUS_S_PER_M = 0.12;
 
 const w = routerWorker();
+w.context.recommendationQualityFixtures = {
+  road: { timeS: 1000, failM: 0, dismountM: 0, distM: 1000,
+    ferryM: 0, facilityM: 0, trailM: 0 },
+  lane: { timeS: 1000, failM: 0, dismountM: 0, distM: 1000,
+    ferryM: 0, facilityM: 1000, trailM: 0 },
+  trail: { timeS: 1000, failM: 0, dismountM: 0, distM: 1000,
+    ferryM: 0, facilityM: 1000, trailM: 1000 },
+};
+const hierarchy = w.run(`Object.fromEntries(Object.entries(recommendationQualityFixtures)
+  .map(([key, route]) => [key, recommendationScore(route)]))`);
+assert.ok(hierarchy.trail < hierarchy.lane && hierarchy.lane < hierarchy.road,
+  `recommendation quality should rank trail < lane < passing road cost: ${JSON.stringify(hierarchy)}`);
+
 const reply = w.post({ type: 'route-options', id: 'star', rules: DEFAULT_RULES,
   points: [[-122.3321, 47.6062], [-122.2021, 47.9790]] });
 assert.ok(reply.ok && reply.options.length >= 2, 'a portfolio should come back');
@@ -25,12 +40,12 @@ const offered = reply.options.map((option) => ({
   label: option.optimization.label,
   recommended: !!option.optimization.recommended,
   timeS: option.timeS, failM: option.failM, dismountM: option.dismountM || 0,
-  // Dismount meters carry the same price as failing meters (a meter the
-  // rider cannot properly ride costs a second, whichever way it fails
-  // them), and every riding meter that is neither trail nor trusted lane
-  // costs a fifth of one -- ride quality has a vote.
+  // Dismount meters carry the same price as failing meters. Ordinary road
+  // costs 0.2 s/m, a trusted lane is neutral, and an off-street trail earns
+  // 0.12 s/m -- the ranking must preserve that three-step hierarchy.
   score: option.timeS + (option.failM + (option.dismountM || 0)) * PRICE_S_PER_M
-    + Math.max(0, option.distM - option.ferryM - option.facilityM) * NETWORK_GAP_PRICE_S_PER_M,
+    + Math.max(0, option.distM - option.ferryM - option.facilityM) * NETWORK_GAP_PRICE_S_PER_M
+    - (option.trailM || 0) * TRAIL_BONUS_S_PER_M,
 }));
 const star = offered.find((option) => option.recommended);
 assert.ok(star, 'one offered route should carry the recommendation');

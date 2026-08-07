@@ -1024,6 +1024,39 @@ recommendation, and six-slot selection pipeline. Stable
 `combined-corridor[-N]` profile IDs let a selected combination survive sharing,
 pinning, and recomputation like any other route.
 
+**Candidate-union section frontier.** The one-cut pass above cannot discover a
+route that needs the first section from A, the middle from B, and the last from
+A again. A second bounded pass therefore makes a compact directed graph from
+only the edges already present in up to ten strong candidates, then runs a
+multi-objective label search over that union. It can switch candidates any
+number of times, but only at exact shared graph nodes. It does **not** run
+another statewide A* search and cannot invent a road the candidate portfolio
+did not already find.
+
+Each partial route carries nine additive objectives: failing distance,
+concrete danger, caution distance, distance outside the trusted bike network,
+distance outside an off-street trail, rough-surface distance, ascent, travel
+time, and total distance. The two coverage objectives preserve the intended
+hierarchy: a trusted lane beats ordinary passing road, and a trail beats the
+lane. A label that is no better on every objective and worse on at least one
+is discarded. The
+remaining Pareto set is deliberately approximate and phone-bounded: at most
+eight labels survive at a node, and at most six materially different children
+enter the ordinary portfolio. The output includes a practical safety-first
+choice plus useful extrema for safety, caution, network coverage, and climbing;
+the normal recommendation price and six-letter selection still make the final
+decision.
+
+This mechanism is **not ferry-specific**. Ferry-free routes form an ordinary
+candidate-union group. When boats are present, candidates are grouped by the
+exact ordered ferry-edge signature, and a child is accepted only if it preserves
+that signature. The constraint prevents a land-section recombination from
+silently adding, dropping, reordering, or changing a crossing; it is not what
+makes the algorithm work. Every child is also rejected if it repeats a graph
+node, duplicates an existing route, or is dominated by an existing candidate.
+Stable `section-frontier[-N]` profile IDs preserve selection, sharing, pinning,
+and recomputation.
+
 **Allowing ferries at all** is a rider toggle in the route chooser's ⚙︎
 dialog, not in Settings. Off is an admission gate exactly like the freeway
 and MTB toggles: the ferry edge does not exist to the search (or to the A*
@@ -1041,12 +1074,16 @@ whose every leg stays within a practical detour of the quickest option
 (1.5× distance + 800 m, 1.4× time + 5 min per leg — time is the binding
 clause; a tighter distance bound once stranded the star on a 56%-failing
 corridor), by minimizing
-`time + 1 s × (failing + dismount meters) + 0.2 s × ordinary-riding meters`
+`time + 1 s × (failing + dismount meters) + 0.2 s × ordinary-road meters`
+`− 0.12 s × trail meters`
 — where ordinary-riding meters are everything that is neither trail nor
 trusted lane (facility ≥ 2; sharrows never qualify, ferries are removed as
-not-riding). Fail avoidance pays a PRICE rather than holding a veto, and
-ride QUALITY has a vote at a fifth the rate: a mile of road alongside
-traffic is worth about five and a half minutes of detour on better ground,
+not-riding). The three categories are deliberately not flattened: ordinary
+passing road is acceptable, a trusted lane is better, and removing motor
+traffic on an off-street trail is better again. A mile of ordinary road costs
+about five and a half minutes against a lane; a mile of trail earns about 3.2
+minutes beyond a lane. Fail avoidance pays a PRICE rather than holding a veto,
+and ride QUALITY has a vote,
 sized from a field case where the star saved 21 minutes by spending 12
 extra kilometers off the bike network and the rider wanted the other route. Under the old lexicographic rule any reduction in absolute
 failing meters beat any amount of time inside that window, which on

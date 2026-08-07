@@ -3,13 +3,13 @@
 //
 // The knob must actually reach the router (as scaled weights on the request),
 // it must never touch the safety rules, and it must snap back to Recommended
-// when the trip changes -- a new start or destination -- while surviving the
-// refinements of the SAME trip (waypoints, road blocks).
+// when the trip changes -- a new start or destination -- while surviving
+// same-trip refinements (waypoints and road blocks).
 //
 // Also swept here: WHICH route stays selected across recomputes. Endpoint
-// changes (including reverse) take a fresh recommendation; waypoints, road
-// blocks and settings changes keep the rider's current choice so the impact
-// of the change stays visible on the route they were looking at.
+// changes (including reverse) and waypoint changes take a fresh recommendation
+// from a regenerated portfolio. Road blocks and settings changes keep the
+// rider's current route so the impact stays visible on what they were viewing.
 import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const site = await serveRepo();
@@ -121,16 +121,50 @@ check('clearing the route resets the remix',
 // worker stubbed so no reply ever consumes the flag.
 const stickiness = await page.evaluate(() => {
   const out = {};
-  routing.worker = { postMessage: () => {} };
+  const posted = [];
+  routing.worker = { postMessage: (message) => posted.push(message) };
   routing.ready = true;
   setRoutePoint('start', { lng: -122.335, lat: 47.61 });
   setRoutePoint('end', { lng: -122.31, lat: 47.62 });
   routing.selectRecommendedNext = false; // as after a delivered portfolio
+  routing.pinnedLetters = [
+    { letter: 'A', profileId: 'quick' },
+    { letter: 'B', profileId: 'low-stress' },
+  ];
+  routing.missingLetters = [{ letter: 'C', profileId: 'old-missing' }];
 
   addVia({ lng: -122.32, lat: 47.615 });
   out.afterWaypoint = routing.selectRecommendedNext;
+  out.waypointPinsCleared = routing.pinnedLetters === null
+    && routing.missingLetters === null;
+  out.waypointRequestPinned = posted.at(-1)?.pinned;
+
+  const via = routing.vias.at(-1);
+  routing.selectRecommendedNext = false;
+  routing.pinnedLetters = [{ letter: 'A', profileId: 'before-move' }];
+  via.marker.setLngLat({ lng: -122.319, lat: 47.616 });
+  via.marker.fire('dragend');
+  out.afterWaypointMove = routing.selectRecommendedNext;
+  out.movePinsCleared = routing.pinnedLetters === null
+    && posted.at(-1)?.pinned == null;
+
+  routing.selectRecommendedNext = false;
+  routing.pinnedLetters = [{ letter: 'A', profileId: 'before-remove' }];
+  removeVia(via);
+  out.afterWaypointRemove = routing.selectRecommendedNext;
+  out.removePinsCleared = routing.pinnedLetters === null
+    && posted.at(-1)?.pinned == null;
+
+  // Stand in for the fresh portfolio response, then confirm a road block
+  // retains that new lineup instead of inheriting the waypoint's refresh flag.
+  routing.selectRecommendedNext = false;
+  routing.pinnedLetters = [
+    { letter: 'A', profileId: 'fresh-recommended' },
+    { letter: 'B', profileId: 'fresh-alternative' },
+  ];
   addRoadBlock({ lng: -122.322, lat: 47.617 });
   out.afterBlock = routing.selectRecommendedNext;
+  out.blockRequestPinned = posted.at(-1)?.pinned;
 
   reverseRoute();
   out.afterReverse = routing.selectRecommendedNext;
@@ -141,8 +175,20 @@ const stickiness = await page.evaluate(() => {
   clearRoute();
   return out;
 });
-check('waypoints and road blocks keep the selected route',
-  stickiness.afterWaypoint === false && stickiness.afterBlock === false,
+check('a waypoint regenerates the portfolio and takes its recommendation',
+  stickiness.afterWaypoint === true && stickiness.waypointPinsCleared === true
+    && stickiness.waypointRequestPinned == null,
+  JSON.stringify(stickiness));
+check('moving or removing a waypoint also regenerates the full portfolio',
+  stickiness.afterWaypointMove === true && stickiness.movePinsCleared === true
+    && stickiness.afterWaypointRemove === true && stickiness.removePinsCleared === true,
+  JSON.stringify(stickiness));
+check('a road block still keeps and reruns the selected route lineup',
+  stickiness.afterBlock === false
+    && JSON.stringify(stickiness.blockRequestPinned) === JSON.stringify([
+      { letter: 'A', profileId: 'fresh-recommended' },
+      { letter: 'B', profileId: 'fresh-alternative' },
+    ]),
   JSON.stringify(stickiness));
 check('reversing takes a fresh recommendation -- both endpoints changed',
   stickiness.afterReverse === true, JSON.stringify(stickiness));
