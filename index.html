@@ -261,6 +261,13 @@
     <p class="remix-intro">Same safety rules and colors — a different balance in the routes offered.</p>
     <div id="remixChoices" class="remix-choices"></div>
     <p class="remix-reset-note">Picking one rebuilds the routes and selects the best. Resets to Recommended when you change your start or destination.</p>
+    <div class="remix-ferry-row">
+      <label class="rule-check remix-ferry-check" for="remixAllowFerries">
+        <input type="checkbox" id="remixAllowFerries" checked>
+        <span>Allow routes with ferries</span>
+      </label>
+      <p class="hint remix-ferry-hint">Off plans every crossing by bridge instead — some trips get much longer or impossible. Stays set until you change it.</p>
+    </div>
   </dialog>
 
   <dialog id="deleteSavedRouteDialog" class="map-dialog delete-saved-route-dialog" aria-labelledby="deleteSavedRouteTitle">
@@ -404,6 +411,9 @@
       <li><b>Missing shoulder data</b> — always treated as 0 ft, and not adjustable. "No data" and "no shoulder" look the same from the saddle, so a fast road has to show a shoulder to pass rather than benefit from an absence of evidence. Slow roads never reach the shoulder rule at all.</li>
       </ul><p>Search always includes local offline results; the ⌕ button also tries an online lookup.</p></section>
     <section><h3>Voice navigation</h3><ul class="help-list">
+      <li><b>Setting off</b> — the first prompt of a ride names the compass direction and road to start on, plus the first turn, because your phone cannot know which way you are facing until you move.</li>
+      <li><b>How far ahead turns are called</b> — the faster you are riding, the earlier each turn is announced.</li>
+      <li><b>One voice at a time</b> — prompts queue rather than talk over each other. Only a turn interrupts, and only something less urgent.</li>
       <li><b>Off-route</b> — gives direction and distance back to your route. Open the off-route notice to manually route back or create a new route.</li>
       <li><b>Speak compass directions (N/S/E/W)</b> — adds headings to turn instructions.</li>
       <li><b>Status update</b> — choose how often it speaks, and whether it includes route status, current speed, miles remaining, and estimated time left.</li>
@@ -513,7 +523,7 @@
       <section><h3>Choose Route</h3><ul>
         <li>The app offers up to six routes, ordered shortest to longest as A–F. One is usually searched with a more-direct lens, so a quicker-but-bolder corridor shows up without asking. The app automatically selects the best match for your settings, which may not be A.</li>
         <li>Letters stay bound to the same kind of route while you adjust waypoints or road blocks, so you can see the impact of a change. Changing start or destination — reversing included — deals a fresh lineup.</li>
-        <li>The <b>⋮</b> button offers a different mix of routes (same safety rules and colors). Loading a route from <b>Considered routes</b> in Advanced weights can add letters past E.</li>
+        <li>The <b>⚙︎</b> button offers a different mix of routes (same safety rules and colors) and a toggle for routes that use ferries. Loading a route from <b>Considered routes</b> in Advanced weights can add letters past E.</li>
         <li>Tap a letter to show distance, estimated time, elevation, and the route’s road and safety information.</li>
         <li>Tap <b>Details</b> to see in-depth information on the route.</li>
       </ul></section>

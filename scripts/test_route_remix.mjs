@@ -188,14 +188,43 @@ const ui = await page.evaluate(() => {
   document.querySelector('.remix-choice[data-remix="safe"]')?.click();
   out.repickSameMode = routing.selectRecommendedNext;
   out.dialogClosedAfterSame = dialog?.open === false;
+  // The ferry toggle: a standing setting behind the same gear. It applies and
+  // closes like a mode pick, tints the gear ON ITS OWN (remix back on
+  // Recommended here), and the reopened box reflects the banned state.
+  setRouteOptionsLoading(false);
+  routing.remix = 'recommended';
+  routing.selectRecommendedNext = false;
+  renderRouteOptionControls();
+  document.getElementById('routeRemixBtn')?.click();
+  const ferries = document.getElementById('remixAllowFerries');
+  out.ferryToggleExists = !!ferries;
+  out.ferryDefaultChecked = ferries?.checked === true;
+  if (ferries) { ferries.checked = false; ferries.dispatchEvent(new Event('change')); }
+  out.ferryRuleOff = rules.allowFerries === false;
+  out.ferryDialogClosed = dialog?.open === false;
+  out.ferryRecompute = routing.selectRecommendedNext === true;
+  out.ferryTint = document.getElementById('routeRemixBtn')?.classList.contains('remix-active');
+  setRouteOptionsLoading(false);
+  document.getElementById('routeRemixBtn')?.click();
+  out.ferryReopenUnchecked = document.getElementById('remixAllowFerries')?.checked === false;
+  dialog?.close();
+  if (ferries) { ferries.checked = true; ferries.dispatchEvent(new Event('change')); }
+  setRouteOptionsLoading(false);
   routing.remix = 'recommended';
   clearRoute();
   return out;
 });
-check('the route-mix button renders in the chooser row as a vertical ellipsis',
-  ui.buttonExists === true && ui.glyph === '⋮', JSON.stringify(ui));
+check('the route-mix button renders in the chooser row as a gear',
+  ui.buttonExists === true && ui.glyph === '⚙︎', JSON.stringify(ui));
 check('untinted while on Recommended', ui.defaultTint === false, JSON.stringify(ui));
-check('its label names the current mode', /Show me routes that are/.test(ui.title), ui.title);
+check('its label names the current mode', /Route options/.test(ui.title), ui.title);
+check('the gear hides a ferry toggle, on by default',
+  ui.ferryToggleExists === true && ui.ferryDefaultChecked === true, JSON.stringify(ui));
+check('turning ferries off applies, closes, recomputes and tints the gear',
+  ui.ferryRuleOff === true && ui.ferryDialogClosed === true
+    && ui.ferryRecompute === true && ui.ferryTint === true, JSON.stringify(ui));
+check('reopening the dialog reflects the banned-ferries state',
+  ui.ferryReopenUnchecked === true, JSON.stringify(ui));
 check('tapping it opens the dialog', ui.dialogOpen === true, JSON.stringify(ui));
 check('the "Make this the default" pin is gone', ui.stickyGone === true, JSON.stringify(ui));
 check('which offers all three modes with Recommended marked current',

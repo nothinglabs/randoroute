@@ -866,6 +866,7 @@ even the urban/rural split, is still honoured behind both.
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 7 exists at all | ×1.9 / ×3.8 / ×8.0 |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
+| `allowFerries` | Allow routes with ferries (route chooser's ⚙︎, not Settings) | none | traversable at all |
 | `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |
 | `preferPaved` | Strongly prefer paved surfaces | none | surface cost |
 | `prefDesig` | Heavily prefer bike routes & trails | none | designation bonus |
@@ -998,6 +999,18 @@ refined by neither until it seeded its own 77.5 mi becalmed hybrid. Each
 distinct boat plan keeps TWO representatives in the seed pool (safest and
 best-priced); keeping only the safest had hidden the mainstream candidate
 behind a calmer sibling with the same ferries.
+
+**Allowing ferries at all** is a rider toggle in the route chooser's ⚙︎
+dialog, not in Settings. Off is an admission gate exactly like the freeway
+and MTB toggles: the ferry edge does not exist to the search (or to the A*
+goal bound, whose cache keys on the rules signature, so a tighter no-ferry
+bound never leaks into a ferry-allowed request). It never changes a verdict
+or a color. The key is deliberately absent from `DEFAULT_RULES` and every
+preset — it is a travel option, not a safety rule, so applying a preset
+neither resets nor claims it — and a missing key means allowed, so old saved
+states and shared links behave as before. It persists across trips (unlike a
+remix), and rides along in a shared route like any other rule. With ferries
+off, an island with no bridge is honestly unreachable.
 
 **The recommended route** (the starred letter) is chosen from the candidates
 whose every leg stays within a practical detour of the quickest option

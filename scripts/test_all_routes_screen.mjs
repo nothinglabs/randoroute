@@ -95,7 +95,7 @@ check('offered candidates are marked offered',
   state.stages.join(','));
 
 /* ------------------------------------------- the button and the screen */
-// The chooser's tail is the route-mix "⋮" button; the considered-routes
+// The chooser's tail is the route-options "⚙︎" gear; the considered-routes
 // screen lives on the WEIGHTS page now, beside the rest of the router's
 // workings, and only wakes once a trip is routed.
 const placement = await pg.evaluate(() => {
@@ -111,9 +111,9 @@ const placement = await pg.evaluate(() => {
     label: remix?.textContent.trim(),
   };
 });
-check('the chooser row ends with the route-mix ⋮ button, and only that',
+check('the chooser row ends with the route-options gear, and only that',
   placement.inChooser && placement.last && placement.rightOfLetters
-    && placement.label === '⋮', JSON.stringify(placement));
+    && placement.label === '⚙︎', JSON.stringify(placement));
 check('styled apart from the lettered routes', placement.distinct);
 
 const weights = await pg.evaluate(() => {

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-06.602';
+const APP_VERSION = '2026-08-07.604';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -109,7 +109,11 @@ const DEFAULT_RULES = Object.freeze({
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
 });
-const rules = { ...DEFAULT_RULES };
+// `allowFerries` is deliberately NOT in DEFAULT_RULES: presets spread the
+// defaults, and a safety preset must neither reset nor lay claim to what is a
+// travel option (it lives behind the route chooser's gear, not in Settings).
+// The worker treats a missing key as allowed, so dropping it is always safe.
+const rules = { ...DEFAULT_RULES, allowFerries: true };
 // Top of the lanes slider means "no limit" rather than a literal count. It
 // stops at 6 because a "6 lanes without a shoulder is fine" rule is one nobody
 // would pick over turning the rule off entirely.
@@ -3233,6 +3237,7 @@ const turnNav = {
   screenMaySleep: false,
   joinDecision: 'pending',
   joinFix: null,
+  orientationSpoken: false,  // the set-off heading, once per navigation start
   connectorRequestId: null,
   connectorPurpose: 'start',
   newRouteRequestId: null,
@@ -4767,13 +4772,37 @@ if ('speechSynthesis' in window) {
  * has STARTED -- `call.resolve()` sits directly after `speakText` -- so there
  * the queue advances on an estimate, deliberately generous: a prompt a moment
  * late beats a prompt cut in half.
+ *
+ * Two further iOS-only traps, both heard from the road as talking-over even
+ * with the queue in place. `cancel()` does not stop the engine synchronously,
+ * and it fires the cancelled utterance's end callback INSIDE the cancel call,
+ * which re-enters the pump -- so the one legitimate interrupt started its
+ * replacement on top of the tail it had just cut. Hence a wall-clock barrier
+ * armed BEFORE the engine is stopped, not a timer scheduled after. And the
+ * watchdog that rescues a queue whose onend never arrives must consult
+ * `synth.speaking` before forcing on, or it advances while the engine is
+ * audibly mid-sentence.
  */
 const SPEECH_RANK = { turn: 3, safety: 2, status: 1 };
 // A prompt that has waited this long is no longer about where the rider is.
 const SPEECH_STALE_MS = 15000;
+// iOS Safari's cancel() is not synchronous: a speak() issued right behind it
+// can overlap the tail of the utterance being cancelled — the app audibly
+// talking over itself. The one interrupt left (a maneuver cutting across a
+// lower-ranked prompt) waits this beat before speaking.
+const SPEECH_INTERRUPT_GAP_MS = 300;
 const speechQueue = [];
 let speechActive = null;
 let speechTimer = 0;
+let speechGapTimer = 0;
+// Wall-clock barrier, not just a timer: cancelling an utterance makes the
+// engine fire its end callback synchronously, which re-enters the pump. The
+// barrier is what actually holds the next prompt back.
+let speechGapUntil = 0;
+// iOS Safari garbage-collects an unreferenced utterance MID-SPEECH, which
+// silently kills its onend and can garble overlapping speech. Held here until
+// its finish runs.
+let activeBrowserUtterance = null;
 
 // Roughly 2.6 words a second, which is where both engines are set, plus a beat
 // for the pause at the end.
@@ -4786,6 +4815,7 @@ function stopSpeechEngine() {
   clearTimeout(speechTimer);
   speechTimer = 0;
   speechActive = null;
+  activeBrowserUtterance = null;
   const plugin = nativeNavigationPlugin();
   if (plugin?.stopSpeaking) { plugin.stopSpeaking().catch(() => {}); return; }
   try { window.speechSynthesis?.cancel(); } catch (e) { /* nothing to stop */ }
@@ -4793,6 +4823,9 @@ function stopSpeechEngine() {
 
 function clearSpeechQueue() {
   speechQueue.length = 0;
+  clearTimeout(speechGapTimer);
+  speechGapTimer = 0;
+  speechGapUntil = 0;
   stopSpeechEngine();
 }
 
@@ -4806,6 +4839,7 @@ function speakInBrowser(text, finish) {
   try {
     const synth = window.speechSynthesis;
     const utterance = navigationSpeechUtterance(text);
+    activeBrowserUtterance = utterance;
     utterance.onend = finish;
     utterance.onerror = finish;
     synth.speak(utterance);
@@ -4813,8 +4847,20 @@ function speakInBrowser(text, finish) {
     // silently pauses.
     synth.resume();
     // An engine that never reports the end must not wedge the queue for the
-    // rest of the ride.
-    speechTimer = setTimeout(finish, speechDurationMs(text) + 4000);
+    // rest of the ride — but advancing while the engine is still AUDIBLY
+    // speaking is how the next prompt lands on top of this one. So past the
+    // estimate, believe synth.speaking a while longer before forcing on.
+    const startedAt = Date.now();
+    const watchdog = () => {
+      let speaking = false;
+      try { speaking = synth.speaking; } catch (e) { /* engine gone */ }
+      if (speaking && Date.now() - startedAt < speechDurationMs(text) + 14000) {
+        speechTimer = setTimeout(watchdog, 1000);
+        return;
+      }
+      finish();
+    };
+    speechTimer = setTimeout(watchdog, speechDurationMs(text) + 4000);
   } catch (e) { finish(); }
 }
 
@@ -4825,6 +4871,7 @@ function speakThrough(text, done) {
     finished = true;
     clearTimeout(speechTimer);
     speechTimer = 0;
+    activeBrowserUtterance = null;
     done();
   };
   const plugin = nativeNavigationPlugin();
@@ -4843,6 +4890,11 @@ function speakThrough(text, done) {
 function pumpSpeech() {
   if (speechActive || !speechQueue.length) return;
   const now = Date.now();
+  if (now < speechGapUntil) {
+    clearTimeout(speechGapTimer);
+    speechGapTimer = setTimeout(pumpSpeech, speechGapUntil - now);
+    return;
+  }
   for (let i = speechQueue.length - 1; i >= 0; i--) {
     if (now - speechQueue[i].queuedAt > SPEECH_STALE_MS) speechQueue.splice(i, 1);
   }
@@ -4879,6 +4931,10 @@ function speakNavigation(text, kind = 'turn') {
   // raised far enough ahead to afford the second or two -- and cutting across a
   // status update to deliver it would be the same talking-over, one rung down.
   if (speechActive && rank === SPEECH_RANK.turn && speechActive.rank < SPEECH_RANK.turn) {
+    // Armed BEFORE the engine is stopped: cancelling fires the current
+    // utterance's end callback synchronously, which re-enters the pump, and an
+    // unarmed barrier lets the replacement start in that same tick.
+    speechGapUntil = Date.now() + SPEECH_INTERRUPT_GAP_MS;
     stopSpeechEngine();
   }
   pumpSpeech();
@@ -5158,6 +5214,10 @@ function activateNavigationConnector(result) {
     detail: 'Follow the connector; your planned route stays unchanged.',
     duration: 5000,
   });
+  // The connector prompt is the orientation for this start; a second
+  // "Head …" on the next fix would be the talking-over this queue exists
+  // to prevent.
+  turnNav.orientationSpoken = true;
   speakNavigation('Follow the connector onto your route.');
   refreshNavigationUI();
 }
@@ -5329,6 +5389,8 @@ function activateNewRouteFromCurrentLocation(result) {
   showRouteActionToast('New route ready', {
     detail: 'Navigation now starts from your current location.', duration: 5000,
   });
+  // Announces its own fresh start; the set-off orientation must not repeat.
+  turnNav.orientationSpoken = true;
   speakNavigation('New route ready. Continue to your destination.');
   refreshNavigationUI();
 }
@@ -5572,15 +5634,37 @@ function updateTurnNavigation(pos) {
     return;
   }
   const remaining = next.distanceM - turnNav.routeM;
+  // The windows grow with speed: 90 m is eleven seconds at neighborhood pace
+  // but arrives mid-junction on a descent. Bounded so a freeway-speed GPS
+  // glitch cannot announce a turn from a mile out.
+  const paceMps = Number.isFinite(turnNav.speedMph) ? Math.max(0, turnNav.speedMph) / 2.23694 : 0;
+  const immediateM = Math.min(220, Math.max(90, paceMps * 12));
+  const approachM = Math.min(700, Math.max(350, paceMps * 45));
   let spoke = false;
-  if (!next.now && remaining <= 90) {
+  if (!turnNav.orientationSpoken) {
+    // The first fix of a ride: say which way to set off. GPS heading needs
+    // movement the rider has not made yet, so the direction comes from the
+    // route's own geometry at the joined point — and folds in the first
+    // maneuver, which could otherwise go unmentioned until its 350 m window.
+    turnNav.orientationSpoken = true;
+    if (!next.now && remaining > immediateM) {
+      const heading = compassWord(routeForwardBearing(nearest.index));
+      const road = routeRoadNameAt(nearest.index);
+      speakNavigation(`Head ${heading}${road ? ` on ${road}` : ''}. `
+        + `In ${navDistanceText(remaining)}, ${navInstructionText(next).toLowerCase()}.`);
+      if (remaining <= approachM) next.approach = true;
+      spoke = true;
+    }
+    // Inside the immediate window the turn prompt below says it all.
+  }
+  if (!next.now && remaining <= immediateM) {
     // Inside the immediate window: speak only the turn itself, never both
     // the approach and the turn back-to-back.
     next.now = true;
     next.approach = true;
     speakNavigation(`${navInstructionText(next)}.`);
     spoke = true;
-  } else if (!next.approach && remaining <= 350) {
+  } else if (!next.approach && remaining <= approachM) {
     next.approach = true;
     speakNavigation(`In ${navDistanceText(remaining)}, ${navInstructionText(next).toLowerCase()}.`);
     spoke = true;
@@ -5669,6 +5753,7 @@ function startTurnNavigation() {
   turnNav.screenMaySleep = false;
   turnNav.joinDecision = 'pending';
   turnNav.joinFix = null;
+  turnNav.orientationSpoken = false;
   turnNav.connectorRequestId = null;
   turnNav.connectorPurpose = 'start';
   turnNav.newRouteRequestId = null;
@@ -5747,6 +5832,7 @@ function stopTurnNavigation(announce = true) {
   turnNav.screenMaySleep = false;
   turnNav.joinDecision = 'pending';
   turnNav.joinFix = null;
+  turnNav.orientationSpoken = false;
   turnNav.connectorRequestId = null;
   turnNav.connectorPurpose = 'start';
   turnNav.newRouteRequestId = null;
@@ -7989,17 +8075,21 @@ function renderRouteOptionControls() {
 // button's name used to open now lives on the weights page, where the rest
 // of the router's workings already are.)
 function remixButtonHtml() {
-  const active = routing.remix !== 'recommended';
+  // Tinted for ANY non-default state it hides — a remixed portfolio or a
+  // ferry ban must never look like the normal offering.
+  const active = routing.remix !== 'recommended' || rules.allowFerries === false;
   const mode = ROUTE_REMIX_MODES[routing.remix] || ROUTE_REMIX_MODES.recommended;
   return `<button type="button" id="routeRemixBtn" class="route-option-remix${active ? ' remix-active' : ''}"
-    title="Show me routes that are… (currently: ${mode.label})"
-    aria-label="More route choices — currently showing ${mode.label}"><span>⋮</span></button>`;
+    title="Route options (currently: ${mode.label}${rules.allowFerries === false ? ', no ferries' : ''})"
+    aria-label="Route options — currently showing ${mode.label}${rules.allowFerries === false ? ', ferries off' : ''}"><span>⚙︎</span></button>`;
 }
 
 function openRouteRemix() {
   const dialog = document.getElementById('remixDialog');
   if (!dialog) return;
   buildRemixChoices();
+  const ferries = document.getElementById('remixAllowFerries');
+  if (ferries) ferries.checked = rules.allowFerries !== false;
   if (!dialog.open) dialog.showModal();
 }
 
@@ -11141,6 +11231,20 @@ document.getElementById('appWeightsBtn').addEventListener('click', openRoutingWe
 // Delegated: #routeRemixBtn is rebuilt every time the chooser re-renders.
 document.getElementById('routeOptions').addEventListener('click', (e) => {
   if (e.target.closest('#routeRemixBtn')) openRouteRemix();
+});
+// Applies and closes, exactly like picking a remix mode: flipping the ferry
+// toggle mid-trip means "recompute without (or with) ferries", and the rider
+// should see that happen rather than a modal covering it. Unlike the modes,
+// this is a standing setting — it survives changing start or destination.
+document.getElementById('remixAllowFerries')?.addEventListener('change', (e) => {
+  rules.allowFerries = e.target.checked;
+  saveStateSoon();
+  document.getElementById('remixDialog')?.close();
+  renderRouteOptionControls();
+  if (routing.start && routing.end) {
+    routing.selectRecommendedNext = true;
+    computeRoute();
+  }
 });
 // Static markup on the weights page; openRoutingWeights() keeps its
 // disabled state in step with whether a trip is currently routed.

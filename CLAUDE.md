@@ -1,5 +1,11 @@
 # Working agreement
 
+## The issue list
+
+`issues.md` in the repo root is the shared work list — open issues, parked
+items with their triggers, and recently closed context. Read it at session
+start; update it when an issue opens, moves, or closes.
+
 ## Tests
 
 `npm test` runs everything. About sixteen minutes in the cloud container

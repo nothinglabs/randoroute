@@ -1509,6 +1509,7 @@ function prewarmArcCosts(rules, configs, id) {
         if (edgeShoulder(ei, forward) === PROHIBITED_SHOULDER) continue;
         if (!rules.allowMtbTrails && (eOfficial[ei] & EDGE_MTB)) continue;
         if (!rules.allowFreeways && (fl & 4)) continue;
+        if (rules.allowFerries === false && (fl & 32)) continue;
         cMul[a] = edgeCostParts(ei, forward, config.mode, modeW, rules, searchRules,
           config.prefDesig, config.prefResidential,
           (fl & 32) && nodeHasLand[u] ? activeWeights.ferryWaitMin * 60 : 0,
@@ -1612,6 +1613,10 @@ function goalPotential(goalNode, startNode, rules, searchRules, mode) {
   // bound, which stays admissible.
   const noMtb = !rules?.allowMtbTrails;
   const noFreeway = !rules?.allowFreeways;
+  // Not profile-specific: banning ferries changes the reachable graph for the
+  // WHOLE request, and the potential cache keys on the rules signature, so a
+  // tighter no-ferry bound can never leak into a ferry-allowed search.
+  const noFerry = rules?.allowFerries === false;
   const blocked = activeRoadBlockEdges;
   let frontier = 0, limit = Infinity;
   while (heap.size) {
@@ -1628,6 +1633,7 @@ function goalPotential(goalNode, startNode, rules, searchRules, mode) {
       if (blocked?.has(ei)) continue;
       if (noFreeway && (fl & 4)) continue;
       if (noMtb && (eOfficial[ei] & EDGE_MTB)) continue;
+      if (noFerry && (fl & 32)) continue;
       // This walks the arc BACKWARD: v is where a route would be coming from,
       // so the traversal under test is v -> u and `forward` is read off v.
       const fromA = eA[ei] !== u;
@@ -1810,6 +1816,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // This setting controls whether a true freeway can be used at all. When it
       // can, its level and cost still make it a route failure and last resort.
       if (!rules.allowFreeways && (fl & 4)) continue;
+      // Ferries are an admission gate like freeways and MTB trails, not a
+      // price: off means the crossing does not exist. The key is absent from
+      // presets (it is a travel option, not a safety rule) so a missing key
+      // means allowed.
+      if (rules.allowFerries === false && (fl & 32)) continue;
       const actualLevel = edgeLevelFor(ei, rules, forward);
       // "Only show routes fully matching safety rules": failing roads become
       // impassable in EVERY mode, so profiles choose only among matching

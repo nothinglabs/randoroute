@@ -118,6 +118,57 @@ check('a maneuver does not wait behind a safety note',
     && urgent[1]?.text.startsWith('Turn right'),
   JSON.stringify(urgent));
 
+/* ------------------- an interrupt leaves a gap, because cancel() is not instant */
+// iOS Safari's cancel() returns before the engine actually stops; speaking the
+// replacement in the same tick is how a maneuver lands ON TOP of the prompt it
+// just cut off. The queue waits a beat, so the replacement starts strictly
+// after the cancelled prompt ended in wall-clock time.
+await install();
+const gap = await page.evaluate(async () => {
+  const startedAt = [];
+  const original = window.speechSynthesis.speak.bind(window.speechSynthesis);
+  window.speechSynthesis.speak = (utterance) => {
+    startedAt.push({ text: utterance.text, at: performance.now() });
+    original(utterance);
+  };
+  speakNavigation('Caution. Heavy traffic for next 3.0 miles.', 'safety');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const cutAt = performance.now();
+  speakNavigation('Turn right onto North 110th Street.', 'turn');
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  return { startedAt, cutAt, said: window.__said };
+});
+const replacement = gap.startedAt.find((entry) => entry.text.startsWith('Turn right'));
+check('the interrupting maneuver is still said',
+  !!replacement && gap.said.some((entry) => entry.text.startsWith('Turn right')),
+  JSON.stringify(gap.startedAt));
+check('but not in the same instant the engine was told to stop',
+  replacement && replacement.at - gap.cutAt >= 250,
+  JSON.stringify({ delta: replacement && Math.round(replacement.at - gap.cutAt) }));
+
+/* --------------------------- an engine that stops reporting must not talk over */
+// The web engine's onend can simply never arrive (mobile Safari drops it when
+// the page is backgrounded mid-utterance). The watchdog that rescues the queue
+// used to fire on a fixed estimate even while the engine was audibly still
+// speaking. It has to believe synth.speaking first.
+await install();
+const patient = await page.evaluate(async () => {
+  // An engine that never reports the end, and admits it is still speaking.
+  Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
+    speaking: true,
+    speak(utterance) { window.__said.push({ text: utterance.text, ended: null }); },
+    cancel() {}, resume() {}, getVoices: () => [], addEventListener() {},
+  } });
+  clearSpeechQueue();
+  speakNavigation('Turn left onto Fremont Avenue North.', 'turn');
+  speakNavigation('Turn right onto North 110th Street.', 'turn');
+  // Well past the spoken estimate plus the old 4 s grace.
+  await new Promise((resolve) => setTimeout(resolve, 7000));
+  return window.__said.map((entry) => entry.text);
+});
+check('a prompt is not sent while the engine says it is still speaking',
+  patient.length === 1 && patient[0].startsWith('Turn left'), JSON.stringify(patient));
+
 /* ------------------------------------------------- and stale prompts are dropped */
 await install();
 const stale = await page.evaluate(async () => {

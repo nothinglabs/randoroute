@@ -404,7 +404,8 @@ meters and a light price on ordinary riding without a bike facility — so the
 recommended route may have any letter. For the life of a trip each letter
 stays bound to the same kind of route: adjusting waypoints or road blocks
 keeps the lineup, while changing start or destination (reversing included) or
-picking a different mix from the ⋮ menu deals a new one; loading a discarded
+picking a different mix from the ⚙︎ route-options menu deals a new one (the
+same menu can turn off routes that use ferries); loading a discarded
 candidate from the Considered-routes screen can add letters past E. Each selected route
 shows a compact ride mix: the share of riding distance on physical bike
 trails and lanes (lime on the map, with matching legend swatches) and the
