@@ -3608,16 +3608,15 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const discoveryRules = addDiscoveryCandidates(raw, points, rules,
     forceDesig, forceResidential, snaps, progress);
   endPhase('discovery');
-  // The more-direct lens: the exact flattening the route-mix "More direct"
-  // applies, run as ONE ordinary candidate inside every portfolio. Field case
+  // The more-direct lens: a bounded flattening run as ONE ordinary candidate
+  // inside every portfolio. Field case
   // (Ravenna -> Phinney Ridge): all nineteen normal candidates collapsed onto
   // one greenway corridor -- the facility pull owns every profile AND every
   // diversity probe on a short trip -- while the flattened search found a
   // genuinely shorter corridor the rider had to know to ask for. This is a
   // search preference only: safety metrics, map colors and the star's pricing
   // all come from the rider's unchanged rules, and the ordinary dedupe decides
-  // whether what the lens found is actually different. Skipped when the rider
-  // has already remixed onto these exact weights (the signatures match).
+  // whether what the lens found is actually different.
   if (lensWeights) {
     const mainSignature = weightsSignature;
     useWeights(lensWeights);
@@ -3626,8 +3625,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       // Two lens candidates. The direct one finds the aggressive end --
       // useful, but on Duck Pond -> Kenmore it was ALSO the only lens find,
       // a 6.5 mi route that is 51% failing, and with nothing moderate
-      // inside the practical window the star had to sit on it. The remix
-      // menu's genuinely better middle routes come from DIVERSITY under the
+      // inside the practical window the star had to sit on it. The genuinely
+      // better middle routes come from DIVERSITY under the
       // flattened weights (its alt probes found 17% failing where friendly
       // preferences alone just re-found the aggressive corridor), so the
       // second candidate is a diversity probe seeded off the first: balanced
@@ -4126,7 +4125,7 @@ onmessage = (ev) => {
         !!m.forceResidential, m.weights || null, m.blocks || null]);
       const result = withRoadBlocks(m.blocks, m.rules, () => routeOptions(pts, m.rules,
         !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress,
-        signature, m.pinned, m.weights || null, m.remixProbeWeights || null));
+        signature, m.pinned, m.weights || null, m.directProbeWeights || null));
       postMessage({ type: 'route-options', id: m.id, ...result });
     } else if (m.type === 'route-candidate') {
       // Full geometry for one candidate the "More" screen listed. Served from

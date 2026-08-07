@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.608';
+const APP_VERSION = '2026-08-07.609';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -110,9 +110,8 @@ const DEFAULT_RULES = Object.freeze({
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
 });
 // `allowFerries` is deliberately NOT in DEFAULT_RULES: presets spread the
-// defaults, and a safety preset must neither reset nor lay claim to what is a
-// travel option (it lives behind the route chooser's gear, not in Settings).
-// The worker treats a missing key as allowed, so dropping it is always safe.
+// defaults, and a safety preset must neither reset nor lay claim to this travel
+// option. It lives in Settings > Options but remains independent of presets.
 const rules = { ...DEFAULT_RULES, allowFerries: true };
 // Top of the lanes slider means "no limit" rather than a literal count. It
 // stops at 6 because a "6 lanes without a shoulder is fine" rule is one nobody
@@ -1020,7 +1019,6 @@ function saveStateNow() {
         .map((key) => [key, savedLayer(key)])),
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
-      remix: routing.remix,
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
@@ -1572,7 +1570,7 @@ function schedulePrewarm() {
   if (!routing.ready || !routing.worker) return;
   if (routing.start && routing.end) return;
   routing.worker.postMessage({ type: 'prewarm', id: ++routing.reqId,
-    rules: { ...rules }, weights: remixedRoutingWeights(), lite: isConstrainedDevice(),
+    rules: { ...rules }, weights: { ...routingWeights }, lite: isConstrainedDevice(),
     // The discovery-lens sweep warms discover-quick under the rider's own
     // preference combo -- the same one a real request would search with.
     prefDesignated: routing.prefDesig, prefResidential: routing.prefResidential });
@@ -2615,38 +2613,17 @@ function setMapLayerVisible(key, on) {
 }
 
 /* --------------------------------------------------------- routing */
-/* Route Remix: one knob over the whole portfolio's temperament.
+/* Automatic direct lens.
  *
- * The weights are reasonable, and still a rider sometimes knows a route
- * exists that the portfolio is not offering -- or wants the safer detour the
- * pruning considers excessive. Remix answers that WITHOUT touching the
- * rules (verdicts and colours are untouched) and WITHOUT editing the tuned
- * weights: at request time every subjective safety multiplier is scaled in
- * log space (w^k), so under `direct` a 9× wall softens to ~1.6× and a 0.21
- * trail bonus flattens to ~0.7, while `safe` deepens both. The additive
- * per-mph speed rates scale linearly. Physics stays physics: climb and turn
- * seconds, ferry wait, elevation factors are untouched, as are the freeway
- * and mountain-bike last-resort walls.
- *
- * The knob is a per-trip nudge, not a setting: changing start or destination
- * snaps it back to Recommended. Waypoints and road blocks refine the SAME
- * trip, so they keep the knob even though a waypoint now regenerates the
- * lettered route portfolio.
+ * Every ordinary portfolio gets one deliberately more-direct search in
+ * addition to the normal safety-first searches. It scales subjective routing
+ * multipliers in log space without changing the rider's rules, saved weights,
+ * road verdicts, or colors. The 0.22 exponent turns the default 9× failing-road
+ * wall into about 1.6×, strong enough to expose a genuinely different corridor
+ * while still leaving a small safety preference.
  */
-// Labels complete the dialog's title, "Show me routes that are…".
-const ROUTE_REMIX_MODES = Object.freeze({
-  // 0.22 after field testing found 0.45 too timid: the 9× balanced failing
-  // wall drops to ~1.6× and heavy-traffic pressure to ~1.1×, so the search is
-  // mostly time and distance with mild nudges left.
-  direct: { exponent: 0.22, label: 'More direct', hint: 'May be less safe' },
-  recommended: { exponent: 1, label: 'Recommended', hint: 'The normal balance of safety and practicality' },
-  // 1.2, down from 1.35: log-space scaling explodes the LARGE walls (the 30x
-  // low-stress fail wall became ~99x), and on a cross-state trip that bought
-  // forty-mile trail detours and ferry triangles. 1.2 keeps the lean
-  // (30x -> ~59x) without pricing whole regions off the map.
-  safe: { exponent: 1.2, label: 'More safety-focused', hint: 'May be longer' },
-});
-const REMIX_SCALED_MULTIPLIERS = Object.freeze([
+const DIRECT_LENS_EXPONENT = 0.22;
+const DIRECT_LENS_SCALED_MULTIPLIERS = Object.freeze([
   'failRoadDirect', 'failRoadBalanced', 'failRoadLowStress',
   'comfyRoadBalanced', 'comfyRoadLowStress',
   'designated', 'strongDesignated', 'residential',
@@ -2661,19 +2638,18 @@ const REMIX_SCALED_MULTIPLIERS = Object.freeze([
   'wideRoadDirect', 'wideRoadBalanced', 'wideRoadLowStress',
   'stressedRoadDirect', 'stressedRoadBalanced', 'stressedRoadLowStress',
 ]);
-const REMIX_SCALED_RATES = Object.freeze(['speedOverBalanced', 'speedOverLowStress',
+const DIRECT_LENS_SCALED_RATES = Object.freeze(['speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress']);
-function remixedRoutingWeights(mode = routing.remix) {
-  const k = ROUTE_REMIX_MODES[mode]?.exponent ?? 1;
+function directLensRoutingWeights() {
+  const k = DIRECT_LENS_EXPONENT;
   const weights = { ...routingWeights };
-  if (k === 1) return weights;
-  // Same bounds validRoutingWeights enforces on rider input, so a remix of an
+  // Same bounds validRoutingWeights enforces on rider input, so a lens over an
   // already-extreme tuned weight cannot leave the worker's sane range.
   const bound = (value) => Math.min(120, Math.max(0.1, value));
-  for (const key of REMIX_SCALED_MULTIPLIERS) {
+  for (const key of DIRECT_LENS_SCALED_MULTIPLIERS) {
     if (Number.isFinite(weights[key])) weights[key] = +bound(Math.pow(weights[key], k)).toFixed(4);
   }
-  for (const key of REMIX_SCALED_RATES) {
+  for (const key of DIRECT_LENS_SCALED_RATES) {
     if (Number.isFinite(weights[key])) weights[key] = +(weights[key] * k).toFixed(5);
   }
   return weights;
@@ -2699,12 +2675,6 @@ const routing = {
     ? savedState.prefDesig : DEFAULT_ROUTE_PREFERENCES.prefDesig, // force this preference across every route option
   prefResidential: savedState && typeof savedState.prefResidential === 'boolean'
     ? savedState.prefResidential : DEFAULT_ROUTE_PREFERENCES.prefResidential,
-  // See ROUTE_REMIX_MODES. Restored across restarts, but only until the next
-  // start/destination change -- a remix is an inspection of this trip, not a
-  // standing preference. (The "Make this the default" pin is gone: a rider
-  // who wants a permanent temperament tunes the weights themselves.)
-  remix: ['direct', 'recommended', 'safe'].includes(savedState?.remix)
-    ? savedState.remix : 'recommended',
   reqId: 0,
   compareStartedAt: 0,
   selectRecommendedNext: false,
@@ -6383,7 +6353,7 @@ function computeRoute() {
       profileLabel: selected?.label,
       prefDesignated: routing.prefDesig || !!selected?.prefDesignated,
       prefResidential: routing.prefResidential || !!selected?.prefResidential,
-      weights: remixedRoutingWeights(),
+      weights: { ...routingWeights },
     });
   } else {
     routing.compareStartedAt = performance.now();
@@ -6395,8 +6365,9 @@ function computeRoute() {
     // re-searches. Road blocks and settings changes re-run the same recipes
     // and keep the same letters, so the rider sees what their change did to
     // the routes they were already comparing. Waypoint changes, endpoint
-    // changes (reverse included), and a pick in the ⋮ dialog regenerate,
-    // re-rank, and re-letter the full portfolio; they set selectRecommendedNext.
+    // changes (reverse included), and settings that change itinerary admission
+    // regenerate, re-rank, and re-letter the full portfolio; they set
+    // selectRecommendedNext.
     const pinned = !rec && !routing.selectRecommendedNext && routing.pinnedLetters?.length
       ? routing.pinnedLetters.map((entry) => ({ ...entry })) : null;
     routing.lastRequestPinned = !!pinned;
@@ -6408,14 +6379,14 @@ function computeRoute() {
       forceResidential: rec ? !!rec.prefResidential : routing.prefResidential,
       preferredProfileId: rec ? (rec.profileId || routing.profileId) : routing.profileId,
       pinned,
-      // A shared route reproduces the SENDER's search exactly; remix applies
-      // only to searches made with the rider's own weights.
-      weights: rec?.weights ? { ...rec.weights } : remixedRoutingWeights(),
+      // A shared route reproduces the SENDER's search exactly. Ordinary
+      // searches use the rider's current weights without a hidden mode.
+      weights: rec?.weights ? { ...rec.weights } : { ...routingWeights },
       // The direct-lens candidate: every ordinary portfolio also searches
       // once under the "More direct" flattening, so its variety shows up
       // without the rider knowing to ask. Not for shared routes -- those
       // reproduce the sender's exact search.
-      remixProbeWeights: rec ? null : remixedRoutingWeights('direct'),
+      directProbeWeights: rec ? null : directLensRoutingWeights(),
     });
   }
 }
@@ -7555,10 +7526,6 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
   const previous = routing[kind];
   if (!Array.isArray(previous) || previous[0] !== lngLat.lng || previous[1] !== lngLat.lat) {
     routing.selectRecommendedNext = true;
-    // A new start or destination is a new trip, and a remix does not survive
-    // it. Waypoints and road blocks never come through here -- they refine
-    // the same trip and keep both the remix and the selected route.
-    routing.remix = 'recommended';
   }
   clearWaypointsForEndpointChange(kind, lngLat);
   routing[kind] = [lngLat.lng, lngLat.lat];
@@ -7814,7 +7781,7 @@ function regenerateRoutesAfterWaypointChange() {
   // portfolio instead of asking every old letter/profile to survive the new
   // constraint; otherwise recipes that no longer work become grey holes in
   // the chooser. The new portfolio is free to recommend and letter routes
-  // from scratch. Route Remix remains a per-trip preference and is untouched.
+  // from scratch.
   routing.selectRecommendedNext = true;
   routing.pinnedLetters = null;
   routing.missingLetters = null;
@@ -8007,7 +7974,6 @@ function clearRoute() {
   routing.start = routing.end = null;
   routing.startName = routing.endName = null;
   routing.startFromDevice = false;
-  routing.remix = 'recommended';
   routing.pendingRoute = false;
   routing.routeRequestActive = false;
   routing.reqId++; // a route already being calculated must not reappear after clear
@@ -8129,7 +8095,7 @@ function setRouteOptionsLoading(loading) {
   } else if (!loading && current) {
     current.remove();
   }
-  host.querySelectorAll('button[data-route-option], #routeRemixBtn').forEach((button) => {
+  host.querySelectorAll('button[data-route-option]').forEach((button) => {
     button.disabled = loading || turnNav.active;
   });
   refreshNavigationUI();
@@ -8194,66 +8160,7 @@ function renderRouteOptionControls() {
   } else {
     cells = routing.options.map(buttonHtml);
   }
-  host.innerHTML = cells.join('') + remixButtonHtml();
-}
-
-// "More" opens the remix dialog -- "Show me routes that are…". Tinted
-// whenever a non-default mode is active, so a remixed portfolio can never
-// look like the normal one. (The all-candidates troubleshooting screen this
-// button's name used to open now lives on the weights page, where the rest
-// of the router's workings already are.)
-function remixButtonHtml() {
-  // Tinted for ANY non-default state it hides — a remixed portfolio or a
-  // ferry ban must never look like the normal offering.
-  const active = routing.remix !== 'recommended' || rules.allowFerries === false;
-  const mode = ROUTE_REMIX_MODES[routing.remix] || ROUTE_REMIX_MODES.recommended;
-  return `<button type="button" id="routeRemixBtn" class="route-option-remix${active ? ' remix-active' : ''}"
-    title="Route options (currently: ${mode.label}${rules.allowFerries === false ? ', no ferries' : ''})"
-    aria-label="Route options — currently showing ${mode.label}${rules.allowFerries === false ? ', ferries off' : ''}"><span>⚙︎</span></button>`;
-}
-
-function openRouteRemix() {
-  const dialog = document.getElementById('remixDialog');
-  if (!dialog) return;
-  buildRemixChoices();
-  const ferries = document.getElementById('remixAllowFerries');
-  if (ferries) ferries.checked = rules.allowFerries !== false;
-  if (!dialog.open) dialog.showModal();
-}
-
-// Rebuilt on every open so the "Current" badge is always the live state.
-function buildRemixChoices() {
-  const host = document.getElementById('remixChoices');
-  if (!host) return;
-  host.replaceChildren();
-  for (const [id, mode] of Object.entries(ROUTE_REMIX_MODES)) {
-    const current = routing.remix === id;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `remix-choice${current ? ' current' : ''}`;
-    button.dataset.remix = id;
-    button.setAttribute('aria-pressed', String(current));
-    button.innerHTML = `<span class="remix-choice-label">${mode.label}`
-      + `${current ? '<span class="remix-current-badge">Current</span>' : ''}</span>`
-      + `<span class="remix-choice-hint">${mode.hint}</span>`;
-    button.addEventListener('click', () => applyRouteRemix(id));
-    host.appendChild(button);
-  }
-}
-
-function applyRouteRemix(id) {
-  if (!ROUTE_REMIX_MODES[id]) return;
-  routing.remix = id;
-  saveStateSoon();
-  document.getElementById('remixDialog')?.close();
-  renderRouteOptionControls();
-  // Tapping a mode -- INCLUDING the one already current -- rebuilds the
-  // portfolio and takes its recommendation afresh. Picking a mode is asking
-  // "what would you offer me?", and the honest answer to that question is
-  // never "whatever letter you already had selected". Closing with the X is
-  // the way out that changes nothing.
-  routing.selectRecommendedNext = true;
-  computeRoute();
+  host.innerHTML = cells.join('');
 }
 
 // The stage that removed a candidate, in the order the pipeline applies them.
@@ -10851,6 +10758,16 @@ function buildRulesPanel() {
   check('prefDesig', 'Heavily prefer bike routes & trails', routing, updateRoutePreference);
   check('prefResidential', 'Prefer residential streets', routing, updateRoutePreference);
   check('allowFreeways', 'Route over freeway as last resort (still shows as failing)');
+  check('allowFerries', 'Allow routes with ferries', rules, () => {
+    // This is an itinerary permission, not a safety preset. Rebuild the full
+    // portfolio so bridge-only and ferry itineraries are ranked from scratch
+    // rather than trying to preserve the old letter recipes.
+    saveStateSoon();
+    if (routing.start && routing.end) {
+      routing.selectRecommendedNext = true;
+      computeRoute();
+    }
+  }, 'Off plans every crossing by bridge instead; some trips become much longer or impossible.');
   check('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
     // This option affects both eligibility in the graph and the OSM layer's
     // feature filter. Repaint immediately, then recompute after the usual
@@ -11375,24 +11292,6 @@ function syncWeightsTunedBadge() {
   }
 }
 document.getElementById('appWeightsBtn').addEventListener('click', openRoutingWeights);
-// Delegated: #routeRemixBtn is rebuilt every time the chooser re-renders.
-document.getElementById('routeOptions').addEventListener('click', (e) => {
-  if (e.target.closest('#routeRemixBtn')) openRouteRemix();
-});
-// Applies and closes, exactly like picking a remix mode: flipping the ferry
-// toggle mid-trip means "recompute without (or with) ferries", and the rider
-// should see that happen rather than a modal covering it. Unlike the modes,
-// this is a standing setting — it survives changing start or destination.
-document.getElementById('remixAllowFerries')?.addEventListener('change', (e) => {
-  rules.allowFerries = e.target.checked;
-  saveStateSoon();
-  document.getElementById('remixDialog')?.close();
-  renderRouteOptionControls();
-  if (routing.start && routing.end) {
-    routing.selectRecommendedNext = true;
-    computeRoute();
-  }
-});
 // Static markup on the weights page; openRoutingWeights() keeps its
 // disabled state in step with whether a trip is currently routed.
 document.getElementById('moreRoutesBtn')?.addEventListener('click', openAllRoutes);

@@ -136,26 +136,21 @@ check('section-frontier route details explain safety-first exact-junction compos
     && /safety/i.test(state.frontierDescription), state.frontierDescription);
 
 /* ------------------------------------------- the button and the screen */
-// The chooser's tail is the route-options "⚙︎" gear; the considered-routes
-// screen lives on the WEIGHTS page now, beside the rest of the router's
-// workings, and only wakes once a trip is routed.
+// The route chooser now contains routes only. The considered-routes screen
+// lives on the WEIGHTS page, beside the rest of the router's workings, and
+// only wakes once a trip is routed.
 const placement = await pg.evaluate(() => {
-  const remix = document.getElementById('routeRemixBtn');
   const buttons = [...document.querySelectorAll('#routeOptions button')];
-  const lastLetter = buttons[buttons.indexOf(remix) - 1];
-  const paint = (el) => el && getComputedStyle(el).backgroundColor;
   return {
-    inChooser: !!remix && !document.querySelector('#routeOptions #moreRoutesBtn'),
-    last: buttons[buttons.length - 1] === remix,
-    rightOfLetters: remix.getBoundingClientRect().left >= lastLetter.getBoundingClientRect().left,
-    distinct: paint(remix) !== paint(lastLetter),
-    label: remix?.textContent.trim(),
+    labels: buttons.map((button) => button.textContent.trim()),
+    allRoutesAbsent: !document.querySelector('#routeOptions #moreRoutesBtn'),
+    obsoleteGearAbsent: !document.getElementById('routeRemixBtn'),
   };
 });
-check('the chooser row ends with the route-options gear, and only that',
-  placement.inChooser && placement.last && placement.rightOfLetters
-    && placement.label === '⚙︎', JSON.stringify(placement));
-check('styled apart from the lettered routes', placement.distinct);
+check('the chooser row contains only the six lettered routes',
+  placement.obsoleteGearAbsent && placement.allRoutesAbsent
+    && JSON.stringify(placement.labels) === JSON.stringify(['A', 'B', 'C', 'D', 'E', 'F']),
+  JSON.stringify(placement));
 
 const weights = await pg.evaluate(() => {
   openRoutingWeights();

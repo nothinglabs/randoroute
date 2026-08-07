@@ -866,7 +866,7 @@ even the urban/rural split, is still honoured behind both.
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 7 exists at all | ×1.9 / ×3.8 / ×8.0 |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
-| `allowFerries` | Allow routes with ferries (route chooser's ⚙︎, not Settings) | none | traversable at all |
+| `allowFerries` | Allow routes with ferries (Settings → Options) | none | traversable at all |
 | `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |
 | `preferPaved` | Strongly prefer paved surfaces | none | surface cost |
 | `prefDesig` | Heavily prefer bike routes & trails | none | designation bonus |
@@ -955,32 +955,20 @@ corridor itself. This bought roughly half the portfolio's search time. It
 never affects which roads are *legal* or how any road is *scored*; 1.0
 restores exact A\*.
 
-**Route Remix** (the chooser row's "More" button, titled "Show me routes
-that are…") scales this whole table at request time without editing it:
-the rider's tuned weights stay stored as-is, and `remixedRoutingWeights()` in
-`app.js` sends the router a copy with every subjective multiplier raised to a
-power (0.22 for "more direct", 1.2 for "more safety-focused") and the
-per-mph speed rates scaled linearly. Physics (climb/turn seconds, ferry wait,
-elevation factors), the freeway and mountain-bike last-resort walls, and the
-safety RULES are untouched — a remix changes which legal routes are offered,
-never how any road is judged or coloured. A remix is an inspection of the
-current trip, not a standing preference: it resets to Recommended whenever
-start or destination changes (reversing counts); waypoints and road blocks
-keep it. Picking any mode — including the one already current — rebuilds the
-portfolio and takes its recommendation afresh.
-
 **The direct-lens candidate.** Every ordinary portfolio also runs ONE search
-under the "more direct" flattening (the exact transform above, exponent
-0.22), joining the pool as the `direct-lens` profile before dedupe and
-ranking. It exists because the facility pull can own every profile at once:
+under a "more direct" flattening. `directLensRoutingWeights()` raises every
+subjective multiplier to exponent 0.22 and scales the per-mph speed rates,
+without editing the rider's stored weights. Physics (climb/turn seconds, ferry
+wait, elevation factors), last-resort walls, safety rules, verdicts, and colors
+remain unchanged. The result joins the pool as the `direct-lens` profile before
+dedupe and ranking. It exists because the facility pull can own every profile at once:
 on Ravenna → Phinney Ridge all nineteen normal candidates collapsed onto one
 greenway corridor while the flattened search found a genuinely shorter one
-the rider previously had to discover through the remix menu. Like the
+that would otherwise be missed. Like the
 discovery lens, it is a search preference only — safety metrics, colours and
 the star's pricing come from the rider's unchanged rules and weights, so a
 bold lens route is offered with its failing meters reported honestly and
-almost never starred. The lens is skipped when the rider has already remixed
-onto those exact weights. The portfolio offers up to SIX letters (A–F) so
+almost never starred. The portfolio offers up to SIX letters (A–F) so
 the lens's find does not push an ordinary choice out. In the worker, weight
 sets keep their cache epoch (`useWeights` is content-keyed), so the
 main → lens → main round trip inside a request costs nothing in cache
@@ -1057,16 +1045,15 @@ node, duplicates an existing route, or is dominated by an existing candidate.
 Stable `section-frontier[-N]` profile IDs preserve selection, sharing, pinning,
 and recomputation.
 
-**Allowing ferries at all** is a rider toggle in the route chooser's ⚙︎
-dialog, not in Settings. Off is an admission gate exactly like the freeway
+**Allowing ferries at all** is a rider toggle in **Settings → Options**. Off
+is an admission gate exactly like the freeway
 and MTB toggles: the ferry edge does not exist to the search (or to the A*
 goal bound, whose cache keys on the rules signature, so a tighter no-ferry
 bound never leaks into a ferry-allowed request). It never changes a verdict
 or a color. The key is deliberately absent from `DEFAULT_RULES` and every
 preset — it is a travel option, not a safety rule, so applying a preset
-neither resets nor claims it — and a missing key means allowed, so old saved
-states and shared links behave as before. It persists across trips (unlike a
-remix), and rides along in a shared route like any other rule. With ferries
+neither resets nor claims it. It persists across trips and rides along in a
+shared route like any other rule. With ferries
 off, an island with no bridge is honestly unreachable.
 
 **The recommended route** (the starred letter) is chosen from the candidates

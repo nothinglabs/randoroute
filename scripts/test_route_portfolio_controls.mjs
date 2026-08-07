@@ -1,0 +1,225 @@
+#!/usr/bin/env node
+// Portfolio controls: route variety is automatic; the rider only supplies
+// durable rules and itinerary permissions.
+//
+// This covers the automatic direct lens, waypoint/road-block regeneration
+// policy, removal of the old route-temperament dialog, and the ferry toggle's
+// home in Settings > Options.
+import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
+
+const site = await serveRepo();
+const browser = await launchBrowser();
+const page = await appPage(browser, site.port);
+
+let passed = 0, failed = 0;
+const check = (name, ok, detail = '') => {
+  if (ok) { passed++; console.log(`PASS  ${name}`); return; }
+  failed++;
+  console.log(`FAIL  ${name}${detail ? `  -- ${detail}` : ''}`);
+};
+
+/* --------------------------------------- the automatic direct-lens weights */
+const transform = await page.evaluate(() => {
+  const base = { ...routingWeights };
+  const direct = directLensRoutingWeights();
+  return { base, direct };
+});
+check('the direct lens softens the failing-road wall toward neutral',
+  transform.direct.failRoadBalanced < transform.base.failRoadBalanced
+    && transform.direct.failRoadBalanced > 1,
+  `${transform.base.failRoadBalanced} -> ${transform.direct.failRoadBalanced}`);
+// Field testing found exponent 0.45 too timid. Under default weights the 9×
+// balanced wall must land under 2×: mostly time/distance, with a mild nudge.
+check('the default 9x wall lands under 2x',
+  transform.base.failRoadBalanced !== 9 || transform.direct.failRoadBalanced < 2,
+  `${transform.base.failRoadBalanced} -> ${transform.direct.failRoadBalanced}`);
+check('the lens flattens trail attraction toward neutral',
+  transform.direct.facilityPath > transform.base.facilityPath
+    && transform.direct.facilityPath < 1,
+  `${transform.base.facilityPath} -> ${transform.direct.facilityPath}`);
+for (const key of ['climbBalancedSecPerM', 'turnBalancedSec', 'ferryWaitMin',
+  'uphillFactor', 'freeway', 'mtbTrail', 'diversityQuick']) {
+  check(`physics and last-resort walls are untouched: ${key}`,
+    transform.direct[key] === transform.base[key],
+    `${transform.base[key]} vs ${transform.direct[key]}`);
+}
+
+/* ------------------ every normal request carries both automatic viewpoints */
+const request = await page.evaluate(() => {
+  const captured = [];
+  routing.worker = { postMessage: (message) => captured.push(message) };
+  routing.ready = true;
+  routing.start = [-122.335, 47.61];
+  routing.end = [-122.31, 47.62];
+  routing.selectRecommendedNext = true;
+  routing.pinnedLetters = null;
+  const rulesBefore = JSON.stringify(rules);
+  computeRoute();
+  const message = captured.at(-1);
+  return {
+    type: message?.type,
+    normalWeights: message?.weights,
+    directWeights: message?.directProbeWeights,
+    tunedWeights: { ...routingWeights },
+    rulesBefore,
+    rulesAfter: JSON.stringify(rules),
+  };
+});
+check('a route request uses the rider weights as its normal viewpoint',
+  request.type === 'route-options'
+    && JSON.stringify(request.normalWeights) === JSON.stringify(request.tunedWeights));
+check('and automatically carries a distinct more-direct probe',
+  request.directWeights?.failRoadBalanced < request.normalWeights?.failRoadBalanced,
+  JSON.stringify({ normal: request.normalWeights?.failRoadBalanced,
+    direct: request.directWeights?.failRoadBalanced }));
+check('the automatic lens never changes safety rules',
+  request.rulesBefore === request.rulesAfter);
+
+/* ------------------------------------ which route survives a recompute */
+const regeneration = await page.evaluate(() => {
+  const out = {};
+  const posted = [];
+  routing.worker = { postMessage: (message) => posted.push(message) };
+  routing.ready = true;
+  setRoutePoint('start', { lng: -122.335, lat: 47.61 });
+  setRoutePoint('end', { lng: -122.31, lat: 47.62 });
+  routing.selectRecommendedNext = false;
+  routing.pinnedLetters = [
+    { letter: 'A', profileId: 'quick' },
+    { letter: 'B', profileId: 'low-stress' },
+  ];
+  routing.missingLetters = [{ letter: 'C', profileId: 'old-missing' }];
+
+  addVia({ lng: -122.32, lat: 47.615 });
+  out.afterWaypoint = routing.selectRecommendedNext;
+  out.waypointPinsCleared = routing.pinnedLetters === null
+    && routing.missingLetters === null;
+  out.waypointRequestPinned = posted.at(-1)?.pinned;
+
+  const via = routing.vias.at(-1);
+  routing.selectRecommendedNext = false;
+  routing.pinnedLetters = [{ letter: 'A', profileId: 'before-move' }];
+  via.marker.setLngLat({ lng: -122.319, lat: 47.616 });
+  via.marker.fire('dragend');
+  out.afterWaypointMove = routing.selectRecommendedNext;
+  out.movePinsCleared = routing.pinnedLetters === null
+    && posted.at(-1)?.pinned == null;
+
+  routing.selectRecommendedNext = false;
+  routing.pinnedLetters = [{ letter: 'A', profileId: 'before-remove' }];
+  removeVia(via);
+  out.afterWaypointRemove = routing.selectRecommendedNext;
+  out.removePinsCleared = routing.pinnedLetters === null
+    && posted.at(-1)?.pinned == null;
+
+  // Stand in for a fresh response before checking road-block behavior.
+  routing.selectRecommendedNext = false;
+  routing.pinnedLetters = [
+    { letter: 'A', profileId: 'fresh-recommended' },
+    { letter: 'B', profileId: 'fresh-alternative' },
+  ];
+  addRoadBlock({ lng: -122.322, lat: 47.617 });
+  out.afterBlock = routing.selectRecommendedNext;
+  out.blockRequestPinned = posted.at(-1)?.pinned;
+
+  reverseRoute();
+  out.afterReverse = routing.selectRecommendedNext;
+  routing.selectRecommendedNext = false;
+  setRoutePoint('end', { lng: -122.29, lat: 47.64 });
+  out.afterNewEnd = routing.selectRecommendedNext;
+  clearRoute();
+  return out;
+});
+check('a waypoint regenerates the portfolio and takes its recommendation',
+  regeneration.afterWaypoint === true && regeneration.waypointPinsCleared === true
+    && regeneration.waypointRequestPinned == null,
+  JSON.stringify(regeneration));
+check('moving or removing a waypoint also regenerates the full portfolio',
+  regeneration.afterWaypointMove === true && regeneration.movePinsCleared === true
+    && regeneration.afterWaypointRemove === true && regeneration.removePinsCleared === true,
+  JSON.stringify(regeneration));
+check('a road block still keeps and reruns the selected route lineup',
+  regeneration.afterBlock === false
+    && JSON.stringify(regeneration.blockRequestPinned) === JSON.stringify([
+      { letter: 'A', profileId: 'fresh-recommended' },
+      { letter: 'B', profileId: 'fresh-alternative' },
+    ]),
+  JSON.stringify(regeneration));
+check('reversing takes a fresh recommendation', regeneration.afterReverse === true,
+  JSON.stringify(regeneration));
+check('a new destination takes a fresh recommendation', regeneration.afterNewEnd === true,
+  JSON.stringify(regeneration));
+
+/* -------------------- the obsolete dialog is gone; ferries live in Settings */
+const ui = await page.evaluate(() => {
+  routing.worker = { postMessage: () => {} };
+  routing.ready = true;
+  routing.start = [-122.335, 47.61];
+  routing.end = [-122.31, 47.62];
+  routing.options = [{ optimization: { label: 'Route A', recommended: true } }];
+  routing.last = routing.options[0];
+  renderRouteOptionControls();
+  settingsPaneSelect?.('options');
+  const toggle = document.getElementById('r-allowFerries');
+  const out = {
+    oldButtonGone: !document.getElementById('routeRemixBtn'),
+    oldDialogGone: !document.getElementById('remixDialog'),
+    chooserButtons: [...document.querySelectorAll('#routeOptions button')]
+      .map((button) => button.textContent.trim()),
+    toggleExists: !!toggle,
+    toggleInOptions: !!toggle?.closest('#settings-options'),
+    optionsVisible: document.getElementById('settings-options')?.hidden === false,
+    defaultChecked: toggle?.checked === true,
+  };
+  routing.selectRecommendedNext = false;
+  routing.pinnedLetters = [{ letter: 'A', profileId: 'old-ferry-route' }];
+  if (toggle) {
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change'));
+  }
+  out.ruleOff = rules.allowFerries === false;
+  out.freshPortfolio = routing.selectRecommendedNext === true;
+  // Restore the global for the rest of this browser session.
+  setRouteOptionsLoading(false);
+  if (toggle) {
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+  }
+  setRouteOptionsLoading(false);
+  clearRoute();
+  return out;
+});
+check('the route chooser contains only route choices',
+  ui.oldButtonGone && ui.chooserButtons.length === 1
+    && ui.chooserButtons[0] === 'A (Only route)',
+  JSON.stringify(ui));
+check('the Show me routes dialog is removed', ui.oldDialogGone, JSON.stringify(ui));
+check('Allow routes with ferries lives in Settings > Options',
+  ui.toggleExists && ui.toggleInOptions && ui.optionsVisible && ui.defaultChecked,
+  JSON.stringify(ui));
+check('turning ferries off updates the rule and requests a fresh portfolio',
+  ui.ruleOff && ui.freshPortfolio, JSON.stringify(ui));
+
+// With no trip routed, the weights page's considered-routes button explains
+// itself by being disabled instead of opening an empty list.
+const considered = await page.evaluate(() => {
+  routing.allCandidates = [];
+  openRoutingWeights();
+  const button = document.getElementById('moreRoutesBtn');
+  const out = { disabledWithoutTrip: button?.disabled === true };
+  document.getElementById('weightsDialog')?.close();
+  routing.allCandidates = [{}];
+  openRoutingWeights();
+  out.enabledWithTrip = button?.disabled === false;
+  document.getElementById('weightsDialog')?.close();
+  return out;
+});
+check('considered-routes sleeps until a trip is routed',
+  considered.disabledWithoutTrip && considered.enabledWithTrip, JSON.stringify(considered));
+
+check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
+
+await browser.close();
+site.close();
+process.exitCode = failed ? 1 : 0;
+console.log(`\n${passed} passed, ${failed} failed`);
