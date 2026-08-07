@@ -164,10 +164,15 @@ const patient = await page.evaluate(async () => {
   speakNavigation('Turn right onto North 110th Street.', 'turn');
   // Well past the spoken estimate plus the old 4 s grace.
   await new Promise((resolve) => setTimeout(resolve, 7000));
-  return window.__said.map((entry) => entry.text);
+  return {
+    said: window.__said.map((entry) => entry.text),
+    speaking: window.speechSynthesis.speaking,
+    active: speechActive?.text || null,
+    queued: speechQueue.map((entry) => entry.text),
+  };
 });
 check('a prompt is not sent while the engine says it is still speaking',
-  patient.length === 1 && patient[0].startsWith('Turn left'), JSON.stringify(patient));
+  patient.said.length === 1 && patient.said[0].startsWith('Turn left'), JSON.stringify(patient));
 
 /* ------------------------------------------------- and stale prompts are dropped */
 await install();
@@ -194,6 +199,50 @@ const stopped = await page.evaluate(async () => {
 });
 check('ending a ride silences what was still waiting',
   stopped.said.length === 1 && stopped.queued === 0, JSON.stringify(stopped));
+
+/* ---------------------- native speech advances on its real delegate callback */
+const nativePacing = await page.evaluate(async () => {
+  clearSpeechQueue();
+  const realPlugin = window.nativeNavigationPlugin;
+  window.__nativeSpeechHandlers = {};
+  window.__nativeSaid = [];
+  window.nativeNavigationPlugin = () => ({
+    addListener(name, handler) {
+      window.__nativeSpeechHandlers[name] = handler;
+      return Promise.resolve({ remove() {} });
+    },
+    speak(payload) {
+      window.__nativeSaid.push(payload);
+      return Promise.resolve();
+    },
+    stopSpeaking() { return Promise.resolve(); },
+  });
+  nativeNavigationListenersReady = null;
+  speakNavigation('Native first sentence.', 'turn');
+  speakNavigation('Native second sentence.', 'turn');
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const beforeFinish = window.__nativeSaid.map((item) => ({ ...item }));
+  const first = beforeFinish[0];
+  window.__nativeSpeechHandlers.speechFinished?.({
+    speechId: first?.speechId,
+    cancelled: false,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const afterFinish = window.__nativeSaid.map((item) => ({ ...item }));
+  clearSpeechQueue();
+  window.nativeNavigationPlugin = realPlugin;
+  nativeNavigationListenersReady = null;
+  return { beforeFinish, afterFinish };
+});
+check('native voice waits for the real end event instead of a duration guess',
+  nativePacing.beforeFinish.length === 1
+    && nativePacing.beforeFinish[0].text.startsWith('Native first'),
+  JSON.stringify(nativePacing));
+check('the next native prompt starts when the delegate reports completion',
+  nativePacing.afterFinish.length === 2
+    && nativePacing.afterFinish[1].text.startsWith('Native second')
+    && nativePacing.afterFinish[1].speechId !== nativePacing.afterFinish[0].speechId,
+  JSON.stringify(nativePacing));
 
 check('no page errors', errors.length === 0, errors.join(' | '));
 

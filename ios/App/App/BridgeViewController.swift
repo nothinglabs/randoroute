@@ -1,11 +1,9 @@
 // The only native-only code in this app. Everything else is the shared web app,
 // which `npm test` covers on the same bytes iOS ships.
 //
-// See docs/IOS-HANDOFF.md before changing anything here. It lists what was
-// changed WITHOUT a compiler (the audio session release, moving
-// locationServicesEnabled off the main thread), what was found and left alone
-// (stopTracking resolving a cancelled start; getCurrentPosition hanging when
-// the permission dialog is dismissed), and what needs a device to judge at all.
+// See docs/IOS-HANDOFF.md before changing anything here. It records the device-
+// only checks and the reasons behind the location, audio, and screen-awake
+// lifecycle decisions below.
 import AVFoundation
 import Capacitor
 import CoreLocation
@@ -38,7 +36,7 @@ final class BridgeViewController: CAPBridgeViewController {
 
 @objc(NativeNavigationPlugin)
 final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManagerDelegate,
-                                   AVSpeechSynthesizerDelegate {
+                                   AVSpeechSynthesizerDelegate, @unchecked Sendable {
     private struct RoutePoint {
         let latitude: Double
         let longitude: Double
@@ -61,15 +59,26 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         CAPPluginMethod(name: "startTracking", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopTracking", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateVoiceSettings", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setScreenAwake", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "speak", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopSpeaking", returnType: CAPPluginReturnPromise)
     ]
 
     private let locationManager = CLLocationManager()
-    private let speechSynthesizer = AVSpeechSynthesizer()
+    // Creating AVSpeechSynthesizer immediately queries installed voice assets
+    // and sandbox extensions. That is needless work on every map-only launch
+    // and is especially visible while a fresh simulator/device is still
+    // warming its caches, so do it at the first real spoken prompt instead.
+    private lazy var speechSynthesizer: AVSpeechSynthesizer = {
+        let synthesizer = AVSpeechSynthesizer()
+        synthesizer.delegate = self
+        return synthesizer
+    }()
+    private var webSpeechIDs: [ObjectIdentifier: Int] = [:]
     private var tracking = false
     private var pendingStartCall: CAPPluginCall?
-    private var pendingPositionCalls: [CAPPluginCall] = []
+    private var pendingPositionCalls: [String: CAPPluginCall] = [:]
+    private var pendingPositionTimeouts: [String: DispatchWorkItem] = [:]
     private var route: [RoutePoint] = []
     private var instructions: [RouteInstruction] = []
     private var nearestRouteSegment: Int?
@@ -100,10 +109,6 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
 
     override func load() {
         locationManager.delegate = self
-        // Without a delegate nothing knows when a prompt has finished, so the
-        // audio session stayed active -- and .duckOthers kept the rider's music
-        // quiet from the first turn instruction until they stopped navigating.
-        speechSynthesizer.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         locationManager.distanceFilter = 3
         locationManager.activityType = .fitness
@@ -114,6 +119,12 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
             name: UIApplication.didBecomeActiveNotification,
             object: nil
         )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        statusUpdateTimer?.invalidate()
+        pendingPositionTimeouts.values.forEach { $0.cancel() }
     }
 
     // CLLocationManager.locationServicesEnabled() can block, and Apple documents
@@ -153,10 +164,10 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
             case .denied, .restricted:
                 call.reject("Location permission is blocked. Enable it in Settings.")
             case .notDetermined:
-                self.pendingPositionCalls.append(call)
+                self.queuePositionCall(call)
                 self.locationManager.requestWhenInUseAuthorization()
             case .authorizedAlways, .authorizedWhenInUse:
-                self.pendingPositionCalls.append(call)
+                self.queuePositionCall(call)
                 self.locationManager.requestLocation()
             @unknown default:
                 call.reject("Location authorization is unavailable.")
@@ -167,10 +178,15 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     @objc func startTracking(_ call: CAPPluginCall) {
         requireLocationServices(call) {
             self.configureRoute(from: call)
+            guard self.route.count >= 2 else {
+                call.reject("A route with at least two points is required for navigation.")
+                return
+            }
             switch self.locationManager.authorizationStatus {
             case .denied, .restricted:
                 call.reject("Location permission is blocked. Enable it in Settings.")
             case .notDetermined:
+                self.pendingStartCall?.reject("Navigation start was replaced by a newer request.")
                 self.pendingStartCall = call
                 self.locationManager.requestWhenInUseAuthorization()
             case .authorizedWhenInUse, .authorizedAlways:
@@ -184,7 +200,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
 
     @objc func stopTracking(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
-            self.pendingStartCall?.resolve(self.statusPayload())
+            self.pendingStartCall?.reject("Navigation start was cancelled.")
             self.pendingStartCall = nil
             self.endTracking()
             call.resolve()
@@ -206,6 +222,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         locationManager.stopUpdatingLocation()
         locationManager.allowsBackgroundLocationUpdates = false
         locationManager.showsBackgroundLocationIndicator = false
+        UIApplication.shared.isIdleTimerDisabled = false
         clearRouteGuidance()
     }
 
@@ -217,13 +234,24 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         }
     }
 
+    @objc func setScreenAwake(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            UIApplication.shared.isIdleTimerDisabled = call.getBool("enabled") ?? false
+            call.resolve()
+        }
+    }
+
     @objc func speak(_ call: CAPPluginCall) {
         guard let text = call.getString("text"), !text.isEmpty else {
             call.reject("Speech text is required.")
             return
         }
         DispatchQueue.main.async {
-            self.speakText(text, language: call.getString("language") ?? "en-US")
+            self.speakText(
+                text,
+                language: call.getString("language") ?? "en-US",
+                webSpeechID: call.getInt("speechId")
+            )
             call.resolve()
         }
     }
@@ -255,8 +283,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                 let message = "Location permission is blocked. Enable it in Settings."
                 self.pendingStartCall?.reject(message)
                 self.pendingStartCall = nil
-                self.pendingPositionCalls.forEach { $0.reject(message) }
-                self.pendingPositionCalls.removeAll()
+                self.rejectPendingPositionCalls(message)
                 self.notifyListeners("locationError", data: [
                     "code": 1,
                     "message": message
@@ -274,10 +301,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         latestLocation = location
         let payload = locationPayload(location)
         latestLocationPayload = payload
-        if !pendingPositionCalls.isEmpty {
-            pendingPositionCalls.forEach { $0.resolve(payload) }
-            pendingPositionCalls.removeAll()
-        }
+        resolvePendingPositionCalls(payload)
         if tracking {
             updateNativeGuidance(location)
             // WKWebView JavaScript is suspended while the phone is locked.
@@ -290,10 +314,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        if !pendingPositionCalls.isEmpty {
-            pendingPositionCalls.forEach { $0.reject(error.localizedDescription) }
-            pendingPositionCalls.removeAll()
-        }
+        rejectPendingPositionCalls(error.localizedDescription)
         if tracking {
             notifyListeners("locationError", data: [
                 "code": (error as? CLError)?.code.rawValue ?? 2,
@@ -313,8 +334,47 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         }
     }
 
+    private func queuePositionCall(_ call: CAPPluginCall) {
+        guard let callbackID = call.callbackId else {
+            call.reject("Location request could not be tracked.")
+            return
+        }
+        pendingPositionTimeouts[callbackID]?.cancel()
+        pendingPositionCalls[callbackID] = call
+        let requestedTimeout = call.getInt("timeoutMs") ?? 15_000
+        let timeoutMs = max(1_000, min(60_000, requestedTimeout))
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self,
+                  let pending = self.pendingPositionCalls.removeValue(forKey: callbackID) else {
+                return
+            }
+            self.pendingPositionTimeouts.removeValue(forKey: callbackID)
+            pending.reject("Timed out waiting for a usable location.")
+        }
+        pendingPositionTimeouts[callbackID] = timeout
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + .milliseconds(timeoutMs),
+            execute: timeout
+        )
+    }
+
+    private func resolvePendingPositionCalls(_ payload: [String: Any]) {
+        let calls = Array(pendingPositionCalls.values)
+        pendingPositionCalls.removeAll()
+        pendingPositionTimeouts.values.forEach { $0.cancel() }
+        pendingPositionTimeouts.removeAll()
+        calls.forEach { $0.resolve(payload) }
+    }
+
+    private func rejectPendingPositionCalls(_ message: String) {
+        let calls = Array(pendingPositionCalls.values)
+        pendingPositionCalls.removeAll()
+        pendingPositionTimeouts.values.forEach { $0.cancel() }
+        pendingPositionTimeouts.removeAll()
+        calls.forEach { $0.reject(message) }
+    }
+
     @objc private func appDidBecomeActive() {
-        notifyListeners("appActive", data: [:])
         guard tracking, let payload = latestLocationPayload else { return }
         notifyListeners("location", data: payload)
     }
@@ -825,11 +885,23 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     // which happens on every instruction that interrupts the last one -- would
     // otherwise leave the session active exactly like a finished one.
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        reportWebSpeechEnd(utterance, cancelled: false)
         releaseAudioSessionWhenIdle()
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        reportWebSpeechEnd(utterance, cancelled: true)
         releaseAudioSessionWhenIdle()
+    }
+
+    private func reportWebSpeechEnd(_ utterance: AVSpeechUtterance, cancelled: Bool) {
+        guard let speechID = webSpeechIDs.removeValue(forKey: ObjectIdentifier(utterance)) else {
+            return
+        }
+        notifyListeners("speechFinished", data: [
+            "speechId": speechID,
+            "cancelled": cancelled
+        ])
     }
 
     private func releaseAudioSessionWhenIdle() {
@@ -841,7 +913,17 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         )
     }
 
-    private func speakText(_ text: String, language: String = "en-US") {
+    private func speakText(
+        _ text: String,
+        language: String = "en-US",
+        webSpeechID: Int? = nil
+    ) {
+        // Stop first. didCancel may release the old audio session
+        // synchronously; activating before this call could therefore leave the
+        // replacement utterance starting on a session its predecessor closed.
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+        }
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(
@@ -853,11 +935,11 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         } catch {
             // AVSpeechSynthesizer can still use the current audio session.
         }
-        if speechSynthesizer.isSpeaking {
-            speechSynthesizer.stopSpeaking(at: .immediate)
-        }
         lastVoiceAt = Date()
         let utterance = navigationUtterance(text, language: language)
+        if let webSpeechID {
+            webSpeechIDs[ObjectIdentifier(utterance)] = webSpeechID
+        }
         speechSynthesizer.speak(utterance)
     }
 
@@ -876,7 +958,10 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
 
     private func statusPayload() -> [String: Any] {
         [
-            "servicesEnabled": CLLocationManager.locationServicesEnabled(),
+            // Every caller reaches this only after requireLocationServices has
+            // checked on a background queue. Repeating Apple's potentially
+            // blocking class method here would put it back on the main thread.
+            "servicesEnabled": true,
             "authorization": authorizationName(locationManager.authorizationStatus),
             "accuracy": accuracyName(locationManager.accuracyAuthorization),
             "tracking": tracking

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.604';
+const APP_VERSION = '2026-08-07.605';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -904,15 +904,15 @@ const ROUTE_PROFILE_IDS = new Set([
   'gentle', 'gentle-bike', 'gentle-residential', 'friendly',
   'alt-quick', 'alt-balanced', 'alt-safer', 'alt-wide',
   'discover-quick', 'discover-gentle', 'discover-alternative', 'adaptive-corridor',
-  'fully-matching',
+  'combined-corridor', 'fully-matching',
 ]);
-// Adaptive ferry itineraries carry UNIQUE suffixed ids (adaptive-corridor,
-// adaptive-corridor-2, ...) because one portfolio can hold several and every
-// structure downstream keys candidates by profile id. Validation accepts the
-// family, not just the bare name.
+// Adaptive ferry and combined land itineraries carry UNIQUE suffixed ids
+// because one portfolio can hold several and every structure downstream keys
+// candidates by profile id. Validation accepts each family, not just its bare
+// name.
 function validRouteProfileId(id) {
   return ROUTE_PROFILE_IDS.has(id) || String(id || '').startsWith('direct-lens')
-    || /^adaptive-corridor-\d+$/.test(String(id || ''));
+    || /^(?:adaptive|combined)-corridor-\d+$/.test(String(id || ''));
 }
 function legacyRouteProfile(mode) {
   if (mode === 'direct') return 'quick';
@@ -1087,14 +1087,45 @@ if (COARSE_POINTER) map.doubleClickZoom.disable();
 // during wheel, touch, keyboard, and programmatic zooms without rebuilding
 // feature filters in JavaScript.
 map.on('moveend', saveStateSoon);
-map.addControl(
-  new maplibregl.GeolocateControl({
-    positionOptions: { enableHighAccuracy: true },
-    trackUserLocation: true,
-    showUserHeading: true,
-  }),
-  'top-right'
-);
+// MapLibre's control probes the browser geolocation stack as soon as it is
+// added. In WKWebView that can raise iOS's permission sheet even though the
+// native location plugin is deliberately waiting for an explicit rider
+// action. Give the native shell the same familiar button without constructing
+// MapLibre's second location client; the click handler below routes it through
+// NativeNavigation. Browsers keep the complete MapLibre tracking control.
+class NativeGeolocateControl {
+  onAdd() {
+    this.container = document.createElement('div');
+    this.container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+    this.button = document.createElement('button');
+    this.button.type = 'button';
+    this.button.className = 'maplibregl-ctrl-geolocate';
+    this.button.dataset.nativeLocationControl = 'true';
+    this.button.title = 'Find my location';
+    this.button.setAttribute('aria-label', 'Find my location');
+    const icon = document.createElement('span');
+    icon.className = 'maplibregl-ctrl-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    this.button.appendChild(icon);
+    this.container.appendChild(this.button);
+    return this.container;
+  }
+
+  onRemove() {
+    this.container?.remove();
+    this.container = null;
+    this.button = null;
+  }
+}
+
+const mapLocationControl = nativeNavigationPlugin()
+  ? new NativeGeolocateControl()
+  : new maplibregl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: true,
+      showUserHeading: true,
+    });
+map.addControl(mapLocationControl, 'top-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
 // Mouse/trackpad users benefit from explicit zoom buttons. Keep them out of
 // phone-sized web layouts and the native shell, where pinch zoom is primary
@@ -1196,10 +1227,25 @@ function requestMapLocationRecenter(reason = 'launch') {
   return null;
 }
 
-// Ask for a usable location on each fresh app load. If permission is already
-// granted this centers immediately; otherwise the platform can show its normal
-// permission prompt and the Seattle default remains as a safe fallback.
-requestMapLocationRecenter('launch');
+// Recenter silently when the native app already has permission, but do not put
+// a system permission sheet over the first map a rider ever sees. A fresh
+// install asks in context — when they tap the locate control or choose "my
+// location" — while returning riders still open centered where they are.
+async function requestInitialMapLocation() {
+  const plugin = nativeNavigationPlugin();
+  if (plugin?.getStatus) {
+    try {
+      const status = await plugin.getStatus();
+      if (!status?.servicesEnabled
+          || ['prompt', 'denied', 'restricted'].includes(status.authorization)) return false;
+    } catch (e) {
+      return false;
+    }
+  }
+  requestMapLocationRecenter('launch');
+  return true;
+}
+requestInitialMapLocation();
 
 // A user-initiated pan/zoom (originalEvent present) suspends navigation
 // auto-follow; our own programmatic camera moves have no originalEvent.
@@ -4564,6 +4610,7 @@ function ensureNativeNavigationListeners() {
     // this layer is suspended then and never sees the fixes that would let it
     // notice. Without this the ride ended natively and stayed live here.
     plugin.addListener('arrived', () => finishTurnNavigation()),
+    plugin.addListener('speechFinished', (event) => handleNativeSpeechFinished(event)),
   ]).then(() => true).catch((error) => {
     nativeNavigationListenersReady = null;
     throw error;
@@ -4662,7 +4709,13 @@ async function startNativeNavigationTracking() {
 async function getDevicePosition(options = {}) {
   const plugin = nativeNavigationPlugin();
   if (plugin) {
-    const position = await plugin.getCurrentPosition();
+    // The native bridge owns its own CLLocationManager request, so browser
+    // geolocation's timeout option cannot protect it. Pass the same deadline
+    // across the bridge; otherwise a dismissed/interrupted permission flow can
+    // leave this promise pending for the lifetime of the app.
+    const position = await plugin.getCurrentPosition({
+      timeoutMs: Number.isFinite(Number(options.timeout)) ? Number(options.timeout) : 15000,
+    });
     return nativePositionEvent(position);
   }
   if (!navigator.geolocation) throw new Error('No location access on this device');
@@ -4746,7 +4799,10 @@ function navigationSpeechUtterance(text, language = navigator.language || 'en-US
   return utterance;
 }
 
-if ('speechSynthesis' in window) {
+// The native shell speaks through AVSpeechSynthesizer. Enumerating Web Speech
+// voices as well is a second, unused voice client and makes iOS query/download
+// voice assets during every map-only launch.
+if (!nativeNavigationPlugin() && 'speechSynthesis' in window) {
   refreshPreferredNavigationVoice();
   window.speechSynthesis.addEventListener?.('voiceschanged', () => {
     refreshPreferredNavigationVoice();
@@ -4803,6 +4859,18 @@ let speechGapUntil = 0;
 // silently kills its onend and can garble overlapping speech. Held here until
 // its finish runs.
 let activeBrowserUtterance = null;
+let nativeSpeechSequence = 0;
+let nativeSpeechCompletion = null;
+// A cancelled engine can deliver its old onend after a replacement has begun.
+// Only callbacks from the current generation may clear timers or advance the
+// queue; otherwise a stale finish can release a second prompt mid-sentence.
+let speechGeneration = 0;
+
+function handleNativeSpeechFinished(event) {
+  const speechId = Number(event?.speechId);
+  if (!nativeSpeechCompletion || speechId !== nativeSpeechCompletion.speechId) return;
+  nativeSpeechCompletion.finish();
+}
 
 // Roughly 2.6 words a second, which is where both engines are set, plus a beat
 // for the pause at the end.
@@ -4812,10 +4880,12 @@ function speechDurationMs(text) {
 }
 
 function stopSpeechEngine() {
+  speechGeneration++;
   clearTimeout(speechTimer);
   speechTimer = 0;
   speechActive = null;
   activeBrowserUtterance = null;
+  nativeSpeechCompletion = null;
   const plugin = nativeNavigationPlugin();
   if (plugin?.stopSpeaking) { plugin.stopSpeaking().catch(() => {}); return; }
   try { window.speechSynthesis?.cancel(); } catch (e) { /* nothing to stop */ }
@@ -4849,12 +4919,15 @@ function speakInBrowser(text, finish) {
     // An engine that never reports the end must not wedge the queue for the
     // rest of the ride — but advancing while the engine is still AUDIBLY
     // speaking is how the next prompt lands on top of this one. So past the
-    // estimate, believe synth.speaking a while longer before forcing on.
-    const startedAt = Date.now();
+    // estimate, keep believing synth.speaking. A long main-thread pause can
+    // make any absolute deadline expire while the old utterance is still
+    // audible; advancing then recreates the exact talking-over bug this queue
+    // exists to prevent. If onend was lost, the engine's speaking flag still
+    // falls when playback actually ends and the poll safely releases the queue.
     const watchdog = () => {
       let speaking = false;
       try { speaking = synth.speaking; } catch (e) { /* engine gone */ }
-      if (speaking && Date.now() - startedAt < speechDurationMs(text) + 14000) {
+      if (speaking) {
         speechTimer = setTimeout(watchdog, 1000);
         return;
       }
@@ -4865,19 +4938,35 @@ function speakInBrowser(text, finish) {
 }
 
 function speakThrough(text, done) {
+  const generation = ++speechGeneration;
   let finished = false;
   const finish = () => {
-    if (finished) return;
+    if (finished || generation !== speechGeneration) return;
     finished = true;
     clearTimeout(speechTimer);
     speechTimer = 0;
     activeBrowserUtterance = null;
+    nativeSpeechCompletion = null;
     done();
   };
   const plugin = nativeNavigationPlugin();
   if (plugin) {
-    speechTimer = setTimeout(finish, speechDurationMs(text));
-    plugin.speak({ text, language: navigator.language || 'en-US' }).catch(() => {
+    const speechId = ++nativeSpeechSequence;
+    nativeSpeechCompletion = { speechId, finish };
+    // The delegate event is authoritative. The long watchdog exists only for
+    // a bridge/process failure; unlike the old duration estimate, it cannot
+    // advance the queue while a normal sentence is still being spoken.
+    speechTimer = setTimeout(finish, speechDurationMs(text) + 14000);
+    ensureNativeNavigationListeners().then(() => {
+      if (!nativeSpeechCompletion || nativeSpeechCompletion.speechId !== speechId) return;
+      return plugin.speak({
+        text,
+        language: navigator.language || 'en-US',
+        speechId,
+      });
+    }).catch(() => {
+      if (!nativeSpeechCompletion || nativeSpeechCompletion.speechId !== speechId) return;
+      nativeSpeechCompletion = null;
       clearTimeout(speechTimer);
       speechTimer = 0;
       speakInBrowser(text, finish);
@@ -4942,7 +5031,25 @@ function speakNavigation(text, kind = 'turn') {
 
 async function requestNavigationWakeLock() {
   if (!turnNav.active || !navVoice.keepScreenAwake) return;
-  if (!navigator.wakeLock || document.visibilityState !== 'visible') return;
+  const plugin = nativeNavigationPlugin();
+  if (plugin?.setScreenAwake) {
+    try {
+      await plugin.setScreenAwake({ enabled: true });
+      turnNav.screenMaySleep = false;
+      if (turnNav.locationReady) turnNav.message = '';
+      refreshNavigationUI();
+      return;
+    } catch (e) {
+      // A bridge from an older/native-mismatched shell may reject this. The
+      // standard wake lock remains a useful fallback where WebKit exposes it.
+    }
+  }
+  if (!navigator.wakeLock || document.visibilityState !== 'visible') {
+    turnNav.screenMaySleep = true;
+    if (turnNav.locationReady) turnNav.message = 'Screen may sleep on this device';
+    refreshNavigationUI();
+    return;
+  }
   try {
     turnNav.wakeLock = await navigator.wakeLock.request('screen');
     turnNav.screenMaySleep = false;
@@ -4958,6 +5065,7 @@ async function requestNavigationWakeLock() {
 }
 
 function releaseNavigationWakeLock() {
+  nativeNavigationPlugin()?.setScreenAwake?.({ enabled: false }).catch(() => {});
   const lock = turnNav.wakeLock;
   turnNav.wakeLock = null;
   if (lock) lock.release().catch(() => {});
@@ -5860,7 +5968,7 @@ function stopTurnNavigation(announce = true) {
   if (offRouteDialog?.open) offRouteDialog.close();
   drawNavigationConnector([]);
   updateNavigationProgress();
-  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  if (!nativeNavigationPlugin() && 'speechSynthesis' in window) window.speechSynthesis.cancel();
   if (announce) speakNavigation('Navigation stopped.');
   refreshNavigationUI();
 }
@@ -11012,9 +11120,28 @@ buildSourcePanel();
 buildRulesPanel();
 buildVoicePanel();
 buildRoutingPanel();
-// Start the on-device routing graph before route editing is available. This
-// keeps endpoint, waypoint, and road-block actions from racing initialization.
-ensureRouter();
+// A fresh native install has just copied roughly 144 MB of offline data. Do not
+// immediately make its first map paint compete with fetching, hashing,
+// inflating, and indexing the 44 MB routing graph (about 142 MB expanded).
+// Existing/saved trips still start at once. An immediate planner tap also calls
+// ensureRouter(), while an untouched map begins the engine after its first idle
+// frame, with a short upper bound in case tile loading never becomes idle.
+if (routing.start && routing.end) {
+  ensureRouter();
+} else {
+  let backgroundRouterStarted = false;
+  const startBackgroundRouter = () => {
+    if (backgroundRouterStarted) return;
+    backgroundRouterStarted = true;
+    ensureRouter();
+  };
+  const queueBackgroundRouter = () => {
+    map.once('idle', startBackgroundRouter);
+    setTimeout(startBackgroundRouter, 1500);
+  };
+  if (map.loaded()) queueBackgroundRouter();
+  else map.once('load', queueBackgroundRouter);
+}
 
 // On phones, Menu and Navigate share the lower-left thumb zone. Navigate sits
 // beside Menu while the map is unobstructed, then shifts to the sheet's left

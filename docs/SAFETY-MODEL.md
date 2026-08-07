@@ -1000,6 +1000,20 @@ distinct boat plan keeps TWO representatives in the seed pool (safest and
 best-priced); keeping only the safest had hidden the mainstream candidate
 behind a calmer sibling with the same ferries.
 
+**Combined land corridors.** A bounded, search-free pass can also combine two
+ordinary ferry-free candidates when they meet at the exact same routing-graph
+node. This covers the non-ferry version of the same field need: one candidate
+has the useful first half, another has the useful second half, and no global
+cost profile asks for both. A visual line crossing is never enough—the roads
+must share a real graph junction. Each side of the splice must contribute at
+least 1 km; children with a repeated node, no meaningful geometry change, or
+no improvement against either parent are rejected. At most ten distinct
+parents seed the pass and six children enter the portfolio; those children
+still pass through the ordinary reasonable-time, dedupe, dominance,
+recommendation, and six-slot selection pipeline. Stable
+`combined-corridor[-N]` profile IDs let a selected combination survive sharing,
+pinning, and recomputation like any other route.
+
 **Allowing ferries at all** is a rider toggle in the route chooser's ⚙︎
 dialog, not in Settings. Off is an admission gate exactly like the freeway
 and MTB toggles: the ferry edge does not exist to the search (or to the A*

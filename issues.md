@@ -1,14 +1,11 @@
-# Issues
+# Human TODO List
 
-The working list for this project — what is open, what is parked and why, and
-what was recently finished. Read this the way you would a teammate's handoff:
-the *why* matters as much as the *what*. Update it when an issue opens, moves,
-or closes; keep closed items brief and prune them once they stop being useful
-context.
+This is a short, human-focused list of project TODOs. It is not an LLM
+notepad, brainstorming log, or automatic issue tracker. Add, remove, reorder,
+or rewrite items only when directed by a human, and keep the list concise.
 
-Conventions: the app is field-tested on a phone by the project owner, and many
-items below block on a **field verdict** — the owner riding or browsing real
-routes and reporting back. Don't simulate rides to close one of these.
+Some items block on a **field verdict**: the project owner riding or browsing
+real routes and reporting back. Do not simulate rides to close them.
 
 ## Open
 
@@ -51,68 +48,10 @@ Follow-ups that hang on the verdict:
 ### 3. Road detail UI improvements
 Owner has ideas; not yet described. Nothing started.
 
-### 4. Voice navigation on iPhone — field verdict pending
-Reported from the road: the voice sometimes talks over itself, and prompts
-(especially the first of a ride) come too late. Fixed in v.604, awaiting a
-field verdict:
-
-- **Overlap.** `speechSynthesis.cancel()` is not synchronous on iOS Safari,
-  and cancelling fires the current utterance's end callback *synchronously*,
-  which re-entered the pump and started the replacement in the same tick.
-  There is now a wall-clock barrier (`speechGapUntil`, 300 ms) armed BEFORE
-  the engine is stopped. The watchdog that rescues a wedged queue also
-  believes `synth.speaking` before forcing on, and the active utterance is
-  held in a variable so iOS cannot garbage-collect it mid-speech.
-- **Late prompts.** Announcement windows now scale with speed (immediate
-  90–220 m at 12 s of travel, approach 350–700 m at 45 s) instead of being
-  fixed at 90/350 m.
-- **Setting off.** The first on-route fix speaks "Head <compass> on <road>"
-  plus the first maneuver, taken from the route's own geometry — GPS heading
-  needs movement the rider has not made yet. Once per navigation start, and
-  suppressed when a connector or reroute prompt already oriented the rider.
-
-If the field verdict is still "late", the next lever is announcing the first
-maneuver on the *approach* window at start regardless of distance, or
-lowering `SPEECH_INTERRUPT_GAP_MS`.
-
 ## Parked (has a trigger, waiting on it)
 
-- **Phone cost-cache cap 8 → 16 slots.** Constrained devices cap the router's
-  per-config cost caches at 8 slots (`configure` message in
-  `router-worker.js`); long trips repeat ~3× slower than they could. Lifting
-  it costs ~174 MB peak, which we won't spend until the v.595 crash fix
-  (chunked PMTiles serving in `sw.js`) has soaked crash-free on the phone for
-  a while. Trigger: owner declares the app stable.
 - **Generalized route cross-breeding.** The ferry splice works because same
   ferries ⇒ identical terminal nodes ⇒ clean cut points. A non-ferry version
   would splice where candidates cross mid-route. Trigger: a real trip where
   corridor A's first half + corridor B's second half is wanted and no offered
   letter covers it.
-- **iOS native build.** Four native-side changes in
-  `ios/App/App/BridgeViewController.swift` were written without a compiler
-  (see `docs/IOS-HANDOFF.md`) and need a macOS/Xcode build before they are
-  believed. Trigger: access to a Mac.
-
-## Recently closed (context that may still matter)
-
-- **v.600 stuck / Pages deploy broken (2026-08-06).** Not the repo rename —
-  a GitHub Actions/Pages major outage. During it we replaced the built-in
-  Pages build with our own `.github/workflows/pages.yml` (checkout →
-  configure-pages → upload artifact → deploy) and switched Settings → Pages
-  to "GitHub Actions". That is now the permanent deploy path: push to `main`
-  deploys the site.
-- **Crash saga → v.595.** Repeated PWA crashes on zoom were the service
-  worker's whole-archive blob memoization pinning ~140 MB; fixed by chunked
-  (8 MB) PMTiles serving. The tile-cache cap experiment (v.592) made it
-  worse and was reverted (v.594) — don't cap `maxTileCacheSize` again.
-- **Routing performance (was issue 5).** Warm repeat 9.8→4.2 s, pin move
-  14.3→5.7 s via content-keyed weight epochs, floor-slot LRU, and hoisted
-  scoring. Closed 2026-08-07; the cache-cap lift above is its residue.
-- **Source control (was issue 6).** Repo renamed `clauding` → `randoroute`,
-  single branch `main`, stale branches deleted. Closed 2026-08-07.
-- **Voice queue overlap + late prompts (v.604).** See open issue 4 — the code
-  is in, the verdict is not.
-- **Ferry toggle + gear button (v.603).** The route chooser's ⋮ became ⚙︎ and
-  its dialog gained "Allow routes with ferries" — an admission gate like the
-  freeway toggle, deliberately outside `DEFAULT_RULES` and presets. See
-  `docs/SAFETY-MODEL.md`.

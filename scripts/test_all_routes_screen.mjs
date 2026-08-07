@@ -78,6 +78,13 @@ const state = await pg.evaluate(() => ({
   labels: (routing.allCandidates || []).map((c) => c.label),
   offeredIds: routing.options.map((o) => o.optimization?.profileId),
   allIds: (routing.allCandidates || []).map((c) => c.profileId),
+  combined: (routing.allCandidates || []).filter((c) =>
+    c.profileId?.startsWith('combined-corridor')).map((c) => ({
+      id: c.profileId, why: c.why, from: c.refinedFrom, stage: c.stage,
+    })),
+  combinedIdsValid: validRouteProfileId('combined-corridor')
+    && validRouteProfileId('combined-corridor-2')
+    && !validRouteProfileId('combined-corridor-not-a-number'),
 }));
 check('the portfolio reports more candidates than it offers',
   state.all > state.offered, `${state.all} built, ${state.offered} offered`);
@@ -93,6 +100,18 @@ check('every candidate has a distinct label',
 check('offered candidates are marked offered',
   state.stages.filter((x) => x === 'offered').length === state.offered,
   state.stages.join(','));
+check('the land cross-breeder contributes a bounded combined corridor',
+  state.combined.length >= 1 && state.combined.length <= 6,
+  JSON.stringify(state.combined));
+check('a combined corridor reaches the six-letter chooser',
+  state.combined.some((c) => state.offeredIds.includes(c.id)),
+  JSON.stringify({ combined: state.combined, offered: state.offeredIds }));
+check('combined corridors name both parents and explain the real junction splice',
+  state.combined.every((c) => c.from?.includes('+')
+    && /exact shared road junction/i.test(c.why)),
+  JSON.stringify(state.combined));
+check('combined-corridor profile ids survive saved and shared route validation',
+  state.combinedIdsValid);
 
 /* ------------------------------------------- the button and the screen */
 // The chooser's tail is the route-options "⚙︎" gear; the considered-routes

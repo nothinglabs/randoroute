@@ -107,6 +107,42 @@ const nativeClaim = await page.evaluate(async () => {
 check('starting native location tracking does not claim the screen is safe',
   nativeClaim.after === true, JSON.stringify(nativeClaim));
 
+/* ------------------------------------ native iOS owns the idle timer directly */
+const nativeLock = await page.evaluate(async () => {
+  const realPlugin = window.nativeNavigationPlugin;
+  window.__nativeAwakeCalls = [];
+  window.nativeNavigationPlugin = () => ({
+    setScreenAwake({ enabled }) {
+      window.__nativeAwakeCalls.push(enabled);
+      return Promise.resolve();
+    },
+  });
+  window.__locks.requested = 0;
+  turnNav.active = true;
+  navVoice.keepScreenAwake = true;
+  turnNav.screenMaySleep = true;
+  await requestNavigationWakeLock();
+  const held = {
+    calls: window.__nativeAwakeCalls.slice(),
+    browserRequests: window.__locks.requested,
+    maySleep: turnNav.screenMaySleep,
+  };
+  releaseNavigationWakeLock();
+  await Promise.resolve();
+  held.afterRelease = window.__nativeAwakeCalls.slice();
+  window.nativeNavigationPlugin = realPlugin;
+  return held;
+});
+check('the native app disables the iOS idle timer for navigation',
+  nativeLock.calls.length === 1 && nativeLock.calls[0] === true
+    && nativeLock.maySleep === false,
+  JSON.stringify(nativeLock));
+check('native idle control is preferred over an uncertain WebKit wake lock',
+  nativeLock.browserRequests === 0, JSON.stringify(nativeLock));
+check('ending navigation restores the iOS idle timer',
+  nativeLock.afterRelease.length === 2 && nativeLock.afterRelease[1] === false,
+  JSON.stringify(nativeLock));
+
 await page.evaluate(() => { turnNav.active = false; window.__locks.refuse = false; });
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 

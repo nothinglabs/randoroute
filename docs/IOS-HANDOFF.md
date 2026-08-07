@@ -1,13 +1,11 @@
-# iOS notes, for whoever has a Mac
+# iOS handoff
 
-Written 2026-08-01 by an agent working in a Linux container with **no macOS, no
-Xcode, no simulator and no Swift toolchain**. Nothing below was compiled. The
-Swift changes are reasoned from Apple's documented behaviour and from reading
-`ios/App/App/BridgeViewController.swift`, and every one of them needs a build
-before it is believed.
-
-Start by building. If any of the four changes below does not compile, that is
-the most likely thing to be wrong with this file.
+Last audited 2026-08-06 on macOS with Xcode 26.6, iOS 17.5 and 26.5
+simulators, a generic physical-iPhone Release target, and Capacitor 8.4.2. The
+native target compiled without Swift warnings and passed Xcode's shallow store
+validation. The shared web tests and simulator checks are real coverage;
+locked-screen GPS, audio mixing, battery, and thermals still require a physical
+iPhone and a real ride.
 
 ---
 
@@ -26,15 +24,58 @@ Capacitor 8 wrapping the same web app, with one custom plugin.
   code. `npm test` covers it, and covers it on the same bytes iOS ships.
 
 So the native-only surface is exactly one file:
-`ios/App/App/BridgeViewController.swift` (819 lines), which provides location,
+`ios/App/App/BridgeViewController.swift`, which provides location,
 background tracking and spoken navigation.
 
 Rebuild the shell with `npm run ios:sync` after any web change. `mobile-shell/`
 is generated — never edit it.
 
+### First-install startup profile
+
+The generated app carries about **144 MB** of local web/data resources (about
+**149 MB** as an uncompressed Debug `.app`). Three archives account for almost
+all of it: `basemap.pmtiles`, `roads.pmtiles`, and
+`graph2.bin.gz`, about 44 MB each. A clean, disposable iOS 17.5 simulator
+install took **8.89 s before process launch**. A cold iOS 26.5 simulator took
+**25.92 s**; the same build installed in **0.94 s** after its caches were warm.
+A physical-device deployment can be slower, especially over Wi-Fi. That copy
+is Xcode deployment work, not a main-thread hang in the app.
+
+There is a second, independent first-run delay on a physical device. If Xcode
+shows **“Launching ‘App’ is taking longer than expected”** and specifically
+says **“LLDB is likely reading from device memory to resolve symbols,”** the
+app has not hung: Xcode's debugger is resolving/caching symbols for that
+device/OS. Choose **Continue**. To distinguish debugger overhead from app
+startup, stop the Xcode run and open the already-installed app from the home
+screen; or temporarily uncheck **Edit Scheme → Run → Info → Debug executable**.
+Do not leave that unchecked for development, because breakpoints and crash
+inspection will not attach.
+
+With permission controlled, the first map was visible and usable in roughly
+1–2 s. The routing archive expands to about 142 MB and is inflated/indexed in a
+worker. On an empty planner, that work now starts only after the first map load
+and idle opportunity (with a 1.5 s bound); a saved trip or immediate planner
+tap still starts it at once. Cutting deployment time further would require
+smaller map coverage or moving offline archives out of the installed bundle,
+which is a product/offline-availability tradeoff rather than a launch-code fix.
+
+The optimized Release build also survived ten consecutive terminate/relaunch
+cycles on an iPhone SE-sized iOS 17.5 simulator. Process launch requests took
+0.30–1.71 s and every run reached the rendered map; the deferred routing status
+then cleared normally. Simulator framework warnings remained, but there were no
+app crashes or faults.
+
+Native startup calls `getStatus()` and recenters only when location permission
+already exists. It also uses a native-only location button instead of
+constructing MapLibre's browser-geolocation control, whose WebKit permission
+probe can itself raise the sheet. A new install no longer places the location
+sheet over the first map; it asks when the rider taps location or chooses “my
+location.” This was verified on a newly created iOS 17.5 simulator whose status
+remained `prompt` while the fully rendered map was visible.
+
 ---
 
-## 2. Changed, unverified — check these first
+## 2. Native hardening now in place
 
 ### Arrival ended the announcement, not the ride (user-visible)
 
@@ -68,7 +109,8 @@ Then do the same unlocked, where both halves notice, and confirm arrival is
 announced once rather than twice.
 
 The web half is covered by `scripts/test_navigation_arrival.mjs`, which fires
-the plugin event at a stubbed plugin; only the Swift side is unverified here.
+the plugin event at a stubbed plugin. The Swift half compiles; the locked-screen
+ride remains a device check.
 
 ### The audio session was never released (user-visible)
 
@@ -91,7 +133,8 @@ returns when one instruction interrupts another (two turns close together).
 Apple documents this call as able to block. All three entry points made it
 inside `DispatchQueue.main.async` — so the risk landed on opening the app and
 starting navigation. Moved to a global queue with the result hopped back to
-main, via `requireLocationServices(_:then:)`.
+main, via `requireLocationServices(_:then:)`. `statusPayload()` no longer
+repeats the potentially blocking call on main after that check.
 
 **Verify:** it still rejects correctly with Location Services switched off
 system-wide (Settings → Privacy → Location Services → off). That is the path
@@ -104,56 +147,27 @@ installs on a device, and the App Store validator is happy.
 
 ---
 
-## 3. Found, deliberately not changed
+## 3. Location, screen, and speech lifecycle
 
-Both are real but small, and both deserve a device rather than a guess.
+### Cancelled and timed-out location work is settled honestly
 
-### `stopTracking` reports success for a start it cancelled
+- `stopTracking()` rejects a `startTracking()` call still waiting on permission
+  instead of resolving it as though navigation started.
+- Every native `getCurrentPosition()` call has its own bounded timeout, passed
+  from the same JS option used by browser geolocation. Success, failure, denial,
+  and timeout all cancel and remove the matching pending work.
+- A newer pending navigation start rejects the older one rather than orphaning
+  its promise.
 
-```swift
-self.pendingStartCall?.resolve(self.statusPayload())
-```
+### Keeping the screen awake uses native iOS control
 
-If `startTracking` is still waiting on the permission dialog and `stopTracking`
-arrives, the pending start **resolves as though tracking began**. The JS side
-then believes navigation is running when it is not. Rejecting would be more
-honest, but it changes what the web layer sees, so check what
-`startNativeNavigation` in `app.js` does with a rejection before switching it.
+The **Settings → Voice → Keep the screen awake while navigating** setting now
+drives `UIApplication.shared.isIdleTimerDisabled` through `setScreenAwake`.
+The Web Screen Wake Lock API remains a fallback for browsers and mismatched old
+shells. Stopping or arriving always restores the idle timer. The native and web
+paths are exercised by `scripts/test_keep_screen_awake.mjs`.
 
-### `getCurrentPosition` can hang forever
-
-With `.notDetermined`, the call is parked in `pendingPositionCalls` and
-authorization is requested. `locationManagerDidChangeAuthorization` handles
-authorized and denied, but `case .notDetermined: break` — so if the rider
-dismisses the dialog without choosing, nothing ever resolves or rejects that
-promise. A timeout that rejects after, say, 30 s would close it.
-
----
-
-## 3a. Keeping the screen awake — there is no native code for it
-
-`isIdleTimerDisabled` appears **nowhere** in `ios/`. While navigating, the app
-holds the screen on through the WEB Screen Wake Lock API
-(`requestNavigationWakeLock` in `app.js`), which WKWebView has supported since
-iOS 16.4. It is requested when a ride starts, released when it stops, re-taken
-on `visibilitychange`, and now gated on a rider setting — **Settings → Voice →
-"Keep the screen awake while navigating"**, on by default.
-
-Until today the native path also cleared `screenMaySleep`, which is the flag
-behind the "Screen may sleep on this device" warning — so on iOS that warning
-could never appear, whether or not the lock had actually been taken. That is
-fixed: only the wake lock sets it now.
-
-**Worth doing on a Mac:** wire `UIApplication.shared.isIdleTimerDisabled` to
-`startTracking`/`stopTracking`, and expose a bridge call so the web setting can
-drive it. That is the reliable mechanism on iOS and does not depend on WKWebView
-exposing the web API. Whether the web lock actually works in the shipped shell
-is the first thing to measure — a ride where the screen locks after 30 s tells
-you it does not.
-
----
-
-## 3a2. The speech queue, and why `speakText` no longer interrupts
+### The speech queue advances on real native completion
 
 `speakText` still does this:
 
@@ -168,16 +182,25 @@ layer owns a queue (`speakNavigation` in `app.js`) and never hands the plugin a
 second utterance while one is playing — riders were hearing prompts cut off
 mid-word because both engines were set to latest-wins.
 
-The queue paces itself on an **estimate**, because `speak()` calls
-`call.resolve()` as soon as speech has started rather than when it ends. That
-is the weakest part of the arrangement: a prompt longer than the estimate gets
-its tail clipped by the next one.
+Each web-owned utterance carries a `speechId`. The Swift delegate emits
+`speechFinished` from both `didFinish` and `didCancel`; the JS queue advances
+only for the matching ID. A deliberately long watchdog remains for a dead
+bridge/process, but the old spoken-duration estimate no longer clips normal
+sentences. `stopSpeaking` remains deliberate when a maneuver must interrupt a
+lower-priority prompt. `scripts/test_voice_queue.mjs` exercises the handshake.
 
-**If you want to fix it properly:** the plugin already conforms to
-`AVSpeechSynthesizerDelegate`. Add `notifyListeners("speechFinished", ...)` in
-`didFinish` and `didCancel`, and the web side can advance on the real event
-instead of a guess. Leave `stopSpeaking` as it is — it is still used
-deliberately, when a maneuver has to cut across a lower-priority prompt.
+The JS speech engine also assigns every queue session a generation. A late
+`onend` from a cancelled utterance is ignored once a replacement session has
+started, so it cannot clear the new prompt's timer or active state. In browsers,
+the watchdog never advances the queue while `speechSynthesis.speaking` is still
+true. The voice-queue regression test passed five consecutive runs after this
+race was fixed.
+
+`AVSpeechSynthesizer` is now created lazily on the first spoken prompt. The
+native shell also skips the browser-only `speechSynthesis.getVoices()` startup
+scan. Before this, a map-only launch initialized two unused voice clients and
+immediately queried iOS voice assets; after the change, the TTS asset errors and
+work disappeared from the clean startup log.
 
 ---
 
@@ -200,7 +223,7 @@ same treatment there; the payload is already carrying what it would need.
 
 ---
 
-## 4. Not examined
+## 4. Still device-only
 
 Not because they are fine — because reading them without running them tells you
 very little:
@@ -223,8 +246,8 @@ very little:
 
 ## 5. What the web suite already covers
 
-`npm test` — about 7 minutes, 65 files, and it runs the exact JS the native
-shell bundles. Worth running before blaming anything on iOS:
+`npm test` — about 18 minutes locally, 79 files, and it runs the exact JS the
+native shell bundles. Worth running before blaming anything on iOS:
 
 - `test_offline_pwa.mjs` — service worker only, so **not** the native path
 - `test_route_potential.mjs` — routing returns the cheapest path

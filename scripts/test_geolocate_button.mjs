@@ -16,6 +16,52 @@ import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const site = await serveRepo();
 const browser = await launchBrowser();
+
+// A native first launch must not even construct MapLibre's browser-location
+// client. On WKWebView its permission probe can raise the system sheet before
+// a rider touches anything, independently of our explicit getStatus guard.
+const nativeStartupContext = await browser.newContext({
+  serviceWorkers: 'block',
+  viewport: { width: 430, height: 900 },
+  hasTouch: true,
+  isMobile: true,
+});
+await nativeStartupContext.addInitScript(() => {
+  window.__permissionQueries = 0;
+  window.__voiceQueries = 0;
+  const originalQuery = navigator.permissions?.query?.bind(navigator.permissions);
+  if (originalQuery) {
+    navigator.permissions.query = (...args) => {
+      window.__permissionQueries++;
+      return originalQuery(...args);
+    };
+  }
+  const originalGetVoices = window.speechSynthesis?.getVoices?.bind(window.speechSynthesis);
+  if (originalGetVoices) {
+    window.speechSynthesis.getVoices = (...args) => {
+      window.__voiceQueries++;
+      return originalGetVoices(...args);
+    };
+  }
+  window.Capacitor = {
+    Plugins: {
+      NativeNavigation: {
+        getStatus: () => Promise.resolve({ servicesEnabled: true, authorization: 'prompt' }),
+      },
+    },
+    isNativePlatform: () => true,
+  };
+});
+const nativeStartupPage = await nativeStartupContext.newPage();
+await nativeStartupPage.goto(site.url, { waitUntil: 'load' });
+await nativeStartupPage.waitForFunction(() => window.map?.loaded?.(), { timeout: 30000 }).catch(() => {});
+const nativeStartup = await nativeStartupPage.evaluate(() => ({
+  customControl: Boolean(document.querySelector('[data-native-location-control="true"]')),
+  permissionQueries: window.__permissionQueries,
+  voiceQueries: window.__voiceQueries,
+}));
+await nativeStartupContext.close();
+
 const page = await appPage(browser, site.port);
 
 let passed = 0, failed = 0;
@@ -24,6 +70,12 @@ const check = (name, ok, detail = '') => {
   failed++;
   console.log(`FAIL  ${name}${detail ? `  -- ${detail}` : ''}`);
 };
+
+check('the native shell uses a location button without a browser permission probe',
+  nativeStartup.customControl && nativeStartup.permissionQueries === 0,
+  JSON.stringify(nativeStartup));
+check('a map-only native launch does not initialize the unused browser voice engine',
+  nativeStartup.voiceQueries === 0, JSON.stringify(nativeStartup));
 
 // Count every reach for the web location API, and stand in for the native
 // plugin so both runtimes can be driven from one browser.
@@ -38,6 +90,40 @@ await page.evaluate(() => {
   window.__nativePlugin = null;
   window.nativeNavigationPlugin = () => window.__nativePlugin;
 });
+
+/* ----------------------- first install asks only when location is requested */
+const initialPermission = await page.evaluate(async () => {
+  window.__initialLocationCalls = 0;
+  window.__nativePlugin = {
+    getStatus: () => Promise.resolve({ servicesEnabled: true, authorization: 'prompt' }),
+    getCurrentPosition: () => {
+      window.__initialLocationCalls++;
+      return Promise.resolve({ latitude: 47.6, longitude: -122.33, accuracy: 5,
+        timestamp: Date.now() });
+    },
+  };
+  const promptResult = await requestInitialMapLocation();
+  const whilePrompt = window.__initialLocationCalls;
+  // The page was originally loaded as an ordinary browser, whose automatic
+  // geolocation request can still be pending. This scenario is switching the
+  // runtime stub in-place, so clear that unrelated browser promise first.
+  mapLocationRequest = null;
+  window.__nativePlugin.getStatus = () => Promise.resolve({
+    servicesEnabled: true,
+    authorization: 'whileUsing',
+  });
+  const grantedResult = await requestInitialMapLocation();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const afterGrant = window.__initialLocationCalls;
+  window.__nativePlugin = null;
+  return { promptResult, whilePrompt, grantedResult, afterGrant };
+});
+check('a first native launch does not trigger the location permission sheet',
+  initialPermission.promptResult === false && initialPermission.whilePrompt === 0,
+  JSON.stringify(initialPermission));
+check('a returning rider with permission is still centered automatically',
+  initialPermission.grantedResult === true && initialPermission.afterGrant === 1,
+  JSON.stringify(initialPermission));
 
 const tapLocate = () => page.evaluate(() => {
   window.__webLocationCalls = 0;
@@ -86,9 +172,11 @@ check('and it puts the rider back in the middle', afterPanned.follows === true,
 await page.evaluate(() => {
   turnNav.active = false;
   window.__pluginAsked = 0;
+  window.__pluginLocationOptions = null;
   window.__nativePlugin = {
-    getCurrentPosition() {
+    getCurrentPosition(options) {
       window.__pluginAsked++;
+      window.__pluginLocationOptions = options;
       return Promise.resolve({ latitude: 47.6, longitude: -122.33, accuracy: 5,
         timestamp: Date.now() });
     },
@@ -98,9 +186,12 @@ await tapLocate();
 await page.waitForTimeout(400);
 const nativeIdle = await page.evaluate(() => ({
   calls: window.__webLocationCalls, asked: window.__pluginAsked,
+  options: window.__pluginLocationOptions,
 }));
 check('on the native app the button asks the plugin, not the web API',
   nativeIdle.calls === 0 && nativeIdle.asked === 1, JSON.stringify(nativeIdle));
+check('the native request receives the same finite timeout as web geolocation',
+  nativeIdle.options?.timeoutMs === 15000, JSON.stringify(nativeIdle));
 
 /* ------------------------------------- and the ordinary web app is untouched */
 await page.evaluate(() => { window.__nativePlugin = null; turnNav.active = false; });

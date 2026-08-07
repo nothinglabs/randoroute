@@ -1,8 +1,8 @@
 {
-  "name": "clauding-ios-shell",
+  "name": "randoroute-ios-shell",
   "version": "1.0.0",
   "private": true,
-  "description": "Personal Capacitor iOS wrapper for the Clauding web app.",
+  "description": "Capacitor iOS wrapper for the Just Rolling Along bicycle-routing app.",
   "scripts": {
     "test": "node scripts/run_tests.mjs",
     "data:compress-overlays": "node scripts/build_compressed_overlays.mjs",

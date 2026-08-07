@@ -319,7 +319,7 @@ def main() -> None:
 
     output = Path(args.out)
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="clauding-basemap-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="randoroute-basemap-") as tmp:
         work = Path(tmp)
         layers = export_osm_context(Path(args.src), work)
         land = work / "land.geojsonseq"

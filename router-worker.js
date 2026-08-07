@@ -2426,6 +2426,11 @@ function presentAsLetters(routes, recommended) {
 // it was asked for, in the rider's vocabulary rather than a profile id.
 const MODE_WORDS = { direct: 'Direct', balanced: 'Balanced', low: 'Low stress' };
 function profileExplanation(profile) {
+  if (profile.crossBred) {
+    return profile.crossBreedKind === 'ferry'
+      ? 'Combined the practical and safer versions of the same ferry itinerary at shared terminals.'
+      : 'Combined sections of two existing candidates at an exact shared road junction.';
+  }
   if (profile.fullyMatchingProbe) {
     return 'Strict probe: searched only road that fully matches your rules.';
   }
@@ -2526,6 +2531,7 @@ function publicCandidate(candidate) {
       prefDesignated: _profile.prefDesig,
       prefResidential: _profile.prefResidential,
       alternativeCorridor: !!_profile.alternativeCorridor,
+      crossBred: !!_profile.crossBred,
       directLens: !!_profile.directLens,
       discoveryMaxSpeed: _profile.discoveryMaxSpeed || null,
       fullyMatchingRules: !!_profile.fullyMatchingRules,
@@ -2781,10 +2787,255 @@ function crossBreedFerryCandidates(base, donor, raw, rules) {
       label: 'Adaptive corridor', mode: 'balanced', prefDesig: true, prefResidential: true,
       order: base._profile.order + 0.06 + landIndex * 0.01,
       alternativeCorridor: true,
+      crossBred: true,
+      crossBreedKind: 'ferry',
       refinedFrom: `${base._profile.id}+${donor._profile.id}`,
     };
     hybrid.aggression = routeAggression(hybrid);
     raw.push(hybrid);
+  }
+}
+
+// Ordinary route candidates can contain the same local complement as the
+// ferry field case: one found the better first half, another found the better
+// second half, and a global cost profile never asked for that combination.
+// Ferries make the splice points obvious (their terminal nodes). Away from a
+// ferry, use only EXACT graph nodes shared by both paths -- two lines crossing
+// on the map are not necessarily connected road.
+//
+// Keep this deliberately bounded. Cross-breeding is a cheap path operation,
+// not another search, but an unrestricted all-pairs/all-junction pass would
+// still fill the troubleshooting record with arbitrary combinations. Ten
+// distinct parents means at most 45 pairs; each pair contributes only its
+// best-priced and safest useful child, and at most six children enter `raw`.
+const GENERAL_CROSS_BREED_MAX_SEEDS = 10;
+const GENERAL_CROSS_BREED_MAX_RESULTS = 6;
+const GENERAL_CROSS_BREED_MIN_PART_M = 1000;
+
+function sharedCrossBreedCuts(first, second) {
+  const secondIndex = new Map();
+  for (let index = 1; index < second.nodeIds.length - 1; index++) {
+    secondIndex.set(second.nodeIds[index], index);
+  }
+  const cuts = [];
+  let previousFirst = -2, previousSecond = -2;
+  for (let firstIndex = 1; firstIndex < first.nodeIds.length - 1; firstIndex++) {
+    const secondAt = secondIndex.get(first.nodeIds[firstIndex]);
+    if (secondAt == null) continue;
+    // Switching anywhere along the same shared edge run creates identical
+    // geometry. Retain only the first node of that run. Consecutive shared
+    // nodes reached over DIFFERENT parallel edges remain separate cuts.
+    const sameRun = firstIndex === previousFirst + 1 && secondAt === previousSecond + 1
+      && first.edgeIds[previousFirst] === second.edgeIds[previousSecond];
+    if (!sameRun) cuts.push({ first: firstIndex, second: secondAt });
+    previousFirst = firstIndex;
+    previousSecond = secondAt;
+  }
+  return cuts;
+}
+
+function crossBreedWouldLoop(prefix, prefixCut, suffix, suffixCut) {
+  // Each A* parent is simple. A loop can only appear when a node in the chosen
+  // prefix occurs again after the junction in the other parent's suffix.
+  const prefixNodes = new Set(prefix.nodeIds.slice(0, prefixCut));
+  for (let index = suffixCut + 1; index < suffix.nodeIds.length; index++) {
+    if (prefixNodes.has(suffix.nodeIds[index])) return true;
+  }
+  return false;
+}
+
+function crossBreedPrefixMetrics(route) {
+  const prefix = [{ distM: 0, timeS: 0, failM: 0, dismountM: 0, facilityM: 0 }];
+  for (let index = 0; index < route.edgeIds.length; index++) {
+    const previous = prefix[index], edge = route.edgeIds[index], seg = route.segs[index];
+    const distM = previous.distM + eLen[edge];
+    prefix.push({
+      distM,
+      timeS: previous.timeS + (Number(seg.timeS) || 0),
+      failM: previous.failM + (seg.level === 4 ? eLen[edge] : 0),
+      dismountM: previous.dismountM + (isDismountEdge(edge) ? eLen[edge] : 0),
+      facilityM: previous.facilityM + (eFacility[edge] >= 2 ? eLen[edge] : 0),
+    });
+  }
+  return prefix;
+}
+
+function crossBreedEstimate(prefixMetrics, prefixCut, suffixMetrics, suffixCut) {
+  const before = prefixMetrics[prefixCut];
+  const suffixStart = suffixMetrics[suffixCut];
+  const suffixEnd = suffixMetrics[suffixMetrics.length - 1];
+  const combined = {};
+  for (const key of ['distM', 'timeS', 'failM', 'dismountM', 'facilityM']) {
+    combined[key] = before[key] + suffixEnd[key] - suffixStart[key];
+  }
+  combined.score = combined.timeS + combined.failM + combined.dismountM
+    + Math.max(0, combined.distM - combined.facilityM) * NETWORK_GAP_PRICE_S_PER_M;
+  return combined;
+}
+
+function improvesOnParent(child, parent) {
+  // A real blend gives something back against EACH parent: time, priced
+  // recommendation quality, or the lexicographic safety outcome. This keeps
+  // "take two already-worse halves" noise out without requiring the child to
+  // dominate either endpoint of a useful fast-vs-safe tradeoff.
+  return child.timeS + 5 < parent.timeS
+    || recommendationScore(child) + 5 < recommendationScore(parent)
+    || compareSafety(child, parent) < 0;
+}
+
+function distinctLandCrossBreedSeeds(raw) {
+  const eligible = raw.filter((candidate) => candidate.ferryM <= 0.5
+    && candidate.edgeIds?.length > 1
+    && candidate.nodeIds?.length === candidate.edgeIds.length + 1
+    && new Set(candidate.nodeIds).size === candidate.nodeIds.length);
+  if (eligible.length < 2) return eligible;
+  const fastest = eligible.reduce((best, route) => route.timeS < best.timeS ? route : best);
+  const reasonable = eligible.filter((route) => route.timeS <= fastest.timeS * 2.2 + 600
+    || route.failM + 80 < fastest.failM || route.freewayM + 80 < fastest.freewayM);
+  const distinct = [];
+  for (const candidate of [...reasonable].sort((a, b) =>
+    recommendationScore(a) - recommendationScore(b)
+      || compareSafety(a, b) || a._profile.id.localeCompare(b._profile.id))) {
+    if (distinct.every((other) => meaningfullyDifferent(candidate, other))) distinct.push(candidate);
+  }
+  if (distinct.length <= GENERAL_CROSS_BREED_MAX_SEEDS) return distinct;
+
+  // Always retain the three useful endpoints, then fill by corridor diversity.
+  const chosen = [];
+  const add = (candidate) => { if (candidate && !chosen.includes(candidate)) chosen.push(candidate); };
+  add(distinct.reduce((best, route) =>
+    recommendationScore(route) < recommendationScore(best) ? route : best));
+  add(distinct.reduce((best, route) => route.timeS < best.timeS ? route : best));
+  add(distinct.reduce((best, route) => compareSafety(route, best) < 0 ? route : best));
+  while (chosen.length < GENERAL_CROSS_BREED_MAX_SEEDS) {
+    let best = null, bestValue = -Infinity;
+    for (const candidate of distinct) {
+      if (chosen.includes(candidate)) continue;
+      const diversity = Math.min(...chosen.map((other) => 1 - edgeOverlap(candidate, other)));
+      const quality = Math.min(1, recommendationScore(chosen[0]) / recommendationScore(candidate));
+      const value = diversity * 0.8 + quality * 0.2;
+      if (value > bestValue) { best = candidate; bestValue = value; }
+    }
+    if (!best) break;
+    add(best);
+  }
+  return chosen;
+}
+
+function addGeneralCrossBreedCandidates(raw, rules) {
+  const seeds = distinctLandCrossBreedSeeds(raw);
+  if (seeds.length < 2) return;
+  const metrics = new Map(seeds.map((route) => [route, crossBreedPrefixMetrics(route)]));
+  const pool = [];
+  for (let firstIndex = 0; firstIndex < seeds.length; firstIndex++) {
+    for (let secondIndex = firstIndex + 1; secondIndex < seeds.length; secondIndex++) {
+      const first = seeds[firstIndex], second = seeds[secondIndex];
+      if (!meaningfullyDifferent(first, second)) continue;
+      const recipes = [];
+      const pair = [];
+      for (const cut of sharedCrossBreedCuts(first, second)) {
+        for (const recipe of [
+          { prefix: first, prefixCut: cut.first, suffix: second, suffixCut: cut.second },
+          { prefix: second, prefixCut: cut.second, suffix: first, suffixCut: cut.first },
+        ]) {
+          if (crossBreedWouldLoop(recipe.prefix, recipe.prefixCut,
+            recipe.suffix, recipe.suffixCut)) continue;
+          recipe.estimate = crossBreedEstimate(metrics.get(recipe.prefix), recipe.prefixCut,
+            metrics.get(recipe.suffix), recipe.suffixCut);
+          const prefixM = metrics.get(recipe.prefix)[recipe.prefixCut].distM;
+          const suffixMetrics = metrics.get(recipe.suffix);
+          const suffixM = suffixMetrics[suffixMetrics.length - 1].distM
+            - suffixMetrics[recipe.suffixCut].distM;
+          if (prefixM < GENERAL_CROSS_BREED_MIN_PART_M
+              || suffixM < GENERAL_CROSS_BREED_MIN_PART_M) continue;
+          recipes.push(recipe);
+        }
+      }
+      // Full route fragments copy geometry and segment records. Rank every
+      // possible junction using additive prefix metrics, then materialize only
+      // the best-priced and safest few. That keeps the pass cheap on a phone.
+      const byPrice = [...recipes].sort((a, b) => a.estimate.score - b.estimate.score
+        || a.estimate.failM - b.estimate.failM);
+      const bySafety = [...recipes].sort((a, b) => a.estimate.failM - b.estimate.failM
+        || a.estimate.dismountM - b.estimate.dismountM
+        || a.estimate.score - b.estimate.score);
+      const finalists = [];
+      for (const recipe of [byPrice[0], bySafety[0]]) {
+        if (recipe && !finalists.includes(recipe)) finalists.push(recipe);
+      }
+      for (const recipe of finalists) {
+        const prefixPart = routeFragment(recipe.prefix, 0, recipe.prefixCut, rules);
+        const suffixPart = routeFragment(recipe.suffix, recipe.suffixCut,
+          recipe.suffix.edgeIds.length, rules);
+        if (!prefixPart || !suffixPart
+            || prefixPart.distM < GENERAL_CROSS_BREED_MIN_PART_M
+            || suffixPart.distM < GENERAL_CROSS_BREED_MIN_PART_M) continue;
+        const child = mergeRouteParts([prefixPart, suffixPart],
+          recipe.prefix.snapStartM, recipe.suffix.snapEndM);
+        child.aggression = routeAggression(child);
+        if (!improvesOnParent(child, recipe.prefix)
+            || !improvesOnParent(child, recipe.suffix)) continue;
+        // It must add a route, not merely reconstruct either parent or a
+        // third candidate already in the portfolio.
+        if (raw.some((existing) => !meaningfullyDifferent(child, existing))) continue;
+        child._crossBreedParents = [recipe.prefix, recipe.suffix];
+        pair.push(child);
+      }
+      if (!pair.length) continue;
+      pair.sort((a, b) => recommendationScore(a) - recommendationScore(b)
+        || compareSafety(a, b) || a.timeS - b.timeS);
+      pool.push(pair[0]);
+      const safest = pair.reduce((best, child) => compareSafety(child, best) < 0 ? child : best);
+      if (safest !== pair[0] && meaningfullyDifferent(safest, pair[0])) pool.push(safest);
+    }
+  }
+  if (!pool.length) return;
+
+  // Collapse children from different parent pairs that found the same blend.
+  const unique = [];
+  for (const child of pool.sort((a, b) => recommendationScore(a) - recommendationScore(b)
+    || compareSafety(a, b))) {
+    if (unique.every((other) => meaningfullyDifferent(child, other))) unique.push(child);
+  }
+  const chosen = [];
+  const add = (child) => {
+    if (child && chosen.length < GENERAL_CROSS_BREED_MAX_RESULTS
+        && chosen.every((other) => meaningfullyDifferent(child, other))) chosen.push(child);
+  };
+  add(unique[0]);
+  add(unique.reduce((best, child) => compareSafety(child, best) < 0 ? child : best));
+  while (chosen.length < GENERAL_CROSS_BREED_MAX_RESULTS) {
+    let best = null, bestValue = -Infinity;
+    for (const child of unique) {
+      if (chosen.includes(child)) continue;
+      const diversity = Math.min(...chosen.map((other) => 1 - edgeOverlap(child, other)));
+      const quality = Math.min(1, recommendationScore(unique[0]) / recommendationScore(child));
+      const value = diversity * 0.7 + quality * 0.3;
+      if (value > bestValue) { best = child; bestValue = value; }
+    }
+    if (!best) break;
+    add(best);
+    // `best` can be too close to a route already chosen. Remove it so the
+    // bounded loop still makes progress.
+    if (!chosen.includes(best)) unique.splice(unique.indexOf(best), 1);
+  }
+
+  for (let index = 0; index < chosen.length; index++) {
+    const child = chosen[index];
+    const [prefix, suffix] = child._crossBreedParents;
+    delete child._crossBreedParents;
+    child._profile = {
+      id: `combined-corridor${index ? `-${index + 1}` : ''}`,
+      label: 'Combined corridor', mode: 'balanced',
+      prefDesig: !!(prefix._profile.prefDesig || suffix._profile.prefDesig),
+      prefResidential: !!(prefix._profile.prefResidential || suffix._profile.prefResidential),
+      order: 1.47 + index * 0.01,
+      alternativeCorridor: true,
+      crossBred: true,
+      crossBreedKind: 'junction',
+      refinedFrom: `${prefix._profile.id}+${suffix._profile.id}`,
+    };
+    raw.push(child);
   }
 }
 
@@ -3019,6 +3270,11 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   progress?.('Checking for a practical route that fully matches your rules…', 0.9);
   ensureFullyMatchingCandidate(raw, points, rules, snaps);
   endPhase('matching');
+  if (points.length === 2) {
+    progress?.('Combining compatible route sections…', 0.93);
+    addGeneralCrossBreedCandidates(raw, rules);
+    endPhase('crossbreed');
+  }
 
   const fastest = raw.reduce((best, r) => r.timeS < best.timeS ? r : best, raw[0]);
   const reasonable = raw.filter((r) => r._profile.fullyMatchingRules
@@ -3051,8 +3307,9 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const bothPreferences = unique.find((r) => r._profile.prefDesig && r._profile.prefResidential);
   const fullyMatching = unique.find((r) => r._profile.fullyMatchingRules);
   const adaptiveCorridor = unique.find((r) => r._profile.id.startsWith('adaptive-corridor'));
+  const combinedCorridor = unique.find((r) => r._profile.id.startsWith('combined-corridor'));
   const protectedCandidates = new Set([
-    preferred, bothPreferences, fullyMatching, adaptiveCorridor,
+    preferred, bothPreferences, fullyMatching, adaptiveCorridor, combinedCorridor,
   ].filter(Boolean));
   const useful = unique.filter((candidate) => protectedCandidates.has(candidate)
     || !unique.some((other) => {
@@ -3176,7 +3433,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (selected.every((other) => meaningfullyDifferent(last, other))) selected.push(last);
   }
   const required = [...new Set([recommended, fastestOverall, safestOverall, boundedSafer,
-    boundedBothPreferences, boundedPreferred, fullyMatching, adaptiveCorridor].filter(Boolean))];
+    boundedBothPreferences, boundedPreferred, fullyMatching, adaptiveCorridor,
+    combinedCorridor].filter(Boolean))];
   for (const candidate of required) {
     if (selected.includes(candidate)) continue;
     if (selected.length < MAX_OFFERED) {
@@ -3271,6 +3529,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       choices: choices.map((r) => r._profile.id), selected: selected.map((r) => r._profile.id),
       safest: safestOverall._profile.id, boundedSafer: boundedSafer?._profile.id,
       fullyMatching: fullyMatching?._profile.id, adaptiveCorridor: adaptiveCorridor?._profile.id,
+      combinedCorridor: combinedCorridor?._profile.id,
       recommended: recommended?._profile.id,
     } : undefined,
   };

@@ -20,6 +20,16 @@ const context = await browser.newContext({
 // paint and the moment the app takes over.
 await context.addInitScript(() => {
   window.__launchSaid = [];
+  window.__routingWorkerStarts = [];
+  const PlatformWorker = window.Worker;
+  window.Worker = function RecordingWorker(...args) {
+    window.__routingWorkerStarts.push({
+      url: String(args[0] || ''),
+      appReady: document.documentElement.classList.contains('app-ready'),
+    });
+    return new PlatformWorker(...args);
+  };
+  window.Worker.prototype = PlatformWorker.prototype;
   const record = () => {
     const node = document.getElementById('appLaunchStatus');
     const text = node && node.textContent.trim();
@@ -77,6 +87,17 @@ check('but not after the app has taken over',
 
 const fallback = await page.evaluate(() => typeof window.__dismissAppLaunchScreen === 'function');
 check('a startup failure cannot trap the rider behind the screen', fallback);
+
+// A new install with no saved trip should paint its local map before starting
+// the statewide graph's heavy inflate/index pass. Route editing still starts it
+// immediately through ensureRouter(); this checks only the untouched boot path.
+await page.waitForFunction(() => window.__routingWorkerStarts.length > 0,
+  { timeout: 10000 }).catch(() => {});
+const workerStarts = await page.evaluate(() => window.__routingWorkerStarts.slice());
+const routingStarts = workerStarts.filter((entry) => /router-worker\.js(?:$|\?)/.test(entry.url));
+check('background routing initialization waits until the first map is usable',
+  routingStarts.length > 0 && routingStarts.every((entry) => entry.appReady),
+  JSON.stringify(workerStarts));
 
 await browser.close();
 site.close();
