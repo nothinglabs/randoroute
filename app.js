@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.620';
+const APP_VERSION = '2026-08-07.621';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7875,6 +7875,14 @@ function renderRouteStops() {
       button.addEventListener('click', handler);
       return button;
     };
+    if (routing.vias.length > 1) {
+      actions.append(
+        action('route-stop-up', '↑', `Move stop ${index + 1} earlier`, index === 0,
+          () => moveVia(via, -1)),
+        action('route-stop-down', '↓', `Move stop ${index + 1} later`, index === routing.vias.length - 1,
+          () => moveVia(via, 1)),
+      );
+    }
     actions.append(
       action('route-stop-remove', '✕', `Remove stop ${index + 1}`, false, () => removeVia(via)),
     );
@@ -7940,6 +7948,23 @@ function updateVia(via, lngLat, name = 'Point on map') {
   regenerateRoutesAfterWaypointChange();
   computeRoute();
   updateArmButtons();
+  saveStateSoon();
+  return true;
+}
+
+function moveVia(via, offset) {
+  const from = routing.vias.indexOf(via);
+  const to = from + Number(offset);
+  if (from < 0 || to < 0 || to >= routing.vias.length || from === to) return false;
+  exitSharedRoute();
+  routing.vias.splice(from, 1);
+  routing.vias.splice(to, 0, via);
+  regenerateRoutesAfterWaypointChange();
+  computeRoute();
+  updateArmButtons();
+  showRouteActionToast(`Stop moved to position ${to + 1} · recalculating…`, {
+    busy: true, duration: 0,
+  });
   saveStateSoon();
   return true;
 }
@@ -8098,6 +8123,35 @@ function removeRouteEndpoint(kind) {
   return true;
 }
 
+function reverseRoute() {
+  if (!routing.start || !routing.end || turnNav.active) return false;
+  exitSharedRoute();
+  closePlacePicker();
+  dismissRoadInfo();
+  clearSearchResultMarker();
+  const oldStart = routing.start;
+  const oldStartName = routing.startName;
+  routing.start = routing.end;
+  routing.startName = routing.endName;
+  routing.end = oldStart;
+  routing.endName = oldStartName;
+  routing.vias.reverse();
+  // Once reversed, the new start is a deliberately chosen route point. It
+  // must not inherit the old start's "follow my device" behavior.
+  routing.startFromDevice = false;
+  routing.startDefaultsToDevice = false;
+  defaultStartRequest++;
+  deviceStartRequest++;
+  routing.startMarker?.setLngLat(routing.start);
+  routing.endMarker?.setLngLat(routing.end);
+  regenerateRoutesAfterWaypointChange();
+  computeRoute();
+  updateArmButtons();
+  showRouteActionToast('Route reversed · recalculating…', { busy: true, duration: 0 });
+  saveStateSoon();
+  return true;
+}
+
 function clearRoute() {
   routeIsDisplayed = false;
   exitSharedRoute();
@@ -8159,6 +8213,13 @@ function updateArmButtons() {
     button.hidden = !routing[kind]
       && !(kind === 'start' && routing.startDefaultsToDevice);
   });
+  const reverseButton = document.getElementById('rb-reverse');
+  if (reverseButton) {
+    reverseButton.hidden = !(routing.start && routing.end);
+    reverseButton.disabled = turnNav.active;
+    reverseButton.title = turnNav.active ? 'Pause navigation to reverse the route' : 'Reverse route';
+    reverseButton.setAttribute('aria-label', reverseButton.title);
+  }
   renderRouteStops();
 }
 
@@ -8523,6 +8584,7 @@ function buildRoutingPanel() {
     document.getElementById('rb-' + kind).addEventListener('click', () => openPlaceSearch(kind));
   }
   document.getElementById('rb-search').addEventListener('click', () => openPlaceSearch());
+  document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
     button.addEventListener('click', () => removeRouteEndpoint(button.dataset.endpointRemove));
   });
@@ -9014,6 +9076,7 @@ function closePlacePicker() {
   restoreViewportAfterPlacePicker();
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
+  setUseLocationBusy(false);
 }
 
 function clearSearchResultMarker() {
@@ -9063,6 +9126,36 @@ function showPlaceOnMap(point, name = 'Point on map', { searchResult = false } =
   return true;
 }
 
+function setUseLocationBusy(busy) {
+  const button = document.getElementById('useLoc');
+  if (!button) return;
+  button.disabled = Boolean(busy);
+  button.setAttribute('aria-busy', String(Boolean(busy)));
+}
+
+function setPlacePickerHint(kind = 'map', message = '') {
+  const hint = document.getElementById('placePickerHint');
+  if (!hint) return;
+  hint.classList.toggle('location-error', kind === 'location-error');
+  const icon = document.createElement('span');
+  icon.className = 'picker-hint-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = kind === 'location-error' ? '!' : kind === 'internet' ? '◎' : '⌖';
+  const copy = document.createElement('span');
+  if (kind === 'map') {
+    const lead = document.createElement('strong');
+    lead.textContent = 'Tap anywhere on the map';
+    copy.append(lead, document.createTextNode(' or search below.'));
+  } else if (kind === 'location-error') {
+    const lead = document.createElement('strong');
+    lead.textContent = 'Couldn’t get your location.';
+    copy.append(lead, document.createTextNode(' Search or tap the map.'));
+  } else {
+    copy.textContent = message;
+  }
+  hint.replaceChildren(icon, copy);
+}
+
 function openPlaceSearch(target = null) {
   routing.arm = null;
   dismissRoadInfo();
@@ -9083,9 +9176,7 @@ function openPlaceSearch(target = null) {
   const targetLabel = placeSearchTarget === 'start' ? 'start' : 'destination';
   document.getElementById('placePickerTitle').textContent = placeSearchTarget
     ? `Choose ${targetLabel}` : 'Search map';
-  document.getElementById('placePickerHint').textContent = placeSearchTarget
-    ? `Search for your ${targetLabel}, or tap anywhere on the map.`
-    : 'Search for a place, or tap anywhere on the map.';
+  setPlacePickerHint('map');
   // Device location is meaningful as a route start. It is deliberately absent
   // from Destination and generic place search so it cannot be offered as an
   // accidental destination.
@@ -9097,6 +9188,7 @@ function openPlaceSearch(target = null) {
   searchInput.setAttribute('aria-label', 'Search places');
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
+  setUseLocationBusy(false);
   document.getElementById('placePicker').hidden = false;
   document.body.classList.add('place-picker-open');
   setRouteStatus('Search offline places, or use internet search at the end of the list');
@@ -9202,9 +9294,9 @@ function buildPlacePicker() {
       return;
     }
     internetPlaceSearch = true;
-    document.getElementById('placePickerHint').textContent = placeSearchTarget
-      ? `Internet search is on. Choose a result to set your ${placeSearchTarget === 'start' ? 'start' : 'destination'}.`
-      : 'Internet search is on. Choose a result to see it on the map.';
+    setPlacePickerHint('internet', placeSearchTarget
+      ? `Internet results set your ${placeSearchTarget === 'start' ? 'start' : 'destination'}.`
+      : 'Choose an internet result to see it on the map.');
     const requestId = ++placeSearchRequestId;
     render([], `Searching the internet for “${query}”…`);
     try {
@@ -9230,6 +9322,8 @@ function buildPlacePicker() {
   input.addEventListener('input', () => {
     clearTimeout(internetPlaceSearchTimer);
     placeSearchRequestId++;
+    setUseLocationBusy(false);
+    if (!internetPlaceSearch) setPlacePickerHint('map');
     const query = input.value.trim();
     if (internetPlaceSearch) {
       if (query.length < 2) {
@@ -9268,13 +9362,18 @@ function buildPlacePicker() {
   document.getElementById('placePickerClose').addEventListener('click', closePlacePicker);
   document.getElementById('useLoc').addEventListener('click', () => {
     const requestId = ++placeSearchRequestId;
+    setUseLocationBusy(true);
+    setPlacePickerHint('status', 'Finding your location…');
     setRouteStatus('Locating…');
     getFreshDevicePosition().then((pos) => {
       if (requestId !== placeSearchRequestId) return;
+      setUseLocationBusy(false);
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
       choosePlaceSearchResult(lngLat, 'My location', { fromDevice: true });
     }).catch(() => {
       if (requestId !== placeSearchRequestId) return;
+      setUseLocationBusy(false);
+      setPlacePickerHint('location-error');
       setRouteStatus('');
     });
   });

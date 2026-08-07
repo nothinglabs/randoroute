@@ -25,6 +25,7 @@ const initial = await page.evaluate(() => {
     destinationVisible: !document.querySelector('.route-endpoint-end-row').hidden,
     reorderGone: !document.getElementById('rb-reorder')
       && !document.getElementById('reorderRouteDialog'),
+    reverseHidden: document.getElementById('rb-reverse').hidden,
   };
   setRoutePoint('start', { lng: -122.335, lat: 47.61 }, 'Seattle');
   setRoutePoint('end', { lng: -122.76, lat: 48.12 }, 'Port Townsend');
@@ -39,7 +40,9 @@ const initial = await page.evaluate(() => {
     oldControlsGone: !document.getElementById('rb-via') && !document.getElementById('rb-more')
       && !document.getElementById('routeActionsMenu'),
     endpointControls: document.querySelectorAll('.route-endpoint-row .route-stop-action').length,
-    inlineArrows: document.querySelectorAll('#routeBar .route-stop-up, #routeBar .route-stop-down, [data-endpoint-move]').length,
+    stopArrows: document.querySelectorAll('#routeBar .route-stop-up, #routeBar .route-stop-down').length,
+    endpointArrows: document.querySelectorAll('[data-endpoint-move]').length,
+    reverseVisible: !document.getElementById('rb-reverse').hidden,
     endpointWidth: Math.round(card.width),
     viewportWidth: innerWidth,
     actionBoxes: [...document.querySelectorAll('.route-stop-action')].slice(0, 3).map((button) => {
@@ -54,14 +57,16 @@ const initial = await page.evaluate(() => {
   };
 });
 check('a blank planner shows Destination first and hides Start and all reordering UI',
-  initial.blank.startHidden && initial.blank.destinationVisible && initial.blank.reorderGone,
+  initial.blank.startHidden && initial.blank.destinationVisible && initial.blank.reorderGone
+    && initial.blank.reverseHidden,
   JSON.stringify(initial.blank));
 check('the main card shows start, named stops, and destination in trip order',
   initial.itinerary.join(' | ') === 'From Seattle | Stop 1 Mukilteo | Stop 2 Point on map | To Port Townsend',
   JSON.stringify(initial.itinerary));
-check('inline arrows and old route menus are gone while delete and search remain available',
+check('two stops get inline order arrows while endpoints and old route menus stay uncluttered',
   initial.oldControlsGone && initial.endpointControls === 2
-    && initial.inlineArrows === 0, JSON.stringify(initial));
+    && initial.stopArrows === 4 && initial.endpointArrows === 0
+    && initial.reverseVisible, JSON.stringify(initial));
 check('map stop pins use the same itinerary numbers',
   initial.markerNumbers.join(',') === '1,2', JSON.stringify(initial.markerNumbers));
 check('the itinerary and search button fit the phone viewport',
@@ -82,6 +87,26 @@ check('routine route UI refreshes do not steal focus from a stop control', await
 const shared = await page.evaluate(() => readSharedRoute(shareRouteUrl())?.route?.vn);
 check('shared routes preserve stop order', shared?.join('|') === 'Mukilteo|Point on map',
   JSON.stringify(shared));
+
+await page.locator('[data-via-index="0"] .route-stop-down').click();
+check('a stop arrow moves it once and renumbers the visible itinerary', await page.evaluate(() =>
+  routing.vias.map((via) => via.name).join('|') === 'Point on map|Mukilteo'
+    && [...document.querySelectorAll('.route-stop-edit strong')].map((el) => el.textContent).join('|')
+      === 'Point on map|Mukilteo'
+    && document.querySelector('[data-via-index="0"] .route-stop-up').disabled));
+await page.locator('[data-via-index="1"] .route-stop-up').click();
+check('moving the stop back restores the original route order', await page.evaluate(() =>
+  routing.vias.map((via) => via.name).join('|') === 'Mukilteo|Point on map'));
+
+await page.locator('#rb-reverse').click();
+check('Reverse swaps endpoints and reverses stop order', await page.evaluate(() =>
+  routing.startName === 'Port Townsend' && routing.endName === 'Seattle'
+    && routing.vias.map((via) => via.name).join('|') === 'Point on map|Mukilteo'
+    && !routing.startFromDevice));
+await page.locator('#rb-reverse').click();
+check('Reverse can restore the original trip order', await page.evaluate(() =>
+  routing.startName === 'Seattle' && routing.endName === 'Port Townsend'
+    && routing.vias.map((via) => via.name).join('|') === 'Mukilteo|Point on map'));
 
 await page.locator('[data-via-edit="0"]').click();
 await page.waitForSelector('#readout.show');
@@ -105,7 +130,7 @@ check('Start-triggered search assigns its result immediately without a prompt ca
     && document.getElementById('placePicker').hidden
     && !document.getElementById('readout').classList.contains('show')
     && document.querySelectorAll('.search-result-marker').length === 0)
-    && targetedStart.title === 'Choose start' && /search for your start/i.test(targetedStart.hint),
+    && targetedStart.title === 'Choose start' && /tap anywhere on the map/i.test(targetedStart.hint),
   JSON.stringify(targetedStart));
 
 await page.locator('#rb-end').click();
@@ -180,7 +205,7 @@ const internetMode = await page.evaluate(() => ({
   internetChoiceGone: !document.querySelector('#placeResults .place-internet-search'),
 }));
 check('the final result switches the dialog into internet-search mode',
-  internetMode.hint.startsWith('Internet search is on')
+  /internet result/i.test(internetMode.hint)
     && internetMode.result.includes('Test Coffee') && internetMode.internetChoiceGone,
   JSON.stringify(internetMode));
 await page.locator('#placePickerClose').click();
@@ -189,7 +214,8 @@ await page.locator('[data-via-index="0"] .route-stop-remove').click();
 check('a stop can be removed directly from the itinerary', await page.evaluate(() =>
   routing.vias.length === 1
     && document.querySelectorAll('.route-stop-row').length === 1
-    && document.querySelector('.route-stop-edit strong')?.textContent === 'Point on map'));
+    && document.querySelector('.route-stop-edit strong')?.textContent === 'Point on map'
+    && document.querySelectorAll('.route-stop-up, .route-stop-down').length === 0));
 
 await page.locator('[data-endpoint-remove="start"]').click();
 check('Start can be deleted without deleting the remaining itinerary', await page.evaluate(() =>

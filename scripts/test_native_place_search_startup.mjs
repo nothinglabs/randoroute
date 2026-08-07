@@ -163,6 +163,20 @@ check('choosing a targeted Destination assigns it directly and reveals Current l
 await page.click('#rb-start');
 check('current location is available when explicitly choosing Start',
   await page.evaluate(() => !document.getElementById('useLoc').hidden));
+await page.evaluate(() => {
+  getFreshDevicePosition = () => Promise.reject(new Error('GPS unavailable'));
+});
+await page.click('#useLoc');
+await page.waitForFunction(() => document.getElementById('placePickerHint')
+  ?.classList.contains('location-error'));
+state = await page.evaluate(() => ({
+  pickerVisible: !document.getElementById('placePicker').hidden,
+  hint: document.getElementById('placePickerHint').textContent,
+  buttonReady: !document.getElementById('useLoc').disabled,
+}));
+check('an explicit Current location failure is explained inside the open picker',
+  state.pickerVisible && state.buttonReady && /couldn’t get your location/i.test(state.hint)
+    && /search or tap the map/i.test(state.hint), JSON.stringify(state));
 await page.fill('#placeSearch', 'Seattle');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 await page.click('#placeResults .place-hit:not(.place-internet-search)');
