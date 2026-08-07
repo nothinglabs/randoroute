@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.611';
+const APP_VERSION = '2026-08-07.612';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -925,10 +925,12 @@ function normalizeStoredRoute(route) {
   const vias = Array.isArray(route.v) ? route.v : [];
   const blocks = Array.isArray(route.b) ? route.b : [];
   if (!vias.every(validRoutePoint) || !blocks.every(validRoutePoint)) return null;
+  const viaNames = Array.isArray(route.vn) ? route.vn : [];
   // Preserve plans created before the editor gained a stop limit. New edits
   // cannot add past the limit, but opening an old plan must not delete stops.
   return {
     s: route.s, e: route.e, v: [...vias], b: [...blocks],
+    vn: vias.map((_, index) => normalizeEndpointName(viaNames[index]) || 'Point on map'),
     sn: normalizeEndpointName(route.sn), en: normalizeEndpointName(route.en),
     sd: route.sd === true,
   };
@@ -952,6 +954,8 @@ function decodeSharedRouteToken(token) {
       // that behavior so older links in messages continue to work.
       route: {
         s: data.s, e: data.e, v: vias.slice(0, MAX_ROUTE_STOPS), b: blocks.slice(0, MAX_ROAD_BLOCKS),
+        vn: vias.slice(0, MAX_ROUTE_STOPS).map((_, index) =>
+          normalizeEndpointName(Array.isArray(data.y) ? data.y[index] : null) || 'Point on map'),
         sn: normalizeEndpointName(data.a), en: normalizeEndpointName(data.b),
       },
       mode: ['direct', 'balanced', 'low'].includes(data.m) ? data.m : null,
@@ -1032,6 +1036,7 @@ function saveStateNow() {
       route: routing.start && routing.end
         ? {
             s: routing.start, e: routing.end, v: routing.vias.map((x) => x.pt),
+            vn: routing.vias.map((x) => x.name),
             b: routing.blocks.map((x) => x.pt),
             sn: routing.startName, en: routing.endName,
             sd: routing.startFromDevice,
@@ -2665,7 +2670,7 @@ const routing = {
   arm: null,                 // 'start' | 'end' — next map tap sets that point
   start: null, end: null,    // [lng, lat]
   startName: null, endName: null, startFromDevice: false,
-  vias: [],                  // intermediate stops: { pt: [lng,lat], marker }
+  vias: [],                  // ordered stops: { pt: [lng,lat], name, marker }
   blocks: [],                // avoided road locations: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false, pendingRoute: false, routeRequestActive: false,
@@ -7513,24 +7518,12 @@ function routeEndpointDisplayName(kind) {
   return normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map';
 }
 
-function clearWaypointsForEndpointChange(kind, lngLat) {
-  const previous = routing[kind];
-  const changed = Array.isArray(previous)
-    && (previous[0] !== lngLat.lng || previous[1] !== lngLat.lat);
-  if (!changed || !routing.vias.length) return false;
-  for (const via of routing.vias) via.marker.remove();
-  routing.vias = [];
-  if (routing.arm === 'via') routing.arm = null;
-  return true;
-}
-
 function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false } = {}) {
   exitSharedRoute();
   const previous = routing[kind];
   if (!Array.isArray(previous) || previous[0] !== lngLat.lng || previous[1] !== lngLat.lat) {
     routing.selectRecommendedNext = true;
   }
-  clearWaypointsForEndpointChange(kind, lngLat);
   routing[kind] = [lngLat.lng, lngLat.lat];
   routing[`${kind}Name`] = normalizeEndpointName(name) || 'Point on map';
   // A start taken from the device is a statement about where the rider IS. A
@@ -7695,13 +7688,13 @@ function enableLongPressEndpointMove(kind, marker) {
 let pendingRouteMarkerRemoval = null;
 
 function promptRemoveRouteMarker(kind, item) {
-  const label = kind === 'via' ? 'waypoint' : 'road block';
+  const label = kind === 'via' ? 'stop' : 'road block';
   const dialog = document.getElementById('removeRouteMarkerDialog');
   if (dialog?.showModal) {
     pendingRouteMarkerRemoval = { kind, item };
     document.getElementById('removeRouteMarkerTitle').textContent = `Remove ${label}?`;
     document.getElementById('removeRouteMarkerText').textContent = kind === 'via'
-      ? 'This waypoint will be removed and the route recalculated.'
+      ? 'This stop will be removed and the route recalculated.'
       : 'This road block will be removed and the route recalculated.';
     document.getElementById('confirmRemoveRouteMarker').textContent = `Remove ${label}`;
     if (!dialog.open) dialog.showModal();
@@ -7714,7 +7707,7 @@ function promptRemoveRouteMarker(kind, item) {
 }
 
 function bindRouteConstraintMarker(marker, kind, item) {
-  const label = kind === 'via' ? 'waypoint' : 'road block';
+  const label = kind === 'via' ? 'stop' : 'road block';
   const el = marker.getElement();
   el.classList.add('route-constraint-marker');
   el.setAttribute('role', 'button');
@@ -7771,12 +7764,90 @@ function bindRouteConstraintMarker(marker, kind, item) {
   });
 }
 
+let nextViaUiId = 1;
+let routeStopsRenderKey = null;
+
 function waypointMarkerElement() {
   const element = document.createElement('button');
   element.type = 'button';
   element.className = 'waypoint-marker';
-  element.innerHTML = '<svg viewBox="0 0 28 42" aria-hidden="true" focusable="false"><path d="M14 1C6.82 1 1 6.82 1 14c0 9.75 13 27 13 27s13-17.25 13-27C27 6.82 21.18 1 14 1Z"/><circle cx="14" cy="14" r="5"/></svg>';
+  element.innerHTML = '<svg viewBox="0 0 28 42" aria-hidden="true" focusable="false"><path d="M14 1C6.82 1 1 6.82 1 14c0 9.75 13 27 13 27s13-17.25 13-27C27 6.82 21.18 1 14 1Z"/><circle cx="14" cy="14" r="5"/></svg><span class="waypoint-marker-number" aria-hidden="true"></span>';
   return element;
+}
+
+function refreshWaypointMarkers() {
+  routing.vias.forEach((via, index) => {
+    const element = via.marker?.getElement();
+    const number = element?.querySelector('.waypoint-marker-number');
+    if (number) number.textContent = String(index + 1);
+    if (element) element.setAttribute('aria-label',
+      `Stop ${index + 1}: ${via.name || 'Point on map'}. Tap to remove`);
+  });
+}
+
+function renderRouteStops() {
+  const host = document.getElementById('routeStops');
+  if (!host) return;
+  const activeViaId = routing.arm === 'via' ? placeTargetVia?._uiId : null;
+  const renderKey = `${activeViaId || ''}|${routing.vias.map((via) =>
+    `${via._uiId}:${via.name}:${via.pt.join(',')}`).join('|')}`;
+  if (renderKey === routeStopsRenderKey) {
+    refreshWaypointMarkers();
+    return;
+  }
+  routeStopsRenderKey = renderKey;
+  host.replaceChildren();
+  routing.vias.forEach((via, index) => {
+    const row = document.createElement('div');
+    row.className = 'route-stop-row';
+    row.dataset.viaIndex = String(index);
+    row.classList.toggle('active', routing.arm === 'via' && placeTargetVia === via);
+
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'route-stop-edit';
+    edit.dataset.viaEdit = String(index);
+    edit.title = `Change stop ${index + 1}`;
+    edit.setAttribute('aria-label', `Change stop ${index + 1}: ${via.name}`);
+    const number = document.createElement('span');
+    number.className = 'route-stop-number';
+    number.setAttribute('aria-hidden', 'true');
+    number.textContent = String(index + 1);
+    const copy = document.createElement('span');
+    copy.className = 'endpoint-copy';
+    const label = document.createElement('span');
+    label.className = 'endpoint-label';
+    label.textContent = `Stop ${index + 1}`;
+    const name = document.createElement('strong');
+    name.textContent = via.name || 'Point on map';
+    copy.append(label, name);
+    edit.append(number, copy);
+    edit.addEventListener('click', () => openPlacePicker('via', via));
+
+    const actions = document.createElement('div');
+    actions.className = 'route-stop-actions';
+    const action = (className, text, title, disabled, handler) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `route-stop-action ${className}`;
+      button.textContent = text;
+      button.title = title;
+      button.setAttribute('aria-label', title);
+      button.disabled = disabled;
+      button.addEventListener('click', handler);
+      return button;
+    };
+    actions.append(
+      action('route-stop-up', '↑', `Move stop ${index + 1} earlier`, index === 0,
+        () => moveVia(via, -1)),
+      action('route-stop-down', '↓', `Move stop ${index + 1} later`,
+        index === routing.vias.length - 1, () => moveVia(via, 1)),
+      action('route-stop-remove', '✕', `Remove stop ${index + 1}`, false, () => removeVia(via)),
+    );
+    row.append(edit, actions);
+    host.append(row);
+  });
+  refreshWaypointMarkers();
 }
 
 function regenerateRoutesAfterWaypointChange() {
@@ -7790,30 +7861,69 @@ function regenerateRoutesAfterWaypointChange() {
   routing.missingLetters = null;
 }
 
-function addVia(lngLat, { allowPastLimit = false } = {}) {
+function addVia(lngLat, { allowPastLimit = false, name = 'Point on map' } = {}) {
   exitSharedRoute();
   if (!allowPastLimit && routing.vias.length >= MAX_ROUTE_STOPS) {
     routing.arm = null;
     updateArmButtons();
-    setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} waypoints`);
+    setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} stops`);
     return false;
   }
   const marker = new maplibregl.Marker({
     element: waypointMarkerElement(), anchor: 'bottom', draggable: true,
   })
     .setLngLat(lngLat).addTo(map);
-  const via = { pt: [lngLat.lng, lngLat.lat], marker };
+  const via = {
+    _uiId: nextViaUiId++,
+    pt: [lngLat.lng, lngLat.lat],
+    name: normalizeEndpointName(name) || 'Point on map',
+    marker,
+  };
   routing.vias.push(via);
   bindRouteConstraintMarker(marker, 'via', via);
   marker.on('dragend', () => {
     const ll = marker.getLngLat();
     via.pt = [ll.lng, ll.lat];
+    via.name = 'Point on map';
     regenerateRoutesAfterWaypointChange();
     computeRoute();
+    updateArmButtons();
+    saveStateSoon();
   });
   regenerateRoutesAfterWaypointChange();
   computeRoute();
   updateArmButtons();
+  saveStateSoon();
+  return true;
+}
+
+function updateVia(via, lngLat, name = 'Point on map') {
+  if (!via || !routing.vias.includes(via)) return false;
+  exitSharedRoute();
+  via.pt = [lngLat.lng, lngLat.lat];
+  via.name = normalizeEndpointName(name) || 'Point on map';
+  via.marker.setLngLat(lngLat);
+  regenerateRoutesAfterWaypointChange();
+  computeRoute();
+  updateArmButtons();
+  saveStateSoon();
+  return true;
+}
+
+function moveVia(via, delta) {
+  const from = routing.vias.indexOf(via);
+  const to = from + Math.sign(delta);
+  if (from < 0 || to < 0 || to >= routing.vias.length || from === to) return false;
+  exitSharedRoute();
+  routing.vias.splice(from, 1);
+  routing.vias.splice(to, 0, via);
+  regenerateRoutesAfterWaypointChange();
+  computeRoute();
+  updateArmButtons();
+  showRouteActionToast(`Stop moved to position ${to + 1} · recalculating…`, {
+    busy: true, duration: 0,
+  });
+  saveStateSoon();
   return true;
 }
 
@@ -7827,7 +7937,7 @@ function removeVia(via) {
   updateArmButtons();
   regenerateRoutesAfterWaypointChange();
   computeRoute();
-  showRouteActionToast('Waypoint removed · recalculating…', { busy: true, duration: 0 });
+  showRouteActionToast('Stop removed · recalculating…', { busy: true, duration: 0 });
   saveStateSoon();
 }
 
@@ -8019,7 +8129,7 @@ function setRouteActionsOpen(open) {
 }
 
 function updateArmButtons() {
-  for (const kind of ['start', 'end', 'via', 'block']) {
+  for (const kind of ['start', 'end', 'block']) {
     for (const prefix of ['rt-', 'rb-']) {
       const b = document.getElementById(prefix + kind);
       if (b) b.classList.toggle('active', routing.arm === kind);
@@ -8047,9 +8157,12 @@ function updateArmButtons() {
   const clear = document.getElementById('rb-clear');
   const more = document.getElementById('rb-more');
   if (add) {
+    add.hidden = !(routing.start && routing.end);
     add.disabled = !(routing.start && routing.end) || routing.vias.length >= MAX_ROUTE_STOPS;
     add.title = routing.vias.length >= MAX_ROUTE_STOPS
-      ? `Maximum of ${MAX_ROUTE_STOPS} waypoints reached` : 'Add waypoint';
+      ? `Maximum of ${MAX_ROUTE_STOPS} stops reached` : 'Add stop';
+    add.classList.toggle('active', routing.arm === 'via' && !placeTargetVia);
+    add.setAttribute('aria-pressed', String(routing.arm === 'via' && !placeTargetVia));
   }
   if (block) {
     block.disabled = !(routing.start && routing.end) || routing.blocks.length >= MAX_ROAD_BLOCKS;
@@ -8061,6 +8174,7 @@ function updateArmButtons() {
   // Keep the menu discoverable before the route is complete. Its individual
   // actions remain disabled until their own requirements are met.
   if (more) more.disabled = false;
+  renderRouteStops();
 }
 
 function syncRoutePreferenceControls() {
@@ -8488,7 +8602,8 @@ function buildRoutingPanel() {
     routing.sharedLoading = true;         // suppress the exit-shared hooks below
     routing.sharedActive = !!routing.sharedRecipe;
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn);
-    for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] });
+    for (const [index, p] of (rt.v || []).entries()) addVia(
+      { lng: p[0], lat: p[1] }, { name: rt.vn?.[index] });
     for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
     routing.sharedLoading = false;
@@ -8501,7 +8616,8 @@ function buildRoutingPanel() {
   } else if (savedState && normalizeStoredRoute(savedState.route)) {
     const rt = normalizeStoredRoute(savedState.route);
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn, { fromDevice: rt.sd });
-    for (const p of rt.v || []) addVia({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
+    for (const [index, p] of (rt.v || []).entries()) addVia(
+      { lng: p[0], lat: p[1] }, { allowPastLimit: true, name: rt.vn?.[index] });
     for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
   }
@@ -8518,6 +8634,7 @@ function shareRouteUrl() {
     a: routing.startName,
     b: routing.endName,
     x: routing.vias.map((via) => point(via.pt)),
+    y: routing.vias.map((via) => via.name),
     z: routing.blocks.map((block) => point(block.pt)),
     m: routing.mode,
     o: routing.profileId,
@@ -8560,7 +8677,8 @@ function loadSharedRouteIntoPlanner(shared) {
   routing.sharedActive = true;
   const route = shared.route;
   setRoutePoint('start', { lng: route.s[0], lat: route.s[1] }, route.sn);
-  for (const p of route.v || []) addVia({ lng: p[0], lat: p[1] });
+  for (const [index, p] of (route.v || []).entries()) addVia(
+    { lng: p[0], lat: p[1] }, { name: route.vn?.[index] });
   for (const p of route.b || []) addRoadBlock({ lng: p[0], lat: p[1] });
   setRoutePoint('end', { lng: route.e[0], lat: route.e[1] }, route.en);
   routing.sharedLoading = false;
@@ -8678,8 +8796,9 @@ function buildSavedRoutes() {
         renderRouteOptionControls();
         syncRoutePreferenceControls();
         setRoutePoint('start', { lng: currentRoute.s[0], lat: currentRoute.s[1] }, currentRoute.sn);
-        for (const point of currentRoute.v) addVia(
-          { lng: point[0], lat: point[1] }, { allowPastLimit: true });
+        for (const [viaIndex, point] of currentRoute.v.entries()) addVia(
+          { lng: point[0], lat: point[1] },
+          { allowPastLimit: true, name: currentRoute.vn?.[viaIndex] });
         for (const point of currentRoute.b || []) addRoadBlock(
           { lng: point[0], lat: point[1] }, { allowPastLimit: true });
         setRoutePoint('end', { lng: currentRoute.e[0], lat: currentRoute.e[1] }, currentRoute.en);
@@ -8772,7 +8891,8 @@ function buildSavedRoutes() {
     const list = loadSavedRoutes();
     list.unshift({ name: name.slice(0, 60), s: routing.start, e: routing.end,
       sn: routing.startName, en: routing.endName,
-      v: routing.vias.map((x) => x.pt), b: routing.blocks.map((x) => x.pt),
+      v: routing.vias.map((x) => x.pt), vn: routing.vias.map((x) => x.name),
+      b: routing.blocks.map((x) => x.pt),
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig,
       prefResidential: routing.prefResidential, rules: { ...rules },
@@ -8799,6 +8919,7 @@ function ensurePlaces() {
 }
 
 let placeTarget = null;
+let placeTargetVia = null;
 let placeSearchRequestId = 0;
 let placePickerViewportRestoreTimers = [];
 let placePickerMapFrameTimer = null;
@@ -8931,23 +9052,28 @@ function closePlacePicker(cancelArm = false) {
   if (cancelArm && (routing.arm === 'start' || routing.arm === 'end'
     || routing.arm === 'via' || routing.arm === 'block')) {
     routing.arm = null;
-    updateArmButtons();
     setRouteStatus('');
   }
+  placeTarget = null;
+  placeTargetVia = null;
+  updateArmButtons();
 }
 
-function openPlacePicker(kind) {
+function openPlacePicker(kind, via = null) {
   // A road block is intentionally map-only: routing uses the exact point the
   // rider picks, so a place-search result would add unnecessary indirection.
   if (kind === 'block') {
     armRoutePoint('block');
     return;
   }
+  if (via && (kind !== 'via' || !routing.vias.includes(via))) return;
   const isConstraint = kind === 'via' || kind === 'block';
   if (isConstraint && (!(routing.start && routing.end)
-    || (kind === 'via' ? routing.vias.length >= MAX_ROUTE_STOPS : routing.blocks.length >= MAX_ROAD_BLOCKS))) return;
+    || (kind === 'via' ? (!via && routing.vias.length >= MAX_ROUTE_STOPS)
+      : routing.blocks.length >= MAX_ROAD_BLOCKS))) return;
   setRouteActionsOpen(false);
   placeTarget = kind;
+  placeTargetVia = via;
   routing.arm = kind;
   suppressRoadInfo();
   updateArmButtons();
@@ -8957,11 +9083,12 @@ function openPlacePicker(kind) {
   // even chosen a point. The router starts when both endpoints exist.
   ensurePlaces();
   setPanelOpen(false);
+  const viaIndex = via ? routing.vias.indexOf(via) : -1;
   document.getElementById('placePickerTitle').textContent = kind === 'start' ? 'Choose start'
-    : kind === 'via' ? 'Add waypoint'
+    : kind === 'via' ? (via ? `Change stop ${viaIndex + 1}` : 'Add stop')
       : kind === 'block' ? 'Add road block' : 'Choose destination';
   document.getElementById('placePickerHint').innerHTML = kind === 'via'
-    ? '<strong>Search</strong> for a place below, or <strong>tap the map</strong> to add it.'
+    ? `<strong>Search</strong> for a place below, or <strong>tap the map</strong> to ${via ? 'move this stop' : 'add a stop'}.`
     : kind === 'block'
       ? '<strong>Search</strong> for a road or place below, or <strong>tap the map</strong> to block it.'
       : `<strong>Tap on map</strong> to set ${kind === 'start' ? 'start' : 'destination'} or <strong>search</strong> below.`;
@@ -8971,10 +9098,12 @@ function openPlacePicker(kind) {
   onlineButton.classList.remove('searching');
   const searchInput = document.getElementById('placeSearch');
   searchInput.placeholder = kind === 'start' ? 'Search for a start…'
-    : kind === 'via' ? 'Search for a waypoint…'
+    : kind === 'via' ? 'Search for a stop…'
       : kind === 'block' ? 'Search for a road block…' : 'Search for a destination…';
-  const currentEndpointName = !isConstraint && routing[kind]
-    ? (normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map') : '';
+  const currentEndpointName = via
+    ? (normalizeEndpointName(via.name) || 'Point on map')
+    : (!isConstraint && routing[kind]
+      ? (normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map') : '');
   searchInput.value = currentEndpointName;
   searchInput.classList.toggle('current-endpoint-preview', Boolean(currentEndpointName));
   searchInput.setAttribute('aria-label', searchInput.placeholder.replace('…', ''));
@@ -8982,7 +9111,7 @@ function openPlacePicker(kind) {
   document.getElementById('placeResults').classList.remove('show');
   document.getElementById('placePicker').hidden = false;
   document.body.classList.add('place-picker-open');
-  setRouteStatus(kind === 'via' ? 'Search or tap the map to add a WAYPOINT'
+  setRouteStatus(kind === 'via' ? `Search or tap the map to ${via ? 'move this STOP' : 'add a STOP'}`
     : kind === 'block' ? 'Search or tap the map to add a ROAD BLOCK'
       : `Tap the map or search to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
 }
@@ -9145,18 +9274,20 @@ function buildPlacePicker() {
     if (!hit) return;
     const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
     const target = placeTarget;
+    const targetVia = placeTargetVia;
     const name = hit.dataset.name;
     // Dismiss the keyboard and commit the lightweight UI transition before a
     // second endpoint can start the routing engine.
     routing.arm = null;
     closePlacePicker(false);
-    if (target === 'via') addVia(lngLat);
+    if (target === 'via' && targetVia) updateVia(targetVia, lngLat, name);
+    else if (target === 'via') addVia(lngLat, { name });
     else if (target === 'block') addRoadBlock(lngLat);
     else setRoutePoint(target, lngLat, name);
     updateArmButtons();
     if (target === 'via') {
-      setRouteStatus('Waypoint added');
-      showRouteActionToast('Waypoint added — route recalculating', { duration: 2200 });
+      setRouteStatus(targetVia ? 'Stop changed' : 'Stop added');
+      showRouteActionToast(`${targetVia ? 'Stop changed' : 'Stop added'} — route recalculating`, { duration: 2200 });
     } else if (target === 'block') {
       setRouteStatus('Road block added');
       showRouteActionToast('Road block added — route recalculating', { duration: 2200 });
@@ -10205,16 +10336,20 @@ function inspectRoadAt(point, lngLat = null) {
 function placeArmedPoint(lngLat) {
   const kind = routing.arm;
   if (!kind) return false;
+  const targetVia = placeTargetVia;
   lastPlacementTs = Date.now();
   suppressRoadInfo(1500);
   routing.arm = null;
   updateArmButtons();
   closePlacePicker(false);
   if (kind === 'via') {
-    const added = addVia(lngLat);
-    if (added) setRouteStatus(routing.vias.length >= MAX_ROUTE_STOPS
-      ? `Waypoint added — maximum of ${MAX_ROUTE_STOPS} reached`
-      : 'Waypoint added — use ⋮ to add another');
+    const changed = targetVia
+      ? updateVia(targetVia, lngLat, 'Point on map')
+      : addVia(lngLat, { name: 'Point on map' });
+    if (changed) setRouteStatus(targetVia ? 'Stop moved'
+      : routing.vias.length >= MAX_ROUTE_STOPS
+        ? `Stop added — maximum of ${MAX_ROUTE_STOPS} reached`
+        : 'Stop added — use Add stop for another');
     return true;
   }
   if (kind === 'block') {
