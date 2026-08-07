@@ -113,7 +113,17 @@ const initialPermission = await page.evaluate(async () => {
     authorization: 'whileUsing',
   });
   const grantedResult = await requestInitialMapLocation();
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  // The native bridge resolves asynchronously. Under software GL and a cold
+  // PMTiles cache it can take longer than one arbitrary 50 ms turn; wait for
+  // the observable request instead of testing the scheduler's luck.
+  await new Promise((resolve) => {
+    const deadline = Date.now() + 5000;
+    const poll = () => {
+      if (window.__initialLocationCalls > 0 || Date.now() >= deadline) resolve();
+      else setTimeout(poll, 25);
+    };
+    poll();
+  });
   const afterGrant = window.__initialLocationCalls;
   window.__nativePlugin = null;
   return { promptResult, whilePrompt, grantedResult, afterGrant };

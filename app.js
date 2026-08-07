@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.610';
+const APP_VERSION = '2026-08-07.611';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1221,9 +1221,12 @@ async function recenterMapOnCurrentLocation(reason = 'launch') {
 }
 
 function requestMapLocationRecenter(reason = 'launch') {
-  if (map.loaded()) return recenterMapOnCurrentLocation(reason);
-  map.once('load', () => recenterMapOnCurrentLocation(reason));
-  return null;
+  // Location acquisition does not depend on map tiles or style data. Waiting
+  // for MapLibre's one-shot `load` event introduced a race: `loaded()` flips
+  // back to false while tiles are pending, even after that event has passed,
+  // so an authorized returning rider could wait forever. Markers and camera
+  // state are safe to set while the style is still arriving.
+  return recenterMapOnCurrentLocation(reason);
 }
 
 // Recenter silently when the native app already has permission, but do not put
@@ -8948,7 +8951,11 @@ function openPlacePicker(kind) {
   routing.arm = kind;
   suppressRoadInfo();
   updateArmButtons();
-  ensureRouter();
+  // Searching needs only the tiny local place index. Starting the 44 MB
+  // routing graph here made an iPhone fetch/inflate/index it during the first
+  // keyboard animation -- the field appeared to freeze before the rider had
+  // even chosen a point. The router starts when both endpoints exist.
+  ensurePlaces();
   setPanelOpen(false);
   document.getElementById('placePickerTitle').textContent = kind === 'start' ? 'Choose start'
     : kind === 'via' ? 'Add waypoint'
@@ -9137,21 +9144,25 @@ function buildPlacePicker() {
     const hit = e.target.closest('.place-hit');
     if (!hit) return;
     const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
-    if (placeTarget === 'via') addVia(lngLat);
-    else if (placeTarget === 'block') addRoadBlock(lngLat);
-    else setRoutePoint(placeTarget, lngLat, hit.dataset.name);
+    const target = placeTarget;
+    const name = hit.dataset.name;
+    // Dismiss the keyboard and commit the lightweight UI transition before a
+    // second endpoint can start the routing engine.
     routing.arm = null;
+    closePlacePicker(false);
+    if (target === 'via') addVia(lngLat);
+    else if (target === 'block') addRoadBlock(lngLat);
+    else setRoutePoint(target, lngLat, name);
     updateArmButtons();
-    if (placeTarget === 'via') {
+    if (target === 'via') {
       setRouteStatus('Waypoint added');
       showRouteActionToast('Waypoint added — route recalculating', { duration: 2200 });
-    } else if (placeTarget === 'block') {
+    } else if (target === 'block') {
       setRouteStatus('Road block added');
       showRouteActionToast('Road block added — route recalculating', { duration: 2200 });
     } else {
-      setRouteStatus(placeTarget === 'start' ? 'Start set' : 'Destination set');
+      setRouteStatus(target === 'start' ? 'Start set' : 'Destination set');
     }
-    closePlacePicker(false);
     frameMapAfterPlacePicker(lngLat);
     input.value = '';
     render([]);
@@ -9162,12 +9173,13 @@ function buildPlacePicker() {
     setRouteStatus('Locating…');
     getFreshDevicePosition().then((pos) => {
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
-      setRoutePoint(placeTarget, lngLat, 'My location', { fromDevice: true });
+      const target = placeTarget;
       routing.arm = null;
-      updateArmButtons();
       closePlacePicker(false);
+      setRoutePoint(target, lngLat, 'My location', { fromDevice: true });
+      updateArmButtons();
       frameMapAfterPlacePicker(lngLat);
-      setRouteStatus(placeTarget === 'start' ? 'Start set to your location' : 'Destination set');
+      setRouteStatus(target === 'start' ? 'Start set to your location' : 'Destination set');
     }).catch((error) => {
       // GeolocationPositionError.TIMEOUT is 3; our own gate throws string codes.
       const code = error?.code;
@@ -11057,14 +11069,17 @@ buildSourcePanel();
 buildRulesPanel();
 buildVoicePanel();
 buildRoutingPanel();
-// A fresh native install has just copied roughly 144 MB of offline data. Do not
-// immediately make its first map paint compete with fetching, hashing,
-// inflating, and indexing the 44 MB routing graph (about 142 MB expanded).
-// Existing/saved trips still start at once. An immediate planner tap also calls
-// ensureRouter(), while an untouched map begins the engine after its first idle
-// frame, with a short upper bound in case tile loading never becomes idle.
+// A fresh native install has just copied roughly 151 MB of offline data. Do not
+// make its first map paint OR its first keyboard animation compete with
+// fetching, hashing, inflating, and indexing the 44 MB routing graph (about
+// 142 MB expanded). Existing/saved trips still start at once. A blank native
+// planner warms the tiny local place index instead; computeRoute() starts the
+// graph after the rider has actually chosen both endpoints. Web browsers keep
+// the background prewarm after their first usable map frame.
 if (routing.start && routing.end) {
   ensureRouter();
+} else if (isNativeAppRuntime()) {
+  ensurePlaces();
 } else {
   let backgroundRouterStarted = false;
   const startBackgroundRouter = () => {
@@ -11232,9 +11247,7 @@ function syncGraphVersionLine() {
       + (phases ? ` (${phases})` : '') : '');
 }
 syncGraphVersionLine();
-const nativeAppVersionOnly = document.documentElement.dataset.appRuntime === 'native'
-  || window.location.protocol === 'capacitor:'
-  || Boolean(window.Capacitor?.isNativePlatform?.());
+const nativeAppVersionOnly = isNativeAppRuntime();
 if (nativeAppVersionOnly) {
   document.getElementById('checkUpdatesBtn').hidden = true;
   document.getElementById('iosAppVersionLabel').hidden = false;
@@ -11304,8 +11317,15 @@ document.getElementById('routesHelpBtn').addEventListener('click', () => {
   openHelp('save-share');
 });
 
+function isNativeAppRuntime() {
+  return document.documentElement.dataset.appRuntime === 'native'
+    || window.location.protocol === 'capacitor:'
+    || Boolean(window.Capacitor?.isNativePlatform?.());
+}
+
 function isStandaloneApp() {
-  return window.matchMedia('(display-mode: standalone)').matches
+  return isNativeAppRuntime()
+    || window.matchMedia('(display-mode: standalone)').matches
     || window.matchMedia('(display-mode: fullscreen)').matches
     || window.navigator.standalone === true;
 }

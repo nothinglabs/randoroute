@@ -88,9 +88,10 @@ check('but not after the app has taken over',
 const fallback = await page.evaluate(() => typeof window.__dismissAppLaunchScreen === 'function');
 check('a startup failure cannot trap the rider behind the screen', fallback);
 
-// A new install with no saved trip should paint its local map before starting
-// the statewide graph's heavy inflate/index pass. Route editing still starts it
-// immediately through ensureRouter(); this checks only the untouched boot path.
+// A web install with no saved trip should paint its local map before starting
+// the statewide graph's heavy inflate/index pass. Native defers that work until
+// both endpoints exist; this page is the ordinary web runtime and pins its
+// separate background-prewarm policy.
 await page.waitForFunction(() => window.__routingWorkerStarts.length > 0,
   { timeout: 10000 }).catch(() => {});
 const workerStarts = await page.evaluate(() => window.__routingWorkerStarts.slice());
