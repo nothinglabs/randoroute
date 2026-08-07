@@ -38,4 +38,20 @@ for (const entry of ['index.html', 'route-details.html']) {
   }
 }
 
+// JavaScript-created MapLibre sources do not appear in either HTML entry
+// point. Verify every local PMTiles archive named by the app is packaged too:
+// missing overlays.pmtiles made all standalone trails disappear on iOS while
+// active-route trail segments (drawn from route geometry) still looked fine.
+const appJs = await readFile(join(ROOT, 'app.js'), 'utf8');
+const pmtilesRefs = [...appJs.matchAll(/pmtiles:\/\/(data\/[^'"?]+\.pmtiles)/g)]
+  .map((match) => match[1]);
+assert.ok(pmtilesRefs.length, 'app.js should declare local PMTiles sources');
+for (const ref of new Set(pmtilesRefs)) {
+  await assert.doesNotReject(
+    access(join(SHELL, ref)),
+    `app.js loads ${ref}, but the native-shell build did not copy it`,
+  );
+  checked++;
+}
+
 console.log(`Native shell verified: ${checked} local HTML resources are packaged`);

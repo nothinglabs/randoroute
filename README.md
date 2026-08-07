@@ -33,7 +33,7 @@ npm run ios:open
 
 `ios:sync` assembles the complete web runtime and statewide data into
 `mobile-shell/` before copying it into the Xcode project. The current payload
-is about 144 MB uncompressed and has no GitHub Pages or online-basemap runtime
+is about 151 MB uncompressed and has no GitHub Pages or online-basemap runtime
 dependency. `mobile-shell/` is generated — never edit it by hand.
 
 **Read `docs/IOS-HANDOFF.md` before touching the native code.** The only

@@ -30,12 +30,14 @@ const files = [
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
   'data/bikeroutes.geojson.gz',
-  'data/blts.geojson.gz',
-  'data/bikeinfra.geojson.gz',
   'data/bike_restrictions.geojson.gz',
   'data/route_closures.geojson.gz',
   'data/roads.pmtiles',
   'data/basemap.pmtiles',
+  // Shared source for the standalone off-street-trail and WSDOT detail
+  // layers. The two source GeoJSON archives are tile-build inputs only; the
+  // runtime has not fetched them since these overlays moved to PMTiles.
+  'data/overlays.pmtiles',
   'data/graph2.bin.gz',
   'data/places.json',
   'fonts/Klokantech Noto Sans Regular/0-255.pbf',
