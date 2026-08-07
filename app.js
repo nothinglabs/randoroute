@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.616';
+const APP_VERSION = '2026-08-07.617';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7865,10 +7865,6 @@ function renderRouteStops() {
       return button;
     };
     actions.append(
-      action('route-stop-up', '↑', `Move stop ${index + 1} earlier`, !routing.start,
-        () => moveVia(via, -1)),
-      action('route-stop-down', '↓', `Move stop ${index + 1} later`,
-        !routing.end, () => moveVia(via, 1)),
       action('route-stop-remove', '✕', `Remove stop ${index + 1}`, false, () => removeVia(via)),
     );
     row.append(edit, actions);
@@ -7937,51 +7933,124 @@ function updateVia(via, lngLat, name = 'Point on map') {
   return true;
 }
 
-function swapEndpointWithAdjacentStop(kind) {
-  if (!(routing.start && routing.end) || !['start', 'end'].includes(kind)) return false;
-  if (!routing.vias.length) {
-    reverseRoute();
-    showRouteActionToast('Trip reversed · recalculating…', { busy: true, duration: 0 });
-    return true;
-  }
+let routeOrderDraft = null;
+
+function routeOrderItems() {
+  if (!(routing.start && routing.end)) return [];
+  return [
+    {
+      id: 'start', pt: routing.start.slice(),
+      name: routing.startName || 'Point on map', followsDevice: routing.startFromDevice,
+    },
+    ...routing.vias.map((via) => ({
+      id: `via:${via._uiId}`, pt: via.pt.slice(), name: via.name || 'Point on map',
+      followsDevice: false,
+    })),
+    {
+      id: 'end', pt: routing.end.slice(),
+      name: routing.endName || 'Point on map', followsDevice: false,
+    },
+  ];
+}
+
+function renderRouteOrderDraft() {
+  const host = document.getElementById('reorderRouteList');
+  if (!host || !routeOrderDraft) return;
+  host.replaceChildren();
+  routeOrderDraft.items.forEach((item, index, items) => {
+    const row = document.createElement('div');
+    row.className = 'reorder-route-row';
+    const copy = document.createElement('div');
+    copy.className = 'reorder-route-copy';
+    const role = document.createElement('span');
+    role.textContent = index === 0 ? 'Start'
+      : index === items.length - 1 ? 'Destination' : `Stop ${index}`;
+    const name = document.createElement('strong');
+    name.textContent = item.name;
+    copy.append(role, name);
+    const actions = document.createElement('div');
+    actions.className = 'reorder-route-actions';
+    const moveButton = (direction, text, label, disabled) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.reorderIndex = String(index);
+      button.dataset.reorderDirection = String(direction);
+      button.textContent = text;
+      button.title = label;
+      button.setAttribute('aria-label', label);
+      button.disabled = disabled;
+      button.addEventListener('click', () => {
+        const to = index + direction;
+        if (!routeOrderDraft || to < 0 || to >= routeOrderDraft.items.length) return;
+        const [moved] = routeOrderDraft.items.splice(index, 1);
+        routeOrderDraft.items.splice(to, 0, moved);
+        renderRouteOrderDraft();
+        const next = host.querySelector(
+          `[data-reorder-index="${to}"][data-reorder-direction="${direction}"]`,
+        ) || host.querySelector(`[data-reorder-index="${to}"]:not(:disabled)`);
+        next?.focus({ preventScroll: true });
+      });
+      return button;
+    };
+    actions.append(
+      moveButton(-1, '↑', `Move ${item.name} earlier`, index === 0),
+      moveButton(1, '↓', `Move ${item.name} later`, index === items.length - 1),
+    );
+    row.append(copy, actions);
+    host.append(row);
+  });
+}
+
+function applyRouteOrderDraft() {
+  const draft = routeOrderDraft;
+  routeOrderDraft = null;
+  if (!draft || !(routing.start && routing.end)) return false;
+  const nextIds = draft.items.map((item) => item.id).join('|');
+  if (nextIds === draft.originalIds) return false;
+
   exitSharedRoute();
-  const via = kind === 'start' ? routing.vias[0] : routing.vias[routing.vias.length - 1];
-  const endpointPoint = routing[kind].slice();
-  const endpointName = routing[`${kind}Name`] || 'Point on map';
-  routing[kind] = via.pt.slice();
-  routing[`${kind}Name`] = via.name || 'Point on map';
-  via.pt = endpointPoint;
-  via.name = endpointName;
-  routing[`${kind}Marker`]?.setLngLat(routing[kind]);
-  via.marker?.setLngLat(via.pt);
-  if (kind === 'start') routing.startFromDevice = false;
+  stopTurnNavigation(false);
+  routing.arm = null;
+  closePlacePicker(false);
+  dismissRoadInfo();
+  const first = draft.items[0];
+  const last = draft.items[draft.items.length - 1];
+  const middle = draft.items.slice(1, -1);
+  routing.start = first.pt.slice();
+  routing.startName = first.name;
+  routing.startFromDevice = Boolean(first.followsDevice);
+  routing.startDefaultsToDevice = false;
+  routing.end = last.pt.slice();
+  routing.endName = last.name;
+  routing.vias.forEach((via, index) => {
+    via.pt = middle[index].pt.slice();
+    via.name = middle[index].name;
+    via.marker?.setLngLat(via.pt);
+  });
+  routing.startMarker?.setLngLat(routing.start);
+  routing.endMarker?.setLngLat(routing.end);
+  clearRouteHighlight();
   regenerateRoutesAfterWaypointChange();
-  computeRoute();
   updateArmButtons();
+  computeRoute();
   showRouteActionToast('Trip reordered · recalculating…', { busy: true, duration: 0 });
   saveStateSoon();
   return true;
 }
 
-function moveVia(via, delta) {
-  const from = routing.vias.indexOf(via);
-  const direction = Math.sign(delta);
-  if (from === 0 && direction < 0) return swapEndpointWithAdjacentStop('start');
-  if (from === routing.vias.length - 1 && direction > 0) {
-    return swapEndpointWithAdjacentStop('end');
+function openRouteOrder() {
+  if (!(routing.start && routing.end) || turnNav.active) return false;
+  if (routing.vias.length < 2) {
+    reverseRoute();
+    showRouteActionToast('Trip reversed · recalculating…', { busy: true, duration: 0 });
+    return true;
   }
-  const to = from + direction;
-  if (from < 0 || to < 0 || to >= routing.vias.length || from === to) return false;
-  exitSharedRoute();
-  routing.vias.splice(from, 1);
-  routing.vias.splice(to, 0, via);
-  regenerateRoutesAfterWaypointChange();
-  computeRoute();
-  updateArmButtons();
-  showRouteActionToast(`Stop moved to position ${to + 1} · recalculating…`, {
-    busy: true, duration: 0,
-  });
-  saveStateSoon();
+  const items = routeOrderItems();
+  routeOrderDraft = { items, originalIds: items.map((item) => item.id).join('|') };
+  renderRouteOrderDraft();
+  const dialog = document.getElementById('reorderRouteDialog');
+  if (!dialog?.showModal) { routeOrderDraft = null; return false; }
+  if (!dialog.open) dialog.showModal();
   return true;
 }
 
@@ -8225,10 +8294,12 @@ function updateArmButtons() {
     const value = button.querySelector('[data-endpoint-value]');
     if (value) value.textContent = routeEndpointDisplayName(kind);
   }
-  const canReorderEndpoints = Boolean(routing.start && routing.end && !turnNav.active);
-  document.querySelectorAll('[data-endpoint-move]').forEach((button) => {
-    button.disabled = !canReorderEndpoints;
-  });
+  const reorder = document.getElementById('rb-reorder');
+  if (reorder) {
+    reorder.disabled = !(routing.start && routing.end) || turnNav.active;
+    reorder.title = routing.vias.length > 1 ? 'Reorder trip' : 'Reverse trip';
+    reorder.setAttribute('aria-label', reorder.title);
+  }
   document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
     const kind = button.dataset.endpointRemove;
     button.hidden = !routing[kind]
@@ -8601,9 +8672,10 @@ function buildRoutingPanel() {
     });
   }
   document.getElementById('rb-search').addEventListener('click', openPlaceSearch);
-  document.querySelectorAll('[data-endpoint-move]').forEach((button) => {
-    button.addEventListener('click', () => swapEndpointWithAdjacentStop(button.dataset.endpointMove));
-  });
+  document.getElementById('rb-reorder').addEventListener('click', openRouteOrder);
+  document.getElementById('reorderRouteDone').addEventListener('click', () =>
+    document.getElementById('reorderRouteDialog').close());
+  document.getElementById('reorderRouteDialog').addEventListener('close', applyRouteOrderDraft);
   document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
     button.addEventListener('click', () => removeRouteEndpoint(button.dataset.endpointRemove));
   });

@@ -687,7 +687,8 @@ body.map-tools-extended #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.z
   padding: 6px 10px 6px 6px;
   max-width: min(86vw, 680px);
 }
-#routeBar > button {
+#routeBar > button,
+#routeBar > .route-tools > button {
   width: 44px; height: 44px; flex: none;
   border: none; border-radius: 50%;
   background: #eef1f4;
@@ -855,14 +856,19 @@ body.map-tools-extended #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.z
 #routeBar .route-stop-remove { color: #a32b38; font-size: 16px; }
 #routeBar .route-stop-action[hidden] { display: none; }
 #routeBar button:disabled { opacity: .38; cursor: default; }
-#routeBar #rb-search {
+.route-tools {
+  display: grid;
+  flex: none;
+  gap: 4px;
+}
+#routeBar .route-tools button {
   display: grid;
   place-items: center;
   width: 42px;
+  height: 42px;
   padding: 0;
-  margin-top: 22px;
 }
-#routeBar #rb-search svg {
+#routeBar .route-tools svg {
   width: 21px;
   height: 21px;
   fill: none;
@@ -870,6 +876,7 @@ body.map-tools-extended #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.z
   stroke-width: 2;
   stroke-linecap: round;
 }
+#routeBar #rb-reorder svg { width: 22px; height: 22px; stroke-width: 1.8; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 .place-results .place-choice {
   display: inline-block; margin: 4px 4px 8px 12px; padding: 7px 11px;
@@ -1006,7 +1013,7 @@ body.navigation-active #routeBar { display: none; }
   #topToolbar { right: 8px; left: 8px; gap: 4px; width: auto; max-width: none; }
   .nav-start { min-width: 100px; min-height: 46px; padding: 0 8px; font-size: 11px; }
   #routeBar { flex: 1 1 auto; gap: 4px; width: 100%; padding: 5px; max-width: none; }
-  #routeBar > button { width: 42px; height: 42px; }
+  #routeBar > button, #routeBar > .route-tools > button { width: 42px; height: 42px; }
   /* The search button leaves the rest of the top strip to the itinerary. */
   .route-endpoints { flex: 1 1 auto; width: auto; min-width: 0; }
   #routeBar .route-endpoint { height: 44px; gap: 8px; padding: 2px 4px 2px 12px; }
@@ -1105,6 +1112,18 @@ body.navigation-active #routeBar { display: none; }
 .clear-route-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .remove-route-marker-dialog { border-top: 4px solid #a65300; }
 .remove-route-marker-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
+.reorder-route-dialog { width: min(92vw, 400px); border-top: 4px solid #0a66c2; }
+.reorder-route-dialog > p { margin: 9px 0 11px; color: #526570; font: 11.5px/1.4 system-ui; }
+.reorder-route-list { display: grid; max-height: min(56dvh, 440px); overflow-y: auto; border: 1px solid #d7e1e7; border-radius: 11px; background: #f8fafb; }
+.reorder-route-row { display: flex; align-items: center; gap: 8px; min-height: 54px; padding: 5px 6px 5px 11px; border-bottom: 1px solid #dfe6ea; background: #fff; }
+.reorder-route-row:last-child { border-bottom: 0; }
+.reorder-route-copy { display: grid; flex: 1 1 auto; min-width: 0; gap: 2px; }
+.reorder-route-copy span { color: #667985; font: 700 9px/1.1 system-ui; letter-spacing: .035em; text-transform: uppercase; }
+.reorder-route-copy strong { overflow: hidden; color: #263b47; font: 750 12px/1.25 system-ui; text-overflow: ellipsis; white-space: nowrap; }
+.reorder-route-actions { display: flex; flex: none; gap: 5px; }
+.reorder-route-actions button { display: grid; place-items: center; width: 42px; height: 42px; padding: 0; border: 1px solid #c9d7df; border-radius: 9px; background: #f5f9fb; color: #315568; font: 850 20px/1 system-ui; cursor: pointer; }
+.reorder-route-actions button:disabled { opacity: .28; cursor: default; }
+.reorder-route-dialog .dialog-actions button { min-height: 42px; }
 .delete-saved-route-dialog { border-top: 4px solid #b42318; }
 .delete-saved-route-dialog p { margin: 12px 0 2px; font: 13px/1.4 system-ui; color: #444; }
 .shared-route-tip { border-top: 4px solid #0a66c2; }
