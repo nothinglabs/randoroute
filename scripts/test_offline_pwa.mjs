@@ -20,7 +20,13 @@ const browser = await chromium.launch({
   executablePath: chromiumPath(), args: ['--use-gl=swiftshader'],
 });
 // No `serviceWorkers: 'block'` -- the worker is the subject.
-const context = await browser.newContext({ viewport: { width: 1100, height: 850 } });
+const context = await browser.newContext({
+  viewport: { width: 1100, height: 850 },
+  // Exercise Safari's request-driven route-engine path while keeping a roomy
+  // viewport for counting rendered offline map features.
+  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
+    + 'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+});
 const page = await context.newPage();
 page.setDefaultTimeout(180000);
 const pageErrors = [];
@@ -94,10 +100,9 @@ check('the basemap draws offline from the stored archive', drawn.roads > 500,
   `${drawn.roads} road features, ${drawn.rendered} rendered`);
 
 const routed = await page.evaluate(async ([from, to]) => {
-  await new Promise((resolve, reject) => {
-    const poll = setInterval(() => { if (routing.ready) { clearInterval(poll); resolve(); } }, 200);
-    setTimeout(() => { clearInterval(poll); reject(new Error('the router never became ready')); }, 180000);
-  });
+  // A blank planner deliberately keeps the large graph unloaded. Requesting
+  // an actual route must start it from the offline cache and then honor this
+  // pending calculation as soon as the worker becomes ready.
   routing.start = from;
   routing.end = to;
   computeRoute();

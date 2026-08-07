@@ -52,28 +52,44 @@ let state = await page.evaluate(() => ({
   startHidden: document.querySelector('.route-endpoint-start-row')?.hidden,
   destinationVisible: !document.querySelector('.route-endpoint-end-row')?.hidden,
   emptyMessage: document.querySelector('.rc-route-message strong')?.textContent,
+  panelOpen: document.body.classList.contains('panel-open'),
 }));
 check('an untouched native planner does not start the routing graph', state.workers === 0,
   JSON.stringify(state));
 check('the untouched planner asks for Destination before showing Start',
   state.startHidden && state.destinationVisible && state.emptyMessage === 'Choose a destination',
   JSON.stringify(state));
+check('the phone menu starts closed', !state.panelOpen, JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
 
 await page.click('#rb-search');
 state = await page.evaluate(() => ({
   placeholder: document.getElementById('placeSearch').placeholder,
-  mapChoice: document.getElementById('pickOnMap').textContent.trim(),
+  mapChoiceGone: !document.getElementById('pickOnMap'),
+  hint: document.getElementById('placePickerHint').textContent,
   useLocationHidden: document.getElementById('useLoc').hidden,
   toolbarZ: Number(getComputedStyle(document.getElementById('topToolbar')).zIndex),
   mapControlsZ: Number(getComputedStyle(document.querySelector('.maplibregl-ctrl-top-right')).zIndex),
 }));
-check('generic search uses simple place language and offers the map instead of device location',
-  state.placeholder === 'Search places…' && state.mapChoice.includes('Tap the map instead')
-    && state.useLocationHidden, JSON.stringify(state));
+check('generic search tells riders to tap the map without adding a map button',
+  state.placeholder === 'Search places…' && state.mapChoiceGone
+    && /tap anywhere on the map/i.test(state.hint) && state.useLocationHidden,
+  JSON.stringify(state));
 check('the open search panel stacks above every map control',
   state.toolbarZ > state.mapControlsZ, JSON.stringify(state));
+await page.evaluate(() => inspectRoadAt({ x: 190, y: 410 }, { lng: -122.33, lat: 47.61 }));
+state = await page.evaluate(() => ({
+  pickerHidden: document.getElementById('placePicker').hidden,
+  readoutShown: document.getElementById('readout').classList.contains('show'),
+  actions: [...document.querySelectorAll('#readout .readout-route-actions button')]
+    .map((button) => button.textContent),
+}));
+check('tapping the map during generic search closes search and shows the normal route choice',
+  state.pickerHidden && state.readoutShown && state.actions.join('|') === 'End',
+  JSON.stringify(state));
+await page.click('#readout .readout-close');
+await page.click('#rb-search');
 await page.fill('#placeSearch', 'Seattle');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 state = await page.evaluate(() => ({ workers: window.__routingWorkerStarts.length,
@@ -101,20 +117,27 @@ await page.evaluate(() => { getFreshDevicePosition = () => new Promise(() => {})
 await page.click('#rb-end');
 state = await page.evaluate(() => ({
   useLocationHidden: document.getElementById('useLoc').hidden,
-  mapChoiceVisible: !document.getElementById('pickOnMap').hidden,
+  mapChoiceGone: !document.getElementById('pickOnMap'),
+  pickerVisible: !document.getElementById('placePicker').hidden,
+  armed: routing.arm,
+  hint: document.getElementById('placePickerHint').textContent,
 }));
-check('Destination search never offers current location and clearly offers a map tap',
-  state.useLocationHidden && state.mapChoiceVisible, JSON.stringify(state));
-await page.click('#pickOnMap');
+check('Destination search arms the visible map and never offers current location',
+  state.useLocationHidden && state.mapChoiceGone && state.pickerVisible
+    && state.armed === 'end' && /tap anywhere on the map/i.test(state.hint),
+  JSON.stringify(state));
+await page.evaluate(() => placeArmedPoint({ lng: -122.76, lat: 48.12 }));
 state = await page.evaluate(() => ({
   pickerHidden: document.getElementById('placePicker').hidden,
   armed: routing.arm,
-  status: document.getElementById('rb-status').textContent,
+  end: routing.end,
+  endName: routing.endName,
 }));
-check('Tap the map instead arms Destination and closes search',
-  state.pickerHidden && state.armed === 'end' && /tap the map.*destination/i.test(state.status),
+check('tapping the map during Destination search sets it directly and closes search',
+  state.pickerHidden && state.armed === null && state.endName === 'Point on map'
+    && state.end[0] === -122.76 && state.end[1] === 48.12,
   JSON.stringify(state));
-await page.evaluate(() => { routing.arm = null; updateArmButtons(); });
+await page.evaluate(() => clearRoute());
 await page.click('#rb-end');
 await page.fill('#placeSearch', 'Port Townsend');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
@@ -153,6 +176,54 @@ state = await page.evaluate(() => ({
 check('targeted Start assigns directly and routing begins after both endpoints exist',
   state.workers === 1 && state.pickerHidden && state.start && state.end && !state.promptShown,
   JSON.stringify(state));
+
+// A blank Safari/Web visit used to eagerly retain the expanded route graph,
+// leaving too little headroom for MapLibre when a rider zoomed out. Web now
+// follows the same request-driven startup as native, and the map stops at a
+// useful statewide view instead of accepting continent-scale zooms.
+const webContext = await browser.newContext({
+  serviceWorkers: 'block', viewport: { width: 390, height: 844 },
+  hasTouch: true, isMobile: true,
+  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
+    + 'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+});
+await webContext.addInitScript(() => {
+  window.__routingWorkerStarts = [];
+  const PlatformWorker = window.Worker;
+  window.Worker = function RecordingWorker(...args) {
+    if (/router-worker\.js(?:$|\?)/.test(String(args[0] || ''))) {
+      window.__routingWorkerStarts.push(performance.now());
+    }
+    return new PlatformWorker(...args);
+  };
+  window.Worker.prototype = PlatformWorker.prototype;
+});
+const webPage = await webContext.newPage();
+const webErrors = [];
+webPage.on('pageerror', (error) => webErrors.push(error.message));
+await webPage.goto(site.url, { waitUntil: 'load' });
+await webPage.waitForFunction(() => document.documentElement.classList.contains('app-ready'),
+  null, { timeout: 120000 });
+await webPage.waitForTimeout(2200);
+const webIdle = await webPage.evaluate(() => {
+  map.jumpTo({ zoom: 1 });
+  return {
+    workers: window.__routingWorkerStarts.length,
+    minZoom: map.getMinZoom(),
+    zoom: map.getZoom(),
+    panelOpen: document.body.classList.contains('panel-open'),
+    menuVisible: getComputedStyle(document.getElementById('panelOpen')).display !== 'none',
+  };
+});
+check('a blank web planner keeps the large route graph unloaded', webIdle.workers === 0,
+  JSON.stringify(webIdle));
+check('web zoom-out is clamped to the useful statewide range',
+  webIdle.minZoom === 5 && webIdle.zoom >= 5, JSON.stringify(webIdle));
+check('the web phone menu also starts closed',
+  !webIdle.panelOpen && webIdle.menuVisible, JSON.stringify(webIdle));
+check('the web zoom guard produces no page errors', webErrors.length === 0,
+  webErrors.join(' | '));
+await webContext.close();
 
 await browser.close();
 site.close();

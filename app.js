@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.619';
+const APP_VERSION = '2026-08-07.620';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1060,6 +1060,11 @@ const map = new maplibregl.Map({
   style: BikeBasemap.createStyle(),
   center: (savedState && savedState.view && savedState.view.c) || Region.defaultCenter,
   zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
+  // This build only has Washington data. Farther-out views add no routing
+  // context, but crossing into continent-scale tiles makes WebKit retain and
+  // rebucket several statewide map generations at once. On iPhone Safari that
+  // can terminate the page. Zoom 5 still fits the whole state on a phone.
+  minZoom: 5,
   maxZoom: 17,
   maxPitch: 0,
   pitchWithRotate: false,
@@ -8992,11 +8997,16 @@ function restoreViewportAfterPlacePicker() {
 }
 
 function closePlacePicker() {
+  const target = placeSearchTarget;
   placeSearchRequestId++;
   clearTimeout(internetPlaceSearchTimer);
   internetPlaceSearchTimer = null;
   internetPlaceSearch = false;
   placeSearchTarget = null;
+  if (target && routing.arm === target) {
+    routing.arm = null;
+    updateArmButtons();
+  }
   const picker = document.getElementById('placePicker');
   if (document.activeElement && picker.contains(document.activeElement)) document.activeElement.blur();
   picker.hidden = true;
@@ -9063,14 +9073,19 @@ function openPlaceSearch(target = null) {
   ensurePlaces();
   setPanelOpen(false);
   placeSearchTarget = ['start', 'end'].includes(target) ? target : null;
+  // Endpoint search also arms the map itself. The search card is deliberately
+  // not modal: a rider can ignore the field and tap a point directly, with no
+  // extra "tap the map" button in the way.
+  routing.arm = placeSearchTarget;
+  updateArmButtons();
   internetPlaceSearch = false;
   clearTimeout(internetPlaceSearchTimer);
   const targetLabel = placeSearchTarget === 'start' ? 'start' : 'destination';
   document.getElementById('placePickerTitle').textContent = placeSearchTarget
     ? `Choose ${targetLabel}` : 'Search map';
   document.getElementById('placePickerHint').textContent = placeSearchTarget
-    ? `Search for your ${targetLabel}, or choose it directly on the map.`
-    : 'Search for a place, or choose one directly on the map.';
+    ? `Search for your ${targetLabel}, or tap anywhere on the map.`
+    : 'Search for a place, or tap anywhere on the map.';
   // Device location is meaningful as a route start. It is deliberately absent
   // from Destination and generic place search so it cannot be offered as an
   // accidental destination.
@@ -9251,15 +9266,6 @@ function buildPlacePicker() {
   });
 
   document.getElementById('placePickerClose').addEventListener('click', closePlacePicker);
-  document.getElementById('pickOnMap').addEventListener('click', () => {
-    const target = placeSearchTarget;
-    closePlacePicker();
-    routing.arm = target;
-    updateArmButtons();
-    setRouteStatus(target
-      ? `Tap the map to set your ${target === 'start' ? 'start' : 'destination'}`
-      : 'Tap anywhere on the map to choose a location');
-  });
   document.getElementById('useLoc').addEventListener('click', () => {
     const requestId = ++placeSearchRequestId;
     setRouteStatus('Locating…');
@@ -10408,6 +10414,10 @@ let lastRoadInfoTouchAt = 0;
 
 function inspectRoadAt(point, lngLat = null) {
   if (Date.now() < roadInfoSuppressedUntil) return false;
+  // Generic search is also non-modal. Tapping the visible map dismisses the
+  // search card and opens the normal Start / End / Add stop choice here.
+  const picker = document.getElementById('placePicker');
+  if (picker && !picker.hidden) closePlacePicker();
   clearSearchResultMarker();
   const feature = featureAt(point);
   // A route point is useful even when no rendered road happens to sit under
@@ -11284,16 +11294,15 @@ buildSourcePanel();
 buildRulesPanel();
 buildVoicePanel();
 buildRoutingPanel();
-// A fresh native install has just copied roughly 151 MB of offline data. Do not
-// make its first map paint OR its first keyboard animation compete with
-// fetching, hashing, inflating, and indexing the 44 MB routing graph (about
-// 142 MB expanded). Existing/saved trips still start at once. A blank native
-// planner warms the tiny local place index instead; computeRoute() starts the
-// graph after the rider has actually chosen both endpoints. Web browsers keep
-// the background prewarm after their first usable map frame.
+// On a native or memory-constrained browser, do not make a blank planner hold
+// the 44 MB routing graph (about 142 MB after expansion) before the rider has
+// asked for a route. Besides slowing the first search, that idle allocation
+// leaves iPhone Safari too little headroom for a map zoom and can make WebKit
+// terminate the page. Existing/saved trips still start at once; unconstrained
+// desktop browsers retain the latency-saving background prewarm.
 if (routing.start && routing.end) {
   ensureRouter();
-} else if (isNativeAppRuntime()) {
+} else if (isNativeAppRuntime() || isConstrainedDevice()) {
   ensurePlaces();
 } else {
   let backgroundRouterStarted = false;

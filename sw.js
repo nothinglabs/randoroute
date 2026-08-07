@@ -12,7 +12,7 @@
  */
 importScripts('./build-version.js');
 
-const VERSION = 'v592'; // bump when app shell changes
+const VERSION = 'v593'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 const DATA_CACHE = 'data-offline-map-v8';
@@ -313,9 +313,8 @@ async function refreshReleaseData() {
  * Chunk entries live under `<archive>__chunk-N` pathnames (own pathname, so
  * the archive's own ignoreSearch matches can never collide with them, same
  * pattern as ./data/.stamp/ markers), plus an `__chunkindex` entry recording
- * {size, chunkBytes, chunks}. They are built ONCE per archive copy by
- * STREAMING the cached response -- the whole archive never exists in memory
- * -- and rebuilt after refreshStaleArchives replaces a stale copy. */
+ * {size, chunkBytes, chunks}. They are built once per archive copy, one archive
+ * at a time, and rebuilt after refreshStaleArchives replaces a stale copy. */
 const PMTILES_CHUNK_BYTES = 8 * 1024 * 1024;
 const chunkRequest = (pathname, i) => new Request(`${pathname}__chunk-${i}`);
 const chunkIndexRequest = (pathname) => new Request(`${pathname}__chunkindex`);
@@ -327,14 +326,20 @@ async function purgePmtilesChunks(cache, pathname) {
   }
 }
 
-// One chunking per archive at a time: the first zoom fires DOZENS of range
-// requests at once, and letting each stream its own copy of an 80 MB archive
-// would recreate the very spike this exists to remove.
+// One chunking per archive prevents duplicate work for that archive. The global
+// queue is equally important: the first map view asks basemap, roads, and
+// overlays for ranges together. Letting all three materialize their cached
+// 44/44/14 MB Blobs concurrently is enough for Safari to kill the page,
+// especially if the route graph is also live.
 const chunkingInFlight = new Map();
+let chunkBuildQueue = Promise.resolve();
 function ensurePmtilesChunks(cache, pathname, fullRequest) {
   let inFlight = chunkingInFlight.get(pathname);
   if (!inFlight) {
-    inFlight = buildPmtilesChunks(cache, pathname, fullRequest)
+    inFlight = chunkBuildQueue.then(() => buildPmtilesChunks(cache, pathname, fullRequest));
+    // A rejected archive must not poison the queue for every archive behind it.
+    chunkBuildQueue = inFlight.catch(() => {});
+    inFlight = inFlight
       .finally(() => chunkingInFlight.delete(pathname));
     chunkingInFlight.set(pathname, inFlight);
   }

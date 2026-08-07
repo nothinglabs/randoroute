@@ -54,6 +54,10 @@ check('the running app version matches the published release marker',
 // unreachable -- the same bug build-version.js documents for GRAPH_URL.
 const detailsHtml = readFileSync(join(ROOT, 'route-details.html'), 'utf8');
 const swSource = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+check('large PMTiles archive chunk builds are serialized across archives',
+  swSource.includes('let chunkBuildQueue = Promise.resolve()')
+    && /chunkBuildQueue\.then\(\(\) => buildPmtilesChunks/.test(swSource)
+    && /chunkBuildQueue = inFlight\.catch/.test(swSource));
 const versionedRefs = [...detailsHtml.matchAll(/(?:src|href)="([^"]+\?v=\d+)"/g)]
   .map((m) => m[1]);
 check('route-details.html references versioned assets', versionedRefs.length >= 2,
