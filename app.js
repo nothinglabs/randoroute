@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.613';
+const APP_VERSION = '2026-08-07.614';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9917,16 +9917,12 @@ function compactReadoutSummary(rows, fallback = '') {
 }
 
 function renderMapTapCard({
-  displayTitle, pointName, summary, rows, lngLat, anchorPoint,
+  displayTitle, detailsTitle = displayTitle, pointName, summary, rows, lngLat, anchorPoint,
   swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
 }) {
   const lat = Number(lngLat.lat);
   const lng = Number(lngLat.lng);
   const routeName = normalizeEndpointName(pointName) || 'Point on map';
-  const detailsRows = [...rows];
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
-    detailsRows.push(['Location', `${lat.toFixed(5)}, ${lng.toFixed(5)}`]);
-  }
 
   readoutEl.replaceChildren();
   const close = document.createElement('button');
@@ -10001,7 +9997,7 @@ function renderMapTapCard({
   details.id = 'mapTapDetails';
   details.className = 'readout-details';
   details.hidden = true;
-  details.append(readoutTable(detailsRows));
+  details.append(readoutTable(rows));
 
   const mapActions = document.createElement('div');
   mapActions.className = 'road-map-actions';
@@ -10044,6 +10040,7 @@ function renderMapTapCard({
     details.hidden = !open;
     detailsToggle.setAttribute('aria-expanded', String(open));
     detailsToggle.textContent = open ? 'Hide details' : 'Details';
+    headingText.textContent = open ? detailsTitle : displayTitle;
     if (anchorPoint) requestAnimationFrame(() => positionRoadInfoNear(anchorPoint));
   });
 
@@ -10078,6 +10075,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
     ].filter(([, value]) => value != null && value !== '');
     renderMapTapCard({
       displayTitle: 'Route closure',
+      detailsTitle: 'Route closure (OSM)',
       pointName: readoutRoutePointName(rows),
       summary: [p.name, p.reason].filter(Boolean).join(' · ') || 'Closed route segment',
       rows, lngLat, anchorPoint,
@@ -10246,6 +10244,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
   const pointName = readoutRoutePointName(rows);
   renderMapTapCard({
     displayTitle: pointName === 'Point on map' ? title : pointName,
+    detailsTitle: title,
     pointName,
     summary: compactReadoutSummary(rows),
     rows, lngLat, anchorPoint,

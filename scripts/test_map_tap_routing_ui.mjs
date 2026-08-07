@@ -53,6 +53,21 @@ check('Add stop explains the itinerary dependency by remaining disabled initiall
 check('the collapsed phone card stays compact', compact.compactHeight < 155,
   `${compact.compactHeight}px`);
 
+await page.locator('#readout .readout-details-toggle').click();
+const originalDetails = await page.evaluate(() => ({
+  heading: document.querySelector('#readout .rt-title')?.textContent,
+  text: document.getElementById('mapTapDetails')?.textContent,
+}));
+check('road Details restores the original source-oriented heading verbatim',
+  originalDetails.heading === 'Road (OSM)', JSON.stringify(originalDetails));
+check('road Details retains the former safety rows without GPS coordinates',
+  ['Name', 'Verdict', 'Why', 'Speed limit', 'Shoulder', 'Area', 'Bike facility', 'Surface (OSM)']
+    .every((label) => originalDetails.text.includes(label))
+    && !/47\.61500|-122\.33500|Location/.test(originalDetails.text), originalDetails.text);
+await page.locator('#readout .readout-details-toggle').click();
+check('collapsing Details returns to the friendly road name', await page.evaluate(() =>
+  document.querySelector('#readout .rt-title')?.textContent === 'Interurban Trail'));
+
 await page.locator('#readout .map-point-start').click();
 check('Start uses the tapped coordinate and road name', await page.evaluate(() =>
   routing.startName === 'Interurban Trail'
@@ -81,14 +96,17 @@ await page.locator('#readout .readout-details-toggle').click();
 const expanded = await page.evaluate(() => ({
   expanded: document.querySelector('.readout-details-toggle')?.getAttribute('aria-expanded'),
   hidden: document.getElementById('mapTapDetails')?.hidden,
-  location: document.getElementById('mapTapDetails')?.textContent,
+  heading: document.querySelector('#readout .rt-title')?.textContent,
+  detailsText: document.getElementById('mapTapDetails')?.textContent,
   links: [...document.querySelectorAll('#mapTapDetails .road-map-actions > *')]
     .map((element) => element.textContent),
 }));
-check('Details reveals the coordinates and external map tools only on request',
+check('Details restores the original source heading and external map tools',
   expanded.expanded === 'true' && expanded.hidden === false
-    && /47\.95000, -122\.30500/.test(expanded.location)
+    && expanded.heading === 'Point on map'
     && expanded.links.join('|') === 'Google Street View|Google Maps ↗', JSON.stringify(expanded));
+check('Details does not add GPS coordinates',
+  !/47\.95000|-122\.30500|Location/.test(expanded.detailsText), expanded.detailsText);
 await page.locator('#readout .map-point-stop').click();
 check('Add stop commits the tapped map point to the visible itinerary', await page.evaluate(() =>
   routing.vias.length === 1 && routing.vias[0].name === 'Point on map'
