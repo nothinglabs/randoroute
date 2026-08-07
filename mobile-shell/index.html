@@ -116,35 +116,35 @@
     </button>
     <div id="routeBar">
       <div class="route-endpoints" role="group" aria-label="Trip itinerary">
-        <button id="rb-start" class="route-endpoint route-endpoint-start" type="button" title="Set start">
-          <span class="route-endpoint-marker" aria-hidden="true"></span>
-          <span class="endpoint-copy"><span class="endpoint-label">From</span><strong data-endpoint-value>Choose start</strong></span>
-        </button>
+        <div class="route-endpoint-row route-endpoint-start-row">
+          <button id="rb-start" class="route-endpoint route-endpoint-start" type="button" title="Set start">
+            <span class="route-endpoint-marker" aria-hidden="true"></span>
+            <span class="endpoint-copy"><span class="endpoint-label">From</span><strong data-endpoint-value>Choose start</strong></span>
+          </button>
+          <div class="route-stop-actions" aria-label="Move start">
+            <button class="route-stop-action route-endpoint-up" type="button" aria-label="Start is already first" title="Start is already first" disabled>↑</button>
+            <button class="route-stop-action route-endpoint-down" type="button" data-endpoint-move="start" aria-label="Move start later" title="Move start later">↓</button>
+          </div>
+        </div>
         <div id="routeStops" class="route-stops" aria-label="Ordered stops"></div>
-        <button id="rb-via" class="route-add-stop" type="button" title="Add stop" hidden>
-          <span class="route-add-stop-marker" aria-hidden="true">＋</span><strong>Add stop</strong>
-        </button>
-        <button id="rb-end" class="route-endpoint route-endpoint-end" type="button" title="Set destination">
-          <span class="route-endpoint-marker" aria-hidden="true"></span>
-          <span class="endpoint-copy"><span class="endpoint-label">To</span><strong data-endpoint-value>Choose destination</strong></span>
-        </button>
+        <div class="route-endpoint-row route-endpoint-end-row">
+          <button id="rb-end" class="route-endpoint route-endpoint-end" type="button" title="Set destination">
+            <span class="route-endpoint-marker" aria-hidden="true"></span>
+            <span class="endpoint-copy"><span class="endpoint-label">To</span><strong data-endpoint-value>Choose destination</strong></span>
+          </button>
+          <div class="route-stop-actions" aria-label="Move destination">
+            <button class="route-stop-action route-endpoint-up" type="button" data-endpoint-move="end" aria-label="Move destination earlier" title="Move destination earlier">↑</button>
+            <button class="route-stop-action route-endpoint-down" type="button" aria-label="Destination is already last" title="Destination is already last" disabled>↓</button>
+          </div>
+        </div>
       </div>
-      <button id="rb-more" type="button" title="More route actions" aria-label="More route actions" aria-expanded="false" aria-controls="routeActionsMenu"></button>
-      <div id="routeActionsMenu" class="route-actions-menu" role="menu" hidden>
-        <button id="rb-road-block" type="button" role="menuitem" title="Add a road block"><span aria-hidden="true">🚧</span><strong>Add road block</strong></button>
-        <button id="rb-reverse" type="button" role="menuitem" title="Reverse route"><span aria-hidden="true">⇄</span><strong>Reverse route</strong></button>
-        <button id="rb-clear" type="button" role="menuitem" title="Clear route"><span aria-hidden="true">✕</span><strong>Clear route</strong></button>
-      </div>
+      <button id="rb-search" type="button" title="Search the map" aria-label="Search the map"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></button>
       <span id="rb-status"></span>
       <div id="placePicker" class="place-picker" role="dialog" aria-modal="false" aria-labelledby="placePickerTitle" hidden>
-        <div class="picker-head"><strong id="placePickerTitle">Choose location</strong><button id="placePickerClose" type="button" aria-label="Close location picker">✕</button></div>
-        <p id="placePickerHint" class="picker-hint"><strong>Tap on map</strong> to set location or <strong>search</strong> below.</p>
+        <div class="picker-head"><strong id="placePickerTitle">Search map</strong><button id="placePickerClose" type="button" aria-label="Close map search">✕</button></div>
+        <p id="placePickerHint" class="picker-hint">Choose a result to see it on the map, then add it to your trip.</p>
         <div class="picker-search-row">
-          <input id="placeSearch" type="search" placeholder="Search a place or store…" aria-label="Search for a place or store" autocomplete="off">
-          <button id="onlinePlaceSearch" type="button" aria-label="Search online for nearby places and stores" title="Search online for nearby places & stores">
-            <span class="online-search-ready" aria-hidden="true"><svg class="online-search-icon" viewBox="0 0 24 24"><circle cx="9.5" cy="9.5" r="6.5"></circle><path d="M3 9.5h13M9.5 3c2.2 2.2 2.2 10.8 0 13M9.5 3c-2.2 2.2-2.2 10.8 0 13M14.2 14.2 20 20"></path></svg>Net</span>
-            <span class="online-search-busy" aria-hidden="true">…</span>
-          </button>
+          <input id="placeSearch" type="search" placeholder="Search places, addresses, or stores…" aria-label="Search places, addresses, or stores" autocomplete="off">
         </div>
         <button id="useLoc" type="button" aria-label="Use my current location" title="Use my current location"><span aria-hidden="true">⌖</span> Use my current location</button>
         <div id="placeResults" class="place-results"></div>
@@ -345,12 +345,6 @@
   <dialog id="streetViewDialog" class="full-help-dialog sv-dialog" aria-label="Street View">
     <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Open in Google Maps ↗</a><button class="dialog-close streetview-close" data-close="streetViewDialog" aria-label="Close Street View"><span aria-hidden="true">✕</span><span>Close</span></button></div></div>
     <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><p id="streetViewLoadStatus" class="sv-load-status" role="status" aria-live="polite" hidden></p><div class="sv-overlay-notes"><p class="sv-coverage-note"><b>Location note:</b> The nearest available view may be up to 250 m away. For trails, it may show a nearby road.</p></div></div>
-  </dialog>
-
-  <dialog id="clearRouteDialog" class="map-dialog clear-route-dialog" aria-label="Clear this route">
-    <div class="dialog-head"><h2>Clear this route?</h2><button class="dialog-close" data-close="clearRouteDialog" aria-label="Close">✕</button></div>
-    <p>Start, destination, waypoints, and road blocks will be removed.</p>
-    <div class="dialog-actions"><button data-close="clearRouteDialog">Keep route</button><button id="confirmClearRoute" class="danger">Clear route</button></div>
   </dialog>
 
   <dialog id="removeRouteMarkerDialog" class="map-dialog remove-route-marker-dialog" aria-labelledby="removeRouteMarkerTitle">

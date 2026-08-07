@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Stops belong to the trip itinerary: they are named, ordered, editable, and
-// visible beside the start and destination on both phone and desktop layouts.
+// Start, stops, and destination are one ordered itinerary. Every row can move
+// across its neighbor, while location search is a separate map-discovery tool.
 import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const site = await serveRepo();
@@ -25,27 +25,28 @@ const initial = await page.evaluate(() => {
   addVia({ lng: -122.305, lat: 47.95 }, { name: 'Mukilteo' });
   addVia({ lng: -122.48, lat: 48.03 }, { name: 'Point on map' });
   const card = document.querySelector('.route-endpoints').getBoundingClientRect();
-  const more = document.getElementById('rb-more').getBoundingClientRect();
+  const search = document.getElementById('rb-search').getBoundingClientRect();
   return {
     itinerary: [...document.querySelectorAll('.route-endpoint, .route-stop-edit')]
       .map((element) => `${element.querySelector('.endpoint-label')?.textContent} ${element.querySelector('.endpoint-copy strong')?.textContent}`),
-    directAddStop: !document.getElementById('rb-via').hidden,
-    roadBlockBuried: !!document.getElementById('rb-road-block')?.closest('#routeActionsMenu'),
+    oldControlsGone: !document.getElementById('rb-via') && !document.getElementById('rb-more')
+      && !document.getElementById('routeActionsMenu'),
+    endpointArrows: document.querySelectorAll('.route-endpoint-row .route-stop-action').length,
     markerNumbers: routing.vias.map((via) =>
       via.marker.getElement().querySelector('.waypoint-marker-number')?.textContent),
     cardInsidePhone: card.left >= 0 && card.right <= innerWidth,
-    moreInsidePhone: more.left >= 0 && more.right <= innerWidth,
+    searchInsidePhone: search.left >= 0 && search.right <= innerWidth,
   };
 });
 check('the main card shows start, named stops, and destination in trip order',
   initial.itinerary.join(' | ') === 'From Seattle | Stop 1 Mukilteo | Stop 2 Point on map | To Port Townsend',
   JSON.stringify(initial.itinerary));
-check('Add stop is part of the itinerary while road blocks stay in More',
-  initial.directAddStop && initial.roadBlockBuried, JSON.stringify(initial));
+check('the overflow menu and direct Add stop row are replaced by itinerary arrows and search',
+  initial.oldControlsGone && initial.endpointArrows === 4, JSON.stringify(initial));
 check('map stop pins use the same itinerary numbers',
   initial.markerNumbers.join(',') === '1,2', JSON.stringify(initial.markerNumbers));
-check('the itinerary and More button fit the phone viewport',
-  initial.cardInsidePhone && initial.moreInsidePhone, JSON.stringify(initial));
+check('the itinerary and search button fit the phone viewport',
+  initial.cardInsidePhone && initial.searchInsidePhone, JSON.stringify(initial));
 
 await page.locator('[data-via-edit="0"]').focus();
 check('routine route UI refreshes do not steal focus from a stop control', await page.evaluate(() => {
@@ -66,49 +67,113 @@ check('a stop can be moved later directly from the card',
 check('map pin numbering follows reordered stops',
   reordered.markerNumbers.join(',') === '1,2', JSON.stringify(reordered));
 
-await page.locator('[data-via-edit="1"]').click();
-const editOpen = await page.evaluate(() => ({
-  title: document.getElementById('placePickerTitle').textContent,
-  value: document.getElementById('placeSearch').value,
-  activeRow: document.querySelector('[data-via-index="1"]')?.classList.contains('active'),
-}));
-check('tapping a stop opens an in-place Change stop picker with its current name',
-  editOpen.title === 'Change stop 2' && editOpen.value === 'Mukilteo' && editOpen.activeRow,
-  JSON.stringify(editOpen));
-
-await page.evaluate(() => {
-  const hit = document.createElement('button');
-  hit.className = 'place-hit';
-  hit.dataset.lon = '-122.686';
-  hit.dataset.lat = '48.219';
-  hit.dataset.name = 'Coupeville';
-  document.getElementById('placeResults').append(hit);
-  hit.click();
-});
-check('choosing a search result updates the stop name and coordinate', await page.evaluate(() =>
-  routing.vias[1].name === 'Coupeville'
-    && document.querySelector('[data-via-index="1"] .route-stop-edit strong')?.textContent === 'Coupeville'));
-
-const endpointEdit = await page.evaluate(() => {
-  const before = routing.vias.map((via) => via.name);
-  setRoutePoint('end', { lng: -122.77, lat: 48.13 }, 'New destination');
-  return { before, after: routing.vias.map((via) => via.name) };
-});
-check('changing an endpoint preserves the rider’s stops',
-  endpointEdit.before.join('|') === endpointEdit.after.join('|'), JSON.stringify(endpointEdit));
-
-const shared = await page.evaluate(() => {
-  const decoded = readSharedRoute(shareRouteUrl());
-  return decoded?.route?.vn;
-});
-check('shared routes preserve stop names', shared?.join('|') === 'Point on map|Coupeville',
+const shared = await page.evaluate(() => readSharedRoute(shareRouteUrl())?.route?.vn);
+check('shared routes preserve ordered stop names', shared?.join('|') === 'Point on map|Mukilteo',
   JSON.stringify(shared));
+
+await page.locator('[data-endpoint-move="start"]').click();
+let acrossEndpoint = await page.evaluate(() => ({
+  start: routing.startName, vias: routing.vias.map((via) => via.name), end: routing.endName,
+}));
+check('Start can move later by exchanging roles with the first stop',
+  acrossEndpoint.start === 'Point on map'
+    && acrossEndpoint.vias.join('|') === 'Seattle|Mukilteo'
+    && acrossEndpoint.end === 'Port Townsend', JSON.stringify(acrossEndpoint));
+
+await page.locator('[data-via-index="0"] .route-stop-up').click();
+acrossEndpoint = await page.evaluate(() => ({
+  start: routing.startName, vias: routing.vias.map((via) => via.name), end: routing.endName,
+}));
+check('the first stop can move above Start',
+  acrossEndpoint.start === 'Seattle'
+    && acrossEndpoint.vias.join('|') === 'Point on map|Mukilteo', JSON.stringify(acrossEndpoint));
+
+await page.locator('[data-endpoint-move="end"]').click();
+acrossEndpoint = await page.evaluate(() => ({
+  start: routing.startName, vias: routing.vias.map((via) => via.name), end: routing.endName,
+}));
+check('Destination can move earlier by exchanging roles with the last stop',
+  acrossEndpoint.end === 'Mukilteo'
+    && acrossEndpoint.vias.join('|') === 'Point on map|Port Townsend', JSON.stringify(acrossEndpoint));
+
+await page.locator('[data-via-index="1"] .route-stop-down').click();
+acrossEndpoint = await page.evaluate(() => ({
+  vias: routing.vias.map((via) => via.name), end: routing.endName,
+}));
+check('the last stop can move below Destination',
+  acrossEndpoint.end === 'Port Townsend'
+    && acrossEndpoint.vias.join('|') === 'Point on map|Mukilteo', JSON.stringify(acrossEndpoint));
+
+await page.locator('[data-via-edit="1"]').click();
+await page.waitForSelector('#readout.show');
+const stopCard = await page.evaluate(() => ({
+  title: document.querySelector('#readout .rt-title')?.textContent.trim(),
+  pickerHidden: document.getElementById('placePicker').hidden,
+}));
+check('tapping an itinerary place shows it on the map instead of opening a targeted picker',
+  stopCard.title === 'Mukilteo' && stopCard.pickerHidden, JSON.stringify(stopCard));
+
+await page.locator('#rb-search').click();
+await page.locator('#placeSearch').fill('Seattle');
+await page.waitForSelector('#placeResults .place-internet-search');
+const genericSearch = await page.evaluate(() => ({
+  title: document.getElementById('placePickerTitle').textContent,
+  last: document.querySelector('#placeResults .place-hit:last-child')?.textContent.trim(),
+  focused: document.activeElement?.id,
+}));
+check('search is generic and offers internet search as the final result',
+  genericSearch.title === 'Search map'
+    && genericSearch.last.startsWith('Search with internet')
+    && genericSearch.focused === 'placeSearch', JSON.stringify(genericSearch));
+
+const routeBeforeSearchChoice = await page.evaluate(() => JSON.stringify({
+  start: routing.start, end: routing.end, vias: routing.vias.map((via) => via.pt),
+}));
+await page.locator('#placeResults .place-hit:not(.place-internet-search)').first().click();
+await page.waitForSelector('#readout.show');
+const searchChoice = await page.evaluate(() => ({
+  indicator: document.querySelectorAll('.search-result-marker').length,
+  route: JSON.stringify({ start: routing.start, end: routing.end, vias: routing.vias.map((via) => via.pt) }),
+  actions: [...document.querySelectorAll('#readout .readout-route-actions button')]
+    .map((button) => button.textContent),
+}));
+check('a search result is indicated on the map without silently changing the trip',
+  searchChoice.indicator === 1 && searchChoice.route === routeBeforeSearchChoice,
+  JSON.stringify(searchChoice));
+check('the searched point offers all three trip roles when endpoints already exist',
+  searchChoice.actions.join('|') === 'Start|End|Add stop', JSON.stringify(searchChoice.actions));
+
+await page.locator('#readout .readout-close').click();
+check('closing the searched point also removes its temporary indicator', await page.evaluate(() =>
+  document.querySelectorAll('.search-result-marker').length === 0));
+
+await page.locator('#rb-search').click();
+await page.locator('#placeSearch').fill('coffee');
+await page.waitForSelector('#placeResults .place-internet-search');
+await page.evaluate(() => {
+  searchOnlinePlaces = async () => [{
+    name: 'Test Coffee, Seattle, Washington', lon: -122.332, lat: 47.61,
+    source: 'online', distanceM: 250,
+  }];
+});
+await page.locator('#placeResults .place-internet-search').click();
+await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
+const internetMode = await page.evaluate(() => ({
+  hint: document.getElementById('placePickerHint').textContent,
+  result: document.querySelector('#placeResults .place-hit:not(.place-internet-search)')?.textContent,
+  internetChoiceGone: !document.querySelector('#placeResults .place-internet-search'),
+}));
+check('the final result switches the dialog into internet-search mode',
+  internetMode.hint.startsWith('Internet search is on')
+    && internetMode.result.includes('Test Coffee') && internetMode.internetChoiceGone,
+  JSON.stringify(internetMode));
+await page.locator('#placePickerClose').click();
 
 await page.locator('[data-via-index="0"] .route-stop-remove').click();
 check('a stop can be removed directly from the itinerary', await page.evaluate(() =>
   routing.vias.length === 1
     && document.querySelectorAll('.route-stop-row').length === 1
-    && document.querySelector('.route-stop-edit strong')?.textContent === 'Coupeville'));
+    && document.querySelector('.route-stop-edit strong')?.textContent === 'Mukilteo'));
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 

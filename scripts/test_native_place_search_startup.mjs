@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Opening the first From/To search on a fresh iPhone must not start the 44 MB
+// Opening the first generic map search on a fresh iPhone must not start the 44 MB
 // routing graph. Its fetch/inflate/index work competes with iOS's first keyboard
-// animation and makes the phone look frozen. Native search stays lightweight;
-// the router starts only after the rider has actually chosen both endpoints.
+// animation and makes the phone look frozen. Search and map preview stay
+// lightweight; the router starts only after both endpoint roles are assigned.
 import { chromiumPath, playwright, serveRepo } from './testlib/harness.mjs';
 
 const { chromium } = await playwright();
@@ -55,23 +55,40 @@ check('an untouched native planner does not start the routing graph', state.work
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
 
-await page.click('#rb-start');
+await page.click('#rb-search');
 await page.fill('#placeSearch', 'Seattle');
-await page.waitForSelector('#placeResults .place-hit');
+await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 state = await page.evaluate(() => ({ workers: window.__routingWorkerStarts.length,
-  results: document.querySelectorAll('#placeResults .place-hit').length }));
-check('the first From search returns local places without starting the router',
+  results: document.querySelectorAll('#placeResults .place-hit:not(.place-internet-search)').length,
+  internetLast: document.querySelector('#placeResults .place-hit:last-child')?.classList.contains('place-internet-search') }));
+check('the first map search returns local places without starting the router',
   state.workers === 0 && state.results > 0, JSON.stringify(state));
-await page.click('#placeResults .place-hit');
+check('internet search is offered as the final search item instead of a Net button',
+  state.internetLast && !await page.$('#onlinePlaceSearch'), JSON.stringify(state));
+await page.click('#placeResults .place-hit:not(.place-internet-search)');
+await page.waitForSelector('#readout.show');
+state = await page.evaluate(() => ({
+  workers: window.__routingWorkerStarts.length,
+  start: Boolean(routing.start), end: Boolean(routing.end),
+  indicator: document.querySelectorAll('.search-result-marker').length,
+  actions: [...document.querySelectorAll('#readout .readout-route-actions button')]
+    .map((button) => button.textContent),
+}));
+check('choosing a result previews it on the map without assigning a route role',
+  state.workers === 0 && !state.start && !state.end && state.indicator === 1
+    && state.actions.join('|') === 'Start|End', JSON.stringify(state));
+await page.click('#readout .map-point-start');
 
-await page.click('#rb-end');
+await page.click('#rb-search');
 await page.fill('#placeSearch', 'Port Townsend');
-await page.waitForSelector('#placeResults .place-hit');
+await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 state = await page.evaluate(() => ({ workers: window.__routingWorkerStarts.length,
-  results: document.querySelectorAll('#placeResults .place-hit').length }));
-check('the first To search also stays responsive',
+  results: document.querySelectorAll('#placeResults .place-hit:not(.place-internet-search)').length }));
+check('the second map search also stays responsive',
   state.workers === 0 && state.results > 0, JSON.stringify(state));
-await page.click('#placeResults .place-hit');
+await page.click('#placeResults .place-hit:not(.place-internet-search)');
+await page.waitForSelector('#readout.show');
+await page.click('#readout .map-point-end');
 await page.waitForFunction(() => window.__routingWorkerStarts.length > 0, null, { timeout: 30000 });
 state = await page.evaluate(() => ({
   workers: window.__routingWorkerStarts.length,

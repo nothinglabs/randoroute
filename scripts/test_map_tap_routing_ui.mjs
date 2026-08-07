@@ -37,19 +37,19 @@ const compact = await page.evaluate(() => {
       .map((button) => button.textContent),
     detailsHidden: details?.hidden,
     tableHiddenInsideDetails: !!details?.querySelector('table'),
-    stopDisabled: readout.querySelector('.map-point-stop')?.disabled,
+    stopPresent: Boolean(readout.querySelector('.map-point-stop')),
     compactHeight: Math.round(readout.getBoundingClientRect().height),
   };
 });
 check('a road tap shows only a short name and safety summary',
   compact.heading === 'Interurban Trail'
     && /Passes your rules|Bike network/.test(compact.summary), JSON.stringify(compact));
-check('Start, End, and Add stop are the primary actions',
-  compact.actions.join('|') === 'Start|End|Add stop', JSON.stringify(compact.actions));
+check('Start and End are the primary actions before the trip has endpoints',
+  compact.actions.join('|') === 'Start|End', JSON.stringify(compact.actions));
 check('technical rows exist but begin hidden behind Details',
   compact.detailsHidden && compact.tableHiddenInsideDetails, JSON.stringify(compact));
-check('Add stop explains the itinerary dependency by remaining disabled initially',
-  compact.stopDisabled === true);
+check('Add stop stays out of the way until the trip has both endpoints',
+  compact.stopPresent === false);
 check('the collapsed phone card stays compact', compact.compactHeight < 155,
   `${compact.compactHeight}px`);
 

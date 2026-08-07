@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.614';
+const APP_VERSION = '2026-08-07.615';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2895,7 +2895,6 @@ async function ensureRouter() {
   // Endpoint editing is safe while the graph initializes: computeRoute()
   // records a pending request and runs it once the worker reports ready. Keep
   // the planner download from making a fresh native install look unresponsive.
-  setRouteActionsOpen(false);
   updateArmButtons();
   try {
     showRouterProgress(`Downloading ${Region.name} roads, trails, ferries, and elevation data…`);
@@ -7788,8 +7787,7 @@ function refreshWaypointMarkers() {
 function renderRouteStops() {
   const host = document.getElementById('routeStops');
   if (!host) return;
-  const activeViaId = routing.arm === 'via' ? placeTargetVia?._uiId : null;
-  const renderKey = `${activeViaId || ''}|${routing.vias.map((via) =>
+  const renderKey = `${Boolean(routing.start)}:${Boolean(routing.end)}|${routing.vias.map((via) =>
     `${via._uiId}:${via.name}:${via.pt.join(',')}`).join('|')}`;
   if (renderKey === routeStopsRenderKey) {
     refreshWaypointMarkers();
@@ -7801,14 +7799,12 @@ function renderRouteStops() {
     const row = document.createElement('div');
     row.className = 'route-stop-row';
     row.dataset.viaIndex = String(index);
-    row.classList.toggle('active', routing.arm === 'via' && placeTargetVia === via);
-
     const edit = document.createElement('button');
     edit.type = 'button';
     edit.className = 'route-stop-edit';
     edit.dataset.viaEdit = String(index);
-    edit.title = `Change stop ${index + 1}`;
-    edit.setAttribute('aria-label', `Change stop ${index + 1}: ${via.name}`);
+    edit.title = `Show stop ${index + 1} on the map`;
+    edit.setAttribute('aria-label', `Show stop ${index + 1} on the map: ${via.name}`);
     const number = document.createElement('span');
     number.className = 'route-stop-number';
     number.setAttribute('aria-hidden', 'true');
@@ -7822,7 +7818,7 @@ function renderRouteStops() {
     name.textContent = via.name || 'Point on map';
     copy.append(label, name);
     edit.append(number, copy);
-    edit.addEventListener('click', () => openPlacePicker('via', via));
+    edit.addEventListener('click', () => showPlaceOnMap(via.pt, via.name));
 
     const actions = document.createElement('div');
     actions.className = 'route-stop-actions';
@@ -7838,10 +7834,10 @@ function renderRouteStops() {
       return button;
     };
     actions.append(
-      action('route-stop-up', '↑', `Move stop ${index + 1} earlier`, index === 0,
+      action('route-stop-up', '↑', `Move stop ${index + 1} earlier`, !routing.start,
         () => moveVia(via, -1)),
       action('route-stop-down', '↓', `Move stop ${index + 1} later`,
-        index === routing.vias.length - 1, () => moveVia(via, 1)),
+        !routing.end, () => moveVia(via, 1)),
       action('route-stop-remove', '✕', `Remove stop ${index + 1}`, false, () => removeVia(via)),
     );
     row.append(edit, actions);
@@ -7910,9 +7906,40 @@ function updateVia(via, lngLat, name = 'Point on map') {
   return true;
 }
 
+function swapEndpointWithAdjacentStop(kind) {
+  if (!(routing.start && routing.end) || !['start', 'end'].includes(kind)) return false;
+  if (!routing.vias.length) {
+    reverseRoute();
+    showRouteActionToast('Trip reversed · recalculating…', { busy: true, duration: 0 });
+    return true;
+  }
+  exitSharedRoute();
+  const via = kind === 'start' ? routing.vias[0] : routing.vias[routing.vias.length - 1];
+  const endpointPoint = routing[kind].slice();
+  const endpointName = routing[`${kind}Name`] || 'Point on map';
+  routing[kind] = via.pt.slice();
+  routing[`${kind}Name`] = via.name || 'Point on map';
+  via.pt = endpointPoint;
+  via.name = endpointName;
+  routing[`${kind}Marker`]?.setLngLat(routing[kind]);
+  via.marker?.setLngLat(via.pt);
+  if (kind === 'start') routing.startFromDevice = false;
+  regenerateRoutesAfterWaypointChange();
+  computeRoute();
+  updateArmButtons();
+  showRouteActionToast('Trip reordered · recalculating…', { busy: true, duration: 0 });
+  saveStateSoon();
+  return true;
+}
+
 function moveVia(via, delta) {
   const from = routing.vias.indexOf(via);
-  const to = from + Math.sign(delta);
+  const direction = Math.sign(delta);
+  if (from === 0 && direction < 0) return swapEndpointWithAdjacentStop('start');
+  if (from === routing.vias.length - 1 && direction > 0) {
+    return swapEndpointWithAdjacentStop('end');
+  }
+  const to = from + direction;
   if (from < 0 || to < 0 || to >= routing.vias.length || from === to) return false;
   exitSharedRoute();
   routing.vias.splice(from, 1);
@@ -8046,7 +8073,6 @@ function reverseRoute() {
   stopTurnNavigation(false);
   routing.arm = null;
   closePlacePicker(false);
-  setRouteActionsOpen(false);
 
   const start = routing.start;
   const startName = routing.startName;
@@ -8083,7 +8109,6 @@ function clearRoute() {
   stopTurnNavigation(false);
   routing.arm = null;
   closePlacePicker(false);
-  setRouteActionsOpen(false);
   routing.start = routing.end = null;
   routing.startName = routing.endName = null;
   routing.startFromDevice = false;
@@ -8112,68 +8137,24 @@ function clearRoute() {
   saveStateSoon();
 }
 
-function requestClearRoute() {
-  if (!routing.start && !routing.end && routing.vias.length === 0 && routing.blocks.length === 0) return;
-  setRouteActionsOpen(false);
-  const dialog = document.getElementById('clearRouteDialog');
-  if (dialog && !dialog.open) dialog.showModal();
-}
-
-function setRouteActionsOpen(open) {
-  const menu = document.getElementById('routeActionsMenu');
-  const button = document.getElementById('rb-more');
-  if (!menu || !button) return;
-  const next = Boolean(open && !button.disabled);
-  menu.hidden = !next;
-  button.setAttribute('aria-expanded', String(next));
-}
-
 function updateArmButtons() {
-  for (const kind of ['start', 'end', 'block']) {
-    for (const prefix of ['rt-', 'rb-']) {
-      const b = document.getElementById(prefix + kind);
-      if (b) b.classList.toggle('active', routing.arm === kind);
-    }
-  }
   for (const kind of ['start', 'end']) {
     const button = document.getElementById(`rb-${kind}`);
     if (!button) continue;
     const isSet = Boolean(routing[kind]);
-    const isActive = routing.arm === kind;
     const endpointName = kind === 'start' ? 'start' : 'destination';
     button.classList.toggle('set', isSet);
-    if (isActive) button.setAttribute('aria-current', 'step');
-    else button.removeAttribute('aria-current');
-    button.title = isActive ? `Choosing ${endpointName} — tap the map or search`
-      : `${isSet ? 'Change' : 'Set'} ${endpointName}`;
+    button.title = isSet ? `Show ${endpointName} on the map`
+      : `Search the map to choose ${endpointName}`;
     button.setAttribute('aria-label', button.title);
     button.disabled = false;
     const value = button.querySelector('[data-endpoint-value]');
     if (value) value.textContent = routeEndpointDisplayName(kind);
   }
-  const add = document.getElementById('rb-via');
-  const block = document.getElementById('rb-road-block');
-  const reverse = document.getElementById('rb-reverse');
-  const clear = document.getElementById('rb-clear');
-  const more = document.getElementById('rb-more');
-  if (add) {
-    add.hidden = !(routing.start && routing.end);
-    add.disabled = !(routing.start && routing.end) || routing.vias.length >= MAX_ROUTE_STOPS;
-    add.title = routing.vias.length >= MAX_ROUTE_STOPS
-      ? `Maximum of ${MAX_ROUTE_STOPS} stops reached` : 'Add stop';
-    add.classList.toggle('active', routing.arm === 'via' && !placeTargetVia);
-    add.setAttribute('aria-pressed', String(routing.arm === 'via' && !placeTargetVia));
-  }
-  if (block) {
-    block.disabled = !(routing.start && routing.end) || routing.blocks.length >= MAX_ROAD_BLOCKS;
-    block.title = routing.blocks.length >= MAX_ROAD_BLOCKS
-      ? `Maximum of ${MAX_ROAD_BLOCKS} road blocks reached` : 'Add a road block';
-  }
-  if (reverse) reverse.disabled = !(routing.start && routing.end);
-  if (clear) clear.disabled = !(routing.start || routing.end || routing.vias.length || routing.blocks.length);
-  // Keep the menu discoverable before the route is complete. Its individual
-  // actions remain disabled until their own requirements are met.
-  if (more) more.disabled = false;
+  const canReorderEndpoints = Boolean(routing.start && routing.end && !turnNav.active);
+  document.querySelectorAll('[data-endpoint-move]').forEach((button) => {
+    button.disabled = !canReorderEndpoints;
+  });
   renderRouteStops();
 }
 
@@ -8535,15 +8516,15 @@ function buildRoutingPanel() {
   renderRouteCard(null);
 
   for (const kind of ['start', 'end']) {
-    document.getElementById('rb-' + kind).addEventListener('click', () => openPlacePicker(kind));
+    document.getElementById('rb-' + kind).addEventListener('click', () => {
+      if (!routing[kind]) { openPlaceSearch(); return; }
+      showPlaceOnMap(routing[kind], routeEndpointDisplayName(kind));
+    });
   }
-  document.getElementById('rb-more').addEventListener('click', () => {
-    const menu = document.getElementById('routeActionsMenu');
-    setRouteActionsOpen(menu.hidden);
+  document.getElementById('rb-search').addEventListener('click', openPlaceSearch);
+  document.querySelectorAll('[data-endpoint-move]').forEach((button) => {
+    button.addEventListener('click', () => swapEndpointWithAdjacentStop(button.dataset.endpointMove));
   });
-  document.getElementById('rb-via').addEventListener('click', () => openPlacePicker('via'));
-  document.getElementById('rb-road-block').addEventListener('click', () => armRoutePoint('block'));
-  document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.getElementById('navStartButton').addEventListener('click', () => {
     if (turnNav.active) stopTurnNavigation();
     else startTurnNavigation();
@@ -8572,11 +8553,6 @@ function buildRoutingPanel() {
   document.getElementById('offRouteDialog').addEventListener('click', (event) => {
     if (event.target === event.currentTarget) event.currentTarget.close();
   });
-  document.getElementById('rb-clear').addEventListener('click', requestClearRoute);
-  document.getElementById('confirmClearRoute').addEventListener('click', () => {
-    document.getElementById('clearRouteDialog').close();
-    clearRoute();
-  });
   document.getElementById('confirmRemoveRouteMarker').addEventListener('click', () => {
     const pending = pendingRouteMarkerRemoval;
     pendingRouteMarkerRemoval = null;
@@ -8586,12 +8562,6 @@ function buildRoutingPanel() {
     else removeRoadBlock(pending.item);
   });
   document.getElementById('confirmSharedSwitch').addEventListener('click', () => confirmSharedSwitch());
-  document.addEventListener('click', (event) => {
-    if (!document.getElementById('routeBar').contains(event.target)) setRouteActionsOpen(false);
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') setRouteActionsOpen(false);
-  });
   updateArmButtons();
   buildPlacePicker();
   buildSavedRoutes();
@@ -8918,11 +8888,12 @@ function ensurePlaces() {
   return placesPromise;
 }
 
-let placeTarget = null;
-let placeTargetVia = null;
 let placeSearchRequestId = 0;
 let placePickerViewportRestoreTimers = [];
-let placePickerMapFrameTimer = null;
+let internetPlaceSearch = false;
+let internetPlaceSearchTimer = null;
+let searchResultMarker = null;
+let searchResultOpenToken = 0;
 const onlinePlaceCache = new Map();
 let onlinePlaceLastRequestAt = 0;
 const ONLINE_PLACE_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
@@ -9023,25 +8994,11 @@ function restoreViewportAfterPlacePicker() {
   placePickerViewportRestoreTimers.push(setTimeout(restore, 180), setTimeout(restore, 480));
 }
 
-function frameMapAfterPlacePicker(lngLat) {
-  clearTimeout(placePickerMapFrameTimer);
-  placePickerMapFrameTimer = setTimeout(() => {
-    map.resize();
-    if (routing.start && routing.end) {
-      fitRouteBounds({
-        s: routing.start,
-        e: routing.end,
-        v: routing.vias.map((via) => via.pt),
-        b: routing.blocks.map((block) => block.pt),
-      });
-    } else {
-      map.flyTo({ center: [lngLat.lng, lngLat.lat], zoom: 13 });
-    }
-  }, 500);
-}
-
-function closePlacePicker(cancelArm = false) {
+function closePlacePicker() {
   placeSearchRequestId++;
+  clearTimeout(internetPlaceSearchTimer);
+  internetPlaceSearchTimer = null;
+  internetPlaceSearch = false;
   const picker = document.getElementById('placePicker');
   if (document.activeElement && picker.contains(document.activeElement)) document.activeElement.blur();
   picker.hidden = true;
@@ -9049,108 +9006,91 @@ function closePlacePicker(cancelArm = false) {
   restoreViewportAfterPlacePicker();
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
-  if (cancelArm && (routing.arm === 'start' || routing.arm === 'end'
-    || routing.arm === 'via' || routing.arm === 'block')) {
-    routing.arm = null;
-    setRouteStatus('');
-  }
-  placeTarget = null;
-  placeTargetVia = null;
-  updateArmButtons();
 }
 
-function openPlacePicker(kind, via = null) {
-  // A road block is intentionally map-only: routing uses the exact point the
-  // rider picks, so a place-search result would add unnecessary indirection.
-  if (kind === 'block') {
-    armRoutePoint('block');
-    return;
+function clearSearchResultMarker() {
+  searchResultOpenToken++;
+  searchResultMarker?.remove();
+  searchResultMarker = null;
+}
+
+function searchResultMarkerElement() {
+  const element = document.createElement('div');
+  element.className = 'search-result-marker';
+  element.setAttribute('aria-hidden', 'true');
+  return element;
+}
+
+function showPlaceOnMap(point, name = 'Point on map', { searchResult = false } = {}) {
+  const lng = Number(Array.isArray(point) ? point[0] : point?.lng);
+  const lat = Number(Array.isArray(point) ? point[1] : point?.lat);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return false;
+  const picker = document.getElementById('placePicker');
+  if (picker && !picker.hidden) closePlacePicker();
+  dismissRoadInfo();
+  if (searchResult) {
+    searchResultMarker = new maplibregl.Marker({
+      element: searchResultMarkerElement(), anchor: 'bottom',
+    }).setLngLat([lng, lat]).addTo(map);
   }
-  if (via && (kind !== 'via' || !routing.vias.includes(via))) return;
-  const isConstraint = kind === 'via' || kind === 'block';
-  if (isConstraint && (!(routing.start && routing.end)
-    || (kind === 'via' ? (!via && routing.vias.length >= MAX_ROUTE_STOPS)
-      : routing.blocks.length >= MAX_ROAD_BLOCKS))) return;
-  setRouteActionsOpen(false);
-  placeTarget = kind;
-  placeTargetVia = via;
-  routing.arm = kind;
-  suppressRoadInfo();
-  updateArmButtons();
+  const token = ++searchResultOpenToken;
+  const routeName = normalizeEndpointName(name) || 'Point on map';
+  let rendered = false;
+  const showCard = () => {
+    if (rendered || token !== searchResultOpenToken) return;
+    rendered = true;
+    const lngLat = { lng, lat };
+    renderMapTapCard({
+      displayTitle: routeName,
+      detailsTitle: routeName,
+      pointName: routeName,
+      summary: searchResult ? 'Search result — choose how it belongs in your trip.'
+        : 'Trip location — choose a role or open Details.',
+      rows: [], lngLat, anchorPoint: map.project(lngLat),
+      swatchColor: searchResult ? '#7a3fc2' : '#52656f',
+      swatchLabel: searchResult ? 'Search result marker' : 'Trip location marker',
+      allowRoadBlock: false,
+    });
+    readoutPinned = true;
+  };
+  map.stop();
+  map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 14), duration: 450 });
+  map.once?.('moveend', showCard);
+  setTimeout(showCard, 650);
+  return true;
+}
+
+function openPlaceSearch() {
+  routing.arm = null;
+  dismissRoadInfo();
   // Searching needs only the tiny local place index. Starting the 44 MB
   // routing graph here made an iPhone fetch/inflate/index it during the first
   // keyboard animation -- the field appeared to freeze before the rider had
   // even chosen a point. The router starts when both endpoints exist.
   ensurePlaces();
   setPanelOpen(false);
-  const viaIndex = via ? routing.vias.indexOf(via) : -1;
-  document.getElementById('placePickerTitle').textContent = kind === 'start' ? 'Choose start'
-    : kind === 'via' ? (via ? `Change stop ${viaIndex + 1}` : 'Add stop')
-      : kind === 'block' ? 'Add road block' : 'Choose destination';
-  document.getElementById('placePickerHint').innerHTML = kind === 'via'
-    ? `<strong>Search</strong> for a place below, or <strong>tap the map</strong> to ${via ? 'move this stop' : 'add a stop'}.`
-    : kind === 'block'
-      ? '<strong>Search</strong> for a road or place below, or <strong>tap the map</strong> to block it.'
-      : `<strong>Tap on map</strong> to set ${kind === 'start' ? 'start' : 'destination'} or <strong>search</strong> below.`;
-  document.getElementById('useLoc').hidden = kind !== 'start';
-  const onlineButton = document.getElementById('onlinePlaceSearch');
-  onlineButton.disabled = false;
-  onlineButton.classList.remove('searching');
+  internetPlaceSearch = false;
+  clearTimeout(internetPlaceSearchTimer);
+  document.getElementById('placePickerTitle').textContent = 'Search map';
+  document.getElementById('placePickerHint').textContent =
+    'Choose a result to see it on the map, then add it to your trip.';
+  document.getElementById('useLoc').hidden = false;
   const searchInput = document.getElementById('placeSearch');
-  searchInput.placeholder = kind === 'start' ? 'Search for a start…'
-    : kind === 'via' ? 'Search for a stop…'
-      : kind === 'block' ? 'Search for a road block…' : 'Search for a destination…';
-  const currentEndpointName = via
-    ? (normalizeEndpointName(via.name) || 'Point on map')
-    : (!isConstraint && routing[kind]
-      ? (normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map') : '');
-  searchInput.value = currentEndpointName;
-  searchInput.classList.toggle('current-endpoint-preview', Boolean(currentEndpointName));
-  searchInput.setAttribute('aria-label', searchInput.placeholder.replace('…', ''));
+  searchInput.placeholder = 'Search places, addresses, or stores…';
+  searchInput.value = '';
+  searchInput.classList.remove('current-endpoint-preview');
+  searchInput.setAttribute('aria-label', 'Search places, addresses, or stores');
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   document.getElementById('placePicker').hidden = false;
   document.body.classList.add('place-picker-open');
-  setRouteStatus(kind === 'via' ? `Search or tap the map to ${via ? 'move this STOP' : 'add a STOP'}`
-    : kind === 'block' ? 'Search or tap the map to add a ROAD BLOCK'
-      : `Tap the map or search to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
-}
-
-function armRoutePoint(kind) {
-  const isConstraint = kind === 'via' || kind === 'block';
-  if (isConstraint && !(routing.start && routing.end)) return;
-  if (kind === 'via' && routing.vias.length >= MAX_ROUTE_STOPS) {
-    setRouteStatus(`A route can have up to ${MAX_ROUTE_STOPS} waypoints`);
-    return;
-  }
-  if (kind === 'block' && routing.blocks.length >= MAX_ROAD_BLOCKS) {
-    setRouteStatus(`A route can have up to ${MAX_ROAD_BLOCKS} road blocks`);
-    return;
-  }
-  // Constraint actions begin directly on the map, so collapse the overflow
-  // menu before the rider chooses a point.
-  setRouteActionsOpen(false);
-  closePlacePicker(false);
-  routing.arm = routing.arm === kind ? null : kind;
-  if (routing.arm) suppressRoadInfo();
-  updateArmButtons();
-  ensureRouter();
-  if (routing.arm) {
-    setPanelOpen(false);
-    setRouteStatus(kind === 'via' ? 'Tap the map to add a waypoint'
-      : kind === 'block' ? 'Tap the map to add a road block'
-        : `Tap the map to set the ${kind === 'start' ? 'START' : 'DESTINATION'}`);
-    if (kind === 'via') showRouteActionToast('Tap the map to add a waypoint', { duration: 3200 });
-    if (kind === 'block') showRouteActionToast('Tap the map to add a road block', { duration: 3200 });
-  } else {
-    setRouteStatus('');
-  }
+  setRouteStatus('Search offline places, or use internet search at the end of the list');
+  requestAnimationFrame(() => searchInput.focus({ preventScroll: true }));
 }
 
 function buildPlacePicker() {
   const input = document.getElementById('placeSearch');
   const results = document.getElementById('placeResults');
-  const onlineButton = document.getElementById('onlinePlaceSearch');
   const TYPE_LABEL = { city: 'city', town: 'town', village: 'village', hamlet: 'hamlet',
     suburb: 'suburb', neighbourhood: 'neighborhood', ferry: 'ferry terminal' };
 
@@ -9165,7 +9105,7 @@ function buildPlacePicker() {
     return unique;
   };
 
-  const render = (items, message = '') => {
+  const render = (items, message = '', { offerInternet = false } = {}) => {
     results.replaceChildren();
     if (message) {
       const notice = document.createElement('p');
@@ -9190,7 +9130,18 @@ function buildPlacePicker() {
       hit.append(detail);
       results.append(hit);
     }
-    results.classList.toggle('show', items.length > 0 || Boolean(message));
+    if (offerInternet) {
+      const internet = document.createElement('button');
+      internet.type = 'button';
+      internet.className = 'place-hit place-internet-search';
+      internet.dataset.internetSearch = 'true';
+      internet.append(document.createTextNode('Search with internet'));
+      const detail = document.createElement('small');
+      detail.textContent = 'Addresses, businesses, and more';
+      internet.append(detail);
+      results.append(internet);
+    }
+    results.classList.toggle('show', items.length > 0 || Boolean(message) || offerInternet);
   };
 
   const localMatches = () => {
@@ -9207,110 +9158,87 @@ function buildPlacePicker() {
       ({ name, lon, lat, type, source: 'local' }));
   };
 
-  const showLocalMatches = () => render(localMatches());
+  const showLocalMatches = () => {
+    const query = input.value.trim();
+    render(localMatches(), '', { offerInternet: query.length >= 2 });
+  };
   const searchOnline = async () => {
     const query = input.value.trim();
     if (query.length < 2) {
       setRouteStatus('Enter at least two characters to search online');
       return;
     }
+    internetPlaceSearch = true;
+    document.getElementById('placePickerHint').textContent =
+      'Internet search is on. Choose a result to see it on the map.';
     const requestId = ++placeSearchRequestId;
-    onlineButton.disabled = true;
-    onlineButton.classList.add('searching');
-    showLocalMatches();
+    render([], `Searching the internet for “${query}”…`);
     try {
       const onlineMatches = await searchOnlinePlaces(query);
       if (requestId !== placeSearchRequestId || input.value.trim() !== query) return;
-      const local = localMatches();
-      const combined = uniqueMatches([...onlineMatches, ...local]);
-      const noNetMessage = !onlineMatches.length
-        ? (local.length
-          ? `No Net results for “${query}”. Showing offline place matches.`
-          : `No Net results for “${query}”. Try a city, address, or landmark.`)
-        : '';
-      render(combined, noNetMessage);
+      const matches = uniqueMatches(onlineMatches);
+      render(matches, matches.length ? ''
+        : `No internet results for “${query}”. Try a city, address, or landmark.`);
       setRouteStatus(onlineMatches.length
-        ? `${onlineMatches.length} Net ${onlineMatches.length === 1 ? 'result' : 'results'} found`
-        : 'No Net search results');
+        ? `${onlineMatches.length} internet ${onlineMatches.length === 1 ? 'result' : 'results'} found`
+        : 'No internet search results');
     } catch (e) {
       if (requestId === placeSearchRequestId) {
-        const local = localMatches();
-        render(local, local.length
-          ? 'Net search is unavailable. Showing offline place matches.'
-          : 'Net search is unavailable, and there are no offline matches.');
-        setRouteStatus('Online search unavailable — showing local places');
-      }
-    } finally {
-      if (requestId === placeSearchRequestId) {
-        onlineButton.disabled = false;
-        onlineButton.classList.remove('searching');
+        render([], 'Internet search is unavailable. Close search to return to offline places.');
+        setRouteStatus('Internet search unavailable');
       }
     }
   };
 
   input.addEventListener('focus', () => {
     ensurePlaces();
-    if (input.classList.contains('current-endpoint-preview')) {
-      input.value = '';
-      input.classList.remove('current-endpoint-preview');
-    }
   });
   input.addEventListener('input', () => {
-    input.classList.remove('current-endpoint-preview');
+    clearTimeout(internetPlaceSearchTimer);
     placeSearchRequestId++;
-    const query = input.value;
-    ensurePlaces().then(() => { if (input.value === query) showLocalMatches(); });
+    const query = input.value.trim();
+    if (internetPlaceSearch) {
+      if (query.length < 2) {
+        render([], 'Enter at least two characters to search the internet.');
+        return;
+      }
+      render([], 'Waiting to search the internet…');
+      internetPlaceSearchTimer = setTimeout(searchOnline, 450);
+      return;
+    }
+    ensurePlaces().then(() => { if (input.value.trim() === query) showLocalMatches(); });
     showLocalMatches();
   });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      searchOnline();
+      const firstResult = results.querySelector('.place-hit:not(.place-internet-search)');
+      if (firstResult) firstResult.click();
+      else results.querySelector('.place-internet-search')?.click();
     }
   });
-  onlineButton.addEventListener('click', searchOnline);
   results.addEventListener('click', (e) => {
     const hit = e.target.closest('.place-hit');
     if (!hit) return;
-    const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
-    const target = placeTarget;
-    const targetVia = placeTargetVia;
-    const name = hit.dataset.name;
-    // Dismiss the keyboard and commit the lightweight UI transition before a
-    // second endpoint can start the routing engine.
-    routing.arm = null;
-    closePlacePicker(false);
-    if (target === 'via' && targetVia) updateVia(targetVia, lngLat, name);
-    else if (target === 'via') addVia(lngLat, { name });
-    else if (target === 'block') addRoadBlock(lngLat);
-    else setRoutePoint(target, lngLat, name);
-    updateArmButtons();
-    if (target === 'via') {
-      setRouteStatus(targetVia ? 'Stop changed' : 'Stop added');
-      showRouteActionToast(`${targetVia ? 'Stop changed' : 'Stop added'} — route recalculating`, { duration: 2200 });
-    } else if (target === 'block') {
-      setRouteStatus('Road block added');
-      showRouteActionToast('Road block added — route recalculating', { duration: 2200 });
-    } else {
-      setRouteStatus(target === 'start' ? 'Start set' : 'Destination set');
+    if (hit.dataset.internetSearch === 'true') {
+      searchOnline();
+      return;
     }
-    frameMapAfterPlacePicker(lngLat);
+    const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
+    const name = hit.dataset.name;
     input.value = '';
     render([]);
+    showPlaceOnMap(lngLat, name, { searchResult: true });
+    setRouteStatus('Search result shown — choose Start, End, or Add stop');
   });
 
-  document.getElementById('placePickerClose').addEventListener('click', () => closePlacePicker(true));
+  document.getElementById('placePickerClose').addEventListener('click', closePlacePicker);
   document.getElementById('useLoc').addEventListener('click', () => {
     setRouteStatus('Locating…');
     getFreshDevicePosition().then((pos) => {
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
-      const target = placeTarget;
-      routing.arm = null;
-      closePlacePicker(false);
-      setRoutePoint(target, lngLat, 'My location', { fromDevice: true });
-      updateArmButtons();
-      frameMapAfterPlacePicker(lngLat);
-      setRouteStatus(target === 'start' ? 'Start set to your location' : 'Destination set');
+      showPlaceOnMap(lngLat, 'My location', { searchResult: true });
+      setRouteStatus('Your location is shown — choose how to use it');
     }).catch((error) => {
       // GeolocationPositionError.TIMEOUT is 3; our own gate throws string codes.
       const code = error?.code;
@@ -9659,6 +9587,7 @@ let readoutPinned = false;
 let roadInfoSuppressedUntil = 0;
 
 function dismissRoadInfo() {
+  clearSearchResultMarker();
   readoutPinned = false;
   readoutEl.classList.remove('show');
 }
@@ -9978,14 +9907,18 @@ function renderMapTapCard({
       button.title = 'Pause navigation to edit the route';
     }
   }
-  const canAddStop = !turnNav.active && routing.start && routing.end
-    && routing.vias.length < MAX_ROUTE_STOPS;
-  stop.disabled = !canAddStop;
-  stop.title = turnNav.active ? 'Pause navigation to edit the route'
-    : canAddStop ? 'Add this point as a stop'
-    : routing.vias.length >= MAX_ROUTE_STOPS
-      ? `Maximum of ${MAX_ROUTE_STOPS} stops reached` : 'Choose a start and end first';
-  routeActions.append(start, end, stop);
+  const showAddStop = Boolean(routing.start && routing.end);
+  routeActions.append(start, end);
+  if (showAddStop) {
+    const canAddStop = !turnNav.active && routing.vias.length < MAX_ROUTE_STOPS;
+    stop.disabled = !canAddStop;
+    stop.title = turnNav.active ? 'Pause navigation to edit the route'
+      : canAddStop ? 'Add this point as a stop'
+        : `Maximum of ${MAX_ROUTE_STOPS} stops reached`;
+    routeActions.append(stop);
+  } else {
+    routeActions.classList.add('two-actions');
+  }
 
   const detailsToggle = document.createElement('button');
   detailsToggle.type = 'button';
@@ -10390,6 +10323,7 @@ let lastRoadInfoTouchAt = 0;
 
 function inspectRoadAt(point, lngLat = null) {
   if (Date.now() < roadInfoSuppressedUntil) return false;
+  clearSearchResultMarker();
   const feature = featureAt(point);
   // A route point is useful even when no rendered road happens to sit under
   // the finger. Safety/source details are richer for a road hit, but every map
@@ -10402,27 +10336,22 @@ function inspectRoadAt(point, lngLat = null) {
 function placeArmedPoint(lngLat) {
   const kind = routing.arm;
   if (!kind) return false;
-  const targetVia = placeTargetVia;
   lastPlacementTs = Date.now();
   suppressRoadInfo(1500);
   routing.arm = null;
   updateArmButtons();
   closePlacePicker(false);
   if (kind === 'via') {
-    const changed = targetVia
-      ? updateVia(targetVia, lngLat, 'Point on map')
-      : addVia(lngLat, { name: 'Point on map' });
-    if (changed) setRouteStatus(targetVia ? 'Stop moved'
-      : routing.vias.length >= MAX_ROUTE_STOPS
-        ? `Stop added — maximum of ${MAX_ROUTE_STOPS} reached`
-        : 'Stop added — use Add stop for another');
+    const changed = addVia(lngLat, { name: 'Point on map' });
+    if (changed) setRouteStatus(routing.vias.length >= MAX_ROUTE_STOPS
+      ? `Stop added — maximum of ${MAX_ROUTE_STOPS} reached` : 'Stop added');
     return true;
   }
   if (kind === 'block') {
     const added = addRoadBlock(lngLat);
     if (added) setRouteStatus(routing.blocks.length >= MAX_ROAD_BLOCKS
       ? `Road block added — maximum of ${MAX_ROAD_BLOCKS} reached`
-      : 'Road block added — use ⋮ to add another');
+      : 'Road block added');
     return true;
   }
   setRoutePoint(kind, lngLat);
