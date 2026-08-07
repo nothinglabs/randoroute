@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.612';
+const APP_VERSION = '2026-08-07.613';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9882,8 +9882,188 @@ function wsdotShoulderText(point, p) {
   return `${p.ShoulderWidth} ft (${here}), ${other.ShoulderWidth} ft (${there})`;
 }
 
+function readoutTable(rows) {
+  const table = document.createElement('table');
+  for (const [key, value] of rows) {
+    const tr = document.createElement('tr');
+    const keyCell = document.createElement('td');
+    keyCell.className = 'k';
+    keyCell.textContent = key;
+    const valueCell = document.createElement('td');
+    valueCell.textContent = String(value);
+    tr.append(keyCell, valueCell);
+    table.appendChild(tr);
+  }
+  return table;
+}
+
+function readoutRoutePointName(rows) {
+  for (const key of ['Name', 'Route']) {
+    const value = rows.find(([rowKey]) => rowKey === key)?.[1];
+    const normalized = normalizeEndpointName(value);
+    if (normalized && !/^\(?unnamed (?:road|path)\)?$/i.test(normalized)
+        && !/^closed route segment$/i.test(normalized)) return normalized;
+  }
+  return 'Point on map';
+}
+
+function compactReadoutSummary(rows, fallback = '') {
+  const valueFor = (...keys) => rows.find(([key, value]) =>
+    keys.includes(key) && value != null && value !== '')?.[1];
+  const verdict = valueFor('Result', 'Verdict');
+  const context = valueFor('Bike facility', 'Network', 'Type');
+  return [verdict, context].filter(Boolean).join(' · ') || fallback
+    || 'Use this point in your trip, or open Details.';
+}
+
+function renderMapTapCard({
+  displayTitle, pointName, summary, rows, lngLat, anchorPoint,
+  swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
+}) {
+  const lat = Number(lngLat.lat);
+  const lng = Number(lngLat.lng);
+  const routeName = normalizeEndpointName(pointName) || 'Point on map';
+  const detailsRows = [...rows];
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    detailsRows.push(['Location', `${lat.toFixed(5)}, ${lng.toFixed(5)}`]);
+  }
+
+  readoutEl.replaceChildren();
+  const close = document.createElement('button');
+  close.className = 'readout-close';
+  close.type = 'button';
+  close.setAttribute('aria-label', 'Close map point');
+  close.textContent = '✕';
+
+  const heading = document.createElement('div');
+  heading.className = 'rt-title';
+  const swatch = document.createElement('span');
+  swatch.className = 'rt-swatch';
+  swatch.setAttribute('role', 'img');
+  swatch.style.backgroundColor = swatchColor;
+  swatch.setAttribute('aria-label', swatchLabel);
+  const headingText = document.createElement('span');
+  headingText.textContent = displayTitle;
+  heading.append(swatch, headingText);
+
+  const summaryText = document.createElement('p');
+  summaryText.className = 'readout-summary';
+  summaryText.textContent = summary;
+
+  const routeActions = document.createElement('div');
+  routeActions.className = 'readout-route-actions';
+  const routeButton = (className, text, label, handler) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.textContent = text;
+    button.setAttribute('aria-label', label);
+    button.addEventListener('click', handler);
+    return button;
+  };
+  const commitEndpoint = (kind) => {
+    setRoutePoint(kind, { lng, lat }, routeName);
+    dismissRoadInfo();
+    setRouteStatus(kind === 'start' ? 'Start set from map' : 'Destination set from map');
+  };
+  const start = routeButton('map-point-start', 'Start', 'Use this point as route start',
+    () => commitEndpoint('start'));
+  const end = routeButton('map-point-end', 'End', 'Use this point as route destination',
+    () => commitEndpoint('end'));
+  const stop = routeButton('map-point-stop', 'Add stop', 'Add this point as a route stop', () => {
+    if (!addVia({ lng, lat }, { name: routeName })) return;
+    dismissRoadInfo();
+    setRouteStatus('Stop added from map');
+    showRouteActionToast('Stop added — route recalculating', { duration: 2200 });
+  });
+  if (turnNav.active) {
+    for (const button of [start, end]) {
+      button.disabled = true;
+      button.title = 'Pause navigation to edit the route';
+    }
+  }
+  const canAddStop = !turnNav.active && routing.start && routing.end
+    && routing.vias.length < MAX_ROUTE_STOPS;
+  stop.disabled = !canAddStop;
+  stop.title = turnNav.active ? 'Pause navigation to edit the route'
+    : canAddStop ? 'Add this point as a stop'
+    : routing.vias.length >= MAX_ROUTE_STOPS
+      ? `Maximum of ${MAX_ROUTE_STOPS} stops reached` : 'Choose a start and end first';
+  routeActions.append(start, end, stop);
+
+  const detailsToggle = document.createElement('button');
+  detailsToggle.type = 'button';
+  detailsToggle.className = 'readout-details-toggle';
+  detailsToggle.setAttribute('aria-expanded', 'false');
+  detailsToggle.setAttribute('aria-controls', 'mapTapDetails');
+  detailsToggle.textContent = 'Details';
+  const details = document.createElement('div');
+  details.id = 'mapTapDetails';
+  details.className = 'readout-details';
+  details.hidden = true;
+  details.append(readoutTable(detailsRows));
+
+  const mapActions = document.createElement('div');
+  mapActions.className = 'road-map-actions';
+  const streetViewBtn = document.createElement('button');
+  streetViewBtn.type = 'button';
+  streetViewBtn.className = 'streetview-launch';
+  streetViewBtn.setAttribute('aria-label', STREET_VIEW_IN_APP
+    ? 'Open Street View in this app' : 'Open Street View in Google Maps');
+  streetViewBtn.textContent = 'Google Street View';
+  streetViewBtn.addEventListener('click', () => openStreetView(lat, lng, streetViewHeading));
+  const mapLink = document.createElement('a');
+  mapLink.href = googleMapsPointUrl(lat, lng);
+  mapLink.target = '_blank';
+  mapLink.rel = 'noopener';
+  mapLink.className = 'road-map-link';
+  mapLink.textContent = 'Google Maps ↗';
+  mapLink.setAttribute('aria-label', 'Open this location in Google Maps');
+  mapActions.append(streetViewBtn, mapLink);
+  details.append(mapActions);
+
+  if (allowRoadBlock) {
+    const existingBlock = roadBlockNear({ lng, lat });
+    const canAddBlock = routing.start && routing.end && routing.blocks.length < MAX_ROAD_BLOCKS;
+    if (existingBlock || canAddBlock) {
+      const blockButton = document.createElement('button');
+      blockButton.type = 'button';
+      blockButton.className = 'readout-road-block';
+      blockButton.textContent = existingBlock ? '🚧 Remove roadblock' : '🚧 Avoid this road';
+      blockButton.addEventListener('click', () => {
+        if (existingBlock) removeRoadBlock(existingBlock);
+        else addRoadBlock({ lng, lat });
+        dismissRoadInfo();
+      });
+      details.append(blockButton);
+    }
+  }
+
+  detailsToggle.addEventListener('click', () => {
+    const open = details.hidden;
+    details.hidden = !open;
+    detailsToggle.setAttribute('aria-expanded', String(open));
+    detailsToggle.textContent = open ? 'Hide details' : 'Details';
+    if (anchorPoint) requestAnimationFrame(() => positionRoadInfoNear(anchorPoint));
+  });
+
+  readoutEl.append(close, heading, summaryText, routeActions, detailsToggle, details);
+  readoutEl.classList.add('show');
+  if (anchorPoint) positionRoadInfoNear(anchorPoint);
+}
+
 function renderReadout(feature, lngLat, anchorPoint = null) {
   resetRoadInfoPosition();
+  if (!feature) {
+    renderMapTapCard({
+      displayTitle: 'Point on map',
+      pointName: 'Point on map',
+      summary: 'Use this point in your trip, or open Details.',
+      rows: [], lngLat, anchorPoint,
+      swatchColor: '#fff', swatchLabel: 'Unspecified map point',
+    });
+    return;
+  }
   const src = HIT_SRC[feature.layer.id];
   const p = feature.properties;
   if (src.closure) {
@@ -9896,35 +10076,13 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       ['Affects', p.routes || null],
       ['Source', 'Reported in OpenStreetMap — the router already avoids it'],
     ].filter(([, value]) => value != null && value !== '');
-    readoutEl.replaceChildren();
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'readout-close';
-    closeBtn.setAttribute('aria-label', 'Close road information');
-    closeBtn.textContent = '✕';
-    const head = document.createElement('div');
-    head.className = 'rt-title';
-    const dot = document.createElement('span');
-    dot.className = 'rt-swatch';
-    dot.setAttribute('role', 'img');
-    dot.style.backgroundColor = COLORS[4];
-    dot.setAttribute('aria-label', 'Route closure map color');
-    const headText = document.createElement('span');
-    headText.textContent = 'Route closure (OSM)';
-    head.append(dot, headText);
-    const tbl = document.createElement('table');
-    for (const [key, value] of rows) {
-      const tr = document.createElement('tr');
-      const keyCell = document.createElement('td');
-      keyCell.className = 'k';
-      keyCell.textContent = key;
-      const valueCell = document.createElement('td');
-      valueCell.textContent = String(value);
-      tr.append(keyCell, valueCell);
-      tbl.appendChild(tr);
-    }
-    readoutEl.append(closeBtn, head, tbl);
-    readoutEl.classList.add('show');
-    if (anchorPoint) positionRoadInfoNear(anchorPoint);
+    renderMapTapCard({
+      displayTitle: 'Route closure',
+      pointName: readoutRoutePointName(rows),
+      summary: [p.name, p.reason].filter(Boolean).join(' · ') || 'Closed route segment',
+      rows, lngLat, anchorPoint,
+      swatchColor: COLORS[4], swatchLabel: 'Route closure map color',
+    });
     return;
   }
   const n = src.scorer(p);            // recompute normalized props from this feature
@@ -10085,108 +10243,20 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
     else if (p.g) rows.push(['Bike route', 'On a designated route (USBR / regional trail)']);
   }
   rows = rows.filter(([, v]) => v != null && v !== '');
-  const svLat = lngLat.lat, svLng = lngLat.lng;
-  const svHeading = streetViewRoadHeading(feature, lngLat);
-  readoutEl.replaceChildren();
-  const close = document.createElement('button');
-  close.className = 'readout-close';
-  close.setAttribute('aria-label', 'Close road information');
-  close.textContent = '✕';
-  const heading = document.createElement('div');
-  heading.className = 'rt-title';
-  const swatch = document.createElement('span');
-  swatch.className = 'rt-swatch';
-  swatch.setAttribute('role', 'img');
-  swatch.style.backgroundColor = src.id === 'routes' ? COLORS[1]
+  const pointName = readoutRoutePointName(rows);
+  renderMapTapCard({
+    displayTitle: pointName === 'Point on map' ? title : pointName,
+    pointName,
+    summary: compactReadoutSummary(rows),
+    rows, lngLat, anchorPoint,
+    swatchColor: src.id === 'routes' ? COLORS[1]
     : src.id === 'restrict' ? COLORS[4]
-      : p.ferry === 1 ? COLORS[0] : readoutVerdictColor(n, lvl);
-  swatch.setAttribute('aria-label', src.id === 'routes'
-    ? 'Designated route map color' : `Map color: ${readoutVerdict(n, lvl, verdict)}`);
-  const headingText = document.createElement('span');
-  headingText.textContent = title;
-  heading.append(swatch, headingText);
-  const table = document.createElement('table');
-  for (const [key, value] of rows) {
-    const tr = document.createElement('tr');
-    const keyCell = document.createElement('td');
-    keyCell.className = 'k';
-    keyCell.textContent = key;
-    const valueCell = document.createElement('td');
-    valueCell.textContent = String(value);
-    tr.append(keyCell, valueCell);
-    table.appendChild(tr);
-  }
-  const mapActions = document.createElement('div');
-  mapActions.className = 'road-map-actions';
-  const streetViewBtn = document.createElement('button');
-  streetViewBtn.type = 'button';
-  streetViewBtn.className = 'streetview-launch';
-  streetViewBtn.setAttribute('aria-label', STREET_VIEW_IN_APP
-    ? 'Open Street View in this app' : 'Open Street View in Google Maps');
-  streetViewBtn.textContent = 'Google Street View';
-  streetViewBtn.addEventListener('click', () => openStreetView(svLat, svLng, svHeading));
-
-  const mapLink = document.createElement('a');
-  mapLink.href = googleMapsPointUrl(svLat, svLng);
-  mapLink.target = '_blank';
-  mapLink.rel = 'noopener';
-  mapLink.className = 'road-map-link';
-  mapLink.textContent = 'Google Maps ↗';
-  mapLink.setAttribute('aria-label', 'Open this location in Google Maps');
-  mapActions.append(streetViewBtn, mapLink);
-  // Add or remove a road block on the road being read about, without dismissing
-  // the card, finding the arm button and tapping the map again.
-  //
-  // Pinned to the card's bottom-right corner, mirroring the ✕ in the top-right.
-  //
-  // Three earlier placements and why each was wrong: in the action row's normal
-  // order it sat among Street View and Google Maps, the two links OUT of the
-  // app, so an action on your route read as a third destination. Under the ✕ it
-  // was set apart but silent -- a 34 px gutter has no room for a word. At the
-  // row's right end it was still inside the card's 43 px right padding, so it
-  // stopped short of the corner and read as trailing the links rather than
-  // owning its own place.
-  //
-  // Absolute, so it escapes that padding and sits flush. It cannot collide with
-  // the links: the card already reserves that 43 px gutter for the close
-  // button, and the action row never reaches into it.
-  const existingBlock = roadBlockNear({ lng: svLng, lat: svLat });
-  // Removing is always offered when there is something to remove. Adding is
-  // offered only when it would work: a block needs both endpoints set, and a
-  // route may carry at most MAX_ROAD_BLOCKS.
-  const canAdd = routing.start && routing.end && routing.blocks.length < MAX_ROAD_BLOCKS;
-  if (existingBlock || canAdd) {
-    const toggle = document.createElement('div');
-    toggle.className = 'road-block-toggle';
-    const label = document.createElement('span');
-    label.className = 'road-block-toggle-label';
-    label.textContent = existingBlock ? 'Remove' : 'Add';
-    const blockBtn = document.createElement('button');
-    blockBtn.type = 'button';
-    blockBtn.className = 'road-block-add';
-    blockBtn.innerHTML = '<span aria-hidden="true">🚧</span>';
-    blockBtn.title = existingBlock
-      ? 'Remove the road block here' : 'Add a road block here and route around it';
-    blockBtn.setAttribute('aria-label', blockBtn.title);
-    blockBtn.addEventListener('click', () => {
-      if (existingBlock) {
-        removeRoadBlock(existingBlock);
-        dismissRoadInfo();
-        return;
-      }
-      // The point that opened the card, snapped onto the route the same way a
-      // placement tapped on the map is.
-      if (addRoadBlock({ lng: svLng, lat: svLat })) {
-        dismissRoadInfo();
-        setRouteStatus('Road block added — routing around it');
-      }
-    });
-    toggle.append(label, blockBtn);
-    readoutEl.append(toggle);
-  }
-  readoutEl.append(close, heading, table, mapActions);
-  readoutEl.classList.add('show');
-  if (anchorPoint) positionRoadInfoNear(anchorPoint);
+      : p.ferry === 1 ? COLORS[0] : readoutVerdictColor(n, lvl),
+    swatchLabel: src.id === 'routes'
+      ? 'Designated route map color' : `Map color: ${readoutVerdict(n, lvl, verdict)}`,
+    streetViewHeading: streetViewRoadHeading(feature, lngLat),
+    allowRoadBlock: true,
+  });
 }
 
 readoutEl.addEventListener('click', (e) => {
@@ -10322,13 +10392,10 @@ let lastRoadInfoTouchAt = 0;
 function inspectRoadAt(point, lngLat = null) {
   if (Date.now() < roadInfoSuppressedUntil) return false;
   const feature = featureAt(point);
-  if (!feature) {
-    dismissRoadInfo();
-    return false;
-  }
-  // The road readout sits at the top of the screen, clear of the bottom panel,
-  // so tapping a road no longer dismisses an open menu.
-  renderReadout(feature, lngLat || map.unproject([point.x, point.y]), point);
+  // A route point is useful even when no rendered road happens to sit under
+  // the finger. Safety/source details are richer for a road hit, but every map
+  // tap gets the same Start / End / Add stop actions.
+  renderReadout(feature || null, lngLat || map.unproject([point.x, point.y]), point);
   readoutPinned = true;
   return true;
 }
