@@ -57,16 +57,28 @@ const settle = () => page.waitForFunction(
 
 const defaultStart = await page.evaluate(() => ({
   actual: routing.start,
+  rowHidden: document.querySelector('.route-endpoint-start-row')?.hidden,
+  destinationVisible: !document.querySelector('.route-endpoint-end-row')?.hidden,
   displayed: document.querySelector('#rb-start [data-endpoint-value]')?.textContent,
   defaultsToDevice: routing.startDefaultsToDevice,
   removeVisible: !document.querySelector('[data-endpoint-remove="start"]')?.hidden,
 }));
-check('a blank planner defaults From to current location without requesting GPS yet',
-  !defaultStart.actual && defaultStart.displayed === 'Current location'
-    && defaultStart.defaultsToDevice && defaultStart.removeVisible,
+check('a blank planner shows only Destination and does not default or request Start yet',
+  !defaultStart.actual && defaultStart.rowHidden && defaultStart.destinationVisible
+    && defaultStart.displayed === 'Choose start'
+    && !defaultStart.defaultsToDevice && !defaultStart.removeVisible,
   JSON.stringify(defaultStart));
-await page.evaluate(() => setRoutePoint('end',
-  { lng: -122.2015, lat: 47.6101 }, 'Bellevue'));
+const revealedStart = await page.evaluate(() => {
+  setRoutePoint('end', { lng: -122.2015, lat: 47.6101 }, 'Bellevue');
+  return {
+    rowHidden: document.querySelector('.route-endpoint-start-row')?.hidden,
+    displayed: document.querySelector('#rb-start [data-endpoint-value]')?.textContent,
+    defaultsToDevice: routing.startDefaultsToDevice,
+  };
+});
+check('choosing Destination reveals Start with a Current location default',
+  !revealedStart.rowHidden && revealedStart.displayed === 'Current location'
+    && revealedStart.defaultsToDevice, JSON.stringify(revealedStart));
 await page.waitForFunction(() => Boolean(routing.start), null, { timeout: 5000 });
 const resolvedDefault = await page.evaluate(() => ({
   name: routing.startName, follows: routing.startFromDevice, start: routing.start,

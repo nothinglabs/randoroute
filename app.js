@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.617';
+const APP_VERSION = '2026-08-07.618';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -5999,7 +5999,7 @@ function renderRouteCard(m) {
     // once FROM or TO has been armed, so a rider following it taps and nothing
     // happens. Telling someone how to drive the interface here is also the
     // wrong job for an empty state; saying what is missing is enough.
-    showRouteMessage('Choose a start and destination');
+    showRouteMessage(!routing.end ? 'Choose a destination' : 'Choose a start');
     return;
   }
   if (!m.ok) {
@@ -7528,7 +7528,8 @@ async function resolveDefaultStartFromDevice() {
   showRouteActionToast('Getting your current location…', { busy: true, duration: 0 });
   try {
     const pos = await getFreshDevicePosition();
-    if (request !== defaultStartRequest || routing.start || !routing.startDefaultsToDevice) return;
+    if (request !== defaultStartRequest || routing.start || !routing.end
+        || !routing.startDefaultsToDevice) return;
     setRoutePoint('start', {
       lng: pos.coords.longitude, lat: pos.coords.latitude,
     }, 'My location', { fromDevice: true });
@@ -7544,6 +7545,7 @@ async function resolveDefaultStartFromDevice() {
 function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false } = {}) {
   exitSharedRoute();
   const previous = routing[kind];
+  const firstDestination = kind === 'end' && !Array.isArray(previous);
   if (!Array.isArray(previous) || previous[0] !== lngLat.lng || previous[1] !== lngLat.lat) {
     routing.selectRecommendedNext = true;
   }
@@ -7556,6 +7558,10 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
     routing.startFromDevice = !!fromDevice;
     routing.startDefaultsToDevice = false;
     defaultStartRequest++;
+  } else if (firstDestination && !routing.start) {
+    // Destination comes first in the planner. Only after the rider chooses it
+    // do we reveal Start and resolve its one-time Current location default.
+    routing.startDefaultsToDevice = true;
   }
   const mk = kind + 'Marker';
   if (routing[mk]) routing[mk].setLngLat(lngLat);
@@ -7933,127 +7939,6 @@ function updateVia(via, lngLat, name = 'Point on map') {
   return true;
 }
 
-let routeOrderDraft = null;
-
-function routeOrderItems() {
-  if (!(routing.start && routing.end)) return [];
-  return [
-    {
-      id: 'start', pt: routing.start.slice(),
-      name: routing.startName || 'Point on map', followsDevice: routing.startFromDevice,
-    },
-    ...routing.vias.map((via) => ({
-      id: `via:${via._uiId}`, pt: via.pt.slice(), name: via.name || 'Point on map',
-      followsDevice: false,
-    })),
-    {
-      id: 'end', pt: routing.end.slice(),
-      name: routing.endName || 'Point on map', followsDevice: false,
-    },
-  ];
-}
-
-function renderRouteOrderDraft() {
-  const host = document.getElementById('reorderRouteList');
-  if (!host || !routeOrderDraft) return;
-  host.replaceChildren();
-  routeOrderDraft.items.forEach((item, index, items) => {
-    const row = document.createElement('div');
-    row.className = 'reorder-route-row';
-    const copy = document.createElement('div');
-    copy.className = 'reorder-route-copy';
-    const role = document.createElement('span');
-    role.textContent = index === 0 ? 'Start'
-      : index === items.length - 1 ? 'Destination' : `Stop ${index}`;
-    const name = document.createElement('strong');
-    name.textContent = item.name;
-    copy.append(role, name);
-    const actions = document.createElement('div');
-    actions.className = 'reorder-route-actions';
-    const moveButton = (direction, text, label, disabled) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.dataset.reorderIndex = String(index);
-      button.dataset.reorderDirection = String(direction);
-      button.textContent = text;
-      button.title = label;
-      button.setAttribute('aria-label', label);
-      button.disabled = disabled;
-      button.addEventListener('click', () => {
-        const to = index + direction;
-        if (!routeOrderDraft || to < 0 || to >= routeOrderDraft.items.length) return;
-        const [moved] = routeOrderDraft.items.splice(index, 1);
-        routeOrderDraft.items.splice(to, 0, moved);
-        renderRouteOrderDraft();
-        const next = host.querySelector(
-          `[data-reorder-index="${to}"][data-reorder-direction="${direction}"]`,
-        ) || host.querySelector(`[data-reorder-index="${to}"]:not(:disabled)`);
-        next?.focus({ preventScroll: true });
-      });
-      return button;
-    };
-    actions.append(
-      moveButton(-1, '↑', `Move ${item.name} earlier`, index === 0),
-      moveButton(1, '↓', `Move ${item.name} later`, index === items.length - 1),
-    );
-    row.append(copy, actions);
-    host.append(row);
-  });
-}
-
-function applyRouteOrderDraft() {
-  const draft = routeOrderDraft;
-  routeOrderDraft = null;
-  if (!draft || !(routing.start && routing.end)) return false;
-  const nextIds = draft.items.map((item) => item.id).join('|');
-  if (nextIds === draft.originalIds) return false;
-
-  exitSharedRoute();
-  stopTurnNavigation(false);
-  routing.arm = null;
-  closePlacePicker(false);
-  dismissRoadInfo();
-  const first = draft.items[0];
-  const last = draft.items[draft.items.length - 1];
-  const middle = draft.items.slice(1, -1);
-  routing.start = first.pt.slice();
-  routing.startName = first.name;
-  routing.startFromDevice = Boolean(first.followsDevice);
-  routing.startDefaultsToDevice = false;
-  routing.end = last.pt.slice();
-  routing.endName = last.name;
-  routing.vias.forEach((via, index) => {
-    via.pt = middle[index].pt.slice();
-    via.name = middle[index].name;
-    via.marker?.setLngLat(via.pt);
-  });
-  routing.startMarker?.setLngLat(routing.start);
-  routing.endMarker?.setLngLat(routing.end);
-  clearRouteHighlight();
-  regenerateRoutesAfterWaypointChange();
-  updateArmButtons();
-  computeRoute();
-  showRouteActionToast('Trip reordered · recalculating…', { busy: true, duration: 0 });
-  saveStateSoon();
-  return true;
-}
-
-function openRouteOrder() {
-  if (!(routing.start && routing.end) || turnNav.active) return false;
-  if (routing.vias.length < 2) {
-    reverseRoute();
-    showRouteActionToast('Trip reversed · recalculating…', { busy: true, duration: 0 });
-    return true;
-  }
-  const items = routeOrderItems();
-  routeOrderDraft = { items, originalIds: items.map((item) => item.id).join('|') };
-  renderRouteOrderDraft();
-  const dialog = document.getElementById('reorderRouteDialog');
-  if (!dialog?.showModal) { routeOrderDraft = null; return false; }
-  if (!dialog.open) dialog.showModal();
-  return true;
-}
-
 function removeVia(via) {
   const index = routing.vias.indexOf(via);
   if (index < 0) return;
@@ -8167,41 +8052,6 @@ function removeRoadBlock(block) {
   saveStateSoon();
 }
 
-function reverseRoute() {
-  if (!(routing.start && routing.end)) return;
-  exitSharedRoute();
-  stopTurnNavigation(false);
-  routing.arm = null;
-  closePlacePicker(false);
-
-  const start = routing.start;
-  const startName = routing.startName;
-  routing.start = routing.end;
-  routing.startName = routing.endName;
-  routing.end = start;
-  routing.endName = startName;
-  // The position that was the rider's own is now the destination, and the new
-  // start is a place. Neither follows the device any more.
-  routing.startFromDevice = false;
-  routing.vias.reverse();
-  routing.startMarker?.setLngLat(routing.start);
-  routing.endMarker?.setLngLat(routing.end);
-  // Reversing changes both endpoints, and the policy for endpoint changes is
-  // a fresh recommendation: the best route northbound is not "whatever letter
-  // was selected southbound" -- rankings legitimately differ by direction,
-  // and holding a profile across the flip relabeled it mid-air (the rider
-  // watched E become D). Road blocks and settings changes keep the current
-  // choice instead. Waypoint changes also take a fresh recommendation because
-  // they regenerate the full route portfolio.
-  routing.selectRecommendedNext = true;
-
-  clearRouteHighlight();
-  updateArmButtons();
-  setRouteStatus('Route reversed');
-  computeRoute();
-  saveStateSoon();
-}
-
 function removeRouteEndpoint(kind) {
   if (!['start', 'end'].includes(kind)) return false;
   const isDefaultStart = kind === 'start' && routing.startDefaultsToDevice;
@@ -8221,6 +8071,9 @@ function removeRouteEndpoint(kind) {
   routing[markerKey] = null;
   if (kind === 'start') {
     routing.startFromDevice = false;
+    routing.startDefaultsToDevice = false;
+    defaultStartRequest++;
+  } else if (!routing.start) {
     routing.startDefaultsToDevice = false;
     defaultStartRequest++;
   }
@@ -8287,19 +8140,15 @@ function updateArmButtons() {
     button.classList.toggle('set', isSet);
     button.classList.toggle('default-current-location', isDefaultStart);
     button.title = isDefaultStart ? 'Current location is the default — tap to choose another start'
-      : isSet ? `Show ${endpointName} on the map`
+      : isSet ? `Change ${endpointName}`
       : `Search the map to choose ${endpointName}`;
     button.setAttribute('aria-label', button.title);
     button.disabled = false;
     const value = button.querySelector('[data-endpoint-value]');
     if (value) value.textContent = routeEndpointDisplayName(kind);
   }
-  const reorder = document.getElementById('rb-reorder');
-  if (reorder) {
-    reorder.disabled = !(routing.start && routing.end) || turnNav.active;
-    reorder.title = routing.vias.length > 1 ? 'Reorder trip' : 'Reverse trip';
-    reorder.setAttribute('aria-label', reorder.title);
-  }
+  const startRow = document.querySelector('.route-endpoint-start-row');
+  if (startRow) startRow.hidden = !routing.end;
   document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
     const kind = button.dataset.endpointRemove;
     button.hidden = !routing[kind]
@@ -8666,16 +8515,9 @@ function buildRoutingPanel() {
   renderRouteCard(null);
 
   for (const kind of ['start', 'end']) {
-    document.getElementById('rb-' + kind).addEventListener('click', () => {
-      if (!routing[kind]) { openPlaceSearch(); return; }
-      showPlaceOnMap(routing[kind], routeEndpointDisplayName(kind));
-    });
+    document.getElementById('rb-' + kind).addEventListener('click', () => openPlaceSearch(kind));
   }
-  document.getElementById('rb-search').addEventListener('click', openPlaceSearch);
-  document.getElementById('rb-reorder').addEventListener('click', openRouteOrder);
-  document.getElementById('reorderRouteDone').addEventListener('click', () =>
-    document.getElementById('reorderRouteDialog').close());
-  document.getElementById('reorderRouteDialog').addEventListener('close', applyRouteOrderDraft);
+  document.getElementById('rb-search').addEventListener('click', () => openPlaceSearch());
   document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
     button.addEventListener('click', () => removeRouteEndpoint(button.dataset.endpointRemove));
   });
@@ -8744,13 +8586,7 @@ function buildRoutingPanel() {
       { lng: p[0], lat: p[1] }, { allowPastLimit: true, name: rt.vn?.[index] });
     for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
-  } else {
-    // A blank planner reads naturally as "Current location → somewhere" but
-    // does not touch GPS during launch or the first search. Resolve the origin
-    // only after the rider actually chooses a destination.
-    routing.startDefaultsToDevice = true;
-    updateArmButtons();
-  }
+  } else updateArmButtons();
 }
 
 /* --------------------------------------------------- saved routes */
@@ -9054,6 +8890,7 @@ let internetPlaceSearch = false;
 let internetPlaceSearchTimer = null;
 let searchResultMarker = null;
 let searchResultOpenToken = 0;
+let placeSearchTarget = null;
 const onlinePlaceCache = new Map();
 let onlinePlaceLastRequestAt = 0;
 const ONLINE_PLACE_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
@@ -9159,6 +8996,7 @@ function closePlacePicker() {
   clearTimeout(internetPlaceSearchTimer);
   internetPlaceSearchTimer = null;
   internetPlaceSearch = false;
+  placeSearchTarget = null;
   const picker = document.getElementById('placePicker');
   if (document.activeElement && picker.contains(document.activeElement)) document.activeElement.blur();
   picker.hidden = true;
@@ -9215,7 +9053,7 @@ function showPlaceOnMap(point, name = 'Point on map', { searchResult = false } =
   return true;
 }
 
-function openPlaceSearch() {
+function openPlaceSearch(target = null) {
   routing.arm = null;
   dismissRoadInfo();
   // Searching needs only the tiny local place index. Starting the 44 MB
@@ -9224,11 +9062,15 @@ function openPlaceSearch() {
   // even chosen a point. The router starts when both endpoints exist.
   ensurePlaces();
   setPanelOpen(false);
+  placeSearchTarget = ['start', 'end'].includes(target) ? target : null;
   internetPlaceSearch = false;
   clearTimeout(internetPlaceSearchTimer);
-  document.getElementById('placePickerTitle').textContent = 'Search map';
-  document.getElementById('placePickerHint').textContent =
-    'Choose a result to see it on the map, then add it to your trip.';
+  const targetLabel = placeSearchTarget === 'start' ? 'start' : 'destination';
+  document.getElementById('placePickerTitle').textContent = placeSearchTarget
+    ? `Choose ${targetLabel}` : 'Search map';
+  document.getElementById('placePickerHint').textContent = placeSearchTarget
+    ? `Choose a result to set your ${targetLabel}.`
+    : 'Choose a result to see it on the map, then add it to your trip.';
   document.getElementById('useLoc').hidden = false;
   const searchInput = document.getElementById('placeSearch');
   searchInput.placeholder = 'Search places, addresses, or stores…';
@@ -9241,6 +9083,24 @@ function openPlaceSearch() {
   document.body.classList.add('place-picker-open');
   setRouteStatus('Search offline places, or use internet search at the end of the list');
   requestAnimationFrame(() => searchInput.focus({ preventScroll: true }));
+}
+
+function choosePlaceSearchResult(lngLat, name, { fromDevice = false } = {}) {
+  const target = placeSearchTarget;
+  if (!target) {
+    showPlaceOnMap(lngLat, name, { searchResult: true });
+    setRouteStatus('Search result shown — choose how to use it');
+    return;
+  }
+  closePlacePicker();
+  clearSearchResultMarker();
+  setRoutePoint(target, lngLat, name, { fromDevice: target === 'start' && fromDevice });
+  map.stop();
+  map.easeTo({
+    center: [lngLat.lng, lngLat.lat], zoom: Math.max(map.getZoom(), 14), duration: 450,
+  });
+  const label = target === 'start' ? 'Start' : 'Destination';
+  setRouteStatus(`${label} set to ${normalizeEndpointName(name) || 'Point on map'}`);
 }
 
 function buildPlacePicker() {
@@ -9324,8 +9184,9 @@ function buildPlacePicker() {
       return;
     }
     internetPlaceSearch = true;
-    document.getElementById('placePickerHint').textContent =
-      'Internet search is on. Choose a result to see it on the map.';
+    document.getElementById('placePickerHint').textContent = placeSearchTarget
+      ? `Internet search is on. Choose a result to set your ${placeSearchTarget === 'start' ? 'start' : 'destination'}.`
+      : 'Internet search is on. Choose a result to see it on the map.';
     const requestId = ++placeSearchRequestId;
     render([], `Searching the internet for “${query}”…`);
     try {
@@ -9383,18 +9244,19 @@ function buildPlacePicker() {
     const name = hit.dataset.name;
     input.value = '';
     render([]);
-    showPlaceOnMap(lngLat, name, { searchResult: true });
-    setRouteStatus('Search result shown — choose Start, End, or Add stop');
+    choosePlaceSearchResult(lngLat, name);
   });
 
   document.getElementById('placePickerClose').addEventListener('click', closePlacePicker);
   document.getElementById('useLoc').addEventListener('click', () => {
+    const requestId = ++placeSearchRequestId;
     setRouteStatus('Locating…');
     getFreshDevicePosition().then((pos) => {
+      if (requestId !== placeSearchRequestId) return;
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
-      showPlaceOnMap(lngLat, 'My location', { searchResult: true });
-      setRouteStatus('Your location is shown — choose how to use it');
+      choosePlaceSearchResult(lngLat, 'My location', { fromDevice: true });
     }).catch((error) => {
+      if (requestId !== placeSearchRequestId) return;
       // GeolocationPositionError.TIMEOUT is 3; our own gate throws string codes.
       const code = error?.code;
       let message;
@@ -10065,7 +9927,12 @@ function mapPointRouteActions(lngLat, routeName) {
       button.title = 'Pause navigation to edit the route';
     }
   }
-  routeActions.append(start, end);
+  if (!routing.end) {
+    routeActions.append(end);
+    routeActions.classList.add('one-action');
+  } else {
+    routeActions.append(start, end);
+  }
   if (routing.start && routing.end) {
     const canAddStop = !turnNav.active && routing.vias.length < MAX_ROUTE_STOPS;
     stop.disabled = !canAddStop;
@@ -10073,7 +9940,7 @@ function mapPointRouteActions(lngLat, routeName) {
       : canAddStop ? 'Add this point as a stop'
         : `Maximum of ${MAX_ROUTE_STOPS} stops reached`;
     routeActions.append(stop);
-  } else {
+  } else if (routing.end) {
     routeActions.classList.add('two-actions');
   }
   return routeActions;

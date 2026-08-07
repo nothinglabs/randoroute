@@ -49,8 +49,14 @@ await page.waitForTimeout(2200);
 let state = await page.evaluate(() => ({
   workers: window.__routingWorkerStarts.length,
   appHeight: document.documentElement.style.getPropertyValue('--app-height'),
+  startHidden: document.querySelector('.route-endpoint-start-row')?.hidden,
+  destinationVisible: !document.querySelector('.route-endpoint-end-row')?.hidden,
+  emptyMessage: document.querySelector('.rc-route-message strong')?.textContent,
 }));
 check('an untouched native planner does not start the routing graph', state.workers === 0,
+  JSON.stringify(state));
+check('the untouched planner asks for Destination before showing Start',
+  state.startHidden && state.destinationVisible && state.emptyMessage === 'Choose a destination',
   JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
@@ -76,27 +82,46 @@ state = await page.evaluate(() => ({
 }));
 check('choosing a result previews it on the map without assigning a route role',
   state.workers === 0 && !state.start && !state.end && state.indicator === 1
-    && state.actions.join('|') === 'Start|End', JSON.stringify(state));
-await page.click('#readout .map-point-start');
+    && state.actions.join('|') === 'End', JSON.stringify(state));
+await page.click('#readout .readout-close');
 
-await page.click('#rb-search');
+await page.evaluate(() => { getFreshDevicePosition = () => new Promise(() => {}); });
+await page.click('#rb-end');
 await page.fill('#placeSearch', 'Port Townsend');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 state = await page.evaluate(() => ({ workers: window.__routingWorkerStarts.length,
   results: document.querySelectorAll('#placeResults .place-hit:not(.place-internet-search)').length }));
-check('the second map search also stays responsive',
+check('Destination-triggered search also stays responsive',
   state.workers === 0 && state.results > 0, JSON.stringify(state));
 await page.click('#placeResults .place-hit:not(.place-internet-search)');
-await page.waitForSelector('#readout.show');
-await page.click('#readout .map-point-end');
+state = await page.evaluate(() => ({
+  workers: window.__routingWorkerStarts.length,
+  start: Boolean(routing.start), end: Boolean(routing.end),
+  startHidden: document.querySelector('.route-endpoint-start-row')?.hidden,
+  startLabel: document.querySelector('#rb-start [data-endpoint-value]')?.textContent,
+  pickerHidden: document.getElementById('placePicker').hidden,
+  promptShown: document.getElementById('readout').classList.contains('show'),
+  indicator: document.querySelectorAll('.search-result-marker').length,
+}));
+check('choosing a targeted Destination assigns it directly and reveals Current location',
+  state.workers === 0 && !state.start && state.end && !state.startHidden
+    && state.startLabel === 'Current location' && state.pickerHidden
+    && !state.promptShown && state.indicator === 0, JSON.stringify(state));
+
+await page.click('#rb-start');
+await page.fill('#placeSearch', 'Seattle');
+await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
+await page.click('#placeResults .place-hit:not(.place-internet-search)');
 await page.waitForFunction(() => window.__routingWorkerStarts.length > 0, null, { timeout: 30000 });
 state = await page.evaluate(() => ({
   workers: window.__routingWorkerStarts.length,
   pickerHidden: document.getElementById('placePicker').hidden,
   start: Boolean(routing.start), end: Boolean(routing.end),
+  promptShown: document.getElementById('readout').classList.contains('show'),
 }));
-check('routing starts after both endpoints are chosen and the picker has closed',
-  state.workers === 1 && state.pickerHidden && state.start && state.end, JSON.stringify(state));
+check('targeted Start assigns directly and routing begins after both endpoints exist',
+  state.workers === 1 && state.pickerHidden && state.start && state.end && !state.promptShown,
+  JSON.stringify(state));
 
 await browser.close();
 site.close();

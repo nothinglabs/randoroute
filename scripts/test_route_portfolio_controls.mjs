@@ -122,8 +122,6 @@ const regeneration = await page.evaluate(() => {
   out.afterBlock = routing.selectRecommendedNext;
   out.blockRequestPinned = posted.at(-1)?.pinned;
 
-  reverseRoute();
-  out.afterReverse = routing.selectRecommendedNext;
   routing.selectRecommendedNext = false;
   setRoutePoint('end', { lng: -122.29, lat: 47.64 });
   out.afterNewEnd = routing.selectRecommendedNext;
@@ -144,8 +142,6 @@ check('a road block still keeps and reruns the selected route lineup',
       { letter: 'A', profileId: 'fresh-recommended' },
       { letter: 'B', profileId: 'fresh-alternative' },
     ]),
-  JSON.stringify(regeneration));
-check('reversing takes a fresh recommendation', regeneration.afterReverse === true,
   JSON.stringify(regeneration));
 check('a new destination takes a fresh recommendation', regeneration.afterNewEnd === true,
   JSON.stringify(regeneration));

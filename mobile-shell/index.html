@@ -116,13 +116,13 @@
     </button>
     <div id="routeBar">
       <div class="route-endpoints" role="group" aria-label="Trip itinerary">
-        <div class="route-endpoint-row route-endpoint-start-row">
+        <div class="route-endpoint-row route-endpoint-start-row" hidden>
           <button id="rb-start" class="route-endpoint route-endpoint-start" type="button" title="Set start">
             <span class="route-endpoint-marker" aria-hidden="true"></span>
             <span class="endpoint-copy"><span class="endpoint-label">From</span><strong data-endpoint-value>Choose start</strong></span>
           </button>
           <div class="route-stop-actions" aria-label="Edit start">
-            <button class="route-stop-action route-stop-remove route-endpoint-remove" type="button" data-endpoint-remove="start" aria-label="Remove start" title="Remove start">✕</button>
+            <button class="route-stop-action route-stop-remove route-endpoint-remove" type="button" data-endpoint-remove="start" aria-label="Remove start" title="Remove start" hidden>✕</button>
           </div>
         </div>
         <div id="routeStops" class="route-stops" aria-label="Ordered stops"></div>
@@ -132,14 +132,11 @@
             <span class="endpoint-copy"><span class="endpoint-label">To</span><strong data-endpoint-value>Choose destination</strong></span>
           </button>
           <div class="route-stop-actions" aria-label="Edit destination">
-            <button class="route-stop-action route-stop-remove route-endpoint-remove" type="button" data-endpoint-remove="end" aria-label="Remove destination" title="Remove destination">✕</button>
+            <button class="route-stop-action route-stop-remove route-endpoint-remove" type="button" data-endpoint-remove="end" aria-label="Remove destination" title="Remove destination" hidden>✕</button>
           </div>
         </div>
       </div>
-      <div class="route-tools">
-        <button id="rb-reorder" type="button" title="Reverse or reorder trip" aria-label="Reverse or reorder trip" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h11M7 12h11M7 19h11"></path><path d="m4 3-2 2 2 2M2 5h2M20 17l2 2-2 2M20 19h2"></path></svg></button>
-        <button id="rb-search" type="button" title="Search the map" aria-label="Search the map"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></button>
-      </div>
+      <button id="rb-search" type="button" title="Search the map" aria-label="Search the map"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg></button>
       <span id="rb-status"></span>
       <div id="placePicker" class="place-picker" role="dialog" aria-modal="false" aria-labelledby="placePickerTitle" hidden>
         <div class="picker-head"><strong id="placePickerTitle">Search map</strong><button id="placePickerClose" type="button" aria-label="Close map search">✕</button></div>
@@ -352,13 +349,6 @@
     <div class="dialog-head"><h2 id="removeRouteMarkerTitle">Remove waypoint?</h2><button class="dialog-close" data-close="removeRouteMarkerDialog" aria-label="Close">✕</button></div>
     <p id="removeRouteMarkerText">This waypoint will be removed and the route recalculated.</p>
     <div class="dialog-actions"><button data-close="removeRouteMarkerDialog">Keep it</button><button id="confirmRemoveRouteMarker" class="danger">Remove waypoint</button></div>
-  </dialog>
-
-  <dialog id="reorderRouteDialog" class="map-dialog reorder-route-dialog" aria-labelledby="reorderRouteTitle">
-    <div class="dialog-head"><h2 id="reorderRouteTitle">Reorder trip</h2><button class="dialog-close" data-close="reorderRouteDialog" aria-label="Apply order and close">✕</button></div>
-    <p>Arrange the trip, then tap Done. The route recalculates once after this closes.</p>
-    <div id="reorderRouteList" class="reorder-route-list" aria-label="Trip order"></div>
-    <div class="dialog-actions"><button id="reorderRouteDone" class="dialog-primary" type="button">Done</button></div>
   </dialog>
 
   <dialog id="sharedSwitchDialog" class="map-dialog" aria-labelledby="sharedSwitchTitle">

@@ -20,6 +20,7 @@ const compact = await page.evaluate(() => {
   routing.worker = { postMessage: () => {} };
   routing.ready = true;
   routing.loading = false;
+  getFreshDevicePosition = () => new Promise(() => {});
   const source = SOURCES.find((item) => item.id === 'roads');
   HIT_SRC['test-road-hit'] = source;
   const feature = {
@@ -45,8 +46,8 @@ const compact = await page.evaluate(() => {
 check('a road tap shows only a short name and safety summary',
   compact.heading === 'Interurban Trail'
     && /Passes your rules|Bike network/.test(compact.summary), JSON.stringify(compact));
-check('Start and End are the primary actions before the trip has endpoints',
-  compact.actions.join('|') === 'Start|End', JSON.stringify(compact.actions));
+check('Destination is the only route action before the trip has an endpoint',
+  compact.actions.join('|') === 'End', JSON.stringify(compact.actions));
 check('technical rows exist but begin hidden behind Details',
   compact.detailsHidden && compact.tableHiddenInsideDetails, JSON.stringify(compact));
 check('a road tap remains a road-details card, not a searched-place card',
@@ -71,10 +72,12 @@ await page.locator('#readout .readout-details-toggle').click();
 check('collapsing Details returns to the friendly road name', await page.evaluate(() =>
   document.querySelector('#readout .rt-title')?.textContent === 'Interurban Trail'));
 
-await page.locator('#readout .map-point-start').click();
-check('Start uses the tapped coordinate and road name', await page.evaluate(() =>
-  routing.startName === 'Interurban Trail'
-    && routing.start[0] === -122.335 && routing.start[1] === 47.615
+await page.locator('#readout .map-point-end').click();
+check('Destination uses the tapped coordinate and reveals the Current location start', await page.evaluate(() =>
+  routing.endName === 'Interurban Trail'
+    && routing.end[0] === -122.335 && routing.end[1] === 47.615
+    && routing.startDefaultsToDevice
+    && !document.querySelector('.route-endpoint-start-row').hidden
     && !document.getElementById('readout').classList.contains('show')));
 
 await page.evaluate(() => renderReadout(null,
@@ -86,10 +89,10 @@ const blank = await page.evaluate(() => ({
 }));
 check('an ordinary point with no road hit gets the same routing card',
   blank.heading === 'Point on map' && blank.detailsHidden, JSON.stringify(blank));
-await page.locator('#readout .map-point-end').click();
-check('End completes the route directly from the map', await page.evaluate(() =>
-  routing.endName === 'Point on map'
-    && routing.end[0] === -122.76 && routing.end[1] === 48.12));
+await page.locator('#readout .map-point-start').click();
+check('Start completes the route directly from the map', await page.evaluate(() =>
+  routing.startName === 'Point on map'
+    && routing.start[0] === -122.76 && routing.start[1] === 48.12));
 
 await page.evaluate(() => renderReadout(null,
   { lng: -122.305, lat: 47.95 }, { x: 180, y: 360 }));

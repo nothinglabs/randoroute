@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Start, stops, and destination are one ordered itinerary. Reordering is
-// drafted in one dialog and applied once, while location search stays separate.
+// Destination is chosen first. Start appears afterwards, while generic search
+// previews a place and endpoint-triggered search assigns it immediately.
 import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const site = await serveRepo();
@@ -20,21 +20,26 @@ const initial = await page.evaluate(() => {
   routing.worker = { postMessage: () => {} };
   routing.ready = true;
   routing.loading = false;
+  const blank = {
+    startHidden: document.querySelector('.route-endpoint-start-row').hidden,
+    destinationVisible: !document.querySelector('.route-endpoint-end-row').hidden,
+    reorderGone: !document.getElementById('rb-reorder')
+      && !document.getElementById('reorderRouteDialog'),
+  };
   setRoutePoint('start', { lng: -122.335, lat: 47.61 }, 'Seattle');
   setRoutePoint('end', { lng: -122.76, lat: 48.12 }, 'Port Townsend');
   addVia({ lng: -122.305, lat: 47.95 }, { name: 'Mukilteo' });
   addVia({ lng: -122.48, lat: 48.03 }, { name: 'Point on map' });
   const card = document.querySelector('.route-endpoints').getBoundingClientRect();
   const search = document.getElementById('rb-search').getBoundingClientRect();
-  const reorder = document.getElementById('rb-reorder').getBoundingClientRect();
   return {
+    blank,
     itinerary: [...document.querySelectorAll('.route-endpoint, .route-stop-edit')]
       .map((element) => `${element.querySelector('.endpoint-label')?.textContent} ${element.querySelector('.endpoint-copy strong')?.textContent}`),
     oldControlsGone: !document.getElementById('rb-via') && !document.getElementById('rb-more')
       && !document.getElementById('routeActionsMenu'),
     endpointControls: document.querySelectorAll('.route-endpoint-row .route-stop-action').length,
     inlineArrows: document.querySelectorAll('#routeBar .route-stop-up, #routeBar .route-stop-down, [data-endpoint-move]').length,
-    reorderEnabled: !document.getElementById('rb-reorder').disabled,
     endpointWidth: Math.round(card.width),
     viewportWidth: innerWidth,
     actionBoxes: [...document.querySelectorAll('.route-stop-action')].slice(0, 3).map((button) => {
@@ -45,26 +50,24 @@ const initial = await page.evaluate(() => {
       via.marker.getElement().querySelector('.waypoint-marker-number')?.textContent),
     cardInsidePhone: card.left >= 0 && card.right <= innerWidth,
     searchInsidePhone: search.left >= 0 && search.right <= innerWidth,
-    reorderAboveSearch: reorder.bottom <= search.top,
-    toolBoxes: [reorder, search].map((box) => ({
-      width: Math.round(box.width), height: Math.round(box.height),
-    })),
+    searchBox: { width: Math.round(search.width), height: Math.round(search.height) },
   };
 });
+check('a blank planner shows Destination first and hides Start and all reordering UI',
+  initial.blank.startHidden && initial.blank.destinationVisible && initial.blank.reorderGone,
+  JSON.stringify(initial.blank));
 check('the main card shows start, named stops, and destination in trip order',
   initial.itinerary.join(' | ') === 'From Seattle | Stop 1 Mukilteo | Stop 2 Point on map | To Port Townsend',
   JSON.stringify(initial.itinerary));
-check('inline reorder arrows are gone while delete, reorder, and search remain available',
+check('inline arrows and old route menus are gone while delete and search remain available',
   initial.oldControlsGone && initial.endpointControls === 2
-    && initial.inlineArrows === 0 && initial.reorderEnabled, JSON.stringify(initial));
+    && initial.inlineArrows === 0, JSON.stringify(initial));
 check('map stop pins use the same itinerary numbers',
   initial.markerNumbers.join(',') === '1,2', JSON.stringify(initial.markerNumbers));
 check('the itinerary and search button fit the phone viewport',
   initial.cardInsidePhone && initial.searchInsidePhone, JSON.stringify(initial));
-check('the single reorder control sits above Search and both are finger-sized',
-  initial.reorderAboveSearch
-    && initial.toolBoxes.every((box) => box.width >= 40 && box.height >= 40),
-  JSON.stringify(initial));
+check('Search remains a finger-sized standalone control',
+  initial.searchBox.width >= 40 && initial.searchBox.height >= 40, JSON.stringify(initial));
 check('the itinerary spans the phone and its delete targets are finger-sized',
   initial.endpointWidth >= initial.viewportWidth * .78
     && initial.actionBoxes.every((box) => box.width >= 36 && box.height >= 40),
@@ -76,72 +79,11 @@ check('routine route UI refreshes do not steal focus from a stop control', await
   return document.activeElement?.dataset?.viaEdit === '0';
 }));
 
-await page.evaluate(() => {
-  window.__originalComputeRoute = computeRoute;
-  window.__orderComputeCalls = 0;
-  computeRoute = () => { window.__orderComputeCalls++; };
-});
-await page.locator('#rb-reorder').click();
-const reorderDialog = await page.evaluate(() => ({
-  open: document.getElementById('reorderRouteDialog').open,
-  names: [...document.querySelectorAll('.reorder-route-copy strong')].map((element) => element.textContent),
-  roles: [...document.querySelectorAll('.reorder-route-copy span')].map((element) => element.textContent),
-}));
-check('the reorder button opens one complete itinerary in a dialog when multiple stops exist',
-  reorderDialog.open
-    && reorderDialog.names.join('|') === 'Seattle|Mukilteo|Point on map|Port Townsend'
-    && reorderDialog.roles.join('|') === 'Start|Stop 1|Stop 2|Destination',
-  JSON.stringify(reorderDialog));
-
-await page.locator('[data-reorder-index="1"][data-reorder-direction="1"]').click();
-const whileEditing = await page.evaluate(() => ({
-  draft: [...document.querySelectorAll('.reorder-route-copy strong')].map((element) => element.textContent),
-  route: [routing.startName, ...routing.vias.map((via) => via.name), routing.endName],
-  computes: window.__orderComputeCalls,
-}));
-check('dialog edits stay in a draft and do not recalculate the route',
-  whileEditing.draft.join('|') === 'Seattle|Point on map|Mukilteo|Port Townsend'
-    && whileEditing.route.join('|') === 'Seattle|Mukilteo|Point on map|Port Townsend'
-    && whileEditing.computes === 0, JSON.stringify(whileEditing));
-
-await page.locator('#reorderRouteDone').click();
-await page.waitForFunction(() => window.__orderComputeCalls === 1);
-const reordered = await page.evaluate(() => {
-  const result = {
-    open: document.getElementById('reorderRouteDialog').open,
-    computes: window.__orderComputeCalls,
-    start: routing.startName,
-    names: routing.vias.map((via) => via.name),
-    end: routing.endName,
-    labels: [...document.querySelectorAll('.route-stop-edit strong')].map((element) => element.textContent),
-    markerNumbers: routing.vias.map((via) =>
-      via.marker.getElement().querySelector('.waypoint-marker-number')?.textContent),
-  };
-  computeRoute = window.__originalComputeRoute;
-  return result;
-});
-check('closing applies the final order and recalculates exactly once',
-  !reordered.open && reordered.computes === 1
-    && reordered.start === 'Seattle' && reordered.end === 'Port Townsend'
-    && reordered.names.join('|') === 'Point on map|Mukilteo'
-    && reordered.labels.join('|') === 'Point on map|Mukilteo', JSON.stringify(reordered));
-check('map pin numbering follows the applied stop order',
-  reordered.markerNumbers.join(',') === '1,2', JSON.stringify(reordered));
-
 const shared = await page.evaluate(() => readSharedRoute(shareRouteUrl())?.route?.vn);
-check('shared routes preserve the applied stop order', shared?.join('|') === 'Point on map|Mukilteo',
+check('shared routes preserve stop order', shared?.join('|') === 'Mukilteo|Point on map',
   JSON.stringify(shared));
 
-/* The main itinerary remains stable after a routine refresh. */
-const refreshed = await page.evaluate(() => ({
-  names: routing.vias.map((via) => via.name),
-  labels: [...document.querySelectorAll('.route-stop-edit strong')].map((element) => element.textContent),
-}));
-check('routine refreshes preserve the applied itinerary',
-  refreshed.names.join('|') === 'Point on map|Mukilteo'
-    && refreshed.labels.join('|') === 'Point on map|Mukilteo', JSON.stringify(refreshed));
-
-await page.locator('[data-via-edit="1"]').click();
+await page.locator('[data-via-edit="0"]').click();
 await page.waitForSelector('#readout.show');
 const stopCard = await page.evaluate(() => ({
   title: document.querySelector('#readout .rt-title')?.textContent.trim(),
@@ -149,6 +91,30 @@ const stopCard = await page.evaluate(() => ({
 }));
 check('tapping an itinerary place shows it on the map instead of opening a targeted picker',
   stopCard.title === 'Mukilteo' && stopCard.pickerHidden, JSON.stringify(stopCard));
+
+await page.locator('#rb-start').click();
+await page.locator('#placeSearch').fill('Seattle Heights');
+await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
+const targetedStart = await page.evaluate(() => ({
+  title: document.getElementById('placePickerTitle').textContent,
+  hint: document.getElementById('placePickerHint').textContent,
+}));
+await page.locator('#placeResults .place-hit:not(.place-internet-search)').first().click();
+check('Start-triggered search assigns its result immediately without a prompt card',
+  await page.evaluate(() => routing.startName.includes('Seattle Heights')
+    && document.getElementById('placePicker').hidden
+    && !document.getElementById('readout').classList.contains('show')
+    && document.querySelectorAll('.search-result-marker').length === 0)
+    && targetedStart.title === 'Choose start' && /set your start/i.test(targetedStart.hint),
+  JSON.stringify(targetedStart));
+
+await page.locator('#rb-end').click();
+await page.locator('#placeSearch').fill('Port Townsend');
+await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
+await page.locator('#placeResults .place-hit:not(.place-internet-search)').first().click();
+check('Destination-triggered search also assigns directly', await page.evaluate(() =>
+  routing.endName.includes('Port Townsend') && document.getElementById('placePicker').hidden
+    && !document.getElementById('readout').classList.contains('show')));
 
 await page.locator('#rb-search').click();
 await page.locator('#placeSearch').fill('Seattle');
@@ -223,7 +189,7 @@ await page.locator('[data-via-index="0"] .route-stop-remove').click();
 check('a stop can be removed directly from the itinerary', await page.evaluate(() =>
   routing.vias.length === 1
     && document.querySelectorAll('.route-stop-row').length === 1
-    && document.querySelector('.route-stop-edit strong')?.textContent === 'Mukilteo'));
+    && document.querySelector('.route-stop-edit strong')?.textContent === 'Point on map'));
 
 await page.locator('[data-endpoint-remove="start"]').click();
 check('Start can be deleted without deleting the remaining itinerary', await page.evaluate(() =>
@@ -235,18 +201,7 @@ check('endpoint and stop X buttons can delete every route item', await page.eval
   !routing.start && !routing.end && routing.vias.length === 0
     && document.querySelectorAll('.route-stop-row').length === 0
     && document.querySelectorAll('[data-endpoint-remove]:not([hidden])').length === 0
-    && document.getElementById('rb-reorder').disabled));
-
-await page.evaluate(() => {
-  setRoutePoint('start', { lng: -122.335, lat: 47.61 }, 'Seattle');
-  setRoutePoint('end', { lng: -122.76, lat: 48.12 }, 'Port Townsend');
-  addVia({ lng: -122.305, lat: 47.95 }, { name: 'Mukilteo' });
-});
-await page.locator('#rb-reorder').click();
-check('with only one stop, the same button reverses the trip immediately without a dialog',
-  await page.evaluate(() => routing.startName === 'Port Townsend'
-    && routing.vias[0]?.name === 'Mukilteo' && routing.endName === 'Seattle'
-    && !document.getElementById('reorderRouteDialog').open));
+    && document.querySelector('.route-endpoint-start-row').hidden));
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 
