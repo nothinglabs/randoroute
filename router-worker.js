@@ -2508,6 +2508,8 @@ function candidateSummary(candidate) {
     timeS: candidate.timeS,
     failM: candidate.failM,
     refinedFrom: candidate._profile.refinedFrom || null,
+    crossBred: !!profile.crossBred,
+    crossBreedKind: profile.crossBreedKind || null,
     levelM: candidate.levelM,
     facilityM: candidate.facilityM,
     desigM: candidate.desigM,
@@ -2772,6 +2774,16 @@ function crossBreedFerryCandidates(base, donor, raw, rules) {
     const theirs = donorPieces.landParts[landIndex];
     if (!mine || !theirs || theirs.distM < 1000) continue;
     if (!meaningfullyDifferent(theirs, mine)) continue;
+    // `donor` is safer over the whole itinerary, but that does not imply each
+    // one of its land sections is an improvement. Only splice a section that
+    // is actually safer or better-priced than the corresponding base section;
+    // otherwise this pass can reserve a slot for the donor's bad mainland
+    // while missing the exact practical-mainland / safe-island composition it
+    // exists to build.
+    mine.aggression = routeAggression(mine);
+    theirs.aggression = routeAggression(theirs);
+    if (compareSafety(theirs, mine) >= 0
+        && recommendationScore(theirs) + 5 >= recommendationScore(mine)) continue;
     const parts = [];
     for (let index = 0; index < basePieces.landParts.length; index++) {
       const landPart = index === landIndex ? theirs : basePieces.landParts[index];
@@ -2789,6 +2801,7 @@ function crossBreedFerryCandidates(base, donor, raw, rules) {
       alternativeCorridor: true,
       crossBred: true,
       crossBreedKind: 'ferry',
+      replacedLandSection: landIndex,
       refinedFrom: `${base._profile.id}+${donor._profile.id}`,
     };
     hybrid.aggression = routeAggression(hybrid);
@@ -3307,9 +3320,18 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const bothPreferences = unique.find((r) => r._profile.prefDesig && r._profile.prefResidential);
   const fullyMatching = unique.find((r) => r._profile.fullyMatchingRules);
   const adaptiveCorridor = unique.find((r) => r._profile.id.startsWith('adaptive-corridor'));
+  // Ferry cross-breeding can already contain the exact field-requested blend:
+  // keep the practical mainland from one route and the safer island from
+  // another. Protect the SAFEST such child explicitly. Previously we reserved
+  // whichever adaptive candidate happened to have the lowest generated id,
+  // which surfaced a direct Whidbey route and left the useful blend only in
+  // the troubleshooting list.
+  const ferryCrossBreed = unique.filter((r) => r._profile.crossBreedKind === 'ferry')
+    .reduce((best, route) => !best || compareSafety(route, best) < 0 ? route : best, null);
   const combinedCorridor = unique.find((r) => r._profile.id.startsWith('combined-corridor'));
   const protectedCandidates = new Set([
-    preferred, bothPreferences, fullyMatching, adaptiveCorridor, combinedCorridor,
+    preferred, bothPreferences, fullyMatching, adaptiveCorridor, ferryCrossBreed,
+    combinedCorridor,
   ].filter(Boolean));
   const useful = unique.filter((candidate) => protectedCandidates.has(candidate)
     || !unique.some((other) => {
@@ -3433,7 +3455,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (selected.every((other) => meaningfullyDifferent(last, other))) selected.push(last);
   }
   const required = [...new Set([recommended, fastestOverall, safestOverall, boundedSafer,
-    boundedBothPreferences, boundedPreferred, fullyMatching, adaptiveCorridor,
+    boundedBothPreferences, boundedPreferred, fullyMatching, adaptiveCorridor, ferryCrossBreed,
     combinedCorridor].filter(Boolean))];
   for (const candidate of required) {
     if (selected.includes(candidate)) continue;
@@ -3529,6 +3551,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       choices: choices.map((r) => r._profile.id), selected: selected.map((r) => r._profile.id),
       safest: safestOverall._profile.id, boundedSafer: boundedSafer?._profile.id,
       fullyMatching: fullyMatching?._profile.id, adaptiveCorridor: adaptiveCorridor?._profile.id,
+      ferryCrossBreed: ferryCrossBreed?._profile.id,
       combinedCorridor: combinedCorridor?._profile.id,
       recommended: recommended?._profile.id,
     } : undefined,

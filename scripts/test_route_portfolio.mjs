@@ -36,6 +36,7 @@
 import { spawnSync } from 'node:child_process';
 
 const phinney = [-122.35403, 47.67213];
+const seattle = [-122.3321, 47.6062];
 const mukilteo = [-122.29704, 47.95067];
 const portTownsend = [-122.75902, 48.11111];
 const common = {
@@ -63,9 +64,20 @@ const scenarios = [
   },
   {
     ...common,
-    name: 'Portfolio: no-waypoint full trip still crosses end to end',
-    points: [phinney, portTownsend],
+    name: 'Portfolio: Seattle to Port Townsend offers the safe-island hybrid',
+    points: [seattle, portTownsend],
     expectFullyMatching: true,
+    // Field request: keep the practical mainland ride to Mukilteo, then use
+    // the calmer Whidbey crossing from the safest candidate. This is a route
+    // portfolio contract, not an exact-mileage snapshot: the broad section
+    // bounds distinguish the hybrid from both the direct-island and
+    // long-mainland parents while allowing the graph data to improve.
+    expectAny: {
+      crossBred: true,
+      ferries: ['Mukilteo-Clinton Ferry', 'Port Townsend-Coupeville Ferry'],
+      landMinMi: [30, 32],
+      landMaxMi: [42, 45],
+    },
   },
 ];
 

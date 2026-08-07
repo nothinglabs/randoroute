@@ -61,6 +61,8 @@ function landSectionsM(option) {
 }
 function matchesExpectation(option, expectation) {
   const miles = option.distM / 1609.344;
+  if (expectation.crossBred != null
+      && !!option.optimization?.crossBred !== !!expectation.crossBred) return false;
   if (expectation.minDistanceMi != null && miles < expectation.minDistanceMi) return false;
   if (expectation.maxDistanceMi != null && miles > expectation.maxDistanceMi) return false;
   if (expectation.minFacilityMi != null

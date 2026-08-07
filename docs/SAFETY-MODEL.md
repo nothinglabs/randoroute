@@ -1000,6 +1000,16 @@ distinct boat plan keeps TWO representatives in the seed pool (safest and
 best-priced); keeping only the safest had hidden the mainstream candidate
 behind a calmer sibling with the same ferries.
 
+Same-boat parents are also cross-bred at their terminal nodes. A donor land
+section is used only when it is actually safer or better-priced than the base
+section; being on the safer *whole route* is not enough. The six-letter chooser
+explicitly reserves the safest of these cross-bred children. This matters on
+Seattle → Port Townsend: the practical route owns the excellent trail-heavy
+approach to Mukilteo, while a longer candidate owns the calm Whidbey crossing.
+Their useful composition was already generated but used to remain only in the
+troubleshooting list because the chooser reserved whichever adaptive candidate
+happened to receive the first internal ID.
+
 **Combined land corridors.** A bounded, search-free pass can also combine two
 ordinary ferry-free candidates when they meet at the exact same routing-graph
 node. This covers the non-ferry version of the same field need: one candidate
