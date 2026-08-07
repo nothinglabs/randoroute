@@ -62,6 +62,18 @@ check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
 
 await page.click('#rb-search');
+state = await page.evaluate(() => ({
+  placeholder: document.getElementById('placeSearch').placeholder,
+  mapChoice: document.getElementById('pickOnMap').textContent.trim(),
+  useLocationHidden: document.getElementById('useLoc').hidden,
+  toolbarZ: Number(getComputedStyle(document.getElementById('topToolbar')).zIndex),
+  mapControlsZ: Number(getComputedStyle(document.querySelector('.maplibregl-ctrl-top-right')).zIndex),
+}));
+check('generic search uses simple place language and offers the map instead of device location',
+  state.placeholder === 'Search places…' && state.mapChoice.includes('Tap the map instead')
+    && state.useLocationHidden, JSON.stringify(state));
+check('the open search panel stacks above every map control',
+  state.toolbarZ > state.mapControlsZ, JSON.stringify(state));
 await page.fill('#placeSearch', 'Seattle');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 state = await page.evaluate(() => ({ workers: window.__routingWorkerStarts.length,
@@ -87,6 +99,23 @@ await page.click('#readout .readout-close');
 
 await page.evaluate(() => { getFreshDevicePosition = () => new Promise(() => {}); });
 await page.click('#rb-end');
+state = await page.evaluate(() => ({
+  useLocationHidden: document.getElementById('useLoc').hidden,
+  mapChoiceVisible: !document.getElementById('pickOnMap').hidden,
+}));
+check('Destination search never offers current location and clearly offers a map tap',
+  state.useLocationHidden && state.mapChoiceVisible, JSON.stringify(state));
+await page.click('#pickOnMap');
+state = await page.evaluate(() => ({
+  pickerHidden: document.getElementById('placePicker').hidden,
+  armed: routing.arm,
+  status: document.getElementById('rb-status').textContent,
+}));
+check('Tap the map instead arms Destination and closes search',
+  state.pickerHidden && state.armed === 'end' && /tap the map.*destination/i.test(state.status),
+  JSON.stringify(state));
+await page.evaluate(() => { routing.arm = null; updateArmButtons(); });
+await page.click('#rb-end');
 await page.fill('#placeSearch', 'Port Townsend');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 state = await page.evaluate(() => ({ workers: window.__routingWorkerStarts.length,
@@ -109,6 +138,8 @@ check('choosing a targeted Destination assigns it directly and reveals Current l
     && !state.promptShown && state.indicator === 0, JSON.stringify(state));
 
 await page.click('#rb-start');
+check('current location is available when explicitly choosing Start',
+  await page.evaluate(() => !document.getElementById('useLoc').hidden));
 await page.fill('#placeSearch', 'Seattle');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 await page.click('#placeResults .place-hit:not(.place-internet-search)');

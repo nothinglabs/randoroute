@@ -676,6 +676,10 @@ body.map-tools-extended #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.z
   gap: 6px;
   max-width: calc(100vw - 16px);
 }
+/* MapLibre controls live in their own z-index 16 stack. Lift the toolbar's
+   whole stacking context while search is open so its picker cannot appear
+   underneath the location, layers, or advanced-tools buttons. */
+body.place-picker-open #topToolbar { z-index: 25; }
 #routeBar {
   position: relative;
   min-width: 0;
@@ -993,10 +997,13 @@ body.navigation-active #routeBar { display: none; }
 .picker-hint strong { color: #263d49; }
 .picker-search-row { display: flex; gap: 5px; }
 .picker-search-row #placeSearch { flex: 1; min-width: 0; }
-#routeBar #useLoc { border: 1px solid #d5d5d5; border-radius: 9px; background: #fff; color: #0a66c2; cursor: pointer; }
-#routeBar #useLoc { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 34px; margin: 7px 0 0; padding: 5px 10px; white-space: nowrap; font: 750 11.5px system-ui; }
+#routeBar #pickOnMap,
+#routeBar #useLoc { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; min-height: 38px; margin: 7px 0 0; padding: 6px 10px; border: 1px solid #b8d2e2; border-radius: 9px; background: #edf7fc; color: #075f91; white-space: nowrap; font: 780 11.5px system-ui; cursor: pointer; }
+#routeBar #useLoc { border-color: #d5d5d5; background: #fff; color: #0a66c2; }
+#routeBar #pickOnMap:focus-visible,
+#routeBar #useLoc:focus-visible { outline: 3px solid #75bdf4; outline-offset: 1px; }
 #routeBar #useLoc[hidden] { display: none; }
-#useLoc span { font-size: 17px; line-height: 1; }
+#pickOnMap span, #useLoc span { font-size: 17px; line-height: 1; }
 #routeBar .place-results .place-internet-search { background: #f1f7fb; color: #0a5f92; font-weight: 750; }
 #routeBar .place-results .place-internet-search::before { content: "◎"; margin-right: 7px; color: #467a99; }
 #routeBar .place-results .place-internet-search small { display: block; margin: 3px 0 0 22px; color: #5f7481; }

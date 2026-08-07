@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.618';
+const APP_VERSION = '2026-08-07.619';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -5994,12 +5994,10 @@ function renderRouteCard(m) {
   if (!card) return;
   syncRouteDetailsWarningState(m);
   if (!m) {
-    // Title only. This used to add "Use search or tap the map", which reads as
-    // an instruction that works -- and it does not: a map tap sets a point only
-    // once FROM or TO has been armed, so a rider following it taps and nothing
-    // happens. Telling someone how to drive the interface here is also the
-    // wrong job for an empty state; saying what is missing is enough.
-    showRouteMessage(!routing.end ? 'Choose a destination' : 'Choose a start');
+    // Map taps now always offer the route role that is currently missing, so
+    // the empty state can advertise the fastest alternative to search.
+    showRouteMessage(!routing.end ? 'Choose a destination' : 'Choose a start',
+      'Tap the map, or use search above.');
     return;
   }
   if (!m.ok) {
@@ -7525,7 +7523,6 @@ let defaultStartRequest = 0;
 async function resolveDefaultStartFromDevice() {
   if (routing.start || !routing.startDefaultsToDevice || !routing.end) return;
   const request = ++defaultStartRequest;
-  showRouteActionToast('Getting your current location…', { busy: true, duration: 0 });
   try {
     const pos = await getFreshDevicePosition();
     if (request !== defaultStartRequest || routing.start || !routing.end
@@ -7533,12 +7530,15 @@ async function resolveDefaultStartFromDevice() {
     setRoutePoint('start', {
       lng: pos.coords.longitude, lat: pos.coords.latitude,
     }, 'My location', { fromDevice: true });
-    showRouteActionToast('Starting from your current location', { duration: 2600 });
-  } catch (error) {
+  } catch {
     if (request !== defaultStartRequest || !routing.startDefaultsToDevice) return;
-    showRouteActionToast('Could not get your current location', {
-      detail: 'Tap From to search for a starting point, or try again.', duration: 7000,
-    });
+    // Current location is a convenient default, not a required step. If the
+    // device cannot provide it, quietly return Start to an ordinary unset
+    // state and let the rider search or tap the map.
+    routing.startDefaultsToDevice = false;
+    updateArmButtons();
+    renderRouteCard(null);
+    saveStateSoon();
   }
 }
 
@@ -9069,14 +9069,17 @@ function openPlaceSearch(target = null) {
   document.getElementById('placePickerTitle').textContent = placeSearchTarget
     ? `Choose ${targetLabel}` : 'Search map';
   document.getElementById('placePickerHint').textContent = placeSearchTarget
-    ? `Choose a result to set your ${targetLabel}.`
-    : 'Choose a result to see it on the map, then add it to your trip.';
-  document.getElementById('useLoc').hidden = false;
+    ? `Search for your ${targetLabel}, or choose it directly on the map.`
+    : 'Search for a place, or choose one directly on the map.';
+  // Device location is meaningful as a route start. It is deliberately absent
+  // from Destination and generic place search so it cannot be offered as an
+  // accidental destination.
+  document.getElementById('useLoc').hidden = placeSearchTarget !== 'start';
   const searchInput = document.getElementById('placeSearch');
-  searchInput.placeholder = 'Search places, addresses, or stores…';
+  searchInput.placeholder = 'Search places…';
   searchInput.value = '';
   searchInput.classList.remove('current-endpoint-preview');
-  searchInput.setAttribute('aria-label', 'Search places, addresses, or stores');
+  searchInput.setAttribute('aria-label', 'Search places');
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   document.getElementById('placePicker').hidden = false;
@@ -9152,7 +9155,7 @@ function buildPlacePicker() {
       internet.dataset.internetSearch = 'true';
       internet.append(document.createTextNode('Search with internet'));
       const detail = document.createElement('small');
-      detail.textContent = 'Addresses, businesses, and more';
+      detail.textContent = 'More places and landmarks';
       internet.append(detail);
       results.append(internet);
     }
@@ -9194,7 +9197,7 @@ function buildPlacePicker() {
       if (requestId !== placeSearchRequestId || input.value.trim() !== query) return;
       const matches = uniqueMatches(onlineMatches);
       render(matches, matches.length ? ''
-        : `No internet results for “${query}”. Try a city, address, or landmark.`);
+        : `No internet results for “${query}”. Try a place name or landmark.`);
       setRouteStatus(onlineMatches.length
         ? `${onlineMatches.length} internet ${onlineMatches.length === 1 ? 'result' : 'results'} found`
         : 'No internet search results');
@@ -9248,6 +9251,15 @@ function buildPlacePicker() {
   });
 
   document.getElementById('placePickerClose').addEventListener('click', closePlacePicker);
+  document.getElementById('pickOnMap').addEventListener('click', () => {
+    const target = placeSearchTarget;
+    closePlacePicker();
+    routing.arm = target;
+    updateArmButtons();
+    setRouteStatus(target
+      ? `Tap the map to set your ${target === 'start' ? 'start' : 'destination'}`
+      : 'Tap anywhere on the map to choose a location');
+  });
   document.getElementById('useLoc').addEventListener('click', () => {
     const requestId = ++placeSearchRequestId;
     setRouteStatus('Locating…');
@@ -9255,19 +9267,9 @@ function buildPlacePicker() {
       if (requestId !== placeSearchRequestId) return;
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
       choosePlaceSearchResult(lngLat, 'My location', { fromDevice: true });
-    }).catch((error) => {
+    }).catch(() => {
       if (requestId !== placeSearchRequestId) return;
-      // GeolocationPositionError.TIMEOUT is 3; our own gate throws string codes.
-      const code = error?.code;
-      let message;
-      if (code === 'STALE_FIX' || code === 'IMPRECISE_FIX' || code === 3) {
-        message = 'Still getting a GPS fix — try again in a moment';
-      } else if (/blocked|denied|permission/i.test(String(error?.message || error))) {
-        message = 'Location permission is blocked in your device Settings';
-      } else {
-        message = 'Could not get your location';
-      }
-      setRouteStatus(message);
+      setRouteStatus('');
     });
   });
 }

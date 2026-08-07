@@ -68,7 +68,27 @@ check('a blank planner shows only Destination and does not default or request St
     && defaultStart.displayed === 'Choose start'
     && !defaultStart.defaultsToDevice && !defaultStart.removeVisible,
   JSON.stringify(defaultStart));
+
+await page.evaluate(() => {
+  window.__locationFails = true;
+  setRoutePoint('end', { lng: -122.2015, lat: 47.6101 }, 'Bellevue');
+});
+await page.waitForFunction(() => !routing.startDefaultsToDevice);
+const missingDefault = await page.evaluate(() => ({
+  actual: routing.start,
+  displayed: document.querySelector('#rb-start [data-endpoint-value]')?.textContent,
+  defaultsToDevice: routing.startDefaultsToDevice,
+  notices: window.__notices.join(' | '),
+}));
+check('an unavailable automatic location quietly leaves Start unset',
+  !missingDefault.actual && missingDefault.displayed === 'Choose start'
+    && !missingDefault.defaultsToDevice && !/current location/i.test(missingDefault.notices),
+  JSON.stringify(missingDefault));
+
 const revealedStart = await page.evaluate(() => {
+  clearRoute();
+  window.__notices.length = 0;
+  window.__locationFails = false;
   setRoutePoint('end', { lng: -122.2015, lat: 47.6101 }, 'Bellevue');
   return {
     rowHidden: document.querySelector('.route-endpoint-start-row')?.hidden,

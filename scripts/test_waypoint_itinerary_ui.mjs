@@ -105,7 +105,7 @@ check('Start-triggered search assigns its result immediately without a prompt ca
     && document.getElementById('placePicker').hidden
     && !document.getElementById('readout').classList.contains('show')
     && document.querySelectorAll('.search-result-marker').length === 0)
-    && targetedStart.title === 'Choose start' && /set your start/i.test(targetedStart.hint),
+    && targetedStart.title === 'Choose start' && /search for your start/i.test(targetedStart.hint),
   JSON.stringify(targetedStart));
 
 await page.locator('#rb-end').click();
