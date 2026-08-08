@@ -73,6 +73,55 @@ check('the phone menu starts closed', !state.panelOpen, JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
 
+state = await page.evaluate(async () => {
+  const realGetDevicePosition = getDevicePosition;
+  let attempts = 0;
+  const startedAt = Date.now();
+  getDevicePosition = async () => {
+    attempts++;
+    if (attempts === 1) {
+      const error = new Error('Location temporarily unavailable');
+      error.code = 2;
+      throw error;
+    }
+    return {
+      coords: { longitude: -122.33, latitude: 47.61, accuracy: 8 },
+      timestamp: Date.now(),
+    };
+  };
+  try {
+    const position = await getFreshDevicePosition({ timeout: 3000, retryUntilUsable: true });
+    return { attempts, elapsedMs: Date.now() - startedAt, longitude: position.coords.longitude };
+  } finally {
+    getDevicePosition = realGetDevicePosition;
+  }
+});
+check('an explicit fresh-location request waits through a transient GPS failure',
+  state.attempts === 2 && state.elapsedMs >= 700 && state.elapsedMs < 2500
+    && state.longitude === -122.33,
+  JSON.stringify(state));
+
+state = await page.evaluate(async () => {
+  const realGetDevicePosition = getDevicePosition;
+  let attempts = 0;
+  getDevicePosition = async () => {
+    attempts++;
+    const error = new Error('Location permission is blocked');
+    error.code = 1;
+    throw error;
+  };
+  try {
+    await getFreshDevicePosition({ timeout: 3000, retryUntilUsable: true });
+    return { attempts, rejected: false };
+  } catch (error) {
+    return { attempts, rejected: /permission is blocked/i.test(error.message) };
+  } finally {
+    getDevicePosition = realGetDevicePosition;
+  }
+});
+check('a real location-permission failure remains immediate',
+  state.attempts === 1 && state.rejected, JSON.stringify(state));
+
 await page.click('#panelOpen');
 await page.waitForFunction(() => document.querySelector('.route-endpoints')
   ?.classList.contains('route-guidance-flash'));
@@ -211,7 +260,11 @@ check('Start keeps current location compact in the header and results below sear
   state.available && state.label === '⌖Start from current location'
     && state.inHeader && state.beforeResults && state.openedFrom === 'start', JSON.stringify(state));
 await page.evaluate(() => {
-  getFreshDevicePosition = () => Promise.reject(new Error('GPS unavailable'));
+  window.__freshLocationOptions = null;
+  getFreshDevicePosition = (options) => {
+    window.__freshLocationOptions = options;
+    return Promise.reject(new Error('GPS unavailable'));
+  };
 });
 await page.click('#useLoc');
 await page.waitForFunction(() => document.getElementById('placePickerHint')
@@ -220,10 +273,13 @@ state = await page.evaluate(() => ({
   pickerVisible: !document.getElementById('placePicker').hidden,
   hint: document.getElementById('placePickerHint').textContent,
   buttonReady: !document.getElementById('useLoc').disabled,
+  options: window.__freshLocationOptions,
 }));
 check('an explicit Current location failure is explained inside the open picker',
   state.pickerVisible && state.buttonReady && /couldn’t get your location/i.test(state.hint)
-    && /search or tap the map/i.test(state.hint), JSON.stringify(state));
+    && /search or tap the map/i.test(state.hint)
+    && state.options?.timeout === 30000 && state.options?.retryUntilUsable === true,
+  JSON.stringify(state));
 await page.fill('#placeSearch', 'Seattle');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 await page.click('#placeResults .place-hit:not(.place-internet-search)');

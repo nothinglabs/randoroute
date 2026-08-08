@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.629';
+const APP_VERSION = '2026-08-08.630';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4777,26 +4777,64 @@ async function getDevicePosition(options = {}) {
 // imprecise so the caller can ask the rider to wait a moment.
 const FRESH_FIX_MAX_AGE_MS = 45000;
 const FRESH_FIX_MAX_ACCURACY_M = 250;
+const FRESH_FIX_RETRY_DELAY_MS = 750;
 
-async function getFreshDevicePosition(options = {}) {
-  // maximumAge:0 makes the web geolocation path take a new reading instead of
-  // returning a cached one. The timestamp/accuracy checks below additionally
-  // cover the native plugin, whose getCurrentPosition can hand back a last-known
-  // fix regardless of the option.
-  const position = await getDevicePosition({ maximumAge: 0, timeout: 20000, ...options });
+function freshFixProblem(position) {
   const fixAt = Number(position?.timestamp);
   if (Number.isFinite(fixAt) && Date.now() - fixAt > FRESH_FIX_MAX_AGE_MS) {
     const error = new Error('Location is still updating');
     error.code = 'STALE_FIX';
-    throw error;
+    return error;
   }
   const accuracy = Number(position?.coords?.accuracy);
   if (Number.isFinite(accuracy) && accuracy > FRESH_FIX_MAX_ACCURACY_M) {
     const error = new Error('Location is still updating');
     error.code = 'IMPRECISE_FIX';
-    throw error;
+    return error;
   }
-  return position;
+  return null;
+}
+
+function isFinalLocationError(error) {
+  return Number(error?.code) === 1
+    || /blocked|denied|permission|disabled|restricted/i.test(String(error?.message || error));
+}
+
+async function getFreshDevicePosition(options = {}) {
+  const retryUntilUsable = Boolean(options.retryUntilUsable);
+  const requestedTimeout = Number(options.timeout);
+  const totalTimeoutMs = Number.isFinite(requestedTimeout)
+    ? Math.max(1000, requestedTimeout) : 20000;
+  const deadline = Date.now() + totalTimeoutMs;
+  const deviceOptions = { ...options };
+  delete deviceOptions.retryUntilUsable;
+  let lastError = null;
+  // maximumAge:0 makes the web geolocation path take a new reading instead of
+  // returning a cached one. The timestamp/accuracy checks below additionally
+  // cover the native plugin, whose getCurrentPosition can hand back a last-known
+  // fix regardless of the option.
+  while (Date.now() < deadline) {
+    const remainingMs = Math.max(1000, deadline - Date.now());
+    try {
+      const position = await getDevicePosition({
+        ...deviceOptions,
+        maximumAge: 0,
+        timeout: retryUntilUsable ? Math.min(15000, remainingMs) : totalTimeoutMs,
+      });
+      lastError = freshFixProblem(position);
+      if (!lastError) return position;
+    } catch (error) {
+      lastError = error;
+      // Permission and disabled-services failures need rider action; waiting
+      // longer cannot repair them. GPS warm-up failures usually can.
+      if (!retryUntilUsable || isFinalLocationError(error)) throw error;
+    }
+    if (!retryUntilUsable) throw lastError;
+    const waitMs = Math.min(FRESH_FIX_RETRY_DELAY_MS, deadline - Date.now());
+    if (waitMs <= 0) break;
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+  throw lastError || new Error('Timed out waiting for a usable location');
 }
 
 const NAVIGATION_SPEECH_RATE = 0.96;
@@ -9433,12 +9471,19 @@ function buildPlacePicker() {
     setUseLocationBusy(true);
     setPlacePickerHint('status', 'Finding your location…');
     setRouteStatus('Locating…');
-    getFreshDevicePosition().then((pos) => {
+    const stillFindingTimer = setTimeout(() => {
+      if (requestId === placeSearchRequestId) {
+        setPlacePickerHint('status', 'Still finding your location…');
+      }
+    }, 6000);
+    getFreshDevicePosition({ timeout: 30000, retryUntilUsable: true }).then((pos) => {
+      clearTimeout(stillFindingTimer);
       if (requestId !== placeSearchRequestId) return;
       setUseLocationBusy(false);
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
       choosePlaceSearchResult(lngLat, 'My location', { fromDevice: true });
     }).catch(() => {
+      clearTimeout(stillFindingTimer);
       if (requestId !== placeSearchRequestId) return;
       setUseLocationBusy(false);
       setPlacePickerHint('location-error');

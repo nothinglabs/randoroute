@@ -79,6 +79,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     private var pendingStartCall: CAPPluginCall?
     private var pendingPositionCalls: [String: CAPPluginCall] = [:]
     private var pendingPositionTimeouts: [String: DispatchWorkItem] = [:]
+    private var pendingPositionRetry: DispatchWorkItem?
     private var route: [RoutePoint] = []
     private var instructions: [RouteInstruction] = []
     private var nearestRouteSegment: Int?
@@ -124,6 +125,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     deinit {
         NotificationCenter.default.removeObserver(self)
         statusUpdateTimer?.invalidate()
+        pendingPositionRetry?.cancel()
         pendingPositionTimeouts.values.forEach { $0.cancel() }
     }
 
@@ -314,6 +316,15 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        // Core Location commonly emits locationUnknown while the radio is
+        // warming up, then delivers a valid fix a moment later. It is explicitly
+        // transient; rejecting here made a second tap two seconds later work
+        // even though the first request should simply have kept waiting.
+        if (error as? CLError)?.code == .locationUnknown,
+           !pendingPositionCalls.isEmpty {
+            schedulePendingPositionRetry()
+            return
+        }
         rejectPendingPositionCalls(error.localizedDescription)
         if tracking {
             notifyListeners("locationError", data: [
@@ -349,6 +360,10 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                 return
             }
             self.pendingPositionTimeouts.removeValue(forKey: callbackID)
+            if self.pendingPositionCalls.isEmpty {
+                self.pendingPositionRetry?.cancel()
+                self.pendingPositionRetry = nil
+            }
             pending.reject("Timed out waiting for a usable location.")
         }
         pendingPositionTimeouts[callbackID] = timeout
@@ -358,7 +373,20 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         )
     }
 
+    private func schedulePendingPositionRetry() {
+        pendingPositionRetry?.cancel()
+        let retry = DispatchWorkItem { [weak self] in
+            guard let self, !self.pendingPositionCalls.isEmpty else { return }
+            self.pendingPositionRetry = nil
+            self.locationManager.requestLocation()
+        }
+        pendingPositionRetry = retry
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(750), execute: retry)
+    }
+
     private func resolvePendingPositionCalls(_ payload: [String: Any]) {
+        pendingPositionRetry?.cancel()
+        pendingPositionRetry = nil
         let calls = Array(pendingPositionCalls.values)
         pendingPositionCalls.removeAll()
         pendingPositionTimeouts.values.forEach { $0.cancel() }
@@ -367,6 +395,8 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     }
 
     private func rejectPendingPositionCalls(_ message: String) {
+        pendingPositionRetry?.cancel()
+        pendingPositionRetry = nil
         let calls = Array(pendingPositionCalls.values)
         pendingPositionCalls.removeAll()
         pendingPositionTimeouts.values.forEach { $0.cancel() }
