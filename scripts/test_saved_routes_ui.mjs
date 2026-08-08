@@ -94,7 +94,10 @@ check('incline appears before unpaved and unpaved uses miles',
   JSON.stringify(routeCardLayout.metricLabels));
 await page.evaluate(() => localStorage.setItem('wa-bike-saved-routes-1', JSON.stringify([{
   name: 'Lake loop', s: [-122.34, 47.60], e: [-122.30, 47.64], v: [], b: [],
-}]))) ;
+}])));
+// The phone menu intentionally starts closed. Open it before using a control
+// that lives inside that sheet instead of relying on the old startup state.
+await page.evaluate(() => setPanelOpen(true));
 await page.click('#routeLibraryBtn');
 await page.waitForSelector('#routesDialog[open]');
 

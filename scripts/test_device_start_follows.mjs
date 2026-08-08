@@ -65,7 +65,7 @@ const defaultStart = await page.evaluate(() => ({
 }));
 check('a blank planner shows both endpoints without defaulting or requesting Start yet',
   !defaultStart.actual && !defaultStart.rowHidden && defaultStart.destinationVisible
-    && defaultStart.displayed === 'Choose start'
+    && defaultStart.displayed === 'Current location or choose'
     && !defaultStart.defaultsToDevice && !defaultStart.removeVisible,
   JSON.stringify(defaultStart));
 
@@ -81,7 +81,7 @@ const missingDefault = await page.evaluate(() => ({
   notices: window.__notices.join(' | '),
 }));
 check('an unavailable automatic location quietly leaves Start unset',
-  !missingDefault.actual && missingDefault.displayed === 'Choose start'
+  !missingDefault.actual && missingDefault.displayed === 'Current location or choose'
     && !missingDefault.defaultsToDevice && !/current location/i.test(missingDefault.notices),
   JSON.stringify(missingDefault));
 

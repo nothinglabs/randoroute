@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.624';
+const APP_VERSION = '2026-08-08.625';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -802,6 +802,11 @@ const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 const uiPrefs = {
   showAdvancedTools: typeof savedState?.showAdvancedTools === 'boolean'
     ? savedState.showAdvancedTools : true,
+  // Stops are useful for deliberate trip planning, but they are not part of
+  // the common "take me there" decision. Keep the action opt-in so every map
+  // tap starts with the two endpoint choices a rider actually needs.
+  showStopActions: typeof savedState?.showStopActions === 'boolean'
+    ? savedState.showStopActions : false,
 };
 
 // Voice guidance is a local device preference, not part of a shared route.
@@ -1031,6 +1036,7 @@ function saveStateNow() {
       navigationOffRouteMode: navVoice.offRouteMode,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       showAdvancedTools: uiPrefs.showAdvancedTools,
+      showStopActions: uiPrefs.showStopActions,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
       route: routing.start && routing.end
@@ -7546,7 +7552,8 @@ function routeEndpointDisplayName(kind) {
   if (kind === 'start' && !routing.start && routing.startDefaultsToDevice) {
     return 'Current location';
   }
-  if (!routing[kind]) return kind === 'start' ? 'Choose start' : 'Choose destination';
+  if (!routing[kind]) return kind === 'start'
+    ? 'Current location or choose' : 'Where do you want to go?';
   return normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map';
 }
 
@@ -8222,7 +8229,8 @@ function updateArmButtons() {
   if (reverseButton) {
     reverseButton.hidden = !(routing.start && routing.end);
     reverseButton.disabled = turnNav.active;
-    reverseButton.title = turnNav.active ? 'Pause navigation to reverse the route' : 'Reverse route';
+    reverseButton.title = turnNav.active
+      ? 'Pause navigation to swap start and destination' : 'Swap start and destination';
     reverseButton.setAttribute('aria-label', reverseButton.title);
   }
   renderRouteStops();
@@ -9149,12 +9157,20 @@ function setPlacePickerHint(kind = 'map', message = '') {
   const copy = document.createElement('span');
   if (kind === 'map') {
     const lead = document.createElement('strong');
-    lead.textContent = 'Tap anywhere on the map';
-    copy.append(lead, document.createTextNode(' or search below.'));
+    if (placeSearchTarget === 'start') {
+      lead.textContent = 'Tap the map to set your start';
+      copy.append(lead, document.createTextNode(', or search for it.'));
+    } else if (placeSearchTarget === 'end') {
+      lead.textContent = 'Tap the map to set your destination';
+      copy.append(lead, document.createTextNode(', or search for it.'));
+    } else {
+      lead.textContent = 'Search or tap the map.';
+      copy.append(lead, document.createTextNode(' Your trip will not change yet.'));
+    }
   } else if (kind === 'location-error') {
     const lead = document.createElement('strong');
     lead.textContent = 'Couldn’t get your location.';
-    copy.append(lead, document.createTextNode(' Search or tap the map.'));
+    copy.append(lead, document.createTextNode(' Search or tap the map to set your start.'));
   } else {
     copy.textContent = message;
   }
@@ -9180,24 +9196,35 @@ function openPlaceSearch(target = null) {
   clearTimeout(internetPlaceSearchTimer);
   const targetLabel = placeSearchTarget === 'start' ? 'start' : 'destination';
   document.getElementById('placePickerTitle').textContent = placeSearchTarget
-    ? `Choose ${targetLabel}` : 'Search map';
+    ? `Set ${targetLabel}` : 'Find a place';
   setPlacePickerHint('map');
   // Device location is meaningful as a route start. It is deliberately absent
   // from Destination and generic place search so it cannot be offered as an
   // accidental destination.
   document.getElementById('useLoc').hidden = placeSearchTarget !== 'start';
   const searchInput = document.getElementById('placeSearch');
-  searchInput.placeholder = 'Search places…';
+  searchInput.placeholder = placeSearchTarget === 'start' ? 'Search for a start…'
+    : placeSearchTarget === 'end' ? 'Search for a destination…' : 'Search the map…';
   searchInput.value = '';
   searchInput.classList.remove('current-endpoint-preview');
-  searchInput.setAttribute('aria-label', 'Search places');
+  searchInput.setAttribute('aria-label', placeSearchTarget === 'start' ? 'Search for a route start'
+    : placeSearchTarget === 'end' ? 'Search for a route destination' : 'Find a place on the map');
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   setUseLocationBusy(false);
   document.getElementById('placePicker').hidden = false;
   document.body.classList.add('place-picker-open');
-  setRouteStatus('Search offline places, or use internet search at the end of the list');
-  requestAnimationFrame(() => searchInput.focus({ preventScroll: true }));
+  setRouteStatus(placeSearchTarget
+    ? `Search or tap the map to set your ${targetLabel}`
+    : 'Find a place without changing your trip');
+  // On a phone the keyboard obscures most of the map, including the location
+  // the rider may be trying to tap. Open the on-map chooser first and wait for
+  // an explicit tap on the search field. A desktop keyboard remains the
+  // efficient default when there is no map-space tradeoff.
+  if (window.innerWidth > 720
+      && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    requestAnimationFrame(() => searchInput.focus({ preventScroll: true }));
+  }
 }
 
 function choosePlaceSearchResult(lngLat, name, { fromDevice = false } = {}) {
@@ -10019,15 +10046,17 @@ function mapPointRouteActions(lngLat, routeName) {
     return button;
   };
   const commitEndpoint = (kind) => {
+    setPanelOpen(false);
     setRoutePoint(kind, { lng, lat }, routeName);
     dismissRoadInfo();
     setRouteStatus(kind === 'start' ? 'Start set from map' : 'Destination set from map');
   };
-  const start = routeButton('map-point-start', 'Start', 'Use this point as route start',
+  const start = routeButton('map-point-start', 'Start here', 'Use this point as route start',
     () => commitEndpoint('start'));
-  const end = routeButton('map-point-end', 'End', 'Use this point as route destination',
+  const end = routeButton('map-point-end', 'Route here', 'Use this point as route destination',
     () => commitEndpoint('end'));
   const stop = routeButton('map-point-stop', 'Add stop', 'Add this point as a route stop', () => {
+    setPanelOpen(false);
     if (!addVia({ lng, lat }, { name: routeName })) return;
     dismissRoadInfo();
     setRouteStatus('Stop added from map');
@@ -10039,8 +10068,11 @@ function mapPointRouteActions(lngLat, routeName) {
       button.title = 'Pause navigation to edit the route';
     }
   }
-  routeActions.append(start, end);
-  if (routing.start && routing.end) {
+  // The destination action comes first because routing from the rider's
+  // current location is the common case. Neither a search result nor a map tap
+  // changes the trip until one of these plainly named actions is chosen.
+  routeActions.append(end, start);
+  if (routing.start && routing.end && uiPrefs.showStopActions) {
     const canAddStop = !turnNav.active && routing.vias.length < MAX_ROUTE_STOPS;
     stop.disabled = !canAddStop;
     stop.title = turnNav.active ? 'Pause navigation to edit the route'
@@ -10072,7 +10104,12 @@ function renderPlaceActionCard({ pointName, lngLat, anchorPoint, searchResult = 
   const headingText = document.createElement('span');
   headingText.textContent = routeName;
   heading.append(pin, headingText);
-  readoutEl.append(close, heading, mapPointRouteActions(lngLat, routeName));
+  const context = document.createElement('p');
+  context.className = 'place-action-context';
+  context.textContent = 'Trip unchanged — choose what to do.';
+  readoutEl.append(close, heading);
+  if (searchResult) readoutEl.append(context);
+  readoutEl.append(mapPointRouteActions(lngLat, routeName));
   readoutEl.classList.add('show');
   if (anchorPoint) positionPlaceCardAwayFromPin(anchorPoint);
 }
@@ -10514,14 +10551,14 @@ let lastRoadInfoTouchAt = 0;
 function inspectRoadAt(point, lngLat = null) {
   if (Date.now() < roadInfoSuppressedUntil) return false;
   // Generic search is also non-modal. Tapping the visible map dismisses the
-  // search card and opens the normal Start / End / Add stop choice here.
+  // search card and opens the normal Route here / Start here choice.
   const picker = document.getElementById('placePicker');
   if (picker && !picker.hidden) closePlacePicker();
   clearSearchResultMarker();
   const feature = featureAt(point);
   // A route point is useful even when no rendered road happens to sit under
   // the finger. Safety/source details are richer for a road hit, but every map
-  // tap gets the same Start / End / Add stop actions.
+  // tap gets the same plain endpoint actions (and the optional stop action).
   renderReadout(feature || null, lngLat || map.unproject([point.x, point.y]), point);
   readoutPinned = true;
   return true;
@@ -11117,10 +11154,27 @@ function buildRulesPanel() {
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');
 
-  // Deliberately below the rules and visually separated: everything above
-  // decides where the route goes and overrides a preset in doing so. This only
-  // decides what the map shows, so it must not call syncPresetSelection() --
-  // hiding a button is not a departure from a preset.
+  // Deliberately below the routing rules and visually separated: these are UI
+  // choices, not route recipes, so they never change or clear the active
+  // preset. Stops remain fully supported in saved/shared trips when this is
+  // off; it only removes the optional action from map-location cards.
+  const stopActionsCard = document.createElement('div');
+  stopActionsCard.className = 'check-rule rule-card rule-standalone';
+  stopActionsCard.innerHTML = `
+    <label class="rule-check" for="r-showStopActions">
+      <input type="checkbox" id="r-showStopActions" ${uiPrefs.showStopActions ? 'checked' : ''}>
+      <span>Offer “Add stop” when choosing a map location</span>
+    </label>
+    <p class="hint rule-check-hint">Off keeps place choices focused on Start and Destination.</p>`;
+  optionsHost.appendChild(stopActionsCard);
+  stopActionsCard.querySelector('input').addEventListener('change', (e) => {
+    uiPrefs.showStopActions = e.target.checked;
+    suppressRoadInfo(900);
+    saveStateSoon();
+  });
+
+  // This also only decides what the map shows, so it must not call
+  // syncPresetSelection(): hiding a button is not a departure from a preset.
   const advancedToolsCard = document.createElement('div');
   advancedToolsCard.className = 'check-rule rule-card rule-standalone';
   advancedToolsCard.innerHTML = `

@@ -46,8 +46,8 @@ const compact = await page.evaluate(() => {
 check('a road tap shows only a short name and safety summary',
   compact.heading === 'Interurban Trail'
     && /Passes your rules|Bike network/.test(compact.summary), JSON.stringify(compact));
-check('Start and End are both available before the trip has an endpoint',
-  compact.actions.join('|') === 'Start|End', JSON.stringify(compact.actions));
+check('the common Route here action leads, with an explicit Start alternative',
+  compact.actions.join('|') === 'Route here|Start here', JSON.stringify(compact.actions));
 check('technical rows exist but begin hidden behind Details',
   compact.detailsHidden && compact.tableHiddenInsideDetails, JSON.stringify(compact));
 check('a road tap remains a road-details card, not a searched-place card',
@@ -96,8 +96,23 @@ check('Start completes the route directly from the map', await page.evaluate(() 
 
 await page.evaluate(() => renderReadout(null,
   { lng: -122.305, lat: 47.95 }, { x: 180, y: 360 }));
-check('Add stop becomes available once the itinerary has endpoints', await page.evaluate(() =>
-  document.querySelector('#readout .map-point-stop')?.disabled === false));
+check('Add stop remains absent by default even after the itinerary has endpoints', await page.evaluate(() =>
+  !document.querySelector('#readout .map-point-stop')));
+await page.evaluate(() => {
+  selectPanelTab('settings');
+  settingsPaneSelect('options');
+  setPanelOpen(true);
+});
+await page.locator('#r-showStopActions').check();
+await page.evaluate(() => setPanelOpen(false));
+await page.evaluate(() => renderReadout(null,
+  { lng: -122.305, lat: 47.95 }, { x: 180, y: 360 }));
+check('the Settings option makes Add stop available for deliberate trip planning', await page.evaluate(() =>
+  uiPrefs.showStopActions && document.querySelector('#readout .map-point-stop')?.disabled === false));
+check('the Add stop preference is saved independently of routing presets', await page.evaluate(() => {
+  saveStateNow();
+  return JSON.parse(localStorage.getItem(STATE_KEY) || '{}').showStopActions === true;
+}));
 await page.locator('#readout .readout-details-toggle').click();
 const expanded = await page.evaluate(() => ({
   expanded: document.querySelector('.readout-details-toggle')?.getAttribute('aria-expanded'),
@@ -119,6 +134,7 @@ check('Add stop commits the tapped map point to the visible itinerary', await pa
     && document.querySelector('.route-stop-edit strong')?.textContent === 'Point on map'));
 
 const blankTap = await page.evaluate(() => {
+  roadInfoSuppressedUntil = 0;
   const original = featureAt;
   featureAt = () => null;
   const opened = inspectRoadAt({ x: 120, y: 240 }, { lng: -122.4, lat: 47.7 });

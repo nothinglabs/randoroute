@@ -67,6 +67,8 @@ check('the native full-screen canvas ignores browser keyboard viewport sizing',
 await page.click('#rb-search');
 state = await page.evaluate(() => ({
   placeholder: document.getElementById('placeSearch').placeholder,
+  title: document.getElementById('placePickerTitle').textContent,
+  focused: document.activeElement?.id,
   mapChoiceGone: !document.getElementById('pickOnMap'),
   hint: document.getElementById('placePickerHint').textContent,
   useLocationHidden: document.getElementById('useLoc').hidden,
@@ -74,8 +76,10 @@ state = await page.evaluate(() => ({
   mapControlsZ: Number(getComputedStyle(document.querySelector('.maplibregl-ctrl-top-right')).zIndex),
 }));
 check('generic search tells riders to tap the map without adding a map button',
-  state.placeholder === 'Search places…' && state.mapChoiceGone
-    && /tap anywhere on the map/i.test(state.hint) && state.useLocationHidden,
+  state.placeholder === 'Search the map…' && state.title === 'Find a place'
+    && state.mapChoiceGone && /search or tap the map/i.test(state.hint)
+    && /trip will not change yet/i.test(state.hint) && state.useLocationHidden
+    && state.focused !== 'placeSearch',
   JSON.stringify(state));
 check('the open search panel stacks above every map control',
   state.toolbarZ > state.mapControlsZ, JSON.stringify(state));
@@ -87,7 +91,7 @@ state = await page.evaluate(() => ({
     .map((button) => button.textContent),
 }));
 check('tapping the map during generic search closes search and shows the normal route choice',
-  state.pickerHidden && state.readoutShown && state.actions.join('|') === 'Start|End',
+  state.pickerHidden && state.readoutShown && state.actions.join('|') === 'Route here|Start here',
   JSON.stringify(state));
 await page.click('#readout .readout-close');
 await page.click('#rb-search');
@@ -111,7 +115,7 @@ state = await page.evaluate(() => ({
 }));
 check('choosing a result previews it on the map without assigning a route role',
   state.workers === 0 && !state.start && !state.end && state.indicator === 1
-    && state.actions.join('|') === 'Start|End', JSON.stringify(state));
+    && state.actions.join('|') === 'Route here|Start here', JSON.stringify(state));
 await page.click('#readout .readout-close');
 
 await page.evaluate(() => { getFreshDevicePosition = () => new Promise(() => {}); });
@@ -125,7 +129,7 @@ state = await page.evaluate(() => ({
 }));
 check('Destination search arms the visible map and never offers current location',
   state.useLocationHidden && state.mapChoiceGone && state.pickerVisible
-    && state.armed === 'end' && /tap anywhere on the map/i.test(state.hint),
+    && state.armed === 'end' && /tap the map to set your destination/i.test(state.hint),
   JSON.stringify(state));
 await page.evaluate(() => placeArmedPoint({ lng: -122.76, lat: 48.12 }));
 state = await page.evaluate(() => ({

@@ -44,6 +44,8 @@ const initial = await page.evaluate(() => {
     stopArrows: document.querySelectorAll('#routeBar .route-stop-up, #routeBar .route-stop-down').length,
     endpointArrows: document.querySelectorAll('[data-endpoint-move]').length,
     reverseVisible: !document.getElementById('rb-reverse').hidden,
+    utilityLabels: [...document.querySelectorAll('.route-utility-label')]
+      .map((label) => label.textContent),
     endpointWidth: Math.round(card.width),
     viewportWidth: innerWidth,
     actionBoxes: [...document.querySelectorAll('.route-stop-action')].slice(0, 3).map((button) => {
@@ -62,12 +64,14 @@ check('a blank planner always shows Start and Destination without legacy reorder
     && initial.blank.reverseHidden,
   JSON.stringify(initial.blank));
 check('the main card shows start, named stops, and destination in trip order',
-  initial.itinerary.join(' | ') === 'From Seattle | Stop 1 Mukilteo | Stop 2 Point on map | To Port Townsend',
+  initial.itinerary.join(' | ') === 'Start Seattle | Stop 1 Mukilteo | Stop 2 Point on map | Destination Port Townsend',
   JSON.stringify(initial.itinerary));
 check('stops have no manual order controls while Reverse and delete remain available',
   initial.oldControlsGone && initial.endpointControls === 2
     && initial.stopArrows === 0 && initial.endpointArrows === 0
     && initial.reverseVisible, JSON.stringify(initial));
+check('the route utility controls name themselves instead of relying on mystery icons',
+  initial.utilityLabels.join('|') === 'Swap|Find', JSON.stringify(initial.utilityLabels));
 check('map stop pins use the same itinerary numbers',
   initial.markerNumbers.join(',') === '1,2', JSON.stringify(initial.markerNumbers));
 check('the itinerary and search button fit the phone viewport',
@@ -139,12 +143,14 @@ const stopCard = await page.evaluate(() => ({
 check('tapping an itinerary place shows it on the map instead of opening a targeted picker',
   stopCard.title === 'Mukilteo' && stopCard.pickerHidden, JSON.stringify(stopCard));
 
+await page.evaluate(() => setPanelOpen(true));
 await page.locator('#rb-start').click();
 await page.locator('#placeSearch').fill('Seattle Heights');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 const targetedStart = await page.evaluate(() => ({
   title: document.getElementById('placePickerTitle').textContent,
   hint: document.getElementById('placePickerHint').textContent,
+  panelOpen: document.body.classList.contains('panel-open'),
 }));
 await page.locator('#placeResults .place-hit:not(.place-internet-search)').first().click();
 check('Start-triggered search assigns its result immediately without a prompt card',
@@ -152,7 +158,8 @@ check('Start-triggered search assigns its result immediately without a prompt ca
     && document.getElementById('placePicker').hidden
     && !document.getElementById('readout').classList.contains('show')
     && document.querySelectorAll('.search-result-marker').length === 0)
-    && targetedStart.title === 'Choose start' && /tap anywhere on the map/i.test(targetedStart.hint),
+    && targetedStart.title === 'Set start' && /tap the map to set your start/i.test(targetedStart.hint)
+    && !targetedStart.panelOpen,
   JSON.stringify(targetedStart));
 
 await page.locator('#rb-end').click();
@@ -164,6 +171,11 @@ check('Destination-triggered search also assigns directly', await page.evaluate(
     && !document.getElementById('readout').classList.contains('show')));
 
 await page.locator('#rb-search').click();
+const genericOpened = await page.evaluate(() => ({
+  title: document.getElementById('placePickerTitle').textContent,
+  hint: document.getElementById('placePickerHint').textContent,
+  focused: document.activeElement?.id,
+}));
 await page.locator('#placeSearch').fill('Seattle');
 await page.waitForSelector('#placeResults .place-internet-search');
 const genericSearch = await page.evaluate(() => ({
@@ -172,9 +184,11 @@ const genericSearch = await page.evaluate(() => ({
   focused: document.activeElement?.id,
 }));
 check('search is generic and offers internet search as the final result',
-  genericSearch.title === 'Search map'
+  genericSearch.title === 'Find a place'
     && genericSearch.last.startsWith('Search with internet')
-    && genericSearch.focused === 'placeSearch', JSON.stringify(genericSearch));
+    && genericOpened.title === 'Find a place'
+    && /trip will not change yet/i.test(genericOpened.hint)
+    && genericOpened.focused !== 'placeSearch', JSON.stringify({ genericOpened, genericSearch }));
 
 const routeBeforeSearchChoice = await page.evaluate(() => JSON.stringify({
   start: routing.start, end: routing.end, vias: routing.vias.map((via) => via.pt),
@@ -187,6 +201,7 @@ const searchChoice = await page.evaluate(() => ({
   actions: [...document.querySelectorAll('#readout .readout-route-actions button')]
     .map((button) => button.textContent),
   hasDetails: Boolean(document.querySelector('#readout .readout-details-toggle')),
+  context: document.querySelector('#readout .place-action-context')?.textContent,
   compact: document.getElementById('readout').classList.contains('place-action-card'),
   cardHeight: Math.round(document.getElementById('readout').getBoundingClientRect().height),
   overlapsPin: (() => {
@@ -199,8 +214,9 @@ const searchChoice = await page.evaluate(() => ({
 check('a search result is indicated on the map without silently changing the trip',
   searchChoice.indicator === 1 && searchChoice.route === routeBeforeSearchChoice,
   JSON.stringify(searchChoice));
-check('the searched point offers all three trip roles when endpoints already exist',
-  searchChoice.actions.join('|') === 'Start|End|Add stop', JSON.stringify(searchChoice.actions));
+check('the searched point leads with routing but keeps the existing trip unchanged',
+  searchChoice.actions.join('|') === 'Route here|Start here'
+    && /trip unchanged/i.test(searchChoice.context), JSON.stringify(searchChoice));
 check('a search result uses a compact location card with no road Details and never covers its pin',
   searchChoice.compact && !searchChoice.hasDetails
     && searchChoice.cardHeight < 105 && !searchChoice.overlapsPin,
