@@ -38,7 +38,6 @@ check('every help tab has its existing content', populated.every((item) => item.
   JSON.stringify(populated));
 
 const entryPoints = [
-  ['appHelpBtn', 'getting-started'],
   ['routeTipsBtn', 'routes'],
   ['layersHelpBtn', 'layers'],
   ['settingsHelpBtn', 'settings'],

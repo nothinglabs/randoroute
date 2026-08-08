@@ -95,9 +95,8 @@ check('incline appears before unpaved and unpaved uses miles',
 await page.evaluate(() => localStorage.setItem('wa-bike-saved-routes-1', JSON.stringify([{
   name: 'Lake loop', s: [-122.34, 47.60], e: [-122.30, 47.64], v: [], b: [],
 }])));
-// Saved routes now live with the other secondary trip actions instead of
-// masquerading as a fourth hamburger-panel tab.
-await page.click('#rb-more');
+// Saved routes are a direct, compact action in the hamburger panel.
+await page.click('#panelOpen');
 await page.click('#routeLibraryBtn');
 await page.waitForSelector('#routesDialog[open]');
 
@@ -109,7 +108,7 @@ const layout = await page.evaluate(() => {
     loadText: document.querySelector('.saved-load')?.textContent.replace(/\s+/g, ' ').trim(),
     importBelowSaved: imported.top >= saved.bottom,
     floppyPaths: icon?.querySelectorAll('path').length || 0,
-    removedFromPanel: !document.querySelector('#tabs #routeLibraryBtn'),
+    restoredToPanel: document.getElementById('routeLibraryBtn').closest('#tabs') !== null,
   };
 });
 check('a saved route is an explicit load action', layout.loadText === 'Lake loopLoad ›',
@@ -118,8 +117,8 @@ check('shared-link loading is a separate section at the bottom', layout.importBe
   JSON.stringify(layout));
 check('the route-library button uses a floppy-disk drawing', layout.floppyPaths === 2,
   JSON.stringify(layout));
-check('the route-library button no longer occupies a hamburger-panel tab',
-  layout.removedFromPanel, JSON.stringify(layout));
+check('the route-library button is restored to the hamburger-panel tabs',
+  layout.restoredToPanel, JSON.stringify(layout));
 
 await page.click('.saved-del');
 check('the X asks before deleting', await page.evaluate(() =>
@@ -140,6 +139,11 @@ const navigationTab = await page.evaluate(() => {
   } });
   document.body.classList.add('panel-open');
   selectPanelTab('settings');
+  // A navigable route always has endpoints; the synthetic route injected at
+  // the top of this test only supplied its summary geometry.
+  routing.start = [-122.34, 47.60];
+  routing.end = [-122.30, 47.64];
+  refreshNavigationUI();
   document.getElementById('navStartButton').click();
   const active = document.querySelector('.tab.active');
   const result = {

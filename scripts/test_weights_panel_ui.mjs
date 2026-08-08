@@ -56,17 +56,20 @@ const visible = await pg.evaluate(() => {
   const el = document.getElementById('appWeightsBtn');
   const r = el.getBoundingClientRect();
   const menu = document.getElementById('routeMoreMenu').getBoundingClientRect();
-  const help = document.getElementById('appHelpBtn').getBoundingClientRect();
   return { w: r.width, h: r.height, onScreen: r.top >= 0 && r.right <= innerWidth,
     insideMenu: r.left >= menu.left && r.right <= menu.right,
-    overlapsHelp: !(r.bottom <= help.top || r.top >= help.bottom),
+    menuItems: [...document.querySelectorAll('#routeMoreMenu > button')]
+      .map((button) => button.lastElementChild?.textContent.trim()),
+    helpRemoved: !document.getElementById('appHelpBtn'),
     noFloatingControl: !document.querySelector('body > #appWeightsBtn') };
 });
 check('weights item is on screen and a real menu target',
   visible.onScreen && visible.insideMenu && visible.w >= 180 && visible.h >= 40,
   JSON.stringify(visible));
-check('weights item is separate from Help and no longer floats over the map',
-  !visible.overlapsHelp && visible.noFloatingControl, JSON.stringify(visible));
+check('the compact menu contains only Swap and Weights with no floating controls',
+  visible.menuItems.join('|') === 'Swap start & destination|Routing weights'
+    && visible.helpRemoved && visible.noFloatingControl,
+  JSON.stringify(visible));
 
 await pg.click('#appWeightsBtn');
 await pg.waitForTimeout(400);

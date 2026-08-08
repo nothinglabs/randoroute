@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The six help topics live in one dialog with one tab strip, instead of six
 // separate dialogs. This checks that in the built page: which tabs exist, that
-// each one really has content behind it, that the six entry points around the
+// each one really has content behind it, that the remaining entry points around the
 // app land on the right tab, and that none of the old dialogs are still there.
 //
 // It used to check the same things by matching regular expressions against
@@ -54,9 +54,9 @@ check('every tab has real content behind it', structure.panels.length === TOPICS
   && structure.panels.every((panel) => panel.children > 0 && panel.words > 20),
   JSON.stringify(structure.panels));
 
-// The six ways into help, each of which must land on its own topic.
+// The remaining contextual ways into help each land on their own topic. The
+// Getting started topic remains in the tab strip without occupying map UI.
 const ENTRY_POINTS = [
-  ['appHelpBtn', 'getting-started'],
   ['routeTipsBtn', 'routes'],
   ['layersHelpBtn', 'layers'],
   ['settingsHelpBtn', 'settings'],

@@ -134,14 +134,12 @@
         </div>
       </div>
       <div class="route-utility-actions" aria-label="Trip actions">
-        <button id="rb-more" class="route-utility-action" type="button" title="More trip actions" aria-label="More trip actions" aria-haspopup="menu" aria-expanded="false" aria-controls="routeMoreMenu"><span class="route-more-glyph" aria-hidden="true">•••</span><span class="route-utility-label">More</span></button>
+        <button id="rb-more" class="route-utility-action" type="button" title="Trip options" aria-label="Trip options" aria-haspopup="menu" aria-expanded="false" aria-controls="routeMoreMenu"><span class="route-more-glyph" aria-hidden="true">⋮</span></button>
         <button id="rb-search" class="route-utility-action" type="button" title="Find a place without changing your trip" aria-label="Find a place without changing your trip"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg><span class="route-utility-label">Find</span></button>
       </div>
-      <div id="routeMoreMenu" class="route-more-menu" role="menu" aria-label="More trip actions" hidden>
+      <div id="routeMoreMenu" class="route-more-menu" role="menu" aria-label="Trip options" hidden>
         <button id="rb-reverse" class="route-more-item" type="button" role="menuitem" title="Set a start and destination to swap them" aria-label="Set a start and destination to swap them" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v15M7 4 3.5 7.5M7 4l3.5 3.5M17 20V5M17 20l-3.5-3.5M17 20l3.5-3.5"></path></svg><span>Swap start &amp; destination</span></button>
         <button id="appWeightsBtn" class="route-more-item" type="button" role="menuitem" aria-label="Advanced routing weights" title="Advanced routing weights"><span class="route-more-symbol" aria-hidden="true">⚖</span><span>Routing weights</span></button>
-        <button id="routeLibraryBtn" class="route-more-item" type="button" role="menuitem" title="Save, load, or share routes" aria-label="Save, load, or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h13l3 3v15H4z"/><path d="M7 3v6h9V3M7 21v-8h10v8"/></svg><span>Save &amp; share routes</span></button>
-        <button id="appHelpBtn" class="route-more-item" type="button" role="menuitem" aria-label="How to use the app" title="How to use the app"><span class="route-more-symbol route-more-help-symbol" aria-hidden="true">?</span><span>Help</span></button>
       </div>
       <span id="rb-status"></span>
       <div id="placePicker" class="place-picker" role="dialog" aria-modal="false" aria-labelledby="placePickerTitle" hidden>
@@ -177,6 +175,7 @@
       <button type="button" data-tab="route" class="active" aria-pressed="true">Route</button>
       <button type="button" data-tab="layers" aria-pressed="false">Layers</button>
       <button type="button" data-tab="settings" aria-pressed="false">Settings</button>
+      <button id="routeLibraryBtn" type="button" title="Save, load, or share routes" aria-label="Save, load, or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h13l3 3v15H4z"/><path d="M7 3v6h9V3M7 21v-8h10v8"/></svg></button>
     </nav>
 
     <section class="tab active" id="tab-route">

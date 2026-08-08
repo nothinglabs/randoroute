@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.633';
+const APP_VERSION = '2026-08-08.634';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11803,8 +11803,6 @@ if (nativeAppVersionOnly) {
   document.getElementById('iosAppVersionLabel').hidden = false;
   document.getElementById('updateCheckStatus').hidden = true;
 }
-document.getElementById('appHelpBtn').addEventListener('click', () =>
-  openHelp('getting-started'));
 document.getElementById('techDetailsBtn').addEventListener('click', () => openHelp('technical'));
 // The weights panel is reachable from the trip overflow and Settings > Advanced.
 // Both keep the map behind the dialog so a tuning change stays tied to its route.

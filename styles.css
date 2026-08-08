@@ -57,6 +57,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   cursor: pointer;
 }
 #tabs button.active { background: #0a66c2; color: #fff; }
+#tabs #routeLibraryBtn { flex: 0 0 30px; width: 30px; padding: 0; display: grid; place-items: center; border: 1px solid #d5dfe6; background: #eef1f4; color: #0a66c2; }
 #panelClose, #panelOpen { display: none; }
 
 .tab { display: none; overflow-y: auto; padding: 0 10px 8px; }
@@ -109,6 +110,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
     border: 1px solid #c8d5df; border-radius: 9px;
     color: #2f4858; background: #dce7ef;
   }
+  #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; border-radius: 9px; }
   #panelOpen {
     display: flex; position: absolute; left: 10px;
     bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 11;
@@ -384,6 +386,8 @@ body:not(.navigation-active) #navCard { display: none; }
 @media (min-width: 721px) {
   #tabs { gap: 6px; padding: 5px 10px; }
   #tabs button { padding: 5px 0; border-radius: 10px; font-size: 14px; }
+  #tabs #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; }
+  #tabs #routeLibraryBtn .share-icon { width: 19px; height: 19px; }
   .tab { padding: 0 12px 10px; }
   #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
@@ -561,7 +565,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 34px; height: 34px; border-radius: 9px; }
 /* The desktop zoom buttons share this corner with the app's Layers button.
-   Start below it; Help and Weights now live in the trip overflow menu. */
+   Start below it; routing weights live in the compact trip-options menu. */
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 58px; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group button { width: 34px; height: 34px; }
 /* Keep the compact OpenStreetMap attribution button comfortably inside the
@@ -911,7 +915,8 @@ body.route-more-open #topToolbar { z-index: 25; }
   stroke-linejoin: round;
 }
 .route-utility-label { color: inherit; font: 750 8px/1 system-ui; letter-spacing: .01em; }
-.route-more-glyph { align-self: center; font: 900 17px/1 system-ui; letter-spacing: 1px; transform: translateY(-2px); }
+#routeBar #rb-more { grid-template-rows: 1fr; }
+.route-more-glyph { align-self: center; font: 900 27px/.8 system-ui; transform: translateY(-1px); }
 .route-more-menu {
   position: absolute; z-index: 22; top: calc(100% + 6px); right: 5px;
   display: grid; width: min(235px, calc(100vw - 24px)); padding: 5px;
@@ -934,9 +939,7 @@ body.route-more-open #topToolbar { z-index: 25; }
 #routeBar .route-more-item:focus-visible { background: #eaf4fa; color: #075f91; outline: none; }
 #routeBar .route-more-item + .route-more-item { border-top: 1px solid #e5ebef; border-radius: 0 0 8px 8px; }
 #routeBar .route-more-item svg { justify-self: center; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-#routeBar .route-more-item .share-icon { width: 19px; height: 19px; }
 .route-more-symbol { justify-self: center; font: 800 18px/1 system-ui; }
-.route-more-help-symbol { display: grid; place-items: center; width: 20px; height: 20px; border: 2px solid currentColor; border-radius: 50%; font-size: 13px; }
 #routeBar #appWeightsBtn[hidden] { display: none; }
 #routeBar #appWeightsBtn.tuned { background: #fff6e4; color: #96590a; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }

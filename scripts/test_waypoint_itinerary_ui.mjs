@@ -29,6 +29,8 @@ const initial = await page.evaluate(() => {
     reverseDisabled: document.getElementById('rb-reverse').disabled,
     moreVisible: !document.getElementById('rb-more').hidden,
     moreMenuHidden: document.getElementById('routeMoreMenu').hidden,
+    moreText: document.getElementById('rb-more').textContent.trim(),
+    moreLabel: document.getElementById('rb-more').getAttribute('aria-label'),
   };
   setRoutePoint('start', { lng: -122.335, lat: 47.61 }, 'Seattle');
   setRoutePoint('end', { lng: -122.76, lat: 48.12 }, 'Port Townsend');
@@ -72,8 +74,10 @@ check('stops have no manual order controls while Reverse and delete remain avail
   initial.oldControlsGone && initial.endpointControls === 2
     && initial.stopArrows === 0 && initial.endpointArrows === 0
     && initial.reverseEnabled, JSON.stringify(initial));
-check('the route utility controls name themselves instead of relying on mystery icons',
-  initial.utilityLabels.join('|') === 'More|Find', JSON.stringify(initial.utilityLabels));
+check('the compact trip menu uses a vertical ellipsis while Find stays explicit',
+  initial.blank.moreText === '⋮' && initial.blank.moreLabel === 'Trip options'
+    && initial.utilityLabels.join('|') === 'Find',
+  JSON.stringify({ blank: initial.blank, labels: initial.utilityLabels }));
 check('map stop pins use the same itinerary numbers',
   initial.markerNumbers.join(',') === '1,2', JSON.stringify(initial.markerNumbers));
 check('the itinerary and search button fit the phone viewport',
@@ -132,14 +136,14 @@ const moreMenu = await page.evaluate(() => ({
   expanded: document.getElementById('rb-more').getAttribute('aria-expanded'),
   items: [...document.querySelectorAll('#routeMoreMenu > button')]
     .filter((button) => !button.hidden).map((button) => button.lastElementChild?.textContent.trim()),
-  saveRemovedFromPanel: !document.querySelector('#tabs #routeLibraryBtn'),
-  helpRemovedFromMap: document.getElementById('appHelpBtn').closest('#routeMoreMenu') !== null,
+  saveRestoredToPanel: document.getElementById('routeLibraryBtn').closest('#tabs') !== null,
+  helpRemoved: !document.getElementById('appHelpBtn'),
   weightsRemovedFromMap: document.getElementById('appWeightsBtn').closest('#routeMoreMenu') !== null,
 }));
-check('More consolidates secondary trip actions without adding map buttons',
+check('Trip options contains only Swap and Weights',
   moreMenu.visible && moreMenu.expanded === 'true'
-    && moreMenu.items.join('|') === 'Swap start & destination|Routing weights|Save & share routes|Help'
-    && moreMenu.saveRemovedFromPanel && moreMenu.helpRemovedFromMap && moreMenu.weightsRemovedFromMap,
+    && moreMenu.items.join('|') === 'Swap start & destination|Routing weights'
+    && moreMenu.saveRestoredToPanel && moreMenu.helpRemoved && moreMenu.weightsRemovedFromMap,
   JSON.stringify(moreMenu));
 await page.locator('#rb-reverse').click();
 check('Reverse swaps endpoints and reverses stop order', await page.evaluate(() =>
