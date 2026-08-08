@@ -57,7 +57,6 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   cursor: pointer;
 }
 #tabs button.active { background: #0a66c2; color: #fff; }
-#tabs #routeLibraryBtn { flex: 0 0 30px; width: 30px; padding: 0; display: grid; place-items: center; border: 1px solid #d5dfe6; background: #eef1f4; color: #0a66c2; }
 #panelClose, #panelOpen { display: none; }
 
 .tab { display: none; overflow-y: auto; padding: 0 10px 8px; }
@@ -110,7 +109,6 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
     border: 1px solid #c8d5df; border-radius: 9px;
     color: #2f4858; background: #dce7ef;
   }
-  #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; border-radius: 9px; }
   #panelOpen {
     display: flex; position: absolute; left: 10px;
     bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 11;
@@ -155,7 +153,6 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeControls .route-chooser-row { display: flex; align-items: stretch; gap: 6px; }
 #routeControls .check-rule { margin: 4px 0 0 !important; min-height: 17px; font-size: 11px; }
 #routeControls .check-rule label { font-weight: 600; }
-#routeLibraryBtn { cursor: pointer; }
 .share-icon { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* overflow:hidden keeps the row inside its own rounded border. The uppercase
@@ -391,8 +388,6 @@ body:not(.navigation-active) #navCard { display: none; }
   #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
   #routeControls .check-rule { margin-top: 6px !important; font-size: 12px; }
-  #tabs #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; }
-  #tabs #routeLibraryBtn .share-icon { width: 19px; height: 19px; }
   #routeOptions { gap: 4px; }
   #routeOptions::before { padding: 0 5px; font-size: 10.5px; letter-spacing: .05em; }
   #routeOptions button { min-height: 34px; padding: 4px 3px; font-size: 14px; }
@@ -565,12 +560,9 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   border: 1px solid #c8d5df; border-radius: 9px; box-shadow: 0 2px 9px rgba(0,0,0,.16);
 }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 34px; height: 34px; border-radius: 9px; }
-/* The desktop zoom buttons share this corner with the app's own absolutely
-   positioned Layers (52px) and Help (94px) buttons. Start below both. */
-#map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 102px; }
-/* One more button in the column (⚖, advanced tools on): push the zoom
-   controls below it instead of letting the two stacks overlap. */
-body.map-tools-extended #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 146px; }
+/* The desktop zoom buttons share this corner with the app's Layers button.
+   Start below it; Help and Weights now live in the trip overflow menu. */
+#map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 58px; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group button { width: 34px; height: 34px; }
 /* Keep the compact OpenStreetMap attribution button comfortably inside the
    viewport edge without shifting the scale control above it. */
@@ -687,9 +679,10 @@ body.map-tools-extended #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.z
   max-width: calc(100vw - 16px);
 }
 /* MapLibre controls live in their own z-index 16 stack. Lift the toolbar's
-   whole stacking context while search is open so its picker cannot appear
-   underneath the location, layers, or advanced-tools buttons. */
+   whole stacking context while an attached menu is open so it cannot appear
+   underneath the location or layers buttons. */
 body.place-picker-open #topToolbar { z-index: 25; }
+body.route-more-open #topToolbar { z-index: 25; }
 #routeBar {
   position: relative;
   min-width: 0;
@@ -909,6 +902,34 @@ body.place-picker-open #topToolbar { z-index: 25; }
   stroke-linejoin: round;
 }
 .route-utility-label { color: inherit; font: 750 8px/1 system-ui; letter-spacing: .01em; }
+.route-more-glyph { align-self: center; font: 900 17px/1 system-ui; letter-spacing: 1px; transform: translateY(-2px); }
+.route-more-menu {
+  position: absolute; z-index: 22; top: calc(100% + 6px); right: 5px;
+  display: grid; width: min(235px, calc(100vw - 24px)); padding: 5px;
+  border: 1px solid #bdced9; border-radius: 12px; background: rgba(255,255,255,.99);
+  box-shadow: 0 9px 26px rgba(20,46,63,.28); color: #25343d;
+  animation: route-more-enter .2s cubic-bezier(.16,1,.3,1);
+}
+.route-more-menu[hidden] { display: none; }
+@keyframes route-more-enter {
+  from { opacity: 0; transform: translateY(-8px) scale(.96); transform-origin: 93% 0; }
+  to { opacity: 1; transform: none; }
+}
+#routeBar .route-more-item {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 9px;
+  width: 100%; min-height: 43px; padding: 6px 10px; border: 0; border-radius: 8px;
+  background: transparent; color: #284454; font: 720 12px/1.2 system-ui;
+  text-align: left; cursor: pointer;
+}
+#routeBar .route-more-item:hover:not(:disabled),
+#routeBar .route-more-item:focus-visible { background: #eaf4fa; color: #075f91; outline: none; }
+#routeBar .route-more-item + .route-more-item { border-top: 1px solid #e5ebef; border-radius: 0 0 8px 8px; }
+#routeBar .route-more-item svg { justify-self: center; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#routeBar .route-more-item .share-icon { width: 19px; height: 19px; }
+.route-more-symbol { justify-self: center; font: 800 18px/1 system-ui; }
+.route-more-help-symbol { display: grid; place-items: center; width: 20px; height: 20px; border: 2px solid currentColor; border-radius: 50%; font-size: 13px; }
+#routeBar #appWeightsBtn[hidden] { display: none; }
+#routeBar #appWeightsBtn.tuned { background: #fff6e4; color: #96590a; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 .place-results .place-choice {
   display: inline-block; margin: 4px 4px 8px 12px; padding: 7px 11px;
@@ -997,17 +1018,6 @@ body.navigation-active #routeBar { display: none; }
   #rb-status { min-width: 0; }
 }
 
-#appHelpBtn, #appWeightsBtn { position: absolute; z-index: 16; right: 10px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid #b8cbd8; border-radius: 9px; background: rgba(255,255,255,.96); box-shadow: 0 2px 9px rgba(0,0,0,.18); color: #0a66c2; cursor: pointer; }
-#appHelpBtn { top: calc(env(safe-area-inset-top) + 94px); font: 800 17px/1 system-ui; }
-/* Directly under Help, same column. The weights panel is also reachable from
-   Settings > Advanced; this is the shortcut for tuning against the map you are
-   looking at, which is how it actually gets used. */
-#appWeightsBtn { top: calc(env(safe-area-inset-top) + 132px); font: 700 16px/1 system-ui; }
-/* The display:grid above wins on ID specificity, so the UA's [hidden] rule
-   cannot hide this on its own. "Show weights and all considered routes" needs
-   this to bite. */
-#appWeightsBtn[hidden] { display: none; }
-#appWeightsBtn.tuned { border-color: #d8a447; background: #fff6e4; color: #96590a; }
 .app-help-update { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px 10px; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e1e7eb; }
 .app-help-version { margin: 0 !important; color: #56616a; font: 650 12px/1.35 system-ui; white-space: pre-line; }
 .app-help-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
@@ -1103,9 +1113,6 @@ body.navigation-active #routeBar { display: none; }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 42px; height: 42px; border-radius: 12px; }
   #panelOpen { left: 10px; right: auto; }
   #layersToggle { top: calc(env(safe-area-inset-top) + 162px); width: 42px; height: 42px; border-radius: 12px; }
-  #appHelpBtn, #appWeightsBtn { width: 42px; height: 42px; border-radius: 12px; }
-  #appHelpBtn { top: calc(env(safe-area-inset-top) + 212px); font-size: 18px; }
-  #appWeightsBtn { top: calc(env(safe-area-inset-top) + 260px); font-size: 19px; }
   .place-picker { top: -5px; left: 0; width: 100%; }
   body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
   body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 4px); }

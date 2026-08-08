@@ -95,9 +95,9 @@ check('incline appears before unpaved and unpaved uses miles',
 await page.evaluate(() => localStorage.setItem('wa-bike-saved-routes-1', JSON.stringify([{
   name: 'Lake loop', s: [-122.34, 47.60], e: [-122.30, 47.64], v: [], b: [],
 }])));
-// The phone menu intentionally starts closed. Open it before using a control
-// that lives inside that sheet instead of relying on the old startup state.
-await page.evaluate(() => setPanelOpen(true));
+// Saved routes now live with the other secondary trip actions instead of
+// masquerading as a fourth hamburger-panel tab.
+await page.click('#rb-more');
 await page.click('#routeLibraryBtn');
 await page.waitForSelector('#routesDialog[open]');
 
@@ -109,6 +109,7 @@ const layout = await page.evaluate(() => {
     loadText: document.querySelector('.saved-load')?.textContent.replace(/\s+/g, ' ').trim(),
     importBelowSaved: imported.top >= saved.bottom,
     floppyPaths: icon?.querySelectorAll('path').length || 0,
+    removedFromPanel: !document.querySelector('#tabs #routeLibraryBtn'),
   };
 });
 check('a saved route is an explicit load action', layout.loadText === 'Lake loopLoad ›',
@@ -117,6 +118,8 @@ check('shared-link loading is a separate section at the bottom', layout.importBe
   JSON.stringify(layout));
 check('the route-library button uses a floppy-disk drawing', layout.floppyPaths === 2,
   JSON.stringify(layout));
+check('the route-library button no longer occupies a hamburger-panel tab',
+  layout.removedFromPanel, JSON.stringify(layout));
 
 await page.click('.saved-del');
 check('the X asks before deleting', await page.evaluate(() =>

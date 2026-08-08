@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// The weights panel as a rider meets it: reachable from the map, every slider
+// The weights panel as a rider meets it: reachable from the trip menu, every slider
 // wired to the weight its label claims, and the revert affordances working.
 //
 // The static coverage test proves the KEYS line up. This proves the rendered
 // DOM does -- that the assembled base+mode+suffix keys survive into real
 // `data-weight` attributes, that dragging one writes to routingWeights, and
-// that the map button opens the same dialog Settings does.
+// that the trip-menu item opens the same dialog Settings does.
 // Playwright is installed globally in this container, not under the project, so
 // resolving it is the harness's job rather than each test file's.
 import { playwright, chromiumPath } from './testlib/harness.mjs';
@@ -48,19 +48,25 @@ await pg.waitForTimeout(1500);
 let pass = 0, fail = 0;
 const check = (n, ok, x = '') => { (ok ? pass++ : fail++); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${x ? '  -- ' + x : ''}`); };
 
-/* --------------------------------------- 1. the map button opens the panel */
+/* -------------------------------- 1. the trip-menu item opens the panel */
 const btn = await pg.$('#appWeightsBtn');
-check('map screen has a weights button', !!btn);
+check('trip menu has a weights item', !!btn);
+await pg.click('#rb-more');
 const visible = await pg.evaluate(() => {
   const el = document.getElementById('appWeightsBtn');
   const r = el.getBoundingClientRect();
+  const menu = document.getElementById('routeMoreMenu').getBoundingClientRect();
   const help = document.getElementById('appHelpBtn').getBoundingClientRect();
   return { w: r.width, h: r.height, onScreen: r.top >= 0 && r.right <= innerWidth,
-    overlapsHelp: !(r.bottom <= help.top || r.top >= help.bottom) };
+    insideMenu: r.left >= menu.left && r.right <= menu.right,
+    overlapsHelp: !(r.bottom <= help.top || r.top >= help.bottom),
+    noFloatingControl: !document.querySelector('body > #appWeightsBtn') };
 });
-check('weights button is on screen and a real target',
-  visible.onScreen && visible.w >= 30 && visible.h >= 30, JSON.stringify(visible));
-check('weights button does not sit on top of Help', !visible.overlapsHelp);
+check('weights item is on screen and a real menu target',
+  visible.onScreen && visible.insideMenu && visible.w >= 180 && visible.h >= 40,
+  JSON.stringify(visible));
+check('weights item is separate from Help and no longer floats over the map',
+  !visible.overlapsHelp && visible.noFloatingControl, JSON.stringify(visible));
 
 await pg.click('#appWeightsBtn');
 await pg.waitForTimeout(400);
@@ -178,8 +184,8 @@ const badge = await pg.evaluate(() => {
   return { clean, dirty, title, noticeClean, noticeDirty,
     backToClean: button.classList.contains('tuned'), noticeBackToClean: notice.hidden };
 });
-check('the map button is unmarked at defaults', badge.clean === false);
-check('the map button marks itself once a weight is off default',
+check('the menu item is unmarked at defaults', badge.clean === false);
+check('the menu item marks itself once a weight is off default',
   badge.dirty === true && /changed/.test(badge.title), badge.title);
 check('and clears again when reverted', badge.backToClean === false);
 check('the page-level modified header follows the same state',

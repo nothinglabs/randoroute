@@ -26,7 +26,9 @@ const initial = await page.evaluate(() => {
     destinationVisible: !document.querySelector('.route-endpoint-end-row').hidden,
     reorderGone: !document.getElementById('rb-reorder')
       && !document.getElementById('reorderRouteDialog'),
-    reverseHidden: document.getElementById('rb-reverse').hidden,
+    reverseDisabled: document.getElementById('rb-reverse').disabled,
+    moreVisible: !document.getElementById('rb-more').hidden,
+    moreMenuHidden: document.getElementById('routeMoreMenu').hidden,
   };
   setRoutePoint('start', { lng: -122.335, lat: 47.61 }, 'Seattle');
   setRoutePoint('end', { lng: -122.76, lat: 48.12 }, 'Port Townsend');
@@ -38,12 +40,12 @@ const initial = await page.evaluate(() => {
     blank,
     itinerary: [...document.querySelectorAll('.route-endpoint, .route-stop-edit')]
       .map((element) => `${element.querySelector('.endpoint-label')?.textContent} ${element.querySelector('.endpoint-copy strong')?.textContent}`),
-    oldControlsGone: !document.getElementById('rb-via') && !document.getElementById('rb-more')
+    oldControlsGone: !document.getElementById('rb-via')
       && !document.getElementById('routeActionsMenu'),
     endpointControls: document.querySelectorAll('.route-endpoint-row .route-stop-action').length,
     stopArrows: document.querySelectorAll('#routeBar .route-stop-up, #routeBar .route-stop-down').length,
     endpointArrows: document.querySelectorAll('[data-endpoint-move]').length,
-    reverseVisible: !document.getElementById('rb-reverse').hidden,
+    reverseEnabled: !document.getElementById('rb-reverse').disabled,
     utilityLabels: [...document.querySelectorAll('.route-utility-label')]
       .map((label) => label.textContent),
     endpointWidth: Math.round(card.width),
@@ -61,7 +63,7 @@ const initial = await page.evaluate(() => {
 });
 check('a blank planner always shows Start and Destination without legacy reordering UI',
   initial.blank.startVisible && initial.blank.destinationVisible && initial.blank.reorderGone
-    && initial.blank.reverseHidden,
+    && initial.blank.reverseDisabled && initial.blank.moreVisible && initial.blank.moreMenuHidden,
   JSON.stringify(initial.blank));
 check('the main card shows start, named stops, and destination in trip order',
   initial.itinerary.join(' | ') === 'Start Seattle | Stop 1 Mukilteo | Stop 2 Point on map | Destination Port Townsend',
@@ -69,9 +71,9 @@ check('the main card shows start, named stops, and destination in trip order',
 check('stops have no manual order controls while Reverse and delete remain available',
   initial.oldControlsGone && initial.endpointControls === 2
     && initial.stopArrows === 0 && initial.endpointArrows === 0
-    && initial.reverseVisible, JSON.stringify(initial));
+    && initial.reverseEnabled, JSON.stringify(initial));
 check('the route utility controls name themselves instead of relying on mystery icons',
-  initial.utilityLabels.join('|') === 'Swap|Find', JSON.stringify(initial.utilityLabels));
+  initial.utilityLabels.join('|') === 'More|Find', JSON.stringify(initial.utilityLabels));
 check('map stop pins use the same itinerary numbers',
   initial.markerNumbers.join(',') === '1,2', JSON.stringify(initial.markerNumbers));
 check('the itinerary and search button fit the phone viewport',
@@ -124,11 +126,27 @@ await page.evaluate(() => {
   addVia({ lng: -122.48, lat: 48.03 }, { name: 'Point on map' });
 });
 
+await page.locator('#rb-more').click();
+const moreMenu = await page.evaluate(() => ({
+  visible: !document.getElementById('routeMoreMenu').hidden,
+  expanded: document.getElementById('rb-more').getAttribute('aria-expanded'),
+  items: [...document.querySelectorAll('#routeMoreMenu > button')]
+    .filter((button) => !button.hidden).map((button) => button.lastElementChild?.textContent.trim()),
+  saveRemovedFromPanel: !document.querySelector('#tabs #routeLibraryBtn'),
+  helpRemovedFromMap: document.getElementById('appHelpBtn').closest('#routeMoreMenu') !== null,
+  weightsRemovedFromMap: document.getElementById('appWeightsBtn').closest('#routeMoreMenu') !== null,
+}));
+check('More consolidates secondary trip actions without adding map buttons',
+  moreMenu.visible && moreMenu.expanded === 'true'
+    && moreMenu.items.join('|') === 'Swap start & destination|Routing weights|Save & share routes|Help'
+    && moreMenu.saveRemovedFromPanel && moreMenu.helpRemovedFromMap && moreMenu.weightsRemovedFromMap,
+  JSON.stringify(moreMenu));
 await page.locator('#rb-reverse').click();
 check('Reverse swaps endpoints and reverses stop order', await page.evaluate(() =>
   routing.startName === 'Port Townsend' && routing.endName === 'Seattle'
     && routing.vias.map((via) => via.name).join('|') === 'Point on map|Mukilteo'
     && !routing.startFromDevice));
+await page.locator('#rb-more').click();
 await page.locator('#rb-reverse').click();
 check('Reverse can restore the original trip order', await page.evaluate(() =>
   routing.startName === 'Seattle' && routing.endName === 'Port Townsend'

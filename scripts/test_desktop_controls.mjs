@@ -99,15 +99,18 @@ const boxes = await pg.evaluate(()=>{
   const r=(sel)=>{const e=document.querySelector(sel); if(!e) return null;
     const b=e.getBoundingClientRect(); return {top:Math.round(b.top),bottom:Math.round(b.bottom),
       left:Math.round(b.left),right:Math.round(b.right)};};
-  return { zoomIn:r('.maplibregl-ctrl-zoom-in'), layers:r('#layersToggle'), help:r('#appHelpBtn'),
-           geolocate:r('.maplibregl-ctrl-geolocate') };
+  return { zoomIn:r('.maplibregl-ctrl-zoom-in'), layers:r('#layersToggle'),
+           geolocate:r('.maplibregl-ctrl-geolocate'),
+           floatingHelp:!!document.querySelector('body > #appHelpBtn'),
+           floatingWeights:!!document.querySelector('body > #appWeightsBtn') };
 });
 console.log('boxes:', JSON.stringify(boxes));
 const overlaps=(a,c)=>a&&c&&!(a.bottom<=c.top||c.bottom<=a.top||a.right<=c.left||c.right<=a.left);
 check('zoom buttons exist on desktop', !!boxes.zoomIn);
 check('zoom does not overlap the Layers button', !overlaps(boxes.zoomIn, boxes.layers));
-check('zoom does not overlap the Help button', !overlaps(boxes.zoomIn, boxes.help));
 check('zoom does not overlap the geolocate button', !overlaps(boxes.zoomIn, boxes.geolocate));
+check('Help and Weights are no longer floating map controls',
+  !boxes.floatingHelp && !boxes.floatingWeights, JSON.stringify(boxes));
 // And it must actually be the topmost element at its own centre.
 const onTop = await pg.evaluate(()=>{
   const e=document.querySelector('.maplibregl-ctrl-zoom-in'); if(!e) return null;

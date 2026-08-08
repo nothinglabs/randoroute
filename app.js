@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.630';
+const APP_VERSION = '2026-08-08.631';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -8296,13 +8296,25 @@ function updateArmButtons() {
   });
   const reverseButton = document.getElementById('rb-reverse');
   if (reverseButton) {
-    reverseButton.hidden = !(routing.start && routing.end);
-    reverseButton.disabled = turnNav.active;
-    reverseButton.title = turnNav.active
-      ? 'Pause navigation to swap start and destination' : 'Swap start and destination';
+    const hasEndpoints = Boolean(routing.start && routing.end);
+    reverseButton.disabled = !hasEndpoints || turnNav.active;
+    reverseButton.title = !hasEndpoints ? 'Set a start and destination to swap them'
+      : turnNav.active ? 'Pause navigation to swap start and destination'
+        : 'Swap start and destination';
     reverseButton.setAttribute('aria-label', reverseButton.title);
   }
   renderRouteStops();
+}
+
+function setRouteMoreMenuOpen(open, { restoreFocus = false } = {}) {
+  const button = document.getElementById('rb-more');
+  const menu = document.getElementById('routeMoreMenu');
+  if (!button || !menu) return;
+  const next = Boolean(open);
+  menu.hidden = !next;
+  button.setAttribute('aria-expanded', String(next));
+  document.body.classList.toggle('route-more-open', next);
+  if (restoreFocus && !next) button.focus({ preventScroll: true });
 }
 
 function syncRoutePreferenceControls() {
@@ -8665,6 +8677,25 @@ function buildRoutingPanel() {
   for (const kind of ['start', 'end']) {
     document.getElementById('rb-' + kind).addEventListener('click', () => openPlaceSearch(kind));
   }
+  const moreButton = document.getElementById('rb-more');
+  const moreMenu = document.getElementById('routeMoreMenu');
+  moreButton.addEventListener('click', () => {
+    setRouteMoreMenuOpen(moreMenu.hidden);
+  });
+  moreMenu.addEventListener('click', (event) => {
+    if (event.target.closest('button')) setRouteMoreMenuOpen(false);
+  });
+  document.addEventListener('click', (event) => {
+    if (!moreMenu.hidden && !document.getElementById('routeBar').contains(event.target)) {
+      setRouteMoreMenuOpen(false);
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !moreMenu.hidden) {
+      event.preventDefault();
+      setRouteMoreMenuOpen(false, { restoreFocus: true });
+    }
+  });
   document.getElementById('rb-search').addEventListener('click', () => openPlaceSearch());
   document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
@@ -9247,6 +9278,7 @@ function setPlacePickerHint(kind = 'map', message = '') {
 }
 
 function openPlaceSearch(target = null) {
+  setRouteMoreMenuOpen(false);
   routing.arm = null;
   dismissRoadInfo();
   // Searching needs only the tiny local place index. Starting the 44 MB
@@ -11743,10 +11775,8 @@ if (nativeAppVersionOnly) {
 document.getElementById('appHelpBtn').addEventListener('click', () =>
   openHelp('getting-started'));
 document.getElementById('techDetailsBtn').addEventListener('click', () => openHelp('technical'));
-// The weights panel is reachable two ways on purpose: from Settings > Advanced,
-// where a reader finds it while reading about what it does, and from the map,
-// where it gets used -- tuning a weight is only meaningful while you can watch
-// the route it changes.
+// The weights panel is reachable from the trip overflow and Settings > Advanced.
+// Both keep the map behind the dialog so a tuning change stays tied to its route.
 function openRoutingWeights() {
   buildRoutingWeightsEditor();
   syncWeightsTunedBadge();
@@ -11758,21 +11788,15 @@ function openRoutingWeights() {
   document.getElementById('weightsDialog').showModal();
 }
 
-// The map's two advanced entry points appear and disappear together, because
-// they are the same decision: whether the rider wants the router's workings on
-// screen. The considered-routes screen rides along: its button lives on the
-// weights page, so hiding that page hides it too.
+// The considered-routes screen rides along with the Weights menu item: its
+// button lives on the weights page, so hiding that item hides both entry points.
 function syncAdvancedToolsVisibility() {
   const weightsButton = document.getElementById('appWeightsBtn');
   if (weightsButton) weightsButton.hidden = !uiPrefs.showAdvancedTools;
-  // The zoom buttons sit below the right-edge column at a fixed offset, and
-  // the column is one button taller while the weights tool is shown -- the
-  // offset has to follow or the two overlap (field screenshot: ⚖ over "+").
-  document.body.classList.toggle('map-tools-extended', !!uiPrefs.showAdvancedTools);
   renderRouteOptionControls();
 }
-// A weight left off its default silently changes every route, and the panel is
-// several taps away from wherever the surprise shows up. Mark the button.
+// A weight left off its default silently changes every route. Mark its menu
+// item so the changed state remains discoverable without a floating map button.
 function syncWeightsTunedBadge() {
   const button = document.getElementById('appWeightsBtn');
   const off = Object.keys(DEFAULT_ROUTING_WEIGHTS)
