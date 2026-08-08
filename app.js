@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.626';
+const APP_VERSION = '2026-08-08.627';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1683,8 +1683,16 @@ const ROAD_CLASS_MAJOR_EXPR = ['match', ROAD_CLASS_EXPR,
   BikeBasemap.ROAD_CLASSES.major, true, false];
 const ROAD_CLASS_MEDIUM_EXPR = ['match', ROAD_CLASS_EXPR,
   BikeBasemap.ROAD_CLASSES.medium, true, false];
+const ROAD_CLASS_MINOR_EXPR = ['match', ROAD_CLASS_EXPR,
+  BikeBasemap.ROAD_CLASSES.minor, true, false];
 const ROAD_CLASS_LOCAL_EXPR = ['match', ROAD_CLASS_EXPR,
   BikeBasemap.ROAD_CLASSES.local, true, false];
+// On-street bicycle facilities are valuable city context, but revealing every
+// bike-lane block at statewide/county scale produces nearly as much confetti as
+// the full local-road grid. Off-street trails have their own layers below and
+// stay visible earlier; painted/separated facilities join the hierarchy once a
+// rider is looking at a city, shortly before all local streets appear.
+const BIKE_FACILITY_MIN_ZOOM = 11.25;
 const OSM_TRAIL_EXPR = ['match', ['get', 'highway'],
   ['cycleway', 'path', 'footway', 'bridleway', 'track', 'service'], true, false];
 const OSM_NOT_TRAIL_EXPR = ['match', ['get', 'highway'],
@@ -1722,9 +1730,9 @@ function safetyRoadWidth(src) {
   ];
 }
 
-// Local streets arrive in large batches at zoom 11. Keep their safety colors
-// fully opaque (so overlaps cannot create dark seams), but preblend them a
-// little more softly than larger roads.
+// Local streets arrive in large batches at the neighborhood-detail threshold.
+// Keep their safety colors fully opaque (so overlaps cannot create dark
+// seams), but preblend them a little more softly than larger roads.
 function opaqueRoadColorExpr(src, color, opacity) {
   const normal = opaqueColorOverWhite(color, opacity);
   if (src.id !== 'roads') return normal;
@@ -2232,7 +2240,7 @@ function applyDisplayMode(src) {
   }
   const lvl = src.expr ? levelExprFor(src) : ['get', 'level'];
   // These sources carry an OSM highway class, so their colored road interiors
-  // can follow the exact same major/medium/local zoom thresholds as the
+  // can follow the same major/secondary/tertiary/local zoom ladder as the
   // locally rendered street underneath.
   const alignRoadClasses = src.id === 'roads' || src.id === 'osm';
   const and = (f) => {
@@ -2245,6 +2253,7 @@ function applyDisplayMode(src) {
   };
   // The shared vector-road source knows each OSM class. Reveal its safety fill
   // at exactly the zoom where BikeBasemap reveals that class's street casing.
+  const earlyBikeFacility = display.bikeFacilities ? bikeNetworkExpr(src) : ['boolean', false];
   const opacity = (value) => {
     // Opaque aligned fills remove alpha-addition seams. Their color expression
     // is pre-blended to retain the previous muted visual strength.
@@ -2254,18 +2263,27 @@ function applyDisplayMode(src) {
     if (!alignRoadClasses) return verdictOpacity;
     const visibleAtLocal = src.id === 'osm'
       ? ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR,
-        ROAD_CLASS_LOCAL_EXPR, OSM_TRAIL_EXPR]
-      : ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR, ROAD_CLASS_LOCAL_EXPR];
-    const earlyBikeFacility = display.bikeFacilities ? bikeNetworkExpr(src) : ['boolean', false];
+        ROAD_CLASS_MINOR_EXPR, ROAD_CLASS_LOCAL_EXPR, OSM_TRAIL_EXPR]
+      : ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR,
+        ROAD_CLASS_MINOR_EXPR, ROAD_CLASS_LOCAL_EXPR];
     // MapLibre permits zoom only as the input to a top-level step/interpolate.
     // Each output is therefore a feature-dependent class mask.
     return ['step', ['zoom'],
-      ['case', earlyBikeFacility, verdictOpacity, 0],
+      0,
       BikeBasemap.ROAD_MIN_ZOOM.major,
-      ['case', ['any', earlyBikeFacility, ROAD_CLASS_MAJOR_EXPR], verdictOpacity, 0],
+      ['case', ROAD_CLASS_MAJOR_EXPR, verdictOpacity, 0],
       BikeBasemap.ROAD_MIN_ZOOM.medium,
       ['case',
-        ['any', earlyBikeFacility, ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR],
+        ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR],
+        verdictOpacity, 0],
+      BikeBasemap.ROAD_MIN_ZOOM.minor,
+      ['case',
+        ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR, ROAD_CLASS_MINOR_EXPR],
+        verdictOpacity, 0],
+      BIKE_FACILITY_MIN_ZOOM,
+      ['case',
+        ['any', earlyBikeFacility, ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR,
+          ROAD_CLASS_MINOR_EXPR],
         verdictOpacity, 0],
       BikeBasemap.ROAD_MIN_ZOOM.local,
       ['case', visibleAtLocal, verdictOpacity, 0],
@@ -2342,6 +2360,9 @@ function applyDisplayMode(src) {
     setPaint(vhId(src), 'line-width', safetyRoadWidth(src));
     setPaint(vhId(src), 'line-opacity', opacity(0.9));
   }
+  if (map.getLayer(prohibitedId(src))) {
+    setPaint(prohibitedId(src), 'line-opacity', opacity(0.42));
+  }
   // Texture overlays. They are decoration on the road below, so they take the
   // SAME filter, the same width and the same class-masked opacity as the line
   // they sit on -- a flat opacity here made a failing freeway and a failing
@@ -2380,13 +2401,23 @@ function applyDisplayMode(src) {
     setLayerFilter(hitId(src), src.id === 'osm' ? and(mainHitFilter) : null);
     const normalHitWidth = ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22];
     const knownRoadClass = ['any',
-      ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR, ROAD_CLASS_LOCAL_EXPR];
+      ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR, ROAD_CLASS_MINOR_EXPR,
+      ROAD_CLASS_LOCAL_EXPR];
     const classAlignedHitWidth = ['step', ['zoom'],
       0,
       BikeBasemap.ROAD_MIN_ZOOM.major,
       ['case', ROAD_CLASS_MAJOR_EXPR, 8, 0],
       BikeBasemap.ROAD_MIN_ZOOM.medium,
       ['case', ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR], 10, 0],
+      BikeBasemap.ROAD_MIN_ZOOM.minor,
+      ['case',
+        ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR, ROAD_CLASS_MINOR_EXPR],
+        11, 0],
+      BIKE_FACILITY_MIN_ZOOM,
+      ['case',
+        ['any', earlyBikeFacility, ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR,
+          ROAD_CLASS_MINOR_EXPR],
+        13, 0],
       BikeBasemap.ROAD_MIN_ZOOM.local,
       ['case', knownRoadClass, 13, 0],
       14,

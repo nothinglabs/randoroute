@@ -100,16 +100,24 @@
     'motorway', 'motorway_link', 'trunk', 'trunk_link',
     'primary', 'primary_link',
   ];
-  const mediumRoads = [
-    'secondary', 'secondary_link', 'tertiary', 'tertiary_link',
-  ];
+  const mediumRoads = ['secondary', 'secondary_link'];
+  const minorRoads = ['tertiary', 'tertiary_link'];
   const localRoads = ['unclassified', 'residential', 'living_street'];
   const ROAD_CLASSES = {
     major: majorRoads,
     medium: mediumRoads,
+    minor: minorRoads,
     local: localRoads,
   };
-  const ROAD_MIN_ZOOM = { major: 5, medium: 8, local: 11 };
+  // Local streets are by far the densest class. Revealing the entire grid at
+  // z11 made a city-wide phone view turn into colored confetti and handed the
+  // renderer thousands of extra line segments at once. Keep the regional road
+  // hierarchy at metro scale, add tertiary streets at city scale, then bring
+  // residential, unclassified and living streets in only once the rider is
+  // looking at a neighborhood. Bike facilities and trails have their own
+  // earlier reveal in app.js, so cycling structure does not disappear with the
+  // background grid.
+  const ROAD_MIN_ZOOM = { major: 5, medium: 8, minor: 10.25, local: 12.25 };
 
   function lineLayer(id, minzoom, filter, casing) {
     const local = id.includes('-local');
@@ -246,6 +254,8 @@
         lineLayer('basemap-major', ROAD_MIN_ZOOM.major, roadMatch(majorRoads), false),
         lineLayer('basemap-medium-casing', ROAD_MIN_ZOOM.medium, roadMatch(mediumRoads), true),
         lineLayer('basemap-medium', ROAD_MIN_ZOOM.medium, roadMatch(mediumRoads), false),
+        lineLayer('basemap-minor-casing', ROAD_MIN_ZOOM.minor, roadMatch(minorRoads), true),
+        lineLayer('basemap-minor', ROAD_MIN_ZOOM.minor, roadMatch(minorRoads), false),
         lineLayer('basemap-local-casing', ROAD_MIN_ZOOM.local, roadMatch(localRoads), true),
         lineLayer('basemap-local', ROAD_MIN_ZOOM.local, roadMatch(localRoads), false),
         { id: 'basemap-water-labels', type: 'symbol', source: 'basemap-context',
@@ -271,7 +281,10 @@
           } },
         roadLabel('basemap-major-labels', 7, majorRoads, [7, 12, 13, 15.5]),
         roadLabel('basemap-medium-labels', 10, mediumRoads, [10, 11.5, 15, 14.5]),
-        roadLabel('basemap-local-labels', 12.2, localRoads, [12, 11, 17, 14.5]),
+        roadLabel('basemap-minor-labels', ROAD_MIN_ZOOM.minor + 0.7,
+          minorRoads, [10, 11.5, 15, 14.5]),
+        roadLabel('basemap-local-labels', ROAD_MIN_ZOOM.local + 0.35,
+          localRoads, [12, 11, 17, 14.5]),
         { id: 'basemap-place-labels', type: 'symbol', source: 'basemap-context',
           'source-layer': 'places',
           layout: {
