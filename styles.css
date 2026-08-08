@@ -789,7 +789,7 @@ body.place-picker-open #topToolbar { z-index: 25; }
 }
 .endpoint-label {
   color: #667985;
-  font: 650 9px/1.05 system-ui;
+  font: 700 10.5px/1.05 system-ui;
   letter-spacing: .03em;
   text-transform: uppercase;
 }
@@ -1022,11 +1022,27 @@ body.navigation-active #routeBar { display: none; }
   transform: none; width: min(88vw, 380px); padding: 8px 9px 9px;
   border: 1px solid #e1e5e9; border-radius: 12px; background: rgba(255,255,255,.98);
   box-shadow: 0 5px 18px rgba(0,0,0,.2); color: #222;
+  transform-origin: var(--picker-origin, 50% 20%);
 }
-.place-picker:not([hidden]) { animation: place-picker-enter .32s cubic-bezier(.16,1,.3,1); }
+.place-picker[data-opened-from="start"] {
+  --picker-origin: 24% 18%; --picker-entry-x: -10px; --picker-entry-y: -24px;
+}
+.place-picker[data-opened-from="end"] {
+  --picker-origin: 24% 76%; --picker-entry-x: -10px; --picker-entry-y: 25px;
+}
+.place-picker[data-opened-from="find"] {
+  --picker-origin: 96% 28%; --picker-entry-x: 38px; --picker-entry-y: -9px;
+}
+.place-picker:not([hidden]) { animation: place-picker-enter .54s cubic-bezier(.16,1,.3,1); }
 @keyframes place-picker-enter {
-  from { opacity: 0; transform: translateY(-18px) scale(.95); box-shadow: 0 16px 36px rgba(0,0,0,.34); }
-  72% { opacity: 1; transform: translateY(1px) scale(1.005); }
+  from {
+    opacity: .08;
+    transform: translate(var(--picker-entry-x, 0), var(--picker-entry-y, -24px)) scale(.78);
+    filter: blur(2px);
+    box-shadow: 0 20px 44px rgba(0,0,0,.4);
+  }
+  56% { opacity: 1; transform: translate(0, 3px) scale(1.025); filter: none; }
+  78% { transform: translate(0, -1px) scale(.995); }
   to { opacity: 1; transform: none; box-shadow: 0 5px 18px rgba(0,0,0,.2); }
 }
 .picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 1px; font-size: 13px; }
@@ -1071,7 +1087,7 @@ body.navigation-active #routeBar { display: none; }
   .route-endpoints::before { top: 27px; bottom: 27px; left: 17px; }
   .route-endpoint-marker { flex-basis: 10px; width: 10px; height: 10px; }
   .endpoint-copy strong { font-size: 11.25px; }
-  .endpoint-label { font-size: 8.5px; }
+  .endpoint-label { font-size: 10px; }
   #routeBar .route-utility-actions > button { width: 46px; }
   #mobileNavDock { display: block; position: absolute; z-index: 15; left: 66px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
   body.panel-open #mobileNavDock { left: 10px; bottom: calc(var(--mobile-panel-height, 0px) + 4px); }

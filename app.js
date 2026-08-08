@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.628';
+const APP_VERSION = '2026-08-08.629';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7580,11 +7580,11 @@ function consumePendingRouteStepHighlight() {
 }
 
 function routeEndpointDisplayName(kind) {
-  if (kind === 'start' && !routing.start && routing.startDefaultsToDevice) {
-    return 'Current location';
+  if (kind === 'start' && (!routing.start || routing.startFromDevice)) {
+    return 'Current location (tap to change).';
   }
   if (!routing[kind]) return kind === 'start'
-    ? 'Current location or choose' : 'Where do you want to go?';
+    ? 'Current location (tap to change).' : 'Tap to set destination.';
   return normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map';
 }
 
@@ -9243,7 +9243,12 @@ function openPlaceSearch(target = null) {
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   setUseLocationBusy(false);
-  document.getElementById('placePicker').hidden = false;
+  const picker = document.getElementById('placePicker');
+  // The chooser grows from the control that opened it. Besides making the
+  // transition harder to miss, the three origins visually explain whether a
+  // choice will set Start, set Destination, or merely Find a place.
+  picker.dataset.openedFrom = placeSearchTarget || 'find';
+  picker.hidden = false;
   document.body.classList.add('place-picker-open');
   setRouteStatus(placeSearchTarget
     ? `Search or tap the map to set your ${targetLabel}`

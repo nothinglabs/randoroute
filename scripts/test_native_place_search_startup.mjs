@@ -51,6 +51,12 @@ let state = await page.evaluate(() => ({
   appHeight: document.documentElement.style.getPropertyValue('--app-height'),
   startHidden: document.querySelector('.route-endpoint-start-row')?.hidden,
   destinationVisible: !document.querySelector('.route-endpoint-end-row')?.hidden,
+  startValue: document.querySelector('#rb-start [data-endpoint-value]')?.textContent,
+  destinationValue: document.querySelector('#rb-end [data-endpoint-value]')?.textContent,
+  startHeadingSize: parseFloat(getComputedStyle(document.querySelector('#rb-start .endpoint-label'))
+    .fontSize),
+  destinationHeadingSize: parseFloat(getComputedStyle(document.querySelector('#rb-end .endpoint-label'))
+    .fontSize),
   emptyMessage: document.querySelector('.rc-route-message strong')?.textContent,
   panelOpen: document.body.classList.contains('panel-open'),
 }));
@@ -58,7 +64,10 @@ check('an untouched native planner does not start the routing graph', state.work
   JSON.stringify(state));
 check('the untouched planner shows both endpoints and asks for both',
   !state.startHidden && state.destinationVisible
-    && state.emptyMessage === 'Choose start and destination',
+    && state.emptyMessage === 'Choose start and destination'
+    && state.startValue === 'Current location (tap to change).'
+    && state.destinationValue === 'Tap to set destination.'
+    && state.startHeadingSize >= 10 && state.destinationHeadingSize >= 10,
   JSON.stringify(state));
 check('the phone menu starts closed', !state.panelOpen, JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
@@ -90,6 +99,7 @@ state = await page.evaluate(() => ({
   pickerAnimation: getComputedStyle(document.getElementById('placePicker')).animationName,
   pickerAnimationDuration: parseFloat(getComputedStyle(document.getElementById('placePicker'))
     .animationDuration),
+  openedFrom: document.getElementById('placePicker').dataset.openedFrom,
   toolbarZ: Number(getComputedStyle(document.getElementById('topToolbar')).zIndex),
   mapControlsZ: Number(getComputedStyle(document.querySelector('.maplibregl-ctrl-top-right')).zIndex),
 }));
@@ -98,7 +108,7 @@ check('generic search tells riders to tap the map without adding a map button',
     && state.mapChoiceGone && /search or tap the map/i.test(state.hint)
     && /trip will not change yet/i.test(state.hint) && state.useLocationHidden
     && state.focused !== 'placeSearch' && state.pickerAnimation === 'place-picker-enter'
-    && state.pickerAnimationDuration >= 0.3,
+    && state.pickerAnimationDuration >= 0.5 && state.openedFrom === 'find',
   JSON.stringify(state));
 check('the open search panel stacks above every map control',
   state.toolbarZ > state.mapControlsZ, JSON.stringify(state));
@@ -145,10 +155,12 @@ state = await page.evaluate(() => ({
   pickerVisible: !document.getElementById('placePicker').hidden,
   armed: routing.arm,
   hint: document.getElementById('placePickerHint').textContent,
+  openedFrom: document.getElementById('placePicker').dataset.openedFrom,
 }));
 check('Destination search arms the visible map and never offers current location',
   state.useLocationHidden && state.mapChoiceGone && state.pickerVisible
-    && state.armed === 'end' && /tap the map to set your destination/i.test(state.hint),
+    && state.armed === 'end' && state.openedFrom === 'end'
+    && /tap the map to set your destination/i.test(state.hint),
   JSON.stringify(state));
 await page.evaluate(() => placeArmedPoint({ lng: -122.76, lat: 48.12 }));
 state = await page.evaluate(() => ({
@@ -181,7 +193,7 @@ state = await page.evaluate(() => ({
 }));
 check('choosing a targeted Destination assigns it directly and defaults Start to Current location',
   state.workers === 0 && !state.start && state.end && !state.startHidden
-    && state.startLabel === 'Current location' && state.pickerHidden
+    && state.startLabel === 'Current location (tap to change).' && state.pickerHidden
     && !state.promptShown && state.indicator === 0, JSON.stringify(state));
 
 await page.click('#rb-start');
@@ -193,10 +205,11 @@ state = await page.evaluate(() => ({
   beforeResults: Boolean(document.getElementById('placeSearch')
     .compareDocumentPosition(document.getElementById('placeResults'))
     & Node.DOCUMENT_POSITION_FOLLOWING),
+  openedFrom: document.getElementById('placePicker').dataset.openedFrom,
 }));
 check('Start keeps current location compact in the header and results below search',
   state.available && state.label === '⌖Start from current location'
-    && state.inHeader && state.beforeResults, JSON.stringify(state));
+    && state.inHeader && state.beforeResults && state.openedFrom === 'start', JSON.stringify(state));
 await page.evaluate(() => {
   getFreshDevicePosition = () => Promise.reject(new Error('GPS unavailable'));
 });
