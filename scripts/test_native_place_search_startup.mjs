@@ -64,6 +64,21 @@ check('the phone menu starts closed', !state.panelOpen, JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
 
+await page.click('#panelOpen');
+await page.waitForFunction(() => document.querySelector('.route-endpoints')
+  ?.classList.contains('route-guidance-flash'));
+state = await page.evaluate(() => ({
+  endpointCue: document.querySelector('.route-endpoints')?.classList
+    .contains('route-guidance-flash'),
+  messageCue: document.querySelector('#routeCard .rc-route-message')?.classList
+    .contains('route-guidance-flash'),
+  message: document.querySelector('#routeCard .rc-route-message strong')?.textContent,
+}));
+check('opening the empty Route menu links its instruction to the endpoint chooser',
+  state.endpointCue && state.messageCue && state.message === 'Choose start and destination',
+  JSON.stringify(state));
+await page.click('#panelClose');
+
 await page.click('#rb-search');
 state = await page.evaluate(() => ({
   placeholder: document.getElementById('placeSearch').placeholder,
@@ -72,6 +87,7 @@ state = await page.evaluate(() => ({
   mapChoiceGone: !document.getElementById('pickOnMap'),
   hint: document.getElementById('placePickerHint').textContent,
   useLocationHidden: document.getElementById('useLoc').hidden,
+  pickerAnimation: getComputedStyle(document.getElementById('placePicker')).animationName,
   toolbarZ: Number(getComputedStyle(document.getElementById('topToolbar')).zIndex),
   mapControlsZ: Number(getComputedStyle(document.querySelector('.maplibregl-ctrl-top-right')).zIndex),
 }));
@@ -79,7 +95,7 @@ check('generic search tells riders to tap the map without adding a map button',
   state.placeholder === 'Search the map…' && state.title === 'Find a place'
     && state.mapChoiceGone && /search or tap the map/i.test(state.hint)
     && /trip will not change yet/i.test(state.hint) && state.useLocationHidden
-    && state.focused !== 'placeSearch',
+    && state.focused !== 'placeSearch' && state.pickerAnimation === 'place-picker-enter',
   JSON.stringify(state));
 check('the open search panel stacks above every map control',
   state.toolbarZ > state.mapControlsZ, JSON.stringify(state));
@@ -166,8 +182,16 @@ check('choosing a targeted Destination assigns it directly and defaults Start to
     && !state.promptShown && state.indicator === 0, JSON.stringify(state));
 
 await page.click('#rb-start');
-check('current location is available when explicitly choosing Start',
-  await page.evaluate(() => !document.getElementById('useLoc').hidden));
+state = await page.evaluate(() => ({
+  available: !document.getElementById('useLoc').hidden,
+  inHeader: document.getElementById('useLoc').parentElement?.classList
+    .contains('picker-head-actions'),
+  beforeResults: Boolean(document.getElementById('placeSearch')
+    .compareDocumentPosition(document.getElementById('placeResults'))
+    & Node.DOCUMENT_POSITION_FOLLOWING),
+}));
+check('Start keeps current location compact in the header and results below search',
+  state.available && state.inHeader && state.beforeResults, JSON.stringify(state));
 await page.evaluate(() => {
   getFreshDevicePosition = () => Promise.reject(new Error('GPS unavailable'));
 });

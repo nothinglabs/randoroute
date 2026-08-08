@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.625';
+const APP_VERSION = '2026-08-08.626';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11477,6 +11477,7 @@ if (routing.start && routing.end) {
 // edge when it opens; desktop keeps the existing top-toolbar arrangement.
 const mobileNavMedia = window.matchMedia('(max-width: 720px)');
 let _mobileDockFrame = null;
+let _routeGuidanceTimer = null;
 function syncMobileNavDock() {
   if (!mobileNavMedia.matches) return;
   const dock = document.getElementById('mobileNavDock');
@@ -11522,7 +11523,30 @@ function syncPanelInteractivity() {
   else panel.removeAttribute('aria-hidden');
 }
 
+function flashEmptyRouteGuidance() {
+  if (!mobileNavMedia.matches || routing.start || routing.end) return;
+  const routeTab = document.getElementById('tab-route');
+  const message = routeTab?.querySelector('.rc-route-message');
+  const endpoints = document.querySelector('.route-endpoints');
+  if (!routeTab?.classList.contains('active')
+      || message?.querySelector('strong')?.textContent !== 'Choose start and destination'
+      || !endpoints) return;
+  clearTimeout(_routeGuidanceTimer);
+  message.classList.remove('route-guidance-flash');
+  endpoints.classList.remove('route-guidance-flash');
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (!document.body.classList.contains('panel-open')) return;
+    message.classList.add('route-guidance-flash');
+    endpoints.classList.add('route-guidance-flash');
+    _routeGuidanceTimer = setTimeout(() => {
+      message.classList.remove('route-guidance-flash');
+      endpoints.classList.remove('route-guidance-flash');
+    }, 1700);
+  }));
+}
+
 function setPanelOpen(open) {
+  const wasOpen = document.body.classList.contains('panel-open');
   document.body.classList.toggle('panel-open', open);
   syncLayersToggle();
   syncPanelInteractivity();
@@ -11534,6 +11558,11 @@ function setPanelOpen(open) {
   if (open) {
     requestAnimationFrame(drawRouteCardElevation);
     syncRouteDetailsWarningState(routing.last, { flash: true });
+    if (!wasOpen) flashEmptyRouteGuidance();
+  } else {
+    clearTimeout(_routeGuidanceTimer);
+    document.querySelector('.route-endpoints')?.classList.remove('route-guidance-flash');
+    document.querySelector('#routeCard .rc-route-message')?.classList.remove('route-guidance-flash');
   }
 }
 
