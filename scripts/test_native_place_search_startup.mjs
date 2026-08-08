@@ -88,6 +88,8 @@ state = await page.evaluate(() => ({
   hint: document.getElementById('placePickerHint').textContent,
   useLocationHidden: document.getElementById('useLoc').hidden,
   pickerAnimation: getComputedStyle(document.getElementById('placePicker')).animationName,
+  pickerAnimationDuration: parseFloat(getComputedStyle(document.getElementById('placePicker'))
+    .animationDuration),
   toolbarZ: Number(getComputedStyle(document.getElementById('topToolbar')).zIndex),
   mapControlsZ: Number(getComputedStyle(document.querySelector('.maplibregl-ctrl-top-right')).zIndex),
 }));
@@ -95,7 +97,8 @@ check('generic search tells riders to tap the map without adding a map button',
   state.placeholder === 'Search the map…' && state.title === 'Find a place'
     && state.mapChoiceGone && /search or tap the map/i.test(state.hint)
     && /trip will not change yet/i.test(state.hint) && state.useLocationHidden
-    && state.focused !== 'placeSearch' && state.pickerAnimation === 'place-picker-enter',
+    && state.focused !== 'placeSearch' && state.pickerAnimation === 'place-picker-enter'
+    && state.pickerAnimationDuration >= 0.3,
   JSON.stringify(state));
 check('the open search panel stacks above every map control',
   state.toolbarZ > state.mapControlsZ, JSON.stringify(state));
@@ -184,6 +187,7 @@ check('choosing a targeted Destination assigns it directly and defaults Start to
 await page.click('#rb-start');
 state = await page.evaluate(() => ({
   available: !document.getElementById('useLoc').hidden,
+  label: document.getElementById('useLoc').textContent.trim(),
   inHeader: document.getElementById('useLoc').parentElement?.classList
     .contains('picker-head-actions'),
   beforeResults: Boolean(document.getElementById('placeSearch')
@@ -191,7 +195,8 @@ state = await page.evaluate(() => ({
     & Node.DOCUMENT_POSITION_FOLLOWING),
 }));
 check('Start keeps current location compact in the header and results below search',
-  state.available && state.inHeader && state.beforeResults, JSON.stringify(state));
+  state.available && state.label === '⌖Start from current location'
+    && state.inHeader && state.beforeResults, JSON.stringify(state));
 await page.evaluate(() => {
   getFreshDevicePosition = () => Promise.reject(new Error('GPS unavailable'));
 });

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.627';
+const APP_VERSION = '2026-08-08.628';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11572,7 +11572,7 @@ function flashEmptyRouteGuidance() {
     _routeGuidanceTimer = setTimeout(() => {
       message.classList.remove('route-guidance-flash');
       endpoints.classList.remove('route-guidance-flash');
-    }, 1700);
+    }, 2300);
   }));
 }
 

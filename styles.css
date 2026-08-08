@@ -257,12 +257,14 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-route-message.error strong { color: #9d2f25; }
 #routeCard .rc-route-message.error small { color: #76544f; }
 #routeCard .rc-route-message.route-guidance-flash strong {
-  animation: route-guidance-copy 1.55s ease-out;
+  border-radius: 6px;
+  animation: route-guidance-copy 2.15s ease-out;
 }
 @keyframes route-guidance-copy {
-  0%, 18% { color: #075f91; text-shadow: 0 0 0 rgba(58,161,215,0); }
-  40% { color: #034e78; text-shadow: 0 0 13px rgba(58,161,215,.7); }
-  100% { color: #304b5a; text-shadow: 0 0 0 rgba(58,161,215,0); }
+  0% { color: #304b5a; background: transparent; box-shadow: none; }
+  14%, 38% { color: #034e78; background: #d9f1fc; box-shadow: 0 0 0 5px rgba(44,157,213,.28); }
+  26%, 50% { color: #006fa9; background: #eef9fe; box-shadow: 0 0 0 2px rgba(44,157,213,.15); }
+  100% { color: #304b5a; background: transparent; box-shadow: none; }
 }
 #routeCard .rc-main { display: grid; justify-items: center; gap: 1px; min-width: 0; color: #111; text-align: center; white-space: nowrap; }
 #routeCard .rc-distance { font: 700 18.5px/1.12 system-ui; white-space: nowrap; }
@@ -719,11 +721,12 @@ body.place-picker-open #topToolbar { z-index: 25; }
   background: #fff;
 }
 .route-endpoints.route-guidance-flash {
-  animation: route-guidance-border 1.55s ease-out;
+  animation: route-guidance-border 2.15s ease-out;
 }
 @keyframes route-guidance-border {
-  0%, 18% { border-color: #4aa9d8; box-shadow: 0 0 0 0 rgba(50,153,207,.55); }
-  42% { border-color: #1486c1; box-shadow: 0 0 0 5px rgba(50,153,207,.24); }
+  0% { border-color: #cbd6de; box-shadow: 0 0 0 0 rgba(25,142,200,0); }
+  14%, 38% { border-color: #057fbd; box-shadow: 0 0 0 7px rgba(25,142,200,.34); }
+  26%, 50% { border-color: #47acd9; box-shadow: 0 0 0 3px rgba(25,142,200,.17); }
   100% { border-color: #cbd6de; box-shadow: 0 0 0 0 rgba(50,153,207,0); }
 }
 .route-endpoints::before {
@@ -1020,10 +1023,11 @@ body.navigation-active #routeBar { display: none; }
   border: 1px solid #e1e5e9; border-radius: 12px; background: rgba(255,255,255,.98);
   box-shadow: 0 5px 18px rgba(0,0,0,.2); color: #222;
 }
-.place-picker:not([hidden]) { animation: place-picker-enter .2s cubic-bezier(.2,.75,.25,1); }
+.place-picker:not([hidden]) { animation: place-picker-enter .32s cubic-bezier(.16,1,.3,1); }
 @keyframes place-picker-enter {
-  from { opacity: 0; transform: translateY(-8px) scale(.985); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; transform: translateY(-18px) scale(.95); box-shadow: 0 16px 36px rgba(0,0,0,.34); }
+  72% { opacity: 1; transform: translateY(1px) scale(1.005); }
+  to { opacity: 1; transform: none; box-shadow: 0 5px 18px rgba(0,0,0,.2); }
 }
 .picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 1px; font-size: 13px; }
 .picker-head-actions { display: flex; align-items: center; gap: 5px; margin-left: auto; }
@@ -1036,7 +1040,7 @@ body.navigation-active #routeBar { display: none; }
 .picker-hint.location-error .picker-hint-icon { background: #c55232; }
 .picker-search-row { display: flex; gap: 5px; }
 .picker-search-row #placeSearch { flex: 1; min-width: 0; }
-#routeBar #useLoc { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 30px; margin: 0; padding: 4px 8px; border: 1px solid #b8d2e2; border-radius: 8px; background: #edf7fc; color: #075f91; white-space: nowrap; font: 780 10.5px system-ui; cursor: pointer; }
+#routeBar #useLoc { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 30px; margin: 0; padding: 4px 8px; border: 1px solid #9fc9df; border-radius: 8px; background: #e5f5fc; color: #075f91; white-space: nowrap; font: 790 10px system-ui; cursor: pointer; }
 #routeBar #useLoc:focus-visible { outline: 3px solid #75bdf4; outline-offset: 1px; }
 #routeBar #useLoc[hidden] { display: none; }
 #useLoc span:first-child { font-size: 15px; line-height: 1; }
