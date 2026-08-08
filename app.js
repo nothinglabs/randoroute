@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.622';
+const APP_VERSION = '2026-08-07.623';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7986,10 +7986,13 @@ function moveVia(via, offset) {
   routing.vias.splice(from, 1);
   routing.vias.splice(to, 0, via);
   regenerateRoutesAfterWaypointChange();
+  const canRoute = Array.isArray(routing.start) && Array.isArray(routing.end);
   computeRoute();
   updateArmButtons();
-  showRouteActionToast(`Stop moved to position ${to + 1} · recalculating…`, {
-    busy: true, duration: 0,
+  showRouteActionToast(canRoute
+    ? `Stop moved to position ${to + 1} · recalculating…`
+    : `Stop moved to position ${to + 1} · choose a start to route`, {
+    busy: canRoute, duration: canRoute ? 0 : 2600,
   });
   saveStateSoon();
   return true;
@@ -8004,8 +8007,13 @@ function removeVia(via) {
   if (routing.arm === 'via') routing.arm = null;
   updateArmButtons();
   regenerateRoutesAfterWaypointChange();
+  const canRoute = Array.isArray(routing.start) && Array.isArray(routing.end);
   computeRoute();
-  showRouteActionToast('Stop removed · recalculating…', { busy: true, duration: 0 });
+  showRouteActionToast(canRoute
+    ? 'Stop removed · recalculating…'
+    : 'Stop removed · choose a start to route', {
+    busy: canRoute, duration: canRoute ? 0 : 2600,
+  });
   saveStateSoon();
 }
 

@@ -98,6 +98,54 @@ await page.locator('[data-via-index="1"] .route-stop-up').click();
 check('moving the stop back restores the original route order', await page.evaluate(() =>
   routing.vias.map((via) => via.name).join('|') === 'Mukilteo|Point on map'));
 
+const incompleteMove = await page.evaluate(() => {
+  clearRoute();
+  routing.end = [-122.4443, 47.2529];
+  routing.endName = 'Tacoma';
+  routing.startDefaultsToDevice = false;
+  addVia({ lng: -122.36, lat: 47.16 }, { name: '104th Street East' });
+  addVia({ lng: -122.41, lat: 47.10 }, { name: 'Gem Heights Drive East' });
+  moveVia(routing.vias[0], 1);
+  const toast = document.getElementById('routeActionToast');
+  const moved = {
+    order: routing.vias.map((via) => via.name),
+    text: document.getElementById('routeActionText').textContent,
+    busy: toast.classList.contains('busy'),
+    hidden: toast.hidden,
+    routeActive: routing.routeRequestActive,
+  };
+  removeVia(routing.vias[0]);
+  return {
+    moved,
+    removed: {
+      text: document.getElementById('routeActionText').textContent,
+      busy: toast.classList.contains('busy'),
+      hidden: toast.hidden,
+      routeActive: routing.routeRequestActive,
+    },
+  };
+});
+check('moving a stop before Start is set confirms the edit without a permanent routing spinner',
+  incompleteMove.moved.order.join('|') === 'Gem Heights Drive East|104th Street East'
+    && /choose a start to route/i.test(incompleteMove.moved.text)
+    && !incompleteMove.moved.busy && !incompleteMove.moved.hidden
+    && !incompleteMove.moved.routeActive,
+  JSON.stringify(incompleteMove));
+check('removing a stop before Start is set also avoids a permanent routing spinner',
+  /choose a start to route/i.test(incompleteMove.removed.text)
+    && !incompleteMove.removed.busy && !incompleteMove.removed.hidden
+    && !incompleteMove.removed.routeActive,
+  JSON.stringify(incompleteMove.removed));
+
+// Restore the ordinary complete itinerary for the remaining interaction tests.
+await page.evaluate(() => {
+  clearRoute();
+  setRoutePoint('start', { lng: -122.335, lat: 47.61 }, 'Seattle');
+  setRoutePoint('end', { lng: -122.76, lat: 48.12 }, 'Port Townsend');
+  addVia({ lng: -122.305, lat: 47.95 }, { name: 'Mukilteo' });
+  addVia({ lng: -122.48, lat: 48.03 }, { name: 'Point on map' });
+});
+
 await page.locator('#rb-reverse').click();
 check('Reverse swaps endpoints and reverses stop order', await page.evaluate(() =>
   routing.startName === 'Port Townsend' && routing.endName === 'Seattle'
