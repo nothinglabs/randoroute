@@ -209,7 +209,8 @@ check('search is generic and offers internet search as the final result',
   genericSearch.title === 'Find a place'
     && genericSearch.last.startsWith('Search with internet')
     && genericOpened.title === 'Find a place'
-    && /trip will not change yet/i.test(genericOpened.hint)
+    && /search for a place/i.test(genericOpened.hint)
+    && !/tap the map|trip/i.test(genericOpened.hint)
     && genericOpened.focused !== 'placeSearch', JSON.stringify({ genericOpened, genericSearch }));
 
 const routeBeforeSearchChoice = await page.evaluate(() => JSON.stringify({

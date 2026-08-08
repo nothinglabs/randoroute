@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.635';
+const APP_VERSION = '2026-08-08.636';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9284,7 +9284,8 @@ function setPlacePickerHint(kind = 'map', message = '') {
   const icon = document.createElement('span');
   icon.className = 'picker-hint-icon';
   icon.setAttribute('aria-hidden', 'true');
-  icon.textContent = kind === 'location-error' ? '!' : kind === 'internet' ? '◎' : '⌖';
+  icon.textContent = kind === 'location-error' ? '!' : kind === 'internet' ? '◎'
+    : placeSearchTarget ? '⌖' : '⌕';
   const copy = document.createElement('span');
   if (kind === 'map') {
     const lead = document.createElement('strong');
@@ -9295,8 +9296,8 @@ function setPlacePickerHint(kind = 'map', message = '') {
       lead.textContent = 'Tap the map to set your destination';
       copy.append(lead, document.createTextNode(', or search for it.'));
     } else {
-      lead.textContent = 'Search or tap the map.';
-      copy.append(lead, document.createTextNode(' Your trip will not change yet.'));
+      lead.textContent = 'Search for a place.';
+      copy.append(lead);
     }
   } else if (kind === 'location-error') {
     const lead = document.createElement('strong');
@@ -9336,11 +9337,11 @@ function openPlaceSearch(target = null) {
   document.getElementById('useLoc').hidden = placeSearchTarget !== 'start';
   const searchInput = document.getElementById('placeSearch');
   searchInput.placeholder = placeSearchTarget === 'start' ? 'Search for a start…'
-    : placeSearchTarget === 'end' ? 'Search for a destination…' : 'Search the map…';
+    : placeSearchTarget === 'end' ? 'Search for a destination…' : 'Search for a place…';
   searchInput.value = '';
   searchInput.classList.remove('current-endpoint-preview');
   searchInput.setAttribute('aria-label', placeSearchTarget === 'start' ? 'Search for a route start'
-    : placeSearchTarget === 'end' ? 'Search for a route destination' : 'Find a place on the map');
+    : placeSearchTarget === 'end' ? 'Search for a route destination' : 'Search for a place');
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   setUseLocationBusy(false);
@@ -9353,7 +9354,7 @@ function openPlaceSearch(target = null) {
   document.body.classList.add('place-picker-open');
   setRouteStatus(placeSearchTarget
     ? `Search or tap the map to set your ${targetLabel}`
-    : 'Find a place without changing your trip');
+    : 'Search for a place');
   // On a phone the keyboard obscures most of the map, including the location
   // the rider may be trying to tap. Open the on-map chooser first and wait for
   // an explicit tap on the search field. A desktop keyboard remains the

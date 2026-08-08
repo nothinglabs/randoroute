@@ -228,10 +228,11 @@ state = await page.evaluate(() => ({
   toolbarZ: Number(getComputedStyle(document.getElementById('topToolbar')).zIndex),
   mapControlsZ: Number(getComputedStyle(document.querySelector('.maplibregl-ctrl-top-right')).zIndex),
 }));
-check('generic search tells riders to tap the map without adding a map button',
-  state.placeholder === 'Search the map…' && state.title === 'Find a place'
-    && state.mapChoiceGone && /search or tap the map/i.test(state.hint)
-    && /trip will not change yet/i.test(state.hint) && state.useLocationHidden
+check('generic Find is explicitly search-focused without route or map-tap copy',
+  state.placeholder === 'Search for a place…' && state.title === 'Find a place'
+    && state.mapChoiceGone && /search for a place/i.test(state.hint)
+    && !/tap the map|trip/i.test(state.hint)
+    && state.useLocationHidden
     && state.focused !== 'placeSearch' && state.pickerAnimation === 'place-picker-enter'
     && state.pickerAnimationDuration >= 0.5 && state.openedFrom === 'find',
   JSON.stringify(state));
