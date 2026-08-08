@@ -23,5 +23,11 @@ assert.match(nativeController, /pinchGestureRecognizer\?\.isEnabled = false/,
   'WKWebView native page pinch must be disabled');
 assert.ok(!app.includes('touchZoomRotate?.disable') && !app.includes('touchZoomRotate.disable'),
   'MapLibre map pinch must remain enabled');
+assert.match(app, /minZoom:\s*5/,
+  'the Washington map must not zoom out into a memory-heavy continent view');
+assert.match(app, /map\.on\('zoomstart', \(\) => trimRouterCachesSoon\(\)\)/,
+  'map zoom must release disposable phone routing caches before widening the tile set');
+assert.match(app, /m\.type === 'route-options'[\s\S]*?trimRouterCachesSoon\(\)/,
+  'a completed phone route must release its disposable search caches');
 
 console.log('Page zoom lock tests passed; map pinch remains enabled.');

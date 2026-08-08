@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.621';
+const APP_VERSION = '2026-08-07.622';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1096,6 +1096,10 @@ if (COARSE_POINTER) map.doubleClickZoom.disable();
 // during wheel, touch, keyboard, and programmatic zooms without rebuilding
 // feature filters in JavaScript.
 map.on('moveend', saveStateSoon);
+// On a phone, a completed route can leave hundreds of megabytes of reusable
+// worker caches alive. Give those back before MapLibre widens its tile set;
+// the graph, displayed routes, and the worker's More-route geometries remain.
+map.on('zoomstart', () => trimRouterCachesSoon());
 // MapLibre's control probes the browser geolocation stack as soon as it is
 // added. In WKWebView that can raise iOS's permission sheet even though the
 // native location plugin is deliberately waiting for an explicit rider
@@ -2716,6 +2720,20 @@ const routing = {
   sharedActive: false,
   sharedLoading: false,
 };
+
+let routerCacheTrimTimer = null;
+let routerCacheTrimId = 0;
+function trimRouterCachesSoon(delay = 0) {
+  if (!isConstrainedDevice() || !routing.worker || !routing.ready
+      || routing.loading || routing.pendingRoute || routing.routeRequestActive) return;
+  clearTimeout(routerCacheTrimTimer);
+  routerCacheTrimTimer = setTimeout(() => {
+    routerCacheTrimTimer = null;
+    if (!routing.worker || !routing.ready || routing.loading
+        || routing.pendingRoute || routing.routeRequestActive) return;
+    routing.worker.postMessage({ type: 'trim-caches', id: ++routerCacheTrimId });
+  }, Math.max(0, Number(delay) || 0));
+}
 
 function setRouteStatus(t) {
   for (const id of ['route-status', 'rb-status']) {
@@ -6143,10 +6161,16 @@ function refreshedRouteSelection(options) {
 
 function onRouterMessage(ev) {
   const m = ev.data;
-  if (m.type === 'route-connector') {
+  if (m.type === 'trimmed') {
+    // Exposed for field diagnosis and browser regression tests. It contains
+    // counts only -- no route, location, or graph data.
+    document.body.dataset.routerCacheTrim = JSON.stringify(m);
+  } else if (m.type === 'route-connector') {
     activateNavigationConnector(m);
+    trimRouterCachesSoon();
   } else if (m.type === 'navigation-new-route') {
     activateNewRouteFromCurrentLocation(m);
+    trimRouterCachesSoon();
   } else if (m.type === 'progress') {
     if (m.id != null && m.id !== routing.reqId) return;
     const title = m.phase === 'engine' ? 'Loading routing engine'
@@ -6206,6 +6230,7 @@ function onRouterMessage(ev) {
       return;
     }
     routing.routeRequestActive = false;
+    trimRouterCachesSoon();
     document.body.dataset.routeOptionsMs = String(Math.round(Number(m.ms) || 0));
     // The per-phase breakdown, for diagnosing a slow platform: which phase
     // ate the time is the fact that matters, and it cannot be reconstructed
@@ -6301,6 +6326,7 @@ function onRouterMessage(ev) {
   } else if (m.type === 'route') {
     if (m.id !== routing.reqId) return; // stale reply
     routing.routeRequestActive = false;
+    trimRouterCachesSoon();
     setRouteOptionsLoading(false);
     if (!m.ok) {
       showRouteActionToast('Could not calculate that route', { duration: 2600 });

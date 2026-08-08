@@ -1425,13 +1425,13 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
 const COST_CACHE_SLOTS = 17;
 // A constrained device (the app decides and says so via a 'configure'
 // message) gets hard caps on every large cache instead of the full working
-// set. Field: an iPhone's startup -- which auto-computes the saved trip and
-// so allocates EVERY cache in one burst, on top of the map renderer -- began
-// crash-looping ("a problem repeatedly occurred") once the caches grew to
-// ~400 MB. Caps trade warm-repeat speed for surviving startup: an evicted
+// set. Field: an iPhone can have the 142 MB graph, roughly 55 MB of permanent
+// indexes/search state, 300+ MB of reusable routing caches, and MapLibre's
+// statewide tiles alive at once. Zooming out is then enough for WebKit to kill
+// the page. Caps trade warm-repeat speed for surviving the request: an evicted
 // config is re-derived in a few seconds; a killed page loses everything.
-// Caps only bound NEW allocation; they never free existing slots, so a
-// mid-session 'configure' cannot invalidate a slot a search is using.
+// They only bound NEW allocation. `trimRoutingCaches` below releases existing
+// reusable slots at a request/renderer boundary, never while a search uses one.
 let costSlotCap = COST_CACHE_SLOTS;
 let floorSlotCap = FLOOR_SLOTS;
 let potentialCap = 12;  // mirrors POTENTIAL_CACHE_MAX, declared below
@@ -3518,6 +3518,60 @@ function refineFerrySeed(seed, raw, rules, forceDesig, forceResidential, searchR
 let lastCandidates = null;
 let lastCandidatesKey = null;
 
+// A route result needs the graph and `lastCandidates`: the latter supplies
+// full geometry when the rider opens More. Everything else below is a
+// disposable acceleration cache. Drop those large arrays after a phone has
+// its answer, and again before a low-zoom tile burst, so routing and rendering
+// do not compete for the same WebKit memory ceiling. References are cleared as
+// one worker message, after the current search has returned; GC can therefore
+// reclaim them without invalidating live search locals or changing an answer.
+function routingCacheStats() {
+  const costSlotCount = costCacheSlots.length;
+  const floorSlotCount = floorSlots.length;
+  const potentialEntries = potentialCache.size;
+  const verdictSlotCount = verdictSlots.filter((slot) => !!slot.cache).length;
+  const reusableBytes = costSlotCount * D * (4 + 4 + 1)
+    + floorSlotCount * 2 * E * 4
+    + potentialEntries * N * 2
+    + verdictSlotCount * 2 * E
+    + (incStart ? (N + 1 + 2 * E) * 4 : 0)
+    + (potentialWork ? N * (8 + 1) : 0);
+  return {
+    costSlots: costSlotCount,
+    floorSlots: floorSlotCount,
+    potentialEntries,
+    verdictSlots: verdictSlotCount,
+    incidence: !!incStart,
+    potentialWork: !!potentialWork,
+    reusableMiB: Math.round(reusableBytes / 104857.6) / 10,
+    limits: { cost: costSlotCap, floor: floorSlotCap, potential: potentialCap },
+  };
+}
+
+function trimRoutingCaches() {
+  const before = routingCacheStats();
+  // Cancel a chunked idle pre-warm before releasing the arrays it would refill.
+  prewarmToken++;
+  costCacheSlots.length = 0;
+  floorSlots.length = 0;
+  floorValues = null;
+  floorKey = '';
+  floorSetup = null;
+  potentialCache.clear();
+  potentialWork = null;
+  potentialSettled = null;
+  incStart = null;
+  incEdge = null;
+  for (const slot of verdictSlots) {
+    slot.cache = null;
+    slot.generation = 1;
+    slot.rules = null;
+    slot.key = null;
+    slot.noShoulderMax = 0;
+  }
+  return { before, after: routingCacheStats(), candidatesRetained: !!lastCandidates };
+}
+
 function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false,
     progress = null, requestSignature = null, pinned = null,
     mainWeights = null, lensWeights = null) {
@@ -4060,19 +4114,18 @@ onmessage = (ev) => {
       // comment at COST_CACHE_SLOTS: a phone survives startup by holding
       // fewer slots and re-deriving evicted configs instead.
       if (m.constrained) {
-        // Only the arc-cost slots stay capped. Floors and potentials came
-        // back once v.595 stopped the service worker pinning whole archives:
-        // ~70 MB total for the moved-pin re-search win (measured: potentials
-        // fell from ~10 s to ~2 s of a moved-pin request in the container).
-        // The cost cap is the honest stability trade that remains: 8 slots
-        // under a 16-key working set is sequential LRU, so cross-request
-        // reuse is nil and a LONG trip's repeat re-derives its corridor's
-        // arc costs each time (~3x slower than uncapped on Everett; short
-        // trips barely notice). Lifting it means +174 MB on a phone --
-        // roughly the entire headroom the v.595 fix freed -- so it stays
-        // until stability has soaked long enough to spend that deliberately.
-        costSlotCap = Math.min(costSlotCap, 8);
+        // Two cost/floor configurations cover the adaptive search's hot pair;
+        // three compact potentials cover the main modes. The previous 8/8/12
+        // limits could retain roughly 300 MB of reusable arrays after one
+        // portfolio. These limits keep the request's peak about 200 MB lower,
+        // at the cost of rebuilding cold profiles instead of risking a page
+        // kill. Desktop keeps the full latency-oriented working set.
+        costSlotCap = Math.min(costSlotCap, 2);
+        floorSlotCap = Math.min(floorSlotCap, 2);
+        potentialCap = Math.min(potentialCap, 3);
       }
+    } else if (m.type === 'trim-caches') {
+      postMessage({ type: 'trimmed', id: m.id, ...trimRoutingCaches() });
     } else if (m.type === 'prewarm') {
       useWeights(m.weights);
       // The full working set: the 3-mode x 4-preference grid, then the three
