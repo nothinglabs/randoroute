@@ -66,8 +66,8 @@ const visible = await pg.evaluate(() => {
 check('weights item is on screen and a real menu target',
   visible.onScreen && visible.insideMenu && visible.w >= 180 && visible.h >= 40,
   JSON.stringify(visible));
-check('the compact menu contains only Swap and Weights with no floating controls',
-  visible.menuItems.join('|') === 'Swap start & destination|Routing weights'
+check('the compact menu includes updates but no Help or floating controls',
+  visible.menuItems.join('|') === 'Swap start & destination|Routing weights|Check for updates'
     && visible.helpRemoved && visible.noFloatingControl,
   JSON.stringify(visible));
 

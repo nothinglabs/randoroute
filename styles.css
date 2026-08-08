@@ -940,6 +940,7 @@ body.route-more-open #topToolbar { z-index: 25; }
 #routeBar .route-more-item + .route-more-item { border-top: 1px solid #e5ebef; border-radius: 0 0 8px 8px; }
 #routeBar .route-more-item svg { justify-self: center; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .route-more-symbol { justify-self: center; font: 800 18px/1 system-ui; }
+.route-update-symbol { font-size: 21px; }
 #routeBar #appWeightsBtn[hidden] { display: none; }
 #routeBar #appWeightsBtn.tuned { background: #fff6e4; color: #96590a; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }

@@ -116,6 +116,40 @@ await page.evaluate(() => {
 });
 
 state = await page.evaluate(async () => {
+  const realFetch = window.fetch;
+  let requestedUrl = '';
+  window.fetch = (input, options) => {
+    const url = String(input);
+    if (url.includes('nothinglabs.github.io/randoroute/version.json')) {
+      requestedUrl = url;
+      return Promise.resolve(new Response(JSON.stringify({ version: APP_VERSION }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      }));
+    }
+    return realFetch(input, options);
+  };
+  try {
+    document.getElementById('routeUpdateBtn').click();
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const text = document.getElementById('routeActionText')?.textContent || '';
+      if (/latest version/i.test(text)) {
+        return { text, requestedUrl, disabled: document.getElementById('routeUpdateBtn').disabled };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return { text: document.getElementById('routeActionText')?.textContent || '', requestedUrl };
+  } finally {
+    window.fetch = realFetch;
+  }
+});
+check('the native trip menu checks the published build and reports the result',
+  /latest version/i.test(state.text)
+    && state.requestedUrl.includes('nothinglabs.github.io/randoroute/version.json')
+    && !state.disabled,
+  JSON.stringify(state));
+await page.evaluate(() => showRouteActionToast(''));
+
+state = await page.evaluate(async () => {
   const realGetDevicePosition = getDevicePosition;
   let attempts = 0;
   const startedAt = Date.now();

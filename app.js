@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.634';
+const APP_VERSION = '2026-08-08.635';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11799,9 +11799,7 @@ function syncGraphVersionLine() {
 syncGraphVersionLine();
 const nativeAppVersionOnly = isNativeAppRuntime();
 if (nativeAppVersionOnly) {
-  document.getElementById('checkUpdatesBtn').hidden = true;
   document.getElementById('iosAppVersionLabel').hidden = false;
-  document.getElementById('updateCheckStatus').hidden = true;
 }
 document.getElementById('techDetailsBtn').addEventListener('click', () => openHelp('technical'));
 // The weights panel is reachable from the trip overflow and Settings > Advanced.
@@ -11972,13 +11970,18 @@ document.getElementById('updateLaterBtn').addEventListener('click', () => {
 });
 setupAutomaticUpdates();
 
-// Manual "Check for updates" in the help dialog. Wired independently of
-// setupAutomaticUpdates so a slow or stalled service-worker registration
-// never leaves the button dead.
+// Manual "Check for updates" from Help or the trip menu. Wired independently
+// of setupAutomaticUpdates so a slow or stalled service-worker registration
+// never leaves either button dead.
 async function publishedAppVersion() {
   // The unique query is deliberate: an older cache-first service worker will
   // miss this URL and retrieve the current release marker from the network.
-  const response = await fetch(`./version.json?update-check=${Date.now()}`, {
+  // Native assets are bundled, so their local marker can never report a newer
+  // build; ask the published app directly instead.
+  const base = nativeAppVersionOnly
+    ? 'https://nothinglabs.github.io/randoroute/version.json'
+    : './version.json';
+  const response = await fetch(`${base}?update-check=${Date.now()}`, {
     cache: 'no-store',
   });
   if (!response.ok) throw new Error(`version check failed (${response.status})`);
@@ -12021,13 +12024,25 @@ function settledUpdateWorker(reg, timeoutMs = 12000, stepMs = 400) {
   });
 }
 
-document.getElementById('checkUpdatesBtn').addEventListener('click', async () => {
-  if (nativeAppVersionOnly) return;
-  const btn = document.getElementById('checkUpdatesBtn');
+function setManualUpdateStatus(text, { busy = false, duration = 4200 } = {}) {
   const status = document.getElementById('updateCheckStatus');
-  btn.disabled = true;
-  status.textContent = 'Checking…';
+  status.textContent = text;
+  showRouteActionToast(text, { busy, duration: busy ? 0 : duration });
+}
+
+async function runManualUpdateCheck() {
+  const buttons = [document.getElementById('checkUpdatesBtn'),
+    document.getElementById('routeUpdateBtn')].filter(Boolean);
+  buttons.forEach((button) => { button.disabled = true; });
+  setManualUpdateStatus('Checking for updates…', { busy: true });
   try {
+    if (nativeAppVersionOnly) {
+      const publishedVersion = await publishedAppVersion();
+      setManualUpdateStatus(publishedVersion === APP_VERSION
+        ? `You have the latest version (v${APP_VERSION}).`
+        : `A newer iOS build is available (v${publishedVersion}).`);
+      return;
+    }
     let reg = await Promise.race([
       window.__swReady,
       new Promise((resolve) => setTimeout(resolve, 8000)),
@@ -12042,7 +12057,7 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
       // deferral, a rider who once tapped "Not now" got "Update ready." as
       // dead-end text with no button anywhere -- ready how? do what?
       deferredUpdateWorker = null;
-      status.textContent = 'Update ready — tap “Restart to update”.';
+      setManualUpdateStatus('Update ready — tap “Restart to update”.');
       offerUpdate(reg.waiting);
       document.getElementById('helpDialog')?.close();
       return;
@@ -12055,10 +12070,10 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
     // changed without the marker moving.
     if (publishedVersion === APP_VERSION) {
       reg.update().catch(() => {});
-      status.textContent = `You have the latest version (v${APP_VERSION}).`;
+      setManualUpdateStatus(`You have the latest version (v${APP_VERSION}).`);
       return;
     }
-    status.textContent = `Version v${publishedVersion} found — fetching it…`;
+    setManualUpdateStatus(`Version v${publishedVersion} found — fetching it…`, { busy: true });
     // Revalidate the worker script at its real URL first. Safari can hold
     // sw.js in the HTTP cache, and reg.update() then byte-compares the new
     // release against that stale copy, concludes nothing changed, and reports
@@ -12069,7 +12084,7 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
     } catch { /* offline; reg.update() will fail the same way and be reported */ }
     const updateWorker = waitForUpdateWorker(reg);
     await reg.update();
-    status.textContent = `Version v${publishedVersion} found — installing…`;
+    setManualUpdateStatus(`Version v${publishedVersion} found — installing…`, { busy: true });
     // reg.update() resolving does not guarantee the new worker has appeared on
     // the registration yet, and a phone on a slow connection routinely needs
     // longer than one event turn. Poll rather than read once.
@@ -12084,7 +12099,7 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
     const fresh = reg.waiting || reg.installing || await updateWorker
       || await settledUpdateWorker(reg);
     if (fresh) {
-      status.textContent = 'Update found — installing…';
+      setManualUpdateStatus('Update found — installing…', { busy: true });
       if (reg.waiting) offerUpdate(reg.waiting);
       else fresh.addEventListener('statechange', () => {
         if (fresh.state === 'installed') offerUpdate(fresh);
@@ -12093,21 +12108,24 @@ document.getElementById('checkUpdatesBtn').addEventListener('click', async () =>
       // "Get update?" banner is visible.
       document.getElementById('helpDialog')?.close();
     } else if (publishedVersion !== APP_VERSION) {
-      status.textContent = `Version v${publishedVersion} is published but has not reached this device yet.`
+      setManualUpdateStatus(`Version v${publishedVersion} is published but has not reached this device yet.`
         + ' A release can take a couple of minutes to propagate. Try again shortly,'
-        + ' or fully close and reopen the app.';
+        + ' or fully close and reopen the app.', { duration: 6500 });
     } else {
-      status.textContent = `You have the latest version (v${APP_VERSION}).`;
+      setManualUpdateStatus(`You have the latest version (v${APP_VERSION}).`);
     }
   } catch (e) {
-    status.textContent = 'Could not check right now — make sure you are online and try again.';
+    setManualUpdateStatus('Could not check right now — make sure you are online and try again.');
   } finally {
     // In a finally, because the quick answers above return early: without it
     // the button re-enabled only on the slow path, so the first check left it
     // dead for the rest of the session.
-    btn.disabled = false;
+    buttons.forEach((button) => { button.disabled = false; });
   }
-});
+}
+
+document.getElementById('checkUpdatesBtn').addEventListener('click', runManualUpdateCheck);
+document.getElementById('routeUpdateBtn').addEventListener('click', runManualUpdateCheck);
 
 
 

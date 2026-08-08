@@ -89,23 +89,28 @@ check('the worker is registered at a stable url', installed.active === 'sw.js',
   `registered as ${installed.active}`);
 
 /* -------------------------------------------- checking with nothing to get */
-const answer = async () => page.evaluate(async () => {
+const answer = async (buttonId = 'checkUpdatesBtn') => page.evaluate(async (id) => {
   document.getElementById('helpDialog')?.showModal?.();
   const status = document.getElementById('updateCheckStatus');
   status.textContent = '';
-  document.getElementById('checkUpdatesBtn').click();
+  document.getElementById(id).click();
   const started = performance.now();
   while (performance.now() - started < 60000) {
     const text = status.textContent || '';
-    if (text && text !== 'Checking…') return { text, ms: Math.round(performance.now() - started) };
+    if (text && !text.startsWith('Checking')) return {
+      text,
+      toast: document.getElementById('routeActionText')?.textContent || '',
+      ms: Math.round(performance.now() - started),
+    };
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   return { text: status.textContent || '(nothing)', ms: -1 };
-});
-const first = await answer();
-check('an up-to-date check answers promptly', first.ms >= 0 && first.ms < 5000,
+}, buttonId);
+const first = await answer('routeUpdateBtn');
+check('the trip-menu update check answers promptly', first.ms >= 0 && first.ms < 5000,
   `${first.ms} ms: "${first.text}"`);
-check('and says so', /latest version/i.test(first.text), first.text);
+check('and reports the result without opening Help',
+  /latest version/i.test(first.text) && first.toast === first.text, first.text);
 // The button re-enables on every path, including the quick ones. It used to
 // re-enable only on the slow path, so the first check left it dead.
 const second = await answer();

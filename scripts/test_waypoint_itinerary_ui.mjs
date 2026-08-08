@@ -140,9 +140,9 @@ const moreMenu = await page.evaluate(() => ({
   helpRemoved: !document.getElementById('appHelpBtn'),
   weightsRemovedFromMap: document.getElementById('appWeightsBtn').closest('#routeMoreMenu') !== null,
 }));
-check('Trip options contains only Swap and Weights',
+check('Trip options contains Swap, Weights, and the update check',
   moreMenu.visible && moreMenu.expanded === 'true'
-    && moreMenu.items.join('|') === 'Swap start & destination|Routing weights'
+    && moreMenu.items.join('|') === 'Swap start & destination|Routing weights|Check for updates'
     && moreMenu.saveRestoredToPanel && moreMenu.helpRemoved && moreMenu.weightsRemovedFromMap,
   JSON.stringify(moreMenu));
 await page.locator('#rb-reverse').click();
