@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Destination is chosen first. Start appears afterwards, while generic search
-// previews a place and endpoint-triggered search assigns it immediately.
+// Start and Destination are always visible. Generic search previews a place,
+// endpoint-triggered search assigns it immediately, and stops have no manual
+// ordering controls.
 import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const site = await serveRepo();
@@ -21,7 +22,7 @@ const initial = await page.evaluate(() => {
   routing.ready = true;
   routing.loading = false;
   const blank = {
-    startHidden: document.querySelector('.route-endpoint-start-row').hidden,
+    startVisible: !document.querySelector('.route-endpoint-start-row').hidden,
     destinationVisible: !document.querySelector('.route-endpoint-end-row').hidden,
     reorderGone: !document.getElementById('rb-reorder')
       && !document.getElementById('reorderRouteDialog'),
@@ -56,16 +57,16 @@ const initial = await page.evaluate(() => {
     searchBox: { width: Math.round(search.width), height: Math.round(search.height) },
   };
 });
-check('a blank planner shows Destination first and hides Start and all reordering UI',
-  initial.blank.startHidden && initial.blank.destinationVisible && initial.blank.reorderGone
+check('a blank planner always shows Start and Destination without legacy reordering UI',
+  initial.blank.startVisible && initial.blank.destinationVisible && initial.blank.reorderGone
     && initial.blank.reverseHidden,
   JSON.stringify(initial.blank));
 check('the main card shows start, named stops, and destination in trip order',
   initial.itinerary.join(' | ') === 'From Seattle | Stop 1 Mukilteo | Stop 2 Point on map | To Port Townsend',
   JSON.stringify(initial.itinerary));
-check('two stops get inline order arrows while endpoints and old route menus stay uncluttered',
+check('stops have no manual order controls while Reverse and delete remain available',
   initial.oldControlsGone && initial.endpointControls === 2
-    && initial.stopArrows === 4 && initial.endpointArrows === 0
+    && initial.stopArrows === 0 && initial.endpointArrows === 0
     && initial.reverseVisible, JSON.stringify(initial));
 check('map stop pins use the same itinerary numbers',
   initial.markerNumbers.join(',') === '1,2', JSON.stringify(initial.markerNumbers));
@@ -88,54 +89,27 @@ const shared = await page.evaluate(() => readSharedRoute(shareRouteUrl())?.route
 check('shared routes preserve stop order', shared?.join('|') === 'Mukilteo|Point on map',
   JSON.stringify(shared));
 
-await page.locator('[data-via-index="0"] .route-stop-down').click();
-check('a stop arrow moves it once and renumbers the visible itinerary', await page.evaluate(() =>
-  routing.vias.map((via) => via.name).join('|') === 'Point on map|Mukilteo'
-    && [...document.querySelectorAll('.route-stop-edit strong')].map((el) => el.textContent).join('|')
-      === 'Point on map|Mukilteo'
-    && document.querySelector('[data-via-index="0"] .route-stop-up').disabled));
-await page.locator('[data-via-index="1"] .route-stop-up').click();
-check('moving the stop back restores the original route order', await page.evaluate(() =>
-  routing.vias.map((via) => via.name).join('|') === 'Mukilteo|Point on map'));
-
-const incompleteMove = await page.evaluate(() => {
+const incompleteRemoval = await page.evaluate(() => {
   clearRoute();
   routing.end = [-122.4443, 47.2529];
   routing.endName = 'Tacoma';
   routing.startDefaultsToDevice = false;
   addVia({ lng: -122.36, lat: 47.16 }, { name: '104th Street East' });
   addVia({ lng: -122.41, lat: 47.10 }, { name: 'Gem Heights Drive East' });
-  moveVia(routing.vias[0], 1);
   const toast = document.getElementById('routeActionToast');
-  const moved = {
-    order: routing.vias.map((via) => via.name),
+  removeVia(routing.vias[0]);
+  return {
     text: document.getElementById('routeActionText').textContent,
     busy: toast.classList.contains('busy'),
     hidden: toast.hidden,
     routeActive: routing.routeRequestActive,
   };
-  removeVia(routing.vias[0]);
-  return {
-    moved,
-    removed: {
-      text: document.getElementById('routeActionText').textContent,
-      busy: toast.classList.contains('busy'),
-      hidden: toast.hidden,
-      routeActive: routing.routeRequestActive,
-    },
-  };
 });
-check('moving a stop before Start is set confirms the edit without a permanent routing spinner',
-  incompleteMove.moved.order.join('|') === 'Gem Heights Drive East|104th Street East'
-    && /choose a start to route/i.test(incompleteMove.moved.text)
-    && !incompleteMove.moved.busy && !incompleteMove.moved.hidden
-    && !incompleteMove.moved.routeActive,
-  JSON.stringify(incompleteMove));
 check('removing a stop before Start is set also avoids a permanent routing spinner',
-  /choose a start to route/i.test(incompleteMove.removed.text)
-    && !incompleteMove.removed.busy && !incompleteMove.removed.hidden
-    && !incompleteMove.removed.routeActive,
-  JSON.stringify(incompleteMove.removed));
+  /choose a start to route/i.test(incompleteRemoval.text)
+    && !incompleteRemoval.busy && !incompleteRemoval.hidden
+    && !incompleteRemoval.routeActive,
+  JSON.stringify(incompleteRemoval));
 
 // Restore the ordinary complete itinerary for the remaining interaction tests.
 await page.evaluate(() => {
@@ -275,7 +249,7 @@ check('endpoint and stop X buttons can delete every route item', await page.eval
   !routing.start && !routing.end && routing.vias.length === 0
     && document.querySelectorAll('.route-stop-row').length === 0
     && document.querySelectorAll('[data-endpoint-remove]:not([hidden])').length === 0
-    && document.querySelector('.route-endpoint-start-row').hidden));
+    && !document.querySelector('.route-endpoint-start-row').hidden));
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 

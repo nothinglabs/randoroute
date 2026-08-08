@@ -46,8 +46,8 @@ const compact = await page.evaluate(() => {
 check('a road tap shows only a short name and safety summary',
   compact.heading === 'Interurban Trail'
     && /Passes your rules|Bike network/.test(compact.summary), JSON.stringify(compact));
-check('Destination is the only route action before the trip has an endpoint',
-  compact.actions.join('|') === 'End', JSON.stringify(compact.actions));
+check('Start and End are both available before the trip has an endpoint',
+  compact.actions.join('|') === 'Start|End', JSON.stringify(compact.actions));
 check('technical rows exist but begin hidden behind Details',
   compact.detailsHidden && compact.tableHiddenInsideDetails, JSON.stringify(compact));
 check('a road tap remains a road-details card, not a searched-place card',

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-07.623';
+const APP_VERSION = '2026-08-07.624';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -6017,9 +6017,9 @@ function renderRouteCard(m) {
   if (!card) return;
   syncRouteDetailsWarningState(m);
   if (!m) {
-    // Map taps now always offer the route role that is currently missing, so
-    // the empty state can advertise the fastest alternative to search.
-    showRouteMessage(!routing.end ? 'Choose a destination' : 'Choose a start',
+    const missing = !routing.start && !routing.end ? 'Choose start and destination'
+      : !routing.start ? 'Choose a start' : 'Choose a destination';
+    showRouteMessage(missing,
       'Tap the map, or use search above.');
     return;
   }
@@ -7590,8 +7590,9 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
     routing.startDefaultsToDevice = false;
     defaultStartRequest++;
   } else if (firstDestination && !routing.start) {
-    // Destination comes first in the planner. Only after the rider chooses it
-    // do we reveal Start and resolve its one-time Current location default.
+    // If Destination is chosen while Start is still blank, resolve the
+    // one-time Current location default. Both endpoint rows remain visible;
+    // this is a convenience, not a required order of entry.
     routing.startDefaultsToDevice = true;
   }
   const mk = kind + 'Marker';
@@ -7901,14 +7902,6 @@ function renderRouteStops() {
       button.addEventListener('click', handler);
       return button;
     };
-    if (routing.vias.length > 1) {
-      actions.append(
-        action('route-stop-up', '↑', `Move stop ${index + 1} earlier`, index === 0,
-          () => moveVia(via, -1)),
-        action('route-stop-down', '↓', `Move stop ${index + 1} later`, index === routing.vias.length - 1,
-          () => moveVia(via, 1)),
-      );
-    }
     actions.append(
       action('route-stop-remove', '✕', `Remove stop ${index + 1}`, false, () => removeVia(via)),
     );
@@ -7974,26 +7967,6 @@ function updateVia(via, lngLat, name = 'Point on map') {
   regenerateRoutesAfterWaypointChange();
   computeRoute();
   updateArmButtons();
-  saveStateSoon();
-  return true;
-}
-
-function moveVia(via, offset) {
-  const from = routing.vias.indexOf(via);
-  const to = from + Number(offset);
-  if (from < 0 || to < 0 || to >= routing.vias.length || from === to) return false;
-  exitSharedRoute();
-  routing.vias.splice(from, 1);
-  routing.vias.splice(to, 0, via);
-  regenerateRoutesAfterWaypointChange();
-  const canRoute = Array.isArray(routing.start) && Array.isArray(routing.end);
-  computeRoute();
-  updateArmButtons();
-  showRouteActionToast(canRoute
-    ? `Stop moved to position ${to + 1} · recalculating…`
-    : `Stop moved to position ${to + 1} · choose a start to route`, {
-    busy: canRoute, duration: canRoute ? 0 : 2600,
-  });
   saveStateSoon();
   return true;
 }
@@ -8240,8 +8213,6 @@ function updateArmButtons() {
     const value = button.querySelector('[data-endpoint-value]');
     if (value) value.textContent = routeEndpointDisplayName(kind);
   }
-  const startRow = document.querySelector('.route-endpoint-start-row');
-  if (startRow) startRow.hidden = !routing.end;
   document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
     const kind = button.dataset.endpointRemove;
     button.hidden = !routing[kind]
@@ -10068,12 +10039,7 @@ function mapPointRouteActions(lngLat, routeName) {
       button.title = 'Pause navigation to edit the route';
     }
   }
-  if (!routing.end) {
-    routeActions.append(end);
-    routeActions.classList.add('one-action');
-  } else {
-    routeActions.append(start, end);
-  }
+  routeActions.append(start, end);
   if (routing.start && routing.end) {
     const canAddStop = !turnNav.active && routing.vias.length < MAX_ROUTE_STOPS;
     stop.disabled = !canAddStop;
@@ -10081,7 +10047,7 @@ function mapPointRouteActions(lngLat, routeName) {
       : canAddStop ? 'Add this point as a stop'
         : `Maximum of ${MAX_ROUTE_STOPS} stops reached`;
     routeActions.append(stop);
-  } else if (routing.end) {
+  } else {
     routeActions.classList.add('two-actions');
   }
   return routeActions;

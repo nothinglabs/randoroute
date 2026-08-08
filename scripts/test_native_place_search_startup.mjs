@@ -56,8 +56,9 @@ let state = await page.evaluate(() => ({
 }));
 check('an untouched native planner does not start the routing graph', state.workers === 0,
   JSON.stringify(state));
-check('the untouched planner asks for Destination before showing Start',
-  state.startHidden && state.destinationVisible && state.emptyMessage === 'Choose a destination',
+check('the untouched planner shows both endpoints and asks for both',
+  !state.startHidden && state.destinationVisible
+    && state.emptyMessage === 'Choose start and destination',
   JSON.stringify(state));
 check('the phone menu starts closed', !state.panelOpen, JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
@@ -86,7 +87,7 @@ state = await page.evaluate(() => ({
     .map((button) => button.textContent),
 }));
 check('tapping the map during generic search closes search and shows the normal route choice',
-  state.pickerHidden && state.readoutShown && state.actions.join('|') === 'End',
+  state.pickerHidden && state.readoutShown && state.actions.join('|') === 'Start|End',
   JSON.stringify(state));
 await page.click('#readout .readout-close');
 await page.click('#rb-search');
@@ -110,7 +111,7 @@ state = await page.evaluate(() => ({
 }));
 check('choosing a result previews it on the map without assigning a route role',
   state.workers === 0 && !state.start && !state.end && state.indicator === 1
-    && state.actions.join('|') === 'End', JSON.stringify(state));
+    && state.actions.join('|') === 'Start|End', JSON.stringify(state));
 await page.click('#readout .readout-close');
 
 await page.evaluate(() => { getFreshDevicePosition = () => new Promise(() => {}); });
@@ -155,7 +156,7 @@ state = await page.evaluate(() => ({
   promptShown: document.getElementById('readout').classList.contains('show'),
   indicator: document.querySelectorAll('.search-result-marker').length,
 }));
-check('choosing a targeted Destination assigns it directly and reveals Current location',
+check('choosing a targeted Destination assigns it directly and defaults Start to Current location',
   state.workers === 0 && !state.start && state.end && !state.startHidden
     && state.startLabel === 'Current location' && state.pickerHidden
     && !state.promptShown && state.indicator === 0, JSON.stringify(state));

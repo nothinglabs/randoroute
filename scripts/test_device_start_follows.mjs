@@ -63,8 +63,8 @@ const defaultStart = await page.evaluate(() => ({
   defaultsToDevice: routing.startDefaultsToDevice,
   removeVisible: !document.querySelector('[data-endpoint-remove="start"]')?.hidden,
 }));
-check('a blank planner shows only Destination and does not default or request Start yet',
-  !defaultStart.actual && defaultStart.rowHidden && defaultStart.destinationVisible
+check('a blank planner shows both endpoints without defaulting or requesting Start yet',
+  !defaultStart.actual && !defaultStart.rowHidden && defaultStart.destinationVisible
     && defaultStart.displayed === 'Choose start'
     && !defaultStart.defaultsToDevice && !defaultStart.removeVisible,
   JSON.stringify(defaultStart));
@@ -96,7 +96,7 @@ const revealedStart = await page.evaluate(() => {
     defaultsToDevice: routing.startDefaultsToDevice,
   };
 });
-check('choosing Destination reveals Start with a Current location default',
+check('choosing Destination fills the visible Start with a Current location default',
   !revealedStart.rowHidden && revealedStart.displayed === 'Current location'
     && revealedStart.defaultsToDevice, JSON.stringify(revealedStart));
 await page.waitForFunction(() => Boolean(routing.start), null, { timeout: 5000 });

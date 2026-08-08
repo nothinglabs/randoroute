@@ -116,7 +116,7 @@
     </button>
     <div id="routeBar">
       <div class="route-endpoints" role="group" aria-label="Trip itinerary">
-        <div class="route-endpoint-row route-endpoint-start-row" hidden>
+        <div class="route-endpoint-row route-endpoint-start-row">
           <button id="rb-start" class="route-endpoint route-endpoint-start" type="button" title="Set start">
             <span class="route-endpoint-marker" aria-hidden="true"></span>
             <span class="endpoint-copy"><span class="endpoint-label">From</span><strong data-endpoint-value>Choose start</strong></span>
@@ -125,7 +125,7 @@
             <button class="route-stop-action route-stop-remove route-endpoint-remove" type="button" data-endpoint-remove="start" aria-label="Remove start" title="Remove start" hidden>✕</button>
           </div>
         </div>
-        <div id="routeStops" class="route-stops" aria-label="Ordered stops"></div>
+        <div id="routeStops" class="route-stops" aria-label="Route stops"></div>
         <div class="route-endpoint-row route-endpoint-end-row">
           <button id="rb-end" class="route-endpoint route-endpoint-end" type="button" title="Set destination">
             <span class="route-endpoint-marker" aria-hidden="true"></span>
