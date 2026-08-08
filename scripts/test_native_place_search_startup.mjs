@@ -59,6 +59,9 @@ let state = await page.evaluate(() => ({
     .fontSize),
   emptyMessage: document.querySelector('.rc-route-message strong')?.textContent,
   panelOpen: document.body.classList.contains('panel-open'),
+  navigateDisabled: document.getElementById('navStartButton')?.disabled,
+  navigateNeedsEndpoints: document.getElementById('navStartButton')?.classList
+    .contains('route-needs-endpoints'),
 }));
 check('an untouched native planner does not start the routing graph', state.workers === 0,
   JSON.stringify(state));
@@ -72,6 +75,45 @@ check('the untouched planner shows both endpoints and asks for both',
 check('the phone menu starts closed', !state.panelOpen, JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
+check('Navigate remains tappable while the trip needs endpoints',
+  !state.navigateDisabled && state.navigateNeedsEndpoints, JSON.stringify(state));
+
+await page.click('#navStartButton');
+await page.waitForFunction(() => document.getElementById('rb-end')?.classList
+  .contains('navigation-guidance-flash'));
+state = await page.evaluate(() => ({
+  prompt: document.getElementById('routeActionText')?.textContent,
+  destinationCue: document.getElementById('rb-end')?.classList
+    .contains('navigation-guidance-flash'),
+  workers: window.__routingWorkerStarts.length,
+}));
+check('Navigate points to the missing destination instead of ignoring the tap',
+  state.prompt === 'Choose a destination to start navigating.'
+    && state.destinationCue && state.workers === 0,
+  JSON.stringify(state));
+
+await page.evaluate(() => {
+  routing.end = { lng: -122.33, lat: 47.61, label: 'Test destination' };
+  refreshNavigationUI();
+  document.getElementById('navStartButton').click();
+});
+await page.waitForFunction(() => document.getElementById('rb-start')?.classList
+  .contains('navigation-guidance-flash'));
+state = await page.evaluate(() => ({
+  prompt: document.getElementById('routeActionText')?.textContent,
+  startCue: document.getElementById('rb-start')?.classList
+    .contains('navigation-guidance-flash'),
+}));
+check('Navigate gives matching guidance when only the start is missing',
+  state.prompt === 'Choose a starting point before navigating.' && state.startCue,
+  JSON.stringify(state));
+await page.evaluate(() => {
+  routing.end = null;
+  refreshNavigationUI();
+  showRouteActionToast('');
+  document.querySelectorAll('.route-endpoint.navigation-guidance-flash')
+    .forEach((item) => item.classList.remove('navigation-guidance-flash'));
+});
 
 state = await page.evaluate(async () => {
   const realGetDevicePosition = getDevicePosition;

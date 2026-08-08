@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.632';
+const APP_VERSION = '2026-08-08.633';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4385,17 +4385,25 @@ document.getElementById('routeDetailsDialog')?.addEventListener('close', () => {
 function refreshNavigationUI() {
   const routeAvailable = !!(routing.last?.ok && routing.last.coords?.length > 1);
   const routeReady = routeAvailable && !routing.pendingRoute && !routing.routeRequestActive;
+  const routeNeedsEndpoints = !routing.start || !routing.end;
   document.body.classList.toggle('navigation-active', turnNav.active);
   const startButton = document.getElementById('navStartButton');
   if (startButton) {
-    startButton.disabled = turnNav.active ? false : !routeReady;
+    // Before a trip has both endpoints this remains a real button: tapping it
+    // explains the next required step and points at the corresponding field.
+    // It only becomes truly disabled during a calculation or after a route
+    // failure, when another tap cannot take a useful action.
+    startButton.disabled = turnNav.active ? false : !routeNeedsEndpoints && !routeReady;
     startButton.title = turnNav.active
       ? 'Stop navigation'
+      : !routing.end ? 'Choose a destination to navigate'
+      : !routing.start ? 'Choose a starting point to navigate'
       : !routeAvailable ? 'Set a route to navigate'
       : !routeReady ? 'Wait for the updated route'
       : 'Start turn-by-turn navigation';
     startButton.setAttribute('aria-pressed', String(turnNav.active));
     startButton.classList.toggle('navigating', turnNav.active);
+    startButton.classList.toggle('route-needs-endpoints', !turnNav.active && routeNeedsEndpoints);
   }
   const startLabel = document.getElementById('navStartLabel');
   if (startLabel) startLabel.textContent = turnNav.active ? 'Stop' : 'Navigate';
@@ -4417,6 +4425,29 @@ function refreshNavigationUI() {
   if (bannerText) bannerText.textContent = info.headline;
   if (bannerMeta) bannerMeta.textContent = info.meta;
   updateNavCard();
+}
+
+let navigationEndpointGuidanceTimer = null;
+function promptForNavigationEndpoint() {
+  const kind = !routing.end ? 'end' : !routing.start ? 'start' : null;
+  if (!kind) return false;
+  const message = kind === 'end'
+    ? 'Choose a destination to start navigating.'
+    : 'Choose a starting point before navigating.';
+  showRouteActionToast(message, { duration: 2600 });
+
+  const endpoint = document.getElementById(`rb-${kind}`);
+  if (!endpoint) return true;
+  clearTimeout(navigationEndpointGuidanceTimer);
+  document.querySelectorAll('.route-endpoint.navigation-guidance-flash')
+    .forEach((item) => item.classList.remove('navigation-guidance-flash'));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    endpoint.classList.add('navigation-guidance-flash');
+    navigationEndpointGuidanceTimer = setTimeout(() => {
+      endpoint.classList.remove('navigation-guidance-flash');
+    }, 2400);
+  }));
+  return true;
 }
 
 // ---- Navigating Route panel (the Route tab, while turn-by-turn is active) ----
@@ -8703,7 +8734,7 @@ function buildRoutingPanel() {
   });
   document.getElementById('navStartButton').addEventListener('click', () => {
     if (turnNav.active) stopTurnNavigation();
-    else startTurnNavigation();
+    else if (!promptForNavigationEndpoint()) startTurnNavigation();
   });
   document.getElementById('navCardDetailsBtn').addEventListener('click', () => openRouteDetails());
   document.getElementById('navUseNearestBtn').addEventListener('click', () => useNearestPlannedRoute());

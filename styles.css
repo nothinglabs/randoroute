@@ -800,6 +800,15 @@ body.route-more-open #topToolbar { z-index: 25; }
 }
 #routeBar .route-endpoint.active .endpoint-label,
 #routeBar .route-endpoint.active .endpoint-copy strong { color: #075993; }
+#routeBar .route-endpoint.navigation-guidance-flash {
+  animation: navigation-endpoint-guidance 2.25s ease-out;
+}
+@keyframes navigation-endpoint-guidance {
+  0% { background: transparent; box-shadow: inset 0 0 #0783c1; }
+  14%, 42% { background: #dff3fd; box-shadow: inset 4px 0 #0783c1; }
+  28%, 56% { background: #eff9fd; box-shadow: inset 2px 0 #55afd5; }
+  100% { background: transparent; box-shadow: inset 0 0 #0783c1; }
+}
 .route-stops {
   position: relative;
   z-index: 2;
@@ -972,6 +981,10 @@ body.route-more-open #topToolbar { z-index: 25; }
   display: inline-flex; align-items: center; justify-content: center; gap: 5px;
 }
 .nav-start:disabled { border-color: #c1ccd2; background: #e3eaed; box-shadow: none; color: #78868d; cursor: default; }
+.nav-start.route-needs-endpoints {
+  border-color: #c1ccd2; background: #e3eaed; box-shadow: none; color: #667982; cursor: pointer;
+}
+.nav-start.route-needs-endpoints:active { border-color: #6fa9c6; background: #d7e8f0; }
 /* Amber while navigating — green reads as "go", so the pause action isn't green. */
 .nav-start.navigating { border-color: #b5621a; background: #dd7f2e; }
 
@@ -1076,9 +1089,11 @@ body.navigation-active #routeBar { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .place-picker:not([hidden]),
   .route-endpoints.route-guidance-flash,
-  #routeCard .rc-route-message.route-guidance-flash strong { animation: none; }
+  #routeCard .rc-route-message.route-guidance-flash strong,
+  #routeBar .route-endpoint.navigation-guidance-flash { animation: none; }
   .route-endpoints.route-guidance-flash { border-color: #1486c1; box-shadow: 0 0 0 3px rgba(50,153,207,.2); }
   #routeCard .rc-route-message.route-guidance-flash strong { color: #075f91; }
+  #routeBar .route-endpoint.navigation-guidance-flash { background: #dff3fd; box-shadow: inset 4px 0 #0783c1; }
 }
 
 .update-prompt { position: absolute; z-index: 30; left: 50%; bottom: calc(68px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 7px; width: max-content; max-width: calc(100vw - 20px); padding: 7px 8px 7px 11px; border: 1px solid #cfd8e0; border-radius: 12px; background: rgba(255,255,255,.98); box-shadow: 0 4px 16px rgba(0,0,0,.24); color: #333; font: 600 11px system-ui; }
