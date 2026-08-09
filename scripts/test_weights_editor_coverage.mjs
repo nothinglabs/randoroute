@@ -36,7 +36,7 @@ vm.runInContext([
   lift('const RENAMED_ROUTING_WEIGHTS', '\n});'),
   lift('const WEIGHT_MODES', '\n];'),
   lift('const ROUTING_WEIGHT_GROUPS', '\n];'),
-  lift('function weightKeysFor', '\n}'),
+  lift('function weightControlsFor', '\n}'),
   lift('function editorWeightKeys', '\n}'),
   // Hand the values back out; `const` at script top level does not become a
   // property of the context object.

@@ -502,7 +502,7 @@ a scoring change that severs a corridor. `npm test <substring>` runs a subset.
 Tests that need a build tool the machine lacks report `SKIP`, not `PASS`; on a
 checkout without tippecanoe that is `test_basemap_coastline.py` and
 `test_directional_road_tiles.py`. The data tests need `pip install shapely
-osmium Pillow`, and the thirteen browser tests need Playwright.
+osmium Pillow`, and the forty-two browser tests need Playwright.
 
 Expect `graph2.bin.gz` to grow by roughly 6 bytes per edge before compression
 for the format-11 measurement arrays; measured, that was 556 KB compressed

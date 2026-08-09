@@ -638,7 +638,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout .rt-title { display: flex; align-items: center; gap: 6px; font-weight: 700; margin-bottom: 3px; }
 .readout .rt-swatch { display: inline-block; flex: 0 0 13px; width: 13px; height: 13px; border: 1px solid rgba(0,0,0,.18); border-radius: 3px; box-shadow: 0 0 0 1px rgba(255,255,255,.65) inset; }
 .readout-close { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: none; border-radius: 8px; background: #eef1f4; color: #4b5961; font: 750 17px/1 system-ui; cursor: pointer; }
-.readout-summary { min-height: 15px; margin: 2px 0 0; overflow: hidden; color: #5d707b; font: 650 10.5px/1.3 system-ui; text-overflow: ellipsis; white-space: nowrap; }
 .readout-safety-summary {
   display: grid; gap: 2px; margin-top: 3px; padding: 6px 7px;
   border-left: 3px solid var(--readout-accent, #78909c); border-radius: 6px;
@@ -678,7 +677,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   font: 780 9.5px/1.05 system-ui; cursor: pointer; white-space: nowrap;
 }
 .readout-primary-actions .readout-primary-route { border-color: #7db4d2; background: #edf7fc; color: #075f91; }
-.readout-primary-actions .readout-primary-google { border-color: #a9c6d6; background: #f2f8fb; color: #176b99; }
 .readout-primary-actions > button:hover,
 .readout-primary-actions > button:focus-visible { filter: brightness(.96); outline: 2px solid #78b8dd; outline-offset: 1px; }
 .readout-primary-actions .streetview-launch { border-color: #a9c6d6; background: #f2f8fb; color: #176b99; }
@@ -698,15 +696,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 @media (prefers-reduced-motion: reduce) { .readout-details-chevron { transition: none; } }
 .readout-details-toggle[aria-expanded="true"] .readout-details-chevron { transform: rotate(180deg); }
-.readout-action-menu {
-  display: flex; align-items: center; gap: 4px; margin-top: 5px; padding: 5px;
-  border: 1px solid #cbd9e1; border-radius: 8px; background: #f7fafc;
-}
-.readout-action-menu[hidden] { display: none; }
-.readout-action-menu-label { flex: none; color: #526873; font: 790 9px/1 system-ui; white-space: nowrap; }
-.readout-action-menu > .readout-route-actions { flex: 1 1 auto; gap: 3px; min-width: 0; margin: 0; }
-.readout-action-menu .readout-route-actions button { min-height: 31px; padding: 4px 2px; border-radius: 6px; font-size: 8.5px; }
-.readout-action-menu-close { flex: none; min-height: 31px; padding: 4px 5px; border: 1px solid #c4d0d7; border-radius: 6px; background: #fff; color: #526873; font: 750 8.5px/1 system-ui; cursor: pointer; }
 .readout-details { margin-top: 2px; padding-top: 7px; border-top: 1px solid #dde5e9; }
 .readout-details[hidden] { display: none; }
 .readout-debug-launch {
@@ -721,7 +710,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout td { padding: 0 5px 1px 0; line-height: 1.18; vertical-align: top; }
 @media (max-width: 720px) { .readout td { line-height: 1.28; padding-bottom: 2px; } }
 .readout td.k { width: 1%; padding-right: 8px; color: #777; white-space: nowrap; }
-.road-map-actions { display: grid; flex: 1 1 auto; grid-template-columns: 1fr 1fr; align-items: stretch; gap: 3px; min-width: 0; }
 .readout-primary-actions .readout-road-block { width: 36px; margin: 0; border-color: #d8c48c; background: #fdf6e3; color: #6b5310; }
 .streetview-launch {
   min-height: 32px; padding: 5px 6px; border: 1px solid #9fc4da; border-radius: 7px;
@@ -729,8 +717,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .streetview-launch:hover { background: #dceff8; }
 .streetview-launch:focus-visible { outline: 3px solid #75bdf4; outline-offset: 2px; }
-.road-map-link { display: grid; place-items: center; min-height: 32px; padding: 5px 6px; border: 1px solid #b7cbd7; border-radius: 7px; background: #f7fafb; color: #176b99; font: 750 10px/1.1 system-ui; text-align: center; text-decoration: none; white-space: nowrap; }
-.road-map-link:hover { background: #edf4f7; }
 
 .status {
   /* Map-data notices used to sit behind the endpoint card. Keep them visible

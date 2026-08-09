@@ -8,7 +8,7 @@ start; update it when an issue opens, moves, or closes.
 
 ## Tests
 
-`npm test` runs everything. About sixteen minutes in the cloud container
+`npm test` runs everything. Eighteen to twenty minutes in the cloud container
 (bounded by `test_safety_model.mjs`), and it is green.
 
 The hold that used to sit here is gone, along with what caused it. As of
@@ -38,16 +38,16 @@ The rules that remain:
   like coverage.
 
 The suite needs `shapely`, `osmium` and `Pillow` (`pip install shapely osmium
-Pillow`) for the data tests, and Playwright for the thirteen browser tests.
+Pillow`) for the data tests, and Playwright for the forty-two browser tests.
 
 ### The long poles
 
-`test_safety_model.mjs` (~580 s) bounds the suite's wall time.
-`test_route_portfolio.mjs` and `test_corridor_severance.mjs` (~75–80 s each)
-are the ones that matter most: they catch a scoring change that severs a
-corridor. `test_route_potential.mjs` (~260 s) proves the A* bound admissible.
-The runner runs files concurrently, so wall time is roughly the slowest file
-rather than the sum.
+`test_safety_model.mjs` (~600 s) bounds the suite's wall time, then
+`test_route_potential.mjs` (~290 s), which proves the A* bound admissible, and
+`test_adaptive_corridor_ferries.mjs` (~275 s). `test_route_portfolio.mjs` and
+`test_corridor_severance.mjs` (~100–110 s each) are the ones that matter most:
+they catch a scoring change that severs a corridor. The runner runs files
+concurrently, so wall time is roughly the slowest file rather than the sum.
 
 ## Working on iOS
 

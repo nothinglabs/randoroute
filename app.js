@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-09.656';
+const APP_VERSION = '2026-08-09.657';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1628,10 +1628,15 @@ function isConstrainedDevice() {
     || /^Apple/.test(navigator.vendor || '');
 }
 
+// The sweep has its own counter. routing.reqId is what every route reply is
+// matched against, so spending one here would silently discard an in-flight
+// route -- today that cannot happen only because of the early return above,
+// which is too far from the postMessage to be a guarantee.
+let prewarmRequestId = 0;
 function schedulePrewarm() {
   if (!routing.ready || !routing.worker) return;
   if (routing.start && routing.end) return;
-  routing.worker.postMessage({ type: 'prewarm', id: ++routing.reqId,
+  routing.worker.postMessage({ type: 'prewarm', id: `prewarm-${++prewarmRequestId}`,
     rules: { ...rules }, weights: { ...routingWeights }, lite: isConstrainedDevice(),
     // The discovery-lens sweep warms discover-quick under the rider's own
     // preference combo -- the same one a real request would search with.
@@ -2559,13 +2564,6 @@ async function loadSource(src) {
   }
 }
 
-function setSourceVisible(src, on) {
-  src.enabled = on;
-  if (on && !src.loaded) loadSource(src);
-  else if (on && !map.getLayer(src.id)) ensureLayer(src);
-  else updateVisibility(src);
-  saveStateSoon();
-}
 
 function setBackgroundUnpavedVisible(on) {
   display.unpavedBackground = !!on;
@@ -3591,15 +3589,6 @@ function plannedRouteDistanceTitle(distanceM) {
   return `You're ${distance} from your planned route`;
 }
 
-// Index of the route point at (or just past) a cumulative distance.
-function coordIndexAtDistance(cumulative, m) {
-  let lo = 0, hi = cumulative.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (cumulative[mid] < m) lo = mid + 1; else hi = mid;
-  }
-  return lo;
-}
 
 // Bearings for turn detection are measured over ~20 m of travel, not two
 // raw geometry points: inside a tiny traffic circle the point-to-point
@@ -4409,9 +4398,6 @@ function navigationBannerInfo() {
   };
 }
 
-function navigationStatusText() {
-  return navigationBannerInfo().headline;
-}
 
 function navigationElevationProgressM() {
   if (!turnNav.active || !turnNav.plannedRoute || !turnNav.locationReady) return null;
@@ -5437,14 +5423,16 @@ function nearestNavigationPoint(lon, lat, fullRoute = false, routeOverride = nul
   };
 }
 
-function setRouteStartDialogBusy(busy, status = '') {
-  if (busy) stopRouteStartCountdown(); // the rider chose an option; stop auto-dismiss
+// Both join options now hand off to a toast and close this dialog, so it is
+// never left open in a busy state -- this only restores it for the next time
+// it is shown.
+function resetRouteStartDialog() {
   const routeButton = document.getElementById('navRouteToStartBtn');
   const nearestButton = document.getElementById('navUseNearestBtn');
   const statusElement = document.getElementById('routeStartDialogStatus');
-  if (routeButton) routeButton.disabled = busy;
-  if (nearestButton) nearestButton.disabled = busy;
-  if (statusElement) statusElement.textContent = status;
+  if (routeButton) routeButton.disabled = false;
+  if (nearestButton) nearestButton.disabled = false;
+  if (statusElement) statusElement.textContent = '';
 }
 
 // If the rider ignores the "how to join" offer, default to letting them find
@@ -5482,7 +5470,7 @@ function showRouteStartOffer(startDistanceM) {
   if (!dialog?.showModal || !title || !text) return false;
   title.textContent = plannedRouteDistanceTitle(startDistanceM);
   text.textContent = 'Choose how to get onto it.';
-  setRouteStartDialogBusy(false);
+  resetRouteStartDialog();
   if (!dialog.open) dialog.showModal();
   // Default the selection to "I'll find my own way" so Enter (and the timeout)
   // pick the non-intrusive option.
@@ -5495,7 +5483,7 @@ function closeRouteStartDialog() {
   stopRouteStartCountdown();
   const dialog = document.getElementById('routeStartDialog');
   if (dialog?.open) dialog.close();
-  setRouteStartDialogBusy(false);
+  resetRouteStartDialog();
 }
 
 function drawNavigationConnector(coords = []) {
@@ -5545,18 +5533,19 @@ function requestNavigationConnector(target, purpose = 'start', automatic = false
   turnNav.connectorPurpose = purpose;
   turnNav.joinDecision = 'loading';
   turnNav.message = '';
-  if (purpose === 'start') {
-    setRouteStartDialogBusy(true, 'Finding a bike route to the planned start…');
-  } else {
-    closeRouteStartDialog();
-    const offRouteDialog = document.getElementById('offRouteDialog');
-    if (offRouteDialog?.open) offRouteDialog.close();
-    showRouteActionToast(automatic ? 'Automatically routing back' : 'Finding a route back', {
-      busy: true,
-      detail: 'Trying your safety rules and route preferences…',
-      duration: 0,
-    });
-  }
+  // Every connector request routes to the NEAREST point on the planned route,
+  // including the one offered at the start -- which is what its button says.
+  // The old join-at-the-planned-start variant kept the offer dialog open with
+  // a busy message; nothing requests it any more, so the dialog closes and the
+  // toast carries the progress for all of them.
+  closeRouteStartDialog();
+  const offRouteDialog = document.getElementById('offRouteDialog');
+  if (offRouteDialog?.open) offRouteDialog.close();
+  showRouteActionToast(automatic ? 'Automatically routing back' : 'Finding a route back', {
+    busy: true,
+    detail: 'Trying your safety rules and route preferences…',
+    duration: 0,
+  });
   refreshNavigationUI();
   routing.worker.postMessage({
     type: 'route-connector', id,
@@ -5567,11 +5556,6 @@ function requestNavigationConnector(target, purpose = 'start', automatic = false
     prefResidential: routing.prefResidential,
     weights: { ...routingWeights },
   });
-}
-
-function requestRouteStartConnector() {
-  if (turnNav.joinDecision !== 'offered' || !turnNav.plannedRoute) return;
-  requestNavigationConnector(turnNav.plannedRoute.coords[0], 'start');
 }
 
 function requestRouteBackToCurrentRoute({ automatic = false } = {}) {
@@ -7742,26 +7726,6 @@ function clearRouteHighlight() {
   });
 }
 
-function toggleRouteHighlight(key) {
-  if (!ROUTE_HIGHLIGHT_FILTERS[key] || !map.getLayer('route-highlight')) return;
-  if (routeHighlightKey === key) { clearRouteHighlight(); return; }
-  routeHighlightKey = key;
-  for (const id of ['route-highlight-halo', 'route-highlight']) {
-    setLayerFilter(id, ROUTE_HIGHLIGHT_FILTERS[key]);
-    setLayout(id, 'visibility', 'visible');
-  }
-  const markerFeatures = routeHighlightMarkers(key);
-  const markerSource = map.getSource('route-highlight-marker');
-  if (markerSource) markerSource.setData({ type: 'FeatureCollection', features: markerFeatures });
-  for (const id of ['route-highlight-marker-halo', 'route-highlight-marker']) {
-    if (map.getLayer(id)) setLayout(id, 'visibility', markerFeatures.length ? 'visible' : 'none');
-  }
-  document.querySelectorAll('[data-highlight]').forEach((b) => {
-    const active = b.dataset.highlight === key;
-    b.classList.toggle('active', active);
-    b.setAttribute('aria-pressed', String(active));
-  });
-}
 
 function showRouteStepOnMap(startIndex, endIndex, coordStart = null, coordEnd = null) {
   const route = routing.last;
@@ -8291,18 +8255,6 @@ function addVia(lngLat, { allowPastLimit = false, name = 'Point on map' } = {}) 
   return true;
 }
 
-function updateVia(via, lngLat, name = 'Point on map') {
-  if (!via || !routing.vias.includes(via)) return false;
-  exitSharedRoute();
-  via.pt = [lngLat.lng, lngLat.lat];
-  via.name = normalizeEndpointName(name) || 'Point on map';
-  via.marker.setLngLat(lngLat);
-  regenerateRoutesAfterWaypointChange();
-  computeRoute();
-  updateArmButtons();
-  saveStateSoon();
-  return true;
-}
 
 function removeVia(via) {
   const index = routing.vias.indexOf(via);
@@ -9166,8 +9118,13 @@ function loadSavedRoutes() {
     return Array.isArray(value) ? value : [];
   } catch (e) { return []; }
 }
+// Returns whether the write actually landed: on a device whose storage is
+// full this throws, and the caller used to report "Saved" regardless.
 function storeSavedRoutes(list) {
-  try { localStorage.setItem(SAVED_ROUTES_KEY, JSON.stringify(list)); } catch (e) { /* ignore */ }
+  try {
+    localStorage.setItem(SAVED_ROUTES_KEY, JSON.stringify(list));
+    return true;
+  } catch (e) { return false; }
 }
 
 function buildSavedRoutes() {
@@ -9279,9 +9236,11 @@ function buildSavedRoutes() {
     if (!request) return;
     const current = loadSavedRoutes();
     current.splice(request.index, 1);
-    storeSavedRoutes(current);
+    const stored = storeSavedRoutes(current);
     render();
-    document.getElementById('savedRoutesStatus').textContent = `Deleted ${request.name}.`;
+    document.getElementById('savedRoutesStatus').textContent = stored
+      ? `Deleted ${request.name}.`
+      : 'Could not update saved routes — this device is out of storage for the app.';
   });
   document.getElementById('routeLibraryBtn').addEventListener('click', () => {
     render();
@@ -9347,10 +9306,12 @@ function buildSavedRoutes() {
       prefDesig: routing.prefDesig,
       prefResidential: routing.prefResidential, rules: { ...rules },
       ts: Date.now() });
-    storeSavedRoutes(list.slice(0, 30));
-    input.value = '';
+    const stored = storeSavedRoutes(list.slice(0, 30));
+    if (stored) input.value = '';
     render();
-    document.getElementById('savedRoutesStatus').textContent = `Saved ${name.slice(0, 60)}.`;
+    document.getElementById('savedRoutesStatus').textContent = stored
+      ? `Saved ${name.slice(0, 60)}.`
+      : 'Could not save — this device is out of storage for the app.';
   });
   render();
 }
@@ -10546,33 +10507,6 @@ function compactReadoutSafety(rows, fallback = '') {
   return box;
 }
 
-function compactReadoutFacts(rows) {
-  const accommodation = readoutRowValue(rows, 'Bike facility', 'Cycleway', 'Trail type',
-    'Network', 'Bike route', 'Designated bike route');
-  const facts = [
-    ['Bike accommodation', accommodation],
-    ['Access', readoutRowValue(rows, 'Access')],
-    ['Speed', readoutRowValue(rows, 'Speed limit', 'Speed')],
-    ['Shoulder', readoutRowValue(rows, 'Shoulder')],
-    ['Grade', readoutRowValue(rows, 'Grade')],
-    ['Traffic stress', readoutRowValue(rows, 'Traffic stress', 'BLTS (WSDOT)')],
-    ['Surface', readoutRowValue(rows, 'Surface (OSM)', 'Surface')],
-  ].filter(([, value]) => value != null && value !== '').slice(0, 4);
-  if (!facts.length) return null;
-  const host = document.createElement('div');
-  host.className = 'readout-core-facts';
-  for (const [label, value] of facts) {
-    const fact = document.createElement('div');
-    fact.className = 'readout-core-fact';
-    const name = document.createElement('span');
-    name.textContent = label;
-    const text = document.createElement('strong');
-    text.textContent = String(value);
-    fact.append(name, text);
-    host.append(fact);
-  }
-  return host;
-}
 
 function mapPointRouteActions(lngLat, routeName, { disclosure = false } = {}) {
   const lat = Number(lngLat.lat);
@@ -10647,21 +10581,6 @@ function mapPointRouteActions(lngLat, routeName, { disclosure = false } = {}) {
   return routeActions;
 }
 
-function readoutDisclosure(label, choices, className = '') {
-  const menu = document.createElement('div');
-  menu.className = `readout-action-menu ${className}`.trim();
-  menu.hidden = true;
-  const lead = document.createElement('strong');
-  lead.className = 'readout-action-menu-label';
-  lead.textContent = label;
-  const close = document.createElement('button');
-  close.type = 'button';
-  close.className = 'readout-action-menu-close';
-  close.textContent = 'Close';
-  close.setAttribute('aria-label', `Close ${label.toLowerCase()} choices`);
-  menu.append(lead, choices, close);
-  return { menu, close };
-}
 
 /* ------------------------------------------------- where the rider tapped
  * places.json is the same baked OSM index the search box uses:
@@ -10807,7 +10726,6 @@ function renderMapTapCard({
   const lng = Number(lngLat.lng);
   let routeName = normalizeEndpointName(pointName) || 'Point on map';
 
-  readoutEl.classList.remove('place-action-card');
   readoutEl.replaceChildren();
   const close = document.createElement('button');
   close.className = 'readout-close';
@@ -11672,20 +11590,33 @@ const ROUTING_WEIGHT_GROUPS = [
 function editorWeightKeys() {
   const keys = [];
   for (const [, , items] of ROUTING_WEIGHT_GROUPS) {
-    for (const item of items) keys.push(...weightKeysFor(item));
+    for (const item of items) keys.push(...weightControlsFor(item).map((control) => control.key));
   }
   return keys;
 }
-function weightKeysFor(item) {
-  if (item.key) return [item.key];
+// The controls one weight item renders: the key each slider edits, and the
+// label naming it. buildRoutingWeightsEditor() renders exactly this list and
+// editorWeightKeys() enumerates exactly this list. That is the point of the
+// shared call: the coverage test used to check a SECOND copy of this rule
+// while the editor built its sliders from its own inline version, so a weight
+// could be orphaned in the UI with the test still passing.
+function weightControlsFor(item) {
+  if (item.key) return [{ key: item.key, label: 'Value' }];
   const suffix = item.suffix || '';
   const modes = item.modes || WEIGHT_MODES.map(([id]) => id);
-  if (item.levels) {
-    const out = [];
-    for (const mode of modes) for (const lvl of item.levels) out.push(item.base + mode + lvl);
-    return out;
+  const out = [];
+  for (const mode of modes) {
+    const [, modeLabel] = WEIGHT_MODES.find(([id]) => id === mode);
+    if (item.levels) {
+      for (let i = 0; i < item.levels.length; i++) {
+        out.push({ key: item.base + mode + item.levels[i],
+          label: `${modeLabel} · ${item.levelLabels[i].toLowerCase()}` });
+      }
+    } else {
+      out.push({ key: item.base + mode + suffix, label: modeLabel });
+    }
   }
-  return modes.map((mode) => item.base + mode + suffix);
+  return out;
 }
 
 function weightSlider(key, label, min, max, step) {
@@ -11754,23 +11685,8 @@ function buildRoutingWeightsEditor() {
         hint.textContent = item.hint;
         cost.append(hint);
       }
-      if (item.key) {
-        cost.append(weightSlider(item.key, 'Value', item.min, item.max, item.step));
-      } else {
-        const suffix = item.suffix || '';
-        const modes = item.modes || WEIGHT_MODES.map(([id]) => id);
-        for (const mode of modes) {
-          const [, modeLabel] = WEIGHT_MODES.find(([id]) => id === mode);
-          if (item.levels) {
-            for (let i = 0; i < item.levels.length; i++) {
-              cost.append(weightSlider(item.base + mode + item.levels[i],
-                `${modeLabel} · ${item.levelLabels[i].toLowerCase()}`, item.min, item.max, item.step));
-            }
-          } else {
-            cost.append(weightSlider(item.base + mode + suffix, modeLabel,
-              item.min, item.max, item.step));
-          }
-        }
+      for (const { key, label } of weightControlsFor(item)) {
+        cost.append(weightSlider(key, label, item.min, item.max, item.step));
       }
       group.append(cost);
     }

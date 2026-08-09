@@ -7,6 +7,18 @@ validation. The shared web tests and simulator checks are real coverage;
 locked-screen GPS, audio mixing, battery, and thermals still require a physical
 iPhone and a real ride.
 
+**Changed since that audit, and not yet compiled on a Mac:** `346e41b` (Wait
+through iOS location warmup) added a retry to
+`NativeNavigationPlugin.locationManager(_:didFailWithError:)`. Core Location
+emits `CLError.locationUnknown` while the radio warms up and then delivers a
+fix; that error used to reject the pending position call, so the first tap
+failed and a second one two seconds later worked. It now reschedules
+`requestLocation()` after 750 ms instead, bounded by the existing per-call
+timeout, with the retry work item cancelled in `deinit`, on resolve, on reject,
+and when the pending queue empties. Read for correctness, never built. Build it
+before the next release, and confirm on a device that the first location
+request after a cold launch resolves without a second tap.
+
 ---
 
 ## 1. What the native app actually is
