@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-09.650';
+const APP_VERSION = '2026-08-09.651';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9460,6 +9460,14 @@ function searchResultMarkerElement() {
   return element;
 }
 
+function showTemporaryMapMarker(lngLat) {
+  clearSearchResultMarker();
+  searchResultMarker = new maplibregl.Marker({
+    element: searchResultMarkerElement(), anchor: 'bottom',
+  }).setLngLat(lngLat).addTo(map);
+  return searchResultMarker;
+}
+
 function showPlaceOnMap(point, name = 'Point on map', { searchResult = false } = {}) {
   const lng = Number(Array.isArray(point) ? point[0] : point?.lng);
   const lat = Number(Array.isArray(point) ? point[1] : point?.lat);
@@ -9467,11 +9475,7 @@ function showPlaceOnMap(point, name = 'Point on map', { searchResult = false } =
   const picker = document.getElementById('placePicker');
   if (picker && !picker.hidden) closePlacePicker();
   dismissRoadInfo();
-  if (searchResult) {
-    searchResultMarker = new maplibregl.Marker({
-      element: searchResultMarkerElement(), anchor: 'bottom',
-    }).setLngLat([lng, lat]).addTo(map);
-  }
+  if (searchResult) showTemporaryMapMarker([lng, lat]);
   const token = ++searchResultOpenToken;
   const routeName = normalizeEndpointName(name) || 'Point on map';
   let rendered = false;
@@ -10234,6 +10238,7 @@ function wsdotSidewalkAt(lngLat) {
 
 function resetRoadInfoPosition() {
   readoutEl.classList.remove('near-tap');
+  delete readoutEl.dataset.pinPlacement;
   for (const property of ['left', 'right', 'top', 'bottom']) {
     readoutEl.style.removeProperty(property);
   }
@@ -10267,13 +10272,13 @@ function positionRoadInfoNear(point) {
   readoutEl.style.top = `${Math.round(viewportTop - parentRect.top)}px`;
 }
 
-// A searched place has a real pin that must stay visible while the rider
-// decides what it means. Put the compact action card wholly above or below
-// that pin with a deliberate gap; the road-details card instead remains
-// centred near its (unmarked) tap.
+// A searched or inspected place has a temporary pin that must stay visible
+// while the rider decides what it means. Use the pin's actual rendered bounds
+// and choose the side with the most useful remaining room. On a phone this is
+// normally above or below; a wider map can naturally place the card beside it.
 function positionPlaceCardAwayFromPin(point) {
   const edgeGap = 10;
-  const pinGap = 40;
+  const pinGap = 10;
   const mapRect = map.getContainer().getBoundingClientRect();
   const parentRect = readoutEl.offsetParent?.getBoundingClientRect() || { left: 0, top: 0 };
   readoutEl.classList.add('near-tap');
@@ -10284,15 +10289,42 @@ function positionPlaceCardAwayFromPin(point) {
   const cardRect = readoutEl.getBoundingClientRect();
   const tapX = mapRect.left + point.x;
   const tapY = mapRect.top + point.y;
+  const renderedPin = searchResultMarker?.getElement?.().getBoundingClientRect();
+  const pinRect = renderedPin?.width && renderedPin?.height ? renderedPin : {
+    left: tapX - 11, right: tapX + 11, top: tapY - 22, bottom: tapY,
+    width: 22, height: 22,
+  };
   const minLeft = mapRect.left + edgeGap;
   const maxLeft = Math.max(minLeft, mapRect.right - edgeGap - cardRect.width);
-  const viewportLeft = Math.min(maxLeft, Math.max(minLeft, tapX - cardRect.width / 2));
-  const belowTop = tapY + pinGap;
-  const aboveTop = tapY - pinGap - cardRect.height;
-  const canFitBelow = belowTop + cardRect.height <= mapRect.bottom - edgeGap;
   const minTop = mapRect.top + edgeGap;
   const maxTop = Math.max(minTop, mapRect.bottom - edgeGap - cardRect.height);
-  const viewportTop = Math.min(maxTop, Math.max(minTop, canFitBelow ? belowTop : aboveTop));
+  const clampLeft = (left) => Math.min(maxLeft, Math.max(minLeft, left));
+  const clampTop = (top) => Math.min(maxTop, Math.max(minTop, top));
+  const centeredLeft = clampLeft((pinRect.left + pinRect.right - cardRect.width) / 2);
+  const centeredTop = clampTop((pinRect.top + pinRect.bottom - cardRect.height) / 2);
+  const available = {
+    below: mapRect.bottom - edgeGap - pinRect.bottom,
+    above: pinRect.top - (mapRect.top + edgeGap),
+    right: mapRect.right - edgeGap - pinRect.right,
+    left: pinRect.left - (mapRect.left + edgeGap),
+  };
+  const candidates = [
+    { side: 'below', need: cardRect.height + pinGap, room: available.below,
+      left: centeredLeft, top: pinRect.bottom + pinGap },
+    { side: 'above', need: cardRect.height + pinGap, room: available.above,
+      left: centeredLeft, top: pinRect.top - pinGap - cardRect.height },
+    { side: 'right', need: cardRect.width + pinGap, room: available.right,
+      left: pinRect.right + pinGap, top: centeredTop },
+    { side: 'left', need: cardRect.width + pinGap, room: available.left,
+      left: pinRect.left - pinGap - cardRect.width, top: centeredTop },
+  ];
+  const fitting = candidates.filter((candidate) => candidate.room >= candidate.need)
+    .sort((a, b) => (b.room - b.need) - (a.room - a.need));
+  const chosen = fitting[0] || candidates.sort((a, b) =>
+    (b.room / Math.max(1, b.need)) - (a.room / Math.max(1, a.need)))[0];
+  const viewportLeft = clampLeft(chosen.left);
+  const viewportTop = clampTop(chosen.top);
+  readoutEl.dataset.pinPlacement = chosen.side;
   readoutEl.style.left = `${Math.round(viewportLeft - parentRect.left)}px`;
   readoutEl.style.top = `${Math.round(viewportTop - parentRect.top)}px`;
 }
@@ -10585,6 +10617,7 @@ function renderPlaceActionCard({ pointName, lngLat, anchorPoint, searchResult = 
 function renderMapTapCard({
   displayTitle, detailsTitle = displayTitle, pointName, summary, rows, lngLat, anchorPoint,
   swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
+  avoidTemporaryMarker = false,
 }) {
   const lat = Number(lngLat.lat);
   const lng = Number(lngLat.lng);
@@ -10668,6 +10701,12 @@ function renderMapTapCard({
     }
   }
 
+  const positionCard = () => {
+    if (!anchorPoint) return;
+    if (avoidTemporaryMarker) positionPlaceCardAwayFromPin(anchorPoint);
+    else positionRoadInfoNear(anchorPoint);
+  };
+
   detailsToggle.addEventListener('click', () => {
     routeDisclosure.menu.hidden = true;
     mapDisclosure.menu.hidden = true;
@@ -10679,7 +10718,7 @@ function renderMapTapCard({
     // Keep the primary row compact even with Avoid present.
     detailsToggle.textContent = open ? 'Hide' : 'Details';
     headingText.textContent = open ? detailsTitle : displayTitle;
-    if (anchorPoint) requestAnimationFrame(() => positionRoadInfoNear(anchorPoint));
+    requestAnimationFrame(positionCard);
   });
 
   const setDisclosureOpen = (trigger, disclosure, otherTrigger, otherDisclosure, open) => {
@@ -10687,7 +10726,7 @@ function renderMapTapCard({
     trigger.setAttribute('aria-expanded', String(open));
     otherDisclosure.hidden = true;
     otherTrigger.setAttribute('aria-expanded', 'false');
-    if (anchorPoint) requestAnimationFrame(() => positionRoadInfoNear(anchorPoint));
+    requestAnimationFrame(positionCard);
   };
   navigateMenuButton.addEventListener('click', () => setDisclosureOpen(
     navigateMenuButton, routeDisclosure.menu, googleMenuButton, mapDisclosure.menu,
@@ -10713,10 +10752,10 @@ function renderMapTapCard({
   if (coreFacts) readoutEl.append(coreFacts);
   readoutEl.append(primaryActions, routeDisclosure.menu, mapDisclosure.menu, details);
   readoutEl.classList.add('show');
-  if (anchorPoint) positionRoadInfoNear(anchorPoint);
+  positionCard();
 }
 
-function renderReadout(feature, lngLat, anchorPoint = null) {
+function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMarker = false } = {}) {
   resetRoadInfoPosition();
   if (!feature) {
     renderMapTapCard({
@@ -10725,6 +10764,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       summary: 'Use this point in your trip, or open Details.',
       rows: [], lngLat, anchorPoint,
       swatchColor: '#fff', swatchLabel: 'Unspecified map point',
+      avoidTemporaryMarker,
     });
     return;
   }
@@ -10747,6 +10787,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
       summary: [p.name, p.reason].filter(Boolean).join(' · ') || 'Closed route segment',
       rows, lngLat, anchorPoint,
       swatchColor: COLORS[4], swatchLabel: 'Route closure map color',
+      avoidTemporaryMarker,
     });
     return;
   }
@@ -10925,6 +10966,7 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
     // the chosen route's own hit layer offers it, never an arbitrary road the
     // rider happens to inspect nearby.
     allowRoadBlock: src.id === 'routeseg' && p.ferry !== 1,
+    avoidTemporaryMarker,
   });
 }
 
@@ -11077,8 +11119,9 @@ function inspectRoadAt(point, lngLat = null) {
   // search card and opens the normal route actions for that mapped feature.
   const picker = document.getElementById('placePicker');
   if (picker && !picker.hidden) closePlacePicker();
-  clearSearchResultMarker();
-  renderReadout(feature || null, lngLat || map.unproject([point.x, point.y]), point);
+  const inspectedLngLat = lngLat || map.unproject([point.x, point.y]);
+  showTemporaryMapMarker(inspectedLngLat);
+  renderReadout(feature || null, inspectedLngLat, point, { avoidTemporaryMarker: true });
   readoutPinned = true;
   return true;
 }

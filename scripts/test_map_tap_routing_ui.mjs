@@ -190,20 +190,67 @@ const blankTap = await page.evaluate(() => {
   dismissRoadInfo();
   const original = featureAt;
   featureAt = () => null;
-  const opened = inspectRoadAt({ x: 120, y: 240 }, { lng: -122.4, lat: 47.7 });
+  const point = { x: 120, y: 240 };
+  const opened = inspectRoadAt(point, map.unproject([point.x, point.y]));
   featureAt = original;
+  const card = document.getElementById('readout').getBoundingClientRect();
+  const marker = document.querySelector('.search-result-marker')?.getBoundingClientRect();
+  const canvas = map.getCanvas().getBoundingClientRect();
   return {
     opened,
     shown: document.getElementById('readout').classList.contains('show'),
     heading: document.querySelector('#readout .rt-title')?.textContent,
+    markerCount: document.querySelectorAll('.search-result-marker').length,
+    markerSize: marker ? Math.max(marker.width, marker.height) : 0,
+    markerOffset: marker ? Math.hypot(
+      marker.left + marker.width / 2 - (canvas.left + point.x),
+      marker.bottom - (canvas.top + point.y)) : Infinity,
+    placement: document.getElementById('readout').dataset.pinPlacement,
+    overlapsMarker: marker ? !(card.bottom <= marker.top || marker.bottom <= card.top
+      || card.right <= marker.left || marker.right <= card.left) : true,
     actions: [...document.querySelectorAll('#readout .readout-route-menu .readout-route-actions button')]
       .map((button) => button.textContent),
   };
 });
-check('a blank map tap opens a useful generic point card',
+check('a blank map tap opens a useful generic point card beside a temporary marker',
   blankTap.opened && blankTap.shown && blankTap.heading === 'Point on map'
-    && blankTap.actions.join('|') === 'Start|New stop|Destination',
+    && blankTap.actions.join('|') === 'Start|New stop|Destination'
+    && blankTap.markerCount === 1 && blankTap.markerSize <= 32 && blankTap.markerOffset <= 2
+    && ['above', 'below', 'left', 'right'].includes(blankTap.placement)
+    && !blankTap.overlapsMarker,
   JSON.stringify(blankTap));
+await page.locator('#readout .readout-close').click();
+check('closing map details also removes its temporary marker', await page.evaluate(() =>
+  document.querySelectorAll('.search-result-marker').length === 0));
+
+await page.evaluate(() => {
+  const original = featureAt;
+  featureAt = () => ({
+    layer: { id: 'test-road-hit' },
+    properties: { n: 'Marker Test Road', s: 30, w: 2, ft: 2, h: 'residential', u: 1 },
+    geometry: { type: 'LineString', coordinates: [[-122.34, 47.61], [-122.33, 47.62]] },
+  });
+  const point = { x: 250, y: 360 };
+  inspectRoadAt(point, map.unproject([point.x, point.y]));
+  featureAt = original;
+});
+await page.locator('#readout .readout-details-toggle').click();
+await page.waitForTimeout(50);
+const expandedMarkerPlacement = await page.evaluate(() => {
+  const card = document.getElementById('readout').getBoundingClientRect();
+  const marker = document.querySelector('.search-result-marker').getBoundingClientRect();
+  return {
+    placement: document.getElementById('readout').dataset.pinPlacement,
+    overlaps: !(card.bottom <= marker.top || marker.bottom <= card.top
+      || card.right <= marker.left || marker.right <= card.left),
+  };
+});
+check('expanded road Details repositions without covering the tapped marker',
+  !expandedMarkerPlacement.overlaps
+    && ['above', 'below', 'left', 'right'].includes(expandedMarkerPlacement.placement),
+  JSON.stringify(expandedMarkerPlacement));
+await page.locator('#readout .readout-close').click();
+
 const edgeTap = await page.evaluate(() => {
   roadInfoSuppressedUntil = 0;
   dismissRoadInfo();

@@ -326,6 +326,10 @@ const searchChoice = await page.evaluate(() => ({
   contextGone: !document.querySelector('#readout .place-action-context'),
   compact: document.getElementById('readout').classList.contains('place-action-card'),
   cardHeight: Math.round(document.getElementById('readout').getBoundingClientRect().height),
+  markerSize: (() => {
+    const pin = document.querySelector('.search-result-marker').getBoundingClientRect();
+    return Math.max(pin.width, pin.height);
+  })(),
   overlapsPin: (() => {
     const card = document.getElementById('readout').getBoundingClientRect();
     const pin = document.querySelector('.search-result-marker').getBoundingClientRect();
@@ -341,7 +345,8 @@ check('the searched point uses the same compact Start and Destination language a
     && searchChoice.contextGone, JSON.stringify(searchChoice));
 check('a search result uses a compact location card with no road Details and never covers its pin',
   searchChoice.compact && !searchChoice.hasDetails
-    && searchChoice.cardHeight < 92 && !searchChoice.overlapsPin,
+    && searchChoice.cardHeight < 92 && searchChoice.markerSize <= 32
+    && !searchChoice.overlapsPin,
   JSON.stringify(searchChoice));
 
 await page.locator('#readout .readout-close').click();
