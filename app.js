@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-09.653';
+const APP_VERSION = '2026-08-09.654';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9505,11 +9505,20 @@ function showPlaceOnMap(point, name = 'Point on map', { searchResult = false } =
     if (rendered || token !== searchResultOpenToken) return;
     rendered = true;
     const lngLat = { lng, lat };
-    renderPlaceActionCard({
+    // A chosen search result gets the SAME card as a map tap. It has no road
+    // under it to score, so the safety block says so plainly rather than the
+    // card quietly changing shape between the two ways of picking a point.
+    renderMapTapCard({
+      displayTitle: routeName,
       pointName: routeName,
-      lngLat,
+      placeName: routeName,
+      summary: searchResult ? 'Search result — no road information at this point.'
+        : 'Use this point in your trip, or open Details.',
+      rows: [], lngLat,
       anchorPoint: map.project(lngLat),
-      searchResult,
+      swatchColor: searchResult ? '#7a3fc2' : '#52656f',
+      swatchLabel: searchResult ? 'Search result' : 'Map location',
+      avoidTemporaryMarker: true,
     });
     readoutPinned = true;
   };
@@ -10601,6 +10610,53 @@ function readoutDisclosure(label, choices, className = '') {
   return { menu, close };
 }
 
+/* ------------------------------------------------- where the rider tapped
+ * places.json is the same baked OSM index the search box uses:
+ * [name, lng, lat, kind, population]. Two different questions are asked of it.
+ * The REGION is the municipality a point belongs to (Tukwila), so only
+ * city/town/village/hamlet count and a large place wins over a marginally
+ * closer small one -- a tap downtown should say Seattle, not the nearest
+ * hamlet. The LOCALITY is the neighbourhood name, which is only honest very
+ * close to its centre, so it is capped tight and omitted when nothing is near.
+ */
+const REGION_KINDS = new Set(['city', 'town', 'village', 'hamlet']);
+const LOCALITY_KINDS = new Set(['neighbourhood', 'suburb']);
+const REGION_MAX_M = 40000;
+const LOCALITY_MAX_M = 1600;
+
+function placeDistanceM(lng, lat, place) {
+  return navDistanceM([lng, lat], [place[1], place[2]]);
+}
+
+function regionNameFor(lng, lat) {
+  if (!placesIndex) return null;
+  let best = null, bestScore = Infinity;
+  for (const place of placesIndex) {
+    if (!REGION_KINDS.has(place[3])) continue;
+    const distanceM = placeDistanceM(lng, lat, place);
+    if (distanceM > REGION_MAX_M) continue;
+    // Population discounts distance: a city's name reaches farther than a
+    // hamlet's because that is how riders actually name where they are.
+    const reach = 1 + Math.log10(Math.max(10, Number(place[4]) || 10));
+    const score = distanceM / reach;
+    if (score < bestScore) { bestScore = score; best = place; }
+  }
+  return best?.[0] || null;
+}
+
+function localityNameFor(lng, lat) {
+  if (!placesIndex) return null;
+  let best = null, bestDistance = Infinity;
+  for (const place of placesIndex) {
+    if (!LOCALITY_KINDS.has(place[3])) continue;
+    const distanceM = placeDistanceM(lng, lat, place);
+    if (distanceM < bestDistance && distanceM <= LOCALITY_MAX_M) {
+      bestDistance = distanceM; best = place;
+    }
+  }
+  return best?.[0] || null;
+}
+
 function readoutPrimaryButton(className, text, label) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -10611,34 +10667,30 @@ function readoutPrimaryButton(className, text, label) {
   return button;
 }
 
-function renderPlaceActionCard({ pointName, lngLat, anchorPoint, searchResult = false }) {
-  resetRoadInfoPosition();
-  const routeName = normalizeEndpointName(pointName) || 'Point on map';
-  readoutEl.classList.add('place-action-card');
-  readoutEl.replaceChildren();
-  const close = document.createElement('button');
-  close.className = 'readout-close';
-  close.type = 'button';
-  close.setAttribute('aria-label', 'Close map location');
-  close.textContent = '✕';
-  const heading = document.createElement('div');
-  heading.className = 'rt-title';
-  const pin = document.createElement('span');
-  pin.className = 'rt-swatch place-action-pin';
-  pin.setAttribute('aria-hidden', 'true');
-  pin.style.backgroundColor = searchResult ? '#7a3fc2' : '#52656f';
-  const headingText = document.createElement('span');
-  headingText.textContent = routeName;
-  heading.append(pin, headingText);
-  readoutEl.append(close, heading);
-  readoutEl.append(mapPointRouteActions(lngLat, routeName));
-  readoutEl.classList.add('show');
-  if (anchorPoint) positionPlaceCardAwayFromPin(anchorPoint);
-}
-
+/* ------------------------------------------- one card for every map tap
+ * A point on the map, a chosen search result and a road segment used to open
+ * three different cards, so the same tap taught the rider three layouts and
+ * the location-only one could not answer "is this road safe?" at all. There is
+ * one card now, and what changes between the three is only how many of its
+ * lines have something to say.
+ *
+ * Above the fold, in this order and never reordered:
+ *   the segment name (when a road or trail was tapped)
+ *   the place itself -- a search result's name, or the neighbourhood
+ *   the region, so "Point on map" still says where in the state it is
+ *   the safety verdict and its reason
+ *   bike accommodation
+ *   surface, and ONLY when it is not paved -- "Surface: Paved" is the
+ *     expected case and saying it every time trains riders to skip the line
+ *
+ * Everything else the app knows lives one flip-down away, and that panel is
+ * built by subtraction: every row not already shown above appears there, so a
+ * fact can never be dropped by forgetting to add it in two places.
+ */
 function renderMapTapCard({
   displayTitle, detailsTitle = displayTitle, pointName, summary, rows, lngLat, anchorPoint,
   swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
+  segmentName = null, placeName = null,
   avoidTemporaryMarker = false,
 }) {
   const lat = Number(lngLat.lat);
@@ -10664,46 +10716,108 @@ function renderMapTapCard({
   headingText.textContent = displayTitle;
   heading.append(swatch, headingText);
 
+  // The identity block: segment, place, region. Region is filled in
+  // asynchronously because the place index is fetched on demand; the line is
+  // simply absent until it can be answered, never a spinner or a guess.
+  const identity = document.createElement('div');
+  identity.className = 'readout-identity';
+  const identityLine = (className, text) => {
+    if (!text) return null;
+    const line = document.createElement('div');
+    line.className = `readout-identity-line ${className}`;
+    line.textContent = text;
+    identity.append(line);
+    return line;
+  };
+  const segment = normalizeEndpointName(segmentName);
+  identityLine('readout-identity-segment', segment);
+  const place = normalizeEndpointName(placeName)
+    || (placesIndex ? localityNameFor(lng, lat) : null);
+  // Never repeat the segment name back as if it were a second fact.
+  identityLine('readout-identity-place',
+    place && place.toLowerCase() !== (segment || '').toLowerCase() ? place : null);
+  const regionLine = document.createElement('div');
+  regionLine.className = 'readout-identity-line readout-identity-region';
+  const region = placesIndex ? regionNameFor(lng, lat) : null;
+  regionLine.textContent = region || '';
+  regionLine.hidden = !region;
+  identity.append(regionLine);
+  if (!placesIndex) {
+    const forCard = readoutCardToken = (readoutCardToken || 0) + 1;
+    ensurePlaces().then(() => {
+      // The rider may have tapped elsewhere while the index loaded.
+      if (forCard !== readoutCardToken || !regionLine.isConnected) return;
+      const late = regionNameFor(lng, lat);
+      if (!late) return;
+      regionLine.textContent = late;
+      regionLine.hidden = false;
+    });
+  }
+
   const safetySummary = compactReadoutSafety(rows, summary);
   safetySummary.style.setProperty('--readout-accent', swatchColor);
-  const coreFacts = compactReadoutFacts(rows);
 
-  const routeActions = mapPointRouteActions({ lng, lat }, routeName, { disclosure: true });
-  const routeDisclosure = readoutDisclosure('Set as:', routeActions, 'readout-route-menu');
-  const navigateMenuButton = readoutPrimaryButton('readout-primary-route', 'Navigate',
+  // Bike accommodation and (only when it is not paved) surface.
+  const shownAbove = new Set(['Result', 'Verdict', 'Why', 'Name']);
+  const facts = document.createElement('div');
+  facts.className = 'readout-core-facts';
+  const accommodationKeys = ['Bike facility', 'Cycleway', 'Trail type', 'Network',
+    'Bike route', 'Designated bike route'];
+  const accommodation = readoutRowValue(rows, ...accommodationKeys);
+  const addFact = (label, value, keys) => {
+    if (!value) return;
+    for (const key of keys) shownAbove.add(key);
+    const fact = document.createElement('div');
+    fact.className = 'readout-core-fact';
+    const name = document.createElement('span');
+    name.textContent = label;
+    const text = document.createElement('strong');
+    text.textContent = String(value);
+    fact.append(name, text);
+    facts.append(fact);
+  };
+  addFact('Bike accommodation', accommodation, accommodationKeys);
+  const surfaceKeys = ['Surface (OSM)', 'Surface'];
+  const surface = readoutRowValue(rows, ...surfaceKeys);
+  // "Paved" and "Unknown" are both the ordinary case: one is expected, the
+  // other is the absence of a fact. Only a surface a rider would change line
+  // for is worth a line.
+  // Suppressed above, NOT dropped: a paved surface still belongs in Details,
+  // which is the panel that promises to leave nothing out.
+  if (surface && !/^(paved|unknown)$/i.test(String(surface).trim())) {
+    addFact('Surface', surface, surfaceKeys);
+  }
+  // Access is a warning, not metadata: a dismount requirement belongs above.
+  addFact('Access', readoutRowValue(rows, 'Access'), ['Access']);
+
+  const navigateButton = readoutPrimaryButton('readout-primary-route', 'Navigate',
     'Choose how to use this point in your route');
+  navigateButton.removeAttribute('aria-expanded');
+  navigateButton.addEventListener('click', () => openMapPointNavigate({ lng, lat }, routeName));
 
-  const detailsToggle = document.createElement('button');
-  detailsToggle.type = 'button';
-  detailsToggle.className = 'readout-details-toggle';
-  detailsToggle.setAttribute('aria-expanded', 'false');
-  detailsToggle.setAttribute('aria-controls', 'mapTapDetails');
-  detailsToggle.textContent = 'Details';
-  const details = document.createElement('div');
-  details.id = 'mapTapDetails';
-  details.className = 'readout-details';
-  details.hidden = true;
-  details.append(readoutTable(rows));
-
-  const mapActions = document.createElement('div');
-  mapActions.className = 'road-map-actions';
   const streetViewBtn = document.createElement('button');
   streetViewBtn.type = 'button';
   streetViewBtn.className = 'streetview-launch';
   streetViewBtn.setAttribute('aria-label', 'Open Street View in this app');
   streetViewBtn.textContent = 'Street View';
   streetViewBtn.addEventListener('click', () => openStreetView(lat, lng, streetViewHeading));
-  const mapLink = document.createElement('a');
-  mapLink.href = googleMapsPointUrl(lat, lng);
-  mapLink.target = '_blank';
-  mapLink.rel = 'noopener';
-  mapLink.className = 'road-map-link';
-  mapLink.textContent = 'Maps';
-  mapLink.setAttribute('aria-label', 'Open this location in Google Maps');
-  mapActions.append(streetViewBtn, mapLink);
-  const mapDisclosure = readoutDisclosure('Open:', mapActions, 'readout-google-menu');
-  const googleMenuButton = readoutPrimaryButton('readout-primary-google', 'Google Maps',
-    'Open Street View or Google Maps');
+
+  // Everything not already above the fold, in the order the source built it.
+  const detailRows = rows.filter(([key]) => !shownAbove.has(key));
+  const detailsToggle = document.createElement('button');
+  detailsToggle.type = 'button';
+  detailsToggle.className = 'readout-details-toggle';
+  detailsToggle.setAttribute('aria-expanded', 'false');
+  detailsToggle.setAttribute('aria-controls', 'mapTapDetails');
+  detailsToggle.innerHTML = '<span class="readout-details-label">Details</span>'
+    + '<span class="readout-details-chevron" aria-hidden="true"></span>';
+  detailsToggle.disabled = detailRows.length === 0;
+  const details = document.createElement('div');
+  details.id = 'mapTapDetails';
+  details.className = 'readout-details';
+  details.hidden = true;
+  details.append(readoutTable(detailRows));
+
   let blockButton = null;
   if (allowRoadBlock) {
     const existingBlock = roadBlockNear({ lng, lat });
@@ -10712,7 +10826,7 @@ function renderMapTapCard({
       blockButton = document.createElement('button');
       blockButton.type = 'button';
       blockButton.className = 'readout-road-block';
-      blockButton.textContent = existingBlock ? 'Allow' : 'Avoid';
+      blockButton.textContent = existingBlock ? 'Allow road' : 'Add road block';
       blockButton.setAttribute('aria-label', existingBlock ? 'Remove roadblock' : 'Avoid this road');
       blockButton.title = existingBlock ? 'Remove roadblock' : 'Avoid this road';
       blockButton.addEventListener('click', () => {
@@ -10730,51 +10844,48 @@ function renderMapTapCard({
   };
 
   detailsToggle.addEventListener('click', () => {
-    routeDisclosure.menu.hidden = true;
-    mapDisclosure.menu.hidden = true;
-    navigateMenuButton.setAttribute('aria-expanded', 'false');
-    googleMenuButton.setAttribute('aria-expanded', 'false');
     const open = details.hidden;
     details.hidden = !open;
     detailsToggle.setAttribute('aria-expanded', String(open));
-    // Keep the primary row compact even with Avoid present.
-    detailsToggle.textContent = open ? 'Hide' : 'Details';
+    detailsToggle.querySelector('.readout-details-label').textContent = open ? 'Less' : 'Details';
     headingText.textContent = open ? detailsTitle : displayTitle;
     requestAnimationFrame(positionCard);
   });
 
-  const setDisclosureOpen = (trigger, disclosure, otherTrigger, otherDisclosure, open) => {
-    disclosure.hidden = !open;
-    trigger.setAttribute('aria-expanded', String(open));
-    otherDisclosure.hidden = true;
-    otherTrigger.setAttribute('aria-expanded', 'false');
-    requestAnimationFrame(positionCard);
-  };
-  navigateMenuButton.addEventListener('click', () => setDisclosureOpen(
-    navigateMenuButton, routeDisclosure.menu, googleMenuButton, mapDisclosure.menu,
-    routeDisclosure.menu.hidden));
-  googleMenuButton.addEventListener('click', () => setDisclosureOpen(
-    googleMenuButton, mapDisclosure.menu, navigateMenuButton, routeDisclosure.menu,
-    mapDisclosure.menu.hidden));
-  routeDisclosure.close.addEventListener('click', () => setDisclosureOpen(
-    navigateMenuButton, routeDisclosure.menu, googleMenuButton, mapDisclosure.menu, false));
-  mapDisclosure.close.addEventListener('click', () => setDisclosureOpen(
-    googleMenuButton, mapDisclosure.menu, navigateMenuButton, routeDisclosure.menu, false));
-
   const primaryActions = document.createElement('div');
   primaryActions.className = 'readout-primary-actions';
-  primaryActions.append(navigateMenuButton, googleMenuButton);
+  primaryActions.append(navigateButton, streetViewBtn);
   if (blockButton) {
     primaryActions.classList.add('has-road-block');
     primaryActions.append(blockButton);
   }
   primaryActions.append(detailsToggle);
 
-  readoutEl.append(close, heading, safetySummary);
-  if (coreFacts) readoutEl.append(coreFacts);
-  readoutEl.append(primaryActions, routeDisclosure.menu, mapDisclosure.menu, details);
+  readoutEl.append(close, heading);
+  if (identity.childElementCount) readoutEl.append(identity);
+  readoutEl.append(safetySummary);
+  if (facts.childElementCount) readoutEl.append(facts);
+  readoutEl.append(primaryActions, details);
   readoutEl.classList.add('show');
   positionCard();
+}
+// Guards the late region fill against a rider tapping again mid-fetch.
+let readoutCardToken = 0;
+
+/* The Navigate choices are their own small popup rather than a third
+ * disclosure inside the card: on a phone the card is already near the tap and
+ * an inline menu pushed the whole thing off screen. */
+function openMapPointNavigate(lngLat, routeName) {
+  const dialog = document.getElementById('mapPointNavigateDialog');
+  const host = document.getElementById('mapPointNavigateChoices');
+  if (!dialog || !host) return;
+  const label = document.getElementById('mapPointNavigateWhere');
+  if (label) label.textContent = routeName;
+  host.replaceChildren(mapPointRouteActions(lngLat, routeName, { disclosure: true }));
+  host.addEventListener('click', (event) => {
+    if (event.target.closest('button')) dialog.close();
+  }, { once: true });
+  if (!dialog.open) dialog.showModal();
 }
 
 function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMarker = false } = {}) {
@@ -10976,6 +11087,10 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
     displayTitle: pointName === 'Point on map' ? title : pointName,
     detailsTitle: title,
     pointName,
+    // The road or trail the rider actually tapped, shown as its own line so a
+    // segment card leads with the street name rather than burying it in a
+    // table below the verdict.
+    segmentName: pointName === 'Point on map' ? null : pointName,
     summary: compactReadoutSummary(rows),
     rows, lngLat, anchorPoint,
     swatchColor: src.id === 'routes' ? COLORS[1]
@@ -10986,7 +11101,8 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
     streetViewHeading: streetViewRoadHeading(feature, lngLat),
     // A roadblock is a route-editing action, not generic road metadata. Only
     // the chosen route's own hit layer offers it, never an arbitrary road the
-    // rider happens to inspect nearby.
+    // rider happens to inspect nearby -- which is exactly "part of an active
+    // route", since routeseg IS the drawn route.
     allowRoadBlock: src.id === 'routeseg' && p.ferry !== 1,
     avoidTemporaryMarker,
   });

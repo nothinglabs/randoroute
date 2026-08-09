@@ -382,6 +382,12 @@
     <iframe id="svGoogleMapFrame" title="Google map" referrerpolicy="strict-origin-when-cross-origin"></iframe>
   </div>
 
+  <dialog id="mapPointNavigateDialog" class="map-dialog map-point-navigate-dialog" aria-labelledby="mapPointNavigateTitle">
+    <div class="dialog-head"><h2 id="mapPointNavigateTitle">Use this point</h2><button class="dialog-close" data-close="mapPointNavigateDialog" aria-label="Close">✕</button></div>
+    <p class="map-point-navigate-where" id="mapPointNavigateWhere"></p>
+    <div id="mapPointNavigateChoices" class="map-point-navigate-choices"></div>
+  </dialog>
+
   <dialog id="removeRouteMarkerDialog" class="map-dialog remove-route-marker-dialog" aria-labelledby="removeRouteMarkerTitle">
     <div class="dialog-head"><h2 id="removeRouteMarkerTitle">Remove waypoint?</h2><button class="dialog-close" data-close="removeRouteMarkerDialog" aria-label="Close">✕</button></div>
     <p id="removeRouteMarkerText">This waypoint will be removed and the route recalculated.</p>

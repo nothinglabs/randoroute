@@ -320,11 +320,11 @@ await page.waitForFunction(() => document.getElementById('readout')?.classList.c
 const searchChoice = await page.evaluate(() => ({
   indicator: document.querySelectorAll('.search-result-marker').length,
   route: JSON.stringify({ start: routing.start, end: routing.end, vias: routing.vias.map((via) => via.pt) }),
-  actions: [...document.querySelectorAll('#readout .readout-route-actions button')]
+  primary: [...document.querySelectorAll('#readout .readout-primary-actions > button')]
     .map((button) => button.textContent),
-  hasDetails: Boolean(document.querySelector('#readout .readout-details-toggle')),
+  detailsDisabled: document.querySelector('#readout .readout-details-toggle')?.disabled,
+  heading: document.querySelector('#readout .rt-title')?.textContent,
   contextGone: !document.querySelector('#readout .place-action-context'),
-  compact: document.getElementById('readout').classList.contains('place-action-card'),
   cardHeight: Math.round(document.getElementById('readout').getBoundingClientRect().height),
   markerSize: (() => {
     const pin = document.querySelector('.search-result-marker').getBoundingClientRect();
@@ -340,12 +340,16 @@ const searchChoice = await page.evaluate(() => ({
 check('a search result is indicated on the map without silently changing the trip',
   searchChoice.indicator === 1 && searchChoice.route === routeBeforeSearchChoice,
   JSON.stringify(searchChoice));
-check('the searched point uses the same compact Start and Destination language as the planner',
-  searchChoice.actions.join('|') === 'Destination|Start|Add stop'
+// A chosen search result gets the SAME card as a map tap -- one layout to
+// learn -- so it carries Navigate and Street View rather than its own reduced
+// set of buttons. It has no road under it, so the Details flip-down has
+// nothing to offer and says so by being disabled.
+check('the searched point uses the one shared card, with the same actions',
+  searchChoice.primary.join('|') === 'Navigate|Street View|Details'
     && searchChoice.contextGone, JSON.stringify(searchChoice));
-check('a search result uses a compact location card with no road Details and never covers its pin',
-  searchChoice.compact && !searchChoice.hasDetails
-    && searchChoice.cardHeight < 92 && searchChoice.markerSize <= 32
+check('with no road Details to open, and never covering its pin',
+  searchChoice.detailsDisabled === true
+    && searchChoice.cardHeight < 190 && searchChoice.markerSize <= 32
     && !searchChoice.overlapsPin,
   JSON.stringify(searchChoice));
 

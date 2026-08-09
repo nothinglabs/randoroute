@@ -659,20 +659,12 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout-route-actions button:hover:not(:disabled),
 .readout-route-actions button:focus-visible { filter: brightness(.96); outline: 2px solid #78b8dd; outline-offset: 1px; }
 .readout-route-actions button:disabled { opacity: .38; cursor: default; }
-.readout.place-action-card {
-  width: min(270px, calc(100vw - 20px));
-  max-width: min(270px, calc(100vw - 20px));
-  padding: 8px 40px 8px 10px;
-  overflow: visible;
-  border: 1px solid #c9bbdf;
-  border-radius: 12px;
-  box-shadow: 0 3px 12px rgba(38,25,55,.24);
-}
-.place-action-card .rt-title { min-height: 25px; margin: 0; padding-right: 2px; }
-.place-action-card .rt-title span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.place-action-card .place-action-pin { border-radius: 50% 50% 50% 3px; transform: rotate(-45deg); }
-.place-action-card .readout-route-actions { gap: 4px; margin-top: 4px; }
-.place-action-card .readout-route-actions button { min-height: 34px; padding: 4px 5px; border-radius: 7px; font-size: 10.5px; white-space: nowrap; }
+.readout-identity { display: grid; gap: 1px; margin-top: 3px; }
+.readout-identity-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.readout-identity-segment { color: #1d333f; font: 830 12px/1.25 system-ui; }
+.readout-identity-place { color: #40525d; font: 700 10px/1.25 system-ui; }
+.readout-identity-region { color: #6a7b85; font: 700 9.5px/1.25 system-ui; }
+.readout-identity-region[hidden] { display: none; }
 .readout-primary-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
 .readout-primary-actions.has-road-block { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .readout-primary-actions > button {
@@ -684,8 +676,20 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout-primary-actions .readout-primary-google { border-color: #a9c6d6; background: #f2f8fb; color: #176b99; }
 .readout-primary-actions > button:hover,
 .readout-primary-actions > button:focus-visible { filter: brightness(.96); outline: 2px solid #78b8dd; outline-offset: 1px; }
-.readout-details-toggle { width: auto; margin: 0; }
+.readout-primary-actions .streetview-launch { border-color: #a9c6d6; background: #f2f8fb; color: #176b99; }
+.readout-primary-actions .readout-road-block { border-color: #d09a86; background: #fdf1ec; color: #9c3f18; }
+/* A flip-down, not a button that looks like the action buttons beside it: the
+   chevron rotates to point at the panel it opened. */
+.readout-details-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: auto; margin: 0; }
 .readout-details-toggle::after { content: none; }
+.readout-details-toggle:disabled { opacity: .4; cursor: default; }
+.readout-details-chevron {
+  width: 0; height: 0; border-top: 4px solid currentColor;
+  border-right: 3.5px solid transparent; border-left: 3.5px solid transparent;
+  transition: transform .16s ease;
+}
+@media (prefers-reduced-motion: reduce) { .readout-details-chevron { transition: none; } }
+.readout-details-toggle[aria-expanded="true"] .readout-details-chevron { transform: rotate(180deg); }
 .readout-action-menu {
   display: flex; align-items: center; gap: 4px; margin-top: 5px; padding: 5px;
   border: 1px solid #cbd9e1; border-radius: 8px; background: #f7fafc;
@@ -1537,3 +1541,8 @@ body.navigation-active .settings-pane :disabled { cursor: not-allowed; opacity: 
    they look like three unrelated limits, which is what they used to be. */
 #settings-limits .rule-group-head { margin: 10px 0 4px; font: 700 12.5px/1.3 system-ui; color: #24333c; }
 #settings-limits .rule-sub { margin-left: 12px; border-left: 2px solid #d8e0e6; padding-left: 9px; }
+
+/* The Navigate popup: three ways to use the tapped point. */
+.map-point-navigate-where { margin: 6px 0 10px; overflow: hidden; color: #40525d; font: 750 13px/1.3 system-ui; text-overflow: ellipsis; }
+.map-point-navigate-choices .readout-route-actions { grid-template-columns: 1fr; gap: 7px; margin: 0; }
+.map-point-navigate-choices .readout-route-actions button { min-height: 46px; font-size: 13.5px; }
