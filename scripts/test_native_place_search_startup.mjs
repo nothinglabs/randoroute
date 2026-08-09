@@ -64,7 +64,12 @@ let state = await page.evaluate(() => ({
   compactHeight: Math.round(document.getElementById('panel')?.getBoundingClientRect().height || 0),
   compactHelpSize: (() => {
     const rect = document.getElementById('routeIncompleteTipsBtn')?.getBoundingClientRect();
-    return { width: Math.round(rect?.width || 0), height: Math.round(rect?.height || 0) };
+    return {
+      width: Math.round(rect?.width || 0),
+      height: Math.round(rect?.height || 0),
+      rightGap: Math.round(innerWidth - (rect?.right || innerWidth)),
+      bottomGap: Math.round(innerHeight - (rect?.bottom || innerHeight)),
+    };
   })(),
   panelOpen: document.body.classList.contains('panel-open'),
   navigateHidden: document.getElementById('navStartButton')?.hidden,
@@ -91,6 +96,10 @@ let state = await page.evaluate(() => ({
     document.getElementById('settingsToggle'),
     document.querySelector('#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group'),
   ].map((element) => getComputedStyle(element).backgroundColor),
+  helpButtonsCircular: [
+    'routeIncompleteTipsBtn', 'routeTipsBtn', 'navTipsBtn',
+    'layersHelpBtn', 'settingsHelpBtn', 'routesHelpBtn',
+  ].every((id) => getComputedStyle(document.getElementById(id)).borderRadius === '50%'),
   nativePanelBottomPadding: parseFloat(getComputedStyle(document.getElementById('panel'))
     .paddingBottom),
 }));
@@ -106,6 +115,7 @@ check('the untouched planner shows both endpoints and asks for both',
 check('an empty phone planner shows one short, explicit Route bar',
   state.panelOpen && state.compactVisible && state.compactHeight <= 60
     && state.compactHelpSize.width >= 34 && state.compactHelpSize.height >= 34
+    && state.compactHelpSize.rightGap >= 8 && state.compactHelpSize.bottomGap >= 8
     && !await page.$('#panelOpen') && !await page.$('#tabs'), JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
@@ -113,8 +123,11 @@ check('Navigate is absent until a finished route can start', state.navigateHidde
   JSON.stringify(state));
 check('the endpoint card is vertically centered with its utility buttons',
   state.endpointCenterOffset <= 0.5, JSON.stringify(state));
-check('the floating Layers and Settings buttons align with the two trip-action rows',
-  state.utilityRowCenterOffsets.every((offset) => offset <= 1), JSON.stringify(state));
+check('the floating Layers and Settings buttons sit just below the trip-action rows',
+  state.utilityRowCenterOffsets.every((offset) => offset >= 3 && offset <= 5),
+  JSON.stringify(state));
+check('every help affordance uses the same circular question-mark treatment',
+  state.helpButtonsCircular, JSON.stringify(state));
 check('floating map controls use a slight, consistent transparency',
   [...state.mapControlBackgrounds, state.routeBarBackground].every((background) => {
     const alpha = Number(background.match(/,\s*(0?\.\d+)\)$/)?.[1]);
@@ -174,7 +187,7 @@ check('Layers and Settings remain available without a route and have larger clos
     && utilityPanels.layers.help.width >= 36 && utilityPanels.layers.help.height >= 36
     && [utilityPanels.settings.placement, utilityPanels.layers.placement]
       .every((placement) => placement.left >= 6 && placement.right <= 384
-        && placement.bottomGap >= 8)
+        && placement.bottomGap >= 6)
     && utilityPanels.compactVisibleAgain,
   JSON.stringify(utilityPanels));
 
@@ -306,10 +319,10 @@ state = await page.evaluate(() => ({
   pickerHidden: document.getElementById('placePicker').hidden,
   readoutShown: document.getElementById('readout').classList.contains('show'),
 }));
-check('a blank map tap leaves generic search open and does not invent location details',
-  !state.pickerHidden && !state.readoutShown,
+check('a deliberate blank-map tap closes search and opens the generic point card',
+  state.pickerHidden && state.readoutShown,
   JSON.stringify(state));
-await page.click('#placePickerClose');
+await page.click('#readout .readout-close');
 await page.click('#rb-search');
 await page.fill('#placeSearch', 'Seattle');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');

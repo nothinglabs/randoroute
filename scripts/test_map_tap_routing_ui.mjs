@@ -33,28 +33,46 @@ const compact = await page.evaluate(() => {
   const readout = document.getElementById('readout');
   return {
     heading: readout.querySelector('.rt-title')?.textContent,
-    summary: readout.querySelector('.readout-summary')?.textContent,
+    safety: readout.querySelector('.readout-safety-summary')?.textContent,
+    facts: [...readout.querySelectorAll('.readout-core-fact')]
+      .map((fact) => fact.textContent.replace(/\s+/g, ' ').trim()),
     actions: [...readout.querySelectorAll('.readout-route-actions button')]
       .map((button) => button.textContent),
+    mapActions: [...readout.querySelectorAll(':scope > .road-map-actions > *')]
+      .map((action) => action.textContent),
+    mapActionsAboveDetails: readout.querySelector('.road-map-actions')
+      ?.compareDocumentPosition(readout.querySelector('.readout-details-toggle'))
+      & Node.DOCUMENT_POSITION_FOLLOWING,
     detailsHidden: details?.hidden,
     tableHiddenInsideDetails: !!details?.querySelector('table'),
     stopPresent: Boolean(readout.querySelector('.map-point-stop')),
     locationOnlyCard: readout.classList.contains('place-action-card'),
     compactHeight: Math.round(readout.getBoundingClientRect().height),
+    roadBlockPresent: Boolean(readout.querySelector('.readout-road-block')),
   };
 });
-check('a road tap shows only a short name and safety summary',
+check('a road tap leads with safety and useful bike/road facts',
   compact.heading === 'Interurban Trail'
-    && /Passes your rules|Bike network/.test(compact.summary), JSON.stringify(compact));
+    && /Passes your rules|Bike network/.test(compact.safety)
+    && compact.facts.some((fact) => fact.startsWith('Bike accommodation'))
+    && compact.facts.some((fact) => fact.startsWith('Speed')),
+  JSON.stringify(compact));
 check('the common Destination action leads, with an explicit Start alternative',
   compact.actions.join('|') === 'Destination|Start', JSON.stringify(compact.actions));
 check('technical rows exist but begin hidden behind Details',
   compact.detailsHidden && compact.tableHiddenInsideDetails, JSON.stringify(compact));
+check('Google Street View and Maps are visible above the Details expansion',
+  compact.mapActions.join('|') === 'Google Street View|Google Maps ↗'
+    && compact.mapActionsAboveDetails,
+  JSON.stringify(compact));
+check('an ordinary road does not offer a route roadblock',
+  !compact.roadBlockPresent, JSON.stringify(compact));
 check('a road tap remains a road-details card, not a searched-place card',
   compact.locationOnlyCard === false);
 check('Add stop stays out of the way until the trip has both endpoints',
   compact.stopPresent === false);
-check('the collapsed phone card stays compact', compact.compactHeight < 155,
+check('the richer collapsed phone card remains compact enough to leave the map visible',
+  compact.compactHeight < 300,
   `${compact.compactHeight}px`);
 
 await page.locator('#readout .readout-details-toggle').click();
@@ -84,11 +102,12 @@ await page.evaluate(() => renderReadout(null,
   { lng: -122.76, lat: 48.12 }, { x: 260, y: 300 }));
 const blank = await page.evaluate(() => ({
   heading: document.querySelector('#readout .rt-title')?.textContent,
-  summary: document.querySelector('#readout .readout-summary')?.textContent,
+  safety: document.querySelector('#readout .readout-safety-summary')?.textContent,
   detailsHidden: document.getElementById('mapTapDetails')?.hidden,
 }));
 check('a programmatically selected location can still use the routing card',
-  blank.heading === 'Point on map' && blank.detailsHidden, JSON.stringify(blank));
+  blank.heading === 'Point on map' && /Use this point/.test(blank.safety)
+    && blank.detailsHidden, JSON.stringify(blank));
 await page.locator('#readout .map-point-start').click();
 check('Start completes the route directly from the map', await page.evaluate(() =>
   routing.startName === 'Point on map'
@@ -106,10 +125,10 @@ const expanded = await page.evaluate(() => ({
   hidden: document.getElementById('mapTapDetails')?.hidden,
   heading: document.querySelector('#readout .rt-title')?.textContent,
   detailsText: document.getElementById('mapTapDetails')?.textContent,
-  links: [...document.querySelectorAll('#mapTapDetails .road-map-actions > *')]
+  links: [...document.querySelectorAll('#readout > .road-map-actions > *')]
     .map((element) => element.textContent),
 }));
-check('Details restores the original source heading and external map tools',
+check('Details restores the original source heading while external map tools stay above it',
   expanded.expanded === 'true' && expanded.hidden === false
     && expanded.heading === 'Point on map'
     && expanded.links.join('|') === 'Google Street View|Google Maps ↗', JSON.stringify(expanded));
@@ -120,6 +139,31 @@ check('Add stop commits the tapped map point to the visible itinerary', await pa
   routing.vias.length === 1 && routing.vias[0].name === 'Point on map'
     && document.querySelector('.route-stop-edit strong')?.textContent === 'Point on map'));
 
+const routeSegmentBlock = await page.evaluate(() => {
+  document.getElementById('readout').querySelector('.readout-details-toggle')?.click();
+  HIT_SRC['test-active-route-hit'] = ROUTESEG_SRC;
+  renderReadout({
+    layer: { id: 'test-active-route-hit' },
+    properties: {
+      name: 'Example active route road', level: 1, mph: 25, sh: 4, shBack: 2,
+      lanes: 2, facility: 2, lenM: 420, surface: 1, gradePct: 2.4,
+    },
+    geometry: { type: 'LineString', coordinates: [[-122.31, 47.94], [-122.30, 47.95]] },
+  }, { lng: -122.305, lat: 47.945 }, { x: 180, y: 360 });
+  const readout = document.getElementById('readout');
+  return {
+    button: readout.querySelector('.readout-road-block')?.textContent,
+    detailsHidden: document.getElementById('mapTapDetails').hidden,
+    aboveDetails: readout.querySelector('.readout-road-block')
+      ?.compareDocumentPosition(readout.querySelector('.readout-details-toggle'))
+      & Node.DOCUMENT_POSITION_FOLLOWING,
+  };
+});
+check('Avoid this road appears above Details only for a selected-route segment',
+  /Avoid this road/.test(routeSegmentBlock.button)
+    && routeSegmentBlock.detailsHidden && routeSegmentBlock.aboveDetails,
+  JSON.stringify(routeSegmentBlock));
+
 const blankTap = await page.evaluate(() => {
   roadInfoSuppressedUntil = 0;
   dismissRoadInfo();
@@ -127,9 +171,17 @@ const blankTap = await page.evaluate(() => {
   featureAt = () => null;
   const opened = inspectRoadAt({ x: 120, y: 240 }, { lng: -122.4, lat: 47.7 });
   featureAt = original;
-  return { opened, shown: document.getElementById('readout').classList.contains('show') };
+  return {
+    opened,
+    shown: document.getElementById('readout').classList.contains('show'),
+    heading: document.querySelector('#readout .rt-title')?.textContent,
+    actions: [...document.querySelectorAll('#readout .readout-route-actions button')]
+      .map((button) => button.textContent),
+  };
 });
-check('a blank map tap does not invent a details card', !blankTap.opened && !blankTap.shown,
+check('a blank map tap opens a useful generic point card',
+  blankTap.opened && blankTap.shown && blankTap.heading === 'Point on map'
+    && blankTap.actions.join('|') === 'Destination|Start|Add stop',
   JSON.stringify(blankTap));
 const edgeTap = await page.evaluate(() => {
   roadInfoSuppressedUntil = 0;

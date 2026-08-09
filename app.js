@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.646';
+const APP_VERSION = '2026-08-08.647';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -10310,6 +10310,55 @@ function compactReadoutSummary(rows, fallback = '') {
     || 'Use this point in your trip, or open Details.';
 }
 
+function readoutRowValue(rows, ...keys) {
+  return rows.find(([key, value]) => keys.includes(key)
+    && value != null && value !== '')?.[1] || null;
+}
+
+function compactReadoutSafety(rows, fallback = '') {
+  const box = document.createElement('div');
+  box.className = 'readout-safety-summary';
+  const verdict = readoutRowValue(rows, 'Result', 'Verdict');
+  const reason = readoutRowValue(rows, 'Why');
+  const headline = document.createElement('strong');
+  headline.textContent = verdict || fallback || 'Road information';
+  box.append(headline);
+  if (reason && reason !== headline.textContent) {
+    const detail = document.createElement('span');
+    detail.textContent = reason;
+    box.append(detail);
+  }
+  return box;
+}
+
+function compactReadoutFacts(rows) {
+  const accommodation = readoutRowValue(rows, 'Bike facility', 'Cycleway', 'Trail type',
+    'Network', 'Bike route', 'Designated bike route');
+  const facts = [
+    ['Bike accommodation', accommodation],
+    ['Access', readoutRowValue(rows, 'Access')],
+    ['Speed', readoutRowValue(rows, 'Speed limit', 'Speed')],
+    ['Shoulder', readoutRowValue(rows, 'Shoulder')],
+    ['Grade', readoutRowValue(rows, 'Grade')],
+    ['Traffic stress', readoutRowValue(rows, 'Traffic stress', 'BLTS (WSDOT)')],
+    ['Surface', readoutRowValue(rows, 'Surface (OSM)', 'Surface')],
+  ].filter(([, value]) => value != null && value !== '').slice(0, 4);
+  if (!facts.length) return null;
+  const host = document.createElement('div');
+  host.className = 'readout-core-facts';
+  for (const [label, value] of facts) {
+    const fact = document.createElement('div');
+    fact.className = 'readout-core-fact';
+    const name = document.createElement('span');
+    name.textContent = label;
+    const text = document.createElement('strong');
+    text.textContent = String(value);
+    fact.append(name, text);
+    host.append(fact);
+  }
+  return host;
+}
+
 function mapPointRouteActions(lngLat, routeName) {
   const lat = Number(lngLat.lat);
   const lng = Number(lngLat.lng);
@@ -10415,9 +10464,9 @@ function renderMapTapCard({
   headingText.textContent = displayTitle;
   heading.append(swatch, headingText);
 
-  const summaryText = document.createElement('p');
-  summaryText.className = 'readout-summary';
-  summaryText.textContent = summary;
+  const safetySummary = compactReadoutSafety(rows, summary);
+  safetySummary.style.setProperty('--readout-accent', swatchColor);
+  const coreFacts = compactReadoutFacts(rows);
 
   const routeActions = mapPointRouteActions({ lng, lat }, routeName);
 
@@ -10450,13 +10499,12 @@ function renderMapTapCard({
   mapLink.textContent = 'Google Maps ↗';
   mapLink.setAttribute('aria-label', 'Open this location in Google Maps');
   mapActions.append(streetViewBtn, mapLink);
-  details.append(mapActions);
-
+  let blockButton = null;
   if (allowRoadBlock) {
     const existingBlock = roadBlockNear({ lng, lat });
     const canAddBlock = routing.start && routing.end && routing.blocks.length < MAX_ROAD_BLOCKS;
     if (existingBlock || canAddBlock) {
-      const blockButton = document.createElement('button');
+      blockButton = document.createElement('button');
       blockButton.type = 'button';
       blockButton.className = 'readout-road-block';
       blockButton.textContent = existingBlock ? '🚧 Remove roadblock' : '🚧 Avoid this road';
@@ -10465,7 +10513,6 @@ function renderMapTapCard({
         else addRoadBlock({ lng, lat });
         dismissRoadInfo();
       });
-      details.append(blockButton);
     }
   }
 
@@ -10478,7 +10525,11 @@ function renderMapTapCard({
     if (anchorPoint) requestAnimationFrame(() => positionRoadInfoNear(anchorPoint));
   });
 
-  readoutEl.append(close, heading, summaryText, routeActions, detailsToggle, details);
+  readoutEl.append(close, heading, safetySummary);
+  if (coreFacts) readoutEl.append(coreFacts);
+  readoutEl.append(routeActions, mapActions);
+  if (blockButton) readoutEl.append(blockButton);
+  readoutEl.append(detailsToggle, details);
   readoutEl.classList.add('show');
   if (anchorPoint) positionRoadInfoNear(anchorPoint);
 }
@@ -10688,7 +10739,10 @@ function renderReadout(feature, lngLat, anchorPoint = null) {
     swatchLabel: src.id === 'routes'
       ? 'Designated route map color' : `Map color: ${readoutVerdict(n, lvl, verdict)}`,
     streetViewHeading: streetViewRoadHeading(feature, lngLat),
-    allowRoadBlock: true,
+    // A roadblock is a route-editing action, not generic road metadata. Only
+    // the chosen route's own hit layer offers it, never an arbitrary road the
+    // rider happens to inspect nearby.
+    allowRoadBlock: src.id === 'routeseg' && p.ferry !== 1,
   });
 }
 
@@ -10830,16 +10884,15 @@ function inspectRoadAt(point, lngLat = null) {
       || point.x > canvas.clientWidth - edgeGuard
       || point.y > canvas.clientHeight - edgeGuard) return false;
   const feature = featureAt(point);
-  // Blank map is for panning and zooming. Only a real road, trail, ferry, or
-  // selected-route segment opens the information card; this also prevents a
-  // near-miss beside an edge control from feeling like the control fired it.
-  if (!feature) return false;
+  // A deliberate tap is useful even between mapped segments: the generic
+  // point card can still make it a destination, start, or stop and can open
+  // Google Maps. Feature-backed taps simply add the richer road safety facts.
   // Generic search is non-modal. A deliberate road/trail tap dismisses the
   // search card and opens the normal route actions for that mapped feature.
   const picker = document.getElementById('placePicker');
   if (picker && !picker.hidden) closePlacePicker();
   clearSearchResultMarker();
-  renderReadout(feature, lngLat || map.unproject([point.x, point.y]), point);
+  renderReadout(feature || null, lngLat || map.unproject([point.x, point.y]), point);
   readoutPinned = true;
   return true;
 }
