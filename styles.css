@@ -1149,7 +1149,10 @@ body.navigation-active #routeBar { display: none; }
 #getUpdateBtn { min-height: 32px; padding: 6px 9px; border: none; border-radius: 8px; background: #0a66c2; color: #fff; font: 700 11px system-ui; cursor: pointer; }
 #updateLaterBtn { width: 32px; height: 32px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
 @media (max-width: 720px) {
-  #tab-route.route-calculating { min-height: 152px; padding-top: 7px; padding-bottom: 8px; overflow: hidden; }
+  /* The calculation card has a visible border, so it needs a little more
+     optical clearance than the finished edge-to-edge route sheet. Keep the
+     card itself full-sized, but pull its border inside the iPhone corner arc. */
+  #tab-route.route-calculating { min-height: 160px; padding: 7px 14px 16px; overflow: hidden; }
   #tab-route.route-calculating #routeCard { min-height: 137px; }
   #tab-route.route-calculating #routeControls { height: 137px; margin: 0; padding: 0; border: 0; }
   .route-calculation-status {

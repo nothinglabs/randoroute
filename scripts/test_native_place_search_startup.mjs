@@ -471,6 +471,15 @@ state = await page.evaluate(() => ({
   },
   calculationFillRatio: document.getElementById('routeCalculationStatus')
     .getBoundingClientRect().height / document.getElementById('panel').getBoundingClientRect().height,
+  calculationInset: (() => {
+    const panel = document.getElementById('panel').getBoundingClientRect();
+    const status = document.getElementById('routeCalculationStatus').getBoundingClientRect();
+    return {
+      left: status.left - panel.left,
+      right: panel.right - status.right,
+      bottom: panel.bottom - status.bottom,
+    };
+  })(),
 }));
 check('targeted Start assigns directly and routing begins after both endpoints exist',
   state.workers === 1 && state.pickerHidden && state.start && state.end && !state.promptShown,
@@ -482,6 +491,10 @@ check('route calculation opens Route and replaces choices with in-panel status',
   JSON.stringify(state));
 check('route calculation uses the reserved bottom sheet instead of floating in empty white space',
   state.calculationFillRatio >= 0.85, JSON.stringify(state));
+check('route calculation border stays inside the phone corner arc',
+  state.calculationInset.left >= 13 && state.calculationInset.right >= 13
+    && state.calculationInset.bottom >= 15,
+  JSON.stringify(state));
 check('route calculation frames the itinerary above the open phone panel',
   Array.isArray(state.fit?.bounds) && state.fit.bounds.length === 2
     && state.fit.options?.padding?.bottom > state.fit.options?.padding?.top
