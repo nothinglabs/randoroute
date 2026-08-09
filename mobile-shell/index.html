@@ -360,9 +360,27 @@
   </dialog>
 
   <dialog id="streetViewDialog" class="full-help-dialog sv-dialog" aria-label="Street View">
-    <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Open in Google Maps ↗</a><button class="dialog-close streetview-close" data-close="streetViewDialog" aria-label="Close Street View"><span aria-hidden="true">✕</span><span>Close</span></button></div></div>
+    <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Launch Google Maps ↗</a><button class="dialog-close streetview-close" data-close="streetViewDialog" aria-label="Close Street View"><span aria-hidden="true">✕</span><span>Close</span></button></div></div>
     <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><p id="streetViewLoadStatus" class="sv-load-status" role="status" aria-live="polite" hidden></p><div class="sv-overlay-notes"><p class="sv-coverage-note"><b>Location note:</b> The nearest available view may be up to 250 m away. For trails, it may show a nearby road.</p></div></div>
   </dialog>
+
+  <!-- The lower half of the Street View split: the app's own map keeps showing
+       through here (it is never covered), so tapping the route moves the
+       panorama. The Google basemap toggle swaps in an Embed API map, and
+       hides the MapLibre canvas while it does so — never two live map
+       surfaces plus a panorama at once. -->
+  <div id="svSplitBar" class="sv-split-bar" hidden>
+    <p class="sv-split-hint" id="svSplitHint">Tap the route below to look around there</p>
+    <div class="sv-split-controls">
+      <label class="sv-split-toggle" for="svGoogleBasemap">
+        <input type="checkbox" id="svGoogleBasemap">
+        <span>Google map</span>
+      </label>
+    </div>
+  </div>
+  <div id="svGoogleMap" class="sv-google-map" hidden>
+    <iframe id="svGoogleMapFrame" title="Google map" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+  </div>
 
   <dialog id="removeRouteMarkerDialog" class="map-dialog remove-route-marker-dialog" aria-labelledby="removeRouteMarkerTitle">
     <div class="dialog-head"><h2 id="removeRouteMarkerTitle">Remove waypoint?</h2><button class="dialog-close" data-close="removeRouteMarkerDialog" aria-label="Close">✕</button></div>
@@ -438,7 +456,7 @@
       <li>Tap <b>Details</b> to inspect statistics, concerns, and route segments. Use <b>Settings</b> to change riding rules.</li>
       <li>Tap <b>Navigate</b> for GPS and voice guidance.</li>
     </ol>
-    <p class="app-help-note">Tap any road or trail to get more information or access <b>Google Street View</b>.</p>
+    <p class="app-help-note">Tap any road or trail to get more information or access <b>Google Street View</b>. Street View keeps your map on screen below it — tap along the route to look around there, switch that half to a Google map, or launch Google Maps itself.</p>
     <div class="app-help-update">
       <p id="appVersion" class="app-help-version" aria-label="App version"></p>
       <div class="app-help-actions">

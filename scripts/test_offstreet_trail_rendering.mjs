@@ -28,9 +28,20 @@ await page.evaluate(async () => {
   ]);
 });
 
+// queryRenderedFeatures answers from the last frame the map DREW, not from the
+// style: after setMapLayerVisible the layer reads visibility 'none' straight
+// away, while the query index still returns its features for about a second.
+// A fixed short wait therefore reported a disabled layer as still rendering.
+// Wait for the map to go idle, which is the point its query index matches the
+// style it has been given.
 async function counts(enabled) {
-  await page.evaluate((on) => setMapLayerVisible('offstreetTrails', on), enabled);
-  await page.waitForTimeout(250);
+  await page.evaluate(async (on) => {
+    setMapLayerVisible('offstreetTrails', on);
+    await Promise.race([
+      new Promise((resolve) => map.once('idle', resolve)),
+      new Promise((resolve) => setTimeout(resolve, 10000)),
+    ]);
+  }, enabled);
   return page.evaluate(() => ({
     source: map.querySourceFeatures('overlays', { sourceLayer: 'bikeinfra' }).length,
     base: map.queryRenderedFeatures({ layers: ['osm__trail-base'] }).length,

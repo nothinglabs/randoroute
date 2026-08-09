@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-09.652';
+const APP_VERSION = '2026-08-09.653';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7859,30 +7859,6 @@ async function resolveDefaultStartFromDevice() {
   }
 }
 
-/* A bullseye centred ON the point, not a pin standing beside it.
- *
- * The default MapLibre pin hangs its whole body above the coordinate and marks
- * the spot with a tail tip, which reads as "somewhere under here" -- wrong for
- * an endpoint the rider placed by tapping an exact spot, and wrong again when
- * they drag it onto a specific driveway or trailhead. The crosshair's arms
- * extend past the ring so the target stays legible over busy basemap, and the
- * marker is anchored 'center' so the coordinate is literally the middle of it.
- */
-function endpointMarkerElement(kind) {
-  const element = document.createElement('div');
-  element.className = `endpoint-marker endpoint-marker-${kind}`;
-  element.setAttribute('aria-hidden', 'true');
-  // The halo group is the same geometry drawn first in fat white, so the mark
-  // keeps its edge over dark trails and orthophoto-coloured parkland.
-  const bullseye = '<circle cx="16" cy="16" r="8"/>'
-    + '<path d="M16 3.5v6M16 22.5v6M3.5 16h6M22.5 16h6"/>';
-  element.innerHTML = `<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">`
-    + `<g class="endpoint-marker-halo">${bullseye}</g>`
-    + `<g class="endpoint-marker-ink">${bullseye}</g>`
-    + `<circle class="endpoint-marker-dot" cx="16" cy="16" r="2.7"/></svg>`;
-  return element;
-}
-
 function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false } = {}) {
   exitSharedRoute();
   const previous = routing[kind];
@@ -7910,7 +7886,7 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
   else {
     const touchEndpoint = window.matchMedia('(pointer: coarse)').matches;
     routing[mk] = new maplibregl.Marker({
-      element: endpointMarkerElement(kind), anchor: 'center', draggable: !touchEndpoint,
+      color: kind === 'start' ? '#0072B2' : '#D55E00', draggable: !touchEndpoint,
     }).setLngLat(lngLat).addTo(map);
     if (touchEndpoint) enableLongPressEndpointMove(kind, routing[mk]);
     else routing[mk].on('dragend', () => {
@@ -11071,18 +11047,118 @@ function openStreetView(lat, lng, heading = null) {
   clearTimeout(streetViewLoadTimer);
   map.stop();
   document.body.classList.add('street-view-open');
+  streetView.at = [lng, lat];
   frame.dataset.streetViewActive = '1';
   frame.dataset.streetViewBridge = nativeRuntime ? '1' : '0';
   setStreetViewLoadStatus('Loading Street View…');
   streetViewLoadTimer = setTimeout(() => {
     if (frame.dataset.streetViewActive === '1') {
-      setStreetViewLoadStatus('Street View is taking longer than expected. Try Open in Google Maps.', true);
+      setStreetViewLoadStatus('Street View is taking longer than expected. Try Launch Google Maps.', true);
     }
   }, 12000);
   frame.src = nativeRuntime
     ? `${NATIVE_STREET_VIEW_BRIDGE}?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}${headingParam}`
     : `https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=250${headingParam}&fov=90`;
-  if (!dialog.open) dialog.showModal();
+  // show(), not showModal(): the split leaves the app's own map live in the
+  // lower band, and a modal dialog makes everything behind it inert -- the
+  // rider could see the route but not tap it.
+  if (!dialog.open) dialog.show();
+  openStreetViewSplit();
+}
+
+/* ------------------------------------------- the Street View split screen
+ * The panorama takes the top of the screen and the app's own map keeps the
+ * bottom, so a rider can walk the route visually: tap anywhere near the line
+ * and the panorama re-opens there, facing the way they would be riding. The
+ * basemap toggle swaps that band for a Google map (Embed API) and hides the
+ * MapLibre canvas while it is up, so the page never carries two live map
+ * surfaces plus a panorama at once -- the compositing load that made iOS
+ * discard the app during the crash saga.
+ */
+const streetView = { at: null, splitOpen: false, mapPadding: false };
+const STREET_VIEW_TAP_MAX_M = 400;
+
+function openStreetViewSplit() {
+  streetView.splitOpen = true;
+  document.getElementById('svSplitBar')?.removeAttribute('hidden');
+  syncStreetViewBasemap();
+  // Lift the route out from under the panorama: the visible band is the lower
+  // part of the screen, so the camera is padded rather than re-centred, which
+  // keeps the rider's own zoom and bearing.
+  const top = Math.round(window.innerHeight * 0.56);
+  map.easeTo({ padding: { top, bottom: 0, left: 0, right: 0 }, duration: 320 });
+  streetView.mapPadding = true;
+  map.resize();
+}
+
+function closeStreetViewSplit() {
+  streetView.splitOpen = false;
+  document.getElementById('svSplitBar')?.setAttribute('hidden', '');
+  const googleMap = document.getElementById('svGoogleMap');
+  googleMap?.setAttribute('hidden', '');
+  const googleFrame = document.getElementById('svGoogleMapFrame');
+  if (googleFrame) googleFrame.src = 'about:blank';
+  const toggle = document.getElementById('svGoogleBasemap');
+  if (toggle) toggle.checked = false;
+  if (streetView.mapPadding) {
+    map.easeTo({ padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 260 });
+    streetView.mapPadding = false;
+  }
+}
+
+// The Google basemap covers the same band the app's map occupies, so the
+// MapLibre canvas is hidden behind it rather than left compositing unseen.
+function syncStreetViewBasemap() {
+  const useGoogle = !!document.getElementById('svGoogleBasemap')?.checked;
+  const host = document.getElementById('svGoogleMap');
+  const frame = document.getElementById('svGoogleMapFrame');
+  const hint = document.getElementById('svSplitHint');
+  if (!host || !frame) return;
+  if (useGoogle) {
+    const [lng, lat] = streetView.at || map.getCenter().toArray();
+    frame.src = `https://www.google.com/maps/embed/v1/view?key=${encodeURIComponent(GOOGLE_MAPS_EMBED_KEY)}`
+      + `&center=${lat.toFixed(6)},${lng.toFixed(6)}&zoom=16&maptype=roadmap`;
+    host.removeAttribute('hidden');
+    document.body.classList.add('street-view-google-map');
+    if (hint) hint.textContent = 'Google map — your route is not drawn here';
+  } else {
+    host.setAttribute('hidden', '');
+    frame.src = 'about:blank';
+    document.body.classList.remove('street-view-google-map');
+    if (hint) hint.textContent = 'Tap the route below to look around there';
+    map.resize();
+  }
+}
+
+document.getElementById('svGoogleBasemap')?.addEventListener('change', syncStreetViewBasemap);
+
+/* A tap in the lower band moves the panorama. It snaps to the nearest point on
+ * the drawn route so the view lands on the road being inspected rather than in
+ * a back garden, and takes its heading from the route's own direction there --
+ * the rider wants to see what they will see, not an arbitrary compass facing.
+ * Beyond STREET_VIEW_TAP_MAX_M there is no route to snap to, so the tap is
+ * taken literally.
+ */
+function streetViewTapAt(lngLat) {
+  const coords = routing.last?.ok ? routing.last.coords : null;
+  let target = [lngLat.lng, lngLat.lat];
+  let heading = null;
+  if (coords?.length > 1) {
+    // A plain scan rather than nearestNavigationPoint: that one reports
+    // distance ALONG the route and so needs a cumulative array this path has
+    // no reason to build. Only the point and its direction matter here.
+    const point = [lngLat.lng, lngLat.lat];
+    let best = null, bestIndex = 0;
+    for (let i = 0; i + 1 < coords.length; i++) {
+      const projection = projectNavigationSegment(point, coords[i], coords[i + 1]);
+      if (!best || projection.distanceM < best.distanceM) { best = projection; bestIndex = i; }
+    }
+    if (best && best.distanceM <= STREET_VIEW_TAP_MAX_M) {
+      target = best.point;
+      heading = navBearing(coords[bestIndex], coords[bestIndex + 1]);
+    }
+  }
+  openStreetView(target[1], target[0], heading);
 }
 
 document.getElementById('streetViewFrame').addEventListener('load', (event) => {
@@ -11121,6 +11197,7 @@ document.getElementById('streetViewDialog').addEventListener('close', () => {
   frame.src = 'about:blank';
   setStreetViewLoadStatus();
   document.body.classList.remove('street-view-open');
+  closeStreetViewSplit();
   requestAnimationFrame(() => {
     map.resize();
     map.triggerRepaint?.();
@@ -11239,6 +11316,13 @@ function placeArmedPoint(lngLat) {
 })();
 
 map.on('click', (e) => {
+  // While the split is up the map is a picker for the panorama, nothing else:
+  // opening a road card under a half-height dialog would be unreadable, and
+  // arming a route point mid-inspection is not what the tap means here.
+  if (streetView.splitOpen) {
+    streetViewTapAt(e.lngLat);
+    return;
+  }
   if (routing.arm) {
     placeArmedPoint(e.lngLat);
     return;
