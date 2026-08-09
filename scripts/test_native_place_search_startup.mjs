@@ -322,6 +322,14 @@ check('choosing a targeted Destination assigns it directly and defaults Start to
     && state.startLabel === 'Current location (tap to change).' && state.pickerHidden
     && !state.promptShown && state.indicator === 0, JSON.stringify(state));
 
+await page.evaluate(() => {
+  window.__routeCalculationFits = [];
+  const platformFitBounds = map.fitBounds.bind(map);
+  map.fitBounds = (bounds, options) => {
+    window.__routeCalculationFits.push({ bounds: bounds.toArray(), options });
+    return platformFitBounds(bounds, options);
+  };
+});
 await page.click('#rb-start');
 state = await page.evaluate(() => ({
   available: !document.getElementById('useLoc').hidden,
@@ -361,15 +369,65 @@ await page.fill('#placeSearch', 'Seattle');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 await page.click('#placeResults .place-hit:not(.place-internet-search)');
 await page.waitForFunction(() => window.__routingWorkerStarts.length > 0, null, { timeout: 30000 });
+await page.waitForFunction(() => document.body.classList.contains('panel-open')
+  && document.getElementById('tab-route')?.classList.contains('route-calculating')
+  && window.__routeCalculationFits.length > 0);
+await page.waitForTimeout(650);
 state = await page.evaluate(() => ({
   workers: window.__routingWorkerStarts.length,
   pickerHidden: document.getElementById('placePicker').hidden,
   start: Boolean(routing.start), end: Boolean(routing.end),
   promptShown: document.getElementById('readout').classList.contains('show'),
+  panelOpen: document.body.classList.contains('panel-open'),
+  routeTabActive: document.getElementById('tab-route').classList.contains('active'),
+  calculationVisible: !document.getElementById('routeCalculationStatus').hidden,
+  calculationTitle: document.getElementById('routeCalculationTitle').textContent,
+  chooserHidden: getComputedStyle(document.querySelector('#routeControls .route-chooser-row')).display === 'none',
+  staleCardHidden: !document.querySelector('#routeCard .rc-route-message, #routeCard .rc-route-summary')
+    || getComputedStyle(document.querySelector('#routeCard .rc-route-message, #routeCard .rc-route-summary')).display === 'none',
+  controlsVisible: getComputedStyle(document.getElementById('routeControls')).display !== 'none',
+  toastHidden: document.getElementById('routeActionToast').hidden,
+  fit: window.__routeCalculationFits.at(-1),
+  framedPoints: [routing.start, routing.end].map((point) => map.project(point)),
+  safeFrame: {
+    top: document.getElementById('routeBar').getBoundingClientRect().bottom + 12,
+    right: innerWidth - 20,
+    bottom: document.getElementById('panel').getBoundingClientRect().top - 12,
+    left: 20,
+  },
 }));
 check('targeted Start assigns directly and routing begins after both endpoints exist',
   state.workers === 1 && state.pickerHidden && state.start && state.end && !state.promptShown,
   JSON.stringify(state));
+check('route calculation opens Route and replaces choices with in-panel status',
+  state.panelOpen && state.routeTabActive && state.calculationVisible
+    && /preparing|calculating|loading/i.test(state.calculationTitle)
+    && state.chooserHidden && state.staleCardHidden && state.controlsVisible && state.toastHidden,
+  JSON.stringify(state));
+check('route calculation frames the itinerary above the open phone panel',
+  Array.isArray(state.fit?.bounds) && state.fit.bounds.length === 2
+    && state.fit.options?.padding?.bottom > state.fit.options?.padding?.top
+    && state.framedPoints.every((point) => point.x >= state.safeFrame.left
+      && point.x <= state.safeFrame.right && point.y >= state.safeFrame.top
+      && point.y <= state.safeFrame.bottom),
+  JSON.stringify({ fit: state.fit, points: state.framedPoints, safeFrame: state.safeFrame }));
+state = await page.evaluate(() => {
+  const choice = { ok: true, optimization: { label: 'Route A', profileId: 'panel-test' } };
+  routing.options = [choice];
+  routing.last = choice;
+  setRouteOptionsLoading(false);
+  renderRouteOptionControls();
+  return {
+    statusHidden: document.getElementById('routeCalculationStatus').hidden,
+    calculating: document.getElementById('tab-route').classList.contains('route-calculating'),
+    chooserVisible: getComputedStyle(document.querySelector('#routeControls .route-chooser-row')).display !== 'none',
+    choices: [...document.querySelectorAll('#routeOptions button[data-route-option]')]
+      .map((button) => button.textContent.trim()),
+  };
+});
+check('finished calculation reveals route choices in that same Route-tab slot',
+  state.statusHidden && !state.calculating && state.chooserVisible
+    && state.choices.join('|') === 'A (Only route)', JSON.stringify(state));
 
 // A blank Safari/Web visit used to eagerly retain the expanded route graph,
 // leaving too little headroom for MapLibre when a rider zoomed out. Web now

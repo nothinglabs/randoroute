@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.636';
+const APP_VERSION = '2026-08-08.637';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2721,6 +2721,7 @@ const routing = {
   blocks: [],                // avoided road locations: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false, pendingRoute: false, routeRequestActive: false,
+  restoringRoute: false, pendingPanelReveal: false,
   loadedGraphVersion: null, // sha of the graph bytes the router actually has
   mode: ['direct', 'balanced', 'low'].includes(savedState?.mode)
     ? savedState.mode : 'balanced', // 'direct' | 'balanced' | 'low'
@@ -2814,9 +2815,92 @@ function showRouteActionToast(text, { busy = false, detail = '', duration = 2200
   if (text && duration > 0) routeActionToastTimer = setTimeout(() => { toast.hidden = true; }, duration);
 }
 
+function showRouteCalculationStatus(title = 'Calculating route options', detail = '', progress = null) {
+  const tab = document.getElementById('tab-route');
+  const status = document.getElementById('routeCalculationStatus');
+  const titleLabel = document.getElementById('routeCalculationTitle');
+  const detailLabel = document.getElementById('routeCalculationDetail');
+  if (!tab || !status || !titleLabel || !detailLabel) return;
+  titleLabel.textContent = title;
+  detailLabel.textContent = detail || 'Comparing safer, quicker, and bike-friendly routes…';
+  const bar = document.getElementById('routeCalculationProgress');
+  const fill = document.getElementById('routeCalculationProgressFill');
+  const showBar = typeof progress === 'number' && progress >= 0;
+  if (bar) bar.hidden = !showBar;
+  if (showBar && fill) {
+    fill.style.width = `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%`;
+  }
+  status.hidden = false;
+  tab.classList.add('route-calculating');
+  scheduleMobileNavDockAfterInit();
+}
+
+function hideRouteCalculationStatus() {
+  document.getElementById('tab-route')?.classList.remove('route-calculating');
+  const status = document.getElementById('routeCalculationStatus');
+  if (status) status.hidden = true;
+  scheduleMobileNavDockAfterInit();
+}
+
+// computeRoute() can run synchronously while a restored trip is being built,
+// before the phone-panel constants later in this script have initialized.
+// Deferring the panel/layout work also lets the search sheet finish closing
+// before the Route sheet opens and the map measures its final height.
+function scheduleMobileNavDockAfterInit() {
+  queueMicrotask(() => {
+    if (typeof scheduleMobileNavDock === 'function') scheduleMobileNavDock();
+  });
+}
+
+function fitItineraryForCalculation() {
+  const points = [routing.start, ...routing.vias.map((via) => via.pt), routing.end]
+    .filter((point) => Array.isArray(point) && point.length >= 2
+      && Number.isFinite(point[0]) && Number.isFinite(point[1]));
+  if (points.length < 2 || !map) return;
+  const fit = () => {
+    const onPhone = window.matchMedia('(max-width: 720px)').matches;
+    const panelRect = document.getElementById('panel')?.getBoundingClientRect();
+    const routeBarRect = document.getElementById('routeBar')?.getBoundingClientRect();
+    const panelHeight = onPhone && document.body.classList.contains('panel-open')
+      ? Math.ceil(panelRect?.height || 0) : 0;
+    // The itinerary bar is deliberately wider/taller on a phone. Measure it:
+    // a fixed top inset put the northern pin underneath that bar on longer
+    // trips even though MapLibre correctly considered it "inside" the map.
+    const topPadding = Math.max(onPhone ? 105 : 80,
+      Math.ceil(routeBarRect?.bottom || 0) + 24);
+    const bounds = new maplibregl.LngLatBounds(points[0], points[0]);
+    for (const point of points.slice(1)) bounds.extend(point);
+    map.fitBounds(bounds, {
+      padding: onPhone
+        ? { top: topPadding, right: 42, bottom: Math.max(95, panelHeight + 42), left: 42 }
+        : { top: topPadding, right: 70, bottom: 80,
+          left: Math.max(470, Math.ceil(panelRect?.right || 0) + 28) },
+      maxZoom: 14,
+      duration: 550,
+    });
+  };
+  requestAnimationFrame(() => requestAnimationFrame(fit));
+}
+
+function revealRouteCalculation() {
+  // Never pull the map or controls away from an active navigation session.
+  if (turnNav.active) return;
+  queueMicrotask(() => {
+    selectPanelTab('route');
+    setPanelOpen(true);
+    fitItineraryForCalculation();
+  });
+}
+
 function showRouterProgress(detail, title = 'Loading routing engine', progress = null) {
   setRouteStatus(detail || title);
-  showRouteActionToast(title, { busy: true, detail, duration: 0, progress });
+  if (routing.start && routing.end && (routing.pendingRoute || routing.routeRequestActive)) {
+    showRouteCalculationStatus(title, detail, progress);
+    // A previous short-lived notice must not sit over the calculation sheet.
+    showRouteActionToast('');
+  } else {
+    showRouteActionToast(title, { busy: true, detail, duration: 0, progress });
+  }
   // On a first install the routing data is the long wait, and on iOS it can
   // overlap the launch screen -- which then sat on a generic message with
   // nothing to say. This no-ops once the app has taken over the screen.
@@ -2933,6 +3017,7 @@ function handleRouterFailure(message) {
   routing.ready = false;
   routing.loading = false;
   routing.pendingRoute = false;
+  routing.pendingPanelReveal = false;
   routing.routeRequestActive = false;
   if (routing.worker) routing.worker.terminate();
   routing.worker = null;
@@ -6298,6 +6383,7 @@ function onRouterMessage(ev) {
     }
     routing.ready = true;
     routing.loading = false;
+    const revealPendingCalculation = routing.pendingPanelReveal;
     routing.pendingRoute = false;
     updateArmButtons();
     setRouteStatus(routing.start && routing.end ? 'Routing…' : '');
@@ -6319,13 +6405,13 @@ function onRouterMessage(ev) {
       const startRouting = () => {
         if (started) return;
         started = true;
-        computeRoute();
+        computeRoute({ revealPanel: revealPendingCalculation });
         schedulePrewarm();
       };
       map.once('idle', startRouting);
       setTimeout(startRouting, 8000);
     } else {
-      computeRoute();
+      computeRoute({ revealPanel: revealPendingCalculation });
       schedulePrewarm();
     }
   } else if (m.type === 'route-options') {
@@ -6455,26 +6541,34 @@ function onRouterMessage(ev) {
   }
 }
 
-function computeRoute() {
+function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
   if (!routing.start || !routing.end) return;
+  const shouldRevealPanel = Boolean(revealPanel) && !turnNav.active;
   if (!routing.ready) { // re-runs once the graph is ready
     routing.pendingRoute = true;
+    routing.pendingPanelReveal ||= shouldRevealPanel;
     setRouteOptionsLoading(true);
+    showRouteCalculationStatus('Preparing route',
+      'Loading the on-device routing map…');
+    if (shouldRevealPanel) revealRouteCalculation();
     ensureRouter();
     showRouterProgress('Finishing the statewide routing map; your route will start automatically…',
       'Preparing route');
     return;
   }
   routing.pendingRoute = false;
+  routing.pendingPanelReveal = false;
   routing.routeRequestActive = true;
   routing.reqId++;
   setRouteStatus('Routing…');
-  // The route chooser shows its own "Comparing routes…" pill while it loads.
-  // When that pill is on screen -- panel open on the Route tab, which is how
-  // every startup restore and most pin drops look -- a floating banner saying
-  // the same thing is a second spinner, so it only shows when the chooser
-  // cannot (panel closed, mid-navigation reroutes).
-  if (!document.getElementById('routeOptions')?.offsetParent) {
+  if (shouldRevealPanel) {
+    revealRouteCalculation();
+    showRouteCalculationStatus(routing.last?.ok ? 'Updating route options' : 'Calculating route options',
+      routing.last?.ok
+        ? 'Reapplying your safety rules and route preferences…'
+        : 'Comparing safer, quicker, and bike-friendly routes…');
+    showRouteActionToast('');
+  } else if (turnNav.active) {
     showRouteActionToast(routing.last?.ok ? 'Recalculating route' : 'Calculating route options', {
       busy: true,
       detail: routing.last?.ok
@@ -8089,11 +8183,7 @@ function removeVia(via) {
   regenerateRoutesAfterWaypointChange();
   const canRoute = Array.isArray(routing.start) && Array.isArray(routing.end);
   computeRoute();
-  showRouteActionToast(canRoute
-    ? 'Stop removed · recalculating…'
-    : 'Stop removed · choose a start to route', {
-    busy: canRoute, duration: canRoute ? 0 : 2600,
-  });
+  if (!canRoute) showRouteActionToast('Stop removed · choose a start to route', { duration: 2600 });
   saveStateSoon();
 }
 
@@ -8192,7 +8282,6 @@ function removeRoadBlock(block) {
   if (routing.arm === 'block') routing.arm = null;
   updateArmButtons();
   computeRoute();
-  showRouteActionToast('Road block removed · recalculating…', { busy: true, duration: 0 });
   saveStateSoon();
 }
 
@@ -8207,6 +8296,7 @@ function removeRouteEndpoint(kind) {
   showRouteActionToast('');
   routing.reqId++;
   routing.pendingRoute = false;
+  routing.pendingPanelReveal = false;
   routing.routeRequestActive = false;
   routing[kind] = null;
   routing[`${kind}Name`] = null;
@@ -8261,7 +8351,6 @@ function reverseRoute() {
   regenerateRoutesAfterWaypointChange();
   computeRoute();
   updateArmButtons();
-  showRouteActionToast('Route reversed · recalculating…', { busy: true, duration: 0 });
   saveStateSoon();
   return true;
 }
@@ -8279,6 +8368,7 @@ function clearRoute() {
   routing.startDefaultsToDevice = false;
   defaultStartRequest++;
   routing.pendingRoute = false;
+  routing.pendingPanelReveal = false;
   routing.routeRequestActive = false;
   routing.reqId++; // a route already being calculated must not reappear after clear
   for (const v of routing.vias) v.marker.remove();
@@ -8386,6 +8476,7 @@ function setRouteOptionsLoading(loading) {
   host.querySelectorAll('button[data-route-option]').forEach((button) => {
     button.disabled = loading || turnNav.active;
   });
+  if (!loading) hideRouteCalculationStatus();
   refreshNavigationUI();
 }
 
@@ -8776,6 +8867,7 @@ function buildRoutingPanel() {
   // A shared link wins over the receiver's locally persisted route.
   if (sharedRoute) {
     const rt = sharedRoute.route;
+    routing.restoringRoute = true;
     routing.sharedLoading = true;         // suppress the exit-shared hooks below
     routing.sharedActive = !!routing.sharedRecipe;
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn);
@@ -8784,6 +8876,7 @@ function buildRoutingPanel() {
     for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
     routing.sharedLoading = false;
+    routing.restoringRoute = false;
     fitRouteBounds(rt);
     setStatus('Shared route loaded');
     // The route is now persisted like any other plan. Removing the consumed
@@ -8792,11 +8885,13 @@ function buildRoutingPanel() {
     if (saveStateNow()) consumeSharedRouteHash();
   } else if (savedState && normalizeStoredRoute(savedState.route)) {
     const rt = normalizeStoredRoute(savedState.route);
+    routing.restoringRoute = true;
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn, { fromDevice: rt.sd });
     for (const [index, p] of (rt.v || []).entries()) addVia(
       { lng: p[0], lat: p[1] }, { allowPastLimit: true, name: rt.vn?.[index] });
     for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
+    routing.restoringRoute = false;
   } else updateArmButtons();
 }
 
@@ -10205,7 +10300,6 @@ function mapPointRouteActions(lngLat, routeName) {
     if (!addVia({ lng, lat }, { name: routeName })) return;
     dismissRoadInfo();
     setRouteStatus('Stop added from map');
-    showRouteActionToast('Stop added — route recalculating', { duration: 2200 });
   });
   if (turnNav.active) {
     for (const button of [start, end]) {

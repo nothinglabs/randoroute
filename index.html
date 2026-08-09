@@ -181,6 +181,11 @@
 
     <section class="tab active" id="tab-route">
       <div id="routeControls">
+        <div id="routeCalculationStatus" class="route-calculation-status" role="status" aria-live="polite" aria-atomic="true" hidden>
+          <span class="route-calculation-spinner" aria-hidden="true"></span>
+          <span class="route-calculation-copy"><strong id="routeCalculationTitle">Calculating route options</strong><small id="routeCalculationDetail">Comparing safer, quicker, and bike-friendly routes…</small></span>
+          <span id="routeCalculationProgress" class="route-calculation-progress" hidden><span id="routeCalculationProgressFill"></span></span>
+        </div>
         <div class="route-chooser-row">
           <div id="routeOptions" role="group" aria-label="Choose route"></div>
           <button id="routeTipsBtn" class="tab-help-btn route-tips-btn" type="button" aria-label="Routing tips" title="Routing tips">?</button>
