@@ -140,8 +140,8 @@
       <div id="routeMoreMenu" class="route-more-menu" role="menu" aria-label="Trip options" hidden>
         <button id="rb-reverse" class="route-more-item" type="button" role="menuitem" title="Set a start and destination to swap them" aria-label="Set a start and destination to swap them" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v15M7 4 3.5 7.5M7 4l3.5 3.5M17 20V5M17 20l-3.5-3.5M17 20l3.5-3.5"></path></svg><span>Swap start &amp; destination</span></button>
         <button id="rb-add-stop" class="route-more-item" type="button" role="menuitem" title="Set a start and destination before adding a stop" aria-label="Set a start and destination before adding a stop" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v8M8 12h8"></path></svg><span>Add stop</span></button>
+        <button id="rb-show-stops" class="route-more-item" type="button" role="menuitemcheckbox" aria-checked="true" title="Hide stops from the trip bar" aria-label="Show stops in trip bar"><span class="route-more-check" aria-hidden="true">✓</span><span>Show stops in trip bar</span></button>
         <button id="routeLibraryBtn" class="route-more-item" type="button" role="menuitem" title="Save, load, or share routes" aria-label="Save, load, or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h13l3 3v15H4z"></path><path d="M7 3v6h9V3M7 21v-8h10v8"></path></svg><span>Save, load &amp; share</span></button>
-        <button id="appWeightsBtn" class="route-more-item" type="button" role="menuitem" aria-label="Advanced routing weights" title="Advanced routing weights"><span class="route-more-symbol" aria-hidden="true">⚖</span><span>Routing weights</span></button>
         <button id="routeUpdateBtn" class="route-more-item" type="button" role="menuitem" aria-label="Check for updates" title="Check for updates"><span class="route-more-symbol route-update-symbol" aria-hidden="true">↻</span><span>Check for updates</span></button>
       </div>
       <span id="rb-status"></span>
@@ -172,11 +172,12 @@
   <button id="settingsToggle" type="button" aria-expanded="false" aria-controls="tab-settings" title="Show settings" aria-label="Show settings">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.53-1H3v-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.06-.06L7.03 4.2l.06.06A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3h4v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.93 10H21v4h-.07A1.7 1.7 0 0 0 19.4 15Z"></path></svg>
   </button>
+  <button id="appWeightsBtn" type="button" title="Advanced routing weights" aria-label="Advanced routing weights"><span aria-hidden="true">⚖</span></button>
 
   <div class="panel" id="panel" aria-label="Map controls">
     <section class="tab active" id="tab-route">
       <div id="routeIncompleteBar" class="route-incomplete-bar" aria-live="polite" hidden>
-        <strong id="routeIncompleteMessage">Select destination to see routes</strong>
+        <strong id="routeIncompleteMessage" role="button" tabindex="0">Select destination to see routes</strong>
         <button id="routeIncompleteTipsBtn" class="tab-help-btn route-tips-btn" type="button" aria-label="Routing tips" title="Routing tips">?</button>
       </div>
       <div id="routeControls">

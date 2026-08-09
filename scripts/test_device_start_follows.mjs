@@ -63,10 +63,10 @@ const defaultStart = await page.evaluate(() => ({
   defaultsToDevice: routing.startDefaultsToDevice,
   removeVisible: !document.querySelector('[data-endpoint-remove="start"]')?.hidden,
 }));
-check('a blank planner shows both endpoints without defaulting or requesting Start yet',
+check('a blank planner shows both endpoints with Current location as the Start default',
   !defaultStart.actual && !defaultStart.rowHidden && defaultStart.destinationVisible
     && defaultStart.displayed === 'Current location (tap to change).'
-    && !defaultStart.defaultsToDevice && !defaultStart.removeVisible,
+    && defaultStart.defaultsToDevice && !defaultStart.removeVisible,
   JSON.stringify(defaultStart));
 
 await page.evaluate(() => {
@@ -81,7 +81,7 @@ const missingDefault = await page.evaluate(() => ({
   notices: window.__notices.join(' | '),
 }));
 check('an unavailable automatic location quietly leaves Start unset',
-  !missingDefault.actual && missingDefault.displayed === 'Current location (tap to change).'
+  !missingDefault.actual && missingDefault.displayed === 'Tap to set start.'
     && !missingDefault.defaultsToDevice && !/current location/i.test(missingDefault.notices),
   JSON.stringify(missingDefault));
 
@@ -102,10 +102,11 @@ check('choosing Destination fills the visible Start with a Current location defa
 await page.waitForFunction(() => Boolean(routing.start), null, { timeout: 5000 });
 const resolvedDefault = await page.evaluate(() => ({
   name: routing.startName, follows: routing.startFromDevice, start: routing.start,
+  removeVisible: !document.querySelector('[data-endpoint-remove="start"]')?.hidden,
 }));
 check('choosing a destination resolves the default From to a fresh device fix',
   resolvedDefault.name === 'My location' && resolvedDefault.follows
-    && resolvedDefault.start[0] === -122.3321,
+    && resolvedDefault.start[0] === -122.3321 && !resolvedDefault.removeVisible,
   JSON.stringify(resolvedDefault));
 
 const plan = (fromDevice, at = { lng: -122.3321, lat: 47.6062 }) => page.evaluate(([device, here]) => {
@@ -187,14 +188,14 @@ check('a start that could not be updated says so rather than pretending',
 check('and the route is still calculated from the start it has',
   failedFix.start[0] === -122.3321, JSON.stringify(failedFix));
 
-/* --------------------------------------------- clearing forgets the flag */
+/* --------------------------------------------- clearing restores the default */
 const cleared = await page.evaluate(() => {
   window.__locationFails = false;
   clearRoute();
   return { follows: routing.startFromDevice, defaults: routing.startDefaultsToDevice };
 });
-check('clearing the route forgets that the start followed the device',
-  !cleared.follows && !cleared.defaults, JSON.stringify(cleared));
+check('clearing the route forgets the old fix and restores the Current location default',
+  !cleared.follows && cleared.defaults, JSON.stringify(cleared));
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 

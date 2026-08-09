@@ -91,9 +91,11 @@ let state = await page.evaluate(() => ({
     ];
   })(),
   routeBarBackground: getComputedStyle(document.getElementById('routeBar')).backgroundColor,
+  weightsVisible: !document.getElementById('appWeightsBtn').hidden,
   mapControlBackgrounds: [
     document.getElementById('layersToggle'),
     document.getElementById('settingsToggle'),
+    document.getElementById('appWeightsBtn'),
     document.querySelector('#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group'),
   ].map((element) => getComputedStyle(element).backgroundColor),
   helpButtonsCircular: [
@@ -113,7 +115,7 @@ check('the untouched planner shows both endpoints and asks for both',
     && state.startHeadingSize >= 10 && state.destinationHeadingSize >= 10,
   JSON.stringify(state));
 check('an empty phone planner shows one short, explicit Route bar',
-  state.panelOpen && state.compactVisible && state.compactHeight <= 60
+  state.panelOpen && state.compactVisible && state.compactHeight <= 78
     && state.compactHelpSize.width >= 34 && state.compactHelpSize.height >= 34
     && state.compactHelpSize.rightGap >= 8 && state.compactHelpSize.bottomGap >= 8
     && !await page.$('#panelOpen') && !await page.$('#tabs'), JSON.stringify(state));
@@ -129,7 +131,7 @@ check('the floating Layers and Settings buttons sit just below the trip-action r
 check('every help affordance uses the same circular question-mark treatment',
   state.helpButtonsCircular, JSON.stringify(state));
 check('floating map controls use a slight, consistent transparency',
-  [...state.mapControlBackgrounds, state.routeBarBackground].every((background) => {
+  state.weightsVisible && [...state.mapControlBackgrounds, state.routeBarBackground].every((background) => {
     const alpha = Number(background.match(/,\s*(0?\.\d+)\)$/)?.[1]);
     return alpha >= 0.8 && alpha <= 0.92;
   }), JSON.stringify({ controls: state.mapControlBackgrounds, routeBar: state.routeBarBackground }));
@@ -480,6 +482,11 @@ state = await page.evaluate(() => ({
       bottom: panel.bottom - status.bottom,
     };
   })(),
+  calculationChrome: (() => {
+    const style = getComputedStyle(document.getElementById('routeCalculationStatus'));
+    return { borderWidth: style.borderWidth, backgroundImage: style.backgroundImage,
+      boxShadow: style.boxShadow };
+  })(),
 }));
 check('targeted Start assigns directly and routing begins after both endpoints exist',
   state.workers === 1 && state.pickerHidden && state.start && state.end && !state.promptShown,
@@ -491,13 +498,17 @@ check('route calculation opens Route and replaces choices with in-panel status',
   JSON.stringify(state));
 check('route calculation uses the reserved bottom sheet instead of floating in empty white space',
   state.calculationFillRatio >= 0.85, JSON.stringify(state));
-check('route calculation border stays inside the phone corner arc',
+check('route calculation content stays inside the phone corner arc without an inner bezel',
   state.calculationInset.left >= 13 && state.calculationInset.right >= 13
-    && state.calculationInset.bottom >= 15,
+    && state.calculationInset.bottom >= 15
+    && state.calculationChrome.borderWidth === '0px'
+    && state.calculationChrome.backgroundImage === 'none'
+    && state.calculationChrome.boxShadow === 'none',
   JSON.stringify(state));
 check('route calculation frames the itinerary above the open phone panel',
   Array.isArray(state.fit?.bounds) && state.fit.bounds.length === 2
     && state.fit.options?.padding?.bottom > state.fit.options?.padding?.top
+    && state.fit.options?.duration === 0
     && state.framedPoints.every((point) => point.x >= state.safeFrame.left
       && point.x <= state.safeFrame.right && point.y >= state.safeFrame.top
       && point.y <= state.safeFrame.bottom),

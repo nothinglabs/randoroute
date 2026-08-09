@@ -31,5 +31,11 @@ assert.match(app, /map\.on\('zoomstart', \(\) => trimRouterCachesSoon\(\)\)/,
   'map zoom must release disposable phone routing caches before widening the tile set');
 assert.match(app, /m\.type === 'route-options'[\s\S]*?trimRouterCachesSoon\(\)/,
   'a completed phone route must release its disposable search caches');
+assert.match(app, /function moveMapToPlace[\s\S]*?constrainedMapRuntime\) map\.jumpTo\(camera\)/,
+  'endpoint selection must jump directly on a constrained phone instead of retaining animated tile generations');
+assert.match(app, /function ensureRouterAfterMapSettles[\s\S]*?map\.once\('idle', start\)[\s\S]*?setTimeout\(start, 1800\)/,
+  'the phone routing graph must wait for the itinerary camera to settle before its large allocation');
+assert.match(app, /duration:\s*constrainedMapRuntime\s*\?\s*0\s*:\s*550/,
+  'phone itinerary fitting must avoid an intermediate animated tile allocation');
 
 console.log('Page zoom lock tests passed; map pinch remains enabled.');

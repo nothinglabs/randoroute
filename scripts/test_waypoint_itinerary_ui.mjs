@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Start and Destination are always visible. Generic search previews a place,
-// endpoint-triggered search assigns it immediately, and stops have no manual
-// ordering controls.
+// endpoint-triggered search assigns it immediately, and stops can be reordered
+// or hidden from the compact trip bar without leaving the route.
 import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const site = await serveRepo();
@@ -17,6 +17,8 @@ const check = (name, ok, detail = '') => {
 
 const initial = await page.evaluate(() => {
   clearRoute();
+  uiPrefs.showRouteStops = true;
+  routeStopsRenderKey = null;
   routing.worker?.terminate?.();
   routing.worker = { postMessage: () => {} };
   routing.ready = true;
@@ -51,18 +53,29 @@ const initial = await page.evaluate(() => {
       && !document.getElementById('routeActionsMenu'),
     endpointControls: document.querySelectorAll('.route-endpoint-row .route-stop-action').length,
     stopArrows: document.querySelectorAll('#routeBar .route-stop-up, #routeBar .route-stop-down').length,
+    arrowStates: [...document.querySelectorAll('#routeBar .route-stop-up, #routeBar .route-stop-down')]
+      .map((button) => ({ label: button.getAttribute('aria-label'), disabled: button.disabled })),
     endpointArrows: document.querySelectorAll('[data-endpoint-move]').length,
     reverseEnabled: !document.getElementById('rb-reverse').disabled,
     utilityLabels: [...document.querySelectorAll('.route-utility-label')]
       .map((label) => label.textContent),
     endpointWidth: Math.round(card.width),
     viewportWidth: innerWidth,
-    actionBoxes: [...document.querySelectorAll('.route-stop-action')].slice(0, 3).map((button) => {
+    actionBoxes: [...document.querySelectorAll('#routeStops .route-stop-remove')].map((button) => {
       const box = button.getBoundingClientRect();
       return { width: Math.round(box.width), height: Math.round(box.height) };
     }),
     markerNumbers: routing.vias.map((via) =>
       via.marker.getElement().querySelector('.waypoint-marker-number')?.textContent),
+    markerTipErrors: routing.vias.map((via) => {
+      const marker = via.marker.getElement().getBoundingClientRect();
+      const canvas = map.getCanvas().getBoundingClientRect();
+      const projected = map.project(via.pt);
+      return Math.hypot(
+        marker.left + marker.width / 2 - (canvas.left + projected.x),
+        marker.bottom - (canvas.top + projected.y),
+      );
+    }),
     cardInsidePhone: card.left >= 0 && card.right <= innerWidth,
     searchInsidePhone: search.left >= 0 && search.right <= innerWidth,
     searchBox: { width: Math.round(search.width), height: Math.round(search.height) },
@@ -76,15 +89,16 @@ check('a blank planner always shows Start and Destination without legacy reorder
     && initial.blank.moreVisible && initial.blank.moreMenuHidden
     && initial.blank.compactPromptVisible
     && initial.blank.compactPrompt === 'Select destination to see routes'
-    && initial.blank.compactPanelHeight <= 60 && initial.blank.navigateHidden,
+    && initial.blank.compactPanelHeight <= 78 && initial.blank.navigateHidden,
   JSON.stringify(initial.blank));
 check('the main card shows start, named stops, and destination in trip order',
   initial.fullRoutePaneVisible
     && initial.itinerary.join(' | ') === 'Start Seattle | Stop 1 Mukilteo | Stop 2 Point on map | Destination Port Townsend',
   JSON.stringify(initial.itinerary));
-check('stops have no manual order controls while Reverse and delete remain available',
+check('each movable stop shows clear earlier/later arrows with impossible moves disabled',
   initial.oldControlsGone && initial.endpointControls === 2
-    && initial.stopArrows === 0 && initial.endpointArrows === 0
+    && initial.stopArrows === 4 && initial.endpointArrows === 0
+    && initial.arrowStates.map((item) => item.disabled).join(',') === 'true,false,false,true'
     && initial.reverseEnabled, JSON.stringify(initial));
 check('the compact trip menu uses a vertical ellipsis while Find stays explicit',
   initial.blank.moreText === '⋮' && initial.blank.moreLabel === 'Trip options'
@@ -105,6 +119,9 @@ check('tapping another app control dismisses the trip menu', await page.evaluate
 await page.evaluate(() => document.getElementById('placePickerClose').click());
 check('map stop pins use the same itinerary numbers',
   initial.markerNumbers.join(',') === '1,2', JSON.stringify(initial.markerNumbers));
+check('every stop pin tip renders at its own stored map coordinate',
+  initial.markerTipErrors.every((error) => error <= 1),
+  JSON.stringify(initial.markerTipErrors));
 check('the itinerary and search button fit the phone viewport',
   initial.cardInsidePhone && initial.searchInsidePhone, JSON.stringify(initial));
 check('Search remains a finger-sized standalone control',
@@ -116,6 +133,30 @@ check('the narrower itinerary leaves room for adjacent controls and keeps delete
   JSON.stringify(initial));
 check('the compact Start and Destination rows keep their full-size text',
   initial.endpointHeight <= 40, JSON.stringify({ endpointHeight: initial.endpointHeight }));
+
+await page.locator('[data-via-index="0"] .route-stop-down').click();
+check('a waypoint arrow changes trip priority and immediately renumbers rows and pins',
+  await page.evaluate(() => routing.vias.map((via) => via.name).join('|') === 'Point on map|Mukilteo'
+    && [...document.querySelectorAll('.route-stop-edit strong')].map((name) => name.textContent).join('|')
+      === 'Point on map|Mukilteo'
+    && routing.vias.map((via) => via.marker.getElement()
+      .querySelector('.waypoint-marker-number').textContent).join('|') === '1|2'));
+await page.locator('[data-via-index="0"] .route-stop-down').click();
+check('the opposite arrow can restore the original stop order', await page.evaluate(() =>
+  routing.vias.map((via) => via.name).join('|') === 'Mukilteo|Point on map'));
+
+await page.locator('#rb-more').click();
+await page.locator('#rb-show-stops').click();
+check('the trip-menu toggle hides stop rows without removing stops or map pins', await page.evaluate(() =>
+  document.getElementById('routeStops').hidden && routing.vias.length === 2
+    && routing.vias.every((via) => via.marker.getElement().isConnected)
+    && document.getElementById('rb-show-stops').getAttribute('aria-checked') === 'false'));
+await page.locator('#rb-more').click();
+await page.locator('#rb-show-stops').click();
+check('stop rows show by default and can be restored from the same toggle', await page.evaluate(() =>
+  !document.getElementById('routeStops').hidden
+    && document.querySelectorAll('.route-stop-row').length === 2
+    && document.getElementById('rb-show-stops').getAttribute('aria-checked') === 'true'));
 
 await page.locator('[data-via-edit="0"]').focus();
 check('routine route UI refreshes do not steal focus from a stop control', await page.evaluate(() => {
@@ -166,12 +207,12 @@ const moreMenu = await page.evaluate(() => ({
     .filter((button) => !button.hidden).map((button) => button.lastElementChild?.textContent.trim()),
   saveMovedToMenu: document.getElementById('routeLibraryBtn').closest('#routeMoreMenu') !== null,
   helpRemoved: !document.getElementById('appHelpBtn'),
-  weightsRemovedFromMap: document.getElementById('appWeightsBtn').closest('#routeMoreMenu') !== null,
+  weightsMovedToMap: document.getElementById('appWeightsBtn').parentElement === document.body,
 }));
-check('Trip options contains trip editing, Save/Share, Weights, and updates',
+check('Trip options contains trip editing, Save/Share, and updates while Weights is on the map',
   moreMenu.visible && moreMenu.expanded === 'true'
-    && moreMenu.items.join('|') === 'Swap start & destination|Add stop|Save, load & share|Routing weights|Check for updates'
-    && moreMenu.saveMovedToMenu && moreMenu.helpRemoved && moreMenu.weightsRemovedFromMap,
+    && moreMenu.items.join('|') === 'Swap start & destination|Add stop|Show stops in trip bar|Save, load & share|Check for updates'
+    && moreMenu.saveMovedToMenu && moreMenu.helpRemoved && moreMenu.weightsMovedToMap,
   JSON.stringify(moreMenu));
 await page.locator('#rb-reverse').click();
 check('Reverse swaps endpoints and reverses stop order', await page.evaluate(() =>
@@ -327,6 +368,52 @@ check('the final result switches the dialog into internet-search mode',
   /internet result/i.test(internetMode.hint)
     && internetMode.result.includes('Test Coffee') && internetMode.internetChoiceGone,
   JSON.stringify(internetMode));
+await page.locator('#placeSearch').fill('Seattle');
+await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
+const localBeforeAppend = await page.evaluate(() =>
+  [...document.querySelectorAll('#placeResults .place-hit:not(.place-internet-search)')]
+    .map((button) => button.dataset.name));
+await page.evaluate(() => {
+  searchOnlinePlaces = async () => [{
+    name: 'Online Seattle Landmark', lon: -122.31, lat: 47.62,
+    source: 'online', distanceM: 900,
+  }];
+});
+await page.locator('#placeResults .place-internet-search').click();
+await page.waitForFunction(() => document.querySelector(
+  '#placeResults .place-hit[data-name="Online Seattle Landmark"]'));
+const appendedInternet = await page.evaluate(() => ({
+  names: [...document.querySelectorAll('#placeResults .place-hit:not(.place-internet-search)')]
+    .map((button) => button.dataset.name),
+  sections: [...document.querySelectorAll('#placeResults .place-results-section')]
+    .map((heading) => heading.textContent),
+}));
+check('internet results append below the existing local results',
+  appendedInternet.names.slice(0, localBeforeAppend.length).join('|') === localBeforeAppend.join('|')
+    && appendedInternet.names.at(-1) === 'Online Seattle Landmark'
+    && appendedInternet.sections.join('|') === 'On this device|From the internet',
+  JSON.stringify({ localBeforeAppend, appendedInternet }));
+await page.locator('#placeSearch').fill('Seattle');
+await page.waitForSelector('#placeResults .place-internet-search');
+const localBeforeFailure = await page.evaluate(() =>
+  [...document.querySelectorAll('#placeResults .place-hit:not(.place-internet-search)')]
+    .map((button) => button.dataset.name));
+await page.evaluate(() => { searchOnlinePlaces = async () => { throw new Error('offline'); }; });
+await page.locator('#placeResults .place-internet-search').click();
+await page.waitForFunction(() => /internet search is unavailable/i.test(
+  document.getElementById('placeResults').textContent));
+const failedInternet = await page.evaluate(() => ({
+  names: [...document.querySelectorAll('#placeResults .place-hit:not(.place-internet-search)')]
+    .map((button) => button.dataset.name),
+  retry: Boolean(document.querySelector('#placeResults .place-internet-search')),
+  enabled: !document.getElementById('placeSearch').disabled,
+  message: document.getElementById('placeResults').textContent,
+}));
+check('a failed internet search preserves local results and leaves search retryable',
+  failedInternet.names.join('|') === localBeforeFailure.join('|')
+    && failedInternet.names.length > 0 && failedInternet.retry && failedInternet.enabled
+    && /local results are still available/i.test(failedInternet.message),
+  JSON.stringify({ localBeforeFailure, failedInternet }));
 await page.locator('#placePickerClose').click();
 
 await page.locator('[data-via-index="0"] .route-stop-remove').click();
@@ -336,10 +423,20 @@ check('a stop can be removed directly from the itinerary', await page.evaluate((
     && document.querySelector('.route-stop-edit strong')?.textContent === 'Point on map'
     && document.querySelectorAll('.route-stop-up, .route-stop-down').length === 0));
 
+await page.evaluate(() => {
+  // Hold the fallback request pending so this assertion can inspect the exact
+  // state immediately after deleting the explicitly selected Start.
+  getFreshDevicePosition = () => new Promise(() => {});
+});
 await page.locator('[data-endpoint-remove="start"]').click();
-check('Start can be deleted without deleting the remaining itinerary', await page.evaluate(() =>
-  !routing.start && routing.endName === 'Port Townsend' && routing.vias.length === 1
-    && routing.last === null && !routing.startMarker));
+check('deleting an explicit Start restores the non-removable Current location default',
+  await page.evaluate(() =>
+    !routing.start && routing.startDefaultsToDevice
+      && routing.endName === 'Port Townsend' && routing.vias.length === 1
+      && routing.last === null && !routing.startMarker
+      && document.querySelector('#rb-start [data-endpoint-value]').textContent
+        === 'Current location (tap to change).'
+      && document.querySelector('[data-endpoint-remove="start"]').hidden));
 await page.locator('[data-via-index] .route-stop-remove').click();
 await page.locator('[data-endpoint-remove="end"]').click();
 check('endpoint and stop X buttons can delete every route item', await page.evaluate(() =>
@@ -350,6 +447,13 @@ check('endpoint and stop X buttons can delete every route item', await page.eval
     && !document.getElementById('routeIncompleteBar').hidden
     && document.getElementById('routeIncompleteMessage').textContent === 'Select destination to see routes'
     && document.getElementById('navStartButton').hidden));
+
+await page.locator('#routeIncompleteMessage').click();
+check('tapping the incomplete-route banner opens the same Destination picker as the endpoint row',
+  await page.evaluate(() => !document.getElementById('placePicker').hidden
+    && placeSearchTarget === 'end' && routing.arm === 'end'
+    && document.getElementById('placePickerTitle').textContent === 'Set destination'));
+await page.locator('#placePickerClose').click();
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 

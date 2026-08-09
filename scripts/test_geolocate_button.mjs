@@ -56,7 +56,7 @@ const nativeStartupPage = await nativeStartupContext.newPage();
 await nativeStartupPage.goto(site.url, { waitUntil: 'load' });
 await nativeStartupPage.waitForFunction(() => window.map?.loaded?.(), { timeout: 30000 }).catch(() => {});
 const nativeStartup = await nativeStartupPage.evaluate(() => ({
-  customControl: Boolean(document.querySelector('[data-native-location-control="true"]')),
+  customControl: Boolean(document.querySelector('[data-app-location-control="true"]')),
   permissionQueries: window.__permissionQueries,
   voiceQueries: window.__voiceQueries,
 }));
@@ -202,6 +202,30 @@ check('on the native app the button asks the plugin, not the web API',
   nativeIdle.calls === 0 && nativeIdle.asked === 1, JSON.stringify(nativeIdle));
 check('the native request receives the same finite timeout as web geolocation',
   nativeIdle.options?.timeoutMs === 15000, JSON.stringify(nativeIdle));
+
+await page.evaluate(() => {
+  window.__retryLocationCalls = 0;
+  window.__nativePlugin = {
+    getCurrentPosition() {
+      window.__retryLocationCalls++;
+      return Promise.reject(new Error('GPS temporarily unavailable'));
+    },
+  };
+});
+await tapLocate();
+await page.waitForTimeout(100);
+const retryableFailure = await page.evaluate(() => {
+  const button = document.querySelector('.maplibregl-ctrl-geolocate');
+  return { disabled: button.disabled, busy: button.getAttribute('aria-busy'),
+    calls: window.__retryLocationCalls };
+});
+await tapLocate();
+await page.waitForTimeout(100);
+const retried = await page.evaluate(() => window.__retryLocationCalls);
+check('a temporary location failure leaves the map button enabled and retryable',
+  !retryableFailure.disabled && retryableFailure.busy === 'false'
+    && retryableFailure.calls === 1 && retried === 2,
+  JSON.stringify({ retryableFailure, retried }));
 
 /* ------------------------------------- and the ordinary web app is untouched */
 await page.evaluate(() => { window.__nativePlugin = null; turnNav.active = false; });

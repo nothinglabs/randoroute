@@ -334,13 +334,16 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 /* Pin the Route tab's height so switching between planning and navigating does
    not resize (bounce) the panel. */
 #tab-route { min-height: 152px; }
-.route-incomplete-bar { display: flex; align-items: stretch; gap: 6px; min-height: 44px; }
+.route-incomplete-bar { display: flex; align-items: stretch; gap: 10px; min-height: 50px; }
 .route-incomplete-bar[hidden] { display: none; }
 .route-incomplete-bar > strong {
-  display: flex; flex: 1; align-items: flex-start; min-width: 0; min-height: 44px;
-  padding: 7px 8px 2px; color: #405765; font: 760 12.5px/1.2 system-ui;
+  display: flex; flex: 1; align-items: center; min-width: 0; min-height: 50px;
+  padding: 6px 10px 3px; color: #405765; font: 760 12.5px/1.2 system-ui;
+  border-radius: 7px; cursor: pointer;
 }
-#tab-route.route-incomplete { min-height: 0; padding-top: 6px; padding-bottom: 7px; overflow: hidden; }
+.route-incomplete-bar > strong:hover,
+.route-incomplete-bar > strong:focus-visible { background: rgba(226,243,252,.78); color: #075f91; }
+#tab-route.route-incomplete { min-height: 0; padding: 8px 14px 11px 18px; overflow: hidden; }
 #tab-route.route-incomplete > :not(.route-incomplete-bar) { display: none !important; }
 body.navigation-active #routeCard, body.navigation-active #routeControls { display: none; }
 body:not(.navigation-active) #navCard { display: none; }
@@ -569,7 +572,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .endpoint-marker.endpoint-moving { filter: drop-shadow(0 0 5px rgba(10,102,194,.9)); }
 
-#layersToggle, #settingsToggle {
+#layersToggle, #settingsToggle, #appWeightsBtn {
   position: absolute; z-index: 16; top: calc(env(safe-area-inset-top) + 52px); right: 10px;
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
   border: 1px solid #c8d5df; border-radius: 9px; background: rgba(255,255,255,.84);
@@ -577,6 +580,9 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
 #settingsToggle { top: calc(env(safe-area-inset-top) + 92px); }
+#appWeightsBtn { top: calc(env(safe-area-inset-top) + 132px); font: 800 18px/1 system-ui; }
+#appWeightsBtn[hidden] { display: none; }
+#appWeightsBtn.tuned { border-color: #c5872b; background: rgba(255,246,228,.94); color: #96590a; }
 #layersToggle[aria-expanded="true"], #settingsToggle[aria-expanded="true"] { border-color: #0a66c2; background: rgba(234,244,251,.92); color: #0a66c2; }
 #layersToggle .layers-toggle-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 #settingsToggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -593,9 +599,12 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group button,
 #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group button { background-color: transparent; }
 #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-geolocate { width: 34px; height: 34px; border-radius: 9px; }
-/* The desktop zoom buttons share this corner with the app's Layers/Settings
-   pair. Start below both; routing weights live in the trip-options menu. */
-#map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 132px; }
+/* One failed GPS/permission probe must never leave the retry control looking
+   permanently unavailable. The app reports the failure and keeps it tappable. */
+#map .maplibregl-ctrl-geolocate:disabled { opacity: 1; cursor: pointer; }
+/* The desktop zoom buttons share this corner with the app's Layers, Settings,
+   and optional Weights controls. Start below all three. */
+#map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 172px; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group button { width: 34px; height: 34px; }
 /* Keep the compact OpenStreetMap attribution button comfortably inside the
    viewport edge without shifting the scale control above it. */
@@ -664,17 +673,36 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .place-action-card .place-action-pin { border-radius: 50% 50% 50% 3px; transform: rotate(-45deg); }
 .place-action-card .readout-route-actions { gap: 4px; margin-top: 4px; }
 .place-action-card .readout-route-actions button { min-height: 34px; padding: 4px 5px; border-radius: 7px; font-size: 10.5px; white-space: nowrap; }
-.readout-details-toggle { display: flex; align-items: center; width: 100%; min-height: 30px; margin-top: 6px; padding: 6px 2px 2px; border: 0; border-top: 1px solid #dde5e9; background: transparent; color: #176b99; font: 750 10.5px/1 system-ui; cursor: pointer; }
-.readout-details-toggle::after { content: "›"; margin-left: auto; font-size: 15px; transform: rotate(90deg); transition: transform .15s; }
-.readout-details-toggle[aria-expanded="true"]::after { transform: rotate(-90deg); }
+.readout-primary-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+.readout-primary-actions.has-road-block { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.readout-primary-actions > button {
+  min-width: 0; min-height: 34px; padding: 5px 3px; border: 1px solid #b7cbd7;
+  border-radius: 7px; background: #f7fafb; color: #176b99;
+  font: 780 9.5px/1.05 system-ui; cursor: pointer; white-space: nowrap;
+}
+.readout-primary-actions .readout-primary-route { border-color: #7db4d2; background: #edf7fc; color: #075f91; }
+.readout-primary-actions .readout-primary-google { border-color: #a9c6d6; background: #f2f8fb; color: #176b99; }
+.readout-primary-actions > button:hover,
+.readout-primary-actions > button:focus-visible { filter: brightness(.96); outline: 2px solid #78b8dd; outline-offset: 1px; }
+.readout-details-toggle { width: auto; margin: 0; }
+.readout-details-toggle::after { content: none; }
+.readout-action-menu {
+  display: flex; align-items: center; gap: 4px; margin-top: 5px; padding: 5px;
+  border: 1px solid #cbd9e1; border-radius: 8px; background: #f7fafc;
+}
+.readout-action-menu[hidden] { display: none; }
+.readout-action-menu-label { flex: none; color: #526873; font: 790 9px/1 system-ui; white-space: nowrap; }
+.readout-action-menu > .readout-route-actions { flex: 1 1 auto; gap: 3px; min-width: 0; margin: 0; }
+.readout-action-menu .readout-route-actions button { min-height: 31px; padding: 4px 2px; border-radius: 6px; font-size: 8.5px; }
+.readout-action-menu-close { flex: none; min-height: 31px; padding: 4px 5px; border: 1px solid #c4d0d7; border-radius: 6px; background: #fff; color: #526873; font: 750 8.5px/1 system-ui; cursor: pointer; }
 .readout-details { margin-top: 2px; padding-top: 7px; border-top: 1px solid #dde5e9; }
 .readout-details[hidden] { display: none; }
 .readout table { border-collapse: collapse; width: 100%; }
 .readout td { padding: 0 5px 1px 0; line-height: 1.18; vertical-align: top; }
 @media (max-width: 720px) { .readout td { line-height: 1.28; padding-bottom: 2px; } }
 .readout td.k { width: 1%; padding-right: 8px; color: #777; white-space: nowrap; }
-.road-map-actions { display: grid; grid-template-columns: 1fr 1fr; align-items: stretch; gap: 5px; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e1e8ec; }
-.readout-road-block { width: 100%; min-height: 32px; margin-top: 5px; padding: 5px 8px; border: 1px solid #d8c48c; border-radius: 7px; background: #fdf6e3; color: #6b5310; font: 750 10.5px/1 system-ui; cursor: pointer; }
+.road-map-actions { display: grid; flex: 1 1 auto; grid-template-columns: 1fr 1fr; align-items: stretch; gap: 3px; min-width: 0; }
+.readout-primary-actions .readout-road-block { width: auto; margin: 0; border-color: #d8c48c; background: #fdf6e3; color: #6b5310; }
 .streetview-launch {
   min-height: 32px; padding: 5px 6px; border: 1px solid #9fc4da; border-radius: 7px;
   background: #edf7fc; color: #075f91; font: 750 10px/1.1 system-ui; cursor: pointer;
@@ -921,6 +949,7 @@ body.route-more-open #topToolbar { z-index: 25; }
   font: 850 19px/1 system-ui;
   cursor: pointer;
 }
+#routeBar .route-stop-move { width: 29px; font-size: 18px; }
 #routeBar .route-stop-action:hover:not(:disabled),
 #routeBar .route-stop-action:focus-visible { background: #dfeaf0; color: #173c50; }
 #routeBar .route-stop-remove { color: #a32b38; font-size: 16px; }
@@ -980,9 +1009,9 @@ body.route-more-open #topToolbar { z-index: 25; }
 #routeBar .route-more-item + .route-more-item { border-top: 1px solid #e5ebef; border-radius: 0 0 8px 8px; }
 #routeBar .route-more-item svg { justify-self: center; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .route-more-symbol { justify-self: center; font: 800 18px/1 system-ui; }
+.route-more-check { display: grid; place-items: center; justify-self: center; width: 20px; height: 20px; border: 1px solid #7eabbf; border-radius: 6px; color: #0874aa; font: 850 14px/1 system-ui; }
+#rb-show-stops[aria-checked="false"] .route-more-check { border-color: #bdc9cf; background: #eef2f4; }
 .route-update-symbol { font-size: 21px; }
-#routeBar #appWeightsBtn[hidden] { display: none; }
-#routeBar #appWeightsBtn.tuned { background: #fff6e4; color: #96590a; }
 .place-ask { padding: 8px 12px 4px; font: 600 12px system-ui; color: #555; }
 .place-results .place-choice {
   display: inline-block; margin: 4px 4px 8px 12px; padding: 7px 11px;
@@ -1131,6 +1160,7 @@ body.navigation-active #routeBar { display: none; }
 #routeBar .place-results .place-internet-search { background: #f1f7fb; color: #0a5f92; font-weight: 750; }
 #routeBar .place-results .place-internet-search::before { content: "◎"; margin-right: 7px; color: #467a99; }
 #routeBar .place-results .place-internet-search small { display: block; margin: 3px 0 0 22px; color: #5f7481; }
+.place-results-section { margin: 5px 7px 2px; color: #607681; font: 800 8.5px/1 system-ui; letter-spacing: .05em; text-transform: uppercase; }
 
 @media (prefers-reduced-motion: reduce) {
   .place-picker:not([hidden]),
@@ -1149,16 +1179,16 @@ body.navigation-active #routeBar { display: none; }
 #getUpdateBtn { min-height: 32px; padding: 6px 9px; border: none; border-radius: 8px; background: #0a66c2; color: #fff; font: 700 11px system-ui; cursor: pointer; }
 #updateLaterBtn { width: 32px; height: 32px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
 @media (max-width: 720px) {
-  /* The calculation card has a visible border, so it needs a little more
-     optical clearance than the finished edge-to-edge route sheet. Keep the
-     card itself full-sized, but pull its border inside the iPhone corner arc. */
-  #tab-route.route-calculating { min-height: 160px; padding: 7px 14px 16px; overflow: hidden; }
-  #tab-route.route-calculating #routeCard { min-height: 137px; }
-  #tab-route.route-calculating #routeControls { height: 137px; margin: 0; padding: 0; border: 0; }
+  /* Calculation belongs to the bottom sheet itself, not to a second card
+     floating inside it. The border/bezel is intentionally gone; the extra
+     height gives the phase copy and progress line room to breathe. */
+  #tab-route.route-calculating { min-height: 166px; padding: 8px 18px 15px; overflow: hidden; }
+  #tab-route.route-calculating #routeCard { min-height: 143px; }
+  #tab-route.route-calculating #routeControls { height: 143px; margin: 0; padding: 0; border: 0; }
   .route-calculation-status {
     grid-template-columns: 32px minmax(0, 1fr); align-content: center;
-    min-height: 137px; height: 137px; gap: 4px 10px; padding: 15px 16px;
-    border-radius: 14px;
+    min-height: 143px; height: 143px; gap: 4px 10px; padding: 18px 12px;
+    border: 0; border-radius: 0; background: transparent; box-shadow: none;
   }
   .route-calculation-spinner { grid-row: 1; width: 25px; height: 25px; border-width: 3px; }
   .route-calculation-copy strong { font-size: 14px; }
@@ -1204,6 +1234,7 @@ body.navigation-active #routeBar { display: none; }
      so the two control groups read as separate columns on a phone. */
   #layersToggle { top: calc(env(safe-area-inset-top) + 12px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
   #settingsToggle { top: calc(env(safe-area-inset-top) + 58px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
+  #appWeightsBtn { top: calc(env(safe-area-inset-top) + 104px); right: 8px; width: 42px; height: 42px; border-radius: 12px; font-size: 20px; }
   .place-picker { top: -5px; right: auto; left: 0; width: calc(100vw - 16px); }
   body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
   body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
@@ -1342,6 +1373,7 @@ body.navigation-active #routeBar { display: none; }
 .sv-dialog > .full-help-head { position: relative; flex: none; }
 .sv-body { position: relative; flex: 1 1 auto; width: 100%; min-height: 0; overflow: hidden; background: #0b0f13; }
 #streetViewFrame { display: block; width: 100%; height: 100%; border: 0; }
+body.street-view-open #map { visibility: hidden; }
 .sv-load-status { position: absolute; z-index: 2; top: 14px; left: 50%; max-width: calc(100% - 28px); margin: 0; padding: 7px 10px; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.3); border-radius: 8px; background: rgba(16,27,35,.88); color: #fff; font: 700 11px/1.3 system-ui; text-align: center; white-space: nowrap; }
 .sv-load-status.warning { border-color: rgba(255,204,116,.7); background: rgba(76,48,10,.92); white-space: normal; }
 .sv-load-status[hidden] { display: none; }
@@ -1407,7 +1439,10 @@ body.navigation-active #routeBar { display: none; }
 .waypoint-marker svg { width: 26px; height: 40px; overflow: visible; filter: drop-shadow(0 2px 3px rgba(0,0,0,.35)); }
 .waypoint-marker path { fill: #555; stroke: #fff; stroke-width: 2; }
 .waypoint-marker circle { fill: #fff; }
-.waypoint-marker { position: relative; }
+/* MapLibre markers must remain absolutely positioned. `relative` here put
+   custom stop buttons into the marker pane's layout flow, so every additional
+   waypoint shifted the rendered pins farther from their real coordinates. */
+.waypoint-marker { position: absolute; }
 .waypoint-marker-number { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); color: #34434b; font: 850 10px/1 system-ui; pointer-events: none; }
 .search-result-marker {
   width: 28px;

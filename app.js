@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-09.649';
+const APP_VERSION = '2026-08-09.650';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -802,6 +802,10 @@ const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 const uiPrefs = {
   showAdvancedTools: typeof savedState?.showAdvancedTools === 'boolean'
     ? savedState.showAdvancedTools : true,
+  // Stops always remain in the route; this preference only controls whether
+  // their editable rows occupy the compact Start/Destination trip bar.
+  showRouteStops: typeof savedState?.showRouteStops === 'boolean'
+    ? savedState.showRouteStops : true,
 };
 
 // Voice guidance is a local device preference, not part of a shared route.
@@ -1031,6 +1035,7 @@ function saveStateNow() {
       navigationOffRouteMode: navVoice.offRouteMode,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       showAdvancedTools: uiPrefs.showAdvancedTools,
+      showRouteStops: uiPrefs.showRouteStops,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
       route: routing.start && routing.end
@@ -1123,17 +1128,18 @@ map.on('zoomstart', () => trimRouterCachesSoon());
 // MapLibre's control probes the browser geolocation stack as soon as it is
 // added. In WKWebView that can raise iOS's permission sheet even though the
 // native location plugin is deliberately waiting for an explicit rider
-// action. Give the native shell the same familiar button without constructing
-// MapLibre's second location client; the click handler below routes it through
-// NativeNavigation. Browsers keep the complete MapLibre tracking control.
-class NativeGeolocateControl {
+// action. Use one app-owned, retryable button everywhere rather than letting
+// MapLibre permanently disable its control after a transient permission/API
+// probe. The click handler below chooses NativeNavigation or web geolocation.
+class AppGeolocateControl {
   onAdd() {
     this.container = document.createElement('div');
     this.container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
     this.button = document.createElement('button');
     this.button.type = 'button';
     this.button.className = 'maplibregl-ctrl-geolocate';
-    this.button.dataset.nativeLocationControl = 'true';
+    this.button.dataset.appLocationControl = 'true';
+    this.button.disabled = false;
     this.button.title = 'Find my location';
     this.button.setAttribute('aria-label', 'Find my location');
     const icon = document.createElement('span');
@@ -1151,13 +1157,7 @@ class NativeGeolocateControl {
   }
 }
 
-const mapLocationControl = nativeNavigationPlugin()
-  ? new NativeGeolocateControl()
-  : new maplibregl.GeolocateControl({
-      positionOptions: { enableHighAccuracy: true },
-      trackUserLocation: true,
-      showUserHeading: true,
-    });
+const mapLocationControl = new AppGeolocateControl();
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
 map.addControl(mapLocationControl, 'bottom-right');
 // Mouse/trackpad users benefit from explicit zoom buttons. Keep them out of
@@ -1312,22 +1312,24 @@ map.getContainer().addEventListener('click', (e) => {
     recenterNavigationOnRider();
     return;
   }
-  if (nativeNavigationPlugin()) {
-    e.stopPropagation();
-    e.preventDefault();
-    btn.classList.add('maplibregl-ctrl-geolocate-waiting');
-    getDevicePosition().then((position) => {
-      updatePassiveMapLocation(position, 'launch');
-      btn.classList.add('maplibregl-ctrl-geolocate-active');
-    }).catch((error) => {
-      const blocked = /blocked|denied|permission/i.test(String(error?.message || error));
-      setStatus(blocked
-        ? 'Location permission is blocked in your device Settings.'
-        : 'Could not get your location.', true);
-    }).finally(() => btn.classList.remove('maplibregl-ctrl-geolocate-waiting'));
-  }
-  // Off the native app and not navigating, the control's own behaviour is the
-  // right one and its permission prompt is expected.
+  e.stopPropagation();
+  e.preventDefault();
+  btn.disabled = false;
+  btn.classList.add('maplibregl-ctrl-geolocate-waiting');
+  btn.setAttribute('aria-busy', 'true');
+  getDevicePosition({ timeout: 15000 }).then((position) => {
+    updatePassiveMapLocation(position, 'launch');
+    btn.classList.add('maplibregl-ctrl-geolocate-active');
+  }).catch((error) => {
+    const blocked = /blocked|denied|permission/i.test(String(error?.message || error));
+    setStatus(blocked
+      ? 'Location permission is blocked in your device Settings.'
+      : 'Could not get your location. Tap the location button to try again.', true);
+  }).finally(() => {
+    btn.disabled = false;
+    btn.classList.remove('maplibregl-ctrl-geolocate-waiting');
+    btn.setAttribute('aria-busy', 'false');
+  });
 }, true);
 
 // How the WSDOT BLTS tiles answer the lime rule's facts. The source stores
@@ -1597,7 +1599,8 @@ function scheduleReroute() {
 // prewarm, and the tile-cache cap; a wrong "true" costs a few seconds of
 // re-derived cache on repeat searches, a wrong "false" risks the kill.
 function isConstrainedDevice() {
-  return /iPad|iPhone|iPod|Android/i.test(navigator.userAgent)
+  return isNativeAppRuntime()
+    || /iPad|iPhone|iPod|Android/i.test(navigator.userAgent)
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
     || (navigator.deviceMemory > 0 && navigator.deviceMemory <= 4)
     || /^Apple/.test(navigator.vendor || '');
@@ -2730,7 +2733,7 @@ const routing = {
   arm: null,                 // 'start' | 'end' — next map tap sets that point
   start: null, end: null,    // [lng, lat]
   startName: null, endName: null, startFromDevice: false,
-  startDefaultsToDevice: false,
+  startDefaultsToDevice: true,
   vias: [],                  // ordered stops: { pt: [lng,lat], name, marker }
   blocks: [],                // avoided road locations: { pt: [lng,lat], marker }
   startMarker: null, endMarker: null,
@@ -2890,7 +2893,10 @@ function fitItineraryForCalculation() {
         : { top: topPadding, right: 70, bottom: 80,
           left: Math.max(470, Math.ceil(panelRect?.right || 0) + 28) },
       maxZoom: 14,
-      duration: 550,
+      // An animated city-to-region zoom allocates intermediate tile
+      // generations at the same moment iOS is expanding the routing graph.
+      // Jump directly to the final frame there; desktop keeps the smooth fit.
+      duration: constrainedMapRuntime ? 0 : 550,
     });
   };
   requestAnimationFrame(() => requestAnimationFrame(fit));
@@ -3093,6 +3099,38 @@ async function ensureRouter() {
   } catch (e) {
     handleRouterFailure(`routing data could not load: ${e.message}`);
   }
+}
+
+let routerMapSettleTimer = null;
+let routerMapSettlePending = false;
+function ensureRouterAfterMapSettles() {
+  if (!constrainedMapRuntime) {
+    ensureRouter();
+    return;
+  }
+  if (routing.ready || routing.loading || routerMapSettlePending) return;
+  routerMapSettlePending = true;
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    clearTimeout(routerMapSettleTimer);
+    routerMapSettleTimer = null;
+    routerMapSettlePending = false;
+    // The rider may clear a point while the camera is settling. In that case
+    // keep the graph unloaded until a complete trip is requested again.
+    if (!routing.start || !routing.end) return;
+    ensureRouter();
+  };
+  // fitItineraryForCalculation() queued its fit just before this helper. Arm
+  // the idle listener after that same two-frame boundary so an already-idle
+  // map cannot start the graph in the tiny gap before the fit begins.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    map.once('idle', start);
+    // The timeout keeps an unusually slow tile source from blocking routing
+    // indefinitely.
+    routerMapSettleTimer = setTimeout(start, 1800);
+  }));
 }
 
 // The worker hands back segments carrying a `flags` bitfield; the map's tap
@@ -6575,7 +6613,7 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
     showRouteCalculationStatus('Preparing route',
       'Loading the on-device routing map…');
     if (shouldRevealPanel) revealRouteCalculation();
-    ensureRouter();
+    ensureRouterAfterMapSettles();
     showRouterProgress('Finishing the statewide routing map; your route will start automatically…',
       'Preparing route');
     return;
@@ -7767,11 +7805,12 @@ function consumePendingRouteStepHighlight() {
 }
 
 function routeEndpointDisplayName(kind) {
-  if (kind === 'start' && (!routing.start || routing.startFromDevice)) {
+  if (kind === 'start' && (routing.startFromDevice
+      || (!routing.start && routing.startDefaultsToDevice))) {
     return 'Current location (tap to change).';
   }
   if (!routing[kind]) return kind === 'start'
-    ? 'Current location (tap to change).' : 'Tap to set destination.';
+    ? 'Tap to set start.' : 'Tap to set destination.';
   return normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map';
 }
 
@@ -8081,7 +8120,8 @@ function refreshWaypointMarkers() {
 function renderRouteStops() {
   const host = document.getElementById('routeStops');
   if (!host) return;
-  const renderKey = `${Boolean(routing.start)}:${Boolean(routing.end)}|${routing.vias.map((via) =>
+  host.hidden = !uiPrefs.showRouteStops || routing.vias.length === 0;
+  const renderKey = `${Boolean(routing.start)}:${Boolean(routing.end)}:${turnNav.active}:${uiPrefs.showRouteStops}|${routing.vias.map((via) =>
     `${via._uiId}:${via.name}:${via.pt.join(',')}`).join('|')}`;
   if (renderKey === routeStopsRenderKey) {
     refreshWaypointMarkers();
@@ -8127,13 +8167,37 @@ function renderRouteStops() {
       button.addEventListener('click', handler);
       return button;
     };
-    actions.append(
-      action('route-stop-remove', '✕', `Remove stop ${index + 1}`, false, () => removeVia(via)),
-    );
+    if (routing.vias.length > 1) {
+      actions.append(
+        action('route-stop-move route-stop-up', '↑', `Move stop ${index + 1} earlier`,
+          turnNav.active || index === 0, () => moveVia(via, -1)),
+        action('route-stop-move route-stop-down', '↓', `Move stop ${index + 1} later`,
+          turnNav.active || index === routing.vias.length - 1, () => moveVia(via, 1)),
+      );
+    }
+    actions.append(action('route-stop-remove', '✕', `Remove stop ${index + 1}`,
+      turnNav.active, () => removeVia(via)));
     row.append(edit, actions);
     host.append(row);
   });
   refreshWaypointMarkers();
+}
+
+function moveVia(via, direction) {
+  if (turnNav.active) return false;
+  const from = routing.vias.indexOf(via);
+  const to = from + Math.sign(direction);
+  if (from < 0 || to < 0 || to >= routing.vias.length || from === to) return false;
+  exitSharedRoute();
+  routing.vias.splice(from, 1);
+  routing.vias.splice(to, 0, via);
+  routeStopsRenderKey = null;
+  regenerateRoutesAfterWaypointChange();
+  computeRoute();
+  updateArmButtons();
+  setRouteStatus(`Stop moved to position ${to + 1}`);
+  saveStateSoon();
+  return true;
 }
 
 function regenerateRoutesAfterWaypointChange() {
@@ -8311,8 +8375,12 @@ function removeRoadBlock(block) {
 
 function removeRouteEndpoint(kind) {
   if (!['start', 'end'].includes(kind)) return false;
-  const isDefaultStart = kind === 'start' && routing.startDefaultsToDevice;
-  if (!routing[kind] && !isDefaultStart) return false;
+  // Current location is the planner's fallback, not a removable trip point.
+  // Only a deliberately chosen Start gets an X; deleting it restores that
+  // fallback and resolves a fresh fix once a Destination exists.
+  if (kind === 'start' && (routing.startFromDevice
+      || (!routing.start && routing.startDefaultsToDevice))) return false;
+  if (!routing[kind]) return false;
   exitSharedRoute();
   stopTurnNavigation(false);
   closePlacePicker();
@@ -8329,10 +8397,10 @@ function removeRouteEndpoint(kind) {
   routing[markerKey] = null;
   if (kind === 'start') {
     routing.startFromDevice = false;
-    routing.startDefaultsToDevice = false;
+    routing.startDefaultsToDevice = true;
     defaultStartRequest++;
   } else if (!routing.start) {
-    routing.startDefaultsToDevice = false;
+    routing.startDefaultsToDevice = true;
     defaultStartRequest++;
   }
   routeIsDisplayed = false;
@@ -8346,7 +8414,8 @@ function removeRouteEndpoint(kind) {
   renderRouteOptionControls();
   renderRouteCard(null);
   updateArmButtons();
-  setRouteStatus(kind === 'start' ? 'Start removed' : 'Destination removed');
+  setRouteStatus(kind === 'start' ? 'Start reset to current location' : 'Destination removed');
+  if (kind === 'start') resolveDefaultStartFromDevice();
   saveStateSoon();
   return true;
 }
@@ -8389,7 +8458,7 @@ function clearRoute() {
   routing.start = routing.end = null;
   routing.startName = routing.endName = null;
   routing.startFromDevice = false;
-  routing.startDefaultsToDevice = false;
+  routing.startDefaultsToDevice = true;
   defaultStartRequest++;
   routing.pendingRoute = false;
   routing.pendingPanelReveal = false;
@@ -8436,8 +8505,9 @@ function updateArmButtons() {
   }
   document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
     const kind = button.dataset.endpointRemove;
-    button.hidden = !routing[kind]
-      && !(kind === 'start' && routing.startDefaultsToDevice);
+    button.hidden = kind === 'start'
+      ? !routing.start || routing.startFromDevice
+      : !routing.end;
   });
   const reverseButton = document.getElementById('rb-reverse');
   const hasEndpoints = Boolean(routing.start && routing.end);
@@ -8457,6 +8527,13 @@ function updateArmButtons() {
         : limitReached ? `Maximum of ${MAX_ROUTE_STOPS} stops reached`
           : 'Search or tap the map to add a stop';
     addStopButton.setAttribute('aria-label', addStopButton.title);
+  }
+  const showStopsButton = document.getElementById('rb-show-stops');
+  if (showStopsButton) {
+    showStopsButton.setAttribute('aria-checked', String(uiPrefs.showRouteStops));
+    showStopsButton.title = uiPrefs.showRouteStops
+      ? 'Hide stops from the trip bar' : 'Show stops in the trip bar';
+    showStopsButton.querySelector('.route-more-check').textContent = uiPrefs.showRouteStops ? '✓' : '';
   }
   renderRouteStops();
   syncRoutePaneVisibility();
@@ -8829,6 +8906,17 @@ function buildRoutingPanel() {
   document.getElementById('routeDetailsBtn').addEventListener('click', () => openRouteDetails());
   ['routeTipsBtn', 'routeIncompleteTipsBtn', 'navTipsBtn'].forEach((id) =>
     document.getElementById(id)?.addEventListener('click', openRouteTips));
+  const incompleteBar = document.getElementById('routeIncompleteBar');
+  const chooseMissingEndpoint = (event) => {
+    if (event.target.closest?.('#routeIncompleteTipsBtn')) return;
+    openPlaceSearch(routing.end && !routing.start ? 'start' : 'end');
+  };
+  incompleteBar?.addEventListener('click', chooseMissingEndpoint);
+  document.getElementById('routeIncompleteMessage')?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    chooseMissingEndpoint(event);
+  });
 
   renderRouteCard(null);
 
@@ -8859,6 +8947,12 @@ function buildRoutingPanel() {
   document.getElementById('rb-search').addEventListener('click', () => openPlaceSearch());
   document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.getElementById('rb-add-stop').addEventListener('click', () => openPlaceSearch('via'));
+  document.getElementById('rb-show-stops').addEventListener('click', () => {
+    uiPrefs.showRouteStops = !uiPrefs.showRouteStops;
+    routeStopsRenderKey = null;
+    updateArmButtons();
+    saveStateSoon();
+  });
   document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
     button.addEventListener('click', () => removeRouteEndpoint(button.dataset.endpointRemove));
   });
@@ -9232,8 +9326,6 @@ function ensurePlaces() {
 
 let placeSearchRequestId = 0;
 let placePickerViewportRestoreTimers = [];
-let internetPlaceSearch = false;
-let internetPlaceSearchTimer = null;
 let searchResultMarker = null;
 let searchResultOpenToken = 0;
 let placeSearchTarget = null;
@@ -9340,9 +9432,6 @@ function restoreViewportAfterPlacePicker() {
 function closePlacePicker() {
   const target = placeSearchTarget;
   placeSearchRequestId++;
-  clearTimeout(internetPlaceSearchTimer);
-  internetPlaceSearchTimer = null;
-  internetPlaceSearch = false;
   placeSearchTarget = null;
   if (target && routing.arm === target) {
     routing.arm = null;
@@ -9398,11 +9487,20 @@ function showPlaceOnMap(point, name = 'Point on map', { searchResult = false } =
     });
     readoutPinned = true;
   };
-  map.stop();
-  map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 14), duration: 450 });
+  moveMapToPlace(lng, lat);
   map.once?.('moveend', showCard);
   setTimeout(showCard, 650);
   return true;
+}
+
+function moveMapToPlace(lng, lat) {
+  const camera = { center: [lng, lat], zoom: Math.max(map.getZoom(), 14) };
+  map.stop();
+  // WebKit can retain several expensive tile generations over an animated
+  // statewide-to-city zoom. A direct move has the same useful destination
+  // framing and allocates only the final generation.
+  if (constrainedMapRuntime) map.jumpTo(camera);
+  else map.easeTo({ ...camera, duration: 450 });
 }
 
 function setUseLocationBusy(busy) {
@@ -9462,8 +9560,6 @@ function openPlaceSearch(target = null) {
   // extra "tap the map" button in the way.
   routing.arm = placeSearchTarget;
   updateArmButtons();
-  internetPlaceSearch = false;
-  clearTimeout(internetPlaceSearchTimer);
   const targetLabel = placeSearchTarget === 'start' ? 'start'
     : placeSearchTarget === 'end' ? 'destination' : 'stop';
   document.getElementById('placePickerTitle').textContent = placeSearchTarget === 'via'
@@ -9517,18 +9613,17 @@ function choosePlaceSearchResult(lngLat, name, { fromDevice = false } = {}) {
   clearSearchResultMarker();
   if (target === 'via') {
     if (!addVia(lngLat, { name })) return;
-    map.stop();
-    map.easeTo({
-      center: [lngLat.lng, lngLat.lat], zoom: Math.max(map.getZoom(), 14), duration: 450,
-    });
+    // addVia() reframes the complete itinerary. Do not first fly to the stop
+    // and immediately fly back out, especially while the router is working.
+    if (!(routing.start && routing.end)) moveMapToPlace(lngLat.lng, lngLat.lat);
     setRouteStatus(`Stop added: ${normalizeEndpointName(name) || 'Point on map'}`);
     return;
   }
   setRoutePoint(target, lngLat, name, { fromDevice: target === 'start' && fromDevice });
-  map.stop();
-  map.easeTo({
-    center: [lngLat.lng, lngLat.lat], zoom: Math.max(map.getZoom(), 14), duration: 450,
-  });
+  // When this choice completes the trip, computeRoute() owns the camera and
+  // frames both points. The old point zoom followed by an immediate route fit
+  // was the endpoint-selection memory spike that repeatedly killed iOS.
+  if (!(routing.start && routing.end)) moveMapToPlace(lngLat.lng, lngLat.lat);
   const label = target === 'start' ? 'Start' : 'Destination';
   setRouteStatus(`${label} set to ${normalizeEndpointName(name) || 'Point on map'}`);
 }
@@ -9550,8 +9645,33 @@ function buildPlacePicker() {
     return unique;
   };
 
-  const render = (items, message = '', { offerInternet = false } = {}) => {
+  const render = (items, message = '', { offerInternet = false, onlineItems = [] } = {}) => {
     results.replaceChildren();
+    const appendItems = (matches, label = '') => {
+      if (label && matches.length) {
+        const heading = document.createElement('p');
+        heading.className = 'place-results-section';
+        heading.textContent = label;
+        results.append(heading);
+      }
+      for (const item of matches) {
+        const hit = document.createElement('button');
+        hit.className = 'place-hit';
+        hit.dataset.lon = String(item.lon);
+        hit.dataset.lat = String(item.lat);
+        hit.dataset.name = item.name;
+        hit.append(document.createTextNode(item.name + ' '));
+        const detail = document.createElement('small');
+        detail.textContent = item.source === 'online'
+          ? (Number.isFinite(item.distanceM)
+            ? `${fmtMi(item.distanceM)} mi from map center · online`
+            : 'online · OpenStreetMap')
+          : (TYPE_LABEL[item.type] || item.type || 'place');
+        hit.append(detail);
+        results.append(hit);
+      }
+    };
+    appendItems(items, onlineItems.length && items.length ? 'On this device' : '');
     if (message) {
       const notice = document.createElement('p');
       notice.className = 'place-results-message';
@@ -9559,22 +9679,7 @@ function buildPlacePicker() {
       notice.textContent = message;
       results.append(notice);
     }
-    for (const item of items) {
-      const hit = document.createElement('button');
-      hit.className = 'place-hit';
-      hit.dataset.lon = String(item.lon);
-      hit.dataset.lat = String(item.lat);
-      hit.dataset.name = item.name;
-      hit.append(document.createTextNode(item.name + ' '));
-      const detail = document.createElement('small');
-      detail.textContent = item.source === 'online'
-        ? (Number.isFinite(item.distanceM)
-          ? `${fmtMi(item.distanceM)} mi from map center · online`
-          : 'online · OpenStreetMap')
-        : (TYPE_LABEL[item.type] || item.type || 'place');
-      hit.append(detail);
-      results.append(hit);
-    }
+    appendItems(onlineItems, items.length ? 'From the internet' : 'Internet results');
     if (offerInternet) {
       const internet = document.createElement('button');
       internet.type = 'button';
@@ -9586,7 +9691,8 @@ function buildPlacePicker() {
       internet.append(detail);
       results.append(internet);
     }
-    results.classList.toggle('show', items.length > 0 || Boolean(message) || offerInternet);
+    results.classList.toggle('show', items.length > 0 || onlineItems.length > 0
+      || Boolean(message) || offerInternet);
   };
 
   const localMatches = () => {
@@ -9613,25 +9719,27 @@ function buildPlacePicker() {
       setRouteStatus('Enter at least two characters to search online');
       return;
     }
-    internetPlaceSearch = true;
     setPlacePickerHint('internet', placeSearchTarget
-      ? placeSearchTarget === 'via' ? 'Internet results add a stop.'
-        : `Internet results set your ${placeSearchTarget === 'start' ? 'start' : 'destination'}.`
-      : 'Choose an internet result to see it on the map.');
+      ? `Adding internet results below local matches for your ${placeSearchTarget === 'via'
+        ? 'stop' : placeSearchTarget === 'start' ? 'start' : 'destination'}.`
+      : 'Adding internet results below local matches.');
     const requestId = ++placeSearchRequestId;
-    render([], `Searching the internet for “${query}”…`);
+    const local = localMatches();
+    render(local, `Searching the internet for “${query}”…`);
     try {
       const onlineMatches = await searchOnlinePlaces(query);
       if (requestId !== placeSearchRequestId || input.value.trim() !== query) return;
-      const matches = uniqueMatches(onlineMatches);
-      render(matches, matches.length ? ''
-        : `No internet results for “${query}”. Try a place name or landmark.`);
+      const combined = uniqueMatches([...local, ...onlineMatches]);
+      const matches = combined.filter((item) => item.source === 'online');
+      render(local, matches.length ? ''
+        : `No additional internet results for “${query}”.`, { onlineItems: matches });
       setRouteStatus(onlineMatches.length
         ? `${onlineMatches.length} internet ${onlineMatches.length === 1 ? 'result' : 'results'} found`
         : 'No internet search results');
     } catch (e) {
       if (requestId === placeSearchRequestId) {
-        render([], 'Internet search is unavailable. Close search to return to offline places.');
+        render(local, 'Internet search is unavailable. Local results are still available.',
+          { offerInternet: true });
         setRouteStatus('Internet search unavailable');
       }
     }
@@ -9641,20 +9749,10 @@ function buildPlacePicker() {
     ensurePlaces();
   });
   input.addEventListener('input', () => {
-    clearTimeout(internetPlaceSearchTimer);
     placeSearchRequestId++;
     setUseLocationBusy(false);
-    if (!internetPlaceSearch) setPlacePickerHint('map');
+    setPlacePickerHint('map');
     const query = input.value.trim();
-    if (internetPlaceSearch) {
-      if (query.length < 2) {
-        render([], 'Enter at least two characters to search the internet.');
-        return;
-      }
-      render([], 'Waiting to search the internet…');
-      internetPlaceSearchTimer = setTimeout(searchOnline, 450);
-      return;
-    }
     ensurePlaces().then(() => { if (input.value.trim() === query) showLocalMatches(); });
     showLocalMatches();
   });
@@ -10376,7 +10474,7 @@ function compactReadoutFacts(rows) {
   return host;
 }
 
-function mapPointRouteActions(lngLat, routeName) {
+function mapPointRouteActions(lngLat, routeName, { disclosure = false } = {}) {
   const lat = Number(lngLat.lat);
   const lng = Number(lngLat.lng);
   const routeActions = document.createElement('div');
@@ -10400,7 +10498,8 @@ function mapPointRouteActions(lngLat, routeName) {
     () => commitEndpoint('start'));
   const end = routeButton('map-point-end', 'Destination', 'Use this point as route destination',
     () => commitEndpoint('end'));
-  const stop = routeButton('map-point-stop', 'Add stop', 'Add this point as a route stop', () => {
+  const stop = routeButton('map-point-stop', disclosure ? 'New stop' : 'Add stop',
+    'Add this point as a route stop', () => {
     setPanelOpen(false);
     if (!addVia({ lng, lat }, { name: routeName })) return;
     dismissRoadInfo();
@@ -10412,21 +10511,50 @@ function mapPointRouteActions(lngLat, routeName) {
       button.title = 'Pause navigation to edit the route';
     }
   }
-  // The destination action comes first because routing from the rider's
-  // current location is the common case. Neither a search result nor a map tap
-  // changes the trip until one of these plainly named actions is chosen.
-  routeActions.append(end, start);
-  if (routing.start && routing.end) {
-    const canAddStop = !turnNav.active && routing.vias.length < MAX_ROUTE_STOPS;
-    stop.disabled = !canAddStop;
-    stop.title = turnNav.active ? 'Pause navigation to edit the route'
+  const canAddStop = routing.start && routing.end && !turnNav.active
+    && routing.vias.length < MAX_ROUTE_STOPS;
+  stop.disabled = !canAddStop;
+  stop.title = turnNav.active ? 'Pause navigation to edit the route'
+    : !routing.start || !routing.end ? 'Set a start and destination before adding a stop'
       : canAddStop ? 'Add this point as a stop'
         : `Maximum of ${MAX_ROUTE_STOPS} stops reached`;
-    routeActions.append(stop);
+  if (disclosure) {
+    // The map-details disclosure reads as one sentence: Set as Start, New
+    // stop, or Destination. Search-result cards keep Destination first because
+    // that remains their common one-tap action.
+    routeActions.append(start, stop, end);
   } else {
-    routeActions.classList.add('two-actions');
+    routeActions.append(end, start);
+    if (routing.start && routing.end) routeActions.append(stop);
+    else routeActions.classList.add('two-actions');
   }
   return routeActions;
+}
+
+function readoutDisclosure(label, choices, className = '') {
+  const menu = document.createElement('div');
+  menu.className = `readout-action-menu ${className}`.trim();
+  menu.hidden = true;
+  const lead = document.createElement('strong');
+  lead.className = 'readout-action-menu-label';
+  lead.textContent = label;
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'readout-action-menu-close';
+  close.textContent = 'Close';
+  close.setAttribute('aria-label', `Close ${label.toLowerCase()} choices`);
+  menu.append(lead, choices, close);
+  return { menu, close };
+}
+
+function readoutPrimaryButton(className, text, label) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.textContent = text;
+  button.setAttribute('aria-label', label);
+  button.setAttribute('aria-expanded', 'false');
+  return button;
 }
 
 function renderPlaceActionCard({ pointName, lngLat, anchorPoint, searchResult = false }) {
@@ -10485,7 +10613,10 @@ function renderMapTapCard({
   safetySummary.style.setProperty('--readout-accent', swatchColor);
   const coreFacts = compactReadoutFacts(rows);
 
-  const routeActions = mapPointRouteActions({ lng, lat }, routeName);
+  const routeActions = mapPointRouteActions({ lng, lat }, routeName, { disclosure: true });
+  const routeDisclosure = readoutDisclosure('Set as:', routeActions, 'readout-route-menu');
+  const navigateMenuButton = readoutPrimaryButton('readout-primary-route', 'Navigate',
+    'Choose how to use this point in your route');
 
   const detailsToggle = document.createElement('button');
   detailsToggle.type = 'button';
@@ -10504,18 +10635,20 @@ function renderMapTapCard({
   const streetViewBtn = document.createElement('button');
   streetViewBtn.type = 'button';
   streetViewBtn.className = 'streetview-launch';
-  streetViewBtn.setAttribute('aria-label', STREET_VIEW_IN_APP
-    ? 'Open Street View in this app' : 'Open Street View in Google Maps');
-  streetViewBtn.textContent = 'Google Street View';
+  streetViewBtn.setAttribute('aria-label', 'Open Street View in this app');
+  streetViewBtn.textContent = 'Street View';
   streetViewBtn.addEventListener('click', () => openStreetView(lat, lng, streetViewHeading));
   const mapLink = document.createElement('a');
   mapLink.href = googleMapsPointUrl(lat, lng);
   mapLink.target = '_blank';
   mapLink.rel = 'noopener';
   mapLink.className = 'road-map-link';
-  mapLink.textContent = 'Google Maps ↗';
+  mapLink.textContent = 'Maps';
   mapLink.setAttribute('aria-label', 'Open this location in Google Maps');
   mapActions.append(streetViewBtn, mapLink);
+  const mapDisclosure = readoutDisclosure('Open:', mapActions, 'readout-google-menu');
+  const googleMenuButton = readoutPrimaryButton('readout-primary-google', 'Google Maps',
+    'Open Street View or Google Maps');
   let blockButton = null;
   if (allowRoadBlock) {
     const existingBlock = roadBlockNear({ lng, lat });
@@ -10524,7 +10657,9 @@ function renderMapTapCard({
       blockButton = document.createElement('button');
       blockButton.type = 'button';
       blockButton.className = 'readout-road-block';
-      blockButton.textContent = existingBlock ? '🚧 Remove roadblock' : '🚧 Avoid this road';
+      blockButton.textContent = existingBlock ? 'Allow' : 'Avoid';
+      blockButton.setAttribute('aria-label', existingBlock ? 'Remove roadblock' : 'Avoid this road');
+      blockButton.title = existingBlock ? 'Remove roadblock' : 'Avoid this road';
       blockButton.addEventListener('click', () => {
         if (existingBlock) removeRoadBlock(existingBlock);
         else addRoadBlock({ lng, lat });
@@ -10534,19 +10669,49 @@ function renderMapTapCard({
   }
 
   detailsToggle.addEventListener('click', () => {
+    routeDisclosure.menu.hidden = true;
+    mapDisclosure.menu.hidden = true;
+    navigateMenuButton.setAttribute('aria-expanded', 'false');
+    googleMenuButton.setAttribute('aria-expanded', 'false');
     const open = details.hidden;
     details.hidden = !open;
     detailsToggle.setAttribute('aria-expanded', String(open));
-    detailsToggle.textContent = open ? 'Hide details' : 'Details';
+    // Keep the primary row compact even with Avoid present.
+    detailsToggle.textContent = open ? 'Hide' : 'Details';
     headingText.textContent = open ? detailsTitle : displayTitle;
     if (anchorPoint) requestAnimationFrame(() => positionRoadInfoNear(anchorPoint));
   });
 
+  const setDisclosureOpen = (trigger, disclosure, otherTrigger, otherDisclosure, open) => {
+    disclosure.hidden = !open;
+    trigger.setAttribute('aria-expanded', String(open));
+    otherDisclosure.hidden = true;
+    otherTrigger.setAttribute('aria-expanded', 'false');
+    if (anchorPoint) requestAnimationFrame(() => positionRoadInfoNear(anchorPoint));
+  };
+  navigateMenuButton.addEventListener('click', () => setDisclosureOpen(
+    navigateMenuButton, routeDisclosure.menu, googleMenuButton, mapDisclosure.menu,
+    routeDisclosure.menu.hidden));
+  googleMenuButton.addEventListener('click', () => setDisclosureOpen(
+    googleMenuButton, mapDisclosure.menu, navigateMenuButton, routeDisclosure.menu,
+    mapDisclosure.menu.hidden));
+  routeDisclosure.close.addEventListener('click', () => setDisclosureOpen(
+    navigateMenuButton, routeDisclosure.menu, googleMenuButton, mapDisclosure.menu, false));
+  mapDisclosure.close.addEventListener('click', () => setDisclosureOpen(
+    googleMenuButton, mapDisclosure.menu, navigateMenuButton, routeDisclosure.menu, false));
+
+  const primaryActions = document.createElement('div');
+  primaryActions.className = 'readout-primary-actions';
+  primaryActions.append(navigateMenuButton, googleMenuButton);
+  if (blockButton) {
+    primaryActions.classList.add('has-road-block');
+    primaryActions.append(blockButton);
+  }
+  primaryActions.append(detailsToggle);
+
   readoutEl.append(close, heading, safetySummary);
   if (coreFacts) readoutEl.append(coreFacts);
-  readoutEl.append(routeActions, mapActions);
-  if (blockButton) readoutEl.append(blockButton);
-  readoutEl.append(detailsToggle, details);
+  readoutEl.append(primaryActions, routeDisclosure.menu, mapDisclosure.menu, details);
   readoutEl.classList.add('show');
   if (anchorPoint) positionRoadInfoNear(anchorPoint);
 }
@@ -10774,13 +10939,10 @@ readoutEl.addEventListener('click', (e) => {
 // key (that API has no usage charges); set it here to enable the in-app view.
 const GOOGLE_MAPS_EMBED_KEY = 'AIzaSyBQZNQ4jPlLjOH3efOD228wOjayupCfa6Y';
 const NATIVE_STREET_VIEW_BRIDGE = 'https://nothinglabs.github.io/randoroute/street-view-embed.html';
-// iOS kills the whole web process rather than let a page hold two WebGL
-// scenes this heavy: Google's panorama stacked on the map's own context took
-// the app down at launch. On any iOS device Street View opens in the OS
-// browser sheet instead -- one tap back, and it cannot take the app with it.
-const IOS_DEVICE = /iP(hone|ad|od)/.test(navigator.userAgent)
-  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const STREET_VIEW_IN_APP = Boolean(GOOGLE_MAPS_EMBED_KEY) && !IOS_DEVICE;
+// Keep Street View in the app on every platform. While it is open we hide the
+// MapLibre canvas below the modal, so iOS composites only the panorama instead
+// of two large WebGL surfaces at once.
+const STREET_VIEW_IN_APP = Boolean(GOOGLE_MAPS_EMBED_KEY);
 
 function googleMapsPointUrl(lat, lng) {
   return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
@@ -10819,6 +10981,8 @@ function openStreetView(lat, lng, heading = null) {
     || window.location.protocol === 'capacitor:'
     || Boolean(window.Capacitor?.isNativePlatform?.());
   clearTimeout(streetViewLoadTimer);
+  map.stop();
+  document.body.classList.add('street-view-open');
   frame.dataset.streetViewActive = '1';
   frame.dataset.streetViewBridge = nativeRuntime ? '1' : '0';
   setStreetViewLoadStatus('Loading Street View…');
@@ -10868,6 +11032,11 @@ document.getElementById('streetViewDialog').addEventListener('close', () => {
   frame.dataset.streetViewBridge = '0';
   frame.src = 'about:blank';
   setStreetViewLoadStatus();
+  document.body.classList.remove('street-view-open');
+  requestAnimationFrame(() => {
+    map.resize();
+    map.triggerRepaint?.();
+  });
 });
 
 // A pinned road card belongs to the map inspection interaction. Any click on
@@ -11511,7 +11680,7 @@ function buildRulesPanel() {
   advancedToolsCard.innerHTML = `
     <label class="rule-check" for="r-showAdvancedTools">
       <input type="checkbox" id="r-showAdvancedTools" ${uiPrefs.showAdvancedTools ? 'checked' : ''}>
-      <span>Show weights and considered routes (advanced settings)</span>
+      <span>Show advanced options (not recommended)</span>
     </label>`;
   optionsHost.appendChild(advancedToolsCard);
   advancedToolsCard.querySelector('input').addEventListener('change', (e) => {
@@ -11915,6 +12084,7 @@ function syncRoutePaneVisibility() {
     incompleteMessage.textContent = routing.end && !routing.start
       ? 'Select start to see routes'
       : 'Select destination to see routes';
+    incompleteMessage.setAttribute('aria-label', incompleteMessage.textContent);
   }
   scheduleMobileNavDockAfterInit();
 }
@@ -12046,7 +12216,7 @@ if (nativeAppVersionOnly) {
   document.getElementById('iosAppVersionLabel').hidden = false;
 }
 document.getElementById('techDetailsBtn').addEventListener('click', () => openHelp('technical'));
-// The weights panel is reachable from the trip overflow and Settings > Advanced.
+// The weights panel is reachable from its optional map icon and Settings > Advanced.
 // Both keep the map behind the dialog so a tuning change stays tied to its route.
 function openRoutingWeights() {
   buildRoutingWeightsEditor();
@@ -12059,15 +12229,16 @@ function openRoutingWeights() {
   document.getElementById('weightsDialog').showModal();
 }
 
-// The considered-routes screen rides along with the Weights menu item: its
-// button lives on the weights page, so hiding that item hides both entry points.
+// The considered-routes screen rides along with the optional Weights tool: its
+// button lives on the weights page, so hiding the map icon hides both advanced
+// map entry points while Settings retains the deliberate fallback.
 function syncAdvancedToolsVisibility() {
   const weightsButton = document.getElementById('appWeightsBtn');
   if (weightsButton) weightsButton.hidden = !uiPrefs.showAdvancedTools;
   renderRouteOptionControls();
 }
-// A weight left off its default silently changes every route. Mark its menu
-// item so the changed state remains discoverable without a floating map button.
+// A weight left off its default silently changes every route. Mark the map
+// icon so the changed state remains discoverable.
 function syncWeightsTunedBadge() {
   const button = document.getElementById('appWeightsBtn');
   const off = Object.keys(DEFAULT_ROUTING_WEIGHTS)

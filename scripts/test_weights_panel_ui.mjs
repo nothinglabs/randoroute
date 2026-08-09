@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// The weights panel as a rider meets it: reachable from the trip menu, every slider
+// The weights panel as a rider meets it: reachable from its optional map icon, every slider
 // wired to the weight its label claims, and the revert affordances working.
 //
 // The static coverage test proves the KEYS line up. This proves the rendered
 // DOM does -- that the assembled base+mode+suffix keys survive into real
 // `data-weight` attributes, that dragging one writes to routingWeights, and
-// that the trip-menu item opens the same dialog Settings does.
+// that the map icon opens the same dialog Settings does.
 // Playwright is installed globally in this container, not under the project, so
 // resolving it is the harness's job rather than each test file's.
 import { playwright, chromiumPath } from './testlib/harness.mjs';
@@ -48,27 +48,26 @@ await pg.waitForTimeout(1500);
 let pass = 0, fail = 0;
 const check = (n, ok, x = '') => { (ok ? pass++ : fail++); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${x ? '  -- ' + x : ''}`); };
 
-/* -------------------------------- 1. the trip-menu item opens the panel */
+/* -------------------------------- 1. the optional map icon opens the panel */
 const btn = await pg.$('#appWeightsBtn');
-check('trip menu has a weights item', !!btn);
-await pg.click('#rb-more');
+check('the map has a weights icon', !!btn);
 const visible = await pg.evaluate(() => {
   const el = document.getElementById('appWeightsBtn');
   const r = el.getBoundingClientRect();
-  const menu = document.getElementById('routeMoreMenu').getBoundingClientRect();
   return { w: r.width, h: r.height, onScreen: r.top >= 0 && r.right <= innerWidth,
-    insideMenu: r.left >= menu.left && r.right <= menu.right,
+    floating: el.parentElement === document.body,
     menuItems: [...document.querySelectorAll('#routeMoreMenu > button')]
       .map((button) => button.lastElementChild?.textContent.trim()),
     helpRemoved: !document.getElementById('appHelpBtn'),
-    noFloatingControl: !document.querySelector('body > #appWeightsBtn') };
+    settingsCopy: document.querySelector('label[for="r-showAdvancedTools"] span')?.textContent };
 });
-check('weights item is on screen and a real menu target',
-  visible.onScreen && visible.insideMenu && visible.w >= 180 && visible.h >= 40,
+check('weights icon is on screen and a finger-sized map target',
+  visible.onScreen && visible.floating && visible.w >= 34 && visible.h >= 34,
   JSON.stringify(visible));
-check('the compact menu includes updates but no Help or floating controls',
-  visible.menuItems.join('|') === 'Swap start & destination|Add stop|Save, load & share|Routing weights|Check for updates'
-    && visible.helpRemoved && visible.noFloatingControl,
+check('the compact trip menu omits Weights and the setting uses the requested warning copy',
+  visible.menuItems.join('|') === 'Swap start & destination|Add stop|Show stops in trip bar|Save, load & share|Check for updates'
+    && visible.helpRemoved
+    && visible.settingsCopy === 'Show advanced options (not recommended)',
   JSON.stringify(visible));
 
 await pg.click('#appWeightsBtn');
@@ -187,8 +186,8 @@ const badge = await pg.evaluate(() => {
   return { clean, dirty, title, noticeClean, noticeDirty,
     backToClean: button.classList.contains('tuned'), noticeBackToClean: notice.hidden };
 });
-check('the menu item is unmarked at defaults', badge.clean === false);
-check('the menu item marks itself once a weight is off default',
+check('the map icon is unmarked at defaults', badge.clean === false);
+check('the map icon marks itself once a weight is off default',
   badge.dirty === true && /changed/.test(badge.title), badge.title);
 check('and clears again when reverted', badge.backToClean === false);
 check('the page-level modified header follows the same state',
@@ -196,6 +195,13 @@ check('the page-level modified header follows the same state',
 
 /* ------------------------------------- 6. Settings opens the same dialog */
 await pg.evaluate(() => document.getElementById('weightsDialog').close());
+const hiddenFromMap = await pg.evaluate(() => {
+  const control = document.getElementById('r-showAdvancedTools');
+  control.checked = false;
+  control.dispatchEvent(new Event('change', { bubbles: true }));
+  return document.getElementById('appWeightsBtn').hidden;
+});
+check('turning off advanced options hides the map icon', hiddenFromMap);
 const viaSettings = await pg.evaluate(() => {
   document.getElementById('settingsAdvancedWeightsBtn')?.click();
   return document.getElementById('weightsDialog').open;
