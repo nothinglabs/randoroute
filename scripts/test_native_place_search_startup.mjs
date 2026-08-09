@@ -35,6 +35,8 @@ const page = await context.newPage();
 await page.goto(site.url, { waitUntil: 'load' });
 await page.waitForFunction(() => document.documentElement.classList.contains('app-ready'),
   null, { timeout: 120000 });
+// Exercise the same safe-area CSS selector shipped in mobile-shell/index.html.
+await page.evaluate(() => { document.documentElement.dataset.appRuntime = 'native'; });
 
 let passed = 0, failed = 0;
 const check = (name, ok, detail = '') => {
@@ -61,6 +63,18 @@ let state = await page.evaluate(() => ({
   panelOpen: document.body.classList.contains('panel-open'),
   routePaneHidden: document.getElementById('panel')?.classList.contains('route-pane-hidden'),
   navigateHidden: document.getElementById('navStartButton')?.hidden,
+  endpointCenterOffset: (() => {
+    const endpoints = document.querySelector('.route-endpoints').getBoundingClientRect();
+    const utilities = document.querySelector('.route-utility-actions').getBoundingClientRect();
+    return Math.abs((endpoints.top + endpoints.bottom - utilities.top - utilities.bottom) / 2);
+  })(),
+  mapControlBackgrounds: [
+    document.getElementById('layersToggle'),
+    document.getElementById('settingsToggle'),
+    document.querySelector('#map .maplibregl-ctrl-top-right .maplibregl-ctrl-group'),
+  ].map((element) => getComputedStyle(element).backgroundColor),
+  nativePanelBottomPadding: parseFloat(getComputedStyle(document.getElementById('panel'))
+    .paddingBottom),
 }));
 check('an untouched native planner does not start the routing graph', state.workers === 0,
   JSON.stringify(state));
@@ -78,6 +92,13 @@ check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
 check('Navigate is absent until a finished route can start', state.navigateHidden,
   JSON.stringify(state));
+check('the endpoint card is vertically centered with its utility buttons',
+  state.endpointCenterOffset <= 0.5, JSON.stringify(state));
+check('floating map controls use a slight, consistent transparency',
+  state.mapControlBackgrounds.every((background) => /rgba\(255, 255, 255, 0\.9\)/.test(background)),
+  JSON.stringify(state.mapControlBackgrounds));
+check('the native Route sheet uses the iPhone bottom instead of adding an empty safe-area band',
+  state.nativePanelBottomPadding === 0, JSON.stringify(state));
 
 state = await page.evaluate(() => {
   routing.end = [-122.33, 47.61];
@@ -88,11 +109,17 @@ state = await page.evaluate(() => {
     routePaneHidden: document.getElementById('panel').classList.contains('route-pane-hidden'),
     navigateHidden: document.getElementById('navStartButton').hidden,
   };
+  routing.start = [-122.34, 47.60];
+  routing.startName = 'Test start';
+  updateArmButtons();
+  result.completeRoutePaneHidden = document.getElementById('panel').classList
+    .contains('route-pane-hidden');
   clearRoute();
   return result;
 });
-check('the first route point reveals Route but not Navigate',
-  !state.routePaneHidden && state.navigateHidden, JSON.stringify(state));
+check('one route point keeps Route and Navigate hidden',
+  state.routePaneHidden && state.navigateHidden, JSON.stringify(state));
+check('both endpoints reveal Route', !state.completeRoutePaneHidden, JSON.stringify(state));
 
 const utilityPanels = await page.evaluate(() => {
   const size = (id) => {

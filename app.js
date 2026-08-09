@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.640';
+const APP_VERSION = '2026-08-08.641';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11787,8 +11787,8 @@ function syncPanelInteractivity() {
   panel.removeAttribute('aria-hidden');
 }
 
-function routeHasAnyPoint() {
-  return Boolean(routing.start || routing.end || routing.vias.length);
+function routeHasBothEndpoints() {
+  return Boolean(routing.start && routing.end);
 }
 
 function syncRoutePaneVisibility() {
@@ -11796,10 +11796,11 @@ function syncRoutePaneVisibility() {
   const routeViewActive = document.getElementById('tab-route')?.classList.contains('active');
   if (!panel) return;
   // Layers and Settings are independent map tools, so they remain available
-  // on an empty map. Only the Route view disappears when there is no trip to
-  // summarize. Active navigation also keeps Stop and its guidance reachable.
+  // while a trip is being entered. Route has nothing useful to summarize
+  // until both endpoints exist. Active navigation also keeps Stop and its
+  // guidance reachable.
   panel.classList.toggle('route-pane-hidden', Boolean(routeViewActive
-    && !routeHasAnyPoint() && !turnNav.active));
+    && !routeHasBothEndpoints() && !turnNav.active));
   scheduleMobileNavDockAfterInit();
 }
 
