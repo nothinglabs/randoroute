@@ -341,12 +341,14 @@ state = await page.evaluate(() => ({
   workers: window.__routingWorkerStarts.length,
   start: Boolean(routing.start), end: Boolean(routing.end),
   indicator: document.querySelectorAll('.search-result-marker').length,
-  actions: [...document.querySelectorAll('#readout .readout-route-actions button')]
+  // The route roles moved behind Navigate when the three map cards became
+  // one; the card itself now offers the same actions as any other map tap.
+  actions: [...document.querySelectorAll('#readout .readout-primary-actions > button')]
     .map((button) => button.textContent),
 }));
 check('choosing a result previews it on the map without assigning a route role',
   state.workers === 0 && !state.start && !state.end && state.indicator === 1
-    && state.actions.join('|') === 'Destination|Start', JSON.stringify(state));
+    && state.actions.join('|') === 'Navigate|Street View|Details', JSON.stringify(state));
 await page.click('#readout .readout-close');
 
 await page.evaluate(() => { getFreshDevicePosition = () => new Promise(() => {}); });
