@@ -648,6 +648,11 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout-safety-summary span { color: #536873; font: 620 9.5px/1.28 system-ui; }
 .readout-core-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 5px; }
 .readout-core-fact { display: grid; align-content: start; gap: 2px; min-width: 0; padding: 5px 6px; border: 1px solid #dce5ea; border-radius: 6px; background: #fbfcfd; }
+.readout-core-fact-accommodation { grid-column: 1 / -1; }
+.readout-core-fact-caution {
+  grid-column: 1 / -1; border-color: #ddb978; border-left: 3px solid #b66a00;
+  background: #fff9ed;
+}
 .readout-core-fact > span { color: #6a7b85; font: 780 7.5px/1 system-ui; letter-spacing: .04em; text-transform: uppercase; }
 .readout-core-fact > strong { overflow: hidden; color: #263f4d; font: 740 9.5px/1.18 system-ui; overflow-wrap: anywhere; }
 .readout-route-actions { display: grid; grid-template-columns: 1.05fr .95fr 1fr; gap: 5px; margin-top: 8px; }
@@ -666,7 +671,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout-identity-region { color: #6a7b85; font: 700 9.5px/1.25 system-ui; }
 .readout-identity-region[hidden] { display: none; }
 .readout-primary-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
-.readout-primary-actions.has-road-block { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.readout-primary-actions.has-road-block { grid-template-columns: repeat(3, minmax(0, 1fr)) 36px; }
 .readout-primary-actions > button {
   min-width: 0; min-height: 34px; padding: 5px 3px; border: 1px solid #b7cbd7;
   border-radius: 7px; background: #f7fafb; color: #176b99;
@@ -677,7 +682,10 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout-primary-actions > button:hover,
 .readout-primary-actions > button:focus-visible { filter: brightness(.96); outline: 2px solid #78b8dd; outline-offset: 1px; }
 .readout-primary-actions .streetview-launch { border-color: #a9c6d6; background: #f2f8fb; color: #176b99; }
-.readout-primary-actions .readout-road-block { border-color: #d09a86; background: #fdf1ec; color: #9c3f18; }
+.readout-primary-actions .readout-road-block {
+  display: grid; place-items: center; padding: 0; border-color: #d09a86;
+  background: #fdf1ec; color: #9c3f18; font-size: 17px;
+}
 /* A flip-down, not a button that looks like the action buttons beside it: the
    chevron rotates to point at the panel it opened. */
 .readout-details-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: auto; margin: 0; }
@@ -701,12 +709,20 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout-action-menu-close { flex: none; min-height: 31px; padding: 4px 5px; border: 1px solid #c4d0d7; border-radius: 6px; background: #fff; color: #526873; font: 750 8.5px/1 system-ui; cursor: pointer; }
 .readout-details { margin-top: 2px; padding-top: 7px; border-top: 1px solid #dde5e9; }
 .readout-details[hidden] { display: none; }
+.readout-debug-launch {
+  width: 100%; min-height: 30px; margin-top: 6px; padding: 5px 8px;
+  border: 1px solid #788a94; border-radius: 6px; background: #26343c;
+  color: #f0f5f7; font: 750 9.5px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+.readout-debug-launch:hover,
+.readout-debug-launch:focus-visible { background: #17252d; outline: 2px solid #78b8dd; outline-offset: 1px; }
 .readout table { border-collapse: collapse; width: 100%; }
 .readout td { padding: 0 5px 1px 0; line-height: 1.18; vertical-align: top; }
 @media (max-width: 720px) { .readout td { line-height: 1.28; padding-bottom: 2px; } }
 .readout td.k { width: 1%; padding-right: 8px; color: #777; white-space: nowrap; }
 .road-map-actions { display: grid; flex: 1 1 auto; grid-template-columns: 1fr 1fr; align-items: stretch; gap: 3px; min-width: 0; }
-.readout-primary-actions .readout-road-block { width: auto; margin: 0; border-color: #d8c48c; background: #fdf6e3; color: #6b5310; }
+.readout-primary-actions .readout-road-block { width: 36px; margin: 0; border-color: #d8c48c; background: #fdf6e3; color: #6b5310; }
 .streetview-launch {
   min-height: 32px; padding: 5px 6px; border: 1px solid #9fc4da; border-radius: 7px;
   background: #edf7fc; color: #075f91; font: 750 10px/1.1 system-ui; cursor: pointer;
@@ -1253,6 +1269,27 @@ body.navigation-active #routeBar { display: none; }
   #rb-status { display: none; }
 }
 .map-dialog { width: min(92vw, 360px); border: none; border-radius: 14px; padding: 14px; color: #222; box-shadow: 0 12px 36px rgba(0,0,0,.3); }
+.map-debug-dialog {
+  width: min(92vw, 720px); height: min(78dvh, 680px); max-width: none; max-height: none;
+  margin: auto; padding: 0; overflow: hidden; border: 1px solid #41515a;
+  border-radius: 13px; background: #10191e; box-shadow: 0 14px 44px rgba(0,0,0,.42);
+  color: #d9e6eb;
+}
+.map-debug-dialog[open] { display: flex; flex-direction: column; }
+.map-debug-dialog::backdrop { background: rgba(8,18,24,.56); }
+.map-debug-head {
+  display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 54px; padding: 8px 10px 8px 14px; border-bottom: 1px solid #34464f;
+  background: #18262d;
+}
+.map-debug-head span { display: block; color: #89a4b0; font: 750 9px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.map-debug-head h2 { margin: 2px 0 0; color: #f1f6f8; font: 750 14px/1.15 system-ui; }
+.map-debug-head .dialog-close { flex: none; width: 36px; height: 36px; color: #d7e2e7; background: #2a3a42; font-size: 17px; }
+#mapDebugOutput {
+  flex: 1 1 auto; min-height: 0; margin: 0; padding: 14px; overflow: auto;
+  background: #10191e; color: #c9e6d5; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
+}
 #routesDialog { max-height: min(86dvh, 700px); overflow-y: auto; overscroll-behavior: contain; }
 #routesDialog .dialog-head-actions { gap: 10px; }
 #routesDialog .dialog-close { width: 34px; height: 34px; font-size: 17px; }
@@ -1450,20 +1487,20 @@ body.street-view-open #map { visibility: hidden; }
 .waypoint-marker { position: absolute; }
 .waypoint-marker-number { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); color: #34434b; font: 850 10px/1 system-ui; pointer-events: none; }
 .search-result-marker {
+  box-sizing: border-box;
   width: 20px;
   height: 20px;
   border: 3px solid #fff;
-  border-radius: 50% 50% 50% 6px;
+  border-radius: 50%;
   background: #7a3fc2;
-  box-shadow: 0 2px 6px rgba(25,20,35,.4);
-  transform: rotate(-45deg);
+  box-shadow: 0 0 0 2px #7a3fc2, 0 2px 6px rgba(25,20,35,.4);
   pointer-events: none;
 }
 .search-result-marker::after {
   content: "";
   position: absolute;
-  inset: 4px;
-  border: 1.5px solid #fff;
+  inset: 5px;
+  background: #fff;
   border-radius: 50%;
 }
 .road-block-marker { color: #a63a16; }

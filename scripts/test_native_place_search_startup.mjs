@@ -374,7 +374,8 @@ state = await page.evaluate(() => ({
   endName: routing.endName,
 }));
 check('tapping the map during Destination search sets it directly and closes search',
-  state.pickerHidden && state.armed === null && state.endName === 'Point on map'
+  state.pickerHidden && state.armed === null && state.endName !== 'Point on map'
+    && / — /.test(state.endName)
     && state.end[0] === -122.76 && state.end[1] === 48.12,
   JSON.stringify(state));
 await page.evaluate(() => clearRoute());

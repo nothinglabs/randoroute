@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-09.655';
+const APP_VERSION = '2026-08-09.656';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -62,6 +62,11 @@ function routeSurfaceLabel(surface) {
   const value = Number(surface);
   return Number.isInteger(value) && value >= 0 && value < SURFACE_LABEL.length
     ? SURFACE_LABEL[value] : SURFACE_LABEL[0];
+}
+
+function isRoutinePavedSurface(surface) {
+  return /^(?:paved|asphalt|concrete(?::(?:lanes|plates))?|unknown)$/i
+    .test(String(surface || '').trim());
 }
 
 /* ------------------------------------------------- riding-rules state */
@@ -345,6 +350,23 @@ const OSM_PROTECTED = new Set(['track', 'separated', 'opposite_track']);
 const OSM_LANE = new Set(['lane', 'shared_lane']);
 function osmCycleway(p) {
   return p.cycleway || p['cycleway:both'] || p['cycleway:right'] || p['cycleway:left'] || null;
+}
+
+// Translate OSM's machine vocabulary for the rider-facing Details panel. The
+// exact tags remain available in Debug view; strings such as
+// "cycleway, bicycle=designated" do not belong loose in an ordinary card.
+function osmInfrastructureType(p) {
+  const names = {
+    cycleway: 'Dedicated bike path',
+    path: 'Shared-use or other path',
+    footway: 'Foot path',
+    bridleway: 'Bridleway',
+    track: 'Track',
+    service: 'Service road',
+  };
+  return names[p?.highway] || (p?.highway
+    ? String(p.highway).replaceAll('_', ' ').replace(/^./, (c) => c.toUpperCase())
+    : null);
 }
 // True when the way is in the bike-infrastructure layer only because someone
 // painted sharrows on it: no separate path, no bike lane, no bike designation.
@@ -8536,7 +8558,7 @@ function updateArmButtons() {
   if (reverseButton) {
     reverseButton.disabled = !hasEndpoints || turnNav.active;
     reverseButton.title = !hasEndpoints ? 'Set a start and destination to swap them'
-      : turnNav.active ? 'Pause navigation to swap start and destination'
+      : turnNav.active ? 'Stop navigation to swap start and destination'
         : 'Swap start and destination';
     reverseButton.setAttribute('aria-label', reverseButton.title);
   }
@@ -8545,7 +8567,7 @@ function updateArmButtons() {
     const limitReached = routing.vias.length >= MAX_ROUTE_STOPS;
     addStopButton.disabled = !hasEndpoints || turnNav.active || limitReached;
     addStopButton.title = !hasEndpoints ? 'Set a start and destination before adding a stop'
-      : turnNav.active ? 'Pause navigation before adding a stop'
+      : turnNav.active ? 'Stop navigation before adding a stop'
         : limitReached ? `Maximum of ${MAX_ROUTE_STOPS} stops reached`
           : 'Search or tap the map to add a stop';
     addStopButton.setAttribute('aria-label', addStopButton.title);
@@ -8912,7 +8934,7 @@ function buildRoutingPanel() {
   const choices = document.getElementById('routeOptions');
   choices.addEventListener('click', (event) => {
     if (turnNav.active) {
-      showRouteActionToast('Pause navigation before choosing a different route', { duration: 2600 });
+      showRouteActionToast('Stop navigation before choosing a different route', { duration: 2600 });
       return;
     }
     const button = event.target.closest('[data-route-option]');
@@ -9485,7 +9507,7 @@ function searchResultMarkerElement() {
 function showTemporaryMapMarker(lngLat) {
   clearSearchResultMarker();
   searchResultMarker = new maplibregl.Marker({
-    element: searchResultMarkerElement(), anchor: 'bottom',
+    element: searchResultMarkerElement(), anchor: 'center',
   }).setLngLat(lngLat).addTo(map);
   return searchResultMarker;
 }
@@ -9518,6 +9540,11 @@ function showPlaceOnMap(point, name = 'Point on map', { searchResult = false } =
       anchorPoint: map.project(lngLat),
       swatchColor: searchResult ? '#7a3fc2' : '#52656f',
       swatchLabel: searchResult ? 'Search result' : 'Map location',
+      debugData: {
+        source: { id: searchResult ? 'place-search' : 'map-location',
+          name: searchResult ? 'Place search result' : 'Map location' },
+        selectedName: routeName,
+      },
       avoidTemporaryMarker: true,
     });
     readoutPinned = true;
@@ -10321,9 +10348,19 @@ function positionPlaceCardAwayFromPin(point) {
   const tapX = mapRect.left + point.x;
   const tapY = mapRect.top + point.y;
   const renderedPin = searchResultMarker?.getElement?.().getBoundingClientRect();
-  const pinRect = renderedPin?.width && renderedPin?.height ? renderedPin : {
-    left: tapX - 11, right: tapX + 11, top: tapY - 22, bottom: tapY,
-    width: 22, height: 22,
+  const pinWidth = renderedPin?.width || 20;
+  const pinHeight = renderedPin?.height || 20;
+  // During a search camera move, MapLibre can fire moveend one paint before
+  // the marker DOM transform catches up. The projected coordinate is already
+  // final, so centre the symmetric target there instead of positioning the
+  // card around a stale rendered rectangle.
+  const pinRect = {
+    left: tapX - pinWidth / 2,
+    right: tapX + pinWidth / 2,
+    top: tapY - pinHeight / 2,
+    bottom: tapY + pinHeight / 2,
+    width: pinWidth,
+    height: pinHeight,
   };
   const minLeft = mapRect.left + edgeGap;
   const maxLeft = Math.max(minLeft, mapRect.right - edgeGap - cardRect.width);
@@ -10553,7 +10590,14 @@ function mapPointRouteActions(lngLat, routeName, { disclosure = false } = {}) {
   };
   const commitEndpoint = (kind) => {
     setPanelOpen(false);
-    setRoutePoint(kind, { lng, lat }, routeName);
+    const point = { lng, lat };
+    const chosenName = refineMapPointName(point, routeName, (resolved) => {
+      if (!routing[kind] || routing[kind][0] !== lng || routing[kind][1] !== lat) return;
+      routing[`${kind}Name`] = resolved;
+      updateArmButtons();
+      saveStateSoon();
+    });
+    setRoutePoint(kind, point, chosenName);
     dismissRoadInfo();
     setRouteStatus(kind === 'start' ? 'Start set from map' : 'Destination set from map');
   };
@@ -10564,20 +10608,29 @@ function mapPointRouteActions(lngLat, routeName, { disclosure = false } = {}) {
   const stop = routeButton('map-point-stop', disclosure ? 'New stop' : 'Add stop',
     'Add this point as a route stop', () => {
     setPanelOpen(false);
-    if (!addVia({ lng, lat }, { name: routeName })) return;
+    const point = { lng, lat };
+    let committedVia = null;
+    const chosenName = refineMapPointName(point, routeName, (resolved) => {
+      if (!committedVia || !routing.vias.includes(committedVia)) return;
+      committedVia.name = resolved;
+      renderRouteStops();
+      saveStateSoon();
+    });
+    if (!addVia(point, { name: chosenName })) return;
+    committedVia = routing.vias.at(-1);
     dismissRoadInfo();
     setRouteStatus('Stop added from map');
   });
   if (turnNav.active) {
     for (const button of [start, end]) {
       button.disabled = true;
-      button.title = 'Pause navigation to edit the route';
+      button.title = 'Stop navigation to edit the route';
     }
   }
   const canAddStop = routing.start && routing.end && !turnNav.active
     && routing.vias.length < MAX_ROUTE_STOPS;
   stop.disabled = !canAddStop;
-  stop.title = turnNav.active ? 'Pause navigation to edit the route'
+  stop.title = turnNav.active ? 'Stop navigation to edit the route'
     : !routing.start || !routing.end ? 'Set a start and destination before adding a stop'
       : canAddStop ? 'Add this point as a stop'
         : `Maximum of ${MAX_ROUTE_STOPS} stops reached`;
@@ -10657,6 +10710,52 @@ function localityNameFor(lng, lat) {
   return best?.[0] || null;
 }
 
+// Trip-point names favor the closest municipality rather than the larger-city
+// bias used for the card's broad regional context. A rider who taps in
+// Mountlake Terrace should not get "Seattle" merely because Seattle is larger.
+function nearestRegionNameFor(lng, lat) {
+  if (!placesIndex) return null;
+  let best = null, bestDistance = Infinity;
+  for (const place of placesIndex) {
+    if (!REGION_KINDS.has(place[3])) continue;
+    const distanceM = placeDistanceM(lng, lat, place);
+    if (distanceM < bestDistance && distanceM <= REGION_MAX_M) {
+      bestDistance = distanceM;
+      best = place;
+    }
+  }
+  return best?.[0] || null;
+}
+
+function mapPointLocationName(lngLat) {
+  const lng = Number(Array.isArray(lngLat) ? lngLat[0] : lngLat?.lng);
+  const lat = Number(Array.isArray(lngLat) ? lngLat[1] : lngLat?.lat);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat) || !placesIndex) return 'Point on map';
+  const region = nearestRegionNameFor(lng, lat) || regionNameFor(lng, lat);
+  const locality = localityNameFor(lng, lat);
+  if (region && locality && region.toLowerCase() !== locality.toLowerCase()) {
+    return `${region} — ${locality}`;
+  }
+  if (region) return `${region} — Point on map`;
+  if (locality) return `${locality} — Point on map`;
+  return 'Point on map';
+}
+
+// Commit a tap immediately, then improve its label as soon as the small
+// offline place index is ready. Coordinates never change and no reroute is
+// needed just because the human-readable name became more specific.
+function refineMapPointName(lngLat, currentName, apply) {
+  const explicit = normalizeEndpointName(currentName);
+  if (explicit && explicit !== 'Point on map') return explicit;
+  const immediate = mapPointLocationName(lngLat);
+  if (immediate !== 'Point on map') return immediate;
+  ensurePlaces().then(() => {
+    const resolved = mapPointLocationName(lngLat);
+    if (resolved !== 'Point on map') apply(resolved);
+  });
+  return immediate;
+}
+
 function readoutPrimaryButton(className, text, label) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -10665,6 +10764,16 @@ function readoutPrimaryButton(className, text, label) {
   button.setAttribute('aria-label', label);
   button.setAttribute('aria-expanded', 'false');
   return button;
+}
+
+function openMapTapDebug(title, record) {
+  const dialog = document.getElementById('mapDebugDialog');
+  const heading = document.getElementById('mapDebugTitle');
+  const output = document.getElementById('mapDebugOutput');
+  if (!dialog || !heading || !output) return;
+  heading.textContent = title || 'Map location';
+  output.textContent = JSON.stringify(record, null, 2);
+  if (!dialog.open) dialog.showModal();
 }
 
 /* ------------------------------------------- one card for every map tap
@@ -10691,11 +10800,12 @@ function renderMapTapCard({
   displayTitle, detailsTitle = displayTitle, pointName, summary, rows, lngLat, anchorPoint,
   swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
   segmentName = null, placeName = null,
+  debugData = null, cautionKinds = [],
   avoidTemporaryMarker = false,
 }) {
   const lat = Number(lngLat.lat);
   const lng = Number(lngLat.lng);
-  const routeName = normalizeEndpointName(pointName) || 'Point on map';
+  let routeName = normalizeEndpointName(pointName) || 'Point on map';
 
   readoutEl.classList.remove('place-action-card');
   readoutEl.replaceChildren();
@@ -10730,7 +10840,13 @@ function renderMapTapCard({
     return line;
   };
   const segment = normalizeEndpointName(segmentName);
-  identityLine('readout-identity-segment', segment);
+  const segmentLine = identityLine('readout-identity-segment', segment);
+  // The friendly road/trail name is already the collapsed card heading. Keep
+  // it available as context when Details swaps that heading to the technical
+  // source name, but do not print the same name twice in the compact card.
+  if (segmentLine && segment.toLowerCase() === String(displayTitle).toLowerCase()) {
+    segmentLine.hidden = true;
+  }
   const place = normalizeEndpointName(placeName)
     || (placesIndex ? localityNameFor(lng, lat) : null);
   // Never repeat the segment name back as if it were a second fact.
@@ -10751,6 +10867,7 @@ function renderMapTapCard({
       if (!late) return;
       regionLine.textContent = late;
       regionLine.hidden = false;
+      requestAnimationFrame(positionCard);
     });
   }
 
@@ -10764,11 +10881,13 @@ function renderMapTapCard({
   const accommodationKeys = ['Bike facility', 'Cycleway', 'Trail type', 'Network',
     'Bike route', 'Designated bike route'];
   const accommodation = readoutRowValue(rows, ...accommodationKeys);
-  const addFact = (label, value, keys) => {
+  const addFact = (label, value, keys, { prominent = false } = {}) => {
     if (!value) return;
     for (const key of keys) shownAbove.add(key);
     const fact = document.createElement('div');
     fact.className = 'readout-core-fact';
+    if (label === 'Bike accommodation') fact.classList.add('readout-core-fact-accommodation');
+    if (prominent) fact.classList.add('readout-core-fact-caution');
     const name = document.createElement('span');
     name.textContent = label;
     const text = document.createElement('strong');
@@ -10776,7 +10895,8 @@ function renderMapTapCard({
     fact.append(name, text);
     facts.append(fact);
   };
-  addFact('Bike accommodation', accommodation, accommodationKeys);
+  addFact('Bike accommodation', accommodation, accommodationKeys,
+    { prominent: cautionKinds.includes('odd') });
   const surfaceKeys = ['Surface (OSM)', 'Surface'];
   const surface = readoutRowValue(rows, ...surfaceKeys);
   // "Paved" and "Unknown" are both the ordinary case: one is expected, the
@@ -10784,11 +10904,23 @@ function renderMapTapCard({
   // for is worth a line.
   // Suppressed above, NOT dropped: a paved surface still belongs in Details,
   // which is the panel that promises to leave nothing out.
-  if (surface && !/^(paved|unknown)$/i.test(String(surface).trim())) {
-    addFact('Surface', surface, surfaceKeys);
+  if (surface && !isRoutinePavedSurface(surface)) {
+    addFact('Surface', surface, surfaceKeys, { prominent: cautionKinds.includes('unpaved') });
   }
   // Access is a warning, not metadata: a dismount requirement belongs above.
-  addFact('Access', readoutRowValue(rows, 'Access'), ['Access']);
+  addFact('Access', readoutRowValue(rows, 'Access'), ['Access'],
+    { prominent: cautionKinds.includes('walk') });
+  if (cautionKinds.includes('steep')) {
+    addFact('Hill', readoutRowValue(rows, 'Grade'), ['Grade'], { prominent: true });
+  }
+  if (cautionKinds.includes('traffic')) {
+    addFact('Traffic', readoutRowValue(rows, 'Traffic', 'Traffic stress'),
+      ['Traffic', 'Traffic stress'], { prominent: true });
+  }
+  if (cautionKinds.includes('curve')) {
+    addFact('Curve caution', readoutRowValue(rows, 'Curve caution'), ['Curve caution'],
+      { prominent: true });
+  }
 
   const navigateButton = readoutPrimaryButton('readout-primary-route', 'Navigate',
     'Choose how to use this point in your route');
@@ -10811,12 +10943,26 @@ function renderMapTapCard({
   detailsToggle.setAttribute('aria-controls', 'mapTapDetails');
   detailsToggle.innerHTML = '<span class="readout-details-label">Details</span>'
     + '<span class="readout-details-chevron" aria-hidden="true"></span>';
-  detailsToggle.disabled = detailRows.length === 0;
   const details = document.createElement('div');
   details.id = 'mapTapDetails';
   details.className = 'readout-details';
   details.hidden = true;
-  details.append(readoutTable(detailRows));
+  if (detailRows.length) details.append(readoutTable(detailRows));
+  const debugButton = document.createElement('button');
+  debugButton.type = 'button';
+  debugButton.className = 'readout-debug-launch';
+  debugButton.textContent = 'Debug view';
+  debugButton.setAttribute('aria-label', `Open complete debug information for ${displayTitle}`);
+  const debugRecord = {
+    title: displayTitle,
+    technicalTitle: detailsTitle,
+    selectedCoordinate: { longitude: lng, latitude: lat },
+    summary,
+    displayedInformation: rows.map(([label, value]) => ({ label, value })),
+    ...(debugData || { source: { id: 'map-location', name: 'Map location' } }),
+  };
+  debugButton.addEventListener('click', () => openMapTapDebug(routeName, debugRecord));
+  details.append(debugButton);
 
   let blockButton = null;
   if (allowRoadBlock) {
@@ -10826,7 +10972,7 @@ function renderMapTapCard({
       blockButton = document.createElement('button');
       blockButton.type = 'button';
       blockButton.className = 'readout-road-block';
-      blockButton.textContent = existingBlock ? 'Allow road' : 'Add road block';
+      blockButton.innerHTML = '<span aria-hidden="true">🚧</span>';
       blockButton.setAttribute('aria-label', existingBlock ? 'Remove roadblock' : 'Avoid this road');
       blockButton.title = existingBlock ? 'Remove roadblock' : 'Avoid this road';
       blockButton.addEventListener('click', () => {
@@ -10848,18 +10994,20 @@ function renderMapTapCard({
     details.hidden = !open;
     detailsToggle.setAttribute('aria-expanded', String(open));
     detailsToggle.querySelector('.readout-details-label').textContent = open ? 'Less' : 'Details';
-    headingText.textContent = open ? detailsTitle : displayTitle;
+    headingText.textContent = open ? detailsTitle : routeName;
+    if (segmentLine) {
+      segmentLine.hidden = segment.toLowerCase() === headingText.textContent.toLowerCase();
+    }
     requestAnimationFrame(positionCard);
   });
 
   const primaryActions = document.createElement('div');
   primaryActions.className = 'readout-primary-actions';
-  primaryActions.append(navigateButton, streetViewBtn);
+  primaryActions.append(navigateButton, streetViewBtn, detailsToggle);
   if (blockButton) {
     primaryActions.classList.add('has-road-block');
     primaryActions.append(blockButton);
   }
-  primaryActions.append(detailsToggle);
 
   readoutEl.append(close, heading);
   if (identity.childElementCount) readoutEl.append(identity);
@@ -10868,6 +11016,17 @@ function renderMapTapCard({
   readoutEl.append(primaryActions, details);
   readoutEl.classList.add('show');
   positionCard();
+  if (routeName === 'Point on map') {
+    const applyRefinedName = (resolved) => {
+      routeName = resolved;
+      debugRecord.title = resolved;
+      debugButton.setAttribute('aria-label', `Open complete debug information for ${resolved}`);
+      if (detailsToggle.getAttribute('aria-expanded') !== 'true') headingText.textContent = resolved;
+      requestAnimationFrame(positionCard);
+    };
+    const refined = refineMapPointName({ lng, lat }, routeName, applyRefinedName);
+    if (refined !== 'Point on map') applyRefinedName(refined);
+  }
 }
 // Guards the late region fill against a rider tapping again mid-fetch.
 let readoutCardToken = 0;
@@ -10897,6 +11056,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
       summary: 'Use this point in your trip, or open Details.',
       rows: [], lngLat, anchorPoint,
       swatchColor: '#fff', swatchLabel: 'Unspecified map point',
+      debugData: { source: { id: 'map-tap', name: 'Map tap' } },
       avoidTemporaryMarker,
     });
     return;
@@ -11004,7 +11164,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
     rows = [
       ['Name', p.name],
       ...common,
-      ['Type', [p.highway, p.bicycle ? `bicycle=${p.bicycle}` : null].filter(Boolean).join(', ')],
+      ['Path type', osmInfrastructureType(p)],
       ['Cycleway', osmCycleway(p)],
       ['Trail type', p.mtb === 1 ? 'Mountain-bike trail — hidden and not routed unless enabled in Settings' : null],
       ['Surface', p.surface],
@@ -11104,6 +11264,21 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
     // rider happens to inspect nearby -- which is exactly "part of an active
     // route", since routeseg IS the drawn route.
     allowRoadBlock: src.id === 'routeseg' && p.ferry !== 1,
+    cautionKinds: src.id === 'routeseg' && p.ferry !== 1
+      ? [...routeMarkerKinds(p, routeVisualStyle(p)), ...(p.hazard ? ['curve'] : [])]
+      : [],
+    debugData: {
+      source: {
+        id: src.id,
+        name: src.name,
+        hitLayer: feature.layer?.id || null,
+        sourceLayer: feature.sourceLayer || feature.layer?.['source-layer'] || null,
+      },
+      rawProperties: { ...p },
+      normalizedProperties: n,
+      safetyEvaluation: verdict,
+      geometry: feature.geometry || null,
+    },
     avoidTemporaryMarker,
   });
 }
@@ -11224,7 +11399,7 @@ document.getElementById('streetViewDialog').addEventListener('close', () => {
 // another road and clicks inside the card can still use Street View or Close.
 document.addEventListener('click', (e) => {
   if (!readoutEl.classList.contains('show')) return;
-  if (e.target.closest('#map') || e.target.closest('#readout')) return;
+  if (e.target.closest('#map') || e.target.closest('#readout') || e.target.closest('dialog')) return;
   dismissRoadInfo();
 });
 
@@ -11273,7 +11448,15 @@ function placeArmedPoint(lngLat) {
   updateArmButtons();
   closePlacePicker(false);
   if (kind === 'via') {
-    const changed = addVia(lngLat, { name: 'Point on map' });
+    let committedVia = null;
+    const name = refineMapPointName(lngLat, 'Point on map', (resolved) => {
+      if (!committedVia || !routing.vias.includes(committedVia)) return;
+      committedVia.name = resolved;
+      renderRouteStops();
+      saveStateSoon();
+    });
+    const changed = addVia(lngLat, { name });
+    if (changed) committedVia = routing.vias.at(-1);
     if (changed) setRouteStatus(routing.vias.length >= MAX_ROUTE_STOPS
       ? `Stop added — maximum of ${MAX_ROUTE_STOPS} reached` : 'Stop added');
     return true;
@@ -11285,7 +11468,13 @@ function placeArmedPoint(lngLat) {
       : 'Road block added');
     return true;
   }
-  setRoutePoint(kind, lngLat);
+  const name = refineMapPointName(lngLat, 'Point on map', (resolved) => {
+    if (!routing[kind] || routing[kind][0] !== lngLat.lng || routing[kind][1] !== lngLat.lat) return;
+    routing[`${kind}Name`] = resolved;
+    updateArmButtons();
+    saveStateSoon();
+  });
+  setRoutePoint(kind, lngLat, name);
   if (!(routing.start && routing.end)) {
     // Confirm the placement; riders choose the next endpoint themselves.
     setRouteStatus(kind === 'start' ? 'Start set' : 'Destination set');

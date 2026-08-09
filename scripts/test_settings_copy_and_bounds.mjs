@@ -100,6 +100,7 @@ const navigationLock = await page.evaluate(() => {
     routeControlsLocked: routeControls.length > 0 && routeControls.every((control) => control.disabled),
     voiceControlsLive: voiceControls.length > 0 && voiceControls.every((control) => !control.disabled),
     noticeVisible: !document.getElementById('settingsNavLockNotice').hidden,
+    noticeText: document.getElementById('settingsNavLockNotice').textContent,
   };
   turnNav.active = false;
   refreshNavigationUI();
@@ -109,7 +110,9 @@ const navigationLock = await page.evaluate(() => {
 });
 check('navigation keeps every Settings tab browsable while route values are read-only',
   navigationLock.limitsVisible && navigationLock.optionsVisible && navigationLock.tabsEnabled
-    && navigationLock.routeControlsLocked && navigationLock.noticeVisible,
+    && navigationLock.routeControlsLocked && navigationLock.noticeVisible
+    && /Stop navigation/.test(navigationLock.noticeText)
+    && !/Pause navigation/.test(navigationLock.noticeText),
   JSON.stringify(navigationLock));
 check('Voice-Nav stays live during the ride and route settings unlock when it stops',
   navigationLock.voiceControlsLive && navigationLock.routeControlsRestored

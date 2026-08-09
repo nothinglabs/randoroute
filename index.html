@@ -222,7 +222,7 @@
 
     <section class="tab" id="tab-settings">
       <div class="settings-panel-head"><strong>Settings</strong><div class="panel-view-actions"><button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button><button id="settingsPanelClose" class="panel-view-close" type="button" aria-label="Close settings" title="Close settings">✕</button></div></div>
-      <p id="settingsNavLockNotice" class="settings-nav-lock" role="alert" hidden>Pause navigation to change route settings.</p>
+      <p id="settingsNavLockNotice" class="settings-nav-lock" role="alert" hidden>Stop navigation to change route settings.</p>
       <div id="settingsTabs" class="settings-tabs">
         <div class="settings-tab-pair" role="tablist" aria-label="Routing settings">
           <button id="settings-tab-presets" type="button" role="tab" aria-selected="true" aria-controls="settings-presets" data-settings-pane="presets" class="active">Presets</button>
@@ -368,6 +368,11 @@
     <div class="dialog-head"><h2 id="mapPointNavigateTitle">Use this point</h2><button class="dialog-close" data-close="mapPointNavigateDialog" aria-label="Close">✕</button></div>
     <p class="map-point-navigate-where" id="mapPointNavigateWhere"></p>
     <div id="mapPointNavigateChoices" class="map-point-navigate-choices"></div>
+  </dialog>
+
+  <dialog id="mapDebugDialog" class="map-debug-dialog" aria-labelledby="mapDebugTitle">
+    <div class="map-debug-head"><div><span>Debug view</span><h2 id="mapDebugTitle">Map location</h2></div><button class="dialog-close" data-close="mapDebugDialog" aria-label="Close debug view">✕</button></div>
+    <pre id="mapDebugOutput" tabindex="0"></pre>
   </dialog>
 
   <dialog id="removeRouteMarkerDialog" class="map-dialog remove-route-marker-dialog" aria-labelledby="removeRouteMarkerTitle">
