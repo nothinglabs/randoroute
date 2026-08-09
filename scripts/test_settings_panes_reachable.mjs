@@ -107,6 +107,11 @@ for (const [name, viewport] of [
     check(`${name} / ${pane}: pane does not clip content it cannot scroll`,
       result.clipsSilently === false,
       `overflowY=${result.overflowY} scrollHeight=${result.scrollHeight} clientHeight=${result.clientHeight}`);
+    if (pane === 'voice') {
+      check(`${name} / voice: all controls fit without an internal scroller`,
+        result.scrollHeight <= result.clientHeight + 1,
+        `scrollHeight=${result.scrollHeight} clientHeight=${result.clientHeight}`);
+    }
     paneHeights.push(result.clientHeight);
   }
   check(`${name}: every Settings pane matches the Limits height`,
