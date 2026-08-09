@@ -166,6 +166,7 @@ const ui = await page.evaluate(() => {
     toggleInOptions: !!toggle?.closest('#settings-options'),
     optionsVisible: document.getElementById('settings-options')?.hidden === false,
     defaultChecked: toggle?.checked === true,
+    ferryHint: toggle?.closest('.rule-card')?.querySelector('.rule-check-hint')?.textContent || '',
   };
   routing.selectRecommendedNext = false;
   routing.pinnedLetters = [{ letter: 'A', profileId: 'old-ferry-route' }];
@@ -191,7 +192,8 @@ check('the route chooser contains only route choices',
   JSON.stringify(ui));
 check('the Show me routes dialog is removed', ui.oldDialogGone, JSON.stringify(ui));
 check('Allow routes with ferries lives in Settings > Options',
-  ui.toggleExists && ui.toggleInOptions && ui.optionsVisible && ui.defaultChecked,
+  ui.toggleExists && ui.toggleInOptions && ui.optionsVisible && ui.defaultChecked
+    && ui.ferryHint === '',
   JSON.stringify(ui));
 check('turning ferries off updates the rule and requests a fresh portfolio',
   ui.ruleOff && ui.freshPortfolio, JSON.stringify(ui));

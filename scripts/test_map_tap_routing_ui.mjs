@@ -96,23 +96,10 @@ check('Start completes the route directly from the map', await page.evaluate(() 
 
 await page.evaluate(() => renderReadout(null,
   { lng: -122.305, lat: 47.95 }, { x: 180, y: 360 }));
-check('Add stop remains absent by default even after the itinerary has endpoints', await page.evaluate(() =>
-  !document.querySelector('#readout .map-point-stop')));
-await page.evaluate(() => {
-  selectPanelTab('settings');
-  settingsPaneSelect('options');
-  setPanelOpen(true);
-});
-await page.locator('#r-showStopActions').check();
-await page.evaluate(() => setPanelOpen(false));
-await page.evaluate(() => renderReadout(null,
-  { lng: -122.305, lat: 47.95 }, { x: 180, y: 360 }));
-check('the Settings option makes Add stop available for deliberate trip planning', await page.evaluate(() =>
-  uiPrefs.showStopActions && document.querySelector('#readout .map-point-stop')?.disabled === false));
-check('the Add stop preference is saved independently of routing presets', await page.evaluate(() => {
-  saveStateNow();
-  return JSON.parse(localStorage.getItem(STATE_KEY) || '{}').showStopActions === true;
-}));
+check('Add stop is always available once the itinerary has endpoints', await page.evaluate(() =>
+  document.querySelector('#readout .map-point-stop')?.disabled === false));
+check('Options no longer contains an Add stop visibility setting', await page.evaluate(() =>
+  !document.getElementById('r-showStopActions')));
 await page.locator('#readout .readout-details-toggle').click();
 const expanded = await page.evaluate(() => ({
   expanded: document.querySelector('.readout-details-toggle')?.getAttribute('aria-expanded'),

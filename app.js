@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.637';
+const APP_VERSION = '2026-08-08.638';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -802,11 +802,6 @@ const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 const uiPrefs = {
   showAdvancedTools: typeof savedState?.showAdvancedTools === 'boolean'
     ? savedState.showAdvancedTools : true,
-  // Stops are useful for deliberate trip planning, but they are not part of
-  // the common "take me there" decision. Keep the action opt-in so every map
-  // tap starts with the two endpoint choices a rider actually needs.
-  showStopActions: typeof savedState?.showStopActions === 'boolean'
-    ? savedState.showStopActions : false,
 };
 
 // Voice guidance is a local device preference, not part of a shared route.
@@ -1036,7 +1031,6 @@ function saveStateNow() {
       navigationOffRouteMode: navVoice.offRouteMode,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       showAdvancedTools: uiPrefs.showAdvancedTools,
-      showStopActions: uiPrefs.showStopActions,
       sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
       route: routing.start && routing.end
@@ -10311,7 +10305,7 @@ function mapPointRouteActions(lngLat, routeName) {
   // current location is the common case. Neither a search result nor a map tap
   // changes the trip until one of these plainly named actions is chosen.
   routeActions.append(end, start);
-  if (routing.start && routing.end && uiPrefs.showStopActions) {
+  if (routing.start && routing.end) {
     const canAddStop = !turnNav.active && routing.vias.length < MAX_ROUTE_STOPS;
     stop.disabled = !canAddStop;
     stop.title = turnNav.active ? 'Pause navigation to edit the route'
@@ -11379,7 +11373,7 @@ function buildRulesPanel() {
       routing.selectRecommendedNext = true;
       computeRoute();
     }
-  }, 'Off plans every crossing by bridge instead; some trips become much longer or impossible.');
+  });
   check('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
     // This option affects both eligibility in the graph and the OSM layer's
     // feature filter. Repaint immediately, then recompute after the usual
@@ -11392,25 +11386,6 @@ function buildRulesPanel() {
   check('allowSidewalkFallback', 'Allow sidewalk fallback');
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');
-
-  // Deliberately below the routing rules and visually separated: these are UI
-  // choices, not route recipes, so they never change or clear the active
-  // preset. Stops remain fully supported in saved/shared trips when this is
-  // off; it only removes the optional action from map-location cards.
-  const stopActionsCard = document.createElement('div');
-  stopActionsCard.className = 'check-rule rule-card rule-standalone';
-  stopActionsCard.innerHTML = `
-    <label class="rule-check" for="r-showStopActions">
-      <input type="checkbox" id="r-showStopActions" ${uiPrefs.showStopActions ? 'checked' : ''}>
-      <span>Offer “Add stop” when choosing a map location</span>
-    </label>
-    <p class="hint rule-check-hint">Off keeps place choices focused on Start and Destination.</p>`;
-  optionsHost.appendChild(stopActionsCard);
-  stopActionsCard.querySelector('input').addEventListener('change', (e) => {
-    uiPrefs.showStopActions = e.target.checked;
-    suppressRoadInfo(900);
-    saveStateSoon();
-  });
 
   // This also only decides what the map shows, so it must not call
   // syncPresetSelection(): hiding a button is not a departure from a preset.
