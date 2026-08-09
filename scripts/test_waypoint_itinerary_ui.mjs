@@ -440,7 +440,7 @@ check('deleting an explicit Start restores the non-removable Current location de
       && routing.endName === 'Port Townsend' && routing.vias.length === 1
       && routing.last === null && !routing.startMarker
       && document.querySelector('#rb-start [data-endpoint-value]').textContent
-        === 'Current location (tap to change).'
+        === 'Current location (tap here to change).'
       && document.querySelector('[data-endpoint-remove="start"]').hidden));
 await page.locator('[data-via-index] .route-stop-remove').click();
 await page.locator('[data-endpoint-remove="end"]').click();

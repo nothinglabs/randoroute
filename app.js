@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-09.651';
+const APP_VERSION = '2026-08-09.652';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3537,9 +3537,31 @@ function navTurnText(delta, road, heading, staying) {
   return road ? `Continue ${staying ? 'on' : 'onto'} ${road}${toward}` : `Continue${toward}`;
 }
 
+// Distances arrive in METRES. Under a tenth of a mile they are spoken in feet,
+// and the conversion used to be missing entirely: the metre count was rounded
+// to 25 and labelled "feet", so a turn a full block away (about 100 m, 330 ft)
+// was announced as "in 100 feet" and the rider braked for a corner that was
+// not there yet. Everything under 0.1 mi was understated by 3.28x.
 function navDistanceText(m) {
-  if (m < 160.934) return `${Math.max(25, Math.round(m / 25) * 25)} feet`;
-  return `${(m / 1609.34).toFixed(m < 1609.34 ? 1 : 1)} miles`;
+  if (m < 160.934) return `${Math.max(25, Math.round(m * 3.28084 / 25) * 25)} feet`;
+  return `${(m / 1609.34).toFixed(1)} miles`;
+}
+
+// Close in, a figure is false precision: the fix that triggered the prompt is
+// already a second or two old, and "in 75 feet" invites a rider to measure a
+// distance they cannot judge at speed. Past this the prompt says "ahead"
+// instead of a number. Only the SPOKEN line does this -- the maneuver card can
+// afford the figure, because reading it is optional.
+const SPEAK_DISTANCE_MIN_M = 60;
+function navSpokenApproach(remainingM, instruction) {
+  const text = navInstructionText(instruction);
+  // Only the leading verb is lowercased to sit mid-sentence. Lowercasing the
+  // whole line flattened road names with it, and a speech engine reads letter
+  // pairs by their case: "NE 45th Street" became "ne 45th street".
+  const midSentence = text.charAt(0).toLowerCase() + text.slice(1);
+  return remainingM < SPEAK_DISTANCE_MIN_M
+    ? `${text} ahead.`
+    : `In ${navDistanceText(remainingM)}, ${midSentence}.`;
 }
 
 function plannedRouteDistanceTitle(distanceM) {
@@ -6018,7 +6040,7 @@ function updateTurnNavigation(pos) {
       const heading = compassWord(routeForwardBearing(nearest.index));
       const road = routeRoadNameAt(nearest.index);
       speakNavigation(`Head ${heading}${road ? ` on ${road}` : ''}. `
-        + `In ${navDistanceText(remaining)}, ${navInstructionText(next).toLowerCase()}.`);
+        + navSpokenApproach(remaining, next));
       if (remaining <= approachM) next.approach = true;
       spoke = true;
     }
@@ -6033,7 +6055,7 @@ function updateTurnNavigation(pos) {
     spoke = true;
   } else if (!next.approach && remaining <= approachM) {
     next.approach = true;
-    speakNavigation(`In ${navDistanceText(remaining)}, ${navInstructionText(next).toLowerCase()}.`);
+    speakNavigation(navSpokenApproach(remaining, next));
     spoke = true;
   }
   // The safety change gets its own schedule. It used to be reachable only when
@@ -7807,10 +7829,10 @@ function consumePendingRouteStepHighlight() {
 function routeEndpointDisplayName(kind) {
   if (kind === 'start' && (routing.startFromDevice
       || (!routing.start && routing.startDefaultsToDevice))) {
-    return 'Current location (tap to change).';
+    return 'Current location (tap here to change).';
   }
   if (!routing[kind]) return kind === 'start'
-    ? 'Tap to set start.' : 'Tap to set destination.';
+    ? 'Tap here to set start.' : 'Tap here to set destination.';
   return normalizeEndpointName(routing[`${kind}Name`]) || 'Point on map';
 }
 
@@ -7835,6 +7857,30 @@ async function resolveDefaultStartFromDevice() {
     renderRouteCard(null);
     saveStateSoon();
   }
+}
+
+/* A bullseye centred ON the point, not a pin standing beside it.
+ *
+ * The default MapLibre pin hangs its whole body above the coordinate and marks
+ * the spot with a tail tip, which reads as "somewhere under here" -- wrong for
+ * an endpoint the rider placed by tapping an exact spot, and wrong again when
+ * they drag it onto a specific driveway or trailhead. The crosshair's arms
+ * extend past the ring so the target stays legible over busy basemap, and the
+ * marker is anchored 'center' so the coordinate is literally the middle of it.
+ */
+function endpointMarkerElement(kind) {
+  const element = document.createElement('div');
+  element.className = `endpoint-marker endpoint-marker-${kind}`;
+  element.setAttribute('aria-hidden', 'true');
+  // The halo group is the same geometry drawn first in fat white, so the mark
+  // keeps its edge over dark trails and orthophoto-coloured parkland.
+  const bullseye = '<circle cx="16" cy="16" r="8"/>'
+    + '<path d="M16 3.5v6M16 22.5v6M3.5 16h6M22.5 16h6"/>';
+  element.innerHTML = `<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">`
+    + `<g class="endpoint-marker-halo">${bullseye}</g>`
+    + `<g class="endpoint-marker-ink">${bullseye}</g>`
+    + `<circle class="endpoint-marker-dot" cx="16" cy="16" r="2.7"/></svg>`;
+  return element;
 }
 
 function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false } = {}) {
@@ -7864,7 +7910,7 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
   else {
     const touchEndpoint = window.matchMedia('(pointer: coarse)').matches;
     routing[mk] = new maplibregl.Marker({
-      color: kind === 'start' ? '#0072B2' : '#D55E00', draggable: !touchEndpoint,
+      element: endpointMarkerElement(kind), anchor: 'center', draggable: !touchEndpoint,
     }).setLngLat(lngLat).addTo(map);
     if (touchEndpoint) enableLongPressEndpointMove(kind, routing[mk]);
     else routing[mk].on('dragend', () => {

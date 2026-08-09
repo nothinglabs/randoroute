@@ -110,8 +110,8 @@ check('an untouched native planner does not start the routing graph', state.work
 check('the untouched planner shows both endpoints and asks for both',
   !state.startHidden && state.destinationVisible
     && state.compactMessage === 'Select destination to see routes'
-    && state.startValue === 'Current location (tap to change).'
-    && state.destinationValue === 'Tap to set destination.'
+    && state.startValue === 'Current location (tap here to change).'
+    && state.destinationValue === 'Tap here to set destination.'
     && state.startHeadingSize >= 10 && state.destinationHeadingSize >= 10,
   JSON.stringify(state));
 check('an empty phone planner shows one short, explicit Route bar',
@@ -395,7 +395,7 @@ state = await page.evaluate(() => ({
 }));
 check('choosing a targeted Destination assigns it directly and defaults Start to Current location',
   state.workers === 0 && !state.start && state.end && !state.startHidden
-    && state.startLabel === 'Current location (tap to change).' && state.pickerHidden
+    && state.startLabel === 'Current location (tap here to change).' && state.pickerHidden
     && !state.promptShown && state.indicator === 0, JSON.stringify(state));
 
 await page.evaluate(() => {

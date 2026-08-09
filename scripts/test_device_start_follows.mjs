@@ -65,7 +65,7 @@ const defaultStart = await page.evaluate(() => ({
 }));
 check('a blank planner shows both endpoints with Current location as the Start default',
   !defaultStart.actual && !defaultStart.rowHidden && defaultStart.destinationVisible
-    && defaultStart.displayed === 'Current location (tap to change).'
+    && defaultStart.displayed === 'Current location (tap here to change).'
     && defaultStart.defaultsToDevice && !defaultStart.removeVisible,
   JSON.stringify(defaultStart));
 
@@ -81,7 +81,7 @@ const missingDefault = await page.evaluate(() => ({
   notices: window.__notices.join(' | '),
 }));
 check('an unavailable automatic location quietly leaves Start unset',
-  !missingDefault.actual && missingDefault.displayed === 'Tap to set start.'
+  !missingDefault.actual && missingDefault.displayed === 'Tap here to set start.'
     && !missingDefault.defaultsToDevice && !/current location/i.test(missingDefault.notices),
   JSON.stringify(missingDefault));
 
@@ -97,7 +97,7 @@ const revealedStart = await page.evaluate(() => {
   };
 });
 check('choosing Destination fills the visible Start with a Current location default',
-  !revealedStart.rowHidden && revealedStart.displayed === 'Current location (tap to change).'
+  !revealedStart.rowHidden && revealedStart.displayed === 'Current location (tap here to change).'
     && revealedStart.defaultsToDevice, JSON.stringify(revealedStart));
 await page.waitForFunction(() => Boolean(routing.start), null, { timeout: 5000 });
 const resolvedDefault = await page.evaluate(() => ({
