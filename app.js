@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.638';
+const APP_VERSION = '2026-08-08.639';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -8410,13 +8410,23 @@ function updateArmButtons() {
       && !(kind === 'start' && routing.startDefaultsToDevice);
   });
   const reverseButton = document.getElementById('rb-reverse');
+  const hasEndpoints = Boolean(routing.start && routing.end);
   if (reverseButton) {
-    const hasEndpoints = Boolean(routing.start && routing.end);
     reverseButton.disabled = !hasEndpoints || turnNav.active;
     reverseButton.title = !hasEndpoints ? 'Set a start and destination to swap them'
       : turnNav.active ? 'Pause navigation to swap start and destination'
         : 'Swap start and destination';
     reverseButton.setAttribute('aria-label', reverseButton.title);
+  }
+  const addStopButton = document.getElementById('rb-add-stop');
+  if (addStopButton) {
+    const limitReached = routing.vias.length >= MAX_ROUTE_STOPS;
+    addStopButton.disabled = !hasEndpoints || turnNav.active || limitReached;
+    addStopButton.title = !hasEndpoints ? 'Set a start and destination before adding a stop'
+      : turnNav.active ? 'Pause navigation before adding a stop'
+        : limitReached ? `Maximum of ${MAX_ROUTE_STOPS} stops reached`
+          : 'Search or tap the map to add a stop';
+    addStopButton.setAttribute('aria-label', addStopButton.title);
   }
   renderRouteStops();
 }
@@ -8814,6 +8824,7 @@ function buildRoutingPanel() {
   });
   document.getElementById('rb-search').addEventListener('click', () => openPlaceSearch());
   document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
+  document.getElementById('rb-add-stop').addEventListener('click', () => openPlaceSearch('via'));
   document.querySelectorAll('[data-endpoint-remove]').forEach((button) => {
     button.addEventListener('click', () => removeRouteEndpoint(button.dataset.endpointRemove));
   });
@@ -8827,6 +8838,7 @@ function buildRoutingPanel() {
     stopRouteStartCountdown();
     requestRouteBackToCurrentRoute();
   });
+  document.getElementById('navCancelStartBtn').addEventListener('click', () => stopTurnNavigation());
   document.getElementById('routeStartDialog').addEventListener('cancel', (event) => {
     event.preventDefault();
     useNearestPlannedRoute();
@@ -9384,6 +9396,9 @@ function setPlacePickerHint(kind = 'map', message = '') {
     } else if (placeSearchTarget === 'end') {
       lead.textContent = 'Tap the map to set your destination';
       copy.append(lead, document.createTextNode(', or search for it.'));
+    } else if (placeSearchTarget === 'via') {
+      lead.textContent = 'Tap the map to add a stop';
+      copy.append(lead, document.createTextNode(', or search for it.'));
     } else {
       lead.textContent = 'Search for a place.';
       copy.append(lead);
@@ -9407,8 +9422,7 @@ function openPlaceSearch(target = null) {
   // keyboard animation -- the field appeared to freeze before the rider had
   // even chosen a point. The router starts when both endpoints exist.
   ensurePlaces();
-  setPanelOpen(false);
-  placeSearchTarget = ['start', 'end'].includes(target) ? target : null;
+  placeSearchTarget = ['start', 'end', 'via'].includes(target) ? target : null;
   // Endpoint search also arms the map itself. The search card is deliberately
   // not modal: a rider can ignore the field and tap a point directly, with no
   // extra "tap the map" button in the way.
@@ -9416,9 +9430,10 @@ function openPlaceSearch(target = null) {
   updateArmButtons();
   internetPlaceSearch = false;
   clearTimeout(internetPlaceSearchTimer);
-  const targetLabel = placeSearchTarget === 'start' ? 'start' : 'destination';
-  document.getElementById('placePickerTitle').textContent = placeSearchTarget
-    ? `Set ${targetLabel}` : 'Find a place';
+  const targetLabel = placeSearchTarget === 'start' ? 'start'
+    : placeSearchTarget === 'end' ? 'destination' : 'stop';
+  document.getElementById('placePickerTitle').textContent = placeSearchTarget === 'via'
+    ? 'Add stop' : placeSearchTarget ? `Set ${targetLabel}` : 'Find a place';
   setPlacePickerHint('map');
   // Device location is meaningful as a route start. It is deliberately absent
   // from Destination and generic place search so it cannot be offered as an
@@ -9426,11 +9441,13 @@ function openPlaceSearch(target = null) {
   document.getElementById('useLoc').hidden = placeSearchTarget !== 'start';
   const searchInput = document.getElementById('placeSearch');
   searchInput.placeholder = placeSearchTarget === 'start' ? 'Search for a start…'
-    : placeSearchTarget === 'end' ? 'Search for a destination…' : 'Search for a place…';
+    : placeSearchTarget === 'end' ? 'Search for a destination…'
+      : placeSearchTarget === 'via' ? 'Search for a stop…' : 'Search for a place…';
   searchInput.value = '';
   searchInput.classList.remove('current-endpoint-preview');
   searchInput.setAttribute('aria-label', placeSearchTarget === 'start' ? 'Search for a route start'
-    : placeSearchTarget === 'end' ? 'Search for a route destination' : 'Search for a place');
+    : placeSearchTarget === 'end' ? 'Search for a route destination'
+      : placeSearchTarget === 'via' ? 'Search for a route stop' : 'Search for a place');
   document.getElementById('placeResults').replaceChildren();
   document.getElementById('placeResults').classList.remove('show');
   setUseLocationBusy(false);
@@ -9442,7 +9459,8 @@ function openPlaceSearch(target = null) {
   picker.hidden = false;
   document.body.classList.add('place-picker-open');
   setRouteStatus(placeSearchTarget
-    ? `Search or tap the map to set your ${targetLabel}`
+    ? placeSearchTarget === 'via' ? 'Search or tap the map to add a stop'
+      : `Search or tap the map to set your ${targetLabel}`
     : 'Search for a place');
   // On a phone the keyboard obscures most of the map, including the location
   // the rider may be trying to tap. Open the on-map chooser first and wait for
@@ -9463,6 +9481,15 @@ function choosePlaceSearchResult(lngLat, name, { fromDevice = false } = {}) {
   }
   closePlacePicker();
   clearSearchResultMarker();
+  if (target === 'via') {
+    if (!addVia(lngLat, { name })) return;
+    map.stop();
+    map.easeTo({
+      center: [lngLat.lng, lngLat.lat], zoom: Math.max(map.getZoom(), 14), duration: 450,
+    });
+    setRouteStatus(`Stop added: ${normalizeEndpointName(name) || 'Point on map'}`);
+    return;
+  }
   setRoutePoint(target, lngLat, name, { fromDevice: target === 'start' && fromDevice });
   map.stop();
   map.easeTo({
@@ -9554,7 +9581,8 @@ function buildPlacePicker() {
     }
     internetPlaceSearch = true;
     setPlacePickerHint('internet', placeSearchTarget
-      ? `Internet results set your ${placeSearchTarget === 'start' ? 'start' : 'destination'}.`
+      ? placeSearchTarget === 'via' ? 'Internet results add a stop.'
+        : `Internet results set your ${placeSearchTarget === 'start' ? 'start' : 'destination'}.`
       : 'Choose an internet result to see it on the map.');
     const requestId = ++placeSearchRequestId;
     render([], `Searching the internet for “${query}”…`);
@@ -10783,16 +10811,22 @@ let lastRoadInfoTouchAt = 0;
 
 function inspectRoadAt(point, lngLat = null) {
   if (Date.now() < roadInfoSuppressedUntil) return false;
-  // Generic search is also non-modal. Tapping the visible map dismisses the
-  // search card and opens the normal Route here / Start here choice.
+  const canvas = map.getCanvas();
+  const edgeGuard = window.matchMedia('(pointer: coarse)').matches ? 50 : 40;
+  if (point.x < edgeGuard || point.y < edgeGuard
+      || point.x > canvas.clientWidth - edgeGuard
+      || point.y > canvas.clientHeight - edgeGuard) return false;
+  const feature = featureAt(point);
+  // Blank map is for panning and zooming. Only a real road, trail, ferry, or
+  // selected-route segment opens the information card; this also prevents a
+  // near-miss beside an edge control from feeling like the control fired it.
+  if (!feature) return false;
+  // Generic search is non-modal. A deliberate road/trail tap dismisses the
+  // search card and opens the normal route actions for that mapped feature.
   const picker = document.getElementById('placePicker');
   if (picker && !picker.hidden) closePlacePicker();
   clearSearchResultMarker();
-  const feature = featureAt(point);
-  // A route point is useful even when no rendered road happens to sit under
-  // the finger. Safety/source details are richer for a road hit, but every map
-  // tap gets the same plain endpoint actions (and the optional stop action).
-  renderReadout(feature || null, lngLat || map.unproject([point.x, point.y]), point);
+  renderReadout(feature, lngLat || map.unproject([point.x, point.y]), point);
   readoutPinned = true;
   return true;
 }
@@ -11656,6 +11690,25 @@ function buildVoicePanel() {
   host.appendChild(cadence);
 }
 
+function syncSettingsPaneHeightToLimits() {
+  const settingsView = document.getElementById('tab-settings');
+  const limits = document.getElementById('settings-limits');
+  if (!settingsView?.classList.contains('active') || !limits) return;
+  const wasHidden = limits.hidden;
+  const priorHeight = limits.style.height;
+  const priorMinHeight = limits.style.minHeight;
+  limits.hidden = false;
+  limits.style.height = 'auto';
+  limits.style.minHeight = '0';
+  const limitsHeight = Math.ceil(limits.scrollHeight);
+  limits.style.height = priorHeight;
+  limits.style.minHeight = priorMinHeight;
+  limits.hidden = wasHidden;
+  if (limitsHeight > 0) {
+    settingsView.style.setProperty('--settings-pane-height', `${limitsHeight}px`);
+  }
+}
+
 /* ------------------------------------------------------------- boot */
 buildSourcePanel();
 buildRulesPanel();
@@ -11686,9 +11739,8 @@ if (routing.start && routing.end) {
   else map.once('load', queueBackgroundRouter);
 }
 
-// On phones, Menu and Navigate share the lower-left thumb zone. Navigate sits
-// beside Menu while the map is unobstructed, then shifts to the sheet's left
-// edge when it opens; desktop keeps the existing top-toolbar arrangement.
+// On phones, Navigate sits immediately above the permanent Route sheet;
+// desktop keeps the existing top-toolbar arrangement.
 const mobileNavMedia = window.matchMedia('(max-width: 720px)');
 let _mobileDockFrame = null;
 let _routeGuidanceTimer = null;
@@ -11728,13 +11780,10 @@ if (window.ResizeObserver) {
   new ResizeObserver(scheduleMobileNavDock).observe(document.getElementById('panel'));
 }
 
-// Tabs.
 function syncPanelInteractivity() {
   const panel = document.getElementById('panel');
-  const hidden = mobileNavMedia.matches && !document.body.classList.contains('panel-open');
-  panel.inert = hidden;
-  if (hidden) panel.setAttribute('aria-hidden', 'true');
-  else panel.removeAttribute('aria-hidden');
+  panel.inert = false;
+  panel.removeAttribute('aria-hidden');
 }
 
 function flashEmptyRouteGuidance() {
@@ -11759,63 +11808,35 @@ function flashEmptyRouteGuidance() {
   }));
 }
 
-function setPanelOpen(open) {
+function setPanelOpen() {
   const wasOpen = document.body.classList.contains('panel-open');
-  document.body.classList.toggle('panel-open', open);
+  document.body.classList.add('panel-open');
   syncLayersToggle();
+  syncSettingsToggle();
   syncPanelInteractivity();
   refreshNavigationUI();
   scheduleMobileNavDock();
-  // The route tab is display:none while the panel is closed, so its elevation
-  // canvas has no width to draw into. Redraw once the panel (and the canvas)
-  // is laid out, otherwise the chart stays blank until the next route render.
-  if (open) {
-    requestAnimationFrame(drawRouteCardElevation);
-    syncRouteDetailsWarningState(routing.last, { flash: true });
-    if (!wasOpen) flashEmptyRouteGuidance();
-  } else {
-    clearTimeout(_routeGuidanceTimer);
-    document.querySelector('.route-endpoints')?.classList.remove('route-guidance-flash');
-    document.querySelector('#routeCard .rc-route-message')?.classList.remove('route-guidance-flash');
-  }
+  requestAnimationFrame(drawRouteCardElevation);
+  syncRouteDetailsWarningState(routing.last, { flash: true });
+  if (!wasOpen) flashEmptyRouteGuidance();
 }
 
 function selectPanelTab(tabId) {
   document.body.classList.toggle('settings-panel-active', tabId === 'settings');
-  document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
-    const active = b.dataset.tab === tabId;
-    b.classList.toggle('active', active);
-    b.setAttribute('aria-pressed', String(active));
-  });
   document.querySelectorAll('.tab').forEach((t) =>
     t.classList.toggle('active', t.id === 'tab-' + tabId));
   syncLayersToggle();
+  syncSettingsToggle();
   scheduleMobileNavDock();
   if (tabId === 'route') { updateNavCard(); drawRouteCardElevation(); } // redraw elevation once visible
+  if (tabId === 'settings') requestAnimationFrame(syncSettingsPaneHeightToLimits);
 }
 
-document.querySelectorAll('#tabs button[data-tab]').forEach((b) => {
-  b.addEventListener('click', () => {
-    selectPanelTab(b.dataset.tab);
-    setPanelOpen(true);
-  });
-});
 selectPanelTab('route');
-document.getElementById('panelClose').addEventListener('click', () => {
-  setPanelOpen(false);
-  document.getElementById('panelOpen').focus({ preventScroll: true });
-});
-document.getElementById('panelOpen').addEventListener('click', () => {
-  closePlacePicker(true);
-  dismissRoadInfo();
-  selectPanelTab('route');
-  setPanelOpen(true);
-  document.getElementById('panelClose').focus({ preventScroll: true });
-});
+setPanelOpen(true);
 
 function layersMenuIsOpen() {
-  const selected = document.getElementById('tab-layers').classList.contains('active');
-  return selected && (!mobileNavMedia.matches || document.body.classList.contains('panel-open'));
+  return document.getElementById('tab-layers').classList.contains('active');
 }
 
 function syncLayersToggle() {
@@ -11831,15 +11852,33 @@ document.getElementById('layersToggle').addEventListener('click', () => {
   const open = layersMenuIsOpen();
   closePlacePicker(true);
   dismissRoadInfo();
-  if (open) {
-    if (mobileNavMedia.matches) setPanelOpen(false);
-    else selectPanelTab('route');
-  } else {
-    selectPanelTab('layers');
-    setPanelOpen(true);
-  }
+  selectPanelTab(open ? 'route' : 'layers');
+  setPanelOpen(true);
   syncLayersToggle();
 });
+document.getElementById('layersPanelClose').addEventListener('click', () => selectPanelTab('route'));
+
+function settingsMenuIsOpen() {
+  return document.getElementById('tab-settings').classList.contains('active');
+}
+
+function syncSettingsToggle() {
+  const toggle = document.getElementById('settingsToggle');
+  if (!toggle) return;
+  const open = settingsMenuIsOpen();
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.setAttribute('aria-label', open ? 'Hide settings' : 'Show settings');
+  toggle.title = open ? 'Hide settings' : 'Show settings';
+}
+
+document.getElementById('settingsToggle').addEventListener('click', () => {
+  const open = settingsMenuIsOpen();
+  closePlacePicker(true);
+  dismissRoadInfo();
+  selectPanelTab(open ? 'route' : 'settings');
+  setPanelOpen(true);
+});
+document.getElementById('settingsPanelClose').addEventListener('click', () => selectPanelTab('route'));
 
 // Dialog close buttons and the version shown inside Getting Started help.
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () =>

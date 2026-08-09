@@ -72,7 +72,8 @@ check('the untouched planner shows both endpoints and asks for both',
     && state.destinationValue === 'Tap to set destination.'
     && state.startHeadingSize >= 10 && state.destinationHeadingSize >= 10,
   JSON.stringify(state));
-check('the phone menu starts closed', !state.panelOpen, JSON.stringify(state));
+check('the phone Route sheet is permanent', state.panelOpen
+  && !await page.$('#panelOpen') && !await page.$('#tabs'), JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
 check('Navigate remains tappable while the trip needs endpoints',
@@ -198,20 +199,16 @@ state = await page.evaluate(async () => {
 check('a real location-permission failure remains immediate',
   state.attempts === 1 && state.rejected, JSON.stringify(state));
 
-await page.click('#panelOpen');
-await page.waitForFunction(() => document.querySelector('.route-endpoints')
-  ?.classList.contains('route-guidance-flash'));
 state = await page.evaluate(() => ({
-  endpointCue: document.querySelector('.route-endpoints')?.classList
-    .contains('route-guidance-flash'),
-  messageCue: document.querySelector('#routeCard .rc-route-message')?.classList
-    .contains('route-guidance-flash'),
+  panelOpen: document.body.classList.contains('panel-open'),
+  routeActive: document.getElementById('tab-route')?.classList.contains('active'),
+  oldNavigationGone: !document.getElementById('panelOpen') && !document.getElementById('tabs'),
   message: document.querySelector('#routeCard .rc-route-message strong')?.textContent,
 }));
-check('opening the empty Route menu links its instruction to the endpoint chooser',
-  state.endpointCue && state.messageCue && state.message === 'Choose start and destination',
+check('the permanent Route sheet keeps its endpoint instruction visible',
+  state.panelOpen && state.routeActive && state.oldNavigationGone
+    && state.message === 'Choose start and destination',
   JSON.stringify(state));
-await page.click('#panelClose');
 
 await page.click('#rb-search');
 state = await page.evaluate(() => ({
@@ -238,17 +235,18 @@ check('generic Find is explicitly search-focused without route or map-tap copy',
   JSON.stringify(state));
 check('the open search panel stacks above every map control',
   state.toolbarZ > state.mapControlsZ, JSON.stringify(state));
-await page.evaluate(() => inspectRoadAt({ x: 190, y: 410 }, { lng: -122.33, lat: 47.61 }));
+await page.evaluate(() => {
+  roadInfoSuppressedUntil = 0;
+  inspectRoadAt({ x: 190, y: 410 }, { lng: -122.33, lat: 47.61 });
+});
 state = await page.evaluate(() => ({
   pickerHidden: document.getElementById('placePicker').hidden,
   readoutShown: document.getElementById('readout').classList.contains('show'),
-  actions: [...document.querySelectorAll('#readout .readout-route-actions button')]
-    .map((button) => button.textContent),
 }));
-check('tapping the map during generic search closes search and shows the normal route choice',
-  state.pickerHidden && state.readoutShown && state.actions.join('|') === 'Route here|Start here',
+check('a blank map tap leaves generic search open and does not invent location details',
+  !state.pickerHidden && !state.readoutShown,
   JSON.stringify(state));
-await page.click('#readout .readout-close');
+await page.click('#placePickerClose');
 await page.click('#rb-search');
 await page.fill('#placeSearch', 'Seattle');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
@@ -464,15 +462,15 @@ const webIdle = await webPage.evaluate(() => {
     minZoom: map.getMinZoom(),
     zoom: map.getZoom(),
     panelOpen: document.body.classList.contains('panel-open'),
-    menuVisible: getComputedStyle(document.getElementById('panelOpen')).display !== 'none',
+    oldNavigationGone: !document.getElementById('panelOpen') && !document.getElementById('tabs'),
   };
 });
 check('a blank web planner keeps the large route graph unloaded', webIdle.workers === 0,
   JSON.stringify(webIdle));
 check('web zoom-out is clamped to the useful statewide range',
   webIdle.minZoom === 5 && webIdle.zoom >= 5, JSON.stringify(webIdle));
-check('the web phone menu also starts closed',
-  !webIdle.panelOpen && webIdle.menuVisible, JSON.stringify(webIdle));
+check('the web phone Route sheet is also permanent',
+  webIdle.panelOpen && webIdle.oldNavigationGone, JSON.stringify(webIdle));
 check('the web zoom guard produces no page errors', webErrors.length === 0,
   webErrors.join(' | '));
 await webContext.close();

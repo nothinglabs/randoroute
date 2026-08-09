@@ -40,26 +40,6 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 }
 .hint { color: #667784; font-size: 11px; margin: 2px 0 6px; }
 
-#tabs {
-  display: flex;
-  gap: 4px;
-  padding: 3px 8px;
-  flex: none;
-}
-#tabs button {
-  flex: 1;
-  padding: 4px 0;
-  border: none;
-  border-radius: 9px;
-  background: #eef1f4;
-  font: 600 13px system-ui;
-  color: #444;
-  cursor: pointer;
-}
-#tabs button.active { background: #0a66c2; color: #fff; }
-#tabs #routeLibraryBtn { flex: 0 0 30px; width: 30px; padding: 0; display: grid; place-items: center; border: 1px solid #d5dfe6; background: #eef1f4; color: #0a66c2; }
-#panelClose, #panelOpen { display: none; }
-
 .tab { display: none; overflow-y: auto; padding: 0 10px 8px; }
 .tab.active { display: block; flex: 1; min-height: 0; }
 
@@ -79,7 +59,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   .panel {
     left: 0; right: 0; bottom: 0;
     border-radius: 16px 16px 0 0;
-    padding-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
     height: auto;
     max-height: min(60vh, 520px);
     visibility: hidden;
@@ -96,36 +76,9 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   }
   body.settings-panel-active.panel-open .panel { max-height: min(85vh, 700px); }
   body:not(.panel-open) .tab { display: none; }
-  #tabs {
-    order: 2;
-    gap: 5px;
-    padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
-    border-top: 1px solid #dbe4ea;
-    background: rgba(250, 252, 253, .98);
-  }
   .tab { order: 1; }
   .tab.active { flex: 0 1 auto; }
-  #tabs #panelClose {
-    display: flex; order: -1; flex: 0 0 50px; min-height: 37px; padding: 0;
-    border: 1px solid #c8d5df; border-radius: 9px;
-    color: #2f4858; background: #dce7ef;
-  }
-  #tabs #routeLibraryBtn { flex-basis: 42px; width: 42px; border-radius: 9px; }
-  #panelOpen {
-    display: flex; position: absolute; left: 10px;
-    bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 11;
-    width: 50px; height: 46px; border: 1px solid #c8d5df; border-radius: 12px;
-    background: rgba(255,255,255,.96); box-shadow: 0 2px 10px rgba(0,0,0,.22);
-    color: #2f4858; cursor: pointer;
-  }
-  body.panel-open #panelOpen { display: none; }
 }
-
-#panelOpen, #tabs #panelClose {
-  flex-direction: column; align-items: center; justify-content: center; gap: 0;
-}
-.panel-control-icon { display: block; height: 19px; font: 800 19px/17px system-ui; }
-.panel-control-label { display: block; font: 750 8px/10px system-ui; letter-spacing: .02em; }
 
 /* -------------------------------------------------------------- route tab */
 #placeSearch {
@@ -409,10 +362,6 @@ body:not(.navigation-active) #navCard { display: none; }
 }
 #routeCard canvas { display: block; }
 @media (min-width: 721px) {
-  #tabs { gap: 6px; padding: 5px 10px; }
-  #tabs button { padding: 5px 0; border-radius: 10px; font-size: 14px; }
-  #tabs #routeLibraryBtn { flex-basis: 36px; width: 36px; border-radius: 9px; }
-  #tabs #routeLibraryBtn .share-icon { width: 19px; height: 19px; }
   .tab { padding: 0 12px 10px; }
   #routeCard .rc-sub, #routeCard .rc-warn, #routeCard .rc-leg { font-size: 13px; }
   #routeControls { margin-top: 8px; padding-top: 7px; }
@@ -458,7 +407,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .layers-intro { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 5px 1px 4px; color: #667680; }
 .layers-intro strong { color: #40515c; font: 750 12px/1.2 system-ui; }
 .layers-intro span { font: 600 11px/1.25 system-ui; }
-.tab-help-btn, .layers-help-btn, .settings-tabs .settings-help-btn { display: grid; place-items: center; flex: 0 0 23px; width: 23px; height: 23px; min-height: 23px; max-height: 23px; padding: 0; border: 1px solid #b8cbd8; border-radius: 50%; background: #f7fafb; color: #0a66c2; font: 800 13px/1 system-ui; cursor: pointer; }
+.tab-help-btn, .layers-help-btn, .settings-help-btn { display: grid; place-items: center; flex: 0 0 23px; width: 23px; height: 23px; min-height: 23px; max-height: 23px; padding: 0; border: 1px solid #b8cbd8; border-radius: 50%; background: #f7fafb; color: #0a66c2; font: 800 13px/1 system-ui; cursor: pointer; }
 .layers-special-note { position: relative; margin: 7px 0 0; padding: 7px 8px 7px 33px; border: 1px solid #c9dce9; border-radius: 8px; background: #f1f7fb; color: #425d70; font: 600 10.5px/1.35 system-ui; }
 .layers-special-note > span { position: absolute; top: 12px; left: 8px; width: 17px; height: 6px; border-radius: 2px; background: repeating-linear-gradient(90deg,var(--verdict-pass) 0 4px,transparent 4px 7px); }
 .layers-special-note b { color: #195d91; }
@@ -499,18 +448,19 @@ body:not(.navigation-active) #navCard { display: none; }
 .rule label { font-weight: 600; }
 .rule .val { color: #0a66c2; font-variant-numeric: tabular-nums; font-weight: 600; }
 .rule input[type="range"] { width: 100%; }
+.settings-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 5px 1px 3px; color: #40515c; }
+.settings-panel-head > strong { font: 750 12px/1.2 system-ui; }
+.panel-view-actions { display: flex; align-items: center; gap: 6px; }
+.panel-view-close { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; border: 0; border-radius: 7px; background: #eef1f4; color: #53646e; font: 750 13px/1 system-ui; cursor: pointer; }
 .settings-tabs { display: flex; gap: 4px; margin: 4px 0; }
 .settings-tabs button { flex: 1; min-height: 27px; padding: 2px 8px; border: 1px solid #d5dfe6; border-radius: 8px; background: #f2f5f7; color: #4c5b66; font: 700 12px system-ui; cursor: pointer; }
 .settings-tabs .settings-help-btn { align-self: center; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }
-/* Height follows the content. It used to be a hard 196px, which silently
-   encoded "Limits has four sliders" -- adding a fifth pushed "Never allow roads
-   faster than" past the edge of a pane that also set overflow-y: hidden, so it
-   was clipped with no way to reach it. A magic number that has to be re-derived
-   every time a control is added will be wrong again; min-height keeps the sheet
-   from collapsing on the shorter panes without capping the taller ones. */
-.settings-pane { display: flex; flex-direction: column; min-height: 196px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
+/* All four panes take the measured natural height of Limits. JavaScript sets
+   this variable after the Settings view is laid out, so the panel no longer
+   jumps between tabs without baking a control count into a magic pixel cap. */
+.settings-pane { display: flex; flex-direction: column; height: var(--settings-pane-height, auto); min-height: 196px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
 .settings-pane[hidden] { display: none; }
 .settings-pane > .settings-summary, .settings-pane > .preset-status { flex: none; }
 #settingsPresets, #settingsSliders, #settingsOptions, #settingsVoice { flex: 1; align-content: space-between; }
@@ -575,14 +525,16 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .endpoint-marker.endpoint-moving { filter: drop-shadow(0 0 5px rgba(10,102,194,.9)); }
 
-#layersToggle {
+#layersToggle, #settingsToggle {
   position: absolute; z-index: 16; top: calc(env(safe-area-inset-top) + 52px); right: 10px;
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
   border: 1px solid #c8d5df; border-radius: 9px; background: rgba(255,255,255,.96);
   box-shadow: 0 2px 9px rgba(0,0,0,.16); color: #365263; cursor: pointer;
 }
-#layersToggle[aria-expanded="true"] { border-color: #0a66c2; background: #eaf4fb; color: #0a66c2; }
+#settingsToggle { top: calc(env(safe-area-inset-top) + 92px); }
+#layersToggle[aria-expanded="true"], #settingsToggle[aria-expanded="true"] { border-color: #0a66c2; background: #eaf4fb; color: #0a66c2; }
 #layersToggle .layers-toggle-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+#settingsToggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 #map .maplibregl-ctrl-top-right { z-index: 16; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group {
   margin: calc(env(safe-area-inset-top) + 10px) 10px 0 0;
@@ -591,7 +543,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 34px; height: 34px; border-radius: 9px; }
 /* The desktop zoom buttons share this corner with the app's Layers button.
    Start below it; routing weights live in the compact trip-options menu. */
-#map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 58px; }
+#map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group { margin-top: 104px; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group.zoom-ctrl-group button { width: 34px; height: 34px; }
 /* Keep the compact OpenStreetMap attribution button comfortably inside the
    viewport edge without shifting the scale control above it. */
@@ -1070,7 +1022,7 @@ body.navigation-active #routeBar { display: none; }
 .app-help-update-status { min-height: 0; margin: 6px 0 0 !important; color: #56616a !important; font: 600 11px/1.3 system-ui !important; }
 .app-help-update-status:empty { display: none; }
 .place-picker {
-  position: absolute; z-index: 18; top: -4px; left: 0;
+  position: absolute; z-index: 18; top: calc(100% + 6px); right: 0; left: auto;
   transform: none; width: min(88vw, 380px); padding: 8px 9px 9px;
   border: 1px solid #e1e5e9; border-radius: 12px; background: rgba(255,255,255,.98);
   box-shadow: 0 5px 18px rgba(0,0,0,.2); color: #222;
@@ -1081,6 +1033,9 @@ body.navigation-active #routeBar { display: none; }
 }
 .place-picker[data-opened-from="end"] {
   --picker-origin: 24% 76%; --picker-entry-x: -10px; --picker-entry-y: 25px;
+}
+.place-picker[data-opened-from="via"] {
+  --picker-origin: 96% 20%; --picker-entry-x: 34px; --picker-entry-y: -18px;
 }
 .place-picker[data-opened-from="find"] {
   --picker-origin: 96% 28%; --picker-entry-x: 38px; --picker-entry-y: -9px;
@@ -1132,17 +1087,19 @@ body.navigation-active #routeBar { display: none; }
 @media (max-width: 720px) {
   #topToolbar { right: 8px; left: 8px; gap: 4px; width: auto; max-width: none; }
   .nav-start { min-width: 100px; min-height: 46px; padding: 0 8px; font-size: 11px; }
-  #routeBar { flex: 1 1 auto; gap: 4px; width: 100%; padding: 5px; max-width: none; }
-  #routeBar .route-utility-action { width: 46px; height: 42px; }
+  #routeBar { flex: 1 1 auto; gap: 4px; width: 100%; padding: 4px 5px; max-width: none; }
+  #routeBar .route-utility-action { width: 46px; height: 35px; }
   /* Find and Swap name themselves without taking space from the itinerary. */
   .route-endpoints { flex: 1 1 auto; width: auto; min-width: 0; }
-  #routeBar .route-endpoint { height: 44px; gap: 8px; padding: 2px 4px 2px 12px; }
-  .route-endpoints::before { top: 27px; bottom: 27px; left: 17px; }
+  #routeBar .route-endpoint { height: 40px; gap: 8px; padding: 2px 4px 2px 12px; }
+  .route-endpoints::before { top: 25px; bottom: 25px; left: 17px; }
+  .route-stop-row { height: 40px; }
+  #routeBar .route-stop-action { height: 40px; }
   .route-endpoint-marker { flex-basis: 10px; width: 10px; height: 10px; }
   .endpoint-copy strong { font-size: 11.25px; }
   .endpoint-label { font-size: 10px; }
   #routeBar .route-utility-actions > button { width: 46px; }
-  #mobileNavDock { display: block; position: absolute; z-index: 15; left: 66px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
+  #mobileNavDock { display: block; position: absolute; z-index: 15; left: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
   body.panel-open #mobileNavDock { left: 10px; bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
   /* The scale bar (and attribution) ride above the open bottom sheet exactly
    * like the Navigate dock. They were mounted at the map's true bottom edge,
@@ -1154,9 +1111,9 @@ body.navigation-active #routeBar { display: none; }
   }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group { margin-top: calc(env(safe-area-inset-top) + 112px); border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.22); }
   #map .maplibregl-ctrl-top-right .maplibregl-ctrl-geolocate { width: 42px; height: 42px; border-radius: 12px; }
-  #panelOpen { left: 10px; right: auto; }
   #layersToggle { top: calc(env(safe-area-inset-top) + 162px); width: 42px; height: 42px; border-radius: 12px; }
-  .place-picker { top: -5px; left: 0; width: 100%; }
+  #settingsToggle { top: calc(env(safe-area-inset-top) + 212px); width: 42px; height: 42px; border-radius: 12px; }
+  .place-picker { top: calc(100% + 5px); right: 0; left: auto; width: 100%; }
   body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
   body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
   body.navigation-active .nav-banner {
@@ -1209,6 +1166,8 @@ body.navigation-active #routeBar { display: none; }
 #navRouteBackBtn { border-color: #8e55bd; background: #fbf8ff; }
 #navRouteBackBtn strong { color: #6f24ad; }
 #navKeepRouteBtn { background: #f5f7f8; }
+#navCancelStartBtn { border-color: #d6a5aa; background: #fff7f7; }
+#navCancelStartBtn strong { color: #9b2631; }
 .save-route-form input { min-width: 0; flex: 1; padding: 8px; border: 1px solid #d5d5d5; border-radius: 9px; font: 13px system-ui; }
 .share-route { margin-top: 10px; padding-top: 9px; border-top: 1px solid #e4e7eb; }
 .import-route { margin-top: 10px; padding-top: 9px; border-top: 1px solid #e4e7eb; }

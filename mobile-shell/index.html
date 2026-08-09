@@ -66,7 +66,7 @@
   <link rel="stylesheet" href="vendor/maplibre-gl.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="panel-open">
   <div id="appLaunchScreen" role="status" aria-live="polite" aria-atomic="true">
     <div class="app-launch-content">
       <span class="app-launch-bike" aria-hidden="true">🚲</span>
@@ -139,6 +139,8 @@
       </div>
       <div id="routeMoreMenu" class="route-more-menu" role="menu" aria-label="Trip options" hidden>
         <button id="rb-reverse" class="route-more-item" type="button" role="menuitem" title="Set a start and destination to swap them" aria-label="Set a start and destination to swap them" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v15M7 4 3.5 7.5M7 4l3.5 3.5M17 20V5M17 20l-3.5-3.5M17 20l3.5-3.5"></path></svg><span>Swap start &amp; destination</span></button>
+        <button id="rb-add-stop" class="route-more-item" type="button" role="menuitem" title="Set a start and destination before adding a stop" aria-label="Set a start and destination before adding a stop" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v8M8 12h8"></path></svg><span>Add stop</span></button>
+        <button id="routeLibraryBtn" class="route-more-item" type="button" role="menuitem" title="Save, load, or share routes" aria-label="Save, load, or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h13l3 3v15H4z"></path><path d="M7 3v6h9V3M7 21v-8h10v8"></path></svg><span>Save, load &amp; share</span></button>
         <button id="appWeightsBtn" class="route-more-item" type="button" role="menuitem" aria-label="Advanced routing weights" title="Advanced routing weights"><span class="route-more-symbol" aria-hidden="true">⚖</span><span>Routing weights</span></button>
         <button id="routeUpdateBtn" class="route-more-item" type="button" role="menuitem" aria-label="Check for updates" title="Check for updates"><span class="route-more-symbol route-update-symbol" aria-hidden="true">↻</span><span>Check for updates</span></button>
       </div>
@@ -167,18 +169,11 @@
   <button id="layersToggle" type="button" aria-expanded="false" aria-controls="tab-layers" title="Show map layers" aria-label="Show map layers">
     <svg class="layers-toggle-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2" fill="#b7c900"/><path d="M10 6h9M10 12h9M10 18h9"/><circle cx="5" cy="12" r="2" fill="#168ad1"/><circle cx="5" cy="18" r="2" fill="#a51c30"/></svg>
   </button>
-
-  <button id="panelOpen" type="button" aria-label="Show map controls" title="Show map controls"><span class="panel-control-icon" aria-hidden="true">☰</span><span class="panel-control-label">Menu</span></button>
+  <button id="settingsToggle" type="button" aria-expanded="false" aria-controls="tab-settings" title="Show settings" aria-label="Show settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.53-1H3v-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.06-.06L7.03 4.2l.06.06A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3h4v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.93 10H21v4h-.07A1.7 1.7 0 0 0 19.4 15Z"></path></svg>
+  </button>
 
   <div class="panel" id="panel" aria-label="Map controls">
-    <nav id="tabs">
-      <button id="panelClose" type="button" aria-label="Hide map controls" title="Hide map controls"><span class="panel-control-icon" aria-hidden="true">↓</span><span class="panel-control-label">Close</span></button>
-      <button type="button" data-tab="route" class="active" aria-pressed="true">Route</button>
-      <button type="button" data-tab="layers" aria-pressed="false">Layers</button>
-      <button type="button" data-tab="settings" aria-pressed="false">Settings</button>
-      <button id="routeLibraryBtn" type="button" title="Save, load, or share routes" aria-label="Save, load, or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h13l3 3v15H4z"/><path d="M7 3v6h9V3M7 21v-8h10v8"/></svg></button>
-    </nav>
-
     <section class="tab active" id="tab-route">
       <div id="routeControls">
         <div id="routeCalculationStatus" class="route-calculation-status" role="status" aria-live="polite" aria-atomic="true" hidden>
@@ -213,11 +208,12 @@
     </section>
 
     <section class="tab" id="tab-layers">
-      <div class="layers-intro"><div><strong>Map layers</strong><br><span>Tap to toggle visibility.</span></div><button type="button" id="layersHelpBtn" class="layers-help-btn" aria-label="Map data and layers help" title="Map data and layers help">?</button></div>
+      <div class="layers-intro"><div><strong>Map layers</strong><br><span>Tap to toggle visibility.</span></div><div class="panel-view-actions"><button type="button" id="layersHelpBtn" class="layers-help-btn" aria-label="Map data and layers help" title="Map data and layers help">?</button><button id="layersPanelClose" class="panel-view-close" type="button" aria-label="Close map layers" title="Close map layers">✕</button></div></div>
       <div id="sources"></div>
     </section>
 
     <section class="tab" id="tab-settings">
+      <div class="settings-panel-head"><strong>Settings</strong><div class="panel-view-actions"><button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button><button id="settingsPanelClose" class="panel-view-close" type="button" aria-label="Close settings" title="Close settings">✕</button></div></div>
       <p id="settingsNavLockNotice" class="settings-nav-lock" role="alert" hidden>Pause navigation to change route settings.</p>
       <div id="settingsTabs" class="settings-tabs">
         <div class="settings-tab-pair" role="tablist" aria-label="Routing settings">
@@ -226,7 +222,6 @@
           <button id="settings-tab-options" type="button" role="tab" aria-selected="false" aria-controls="settings-options" data-settings-pane="options">Options</button>
           <button id="settings-tab-voice" type="button" role="tab" aria-selected="false" aria-controls="settings-voice" data-settings-pane="voice">Voice-Nav</button>
         </div>
-        <button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button>
       </div>
       <div id="settings-presets" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-presets">
         <p id="settingsPresetStatus" class="preset-status" aria-live="polite"></p>
@@ -321,6 +316,7 @@
     <div class="off-route-actions">
       <button id="navUseNearestBtn" type="button"><strong>I'll find my own way</strong><span>Distance and direction only — guidance resumes automatically when you reach the route.</span></button>
       <button id="navRouteToStartBtn" type="button"><strong>Route to the nearest point</strong><span>Turn-by-turn directions onto your planned route.</span></button>
+      <button id="navCancelStartBtn" class="nav-cancel-start" type="button"><strong>Cancel navigation</strong><span>Stop navigation and return to route planning.</span></button>
     </div>
   </dialog>
 

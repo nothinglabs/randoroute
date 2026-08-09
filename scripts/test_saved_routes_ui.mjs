@@ -95,8 +95,8 @@ check('incline appears before unpaved and unpaved uses miles',
 await page.evaluate(() => localStorage.setItem('wa-bike-saved-routes-1', JSON.stringify([{
   name: 'Lake loop', s: [-122.34, 47.60], e: [-122.30, 47.64], v: [], b: [],
 }])));
-// Saved routes are a direct, compact action in the hamburger panel.
-await page.click('#panelOpen');
+// Saved routes are a direct, compact action in Trip options.
+await page.click('#rb-more');
 await page.click('#routeLibraryBtn');
 await page.waitForSelector('#routesDialog[open]');
 
@@ -108,7 +108,7 @@ const layout = await page.evaluate(() => {
     loadText: document.querySelector('.saved-load')?.textContent.replace(/\s+/g, ' ').trim(),
     importBelowSaved: imported.top >= saved.bottom,
     floppyPaths: icon?.querySelectorAll('path').length || 0,
-    restoredToPanel: document.getElementById('routeLibraryBtn').closest('#tabs') !== null,
+    inTripMenu: document.getElementById('routeLibraryBtn').closest('#routeMoreMenu') !== null,
   };
 });
 check('a saved route is an explicit load action', layout.loadText === 'Lake loopLoad ›',
@@ -117,8 +117,8 @@ check('shared-link loading is a separate section at the bottom', layout.importBe
   JSON.stringify(layout));
 check('the route-library button uses a floppy-disk drawing', layout.floppyPaths === 2,
   JSON.stringify(layout));
-check('the route-library button is restored to the hamburger-panel tabs',
-  layout.restoredToPanel, JSON.stringify(layout));
+check('the route-library button lives in Trip options',
+  layout.inTripMenu, JSON.stringify(layout));
 
 await page.click('.saved-del');
 check('the X asks before deleting', await page.evaluate(() =>
@@ -149,15 +149,15 @@ const navigationTab = await page.evaluate(() => {
   const result = {
     navigating: turnNav.active,
     activeTab: active?.id,
-    routePressed: document.querySelector('#tabs [data-tab="route"]')?.getAttribute('aria-pressed'),
+    oldNavigationRemoved: !document.getElementById('tabs') && !document.getElementById('panelOpen'),
     panelOpen: document.body.classList.contains('panel-open'),
   };
   stopTurnNavigation(false);
   return result;
 });
-check('starting navigation returns an open menu to the Route tab',
+check('starting navigation keeps the permanent sheet on Route',
   navigationTab.navigating && navigationTab.activeTab === 'tab-route'
-    && navigationTab.routePressed === 'true' && navigationTab.panelOpen,
+    && navigationTab.oldNavigationRemoved && navigationTab.panelOpen,
   JSON.stringify(navigationTab));
 
 // The same control in two places. It read "Details" at one size on the route

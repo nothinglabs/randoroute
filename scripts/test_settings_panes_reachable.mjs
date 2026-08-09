@@ -65,7 +65,8 @@ for (const [name, viewport] of [
   await pg.evaluate(() => selectPanelTab('settings'));
   await pg.waitForTimeout(500);
 
-  for (const pane of ['limits', 'options', 'voice']) {
+  const paneHeights = [];
+  for (const pane of ['presets', 'limits', 'options', 'voice']) {
     await pg.evaluate((id) => {
       document.querySelector(`[data-settings-pane="${id}"]`)?.click();
     }, pane);
@@ -106,7 +107,11 @@ for (const [name, viewport] of [
     check(`${name} / ${pane}: pane does not clip content it cannot scroll`,
       result.clipsSilently === false,
       `overflowY=${result.overflowY} scrollHeight=${result.scrollHeight} clientHeight=${result.clientHeight}`);
+    paneHeights.push(result.clientHeight);
   }
+  check(`${name}: every Settings pane matches the Limits height`,
+    paneHeights.every((height) => Math.abs(height - paneHeights[1]) <= 1),
+    JSON.stringify(paneHeights));
 
   // The specific control that went missing, by name, on every viewport.
   await pg.evaluate(() => document.querySelector('[data-settings-pane="limits"]')?.click());

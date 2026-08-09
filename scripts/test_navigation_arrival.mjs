@@ -88,6 +88,26 @@ const again = await page.evaluate(() => {
 check('a second arrival notice is a no-op', again.active === false
   && again.arrived === true && again.spoken.length === 0, JSON.stringify(again));
 
+const cancelledBeforeJoining = await page.evaluate(() => {
+  turnNav.active = true;
+  turnNav.plannedRoute = { coords: [[-122.3, 47.6], [-122.31, 47.61]],
+    cumulative: [0, 1000], totalM: 1000, instructions: [] };
+  turnNav.route = turnNav.plannedRoute;
+  showRouteStartOffer(850);
+  return {
+    dialogOpen: document.getElementById('routeStartDialog').open,
+    cancelVisible: !document.getElementById('navCancelStartBtn').hidden,
+    cancelCopy: document.getElementById('navCancelStartBtn').textContent,
+  };
+});
+check('the not-on-route offer includes an explicit Cancel navigation action',
+  cancelledBeforeJoining.dialogOpen && cancelledBeforeJoining.cancelVisible
+    && /cancel navigation/i.test(cancelledBeforeJoining.cancelCopy),
+  JSON.stringify(cancelledBeforeJoining));
+await page.locator('#navCancelStartBtn').click();
+check('Cancel navigation exits the accidental ride and closes the offer', await page.evaluate(() =>
+  !turnNav.active && !document.getElementById('routeStartDialog').open));
+
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 
 await browser.close();

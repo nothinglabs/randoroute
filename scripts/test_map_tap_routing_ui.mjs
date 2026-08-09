@@ -87,7 +87,7 @@ const blank = await page.evaluate(() => ({
   summary: document.querySelector('#readout .readout-summary')?.textContent,
   detailsHidden: document.getElementById('mapTapDetails')?.hidden,
 }));
-check('an ordinary point with no road hit gets the same routing card',
+check('a programmatically selected location can still use the routing card',
   blank.heading === 'Point on map' && blank.detailsHidden, JSON.stringify(blank));
 await page.locator('#readout .map-point-start').click();
 check('Start completes the route directly from the map', await page.evaluate(() =>
@@ -122,13 +122,30 @@ check('Add stop commits the tapped map point to the visible itinerary', await pa
 
 const blankTap = await page.evaluate(() => {
   roadInfoSuppressedUntil = 0;
+  dismissRoadInfo();
   const original = featureAt;
   featureAt = () => null;
   const opened = inspectRoadAt({ x: 120, y: 240 }, { lng: -122.4, lat: 47.7 });
   featureAt = original;
-  return opened && document.querySelector('#readout .rt-title')?.textContent === 'Point on map';
+  return { opened, shown: document.getElementById('readout').classList.contains('show') };
 });
-check('the map-tap handler opens the routing card even without a feature', blankTap);
+check('a blank map tap does not invent a details card', !blankTap.opened && !blankTap.shown,
+  JSON.stringify(blankTap));
+const edgeTap = await page.evaluate(() => {
+  roadInfoSuppressedUntil = 0;
+  dismissRoadInfo();
+  const original = featureAt;
+  featureAt = () => ({
+    layer: { id: 'test-road-hit' },
+    properties: { n: 'Edge road', s: 25, w: 2, h: 'residential' },
+    geometry: { type: 'LineString', coordinates: [[-122.4, 47.7], [-122.39, 47.7]] },
+  });
+  const opened = inspectRoadAt({ x: 3, y: 240 }, { lng: -122.4, lat: 47.7 });
+  featureAt = original;
+  return { opened, shown: document.getElementById('readout').classList.contains('show') };
+});
+check('a near-edge tap is ignored even when road geometry lies beneath it',
+  !edgeTap.opened && !edgeTap.shown, JSON.stringify(edgeTap));
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 
 await browser.close();

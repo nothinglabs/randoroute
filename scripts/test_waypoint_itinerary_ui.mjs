@@ -27,6 +27,7 @@ const initial = await page.evaluate(() => {
     reorderGone: !document.getElementById('rb-reorder')
       && !document.getElementById('reorderRouteDialog'),
     reverseDisabled: document.getElementById('rb-reverse').disabled,
+    addStopDisabled: document.getElementById('rb-add-stop').disabled,
     moreVisible: !document.getElementById('rb-more').hidden,
     moreMenuHidden: document.getElementById('routeMoreMenu').hidden,
     moreText: document.getElementById('rb-more').textContent.trim(),
@@ -61,11 +62,13 @@ const initial = await page.evaluate(() => {
     cardInsidePhone: card.left >= 0 && card.right <= innerWidth,
     searchInsidePhone: search.left >= 0 && search.right <= innerWidth,
     searchBox: { width: Math.round(search.width), height: Math.round(search.height) },
+    endpointHeight: Math.round(document.getElementById('rb-start').getBoundingClientRect().height),
   };
 });
 check('a blank planner always shows Start and Destination without legacy reordering UI',
   initial.blank.startVisible && initial.blank.destinationVisible && initial.blank.reorderGone
-    && initial.blank.reverseDisabled && initial.blank.moreVisible && initial.blank.moreMenuHidden,
+    && initial.blank.reverseDisabled && initial.blank.addStopDisabled
+    && initial.blank.moreVisible && initial.blank.moreMenuHidden,
   JSON.stringify(initial.blank));
 check('the main card shows start, named stops, and destination in trip order',
   initial.itinerary.join(' | ') === 'Start Seattle | Stop 1 Mukilteo | Stop 2 Point on map | Destination Port Townsend',
@@ -88,6 +91,8 @@ check('the itinerary spans the phone and its delete targets are finger-sized',
   initial.endpointWidth >= initial.viewportWidth * .78
     && initial.actionBoxes.every((box) => box.width >= 36 && box.height >= 40),
   JSON.stringify(initial));
+check('the compact Start and Destination rows keep their full-size text',
+  initial.endpointHeight <= 40, JSON.stringify({ endpointHeight: initial.endpointHeight }));
 
 await page.locator('[data-via-edit="0"]').focus();
 check('routine route UI refreshes do not steal focus from a stop control', await page.evaluate(() => {
@@ -136,14 +141,14 @@ const moreMenu = await page.evaluate(() => ({
   expanded: document.getElementById('rb-more').getAttribute('aria-expanded'),
   items: [...document.querySelectorAll('#routeMoreMenu > button')]
     .filter((button) => !button.hidden).map((button) => button.lastElementChild?.textContent.trim()),
-  saveRestoredToPanel: document.getElementById('routeLibraryBtn').closest('#tabs') !== null,
+  saveMovedToMenu: document.getElementById('routeLibraryBtn').closest('#routeMoreMenu') !== null,
   helpRemoved: !document.getElementById('appHelpBtn'),
   weightsRemovedFromMap: document.getElementById('appWeightsBtn').closest('#routeMoreMenu') !== null,
 }));
-check('Trip options contains Swap, Weights, and the update check',
+check('Trip options contains trip editing, Save/Share, Weights, and updates',
   moreMenu.visible && moreMenu.expanded === 'true'
-    && moreMenu.items.join('|') === 'Swap start & destination|Routing weights|Check for updates'
-    && moreMenu.saveRestoredToPanel && moreMenu.helpRemoved && moreMenu.weightsRemovedFromMap,
+    && moreMenu.items.join('|') === 'Swap start & destination|Add stop|Save, load & share|Routing weights|Check for updates'
+    && moreMenu.saveMovedToMenu && moreMenu.helpRemoved && moreMenu.weightsRemovedFromMap,
   JSON.stringify(moreMenu));
 await page.locator('#rb-reverse').click();
 check('Reverse swaps endpoints and reverses stop order', await page.evaluate(() =>
@@ -173,6 +178,9 @@ const targetedStart = await page.evaluate(() => ({
   title: document.getElementById('placePickerTitle').textContent,
   hint: document.getElementById('placePickerHint').textContent,
   panelOpen: document.body.classList.contains('panel-open'),
+  plannerVisible: getComputedStyle(document.querySelector('.route-endpoints')).display !== 'none',
+  pickerBelowPlanner: document.getElementById('placePicker').getBoundingClientRect().top
+    >= document.getElementById('routeBar').getBoundingClientRect().bottom,
 }));
 await page.locator('#placeResults .place-hit:not(.place-internet-search)').first().click();
 check('Start-triggered search assigns its result immediately without a prompt card',
@@ -181,7 +189,7 @@ check('Start-triggered search assigns its result immediately without a prompt ca
     && !document.getElementById('readout').classList.contains('show')
     && document.querySelectorAll('.search-result-marker').length === 0)
     && targetedStart.title === 'Set start' && /tap the map to set your start/i.test(targetedStart.hint)
-    && !targetedStart.panelOpen,
+    && targetedStart.panelOpen && targetedStart.plannerVisible && targetedStart.pickerBelowPlanner,
   JSON.stringify(targetedStart));
 
 await page.locator('#rb-end').click();
@@ -191,6 +199,30 @@ await page.locator('#placeResults .place-hit:not(.place-internet-search)').first
 check('Destination-triggered search also assigns directly', await page.evaluate(() =>
   routing.endName.includes('Port Townsend') && document.getElementById('placePicker').hidden
     && !document.getElementById('readout').classList.contains('show')));
+
+const stopCountBeforeSearch = await page.evaluate(() => routing.vias.length);
+await page.locator('#rb-more').click();
+await page.locator('#rb-add-stop').click();
+const targetedStop = await page.evaluate(() => ({
+  title: document.getElementById('placePickerTitle').textContent,
+  hint: document.getElementById('placePickerHint').textContent,
+  placeholder: document.getElementById('placeSearch').placeholder,
+  armed: routing.arm,
+}));
+await page.locator('#placeSearch').fill('Mukilteo');
+await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
+await page.locator('#placeResults .place-hit:not(.place-internet-search)').first().click();
+check('Add stop opens a targeted finder and adds its result immediately',
+  await page.evaluate((priorCount) => routing.vias.length === priorCount + 1
+    && routing.vias.at(-1).name.includes('Mukilteo')
+    && document.getElementById('placePicker').hidden
+    && !document.getElementById('readout').classList.contains('show'), stopCountBeforeSearch)
+    && targetedStop.title === 'Add stop'
+    && /tap the map to add a stop/i.test(targetedStop.hint)
+    && targetedStop.placeholder === 'Search for a stop…'
+    && targetedStop.armed === 'via',
+  JSON.stringify(targetedStop));
+await page.evaluate(() => removeVia(routing.vias.at(-1)));
 
 await page.locator('#rb-search').click();
 const genericOpened = await page.evaluate(() => ({
@@ -238,7 +270,7 @@ check('a search result is indicated on the map without silently changing the tri
   searchChoice.indicator === 1 && searchChoice.route === routeBeforeSearchChoice,
   JSON.stringify(searchChoice));
 check('the searched point leads with routing but keeps the existing trip unchanged',
-  searchChoice.actions.join('|') === 'Route here|Start here'
+  searchChoice.actions.join('|') === 'Route here|Start here|Add stop'
     && /trip unchanged/i.test(searchChoice.context), JSON.stringify(searchChoice));
 check('a search result uses a compact location card with no road Details and never covers its pin',
   searchChoice.compact && !searchChoice.hasDetails
