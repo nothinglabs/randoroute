@@ -59,9 +59,8 @@ let state = await page.evaluate(() => ({
     .fontSize),
   emptyMessage: document.querySelector('.rc-route-message strong')?.textContent,
   panelOpen: document.body.classList.contains('panel-open'),
-  navigateDisabled: document.getElementById('navStartButton')?.disabled,
-  navigateNeedsEndpoints: document.getElementById('navStartButton')?.classList
-    .contains('route-needs-endpoints'),
+  routePaneHidden: document.getElementById('panel')?.classList.contains('route-pane-hidden'),
+  navigateHidden: document.getElementById('navStartButton')?.hidden,
 }));
 check('an untouched native planner does not start the routing graph', state.workers === 0,
   JSON.stringify(state));
@@ -72,49 +71,52 @@ check('the untouched planner shows both endpoints and asks for both',
     && state.destinationValue === 'Tap to set destination.'
     && state.startHeadingSize >= 10 && state.destinationHeadingSize >= 10,
   JSON.stringify(state));
-check('the phone Route sheet is permanent', state.panelOpen
-  && !await page.$('#panelOpen') && !await page.$('#tabs'), JSON.stringify(state));
+check('an empty phone planner hides the Route pane without restoring legacy navigation',
+  state.panelOpen && state.routePaneHidden
+    && !await page.$('#panelOpen') && !await page.$('#tabs'), JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
-check('Navigate remains tappable while the trip needs endpoints',
-  !state.navigateDisabled && state.navigateNeedsEndpoints, JSON.stringify(state));
-
-await page.click('#navStartButton');
-await page.waitForFunction(() => document.getElementById('rb-end')?.classList
-  .contains('navigation-guidance-flash'));
-state = await page.evaluate(() => ({
-  prompt: document.getElementById('routeActionText')?.textContent,
-  destinationCue: document.getElementById('rb-end')?.classList
-    .contains('navigation-guidance-flash'),
-  workers: window.__routingWorkerStarts.length,
-}));
-check('Navigate points to the missing destination instead of ignoring the tap',
-  state.prompt === 'Choose a destination to start navigating.'
-    && state.destinationCue && state.workers === 0,
+check('Navigate is absent until a finished route can start', state.navigateHidden,
   JSON.stringify(state));
 
-await page.evaluate(() => {
-  routing.end = { lng: -122.33, lat: 47.61, label: 'Test destination' };
+state = await page.evaluate(() => {
+  routing.end = [-122.33, 47.61];
+  routing.endName = 'Test destination';
+  updateArmButtons();
   refreshNavigationUI();
-  document.getElementById('navStartButton').click();
+  const result = {
+    routePaneHidden: document.getElementById('panel').classList.contains('route-pane-hidden'),
+    navigateHidden: document.getElementById('navStartButton').hidden,
+  };
+  clearRoute();
+  return result;
 });
-await page.waitForFunction(() => document.getElementById('rb-start')?.classList
-  .contains('navigation-guidance-flash'));
-state = await page.evaluate(() => ({
-  prompt: document.getElementById('routeActionText')?.textContent,
-  startCue: document.getElementById('rb-start')?.classList
-    .contains('navigation-guidance-flash'),
-}));
-check('Navigate gives matching guidance when only the start is missing',
-  state.prompt === 'Choose a starting point before navigating.' && state.startCue,
-  JSON.stringify(state));
-await page.evaluate(() => {
-  routing.end = null;
-  refreshNavigationUI();
-  showRouteActionToast('');
-  document.querySelectorAll('.route-endpoint.navigation-guidance-flash')
-    .forEach((item) => item.classList.remove('navigation-guidance-flash'));
+check('the first route point reveals Route but not Navigate',
+  !state.routePaneHidden && state.navigateHidden, JSON.stringify(state));
+
+const utilityPanels = await page.evaluate(() => {
+  const size = (id) => {
+    const rect = document.getElementById(id).getBoundingClientRect();
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  };
+  selectPanelTab('settings');
+  const settings = { paneHidden: document.getElementById('panel').classList
+    .contains('route-pane-hidden'), close: size('settingsPanelClose') };
+  selectPanelTab('layers');
+  const layers = { paneHidden: document.getElementById('panel').classList
+    .contains('route-pane-hidden'), close: size('layersPanelClose') };
+  selectPanelTab('route');
+  return {
+    settings, layers,
+    routeHiddenAgain: document.getElementById('panel').classList.contains('route-pane-hidden'),
+  };
 });
+check('Layers and Settings remain available without a route and have larger close targets',
+  !utilityPanels.settings.paneHidden && !utilityPanels.layers.paneHidden
+    && utilityPanels.settings.close.width >= 36 && utilityPanels.settings.close.height >= 36
+    && utilityPanels.layers.close.width >= 36 && utilityPanels.layers.close.height >= 36
+    && utilityPanels.routeHiddenAgain,
+  JSON.stringify(utilityPanels));
 
 state = await page.evaluate(async () => {
   const realFetch = window.fetch;
@@ -201,12 +203,13 @@ check('a real location-permission failure remains immediate',
 
 state = await page.evaluate(() => ({
   panelOpen: document.body.classList.contains('panel-open'),
+  routePaneHidden: document.getElementById('panel')?.classList.contains('route-pane-hidden'),
   routeActive: document.getElementById('tab-route')?.classList.contains('active'),
   oldNavigationGone: !document.getElementById('panelOpen') && !document.getElementById('tabs'),
   message: document.querySelector('#routeCard .rc-route-message strong')?.textContent,
 }));
-check('the permanent Route sheet keeps its endpoint instruction visible',
-  state.panelOpen && state.routeActive && state.oldNavigationGone
+check('the empty Route view stays selected but out of the way',
+  state.panelOpen && state.routePaneHidden && state.routeActive && state.oldNavigationGone
     && state.message === 'Choose start and destination',
   JSON.stringify(state));
 
@@ -410,9 +413,12 @@ check('route calculation frames the itinerary above the open phone panel',
       && point.y <= state.safeFrame.bottom),
   JSON.stringify({ fit: state.fit, points: state.framedPoints, safeFrame: state.safeFrame }));
 state = await page.evaluate(() => {
-  const choice = { ok: true, optimization: { label: 'Route A', profileId: 'panel-test' } };
+  const choice = { ok: true, coords: [routing.start, routing.end],
+    optimization: { label: 'Route A', profileId: 'panel-test' } };
   routing.options = [choice];
   routing.last = choice;
+  routing.pendingRoute = false;
+  routing.routeRequestActive = false;
   setRouteOptionsLoading(false);
   renderRouteOptionControls();
   return {
@@ -421,11 +427,13 @@ state = await page.evaluate(() => {
     chooserVisible: getComputedStyle(document.querySelector('#routeControls .route-chooser-row')).display !== 'none',
     choices: [...document.querySelectorAll('#routeOptions button[data-route-option]')]
       .map((button) => button.textContent.trim()),
+    navigateHidden: document.getElementById('navStartButton').hidden,
   };
 });
 check('finished calculation reveals route choices in that same Route-tab slot',
   state.statusHidden && !state.calculating && state.chooserVisible
-    && state.choices.join('|') === 'A (Only route)', JSON.stringify(state));
+    && state.choices.join('|') === 'A (Only route)' && !state.navigateHidden,
+  JSON.stringify(state));
 
 // A blank Safari/Web visit used to eagerly retain the expanded route graph,
 // leaving too little headroom for MapLibre when a rider zoomed out. Web now
@@ -462,6 +470,8 @@ const webIdle = await webPage.evaluate(() => {
     minZoom: map.getMinZoom(),
     zoom: map.getZoom(),
     panelOpen: document.body.classList.contains('panel-open'),
+    routePaneHidden: document.getElementById('panel').classList.contains('route-pane-hidden'),
+    navigateHidden: document.getElementById('navStartButton').hidden,
     oldNavigationGone: !document.getElementById('panelOpen') && !document.getElementById('tabs'),
   };
 });
@@ -469,8 +479,9 @@ check('a blank web planner keeps the large route graph unloaded', webIdle.worker
   JSON.stringify(webIdle));
 check('web zoom-out is clamped to the useful statewide range',
   webIdle.minZoom === 5 && webIdle.zoom >= 5, JSON.stringify(webIdle));
-check('the web phone Route sheet is also permanent',
-  webIdle.panelOpen && webIdle.oldNavigationGone, JSON.stringify(webIdle));
+check('the blank web phone also hides Route and Navigate',
+  webIdle.panelOpen && webIdle.routePaneHidden && webIdle.navigateHidden
+    && webIdle.oldNavigationGone, JSON.stringify(webIdle));
 check('the web zoom guard produces no page errors', webErrors.length === 0,
   webErrors.join(' | '));
 await webContext.close();

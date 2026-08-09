@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.639';
+const APP_VERSION = '2026-08-08.640';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2856,6 +2856,7 @@ function fitItineraryForCalculation() {
     const panelRect = document.getElementById('panel')?.getBoundingClientRect();
     const routeBarRect = document.getElementById('routeBar')?.getBoundingClientRect();
     const panelHeight = onPhone && document.body.classList.contains('panel-open')
+      && !document.getElementById('panel')?.classList.contains('route-pane-hidden')
       ? Math.ceil(panelRect?.height || 0) : 0;
     // The itinerary bar is deliberately wider/taller on a phone. Measure it:
     // a fixed top inset put the northern pin underneath that bar on longer
@@ -4463,26 +4464,23 @@ document.getElementById('routeDetailsDialog')?.addEventListener('close', () => {
 
 function refreshNavigationUI() {
   const routeAvailable = !!(routing.last?.ok && routing.last.coords?.length > 1);
-  const routeReady = routeAvailable && !routing.pendingRoute && !routing.routeRequestActive;
-  const routeNeedsEndpoints = !routing.start || !routing.end;
+  const routeReady = routeAvailable && Boolean(routing.start && routing.end)
+    && !routing.pendingRoute && !routing.routeRequestActive;
   document.body.classList.toggle('navigation-active', turnNav.active);
   const startButton = document.getElementById('navStartButton');
   if (startButton) {
-    // Before a trip has both endpoints this remains a real button: tapping it
-    // explains the next required step and points at the corresponding field.
-    // It only becomes truly disabled during a calculation or after a route
-    // failure, when another tap cannot take a useful action.
-    startButton.disabled = turnNav.active ? false : !routeNeedsEndpoints && !routeReady;
+    // A hidden control is clearer than an unavailable action: only offer
+    // Navigate once a finished route exists. Keep it visible while navigating
+    // because the same control becomes Stop.
+    startButton.hidden = !turnNav.active && !routeReady;
+    startButton.disabled = false;
     startButton.title = turnNav.active
       ? 'Stop navigation'
-      : !routing.end ? 'Choose a destination to navigate'
-      : !routing.start ? 'Choose a starting point to navigate'
-      : !routeAvailable ? 'Set a route to navigate'
-      : !routeReady ? 'Wait for the updated route'
-      : 'Start turn-by-turn navigation';
+      : routeReady ? 'Start turn-by-turn navigation'
+        : 'A finished route is required to navigate';
     startButton.setAttribute('aria-pressed', String(turnNav.active));
     startButton.classList.toggle('navigating', turnNav.active);
-    startButton.classList.toggle('route-needs-endpoints', !turnNav.active && routeNeedsEndpoints);
+    startButton.classList.remove('route-needs-endpoints');
   }
   const startLabel = document.getElementById('navStartLabel');
   if (startLabel) startLabel.textContent = turnNav.active ? 'Stop' : 'Navigate';
@@ -4504,6 +4502,7 @@ function refreshNavigationUI() {
   if (bannerText) bannerText.textContent = info.headline;
   if (bannerMeta) bannerMeta.textContent = info.meta;
   updateNavCard();
+  syncRoutePaneVisibility();
 }
 
 let navigationEndpointGuidanceTimer = null;
@@ -8429,6 +8428,7 @@ function updateArmButtons() {
     addStopButton.setAttribute('aria-label', addStopButton.title);
   }
   renderRouteStops();
+  syncRoutePaneVisibility();
 }
 
 function setRouteMoreMenuOpen(open, { restoreFocus = false } = {}) {
@@ -11749,6 +11749,7 @@ function syncMobileNavDock() {
   const dock = document.getElementById('mobileNavDock');
   const panel = document.getElementById('panel');
   const height = document.body.classList.contains('panel-open')
+    && !panel.classList.contains('route-pane-hidden')
     ? Math.ceil(panel.getBoundingClientRect().height) : 0;
   // The dock and the banner are siblings, so put the shared measurement on
   // <body> rather than only on the dock. Both elements then rise together.
@@ -11784,6 +11785,22 @@ function syncPanelInteractivity() {
   const panel = document.getElementById('panel');
   panel.inert = false;
   panel.removeAttribute('aria-hidden');
+}
+
+function routeHasAnyPoint() {
+  return Boolean(routing.start || routing.end || routing.vias.length);
+}
+
+function syncRoutePaneVisibility() {
+  const panel = document.getElementById('panel');
+  const routeViewActive = document.getElementById('tab-route')?.classList.contains('active');
+  if (!panel) return;
+  // Layers and Settings are independent map tools, so they remain available
+  // on an empty map. Only the Route view disappears when there is no trip to
+  // summarize. Active navigation also keeps Stop and its guidance reachable.
+  panel.classList.toggle('route-pane-hidden', Boolean(routeViewActive
+    && !routeHasAnyPoint() && !turnNav.active));
+  scheduleMobileNavDockAfterInit();
 }
 
 function flashEmptyRouteGuidance() {
@@ -11827,6 +11844,7 @@ function selectPanelTab(tabId) {
     t.classList.toggle('active', t.id === 'tab-' + tabId));
   syncLayersToggle();
   syncSettingsToggle();
+  syncRoutePaneVisibility();
   scheduleMobileNavDock();
   if (tabId === 'route') { updateNavCard(); drawRouteCardElevation(); } // redraw elevation once visible
   if (tabId === 'settings') requestAnimationFrame(syncSettingsPaneHeightToLimits);

@@ -32,6 +32,8 @@ const initial = await page.evaluate(() => {
     moreMenuHidden: document.getElementById('routeMoreMenu').hidden,
     moreText: document.getElementById('rb-more').textContent.trim(),
     moreLabel: document.getElementById('rb-more').getAttribute('aria-label'),
+    routePaneHidden: document.getElementById('panel').classList.contains('route-pane-hidden'),
+    navigateHidden: document.getElementById('navStartButton').hidden,
   };
   setRoutePoint('start', { lng: -122.335, lat: 47.61 }, 'Seattle');
   setRoutePoint('end', { lng: -122.76, lat: 48.12 }, 'Port Townsend');
@@ -63,15 +65,18 @@ const initial = await page.evaluate(() => {
     searchInsidePhone: search.left >= 0 && search.right <= innerWidth,
     searchBox: { width: Math.round(search.width), height: Math.round(search.height) },
     endpointHeight: Math.round(document.getElementById('rb-start').getBoundingClientRect().height),
+    routePaneVisible: !document.getElementById('panel').classList.contains('route-pane-hidden'),
   };
 });
 check('a blank planner always shows Start and Destination without legacy reordering UI',
   initial.blank.startVisible && initial.blank.destinationVisible && initial.blank.reorderGone
     && initial.blank.reverseDisabled && initial.blank.addStopDisabled
-    && initial.blank.moreVisible && initial.blank.moreMenuHidden,
+    && initial.blank.moreVisible && initial.blank.moreMenuHidden
+    && initial.blank.routePaneHidden && initial.blank.navigateHidden,
   JSON.stringify(initial.blank));
 check('the main card shows start, named stops, and destination in trip order',
-  initial.itinerary.join(' | ') === 'Start Seattle | Stop 1 Mukilteo | Stop 2 Point on map | Destination Port Townsend',
+  initial.routePaneVisible
+    && initial.itinerary.join(' | ') === 'Start Seattle | Stop 1 Mukilteo | Stop 2 Point on map | Destination Port Townsend',
   JSON.stringify(initial.itinerary));
 check('stops have no manual order controls while Reverse and delete remain available',
   initial.oldControlsGone && initial.endpointControls === 2
@@ -174,6 +179,7 @@ await page.evaluate(() => setPanelOpen(true));
 await page.locator('#rb-start').click();
 await page.locator('#placeSearch').fill('Seattle Heights');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
+await page.waitForTimeout(700); // measure after the deliberate picker entrance transition
 const targetedStart = await page.evaluate(() => ({
   title: document.getElementById('placePickerTitle').textContent,
   hint: document.getElementById('placePickerHint').textContent,
@@ -320,7 +326,9 @@ check('endpoint and stop X buttons can delete every route item', await page.eval
   !routing.start && !routing.end && routing.vias.length === 0
     && document.querySelectorAll('.route-stop-row').length === 0
     && document.querySelectorAll('[data-endpoint-remove]:not([hidden])').length === 0
-    && !document.querySelector('.route-endpoint-start-row').hidden));
+    && !document.querySelector('.route-endpoint-start-row').hidden
+    && document.getElementById('panel').classList.contains('route-pane-hidden')
+    && document.getElementById('navStartButton').hidden));
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 

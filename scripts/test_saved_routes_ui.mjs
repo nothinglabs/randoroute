@@ -35,6 +35,8 @@ await page.evaluate(() => {
     { lenM: 856, level: 4, mph: 55, sh: 0 },
   ].map((segment, index) => ({ ...segment, c0: index, c1: index + 1 }));
   const route = { ok: true, distM: 85616, timeS: 16200, maxGradePct: 7, coords, segs };
+  routing.start = coords[0];
+  routing.end = coords.at(-1);
   routing.last = route;
   routing.pendingRoute = false;
   routing.routeRequestActive = false;

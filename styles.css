@@ -451,7 +451,8 @@ body:not(.navigation-active) #navCard { display: none; }
 .settings-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 5px 1px 3px; color: #40515c; }
 .settings-panel-head > strong { font: 750 12px/1.2 system-ui; }
 .panel-view-actions { display: flex; align-items: center; gap: 6px; }
-.panel-view-close { display: grid; place-items: center; width: 27px; height: 27px; padding: 0; border: 0; border-radius: 7px; background: #eef1f4; color: #53646e; font: 750 13px/1 system-ui; cursor: pointer; }
+.panel-view-close { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 9px; background: #eef1f4; color: #53646e; font: 800 17px/1 system-ui; cursor: pointer; }
+.panel.route-pane-hidden { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
 .settings-tabs { display: flex; gap: 4px; margin: 4px 0; }
 .settings-tabs button { flex: 1; min-height: 27px; padding: 2px 8px; border: 1px solid #d5dfe6; border-radius: 8px; background: #f2f5f7; color: #4c5b66; font: 700 12px system-ui; cursor: pointer; }
 .settings-tabs .settings-help-btn { align-self: center; }
@@ -961,11 +962,8 @@ body.route-more-open #topToolbar { z-index: 25; }
   color: #fff; font: 750 12px system-ui; cursor: pointer; white-space: nowrap;
   display: inline-flex; align-items: center; justify-content: center; gap: 5px;
 }
+.nav-start[hidden] { display: none !important; }
 .nav-start:disabled { border-color: #c1ccd2; background: #e3eaed; box-shadow: none; color: #78868d; cursor: default; }
-.nav-start.route-needs-endpoints {
-  border-color: #c1ccd2; background: #e3eaed; box-shadow: none; color: #667982; cursor: pointer;
-}
-.nav-start.route-needs-endpoints:active { border-color: #6fa9c6; background: #d7e8f0; }
 /* Amber while navigating — green reads as "go", so the pause action isn't green. */
 .nav-start.navigating { border-color: #b5621a; background: #dd7f2e; }
 
