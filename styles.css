@@ -1189,6 +1189,14 @@ body.navigation-active #routeBar { display: none; }
   }
   #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.22); }
   #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-geolocate { width: 42px; height: 42px; border-radius: 12px; }
+  /* Even while explicitly expanded, attribution stays in the right-hand map
+     lane instead of growing left across the 100px Navigate control. */
+  #map .maplibregl-ctrl-bottom-right > .maplibregl-ctrl-attrib.maplibregl-compact-show {
+    box-sizing: border-box; max-width: calc(100vw - 132px);
+  }
+  #map .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
+    line-height: 1.15; white-space: normal; text-align: right;
+  }
   /* Keep the pair aligned, but let them sit just below the itinerary actions
      so the two control groups read as separate columns on a phone. */
   #layersToggle { top: calc(env(safe-area-inset-top) + 12px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }

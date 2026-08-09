@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.647';
+const APP_VERSION = '2026-08-09.648';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1059,6 +1059,11 @@ const constrainedMapRuntime = isConstrainedDevice();
 const map = new maplibregl.Map({
   container: 'map',
   style: BikeBasemap.createStyle(),
+  // The full attribution sentence can span most of a phone and used to paint
+  // over Navigate when the Route sheet raised both controls into one band.
+  // Keep the required attribution one tap away behind MapLibre's own info
+  // disclosure on every viewport; desktop users can expand it too.
+  attributionControl: { compact: true },
   center: (savedState && savedState.view && savedState.view.c) || Region.defaultCenter,
   zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
   // This build only has Washington data. Low-zoom statewide tiles make WebKit
@@ -1082,6 +1087,17 @@ const map = new maplibregl.Map({
   // trails below z9 and the invisible tap layers floor at z9, so low-zoom
   // tiles are small enough for the default cache policy to handle.
 });
+function collapseMapAttribution() {
+  const attribution = document.querySelector('.maplibregl-ctrl-attrib.maplibregl-compact');
+  if (!attribution) return;
+  // MapLibre deliberately initializes compact attribution expanded until the
+  // first map drag. That puts the full credit line over Navigate on a route
+  // that has not been dragged yet. Match its own collapsed-state bookkeeping.
+  attribution.setAttribute('open', '');
+  attribution.classList.remove('maplibregl-compact-show');
+}
+collapseMapAttribution();
+map.once('load', collapseMapAttribution);
 map.once('render', () => window.__setAppLaunchStatus?.('Drawing roads and trails…'));
 const finishAppLaunch = () => {
   clearTimeout(window.__appLaunchFallback);
@@ -4490,6 +4506,7 @@ function refreshNavigationUI() {
     startButton.setAttribute('aria-pressed', String(turnNav.active));
     startButton.classList.toggle('navigating', turnNav.active);
     startButton.classList.remove('route-needs-endpoints');
+    if (!startButton.hidden) collapseMapAttribution();
   }
   const startLabel = document.getElementById('navStartLabel');
   if (startLabel) startLabel.textContent = turnNav.active ? 'Stop' : 'Navigate';

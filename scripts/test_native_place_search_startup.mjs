@@ -505,12 +505,47 @@ state = await page.evaluate(() => {
     choices: [...document.querySelectorAll('#routeOptions button[data-route-option]')]
       .map((button) => button.textContent.trim()),
     navigateHidden: document.getElementById('navStartButton').hidden,
+    compactAttribution: (() => {
+      const attribution = document.querySelector('.maplibregl-ctrl-attrib');
+      const inner = attribution?.querySelector('.maplibregl-ctrl-attrib-inner');
+      const nav = document.getElementById('navStartButton');
+      const a = attribution?.getBoundingClientRect();
+      const n = nav?.getBoundingClientRect();
+      const overlaps = a && n
+        ? a.left < n.right && a.right > n.left && a.top < n.bottom && a.bottom > n.top
+        : true;
+      return {
+        compact: attribution?.classList.contains('maplibregl-compact'),
+        collapsed: inner ? getComputedStyle(inner).display === 'none' : false,
+        overlaps,
+      };
+    })(),
   };
 });
 check('finished calculation reveals route choices in that same Route-tab slot',
   state.statusHidden && !state.calculating && state.chooserVisible
     && state.choices.join('|') === 'A (Only route)' && !state.navigateHidden,
   JSON.stringify(state));
+check('compact MapLibre attribution never covers the Navigate button',
+  state.compactAttribution.compact && state.compactAttribution.collapsed
+    && !state.compactAttribution.overlaps,
+  JSON.stringify(state.compactAttribution));
+state = await page.evaluate(() => {
+  const attribution = document.querySelector('.maplibregl-ctrl-attrib');
+  attribution.querySelector('.maplibregl-ctrl-attrib-button').click();
+  const a = attribution.getBoundingClientRect();
+  const n = document.getElementById('navStartButton').getBoundingClientRect();
+  const result = {
+    expanded: attribution.classList.contains('maplibregl-compact-show'),
+    overlaps: a.left < n.right && a.right > n.left && a.top < n.bottom && a.bottom > n.top,
+    attribution: { left: a.left, right: a.right, top: a.top, bottom: a.bottom },
+    navigate: { left: n.left, right: n.right, top: n.top, bottom: n.bottom },
+  };
+  attribution.querySelector('.maplibregl-ctrl-attrib-button').click();
+  return result;
+});
+check('expanded attribution remains readable beside rather than over Navigate',
+  state.expanded && !state.overlaps, JSON.stringify(state));
 
 // A blank Safari/Web visit used to eagerly retain the expanded route graph,
 // leaving too little headroom for MapLibre when a rider zoomed out. Web now
