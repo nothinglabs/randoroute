@@ -73,10 +73,23 @@ let state = await page.evaluate(() => ({
     const utilities = document.querySelector('.route-utility-actions').getBoundingClientRect();
     return Math.abs((endpoints.top + endpoints.bottom - utilities.top - utilities.bottom) / 2);
   })(),
+  utilityRowCenterOffsets: (() => {
+    const center = (element) => {
+      const rect = element.getBoundingClientRect();
+      return (rect.top + rect.bottom) / 2;
+    };
+    return [
+      Math.abs(center(document.getElementById('rb-more'))
+        - center(document.getElementById('layersToggle'))),
+      Math.abs(center(document.getElementById('rb-search'))
+        - center(document.getElementById('settingsToggle'))),
+    ];
+  })(),
+  routeBarBackground: getComputedStyle(document.getElementById('routeBar')).backgroundColor,
   mapControlBackgrounds: [
     document.getElementById('layersToggle'),
     document.getElementById('settingsToggle'),
-    document.querySelector('#map .maplibregl-ctrl-top-right .maplibregl-ctrl-group'),
+    document.querySelector('#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group'),
   ].map((element) => getComputedStyle(element).backgroundColor),
   nativePanelBottomPadding: parseFloat(getComputedStyle(document.getElementById('panel'))
     .paddingBottom),
@@ -100,9 +113,13 @@ check('Navigate is absent until a finished route can start', state.navigateHidde
   JSON.stringify(state));
 check('the endpoint card is vertically centered with its utility buttons',
   state.endpointCenterOffset <= 0.5, JSON.stringify(state));
+check('the floating Layers and Settings buttons align with the two trip-action rows',
+  state.utilityRowCenterOffsets.every((offset) => offset <= 1), JSON.stringify(state));
 check('floating map controls use a slight, consistent transparency',
-  state.mapControlBackgrounds.every((background) => /rgba\(255, 255, 255, 0\.9\)/.test(background)),
-  JSON.stringify(state.mapControlBackgrounds));
+  [...state.mapControlBackgrounds, state.routeBarBackground].every((background) => {
+    const alpha = Number(background.match(/,\s*(0?\.\d+)\)$/)?.[1]);
+    return alpha >= 0.8 && alpha <= 0.92;
+  }), JSON.stringify({ controls: state.mapControlBackgrounds, routeBar: state.routeBarBackground }));
 check('the native Route sheet uses the iPhone bottom instead of adding an empty safe-area band',
   state.nativePanelBottomPadding === 0, JSON.stringify(state));
 
@@ -134,10 +151,16 @@ const utilityPanels = await page.evaluate(() => {
     const rect = document.getElementById(id).getBoundingClientRect();
     return { width: Math.round(rect.width), height: Math.round(rect.height) };
   };
+  const panelPlacement = () => {
+    const rect = document.getElementById('panel').getBoundingClientRect();
+    return { left: rect.left, right: rect.right, bottomGap: innerHeight - rect.bottom };
+  };
   selectPanelTab('settings');
-  const settings = { close: size('settingsPanelClose') };
+  const settings = { close: size('settingsPanelClose'), help: size('settingsHelpBtn'),
+    placement: panelPlacement() };
   selectPanelTab('layers');
-  const layers = { close: size('layersPanelClose') };
+  const layers = { close: size('layersPanelClose'), help: size('layersHelpBtn'),
+    placement: panelPlacement() };
   selectPanelTab('route');
   return {
     settings, layers,
@@ -146,7 +169,12 @@ const utilityPanels = await page.evaluate(() => {
 });
 check('Layers and Settings remain available without a route and have larger close targets',
   utilityPanels.settings.close.width >= 36 && utilityPanels.settings.close.height >= 36
+    && utilityPanels.settings.help.width >= 36 && utilityPanels.settings.help.height >= 36
     && utilityPanels.layers.close.width >= 36 && utilityPanels.layers.close.height >= 36
+    && utilityPanels.layers.help.width >= 36 && utilityPanels.layers.help.height >= 36
+    && [utilityPanels.settings.placement, utilityPanels.layers.placement]
+      .every((placement) => placement.left >= 6 && placement.right <= 384
+        && placement.bottomGap >= 8)
     && utilityPanels.compactVisibleAgain,
   JSON.stringify(utilityPanels));
 
@@ -303,7 +331,7 @@ state = await page.evaluate(() => ({
 }));
 check('choosing a result previews it on the map without assigning a route role',
   state.workers === 0 && !state.start && !state.end && state.indicator === 1
-    && state.actions.join('|') === 'Route here|Start here', JSON.stringify(state));
+    && state.actions.join('|') === 'Destination|Start', JSON.stringify(state));
 await page.click('#readout .readout-close');
 
 await page.evaluate(() => { getFreshDevicePosition = () => new Promise(() => {}); });
@@ -428,6 +456,8 @@ state = await page.evaluate(() => ({
     bottom: document.getElementById('panel').getBoundingClientRect().top - 12,
     left: 20,
   },
+  calculationFillRatio: document.getElementById('routeCalculationStatus')
+    .getBoundingClientRect().height / document.getElementById('panel').getBoundingClientRect().height,
 }));
 check('targeted Start assigns directly and routing begins after both endpoints exist',
   state.workers === 1 && state.pickerHidden && state.start && state.end && !state.promptShown,
@@ -437,6 +467,8 @@ check('route calculation opens Route and replaces choices with in-panel status',
     && /preparing|calculating|loading/i.test(state.calculationTitle)
     && state.chooserHidden && state.staleCardHidden && state.controlsVisible && state.toastHidden,
   JSON.stringify(state));
+check('route calculation uses the reserved bottom sheet instead of floating in empty white space',
+  state.calculationFillRatio >= 0.85, JSON.stringify(state));
 check('route calculation frames the itinerary above the open phone panel',
   Array.isArray(state.fit?.bounds) && state.fit.bounds.length === 2
     && state.fit.options?.padding?.bottom > state.fit.options?.padding?.top
@@ -509,8 +541,8 @@ const webIdle = await webPage.evaluate(() => {
 });
 check('a blank web planner keeps the large route graph unloaded', webIdle.workers === 0,
   JSON.stringify(webIdle));
-check('web zoom-out is clamped to the useful statewide range',
-  webIdle.minZoom === 5 && webIdle.zoom >= 5, JSON.stringify(webIdle));
+check('web zoom-out stops before the memory-heavy statewide tile level',
+  webIdle.minZoom === 6 && webIdle.zoom >= 6, JSON.stringify(webIdle));
 check('the blank web phone also uses the compact prompt and hides Navigate',
   webIdle.panelOpen && webIdle.compactVisible && webIdle.navigateHidden
     && webIdle.oldNavigationGone, JSON.stringify(webIdle));

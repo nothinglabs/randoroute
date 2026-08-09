@@ -77,6 +77,45 @@ check('the weights screen carries a modified-state header', copy.weightsNotice);
 check('and no longer claims weights are "never a safety rule"',
   !copy.weightsBody.includes('Never a safety rule.'), copy.weightsBody.slice(0, 160));
 
+/* ---------------- route settings stay inspectable, but fixed, while riding */
+const navigationLock = await page.evaluate(() => {
+  turnNav.active = true;
+  refreshNavigationUI();
+  const limitsTab = document.getElementById('settings-tab-limits');
+  const optionsTab = document.getElementById('settings-tab-options');
+  limitsTab.click();
+  const limitsVisible = !document.getElementById('settings-limits').hidden;
+  optionsTab.click();
+  const routeControls = [...document.querySelectorAll(
+    '#settings-presets button, #settings-presets input, #settings-presets select, '
+    + '#settings-limits button, #settings-limits input, #settings-limits select, '
+    + '#settings-options button, #settings-options input, #settings-options select'
+  )];
+  const voiceControls = [...document.querySelectorAll(
+    '#settings-voice button, #settings-voice input, #settings-voice select')];
+  const result = {
+    limitsVisible,
+    optionsVisible: !document.getElementById('settings-options').hidden,
+    tabsEnabled: [limitsTab, optionsTab].every((button) => !button.disabled),
+    routeControlsLocked: routeControls.length > 0 && routeControls.every((control) => control.disabled),
+    voiceControlsLive: voiceControls.length > 0 && voiceControls.every((control) => !control.disabled),
+    noticeVisible: !document.getElementById('settingsNavLockNotice').hidden,
+  };
+  turnNav.active = false;
+  refreshNavigationUI();
+  result.routeControlsRestored = routeControls.some((control) => !control.disabled);
+  result.noticeCleared = document.getElementById('settingsNavLockNotice').hidden;
+  return result;
+});
+check('navigation keeps every Settings tab browsable while route values are read-only',
+  navigationLock.limitsVisible && navigationLock.optionsVisible && navigationLock.tabsEnabled
+    && navigationLock.routeControlsLocked && navigationLock.noticeVisible,
+  JSON.stringify(navigationLock));
+check('Voice-Nav stays live during the ride and route settings unlock when it stops',
+  navigationLock.voiceControlsLive && navigationLock.routeControlsRestored
+    && navigationLock.noticeCleared,
+  JSON.stringify(navigationLock));
+
 /* ------------------------------------- re-picking the active preset is a no-op */
 const reapply = await page.evaluate(async () => {
   const preset = ROUTING_PRESETS[1];

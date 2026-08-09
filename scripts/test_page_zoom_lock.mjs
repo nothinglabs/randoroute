@@ -23,8 +23,10 @@ assert.match(nativeController, /pinchGestureRecognizer\?\.isEnabled = false/,
   'WKWebView native page pinch must be disabled');
 assert.ok(!app.includes('touchZoomRotate?.disable') && !app.includes('touchZoomRotate.disable'),
   'MapLibre map pinch must remain enabled');
-assert.match(app, /minZoom:\s*5/,
-  'the Washington map must not zoom out into a memory-heavy continent view');
+assert.match(app, /minZoom:\s*constrainedMapRuntime\s*\?\s*6\s*:\s*5/,
+  'phone and WebKit maps must stop before the memory-heavy statewide tile level');
+assert.match(app, /fadeDuration:\s*constrainedMapRuntime\s*\?\s*0\s*:\s*300/,
+  'phone and WebKit maps must not retain two tile generations for a zoom fade');
 assert.match(app, /map\.on\('zoomstart', \(\) => trimRouterCachesSoon\(\)\)/,
   'map zoom must release disposable phone routing caches before widening the tile set');
 assert.match(app, /m\.type === 'route-options'[\s\S]*?trimRouterCachesSoon\(\)/,

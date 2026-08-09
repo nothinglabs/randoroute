@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.644';
+const APP_VERSION = '2026-08-08.646';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1055,17 +1055,21 @@ function saveStateSoon() {
 window.addEventListener('pagehide', saveStateNow);
 
 window.__setAppLaunchStatus?.('Opening local map data…');
+const constrainedMapRuntime = isConstrainedDevice();
 const map = new maplibregl.Map({
   container: 'map',
   style: BikeBasemap.createStyle(),
   center: (savedState && savedState.view && savedState.view.c) || Region.defaultCenter,
   zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
-  // This build only has Washington data. Farther-out views add no routing
-  // context, but crossing into continent-scale tiles makes WebKit retain and
-  // rebucket several statewide map generations at once. On iPhone Safari that
-  // can terminate the page. Zoom 5 still fits the whole state on a phone.
-  minZoom: 5,
+  // This build only has Washington data. Low-zoom statewide tiles make WebKit
+  // retain and rebucket a very large generation during a pinch, which can
+  // terminate iPhone Safari. Unconstrained browsers keep the wider z5 view;
+  // WebKit and phones stop before that memory-heavy tile level.
+  minZoom: constrainedMapRuntime ? 6 : 5,
   maxZoom: 17,
+  // Cross-fading holds both tile generations during the exact gesture where
+  // WebKit is under the most memory pressure. A direct swap is fine on phone.
+  fadeDuration: constrainedMapRuntime ? 0 : 300,
   maxPitch: 0,
   pitchWithRotate: false,
   // NO maxTileCacheSize override. A 16-tile cap shipped briefly (v.592) on
@@ -1138,8 +1142,8 @@ const mapLocationControl = nativeNavigationPlugin()
       trackUserLocation: true,
       showUserHeading: true,
     });
-map.addControl(mapLocationControl, 'top-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-right');
+map.addControl(mapLocationControl, 'bottom-right');
 // Mouse/trackpad users benefit from explicit zoom buttons. Keep them out of
 // phone-sized web layouts and the native shell, where pinch zoom is primary
 // and the extra controls would crowd the map toolbar.
@@ -3484,6 +3488,11 @@ function navDistanceText(m) {
   return `${(m / 1609.34).toFixed(m < 1609.34 ? 1 : 1)} miles`;
 }
 
+function plannedRouteDistanceTitle(distanceM) {
+  const distance = navDistanceText(distanceM).replace(/^1\.0 miles$/, '1 mile');
+  return `You're ${distance} from your planned route`;
+}
+
 // Index of the route point at (or just past) a cumulative distance.
 function coordIndexAtDistance(cumulative, m) {
   let lo = 0, hi = cumulative.length - 1;
@@ -4466,6 +4475,7 @@ function refreshNavigationUI() {
   const routeReady = routeAvailable && Boolean(routing.start && routing.end)
     && !routing.pendingRoute && !routing.routeRequestActive;
   document.body.classList.toggle('navigation-active', turnNav.active);
+  syncSettingsNavigationLock();
   const startButton = document.getElementById('navStartButton');
   if (startButton) {
     // A hidden control is clearer than an unavailable action: only offer
@@ -5368,10 +5378,11 @@ function startRouteStartCountdown() {
 
 function showRouteStartOffer(startDistanceM) {
   const dialog = document.getElementById('routeStartDialog');
+  const title = document.getElementById('routeStartDialogTitle');
   const text = document.getElementById('routeStartDialogText');
-  if (!dialog?.showModal || !text) return false;
-  text.textContent = `You're ${navDistanceText(startDistanceM)} from your planned route. `
-    + 'Choose how to get onto it.';
+  if (!dialog?.showModal || !title || !text) return false;
+  title.textContent = plannedRouteDistanceTitle(startDistanceM);
+  text.textContent = 'Choose how to get onto it.';
   setRouteStartDialogBusy(false);
   if (!dialog.open) dialog.showModal();
   // Default the selection to "I'll find my own way" so Enter (and the timeout)
@@ -5550,11 +5561,15 @@ function finishNavigationConnector(point, previousFix) {
 function openOffRouteDialog() {
   if (!turnNav.active || !turnNav.offRoute) return;
   const dialog = document.getElementById('offRouteDialog');
+  const title = document.getElementById('offRouteDialogTitle');
   const text = document.getElementById('offRouteDialogText');
-  if (!dialog?.showModal || !text) return;
+  if (!dialog?.showModal || !title || !text) return;
   const info = turnNav.offRouteInfo;
+  title.textContent = info
+    ? plannedRouteDistanceTitle(info.distM)
+    : "You've left your route";
   text.textContent = info
-    ? `The nearest point on your current route is ${navDistanceText(info.distM)} ${info.dir}${info.street ? ` on ${info.street}` : ''}. Choose how navigation should continue.`
+    ? `The nearest point on your current route is ${info.dir}${info.street ? ` on ${info.street}` : ''}. Choose how navigation should continue.`
     : 'Choose how navigation should continue.';
   if (!dialog.open) dialog.showModal();
   // Default to "I'll find my own way" — that is the state the rider is already
@@ -8808,14 +8823,16 @@ function buildRoutingPanel() {
   moreButton.addEventListener('click', () => {
     setRouteMoreMenuOpen(moreMenu.hidden);
   });
-  moreMenu.addEventListener('click', (event) => {
-    if (event.target.closest('button')) setRouteMoreMenuOpen(false);
-  });
-  document.addEventListener('click', (event) => {
-    if (!moreMenu.hidden && !document.getElementById('routeBar').contains(event.target)) {
+  moreMenu.addEventListener('click', () => setRouteMoreMenuOpen(false));
+  // The menu is transient: the next tap anywhere dismisses it, including a
+  // route-bar control. Capture pointerdown so map/control click handlers cannot
+  // swallow the dismissal; only the ellipsis itself is allowed to toggle it.
+  document.addEventListener('pointerdown', (event) => {
+    if (!moreMenu.hidden && !event.target.closest?.('#rb-more')
+        && !event.target.closest?.('#routeMoreMenu')) {
       setRouteMoreMenuOpen(false);
     }
-  });
+  }, true);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !moreMenu.hidden) {
       event.preventDefault();
@@ -10313,9 +10330,9 @@ function mapPointRouteActions(lngLat, routeName) {
     dismissRoadInfo();
     setRouteStatus(kind === 'start' ? 'Start set from map' : 'Destination set from map');
   };
-  const start = routeButton('map-point-start', 'Start here', 'Use this point as route start',
+  const start = routeButton('map-point-start', 'Start', 'Use this point as route start',
     () => commitEndpoint('start'));
-  const end = routeButton('map-point-end', 'Route here', 'Use this point as route destination',
+  const end = routeButton('map-point-end', 'Destination', 'Use this point as route destination',
     () => commitEndpoint('end'));
   const stop = routeButton('map-point-stop', 'Add stop', 'Add this point as a route stop', () => {
     setPanelOpen(false);
@@ -10365,11 +10382,7 @@ function renderPlaceActionCard({ pointName, lngLat, anchorPoint, searchResult = 
   const headingText = document.createElement('span');
   headingText.textContent = routeName;
   heading.append(pin, headingText);
-  const context = document.createElement('p');
-  context.className = 'place-action-context';
-  context.textContent = 'Trip unchanged — choose what to do.';
   readoutEl.append(close, heading);
-  if (searchResult) readoutEl.append(context);
   readoutEl.append(mapPointRouteActions(lngLat, routeName));
   readoutEl.classList.add('show');
   if (anchorPoint) positionPlaceCardAwayFromPin(anchorPoint);
@@ -11554,16 +11567,13 @@ function buildRulesPanel() {
         panel.hidden = panel.id !== `settings-${pane}`;
       });
       if (pane === 'presets') syncPresetSelection();
+      syncSettingsNavigationLock();
     };
     settingsPaneSelect = selectSettingsPane;
-    const paneLockedByNavigation = (pane) => turnNav.active && pane !== 'voice';
     paneButtons.forEach((button) => {
       button.addEventListener('click', () => {
-        if (paneLockedByNavigation(button.dataset.settingsPane)) {
-          flashSettingsNavLock();
-          return;
-        }
         selectSettingsPane(button.dataset.settingsPane);
+        if (turnNav.active && button.dataset.settingsPane !== 'voice') flashSettingsNavLock();
       });
       button.addEventListener('keydown', (event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -11572,8 +11582,9 @@ function buildRulesPanel() {
         const next = event.key === 'Home' ? 0 : event.key === 'End' ? paneButtons.length - 1
           : (current + (event.key === 'ArrowRight' ? 1 : -1) + paneButtons.length) % paneButtons.length;
         paneButtons[next].focus();
-        if (!paneLockedByNavigation(paneButtons[next].dataset.settingsPane)) {
-          selectSettingsPane(paneButtons[next].dataset.settingsPane);
+        selectSettingsPane(paneButtons[next].dataset.settingsPane);
+        if (turnNav.active && paneButtons[next].dataset.settingsPane !== 'voice') {
+          flashSettingsNavLock();
         }
       });
     });
@@ -11595,6 +11606,36 @@ function buildRulesPanel() {
     });
     selectSettingsPane(document.querySelector('[data-settings-pane].active')?.dataset.settingsPane || 'limits');
     settingsTabs.dataset.bound = 'true';
+  }
+}
+
+// Route-shaping values must stay fixed for the lifetime of active navigation,
+// but the tabs remain useful documentation: riders can inspect every page and
+// see exactly what produced the route they are following. Voice controls stay
+// live because they affect presentation of the current ride, not its shape.
+function syncSettingsNavigationLock() {
+  const controls = document.querySelectorAll(
+    '#settings-presets button, #settings-presets input, #settings-presets select, '
+    + '#settings-limits button, #settings-limits input, #settings-limits select, '
+    + '#settings-options button, #settings-options input, #settings-options select'
+  );
+  controls.forEach((control) => {
+    if (turnNav.active) {
+      if (!control.hasAttribute('data-nav-lock-was-disabled')) {
+        control.dataset.navLockWasDisabled = String(control.disabled);
+      }
+      control.disabled = true;
+      control.setAttribute('aria-disabled', 'true');
+      return;
+    }
+    if (!control.hasAttribute('data-nav-lock-was-disabled')) return;
+    control.disabled = control.dataset.navLockWasDisabled === 'true';
+    control.removeAttribute('data-nav-lock-was-disabled');
+    if (!control.disabled) control.removeAttribute('aria-disabled');
+  });
+  if (!turnNav.active) {
+    const note = document.getElementById('settingsNavLockNotice');
+    if (note) note.hidden = true;
   }
 }
 
@@ -11712,6 +11753,7 @@ buildSourcePanel();
 buildRulesPanel();
 buildVoicePanel();
 buildRoutingPanel();
+syncSettingsNavigationLock();
 // On a native or memory-constrained browser, do not make a blank planner hold
 // the 44 MB routing graph (about 142 MB after expansion) before the rider has
 // asked for a route. Besides slowing the first search, that idle allocation
@@ -11747,7 +11789,7 @@ function syncMobileNavDock() {
   const dock = document.getElementById('mobileNavDock');
   const panel = document.getElementById('panel');
   const height = document.body.classList.contains('panel-open')
-    ? Math.ceil(panel.getBoundingClientRect().height) : 0;
+    ? Math.ceil(window.innerHeight - panel.getBoundingClientRect().top) : 0;
   // The dock and the banner are siblings, so put the shared measurement on
   // <body> rather than only on the dock. Both elements then rise together.
   document.body.style.setProperty('--mobile-panel-height', `${height}px`);
@@ -11843,6 +11885,7 @@ function setPanelOpen() {
 
 function selectPanelTab(tabId) {
   document.body.classList.toggle('settings-panel-active', tabId === 'settings');
+  document.body.classList.toggle('aux-panel-active', tabId === 'settings' || tabId === 'layers');
   document.querySelectorAll('.tab').forEach((t) =>
     t.classList.toggle('active', t.id === 'tab-' + tabId));
   syncLayersToggle();
@@ -11851,6 +11894,7 @@ function selectPanelTab(tabId) {
   scheduleMobileNavDock();
   if (tabId === 'route') { updateNavCard(); drawRouteCardElevation(); } // redraw elevation once visible
   if (tabId === 'settings') requestAnimationFrame(syncSettingsPaneHeightToLimits);
+  if (tabId === 'settings') syncSettingsNavigationLock();
 }
 
 selectPanelTab('route');

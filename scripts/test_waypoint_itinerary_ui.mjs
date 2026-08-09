@@ -90,14 +90,28 @@ check('the compact trip menu uses a vertical ellipsis while Find stays explicit'
   initial.blank.moreText === '⋮' && initial.blank.moreLabel === 'Trip options'
     && initial.utilityLabels.join('|') === 'Find',
   JSON.stringify({ blank: initial.blank, labels: initial.utilityLabels }));
+// Dispatch the complete tap sequence directly: this assertion is about the
+// document-level dismiss contract, not Playwright's map/overlay hit testing.
+await page.evaluate(() => {
+  const tap = (element) => {
+    element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    element.click();
+  };
+  tap(document.getElementById('rb-more'));
+  tap(document.getElementById('rb-start'));
+});
+check('tapping another app control dismisses the trip menu', await page.evaluate(() =>
+  document.getElementById('routeMoreMenu').hidden));
+await page.evaluate(() => document.getElementById('placePickerClose').click());
 check('map stop pins use the same itinerary numbers',
   initial.markerNumbers.join(',') === '1,2', JSON.stringify(initial.markerNumbers));
 check('the itinerary and search button fit the phone viewport',
   initial.cardInsidePhone && initial.searchInsidePhone, JSON.stringify(initial));
 check('Search remains a finger-sized standalone control',
   initial.searchBox.width >= 40 && initial.searchBox.height >= 40, JSON.stringify(initial));
-check('the itinerary spans the phone and its delete targets are finger-sized',
-  initial.endpointWidth >= initial.viewportWidth * .78
+check('the narrower itinerary leaves room for adjacent controls and keeps delete targets finger-sized',
+  initial.endpointWidth >= initial.viewportWidth * .64
+    && initial.endpointWidth <= initial.viewportWidth * .76
     && initial.actionBoxes.every((box) => box.width >= 36 && box.height >= 40),
   JSON.stringify(initial));
 check('the compact Start and Destination rows keep their full-size text',
@@ -171,7 +185,7 @@ check('Reverse can restore the original trip order', await page.evaluate(() =>
     && routing.vias.map((via) => via.name).join('|') === 'Mukilteo|Point on map'));
 
 await page.locator('[data-via-edit="0"]').click();
-await page.waitForSelector('#readout.show');
+await page.waitForFunction(() => document.getElementById('readout')?.classList.contains('show'));
 const stopCard = await page.evaluate(() => ({
   title: document.querySelector('#readout .rt-title')?.textContent.trim(),
   pickerHidden: document.getElementById('placePicker').hidden,
@@ -261,14 +275,14 @@ const routeBeforeSearchChoice = await page.evaluate(() => JSON.stringify({
   start: routing.start, end: routing.end, vias: routing.vias.map((via) => via.pt),
 }));
 await page.locator('#placeResults .place-hit:not(.place-internet-search)').first().click();
-await page.waitForSelector('#readout.show');
+await page.waitForFunction(() => document.getElementById('readout')?.classList.contains('show'));
 const searchChoice = await page.evaluate(() => ({
   indicator: document.querySelectorAll('.search-result-marker').length,
   route: JSON.stringify({ start: routing.start, end: routing.end, vias: routing.vias.map((via) => via.pt) }),
   actions: [...document.querySelectorAll('#readout .readout-route-actions button')]
     .map((button) => button.textContent),
   hasDetails: Boolean(document.querySelector('#readout .readout-details-toggle')),
-  context: document.querySelector('#readout .place-action-context')?.textContent,
+  contextGone: !document.querySelector('#readout .place-action-context'),
   compact: document.getElementById('readout').classList.contains('place-action-card'),
   cardHeight: Math.round(document.getElementById('readout').getBoundingClientRect().height),
   overlapsPin: (() => {
@@ -281,12 +295,12 @@ const searchChoice = await page.evaluate(() => ({
 check('a search result is indicated on the map without silently changing the trip',
   searchChoice.indicator === 1 && searchChoice.route === routeBeforeSearchChoice,
   JSON.stringify(searchChoice));
-check('the searched point leads with routing but keeps the existing trip unchanged',
-  searchChoice.actions.join('|') === 'Route here|Start here|Add stop'
-    && /trip unchanged/i.test(searchChoice.context), JSON.stringify(searchChoice));
+check('the searched point uses the same compact Start and Destination language as the planner',
+  searchChoice.actions.join('|') === 'Destination|Start|Add stop'
+    && searchChoice.contextGone, JSON.stringify(searchChoice));
 check('a search result uses a compact location card with no road Details and never covers its pin',
   searchChoice.compact && !searchChoice.hasDetails
-    && searchChoice.cardHeight < 105 && !searchChoice.overlapsPin,
+    && searchChoice.cardHeight < 92 && !searchChoice.overlapsPin,
   JSON.stringify(searchChoice));
 
 await page.locator('#readout .readout-close').click();

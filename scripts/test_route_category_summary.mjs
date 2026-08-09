@@ -104,6 +104,12 @@ assert.deepEqual([...labelContext.ROUTE_CATEGORY_LABELS].map(([, label]) => Stri
   labels, 'ROUTE_CATEGORY_LABELS must carry the five category labels in order');
 assert.ok(appCard.includes('ROUTE_CATEGORY_LABELS'),
   'the route card must render the shared label table');
+assert.match(styles,
+  /\.rc-category-swatch\.fail::after\s*\{[\s\S]*repeating-linear-gradient\(90deg,[\s\S]*var\(--verdict-fail\)/,
+  'the route-card fail key must echo the route with a static horizontal dash pattern');
+assert.doesNotMatch(styles,
+  /\.rc-category-swatch\.fail(?:\s*\{|::after\s*\{)[^}]*animation\s*:/,
+  'the compact route-card fail key must not animate');
 assert.ok(details.includes('ROUTE_CATEGORY_LABELS'),
   'Route Details must render the shared label table');
 assert.ok(details.includes('<b>5%+ uphill</b><strong>${fmtMi(routeStats.inclineOver5M)} mi</strong>'),

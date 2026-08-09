@@ -96,10 +96,16 @@ const cancelledBeforeJoining = await page.evaluate(() => {
   showRouteStartOffer(850);
   return {
     dialogOpen: document.getElementById('routeStartDialog').open,
+    title: document.getElementById('routeStartDialogTitle').textContent,
+    detail: document.getElementById('routeStartDialogText').textContent,
     cancelVisible: !document.getElementById('navCancelStartBtn').hidden,
     cancelCopy: document.getElementById('navCancelStartBtn').textContent,
   };
 });
+check('the not-on-route distance is the dialog headline',
+  cancelledBeforeJoining.title === "You're 0.5 miles from your planned route"
+    && cancelledBeforeJoining.detail === 'Choose how to get onto it.',
+  JSON.stringify(cancelledBeforeJoining));
 check('the not-on-route offer includes an explicit Cancel navigation action',
   cancelledBeforeJoining.dialogOpen && cancelledBeforeJoining.cancelVisible
     && /cancel navigation/i.test(cancelledBeforeJoining.cancelCopy),
@@ -107,6 +113,26 @@ check('the not-on-route offer includes an explicit Cancel navigation action',
 await page.locator('#navCancelStartBtn').click();
 check('Cancel navigation exits the accidental ride and closes the offer', await page.evaluate(() =>
   !turnNav.active && !document.getElementById('routeStartDialog').open));
+
+const offRouteCopy = await page.evaluate(() => {
+  turnNav.active = true;
+  turnNav.offRoute = true;
+  turnNav.offRouteInfo = { distM: 7563.9, dir: 'northwest', street: 'Interurban Trail' };
+  openOffRouteDialog();
+  return {
+    title: document.getElementById('offRouteDialogTitle').textContent,
+    detail: document.getElementById('offRouteDialogText').textContent,
+    oneMileTitle: plannedRouteDistanceTitle(1609.34),
+  };
+});
+check('the off-route distance is the dialog headline',
+  offRouteCopy.title === "You're 4.7 miles from your planned route"
+    && offRouteCopy.detail.includes('northwest on Interurban Trail')
+    && !offRouteCopy.detail.includes('4.7 miles'),
+  JSON.stringify(offRouteCopy));
+check('a one-mile route distance uses singular grammar',
+  offRouteCopy.oneMileTitle === "You're 1 mile from your planned route",
+  offRouteCopy.oneMileTitle);
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 
