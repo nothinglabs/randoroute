@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-08.643';
+const APP_VERSION = '2026-08-08.644';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2856,7 +2856,6 @@ function fitItineraryForCalculation() {
     const panelRect = document.getElementById('panel')?.getBoundingClientRect();
     const routeBarRect = document.getElementById('routeBar')?.getBoundingClientRect();
     const panelHeight = onPhone && document.body.classList.contains('panel-open')
-      && !document.getElementById('panel')?.classList.contains('route-pane-hidden')
       ? Math.ceil(panelRect?.height || 0) : 0;
     // The itinerary bar is deliberately wider/taller on a phone. Measure it:
     // a fixed top inset put the northern pin underneath that bar on longer
@@ -8796,7 +8795,8 @@ function buildRoutingPanel() {
   renderRouteOptionControls();
 
   document.getElementById('routeDetailsBtn').addEventListener('click', () => openRouteDetails());
-  document.getElementById('routeTipsBtn').addEventListener('click', openRouteTips);
+  ['routeTipsBtn', 'routeIncompleteTipsBtn', 'navTipsBtn'].forEach((id) =>
+    document.getElementById(id)?.addEventListener('click', openRouteTips));
 
   renderRouteCard(null);
 
@@ -11747,7 +11747,6 @@ function syncMobileNavDock() {
   const dock = document.getElementById('mobileNavDock');
   const panel = document.getElementById('panel');
   const height = document.body.classList.contains('panel-open')
-    && !panel.classList.contains('route-pane-hidden')
     ? Math.ceil(panel.getBoundingClientRect().height) : 0;
   // The dock and the banner are siblings, so put the shared measurement on
   // <body> rather than only on the dock. Both elements then rise together.
@@ -11791,25 +11790,30 @@ function routeHasBothEndpoints() {
 
 function syncRoutePaneVisibility() {
   const panel = document.getElementById('panel');
-  const routeViewActive = document.getElementById('tab-route')?.classList.contains('active');
+  const routeTab = document.getElementById('tab-route');
+  const incompleteBar = document.getElementById('routeIncompleteBar');
+  const incompleteMessage = document.getElementById('routeIncompleteMessage');
   if (!panel) return;
-  // Layers and Settings are independent map tools, so they remain available
-  // while a trip is being entered. Route has nothing useful to summarize
-  // until both endpoints exist. Active navigation also keeps Stop and its
-  // guidance reachable.
-  panel.classList.toggle('route-pane-hidden', Boolean(routeViewActive
-    && !routeHasBothEndpoints() && !turnNav.active));
+  // Before a route exists, keep one small, explicit affordance at the bottom
+  // instead of either a full empty route chooser or no guidance at all.
+  const incomplete = !routeHasBothEndpoints() && !turnNav.active;
+  routeTab?.classList.toggle('route-incomplete', incomplete);
+  if (incompleteBar) incompleteBar.hidden = !incomplete;
+  if (incompleteMessage) {
+    incompleteMessage.textContent = routing.end && !routing.start
+      ? 'Select start to see routes'
+      : 'Select destination to see routes';
+  }
   scheduleMobileNavDockAfterInit();
 }
 
 function flashEmptyRouteGuidance() {
   if (!mobileNavMedia.matches || routing.start || routing.end) return;
   const routeTab = document.getElementById('tab-route');
-  const message = routeTab?.querySelector('.rc-route-message');
+  const message = document.getElementById('routeIncompleteBar');
   const endpoints = document.querySelector('.route-endpoints');
   if (!routeTab?.classList.contains('active')
-      || message?.querySelector('strong')?.textContent !== 'Choose start and destination'
-      || !endpoints) return;
+      || message?.hidden || !endpoints) return;
   clearTimeout(_routeGuidanceTimer);
   message.classList.remove('route-guidance-flash');
   endpoints.classList.remove('route-guidance-flash');

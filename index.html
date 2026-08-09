@@ -175,6 +175,10 @@
 
   <div class="panel" id="panel" aria-label="Map controls">
     <section class="tab active" id="tab-route">
+      <div id="routeIncompleteBar" class="route-incomplete-bar" aria-live="polite" hidden>
+        <strong id="routeIncompleteMessage">Select destination to see routes</strong>
+        <button id="routeIncompleteTipsBtn" class="tab-help-btn route-tips-btn" type="button" aria-label="Routing tips" title="Routing tips">?</button>
+      </div>
       <div id="routeControls">
         <div id="routeCalculationStatus" class="route-calculation-status" role="status" aria-live="polite" aria-atomic="true" hidden>
           <span class="route-calculation-spinner" aria-hidden="true"></span>
@@ -189,7 +193,10 @@
       <div id="routeDetailsStash" hidden><button id="routeDetailsBtn" class="route-details-btn" type="button" disabled><span>Route</span><span>Details</span></button></div>
       <div id="routeCard"></div>
       <div id="navCard" class="nav-card" hidden>
-        <div class="nav-card-head">Navigating Route</div>
+        <div class="nav-card-head-row">
+          <div class="nav-card-head">Navigating Route</div>
+          <button id="navTipsBtn" class="tab-help-btn route-tips-btn nav-card-tips" type="button" aria-label="Routing tips" title="Routing tips">?</button>
+        </div>
         <div class="nav-card-body">
           <div class="nav-elevation-wrap"><canvas id="navElevationCanvas" class="nav-elevation" aria-label="Route elevation with your current position"></canvas></div>
           <div class="nav-card-info">

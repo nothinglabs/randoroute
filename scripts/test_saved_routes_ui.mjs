@@ -146,20 +146,29 @@ const navigationTab = await page.evaluate(() => {
   routing.start = [-122.34, 47.60];
   routing.end = [-122.30, 47.64];
   refreshNavigationUI();
+  selectPanelTab('route');
+  const routeTipsRect = document.getElementById('routeTipsBtn').getBoundingClientRect();
   document.getElementById('navStartButton').click();
   const active = document.querySelector('.tab.active');
+  const navTips = document.getElementById('navTipsBtn');
+  const navTipsRect = navTips.getBoundingClientRect();
   const result = {
     navigating: turnNav.active,
     activeTab: active?.id,
     oldNavigationRemoved: !document.getElementById('tabs') && !document.getElementById('panelOpen'),
     panelOpen: document.body.classList.contains('panel-open'),
+    navTipsVisible: !navTips.hidden && getComputedStyle(navTips).display !== 'none',
+    navTipsSize: { width: Math.round(navTipsRect.width), height: Math.round(navTipsRect.height) },
+    helpRightAligned: Math.abs(navTipsRect.right - routeTipsRect.right) <= 1,
   };
   stopTurnNavigation(false);
   return result;
 });
 check('starting navigation keeps the permanent sheet on Route',
   navigationTab.navigating && navigationTab.activeTab === 'tab-route'
-    && navigationTab.oldNavigationRemoved && navigationTab.panelOpen,
+    && navigationTab.oldNavigationRemoved && navigationTab.panelOpen
+    && navigationTab.navTipsVisible && navigationTab.navTipsSize.width >= 34
+    && navigationTab.navTipsSize.height >= 34 && navigationTab.helpRightAligned,
   JSON.stringify(navigationTab));
 
 // The same control in two places. It read "Details" at one size on the route

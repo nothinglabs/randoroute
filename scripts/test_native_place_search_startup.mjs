@@ -59,9 +59,14 @@ let state = await page.evaluate(() => ({
     .fontSize),
   destinationHeadingSize: parseFloat(getComputedStyle(document.querySelector('#rb-end .endpoint-label'))
     .fontSize),
-  emptyMessage: document.querySelector('.rc-route-message strong')?.textContent,
+  compactMessage: document.getElementById('routeIncompleteMessage')?.textContent,
+  compactVisible: !document.getElementById('routeIncompleteBar')?.hidden,
+  compactHeight: Math.round(document.getElementById('panel')?.getBoundingClientRect().height || 0),
+  compactHelpSize: (() => {
+    const rect = document.getElementById('routeIncompleteTipsBtn')?.getBoundingClientRect();
+    return { width: Math.round(rect?.width || 0), height: Math.round(rect?.height || 0) };
+  })(),
   panelOpen: document.body.classList.contains('panel-open'),
-  routePaneHidden: document.getElementById('panel')?.classList.contains('route-pane-hidden'),
   navigateHidden: document.getElementById('navStartButton')?.hidden,
   endpointCenterOffset: (() => {
     const endpoints = document.querySelector('.route-endpoints').getBoundingClientRect();
@@ -80,13 +85,14 @@ check('an untouched native planner does not start the routing graph', state.work
   JSON.stringify(state));
 check('the untouched planner shows both endpoints and asks for both',
   !state.startHidden && state.destinationVisible
-    && state.emptyMessage === 'Choose start and destination'
+    && state.compactMessage === 'Select destination to see routes'
     && state.startValue === 'Current location (tap to change).'
     && state.destinationValue === 'Tap to set destination.'
     && state.startHeadingSize >= 10 && state.destinationHeadingSize >= 10,
   JSON.stringify(state));
-check('an empty phone planner hides the Route pane without restoring legacy navigation',
-  state.panelOpen && state.routePaneHidden
+check('an empty phone planner shows one short, explicit Route bar',
+  state.panelOpen && state.compactVisible && state.compactHeight <= 60
+    && state.compactHelpSize.width >= 34 && state.compactHelpSize.height >= 34
     && !await page.$('#panelOpen') && !await page.$('#tabs'), JSON.stringify(state));
 check('the native full-screen canvas ignores browser keyboard viewport sizing',
   state.appHeight === '', JSON.stringify(state));
@@ -106,20 +112,22 @@ state = await page.evaluate(() => {
   updateArmButtons();
   refreshNavigationUI();
   const result = {
-    routePaneHidden: document.getElementById('panel').classList.contains('route-pane-hidden'),
+    compactVisible: !document.getElementById('routeIncompleteBar').hidden,
+    compactMessage: document.getElementById('routeIncompleteMessage').textContent,
     navigateHidden: document.getElementById('navStartButton').hidden,
   };
   routing.start = [-122.34, 47.60];
   routing.startName = 'Test start';
   updateArmButtons();
-  result.completeRoutePaneHidden = document.getElementById('panel').classList
-    .contains('route-pane-hidden');
+  result.completeCompactHidden = document.getElementById('routeIncompleteBar').hidden;
   clearRoute();
   return result;
 });
-check('one route point keeps Route and Navigate hidden',
-  state.routePaneHidden && state.navigateHidden, JSON.stringify(state));
-check('both endpoints reveal Route', !state.completeRoutePaneHidden, JSON.stringify(state));
+check('one route point keeps the compact prompt and updates what is missing',
+  state.compactVisible && state.compactMessage === 'Select start to see routes'
+    && state.navigateHidden, JSON.stringify(state));
+check('both endpoints replace the compact prompt with Route',
+  state.completeCompactHidden, JSON.stringify(state));
 
 const utilityPanels = await page.evaluate(() => {
   const size = (id) => {
@@ -127,22 +135,19 @@ const utilityPanels = await page.evaluate(() => {
     return { width: Math.round(rect.width), height: Math.round(rect.height) };
   };
   selectPanelTab('settings');
-  const settings = { paneHidden: document.getElementById('panel').classList
-    .contains('route-pane-hidden'), close: size('settingsPanelClose') };
+  const settings = { close: size('settingsPanelClose') };
   selectPanelTab('layers');
-  const layers = { paneHidden: document.getElementById('panel').classList
-    .contains('route-pane-hidden'), close: size('layersPanelClose') };
+  const layers = { close: size('layersPanelClose') };
   selectPanelTab('route');
   return {
     settings, layers,
-    routeHiddenAgain: document.getElementById('panel').classList.contains('route-pane-hidden'),
+    compactVisibleAgain: !document.getElementById('routeIncompleteBar').hidden,
   };
 });
 check('Layers and Settings remain available without a route and have larger close targets',
-  !utilityPanels.settings.paneHidden && !utilityPanels.layers.paneHidden
-    && utilityPanels.settings.close.width >= 36 && utilityPanels.settings.close.height >= 36
+  utilityPanels.settings.close.width >= 36 && utilityPanels.settings.close.height >= 36
     && utilityPanels.layers.close.width >= 36 && utilityPanels.layers.close.height >= 36
-    && utilityPanels.routeHiddenAgain,
+    && utilityPanels.compactVisibleAgain,
   JSON.stringify(utilityPanels));
 
 state = await page.evaluate(async () => {
@@ -230,14 +235,14 @@ check('a real location-permission failure remains immediate',
 
 state = await page.evaluate(() => ({
   panelOpen: document.body.classList.contains('panel-open'),
-  routePaneHidden: document.getElementById('panel')?.classList.contains('route-pane-hidden'),
   routeActive: document.getElementById('tab-route')?.classList.contains('active'),
   oldNavigationGone: !document.getElementById('panelOpen') && !document.getElementById('tabs'),
-  message: document.querySelector('#routeCard .rc-route-message strong')?.textContent,
+  compactVisible: !document.getElementById('routeIncompleteBar')?.hidden,
+  message: document.getElementById('routeIncompleteMessage')?.textContent,
 }));
-check('the empty Route view stays selected but out of the way',
-  state.panelOpen && state.routePaneHidden && state.routeActive && state.oldNavigationGone
-    && state.message === 'Choose start and destination',
+check('the empty Route view stays selected as a compact prompt',
+  state.panelOpen && state.compactVisible && state.routeActive && state.oldNavigationGone
+    && state.message === 'Select destination to see routes',
   JSON.stringify(state));
 
 await page.click('#rb-search');
@@ -497,7 +502,7 @@ const webIdle = await webPage.evaluate(() => {
     minZoom: map.getMinZoom(),
     zoom: map.getZoom(),
     panelOpen: document.body.classList.contains('panel-open'),
-    routePaneHidden: document.getElementById('panel').classList.contains('route-pane-hidden'),
+    compactVisible: !document.getElementById('routeIncompleteBar').hidden,
     navigateHidden: document.getElementById('navStartButton').hidden,
     oldNavigationGone: !document.getElementById('panelOpen') && !document.getElementById('tabs'),
   };
@@ -506,8 +511,8 @@ check('a blank web planner keeps the large route graph unloaded', webIdle.worker
   JSON.stringify(webIdle));
 check('web zoom-out is clamped to the useful statewide range',
   webIdle.minZoom === 5 && webIdle.zoom >= 5, JSON.stringify(webIdle));
-check('the blank web phone also hides Route and Navigate',
-  webIdle.panelOpen && webIdle.routePaneHidden && webIdle.navigateHidden
+check('the blank web phone also uses the compact prompt and hides Navigate',
+  webIdle.panelOpen && webIdle.compactVisible && webIdle.navigateHidden
     && webIdle.oldNavigationGone, JSON.stringify(webIdle));
 check('the web zoom guard produces no page errors', webErrors.length === 0,
   webErrors.join(' | '));

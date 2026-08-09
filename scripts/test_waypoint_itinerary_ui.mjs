@@ -32,7 +32,9 @@ const initial = await page.evaluate(() => {
     moreMenuHidden: document.getElementById('routeMoreMenu').hidden,
     moreText: document.getElementById('rb-more').textContent.trim(),
     moreLabel: document.getElementById('rb-more').getAttribute('aria-label'),
-    routePaneHidden: document.getElementById('panel').classList.contains('route-pane-hidden'),
+    compactPromptVisible: !document.getElementById('routeIncompleteBar').hidden,
+    compactPrompt: document.getElementById('routeIncompleteMessage').textContent,
+    compactPanelHeight: Math.round(document.getElementById('panel').getBoundingClientRect().height),
     navigateHidden: document.getElementById('navStartButton').hidden,
   };
   setRoutePoint('start', { lng: -122.335, lat: 47.61 }, 'Seattle');
@@ -65,17 +67,19 @@ const initial = await page.evaluate(() => {
     searchInsidePhone: search.left >= 0 && search.right <= innerWidth,
     searchBox: { width: Math.round(search.width), height: Math.round(search.height) },
     endpointHeight: Math.round(document.getElementById('rb-start').getBoundingClientRect().height),
-    routePaneVisible: !document.getElementById('panel').classList.contains('route-pane-hidden'),
+    fullRoutePaneVisible: document.getElementById('routeIncompleteBar').hidden,
   };
 });
 check('a blank planner always shows Start and Destination without legacy reordering UI',
   initial.blank.startVisible && initial.blank.destinationVisible && initial.blank.reorderGone
     && initial.blank.reverseDisabled && initial.blank.addStopDisabled
     && initial.blank.moreVisible && initial.blank.moreMenuHidden
-    && initial.blank.routePaneHidden && initial.blank.navigateHidden,
+    && initial.blank.compactPromptVisible
+    && initial.blank.compactPrompt === 'Select destination to see routes'
+    && initial.blank.compactPanelHeight <= 60 && initial.blank.navigateHidden,
   JSON.stringify(initial.blank));
 check('the main card shows start, named stops, and destination in trip order',
-  initial.routePaneVisible
+  initial.fullRoutePaneVisible
     && initial.itinerary.join(' | ') === 'Start Seattle | Stop 1 Mukilteo | Stop 2 Point on map | Destination Port Townsend',
   JSON.stringify(initial.itinerary));
 check('stops have no manual order controls while Reverse and delete remain available',
@@ -329,7 +333,8 @@ check('endpoint and stop X buttons can delete every route item', await page.eval
     && document.querySelectorAll('.route-stop-row').length === 0
     && document.querySelectorAll('[data-endpoint-remove]:not([hidden])').length === 0
     && !document.querySelector('.route-endpoint-start-row').hidden
-    && document.getElementById('panel').classList.contains('route-pane-hidden')
+    && !document.getElementById('routeIncompleteBar').hidden
+    && document.getElementById('routeIncompleteMessage').textContent === 'Select destination to see routes'
     && document.getElementById('navStartButton').hidden));
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));

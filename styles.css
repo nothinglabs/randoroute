@@ -236,7 +236,8 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-route-message.error { margin-top: 5px; padding: 6px 8px; border-left: 3px solid #c5685d; border-radius: 7px; background: #fff5f3; color: #79443d; }
 #routeCard .rc-route-message.error strong { color: #9d2f25; }
 #routeCard .rc-route-message.error small { color: #76544f; }
-#routeCard .rc-route-message.route-guidance-flash strong {
+#routeCard .rc-route-message.route-guidance-flash strong,
+#routeIncompleteBar.route-guidance-flash strong {
   border-radius: 6px;
   animation: route-guidance-copy 2.15s ease-out;
 }
@@ -311,11 +312,21 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 /* Pin the Route tab's height so switching between planning and navigating does
    not resize (bounce) the panel. */
 #tab-route { min-height: 152px; }
+.route-incomplete-bar { display: flex; align-items: stretch; gap: 6px; }
+.route-incomplete-bar[hidden] { display: none; }
+.route-incomplete-bar > strong {
+  display: flex; flex: 1; align-items: center; min-width: 0; min-height: 34px;
+  padding: 0 7px; color: #405765; font: 760 12.5px/1.2 system-ui;
+}
+#tab-route.route-incomplete { min-height: 0; padding-top: 5px; padding-bottom: 5px; overflow: hidden; }
+#tab-route.route-incomplete > :not(.route-incomplete-bar) { display: none !important; }
 body.navigation-active #routeCard, body.navigation-active #routeControls { display: none; }
 body:not(.navigation-active) #navCard { display: none; }
 .nav-card { display: flex; flex-direction: column; gap: 6px; padding: 2px 1px 5px; }
 .nav-card[hidden] { display: none; }
+.nav-card-head-row { display: flex; align-items: stretch; gap: 8px; min-height: 34px; }
 .nav-card-head { color: #40515c; font: 780 13px/1.2 system-ui; }
+.nav-card-head-row .nav-card-head { display: flex; flex: 1; align-items: center; min-width: 0; }
 /* Footer packs the Details button and the progress bar onto one row so the
    bar's short height stops wasting a whole band. */
 .nav-card-foot { display: flex; align-items: center; gap: 10px; margin-top: 1px; }
@@ -455,7 +466,6 @@ body:not(.navigation-active) #navCard { display: none; }
 .settings-panel-head > strong { font: 750 12px/1.2 system-ui; }
 .panel-view-actions { display: flex; align-items: center; gap: 6px; }
 .panel-view-close { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 9px; background: #eef1f4; color: #53646e; font: 800 17px/1 system-ui; cursor: pointer; }
-.panel.route-pane-hidden { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }
 .settings-tabs { display: flex; gap: 4px; margin: 4px 0; }
 .settings-tabs button { flex: 1; min-height: 27px; padding: 2px 8px; border: 1px solid #d5dfe6; border-radius: 8px; background: #f2f5f7; color: #4c5b66; font: 700 12px system-ui; cursor: pointer; }
 .settings-tabs .settings-help-btn { align-self: center; }
@@ -1081,9 +1091,11 @@ body.navigation-active #routeBar { display: none; }
   .place-picker:not([hidden]),
   .route-endpoints.route-guidance-flash,
   #routeCard .rc-route-message.route-guidance-flash strong,
+  #routeIncompleteBar.route-guidance-flash strong,
   #routeBar .route-endpoint.navigation-guidance-flash { animation: none; }
   .route-endpoints.route-guidance-flash { border-color: #1486c1; box-shadow: 0 0 0 3px rgba(50,153,207,.2); }
-  #routeCard .rc-route-message.route-guidance-flash strong { color: #075f91; }
+  #routeCard .rc-route-message.route-guidance-flash strong,
+  #routeIncompleteBar.route-guidance-flash strong { color: #075f91; }
   #routeBar .route-endpoint.navigation-guidance-flash { background: #dff3fd; box-shadow: inset 4px 0 #0783c1; }
 }
 

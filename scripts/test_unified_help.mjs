@@ -58,6 +58,8 @@ check('every tab has real content behind it', structure.panels.length === TOPICS
 // Getting started topic remains in the tab strip without occupying map UI.
 const ENTRY_POINTS = [
   ['routeTipsBtn', 'routes'],
+  ['routeIncompleteTipsBtn', 'routes'],
+  ['navTipsBtn', 'routes'],
   ['layersHelpBtn', 'layers'],
   ['settingsHelpBtn', 'settings'],
   ['routesHelpBtn', 'save-share'],

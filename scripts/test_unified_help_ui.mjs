@@ -39,6 +39,8 @@ check('every help tab has its existing content', populated.every((item) => item.
 
 const entryPoints = [
   ['routeTipsBtn', 'routes'],
+  ['routeIncompleteTipsBtn', 'routes'],
+  ['navTipsBtn', 'routes'],
   ['layersHelpBtn', 'layers'],
   ['settingsHelpBtn', 'settings'],
   ['routesHelpBtn', 'save-share'],
