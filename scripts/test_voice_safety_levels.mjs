@@ -64,10 +64,10 @@ check('every change is announced exactly once', spoken.heard.length === 5,
 const texts = spoken.heard.map((h) => h.text);
 check('and each says what is coming, when, and how far it runs',
   texts[0] === 'Trail for next 1.0 miles.'
-  && texts[1] === 'Bike lane in 150 feet, for 1.0 miles.'
-  && texts[2] === 'Road in 150 feet, for 1.0 miles.'
-  && texts[3] === 'Caution. Heavy traffic in 150 feet, for 0.2 miles.'
-  && texts[4] === 'Warning. No shoulder in 150 feet, for 0.2 miles.',
+  && texts[1] === 'Bike lane in 500 feet, for 1.0 miles.'
+  && texts[2] === 'Road in 475 feet, for 1.0 miles.'
+  && texts[3] === 'Caution. Heavy traffic in 475 feet, for 0.2 miles.'
+  && texts[4] === 'Warning. No shoulder in 475 feet, for 0.2 miles.',
   JSON.stringify(texts));
 // Reported from the road: "Trail for next 3.4 miles" spoken while the rider was
 // on an overpass over the freeway, 900 feet short of the trail. It read as a
@@ -187,7 +187,7 @@ check('a busy road WITHOUT a lane is still the caution it was',
   headsUp.noLane.category === 'caution'
     && /^Caution\. Heavy traffic in /.test(headsUp.noLane.text), JSON.stringify(headsUp));
 check('a bike lane on a quiet road says nothing extra',
-  headsUp.quiet.text === 'Bike lane in 150 feet, for 2.0 miles.', JSON.stringify(headsUp));
+  headsUp.quiet.text === 'Bike lane in 500 feet, for 2.0 miles.', JSON.stringify(headsUp));
 check('and a separated lane on a busy road carries the same heads-up',
   /heavy traffic/.test(headsUp.separated.text), JSON.stringify(headsUp));
 
