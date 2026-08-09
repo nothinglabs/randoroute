@@ -185,8 +185,10 @@ const targetedStart = await page.evaluate(() => ({
   hint: document.getElementById('placePickerHint').textContent,
   panelOpen: document.body.classList.contains('panel-open'),
   plannerVisible: getComputedStyle(document.querySelector('.route-endpoints')).display !== 'none',
-  pickerBelowPlanner: document.getElementById('placePicker').getBoundingClientRect().top
-    >= document.getElementById('routeBar').getBoundingClientRect().bottom,
+  pickerAnchoredHigh: Math.abs(
+    document.getElementById('placePicker').getBoundingClientRect().top
+      - document.getElementById('routeBar').getBoundingClientRect().top,
+  ) <= 8,
 }));
 await page.locator('#placeResults .place-hit:not(.place-internet-search)').first().click();
 check('Start-triggered search assigns its result immediately without a prompt card',
@@ -195,7 +197,7 @@ check('Start-triggered search assigns its result immediately without a prompt ca
     && !document.getElementById('readout').classList.contains('show')
     && document.querySelectorAll('.search-result-marker').length === 0)
     && targetedStart.title === 'Set start' && /tap the map to set your start/i.test(targetedStart.hint)
-    && targetedStart.panelOpen && targetedStart.plannerVisible && targetedStart.pickerBelowPlanner,
+    && targetedStart.panelOpen && targetedStart.plannerVisible && targetedStart.pickerAnchoredHigh,
   JSON.stringify(targetedStart));
 
 await page.locator('#rb-end').click();
