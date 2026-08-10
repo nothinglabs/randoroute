@@ -97,25 +97,33 @@ const answer = async (buttonId = 'checkUpdatesBtn') => page.evaluate(async (id) 
   const started = performance.now();
   while (performance.now() - started < 60000) {
     const text = status.textContent || '';
-    if (text && !text.startsWith('Checking')) return {
-      text,
-      toast: document.getElementById('routeActionText')?.textContent || '',
-      ms: Math.round(performance.now() - started),
+    // The toast is written alongside the status line but not in the same tick,
+    // so reading it the instant the status appears caught it empty. Wait for
+    // both -- the claim is that the two agree, not that they land together.
+    const toast = document.getElementById('routeActionText')?.textContent || '';
+    if (text && !text.startsWith('Checking') && toast) return {
+      text, toast, ms: Math.round(performance.now() - started),
     };
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   return { text: status.textContent || '(nothing)', ms: -1 };
 }, buttonId);
+// "Promptly" means "does not wait on the whole install dance". That bug left a
+// rider watching an unchanging "Checking..." for the better part of a minute;
+// the quick path is one small fetch. The budget is generous against that 60 s
+// failure on purpose -- a loaded CI box running three browsers at once has
+// measured 8.6 s for the same fetch, and that is contention, not a regression.
+const PROMPT_ANSWER_MS = 20000;
 const first = await answer('routeUpdateBtn');
-check('the trip-menu update check answers promptly', first.ms >= 0 && first.ms < 5000,
-  `${first.ms} ms: "${first.text}"`);
+check('the trip-menu update check answers promptly',
+  first.ms >= 0 && first.ms < PROMPT_ANSWER_MS, `${first.ms} ms: "${first.text}"`);
 check('and reports the result without opening Help',
   /latest version/i.test(first.text) && first.toast === first.text, first.text);
 // The button re-enables on every path, including the quick ones. It used to
 // re-enable only on the slow path, so the first check left it dead.
 const second = await answer();
-check('the button still works on a second check', second.ms >= 0 && second.ms < 5000,
-  `${second.ms} ms: "${second.text}"`);
+check('the button still works on a second check',
+  second.ms >= 0 && second.ms < PROMPT_ANSWER_MS, `${second.ms} ms: "${second.text}"`);
 
 /* --------------------------------------------------------- publish a release */
 const newVersion = '2026-12-25.999';
