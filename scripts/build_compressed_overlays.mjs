@@ -1,24 +1,33 @@
+// Compress every state's small runtime overlays, so the app fetches the .gz.
+//
+// The list of FILES is fixed -- these five are the overlays the app knows how
+// to load -- but the list of STATES is not: it comes from the generated
+// registry, because a hardcoded `maps/washington/...` here silently skipped a
+// second state's overlays and left them uncompressed with no error anywhere.
+// A state that does not ship one of these files simply has nothing to do.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const overlays = [
-  'maps/washington/bikeroutes.geojson',
-  'maps/washington/blts.geojson',
-  'maps/washington/bikeinfra.geojson',
-  'maps/washington/bike_restrictions.geojson',
-  'maps/washington/route_closures.geojson',
-];
+const { MAP_STATES } = createRequire(import.meta.url)(join(root, 'maps/states.js'));
+const OVERLAYS = ['bikeroutes.geojson', 'blts.geojson', 'bikeinfra.geojson',
+  'bike_restrictions.geojson', 'route_closures.geojson'];
 
-for (const relativePath of overlays) {
-  const source = await readFile(join(root, relativePath));
-  // Catch a corrupt source before packaging it. The compressed copy is kept
-  // deterministic so identical overlay data produces identical app bundles.
-  JSON.parse(source);
-  const outputPath = join(root, `${relativePath}.gz`);
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, gzipSync(source, { level: 9, mtime: 0 }));
-  console.log(`${relativePath} -> ${relativePath}.gz`);
+for (const state of MAP_STATES) {
+  for (const name of OVERLAYS) {
+    const relativePath = `maps/${state.id}/${name}`;
+    if (!existsSync(join(root, relativePath))) continue;
+    const source = await readFile(join(root, relativePath));
+    // Catch a corrupt source before packaging it. The compressed copy is kept
+    // deterministic so identical overlay data produces identical app bundles.
+    JSON.parse(source);
+    const outputPath = join(root, `${relativePath}.gz`);
+    await mkdir(dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, gzipSync(source, { level: 9, mtime: 0 }));
+    console.log(`${relativePath} -> ${relativePath}.gz`);
+  }
 }

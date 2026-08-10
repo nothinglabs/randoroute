@@ -20,11 +20,18 @@ import json
 from shapely.geometry import LineString, box
 
 KEEP_NETWORKS = {'ncn', 'rcn'}
-# Match the buffered Washington coverage used by the local basemap. The
-# Geofabrik extract can include complete route-relation members far outside
-# Washington (notably Alaska USBR super-relations), even though ordinary ways
-# are geographically clipped. Keep useful border/ferry context without
-# allowing those remote members to distort the rendered map.
+# Match the buffered coverage the state's basemap was clipped to. The Geofabrik
+# extract can include complete route-relation members far outside the state
+# (notably Alaska USBR super-relations), even though ordinary ways are
+# geographically clipped. Keep useful border/ferry context without allowing
+# those remote members to distort the rendered map.
+#
+# Washington's is the default; main() replaces it from --bounds when another
+# state is built, which is why every user reads the module global rather than
+# closing over a constant. It was a bare constant for as long as there was only
+# one state, and a second state's routes would silently have been clipped to
+# Washington's rectangle -- leaving Oregon with an empty bikeroutes layer and
+# no error anywhere.
 ROUTE_BOUNDS = (-125.5, 45.2, -116.7, 50.0)
 ROUTE_CLIP = box(*ROUTE_BOUNDS)
 
@@ -244,6 +251,7 @@ def collect_geometry(src, needed):
 
 
 def main():
+    global ROUTE_BOUNDS, ROUTE_CLIP
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='data/washington-latest.osm.pbf')
     ap.add_argument('--out', default='maps/washington/bikeroutes.geojson')
@@ -251,7 +259,18 @@ def main():
                     help='clip the existing output without refreshing OSM data')
     ap.add_argument('--route-count', type=int,
                     help='preserve this informational relation count when transforming existing data')
+    ap.add_argument('--bounds', default=None,
+                    help='clip box as minLon,minLat,maxLon,maxLat '
+                         f'(default {",".join(str(v) for v in ROUTE_BOUNDS)})')
     args = ap.parse_args()
+
+    if args.bounds:
+        parts = tuple(float(value) for value in args.bounds.split(','))
+        if len(parts) != 4:
+            raise SystemExit('--bounds wants minLon,minLat,maxLon,maxLat')
+        ROUTE_BOUNDS = parts
+        ROUTE_CLIP = box(*ROUTE_BOUNDS)
+    print(f'route clip box: {ROUTE_BOUNDS}', flush=True)
 
     if args.clip_existing:
         count = clip_existing_routes(args.out, args.route_count)
