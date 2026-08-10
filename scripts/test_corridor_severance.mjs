@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Corridor-severance detector.
+// Corridor-severance detector, for every state that ships a graph.
 //
 // A single missing link can quietly cost 45 miles. Hoffman Hill Boulevard
 // continues into Mounts Road SW as an 89 m emergency-access way tagged
@@ -21,8 +21,15 @@
 //   3. It is not absurd relative to the straight line. The multiple is loose on
 //      purpose -- it catches "the router went around three counties", not "this
 //      is 8% longer than last month".
-import { spawnSync } from 'node:child_process';
+//
+// The corridors themselves are a STATE fact and live in
+// `maps/<state>/corridors.json`, beside that state's data, with the reason each
+// was chosen. This file used to carry Washington's four as a constant, which
+// made it the one acceptance gate a new state could not run: the porting guide
+// names this test as the stage-5 proof "with that state's corridors" and there
+// was no way to give it any.
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import zlib from 'node:zlib';
 
@@ -47,21 +54,9 @@ function liftRules() {
 }
 const rules = liftRules();
 
-const graph = zlib.gunzipSync(fs.readFileSync(ROOT + 'maps/washington/graph2.bin.gz'));
-const messages = [];
-const context = vm.createContext({
-  console, Date, Math, Map, Set, TextDecoder,
-  ArrayBuffer, DataView, Float32Array, Float64Array, Int8Array, Int16Array,
-  Int32Array, Uint8Array, Uint16Array, Uint32Array,
-  postMessage: (m) => messages.push(m),
-});
-context.importScripts = (...names) => {
-  for (const n of names) vm.runInContext(fs.readFileSync(ROOT + n, 'utf8'), context);
-};
-context.self = context;
-vm.runInContext(fs.readFileSync(ROOT + 'router-worker.js', 'utf8'), context);
-const buf = graph.buffer.slice(graph.byteOffset, graph.byteOffset + graph.byteLength);
-context.onmessage({ data: { type: 'graph', buffer: buf } });
+// maps/states.js is a classic script whose IIFE assigns onto `this`, which in
+// Node CJS is module.exports -- so require() reaches it and import() may not.
+const { MAP_STATES } = createRequire(import.meta.url)(ROOT + 'maps/states.js');
 
 const MI = 1609.344;
 function straightMi(a, b) {
@@ -70,51 +65,87 @@ function straightMi(a, b) {
   return Math.hypot(dx, dy);
 }
 
-// Pairs that a local cyclist connects on ordinary roads. The DuPont ones bracket
-// the link that went missing; the others are controls, so a failure points at a
-// corridor rather than at the router in general.
-const PAIRS = [
-  { name: 'DuPont -> Nisqually (the severed link)',
-    a: [-122.6318, 47.0979], b: [-122.7027, 47.0575], maxRatio: 2.5 },
-  { name: 'Tacoma -> Olympia', a: [-122.4443, 47.2529], b: [-122.9007, 47.0379], maxRatio: 2.5 },
-  { name: 'Seattle -> Everett', a: [-122.3321, 47.6062], b: [-122.2021, 47.9790], maxRatio: 2.5 },
-  { name: 'Olympia -> Centralia', a: [-122.9007, 47.0379], b: [-122.9540, 46.7162], maxRatio: 2.5 },
-];
+function workerFor(state) {
+  const graph = zlib.gunzipSync(
+    fs.readFileSync(`${ROOT}maps/${state}/graph2.bin.gz`));
+  const messages = [];
+  const context = vm.createContext({
+    console, Date, Math, Map, Set, TextDecoder,
+    ArrayBuffer, DataView, Float32Array, Float64Array, Int8Array, Int16Array,
+    Int32Array, Uint8Array, Uint16Array, Uint32Array,
+    postMessage: (m) => messages.push(m),
+  });
+  context.importScripts = (...names) => {
+    for (const n of names) vm.runInContext(fs.readFileSync(ROOT + n, 'utf8'), context);
+  };
+  context.self = context;
+  vm.runInContext(fs.readFileSync(ROOT + 'router-worker.js', 'utf8'), context);
+  const buf = graph.buffer.slice(graph.byteOffset, graph.byteOffset + graph.byteLength);
+  context.onmessage({ data: { type: 'graph', buffer: buf } });
+  return { context, messages };
+}
 
 let failures = 0;
-for (const pair of PAIRS) {
-  messages.length = 0;
-  context.onmessage({ data: { type: 'route-options', id: 1, points: [pair.a, pair.b],
-    rules, forceDesignated: true, forceResidential: true } });
-  const reply = messages.at(-1);
-  const straight = straightMi(pair.a, pair.b);
-  if (!reply?.ok) {
-    console.log(`FAIL  ${pair.name}: no route at all (${reply?.reason || 'no reply'})`);
+let checked = 0;
+for (const state of MAP_STATES) {
+  if (!state.datasets?.graph) continue;
+  const path = `${ROOT}maps/${state.id}/corridors.json`;
+  if (!fs.existsSync(path)) {
+    // A shipped graph with no nominated corridors is not a pass. The porting
+    // brief requires them written down BEFORE the build, so their absence
+    // means nobody ever said what this state is supposed to connect.
+    console.log(`FAIL  ${state.id}: ships a graph but has no corridors.json`);
     failures++;
     continue;
   }
-  const best = reply.options.reduce((x, y) => (y.distM < x.distM ? y : x));
-  const mi = best.distM / MI;
-  const ratio = mi / straight;
-  const freewayMi = (best.freewayM || 0) / MI;
-  const notes = [];
-  if (ratio > pair.maxRatio) {
-    notes.push(`${ratio.toFixed(1)}x the straight line (limit ${pair.maxRatio}x)`);
-  }
-  // Any freeway mileage in the SHORTEST option means the surface network could
-  // not do the job. On a healthy corridor the router never needs one.
-  if (freewayMi > 0.05) notes.push(`needs ${freewayMi.toFixed(1)} mi of freeway`);
-  if (notes.length) {
-    console.log(`FAIL  ${pair.name}: ${mi.toFixed(1)} mi vs ${straight.toFixed(1)} straight — `
-      + notes.join('; '));
+  const pairs = JSON.parse(fs.readFileSync(path, 'utf8')).corridors || [];
+  if (!pairs.length) {
+    console.log(`FAIL  ${state.id}: corridors.json nominates nothing`);
     failures++;
-  } else {
-    console.log(`PASS  ${pair.name}: ${mi.toFixed(1)} mi, ${ratio.toFixed(1)}x straight, no freeway`);
+    continue;
+  }
+  console.log(`\n${state.name} — ${pairs.length} corridor(s)`);
+  const { context, messages } = workerFor(state.id);
+  for (const pair of pairs) {
+    checked++;
+    messages.length = 0;
+    context.onmessage({ data: { type: 'route-options', id: 1, points: [pair.a, pair.b],
+      rules, forceDesignated: true, forceResidential: true } });
+    const reply = messages.at(-1);
+    const straight = straightMi(pair.a, pair.b);
+    if (!reply?.ok) {
+      console.log(`FAIL  ${pair.name}: no route at all (${reply?.reason || 'no reply'})`);
+      failures++;
+      continue;
+    }
+    const best = reply.options.reduce((x, y) => (y.distM < x.distM ? y : x));
+    const mi = best.distM / MI;
+    const ratio = mi / straight;
+    const freewayMi = (best.freewayM || 0) / MI;
+    const notes = [];
+    const maxRatio = pair.maxRatio ?? 2.5;
+    if (ratio > maxRatio) {
+      notes.push(`${ratio.toFixed(1)}x the straight line (limit ${maxRatio}x)`);
+    }
+    // Any freeway mileage in the SHORTEST option means the surface network could
+    // not do the job. On a healthy corridor the router never needs one.
+    if (freewayMi > 0.05) notes.push(`needs ${freewayMi.toFixed(1)} mi of freeway`);
+    if (notes.length) {
+      console.log(`FAIL  ${pair.name}: ${mi.toFixed(1)} mi vs ${straight.toFixed(1)} straight — `
+        + notes.join('; '));
+      failures++;
+    } else {
+      console.log(`PASS  ${pair.name}: ${mi.toFixed(1)} mi, ${ratio.toFixed(1)}x straight, no freeway`);
+    }
   }
 }
 
+if (!checked) {
+  console.log('FAIL  no state ships a graph; nothing was checked');
+  process.exit(1);
+}
 if (failures) {
   console.log(`\n${failures} corridor(s) severed or badly detoured.`);
   process.exit(1);
 }
-console.log('\nAll corridors connect on ordinary roads.');
+console.log(`\nAll ${checked} corridors connect on ordinary roads.`);
