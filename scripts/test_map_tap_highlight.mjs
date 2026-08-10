@@ -283,6 +283,17 @@ const moving = await page.evaluate(() => new Promise((resolve) => {
 }));
 check('the pair travels outward rather than sitting still',
   moving.changed === true, JSON.stringify({ first: moving.first, later: moving.later }));
+// The pulse peaks at full white, so "the verdict stays readable" is a claim
+// about the RESTING state -- which is what a screenshot and a reduced-motion
+// rider get, and what the pixel checks above sample. At the top of a swell the
+// road is deliberately gone for an instant.
+const { TAP_GLOW_PEAK, TAP_GLOW_REST } = await page.evaluate(() => ({
+  TAP_GLOW_PEAK: TAP_GLOW_PEAK_OPACITY, TAP_GLOW_REST: TAP_GLOW_REST_SWELL,
+}));
+check('the pulse peaks at full white, which is what makes it dramatic',
+  TAP_GLOW_PEAK === 1, `peak ${TAP_GLOW_PEAK}`);
+check('but resting is well below it, so a held highlight never hides the road',
+  TAP_GLOW_REST > 0.2 && TAP_GLOW_REST < 0.6, `rest ${TAP_GLOW_REST}`);
 check('and holding it still leaves it visible, for reduced motion and screenshots',
   moving.rested.every((layer) => layer.opacity > 0.3 && layer.offset === 0),
   JSON.stringify(moving.rested));

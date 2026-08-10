@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.671';
+const APP_VERSION = '2026-08-10.672';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -13682,10 +13682,16 @@ let tapRippleElapsed = 0;
 // width and the blur grow together so it reads as light coming off the road
 // rather than a second line laid over it, and the peak is brief.
 const TAP_GLOW_MIN_WIDTH = 7, TAP_GLOW_MAX_WIDTH = 26;
-const TAP_GLOW_PEAK_OPACITY = 0.72;
+// Peaks at FULL white. The swell is brief and clears completely, so the road's
+// colour is gone only at the very top of the pulse -- which is what makes it
+// dramatic rather than what made the old green wash unusable, since that never
+// cleared at all. The RESTING swell is held low for the same reason: held
+// still, and under reduced motion, the verdict has to stay readable.
+const TAP_GLOW_PEAK_OPACITY = 1;
+const TAP_GLOW_REST_SWELL = 0.4;
 function paintTapRipple(ripple, progress) {
   const scale = tapRippleScale();
-  const swell = progress === 0 ? 0.55 : Math.sin(Math.PI * progress) ** 0.5;
+  const swell = progress === 0 ? TAP_GLOW_REST_SWELL : Math.sin(Math.PI * progress) ** 0.5;
   // ^0.6 fills the middle of the travel out rather than peaking sharply, so the
   // pair is bright for most of its journey and only thins at the extremes. At
   // rest (progress 0) sine is 0, so the resting state substitutes full strength.
