@@ -3,7 +3,7 @@ data/BikePedLTS.zip
 data/BikePedLTS.gdb/
 data/BikePedLevelOfTrafficStress_FGDC.*
 data/washington-latest.osm.pbf
-data/census-urban-areas-2020-wa.geojson
+data/census-urban-areas-2020-*.geojson
 data/*.osm.pbf
 node_modules/
 .venv/

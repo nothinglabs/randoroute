@@ -247,7 +247,7 @@ python3 scripts/build_funcclass.py   # WSDOT non-state functional class
 python3 scripts/build_aadt.py        # WSDOT traffic counts, state routes
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads \
-                               --urban-areas data/census-urban-areas-2020-wa.geojson \
+                               --urban-areas data/census-urban-areas-2020-washington.geojson \
                                --blts maps/washington/blts.geojson \
                                --roadlog data/roadlog.geojson \
                                --funcclass data/funcclass.geojson \
@@ -468,7 +468,7 @@ python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
 # 2. Road tiles -- adds the `ln`/`ctl` properties behind the road card
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads \
-                               --urban-areas data/census-urban-areas-2020-wa.geojson \
+                               --urban-areas data/census-urban-areas-2020-washington.geojson \
                                --blts maps/washington/blts.geojson \
                                --roadlog data/roadlog.geojson \
                                --funcclass data/funcclass.geojson \

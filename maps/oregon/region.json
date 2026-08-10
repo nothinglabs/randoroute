@@ -2,8 +2,8 @@
   "id": "oregon",
   "name": "Oregon",
   "status": "preview",
-  "readiness": 0,
-  "summary": "Folder only: configuration written, nothing built yet.",
+  "readiness": 2,
+  "summary": "Preview: place search and basemap only; no routing yet.",
   "bounds": {
     "minLon": -124.8,
     "maxLon": -116.3,
@@ -27,14 +27,16 @@
   "datasets": {
     "graph": false,
     "roads": false,
-    "basemap": false,
+    "basemap": true,
     "overlays": false,
-    "places": false,
+    "places": true,
     "bikeroutes": false,
     "restrictions": false,
     "closures": false
   },
-  "versions": {},
+  "versions": {
+    "basemap": "sha-a2c6898666c1"
+  },
   "attribution": {
     "extractName": "Oregon",
     "extractUrl": "https://download.geofabrik.de/north-america/us/oregon.html",
