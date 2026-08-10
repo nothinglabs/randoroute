@@ -48,7 +48,9 @@
   },
   "versions": {
     "basemap": "sha-a2c6898666c1",
-    "graph": "sha-b6d2f1234a03"
+    "graph": "sha-b6d2f1234a03",
+    "roads": "sha-e515edf81728",
+    "overlays": "sha-ac9cc9c167d2"
   },
   "attribution": {
     "extractName": "Oregon",
