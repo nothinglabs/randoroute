@@ -410,6 +410,14 @@ await page.evaluate(() => {
   };
 });
 await page.click('#rb-start');
+// The picker opens with a 540 ms entry animation that starts at scale(.78),
+// and getBoundingClientRect() reports the TRANSFORMED box -- so a 44 px control
+// measures 34 px mid-flight. This read is about tap targets, which are only
+// meaningful once the thing has finished arriving. Waiting on the animation
+// itself rather than a fixed delay: the duration is a stylesheet's business.
+await page.evaluate(() => Promise.all(
+  document.getElementById('placePicker').getAnimations({ subtree: true })
+    .map((animation) => animation.finished.catch(() => {}))));
 state = await page.evaluate(() => ({
   available: !document.getElementById('useLoc').hidden,
   label: document.getElementById('useLoc').textContent.trim(),
