@@ -13585,12 +13585,18 @@ onStyleReady(() => {
 // screen at every instant but drew four rails at once, and four parallel lines
 // around a street read as a corridor rather than as brackets on one road.
 const TAP_RIPPLES = [{ id: 'a', phase: 0 }];
-const TAP_RIPPLE_SIDES = [['left', -1], ['right', 1]];
+// One layer, centred on the road. The rails are gone: two lines travelling
+// outward read as a corridor being drawn rather than a thing being picked, and
+// living with them they simply felt wrong (field report).
+const TAP_RIPPLE_SIDES = [['centre', 0]];
 // The dark edge is added first so the pale core paints over its middle, leaving
 // it showing as a thin outline on both flanks of the core.
+// A single achromatic glow. Achromatic on purpose: it cannot be mistaken for a
+// verdict colour, which is the whole reason the original green wash had to go.
+// It pulses hard and clears completely between pulses, so the road's own colour
+// is never hidden for longer than the swell.
 const TAP_RIPPLE_PARTS = [
-  { part: 'edge', color: 'selectionEdge', extra: 3.4, opacity: 0.9 },
-  { part: 'core', color: 'selection', extra: 0, opacity: 1 },
+  { part: 'glow', color: 'selection', extra: 0, opacity: 1 },
 ];
 const tapRippleLayerId = (ripple, side, part) => `tap-highlight-${ripple}-${side}-${part}`;
 const TAP_HIGHLIGHT_LAYERS = TAP_RIPPLES.flatMap((ripple) =>
@@ -13672,22 +13678,28 @@ let tapRippleElapsed = 0;
 
 // One place that turns "how far through its travel is this rail" into paint, so
 // the moving and the resting states cannot drift apart: resting is progress 0.
+// A swell that lifts the tapped stretch off the map and falls away again. The
+// width and the blur grow together so it reads as light coming off the road
+// rather than a second line laid over it, and the peak is brief.
+const TAP_GLOW_MIN_WIDTH = 7, TAP_GLOW_MAX_WIDTH = 26;
+const TAP_GLOW_PEAK_OPACITY = 0.72;
 function paintTapRipple(ripple, progress) {
   const scale = tapRippleScale();
-  const spread = (TAP_RIPPLE_NEAR + (TAP_RIPPLE_FAR - TAP_RIPPLE_NEAR) * progress) * scale;
+  const swell = progress === 0 ? 0.55 : Math.sin(Math.PI * progress) ** 0.5;
   // ^0.6 fills the middle of the travel out rather than peaking sharply, so the
   // pair is bright for most of its journey and only thins at the extremes. At
   // rest (progress 0) sine is 0, so the resting state substitutes full strength.
-  const strength = progress === 0 ? 1 : Math.sin(Math.PI * progress) ** 0.6;
-  for (const { part, extra, opacity } of TAP_RIPPLE_PARTS) {
-    for (const [side, sign] of TAP_RIPPLE_SIDES) {
+  for (const { part, opacity } of TAP_RIPPLE_PARTS) {
+    for (const [side] of TAP_RIPPLE_SIDES) {
       const id = tapRippleLayerId(ripple, side, part);
       if (!map.getLayer(id)) continue;
-      setPaint(id, 'line-offset', sign * spread);
-      setPaint(id, 'line-opacity', opacity * strength);
+      setPaint(id, 'line-offset', 0);
+      setPaint(id, 'line-opacity', opacity * TAP_GLOW_PEAK_OPACITY * swell);
       setPaint(id, 'line-width',
-        (TAP_RIPPLE_CORE_WIDTH + extra + 2.5 * progress) * scale);
-      setPaint(id, 'line-blur', (0.4 + 2.2 * progress) * scale);
+        (TAP_GLOW_MIN_WIDTH + (TAP_GLOW_MAX_WIDTH - TAP_GLOW_MIN_WIDTH) * swell) * scale);
+      // Blur tracks width, so the swell is light spreading rather than a band
+      // widening -- and it keeps the centre soft enough to read the road under.
+      setPaint(id, 'line-blur', (2 + 6 * swell) * scale);
     }
   }
 }

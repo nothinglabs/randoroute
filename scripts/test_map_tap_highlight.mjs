@@ -129,15 +129,14 @@ const flanking = await page.evaluate(() => {
 // the highlight does not paint over the road is separately MEASURED below, on
 // real pixels; this is the cheap geometric check that catches a gross
 // regression first.
-const clearance = 4.5 * flanking.scale;
-check('every part of the highlight is offset clear of the road it marks',
-  flanking.layers.length >= 2
-    && flanking.layers.every((layer) => Math.abs(layer.offset) - layer.width / 2 >= clearance),
-  `clearance ${clearance.toFixed(2)} px at scale ${flanking.scale.toFixed(2)}: `
-  + JSON.stringify(flanking.layers));
-check('and it flanks both sides, not one',
-  flanking.sides.includes(-1) && flanking.sides.includes(1),
-  JSON.stringify(flanking.sides));
+check('the highlight is centred on the road, not offset beside it',
+  flanking.layers.every((layer) => layer.offset === 0),
+  JSON.stringify(flanking.layers));
+// It sits ON the road now, so "does not hide the verdict" cannot be a geometry
+// argument any more -- it is carried by the pulse clearing between swells and
+// by the blur, and it is MEASURED on real pixels below.
+check('and it is wider than the road, so it reads as light coming off it',
+  flanking.layers.every((layer) => layer.width >= 5), JSON.stringify(flanking.layers));
 check('in a colour no verdict uses, so it cannot be read as one',
   flanking.borrowsAVerdictColour === false,
   JSON.stringify(flanking.layers.map((layer) => layer.color)));
@@ -214,10 +213,25 @@ const rendered = await page.evaluate(async () => {
   return { tapped: true, road, flank };
 });
 check('a tap lands on a real road for the pixel check', rendered.tapped === true);
-check('the road under the highlight is pixel-for-pixel what it was without it',
-  rendered.road.every((s) => s.before === s.after), JSON.stringify(rendered.road));
-check('while the ground beside it is not, because that is where the marker went',
-  rendered.flank.some((s) => s.before !== s.after), JSON.stringify(rendered.flank));
+// The glow sits ON the road, so this can no longer be "unchanged" -- that was
+// the rails' promise. What must survive is the VERDICT: the rider is colour
+// blind, the original green wash was thrown out for masking the safety class,
+// and a highlight that whitens a road until its class is unreadable would be
+// the same bug in a new coat. So: the road is brightened, and the ordering of
+// its colour channels -- which is what carries blue-passes from red-fails
+// independently of hue -- is untouched.
+const rank = (rgb) => {
+  const v = rgb.split(',').map(Number);
+  return [0, 1, 2].sort((a, b) => v[b] - v[a]).join('');
+};
+const lift = (rgb) => rgb.split(',').map(Number).reduce((a, b) => a + b, 0);
+check('the road under the highlight is brightened, not repainted',
+  rendered.road.every((px) => lift(px.after) > lift(px.before)),
+  JSON.stringify(rendered.road));
+check('and its verdict is still readable through the glow',
+  rendered.road.every((px) => rank(px.after) === rank(px.before)),
+  JSON.stringify(rendered.road.map((px) =>
+    ({ before: px.before, after: px.after, was: rank(px.before), now: rank(px.after) }))));
 
 /* ----------------------------- and it is sized against the road, not the screen */
 // The rails were fixed pixel offsets, so their footprint was the same ~45 px
@@ -244,12 +258,8 @@ const scaled = await page.evaluate(async () => {
   return { far: await read(11), near: await read(16) };
 });
 check('the highlight is drawn narrower when zoomed out',
-  scaled.far.offset < scaled.near.offset && scaled.far.width < scaled.near.width,
-  JSON.stringify(scaled));
-check('and not so narrow it disappears', scaled.far.offset > 2 && scaled.far.width > 1,
-  JSON.stringify(scaled));
-check('while up close it keeps the clearance it was measured for',
-  scaled.near.offset >= 8, JSON.stringify(scaled));
+  scaled.far.width < scaled.near.width, JSON.stringify(scaled));
+check('and not so narrow it disappears', scaled.far.width > 2, JSON.stringify(scaled));
 
 // A still highlight is a highlight: reduced motion, and a screenshot, both get
 // the flanking pair held at full strength rather than caught mid-fade.
@@ -274,7 +284,7 @@ const moving = await page.evaluate(() => new Promise((resolve) => {
 check('the pair travels outward rather than sitting still',
   moving.changed === true, JSON.stringify({ first: moving.first, later: moving.later }));
 check('and holding it still leaves it visible, for reduced motion and screenshots',
-  moving.rested.every((layer) => layer.opacity > 0.5 && Math.abs(layer.offset) > 0),
+  moving.rested.every((layer) => layer.opacity > 0.3 && layer.offset === 0),
   JSON.stringify(moving.rested));
 
 const blankTap = await page.evaluate(() => {
