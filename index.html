@@ -149,10 +149,13 @@
         <div class="picker-head">
           <strong id="placePickerTitle">Find a place</strong>
           <div class="picker-head-actions">
-            <button id="useLoc" type="button" aria-label="Start from current location" title="Start from current location"><span aria-hidden="true">⌖</span><span>Start from current location</span></button>
             <button id="placePickerClose" type="button" aria-label="Close place finder">✕</button>
           </div>
         </div>
+        <!-- The one-tap way in, on its own line: in the header it was the
+             smallest text in the dialog while being the fastest path to a
+             start, and it sat a thumb's width from the close button. -->
+        <button id="useLoc" type="button" aria-label="Start from current location" title="Start from current location"><span aria-hidden="true">⌖</span><span>Start from current location</span></button>
         <p id="placePickerHint" class="picker-hint"><span class="picker-hint-icon" aria-hidden="true">⌕</span><span><strong>Search for a place.</strong></span></p>
         <div class="picker-search-row">
           <input id="placeSearch" type="search" placeholder="Search for a place…" aria-label="Search for a place" autocomplete="off">
@@ -230,6 +233,9 @@
           <button id="settings-tab-options" type="button" role="tab" aria-selected="false" aria-controls="settings-options" data-settings-pane="options">Options</button>
           <button id="settings-tab-voice" type="button" role="tab" aria-selected="false" aria-controls="settings-voice" data-settings-pane="voice">Voice-Nav</button>
         </div>
+        <!-- Not a tab: it opens a screen rather than swapping a panel below,
+             so it stays out of the tablist and says so to assistive tech. -->
+        <button id="settings-tab-maps" class="settings-tab-standalone" type="button" aria-haspopup="dialog">Maps</button>
       </div>
       <div id="settings-presets" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-presets">
         <p id="settingsPresetStatus" class="preset-status" aria-live="polite"></p>
@@ -248,6 +254,18 @@
       </div>
     </section>
   </div>
+
+  <dialog id="mapsDialog" class="full-help-dialog maps-dialog" aria-labelledby="mapsDialogTitle">
+    <div class="full-help-head">
+      <div><span>Settings</span><h2 id="mapsDialogTitle">Maps</h2></div>
+      <button class="dialog-close" data-close="mapsDialog" aria-label="Close maps">✕</button>
+    </div>
+    <div class="maps-body">
+      <p class="maps-lead">Select up to two states to load.</p>
+      <p class="maps-note">Washington is the only state available in this build. The rest are listed so you can see what is coming.</p>
+      <div id="mapsStateList" class="maps-state-list"></div>
+    </div>
+  </dialog>
 
   <dialog id="routesDialog" class="map-dialog" aria-label="Save and share routes" tabindex="-1">
     <div class="dialog-head"><h2>Save &amp; share routes</h2><div class="dialog-head-actions"><button id="routesHelpBtn" class="dialog-help-btn" type="button" aria-label="Save and share routes help" title="Save and share routes help">?</button><button class="dialog-close" data-close="routesDialog" aria-label="Close">✕</button></div></div>

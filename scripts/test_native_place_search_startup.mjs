@@ -413,16 +413,24 @@ await page.click('#rb-start');
 state = await page.evaluate(() => ({
   available: !document.getElementById('useLoc').hidden,
   label: document.getElementById('useLoc').textContent.trim(),
+  // Its own row under the title, not crammed into the header beside the
+  // close button: it is the fastest way to set a start and was the smallest
+  // control in the dialog.
   inHeader: document.getElementById('useLoc').parentElement?.classList
     .contains('picker-head-actions'),
+  aboveSearch: Boolean(document.getElementById('useLoc')
+    .compareDocumentPosition(document.getElementById('placeSearch'))
+    & Node.DOCUMENT_POSITION_FOLLOWING),
+  tapTarget: Math.round(document.getElementById('useLoc').getBoundingClientRect().height),
   beforeResults: Boolean(document.getElementById('placeSearch')
     .compareDocumentPosition(document.getElementById('placeResults'))
     & Node.DOCUMENT_POSITION_FOLLOWING),
   openedFrom: document.getElementById('placePicker').dataset.openedFrom,
 }));
-check('Start keeps current location compact in the header and results below search',
+check('Start offers current location as its own full-width row, results below search',
   state.available && state.label === '⌖Start from current location'
-    && state.inHeader && state.beforeResults && state.openedFrom === 'start', JSON.stringify(state));
+    && state.inHeader === false && state.aboveSearch && state.tapTarget >= 40
+    && state.beforeResults && state.openedFrom === 'start', JSON.stringify(state));
 await page.evaluate(() => {
   window.__freshLocationOptions = null;
   getFreshDevicePosition = (options) => {

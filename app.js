@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-09.657';
+const APP_VERSION = '2026-08-10.658';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3598,6 +3598,11 @@ const TURN_BEARING_SPAN_M = 20;
 // path jitter, and the smallest sustained change worth speaking.
 const SUSTAINED_TURN_SPAN_M = 40;
 const SUSTAINED_TURN_MIN_DEG = 25;
+// How hard a turn must be to announce leaving a named road for an unnamed one
+// even when the course afterwards comes back around. Sits above the "bear"
+// band (20-55 deg), where trail wander lives, and below the 67 deg the
+// Rainier Vista overpass ramp actually turns.
+const LEAVING_TURN_MIN_DEG = 60;
 // A second maneuver naming the road just announced is a repeat unless the rider
 // has travelled a real distance since, or it is a hard turn they could miss.
 const SAME_ROAD_REPEAT_M = 300;
@@ -3853,12 +3858,31 @@ function buildTurnInstructions(m) {
       sustainedBearing = routeBearingOver(
         coords, cumulative, junctionM + SUSTAINED_TURN_SPAN_M, junctionM + 3 * SUSTAINED_TURN_SPAN_M);
       const sustained = navDelta(approach, sustainedBearing);
-      if (Math.abs(sustained) < SUSTAINED_TURN_MIN_DEG) continue;
+      // A ramp that doubles back defeats this test, and defeats it exactly
+      // where the rider most needs telling. Leaving the Burke-Gilman onto the
+      // unnamed ramp up to the Rainier Vista overpass is a 67 deg left, but
+      // the ramp loops around and rejoins the original heading, so the course
+      // 40-120 m later has changed by 3 deg: "no real turn", and the one
+      // instruction that mattered was dropped. A point further along the ramp
+      // then passed the same test and was announced as "turn right" -- the
+      // loop's exit -- so the rider was told to turn the opposite way, after
+      // the turn. Reported twice from the road.
+      //
+      // Leaving a NAMED road for an unnamed way is a decision point in itself:
+      // the rider has to recognise an unmarked ramp or connector as theirs.
+      // With a hard local turn it is announced whatever the course does
+      // afterwards. Wiggle cannot reach this -- it stays on one way, so the
+      // veto still applies there.
+      const loopedRamp = !to && !!from && Math.abs(delta) >= LEAVING_TURN_MIN_DEG
+        && Math.abs(sustained) < SUSTAINED_TURN_MIN_DEG;
+      if (Math.abs(sustained) < SUSTAINED_TURN_MIN_DEG && !loopedRamp) continue;
       // With no road name to identify the maneuver by, the short sample is not
       // just noisy but can be backwards: one junction sampled a 42 deg turn to
       // the right where the rider's course actually swings 38 deg left. Describe
-      // the change they will really make.
-      if (!to) effectiveDelta = sustained;
+      // the change they will really make -- except on a looped ramp, where the
+      // 120 m sample reports the heading it exits on rather than the turn.
+      if (!to) effectiveDelta = loopedRamp ? delta : sustained;
+      if (loopedRamp) sustainedBearing = null;
     }
     let alongDestination = null;
     if (destination) {
@@ -7875,10 +7899,21 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
       color: kind === 'start' ? '#0072B2' : '#D55E00', draggable: !touchEndpoint,
     }).setLngLat(lngLat).addTo(map);
     if (touchEndpoint) enableLongPressEndpointMove(kind, routing[mk]);
-    else routing[mk].on('dragend', () => {
+    else {
+      // A pointer marker drags rather than long-presses, so the tap that opens
+      // its card is a click that did NOT follow a drag.
+      let dragged = false;
+      routing[mk].on('dragstart', () => { dragged = true; });
+      routing[mk].on('dragend', () => {
         const ll = routing[mk].getLngLat();
         setRoutePoint(kind, ll);
       });
+      routing[mk].getElement().addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (dragged) { dragged = false; return; }
+        openEndpointCard(kind);
+      });
+    }
   }
   computeRoute();
   updateArmButtons();
@@ -7969,6 +8004,10 @@ function enableLongPressEndpointMove(kind, marker) {
       saveStateSoon();
     } else if (finished.active) {
       marker.setLngLat(finished.original);
+    } else if (commit && !finished.moved) {
+      // Pressed and released without ever becoming a move: that is a tap, and
+      // a tap on an endpoint asks what this point is.
+      openEndpointCard(kind);
     }
     gesture = null;
   };
@@ -8009,7 +8048,10 @@ function enableLongPressEndpointMove(kind, marker) {
       // Allow for the small amount a finger naturally wanders while held.
       // A deliberate early drag cancels the long press but still must not pan
       // the map from underneath an endpoint marker.
-      if (Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) > 24) stop(false);
+      if (Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) > 24) {
+        gesture.moved = true;
+        stop(false);
+      }
       return;
     }
     pointAt(e.clientX, e.clientY);
@@ -10161,8 +10203,34 @@ let roadInfoSuppressedUntil = 0;
 
 function dismissRoadInfo() {
   clearSearchResultMarker();
+  clearTapHighlight();
   readoutPinned = false;
   readoutEl.classList.remove('show');
+}
+
+/* The tapped stretch of road, drawn while its card is open. Vector-tile
+ * geometry is clipped at tile edges, so a long road highlights the piece the
+ * tap landed in rather than its whole length -- which is the piece the card is
+ * describing anyway.
+ */
+function showTapHighlight(geometry) {
+  const source = map.getSource('tap-highlight');
+  if (!source || !geometry) return false;
+  const type = geometry.type;
+  if (type !== 'LineString' && type !== 'MultiLineString') return false;
+  source.setData({ type: 'Feature', properties: {}, geometry });
+  for (const id of ['tap-highlight-halo', 'tap-highlight']) {
+    if (map.getLayer(id)) setLayout(id, 'visibility', 'visible');
+  }
+  return true;
+}
+
+function clearTapHighlight() {
+  for (const id of ['tap-highlight-halo', 'tap-highlight']) {
+    if (map.getLayer(id)) setLayout(id, 'visibility', 'none');
+  }
+  const source = map.getSource('tap-highlight');
+  if (source) source.setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } });
 }
 
 function suppressRoadInfo(ms = 1200) {
@@ -10719,7 +10787,7 @@ function renderMapTapCard({
   displayTitle, detailsTitle = displayTitle, pointName, summary, rows, lngLat, anchorPoint,
   swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
   segmentName = null, placeName = null,
-  debugData = null, cautionKinds = [],
+  debugData = null, cautionKinds = [], endpointRole = null,
   avoidTemporaryMarker = false,
 }) {
   const lat = Number(lngLat.lat);
@@ -10815,6 +10883,14 @@ function renderMapTapCard({
   };
   addFact('Bike accommodation', accommodation, accommodationKeys,
     { prominent: cautionKinds.includes('odd') });
+  // With no bike lane or trail, the shoulder is what decides whether the road
+  // passes -- so it belongs beside the verdict rather than two taps away under
+  // Details. A figure of 0 ft counts: "no shoulder" on a fast road is exactly
+  // what a rider needs to see. Where a facility IS recorded it speaks for the
+  // road instead, and the shoulder stays in Details as before.
+  if (!accommodation) {
+    addFact('Shoulder', readoutRowValue(rows, 'Shoulder'), ['Shoulder']);
+  }
   const surfaceKeys = ['Surface (OSM)', 'Surface'];
   const surface = readoutRowValue(rows, ...surfaceKeys);
   // "Paved" and "Unknown" are both the ordinary case: one is expected, the
@@ -10840,10 +10916,13 @@ function renderMapTapCard({
       { prominent: true });
   }
 
-  const navigateButton = readoutPrimaryButton('readout-primary-route', 'Navigate',
-    'Choose how to use this point in your route');
-  navigateButton.removeAttribute('aria-expanded');
-  navigateButton.addEventListener('click', () => openMapPointNavigate({ lng, lat }, routeName));
+  let navigateButton = null;
+  if (!endpointRole) {
+    navigateButton = readoutPrimaryButton('readout-primary-route', 'Navigate',
+      'Choose how to use this point in your route');
+    navigateButton.removeAttribute('aria-expanded');
+    navigateButton.addEventListener('click', () => openMapPointNavigate({ lng, lat }, routeName));
+  }
 
   const streetViewBtn = document.createElement('button');
   streetViewBtn.type = 'button';
@@ -10883,7 +10962,7 @@ function renderMapTapCard({
   details.append(debugButton);
 
   let blockButton = null;
-  if (allowRoadBlock) {
+  if (allowRoadBlock && !endpointRole) {
     const existingBlock = roadBlockNear({ lng, lat });
     const canAddBlock = routing.start && routing.end && routing.blocks.length < MAX_ROAD_BLOCKS;
     if (existingBlock || canAddBlock) {
@@ -10921,7 +11000,8 @@ function renderMapTapCard({
 
   const primaryActions = document.createElement('div');
   primaryActions.className = 'readout-primary-actions';
-  primaryActions.append(navigateButton, streetViewBtn, detailsToggle);
+  if (navigateButton) primaryActions.append(navigateButton);
+  primaryActions.append(streetViewBtn, detailsToggle);
   if (blockButton) {
     primaryActions.classList.add('has-road-block');
     primaryActions.append(blockButton);
@@ -11351,8 +11431,51 @@ function inspectRoadAt(point, lngLat = null) {
   const picker = document.getElementById('placePicker');
   if (picker && !picker.hidden) closePlacePicker();
   const inspectedLngLat = lngLat || map.unproject([point.x, point.y]);
-  showTemporaryMapMarker(inspectedLngLat);
-  renderReadout(feature || null, inspectedLngLat, point, { avoidTemporaryMarker: true });
+  // A road gets its own stretch drawn instead of a pin: the card is about that
+  // piece of road, and showing it is more use than marking the pixel the
+  // finger landed on. A tap on nothing still gets the pin -- there the point
+  // IS the subject.
+  clearTapHighlight();
+  const highlighted = feature ? showTapHighlight(feature.geometry) : false;
+  if (highlighted) clearSearchResultMarker();
+  else showTemporaryMapMarker(inspectedLngLat);
+  renderReadout(feature || null, inspectedLngLat, point, { avoidTemporaryMarker: !highlighted });
+  readoutPinned = true;
+  return true;
+}
+
+/* Tapping the start or the destination asks "what is this point?", not "what
+ * would you like to do with it?" -- so the card names its role in the trip and
+ * drops both Navigate (the role is already assigned) and the road block (which
+ * would ask the router to avoid the place it is routing to). The endpoint
+ * marker is its own anchor, so no temporary pin is dropped on top of it.
+ */
+function openEndpointCard(kind) {
+  const point = kind === 'start' ? routing.start : routing.end;
+  if (!Array.isArray(point)) return false;
+  const [lng, lat] = point;
+  const name = normalizeEndpointName(
+    kind === 'start' ? routing.startName : routing.endName) || 'Point on map';
+  const role = kind === 'start' ? 'Route start' : 'Destination';
+  clearSearchResultMarker();
+  clearTapHighlight();
+  // Dismiss whatever was open, and hold off the synthetic map click some
+  // platforms deliver after a marker tap -- it would replace this card with
+  // the card for whatever road happens to lie under the endpoint.
+  suppressRoadInfo(400);
+  renderMapTapCard({
+    displayTitle: name,
+    pointName: name,
+    placeName: name,
+    summary: kind === 'start'
+      ? 'Your trip starts here.' : 'Your trip ends here.',
+    rows: [], lngLat: { lng, lat },
+    anchorPoint: map.project({ lng, lat }),
+    swatchColor: kind === 'start' ? '#0072B2' : '#D55E00',
+    swatchLabel: role,
+    endpointRole: role,
+    avoidTemporaryMarker: true,
+  });
   readoutPinned = true;
   return true;
 }
@@ -11867,6 +11990,61 @@ function applyRoutingPreset(presetId) {
   showRouteActionToast(`${preset.label} applied`, { duration: 2200 });
 }
 
+/* ------------------------------------------------------------ maps
+ * Groundwork for loading more than one state. The list is real and complete so
+ * the shape of the eventual feature is visible, but this build ships one
+ * dataset: Washington is loaded and every other state is inert. Nothing here
+ * writes state or triggers a download -- the only action is to close.
+ */
+const US_STATES = Object.freeze(['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
+  'Colorado', 'Connecticut', 'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois',
+  'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts',
+  'Michigan', 'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
+  'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota',
+  'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina',
+  'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
+  'West Virginia', 'Wisconsin', 'Wyoming']);
+const MAX_LOADED_STATES = 2;
+
+function buildMapsStateList() {
+  const host = document.getElementById('mapsStateList');
+  if (!host) return;
+  host.replaceChildren();
+  for (const state of US_STATES) {
+    const loaded = state === Region.name;
+    const row = document.createElement('label');
+    row.className = `maps-state${loaded ? ' loaded' : ' unavailable'}`;
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = loaded;
+    // Every other state is genuinely unavailable, and a checkbox that accepts
+    // a tap and then does nothing is worse than one that says it cannot.
+    box.disabled = !loaded;
+    if (loaded) {
+      // The loaded state cannot be turned off while it is the only one there
+      // is; re-check rather than leave the app claiming no map at all.
+      box.addEventListener('change', () => { box.checked = true; });
+    }
+    const name = document.createElement('span');
+    name.textContent = state;
+    row.append(box, name);
+    if (loaded) {
+      const badge = document.createElement('span');
+      badge.className = 'maps-state-badge';
+      badge.textContent = 'Loaded';
+      row.append(badge);
+    }
+    host.append(row);
+  }
+}
+
+function openMapsDialog() {
+  const dialog = document.getElementById('mapsDialog');
+  if (!dialog) return;
+  buildMapsStateList();
+  if (!dialog.open) dialog.showModal();
+}
+
 function buildRulesPanel() {
   const slidersHost = document.getElementById('settingsSliders');
   const optionsHost = document.getElementById('settingsOptions');
@@ -12113,6 +12291,7 @@ function buildRulesPanel() {
         }
       });
     });
+    document.getElementById('settings-tab-maps').addEventListener('click', openMapsDialog);
     document.getElementById('settingsHelpBtn').addEventListener('click', () => {
       buildCautionCauseHelp();
       openHelp('settings');
@@ -12842,7 +13021,34 @@ onStyleReady(() => {
   // Visual toggles must not create holes in street-information popups. Load
   // every source once; updateVisibility() independently hides painted lines.
   for (const src of SOURCES) loadSource(src);
+  ensureTapHighlightLayers();
 });
+
+/* What the open card is describing. A dot said "somewhere about here"; the
+ * stretch of road itself says exactly which piece the verdict is about, and it
+ * works the same whether the tap landed on the drawn route or on an ordinary
+ * road beside it -- both feed this one source their geometry. It lives with
+ * the permanent layers rather than the route's, because a rider can tap a road
+ * long before asking for a route.
+ */
+function ensureTapHighlightLayers() {
+  if (map.getSource('tap-highlight')) return;
+  map.addSource('tap-highlight', {
+    type: 'geojson',
+    data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } },
+  });
+  map.addLayer({
+    id: 'tap-highlight-halo', type: 'line', source: 'tap-highlight',
+    layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+    paint: { 'line-color': '#0b3d2e', 'line-width': 13, 'line-opacity': 0.34,
+             'line-blur': 1.6 },
+  });
+  map.addLayer({
+    id: 'tap-highlight', type: 'line', source: 'tap-highlight',
+    layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+    paint: { 'line-color': '#ffd400', 'line-width': 5.5, 'line-opacity': 0.95 },
+  });
+}
 
 // Debug handle (harmless; used for local verification).
 window.VIS = { map, SOURCES, rules, rescoreAll, effectiveLevel };

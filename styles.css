@@ -504,6 +504,23 @@ body:not(.navigation-active) #navCard { display: none; }
 .settings-tabs .settings-help-btn { align-self: center; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }
+/* Opens a screen rather than swapping the panel below, so it never takes the
+   selected-tab treatment however many times it is tapped. */
+.settings-tabs .settings-tab-standalone { flex: 0 0 auto; }
+
+/* ------------------------------------------------------------ maps screen */
+.maps-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(760px, calc(100% - 28px)); margin: 0 auto; padding: 16px 0 max(34px, env(safe-area-inset-bottom)); }
+.maps-lead { margin: 0 0 6px; color: #22323d; font: 800 17px/1.25 system-ui; }
+.maps-note { margin: 0 0 14px; color: #566b78; font: 600 12.5px/1.45 system-ui; }
+.maps-state-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; }
+.maps-state { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 6px 11px; border: 1px solid #dbe5ea; border-radius: 10px; background: #fff; color: #24343f; font: 700 13.5px/1.2 system-ui; }
+.maps-state input { width: 18px; height: 18px; flex: none; accent-color: #0a66c2; }
+.maps-state.loaded { border-color: #7db4d2; background: #eef7fc; color: #08496f; }
+/* Greyed, not hidden: the point of the screen is that these exist and are not
+   ready yet. */
+.maps-state.unavailable { color: #93a3ad; background: #f6f8f9; }
+.maps-state.unavailable input { cursor: not-allowed; }
+.maps-state-badge { margin-left: auto; padding: 2px 7px; border-radius: 999px; background: #0a66c2; color: #fff; font: 800 9.5px/1.5 system-ui; letter-spacing: .04em; text-transform: uppercase; }
 /* All four panes take the measured natural height of Limits. JavaScript sets
    this variable after the Settings view is laid out, so the panel no longer
    jumps between tabs without baking a control count into a magic pixel cap. */
@@ -588,6 +605,15 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #settingsToggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 #map .maplibregl-ctrl-top-right, #map .maplibregl-ctrl-bottom-right { z-index: 16; }
 #map .maplibregl-ctrl-bottom-right { transition: bottom .2s ease; }
+/* The location button sits with the map's own furniture: under the scale, to
+   the left of the attribution info button, rather than floating above them.
+   The line break is a zero-height flex item -- the scale bar must keep its
+   natural width, because that width IS the distance it reports. */
+#map .maplibregl-ctrl-bottom-right { display: flex; flex-flow: row wrap; align-items: flex-end; justify-content: flex-end; }
+#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-scale { order: 1; }
+#map .maplibregl-ctrl-bottom-right::after { content: ''; flex: 0 0 100%; order: 2; height: 0; }
+#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { order: 3; margin-bottom: 10px; }
+#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib { order: 4; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group,
 #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group {
   border: 1px solid #c8d5df; border-radius: 9px; box-shadow: 0 2px 9px rgba(0,0,0,.16);
@@ -643,9 +669,13 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   border-left: 3px solid var(--readout-accent, #78909c); border-radius: 6px;
   background: #f4f8fa; color: #344d5c;
 }
-.readout-safety-summary strong { font: 820 11px/1.2 system-ui; }
-.readout-safety-summary span { color: #536873; font: 620 9.5px/1.28 system-ui; }
+.readout-safety-summary strong { font: 850 13px/1.2 system-ui; }
+.readout-safety-summary span { color: #4a606c; font: 630 11px/1.32 system-ui; }
 .readout-core-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 5px; }
+/* One fact, or an odd one left over at the end, takes the whole width rather
+   than wrapping inside half a card while the other half stays empty. */
+.readout-core-facts > .readout-core-fact:only-child,
+.readout-core-fact:nth-last-child(1):nth-child(odd) { grid-column: 1 / -1; }
 .readout-core-fact { display: grid; align-content: start; gap: 2px; min-width: 0; padding: 5px 6px; border: 1px solid #dce5ea; border-radius: 6px; background: #fbfcfd; }
 .readout-core-fact-accommodation { grid-column: 1 / -1; }
 .readout-core-fact-caution {
@@ -669,7 +699,9 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .readout-identity-place { color: #40525d; font: 700 10px/1.25 system-ui; }
 .readout-identity-region { color: #6a7b85; font: 700 9.5px/1.25 system-ui; }
 .readout-identity-region[hidden] { display: none; }
-.readout-primary-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+/* Auto-fit rather than a fixed three: an endpoint card has no Navigate button
+   (the point already has its role) and must not leave a gap where it was. */
+.readout-primary-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; margin-top: 6px; }
 .readout-primary-actions.has-road-block { grid-template-columns: repeat(3, minmax(0, 1fr)) 36px; }
 .readout-primary-actions > button {
   min-width: 0; min-height: 34px; padding: 5px 3px; border: 1px solid #b7cbd7;
@@ -1159,10 +1191,12 @@ body.navigation-active #routeBar { display: none; }
 .picker-hint.location-error .picker-hint-icon { background: #c55232; }
 .picker-search-row { display: flex; gap: 5px; }
 .picker-search-row #placeSearch { flex: 1; min-width: 0; }
-#routeBar #useLoc { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 30px; margin: 0; padding: 4px 8px; border: 1px solid #9fc9df; border-radius: 8px; background: #e5f5fc; color: #075f91; white-space: nowrap; font: 790 10px system-ui; cursor: pointer; }
+/* Full width, on its own row under the title. Sized as the primary action it
+   is, rather than as a header ornament squeezed against the close button. */
+#routeBar #useLoc { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 44px; margin: 6px 0 0; padding: 6px 10px; border: 1px solid #9fc9df; border-radius: 10px; background: #e5f5fc; color: #075f91; white-space: nowrap; font: 800 13px system-ui; cursor: pointer; }
 #routeBar #useLoc:focus-visible { outline: 3px solid #75bdf4; outline-offset: 1px; }
 #routeBar #useLoc[hidden] { display: none; }
-#useLoc span:first-child { font-size: 15px; line-height: 1; }
+#useLoc span:first-child { font-size: 18px; line-height: 1; }
 #routeBar .place-results .place-internet-search { background: #f1f7fb; color: #0a5f92; font-weight: 750; }
 #routeBar .place-results .place-internet-search::before { content: "◎"; margin-right: 7px; color: #467a99; }
 #routeBar .place-results .place-internet-search small { display: block; margin: 3px 0 0 22px; color: #5f7481; }

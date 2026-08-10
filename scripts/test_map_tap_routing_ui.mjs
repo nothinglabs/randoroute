@@ -286,13 +286,13 @@ await page.locator('#readout .readout-close').click();
 check('closing map details also removes its temporary marker', await page.evaluate(() =>
   document.querySelectorAll('.search-result-marker').length === 0));
 
+// A road tap draws the stretch of road rather than a pin, so the pin-avoidance
+// case is a tap on open map -- which is where a pin still marks the subject.
 await page.evaluate(() => {
+  roadInfoSuppressedUntil = 0;
+  dismissRoadInfo();
   const original = featureAt;
-  featureAt = () => ({
-    layer: { id: 'test-road-hit' },
-    properties: { n: 'Marker Test Road', s: 30, w: 2, ft: 2, h: 'residential', u: 1 },
-    geometry: { type: 'LineString', coordinates: [[-122.34, 47.61], [-122.33, 47.62]] },
-  });
+  featureAt = () => null;
   const point = { x: 250, y: 360 };
   inspectRoadAt(point, map.unproject([point.x, point.y]));
   featureAt = original;
