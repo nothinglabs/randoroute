@@ -67,6 +67,10 @@ worker and the service worker comes from `Region.dataUrl(...)`.
   machinery is tested against.
 - If a change needs an edit to application code to support a state, that is the
   bug — the fact belongs in `region.json`.
+- `docs/PORTING-LESSONS.md` holds the accumulated tuning rationale and the
+  failure catalogue, mined from commit history. Lessons have stable IDs and a
+  per-state `Travelled` ledger; when a state confirms or refutes one, update
+  that line rather than rewriting the lesson.
 
 ## Working on iOS
 

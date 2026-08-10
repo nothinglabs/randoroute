@@ -60,7 +60,8 @@ No application file changes. If one has to, that is the bug — the state-specif
 fact belongs in `region.json` and the code should read it from the region.
 
 See `docs/PORTING-TO-ANOTHER-STATE.md` for what each configuration value means
-and which agency data you need to find.
+and which agency data you need to find, and `docs/PORTING-LESSONS.md` for why the
+thresholds are what they are and how an import fails in practice.
 
 ## `region.json`
 

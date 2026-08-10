@@ -7,6 +7,12 @@ will differ; the shape of the problem does not.
 Read `docs/SAFETY-MODEL.md` first for what the app decides and why. This file is
 only about getting a new state's data into it.
 
+Its companion is **`docs/PORTING-LESSONS.md`** — why the numbers are the numbers,
+and what an import looks like when it is wrong. This file tells you what to do;
+that one tells you what went wrong the first time, mined out of the commit
+history. Read it once before you start, and again the moment something looks
+off: most of these failures did not present as data problems at all.
+
 ---
 
 ## 0. The one folder to add
