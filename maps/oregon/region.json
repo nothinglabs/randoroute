@@ -1,0 +1,44 @@
+{
+  "id": "oregon",
+  "name": "Oregon",
+  "status": "preview",
+  "readiness": 0,
+  "summary": "Folder only: configuration written, nothing built yet.",
+  "bounds": {
+    "minLon": -124.8,
+    "maxLon": -116.3,
+    "minLat": 41.8,
+    "maxLat": 46.4
+  },
+  "defaultCenter": [
+    -122.6765,
+    45.5231
+  ],
+  "defaultZoom": 11,
+  "stressAgency": "ODOT",
+  "restrictionAgency": "ODOT",
+  "speedAgency": "ODOT",
+  "facilitySourceName": "ODOT Bicycle Facility Inventory",
+  "stressLayerName": "",
+  "restrictionLayerName": "",
+  "interstateRoutePrefixes": [],
+  "facilityLevels": {},
+  "routeDirectionSuffixes": {},
+  "datasets": {
+    "graph": false,
+    "roads": false,
+    "basemap": false,
+    "overlays": false,
+    "places": false,
+    "bikeroutes": false,
+    "restrictions": false,
+    "closures": false
+  },
+  "versions": {},
+  "attribution": {
+    "extractName": "Oregon",
+    "extractUrl": "https://download.geofabrik.de/north-america/us/oregon.html",
+    "agencyHeading": "Oregon transportation data",
+    "agencySources": []
+  }
+}
