@@ -55,9 +55,19 @@ const ctx = {
   // featureAt widens its reach over a dismount marker; there is none here, so
   // the real function answers false and the ordinary tolerance applies.
   DISMOUNT_MARKER_HIT_PX: 18,
+  HIT_VERTEX_LIMIT: 400,
+  HIT_TIE_PX: 0.5,
+  Math,
 };
+// map.project turns a [lng, lat] into a screen point. The fixtures below are
+// authored directly in screen space, so the identity is the honest stub.
+ctx.map.project = ([x, y]) => ({ x, y });
 vm.createContext(ctx);
-vm.runInContext(`${lift('dismountMarkerAt')}\n${lift('featureAt')}`, ctx);
+vm.runInContext([
+  lift('dismountMarkerAt'), lift('featureAt'), lift('pointToSegmentPx'),
+  lift('screenDistanceToFeature'), lift('nearestOfHits'),
+  lift('reconcileCoincident'),
+].join('\n'), ctx);
 
 const at = (...ids) => {
   rendered = ids.map((id) => ({ layer: { id } }));
@@ -86,4 +96,49 @@ assert.match(appSrc, /else if \(p\.g\) rows\.push\(\['Bike route',/,
   'and must fall back to the road\'s own flag when the ribbon layer is hidden');
 console.log('PASS  the road card still reports the route running over it');
 
-console.log('\n8 checks, 0 failed');
+/* --------------------------------- the tap answers for the NEAREST feature */
+// Two records of one highway meeting end to end. queryRenderedFeatures hands
+// them back in draw order, and taking the topmost is a coin flip at the seam:
+// OR 224 at Three Lynx books 3 ft on one segment and 4 ft on the next, so two
+// taps a moment apart returned "Fails your rules" and "Passes your rules" on
+// the same road with nothing in either card to explain the difference.
+const line = (id, coords, props) => ({
+  layer: { id }, geometry: { type: 'LineString', coordinates: coords },
+  properties: props || {},
+});
+const pick = (feats, x, y) => { rendered = feats; return ctx.featureAt({ x, y }); };
+const HERE = [[100, 90], [100, 140]];   // under the tap at (100, 100)
+const FAR = [[0, 0], [0, 40]];          // ~100 px away
+
+assert.equal(
+  pick([line('roads__hit', FAR), line('roads__hit', HERE)], 100, 100)
+    .geometry.coordinates[0][0],
+  100, 'the nearer of two scored features answers, whatever the draw order');
+assert.equal(
+  pick([line('roads__hit', HERE), line('roads__hit', FAR)], 100, 100)
+    .geometry.coordinates[0][0],
+  100, 'and the same answer when the draw order is reversed');
+console.log('PASS  the tap resolves to the nearest feature, not the topmost');
+
+/* ------------------ coincident records: measured beats blank, lowest wins */
+const both = (props) => line('blts__hit', HERE, props);
+assert.equal(pick([
+  both({ RouteIdentifier: '224d', ShoulderWidth: null }),
+  both({ RouteIdentifier: '224d', ShoulderWidth: 4 }),
+], 100, 100).properties.ShoulderWidth, 4,
+  'a measured shoulder beats an unpopulated row: absence is not a measurement '
+  + 'of zero, whatever the model scores an unknown shoulder as');
+assert.equal(pick([
+  both({ RouteIdentifier: '224d', ShoulderWidth: 4 }),
+  both({ RouteIdentifier: '224d', ShoulderWidth: 1 }),
+], 100, 100).properties.ShoulderWidth, 1,
+  'among measured values the narrowest wins; this is a safety verdict');
+assert.equal(pick([
+  both({ RouteIdentifier: '224d', ShoulderWidth: 3 }),
+  both({ RouteIdentifier: '224i', ShoulderWidth: 1 }),
+], 100, 100).properties.RouteIdentifier, '224d',
+  'the two DIRECTIONS of one road are not duplicates: wsdotShoulderText '
+  + 'reports both sides, so they must not be silently merged here');
+console.log('PASS  coincident records reconcile conservatively (3 cases)');
+
+console.log('\n13 checks, 0 failed');

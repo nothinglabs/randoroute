@@ -10413,7 +10413,17 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
         if (reason === 'traffic') return `${n.measures.adt.toLocaleString()} vehicles/day`;
         return `${FUNCTIONAL_CLASS_NAME[n.measures.fc] || 'major road'}, no count`;
       });
-      return `Needs a bike lane or a safe-ish-width shoulder: ${why.join(', ')}.`;
+      // Name the shoulder as well as the triggers. Without it this rung's only
+      // fact was the speed -- and the speed is identical on the card of a road
+      // that PASSES at the same speed with a wide enough shoulder. A rider
+      // tapping two stretches of one highway got "fails: 55 mph" and "passes;
+      // 55 mph" and no way to tell what actually differed (field report, OR 224
+      // at Three Lynx, where the inventory alternates 0/1/3/4/10 ft).
+      const shHere = shUnknown
+        ? 'No shoulder is recorded here'
+        : `The shoulder here is ${sh} ft${shSource}`;
+      return `Needs a bike lane or a safe-ish-width shoulder: ${why.join(', ')}.`
+        + ` ${shHere}, against your ${rules.minShoulder} ft minimum.`;
     }
     case 'shares-lane':
       // This rung means none of the space triggers fired -- not fast, not wide,
@@ -10433,9 +10443,13 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
 
   // 'default': nothing failed and nothing shortcut it. Say what it met.
   const met = [];
+  // The test is >=, so a shoulder exactly at the minimum is not "over" it.
+  // Saying so reads as sloppy in precisely the place a rider is deciding
+  // whether to trust the verdict.
+  const vsMin = `${sh > rules.minShoulder ? 'over' : 'meeting'} your ${rules.minShoulder} ft minimum`;
   if ((n.facility || 0) >= 2 || n.good_facility) met.push('Has a bike lane or better');
-  else if (!shUnknown) met.push(`${sh} ft shoulder, over your ${rules.minShoulder} ft minimum`);
-  else if (shInferred) met.push(`${sh} ft shoulder${shSource}, over your ${rules.minShoulder} ft minimum`);
+  else if (!shUnknown) met.push(`${sh} ft shoulder, ${vsMin}`);
+  else if (shInferred) met.push(`${sh} ft shoulder${shSource}, ${vsMin}`);
   else met.push(`No shoulder recorded, and this road is not fast or busy enough to need one`);
   if (spd != null)
     met.push(rules.noUpperLimit
@@ -10539,9 +10553,87 @@ function featureAt(point) {
   );
   if (!feats.length) return null;
   const isRibbon = (f) => !!(HIT_SRC[f.layer.id] || {}).ribbon;
-  // queryRenderedFeatures returns topmost first, so the first non-ribbon is the
-  // topmost scored feature.
-  return feats.find((f) => !isRibbon(f)) || feats[0];
+  const scored = feats.filter((f) => !isRibbon(f));
+  return nearestOfHits(point, scored.length ? scored : feats);
+}
+
+// Point-to-segment distance in screen pixels.
+function pointToSegmentPx(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (!len2) return Math.hypot(p.x - a.x, p.y - a.y);
+  const t = Math.max(0, Math.min(1,
+    ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+// A clipped tile line is short; the cap only guards against a pathological one.
+const HIT_VERTEX_LIMIT = 400;
+function screenDistanceToFeature(point, feature) {
+  const g = feature.geometry;
+  const parts = !g ? null
+    : g.type === 'LineString' ? [g.coordinates]
+      : g.type === 'MultiLineString' ? g.coordinates
+        : g.type === 'Point' ? [[g.coordinates]] : null;
+  if (!parts) return Infinity;
+  let best = Infinity, seen = 0;
+  for (const line of parts) {
+    let prev = null;
+    for (const c of line) {
+      if (++seen > HIT_VERTEX_LIMIT) return best;
+      const p = map.project(c);
+      best = Math.min(best, prev
+        ? pointToSegmentPx(point, prev, p)
+        : Math.hypot(p.x - point.x, p.y - point.y));
+      prev = p;
+    }
+  }
+  return best;
+}
+
+// Which of the features inside the pad box the rider actually pointed at.
+//
+// queryRenderedFeatures returns everything in the box in DRAW order, and this
+// used to take the topmost. At a boundary between two segments of one highway
+// that is a coin flip between two records which legitimately disagree: OR 224
+// at Three Lynx books 3 ft on one segment and 4 ft on the next, so two taps a
+// moment apart produced "Fails your rules" and "Passes your rules" on the same
+// road, with nothing in either card to explain the difference. Nearest is the
+// question the rider is asking.
+const HIT_TIE_PX = 0.5;
+function nearestOfHits(point, feats) {
+  if (feats.length < 2) return feats[0] || null;
+  const scored = feats.map((f) => ({ f, d: screenDistanceToFeature(point, f) }));
+  const nearest = Math.min(...scored.map((s) => s.d));
+  // Within the tie band, draw order still decides -- except for the one case
+  // below, so a near-tie stays as stable as it was before.
+  const tied = scored.filter((s) => s.d <= nearest + HIT_TIE_PX).map((s) => s.f);
+  return reconcileCoincident(tied);
+}
+
+// Genuinely coincident records describing one place.
+//
+// Prefer a measured shoulder over a blank one: an absent measurement is not a
+// measurement of zero. (The safety model separately scores an UNKNOWN shoulder
+// as 0 -- that is the right policy for "we know nothing about this road", and
+// the wrong rule for "we hold four records and one row is unpopulated".)
+// Among measured values take the lowest, because this is a safety verdict and
+// the conservative reading is the one a rider can act on.
+//
+// Direction is not duplication: `224d` and `224i` are the two sides of one road
+// and wsdotShoulderText() reports both, so only records sharing a
+// RouteIdentifier are reconciled here.
+function reconcileCoincident(feats) {
+  if (feats.length < 2) return feats[0] || null;
+  const head = feats[0];
+  const id = head.properties?.RouteIdentifier;
+  if (id == null) return head;
+  const siblings = feats.filter((f) => f.properties?.RouteIdentifier === id);
+  if (siblings.length < 2) return head;
+  const measured = siblings.filter((f) => f.properties?.ShoulderWidth != null);
+  if (!measured.length) return head;
+  return measured.reduce((a, b) =>
+    (b.properties.ShoulderWidth < a.properties.ShoulderWidth ? b : a));
 }
 
 // Designated-route labels under a screen point (e.g. "US Bicycle Route 10"),
@@ -10757,14 +10849,18 @@ function wsdotOppositeShoulder(point, p) {
   const feats = map.queryRenderedFeatures(
     [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]],
     { layers: ['blts__hit'] });
+  let best = null;
   for (const f of feats) {
     const q = f.properties;
     if (routeBaseId(q.RouteIdentifier) !== base) continue;
     if (String(q.RouteIdentifier) === String(p.RouteIdentifier)) continue;
     if (q.ShoulderWidth == null || q.ShoulderWidth === p.ShoulderWidth) continue;
-    return q;
+    // Several records can describe the far side at one point, and this used to
+    // return whichever the query happened to list first. Take the narrowest,
+    // for the same reason reconcileCoincident() does.
+    if (!best || q.ShoulderWidth < best.ShoulderWidth) best = q;
   }
-  return null;
+  return best;
 }
 // "6 ft" when both directions agree or only one is known; otherwise both, each
 // named, because a single number would be a claim the data does not support.
