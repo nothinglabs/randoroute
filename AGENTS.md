@@ -62,6 +62,8 @@ file outside `maps/` names a state; `region.js` resolves whichever one the rider
 selected into the global `Region`, and every data path in the app, the router
 worker and the service worker comes from `Region.dataUrl(...)`.
 
+**Commissioned to import a state?** `docs/IMPORT-A-STATE.md` is the brief.
+
 **Importing a state starts at `docs/PORTING-TO-ANOTHER-STATE.md`.** Its "Start
 here" section gives the reading order across all four documents, the build
 sequence, the test that proves each stage, and the known blockers. Do not start

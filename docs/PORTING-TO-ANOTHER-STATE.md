@@ -11,6 +11,11 @@ the problem does not.
 **This file is the entry point for importing a state.** Four documents cover the
 job and they are not interchangeable; read them in this order:
 
+> If you were *commissioned* to import a state -- told to go and do one --
+> `docs/IMPORT-A-STATE.md` is the brief: what to deliver, what you will not be
+> told, and how to report back. It is an assignment, not a method, and its first
+> instruction is to read this file.
+
 1. **This file** — the method. What is already national, how to find a state's
    sources, how to conflate them onto OSM, and what not to import.
 2. **`docs/PORTING-LESSONS.md`** — why the numbers are the numbers, and what an
