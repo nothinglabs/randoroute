@@ -61,7 +61,9 @@ they are the spec.
   `--aadt`) are all optional. An OSM-only first pass with class-estimated speeds
   is the correct stage-4 target.
 - `build_basemap.py` takes `--bounds` and `--coastline natural-earth`; it is
-  already portable.
+  already portable. Its one external input is the Natural Earth land polygon --
+  world coverage, clipped per state — fetched by
+  `scripts/fetch_natural_earth.sh` into the path the builder now defaults to.
 - `build_hpms.py` needs only the state name and year. It is the
   nationally-uniform traffic source and the highest-value single fetch (A3).
 

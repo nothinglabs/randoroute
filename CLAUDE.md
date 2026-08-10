@@ -56,6 +56,11 @@ file outside `maps/` names a state; `region.js` resolves whichever one the rider
 selected into the global `Region`, and every data path in the app, the router
 worker and the service worker comes from `Region.dataUrl(...)`.
 
+**Importing a state starts at `docs/PORTING-TO-ANOTHER-STATE.md`.** Its "Start
+here" section gives the reading order across all four documents, the build
+sequence, the test that proves each stage, and the known blockers. Do not start
+from a `BUILD.md` — that is a runbook for a state that is already understood.
+
 `maps/README.md` is the contract. The short version:
 
 - A state's truth is `maps/<state>/region.json`, including which files it

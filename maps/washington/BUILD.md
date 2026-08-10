@@ -100,10 +100,10 @@ rm data/roads-*.geojson
 npm run data:compress-overlays          # the .geojson.gz runtime overlays
 python3 scripts/build_overlay_tiles.py  # -> overlays.pmtiles
 
+bash scripts/fetch_natural_earth.sh   # world land polygon, shared by every state
 python3 scripts/build_basemap.py \
   --src data/washington-latest.osm.pbf \
   --places maps/washington/places.json \
-  --natural-earth-land /path/to/ne_10m_land.shp \
   --out maps/washington/basemap.pmtiles
 
 node scripts/stamp_tiles_version.mjs washington

@@ -309,8 +309,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--src", default="data/washington-latest.osm.pbf")
     parser.add_argument("--places", default="maps/washington/places.json")
-    parser.add_argument("--natural-earth-land", required=True,
-                        help="Path to ne_10m_land.shp")
+    parser.add_argument("--natural-earth-land",
+                        default="data/natural-earth/ne_10m_land.shp",
+                        help="Path to ne_10m_land.shp "
+                             "(scripts/fetch_natural_earth.sh puts it here)")
     parser.add_argument("--out", default="maps/washington/basemap.pmtiles")
     parser.add_argument("--bounds", default=None,
                         help="clip box as minLon,minLat,maxLon,maxLat "

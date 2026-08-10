@@ -315,7 +315,7 @@ data size, GeoJSON or tiles.
 ```bash
 python3 scripts/build_basemap.py \
   --src data/washington-latest.osm.pbf \
-  --natural-earth-land /path/to/ne_10m_land.shp
+  --natural-earth-land data/natural-earth/ne_10m_land.shp
 ```
 
 The 43 MB context archive contains clipped Natural Earth land plus OSM water,
