@@ -96,6 +96,23 @@ BLTS_BIKETYPE = {"Bike Lane": "BL", "Shared Lane": "SL",
 OWNER_STATE, OWNER_COUNTY, OWNER_TOWN, OWNER_CITY = 1, 2, 3, 4
 
 
+def route_identifier(route, key, direction):
+    """`005i` -- three digits, then the milepost direction.
+
+    Three digits because app.js recovers "is this an Interstate?" from the
+    route id with `/^(\\d{3})/` against `region.json`'s
+    `interstateRoutePrefixes`, the state highway data carrying no motorway
+    flag of its own. A bare "5i" matches nothing and I-5 would have been
+    described to a rider as an ordinary limited-access caution -- "ride it
+    with caution" on a road bicycles may not use at all.
+
+    With no signed number the ODOT highway number stands in, which will not
+    collide with a signed one in the interstate set.
+    """
+    number = route if route is not None else int(str(key)[:3] or 0)
+    return f"{number:03d}{direction or ''}"
+
+
 def lrm_base(key):
     """LRM_KEY without its direction letter, so I and D records can meet."""
     key = str(key or "")
@@ -302,8 +319,7 @@ def build_blts(out_path):
 
         props = {
             # Signed number + direction letter: see the module docstring.
-            "RouteIdentifier": (f"{route}{direction or ''}" if route
-                                else f"{str(key)[:3]}{direction or ''}"),
+            "RouteIdentifier": route_identifier(route, key, direction),
             "LTS_Bicycle": lts,
             "ShoulderWidth": shoulder,
             "SpeedLimit": speed,
@@ -359,8 +375,7 @@ def build_speeds(out_path):
         key = a.get("LRM_KEY")
         route, _ = signed.best(key, span)
         props = {"SpeedLimit": int(speed),
-                 "RouteIdentifier": (f"{route}{lrm_dir(key) or ''}" if route
-                                     else f"{str(key)[:3]}{lrm_dir(key) or ''}")}
+                 "RouteIdentifier": route_identifier(route, key, lrm_dir(key))}
         for path in paths:
             features.append({"type": "Feature", "properties": props,
                              "geometry": {"type": "LineString", "coordinates": path}})
@@ -390,8 +405,7 @@ def build_facilities(out_path):
             # inventory is of what is on the ground, so every row qualifies --
             # except the 'NO' rows, which record absence and are dropped above.
             "Status": "Existing",
-            "RouteIdentifier": (f"{route}{lrm_dir(key) or ''}" if route
-                                else f"{str(key)[:3]}{lrm_dir(key) or ''}"),
+            "RouteIdentifier": route_identifier(route, key, lrm_dir(key)),
             "BikeFacilitySides": arcgis.text(a.get("ROADSIDE")),
         }
         if width and width > 0:
