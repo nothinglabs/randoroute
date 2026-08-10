@@ -86,7 +86,7 @@ over-flags the opposite direction — deliberately conservative.
 ```bash
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads \
-                               --urban-areas data/census-urban-areas-2020-wa.geojson \
+                               --urban-areas data/census-urban-areas-2020-washington.geojson \
                                --blts maps/washington/blts.geojson \
                                --roadlog data/roadlog.geojson \
                                --funcclass data/funcclass.geojson \

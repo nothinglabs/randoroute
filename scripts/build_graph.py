@@ -2077,7 +2077,7 @@ if __name__ == '__main__':
                     help='WSDOT Roadway Characteristic legal-speed GeoJSON')
     ap.add_argument('--facilities', default='data/wsdot_bike_facilities.geojson',
                     help='WSDOT existing bicycle-facility GeoJSON')
-    ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-wa.geojson',
+    ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-washington.geojson',
                     help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
     ap.add_argument('--roadlog', default='data/roadlog.geojson',
                     help='CRAB certified county road log (scripts/build_roadlog.py)')

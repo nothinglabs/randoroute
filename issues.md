@@ -48,22 +48,28 @@ Follow-ups that hang on the verdict:
 ### 3. Road detail UI improvements
 Owner has ideas; not yet described. Nothing started.
 
-### 4. Have an agent import Oregon from the docs alone
-The repo ships one state. Oregon was removed deliberately: the point is to find
-out whether `docs/PORTING-TO-ANOTHER-STATE.md` and `docs/PORTING-LESSONS.md`
-carry enough for an agent that was not here to import a state unaided.
+### 4. Oregon import — done by an agent, awaiting your verdict
+`maps/oregon/` ships at readiness 7: routing, tiles, place search, ODOT stress /
+speed / shoulder / facility conflation on the state highway system, and FHWA
+HPMS volume. `maps/oregon/VERIFICATION.md` checks 30 published corridors and
+`docs/PORTING-LESSONS.md` now carries an Oregon line on every lesson.
 
-Oregon specifically, because the owner has ridden it and can check the result —
-an import nobody can verify is worthless as evidence. Write down what you expect
-BEFORE the agent runs (corridors, roads that should fail, trails that should
-read as trails), or there is a pull toward grading on whatever it did well.
+What to check against your own predictions:
 
-Target is **7/10** on the rubric in `maps/README.md`, not 9: levels 8 and up
-require a rider, by design. The agent's deliverables are the state plus
-`VERIFICATION.md` and filled-in `Travelled` lines in `PORTING-LESSONS.md`.
+- **The Historic Columbia River Highway State Trail is severed at Mitchell
+  Point**, so Portland → Hood River routes around Mount Hood. Diagnosed as an
+  OSM gap. Is it a gap on the ground too?
+- **US 101 on the coast** — the router offers 455 mi against the 364 mi signed
+  route, down from 481 mi with 134 failing miles before the ODOT shoulder data.
+  Does the remaining 27.5 failing miles match how it rides?
+- **Forest roads got worse after conflation.** Aufderheide fell 100% → 76%
+  corridor agreement, Corvallis to the Sea 86% → 11%. The suspicion is that the
+  FHWA class proxy over-prices remote Forest Service collectors in a state that
+  is 60% federal land. Undiagnosed, and the blast-radius count (lesson B6) was
+  not run.
 
-A failure is the more useful outcome — it names the lesson the docs failed to
-carry.
+Three lessons did not travel — C2, D7, and B4's population — and those are the
+part of this worth reading first.
 
 ## Parked (has a trigger, waiting on it)
 

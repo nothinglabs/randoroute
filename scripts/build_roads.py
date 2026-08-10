@@ -376,7 +376,7 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='data/washington-latest.osm.pbf')
     ap.add_argument('--out-prefix', default='data/roads')
-    ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-wa.geojson',
+    ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-washington.geojson',
                     help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
     ap.add_argument('--blts', default='maps/washington/blts.geojson',
                     help='WSDOT BLTS GeoJSON used to enrich state-highway geometry')

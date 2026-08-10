@@ -3,7 +3,7 @@ data/BikePedLTS.zip
 data/BikePedLTS.gdb/
 data/BikePedLevelOfTrafficStress_FGDC.*
 data/washington-latest.osm.pbf
-data/census-urban-areas-2020-wa.geojson
+data/census-urban-areas-2020-*.geojson
 data/*.osm.pbf
 node_modules/
 .venv/
@@ -19,6 +19,9 @@ data/PermBikeRestrictions.zip
 data/permbike/
 data/wsdot_bike_facilities.geojson
 data/wsdot_legal_speeds.geojson
+# The same two files for any other state's agency fetcher (scripts/build_odot.py).
+data/odot_bike_facilities.geojson
+data/odot_legal_speeds.geojson
 # local test scaffolding
 _*.mjs
 _*.html
@@ -39,4 +42,12 @@ data/roadlog.geojson
 data/funcclass.geojson
 data/aadt.geojson
 data/hpms.geojson
+# ...and their per-state names, once more than one state builds them.
+data/roadlog-*.geojson
+data/funcclass-*.geojson
+data/aadt-*.geojson
+data/hpms-*.geojson
 data/.cache/
+# Scratch: build logs and the verification harness's dumps. Rebuildable, and
+# the route dumps are ~12 MB each because they carry every option's geometry.
+data/_*

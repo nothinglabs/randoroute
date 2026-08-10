@@ -40,20 +40,76 @@ So this can land in increments, each shippable and each independently verifiable
 **Each stage has a test that proves it.** These are the acceptance gates, not a
 suggestion:
 
-| # | Ships | Proved by |
-|---|---|---|
-| 1 | `region.json` + `npm run maps:registry` | `test_region_portable.mjs`, `test_maps_states_screen.mjs` |
-| 2 | `places.json` | search returns that state's towns and not the previous state's |
-| 3 | `basemap.pmtiles` | map opens on the state; coastline the right way round |
-| 4 | `roads.pmtiles` | `test_build_parity.py`, `test_road_geometry.py` |
-| 5 | `graph2.bin.gz` | **`test_corridor_severance.mjs`, with that state's corridors** |
-| 6 | agency stress / speeds / facilities | `test_fact_contract.mjs` |
+| # | Ships | Proved by | Reads the new state? |
+|---|---|---|---|
+| 1 | `region.json` + `npm run maps:registry` | `test_region_portable.mjs`, `test_maps_states_screen.mjs` | yes |
+| 2 | `places.json` | search returns that state's towns and not the previous state's | yes |
+| 3 | `basemap.pmtiles` | map opens on the state; coastline the right way round | yes |
+| 4 | `roads.pmtiles` | `test_build_parity.py`, `test_road_geometry.py` | **no** |
+| 5 | `graph2.bin.gz` | **`test_corridor_severance.mjs`, with that state's corridors** | yes |
+| 6 | agency stress / speeds / facilities | `test_fact_contract.mjs` | **no** |
+
+Read that last column before trusting a green run. `test_build_parity.py` checks
+that the tile build and the graph build still share one decision layer;
+`test_road_geometry.py` checks a surveyed traffic circle in Seattle;
+`test_fact_contract.mjs` samples Washington's tiles and graph. All three pass
+whether or not your state exists. They are worth running -- a port that breaks
+the shared decision layer breaks Washington too -- but **stage 5 is the only
+gate that actually looks at what you built**, which is another reason it is the
+one that matters.
 
 **Stage 5 is the one that matters.** It is the only test that catches a broken
 import rather than a broken opinion: a severed corridor showed up as 10.7x the
 straight-line distance while three control corridors passed (lesson C1/C2).
 Choose four or five real corridors in the state **before building anything** —
 they are the spec.
+
+### The tools, since no document used to say
+
+A bare container has none of them:
+
+```bash
+pip install shapely osmium Pillow numpy pyshp
+apt-get install -y tippecanoe osmium-tool
+```
+
+`tippecanoe` is not optional and does not come with the test image: three tests
+exit 77 without it, and both tile builds fail.
+
+### Every builder's defaults are Washington's. Pass every path.
+
+`build_graph.py` and `build_roads.py` each take eight or nine source paths and
+every default names a Washington file. A port that forgets one does not fail --
+it silently conflates Washington's data onto its own state's geometry, or (if
+the file is absent) quietly skips a source it thinks it imported. Pass all of
+them explicitly, and pass `""` for the ones your state does not have, which is
+a statement rather than an accident. Oregon's `maps/oregon/BUILD.md` does this
+and says why for each empty string.
+
+The same goes for the small ones, all of which take a state or a bounds now and
+none of which did before the first port: `fetch_census_urban_areas.py`,
+`build_routes.py --bounds`, `build_overlay_tiles.py --state`,
+`build_hpms.py --state --year`, `stamp_tiles_version.mjs <state>`,
+`build_compressed_overlays.mjs` (walks the registry).
+
+### "Nothing outside `maps/` names a state" is about the APP, not the build
+
+`region.js`, `app.js`, `router-worker.js` and `sw.js` genuinely resolve
+everything through `Region`. The **build scripts do not**, and cannot entirely:
+`scripts/build_odot.py` is Oregon's fetcher and `scripts/build_blts.py` is
+Washington's, because an agency's REST service and field names are not
+configuration. What matters is the boundary: a fetcher translates its agency's
+vocabulary into the field names the shared builders read (`RouteIdentifier`,
+`LTS_Bicycle`, `ShoulderWidth`, `SpeedLimit`, `BikeFacilityType`, `fc`,
+`owner`, `adt`, `adty`). Those names look like WSDOT's because Washington was
+first; treat them as the build contract and translate into them.
+
+One thing that is genuinely on the wrong side of the line and was left there:
+`SOURCES` in `app.js` bakes Washington's feature counts (`count: 55271`,
+`count: 37788`) for the two overlay layers, since a vector tile carries no
+global count. Oregon's are 81,210 and 37,256. The value is only shown in the
+layer list, so it is cosmetic -- but it is a state fact in shared code and
+belongs in `region.json`.
 
 ### Known blockers, so they are not discoveries
 
@@ -69,8 +125,18 @@ they are the spec.
   already portable. Its one external input is the Natural Earth land polygon --
   world coverage, clipped per state — fetched by
   `scripts/fetch_natural_earth.sh` into the path the builder now defaults to.
-- `build_hpms.py` needs only the state name and year. It is the
-  nationally-uniform traffic source and the highest-value single fetch (A3).
+- `build_hpms.py --state <State> --year <year>` is the nationally-uniform
+  traffic source and the highest-value single fetch (A3). **Probe the year**:
+  FHWA has not published every state at the same vintage, and a wrong year is a
+  404 rather than a wrong number. Washington and Oregon are both 2018.
+- `scripts/fetch_census_urban_areas.py <state>` reads the same box from the same
+  `region.json` and writes `data/census-urban-areas-2020-<state>.geojson`. Both
+  tile and graph builds want it.
+- **A state may simply not publish something.** Oregon has no county road
+  inventory and no bicycle-prohibition layer, so `--roadlog` and
+  `--restrictions` are empty strings there, and `inferShoulderFromEdge` -- which
+  recovers 1,696 miles of verdict in Washington -- can never fire. Declare the
+  absence; do not go looking for a substitute of a different kind.
 
 ### Report back on these documents
 

@@ -229,7 +229,7 @@ if __name__ == "__main__":
                     help="path to PermanentBikeRestrictions.gdb to flag prohibited segments")
     ap.add_argument("--routes", default=None,
                     help="path to bikeroutes.geojson to flag designated-route segments")
-    ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-wa.geojson',
+    ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-washington.geojson',
                     help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
     ap.add_argument('--enrich-existing', action='store_true',
                     help='add Urban=1 context to --out without reading the raw WSDOT export')

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Build data/hpms.geojson from FHWA's HPMS Public Release for Washington.
+Build data/hpms.geojson from FHWA's HPMS Public Release for one state.
 
 BUILD-TIME ONLY.
 
 Source: FHWA Highway Performance Monitoring System, public geospatial release
-  https://geo.dot.gov/server/rest/services/Hosted/Washington_2018_PR/
+  https://geo.dot.gov/server/rest/services/Hosted/<State>_<year>_PR/
     FeatureServer/0
 
 Why this one matters: it is the only source found with traffic volume for CITY
@@ -33,7 +33,12 @@ Sections carry no usable name -- they are keyed by LRS `route_id` -- so matching
 is geometric, and the sections are short. See scripts/roadmeasure.py.
 
 Usage:
-  python3 scripts/build_hpms.py --out data/hpms.geojson
+  python3 scripts/build_hpms.py --state Washington --year 2018 \
+                                --out data/hpms.geojson
+
+The service name is the only thing that changes between states, and not
+every state is published at the same vintage -- probe the year before
+assuming one. As of 2026 Washington and Oregon are both 2018.
 """
 import argparse
 import json
@@ -43,8 +48,15 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import arcgis  # noqa: E402
 
-LAYER = ("https://geo.dot.gov/server/rest/services/Hosted/"
-         "Washington_2018_PR/FeatureServer/0")
+LAYER_TEMPLATE = ("https://geo.dot.gov/server/rest/services/Hosted/"
+                  "{state}_{year}_PR/FeatureServer/0")
+
+# The hosted release year is per state -- FHWA has not published every state at
+# the same vintage. Washington's is 2018 and Oregon's is 2018; neither is a
+# default the next state can assume, so --year is required to be stated and the
+# fetch fails loudly rather than silently reading a different year's counts.
+def layer_url(state, year):
+    return LAYER_TEMPLATE.format(state=state.replace(" ", "_"), year=year)
 
 FIELDS = ["objectid", "route_id", "aadt", "year_record", "f_system",
           "ownership", "through_lanes", "speed_limit", "urban_code"]
@@ -54,13 +66,14 @@ FIELDS = ["objectid", "route_id", "aadt", "year_record", "f_system",
 OWNER_STATE, OWNER_COUNTY, OWNER_TOWN, OWNER_CITY = 1, 2, 3, 4
 
 
-def build(out_path, cache_dir, limit=None):
+def build(out_path, cache_dir, state, year, limit=None):
     stats = {"rows": 0, "geom": 0, "aadt": 0, "city": 0, "county": 0, "state": 0}
     by_class = {}
     features = []
-    for f in arcgis.fetch_all(LAYER, FIELDS, where="aadt>0", cache_dir=cache_dir,
+    layer = layer_url(state, year)
+    for f in arcgis.fetch_all(layer, FIELDS, where="aadt>0", cache_dir=cache_dir,
                               order_by="objectid", page=1000,
-                              label="FHWA HPMS Washington"):
+                              label=f"FHWA HPMS {state} {year}"):
         a = f.get("attributes") or {}
         stats["rows"] += 1
         paths = arcgis.paths_of(f.get("geometry"))
@@ -88,14 +101,16 @@ def build(out_path, cache_dir, limit=None):
         if fc:
             by_class[fc] = by_class.get(fc, 0) + 1
 
-        year = arcgis.num(a.get("year_record"))
-        year = int(year) if year and 1980 <= year <= 2035 else None
+        # NOT the --year argument: this is the year FHWA records for the
+        # individual section, which can predate the release.
+        rec_year = arcgis.num(a.get("year_record"))
+        rec_year = int(rec_year) if rec_year and 1980 <= rec_year <= 2035 else None
         lanes = arcgis.num(a.get("through_lanes"))
         speed = arcgis.num(a.get("speed_limit"))
 
         props = {
             "adt": aadt,
-            "adty": year,
+            "adty": rec_year,
             "fc": fc,
             "owner": owner,
             "lanes": int(lanes) if lanes and lanes > 0 else None,
@@ -133,11 +148,18 @@ def build(out_path, cache_dir, limit=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--state", default="Washington",
+                    help="the state as FHWA spells it in the service name")
+    ap.add_argument("--year", default="2018",
+                    help="the hosted release year for that state")
     ap.add_argument("--out", default="data/hpms.geojson")
-    ap.add_argument("--cache", default="data/.cache/hpms")
+    ap.add_argument("--cache", default=None,
+                    help="default data/.cache/hpms-<state>-<year>; per state, or a\n"
+                         "second state silently re-reads the first one's pages")
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
-    build(args.out, args.cache, args.limit)
+    cache = args.cache or f"data/.cache/hpms-{args.state.lower()}-{args.year}"
+    build(args.out, cache, args.state, args.year, args.limit)
 
 
 if __name__ == "__main__":

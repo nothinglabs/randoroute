@@ -1,0 +1,47 @@
+{
+  "note": "The stage-5 spec for this state, nominated BEFORE anything was built (see docs/IMPORT-A-STATE.md). Six corridors a local cyclist rides on ordinary roads, chosen to cover Oregon's distinct regions rather than to be easy. Read by scripts/test_corridor_severance.mjs. 'maxRatio' is a severance detector, not a distance pin (lesson G2): it catches 'the router went around three counties', not 'this is 8% longer than last month'.",
+  "corridors": [
+    {
+      "name": "Portland -> Hood River (Columbia Gorge)",
+      "a": [-122.6765, 45.5231],
+      "b": [-121.5211, 45.7054],
+      "maxRatio": 2.5,
+      "why": "The Historic Columbia River Highway State Trail is the signed non-freeway way east through the Gorge, and its last gap (Mitchell Point) closed in 2024. If the trail is not stitched into the graph, I-84 is the only through route and this corridor is the state's DuPont: a single missing link between two walls of basalt."
+    },
+    {
+      "name": "Astoria -> Tillamook (north coast, US 101)",
+      "a": [-123.8313, 46.1879],
+      "b": [-123.8443, 45.4562],
+      "maxRatio": 2.5,
+      "why": "The Oregon Coast Bike Route, and the first leg of Adventure Cycling's Pacific Coast route. US 101 is the only continuous corridor; the Coast Range has no parallel road. Tests that the router will use a real highway when a highway is what exists, instead of inventing a hundred-mile logging-road detour."
+    },
+    {
+      "name": "Eugene -> Corvallis (Willamette Valley)",
+      "a": [-123.0868, 44.0521],
+      "b": [-123.262, 44.5646],
+      "maxRatio": 2.5,
+      "why": "The densest low-stress grid in the state and the spine of the Willamette Valley Scenic Bikeway. Two university towns 36 miles apart with a lattice of farm roads between them: if this one comes back long, the problem is the router, not the corridor."
+    },
+    {
+      "name": "Bend -> Sisters (Central Oregon)",
+      "a": [-121.3153, 44.0582],
+      "b": [-121.5495, 44.2909],
+      "maxRatio": 2.5,
+      "why": "High desert east of the Cascades, where the network is sparse and OR 126 / OR 20 carry everything. The Twin Bridges loop out of Bend is one of the most-ridden routes in the state; a rider gets there on ordinary road."
+    },
+    {
+      "name": "Medford -> Ashland (Rogue Valley)",
+      "a": [-122.8756, 42.3265],
+      "b": [-122.7095, 42.1946],
+      "maxRatio": 2.5,
+      "why": "The Bear Creek Greenway is a continuous separated path linking these two, parallel to I-5. Short, southern, and the one corridor where a fully separated facility should be the obvious answer -- so a freeway or an arterial in the shortest option means the path is severed."
+    },
+    {
+      "name": "Baker City -> John Day (Eastern Oregon)",
+      "a": [-117.8344, 44.7749],
+      "b": [-118.9219, 44.416],
+      "maxRatio": 2.5,
+      "why": "Adventure Cycling's TransAmerica Trail runs this, and it is the emptiest quarter of the state: US 26 and OR 7 over Dixie and Tipton passes with nothing either side for fifty miles. Tests the half of Oregon where a severed link has no alternative at all."
+    }
+  ]
+}
