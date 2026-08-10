@@ -133,7 +133,7 @@ check('confirming removes the saved route', await page.evaluate(() =>
   loadSavedRoutes().length === 0 && document.querySelectorAll('.saved-row').length === 0));
 check('the saved-routes flow has no JavaScript errors', errors.length === 0, errors.join(' | '));
 
-const navigationTab = await page.evaluate(() => {
+await page.evaluate(() => {
   document.getElementById('routesDialog')?.close();
   Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
     watchPosition: () => 1,
@@ -147,6 +147,16 @@ const navigationTab = await page.evaluate(() => {
   routing.end = [-122.30, 47.64];
   refreshNavigationUI();
   selectPanelTab('route');
+});
+// Setting endpoints can put a route request in flight, and Navigate refuses to
+// start on top of one -- "Wait for the updated route before starting
+// navigation." This test is about where the panel sits once navigation is
+// running, not about racing the router, so let the router settle first. In
+// isolation it always had; under a loaded suite it did not, and the click then
+// did nothing at all.
+await page.waitForFunction(
+  () => !routing.pendingRoute && !routing.routeRequestActive, null, { timeout: 30000 });
+const navigationTab = await page.evaluate(() => {
   const routeTipsRect = document.getElementById('routeTipsBtn').getBoundingClientRect();
   document.getElementById('navStartButton').click();
   const active = document.querySelector('.tab.active');
