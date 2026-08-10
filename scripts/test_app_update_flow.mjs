@@ -93,6 +93,14 @@ const answer = async (buttonId = 'checkUpdatesBtn') => page.evaluate(async (id) 
   document.getElementById('helpDialog')?.showModal?.();
   const status = document.getElementById('updateCheckStatus');
   status.textContent = '';
+  // Clear the TOAST too. The loop below returns once the toast is non-empty,
+  // and only the status line was being reset -- so when the toast lagged the
+  // status under load, the loop returned holding the previous action's toast
+  // and the "they agree" check failed on a value this check never wrote. That
+  // is the flake that showed up in three runs out of five and passed every
+  // time it was re-run alone.
+  const toastEl = document.getElementById('routeActionText');
+  if (toastEl) toastEl.textContent = '';
   document.getElementById(id).click();
   const started = performance.now();
   while (performance.now() - started < 60000) {
@@ -101,6 +109,13 @@ const answer = async (buttonId = 'checkUpdatesBtn') => page.evaluate(async (id) 
     // so reading it the instant the status appears caught it empty. Wait for
     // both -- the claim is that the two agree, not that they land together.
     const toast = document.getElementById('routeActionText')?.textContent || '';
+    // KNOWN FRAGILE. This returns once both are written, and the check below
+    // then asserts they AGREE. Requiring agreement here instead makes the loop
+    // run out (ms: -1) under contention, which means the toast sometimes
+    // settles on something other than the status line -- a real disagreement,
+    // not a lag. Left as-is deliberately: tightening it turns an intermittent
+    // red into a permanent one without establishing which of the two is right.
+    // See the note in issues.md.
     if (text && !text.startsWith('Checking') && toast) return {
       text, toast, ms: Math.round(performance.now() - started),
     };
