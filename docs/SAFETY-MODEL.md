@@ -150,7 +150,7 @@ hue separation:
 | off-street trail | same lime, dark dashed centreline | `#b7c900` + `#4c5c00` |
 | passes | solid | `#168ad1` |
 | caution | perpendicular rungs in the danger red | `#c25d05` + `#a51c30` |
-| fails | white diagonal slashes, like hazard tape | `#a51c30` + white |
+| fails | dashed, with the map showing through the gaps | `#a51c30` |
 | bikes prohibited | wide translucent dashed ribbon, over the verdict | `#a51c30` at 42% |
 
 **The colours were chosen numerically, not by eye.** Search for the pair that
@@ -193,19 +193,34 @@ than by a second green.
 
 Patterns are authored at `pixelRatio` 2 and drawn only above
 `PATTERN_MIN_ZOOM` (13). Below that a road is a few pixels wide and any texture
-smears into a solid line, so lightness carries it alone. `addVerdictPatterns()` builds the tiles. `roads__caution` and `roads__slash`
-draw them, and because they are decoration on the road below they take the
-**same filter, width, class-masked opacity and Layers toggles** as that line.
-Two bugs came from getting this wrong: an overlay filtered on level alone drew
-verdicts the rider had switched off, and one with a flat opacity made a failing
-freeway and a failing local street fade at different zooms, because only the
-line underneath was class-masked.
+smears into a solid line, so lightness carries it alone. `addVerdictPatterns()`
+builds the tiles and `roads__caution` draws them; because the rungs are
+decoration on the road below they take the **same filter, width, class-masked
+opacity and Layers toggles** as that line. Two bugs came from getting this
+wrong: an overlay filtered on level alone drew verdicts the rider had switched
+off, and one with a flat opacity made a failing freeway and a failing local
+street fade at different zooms, because only the line underneath was
+class-masked.
 
-`roads__vh` carries `maxzoom: PATTERN_MIN_ZOOM` and the slash carries the
-matching `minzoom`, so they hand over at exactly one zoom, never both and never
-neither. Below it a failure is a **solid** red line, above it the same red
-slashed — one symbol gaining detail. It used to be a chunky dash below, which
-read as a different symbol entirely and made the handover jarring.
+**A failure is a dash, not a pattern, and it is the same dash at every zoom.**
+`roads__vh` carries level 4 alone — no `maxzoom`, no handover — as a
+`FAIL_DASH` of `[2.6, 1.3]` in the fail red. A dasharray is authored in
+line-width multiples, so it scales with the road rather than changing symbol at
+a threshold. The gaps are genuinely transparent: `visibleRoadCategoryFilter()`
+never matches level 4, so nothing paints underneath and the map shows through.
+`roads__fail` (the grey pass/fail dash) stops at level 3 and `roads__vh` no
+longer defers to it, so exactly one layer draws a failing road in either
+display mode.
+
+This replaced white diagonal slashes drawn above z13, which were wrong twice
+over. They were `PATTERN_PROHIBITED` — the very image the bikes-prohibited
+layer draws — so above z13 a road that merely fails your rules and a road
+bicycles may not legally use were the same symbol. And they existed only above
+z13, so a road changed appearance as the rider zoomed without anything about
+the road changing. Removing the white, nearly 40% of that pattern's pixels, is
+what makes the line read darker; the numerically-optimised palette above is
+untouched. `test_fail_road_style.mjs` walks the rendered pixels at z12 and z15
+and asserts ink and gaps at both.
 
 **A prohibited road is a failing road**, the strongest kind, so it keeps its
 failure colouring and the prohibition rides **on top** as a wide translucent
@@ -623,12 +638,42 @@ facility supplies the safety verdict" — while showing nothing about that road.
 On the Olympic Discovery Trail: the corridor that runs 58.8 miles along ordinary
 road, including US 101 at 60 mph with no shoulder, and the reason no designation
 may excuse anything. The rider was shown the designation and denied the verdict.
-`featureAt` returns the topmost **scored** feature whatever the draw order, and
-a ribbon answers only when nothing scored is under the tap. The road card names
-the route it carries regardless.
+`featureAt` returns a **scored** feature whatever the draw order, and a ribbon
+answers only when nothing scored is under the tap. The road card names the route
+it carries regardless.
+
+**A card must not be the only voice disagreeing with the map.** One decision
+layer unified the *judgement*; it never unified the *evidence*. `SOURCES`
+carries three scorers over three descriptions of the same road, and `blts` is
+hit-tested but **never painted** — `applyDisplayMode()` filters its paint
+layers off, because the agency's increasing- and decreasing-milepost inventory
+lines would draw on top of one another, and the state-highway verdict is
+conflated onto the OSM centreline in `roads.pmtiles` instead. The card kept
+evaluating the tapped inventory record. On OR 224 at Three Lynx it read
+"Passes your rules" on a road the map drew red and the router detours 45 miles
+to avoid; the router and the map agreed, and the card was the outlier.
+
+So the verdict now comes from the **painted** road — `UNPAINTED_SOURCES` names
+the sources this applies to, and `paintedRoadAt()` finds it — while the agency
+record keeps the detail rows, which is what it is good for. Where the two
+disagree the card says so in an *Agency record* row rather than hiding it.
+`test_verdict_agreement.mjs` asserts the invariant for every state that ships a
+graph, sampling real edges and comparing `SafetyModel.evaluate()` (what the card
+calls) against `edgeLevel()` (what the router calls).
+
+**And a tap must resolve to the nearest thing, not the topmost.**
+`queryRenderedFeatures` returns everything in the pad box in draw order. At the
+seam between two records of one highway that is a coin flip, and ODOT books 3 ft
+on one segment and 4 ft on the next — two taps a moment apart, two opposite
+verdicts. Where records genuinely coincide, a measured shoulder beats an
+unpopulated one (an absent measurement is not a measurement of zero, whatever
+the ladder scores an *unknown* shoulder as) and the narrowest measured value
+wins. The two directions of a road are not duplicates: only records sharing a
+`RouteIdentifier` reconcile, so `wsdotShoulderText()` still reports both sides.
 
 The shared lesson: agreeing on one reader is not enough. The data has to survive
-the trip, and the card has to be reachable.
+the trip, the card has to be reachable, and it has to be reading the same road
+the rider is looking at.
 
 ## Adding another state
 

@@ -10622,6 +10622,29 @@ function reconcileCoincident(feats) {
     (b.properties.ShoulderWidth < a.properties.ShoulderWidth ? b : a));
 }
 
+// Sources that are hit-tested but never painted.
+//
+// applyDisplayMode() filters every blts paint layer to false, because the
+// agency's increasing- and decreasing-milepost inventory lines would draw on
+// top of one another; the state-highway verdict is conflated onto the matching
+// OSM centreline in roads.pmtiles instead, and THAT is what a rider sees. The
+// card kept evaluating the tapped inventory record, which made it the only
+// voice in the app that could disagree with the map and the route at once.
+const UNPAINTED_SOURCES = new Set(['blts']);
+
+// The painted road under a tap. roads.pmtiles is the source the tile build and
+// the graph build share a decision layer over (test_build_parity.py), so its
+// verdict is both the one on screen and the one the router used.
+function paintedRoadAt(point) {
+  const layer = 'roads__hit';
+  if (!point || !map.getLayer(layer)) return null;
+  if (map.getLayoutProperty(layer, 'visibility') === 'none') return null;
+  const pad = 6;
+  return nearestOfHits(point, map.queryRenderedFeatures(
+    [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]],
+    { layers: [layer] }));
+}
+
 // Designated-route labels under a screen point (e.g. "US Bicycle Route 10"),
 // deduped across overlapping relations; null when none or the layer is off.
 function routeBadgeAt(point) {
@@ -11422,7 +11445,25 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
     });
     return;
   }
-  const n = src.scorer(p);            // recompute normalized props from this feature
+  const nOwn = src.scorer(p);         // this feature's own normalized props
+  // The verdict must be the one the rider can SEE and the one the router used.
+  // For an unpainted source it is neither: OR 224 at Three Lynx read "Passes
+  // your rules" from ODOT's inventory while the map drew the road red and the
+  // router detoured 45 miles around it. So the verdict comes from the painted
+  // road and the agency record keeps the detail rows below -- it is the better
+  // DESCRIPTION of the road; it was simply never the thing being drawn.
+  let verdictSrc = src, verdictProps = p;
+  let unpaintedVerdict = null;
+  if (UNPAINTED_SOURCES.has(src.id)) {
+    const painted = paintedRoadAt(anchorPoint);
+    const paintedSrc = painted && HIT_SRC[painted.layer.id];
+    if (paintedSrc) {
+      verdictSrc = paintedSrc;
+      verdictProps = painted.properties;
+      unpaintedVerdict = evaluateRoad(nOwn);
+    }
+  }
+  const n = verdictSrc === src ? nOwn : verdictSrc.scorer(verdictProps);
   // One evaluation drives the headline, the reason, and the colour. It used to
   // read p.level (the router's answer) for the headline and re-derive the
   // reason, so a card could say "Passes your rules" above "Fails: ...". Both
@@ -11556,17 +11597,26 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
     rows = [
       ['Route', p.RouteIdentifier],
       ...common,
-      ['BLTS (WSDOT)', p.LTS_Bicycle],
+      // Every row below describes the AGENCY record, so they read nOwn, not
+      // the painted road the verdict above came from.
+      ...(unpaintedVerdict && unpaintedVerdict.level !== lvl
+        ? [['Agency record', `${Region.stressAgency} books this stretch as `
+            + `${readoutVerdict(nOwn, unpaintedVerdict.level, unpaintedVerdict)}. `
+            + 'The verdict above is the road as drawn and as routed, which is '
+            + 'what the map and your route agree on.']]
+        : []),
+      [`BLTS (${Region.stressAgency})`, p.LTS_Bicycle],
       ['Speed limit', p.SpeedLimit != null ? p.SpeedLimit + ' mph' : null],
       ['Lanes', p.LaneCount],
       ['AADT', p.AADT != null ? Number(p.AADT).toLocaleString() : null],
       ['Shoulder', wsdotShoulderText(anchorPoint, p)],
-      ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
+      ['Area', nOwn.urban ? 'Urban (Census)' : 'Rural (Census)'],
       ['Sidewalk (OSM)', wsdotSidewalkAt(lngLat)],
       ['Bike facility', p.BikeFacilityType],
       ['Designated bike route', p.Designated === 1 ? 'yes' : null],
       ['Limited access', p.LimitedAccess ? 'yes' : null],
-      ['Bikes prohibited', p.Prohibited ? 'yes (WSDOT restriction)' : null],
+      ['Bikes prohibited',
+        p.Prohibited ? `yes (${Region.restrictionAgency} restriction)` : null],
     ];
   }
   // If a designated route runs through this spot, include its designation in
