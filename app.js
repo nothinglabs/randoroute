@@ -1694,9 +1694,18 @@ const FAIL_COLOR = '#9aa0a6';
  * all collapse into one olive family; only the pass blue survives. So the
  * verdicts are separated by TEXTURE first and lightness second:
  *
- *   prohibited  white diagonal slashes on red (hazard tape)
+ *   fails       dark red DASH, with the map showing through the gaps
  *   caution     perpendicular ticks (rungs across the road)
  *   passes      solid
+ *
+ * The failure used to be white diagonal slashes on red, and that was wrong
+ * twice over. It was the same image the bikes-prohibited layer draws, so above
+ * z13 a failing road and a road bicycles may not legally use were the same
+ * symbol; and it only existed above z13, so a failing road changed appearance
+ * as the rider zoomed -- solid below, hatched above. A dash is authored in
+ * line-width multiples, so it scales with the road and reads identically at
+ * every zoom. The white also lightened the line by nearly 40% of its pixels,
+ * which is why removing it reads as darker without touching the palette.
  *
  * The colours themselves were chosen numerically: search for the pair that
  * maximises the SMALLEST CIELAB distance between any two roles, evaluated under
@@ -1710,8 +1719,10 @@ const FAIL_COLOR = '#9aa0a6';
  * and any texture smears into a solid line, where lightness carries it alone.
  */
 const PATTERN_MIN_ZOOM = 13;
-const PATTERN_PROHIBITED = 'verdict-prohibited';
 const PATTERN_CAUTION = 'verdict-caution';
+// Level 4's dash, in line-width multiples: about two-thirds ink, so the road
+// still reads as a continuous way rather than a row of ticks.
+const FAIL_DASH = [2.6, 1.3];
 function patternTile(size, colorAt) {
   const data = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
@@ -1727,11 +1738,6 @@ function patternTile(size, colorAt) {
   return { width: size, height: size, data, pixelRatio: 2 };
 }
 function addVerdictPatterns() {
-  if (!map.hasImage(PATTERN_PROHIBITED)) {
-    // Slashes shift 0.6 px per row so the 16 px tile repeats seamlessly.
-    map.addImage(PATTERN_PROHIBITED, patternTile(16, (x, y) => (
-      (((x + Math.round(y * 0.6)) % 8) + 8) % 8 < 3 ? '#ffffff' : COLORS[4])));
-  }
   if (!map.hasImage(PATTERN_CAUTION)) {
     // The rungs are the DANGER red, not white: a cautioned road is one heading
     // toward a failure, and saying so in the same red ties the two together.
@@ -1745,7 +1751,6 @@ const failId = (src) => src.id + '__fail'; // gray-dashed "has data but fails" (
 const vhId = (src) => src.id + '__vh';     // red-dashed "very high / avoid" (color-ramp mode)
 const prohibitedId = (src) => src.id + '__prohibited';
 const cautionId = (src) => src.id + '__caution';
-const slashId = (src) => src.id + '__slash';
 const hitId = (src) => src.id + '__hit';   // wide transparent line: easy hover target
 // Invisible tap targets draw nothing yet bucket every feature their tiles
 // carry -- and the overlay archive deliberately carries the FULL statewide
@@ -1903,22 +1908,23 @@ function ensureLayer(src) {
       'line-width': safetyRoadWidth(src),
       'line-opacity': backgroundLineOpacity(0.65),
     },
-    filter: ['all', ['>=', ['get', 'level'], display.passMax + 1], ['<=', ['get', 'level'], 4]],
+    filter: ['all', ['>=', ['get', 'level'], display.passMax + 1], ['<=', ['get', 'level'], 3]],
   }, beforeId);
   forgetStyleValues(); map.addLayer({
-    id: vhId(src), // color-ramp mode: level 4 shown dashed to read as "not passable"
+    id: vhId(src), // level 4: the single representation of a failing road
     type: 'line',
     source: mapSourceId,
     ...SL,
     minzoom: src.minVisibleZoom || 0,
-    // Handed over to the slash pattern once roads are wide enough to show one.
-    maxzoom: PATTERN_MIN_ZOOM,
     layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
     paint: {
-      // Solid below PATTERN_MIN_ZOOM, slashed above: the same red line gaining
-      // detail as you zoom in. It used to be a chunky dash, which read as a
-      // different symbol from the fine hatch and made the handover jarring.
+      // No maxzoom and no pattern handover: this one layer carries level 4 at
+      // every zoom. The gaps are genuinely transparent -- the main layer's
+      // filter (visibleRoadCategoryFilter) never matches level 4 -- so the map
+      // shows through, which is what makes it read as a dashed line rather than
+      // a textured one.
       'line-color': COLORS[4],
+      'line-dasharray': FAIL_DASH,
       'line-width': safetyRoadWidth(src),
       'line-opacity': backgroundLineOpacity(0.9),
     },
@@ -1966,20 +1972,6 @@ function ensureLayer(src) {
         'line-opacity': backgroundLineOpacity(0.95),
       },
       filter: ['==', levelExpr, 3],
-    }, beforeId);
-    forgetStyleValues(); map.addLayer({
-      id: slashId(src),
-      type: 'line',
-      source: mapSourceId,
-      ...SL,
-      minzoom: PATTERN_MIN_ZOOM,
-      layout: { 'line-cap': 'butt', 'line-join': 'round', visibility: 'none' },
-      paint: {
-        'line-pattern': PATTERN_PROHIBITED,
-        'line-width': safetyRoadWidth(src),
-        'line-opacity': backgroundLineOpacity(0.95),
-      },
-      filter: ['==', levelExpr, 4],
     }, beforeId);
   }
   // Added last so the regulatory ribbon sits above this source's own colours
@@ -2240,9 +2232,11 @@ function updateVisibility(src) {
   if (map.getLayer(failId(src)))
     setLayout(failId(src), 'visibility',
       display.failRules && display.passFail ? 'visible' : 'none');
+  // Level 4 is the same dark red dash in BOTH display modes now, so this no
+  // longer defers to the grey pass/fail dash. failId stops at level 3 for the
+  // same reason: exactly one layer draws a failing road.
   if (map.getLayer(vhId(src)))
-    setLayout(vhId(src), 'visibility',
-      display.failRules && !display.passFail ? 'visible' : 'none');
+    setLayout(vhId(src), 'visibility', display.failRules ? 'visible' : 'none');
   if (map.getLayer(prohibitedId(src)))
     setLayout(prohibitedId(src), 'visibility',
       display.bikesProhibited ? 'visible' : 'none');
@@ -2424,7 +2418,8 @@ function applyDisplayMode(src) {
   }
   if (map.getLayer(trailHitId(src))) setLayerFilter(trailHitId(src), and(visibleTrail));
   if (map.getLayer(failId(src))) {
-    const failFilter = ['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 4]];
+    // Stops at 3: level 4 is the dark red dash on vhId, in either display mode.
+    const failFilter = ['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 3]];
     setLayerFilter(failId(src), and(src.id === 'osm'
       ? ['all', failFilter, OSM_TRAIL_EXPR] : failFilter));
     setPaint(failId(src), 'line-color', alignRoadClasses
@@ -2451,19 +2446,10 @@ function applyDisplayMode(src) {
   if (map.getLayer(prohibitedId(src))) {
     setPaint(prohibitedId(src), 'line-opacity', opacity(0.42));
   }
-  // Texture overlays. They are decoration on the road below, so they take the
-  // SAME filter, the same width and the same class-masked opacity as the line
-  // they sit on -- a flat opacity here made a failing freeway and a failing
-  // local street fade at different zooms, because only one of them was masked.
-  // Above PATTERN_MIN_ZOOM the slash replaces the dash rather than stacking on
-  // it, so exactly one representation of a failure draws at any zoom.
-  if (map.getLayer(slashId(src))) {
-    setLayerFilter(slashId(src), and(failFilter));
-    setPaint(slashId(src), 'line-width', safetyRoadWidth(src));
-    setPaint(slashId(src), 'line-opacity', opacity(0.95));
-    setLayout(slashId(src), 'visibility',
-      display.failRules ? 'visible' : 'none');
-  }
+  // Texture overlay. It is decoration on the road below, so it takes the SAME
+  // filter, the same width and the same class-masked opacity as the line it
+  // sits on -- a flat opacity here made a failing freeway and a failing local
+  // street fade at different zooms, because only one of them was masked.
   if (map.getLayer(cautionId(src))) {
     setLayerFilter(cautionId(src), and(['all', ['==', lvl, 3],
       visibleRoadCategoryFilter(src, lvl)]));

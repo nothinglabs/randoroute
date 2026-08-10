@@ -478,11 +478,15 @@ body:not(.navigation-active) #navCard { display: none; }
 .layer-toggle-swatch.trail { background: repeating-linear-gradient(90deg,var(--trail-centreline) 0 3px,var(--bike-network) 3px 6px); }
 .layer-toggle-swatch.facility { background: var(--bike-network); }
 .layer-toggle-swatch.meets { background: var(--verdict-pass); }
-/* The legend swatches must be the map's own vocabulary: a failing road is red
-   with white diagonal slashes, a caution is light amber with white rungs, and
-   bikes-prohibited keeps its own dashed line. Colours track COLORS[] in app.js
-   -- test_help_content.mjs asserts they stay in step. */
-.layer-toggle-swatch.fails { background: repeating-linear-gradient(115deg,var(--verdict-fail) 0 3px,#fff 3px 5px); }
+/* The legend swatches must be the map's own vocabulary: a failing road is a
+   dark red dash with the map showing through, a caution is light amber with
+   red rungs, and bikes-prohibited is a wider, paler dash laid over the top.
+   Colours track COLORS[] in app.js -- test_help_content.mjs asserts they stay
+   in step. The fail swatch was diagonal slashes on red, matching a map
+   treatment that has been replaced: it was the same image as bikes-prohibited
+   and it only existed above z13. FAIL_DASH in app.js is 2.6/1.3 in line-width
+   multiples; 6px/3px here is the same two-thirds-ink ratio. */
+.layer-toggle-swatch.fails { background: repeating-linear-gradient(90deg,var(--verdict-fail) 0 6px,transparent 6px 9px); }
 /* Prohibited is a translucent ribbon laid OVER the safety colouring, so its
    swatch shows the same: a wide, pale dashed band, not a solid line. */
 .layer-toggle-swatch.prohibited { background: repeating-linear-gradient(90deg,rgba(var(--verdict-fail-rgb), .45) 0 5px,transparent 5px 8px); }
