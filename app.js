@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.666';
+const APP_VERSION = '2026-08-10.667';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1720,9 +1720,35 @@ const FAIL_COLOR = '#9aa0a6';
  */
 const PATTERN_MIN_ZOOM = 13;
 const PATTERN_CAUTION = 'verdict-caution';
-// Level 4's dash, in line-width multiples: about two-thirds ink, so the road
-// still reads as a continuous way rather than a row of ticks.
-const FAIL_DASH = [2.6, 1.3];
+// Level 4's dash.
+//
+// `line-dasharray` is measured in LINE-WIDTH multiples, so a fixed pair does
+// not hold its size on screen -- it holds its size relative to the road, and
+// safetyRoadWidth runs 0.6 px at z5 to 10.4 px at z17. A flat [2.6, 1.3] was
+// therefore a 1.6 px dash out at state level and a 27 px slab up close, which
+// is the opposite of the "same symbol at every zoom" this was meant to deliver
+// (field report: "too much, and it should be consistent at various zoom
+// levels").
+//
+// So the multiplier steps DOWN as the line widens, holding the drawn dash at
+// roughly 11 px of ink and 6 px of gap throughout.
+//
+// It has to be the legacy `{ stops }` function, NOT a `['step', ['zoom'], ...]`
+// expression. `line-dasharray` is a cross-faded property: a bare map.addLayer()
+// accepts the expression form without complaint, which is what made this look
+// settled, but in the app's real layer stack the layer is silently DROPPED --
+// roads__vh and roads__prohibited both vanished and the style went from 57
+// layers to 50, with no page error anywhere. Do not "modernise" this.
+const FAIL_DASH = { stops: [
+  [5, [13.7, 7.5]], [8, [6.9, 3.8]], [11, [3.9, 2.1]],
+  [13, [2.3, 1.3]], [15, [1.5, 0.8]],
+] };
+// The prohibition ribbon is wider than the road and rides over it, so the same
+// flat-dasharray problem showed up there first and worst: at z17 its 15 px
+// line turned [2, 1.4] into a 30 px block. Same rule, sized for its own width.
+const PROHIBITED_DASH = { stops: [
+  [6, [3.2, 2.2]], [10, [1.7, 1.2]], [14, [1.0, 0.7]], [17, [0.75, 0.5]],
+] };
 function patternTile(size, colorAt) {
   const data = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
@@ -1989,7 +2015,7 @@ function ensureLayer(src) {
       // still reads. Same visual grammar as the designated-route ribbon.
       paint: {
         'line-color': COLORS[4],
-        'line-dasharray': [2, 1.4],
+        'line-dasharray': PROHIBITED_DASH,
         'line-width': ['interpolate', ['linear'], ['zoom'], 6, 3.4, 10, 6.4, 14, 11, 17, 15],
         'line-opacity': backgroundLineOpacity(0.42),
       },
@@ -2416,7 +2442,14 @@ function applyDisplayMode(src) {
   if (map.getLayer(trailBaseId(src))) {
     setLayerFilter(trailBaseId(src), and(OSM_TRAIL_EXPR));
   }
-  if (map.getLayer(trailHitId(src))) setLayerFilter(trailHitId(src), and(visibleTrail));
+  // The tap target follows trailBaseId, NOT the trails toggle. The neutral
+  // ghost above already says a trail exists whether or not its lime colouring
+  // is switched on, and the same rule has to reach the tap: with the toggle
+  // off, this filter was `false`, so the layer was visible and matched nothing
+  // and a tap on the Willamette Greenway Trail fell through to the generic
+  // "point on map" card (field report). A toggle controls COLOURING, never
+  // whether a way is there.
+  if (map.getLayer(trailHitId(src))) setLayerFilter(trailHitId(src), and(OSM_TRAIL_EXPR));
   if (map.getLayer(failId(src))) {
     // Stops at 3: level 4 is the dark red dash on vhId, in either display mode.
     const failFilter = ['all', ['>=', lvl, display.passMax + 1], ['<=', lvl, 3]];

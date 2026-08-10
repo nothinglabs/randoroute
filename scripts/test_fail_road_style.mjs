@@ -18,7 +18,7 @@ const page = await appPage(browser, site.port);
 await page.waitForFunction(
   () => typeof applyDisplayModeAll === 'function' && typeof display !== 'undefined'
     && map.getLayer('roads__vh'),
-  { timeout: 90000 });
+  null, { timeout: 90000 });
 
 /* ------------------------------------------- exactly one layer draws level 4 */
 const layers = await page.evaluate(() => ({
@@ -35,7 +35,13 @@ const layers = await page.evaluate(() => ({
 
 check('the white-slash layer is gone', layers.slash === false);
 check('the level-4 layer is still there', layers.vh === true);
-check('and it is dashed', Array.isArray(layers.dash) && layers.dash.length === 2,
+// A dasharray that does not vary with zoom cannot hold its size on screen,
+// because the unit is line-width multiples and the width ramp is 17x across
+// the zoom range. The legacy { stops } function is required here -- an
+// expression form is accepted by addLayer and then silently drops the layer.
+check('and it is dashed, with the dash varying by zoom',
+  !!layers.dash && Array.isArray(layers.dash.stops) && layers.dash.stops.length >= 3
+    && layers.dash.stops.every(([, pair]) => Array.isArray(pair) && pair.length === 2),
   JSON.stringify(layers.dash));
 check('with no maxzoom, so one symbol carries every zoom', layers.vhMaxZoom === null,
   `maxzoom=${layers.vhMaxZoom}`);
@@ -87,6 +93,10 @@ const sampleAt = async (zoom) => page.evaluate(async (z) => {
   // so every sample fell outside the canvas and the walk came back empty.
   const SAMPLE_CAP = 4000;
   let ink = 0, gap = 0, off = 0;
+  // Run lengths of consecutive inked samples: the drawn dash, in screen pixels.
+  const runs = [];
+  let run = 0;
+  const endRun = () => { if (run) runs.push(run); run = 0; };
   outer: for (const f of feats) {
     const g = f.geometry;
     const lines = g.type === 'MultiLineString' ? g.coordinates
@@ -100,19 +110,26 @@ const sampleAt = async (zoom) => page.evaluate(async (z) => {
         for (let s = 0; s < steps; s++) {
           const t = s / steps;
           const hit = reddish(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
-          if (hit === null) off++;
-          else if (hit) ink++;
-          else gap++;
+          if (hit === null) { off++; endRun(); }
+          else if (hit) { ink++; run++; }
+          else { gap++; endRun(); }
           if (ink + gap >= SAMPLE_CAP) break outer;
         }
       }
+      endRun();
     }
+    endRun();
   }
-  return { found: feats.length, walked: ink + gap, ink, gap, off };
+  runs.sort((a, b) => a - b);
+  const median = runs.length ? runs[Math.floor(runs.length / 2)] : 0;
+  return { found: feats.length, walked: ink + gap, ink, gap, off,
+    dashes: runs.length, medianDashPx: median };
 }, zoom);
 
+const seen = {};
 for (const zoom of [12, 15]) {
   const s = await sampleAt(zoom);
+  seen[zoom] = s;
   check(`z${zoom}: the app draws roads as level 4`, s.found > 0, JSON.stringify(s));
   check(`z${zoom}: enough of a line on screen to judge`, s.walked >= 60, JSON.stringify(s));
   // A solid line would be all ink; the old white hatch above z13 would also
@@ -121,7 +138,17 @@ for (const zoom of [12, 15]) {
   check(`z${zoom}: the line is inked`, s.ink / Math.max(1, s.walked) > 0.2, JSON.stringify(s));
   check(`z${zoom}: and it has gaps -- it is a dash, not a solid line`,
     s.gap / Math.max(1, s.walked) > 0.12, JSON.stringify(s));
+  // The point of stepping FAIL_DASH down as the line widens. A dasharray is
+  // measured in line-width multiples, so a flat pair drew a 1.6 px tick at
+  // state level and a 27 px slab up close -- the same defect the zoom handover
+  // was removed to fix, just moved into the dash itself.
+  check(`z${zoom}: the drawn dash is a dash, not a slab`,
+    s.medianDashPx >= 4 && s.medianDashPx <= 24,
+    `median ${s.medianDashPx} px over ${s.dashes} dashes`);
 }
+check('the dash is about the same size on screen at both zooms',
+  Math.abs(seen[12].medianDashPx - seen[15].medianDashPx) <= 9,
+  `z12 ${seen[12].medianDashPx} px vs z15 ${seen[15].medianDashPx} px`);
 
 await browser.close();
 await site.close();

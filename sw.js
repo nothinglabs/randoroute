@@ -20,12 +20,12 @@ importScripts('./build-version.js');
 const DATA_ROOT = `./${Region.dataRoot}`;
 const stateFile = (name) => `${DATA_ROOT}/${name}`;
 
-// v642: maps/states.js gained Oregon. That file is SHELL, not data -- it is the
-// index naming which states exist -- so an installed PWA keeps serving the
-// one-state copy out of shell-v641 until this changes. sw.js is only reinstalled
-// when its own bytes differ, so a registry change that does not touch this line
-// is invisible to everyone who already has the app.
-const VERSION = 'v642'; // bump when app shell changes
+// The shell cache is keyed on this, and sw.js is only reinstalled when its own
+// bytes differ -- so a change to any SHELL file that does not touch this line is
+// invisible to everyone who already has the app. v642 was maps/states.js
+// gaining Oregon (that file is SHELL, not data: it is the index naming which
+// states exist). v643 is app.js and styles.css.
+const VERSION = 'v643'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
