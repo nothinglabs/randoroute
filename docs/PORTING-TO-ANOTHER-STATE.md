@@ -52,9 +52,11 @@ they are the spec.
 
 ### Known blockers, so they are not discoveries
 
-- **`scripts/fetch_dem.sh` has Washington's bounding box hardcoded.** It needs a
-  bbox argument before any graph build outside Washington. This is the one hard
-  blocker between here and stage 5.
+- `scripts/fetch_dem.sh <state>` reads the box from that state's `region.json`
+  and fetches into `maps/<state>/dem/`, which is where `build_graph.py` then
+  looks. It pads a quarter degree, because a DEM sample taken on an edge that
+  leaves the coverage box would otherwise read as a cliff at the state line.
+  Budget for the download: Washington is about 6,900 tiles.
 - `build_roads.py`'s agency inputs (`--blts`, `--roadlog`, `--funcclass`,
   `--aadt`) are all optional. An OSM-only first pass with class-estimated speeds
   is the correct stage-4 target.

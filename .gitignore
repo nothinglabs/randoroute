@@ -23,6 +23,8 @@ data/wsdot_legal_speeds.geojson
 _*.mjs
 _*.html
 data/dem/
+# Elevation tiles are a build input, fetched per state and never shipped.
+maps/*/dem/
 # tippecanoe intermediates (rebuilt from the PBF; output is roads.pmtiles)
 data/roads-*.geojson
 data/*.pmtiles-journal

@@ -41,8 +41,10 @@ python3 scripts/fetch_wsdot_graph_data.py
 # 2020 Census urban areas (build input, not committed)
 python3 scripts/fetch_census_urban_areas.py
 
-# Elevation: AWS Terrarium tiles, z12 (~38 m). One-time, ~200 MB.
-bash scripts/fetch_dem.sh
+# Elevation: AWS Terrarium tiles, z12 (~38 m). One-time, ~6,900 tiles.
+# Reads the box from maps/washington/region.json; fetches into
+# maps/washington/dem/, which is where build_graph.py looks.
+bash scripts/fetch_dem.sh washington
 ```
 
 ## 2. Road measurements

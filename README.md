@@ -355,7 +355,7 @@ start at the rider's current location.
 
 ```bash
 # one-time: fetch the WA DEM (AWS Terrarium elevation tiles, z12 ≈ 38 m)
-bash scripts/fetch_dem.sh
+bash scripts/fetch_dem.sh washington
 # refresh official WSDOT legal-speed and existing-facility build inputs
 python3 scripts/fetch_wsdot_graph_data.py
 # fetch 2020 Census urban-area polygons (build input; not committed)

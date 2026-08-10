@@ -290,7 +290,12 @@ WSDOT_FACILITY_TYPE = {
 
 
 DEM_Z = 12
-DEM_DIR = 'data/dem'
+# The state's own elevation tiles, beside its other data. Set from --out's
+# folder in build(), because a graph and the DEM it was sampled from belong to
+# the same state -- reading one state's terrain into another's graph produces a
+# plausible artefact with no error anywhere. The default only serves callers
+# that never set it (the profiling paths).
+DEM_DIR = 'maps/washington/dem'
 # A marker placed in the middle of a long OSM path otherwise snaps to a distant
 # way endpoint or nearby road.  Add graph-only nodes at this spacing while
 # retaining the original path geometry for display and turn-by-turn output.
@@ -1309,6 +1314,9 @@ def stamp_graph_version(graph_path):
 
 def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=None,
           urban_areas=None, roadlog=None, funcclass=None, aadt=None, hpms=None):
+    # A graph samples the terrain of the state it is being built for.
+    global DEM_DIR
+    DEM_DIR = os.path.join(os.path.dirname(os.path.abspath(out)), 'dem')
     t0 = __import__('time').monotonic()
     def phase(msg):
         print(f'[{__import__("time").monotonic() - t0:7.1f}s] {msg}', flush=True)
