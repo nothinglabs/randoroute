@@ -20,7 +20,7 @@ importScripts('./build-version.js');
 const DATA_ROOT = `./${Region.dataRoot}`;
 const stateFile = (name) => `${DATA_ROOT}/${name}`;
 
-const VERSION = 'v638'; // bump when app shell changes
+const VERSION = 'v639'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //

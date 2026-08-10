@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.662';
+const APP_VERSION = '2026-08-10.663';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3607,7 +3607,7 @@ function navTurnText(delta, road, heading, staying, thenDelta) {
   // one that matters. The trailing comma keeps the road clause from reading as
   // part of the second steer.
   const then = thenDelta == null ? ''
-    : `, then ${thenDelta > 0 ? 'right' : 'left'}${onto ? ',' : ''}`;
+    : `, then ${thenDelta > 0 ? 'right' : 'left'}${staying && onto ? ',' : ''}`;
   if (abs >= 150) return `Make a U-turn${then}${onto}${toward}`;
   if (abs >= 55) return `Turn ${delta > 0 ? 'right' : 'left'}${then}${onto}${toward}`;
   if (abs >= 20) return `Bear ${delta > 0 ? 'right' : 'left'}${then}${onto}${toward}`;
@@ -3876,9 +3876,19 @@ function buildTurnInstructions(m) {
   // this junction may speak.
   const junctionAt = (index) => (index + 1 < segs.length
     ? Math.max(1, Math.min(coords.length - 2, segs[index + 1].c0)) : -1);
-  const localDeltaAt = (at) => navDelta(
-    routeBearingOver(coords, cumulative, cumulative[at] - TURN_BEARING_SPAN_M, cumulative[at]),
-    routeBearingOver(coords, cumulative, cumulative[at], cumulative[at] + TURN_BEARING_SPAN_M));
+  // Clamped to the neighbouring corners. The ordinary 20 m bearing window is
+  // right for a corner standing alone, but across a 15 m stub it necessarily
+  // spans the NEXT corner too, and the two swings average each other away: a
+  // 45 deg jog measures 30 and reads as nothing worth saying. Measuring each
+  // corner only as far as its neighbour gives the swing the rider actually
+  // makes there.
+  const localDeltaAt = (at, backLimit = Infinity, aheadLimit = Infinity) => {
+    const back = Math.max(4, Math.min(TURN_BEARING_SPAN_M, backLimit));
+    const ahead = Math.max(4, Math.min(TURN_BEARING_SPAN_M, aheadLimit));
+    return navDelta(
+      routeBearingOver(coords, cumulative, cumulative[at] - back, cumulative[at]),
+      routeBearingOver(coords, cumulative, cumulative[at], cumulative[at] + ahead));
+  };
   // Set when a dogleg has spoken for the corner that follows it, so that corner
   // does not then repeat itself as a maneuver of its own.
   let foldedIntoJog = -1;
@@ -3897,8 +3907,16 @@ function buildTurnInstructions(m) {
     const partnerM = partnerAt >= 0 ? cumulative[partnerAt] : Infinity;
     const partnerIsPair = partnerAt >= 0 && partnerM - junctionM < TURN_CHAIN_M
       && (followingAt < 0 || cumulative[followingAt] - partnerM >= TURN_CHAIN_M);
-    const partnerDelta = partnerIsPair ? localDeltaAt(partnerAt) : 0;
-    const localDelta = localDeltaAt(at);
+    const gap = partnerM - junctionM;
+    const partnerDelta = partnerIsPair
+      ? localDeltaAt(partnerAt, gap, followingAt >= 0 ? cumulative[followingAt] - partnerM : Infinity)
+      : 0;
+    // Where the pair leaves the rider. When the two corners are 15 m apart the
+    // road between them is a stub they are on for three seconds; the road that
+    // matters is the one they come out on.
+    const partnerTo = partnerIsPair
+      ? (navDestinationSegment(segs, i + 1)?.name || '') : '';
+    const localDelta = localDeltaAt(at, Infinity, partnerIsPair ? gap : Infinity);
     // Two real steers, in opposite directions, with straight running on both
     // sides of the pair. Decided here rather than after the filters below,
     // because a dogleg has to survive them: on the road the rider is already
@@ -3963,7 +3981,6 @@ function buildTurnInstructions(m) {
     // road the rider is joining are never silenced by this.
     let effectiveDelta = delta;
     let sustainedBearing = null;
-    let isDogleg = false;
     if (!to || sameRoad) {
       const approach = routeBearingOver(
         coords, cumulative, junctionM - SUSTAINED_TURN_SPAN_M, junctionM);
@@ -3992,8 +4009,8 @@ function buildTurnInstructions(m) {
       // on the bearing the rider arrived on, so the first corner reads as "no
       // real turn" and the rider hears only the second one -- the wrong way
       // round, and after they have already had to steer.
-      isDogleg = doglegCandidate;
-      if (Math.abs(sustained) < SUSTAINED_TURN_MIN_DEG && !loopedRamp && !isDogleg) continue;
+      if (Math.abs(sustained) < SUSTAINED_TURN_MIN_DEG && !loopedRamp
+          && !doglegCandidate) continue;
       // With no road name to identify the maneuver by, the short sample is not
       // just noisy but can be backwards: one junction sampled a 42 deg turn to
       // the right where the rider's course actually swings 38 deg left. Describe
@@ -4022,10 +4039,17 @@ function buildTurnInstructions(m) {
       && (!from || to.toLowerCase() !== from.toLowerCase());
     if (distanceM - lastM < 70 && !joiningNewRoad) continue;
     const crossingRoad = navRoadName(next.name);
+    // A folded pair names the road it ENDS on, not the stub between the two
+    // corners: "Bear right, then left onto Northeast 55th Street". Naming the
+    // stub told the rider about a road they are on for three seconds and left
+    // the one they need unnamed.
+    const chainRoad = doglegCandidate && partnerTo ? partnerTo : to;
+    const chainStaying = doglegCandidate && partnerTo
+      ? (!!from && partnerTo.toLowerCase() === from.toLowerCase()) : sameRoad;
     const text = straightCrossing
       ? `Continue across ${crossingRoad || 'the road'}`
-      : navTurnText(effectiveDelta, to, undefined, sameRoad,
-        isDogleg ? partnerDelta : undefined);
+      : navTurnText(effectiveDelta, chainRoad, undefined, chainStaying,
+        doglegCandidate ? partnerDelta : undefined);
     // One road, one maneuver. A winding street crosses the turn threshold at
     // several of its own graph edges, which produced runs like "Turn right onto
     // BPA Trail" twice 87 m apart, and left/right pairs on the same road within
@@ -4050,18 +4074,23 @@ function buildTurnInstructions(m) {
       // junction itself. Where the two differ the junction reading is the one
       // that misleads: it describes a connector the rider is passing through
       // rather than the street they are being told to ride.
+      // A folded pair leaves the rider pointing where the SECOND corner sends
+      // them, so that is the heading worth saying. Reporting the first corner's
+      // would name a direction they hold for three seconds.
       heading: compassWord(straightCrossing ? outgoing
+        : doglegCandidate ? routeBearingOver(coords, cumulative,
+          cumulative[partnerAt], cumulative[partnerAt] + TURN_BEARING_SPAN_M)
         : !to && sustainedBearing != null ? sustainedBearing
         : alongDestination == null ? outgoing : alongDestination),
     });
     lastM = distanceM;
     lastRoad = to;
     lastText = text;
-    lastDelta = isDogleg ? partnerDelta : localDelta;
+    lastDelta = doglegCandidate ? partnerDelta : localDelta;
     // This prompt already told the rider about the corner after it, so that
     // corner must not come round again as a maneuver of its own -- otherwise a
     // dogleg is announced twice, the second time contradicting the first.
-    if (isDogleg) foldedIntoJog = i + 1;
+    if (doglegCandidate) foldedIntoJog = i + 1;
   }
   instructions.sort((a, b) => a.distanceM - b.distanceM);
   const segmentTimeS = segs.reduce((sum, seg) => sum + Math.max(0, Number(seg.timeS) || 0), 0);

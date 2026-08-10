@@ -133,6 +133,62 @@ const train = await page.evaluate(() => buildTrail(
 check('three corners in a row are not treated as a jog',
   !train.some((instruction) => /then/.test(instruction.text)), JSON.stringify(train));
 
+/* ------------------------------ the pair that names roads, not just a trail */
+// Second report, same shape: "didn't get notice for a second turn until I
+// already had to make it". Two corners 15 m apart, each onto a NAMED street --
+// so the rescue above never applied, because it only ran where there was no new
+// road to name. Two prompts 15 m apart is about three seconds at riding speed:
+// the second one arrives as "Now".
+const streets = await page.evaluate(() => {
+  window.buildStreets = (legs) => {
+    const M = 1 / 111320;
+    const lonM = M / Math.cos(47.67 * Math.PI / 180);
+    const coords = [];
+    const segs = [];
+    let point = [-122.29, 47.67];
+    coords.push(point.slice());
+    for (const [bearing, metres, name] of legs) {
+      const c0 = coords.length - 1;
+      for (let d = 0; d < metres; d += 5) {
+        const radians = bearing * Math.PI / 180;
+        point = [point[0] + Math.sin(radians) * 5 * lonM,
+          point[1] + Math.cos(radians) * 5 * M];
+        coords.push(point.slice());
+      }
+      segs.push({ c0, c1: coords.length - 1, name, lenM: metres });
+    }
+    const result = buildTurnInstructions({ coords, segs });
+    return result.instructions.map((instruction) => ({
+      m: Math.round(instruction.distanceM), text: navInstructionText(instruction),
+    }));
+  };
+  return buildStreets([[0, 200, 'Ravenna Avenue Northeast'],
+    [70, 15, 'Northeast 54th Street'],
+    [340, 300, 'Northeast 55th Street']]);
+});
+check('a pair onto named streets folds into one prompt too',
+  streets.length === 1 && streets[0].m === 200, JSON.stringify(streets));
+check('with both steers in order',
+  /^Bear right, then left/.test(streets[0]?.text || ''), streets[0]?.text);
+// Naming the 15 m stub between the corners tells the rider about a road they
+// are on for three seconds and leaves the one they need unnamed.
+check('naming the street the pair puts them ON, not the stub between',
+  /onto Northeast 55th Street/.test(streets[0]?.text || '')
+    && !/54th/.test(streets[0]?.text || ''), streets[0]?.text);
+
+// The corner's own swing, measured only as far as its neighbour. Over the full
+// 20 m window the two swings average each other away -- a 45 deg jog reads as
+// 30 and says nothing -- which is how a pair this tight went unannounced.
+const shallowStreets = await page.evaluate(() => buildStreets(
+  [[315, 200, 'Ravenna Avenue Northeast'],
+    [0, 15, 'Northeast 54th Street'],
+    [270, 300, 'Northeast 54th Street']]));
+check('a shallow pair across a short stub is still measured as two steers',
+  shallowStreets.length === 1 && /then left/.test(shallowStreets[0]?.text || ''),
+  JSON.stringify(shallowStreets));
+check('and reports the heading the SECOND corner leaves them on',
+  /heading west/.test(shallowStreets[0]?.text || ''), shallowStreets[0]?.text);
+
 check('no page errors', errors.length === 0, errors.join(' | '));
 
 await browser.close();
