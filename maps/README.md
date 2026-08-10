@@ -11,6 +11,8 @@ maps/
     STATUS.md          what works, what is missing, readiness against the rubric
     VERIFICATION.md    routes checked against known-good sources (level 5+)
     BUILD.md           how every file in the folder was produced
+    corridors.json     the corridors test_corridor_severance.mjs asserts, with
+                       the reason each was nominated (level 3+)
     graph2.bin.gz      routing graph
     roads.pmtiles      street geometry, names, safety attributes
     basemap.pmtiles    land, water, green space, place labels
@@ -53,7 +55,10 @@ mechanical part: where the files go.
 
 1. `mkdir maps/<state>` and write `region.json` (copy Washington's and change
    every value; the keys are validated, so a typo fails the build rather than
-   silently doing nothing).
+   silently doing nothing), and `corridors.json` -- four to six real corridors,
+   written down **before** anything is built, because choosing them afterwards
+   means choosing the ones that happened to work. A state that ships a graph
+   and nominates nothing fails `test_corridor_severance.mjs`.
 2. Build whatever data you have and put it in the folder. Declare exactly what
    you built in `"datasets"` — a state that ships only `places.json` is a valid
    state, and the app degrades to place search rather than 404ing its way
@@ -92,9 +97,11 @@ highest thing it has ever done.
 | 9 | sustained | field reports over time from more than one rider, and the corrections fed back into the data |
 | 10 | — | reserved. No state is here, and it may not be reachable: no state publishes a stress rating for city streets, so some gaps close only when the source data does |
 
-Washington is **8**. `maps/washington/STATUS.md` says exactly why it is not
-higher, in terms of coverage rather than effort, and a new state's `STATUS.md`
-should do the same.
+Washington is **8** and Oregon is **7**. Each `STATUS.md` says exactly why it is
+not higher, in terms of coverage rather than effort, and a new state's should do
+the same. Oregon's is the worked example of a state that reached an agent's
+ceiling: it explains the number by naming the sources the state does not
+publish, not the work that was not done.
 
 ### The verification report (level 5 and up)
 

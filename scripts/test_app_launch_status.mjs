@@ -92,8 +92,16 @@ check('a startup failure cannot trap the rider behind the screen', fallback);
 // the statewide graph's heavy inflate/index pass. Native defers that work until
 // both endpoints exist; this page is the ordinary web runtime and pins its
 // separate background-prewarm policy.
-await page.waitForFunction(() => window.__routingWorkerStarts.length > 0,
-  { timeout: 10000 }).catch(() => {});
+// Wait for the ROUTING worker specifically, not for any worker at all. MapLibre
+// builds its map worker from a blob URL within a few hundred milliseconds of
+// the page loading, which satisfies "length > 0" instantly and left the check
+// below reading a list the router had not joined yet -- so whether this passed
+// depended on how fast the machine was. The router worker starts about three
+// seconds in, with app-ready already set, which is exactly what is being
+// asserted; it was simply being measured too early.
+await page.waitForFunction(
+  () => window.__routingWorkerStarts.some((entry) => /router-worker\.js(?:$|\?)/.test(entry.url)),
+  { timeout: 20000 }).catch(() => {});
 const workerStarts = await page.evaluate(() => window.__routingWorkerStarts.slice());
 const routingStarts = workerStarts.filter((entry) => /router-worker\.js(?:$|\?)/.test(entry.url));
 check('background routing initialization waits until the first map is usable',
