@@ -25,7 +25,7 @@
   "facilityLevels": {},
   "routeDirectionSuffixes": {},
   "datasets": {
-    "graph": false,
+    "graph": true,
     "roads": false,
     "basemap": true,
     "overlays": false,
@@ -35,7 +35,8 @@
     "closures": false
   },
   "versions": {
-    "basemap": "sha-a2c6898666c1"
+    "basemap": "sha-a2c6898666c1",
+    "graph": "sha-830d1aa5490b"
   },
   "attribution": {
     "extractName": "Oregon",
