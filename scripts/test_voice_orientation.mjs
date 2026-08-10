@@ -29,7 +29,14 @@ await page.waitForFunction(() => typeof buildTurnInstructions === 'function'
 // captured at the speakNavigation boundary; the queue has its own test.
 const setup = (speedMps) => page.evaluate((mps) => {
   window.__spoken = [];
-  window.speakNavigation = (text, kind = 'turn') => window.__spoken.push({ text, kind });
+  // The real speakNavigation stamps turnNav.lastVoiceAt; several guards read it
+  // to decide whether the app has gone quiet. A stub that only records leaves
+  // that clock frozen at the start of the ride, so this simulation looks like
+  // an hour of silence and picks up prompts a rider would never hear.
+  window.speakNavigation = (text, kind = 'turn') => {
+    turnNav.lastVoiceAt = Date.now();
+    window.__spoken.push({ text, kind });
+  };
   const coords = [];
   for (let i = 0; i <= 20; i++) coords.push([-122.3 + i * 0.001, 47.6]);
   const route = buildTurnInstructions({ coords, segs: [{ c0: 0, c1: coords.length - 1, name: 'Pine Street' }] });

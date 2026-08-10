@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.663';
+const APP_VERSION = '2026-08-10.664';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -888,6 +888,10 @@ const navVoice = {
     ? true : savedState.keepScreenAwake,
   safetyLevels: !savedState || typeof savedState.voiceSafetyLevels !== 'boolean'
     ? true : savedState.voiceSafetyLevels,
+  // On by default, unlike the status report below it: a rider who has heard
+  // nothing for two minutes has no way to tell "carry on" from "it crashed".
+  reassure: !savedState || typeof savedState.voiceReassure !== 'boolean'
+    ? true : savedState.voiceReassure,
   offRouteMode: AUTOMATIC_OFF_ROUTE_RECOVERY_ENABLED ? savedOffRouteRecoveryMode : 'guidance',
 };
 
@@ -1087,6 +1091,7 @@ function saveStateNow() {
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
       voiceSafetyLevels: navVoice.safetyLevels,
+      voiceReassure: navVoice.reassure,
       keepScreenAwake: navVoice.keepScreenAwake,
       navigationOffRouteMode: navVoice.offRouteMode,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
@@ -5141,6 +5146,9 @@ function nativeVoiceStatusPayload() {
     statusMiles: navVoice.statusMiles,
     statusEta: navVoice.statusEta,
     safetyLevels: navVoice.safetyLevels,
+    // The native guide owns the cadence on iOS, so it has to be told about
+    // this one too or the setting would only work in the browser.
+    reassure: navVoice.reassure,
   };
 }
 
@@ -6248,7 +6256,9 @@ function updateTurnNavigation(pos) {
   }
   const next = instructions[turnNav.next];
   if (!next) {
-    if (!maybeSpeakSafetyChange()) maybeSpeakPeriodicUpdate(null, Infinity);
+    if (!maybeSpeakSafetyChange() && !maybeSpeakRouteReassurance(null, Infinity)) {
+      maybeSpeakPeriodicUpdate(null, Infinity);
+    }
     refreshNavigationUI();
     return;
   }
@@ -6295,7 +6305,9 @@ function updateTurnNavigation(pos) {
   if (maybeSpeakSafetyChange()) spoke = true;
   // A safety change is news; the periodic status is a summary. The summary
   // yields to both.
-  if (!spoke) maybeSpeakPeriodicUpdate(next, remaining);
+  if (!spoke && !maybeSpeakRouteReassurance(next, remaining)) {
+    maybeSpeakPeriodicUpdate(next, remaining);
+  }
   refreshNavigationUI();
 }
 
@@ -6307,6 +6319,37 @@ function speakDuration(seconds) {
 }
 
 // Optional status update on the rider's cadence (Settings -> Voice): any
+// Reported from the road: a mile of Northeast Ravenna Boulevard with the next
+// maneuver 0.6 miles off and NOTHING said the whole way. Silence is ambiguous
+// -- it means "carry on" and it means "the app has stopped working", and a
+// rider cannot tell which without looking down. So on a long stretch, say the
+// reassuring thing: which road they are on, and how far the next turn is.
+//
+// This is not the periodic status below. That one reports speed, miles left and
+// ETA, is off unless the rider asks for it, and is deliberately a mouthful.
+// This is one short line whose only job is to confirm nothing has gone wrong,
+// so it is on by default and says as little as possible.
+const NAV_REASSURE_SILENCE_MS = 105000;
+// Only where there is real silence to fill. Inside this, the next maneuver's
+// own prompt is close enough to be the reassurance.
+const NAV_REASSURE_MIN_TURN_M = 500;
+function maybeSpeakRouteReassurance(next, remainingToTurnM) {
+  // The native guide owns the cadence on iOS, foreground and background alike.
+  if (turnNav.nativeTracking) return false;
+  if (!navVoice.reassure || turnNav.arrived || !turnNav.locationReady) return false;
+  if (Date.now() - (turnNav.lastVoiceAt || 0) < NAV_REASSURE_SILENCE_MS) return false;
+  if (next && remainingToTurnM < NAV_REASSURE_MIN_TURN_M) return false;
+  const road = navRoadName(navCurrentSegment()?.name || '');
+  // Without a name there is nothing reassuring to say -- "you are on an unnamed
+  // road" tells the rider less than the silence did.
+  if (!road) return false;
+  const ahead = next && Number.isFinite(remainingToTurnM)
+    ? ` Next turn in ${navDistanceText(remainingToTurnM)}.`
+    : ' Continue to your destination.';
+  speakNavigation(`Still on ${road}.${ahead}`, 'status');
+  return true;
+}
+
 // combination of next maneuver, speed, distance remaining, and time left.
 function maybeSpeakPeriodicUpdate(next, remainingToTurnM) {
   // The native guide owns the cadence on iOS in both foreground and
@@ -12667,16 +12710,24 @@ function buildVoicePanel() {
   });
   host.appendChild(awake);
 
-  const safety = document.createElement('div');
-  safety.className = 'check-rule rule-card';
-  safety.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceSafetyLevels"
-    ${navVoice.safetyLevels ? 'checked' : ''}><span>Announce route safety levels</span></label>`;
-  safety.querySelector('input').addEventListener('change', (e) => {
-    navVoice.safetyLevels = e.target.checked;
-    syncNativeVoiceStatusPreferences();
-    saveStateSoon();
-  });
-  host.appendChild(safety);
+  // Both in one card. They are the same kind of thing -- what the app says
+  // while a rider is simply riding -- and the four Settings panes are sized to
+  // the tallest of them, so a card apiece would push this one into an internal
+  // scroller. scripts/test_settings_panes_reachable.mjs holds that line.
+  const spoken = document.createElement('div');
+  spoken.className = 'check-rule rule-card';
+  spoken.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceSafetyLevels"
+    ${navVoice.safetyLevels ? 'checked' : ''}><span>Announce route safety levels</span></label>
+    <label class="rule-check"><input type="checkbox" id="v-voiceReassure"
+    ${navVoice.reassure ? 'checked' : ''}><span>Confirm the road you're on</span></label>`;
+  for (const [id, key] of [['v-voiceSafetyLevels', 'safetyLevels'], ['v-voiceReassure', 'reassure']]) {
+    spoken.querySelector(`#${id}`).addEventListener('change', (e) => {
+      navVoice[key] = e.target.checked;
+      syncNativeVoiceStatusPreferences();
+      saveStateSoon();
+    });
+  }
+  host.appendChild(spoken);
 
   const choices = [[0, 'Never'], [1, 'Every minute'], [2, 'Every 2 minutes'],
     [3, 'Every 3 minutes'], [5, 'Every 5 minutes'], [10, 'Every 10 minutes'],
@@ -12709,23 +12760,31 @@ function buildVoicePanel() {
   host.appendChild(cadence);
 }
 
-function syncSettingsPaneHeightToLimits() {
+// One height for all the panes, so switching tabs does not resize the sheet
+// under the rider's thumb. It is the TALLEST pane's natural height, measured --
+// which was Limits for as long as Limits was the tallest, and was written that
+// way. Adding one checkbox to Voice made Voice the tallest, and a rule that
+// names one pane cannot notice: Voice simply grew an internal scroller nobody
+// asked for. Measure them all and take the maximum.
+function syncSettingsPaneHeight() {
   const settingsView = document.getElementById('tab-settings');
-  const limits = document.getElementById('settings-limits');
-  if (!settingsView?.classList.contains('active') || !limits) return;
-  const wasHidden = limits.hidden;
-  const priorHeight = limits.style.height;
-  const priorMinHeight = limits.style.minHeight;
-  limits.hidden = false;
-  limits.style.height = 'auto';
-  limits.style.minHeight = '0';
-  const limitsHeight = Math.ceil(limits.scrollHeight);
-  limits.style.height = priorHeight;
-  limits.style.minHeight = priorMinHeight;
-  limits.hidden = wasHidden;
-  if (limitsHeight > 0) {
-    settingsView.style.setProperty('--settings-pane-height', `${limitsHeight}px`);
+  if (!settingsView?.classList.contains('active')) return;
+  const panes = [...settingsView.querySelectorAll('.settings-pane')];
+  if (!panes.length) return;
+  let tallest = 0;
+  for (const pane of panes) {
+    const wasHidden = pane.hidden;
+    const priorHeight = pane.style.height;
+    const priorMinHeight = pane.style.minHeight;
+    pane.hidden = false;
+    pane.style.height = 'auto';
+    pane.style.minHeight = '0';
+    tallest = Math.max(tallest, Math.ceil(pane.scrollHeight));
+    pane.style.height = priorHeight;
+    pane.style.minHeight = priorMinHeight;
+    pane.hidden = wasHidden;
   }
+  if (tallest > 0) settingsView.style.setProperty('--settings-pane-height', `${tallest}px`);
 }
 
 /* ------------------------------------------------------------- boot */
@@ -12874,7 +12933,7 @@ function selectPanelTab(tabId) {
   syncRoutePaneVisibility();
   scheduleMobileNavDock();
   if (tabId === 'route') { updateNavCard(); drawRouteCardElevation(); } // redraw elevation once visible
-  if (tabId === 'settings') requestAnimationFrame(syncSettingsPaneHeightToLimits);
+  if (tabId === 'settings') requestAnimationFrame(syncSettingsPaneHeight);
   if (tabId === 'settings') syncSettingsNavigationLock();
 }
 

@@ -93,6 +93,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     private var speakHeadings = true
     private var statusUpdateIntervalS: TimeInterval = 0
     private var statusRoute = true
+    private var reassure = true
     private var statusSpeed = true
     private var statusMiles = true
     private var statusEta = true
@@ -449,6 +450,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         statusSpeed = call.getBool("statusSpeed") ?? statusSpeed
         statusMiles = call.getBool("statusMiles") ?? statusMiles
         statusEta = call.getBool("statusEta") ?? statusEta
+        reassure = call.getBool("reassure") ?? reassure
     }
 
     private func clearRouteGuidance() {
@@ -518,6 +520,11 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
             )
             return
         }
+        if maybeSpeakRouteReassurance(
+            nearestSegment: nearest.segment,
+            nextInstruction: instructions.first,
+            remainingToTurnM: remainingToTurnM
+        ) { return }
         maybeSpeakPeriodicStatus(
             location: location,
             priorLocation: previousLocation,
@@ -606,7 +613,11 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                 // finishTurnNavigation() on that side is idempotent.
                 notifyListeners("arrived", data: [:])
                 endTracking()
-            } else if background {
+            } else if background, !maybeSpeakRouteReassurance(
+                nearestSegment: nearest.segment,
+                nextInstruction: nil,
+                remainingToTurnM: .infinity
+            ) {
                 maybeSpeakPeriodicStatus(
                     location: location,
                     priorLocation: priorLocation,
@@ -631,7 +642,11 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                 speakText("In \(spokenDistance(remainingM)), \(instructions[0].text.lowercased()).")
             }
         }
-        if background {
+        if background, !maybeSpeakRouteReassurance(
+            nearestSegment: nearest.segment,
+            nextInstruction: instructions[0],
+            remainingToTurnM: remainingM
+        ) {
             maybeSpeakPeriodicStatus(
                 location: location,
                 priorLocation: priorLocation,
@@ -640,6 +655,38 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                 remainingToTurnM: remainingM
             )
         }
+    }
+
+    // Reported from the road: a mile of arterial with the next maneuver 0.6
+    // miles off and nothing said the whole way. Silence means "carry on" and it
+    // means "the app has stopped working", and a rider cannot tell which
+    // without looking down. On a long stretch, say the reassuring thing: which
+    // road they are on, and how far the next turn is.
+    //
+    // Mirrors maybeSpeakRouteReassurance in app.js. It has to live here as well
+    // because this guide owns the cadence on iOS in both foreground and
+    // background -- the web path returns early when native tracking is on, so a
+    // web-only version would never be heard on a phone.
+    private static let reassureSilenceS: TimeInterval = 105
+    private static let reassureMinTurnM: Double = 500
+    private func maybeSpeakRouteReassurance(
+        nearestSegment: Int,
+        nextInstruction: RouteInstruction?,
+        remainingToTurnM: Double
+    ) -> Bool {
+        guard reassure,
+              !arrived,
+              Date().timeIntervalSince(lastVoiceAt) >= Self.reassureSilenceS else { return false }
+        if nextInstruction != nil, remainingToTurnM < Self.reassureMinTurnM { return false }
+        let road = routeRoadName(at: nearestSegment)
+        // Without a name there is nothing reassuring to say: "you are on an
+        // unnamed road" tells the rider less than the silence did.
+        guard !road.isEmpty else { return false }
+        let ahead = nextInstruction != nil
+            ? " Next turn in \(spokenDistance(remainingToTurnM))."
+            : " Continue to your destination."
+        speakText("Still on \(road).\(ahead)")
+        return true
     }
 
     private func maybeSpeakPeriodicStatus(
