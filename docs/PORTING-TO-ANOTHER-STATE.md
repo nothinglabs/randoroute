@@ -4,14 +4,74 @@ Written for whoever — or whatever — finishes Oregon, and does the state afte
 that. It is a **method**, not a list of Washington URLs. The specific services
 will differ; the shape of the problem does not.
 
-Read `docs/SAFETY-MODEL.md` first for what the app decides and why. This file is
-only about getting a new state's data into it.
+---
 
-Its companion is **`docs/PORTING-LESSONS.md`** — why the numbers are the numbers,
-and what an import looks like when it is wrong. This file tells you what to do;
-that one tells you what went wrong the first time, mined out of the commit
-history. Read it once before you start, and again the moment something looks
-off: most of these failures did not present as data problems at all.
+## Start here
+
+**This file is the entry point for importing a state.** Four documents cover the
+job and they are not interchangeable; read them in this order:
+
+1. **This file** — the method. What is already national, how to find a state's
+   sources, how to conflate them onto OSM, and what not to import.
+2. **`docs/PORTING-LESSONS.md`** — why the numbers are the numbers, and what an
+   import looks like when it is wrong. Failure-first, mined from the commit
+   history. Read it before you start and again the moment something looks off:
+   most of these did not present as data problems at all.
+3. **`maps/README.md`** — the contract. Folder layout, every `region.json` key,
+   and how the app resolves a state.
+4. **`maps/washington/BUILD.md`** — the runbook to adapt, command by command.
+   `maps/oregon/` is the worked example of a deliberately partial import.
+
+`docs/SAFETY-MODEL.md` is the specification of what the app decides and why.
+Read it if you are changing the model; you do not need it to import data into it.
+
+### A partial import is a valid import
+
+`datasets` in `region.json` declares which files a state actually has, and the
+app reads it: no missing tile archive is added to the map style, no layer
+appears for data that is not there, no routing worker starts without a graph.
+So this can land in increments, each shippable and each independently verifiable
+— it cannot fail all-or-nothing. Ship as `"status": "preview"` and finish later.
+
+**Each stage has a test that proves it.** These are the acceptance gates, not a
+suggestion:
+
+| # | Ships | Proved by |
+|---|---|---|
+| 1 | `region.json` + `npm run maps:registry` | `test_region_portable.mjs`, `test_maps_states_screen.mjs` |
+| 2 | `places.json` | search returns that state's towns and not the previous state's |
+| 3 | `basemap.pmtiles` | map opens on the state; coastline the right way round |
+| 4 | `roads.pmtiles` | `test_build_parity.py`, `test_road_geometry.py` |
+| 5 | `graph2.bin.gz` | **`test_corridor_severance.mjs`, with that state's corridors** |
+| 6 | agency stress / speeds / facilities | `test_fact_contract.mjs` |
+
+**Stage 5 is the one that matters.** It is the only test that catches a broken
+import rather than a broken opinion: a severed corridor showed up as 10.7x the
+straight-line distance while three control corridors passed (lesson C1/C2).
+Choose four or five real corridors in the state **before building anything** —
+they are the spec.
+
+### Known blockers, so they are not discoveries
+
+- **`scripts/fetch_dem.sh` has Washington's bounding box hardcoded.** It needs a
+  bbox argument before any graph build outside Washington. This is the one hard
+  blocker between here and stage 5.
+- `build_roads.py`'s agency inputs (`--blts`, `--roadlog`, `--funcclass`,
+  `--aadt`) are all optional. An OSM-only first pass with class-estimated speeds
+  is the correct stage-4 target.
+- `build_basemap.py` takes `--bounds` and `--coastline natural-earth`; it is
+  already portable.
+- `build_hpms.py` needs only the state name and year. It is the
+  nationally-uniform traffic source and the highest-value single fetch (A3).
+
+### Report back on these documents
+
+Every lesson in `PORTING-LESSONS.md` carries a `Travelled` ledger, and it
+currently reads `not tested` for every state but Washington. **Filling those in
+is part of the import**, not an afterthought: for each lesson you hit, record
+whether it held, did not apply, or turned out to be an artefact of one agency's
+data. That is the only way this stops being one state's opinion — and a lesson
+that fails to travel is worth more than one that does.
 
 ---
 
@@ -314,7 +374,10 @@ physical rule, it is the same mistake wearing new clothes.
 
 ---
 
-## 6. Order of operations
+## 6. Order of adoption
+
+Not the build sequence (that is the table under "Start here") -- this is what a
+newly imported field is allowed to influence, and when.
 
 1. **Import and display only.** No routing weight, no verdict rung, no map
    colour. Every value on the card with its provenance tag.

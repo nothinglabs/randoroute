@@ -44,6 +44,11 @@ Web and native differ in one way only:
 
 ## Adding a state
 
+**Start at `docs/PORTING-TO-ANOTHER-STATE.md`** — it is the entry point for the
+whole job, and its "Start here" section gives the reading order, the build
+sequence and the test that proves each stage. What follows here is only the
+mechanical part: where the files go.
+
 1. `mkdir maps/<state>` and write `region.json` (copy Washington's and change
    every value; the keys are validated, so a typo fails the build rather than
    silently doing nothing).

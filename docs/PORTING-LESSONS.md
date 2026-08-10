@@ -11,6 +11,10 @@ mined out of this repository's commit history to build this file.
 
 ## How to use it
 
+**This is not the entry point.** `docs/PORTING-TO-ANOTHER-STATE.md` is, and its
+"Start here" section sequences the work and names the test that proves each
+stage. This file is the companion you read alongside it.
+
 Read it once before starting a state, and again when something looks wrong. The
 failure descriptions are the point: most of these presented as something that
 did not look like a data problem at all — a router detouring 45 miles, a card
