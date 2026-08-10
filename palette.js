@@ -48,7 +48,14 @@
     1: '#168ad1',   // passes your rules
     2: '#168ad1',   // passes; kept distinct for routing only
     3: '#c25d05',   // caution
-    4: '#a51c30',   // fails your rules
+    // Deepened from #a51c30 on a field report ("make it darker red"). It moves
+    // in the direction this palette already prefers -- these roles separate by
+    // LIGHTNESS -- so every pair it touches gets further apart, not closer: the
+    // gap to the caution orange widens, and so does the contrast of the caution
+    // rungs, which are drawn in this red ON that orange. The governing pair is
+    // caution against the bike-network lime, which does not involve this value
+    // at all.
+    4: '#7d1526',   // fails your rules
   };
 
   var PALETTE = {

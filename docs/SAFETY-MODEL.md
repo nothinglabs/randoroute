@@ -150,7 +150,7 @@ hue separation:
 | off-street trail | same lime, dark dashed centreline | `#b7c900` + `#4c5c00` |
 | passes | solid | `#168ad1` |
 | caution | perpendicular rungs in the danger red | `#c25d05` + `#a51c30` |
-| fails | dashed, with the map showing through the gaps | `#a51c30` |
+| fails | dashed, with the map showing through the gaps | `#7d1526` |
 | bikes prohibited | wide translucent dashed ribbon, over the verdict | `#a51c30` at 42% |
 
 **The colours were chosen numerically, not by eye.** Search for the pair that

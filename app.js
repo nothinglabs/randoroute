@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.668';
+const APP_VERSION = '2026-08-10.669';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1740,8 +1740,8 @@ const PATTERN_CAUTION = 'verdict-caution';
 // roads__vh and roads__prohibited both vanished and the style went from 57
 // layers to 50, with no page error anywhere. Do not "modernise" this.
 const FAIL_DASH = { stops: [
-  [5, [13.7, 7.5]], [8, [6.9, 3.8]], [11, [3.9, 2.1]],
-  [13, [2.3, 1.3]], [15, [1.5, 0.8]],
+  [5, [34, 20]], [8, [18, 11]], [11, [9, 5.5]],
+  [13, [4.4, 2.6]], [15, [2.2, 1.3]], [17, [1.4, 0.85]],
 ] };
 // The prohibition ribbon is wider than the road and rides over it, so the same
 // flat-dasharray problem showed up there first and worst: at z17 its 15 px

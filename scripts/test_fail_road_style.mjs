@@ -78,13 +78,22 @@ const sampleAt = async (zoom) => page.evaluate(async (z) => {
     copy.getContext('2d').drawImage(canvas, 0, 0);
     return copy.getContext('2d');
   })();
-  const reddish = (x, y) => {
-    if (x < 2 || y < 2 || x > canvas.clientWidth - 2 || y > canvas.clientHeight - 2) return null;
+  const warm = (x, y) => {
     const d = ctx.getImageData(Math.round(x * ratio), Math.round(y * ratio), 1, 1).data;
-    // The fail red is #a51c30 at 0.9 opacity over the road interior: red
-    // dominant, and clearly so. Nothing else on screen with these layers off
-    // is warm.
-    return d[0] > 110 && d[0] - d[1] > 45 && d[0] - d[2] > 30;
+    // The fail red over the road interior: red dominant, and clearly so.
+    // Nothing else on screen with these layers off is warm.
+    return d[0] > 70 && d[0] - d[1] > 30 && d[0] - d[2] > 20;
+  };
+  // Sample a short window ACROSS the line, not a single pixel on it. At z9 a
+  // road is about 1 px wide, tile geometry is simplified, and the projected
+  // centreline drifts off the drawn pixels -- which reported 1 px "dashes"
+  // that were the sampler losing the line, not the dash being short.
+  const reddish = (x, y, nx, ny) => {
+    if (x < 3 || y < 3 || x > canvas.clientWidth - 3 || y > canvas.clientHeight - 3) return null;
+    for (const d of [0, -1, 1, -2, 2]) {
+      if (warm(x + nx * d, y + ny * d)) return true;
+    }
+    return false;
   };
 
   // Walk every rendered level-4 centreline a pixel at a time, sampling only
@@ -106,10 +115,13 @@ const sampleAt = async (zoom) => page.evaluate(async (z) => {
       const pts = line.map((c) => map.project(c));
       for (let i = 1; i < pts.length; i++) {
         const a = pts[i - 1], b = pts[i];
-        const steps = Math.min(600, Math.round(Math.hypot(b.x - a.x, b.y - a.y)));
+        const len = Math.hypot(b.x - a.x, b.y - a.y);
+        const steps = Math.min(600, Math.round(len));
+        const nx = len ? -(b.y - a.y) / len : 0;
+        const ny = len ? (b.x - a.x) / len : 0;
         for (let s = 0; s < steps; s++) {
           const t = s / steps;
-          const hit = reddish(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+          const hit = reddish(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, nx, ny);
           if (hit === null) { off++; endRun(); }
           else if (hit) { ink++; run++; }
           else { gap++; endRun(); }
@@ -142,9 +154,14 @@ for (const zoom of [12, 15]) {
   // measured in line-width multiples, so a flat pair drew a 1.6 px tick at
   // state level and a 27 px slab up close -- the same defect the zoom handover
   // was removed to fix, just moved into the dash itself.
+  // Only z12 and up. Below that the map draws THOUSANDS of level-4 features
+  // (9,754 on screen at z9), each a few pixels long, so a walk along them
+  // measures feature fragments rather than dash marks -- it reported a "2 px
+  // dash" that did not move when the dasharray was doubled. Low zoom needs a
+  // different instrument, not a looser threshold on this one.
   check(`z${zoom}: the drawn dash is a dash, not a slab`,
     s.medianDashPx >= 4 && s.medianDashPx <= 24,
-    `median ${s.medianDashPx} px over ${s.dashes} dashes`);
+    `median ${s.medianDashPx} px over ${s.dashes} dashes; ${JSON.stringify(s)}`);
 }
 check('the dash is about the same size on screen at both zooms',
   Math.abs(seen[12].medianDashPx - seen[15].medianDashPx) <= 9,
