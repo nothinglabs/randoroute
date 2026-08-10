@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-GRAPH = ROOT / 'data' / 'graph2.bin.gz'
+GRAPH = ROOT / 'maps' / 'washington' / 'graph2.bin.gz'
 
 
 def pad(n, to):

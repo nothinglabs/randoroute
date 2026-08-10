@@ -72,6 +72,22 @@ for (const archive of ['/maps/washington/basemap.pmtiles', '/maps/washington/roa
   check(`${archive} is stored for offline use`, cached.includes(archive));
 }
 
+// maps/states.js lives under /maps/ but is a SHELL script, not data -- it is
+// the generated index region.js reads to know which states exist. The fetch
+// handler matched "/maps/" and sent it to the data cache, where it had never
+// been stored, so an offline reload could not find it and the app never got as
+// far as running app.js: a blank page, from one over-broad prefix.
+const shellCached = await page.evaluate(async () => {
+  const name = (await caches.keys()).find((key) => key.startsWith('shell-'));
+  return (await (await caches.open(name)).keys()).map((request) =>
+    new URL(request.url).pathname);
+});
+check('the generated state index is cached with the shell, not with the data',
+  shellCached.some((path) => path.endsWith('/maps/states.js'))
+    && !cached.some((path) => path.endsWith('/maps/states.js')),
+  `shell ${shellCached.filter((p) => p.includes('states.js'))}, `
+  + `data ${cached.filter((p) => p.includes('states.js'))}`);
+
 /* ------------------------------------------------------- pull the plug */
 site.goOffline();
 await page.reload({ waitUntil: 'load' });

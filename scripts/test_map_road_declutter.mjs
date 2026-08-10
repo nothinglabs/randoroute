@@ -5,16 +5,21 @@
 // facilities and trails remain exempt in app.js and can appear earlier.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import vm from 'node:vm';
-import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
+import { appPage, launchBrowser, serveRepo, ROOT } from './testlib/harness.mjs';
 
 const source = readFileSync(new URL('../basemap-style.js', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+// The style is built from the loaded state's folder and omits a source the
+// state does not ship, so the sandbox needs the real region rather than a stub.
+const { Region } = createRequire(import.meta.url)(join(ROOT, 'region.js'));
 const window = {
   location: { href: 'https://example.test/randoroute/' },
   setTimeout,
 };
-vm.runInNewContext(source, { window, URL, console });
+vm.runInNewContext(source, { window, URL, console, Region });
 
 const { ROAD_MIN_ZOOM, createStyle } = window.BikeBasemap;
 const style = createStyle();

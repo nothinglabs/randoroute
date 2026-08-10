@@ -104,6 +104,14 @@ const ARCHIVE_VERSIONS = Object.fromEntries([
   ['basemap', stateFile('basemap.pmtiles'), BASEMAP_TILES_VERSION],
   ['overlays', stateFile('overlays.pmtiles'), OVERLAY_TILES_VERSION],
 ].filter(([dataset]) => ships(dataset)).map(([, path, version]) => [path, version]));
+// Data lives in a STATE's folder -- maps/<state>/<file> -- and the generated
+// index that names those states does not: it sits at maps/states.js, and it is
+// a shell script, precached with app.js and served from the shell cache.
+// Matching "/maps/" alone sent it to the data cache instead, where it had never
+// been stored, so an offline reload could not find it and the app never got as
+// far as running app.js. The folder in the middle is what distinguishes them.
+const inStateFolder = (pathname) => /\/maps\/[^/]+\/.+$/.test(pathname);
+
 // Markers live under a distinct pathname, never a query string: the archive
 // lookups use ignoreSearch, so a `?stamp` variant of the same path could be
 // returned AS the archive. Nothing ever fetches this path; it exists only as
@@ -185,10 +193,10 @@ self.addEventListener('fetch', (e) => {
   if (url.origin === location.origin && url.pathname.endsWith('.pmtiles')) {
     e.respondWith(pmtilesCacheFirst(e.request));
   } else if (url.origin === location.origin && url.pathname.endsWith('/graph2.bin.gz')) {
-    // The one /data/ asset whose query string matters: it carries the graph's
+    // The one data file whose query string matters: it carries the graph's
     // build version, and ignoring it served a stale routing graph forever.
     e.respondWith(cacheFirst(DATA_CACHE, e.request, false));
-  } else if (url.origin === location.origin && url.pathname.includes('/maps/')) {
+  } else if (url.origin === location.origin && inStateFolder(url.pathname)) {
     // Any state's folder, not just the loaded one: a rider who switches back
     // should find the previous state's archives still cached rather than
     // downloading them again.

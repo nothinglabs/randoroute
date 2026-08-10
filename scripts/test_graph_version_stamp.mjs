@@ -9,10 +9,13 @@
 // which is the whole failure.
 //
 // So the version is now DERIVED: build_graph.py stamps a sha256 prefix of the
-// artefact into build-version.js, and this test recomputes that hash from the
-// graph actually on disk. A rebuild that skips the stamp -- or a hand-edited
-// version that matches no artefact -- fails the suite here instead of shipping
-// a graph nobody will ever receive.
+// artefact into the state's own maps/<state>/region.json, and this test
+// recomputes that hash from the graph actually on disk. A rebuild that skips
+// the stamp -- or a hand-edited version that matches no artefact -- fails the
+// suite here instead of shipping a graph nobody will ever receive.
+//
+// The path comes from the region rather than a literal, so a state that moves
+// its folder cannot leave this test hashing a file the app never asks for.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -24,11 +27,13 @@ const require = createRequire(import.meta.url);
 // The IIFE ends with `}(typeof self !== 'undefined' ? self : this))`, and in
 // Node CJS `this` is module.exports -- same contract safety-model.js uses.
 const bv = require(join(ROOT, 'build-version.js'));
+const { Region } = require(join(ROOT, 'region.js'));
+const graphPath = Region.dataUrl('graph2.bin.gz');
 
 assert.ok(bv.GRAPH_DATA_VERSION, 'build-version.js should publish GRAPH_DATA_VERSION');
 
 const digest = createHash('sha256')
-  .update(readFileSync(join(ROOT, 'data', 'graph2.bin.gz')))
+  .update(readFileSync(join(ROOT, graphPath)))
   .digest('hex')
   .slice(0, 12);
 
@@ -43,4 +48,4 @@ assert.equal(bv.GRAPH_DATA_VERSION, `sha-${digest}`,
 assert.ok(bv.GRAPH_URL.includes(`gv=${bv.GRAPH_DATA_VERSION}`),
   `GRAPH_URL (${bv.GRAPH_URL}) does not carry the stamped version`);
 
-console.log(`Graph version stamp verified: ${bv.GRAPH_DATA_VERSION} matches maps/washington/graph2.bin.gz.`);
+console.log(`Graph version stamp verified: ${bv.GRAPH_DATA_VERSION} matches ${graphPath}.`);
