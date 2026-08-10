@@ -48,13 +48,14 @@ const ctx = {
     osm__hit: { id: 'osm' },
   },
   map: {
-    getLayer: (id) => (id === 'route-dismount-halo' ? null : { id }),
+    getLayer: (id) => (id === 'route-dismount-halo' && !ctx.haloPresent ? null : { id }),
     getLayoutProperty: () => 'visible',
     queryRenderedFeatures: () => rendered,
   },
   // featureAt widens its reach over a dismount marker; there is none here, so
   // the real function answers false and the ordinary tolerance applies.
   DISMOUNT_MARKER_HIT_PX: 18,
+  haloPresent: false,
   HIT_VERTEX_LIMIT: 400,
   HIT_TIE_PX: 0.5,
   Math,
@@ -141,4 +142,24 @@ assert.equal(pick([
   + 'reports both sides, so they must not be silently merged here');
 console.log('PASS  coincident records reconcile conservatively (3 cases)');
 
-console.log('\n13 checks, 0 failed');
+/* ------------------------- but a dismount marker still owns its own taps */
+// featureAt widens its pad inside a marker's halo precisely to REACH PAST the
+// nearest thing: a tap on the triangle's corner is genuinely closer to the road
+// running under the marker than to the route line the marker belongs to. So
+// nearest-wins is the wrong rule there, and draw order is the right one -- the
+// marker's layer is on top because the marker is what was tapped. Measuring
+// distance here handed a rider the road instead of the dismount warning
+// (test_dismount_marker.mjs caught it on real pixels; this pins the rule).
+ctx.haloPresent = true;
+assert.equal(
+  pick([line('route-seg-hit', FAR), line('roads__hit', HERE)], 100, 100).layer.id,
+  'route-seg-hit',
+  'on a dismount marker the marker\'s own feature answers, however far its '
+  + 'line is from the finger');
+ctx.haloPresent = false;
+assert.equal(
+  pick([line('route-seg-hit', FAR), line('roads__hit', HERE)], 100, 100).layer.id,
+  'roads__hit', 'and off a marker the ordinary nearest-wins rule is back');
+console.log('PASS  a dismount marker keeps the taps its widened pad captures');
+
+console.log('\n15 checks, 0 failed');

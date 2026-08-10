@@ -10532,7 +10532,8 @@ function featureAt(point) {
   // Tapping the dismount marker has to answer, and the marker is wider than the
   // route line under it -- a tap on the triangle's corner would otherwise miss
   // the line and return whatever road happened to be behind it.
-  const pad = dismountMarkerAt(point) ? DISMOUNT_MARKER_HIT_PX : 6;
+  const onMarker = dismountMarkerAt(point);
+  const pad = onMarker ? DISMOUNT_MARKER_HIT_PX : 6;
   const feats = map.queryRenderedFeatures(
     [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]],
     { layers }
@@ -10540,7 +10541,16 @@ function featureAt(point) {
   if (!feats.length) return null;
   const isRibbon = (f) => !!(HIT_SRC[f.layer.id] || {}).ribbon;
   const scored = feats.filter((f) => !isRibbon(f));
-  return nearestOfHits(point, scored.length ? scored : feats);
+  const pool = scored.length ? scored : feats;
+  // Nearest-wins is wrong inside a marker's halo, and the reason is the widened
+  // pad above. That pad exists to REACH PAST the nearest thing -- a tap on the
+  // triangle's corner is genuinely closer to whatever road runs under the
+  // marker than to the route line the marker belongs to, so measuring distance
+  // hands back the road and the marker stops answering for itself. Draw order
+  // is the right rule here: the marker's own layer is on top because the
+  // marker is what was tapped.
+  if (onMarker) return pool[0];
+  return nearestOfHits(point, pool);
 }
 
 // Point-to-segment distance in screen pixels.
