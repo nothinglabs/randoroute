@@ -378,7 +378,7 @@ if __name__ == '__main__':
     ap.add_argument('--out-prefix', default='data/roads')
     ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-wa.geojson',
                     help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
-    ap.add_argument('--blts', default='data/blts.geojson',
+    ap.add_argument('--blts', default='maps/washington/blts.geojson',
                     help='WSDOT BLTS GeoJSON used to enrich state-highway geometry')
     ap.add_argument('--roadlog', default='data/roadlog.geojson',
                     help='CRAB certified county road log (scripts/build_roadlog.py)')

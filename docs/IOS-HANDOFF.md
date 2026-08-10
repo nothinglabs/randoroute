@@ -26,9 +26,13 @@ request after a cold launch resolves without a second tap.
 Capacitor 8 wrapping the same web app, with one custom plugin.
 
 - `scripts/build_mobile_shell.mjs` copies the web app into `mobile-shell/`,
-  flips `data-app-runtime="web"` to `"native"`, and **bundles the data**:
-  `roads.pmtiles`, `basemap.pmtiles`, `graph2.bin.gz` and the overlays. The
-  native app reads them as local files.
+  flips `data-app-runtime="web"` to `"native"`, and **bundles the data for
+  every state**: it walks `maps/states.js` and copies whichever files each
+  state's `region.json` declares (`roads.pmtiles`, `basemap.pmtiles`,
+  `graph2.bin.gz`, the overlays, the place index). The native app reads them as
+  local files, so switching state on the Maps screen is instant and offline —
+  unlike the web app, which fetches only the selected state. On-demand delivery
+  is the eventual answer to the size that grows into; see `maps/README.md`.
 - Because of that flag, `index.html` **does not register the service worker**.
   None of the offline/service-worker machinery runs on iOS — it exists for the
   web PWA. Do not debug the worker on a device; it is not there.
@@ -44,10 +48,12 @@ is generated — never edit it.
 
 ### First-install startup profile
 
-The generated app carries about **144 MB** of local web/data resources (about
-**149 MB** as an uncompressed Debug `.app`). Three archives account for almost
-all of it: `basemap.pmtiles`, `roads.pmtiles`, and
-`graph2.bin.gz`, about 44 MB each. A clean, disposable iOS 17.5 simulator
+The generated app carries about **189 MB** of local web/data resources — it was
+144 MB before Oregon's 39 MB preview basemap joined it, and every state added
+from here adds its own. Washington's three archives are still most of it:
+`basemap.pmtiles`, `roads.pmtiles`, and `graph2.bin.gz`, about 44 MB each. This
+number is now a function of how many states ship, and it is the reason
+on-demand delivery is on the list. A clean, disposable iOS 17.5 simulator
 install took **8.89 s before process launch**. A cold iOS 26.5 simulator took
 **25.92 s**; the same build installed in **0.94 s** after its caches were warm.
 A physical-device deployment can be slower, especially over Wi-Fi. That copy

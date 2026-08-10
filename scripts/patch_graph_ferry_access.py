@@ -28,7 +28,7 @@ import struct
 from array import array
 from pathlib import Path
 
-GRAPH = Path('data/graph2.bin.gz')
+GRAPH = Path('maps/washington/graph2.bin.gz')
 FERRY_FLAG = 32
 ONEWAY_FLAG = 16
 ACCESS_RADIUS_M = 250.0

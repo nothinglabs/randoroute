@@ -1,5 +1,5 @@
 /*
- * Washington Bike Safety Visualizer
+ * Just Rolling Along -- bicycle safety and routing
  *
  * All road, trail, ferry, restriction, and elevation data is baked into local
  * static files. Routing runs on-device in a web worker; optional runtime
@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.659';
+const APP_VERSION = '2026-08-10.660';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -571,7 +571,7 @@ const SOURCES = [
   {
     id: 'routes',
     name: 'Designated routes (USBR & regional)',
-    url: 'data/bikeroutes.geojson.gz',
+    url: Region.dataUrl('bikeroutes.geojson.gz'),
     scorer: scoreRouteOverlay,
     // An underlay, beneath everything. A signed route is CONTEXT -- it says a
     // corridor is recommended, not what the road under your wheels is like --
@@ -597,7 +597,7 @@ const SOURCES = [
     // index -- for data the rider only sees a viewport of. Same move, same
     // reasons as roads.geojson -> roads.pmtiles. Bump ?v= with sw.js VERSION
     // when the archive is rebuilt (scripts/build_overlay_tiles.py).
-    vector: 'pmtiles://data/overlays.pmtiles?v=2',
+    vector: `pmtiles://${Region.dataUrl('overlays.pmtiles')}?v=2`,
     mapSourceId: 'overlays',
     sourceLayer: 'blts',
     count: 55271, // baked by build_overlay_tiles.py (tiles carry no global count)
@@ -622,7 +622,7 @@ const SOURCES = [
   {
     id: 'osm',
     name: 'OSM bike infrastructure',
-    vector: 'pmtiles://data/overlays.pmtiles?v=2',
+    vector: `pmtiles://${Region.dataUrl('overlays.pmtiles')}?v=2`,
     mapSourceId: 'overlays',
     sourceLayer: 'bikeinfra',
     count: 37788, // baked by build_overlay_tiles.py, after the sharrow-only drop
@@ -637,7 +637,7 @@ const SOURCES = [
   {
     id: 'restrict',
     name: Region.restrictionLayerName,
-    url: 'data/bike_restrictions.geojson.gz',
+    url: Region.dataUrl('bike_restrictions.geojson.gz'),
     scorer: scoreRestrict,
     zRank: 3,     // always on top
     fixed: true,  // fixed regulatory styling — identical in both display modes
@@ -648,7 +648,7 @@ const SOURCES = [
   {
     id: 'closures',
     name: 'Known route closures (OSM)',
-    url: 'data/route_closures.geojson.gz',
+    url: Region.dataUrl('route_closures.geojson.gz'),
     zRank: 4,     // always above roads, routes, and the active route line
     closure: true,
     expr: true,   // static GeoJSON; no riding-rule score to calculate
@@ -664,7 +664,7 @@ const SOURCES = [
     // The ?v= busts stale HTTP range caches when the tiles are rebuilt —
     // PMTiles bypasses the service worker, and mixing old/new byte ranges
     // silently breaks tile decoding. Bump alongside the sw.js VERSION.
-    vector: 'pmtiles://data/roads.pmtiles?v=24',
+    vector: `pmtiles://${Region.dataUrl('roads.pmtiles')}?v=24`,
     // The local basemap already opens this archive for its street geometry and
     // labels. Reuse that MapLibre source for safety coloring and hit testing so
     // iOS does not decode or retain the same vector tiles twice.
@@ -684,10 +684,28 @@ const SOURCES = [
   },
 ];
 
-// Layer toggles restore from the persisted state (before panels build).
+// A state's folder decides which of these there are anything to draw. Every
+// entry above is a fetch or a tile archive in maps/<state>/, and a state still
+// being built may ship only some of them -- keeping a layer whose file is not
+// there means a toggle in the layer list that turns on a 404, and (for the
+// tiled ones) a MapLibre source that never loads.
+const SOURCE_DATASET = {
+  routes: 'bikeroutes', blts: 'overlays', osm: 'overlays',
+  restrict: 'restrictions', closures: 'closures', roads: 'roads',
+};
+for (let i = SOURCES.length - 1; i >= 0; i--) {
+  if (!Region.datasets[SOURCE_DATASET[SOURCES[i].id]]) SOURCES.splice(i, 1);
+}
+
+// Layer toggles restore from the persisted state (before panels build). The
+// whole stored map is kept, not just the layers this state has: saveStateNow()
+// writes it back underneath the current ones so a state with no scored linework
+// cannot erase the rider's choices for the states that do.
+let storedSourcePreferences = {};
 try {
   const st = JSON.parse(localStorage.getItem('wa-bike-state-1') || 'null');
   if (st && st.sources) {
+    storedSourcePreferences = { ...st.sources };
     for (const s of SOURCES) {
       if (!s.alwaysOn && st.sources[s.id] != null) s.enabled = st.sources[s.id];
     }
@@ -783,6 +801,19 @@ const STATE_KEY = 'wa-bike-state-1';
 const SAVED_ROUTES_KEY = 'wa-bike-saved-routes-1';
 let savedState = null;
 try { savedState = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); } catch (e) { /* ignore */ }
+// Rules, layers and voice settings are the rider's, and follow them between
+// states. A map view and a route are a pair of coordinates, and coordinates
+// belong to the state they were taken in: restoring Washington's saved view
+// after a switch to Oregon opens the map on Seattle, in the middle of a state
+// whose data is not loaded, with a route drawn across a graph that is gone.
+// Drop both when the saved blob came from a different folder.
+const savedStateIsThisState = !savedState || savedState.stateId === Region.id
+  // Written before there was more than one state: that data is about whichever
+  // state the app used to open on, so the rider keeps their view there.
+  || (savedState.stateId === undefined && Region.id === Region.defaultStateId);
+if (savedState && !savedStateIsThisState) {
+  savedState = { ...savedState, view: null, route: null };
+}
 if (savedState) {
   if (savedState.rules) Object.assign(rules, validRuleOverrides(savedState.rules));
   if (typeof savedState.passFail === 'boolean') display.passFail = savedState.passFail;
@@ -1038,6 +1069,9 @@ function saveStateNow() {
   if (!stateDirty) return true;
   try {
     localStorage.setItem(STATE_KEY, JSON.stringify({
+      // Which state the `view` and `route` below are coordinates in. Without
+      // it a switch reopens the map on the previous state's saved viewport.
+      stateId: Region.id,
       rules, passFail: display.passFail,
       // savedLayer(), not display[], so a solo preview -- which dims every other
       // layer for half a second -- can never be written to disk as the rider's
@@ -1058,7 +1092,12 @@ function saveStateNow() {
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       showAdvancedTools: uiPrefs.showAdvancedTools,
       showRouteStops: uiPrefs.showRouteStops,
-      sources: Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])),
+      // Layered over whatever was already stored, not replacing it: a state
+      // that ships no scored linework has no SOURCES, and writing its empty
+      // set would reset the rider's layer toggles for every other state the
+      // moment they looked at that one.
+      sources: { ...storedSourcePreferences,
+        ...Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])) },
       view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
       route: routing.start && routing.end
         ? {
@@ -1093,7 +1132,7 @@ const map = new maplibregl.Map({
   attributionControl: { compact: true },
   center: (savedState && savedState.view && savedState.view.c) || Region.defaultCenter,
   zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
-  // This build only has Washington data. Low-zoom statewide tiles make WebKit
+  // A build covers one state. Low-zoom statewide tiles make WebKit
   // retain and rebucket a very large generation during a pinch, which can
   // terminate iPhone Safari. Unconstrained browsers keep the wider z5 view;
   // WebKit and phones stop before that memory-heavy tile level.
@@ -3077,6 +3116,14 @@ function handleRouterFailure(message) {
 
 async function ensureRouter() {
   if (routing.ready || routing.loading) return;
+  // A state whose folder has no graph cannot route, and it never will by
+  // retrying: there is nothing at the URL. Say so once, plainly, instead of
+  // downloading a 404 and reporting it as a connection problem.
+  if (!Region.datasets.graph) {
+    setRouteStatus(`${Region.name} has no routing map yet. `
+      + 'Search and browse work; pick another state on the Maps screen to plan a ride.');
+    return;
+  }
   routing.loading = true;
   // Endpoint editing is safe while the graph initializes: computeRoute()
   // records a pending request and runs it once the worker reports ready. Keep
@@ -4486,6 +4533,45 @@ const HELP_TOPIC_TITLES = {
   technical: 'Technical details',
 };
 
+// Who to credit for the loaded state's data. The OSM extract and the agency
+// services behind the enrichment both change with the state, so they come from
+// the region rather than being written into the HTML -- one state's agency
+// listed on every state's credits screen is a false attribution, not a typo.
+// A state with no agency data at all shows no section rather than an empty one.
+function renderRegionCredits() {
+  const credit = Region.attribution || {};
+  for (const host of document.querySelectorAll('#creditsExtract')) {
+    host.replaceChildren();
+    if (!credit.extractUrl) continue;
+    const link = document.createElement('a');
+    link.href = credit.extractUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = 'Geofabrik';
+    host.append(`The ${credit.extractName || Region.name} extract comes from `, link, '.');
+  }
+  const sources = credit.agencySources || [];
+  for (const section of document.querySelectorAll('#creditsAgency')) {
+    section.hidden = !sources.length;
+    const heading = section.querySelector('#creditsAgencyHeading');
+    const list = section.querySelector('#creditsAgencyList');
+    if (heading) heading.textContent = credit.agencyHeading || `${Region.name} transportation data`;
+    if (!list) continue;
+    list.replaceChildren(...sources.map((source) => {
+      const item = document.createElement('li');
+      const link = document.createElement('a');
+      link.href = source.url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      const strong = document.createElement('b');
+      strong.textContent = source.title;
+      link.append(strong);
+      item.append(link, ` ${source.note}`);
+      return item;
+    }));
+  }
+}
+
 function initializeHelpCenter() {
   document.querySelectorAll('.help-panel[data-help-source]').forEach((panel) => {
     if (panel.childElementCount) return;
@@ -4497,6 +4583,7 @@ function initializeHelpCenter() {
       : [...template.content.children].filter((child) => !child.matches('.dialog-head, .full-help-head'));
     panel.append(...sourceElements.map((child) => child.cloneNode(true)));
   });
+  renderRegionCredits();
 
   const tabs = [...document.querySelectorAll('[data-help-tab]')];
   tabs.forEach((tab) => {
@@ -9359,11 +9446,11 @@ function buildSavedRoutes() {
 }
 
 /* --------------------------------------- start/end location dialog */
-// Offline place search over a baked OSM index (data/places.json).
+// Offline place search over a baked OSM index (maps/<state>/places.json).
 let placesIndex = null, placesPromise = null;
 function ensurePlaces() {
   if (!placesPromise) {
-    placesPromise = fetch('data/places.json')
+    placesPromise = fetch(Region.dataUrl('places.json'))
       .then((res) => (res.ok ? res.json() : []))
       .then((j) => { placesIndex = j; })
       .catch(() => { placesPromise = null; }); // offline pre-cache: retry next time
@@ -9407,7 +9494,7 @@ async function searchOnlinePlaces(query) {
     const url = new URL(ONLINE_PLACE_SEARCH_ENDPOINT);
     // A local viewbox biases results toward the current view; it is not a hard
     // bound (so a store a bit farther out still comes back), and we then keep
-    // only Washington hits ourselves.
+    // only in-region hits ourselves.
     const halfLon = 1.1, halfLat = 0.7;
     url.search = new URLSearchParams({
       format: 'jsonv2', q: query.trim(), limit: '30', countrycodes: 'us', addressdetails: '1',
@@ -11997,10 +12084,14 @@ function applyRoutingPreset(presetId) {
 }
 
 /* ------------------------------------------------------------ maps
- * Groundwork for loading more than one state. The list is real and complete so
- * the shape of the eventual feature is visible, but this build ships one
- * dataset: Washington is loaded and every other state is inert. Nothing here
- * writes state or triggers a download -- the only action is to close.
+ * One state is loaded at a time, and switching is switching folders: every
+ * data path in the app, the router worker and the service worker is built from
+ * Region.dataRoot, so the choice made here is the whole mechanism.
+ *
+ * The list of states that HAVE a map comes from maps/states.js, generated from
+ * the folders. The other forty-something are named here only so a rider can
+ * see that the country is the eventual scope -- no code below cares which
+ * names those are, and adding a state to the app is adding a folder.
  */
 const US_STATES = Object.freeze(['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
   'Colorado', 'Connecticut', 'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois',
@@ -12010,34 +12101,97 @@ const US_STATES = Object.freeze(['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'Ca
   'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina',
   'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
   'West Virginia', 'Wisconsin', 'Wyoming']);
-const MAX_LOADED_STATES = 2;
+
+// What a state's folder lets a rider do, in the order the answer matters:
+// routing is the app, tiles are the picture, and a place index alone is enough
+// to search but not to ride.
+function mapsStateCapability(state) {
+  if (!state) return 'No map yet';
+  if (state.datasets.graph && state.datasets.roads) return 'Routing, map and safety data';
+  if (state.datasets.basemap || state.datasets.roads) return 'Map only — no routing yet';
+  if (state.datasets.places) return 'Place search only — no map or routing yet';
+  return 'Nothing usable yet';
+}
+
+function setMapsStatus(message) {
+  const status = document.getElementById('mapsStatus');
+  if (status) status.textContent = message || '';
+}
+
+// Switching is a reload: the graph, the tiles, the overlays and the place index
+// all come from the other folder, and there is no partial way to swap them
+// under a running map. So the route goes first (it belongs to a graph that is
+// about to be gone), then the choice is stored, then the app restarts.
+function switchMapState(id) {
+  const target = Region.states.find((state) => state.id === id);
+  if (!target || target.id === Region.id) return false;
+  if (turnNav.active) {
+    setMapsStatus('Finish navigating before switching states.');
+    return false;
+  }
+  try {
+    localStorage.setItem(Region.storageKey, target.id);
+  } catch (e) {
+    // Private mode, or storage full. Reloading would silently come back on the
+    // old state, which looks like the tap did nothing.
+    setMapsStatus('This device would not remember the change, so nothing was switched.');
+    return false;
+  }
+  setMapsStatus(`Loading ${target.name}…`);
+  clearRoute();
+  location.reload();
+  return true;
+}
 
 function buildMapsStateList() {
   const host = document.getElementById('mapsStateList');
   if (!host) return;
   host.replaceChildren();
-  for (const state of US_STATES) {
-    const loaded = state === Region.name;
+  const available = new Map(Region.states.map((state) => [state.name, state]));
+  for (const name of US_STATES) {
+    const state = available.get(name);
+    const loaded = state && state.id === Region.id;
     const row = document.createElement('label');
-    row.className = `maps-state${loaded ? ' loaded' : ' unavailable'}`;
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.checked = loaded;
-    // Every other state is genuinely unavailable, and a checkbox that accepts
-    // a tap and then does nothing is worse than one that says it cannot.
-    box.disabled = !loaded;
-    if (loaded) {
-      // The loaded state cannot be turned off while it is the only one there
-      // is; re-check rather than leave the app claiming no map at all.
-      box.addEventListener('change', () => { box.checked = true; });
+    row.className = `maps-state${loaded ? ' loaded' : ''}${state ? '' : ' unavailable'}`
+      + (state && state.status === 'preview' ? ' preview' : '');
+    const choice = document.createElement('input');
+    // One state at a time, so: radios. A checkbox would promise that two can
+    // be on at once, which is exactly what this cannot do.
+    choice.type = 'radio';
+    choice.name = 'mapsState';
+    choice.checked = !!loaded;
+    // A state with no folder is genuinely unavailable, and a control that
+    // accepts a tap and then does nothing is worse than one that says it
+    // cannot.
+    choice.disabled = !state;
+    if (state) {
+      choice.value = state.id;
+      choice.addEventListener('change', () => {
+        if (!choice.checked) return;
+        // A refused switch must not leave the list claiming the other state is
+        // loaded; put the selection back where the app actually is.
+        if (!switchMapState(state.id)) buildMapsStateList();
+      });
     }
-    const name = document.createElement('span');
-    name.textContent = state;
-    row.append(box, name);
-    if (loaded) {
+    const label = document.createElement('span');
+    label.className = 'maps-state-name';
+    const title = document.createElement('span');
+    title.textContent = name;
+    label.append(title);
+    if (state) {
+      const detail = document.createElement('span');
+      detail.className = 'maps-state-detail';
+      detail.textContent = mapsStateCapability(state);
+      label.append(detail);
+    }
+    row.append(choice, label);
+    if (loaded || (state && state.status === 'preview')) {
       const badge = document.createElement('span');
-      badge.className = 'maps-state-badge';
-      badge.textContent = 'Loaded';
+      // Loaded is the fact the rider is looking for; preview is a warning. A
+      // loaded preview state gets the Loaded badge -- the row's own copy
+      // already says what it cannot do.
+      badge.className = `maps-state-badge${loaded ? '' : ' preview'}`;
+      badge.textContent = loaded ? 'Loaded' : 'Preview';
       row.append(badge);
     }
     host.append(row);
@@ -12047,6 +12201,7 @@ function buildMapsStateList() {
 function openMapsDialog() {
   const dialog = document.getElementById('mapsDialog');
   if (!dialog) return;
+  setMapsStatus('');
   buildMapsStateList();
   if (!dialog.open) dialog.showModal();
 }

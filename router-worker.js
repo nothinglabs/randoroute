@@ -1,5 +1,5 @@
 /*
- * Client-side bike router v2. A* over the prebuilt graph (data/graph2.bin.gz,
+ * Client-side bike router v2. A* over the prebuilt graph (maps/washington/graph2.bin.gz,
  * scripts/build_graph.py) entirely in this worker — no routing server.
  *
  * Cost = estimated riding TIME (grade-aware speed model on baked-in DEM

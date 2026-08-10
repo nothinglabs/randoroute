@@ -236,9 +236,9 @@ def patch_graph(raw, grid, match_deg, strict_match_deg):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--graph', default='data/graph2.bin.gz')
-    parser.add_argument('--blts', default='data/blts.geojson')
-    parser.add_argument('--out', default='data/graph2.bin.gz')
+    parser.add_argument('--graph', default='maps/washington/graph2.bin.gz')
+    parser.add_argument('--blts', default='maps/washington/blts.geojson')
+    parser.add_argument('--out', default='maps/washington/graph2.bin.gz')
     parser.add_argument('--match-deg', type=float, default=MATCH_DEG)
     parser.add_argument('--strict-match-deg', type=float, default=STRICT_MATCH_DEG)
     parser.add_argument('--apply', action='store_true', help='write the patched graph to --out')

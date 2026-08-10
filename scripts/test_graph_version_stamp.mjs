@@ -43,4 +43,4 @@ assert.equal(bv.GRAPH_DATA_VERSION, `sha-${digest}`,
 assert.ok(bv.GRAPH_URL.includes(`gv=${bv.GRAPH_DATA_VERSION}`),
   `GRAPH_URL (${bv.GRAPH_URL}) does not carry the stamped version`);
 
-console.log(`Graph version stamp verified: ${bv.GRAPH_DATA_VERSION} matches data/graph2.bin.gz.`);
+console.log(`Graph version stamp verified: ${bv.GRAPH_DATA_VERSION} matches maps/washington/graph2.bin.gz.`);

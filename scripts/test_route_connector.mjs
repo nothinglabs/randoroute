@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import zlib from 'node:zlib';
 
-const graph = zlib.gunzipSync(fs.readFileSync(new URL('../data/graph2.bin.gz', import.meta.url)));
+const graph = zlib.gunzipSync(fs.readFileSync(new URL('../maps/washington/graph2.bin.gz', import.meta.url)));
 const messages = [];
 const context = vm.createContext({
   console, Date, Math, Map, Set, TextDecoder,

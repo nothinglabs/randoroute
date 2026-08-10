@@ -51,11 +51,11 @@ await page.waitForFunction(() => window.map && map.loaded && map.loaded(), { tim
   .catch(() => {});
 // The worker precaches the offline dataset. Wait for it rather than guessing.
 await page.waitForFunction(
-  async () => (await (await caches.open('data-offline-map-v8')).keys()).length >= 9,
+  async () => (await (await caches.open('data-offline-map-v9')).keys()).length >= 9,
   { timeout: 900000 });
 
 const cached = await page.evaluate(async () => {
-  const cache = await caches.open('data-offline-map-v8');
+  const cache = await caches.open('data-offline-map-v9');
   return (await cache.keys()).map((r) => new URL(r.url).pathname + new URL(r.url).search);
 });
 // The graph's query string is part of its identity: it carries the build and
@@ -68,7 +68,7 @@ check('the routing graph is cached under the URL the app actually requests',
 check('one copy of the graph, not two',
   cached.filter((u) => u.includes('graph2.bin.gz')).length === 1,
   `${cached.filter((u) => u.includes('graph2.bin.gz')).length} copies`);
-for (const archive of ['/data/basemap.pmtiles', '/data/roads.pmtiles']) {
+for (const archive of ['/maps/washington/basemap.pmtiles', '/maps/washington/roads.pmtiles']) {
   check(`${archive} is stored for offline use`, cached.includes(archive));
 }
 

@@ -1,36 +1,48 @@
 #!/usr/bin/env node
-// Stamp the pmtiles archives' content hashes into build-version.js, exactly
-// as build_graph.py stamps GRAPH_DATA_VERSION. The service worker compares
+// Stamp a state's pmtiles archives' content hashes into its region.json,
+// exactly as build_graph.py stamps the graph's. The service worker compares
 // these on activation and refreshes a stale offline archive; without a stamp
 // the offline copy was refreshed only by reinstalling the app.
 //
-// Run after any tile rebuild: node scripts/stamp_tiles_version.mjs
+// Run after any tile rebuild:
+//   node scripts/stamp_tiles_version.mjs [state]      (default: washington)
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const state = process.argv[2] || 'washington';
+const folder = join(ROOT, 'maps', state);
+const configPath = join(folder, 'region.json');
+if (!existsSync(configPath)) throw new Error(`no such state: maps/${state}/region.json`);
 
-const stamp = (name) => {
-  const sha = createHash('sha256')
-    .update(readFileSync(join(ROOT, 'data', name)))
-    .digest('hex').slice(0, 12);
-  return `sha-${sha}`;
-};
+const config = JSON.parse(readFileSync(configPath, 'utf8'));
+const stamp = (name) => `sha-${createHash('sha256')
+  .update(readFileSync(join(folder, name))).digest('hex').slice(0, 12)}`;
 
-const versions = {
-  ROADS_TILES_VERSION: stamp('roads.pmtiles'),
-  BASEMAP_TILES_VERSION: stamp('basemap.pmtiles'),
-  OVERLAY_TILES_VERSION: stamp('overlays.pmtiles'),
-};
-
-const path = join(ROOT, 'build-version.js');
-let source = readFileSync(path, 'utf8');
-for (const [key, value] of Object.entries(versions)) {
-  const pattern = new RegExp(`(root\\.${key} = ')[^']*(')`);
-  if (!pattern.test(source)) throw new Error(`${key} line not found in build-version.js`);
-  source = source.replace(pattern, `$1${value}$2`);
-  console.log(`stamped ${key} = ${value}`);
+const versions = { ...config.versions };
+for (const [dataset, file] of [
+  ['roads', 'roads.pmtiles'],
+  ['basemap', 'basemap.pmtiles'],
+  ['overlays', 'overlays.pmtiles'],
+]) {
+  if (!config.datasets[dataset]) {
+    // A state that does not ship the archive must not carry a stamp for it:
+    // the service worker would then chase a refresh for a file that 404s on
+    // every activation.
+    delete versions[dataset];
+    console.log(`skipped ${dataset} -- maps/${state}/ does not ship it`);
+    continue;
+  }
+  versions[dataset] = stamp(file);
+  console.log(`stamped ${dataset} = ${versions[dataset]}`);
 }
-writeFileSync(path, source);
+
+config.versions = versions;
+writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+// The app reads the generated index, not the folders, so a stamp that stops
+// here would never reach a browser.
+execFileSync(process.execPath, [join(ROOT, 'scripts/build_map_registry.mjs')],
+  { stdio: 'inherit' });

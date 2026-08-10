@@ -4,7 +4,7 @@
 from build_graph import blts_matches, load_blts_index
 
 
-index = load_blts_index("data/blts.geojson")
+index = load_blts_index("maps/washington/blts.geojson")
 # OSM WA-525 node interval nearest 48.001199,-122.447333. The OSM coordinate
 # order follows WSDOT's increasing inventory direction at this location.
 coords = [

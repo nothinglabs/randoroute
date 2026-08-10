@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Phase 2 build step: prepare data/bikeinfra.geojson from an OSM extract.
+Phase 2 build step: prepare maps/washington/bikeinfra.geojson from an OSM extract.
 
 BUILD-TIME step. The app makes no runtime Overpass/OSM calls — it renders only
-from the static data/bikeinfra.geojson this script produces.
+from the static maps/washington/bikeinfra.geojson this script produces.
 
 Source: Geofabrik Washington extract (washington-latest.osm.pbf), EPSG:4326.
-Output: data/bikeinfra.geojson  (dedicated cycleways, bike lanes, shared paths)
+Output: maps/washington/bikeinfra.geojson  (dedicated cycleways, bike lanes, shared paths)
 
 We keep only ways that classify as real bike infrastructure (the scorer's
 keep/drop logic below, mirrored in app.js's scoreOSM). Everything else — plain
@@ -15,7 +15,7 @@ so we don't color noise.
 
 Requires: osmium (pyosmium).  pip install osmium
 Usage: python3 scripts/build_osm.py --src data/washington-latest.osm.pbf \
-                                     --out data/bikeinfra.geojson
+                                     --out maps/washington/bikeinfra.geojson
 """
 import argparse
 import json
@@ -166,6 +166,6 @@ def build(src, out):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="data/washington-latest.osm.pbf")
-    ap.add_argument("--out", default="data/bikeinfra.geojson")
+    ap.add_argument("--out", default="maps/washington/bikeinfra.geojson")
     args = ap.parse_args()
     build(args.src, args.out)

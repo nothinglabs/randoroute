@@ -126,7 +126,7 @@ def read_graph(path):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--graph', default='data/graph2.bin.gz')
+    ap.add_argument('--graph', default='maps/washington/graph2.bin.gz')
     ap.add_argument('--add', help='a candidate source to measure against the gap')
     ap.add_argument('--label', default='candidate')
     args = ap.parse_args()

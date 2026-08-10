@@ -6,16 +6,31 @@
  *    app stays on one complete release until the user accepts the precached
  *    update, so HTML, JS, and CSS cannot be mixed during deployment.
  *  - Routing and vector-map data: PRECACHED + CACHE-FIRST. The installed PWA
- *    downloads the complete Washington dataset, including PMTiles archives.
+ *    downloads the loaded state's complete dataset, including PMTiles
+ *    archives -- whichever files that state declares it has.
  *  - PMTiles Range requests are answered from the cached full archive, so the
  *    map remains usable without a network connection.
  */
+importScripts('./maps/states.js');
+importScripts('./region.js');
 importScripts('./build-version.js');
 
-const VERSION = 'v635'; // bump when app shell changes
+// Every data path is the loaded state's folder. region.js decides which state
+// that is; nothing here names one.
+const DATA_ROOT = `./${Region.dataRoot}`;
+const stateFile = (name) => `${DATA_ROOT}/${name}`;
+
+const VERSION = 'v636'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
-const DATA_CACHE = 'data-offline-map-v8';
+//
+// v9 because every data file moved from ./data/ into ./maps/<state>/. A cache
+// is keyed by URL, so the v8 entries can never be hit again: leaving them would
+// strand about 150 MB of unreachable archives on every installed PWA forever.
+// Dropping the cache costs a re-download, which this release requires anyway --
+// activation refetches the archives and the graph comes back on the first
+// route.
+const DATA_CACHE = 'data-offline-map-v9';
 
 const SHELL = [
   './',
@@ -24,6 +39,7 @@ const SHELL = [
   './route-details.html',
   './app.js',
   './palette.js',
+  './maps/states.js',
   './region.js',
   './build-version.js',
   './safety-model.js',
@@ -52,41 +68,47 @@ const SHELL = [
 // GRAPH_DATA_VERSION and GRAPH_URL come from build-version.js, which
 // index.html loads too. Bump them there.
 
+// Only what the loaded state actually ships. A state under construction may
+// carry a place index and nothing else, and precaching a graph that is not
+// there fails the whole install -- the new worker never reaches waiting and
+// the app reports an update it can never apply.
+const ships = (dataset) => !!Region.datasets[dataset];
 const DATA = [
-  './data/bikeroutes.geojson.gz',
-  './data/bike_restrictions.geojson.gz',
-  './data/route_closures.geojson.gz',
-  './data/roads.pmtiles',
-  './data/basemap.pmtiles',
-  './data/overlays.pmtiles',
-  `./${GRAPH_URL}`,
-  './data/places.json',
+  ...[
+    ['bikeroutes', 'bikeroutes.geojson.gz'],
+    ['restrictions', 'bike_restrictions.geojson.gz'],
+    ['closures', 'route_closures.geojson.gz'],
+    ['roads', 'roads.pmtiles'],
+    ['basemap', 'basemap.pmtiles'],
+    ['overlays', 'overlays.pmtiles'],
+  ].filter(([dataset]) => ships(dataset)).map(([, file]) => stateFile(file)),
+  ...(ships('graph') ? [`./${GRAPH_URL}`] : []),
+  ...(ships('places') ? [stateFile('places.json')] : []),
 ];
 // Small, release-generated overlays can change without changing the 100+ MB
 // statewide archives. Refresh ALL of them on every activation while retaining
 // the big archives across UI releases -- "check for updates" must really
 // deliver everything new, and these together are a few MB.
-const ALWAYS_REFRESH_DATA = new Set([
-  './data/bikeroutes.geojson.gz',
-  './data/bike_restrictions.geojson.gz',
-  './data/route_closures.geojson.gz',
-  './data/places.json',
-]);
+const ALWAYS_REFRESH_DATA = new Set(DATA.filter((path) => [
+  'bikeroutes.geojson.gz', 'bike_restrictions.geojson.gz',
+  'route_closures.geojson.gz', 'places.json',
+].some((file) => path.endsWith(`/${file}`))));
 
-// The big archives refresh only when their content stamp (build-version.js)
-// changes. The stamp of the cached copy is stored as a marker entry beside
-// the archive; no marker means an install that predates stamping, which
-// counts as stale -- one refresh, then it is stamped like everything else.
-const ARCHIVE_VERSIONS = {
-  './data/roads.pmtiles': ROADS_TILES_VERSION,
-  './data/basemap.pmtiles': BASEMAP_TILES_VERSION,
-  './data/overlays.pmtiles': OVERLAY_TILES_VERSION,
-};
+// The big archives refresh only when their content stamp (the state's
+// region.json) changes. The stamp of the cached copy is stored as a marker
+// entry beside the archive; no marker means an install that predates stamping,
+// which counts as stale -- one refresh, then it is stamped like everything
+// else.
+const ARCHIVE_VERSIONS = Object.fromEntries([
+  ['roads', stateFile('roads.pmtiles'), ROADS_TILES_VERSION],
+  ['basemap', stateFile('basemap.pmtiles'), BASEMAP_TILES_VERSION],
+  ['overlays', stateFile('overlays.pmtiles'), OVERLAY_TILES_VERSION],
+].filter(([dataset]) => ships(dataset)).map(([, path, version]) => [path, version]));
 // Markers live under a distinct pathname, never a query string: the archive
 // lookups use ignoreSearch, so a `?stamp` variant of the same path could be
 // returned AS the archive. Nothing ever fetches this path; it exists only as
 // a Cache API key.
-const archiveMarker = (path) => new Request(path.replace('./data/', './data/.stamp/'));
+const archiveMarker = (path) => new Request(path.replace(DATA_ROOT, `${DATA_ROOT}/.stamp`));
 
 // cache.addAll() is all-or-nothing: one dropped request on a phone fails the
 // whole install, the new worker never reaches the waiting state, and the app
@@ -132,9 +154,9 @@ self.addEventListener('message', (e) => {
   // The page asks for this when the graph version it wants is not the one it
   // last loaded. Activation already purges, but a page can outlive that: the
   // load that first runs a new app.js is still controlled by the PREVIOUS
-  // worker, which served /data/ ignoring the query string and handed back a
-  // stale graph. Answering here lets the page clear it and retry without the
-  // rider having to reload a second time.
+  // worker, which served the state folder ignoring the query string and handed
+  // back a stale graph. Answering here lets the page clear it and retry without
+  // the rider having to reload a second time.
   if (e.data && e.data.type === 'PURGE_GRAPH') {
     e.waitUntil(purgeStaleGraph().then(() => {
       e.source?.postMessage({ type: 'GRAPH_PURGED' });
@@ -162,11 +184,14 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.origin === location.origin && url.pathname.endsWith('.pmtiles')) {
     e.respondWith(pmtilesCacheFirst(e.request));
-  } else if (url.origin === location.origin && url.pathname.endsWith('/data/graph2.bin.gz')) {
+  } else if (url.origin === location.origin && url.pathname.endsWith('/graph2.bin.gz')) {
     // The one /data/ asset whose query string matters: it carries the graph's
     // build version, and ignoring it served a stale routing graph forever.
     e.respondWith(cacheFirst(DATA_CACHE, e.request, false));
-  } else if (url.origin === location.origin && url.pathname.includes('/data/')) {
+  } else if (url.origin === location.origin && url.pathname.includes('/maps/')) {
+    // Any state's folder, not just the loaded one: a rider who switches back
+    // should find the previous state's archives still cached rather than
+    // downloading them again.
     e.respondWith(cacheFirst(DATA_CACHE, e.request, true));
   } else if (url.origin === location.origin) {
     e.respondWith(cacheFirst(SHELL_CACHE, e.request));
@@ -277,11 +302,15 @@ async function refreshStaleArchives() {
 
 // Delete graph copies from an earlier build. Keyed caching alone would leave
 // the previous 30 MB archive sitting in storage for good.
+//
+// Scoped to the loaded state's folder. Another state's graph is not stale --
+// it is simply not the one in use, and deleting it would make switching back
+// a fresh 46 MB download every time.
 async function purgeStaleGraph() {
   const cache = await caches.open(DATA_CACHE);
   for (const request of await cache.keys()) {
     const url = new URL(request.url);
-    if (!url.pathname.endsWith('/data/graph2.bin.gz')) continue;
+    if (!url.pathname.endsWith(`/${Region.dataRoot}/graph2.bin.gz`)) continue;
     if (url.searchParams.get('gv') !== GRAPH_DATA_VERSION) await cache.delete(request);
   }
 }

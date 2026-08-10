@@ -48,6 +48,12 @@ Follow-ups that hang on the verdict:
 ### 3. Road detail UI improvements
 Owner has ideas; not yet described. Nothing started.
 
+### 4. Finish the Oregon import
+Oregon ships as a `preview` state in v.660: a basemap and a place index, real
+data, no routing. `maps/oregon/STATUS.md` lists what is missing and what each
+piece would take. The largest item is ODOT data — nothing has been conflated,
+so the agency names in `region.json` are labels, not claims.
+
 ## Parked (has a trigger, waiting on it)
 
 - **Generalized route cross-breeding.** The ferry splice works because same

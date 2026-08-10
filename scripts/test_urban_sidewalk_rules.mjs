@@ -6,7 +6,7 @@ import zlib from 'node:zlib';
 
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
 const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
-const graph = zlib.gunzipSync(fs.readFileSync(new URL('../data/graph2.bin.gz', import.meta.url)));
+const graph = zlib.gunzipSync(fs.readFileSync(new URL('../maps/washington/graph2.bin.gz', import.meta.url)));
 const messages = [];
 const context = vm.createContext({
   Date, Math, Map, Set, TextDecoder,

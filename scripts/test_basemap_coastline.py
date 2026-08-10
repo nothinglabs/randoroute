@@ -49,7 +49,7 @@ for name, lon, lat in (
     ("Langley", -122.447333, 48.001199),
     ("Kingston", -122.4982, 47.7986),
 ):
-    assert detailed_land_contains("data/basemap.pmtiles", lon, lat), (
+    assert detailed_land_contains("maps/washington/basemap.pmtiles", lon, lat), (
         f"{name} should be on detailed OSM coastline land"
     )
 

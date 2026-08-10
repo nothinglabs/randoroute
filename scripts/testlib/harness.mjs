@@ -62,7 +62,7 @@ let graphBytes = null;
 /** The production graph, gunzipped at most once per process. */
 export function graphBuffer() {
   if (!graphBytes) {
-    const gz = readSync(join(ROOT, 'data/graph2.bin.gz'));
+    const gz = readSync(join(ROOT, 'maps/washington/graph2.bin.gz'));
     const raw = zlib.gunzipSync(gz);
     graphBytes = raw.byteOffset === 0 && raw.byteLength === raw.buffer.byteLength
       ? raw.buffer : raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);

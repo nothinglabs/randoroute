@@ -253,7 +253,7 @@ vm.runInContext([
 ].join('\n'), osmCtx);
 
 const bikeinfra = JSON.parse(gunzipSync(readFileSync(
-  new URL('../data/bikeinfra.geojson.gz', import.meta.url))));
+  new URL('../maps/washington/bikeinfra.geojson.gz', import.meta.url))));
 // The tiles hold the post-drop set (build_overlay_tiles.py mirrors
 // sharrowOnly), and tippecanoe drops null-valued attributes -- so the sweep
 // strips them too, or it would compare a shape the renderer never sees.

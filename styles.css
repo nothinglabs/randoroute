@@ -515,12 +515,22 @@ body:not(.navigation-active) #navCard { display: none; }
 .maps-state-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; }
 .maps-state { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 6px 11px; border: 1px solid #dbe5ea; border-radius: 10px; background: #fff; color: #24343f; font: 700 13.5px/1.2 system-ui; }
 .maps-state input { width: 18px; height: 18px; flex: none; accent-color: #0a66c2; }
+.maps-state-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* Says what a state can actually do. It is the difference between a finished
+   map and one that only knows where the towns are, so it is on the row rather
+   than behind a tap. */
+.maps-state-detail { color: #6a7d89; font: 600 10.5px/1.3 system-ui; }
 .maps-state.loaded { border-color: #7db4d2; background: #eef7fc; color: #08496f; }
+.maps-state.loaded .maps-state-detail { color: #3d738f; }
 /* Greyed, not hidden: the point of the screen is that these exist and are not
    ready yet. */
 .maps-state.unavailable { color: #93a3ad; background: #f6f8f9; }
 .maps-state.unavailable input { cursor: not-allowed; }
 .maps-state-badge { margin-left: auto; padding: 2px 7px; border-radius: 999px; background: #0a66c2; color: #fff; font: 800 9.5px/1.5 system-ui; letter-spacing: .04em; text-transform: uppercase; }
+.maps-state-badge.preview { background: #9a6b12; }
+/* Switching reloads the app, so the reason a switch is refused belongs where
+   the rider is looking when they try it. */
+.maps-status { margin: 12px 0 0; min-height: 17px; color: #8a4b12; font: 700 12.5px/1.35 system-ui; }
 /* All four panes take the measured natural height of Limits. JavaScript sets
    this variable after the Settings view is laid out, so the panel no longer
    jumps between tabs without baking a control count into a magic pixel cap. */

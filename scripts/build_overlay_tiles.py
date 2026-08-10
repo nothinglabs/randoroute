@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build data/overlays.pmtiles: the two street-detail overlays as vector tiles.
+"""Build maps/washington/overlays.pmtiles: the two street-detail overlays as vector tiles.
 
 The OSM bike-infrastructure layer (38k features) and the WSDOT BLTS layer
 (55k) used to load as whole GeoJSON collections. Between the parsed copy the

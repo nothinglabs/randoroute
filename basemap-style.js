@@ -3,12 +3,12 @@
   'use strict';
 
   const FONT_STACK = 'Klokantech Noto Sans Regular';
-  const CONTEXT_URL = 'pmtiles://data/basemap.pmtiles?v=5';
+  const CONTEXT_URL = `pmtiles://${Region.dataUrl('basemap.pmtiles')}?v=5`;
   // Must be the SAME ?v as app.js's roads source: two spellings of one
   // archive are two browser-cache entries and two PMTiles instances, so a
   // first visit fetched the 80 MB file twice. The service worker normalizes
   // /data/ URLs, which is why installed PWAs never showed the double fetch.
-  const ROADS_URL = 'pmtiles://data/roads.pmtiles?v=24';
+  const ROADS_URL = `pmtiles://${Region.dataUrl('roads.pmtiles')}?v=24`;
   let protocol = null;
 
   // A PMTiles tile is a byte-range read. On a phone one of those can fail for
@@ -78,7 +78,11 @@
     // Protocol never has to construct its own (uncorrected) one lazily.
     if (global.pmtiles.SharedPromiseCache && global.pmtiles.PMTiles) {
       const cache = forgetFailedReads(new global.pmtiles.SharedPromiseCache());
-      for (const url of [CONTEXT_URL, ROADS_URL]) {
+      const archives = [
+        Region.datasets.basemap ? CONTEXT_URL : null,
+        Region.datasets.roads ? ROADS_URL : null,
+      ].filter(Boolean);
+      for (const url of archives) {
         protocol.add(new global.pmtiles.PMTiles(archiveKey(url), cache));
       }
     }
@@ -191,7 +195,7 @@
 
   function createStyle() {
     ensureProtocol();
-    return {
+    const style = {
       version: 8,
       glyphs: glyphUrl(),
       sources: {
@@ -306,6 +310,24 @@
           } },
       ],
     };
+    return withoutMissingSources(style);
+  }
+
+  // A state under construction may have a place index and no tiles yet. A
+  // style whose source URL 404s does not degrade gracefully in MapLibre: the
+  // style never finishes loading, so `load` never fires and the whole app sits
+  // on its launch screen. Ship only the sources the state declares, and drop
+  // the layers that would be left pointing at nothing -- the background
+  // remains, which is a map of ocean and a scale bar, honestly empty rather
+  // than hung.
+  function withoutMissingSources(style) {
+    const shipped = { 'basemap-context': 'basemap', 'basemap-roads': 'roads' };
+    const missing = new Set(Object.keys(shipped)
+      .filter((source) => !Region.datasets[shipped[source]]));
+    if (!missing.size) return style;
+    for (const source of missing) delete style.sources[source];
+    style.layers = style.layers.filter((layer) => !missing.has(layer.source));
+    return style;
   }
 
   global.BikeBasemap = {

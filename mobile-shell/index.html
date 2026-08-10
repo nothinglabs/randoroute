@@ -7,8 +7,10 @@
   <!-- Before the stylesheets: it publishes the palette as CSS custom
        properties, so no rule needs a hardcoded colour fallback. -->
   <script src="palette.js"></script>
-  <!-- Which state this build covers: bounds, opening view, and what to
-       call the agency behind each enrichment. Before app.js, which reads it. -->
+  <!-- Which states have a maps/<state>/ folder, and which one this session is
+       running on: bounds, opening view, and what to call the agency behind
+       each enrichment. Before app.js, which reads it. -->
+  <script src="maps/states.js"></script>
   <script src="region.js"></script>
   <script src="build-version.js"></script>
   <link rel="manifest" href="manifest.json" />
@@ -261,9 +263,10 @@
       <button class="dialog-close" data-close="mapsDialog" aria-label="Close maps">✕</button>
     </div>
     <div class="maps-body">
-      <p class="maps-lead">Select up to two states to load.</p>
-      <p class="maps-note">Washington is the only state available in this build. The rest are listed so you can see what is coming.</p>
-      <div id="mapsStateList" class="maps-state-list"></div>
+      <p class="maps-lead">Choose the state to ride in.</p>
+      <p class="maps-note">One state is loaded at a time. Switching restarts the app; any route on screen is cleared. States without a map are listed so you can see what is coming.</p>
+      <div id="mapsStateList" class="maps-state-list" role="radiogroup" aria-labelledby="mapsDialogTitle"></div>
+      <p id="mapsStatus" class="maps-status" role="status" aria-live="polite"></p>
     </div>
   </dialog>
 
@@ -496,21 +499,16 @@
       <section>
         <h3>Map and place data</h3>
         <ul>
-          <li><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"><b>OpenStreetMap contributors</b></a> provide roads, paths, street names, bicycle facilities and routes, access tags, surfaces, sidewalks, ferries, waterways, parks, land cover, and place names. The Washington extract comes from <a href="https://download.geofabrik.de/north-america/us/washington.html" target="_blank" rel="noopener">Geofabrik</a>.</li>
+          <li><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener"><b>OpenStreetMap contributors</b></a> provide roads, paths, street names, bicycle facilities and routes, access tags, surfaces, sidewalks, ferries, waterways, parks, land cover, and place names. <span id="creditsExtract"></span></li>
           <li><a href="https://www.naturalearthdata.com/downloads/10m-physical-vectors/" target="_blank" rel="noopener"><b>Natural Earth 1:10m land</b></a> supplies the low-zoom land and coastline backdrop.</li>
           <li><a href="https://www.census.gov/programs-surveys/geography/guidance/geo-areas/urban-rural.html" target="_blank" rel="noopener"><b>U.S. Census Bureau 2020 Urban Areas</b></a> supply the statewide urban/rural context.</li>
           <li><a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener"><b>AWS Terrain Tiles</b></a> in Terrarium format supply elevation used for profiles, climb, descent, and grade estimates.</li>
         </ul>
       </section>
 
-      <section>
-        <h3>Washington transportation data</h3>
-        <ul>
-          <li><a href="https://data.wsdot.wa.gov/arcgis/rest/services/Shared/ActiveTransportationData/FeatureServer/2" target="_blank" rel="noopener"><b>WSDOT Bicycle and Pedestrian Level of Traffic Stress</b></a> supplies state-highway bicycle stress, shoulder, access, speed, and facility attributes.</li>
-          <li><a href="https://data.wsdot.wa.gov/geospatial/DOT_ActiveTransportation/PermanentBikeRestrictions.zip" target="_blank" rel="noopener"><b>WSDOT Permanent Bicycle Restrictions</b></a> supplies official state-highway bicycle prohibitions.</li>
-          <li><a href="https://data.wsdot.wa.gov/arcgis/rest/services/Shared/RoadwayCharacteristicData/FeatureServer/4" target="_blank" rel="noopener"><b>WSDOT Roadway Characteristic Data</b></a> supplies legal speed limits on state routes.</li>
-          <li><a href="https://data.wsdot.wa.gov/arcgis/rest/services/Shared/ActiveTransportationData/FeatureServer/6" target="_blank" rel="noopener"><b>WSDOT Active Transportation Data</b></a> supplies recorded shared lanes, bike lanes, buffered and separated lanes, and shared-use paths.</li>
-        </ul>
+      <section id="creditsAgency" hidden>
+        <h3 id="creditsAgencyHeading"></h3>
+        <ul id="creditsAgencyList"></ul>
       </section>
 
       <section>

@@ -7,7 +7,7 @@ follows. WSDOT publishes these only as PDFs, but the designations are fully
 mapped: network=ncn (national, i.e. USBR + Selkirk Loop) and network=rcn
 (regional trails like the Burke-Gilman or Palouse to Cascades).
 
-Output: data/bikeroutes.geojson — one MultiLineString feature per relation,
+Output: maps/washington/bikeroutes.geojson — one MultiLineString feature per relation,
 properties t (ncn|rcn), r (ref, e.g. "10"), n (name). Local networks (lcn,
 neighborhood greenways) are skipped as visual noise at state scale.
 
@@ -246,7 +246,7 @@ def collect_geometry(src, needed):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='data/washington-latest.osm.pbf')
-    ap.add_argument('--out', default='data/bikeroutes.geojson')
+    ap.add_argument('--out', default='maps/washington/bikeroutes.geojson')
     ap.add_argument('--clip-existing', action='store_true',
                     help='clip the existing output without refreshing OSM data')
     ap.add_argument('--route-count', type=int,

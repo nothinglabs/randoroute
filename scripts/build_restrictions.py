@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Build step: prepare data/bike_restrictions.geojson from WSDOT's Permanent
+Build step: prepare maps/washington/bike_restrictions.geojson from WSDOT's Permanent
 Bike Restrictions export — the specific state-highway segments where bicycles
 are prohibited by official State Traffic Engineer calendar action.
 
 Source: https://data.wsdot.wa.gov/geospatial/DOT_ActiveTransportation/PermanentBikeRestrictions.zip
         (File Geodatabase, EPSG:2927)
-Output: data/bike_restrictions.geojson (EPSG:4326, ~81 line features, tiny)
+Output: maps/washington/bike_restrictions.geojson (EPSG:4326, ~81 line features, tiny)
 
 Also used by build_blts.py (--restrictions) to flag overlapping BLTS segments
 as Prohibited via RouteIdentifier + accumulated-route-mile overlap.
@@ -62,6 +62,6 @@ def build(src, out):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='data/permbike/PermanentBikeRestrictions.gdb')
-    ap.add_argument('--out', default='data/bike_restrictions.geojson')
+    ap.add_argument('--out', default='maps/washington/bike_restrictions.geojson')
     args = ap.parse_args()
     build(args.src, args.out)

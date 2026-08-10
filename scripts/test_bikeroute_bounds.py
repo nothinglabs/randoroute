@@ -40,7 +40,7 @@ assert builder_bounds == ROUTE_BOUNDS, (
     'the builder clips to different bounds than this test verifies',
     builder_bounds, ROUTE_BOUNDS)
 
-with gzip.open(root / 'data/bikeroutes.geojson.gz', 'rt', encoding='utf-8') as handle:
+with gzip.open(root / 'maps/washington/bikeroutes.geojson.gz', 'rt', encoding='utf-8') as handle:
     routes = json.load(handle)
 
 west, south, east, north = ROUTE_BOUNDS

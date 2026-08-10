@@ -106,10 +106,10 @@ vm.runInContext([
 const { scoreOSM, scoreRoad, scoreBLTS, scoreRouteSeg } = box.OUT;
 
 // Real WSDOT properties.
-const blts = JSON.parse(zlib.gunzipSync(fs.readFileSync(ROOT + 'data/blts.geojson.gz')))
+const blts = JSON.parse(zlib.gunzipSync(fs.readFileSync(ROOT + 'maps/washington/blts.geojson.gz')))
   .features.slice(0, 6000).map((f) => f.properties);
 // Real graph edges, via the worker's own builder.
-const graph = zlib.gunzipSync(fs.readFileSync(ROOT + 'data/graph2.bin.gz'));
+const graph = zlib.gunzipSync(fs.readFileSync(ROOT + 'maps/washington/graph2.bin.gz'));
 const wctx = vm.createContext({ console, Date, Math, Map, Set, TextDecoder,
   ArrayBuffer, DataView, Float32Array, Float64Array, Int8Array, Int16Array,
   Int32Array, Uint8Array, Uint16Array, Uint32Array, postMessage: () => {} });

@@ -6,8 +6,9 @@
   "scripts": {
     "test": "node scripts/run_tests.mjs",
     "data:compress-overlays": "node scripts/build_compressed_overlays.mjs",
+    "maps:registry": "node scripts/build_map_registry.mjs",
     "ios:add": "cap add ios",
-    "ios:prepare-shell": "npm run data:compress-overlays && node scripts/build_mobile_shell.mjs",
+    "ios:prepare-shell": "npm run data:compress-overlays && npm run maps:registry && node scripts/build_mobile_shell.mjs",
     "ios:sync": "npm run ios:prepare-shell && cap sync ios",
     "ios:open": "cap open ios",
     "ios:build": "npm run ios:prepare-shell && cap build ios"

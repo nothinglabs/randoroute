@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """
-Phase 1 build step: prepare data/blts.geojson from WSDOT's BikePedLTS export.
+Phase 1 build step: prepare maps/washington/blts.geojson from WSDOT's BikePedLTS export.
 
 This is a BUILD-TIME step. The app makes no runtime calls to WSDOT — it renders
-only from the static data/blts.geojson this script produces.
+only from the static maps/washington/blts.geojson this script produces.
 
 Source: WSDOT "Bicycle and Pedestrian Level of Traffic Stress (LTS)"
   https://data.wsdot.wa.gov/geospatial/DOT_ActiveTransportation/BikePedLTS.zip
   (File Geodatabase, EPSG:2927 / WA State Plane South, US survey feet)
 
-Output: data/blts.geojson  (EPSG:4326, ~55k line features)
+Output: maps/washington/blts.geojson  (EPSG:4326, ~55k line features)
 
 Requires: geopandas, pyogrio, pyproj, shapely  (pip install geopandas pyogrio)
 
 Usage:
   python3 scripts/build_blts.py \
-    --src data/BikePedLTS.gdb --out data/blts.geojson
+    --src data/BikePedLTS.gdb --out maps/washington/blts.geojson
 
   # Add/rebuild Census urban context without needing the raw WSDOT export.
-  python3 scripts/build_blts.py --enrich-existing --out data/blts.geojson
+  python3 scripts/build_blts.py --enrich-existing --out maps/washington/blts.geojson
 """
 import argparse
 import json
@@ -63,7 +63,7 @@ def load_restrictions(path):
 
 
 def load_routes_index(path):
-    """STRtree over designated bike-route lines (data/bikeroutes.geojson)."""
+    """STRtree over designated bike-route lines (maps/washington/bikeroutes.geojson)."""
     from shapely import STRtree
     from shapely.geometry import LineString
 
@@ -224,7 +224,7 @@ def build(src, out, restrictions=None, routes=None, urban_areas=None):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default="data/BikePedLTS.gdb")
-    ap.add_argument("--out", default="data/blts.geojson")
+    ap.add_argument("--out", default="maps/washington/blts.geojson")
     ap.add_argument("--restrictions", default=None,
                     help="path to PermanentBikeRestrictions.gdb to flag prohibited segments")
     ap.add_argument("--routes", default=None,

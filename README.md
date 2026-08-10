@@ -135,7 +135,22 @@ infrastructure or masking caution or failure.
 All data files are baked from public sources and committed. The raw
 downloads are git-ignored.
 
-### WSDOT BLTS → `data/blts.geojson` (~55k segments)
+Everything a state ships lives in `maps/<state>/`, alongside a `region.json`
+holding that state's whole configuration and a `STATUS.md` / `BUILD.md` pair
+recording how good the data is and exactly how it was produced. No file outside
+`maps/` names a state; `region.js` resolves whichever one the rider selected on
+**Settings → Maps** and every data path in the app, the router worker and the
+service worker is built from it. See **`maps/README.md`** for how the folder
+works and **`docs/PORTING-TO-ANOTHER-STATE.md`** for adding one.
+
+Washington is the released state. Oregon is a first, deliberately partial
+import — a basemap and a place index, no routing — kept in the tree as a worked
+example of a state under construction; see `maps/oregon/STATUS.md`.
+
+The sections below describe Washington's sources; `maps/washington/BUILD.md` is
+the same thing as a runbook.
+
+### WSDOT BLTS → `maps/washington/blts.geojson` (~55k segments)
 
 ```bash
 curl -o data/BikePedLTS.zip \
@@ -143,7 +158,7 @@ curl -o data/BikePedLTS.zip \
 unzip -d data data/BikePedLTS.zip
 pip install geopandas pyogrio pyproj shapely
 python3 scripts/fetch_census_urban_areas.py
-python3 scripts/build_blts.py --src data/BikePedLTS.gdb --out data/blts.geojson
+python3 scripts/build_blts.py --src data/BikePedLTS.gdb --out maps/washington/blts.geojson
 ```
 
 Source: WSDOT "Bicycle and Pedestrian Level of Traffic Stress (LTS)" (File
@@ -157,7 +172,7 @@ The build also assigns `Urban=1` when a segment midpoint lies in a 2020 Census
 urban-area polygon. This is retained as descriptive context on road cards; it
 does not select a different shoulder or speed rule.
 
-### WSDOT Permanent Bike Restrictions → `data/bike_restrictions.geojson` (81 segments)
+### WSDOT Permanent Bike Restrictions → `maps/washington/bike_restrictions.geojson` (81 segments)
 
 ```bash
 curl -o data/PermanentBikeRestrictions.zip \
@@ -199,14 +214,14 @@ points along each edge plus route-number checks where available to reject
 nearby crossings and frontage roads. WSDOT linework enriches OSM edges rather
 than creating duplicate graph edges, preserving OSM intersection connectivity.
 
-### OSM bike infrastructure → `data/bikeinfra.geojson` (~40k ways)
+### OSM bike infrastructure → `maps/washington/bikeinfra.geojson` (~40k ways)
 
 ```bash
 curl -o data/washington-latest.osm.pbf \
   https://download.geofabrik.de/north-america/us/washington-latest.osm.pbf
 pip install osmium
 python3 scripts/build_osm.py --src data/washington-latest.osm.pbf \
-                             --out data/bikeinfra.geojson
+                             --out maps/washington/bikeinfra.geojson
 ```
 
 Source: Geofabrik Washington extract (already EPSG:4326). `build_osm.py` keeps
@@ -220,7 +235,7 @@ and members of OSM `route=mtb` relations are retained with an MTB marker. The
 app hides and excludes them by default, but can make them available through
 the rider-controlled **Allow mountain bike trails** option.
 
-### Full road network → `data/roads.pmtiles` (~339k ways, vector tiles)
+### Full road network → `maps/washington/roads.pmtiles` (~339k ways, vector tiles)
 
 ```bash
 python3 scripts/fetch_census_urban_areas.py
@@ -232,11 +247,11 @@ python3 scripts/build_aadt.py        # WSDOT traffic counts, state routes
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads \
                                --urban-areas data/census-urban-areas-2020-wa.geojson \
-                               --blts data/blts.geojson \
+                               --blts maps/washington/blts.geojson \
                                --roadlog data/roadlog.geojson \
                                --funcclass data/funcclass.geojson \
                                --aadt data/aadt.geojson
-tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
+tippecanoe -o maps/washington/roads.pmtiles -l roads --force -Z5 -z13 \
   --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
   --simplification=8 --simplify-only-low-zooms \
   --read-parallel data/roads-1.geojson data/roads-2.geojson
@@ -246,7 +261,7 @@ node scripts/stamp_tiles_version.mjs  # so installed PWAs refresh their offline 
 ```
 
 `build_overlay_tiles.py` turns `bikeinfra.geojson.gz` and `blts.geojson.gz`
-into `data/overlays.pmtiles` (two layers, every attribute preserved -- the tap
+into `maps/washington/overlays.pmtiles` (two layers, every attribute preserved -- the tap
 cards re-score a tapped feature's raw properties). It applies the sharrow-only
 drop at build time and prints the per-layer feature counts, which are baked
 into `SOURCES` in app.js. The two `.geojson.gz` files stay in the repo as this
@@ -294,7 +309,7 @@ iOS Safari). It is scored with **MapLibre expressions** (`roadLevelExpr` in
 `app.js`): a rule change just swaps paint/filter expressions — instant at any
 data size, GeoJSON or tiles.
 
-### Offline vector basemap → `data/basemap.pmtiles`
+### Offline vector basemap → `maps/washington/basemap.pmtiles`
 
 ```bash
 python3 scripts/build_basemap.py \
@@ -309,7 +324,7 @@ safety overlay share one decoded MapLibre source instead of loading duplicate
 road tiles. The locally bundled Noto Sans glyph ranges render labels in both
 the web/PWA and native iOS builds.
 
-### Designated bike routes → `data/bikeroutes.geojson` (114 routes)
+### Designated bike routes → `maps/washington/bikeroutes.geojson` (114 routes)
 
 ```bash
 python3 scripts/build_routes.py --src data/washington-latest.osm.pbf
@@ -323,7 +338,7 @@ scoring layers — the designation is information, not a safety verdict. The rea
 adds a "Bike route" line to any road a designated route follows. WSDOT
 publishes these only as PDF maps; OSM carries the same designations as data.
 
-### Offline place search → `data/places.json` (2,602 places)
+### Offline place search → `maps/washington/places.json` (2,602 places)
 
 ```bash
 python3 scripts/build_places.py --src data/washington-latest.osm.pbf
@@ -335,7 +350,7 @@ search when connected. Start, destination, and intermediate stops all support
 the same search-or-tap picker (A → B → C via the + button), and a route can
 start at the rider's current location.
 
-### Routing graph → `data/graph2.bin.gz` (elevation-aware)
+### Routing graph → `maps/washington/graph2.bin.gz` (elevation-aware)
 
 ```bash
 # one-time: fetch the WA DEM (AWS Terrarium elevation tiles, z12 ≈ 38 m)
@@ -429,9 +444,9 @@ installed PWA works offline after its initial data installation completes.
 ## Rebuilding the traffic-stress data
 
 **Status: shipped, data included.** Lane counts and WSDOT traffic-stress
-ratings are live end to end — the shipped `data/graph2.bin.gz` (format
+ratings are live end to end — the shipped `maps/washington/graph2.bin.gz` (format
 `BGRC`) carries populated `edgeLanes`/`edgeLts` arrays (376k edges with lane
-counts, 180k with an LTS rating), and `data/roads.pmtiles` carries the
+counts, 180k with an LTS rating), and `maps/washington/roads.pmtiles` carries the
 `ln`/`adt`/`ctl` properties behind the road card. This section stays as the
 recipe for the NEXT data refresh.
 
@@ -439,7 +454,7 @@ Background for the design: Seattle signed every arterial at 25 mph in 2020,
 so speed no longer separates a five-lane arterial from the side street beside
 it. Lane count still does, and OSM tags it on ~100% of `secondary` against
 3-5% of `residential` — present exactly where it matters. WSDOT separately
-publishes a finished `LTS_Bicycle` rating (1-4) in `data/blts.geojson`.
+publishes a finished `LTS_Bicycle` rating (1-4) in `maps/washington/blts.geojson`.
 
 ### What to run
 
@@ -453,11 +468,11 @@ python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads \
                                --urban-areas data/census-urban-areas-2020-wa.geojson \
-                               --blts data/blts.geojson \
+                               --blts maps/washington/blts.geojson \
                                --roadlog data/roadlog.geojson \
                                --funcclass data/funcclass.geojson \
                                --aadt data/aadt.geojson
-tippecanoe -o data/roads.pmtiles -l roads --force -Z5 -z13 \
+tippecanoe -o maps/washington/roads.pmtiles -l roads --force -Z5 -z13 \
   --drop-densest-as-needed --coalesce --extend-zooms-if-still-dropping \
   --simplification=8 --simplify-only-low-zooms \
   --read-parallel data/roads-1.geojson data/roads-2.geojson
@@ -487,11 +502,11 @@ graph cached by an older service worker; bumping it is not optional.
 python3 scripts/test_graph_format10.py   # layout + reader-offset contract
 node scripts/test_road_measures.mjs      # Python packs, JavaScript unpacks
 node scripts/test_card_model_shared.mjs  # both cards read one adapter
-python3 -c "import gzip;print(gzip.open('data/graph2.bin.gz','rb').read(4))"
+python3 -c "import gzip;print(gzip.open('maps/washington/graph2.bin.gz','rb').read(4))"
 #   -> b'BGRC'   (an older magic means build_graph.py did not pick up the change)
-tippecanoe-decode data/roads.pmtiles 13 1311 2858 | grep -c '"ln"'
+tippecanoe-decode maps/washington/roads.pmtiles 13 1311 2858 | grep -c '"ln"'
 #   -> non-zero  (lane counts reached the tiles)
-tippecanoe-decode data/roads.pmtiles 13 1311 2858 | grep -c '"adt"'
+tippecanoe-decode maps/washington/roads.pmtiles 13 1311 2858 | grep -c '"adt"'
 #   -> non-zero  (traffic counts reached the tiles)
 ```
 

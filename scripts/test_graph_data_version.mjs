@@ -50,7 +50,7 @@ const ctx = vm.createContext({
   location: { origin: 'https://example.test' },
   caches: {
     open: async (name) => makeCache(name),
-    keys: async () => ['data-offline-map-v8'],
+    keys: async () => ['data-offline-map-v9'],
     delete: async () => true,
     match: async () => undefined,
   },
@@ -80,12 +80,12 @@ const ask = async (url) => {
   return matches[0] || null;
 };
 
-const graph = await ask(`https://example.test/data/graph2.bin.gz?gv=${GRAPH_DATA_VERSION}`);
+const graph = await ask(`https://example.test/maps/washington/graph2.bin.gz?gv=${GRAPH_DATA_VERSION}`);
 ck('the graph is served WITHOUT ignoreSearch', !!graph && graph.opts.ignoreSearch === false,
   graph ? `ignoreSearch=${graph.opts.ignoreSearch}` : 'no cache lookup made');
 
-const other = await ask('https://example.test/data/places.json?v=3');
-ck('other /data/ assets still ignore the query string',
+const other = await ask('https://example.test/maps/washington/places.json?v=3');
+ck('other state files still ignore the query string',
   !!other && other.opts.ignoreSearch === true,
   other ? `ignoreSearch=${other.opts.ignoreSearch}` : 'no cache lookup made');
 
@@ -95,9 +95,9 @@ ck('shell assets come from the shell cache', !!shell && /shell-/.test(shell.cach
 
 /* ------------------------------ a graph under an older version is purged */
 cacheKeys = [
-  `https://example.test/data/graph2.bin.gz?gv=${GRAPH_DATA_VERSION}`,
-  'https://example.test/data/graph2.bin.gz?gv=1999-01-01-old',
-  'https://example.test/data/places.json',
+  `https://example.test/maps/washington/graph2.bin.gz?gv=${GRAPH_DATA_VERSION}`,
+  'https://example.test/maps/washington/graph2.bin.gz?gv=1999-01-01-old',
+  'https://example.test/maps/washington/places.json',
 ];
 deleted.length = 0;
 await ctx.purgeStaleGraph();

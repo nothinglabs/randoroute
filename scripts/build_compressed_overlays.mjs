@@ -5,11 +5,11 @@ import { gzipSync } from 'node:zlib';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const overlays = [
-  'data/bikeroutes.geojson',
-  'data/blts.geojson',
-  'data/bikeinfra.geojson',
-  'data/bike_restrictions.geojson',
-  'data/route_closures.geojson',
+  'maps/washington/bikeroutes.geojson',
+  'maps/washington/blts.geojson',
+  'maps/washington/bikeinfra.geojson',
+  'maps/washington/bike_restrictions.geojson',
+  'maps/washington/route_closures.geojson',
 ];
 
 for (const relativePath of overlays) {

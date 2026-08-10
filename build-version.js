@@ -1,4 +1,5 @@
-/* The one definition of the routing graph's version AND its URL.
+/* The one definition of the routing graph's URL, and of the code contract the
+ * binary formats obey.
  *
  * app.js and sw.js both need it and used to spell it out separately, each with
  * a comment saying "Must match GRAPH_DATA_VERSION in <the other file>". Two
@@ -20,23 +21,37 @@
  * the app's spelling of the URL. Two files spelling out one URL is not a
  * mechanism; the query string is part of the identity, so it is built here.
  *
- * Bump GRAPH_DATA_VERSION when the graph is rebuilt, and GRAPH_FORMAT_VERSION
- * when router-worker.js changes the binary contract. Once, here.
+ * What is NOT here any more is the content hashes. A graph hash describes one
+ * state's data, so it belongs with that state: build_graph.py and
+ * stamp_tiles_version.mjs write into `maps/<state>/region.json`, and this file
+ * reads whichever state is loaded. GRAPH_FORMAT_VERSION stays, because it
+ * describes router-worker.js rather than any state's data -- bump it when the
+ * binary contract changes.
  */
 (function (root) {
-  root.GRAPH_DATA_VERSION = 'sha-98d5168cff37';
+  // In the browser and the worker, region.js has already run on this global.
+  // In Node a require() lands on a fresh module.exports, so go get it.
+  let region = root.Region;
+  if (!region && typeof require === 'function') {
+    try { region = require('./region.js').Region; } catch (e) { /* browser */ }
+  }
+  if (!region) throw new Error('build-version.js: region.js has not been loaded');
+
+  root.GRAPH_DATA_VERSION = region.versions.graph || '';
   // Keeps a just-updated worker from being handed a graph cached by an older
   // service worker during the first post-update load.
   root.GRAPH_FORMAT_VERSION = 'bgr10-1';
-  root.GRAPH_URL = `data/graph2.bin.gz?format=${root.GRAPH_FORMAT_VERSION}`
-    + `&gv=${root.GRAPH_DATA_VERSION}`;
+  // Through the region: the graph lives in the loaded state's folder, and no
+  // file outside maps/<state>/ names a state.
+  root.GRAPH_URL = `${region.dataUrl('graph2.bin.gz')}`
+    + `?format=${root.GRAPH_FORMAT_VERSION}&gv=${root.GRAPH_DATA_VERSION}`;
   // The tile archives get the same treatment the graph got, for the same
   // reason: the offline copies are cached by URL and were otherwise refreshed
   // only by reinstalling the app. sw.js compares these stamps on activation
   // and refetches an archive whose stamp changed. Stamped by
   // scripts/stamp_tiles_version.mjs after a tile rebuild -- run it, never
   // hand-edit.
-  root.ROADS_TILES_VERSION = 'sha-dd29b387e828';
-  root.BASEMAP_TILES_VERSION = 'sha-77136fe2672a';
-  root.OVERLAY_TILES_VERSION = 'sha-04c278da789b';
+  root.ROADS_TILES_VERSION = region.versions.roads || '';
+  root.BASEMAP_TILES_VERSION = region.versions.basemap || '';
+  root.OVERLAY_TILES_VERSION = region.versions.overlays || '';
 }(typeof self !== 'undefined' ? self : this));

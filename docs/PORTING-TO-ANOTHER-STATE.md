@@ -1,46 +1,73 @@
 # Porting this to another state
 
-Written for whoever — or whatever — does Oregon next. It is a **method**, not a
-list of Washington URLs. The specific services will differ; the shape of the
-problem does not.
+Written for whoever — or whatever — finishes Oregon, and does the state after
+that. It is a **method**, not a list of Washington URLs. The specific services
+will differ; the shape of the problem does not.
 
 Read `docs/SAFETY-MODEL.md` first for what the app decides and why. This file is
 only about getting a new state's data into it.
 
 ---
 
-## 0. The one file to change
+## 0. The one folder to add
 
-Everything about *which state this build covers* lives in **`region.js`**: the
-bounding box a place search filters against, where the map opens, the agency
-name printed on every road card, and the agency's own spelling of its route ids
-and facility types.
+Everything about a state -- its data and its configuration -- lives in
+**`maps/<state>/`**. Nothing outside that folder names a state. Adding one is:
 
-```js
-name: 'Washington',
-bounds: { minLon: -124.9, maxLon: -116.8, minLat: 45.5, maxLat: 49.1 },
-defaultCenter: [-122.3321, 47.6062],
-stressAgency: 'WSDOT',        // publishes the 1-4 Level of Traffic Stress
-restrictionAgency: 'WSDOT',   // publishes permanent bicycle prohibitions
-speedAgency: 'WSDOT',         // publishes legal speed limits
-interstateRoutePrefixes: [...],  // if the agency hides the fact in its ids
-facilityLevels: { ... },         // the agency's vocabulary -> the shared 0-5
-routeBase / routeDirection,      // how the agency spells a directional route
+```
+maps/oregon/
+  region.json     the whole configuration (see maps/README.md for every key)
+  STATUS.md       what works, what does not, readiness out of 10
+  BUILD.md        the exact commands that produced each file
+  <the data>
 ```
 
-`scripts/test_region_portable.mjs` serves the app a *different* region and
-checks it follows: the map opens on the new centre, the coverage filter moves,
-the cards name the new agency, and the new facility vocabulary is the one that
-scores. Run it after editing `region.js` and it will tell you whether anything
-is still reaching around the config.
+then `npm run maps:registry`, which regenerates `maps/states.js` -- the index
+the browser reads, because it cannot list a directory. The rider picks the
+state on **Settings > Maps**; `region.js` resolves the choice into the global
+`Region`, and every data path in the app, the router worker and the service
+worker is built from `Region.dataUrl(...)`.
+
+The configuration is the bounding box a place search filters against, where the
+map opens, the agency name printed on every road card, the agency's own spelling
+of its route ids and facility types, and -- importantly -- **which files you
+actually built**:
+
+```json
+"bounds": { "minLon": -124.9, "maxLon": -116.8, "minLat": 45.5, "maxLat": 49.1 },
+"defaultCenter": [-122.3321, 47.6062],
+"stressAgency": "WSDOT",        // publishes the 1-4 Level of Traffic Stress
+"restrictionAgency": "WSDOT",   // publishes permanent bicycle prohibitions
+"speedAgency": "WSDOT",         // publishes legal speed limits
+"interstateRoutePrefixes": [],  // if the agency hides the fact in its ids
+"facilityLevels": {},           // the agency's vocabulary -> the shared 0-5
+"routeDirectionSuffixes": {},   // how the agency spells a directional route
+"datasets": { "graph": true, "places": true, ... }
+```
+
+`datasets` is what makes a partial port usable rather than broken. A state that
+ships only `places.json` gets place search and says plainly that it cannot
+route; no missing tile archive is added to the map style (a source whose URL
+404s never finishes loading, and the app would hang on its launch screen), no
+layer appears for data that is not there, and the service worker precaches only
+what exists. Build what you can, declare exactly that, ship it as
+`"status": "preview"`, and finish it later. `maps/oregon/` is a worked example
+of exactly this.
+
+`scripts/test_region_portable.mjs` serves the app a *different* state and checks
+it follows: the map opens on the new centre, the coverage filter moves, the
+cards name the new agency, and the new facility vocabulary is the one that
+scores. `scripts/test_maps_states_screen.mjs` goes further and actually switches
+states in a live browser. Run both and they will tell you whether anything is
+still reaching around the config.
 
 Note the bounding box is a rectangle and a state border usually is not.
 Washington's reaches over the Columbia into Portland, deliberately: a few
 unroutable Oregon search results are better than clipping Vancouver and
 Longview. Size yours the same way.
 
-What is NOT in `region.js`, because it is not state-specific: the safety ladder,
-the routing cost model, the map styling, the weights. Those are in
+What is NOT in `region.json`, because it is not state-specific: the safety
+ladder, the routing cost model, the map styling, the weights. Those are in
 `safety-model.js`, `router-worker.js` and `app.js` and should need no edits at
 all. If a port finds itself changing one of them, that is worth a second look --
 it usually means a state fact leaked into shared logic.

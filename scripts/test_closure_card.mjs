@@ -14,7 +14,7 @@ import { gunzipSync } from 'node:zlib';
 import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const closures = JSON.parse(gunzipSync(readFileSync(
-  new URL('../data/route_closures.geojson.gz', import.meta.url))));
+  new URL('../maps/washington/route_closures.geojson.gz', import.meta.url))));
 assert.ok(closures.features.length > 0, 'there should be closures to test against');
 
 // The Everett Station bus loop (access=no + bus=yes service ways on a route

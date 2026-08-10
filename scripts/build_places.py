@@ -4,7 +4,7 @@
 Settlements (place=city/town/village/hamlet/suburb/neighbourhood) plus named
 ferry terminals, sorted by population (desc) so search ranks big places first.
 
-Output: data/places.json — compact array of [name, lon, lat, type, population].
+Output: maps/washington/places.json — compact array of [name, lon, lat, type, population].
 
 Usage: python3 scripts/build_places.py --src data/washington-latest.osm.pbf
 """
@@ -19,7 +19,7 @@ PLACE_TYPES = {'city', 'town', 'village', 'hamlet', 'suburb', 'neighbourhood'}
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='data/washington-latest.osm.pbf')
-    ap.add_argument('--out', default='data/places.json')
+    ap.add_argument('--out', default='maps/washington/places.json')
     args = ap.parse_args()
 
     rows = []

@@ -49,6 +49,25 @@ Pillow`) for the data tests, and Playwright for the forty-two browser tests.
 they catch a scoring change that severs a corridor. The runner runs files
 concurrently, so wall time is roughly the slowest file rather than the sum.
 
+## Maps and states
+
+Everything state-specific — data and configuration — is in `maps/<state>/`. No
+file outside `maps/` names a state; `region.js` resolves whichever one the rider
+selected into the global `Region`, and every data path in the app, the router
+worker and the service worker comes from `Region.dataUrl(...)`.
+
+`maps/README.md` is the contract. The short version:
+
+- A state's truth is `maps/<state>/region.json`, including which files it
+  actually has (`datasets`) and their content hashes (`versions`).
+- `maps/states.js` is **generated** — `npm run maps:registry` after adding a
+  state or editing a `region.json` by hand. The stampers regenerate it for you.
+- Washington is `released`. Oregon is a `preview` state: a basemap and a place
+  index, no routing. It is in the tree on purpose, as the second state the
+  machinery is tested against.
+- If a change needs an edit to application code to support a state, that is the
+  bug — the fact belongs in `region.json`.
+
 ## Working on iOS
 
 `docs/IOS-HANDOFF.md` first. The native app is Capacitor wrapping this same web

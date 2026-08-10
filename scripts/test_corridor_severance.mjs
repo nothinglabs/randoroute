@@ -47,7 +47,7 @@ function liftRules() {
 }
 const rules = liftRules();
 
-const graph = zlib.gunzipSync(fs.readFileSync(ROOT + 'data/graph2.bin.gz'));
+const graph = zlib.gunzipSync(fs.readFileSync(ROOT + 'maps/washington/graph2.bin.gz'));
 const messages = [];
 const context = vm.createContext({
   console, Date, Math, Map, Set, TextDecoder,

@@ -28,6 +28,10 @@ from shapely.geometry import LinearRing, Polygon, box, mapping, shape
 from shapely.ops import linemerge, unary_union
 
 
+# The clip box, a little wider than the state so the coastline and the land
+# backdrop run past the edge instead of stopping at it. Washington's is the
+# default; main() replaces it from --bounds when another state is built, which
+# is why every user reads the module global rather than closing over a constant.
 BOUNDS = (-125.5, 45.2, -116.7, 50.0)
 AREA_FILTERS = {
     "natural": {"water", "wood", "wetland"},
@@ -301,17 +305,32 @@ def export_places(source: Path, output: Path) -> None:
 
 
 def main() -> None:
+    global BOUNDS
     parser = argparse.ArgumentParser()
     parser.add_argument("--src", default="data/washington-latest.osm.pbf")
-    parser.add_argument("--places", default="data/places.json")
+    parser.add_argument("--places", default="maps/washington/places.json")
     parser.add_argument("--natural-earth-land", required=True,
                         help="Path to ne_10m_land.shp")
-    parser.add_argument("--out", default="data/basemap.pmtiles")
+    parser.add_argument("--out", default="maps/washington/basemap.pmtiles")
+    parser.add_argument("--bounds", default=None,
+                        help="clip box as minLon,minLat,maxLon,maxLat "
+                             f"(default {','.join(str(v) for v in BOUNDS)})")
+    parser.add_argument("--coastline", choices=("osm", "natural-earth"), default="osm",
+                        help="'osm' traces the detailed coastline from the extract; "
+                             "'natural-earth' ships only the generalized land polygon, "
+                             "for a landlocked state or a first pass at a new one")
     parser.add_argument("--maxzoom", type=int, default=13,
                         help="highest stored context zoom (higher zooms overzoom these tiles)")
     parser.add_argument("--simplification", type=float, default=8,
                         help="tippecanoe low-zoom simplification factor")
     args = parser.parse_args()
+
+    if args.bounds:
+        parts = tuple(float(value) for value in args.bounds.split(","))
+        if len(parts) != 4:
+            raise SystemExit("--bounds wants minLon,minLat,maxLon,maxLat")
+        BOUNDS = parts
+    print(f"Clip box: {BOUNDS}")
 
     for command in ("osmium", "tippecanoe"):
         if not shutil.which(command):
@@ -326,7 +345,14 @@ def main() -> None:
         detailed_land = work / "land-detail.geojsonseq"
         places = work / "places.geojsonseq"
         export_land(Path(args.natural_earth_land), land)
-        export_detailed_land(Path(args.src), detailed_land, work)
+        if args.coastline == "osm":
+            export_detailed_land(Path(args.src), detailed_land, work)
+        else:
+            # Still hand tippecanoe an empty layer: dropping the -L would
+            # change the archive's layer list, and basemap-style.js draws
+            # land_detail above land in every state.
+            detailed_land.write_text("", encoding="utf-8")
+            print("Detailed land: skipped (--coastline natural-earth)")
         export_places(Path(args.places), places)
         run(
             "tippecanoe", "-o", str(output), "--force", "-Z4", f"-z{args.maxzoom}",

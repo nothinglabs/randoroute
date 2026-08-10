@@ -9,7 +9,7 @@ const scenarios = process.argv[2] ? JSON.parse(process.argv[2]) : [
   { name: 'Seattle neighborhood', points: [[-122.391, 47.689], [-122.350, 47.673]] },
   { name: 'SR 104 / Olympic Peninsula', points: [[-122.76876, 48.11328], [-123.11194, 48.08264]] },
 ];
-const graph = zlib.gunzipSync(fs.readFileSync(new URL('../data/graph2.bin.gz', import.meta.url)));
+const graph = zlib.gunzipSync(fs.readFileSync(new URL('../maps/washington/graph2.bin.gz', import.meta.url)));
 const messages = [];
 const context = vm.createContext({
   console, Date, Math, Map, Set, TextDecoder,

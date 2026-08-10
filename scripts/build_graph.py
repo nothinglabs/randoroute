@@ -98,6 +98,7 @@ import hashlib
 import os
 import re
 import struct
+import subprocess
 import sys
 from array import array
 
@@ -1270,33 +1271,40 @@ def directional_curve_hazard(coords, ele_at, speed, shoulder, facility):
     return ab, ba
 
 
-def stamp_graph_version(graph_path,
-                        build_version_path=None):
-    """Derive GRAPH_DATA_VERSION from the artefact itself.
+def stamp_graph_version(graph_path):
+    """Derive the graph's version from the artefact itself.
 
     The version is what makes a rider's service worker fetch a rebuilt graph:
     the cache is keyed by URL including `?gv=`, so an unchanged version means
-    the new graph is never downloaded and nothing looks wrong. build-version.js
-    was created because two hand-maintained copies of the version drifted --
-    and then the single copy was forgotten twice in one day across three
-    rebuilds. A comment saying "bump this" is an instruction; a hash of the
-    file is a mechanism. scripts/test_graph_version_stamp.mjs fails the suite
-    if the graph on disk does not match the stamped version, so a rebuild
-    without this stamp cannot ship quietly.
+    the new graph is never downloaded and nothing looks wrong. It was once two
+    hand-maintained copies in app.js and sw.js, which drifted -- and then the
+    single copy was forgotten twice in one day across three rebuilds. A comment
+    saying "bump this" is an instruction; a hash of the file is a mechanism.
+    scripts/test_graph_version_stamp.mjs fails the suite if a shipped graph
+    does not match its stamp, so a rebuild without this cannot ship quietly.
+
+    A hash describes ONE state's data, so it is written into that state's
+    `maps/<state>/region.json` -- the graph's own folder -- and picked up by
+    build-version.js through the region. Nothing outside maps/ names a state.
     """
-    if build_version_path is None:
-        build_version_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                          '..', 'build-version.js')
+    folder = os.path.dirname(os.path.abspath(graph_path))
+    config_path = os.path.join(folder, 'region.json')
+    if not os.path.exists(config_path):
+        raise SystemExit(f'{config_path} not found; a graph belongs in maps/<state>/')
     digest = hashlib.sha256(open(graph_path, 'rb').read()).hexdigest()[:12]
     version = f'sha-{digest}'
-    src_js = open(build_version_path).read()
-    out_js, count = re.subn(r"root\.GRAPH_DATA_VERSION = '[^']*';",
-                            f"root.GRAPH_DATA_VERSION = '{version}';", src_js, count=1)
-    if count != 1:
-        raise SystemExit('build-version.js has no GRAPH_DATA_VERSION line to stamp')
-    if out_js != src_js:
-        open(build_version_path, 'w').write(out_js)
-    print(f'  stamped GRAPH_DATA_VERSION = {version}', flush=True)
+    with open(config_path) as f:
+        config = json.load(f)
+    config.setdefault('versions', {})['graph'] = version
+    config.setdefault('datasets', {})['graph'] = True
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+        f.write('\n')
+    # The app reads the generated index, not the folders, so a stamp that
+    # stopped here would never reach a browser.
+    subprocess.run(['node', os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), 'build_map_registry.mjs')], check=True)
+    print(f'  stamped {os.path.basename(folder)} graph version = {version}', flush=True)
 
 
 def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=None,
@@ -2034,24 +2042,28 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     with gzip.open(out, 'wb', compresslevel=9) as f:
         f.write(raw)
     print(f'raw {len(raw):,} bytes -> {out} {os.path.getsize(out):,} bytes gz', flush=True)
-    # Only the shipping artefact stamps the version. A profiling or test build
-    # writing elsewhere must not rewrite build-version.js with a hash of a
-    # graph riders will never be served.
-    default_out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               '..', 'data', 'graph2.bin.gz')
-    if os.path.abspath(out) == os.path.abspath(default_out):
+    # Only a shipping artefact stamps a version. A profiling or test build
+    # writing to a scratch path must not rewrite a state's region.json with the
+    # hash of a graph riders will never be served -- and the test that proves
+    # the stamp matches the file would then fail on the real one. A graph
+    # written into a state's folder IS the shipping graph for that state.
+    maps_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'maps')
+    in_state_folder = (os.path.basename(out) == 'graph2.bin.gz'
+                       and os.path.dirname(os.path.dirname(os.path.abspath(out)))
+                       == os.path.abspath(maps_root))
+    if in_state_folder:
         stamp_graph_version(out)
     else:
-        print(f'  not the shipping graph path; GRAPH_DATA_VERSION left alone', flush=True)
+        print('  not a state folder; the graph version stamp was left alone', flush=True)
 
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--src', default='data/washington-latest.osm.pbf')
-    ap.add_argument('--out', default='data/graph2.bin.gz')
-    ap.add_argument('--blts', default='data/blts.geojson',
+    ap.add_argument('--out', default='maps/washington/graph2.bin.gz')
+    ap.add_argument('--blts', default='maps/washington/blts.geojson',
                     help='WSDOT BLTS geojson for shoulder/speed/prohibition conflation')
-    ap.add_argument('--restrictions', default='data/bike_restrictions.geojson',
+    ap.add_argument('--restrictions', default='maps/washington/bike_restrictions.geojson',
                     help='WSDOT permanent bike restrictions geojson for hard graph exclusion')
     ap.add_argument('--legal-speeds', default='data/wsdot_legal_speeds.geojson',
                     help='WSDOT Roadway Characteristic legal-speed GeoJSON')
