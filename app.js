@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.658';
+const APP_VERSION = '2026-08-10.659';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -10220,7 +10220,13 @@ function showTapHighlight(geometry) {
   if (type !== 'LineString' && type !== 'MultiLineString') return false;
   source.setData({ type: 'Feature', properties: {}, geometry });
   for (const id of ['tap-highlight-halo', 'tap-highlight']) {
-    if (map.getLayer(id)) setLayout(id, 'visibility', 'visible');
+    if (!map.getLayer(id)) continue;
+    // Back to the top every time. These layers are created with the permanent
+    // ones at style load, but drawRoute() adds the route's own layers later
+    // and they land ABOVE -- so a tap on the drawn route painted the highlight
+    // underneath it, which is exactly the case a rider taps most.
+    map.moveLayer(id);
+    setLayout(id, 'visibility', 'visible');
   }
   return true;
 }
@@ -11439,7 +11445,7 @@ function inspectRoadAt(point, lngLat = null) {
   const highlighted = feature ? showTapHighlight(feature.geometry) : false;
   if (highlighted) clearSearchResultMarker();
   else showTemporaryMapMarker(inspectedLngLat);
-  renderReadout(feature || null, inspectedLngLat, point, { avoidTemporaryMarker: !highlighted });
+  renderReadout(feature || null, inspectedLngLat, point, { avoidTemporaryMarker: true });
   readoutPinned = true;
   return true;
 }

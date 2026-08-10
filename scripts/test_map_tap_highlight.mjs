@@ -59,6 +59,33 @@ check('the drawn stretch is exactly the tapped geometry, not an approximation',
 check('and no pin is dropped, because the road is the subject',
   roadTap.pins === 0, JSON.stringify(roadTap));
 
+// Both of these shipped broken once. The layers are created with the permanent
+// ones at style load, but drawRoute() adds the route's layers later and they
+// land above -- so the highlight painted UNDER the drawn route, the very case
+// a rider taps most. And the card was positioned at the tap, sitting directly
+// on the stretch it was describing. Checking the visibility property proved
+// neither.
+const painted = await page.evaluate(() => {
+  const ids = map.getStyle().layers.map((layer) => layer.id);
+  const card = document.getElementById('readout').getBoundingClientRect();
+  // Where the finger actually landed -- the stretch runs through it, so a card
+  // clear of this point is a card clear of what it is describing.
+  const canvas = map.getCanvas().getBoundingClientRect();
+  const point = { x: canvas.left + 220, y: canvas.top + 400 };
+  return {
+    above: ids.slice(ids.indexOf('tap-highlight') + 1),
+    coversTap: point.x >= card.left && point.x <= card.right
+      && point.y >= card.top && point.y <= card.bottom,
+    placement: document.getElementById('readout').dataset.pinPlacement,
+  };
+});
+check('the highlight is drawn above every other layer, including the route',
+  painted.above.length === 0, JSON.stringify(painted.above));
+check('and the card is placed clear of the stretch it describes',
+  painted.coversTap === false
+    && ['above', 'below', 'left', 'right'].includes(painted.placement),
+  JSON.stringify(painted));
+
 const blankTap = await page.evaluate(() => {
   roadInfoSuppressedUntil = 0;
   dismissRoadInfo();
