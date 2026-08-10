@@ -16,6 +16,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const appSrc = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 
@@ -89,14 +90,6 @@ assert.equal(at('roads__hit', 'osm__hit'), 'roads__hit',
 assert.equal(at(), null, 'nothing under the tap, nothing returned');
 console.log('PASS  a scored road always outranks an informational ribbon (6 cases)');
 
-/* --------------------- and the road card still names the route it carries */
-// Yielding the tap must not lose the designation: the road card appends it.
-assert.match(appSrc, /const badge = routeBadgeAt\(map\.project\(lngLat\)\);\s*if \(badge\) rows\.push\(\['Bike route', badge\]\);/,
-  'the road card must name the designated route running over it');
-assert.match(appSrc, /else if \(p\.g\) rows\.push\(\['Bike route',/,
-  'and must fall back to the road\'s own flag when the ribbon layer is hidden');
-console.log('PASS  the road card still reports the route running over it');
-
 /* --------------------------------- the tap answers for the NEAREST feature */
 // Two records of one highway meeting end to end. queryRenderedFeatures hands
 // them back in draw order, and taking the topmost is a coin flip at the seam:
@@ -162,4 +155,66 @@ assert.equal(
   'roads__hit', 'and off a marker the ordinary nearest-wins rule is back');
 console.log('PASS  a dismount marker keeps the taps its widened pad captures');
 
-console.log('\n15 checks, 0 failed');
+/* ------------- and the road card still names the route it carries, live */
+// Yielding the tap must not lose the designation: the road card appends it,
+// from the ribbon when that layer is on and from the road's own flag when it
+// is not.
+//
+// This was two assert.match() calls against app.js's own source, which is
+// exactly what AGENTS.md forbids -- a regex over source pins how code READS
+// and passes through whatever it DOES. One of them matched a whole statement
+// including a variable name, so a rename would have failed the suite while
+// deleting the rows outright would have sailed through it. Now it opens the
+// card and reads the row.
+const site = await serveRepo();
+const browser = await launchBrowser();
+const page = await appPage(browser, site.port);
+await page.waitForFunction(
+  () => typeof inspectRoadAt === 'function' && typeof HIT_SRC !== 'undefined'
+    && typeof SOURCES !== 'undefined' && typeof routeBadgeAt === 'function',
+  { timeout: 90000 });
+
+// The designation is not a table row in the rendered card: it is lifted above
+// the fold as the "Bike accommodation" block. So read what the card SAYS.
+const cardText = (badge, designatedFlag) => page.evaluate(
+  ({ badge, designatedFlag }) => {
+    roadInfoSuppressedUntil = 0;
+    dismissRoadInfo();
+    const wasFeature = featureAt, wasBadge = routeBadgeAt;
+    HIT_SRC['test-designation-hit'] = SOURCES.find((s) => s.id === 'roads');
+    featureAt = () => ({
+      layer: { id: 'test-designation-hit' },
+      properties: Object.assign(
+        { n: 'Test Avenue', s: 30, w: 6, h: 'residential', u: 1 },
+        designatedFlag ? { g: 1 } : {}),
+      geometry: { type: 'LineString',
+        coordinates: [[-122.34, 47.61], [-122.335, 47.615]] },
+    });
+    routeBadgeAt = () => badge;
+    const point = { x: 220, y: 400 };
+    inspectRoadAt(point, map.unproject([point.x, point.y]));
+    featureAt = wasFeature;
+    routeBadgeAt = wasBadge;
+    return document.getElementById('readout').textContent || '';
+  }, { badge, designatedFlag });
+
+const withBadge = await cardText('US Bicycle Route 10', false);
+assert.ok(withBadge.includes('US Bicycle Route 10'),
+  'the road card must name the designated route running over it');
+assert.ok(/bike accommodation/i.test(withBadge),
+  'and label it, so the name is not a bare string on the card');
+
+const withFlagOnly = await cardText(null, true);
+assert.ok(/designated route/i.test(withFlagOnly),
+  `the card must fall back to the road's own flag when the ribbon layer is `
+  + `hidden, got ${JSON.stringify(withFlagOnly.slice(-200))}`);
+
+const withNeither = await cardText(null, false);
+assert.ok(!/designated route|bike accommodation/i.test(withNeither),
+  'and claims no designation when the road carries none');
+console.log('PASS  the road card still reports the route running over it (4 cases)');
+
+await browser.close();
+await site.close();
+
+console.log('\n17 checks, 0 failed');
