@@ -13,8 +13,8 @@ const overlays = [
 let rawBytes = 0;
 let compressedBytes = 0;
 for (const name of overlays) {
-  const rawUrl = new URL(`../data/${name}`, import.meta.url);
-  const gzipUrl = new URL(`../data/${name}.gz`, import.meta.url);
+  const rawUrl = new URL(`../maps/washington/${name}`, import.meta.url);
+  const gzipUrl = new URL(`../maps/washington/${name}.gz`, import.meta.url);
   const [raw, compressed, rawInfo, gzipInfo] = await Promise.all([
     readFile(rawUrl),
     readFile(gzipUrl),

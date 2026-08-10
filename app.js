@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.660';
+const APP_VERSION = '2026-08-10.661';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -10306,7 +10306,7 @@ function showTapHighlight(geometry) {
   const type = geometry.type;
   if (type !== 'LineString' && type !== 'MultiLineString') return false;
   source.setData({ type: 'Feature', properties: {}, geometry });
-  for (const id of ['tap-highlight-halo', 'tap-highlight']) {
+  for (const id of TAP_HIGHLIGHT_LAYERS) {
     if (!map.getLayer(id)) continue;
     // Back to the top every time. These layers are created with the permanent
     // ones at style load, but drawRoute() adds the route's own layers later
@@ -10315,11 +10315,13 @@ function showTapHighlight(geometry) {
     map.moveLayer(id);
     setLayout(id, 'visibility', 'visible');
   }
+  startTapRipple();
   return true;
 }
 
 function clearTapHighlight() {
-  for (const id of ['tap-highlight-halo', 'tap-highlight']) {
+  stopTapRipple();
+  for (const id of TAP_HIGHLIGHT_LAYERS) {
     if (map.getLayer(id)) setLayout(id, 'visibility', 'none');
   }
   const source = map.getSource('tap-highlight');
@@ -13191,24 +13193,138 @@ onStyleReady(() => {
  * road beside it -- both feed this one source their geometry. It lives with
  * the permanent layers rather than the route's, because a rider can tap a road
  * long before asking for a route.
+ *
+ * It must not paint over the road. The first version drew a solid yellow core
+ * on top, which covered the segment's verdict colour with something that read
+ * as a bike facility -- so tapping a road to ask "how safe is this?" replaced
+ * the answer with a lie. These layers are OFFSET to either side: two bright
+ * lines that ride alongside the road and ripple outward, leaving the verdict
+ * colour untouched between them.
+ *
+ * Two ripples, half a cycle apart, so one is always visible. The map already
+ * speaks two animations and this has to be none of them:
+ *
+ *   caution  a halo BREATHING in and out of the line, attached to it, amber
+ *   fail     red ticks MARCHING along the line
+ *   selected two bright rails LEAVING the road sideways and fading
+ *
+ * Different axis from the ticks, and a different shape from the halo, which
+ * never detaches or vanishes. Each rail is a pale core over a dark edge: the
+ * map is full of blue passing roads, lime facilities, amber caution and red
+ * failure, so no single hue is safe -- and red-green colour blindness flattens
+ * hue anyway. Two tones at opposite ends of the LIGHTNESS scale means one of
+ * them stands out against whatever the rail is crossing.
  */
+// One pair in flight at a time. Two, half a cycle apart, kept something on
+// screen at every instant but drew four rails at once, and four parallel lines
+// around a street read as a corridor rather than as brackets on one road.
+const TAP_RIPPLES = [{ id: 'a', phase: 0 }];
+const TAP_RIPPLE_SIDES = [['left', -1], ['right', 1]];
+// The dark edge is added first so the pale core paints over its middle, leaving
+// it showing as a thin outline on both flanks of the core.
+const TAP_RIPPLE_PARTS = [
+  { part: 'edge', color: 'selectionEdge', extra: 3.4, opacity: 0.9 },
+  { part: 'core', color: 'selection', extra: 0, opacity: 1 },
+];
+const tapRippleLayerId = (ripple, side, part) => `tap-highlight-${ripple}-${side}-${part}`;
+const TAP_HIGHLIGHT_LAYERS = TAP_RIPPLES.flatMap((ripple) =>
+  TAP_RIPPLE_PARTS.flatMap(({ part }) =>
+    TAP_RIPPLE_SIDES.map(([side]) => tapRippleLayerId(ripple.id, side, part))));
+// Where a rail is born and where it dies, in pixels from the road's centre.
+// TAP_RIPPLE_NEAR is measured, not chosen: the drawn route is the widest line
+// on the map at about 9 px, so its edge is 4.5 px out, and a rail's dark edge
+// is 3.5 px half-width. Starting at 8.5 leaves daylight over even that, which
+// is the case a rider taps most -- a road on their own route.
+const TAP_RIPPLE_NEAR = 8.5, TAP_RIPPLE_FAR = 22;
+const TAP_RIPPLE_CORE_WIDTH = 3.6;
+
 function ensureTapHighlightLayers() {
   if (map.getSource('tap-highlight')) return;
   map.addSource('tap-highlight', {
     type: 'geojson',
     data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } },
   });
-  map.addLayer({
-    id: 'tap-highlight-halo', type: 'line', source: 'tap-highlight',
-    layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    paint: { 'line-color': '#0b3d2e', 'line-width': 13, 'line-opacity': 0.34,
-             'line-blur': 1.6 },
-  });
-  map.addLayer({
-    id: 'tap-highlight', type: 'line', source: 'tap-highlight',
-    layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    paint: { 'line-color': '#ffd400', 'line-width': 5.5, 'line-opacity': 0.95 },
-  });
+  for (const ripple of TAP_RIPPLES) {
+    for (const { part, color, extra } of TAP_RIPPLE_PARTS) {
+      for (const [side, sign] of TAP_RIPPLE_SIDES) {
+        map.addLayer({
+          id: tapRippleLayerId(ripple.id, side, part),
+          type: 'line', source: 'tap-highlight',
+          layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
+          paint: {
+            'line-color': RoutePalette[color],
+            'line-offset': sign * TAP_RIPPLE_NEAR,
+            'line-width': TAP_RIPPLE_CORE_WIDTH + extra,
+            'line-opacity': 0,
+            'line-blur': 0.4,
+          },
+        });
+      }
+    }
+  }
+}
+
+/* The ripple itself. Sine over the cycle, so each pair fades in as it leaves
+ * the road and is gone by the time it reaches the far edge -- a wave leaving,
+ * not an edge sliding back and forth.
+ */
+const TAP_RIPPLE_STEP_MS = 60;
+const TAP_RIPPLE_PERIOD_MS = 1500;
+let tapRippleTimer = null;
+let tapRippleElapsed = 0;
+
+// One place that turns "how far through its travel is this rail" into paint, so
+// the moving and the resting states cannot drift apart: resting is progress 0.
+function paintTapRipple(ripple, progress) {
+  const spread = TAP_RIPPLE_NEAR + (TAP_RIPPLE_FAR - TAP_RIPPLE_NEAR) * progress;
+  // ^0.6 fills the middle of the travel out rather than peaking sharply, so the
+  // pair is bright for most of its journey and only thins at the extremes. At
+  // rest (progress 0) sine is 0, so the resting state substitutes full strength.
+  const strength = progress === 0 ? 1 : Math.sin(Math.PI * progress) ** 0.6;
+  for (const { part, extra, opacity } of TAP_RIPPLE_PARTS) {
+    for (const [side, sign] of TAP_RIPPLE_SIDES) {
+      const id = tapRippleLayerId(ripple, side, part);
+      if (!map.getLayer(id)) continue;
+      setPaint(id, 'line-offset', sign * spread);
+      setPaint(id, 'line-opacity', opacity * strength);
+      setPaint(id, 'line-width', TAP_RIPPLE_CORE_WIDTH + extra + 2.5 * progress);
+      setPaint(id, 'line-blur', 0.4 + 2.2 * progress);
+    }
+  }
+}
+
+// Held still: both pairs parked close in at full strength. This is what a
+// screenshot shows, and what a rider who has asked for reduced motion sees --
+// the segment still reads as picked out, because the flanking rails carry that
+// on their own and the animation only makes them easier to catch.
+function restTapRipple() {
+  for (const ripple of TAP_RIPPLES) paintTapRipple(ripple.id, 0);
+}
+
+function startTapRipple() {
+  stopTapRipple();
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    restTapRipple();
+    return;
+  }
+  tapRippleElapsed = 0;
+  const tick = () => {
+    const base = (tapRippleElapsed % TAP_RIPPLE_PERIOD_MS) / TAP_RIPPLE_PERIOD_MS;
+    for (const ripple of TAP_RIPPLES) {
+      // Never exactly 0, which paintTapRipple reserves for the resting state.
+      paintTapRipple(ripple.id, ((base + ripple.phase) % 1) || 0.001);
+    }
+  };
+  tick();
+  tapRippleTimer = setInterval(() => {
+    tapRippleElapsed += TAP_RIPPLE_STEP_MS;
+    tick();
+  }, TAP_RIPPLE_STEP_MS);
+}
+
+function stopTapRipple() {
+  if (tapRippleTimer) clearInterval(tapRippleTimer);
+  tapRippleTimer = null;
 }
 
 // Debug handle (harmless; used for local verification).

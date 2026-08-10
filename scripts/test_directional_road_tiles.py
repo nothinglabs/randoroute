@@ -20,7 +20,7 @@ if shutil.which("tippecanoe-decode") is None:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ROADS = ROOT / "data" / "roads.pmtiles"
+ROADS = ROOT / "maps" / "washington" / "roads.pmtiles"
 REPRO_LON = -122.447333
 REPRO_LAT = 48.001199
 

@@ -4,6 +4,9 @@
 // piece of road, so showing it says more than a dot does. A tap on nothing
 // keeps the pin, because there the point really is the subject.
 //
+// It marks the road WITHOUT painting over it. Two bright lines ride alongside
+// and ripple outward; the verdict colour stays visible between them.
+//
 // The route's start and destination are a third case: they already have a role
 // in the trip, so their card names it and drops both Navigate (nothing to
 // assign) and the road block (which would ask the router to avoid the place it
@@ -14,7 +17,8 @@ const site = await serveRepo();
 const browser = await launchBrowser();
 const page = await appPage(browser, site.port);
 await page.waitForFunction(() => typeof inspectRoadAt === 'function'
-  && typeof openEndpointCard === 'function' && map.getLayer('tap-highlight'),
+  && typeof openEndpointCard === 'function' && typeof TAP_HIGHLIGHT_LAYERS !== 'undefined'
+  && TAP_HIGHLIGHT_LAYERS.every((id) => map.getLayer(id)),
 { timeout: 90000 });
 
 let passed = 0, failed = 0;
@@ -43,8 +47,9 @@ const roadTap = await page.evaluate(() => {
   return {
     opened,
     cardShown: document.getElementById('readout').classList.contains('show'),
-    visible: map.getLayoutProperty('tap-highlight', 'visibility'),
-    haloVisible: map.getLayoutProperty('tap-highlight-halo', 'visibility'),
+    shown: TAP_HIGHLIGHT_LAYERS.filter((id) =>
+      map.getLayoutProperty(id, 'visibility') === 'visible'),
+    layers: TAP_HIGHLIGHT_LAYERS,
     drawn: map.getSource('tap-highlight')._data?.geometry?.coordinates?.length,
     matchesTapped: JSON.stringify(map.getSource('tap-highlight')._data.geometry.coordinates)
       === JSON.stringify(line),
@@ -52,8 +57,8 @@ const roadTap = await page.evaluate(() => {
   };
 });
 check('tapping a road opens its card and draws that stretch',
-  roadTap.opened && roadTap.cardShown && roadTap.visible === 'visible'
-    && roadTap.haloVisible === 'visible' && roadTap.drawn === 3, JSON.stringify(roadTap));
+  roadTap.opened && roadTap.cardShown && roadTap.drawn === 3
+    && roadTap.shown.length === roadTap.layers.length, JSON.stringify(roadTap));
 check('the drawn stretch is exactly the tapped geometry, not an approximation',
   roadTap.matchesTapped === true, JSON.stringify(roadTap));
 check('and no pin is dropped, because the road is the subject',
@@ -72,8 +77,9 @@ const painted = await page.evaluate(() => {
   // clear of this point is a card clear of what it is describing.
   const canvas = map.getCanvas().getBoundingClientRect();
   const point = { x: canvas.left + 220, y: canvas.top + 400 };
+  const first = Math.min(...TAP_HIGHLIGHT_LAYERS.map((id) => ids.indexOf(id)));
   return {
-    above: ids.slice(ids.indexOf('tap-highlight') + 1),
+    above: ids.slice(first).filter((id) => !TAP_HIGHLIGHT_LAYERS.includes(id)),
     coversTap: point.x >= card.left && point.x <= card.right
       && point.y >= card.top && point.y <= card.bottom,
     placement: document.getElementById('readout').dataset.pinPlacement,
@@ -86,6 +92,149 @@ check('and the card is placed clear of the stretch it describes',
     && ['above', 'below', 'left', 'right'].includes(painted.placement),
   JSON.stringify(painted));
 
+/* ------------------------------------------ it must not overwrite the verdict */
+// The first version painted a solid yellow core straight over the tapped road.
+// That covered the segment's own safety colour with something that reads as a
+// bike facility -- so tapping a road to ask "how safe is this?" replaced the
+// answer with a lie, and a colour-blind rider had no way to tell. Nothing here
+// may sit on the road: every layer is offset clear of it, so the verdict colour
+// survives underneath, and the effect is carried by position and motion rather
+// than by hue.
+const flanking = await page.evaluate(() => {
+  const paint = (id) => ({
+    offset: map.getPaintProperty(id, 'line-offset'),
+    width: map.getPaintProperty(id, 'line-width'),
+    color: map.getPaintProperty(id, 'line-color'),
+  });
+  const verdictColours = new Set([
+    ...Object.values(RoutePalette.LEVEL), RoutePalette.bikeNetwork,
+    RoutePalette.designated, RoutePalette.trailCentreline, RoutePalette.trailDots,
+  ]);
+  return {
+    layers: TAP_HIGHLIGHT_LAYERS.map(paint),
+    borrowsAVerdictColour: TAP_HIGHLIGHT_LAYERS
+      .some((id) => verdictColours.has(map.getPaintProperty(id, 'line-color'))),
+    sides: TAP_HIGHLIGHT_LAYERS
+      .map((id) => Math.sign(map.getPaintProperty(id, 'line-offset'))),
+  };
+});
+// 4.5 px is the half-width of the widest line the map draws (the route), so an
+// inner edge beyond that is an inner edge clear of anything it can be laid
+// over -- including the case a rider taps most, a road on their own route.
+check('every part of the highlight is offset clear of the road it marks',
+  flanking.layers.length >= 2
+    && flanking.layers.every((layer) => Math.abs(layer.offset) - layer.width / 2 >= 4.5),
+  JSON.stringify(flanking.layers));
+check('and it flanks both sides, not one',
+  flanking.sides.includes(-1) && flanking.sides.includes(1),
+  JSON.stringify(flanking.sides));
+check('in a colour no verdict uses, so it cannot be read as one',
+  flanking.borrowsAVerdictColour === false,
+  JSON.stringify(flanking.layers.map((layer) => layer.color)));
+
+/* --------------------------------------------- and prove it on real pixels */
+// The properties above describe the intent; this reads the frame. A highlight
+// that covers the road is the whole bug, and only the rendered image can say
+// whether it does -- the first version's offsets looked fine on paper too,
+// because it had none.
+//
+// Tap a real road, find where its line actually is on screen, and compare that
+// column of pixels with and without the highlight drawn.
+const rendered = await page.evaluate(async () => {
+  const canvas = map.getCanvas();
+  const settled = () => new Promise((resolve) => {
+    map.once('idle', resolve);
+    map.triggerRepaint();
+  });
+  const frame = () => {
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width;
+    copy.height = canvas.height;
+    copy.getContext('2d').drawImage(canvas, 0, 0);
+    return copy.getContext('2d');
+  };
+  const ratio = canvas.width / canvas.clientWidth;
+  const at = (ctx, x, y) => {
+    const d = ctx.getImageData(Math.round(x * ratio), Math.round(y * ratio), 1, 1).data;
+    return `${d[0]},${d[1]},${d[2]}`;
+  };
+
+  dismissRoadInfo();
+  // Somewhere with a dense street grid, so a tap lands on a scored road.
+  map.jumpTo({ center: [-122.3447, 47.6605], zoom: 16 });
+  await settled();
+  const tap = { x: Math.round(canvas.clientWidth / 2), y: Math.round(canvas.clientHeight / 2) };
+
+  roadInfoSuppressedUntil = 0;
+  if (!inspectRoadAt(tap, map.unproject([tap.x, tap.y]))) return { tapped: false };
+  const drawn = map.getSource('tap-highlight')._data.geometry;
+  const line = drawn.type === 'MultiLineString' ? drawn.coordinates[0] : drawn.coordinates;
+  // A vertex near the middle of the drawn stretch: on the road, and away from
+  // the ends where the rails' round caps curl in.
+  const centre = map.project(line[Math.floor(line.length / 2)]);
+  // Perpendicular to the road, so "across the line" is across the rails too.
+  const a = map.project(line[0]);
+  const b = map.project(line[line.length - 1]);
+  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  const normal = { x: -(b.y - a.y) / len, y: (b.x - a.x) / len };
+  const across = (offset) => ({
+    x: centre.x + normal.x * offset, y: centre.y + normal.y * offset,
+  });
+
+  dismissRoadInfo();
+  await settled();
+  const clean = frame();
+  roadInfoSuppressedUntil = 0;
+  inspectRoadAt(tap, map.unproject([tap.x, tap.y]));
+  stopTapRipple();
+  restTapRipple();
+  await settled();
+  const marked = frame();
+
+  const road = [];
+  for (let offset = -3; offset <= 3; offset++) {
+    const p = across(offset);
+    road.push({ offset, before: at(clean, p.x, p.y), after: at(marked, p.x, p.y) });
+  }
+  const flank = [];
+  for (const offset of [-9, -8, -7, 7, 8, 9]) {
+    const p = across(offset);
+    flank.push({ offset, before: at(clean, p.x, p.y), after: at(marked, p.x, p.y) });
+  }
+  return { tapped: true, road, flank };
+});
+check('a tap lands on a real road for the pixel check', rendered.tapped === true);
+check('the road under the highlight is pixel-for-pixel what it was without it',
+  rendered.road.every((s) => s.before === s.after), JSON.stringify(rendered.road));
+check('while the ground beside it is not, because that is where the marker went',
+  rendered.flank.some((s) => s.before !== s.after), JSON.stringify(rendered.flank));
+
+// A still highlight is a highlight: reduced motion, and a screenshot, both get
+// the flanking pair held at full strength rather than caught mid-fade.
+const moving = await page.evaluate(() => new Promise((resolve) => {
+  const read = () => TAP_HIGHLIGHT_LAYERS.map((id) => ({
+    offset: map.getPaintProperty(id, 'line-offset'),
+    opacity: map.getPaintProperty(id, 'line-opacity'),
+  }));
+  // The pixel check above deliberately froze the ripple to compare frames.
+  // Start it the way a tap does, rather than reading whatever it left behind.
+  startTapRipple();
+  const first = read();
+  setTimeout(() => {
+    const later = read();
+    restTapRipple();
+    resolve({
+      first, later, rested: read(),
+      changed: JSON.stringify(first) !== JSON.stringify(later),
+    });
+  }, 400);
+}));
+check('the pair travels outward rather than sitting still',
+  moving.changed === true, JSON.stringify({ first: moving.first, later: moving.later }));
+check('and holding it still leaves it visible, for reduced motion and screenshots',
+  moving.rested.every((layer) => layer.opacity > 0.5 && Math.abs(layer.offset) > 0),
+  JSON.stringify(moving.rested));
+
 const blankTap = await page.evaluate(() => {
   roadInfoSuppressedUntil = 0;
   dismissRoadInfo();
@@ -96,23 +245,28 @@ const blankTap = await page.evaluate(() => {
   featureAt = original;
   return {
     pins: document.querySelectorAll('.search-result-marker').length,
-    visible: map.getLayoutProperty('tap-highlight', 'visibility'),
+    hidden: TAP_HIGHLIGHT_LAYERS.every((id) =>
+      map.getLayoutProperty(id, 'visibility') === 'none'),
   };
 });
 check('a tap on open map still gets its pin, and no stretch',
-  blankTap.pins === 1 && blankTap.visible === 'none', JSON.stringify(blankTap));
+  blankTap.pins === 1 && blankTap.hidden, JSON.stringify(blankTap));
 
 const cleared = await page.evaluate(() => {
   dismissRoadInfo();
   return {
-    visible: map.getLayoutProperty('tap-highlight', 'visibility'),
+    hidden: TAP_HIGHLIGHT_LAYERS.every((id) =>
+      map.getLayoutProperty(id, 'visibility') === 'none'),
     drawn: map.getSource('tap-highlight')._data?.geometry?.coordinates?.length,
     pins: document.querySelectorAll('.search-result-marker').length,
+    // A 60 ms timer left running behind a closed card is a repaint every frame
+    // for the rest of the session.
+    animating: tapRippleTimer !== null,
   };
 });
 check('closing the card takes the stretch and the pin away with it',
-  cleared.visible === 'none' && cleared.drawn === 0 && cleared.pins === 0,
-  JSON.stringify(cleared));
+  cleared.hidden && cleared.drawn === 0 && cleared.pins === 0
+    && cleared.animating === false, JSON.stringify(cleared));
 
 /* --------------------------------------------------- the trip's own endpoints */
 const endpoint = await page.evaluate(() => {

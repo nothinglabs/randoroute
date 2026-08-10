@@ -67,6 +67,19 @@
     // A signed route is advice, not infrastructure, so it is family with the
     // lime and duller than it.
     designated: '#5f8000',
+    // "This is the piece I am telling you about." Not a verdict, so it must
+    // never be mistaken for one -- it rides ALONGSIDE the road rather than over
+    // it. A tapped road used to be painted over in solid yellow, which read as
+    // a bike facility and hid the very thing the card was describing.
+    //
+    // Two tones, not one, because no single hue is safe here: the map is full
+    // of blue passing roads, lime facilities, amber caution and red failure,
+    // and red-green colour blindness flattens the hue axis anyway. So this
+    // pair separates on LIGHTNESS instead, at both extremes at once -- near
+    // white against every verdict colour, near black against the pale basemap.
+    // Whichever it is crossing, one of the two stands out.
+    selection: '#f4feff',
+    selectionEdge: '#0c1c22',
   };
 
   // CSS custom property per role. Stylesheets use var(--name); nothing else
@@ -82,6 +95,8 @@
     '--trail-centreline': PALETTE.trailCentreline,
     '--trail-dots': PALETTE.trailDots,
     '--designated': PALETTE.designated,
+    '--selection': PALETTE.selection,
+    '--selection-edge': PALETTE.selectionEdge,
   };
 
   function toRgbTriple(hex) {
