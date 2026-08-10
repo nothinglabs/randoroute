@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.664';
+const APP_VERSION = '2026-08-10.665';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9605,6 +9605,13 @@ function buildSavedRoutes() {
 // Offline place search over a baked OSM index (maps/<state>/places.json).
 let placesIndex = null, placesPromise = null;
 function ensurePlaces() {
+  // A state declares what it ships. Asking for an index it does not have is a
+  // guaranteed 404 on every search, and the retry-next-time path means one per
+  // keystroke -- so the declaration is honoured here rather than discovered.
+  if (!Region.datasets.places) {
+    placesIndex = [];
+    return Promise.resolve();
+  }
   if (!placesPromise) {
     placesPromise = fetch(Region.dataUrl('places.json'))
       .then((res) => (res.ok ? res.json() : []))

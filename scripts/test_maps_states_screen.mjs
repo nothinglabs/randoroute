@@ -10,13 +10,51 @@
 // radios: a checkbox promises that two can be on at once, which is exactly what
 // this cannot do.
 import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
-import { createRequire } from 'node:module';
-import { join } from 'node:path';
-import { ROOT } from './testlib/harness.mjs';
 
-const { MAP_STATES } = createRequire(import.meta.url)(join(ROOT, 'maps/states.js'));
+// Two states, invented here and served over the generated index. The screen's
+// contract is "list every state that has a folder, and switch between them" --
+// it is not "there are two states in this repository". Reading the real
+// maps/states.js made this test fail the moment a state was added or removed,
+// which is the same mistake as pinning a route's distance: it tested sameness
+// rather than behaviour.
+//
+// Washington keeps its real id so the data the app fetches is really there; the
+// second is a preview state with a place index and nothing else, which is the
+// shape every import passes through on its way up (maps/README.md, level 2).
+const STATES = [
+  { id: 'washington', name: 'Washington', status: 'released', readiness: 8,
+    summary: 'Full routing, tiles, safety enrichment and place search.',
+    bounds: { minLon: -124.9, maxLon: -116.8, minLat: 45.5, maxLat: 49.1 },
+    defaultCenter: [-122.3321, 47.6062], defaultZoom: 11,
+    stressAgency: 'WSDOT', restrictionAgency: 'WSDOT', speedAgency: 'WSDOT',
+    facilitySourceName: 'WSDOT Active Transportation Data',
+    stressLayerName: 'WSDOT BLTS (state highways)',
+    restrictionLayerName: 'Bikes prohibited (WSDOT)',
+    interstateRoutePrefixes: ['005', '082', '090', '182', '205', '405', '705'],
+    facilityLevels: { 'Shared-Use Path': 5, 'Bike Lane': 2 },
+    routeDirectionSuffixes: { i: 'increasing mileposts', d: 'decreasing mileposts' },
+    datasets: { graph: true, roads: true, basemap: true, overlays: true,
+      places: true, bikeroutes: true, restrictions: true, closures: true },
+    versions: {} },
+  { id: 'newstate', name: 'Idaho', status: 'preview', readiness: 2,
+    summary: 'Place search only. No routing graph, no map tiles.',
+    bounds: { minLon: -117.3, maxLon: -111.0, minLat: 41.9, maxLat: 49.0 },
+    defaultCenter: [-116.2023, 43.6150], defaultZoom: 11,
+    stressAgency: 'ITD', restrictionAgency: 'ITD', speedAgency: 'ITD',
+    facilitySourceName: 'ITD Bicycle Facility Inventory',
+    stressLayerName: 'ITD stress (state highways)',
+    restrictionLayerName: 'Bikes prohibited (ITD)',
+    interstateRoutePrefixes: [], facilityLevels: {}, routeDirectionSuffixes: {},
+    datasets: { graph: false, roads: false, basemap: false, overlays: false,
+      places: false, bikeroutes: false, restrictions: false, closures: false },
+    versions: {} },
+];
+const MAP_STATES = STATES;
 
 const site = await serveRepo();
+site.publish('/maps/states.js', `(function (root) {
+  root.MAP_STATES = ${JSON.stringify(STATES)};
+}(typeof self !== 'undefined' ? self : this));`);
 const browser = await launchBrowser();
 const page = await appPage(browser, site.port, { desktop: true });
 await page.waitForFunction(() => typeof openMapsDialog === 'function', { timeout: 60000 });
@@ -87,18 +125,18 @@ check('every state with a maps/ folder is selectable, and only those',
 check('there is more than one, so this is a real choice',
   shipped.length >= 2, shipped.join());
 
-// A row has to say what the state can DO. "Oregon" alone invites a rider to
+// A row has to say what the state can DO. A bare state name invites a rider to
 // select it and then wonder why no route comes back.
 const detail = await page.evaluate(() => {
   const rows = [...document.querySelectorAll('#mapsStateList .maps-state')];
   const find = (name) => rows.find((row) =>
     row.querySelector('.maps-state-name > span').textContent === name);
   const wa = find('Washington');
-  const or = find('Oregon');
+  const preview = find('Idaho');
   const al = find('Alabama');
   return {
     washington: wa?.querySelector('.maps-state-detail')?.textContent,
-    oregon: or?.querySelector('.maps-state-detail')?.textContent,
+    preview: preview?.querySelector('.maps-state-detail')?.textContent,
     unavailableDetail: al?.querySelector('.maps-state-detail'),
     badges: rows.map((row) => row.querySelector('.maps-state-badge')?.textContent)
       .filter(Boolean),
@@ -107,7 +145,7 @@ const detail = await page.evaluate(() => {
 check('a finished state says it can route', /routing/i.test(detail.washington || ''),
   detail.washington);
 check('a preview state says what it is missing',
-  /no routing/i.test(detail.oregon || ''), detail.oregon);
+  /nothing usable|no map or routing|map only/i.test(detail.preview || ''), detail.preview);
 check('and carries a Preview badge beside the loaded one',
   detail.badges.includes('Preview') && detail.badges.includes('Loaded'),
   JSON.stringify(detail.badges));
@@ -165,7 +203,7 @@ check('closing leaves the screen', closed === false);
 // The switch ends in a reload, so the only honest way to test it is to let it
 // happen and look at what comes back. A route is set first: it belongs to the
 // graph about to be unloaded, and it must not survive.
-const preview = MAP_STATES.find((state) => state.status === 'preview');
+const preview = STATES[1];
 const before = await page.evaluate((targetId) => {
   routing.worker = { postMessage: () => {}, terminate: () => {} };
   routing.ready = true;
@@ -202,31 +240,35 @@ check('and opens where that state opens',
   `${reloaded.centre.lng.toFixed(3)}, ${reloaded.centre.lat.toFixed(3)}`);
 check('every data path follows the folder',
   reloaded.graphUrl.startsWith(`maps/${preview.id}/`), reloaded.graphUrl);
-// Oregon has a basemap and no street tiles. A MapLibre source whose archive
-// 404s never finishes loading, so the style would hang and `load` never fire --
-// the whole app stuck on its launch screen.
+// A MapLibre source whose archive 404s never finishes loading, so the style
+// hangs and `load` never fires -- the whole app stuck on its launch screen. A
+// state that declares no tiles must therefore contribute no tile sources.
 check('a source the state does not ship is not in the style at all',
-  reloaded.styleSources.includes('basemap-context')
-    && !reloaded.styleSources.includes('basemap-roads'),
-  JSON.stringify(reloaded.styleSources));
-// Oregon ships no scored linework at all, so the correct answer is an empty
-// layer list -- not one entry per layer whose file 404s.
+  reloaded.styleSources.length === 0, JSON.stringify(reloaded.styleSources));
+// A state shipping no scored linework gets an empty layer list -- not one entry
+// per layer whose file 404s.
 check('and neither are the layers that would draw from it',
   !reloaded.layers.includes('roads') && !reloaded.layers.includes('blts'),
   JSON.stringify(reloaded.layers));
 
-// Place search is the one thing a preview state can do, and it must really
-// search THAT state's index.
+// A state that declares no place index must not go looking for one. The fetch
+// would 404 on every search, and the retry-next-time path makes that one per
+// keystroke -- so the declaration has to be honoured, not discovered.
 const searched = await page.evaluate(async () => {
+  const asked = [];
+  const realFetch = window.fetch;
+  window.fetch = (input, init) => { asked.push(String(input)); return realFetch(input, init); };
   await ensurePlaces();
+  window.fetch = realFetch;
   return {
     count: Array.isArray(placesIndex) ? placesIndex.length : -1,
-    hasPortland: (placesIndex || []).some((row) => row[0] === 'Portland'),
+    wentLooking: asked.some((url) => url.includes('places.json')),
+    // Whatever it holds, it must not still be the previous state's index.
     hasSeattle: (placesIndex || []).some((row) => row[0] === 'Seattle'),
   };
 });
-check('place search runs on the new state\'s index, not the old one',
-  searched.count > 100 && searched.hasPortland && !searched.hasSeattle,
+check('a state with no place index does not go fetching one',
+  searched.wentLooking === false && searched.count === 0 && !searched.hasSeattle,
   JSON.stringify(searched));
 
 // Routing must fail flat, once, with the reason -- not retry a URL that 404s

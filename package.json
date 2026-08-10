@@ -4,7 +4,7 @@
   "private": true,
   "description": "Capacitor iOS wrapper for the Just Rolling Along bicycle-routing app.",
   "scripts": {
-    "test": "node scripts/run_tests.mjs",
+    "test": "npm run maps:registry --silent && node scripts/run_tests.mjs",
     "data:compress-overlays": "node scripts/build_compressed_overlays.mjs",
     "maps:registry": "node scripts/build_map_registry.mjs",
     "ios:add": "cap add ios",

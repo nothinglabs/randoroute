@@ -48,11 +48,22 @@ Follow-ups that hang on the verdict:
 ### 3. Road detail UI improvements
 Owner has ideas; not yet described. Nothing started.
 
-### 4. Finish the Oregon import
-Oregon ships as a `preview` state in v.660: a basemap and a place index, real
-data, no routing. `maps/oregon/STATUS.md` lists what is missing and what each
-piece would take. The largest item is ODOT data — nothing has been conflated,
-so the agency names in `region.json` are labels, not claims.
+### 4. Have an agent import Oregon from the docs alone
+The repo ships one state. Oregon was removed deliberately: the point is to find
+out whether `docs/PORTING-TO-ANOTHER-STATE.md` and `docs/PORTING-LESSONS.md`
+carry enough for an agent that was not here to import a state unaided.
+
+Oregon specifically, because the owner has ridden it and can check the result —
+an import nobody can verify is worthless as evidence. Write down what you expect
+BEFORE the agent runs (corridors, roads that should fail, trails that should
+read as trails), or there is a pull toward grading on whatever it did well.
+
+Target is **7/10** on the rubric in `maps/README.md`, not 9: levels 8 and up
+require a rider, by design. The agent's deliverables are the state plus
+`VERIFICATION.md` and filled-in `Travelled` lines in `PORTING-LESSONS.md`.
+
+A failure is the more useful outcome — it names the lesson the docs failed to
+carry.
 
 ## Parked (has a trigger, waiting on it)
 

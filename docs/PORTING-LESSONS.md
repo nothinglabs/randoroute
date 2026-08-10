@@ -47,9 +47,11 @@ Each lesson is an addressable unit:
 > the next state either confirms a lesson generalises or discovers it was an
 > artefact of one agency's data. Both outcomes are worth recording.
 
-`Travelled` starts as `Oregon: not tested` for everything, because Oregon is
-currently a preview import with a basemap and a place index and nothing else
-(`maps/oregon/STATUS.md`). It is not evidence yet.
+`Travelled` reads `no second state yet` throughout, because Washington is the
+only state that ships. Every lesson below is therefore one state's evidence
+generalised by argument, not by observation. The first import that is not
+Washington turns that into knowledge — including, valuably, by finding the
+lessons that do not travel.
 
 ---
 
@@ -78,7 +80,7 @@ counts** before wiring it to anything. Precedence, once classified:
 *Evidence.* `038d771`, `820bf70`. The case in hand was WSDOT BLTS's facility
 field versus the Active Transportation registry.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### A2 — State agency traffic layers stop at the state route system and at the city line.
 
@@ -92,7 +94,7 @@ people actually ride — have nothing.
 
 *Evidence.* `9a83c7b`.
 
-*Travelled.* Oregon: not tested. **Expect this to generalise**; it is a
+*Travelled.* No second state yet. **Expect this to generalise**; it is a
 consequence of how state DOTs are funded and scoped, not of Washington.
 
 ### A3 — FHWA HPMS is the one nationally uniform volume source, and it exists for every state.
@@ -116,7 +118,7 @@ Ave and 13,222 for E Pioneer Ave.
 HPMS also carries speed limits. They are deliberately **not** used here, for the
 same reason county speed layers were rejected.
 
-*Travelled.* Oregon: not tested. The service URL pattern is per-state and
+*Travelled.* No second state yet. The service URL pattern is per-state and
 documented in `PORTING-TO-ANOTHER-STATE.md`.
 
 ### A4 — A measurement, a derived figure and a proxy are three different claims. Never flatten them.
@@ -130,7 +132,7 @@ a signed bike route look like a safety guarantee (see D1).
 
 *Evidence.* `035606e`, `a66388f`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### A5 — When several sources describe one road, write down which wins. Do not leave it to evaluation order.
 
@@ -144,7 +146,7 @@ them is **exactly 1.00**.
 
 *Evidence.* `a66388f`, `a9aa0c6`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### A6 — Agreeing medians do not mean agreeing roads.
 
@@ -162,7 +164,7 @@ can you.
 
 *Evidence.* `a9aa0c6`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### A7 — Withdraw a claim that does not survive its own measurement.
 
@@ -176,7 +178,7 @@ same piece of road.
 
 *Evidence.* `a9aa0c6`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### A8 — Audit for fields you fetched and never consumed.
 
@@ -193,7 +195,7 @@ GRV…) into words. It earns model influence only after field testing — see G1
 
 *Evidence.* `2912d86`, `820bf70`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ---
 
@@ -229,7 +231,7 @@ source.
 *Evidence.* `0a9a6be`, corrected in `3c74e1a` (the original commit quoted 34.2%
 from an intermediate version that matched on the best single segment).
 
-*Travelled.* Oregon: not tested. **Expect this to generalise** — segmented
+*Travelled.* No second state yet. **Expect this to generalise** — segmented
 inventories are how road logs are kept everywhere.
 
 ### B2 — Test a geometric matcher with true perpendicular offsets, in metres.
@@ -247,7 +249,7 @@ short records.
 *Evidence.* `0a9a6be`. The rewritten test immediately caught a real defect in the
 first version of the B1 fix.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### B3 — Measure coverage against the routing graph, not against the source's own extent.
 
@@ -266,7 +268,7 @@ inference.
 
 *Evidence.* `3e56c1c`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### B4 — An explicit tag beats an inventory, and an explicit zero is knowledge.
 
@@ -283,7 +285,7 @@ the source. A rider should be able to tell a survey from a tag.
 
 *Evidence.* `820bf70`, `e7068fe`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### B5 — Inventories are directional. The display collapse must be labelled.
 
@@ -307,7 +309,7 @@ than it might be.
 
 *Evidence.* `8d3e3bc`, `820bf70`.
 
-*Travelled.* Oregon: not tested. Whether an agency surveys directionally is a
+*Travelled.* No second state yet. Whether an agency surveys directionally is a
 per-agency fact — check before assuming either way.
 
 ### B6 — A precedence change deserves a blast-radius count before it ships.
@@ -321,7 +323,7 @@ change *sounds* like.
 
 *Evidence.* `e7068fe`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ---
 
@@ -356,7 +358,7 @@ keeps every parking aisle in the state out.
 
 *Evidence.* `a15944b`, `5303e3b`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### C2 — Assert corridor connectivity as an invariant, and it will catch the next one.
 
@@ -370,7 +372,7 @@ tuning change.
 
 *Evidence.* `a15944b`, `dd66fbc`, `scripts/test_corridor_severance.mjs`.
 
-*Travelled.* Oregon: not tested. This is the single highest-value test to port
+*Travelled.* No second state yet. This is the single highest-value test to port
 first, because it is the one that catches a broken import rather than a broken
 opinion.
 
@@ -387,8 +389,8 @@ A steep reading at a pier is an artefact, not a climb.
 
 *Evidence.* `15d494f`, `2912d86`.
 
-*Travelled.* Oregon: not tested. Oregon has ferries and a long coastline; this
-one should be expected to recur.
+*Travelled.* No second state yet. Any state with a coastline and ferries should
+expect this to recur.
 
 ### C4 — Other terrain and topology traps, recorded together.
 
@@ -407,7 +409,7 @@ From `2912d86`, which wrote these up as the graph-build lessons that generalise:
   tagged `bicycle=dismount`, and a build that treats dismount as impassable loses
   the terminal.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ---
 
@@ -431,7 +433,7 @@ rewritten to assert the **opposite** so it cannot quietly return.
 
 *Evidence.* `4cb9a04`, `dd66fbc`, `451cdd8`.
 
-*Travelled.* Oregon: not tested. **Expect this to generalise** — long
+*Travelled.* No second state yet. **Expect this to generalise** — long
 road-running signed routes are the norm, not a Washington quirk.
 
 ### D2 — Sequencing separate rungs hides a real case. Merge questions that are one question.
@@ -449,7 +451,7 @@ only one invites the rider to go and change the wrong setting.
 
 *Evidence.* `d095a3c`, `fac8d24`, `778b1c3`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### D3 — Express a threshold in road types, not numbers, and give it two paths.
 
@@ -473,7 +475,7 @@ only. A mapper's `tertiary` must not be able to fail a road for being busy.
 
 *Evidence.* `d095a3c`, `fac8d24`, `778b1c3`.
 
-*Travelled.* Oregon: not tested. FHWA classes are federal, so the class column
+*Travelled.* No second state yet. FHWA classes are federal, so the class column
 should port unchanged; the AADT thresholds are a judgement about riding, not
 about Washington.
 
@@ -492,7 +494,7 @@ rule.
 
 *Evidence.* `02d943b`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### D5 — A recorded 15 mph limit shares the lane.
 
@@ -505,7 +507,7 @@ caution.
 
 *Evidence.* `ade6a2d`. Held by a 45-million-combination agreement sweep (D9).
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### D6 — Pricing off a measurement mostly moves roads *down*. Say so before someone discovers it.
 
@@ -526,7 +528,7 @@ tag — with all three landing on the same tiers, so the change moves the
 
 *Evidence.* `04e0520`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### D7 — Inferring a shoulder from edge space: three constraints, and why it defaults on.
 
@@ -558,7 +560,7 @@ mileage 14,906 → 13,220 miles (−11%).
 `32277a8` (scoped to Randonneur, control reworded to "Guess shoulder width from
 other data when it isn't documented").
 
-*Travelled.* Oregon: not tested. The 7%-tagged figure is an OSM coverage fact and
+*Travelled.* No second state yet. The 7%-tagged figure is an OSM coverage fact and
 should be re-measured per state — it is the number that decides whether this
 inference is worth having at all.
 
@@ -594,7 +596,7 @@ source reporting metres would pass every other check in the suite.*
 
 *Evidence.* `041505d`, `32277a8`.
 
-*Travelled.* Oregon: not tested. **Expect this to generalise** — it is a property
+*Travelled.* No second state yet. **Expect this to generalise** — it is a property
 of having more than one scorer, not of Washington.
 
 ### D9 — The map expression is the one implementation that cannot share the model's code. Sweep them against each other.
@@ -623,7 +625,7 @@ branch that ships **on** by default.
 *Evidence.* `42a7498`, `32277a8` (evaluator extended for `max`, `-`, `in`,
 `literal`, `match`; combinations 6.5M → 18.1M), `ade6a2d` (45M).
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ---
 
@@ -650,7 +652,7 @@ because **paint in a traffic lane is not protection**.
 
 *Evidence.* `59fe15f`, `ac27511`, `c86a52a`.
 
-*Travelled.* Oregon: not tested. These are riding judgements, not Washington
+*Travelled.* No second state yet. These are riding judgements, not Washington
 facts; port them as-is and re-tune from field reports.
 
 ### E2 — Recompute the A\* admissibility bound whenever a multiplier floor moves.
@@ -674,7 +676,7 @@ at +0.4% (1.2 km on 314). At 1.2 they drifted 1.3–3.6% — past what "minor" m
 *Evidence.* `59fe15f`, `874ef55`. `test_route_potential.mjs` asserts the bound
 contract and its verification legs still come back exactly optimal.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### E3 — A lexicographic "safest wins" recommendation will pay any price for a rounding difference.
 
@@ -693,7 +695,7 @@ across the practical pool: avoiding a mile of failing road is worth up to about
 
 *Evidence.* `3146cc1`.
 
-*Travelled.* Oregon: not tested. Requires a routing graph, so it is not reachable
+*Travelled.* No second state yet. Requires a routing graph, so it is not reachable
 in a preview import.
 
 ### E4 — Every veto in the pipeline must pay the same price, or it undoes the pricing.
@@ -714,7 +716,7 @@ fail metres already charged.
 
 *Evidence.* `58149f5`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### E5 — Give ride quality a vote, below safety.
 
@@ -733,7 +735,7 @@ detour onto better ground.
 
 *Evidence.* `73add9a`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### E6 — Price a dismount proportionally, and let length decide severity.
 
@@ -751,7 +753,7 @@ caution, so ferry terminals keep working.
 
 *Evidence.* `373191d`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ---
 
@@ -780,7 +782,7 @@ sitting in the intersection**.
 *Evidence.* `README.md` build section; guarded by
 `scripts/test_road_geometry.py` against that surveyed circle.
 
-*Travelled.* Oregon: not tested. **Expect this to generalise exactly** — it is a
+*Travelled.* No second state yet. **Expect this to generalise exactly** — it is a
 property of tippecanoe and of overzooming, not of Washington.
 
 ### F2 — Below the low-zoom threshold, a statewide tile carries the entire state.
@@ -799,8 +801,7 @@ wide anyway; and bound the tile cache.
 
 *Evidence.* `fbacf2b`.
 
-*Travelled.* Oregon: not tested. Oregon is a comparable-sized state; expect the
-same.
+*Travelled.* No second state yet. Expect it in any state of comparable size.
 
 ### F3 — Serve large overlays as tiles, not as GeoJSON collections.
 
@@ -815,7 +816,7 @@ move earlier took a roads layer from 78 MB and crashing iOS to a tiled archive.
 
 *Evidence.* `df9e0dc`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### F4 — An overlay drawn above the roads must not answer a tap.
 
@@ -834,7 +835,7 @@ rather than the class means the next overlay reintroduces it.
 
 *Evidence.* `4cb9a04`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### F5 — A right value that never reaches the rider is the same class of bug as a wrong one.
 
@@ -854,7 +855,7 @@ one of them.
 
 *Evidence.* `0c5fad1`, `9e872e3`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### F6 — Choose verdict colours by measured contrast under colour-blind vision, and choose motion by kind.
 
@@ -872,7 +873,7 @@ a different verdict.
 
 *Evidence.* `6b579bc`, `364c27b`, `07254c8`, `e802eae`.
 
-*Travelled.* Oregon: not tested. Entirely state-independent — port as-is.
+*Travelled.* No second state yet. Entirely state-independent — port as-is.
 
 ---
 
@@ -886,7 +887,7 @@ type (A8) is the worked example.
 
 *Evidence.* `820bf70`, `2912d86`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### G2 — Pin invariants, not measurements. A test that must be re-blessed after every deliberate change teaches the wrong reflex.
 
@@ -911,7 +912,7 @@ specific ferries was another preference encoded as a requirement.
 
 *Evidence.* `dd66fbc`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### G3 — A test asserting *weaker* behaviour than the code implements is the worst kind of stale.
 
@@ -928,7 +929,7 @@ real regression, which is the worst ratio a test can have.
 
 *Evidence.* `451cdd8`, `9a886df`, `39827e3`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### G4 — Never let a missing build tool read as coverage.
 
@@ -937,7 +938,7 @@ prints `SKIP: <reason>`; the runner reports SKIP, not PASS.
 
 *Evidence.* `9a886df`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### G5 — The tile build and the graph build must share one decision layer.
 
@@ -959,7 +960,7 @@ door shut with identity checks plus the specific ex-drift behaviours.
 
 *Evidence.* `5d59c9e`, `038d771`, `scripts/test_build_parity.py`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ### G6 — Commit built artefacts the moment they build, and commit fetched sources compressed.
 
@@ -978,7 +979,7 @@ work. Commit fetched sources compressed, with the loader falling back to the
 
 *Evidence.* `776bf11`, `94d9ca8`.
 
-*Travelled.* Oregon: not tested — but the container behaviour is a property of
+*Travelled.* No second state yet — but the container behaviour is a property of
 this build environment, not of any state.
 
 ### G7 — A format reader must reject an unfamiliar magic rather than soldier on.
@@ -993,7 +994,7 @@ squeezing it into a spare bit: a year needs seven bits of its own to span
 
 *Evidence.* `fbeeb70`, `a66388f`.
 
-*Travelled.* Oregon: not tested.
+*Travelled.* No second state yet.
 
 ---
 
@@ -1010,4 +1011,4 @@ oldest-first. Two seams remain and are worth a second pass:
   diversity. Relevant to a state whose network shape differs from Washington's.
 
 Add to this file as they are mined, and add a `Travelled` line to every lesson
-above as Oregon and the states after it either confirm them or prove them local.
+above as each new state either confirms them or proves them local.

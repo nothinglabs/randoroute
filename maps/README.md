@@ -8,7 +8,8 @@ maps/
   states.js            GENERATED index of the folders below (do not edit)
   <state>/
     region.json        the state's whole configuration
-    STATUS.md          what works, what is missing, readiness out of 10
+    STATUS.md          what works, what is missing, readiness against the rubric
+    VERIFICATION.md    routes checked against known-good sources (level 5+)
     BUILD.md           how every file in the folder was produced
     graph2.bin.gz      routing graph
     roads.pmtiles      street geometry, names, safety attributes
@@ -40,7 +41,8 @@ Web and native differ in one way only:
   server, unfetched.
 * **iOS** bundles every state's files (`scripts/build_mobile_shell.mjs` walks
   `states.js`), so switching is instant and offline. On-demand delivery is the
-  eventual answer to the size that grows into.
+  eventual answer to the size that grows into -- and becomes a precondition
+  well before fifty states, since one state is about 228 MB.
 
 ## Adding a state
 
@@ -68,6 +70,65 @@ See `docs/PORTING-TO-ANOTHER-STATE.md` for what each configuration value means
 and which agency data you need to find, and `docs/PORTING-LESSONS.md` for why the
 thresholds are what they are and how an import fails in practice.
 
+## Readiness: what the number means
+
+`readiness` in `region.json` is a claim about how much of the state can be
+trusted, and it is worthless unless it means the same thing everywhere. Each
+level has a gate. **Do not award a level whose gate has not been met**, and do
+not skip levels — the number is the lowest gate the state has cleared, not the
+highest thing it has ever done.
+
+| | Level | Gate |
+|---|---|---|
+| 0 | folder only | `region.json` exists and validates; nothing built |
+| 1 | selectable | app opens on the state, `test_region_portable` and the Maps screen pass |
+| 2 | **basic imports** | `places.json` + `basemap.pmtiles`. Search and a map; no routing |
+| 3 | routable | `roads.pmtiles` + `graph2.bin.gz`. Routes return. OSM only — class-estimated speeds, no agency data |
+| 4 | **routing is meaningful** | agency speed limits and bike facilities conflated; `test_corridor_severance` passes on the state's nominated corridors; `test_build_parity` and `test_fact_contract` green |
+| 5 | **traffic, and verified by research** | traffic volume conflated (HPMS at minimum) **and** a written verification report — see below |
+| 6 | enriched | stress rating, prohibitions and a shoulder inventory conflated where the state publishes them; `measure_coverage.py` run and its numbers recorded in `STATUS.md` |
+| 7 | researched broadly | verification extended past one metro to the state's distinct regions — rural, mountain, coastal, whatever the state has |
+| 8 | **field-validated** | a rider who knows the state has ridden routes it produced and reported back; corrections landed |
+| 9 | sustained | field reports over time from more than one rider, and the corrections fed back into the data |
+| 10 | — | reserved. No state is here, and it may not be reachable: no state publishes a stress rating for city streets, so some gaps close only when the source data does |
+
+Washington is **8**. `maps/washington/STATUS.md` says exactly why it is not
+higher, in terms of coverage rather than effort, and a new state's `STATUS.md`
+should do the same.
+
+### The verification report (level 5 and up)
+
+Levels 5 and 7 are the ones an agent can reach without a bicycle, and they are
+not a vibe check. The method is the one that found lesson C1: **take routes that
+are already known to be good, and see whether the router agrees.**
+
+Where those routes come from, roughly in order of value:
+
+- **Published long-distance routes** — Adventure Cycling, US Bicycle Routes.
+  These are already in the data as `route=bicycle` relations, so the router's
+  answer can be compared against a corridor it can already see.
+- **Randonneuring and club route libraries.** Brevets come with cue sheets:
+  a turn-by-turn ground truth for a long route through real terrain.
+- **State and regional agency bike maps**, and local advocacy organisations.
+- **Forums and trip reports.** Low authority individually, high value in
+  aggregate, and the source that caught the 45-mile detour.
+
+What the report must contain, committed as `maps/<state>/VERIFICATION.md`:
+
+1. Each route checked, with its **source and a link**, and the endpoints given
+   to the router.
+2. What the router returned, and whether it **resembles** the known-good route.
+3. **Every disagreement, with a diagnosis.** A disagreement is a signal, not a
+   failure — the router optimises for the rider's rules and a signed route can
+   be a bad road (lesson D1), so it is *expected* to differ sometimes. What is
+   not acceptable is an undiagnosed difference. Say which it is: a data gap, a
+   severed link, a legitimate safety disagreement, or unknown.
+4. What could **not** be verified, and why.
+
+A state cannot claim 5 with a report that found nothing wrong and says so in one
+line. A report that finds nothing has usually not looked hard enough at the
+places the data is thinnest — which `measure_coverage.py` will name for you.
+
 ## `region.json`
 
 | Key | What it does |
@@ -75,7 +136,7 @@ thresholds are what they are and how an import fails in practice.
 | `id` | Must equal the folder name. |
 | `name` | Shown in loading copy and appended to a geocoded address. |
 | `status` | `released` or `preview`. Only a `released` state can be the default. |
-| `readiness` | 0–10, your own honest score. Shown nowhere; read by humans in `STATUS.md`. |
+| `readiness` | 0–10 against the rubric above. Not a self-assessment — each level has a gate. |
 | `summary` | One line describing the state of the data. |
 | `bounds` | Coverage box. A place-search hit outside it is dropped, because the graph stops at the state line. |
 | `defaultCenter`, `defaultZoom` | Where the map opens with no saved view. |

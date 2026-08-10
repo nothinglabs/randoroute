@@ -143,9 +143,10 @@ recording how good the data is and exactly how it was produced. No file outside
 service worker is built from it. See **`maps/README.md`** for how the folder
 works and **`docs/PORTING-TO-ANOTHER-STATE.md`** for adding one.
 
-Washington is the released state. Oregon is a first, deliberately partial
-import — a basemap and a place index, no routing — kept in the tree as a worked
-example of a state under construction; see `maps/oregon/STATUS.md`.
+Washington is the only state that ships today. `maps/README.md` carries the
+readiness rubric a new state is scored against, and the app degrades honestly
+for a partial one: a state that ships only a place index says so rather than
+404ing its way through a startup.
 
 The sections below describe Washington's sources; `maps/washington/BUILD.md` is
 the same thing as a runbook.

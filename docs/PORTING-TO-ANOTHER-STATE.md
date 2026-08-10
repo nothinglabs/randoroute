@@ -1,8 +1,8 @@
 # Porting this to another state
 
-Written for whoever — or whatever — finishes Oregon, and does the state after
-that. It is a **method**, not a list of Washington URLs. The specific services
-will differ; the shape of the problem does not.
+Written for whoever — or whatever — imports the next state. It is a **method**,
+not a list of Washington URLs. The specific services will differ; the shape of
+the problem does not.
 
 ---
 
@@ -20,7 +20,6 @@ job and they are not interchangeable; read them in this order:
 3. **`maps/README.md`** — the contract. Folder layout, every `region.json` key,
    and how the app resolves a state.
 4. **`maps/washington/BUILD.md`** — the runbook to adapt, command by command.
-   `maps/oregon/` is the worked example of a deliberately partial import.
 
 `docs/SAFETY-MODEL.md` is the specification of what the app decides and why.
 Read it if you are changing the model; you do not need it to import data into it.
@@ -117,8 +116,8 @@ route; no missing tile archive is added to the map style (a source whose URL
 404s never finishes loading, and the app would hang on its launch screen), no
 layer appears for data that is not there, and the service worker precaches only
 what exists. Build what you can, declare exactly that, ship it as
-`"status": "preview"`, and finish it later. `maps/oregon/` is a worked example
-of exactly this.
+`"status": "preview"`, and finish it later. `maps/README.md` scores each stage
+against a rubric, so "partial" is a number rather than a shrug.
 
 `scripts/test_region_portable.mjs` serves the app a *different* state and checks
 it follows: the map opens on the new centre, the coverage filter moves, the

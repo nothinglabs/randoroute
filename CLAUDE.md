@@ -62,9 +62,13 @@ worker and the service worker comes from `Region.dataUrl(...)`.
   actually has (`datasets`) and their content hashes (`versions`).
 - `maps/states.js` is **generated** — `npm run maps:registry` after adding a
   state or editing a `region.json` by hand. The stampers regenerate it for you.
-- Washington is `released`. Oregon is a `preview` state: a basemap and a place
-  index, no routing. It is in the tree on purpose, as the second state the
-  machinery is tested against.
+- Washington is the only state that ships. The machinery is deliberately not
+  tested by a second real folder -- `test_maps_states_screen.mjs` invents two
+  states and serves them over the generated index, so `maps/` can hold one state
+  or fifty without a test moving.
+- `readiness` in a `region.json` is scored against the rubric in
+  `maps/README.md`, not self-assessed. Levels 8 and up require a rider; an agent
+  importing a state tops out at 7 by design.
 - If a change needs an edit to application code to support a state, that is the
   bug — the fact belongs in `region.json`.
 - `docs/PORTING-LESSONS.md` holds the accumulated tuning rationale and the
