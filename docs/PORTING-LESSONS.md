@@ -47,11 +47,13 @@ Each lesson is an addressable unit:
 > the next state either confirms a lesson generalises or discovers it was an
 > artefact of one agency's data. Both outcomes are worth recording.
 
-`Travelled` reads `no second state yet` throughout, because Washington is the
-only state that ships. Every lesson below is therefore one state's evidence
-generalised by argument, not by observation. The first import that is not
-Washington turns that into knowledge — including, valuably, by finding the
-lessons that do not travel.
+`Travelled` carried `no second state yet` throughout until **Oregon was imported
+in August 2026** by an agent working from these documents alone. Every lesson
+now has an Oregon line: held, did not apply, or was not exercised. Three did not
+travel and those are the valuable ones — **C2** (a severance is not always an
+unmissable ratio), **D7** (the shoulder inference has no input in a state with
+no county road log) and **B4**'s population (650 shoulder-tagged ways in the
+whole of Oregon). Read those first.
 
 ---
 
@@ -80,7 +82,17 @@ counts** before wiring it to anything. Precedence, once classified:
 *Evidence.* `038d771`, `820bf70`. The case in hand was WSDOT BLTS's facility
 field versus the Active Transportation registry.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: held, and measurably.** ODOT's Bicycle Level of Traffic Stress layer
+is the same shape as WSDOT's -- a derived analysis carrying copies of the
+shoulder, speed, lane-count and facility inventories it was built from.
+`scripts/build_odot.py` reads the rating from it and every other fact from the
+inventory that owns it, joined by linear reference, and prints the drift:
+**7.1% of 73,575 segments disagree with the shoulder inventory by more than
+1 ft, 3.3% with the speed inventory by more than 5 mph, and 12.0% of 35,890
+disagree about the facility type.** Reading the photocopy would have shipped
+stale data on roughly one state-highway segment in ten.
 
 ### A2 — State agency traffic layers stop at the state route system and at the city line.
 
@@ -94,7 +106,14 @@ people actually ride — have nothing.
 
 *Evidence.* `9a83c7b`.
 
-*Travelled.* No second state yet. **Expect this to generalise**; it is a
+*Travelled.* Washington is the origin. **Expect this to generalise**; it is a
+
+**Oregon: held, and worse than Washington.** ODOT's AADT layers are keyed to its
+highway linear reference, and there is no county road log at all -- Oregon has
+no CRAB equivalent. Measured on the shipped graph: **95.2% of principal-arterial
+miles carry a count and 0.1% of local-street miles do** (Washington: 76.5% and
+23.4%). The prediction that this generalises is confirmed; the *size* of the
+hole is a per-state fact and Oregon's is much bigger.
 consequence of how state DOTs are funded and scoped, not of Washington.
 
 ### A3 — FHWA HPMS is the one nationally uniform volume source, and it exists for every state.
@@ -118,7 +137,16 @@ Ave and 13,222 for E Pioneer Ave.
 HPMS also carries speed limits. They are deliberately **not** used here, for the
 same reason county speed layers were rejected.
 
-*Travelled.* No second state yet. The service URL pattern is per-state and
+*Travelled.* Washington is the origin. The service URL pattern is per-state and
+
+**Oregon: held.** `https://geo.dot.gov/.../Oregon_2018_PR/FeatureServer/0` exists
+and returns **67,861 sections with a count**. The caveat about the year travelled
+too and needed stating rather than assuming: Oregon's hosted release is also
+2018, but 2016, 2017 and 2019-2022 all return "Service not found", so the year
+has to be probed per state. `scripts/build_hpms.py` now takes `--state` and
+`--year`; before this import it had them as a module constant, despite
+`PORTING-TO-ANOTHER-STATE.md` saying it "needs only the state name and year
+changed".
 documented in `PORTING-TO-ANOTHER-STATE.md`.
 
 ### A4 — A measurement, a derived figure and a proxy are three different claims. Never flatten them.
@@ -132,7 +160,9 @@ a signed bike route look like a safety guarantee (see D1).
 
 *Evidence.* `035606e`, `a66388f`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### A5 — When several sources describe one road, write down which wins. Do not leave it to evaluation order.
 
@@ -146,7 +176,13 @@ them is **exactly 1.00**.
 
 *Evidence.* `a66388f`, `a9aa0c6`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: did not apply.** Only one source of traffic volume conflates onto
+linework here (HPMS), so there is never a second count to prefer. ODOT's own
+AADT layers are published as **points**, not lines, and `roadmeasure.py` matches
+lines -- so the precedence rule has nothing to arbitrate and was never
+exercised. A state can have this lesson be a no-op.
 
 ### A6 — Agreeing medians do not mean agreeing roads.
 
@@ -164,7 +200,10 @@ can you.
 
 *Evidence.* `a9aa0c6`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised** -- see A5. There is only one count source, so there
+are no medians to compare.
 
 ### A7 — Withdraw a claim that does not survive its own measurement.
 
@@ -178,7 +217,16 @@ same piece of road.
 
 *Evidence.* `a9aa0c6`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: held, on this import's own work.** The hop-by-hop corridor checker
+first reported the Aufderheide Scenic Bikeway at **7.2x** and Crooked River
+Canyon at 4.5x. Both were artefacts of the measure: it compared the routed
+distance against the *straight line* between two sample points, and both
+corridors double back on themselves -- Aufderheide loops around Box Canyon, so
+two points 4.2 miles apart as the crow flies are 30 miles apart on the road. The
+tool now measures against distance **along the corridor** and the same hops read
+5.9x and 4.0x. The claim was withdrawn before it reached the report.
 
 ### A8 — Audit for fields you fetched and never consumed.
 
@@ -195,7 +243,14 @@ GRV…) into words. It earns model influence only after field testing — see G1
 
 *Evidence.* `2912d86`, `820bf70`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: held, and caught something.** The audit found ODOT publishes current
+AADT for 6,544 state and 5,028 non-state count sites -- newer than the 2018 HPMS
+release this state actually uses -- as **point** geometry that
+`scripts/roadmeasure.py` cannot conflate. That is a fetched-and-unused signal
+found *before* it was fetched rather than months after, which is the cheap
+version. It is recorded as known backlog in `maps/oregon/STATUS.md`.
 
 ---
 
@@ -231,7 +286,9 @@ source.
 *Evidence.* `0a9a6be`, corrected in `3c74e1a` (the original commit quoted 34.2%
 from an intermediate version that matched on the best single segment).
 
-*Travelled.* No second state yet. **Expect this to generalise** — segmented
+*Travelled.* Washington is the origin. **Expect this to generalise** — segmented
+
+**Oregon: not exercised by this import.**
 inventories are how road logs are kept everywhere.
 
 ### B2 — Test a geometric matcher with true perpendicular offsets, in metres.
@@ -249,7 +306,9 @@ short records.
 *Evidence.* `0a9a6be`. The rewritten test immediately caught a real defect in the
 first version of the B1 fix.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### B3 — Measure coverage against the routing graph, not against the source's own extent.
 
@@ -268,7 +327,14 @@ inference.
 
 *Evidence.* `3e56c1c`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: held.** `measure_coverage.py` against the shipped graph: **25.2% of
+74,481 road miles carry a traffic count**, ranging 95.2% on principal arterials
+to 0.1% on local streets. Measuring against the graph rather than the sources'
+row counts mattered here for the same reason it did in Washington -- HPMS's
+67,861 sections look like they cover the state until you ask which of them land
+on ways a bicycle can use.
 
 ### B4 — An explicit tag beats an inventory, and an explicit zero is knowledge.
 
@@ -285,7 +351,15 @@ the source. A rider should be able to tell a survey from a tag.
 
 *Evidence.* `820bf70`, `e7068fe`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: the precedence held; the population did not.** The rule is right and
+is applied unchanged, but it almost never fires: **650 ways in the whole of
+Oregon carry any `shoulder*` tag, out of 850,087 highway ways.** (Washington had
+2,186 tagged ways -- the same order of magnitude, and also tiny.) The practical
+consequence is that in Oregon the shoulder signal is the ODOT inventory or
+nothing: off the state highway system, an absent shoulder tag is not evidence of
+absence, it is evidence that nobody has ever looked.
 
 ### B5 — Inventories are directional. The display collapse must be labelled.
 
@@ -309,7 +383,16 @@ than it might be.
 
 *Evidence.* `8d3e3bc`, `820bf70`.
 
-*Travelled.* No second state yet. Whether an agency surveys directionally is a
+*Travelled.* Washington is the origin. Whether an agency surveys directionally is a
+
+**Oregon: held, and required work to honour.** ODOT books shoulder width per
+side against *increasing* mileposts, and books a divided highway as separate
+increasing and decreasing keys but an undivided one as increasing only. So a
+decreasing-direction segment usually has no same-direction record and must read
+the increasing one **with the sides swapped** -- the left side of a road
+measured up-milepost is the right side of the rider coming down it. That applies
+to **33,941 of 73,575 segments**, so getting it wrong would have given a third
+of Oregon's state highways the shoulder across the centre line.
 per-agency fact — check before assuming either way.
 
 ### B6 — A precedence change deserves a blast-radius count before it ships.
@@ -323,7 +406,16 @@ change *sounds* like.
 
 *Evidence.* `e7068fe`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not done, and the cost is visible.** No blast-radius count was run
+before conflating the functional-class layer. Two corridors got *worse* after
+it landed -- the Aufderheide Scenic Bikeway fell from 100% to 76% corridor
+agreement and Corvallis to the Sea from 86% to 11% -- and the mechanism is
+inferred rather than measured. Oregon is 60% federal land, so its class layer
+prices remote Forest Service collectors the same way it prices suburban ones,
+which is not the network Washington's thresholds were tuned on. The lesson is
+confirmed by its absence: run the count.
 
 ---
 
@@ -358,7 +450,9 @@ keeps every parking aisle in the state out.
 
 *Evidence.* `a15944b`, `5303e3b`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### C2 — Assert corridor connectivity as an invariant, and it will catch the next one.
 
@@ -372,7 +466,23 @@ tuning change.
 
 *Evidence.* `a15944b`, `dd66fbc`, `scripts/test_corridor_severance.mjs`.
 
-*Travelled.* No second state yet. This is the single highest-value test to port
+*Travelled.* Washington is the origin. This is the single highest-value test to port
+
+**Oregon: DID NOT TRAVEL, and this is the most important line in this file.**
+The premise -- that a severance shows up as a ratio nobody could miss -- depends
+on the corridor being short enough for the detour to dominate. Oregon's
+nominated Portland -> Hood River corridor **passed at 1.6x** the straight line
+with no freeway, while a 5.8-mile hop inside it (Viento -> Hood River, on a
+completed and signed state trail) has **no rideable route at all**. The router's
+90-mile answer goes around the south side of Mount Hood, and at a 2.5x bound
+that is indistinguishable from a good ride.
+
+A long corridor absorbs a severance. `scripts/verify_corridor_chain.mjs` was
+written for this: walk the corridor in ~5-mile hops and route each one against
+the distance *along the corridor*. The severance that is invisible at 1.6x over
+90 miles is unmissable when the hop is 6. **Nominate short corridors across the
+pinch points as well as long ones** -- and the pinch points are where the map
+shows one line between two walls.
 first, because it is the one that catches a broken import rather than a broken
 opinion.
 
@@ -389,7 +499,11 @@ A steep reading at a pier is an artefact, not a climb.
 
 *Evidence.* `15d494f`, `2912d86`.
 
-*Travelled.* No second state yet. Any state with a coastline and ferries should
+*Travelled.* Washington is the origin. Any state with a coastline and ferries should
+
+**Oregon: did not apply.** Oregon has no bicycle-carrying ferry in the routing
+network, so neither the shoreline DEM smear nor the 250 m grade-marker
+suppression was exercised. A coastal state can still not have this problem.
 expect this to recur.
 
 ### C4 — Other terrain and topology traps, recorded together.
@@ -409,7 +523,13 @@ From `2912d86`, which wrote these up as the graph-build lessons that generalise:
   tagged `bicycle=dismount`, and a build that treats dismount as impassable loses
   the terminal.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: partially exercised.** Same-name seam stitching fired **129 times**
+at the 2 m threshold (Washington: the rule exists because of one seam). Walk-link
+connectivity held: the largest component holds **97.6%** of nodes, above the 96%
+floor. Deck grades, `incline=` authority and the dismount-terminal case were not
+separately tested here.
 
 ---
 
@@ -433,7 +553,15 @@ rewritten to assert the **opposite** so it cannot quietly return.
 
 *Evidence.* `4cb9a04`, `dd66fbc`, `451cdd8`.
 
-*Travelled.* No second state yet. **Expect this to generalise** — long
+*Travelled.* Washington is the origin. **Expect this to generalise** — long
+
+**Oregon: held, and it was a live temptation.** ODOT's bicycle facility
+inventory has four codes, and the **largest** of them is `SH`, "Shoulder
+Bikeway" -- 2,637 of 6,955 rows, more than bike lanes (1,800) and shared lanes
+(266) combined. Importing it as bike infrastructure would have let a designation
+painted over a shoulder satisfy the shoulder rule on the busiest rural highways
+in the state. It is dropped, and so is `NO` (2,252 rows), which records the
+*absence* of a facility and would otherwise have read as one.
 road-running signed routes are the norm, not a Washington quirk.
 
 ### D2 — Sequencing separate rungs hides a real case. Merge questions that are one question.
@@ -451,7 +579,9 @@ only one invites the rider to go and change the wrong setting.
 
 *Evidence.* `d095a3c`, `fac8d24`, `778b1c3`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### D3 — Express a threshold in road types, not numbers, and give it two paths.
 
@@ -475,7 +605,15 @@ only. A mapper's `tertiary` must not be able to fail a road for being busy.
 
 *Evidence.* `d095a3c`, `fac8d24`, `778b1c3`.
 
-*Travelled.* No second state yet. FHWA classes are federal, so the class column
+*Travelled.* Washington is the origin. FHWA classes are federal, so the class column
+
+**Oregon: the class column ported; whether it should have is open.** FHWA
+classes are federal and ODOT publishes them statewide (86,569 segments, classes
+1-7), so the table needed no change. But the equivalence "class 5 ~ 2,000
+vehicles a day" was calibrated on a state whose non-state network is mostly
+county and city road. Oregon is 60% federal land, and a Forest Service major
+collector carrying a few hundred vehicles a day now prices like a neighbourhood
+street. See B6: this is the measurement this import did not run.
 should port unchanged; the AADT thresholds are a judgement about riding, not
 about Washington.
 
@@ -494,7 +632,9 @@ rule.
 
 *Evidence.* `02d943b`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### D5 — A recorded 15 mph limit shares the lane.
 
@@ -507,7 +647,9 @@ caution.
 
 *Evidence.* `ade6a2d`. Held by a 45-million-combination agreement sweep (D9).
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### D6 — Pricing off a measurement mostly moves roads *down*. Say so before someone discovers it.
 
@@ -528,7 +670,9 @@ tag — with all three landing on the same tiers, so the change moves the
 
 *Evidence.* `04e0520`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### D7 — Inferring a shoulder from edge space: three constraints, and why it defaults on.
 
@@ -560,7 +704,15 @@ mileage 14,906 → 13,220 miles (−11%).
 `32277a8` (scoped to Randonneur, control reworded to "Guess shoulder width from
 other data when it isn't documented").
 
-*Travelled.* No second state yet. The 7%-tagged figure is an OSM coverage fact and
+*Travelled.* Washington is the origin. The 7%-tagged figure is an OSM coverage fact and
+
+**Oregon: DID NOT TRAVEL. The inference has no input here.** ODOT publishes no
+county road inventory and no equivalent of CRAB's edge space, so bail-out space
+is **0.0% of 74,481 road miles** and `inferShoulderFromEdge` -- which recovers
+1,696 miles of verdict in Washington -- can never fire. The re-measurement the
+lesson asks for gives the answer directly: the inference is worth nothing in
+Oregon, not because it is wrong but because the state does not publish the
+number it reads.
 should be re-measured per state — it is the number that decides whether this
 inference is worth having at all.
 
@@ -596,7 +748,9 @@ source reporting metres would pass every other check in the suite.*
 
 *Evidence.* `041505d`, `32277a8`.
 
-*Travelled.* No second state yet. **Expect this to generalise** — it is a property
+*Travelled.* Washington is the origin. **Expect this to generalise** — it is a property
+
+**Oregon: not exercised by this import.**
 of having more than one scorer, not of Washington.
 
 ### D9 — The map expression is the one implementation that cannot share the model's code. Sweep them against each other.
@@ -625,7 +779,9 @@ branch that ships **on** by default.
 *Evidence.* `42a7498`, `32277a8` (evaluator extended for `max`, `-`, `in`,
 `literal`, `match`; combinations 6.5M → 18.1M), `ade6a2d` (45M).
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ---
 
@@ -652,7 +808,9 @@ because **paint in a traffic lane is not protection**.
 
 *Evidence.* `59fe15f`, `ac27511`, `c86a52a`.
 
-*Travelled.* No second state yet. These are riding judgements, not Washington
+*Travelled.* Washington is the origin. These are riding judgements, not Washington
+
+**Oregon: not exercised by this import.**
 facts; port them as-is and re-tune from field reports.
 
 ### E2 — Recompute the A\* admissibility bound whenever a multiplier floor moves.
@@ -676,7 +834,9 @@ at +0.4% (1.2 km on 314). At 1.2 they drifted 1.3–3.6% — past what "minor" m
 *Evidence.* `59fe15f`, `874ef55`. `test_route_potential.mjs` asserts the bound
 contract and its verification legs still come back exactly optimal.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### E3 — A lexicographic "safest wins" recommendation will pay any price for a rounding difference.
 
@@ -695,7 +855,9 @@ across the practical pool: avoiding a mile of failing road is worth up to about
 
 *Evidence.* `3146cc1`.
 
-*Travelled.* No second state yet. Requires a routing graph, so it is not reachable
+*Travelled.* Washington is the origin. Requires a routing graph, so it is not reachable
+
+**Oregon: not exercised by this import.**
 in a preview import.
 
 ### E4 — Every veto in the pipeline must pay the same price, or it undoes the pricing.
@@ -716,7 +878,9 @@ fail metres already charged.
 
 *Evidence.* `58149f5`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### E5 — Give ride quality a vote, below safety.
 
@@ -735,7 +899,9 @@ detour onto better ground.
 
 *Evidence.* `73add9a`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### E6 — Price a dismount proportionally, and let length decide severity.
 
@@ -753,7 +919,9 @@ caution, so ferry terminals keep working.
 
 *Evidence.* `373191d`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ---
 
@@ -782,7 +950,12 @@ sitting in the intersection**.
 *Evidence.* `README.md` build section; guarded by
 `scripts/test_road_geometry.py` against that surveyed circle.
 
-*Travelled.* No second state yet. **Expect this to generalise exactly** — it is a
+*Travelled.* Washington is the origin. **Expect this to generalise exactly** — it is a
+
+**Oregon: held by construction.** `--simplification=8 --simplify-only-low-zooms`
+was carried over unchanged; `test_road_geometry.py` still guards Washington's
+surveyed traffic circle and no Oregon equivalent was surveyed, so this is
+adoption of the rule rather than independent confirmation of it.
 property of tippecanoe and of overzooming, not of Washington.
 
 ### F2 — Below the low-zoom threshold, a statewide tile carries the entire state.
@@ -801,7 +974,12 @@ wide anyway; and bound the tile cache.
 
 *Evidence.* `fbacf2b`.
 
-*Travelled.* No second state yet. Expect it in any state of comparable size.
+*Travelled.* Washington is the origin. Expect it in any state of comparable size.
+
+**Oregon: held.** The same below-z9 filter was applied unchanged and produced a
+14.2 MB overlay archive from 81,210 BLTS segments and 37,256 bike-infrastructure
+ways -- a comparable state, a comparable archive. Not independently re-measured
+against a crash.
 
 ### F3 — Serve large overlays as tiles, not as GeoJSON collections.
 
@@ -816,7 +994,9 @@ move earlier took a roads layer from 78 MB and crashing iOS to a tiled archive.
 
 *Evidence.* `df9e0dc`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### F4 — An overlay drawn above the roads must not answer a tap.
 
@@ -835,7 +1015,9 @@ rather than the class means the next overlay reintroduces it.
 
 *Evidence.* `4cb9a04`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### F5 — A right value that never reaches the rider is the same class of bug as a wrong one.
 
@@ -855,7 +1037,9 @@ one of them.
 
 *Evidence.* `0c5fad1`, `9e872e3`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### F6 — Choose verdict colours by measured contrast under colour-blind vision, and choose motion by kind.
 
@@ -873,7 +1057,9 @@ a different verdict.
 
 *Evidence.* `6b579bc`, `364c27b`, `07254c8`, `e802eae`.
 
-*Travelled.* No second state yet. Entirely state-independent — port as-is.
+*Travelled.* Washington is the origin. Entirely state-independent — port as-is.
+
+**Oregon: not exercised by this import.**
 
 ---
 
@@ -887,7 +1073,12 @@ type (A8) is the worked example.
 
 *Evidence.* `820bf70`, `2912d86`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: held.** Nothing newly conflated was given model influence beyond what
+Washington already gave the same field. ODOT's surface codes, HPMS speed and
+lane counts, and ODOT's point AADT are all carried or deliberately left
+unfetched rather than wired in.
 
 ### G2 — Pin invariants, not measurements. A test that must be re-blessed after every deliberate change teaches the wrong reflex.
 
@@ -912,7 +1103,9 @@ specific ferries was another preference encoded as a requirement.
 
 *Evidence.* `dd66fbc`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### G3 — A test asserting *weaker* behaviour than the code implements is the worst kind of stale.
 
@@ -929,7 +1122,9 @@ real regression, which is the worst ratio a test can have.
 
 *Evidence.* `451cdd8`, `9a886df`, `39827e3`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### G4 — Never let a missing build tool read as coverage.
 
@@ -938,7 +1133,9 @@ prints `SKIP: <reason>`; the runner reports SKIP, not PASS.
 
 *Evidence.* `9a886df`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ### G5 — The tile build and the graph build must share one decision layer.
 
@@ -960,7 +1157,12 @@ door shut with identity checks plus the specific ex-drift behaviours.
 
 *Evidence.* `5d59c9e`, `038d771`, `scripts/test_build_parity.py`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: held.** `test_build_parity.py` passes with the Oregon inputs in place.
+Worth noting what it does *not* cover: it checks that the two builds share their
+decision layer, not that either one is right about Oregon, and every one of its
+data assertions is still Washington's.
 
 ### G6 — Commit built artefacts the moment they build, and commit fetched sources compressed.
 
@@ -979,7 +1181,13 @@ work. Commit fetched sources compressed, with the loader falling back to the
 
 *Evidence.* `776bf11`, `94d9ca8`.
 
-*Travelled.* No second state yet — but the container behaviour is a property of
+*Travelled.* Washington is the origin. The container behaviour is a property of
+
+**Oregon: kept, untested.** The container was not reclaimed during this import,
+so the discipline cost nothing and proved nothing. Each artefact was committed
+as it built anyway -- the graph before the tiles, the tiles before the docs --
+and `blts.geojson` is committed compressed because paging ODOT's catalogue takes
+about 25 minutes, which is longer than the idle window that would destroy it.
 this build environment, not of any state.
 
 ### G7 — A format reader must reject an unfamiliar magic rather than soldier on.
@@ -994,7 +1202,9 @@ squeezing it into a spare bit: a year needs seven bits of its own to span
 
 *Evidence.* `fbeeb70`, `a66388f`.
 
-*Travelled.* No second state yet.
+*Travelled.* Washington is the origin.
+
+**Oregon: not exercised by this import.**
 
 ---
 

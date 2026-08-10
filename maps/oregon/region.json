@@ -2,7 +2,7 @@
   "id": "oregon",
   "name": "Oregon",
   "status": "preview",
-  "readiness": 2,
+  "readiness": 7,
   "summary": "Full routing, tiles, place search and ODOT enrichment on the state highway system. Not yet ridden.",
   "bounds": {
     "minLon": -124.8,
