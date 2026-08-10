@@ -116,15 +116,25 @@ const flanking = await page.evaluate(() => {
       .some((id) => verdictColours.has(map.getPaintProperty(id, 'line-color'))),
     sides: TAP_HIGHLIGHT_LAYERS
       .map((id) => Math.sign(map.getPaintProperty(id, 'line-offset'))),
+    scale: tapRippleScale(),
   };
 });
-// 4.5 px is the half-width of the widest line the map draws (the route), so an
-// inner edge beyond that is an inner edge clear of anything it can be laid
-// over -- including the case a rider taps most, a road on their own route.
+// 4.5 px is the half-width of the widest line the map draws (the route) AT FULL
+// ZOOM, so an inner edge beyond that is clear of anything it can be laid over --
+// including the case a rider taps most, a road on their own route.
+//
+// Times the zoom scale, because 4.5 was a full-zoom figure applied at every
+// zoom, which is the same mistake the rails themselves used to make: the route
+// line thins as you zoom out and the rails now thin with it. The guarantee that
+// the highlight does not paint over the road is separately MEASURED below, on
+// real pixels; this is the cheap geometric check that catches a gross
+// regression first.
+const clearance = 4.5 * flanking.scale;
 check('every part of the highlight is offset clear of the road it marks',
   flanking.layers.length >= 2
-    && flanking.layers.every((layer) => Math.abs(layer.offset) - layer.width / 2 >= 4.5),
-  JSON.stringify(flanking.layers));
+    && flanking.layers.every((layer) => Math.abs(layer.offset) - layer.width / 2 >= clearance),
+  `clearance ${clearance.toFixed(2)} px at scale ${flanking.scale.toFixed(2)}: `
+  + JSON.stringify(flanking.layers));
 check('and it flanks both sides, not one',
   flanking.sides.includes(-1) && flanking.sides.includes(1),
   JSON.stringify(flanking.sides));
@@ -208,6 +218,38 @@ check('the road under the highlight is pixel-for-pixel what it was without it',
   rendered.road.every((s) => s.before === s.after), JSON.stringify(rendered.road));
 check('while the ground beside it is not, because that is where the marker went',
   rendered.flank.some((s) => s.before !== s.after), JSON.stringify(rendered.flank));
+
+/* ----------------------------- and it is sized against the road, not the screen */
+// The rails were fixed pixel offsets, so their footprint was the same ~45 px
+// whether the road beneath was 10 px wide or 2. Zoomed out that buried the very
+// thing the highlight points at (field report: "too much, especially if zoomed
+// out; less huge, and consistent at various zoom levels"). Consistency here
+// means the same SHAPE against the road, which means riding a zoom ramp like
+// every other line on the map does.
+const scaled = await page.evaluate(async () => {
+  const settled = () => new Promise((resolve) => {
+    map.once('idle', resolve);
+    map.triggerRepaint();
+  });
+  const read = async (z) => {
+    map.jumpTo({ center: [-122.3447, 47.6605], zoom: z });
+    await settled();
+    restTapRipple();
+    const id = TAP_HIGHLIGHT_LAYERS[0];
+    return {
+      offset: Math.abs(map.getPaintProperty(id, 'line-offset')),
+      width: map.getPaintProperty(id, 'line-width'),
+    };
+  };
+  return { far: await read(11), near: await read(16) };
+});
+check('the highlight is drawn narrower when zoomed out',
+  scaled.far.offset < scaled.near.offset && scaled.far.width < scaled.near.width,
+  JSON.stringify(scaled));
+check('and not so narrow it disappears', scaled.far.offset > 2 && scaled.far.width > 1,
+  JSON.stringify(scaled));
+check('while up close it keeps the clearance it was measured for',
+  scaled.near.offset >= 8, JSON.stringify(scaled));
 
 // A still highlight is a highlight: reduced motion, and a screenshot, both get
 // the flanking pair held at full strength rather than caught mid-fade.

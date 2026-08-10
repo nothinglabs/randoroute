@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.667';
+const APP_VERSION = '2026-08-10.668';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -13589,8 +13589,28 @@ const TAP_HIGHLIGHT_LAYERS = TAP_RIPPLES.flatMap((ripple) =>
 // on the map at about 9 px, so its edge is 4.5 px out, and a rail's dark edge
 // is 3.5 px half-width. Starting at 8.5 leaves daylight over even that, which
 // is the case a rider taps most -- a road on their own route.
-const TAP_RIPPLE_NEAR = 8.5, TAP_RIPPLE_FAR = 22;
+const TAP_RIPPLE_NEAR = 8.5, TAP_RIPPLE_FAR = 17;
 const TAP_RIPPLE_CORE_WIDTH = 3.6;
+
+// ...but those pixel figures are sized for a road drawn at full zoom, and they
+// were applied at every zoom. The rails' footprint was the same ~45 px whether
+// the road beneath them was 10 px wide or 2, so zoomed out the highlight buried
+// the very thing it was pointing at (field report: "too much, especially if
+// zoomed out; less huge, and consistent at various zoom levels").
+//
+// Consistency here means the same SHAPE against the road, not the same number
+// of pixels. Every other line on the map is on a zoom ramp; the highlight now
+// rides one too, and because the clearance rule above is proportional -- rails
+// outside the route line -- scaling both together keeps it satisfied.
+const TAP_RIPPLE_MIN_SCALE = 0.42;
+const TAP_RIPPLE_FULL_ZOOM = 15, TAP_RIPPLE_MIN_ZOOM = 10;
+function tapRippleScale() {
+  const zoom = map.getZoom();
+  if (zoom >= TAP_RIPPLE_FULL_ZOOM) return 1;
+  if (zoom <= TAP_RIPPLE_MIN_ZOOM) return TAP_RIPPLE_MIN_SCALE;
+  const t = (zoom - TAP_RIPPLE_MIN_ZOOM) / (TAP_RIPPLE_FULL_ZOOM - TAP_RIPPLE_MIN_ZOOM);
+  return TAP_RIPPLE_MIN_SCALE + (1 - TAP_RIPPLE_MIN_SCALE) * t;
+}
 
 function ensureTapHighlightLayers() {
   if (map.getSource('tap-highlight')) return;
@@ -13616,6 +13636,17 @@ function ensureTapHighlightLayers() {
       }
     }
   }
+  // The animation repaints every 60 ms and so picks the zoom scale up on its
+  // own, but a rider who has asked for reduced motion gets one resting paint
+  // and nothing after it. Without this, zooming out left their highlight
+  // frozen at the scale it was drawn at -- which is the case this whole ramp
+  // exists to fix.
+  map.on('zoom', () => {
+    if (tapRippleTimer != null) return;
+    if (!map.getLayer(TAP_HIGHLIGHT_LAYERS[0])) return;
+    if (map.getLayoutProperty(TAP_HIGHLIGHT_LAYERS[0], 'visibility') === 'none') return;
+    restTapRipple();
+  });
 }
 
 /* The ripple itself. Sine over the cycle, so each pair fades in as it leaves
@@ -13630,7 +13661,8 @@ let tapRippleElapsed = 0;
 // One place that turns "how far through its travel is this rail" into paint, so
 // the moving and the resting states cannot drift apart: resting is progress 0.
 function paintTapRipple(ripple, progress) {
-  const spread = TAP_RIPPLE_NEAR + (TAP_RIPPLE_FAR - TAP_RIPPLE_NEAR) * progress;
+  const scale = tapRippleScale();
+  const spread = (TAP_RIPPLE_NEAR + (TAP_RIPPLE_FAR - TAP_RIPPLE_NEAR) * progress) * scale;
   // ^0.6 fills the middle of the travel out rather than peaking sharply, so the
   // pair is bright for most of its journey and only thins at the extremes. At
   // rest (progress 0) sine is 0, so the resting state substitutes full strength.
@@ -13641,8 +13673,9 @@ function paintTapRipple(ripple, progress) {
       if (!map.getLayer(id)) continue;
       setPaint(id, 'line-offset', sign * spread);
       setPaint(id, 'line-opacity', opacity * strength);
-      setPaint(id, 'line-width', TAP_RIPPLE_CORE_WIDTH + extra + 2.5 * progress);
-      setPaint(id, 'line-blur', 0.4 + 2.2 * progress);
+      setPaint(id, 'line-width',
+        (TAP_RIPPLE_CORE_WIDTH + extra + 2.5 * progress) * scale);
+      setPaint(id, 'line-blur', (0.4 + 2.2 * progress) * scale);
     }
   }
 }
