@@ -45,10 +45,7 @@ Follow-ups that hang on the verdict:
   caution-level riding was step 3 of the ferry plan, deferred to avoid
   over-fitting before field data.
 
-### 3. Road detail UI improvements
-Owner has ideas; not yet described. Nothing started.
-
-### 4. Oregon import — done by an agent, awaiting your verdict
+### 3. Oregon import — done by an agent, awaiting your verdict
 `maps/oregon/` ships at readiness 7: routing, tiles, place search, ODOT stress /
 speed / shoulder / facility conflation on the state highway system, and FHWA
 HPMS volume. `maps/oregon/VERIFICATION.md` checks 30 published corridors and
@@ -75,11 +72,3 @@ What to check against your own predictions:
 
 Three lessons did not travel — C2, D7, and B4's population — and those are the
 part of this worth reading first.
-
-## Parked (has a trigger, waiting on it)
-
-- **Generalized route cross-breeding.** The ferry splice works because same
-  ferries ⇒ identical terminal nodes ⇒ clean cut points. A non-ferry version
-  would splice where candidates cross mid-route. Trigger: a real trip where
-  corridor A's first half + corridor B's second half is wanted and no offered
-  letter covers it.
