@@ -123,3 +123,18 @@ anything else.
   specification, not a summary of the code.
 - Bump `APP_VERSION` in `app.js` and `version.json` together; bump `VERSION` in
   `sw.js` when the app shell changes.
+- **Nothing in this repository is "not yours".** A defect written in an earlier
+  session, by an earlier agent, is yours the moment you are working in that
+  file. Do not reach for "pre-existing" or "not mine" — it is a way of
+  distancing yourself from something you are already touching, and it reads as
+  exactly that. Two source-text assertions survived the sweep that deleted five
+  hundred of them, sat in a file that got edited twice in one session, and were
+  each time described as somebody else's. When they were finally rewritten they
+  turned out to be asserting a UI shape the app had not had in a long time.
+- **Running low on context is not a reason to stop working.** It is a normal,
+  expected condition, not an emergency and not an excuse. Plan for the handoff
+  instead: commit and push what is finished, write down precisely where you
+  stopped and what you learned, and leave the next session — which may be you
+  after compaction — enough to continue without re-deriving anything. Deciding
+  that a task is too big for the remaining budget, and saying so instead of
+  starting it, is the same failure as not doing the work.
