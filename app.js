@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-11.674';
+const APP_VERSION = '2026-08-11.675';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2893,11 +2893,28 @@ function setRouteStatus(t) {
 }
 
 let routeActionToastTimer = null;
-function showRouteActionToast(text, { busy = false, detail = '', duration = 2200, progress = null } = {}) {
+// An ANSWER the rider asked for holds this toast against background chatter.
+//
+// One toast is shared by everything that narrates: route calculation phases,
+// the routing engine loading, and the results of things the rider clicked. A
+// rider who tapped "check for updates" during startup got their answer for
+// 170 ms and then "Loading routing engine" on top of it -- measured, and the
+// reason a test asserting the answer reached the toast failed whenever the box
+// was loaded enough for startup to still be talking.
+//
+// So a reply marks itself, and ambient progress messages yield to it for a
+// couple of seconds. They keep updating the status line and the progress bar;
+// they simply do not overwrite an answer with a status nobody asked for.
+const ANSWER_HOLD_MS = 2600;
+let routeActionAnswerUntil = 0;
+function showRouteActionToast(text, { busy = false, detail = '', duration = 2200,
+  progress = null, answer = false } = {}) {
   const toast = document.getElementById('routeActionToast');
   const label = document.getElementById('routeActionText');
   const detailLabel = document.getElementById('routeActionDetail');
   if (!toast || !label || !detailLabel) return;
+  if (!answer && Date.now() < routeActionAnswerUntil) return;
+  routeActionAnswerUntil = answer ? Date.now() + ANSWER_HOLD_MS : 0;
   clearTimeout(routeActionToastTimer);
   label.textContent = text || '';
   detailLabel.textContent = detail || '';
@@ -13436,7 +13453,9 @@ function settledUpdateWorker(reg, timeoutMs = 12000, stepMs = 400) {
 function setManualUpdateStatus(text, { busy = false, duration = 4200 } = {}) {
   const status = document.getElementById('updateCheckStatus');
   status.textContent = text;
-  showRouteActionToast(text, { busy, duration: busy ? 0 : duration });
+  // The rider clicked and this is the reply, so it holds the shared toast --
+  // see showRouteActionToast. "Checking..." is not an answer and does not.
+  showRouteActionToast(text, { busy, duration: busy ? 0 : duration, answer: !busy });
 }
 
 async function runManualUpdateCheck() {
