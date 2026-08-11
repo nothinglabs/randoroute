@@ -12115,7 +12115,7 @@ const ROUTING_WEIGHT_GROUPS = [
   ['Road size and stress rating', 'Two signals for roads where the speed limit has stopped telling you anything. Physical separation exempts an edge; paint halves the cost. The two are combined by taking the larger, not by multiplying.', [
     { base: 'wideRoad', label: 'Four or more lanes', min: 1, max: 4, step: .01,
       hint: 'Counts a centre turn lane, so three through lanes plus one qualifies.' },
-    { base: 'stressedRoad', label: 'WSDOT rates it high stress', min: 1, max: 4, step: .01,
+    { base: 'stressedRoad', label: `${Region.stressAgency} rates it high stress`, min: 1, max: 4, step: .01,
       hint: 'The state bicycle level of traffic stress rating. Applies at full weight to a 4 and half weight to a 3. State highways only, which is the only place the rating exists.' },
   ]],
   ['Speed', 'Both are per mile-per-hour, so they accumulate: 10 mph over comfort at 0.02 is a 20% cost.', [
