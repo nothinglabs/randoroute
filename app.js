@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-10.672';
+const APP_VERSION = '2026-08-11.673';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -13671,8 +13671,12 @@ function ensureTapHighlightLayers() {
  * the road and is gone by the time it reaches the far edge -- a wave leaving,
  * not an edge sliding back and forth.
  */
-const TAP_RIPPLE_STEP_MS = 60;
-const TAP_RIPPLE_PERIOD_MS = 1500;
+// Twice the old rate. The step halves with the period: 60 ms was 25 frames per
+// cycle at 1500, and keeping it there would have given a 750 ms pulse only 12 --
+// a fast pulse drawn coarsely reads as a flicker, not a swell. Only ticks while
+// a selection is on screen.
+const TAP_RIPPLE_STEP_MS = 30;
+const TAP_RIPPLE_PERIOD_MS = 750;
 let tapRippleTimer = null;
 let tapRippleElapsed = 0;
 
