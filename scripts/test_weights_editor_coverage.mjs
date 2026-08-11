@@ -30,7 +30,12 @@ function lift(marker, endMarker) {
   const end = appSrc.indexOf(endMarker, i) + endMarker.length;
   return appSrc.slice(i, end);
 }
-const box = vm.createContext({ console });
+// The editor labels name the state's agencies through Region, the way every
+// other rider-facing string does. Lifting the constants into a bare sandbox
+// left that undefined -- the app loads region.js first, so this stub is what
+// the real environment already provides.
+const box = vm.createContext({ console,
+  Region: { stressAgency: 'WSDOT', restrictionAgency: 'WSDOT', speedAgency: 'WSDOT' } });
 vm.runInContext([
   lift('const DEFAULT_ROUTING_WEIGHTS', '\n});'),
   lift('const RENAMED_ROUTING_WEIGHTS', '\n});'),
