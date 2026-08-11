@@ -49,6 +49,11 @@ const result = worker.run(`(() => {
   const on = price(preferred);
   return {
     edge, flags: eFlags[edge], facility: eFacility[edge],
+    preferredMultiplier: preferredSignedRouteMult(),
+    ordinaryTrailMultiplier: activeWeights.facilityPath,
+    ordinaryStrongDesignation: activeWeights.strongDesignated,
+    heuristicOff: heuristicSpeed('balanced', false, base),
+    heuristicOn: heuristicSpeed('balanced', false, preferred),
     off, legacy, on,
     directModelOff: SafetyModel.level(edgeFacts(edge, true), base),
     directModelOn: SafetyModel.level(edgeFacts(edge, true), preferred),
@@ -67,7 +72,15 @@ assert.equal(result.directModelOn, 4,
   'the cost-only preference must not change SafetyModel or the route colour');
 assert.equal(result.legacy.cost, result.off.cost,
   'old states with no setting must behave exactly like the default-off setting');
-assert.ok(result.on.cost < result.off.cost * 0.2,
+assert.equal(result.preferredMultiplier, 0.12,
+  'the explicit toggle should price a signed route 25% more strongly than the default trail');
+assert.ok(result.preferredMultiplier < result.ordinaryTrailMultiplier,
+  'the explicit toggle should resist small departures more strongly than ordinary trail preference');
+assert.ok(result.preferredMultiplier < result.ordinaryStrongDesignation,
+  'the explicit toggle must remain stronger than the ordinary signed-route preference');
+assert.ok(result.heuristicOn > result.heuristicOff,
+  'the straight-line A* bound must account for the stronger signed-route discount');
+assert.ok(result.on.cost < result.off.cost * 0.15,
   `the signed route should receive a strong, trail-like cost preference (`
   + `${result.off.cost.toFixed(2)} -> ${result.on.cost.toFixed(2)})`);
 assert.equal(result.off.safetyKey, result.on.safetyKey,

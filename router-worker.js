@@ -638,7 +638,19 @@ let maxFerryMps = FERRY_MAX_MPS_FALLBACK;
 // its facility bonus alone. On-street edges get speedStress and residential but
 // can never claim the path bonus. Taking the worse of the two cases keeps the
 // bound tight without assuming which tags the data happens to carry.
-function heuristicSpeed(mode, prefResidential) {
+// The explicit "always prefer" option is intentionally a little stronger than
+// the ordinary shared-path price. Equal pricing still let a tiny geometric
+// shortcut pull the route off a signed corridor and then rejoin it; 0.12 versus
+// the shipped path weight of 0.16 gives the designation enough continuity to
+// win that close call without making it an absolute constraint. Rider-edited
+// path weights below this still win, so the advanced control remains truthful.
+const ALWAYS_PREFER_SIGNED_ROUTE_MULT = 0.12;
+function preferredSignedRouteMult() {
+  return Math.min(activeWeights.facilityPath, activeWeights.strongDesignated,
+    ALWAYS_PREFER_SIGNED_ROUTE_MULT);
+}
+
+function heuristicSpeed(mode, prefResidential, rules = null) {
   const comfy = mode === 'direct' ? 1
     : mode === 'low' ? activeWeights.comfyRoadLowStress : activeWeights.comfyRoadBalanced;
   const level = Math.min(1, comfy);
@@ -646,7 +658,8 @@ function heuristicSpeed(mode, prefResidential) {
   const onStreetBonus = Math.min(1,
     activeWeights.facilityShared, activeWeights.facilityLane,
     activeWeights.facilityBuffered, activeWeights.facilitySeparated,
-    activeWeights.strongDesignated, activeWeights.designated);
+    activeWeights.strongDesignated, activeWeights.designated,
+    rules?.alwaysPreferBikeRoutes ? preferredSignedRouteMult() : 1);
   const residential = prefResidential ? Math.min(1, activeWeights.residential) : 1;
   const onStreet = SPEED_STRESS_FLOOR * onStreetBonus * residential * level;
   // Off-street: no speedStress, no residential, but the path bonus is available.
@@ -1353,7 +1366,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
     // Similar to a shared path, by request. Keep hills and surface additive
     // below so "prefer this vetted corridor" does not mean "pretend it is flat
     // and paved." The actual verdict is still emitted from actualLevel.
-    cost *= Math.min(activeWeights.facilityPath, activeWeights.strongDesignated);
+    cost *= preferredSignedRouteMult();
   } else {
     cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
       edgeNoShoulderMaxFor(searchRules), edgeShoulder(ei, forward));
@@ -1574,7 +1587,7 @@ function edgeCostFloor(i, forward) {
   let m = modeMult(mode, trustSignedRoute ? 1 : searchLevel);
   if (!(m < Infinity)) return Infinity;
   if (trustSignedRoute) {
-    m *= Math.min(activeWeights.facilityPath, activeWeights.strongDesignated);
+    m *= preferredSignedRouteMult();
   } else if (fl & 4) m *= freewayFloor;
   if (!trustSignedRoute && (eOfficial[i] & EDGE_MTB)) m *= mtbFloor;
   if (!trustSignedRoute && !(fl & (8 | 32 | 4)) && isResidential(i)) m *= residentialFloor;
@@ -1774,7 +1787,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   const costKey = `${mode}|${prefDesig ? 1 : 0}${prefResidential ? 1 : 0}`
     + `|${boundSignature(rules)}|${searchRules === rules ? '=' : boundSignature(searchRules)}`;
   const { mul: cMul, add: cAdd, divOk: cDivOk } = arcCostCache(costKey);
-  const vHeur = heuristicSpeed(mode, prefResidential);
+  const vHeur = heuristicSpeed(mode, prefResidential, rules);
   // Two admissible bounds; take the stronger. The potential is far and away the
   // better one wherever it reaches, and the straight line still covers what the
   // backward pass stopped short of.

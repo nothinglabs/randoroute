@@ -599,6 +599,16 @@ trails*), which makes a qualifying road cheaper to route over. That bonus is
 gated on the edge passing, so it can never pull a rider onto a failing road.
 Preference, never permission.
 
+The separate, default-off **Always prefer bike routes (as if they are safe)**
+option is an explicit exception in route *cost*, not in the safety ladder. It
+lets a signed route earn a 0.12 multiplier even when the segment fails the
+rider's limits, slightly stronger than the ordinary trail multiplier of 0.16
+so short geometric shortcuts do not make the route hop off and back on. The
+same segment still evaluates and renders as failing, still appears in the
+failure totals, still speaks its warning, and is still excluded by *Only show
+routes fully matching*. Legal prohibitions, ferries, dismount links, hills and
+surface costs are not erased.
+
 ### Rung 7 — the sidewalk fallback
 
 `allowSidewalkFallback` (default on) is the only way out of a rung-6 failure. It
@@ -1233,11 +1243,14 @@ weaker than every facility weight. Lowering it to 0.5 silently inverted that
 comparison and made a signed road with no infrastructure beat a road with a
 painted bike lane (0.68).
 
-**A signed route earns its bonus unless the edge fails.** A caution does not
+**By default, a signed route earns its bonus unless the edge fails.** A caution does not
 disqualify it: the rider's rules are met, and two of the three causes are facts
 about the road rather than anything they set. Gating on "passes cleanly" instead
 excluded 12,115 of the 17,097 edges where designation is the only preference,
 11,576 purely for carrying an LTS 4 rating.
+
+The explicit **Always prefer bike routes** routing lens described above removes
+that cost gate by request. It does not remove or restate the failure itself.
 
 **A WSDOT limited-access edge earns it too.** Its `limitedAccess*` penalty is applied
 separately and stands on its own; withholding the bonus as well counted it
