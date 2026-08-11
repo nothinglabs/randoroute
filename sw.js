@@ -25,7 +25,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // invisible to everyone who already has the app. v642 was maps/states.js
 // gaining Oregon (that file is SHELL, not data: it is the index naming which
 // states exist). v643 was app.js and styles.css; v644 app.js; v645 app.js and palette.js.
-const VERSION = 'v651'; // bump when app shell changes
+const VERSION = 'v652'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -49,7 +49,7 @@ const SHELL = [
   './build-version.js',
   './safety-model.js',
   './basemap-style.js',
-  './route-details.js?v=465',
+  './route-details.js?v=466',
   './router-worker.js',
   './styles.css',
   './route-details.css?v=453',

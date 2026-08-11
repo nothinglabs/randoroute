@@ -408,14 +408,18 @@ change *sounds* like.
 
 *Travelled.* Washington is the origin.
 
-**Oregon: not done, and the cost is visible.** No blast-radius count was run
-before conflating the functional-class layer. Two corridors got *worse* after
-it landed -- the Aufderheide Scenic Bikeway fell from 100% to 76% corridor
-agreement and Corvallis to the Sea from 86% to 11% -- and the mechanism is
-inferred rather than measured. Oregon is 60% federal land, so its class layer
-prices remote Forest Service collectors the same way it prices suburban ones,
-which is not the network Washington's thresholds were tuned on. The lesson is
-confirmed by its absence: run the count.
+**Oregon: measured after the initial import.**
+`scripts/audit_functional_class_blast_radius.mjs oregon` reads all 516,278
+directional edge readings carrying class. Class changes 5,612 verdicts (1.09%,
+342.2 directional miles), all toward a worse verdict; 3,817 are pass → fail.
+For owner unknown/federal/other the verdict effect is only 74 readings and 60.8
+miles. Route pricing is the larger effect: class changes the traffic tier on
+194,819 readings (37.74%). In the unknown/federal/other group it changes 3,386,
+lowering 3,380 and raising only six. That direction matters: on Aufderheide the
+proxy does not over-price the signed road; it under-prices an 18-mile
+forest-road/trail alternative. Removing only owner-unknown class restores the
+57.6-mile, 100%-overlap option. Corvallis to the Sea is unchanged when class is
+removed, so the original report's common-cause diagnosis was false.
 
 ---
 
@@ -605,17 +609,18 @@ only. A mapper's `tertiary` must not be able to fail a road for being busy.
 
 *Evidence.* `d095a3c`, `fac8d24`, `778b1c3`.
 
-*Travelled.* Washington is the origin. FHWA classes are federal, so the class column
+*Travelled.* Washington is the origin. FHWA classes are federal, so the class
+column should port unchanged; the AADT thresholds are a judgement about riding,
+not about Washington.
 
-**Oregon: the class column ported; whether it should have is open.** FHWA
+**Oregon: the class column ported, and its two effects had to be measured
+separately.** FHWA
 classes are federal and ODOT publishes them statewide (86,569 segments, classes
-1-7), so the table needed no change. But the equivalence "class 5 ~ 2,000
-vehicles a day" was calibrated on a state whose non-state network is mostly
-county and city road. Oregon is 60% federal land, and a Forest Service major
-collector carrying a few hundred vehicles a day now prices like a neighbourhood
-street. See B6: this is the measurement this import did not run.
-should port unchanged; the AADT thresholds are a judgement about riding, not
-about Washington.
+1-7), so the table needed no change. The B6 audit found that class changes only
+1.09% of classified-edge verdicts, but changes the route-pricing traffic tier on
+37.74%. On owner-unknown/federal/other edges the pricing change is almost always
+a discount, not a penalty. See B6: verdict and cost blast radii, plus owner
+provenance, are separate questions.
 
 ### D4 — Do not fork a rule on urban/rural. The obvious direction is backwards.
 
@@ -1049,6 +1054,10 @@ any two roles under normal, deuteranope and protanope vision — they separate b
 Darkening the caution orange from `#e8760a` to `#c25d05` (L\* 61.8 → 51.0) raised
 the weakest pair from ΔE 14.9 to 18.3, *because* it pulls away from the
 bike-network lime by lightness rather than hue.
+
+Later field tuning moved the pass blue 15% darker (`#1375b2`) and the dashed
+fail red 15% lighter (`#913847`). Those are application-wide palette changes;
+the shapes and textures remain the authoritative non-colour cues.
 
 *Motion.* Motion on a line has two axes — across it and along it. Give each
 verdict **one and never the other**, so they are told apart by kind rather than

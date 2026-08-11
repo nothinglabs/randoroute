@@ -57,16 +57,21 @@ HPMS volume. `maps/oregon/VERIFICATION.md` checks 30 published corridors and
 What to check against your own predictions:
 
 - **The Historic Columbia River Highway State Trail is severed at Mitchell
-  Point**, so Portland → Hood River routes around Mount Hood. Diagnosed as an
-  OSM gap. Is it a gap on the ground too?
+  Point**, so Portland → Hood River routes around Mount Hood. ODOT confirms a
+  real 0.7-mile bicycle gap; construction is expected through late 2026. Recheck
+  ODOT's status and rebuild after the connection opens.
 - **US 101 on the coast** — the router offers 455 mi against the 364 mi signed
   route, down from 481 mi with 134 failing miles before the ODOT shoulder data.
   Does the remaining 27.5 failing miles match how it rides?
-- **Forest roads got worse after conflation.** Aufderheide fell 100% → 76%
-  corridor agreement, Corvallis to the Sea 86% → 11%. The suspicion is that the
-  FHWA class proxy over-prices remote Forest Service collectors in a state that
-  is 60% federal land. Undiagnosed, and the blast-radius count (lesson B6) was
-  not run.
+- **Field-check the Aufderheide alternative.** The B6 audit is complete:
+  owner-unknown functional class makes an 18-mile forest-road/trail detour cheap
+  enough to enter the portfolio; it does not make the signed road fail. Removing
+  that class restores a 57.6-mile, 100%-overlap option. Decide after riding
+  whether the alternative is useful or a route-cost mistake.
+- **Rebuild a current OSM-only Corvallis-to-the-Sea graph.** Functional class,
+  AADT and hill-effort A/B runs do not explain its 86% → 11% overlap change. The
+  old and current comparison used graphs with 634,000 versus 728,842 edges, so
+  it did not isolate agency conflation.
 
 Three lessons did not travel — C2, D7, and B4's population — and those are the
 part of this worth reading first.

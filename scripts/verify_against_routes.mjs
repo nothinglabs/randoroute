@@ -17,7 +17,10 @@
 // to fetch.
 //
 // Usage:
-//   node scripts/verify_against_routes.mjs <state> [name substring ...]
+//   node scripts/verify_against_routes.mjs <state> [--without-functional-class]
+//        [--without-unowned-functional-class] [--without-aadt] [--flat-effort]
+//        [--graph=/path/to/graph2.bin.gz]
+//        [name substring ...]
 //   node scripts/verify_against_routes.mjs oregon > /tmp/out.json
 //
 // Writes JSON on stdout: for each named route, its endpoints, and for every
@@ -30,7 +33,16 @@ import zlib from 'node:zlib';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const state = process.argv[2] || 'washington';
-const wanted = process.argv.slice(3);
+const withoutFunctionalClass = process.argv.includes('--without-functional-class');
+const withoutUnownedFunctionalClass = process.argv.includes('--without-unowned-functional-class');
+const withoutAadt = process.argv.includes('--without-aadt');
+const flatEffort = process.argv.includes('--flat-effort');
+const graphArg = process.argv.find((arg) => arg.startsWith('--graph='));
+const graphPath = graphArg ? graphArg.slice('--graph='.length)
+  : `${ROOT}maps/${state}/graph2.bin.gz`;
+const wanted = process.argv.slice(3).filter((arg) =>
+  !['--without-functional-class', '--without-unowned-functional-class', '--without-aadt',
+    '--flat-effort'].includes(arg) && !arg.startsWith('--graph='));
 
 const appSrc = fs.readFileSync(ROOT + 'app.js', 'utf8');
 function liftRules() {
@@ -49,7 +61,7 @@ function liftRules() {
 }
 const rules = liftRules();
 
-const graph = zlib.gunzipSync(fs.readFileSync(`${ROOT}maps/${state}/graph2.bin.gz`));
+const graph = zlib.gunzipSync(fs.readFileSync(graphPath));
 const messages = [];
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} }, Date, Math, Map, Set, TextDecoder,
@@ -64,6 +76,25 @@ context.self = context;
 vm.runInContext(fs.readFileSync(ROOT + 'router-worker.js', 'utf8'), context);
 const buf = graph.buffer.slice(graph.byteOffset, graph.byteOffset + graph.byteLength);
 context.onmessage({ data: { type: 'graph', buffer: buf } });
+// Diagnostic A/B on the exact same graph: retain direct traffic counts and all
+// other agency data, but remove the class proxy from both verdicts and route
+// pricing. This avoids attributing every OSM-only/full-graph difference to one
+// source when the full graph conflates several at once.
+if (withoutFunctionalClass) vm.runInContext('eClassOwner?.fill(0)', context);
+else if (withoutUnownedFunctionalClass) vm.runInContext(`
+  if (eClassOwner) for (let i = 0; i < eClassOwner.length; i++) {
+    if ((eClassOwner[i] >> 4) === 0) eClassOwner[i] = 0;
+  }
+`, context);
+if (withoutAadt) vm.runInContext('eAdt?.fill(0)', context);
+const weights = flatEffort ? {
+  uphillFactor: 1,
+  downhillFactor: 0,
+  undulationSecPerM: 0,
+  climbDirectSecPerM: 0,
+  climbBalancedSecPerM: 0,
+  climbLowStressSecPerM: 0,
+} : undefined;
 
 const routes = JSON.parse(
   fs.readFileSync(`${ROOT}maps/${state}/bikeroutes.geojson`, 'utf8'));
@@ -110,6 +141,15 @@ function endpoints(lines) {
 }
 
 const out = [];
+function roadSummary(segs = []) {
+  const byName = new Map();
+  for (const seg of segs) {
+    const name = String(seg.name || 'Unnamed road');
+    byName.set(name, (byName.get(name) || 0) + (Number(seg.lenM) || 0));
+  }
+  return [...byName].sort((a, b) => b[1] - a[1]).slice(0, 12)
+    .map(([name, metres]) => ({ name, miles: Number((metres / 1609.344).toFixed(1)) }));
+}
 for (const [name, lines] of byName) {
   if (wanted.length && !wanted.some((w) => name.toLowerCase().includes(w.toLowerCase()))) continue;
   const { ends, spanM } = endpoints(lines);
@@ -120,7 +160,7 @@ for (const [name, lines] of byName) {
   }
   messages.length = 0;
   const started = Date.now();
-  context.onmessage({ data: { type: 'route-options', id: 1, points: ends, rules } });
+  context.onmessage({ data: { type: 'route-options', id: 1, points: ends, rules, weights } });
   const reply = messages.at(-1);
   const record = {
     name, ends, spanM: Math.round(spanM), publishedM: Math.round(publishedM),
@@ -135,6 +175,8 @@ for (const [name, lines] of byName) {
       facilityM: Math.round(option.facilityM || 0),
       freewayM: Math.round(option.freewayM || 0),
       desigM: Math.round(option.desigM || 0),
+      roads: roadSummary(option.segs),
+      failingRoads: roadSummary((option.segs || []).filter((seg) => seg.level === 4)),
       coords: option.coords,
     })),
   };

@@ -1,51 +1,125 @@
 #!/usr/bin/env node
-// Route Details must not carry its own copy of a rider's setting.
-//
-// It is a separate file with its own reasoning, and it has drifted before --
-// test_palette_single_source.mjs exists because it drew fails in #78121f for a
-// whole session after the map moved to #a51c30. Its verdicts are safe now
-// (every one goes through window.SafetyModel), but routeSummaryStats() takes
-// `minShoulderFt = 4`, and 4 is DEFAULT_RULES.minShoulder spelled a second
-// time. Change the shipped default and the route line moves while the summary
-// percentages beside it keep answering to the old number -- the same shape as
-// the card that said "Passes" over a road the map drew red.
-import vm from 'node:vm';
-import { check, checkEqual, done, source } from './testlib/harness.mjs';
+// Route Details is a report over SafetyModel, never a second verdict engine.
+// Exercise the real page with a deliberately stale stored level, then sweep
+// realistic segment fact combinations and compare every answer with the model.
+import { chromiumPath, playwright, serveRepo } from './testlib/harness.mjs';
 
-const appSrc = source('app.js');
-const detailsSrc = source('route-details.js');
+const { chromium } = await playwright();
+const site = await serveRepo();
+const browser = await chromium.launch({
+  executablePath: chromiumPath(), args: ['--use-gl=swiftshader'],
+});
+const page = await (await browser.newContext({
+  serviceWorkers: 'block', viewport: { width: 430, height: 900 },
+})).newPage();
+const errors = [];
+page.on('pageerror', (error) => errors.push(error.message));
 
-const liftRules = () => {
-  const at = appSrc.indexOf('const DEFAULT_RULES');
-  const open = appSrc.indexOf('{', at);
-  let depth = 0, i = open;
-  for (; i < appSrc.length; i++) {
-    if (appSrc[i] === '{') depth++;
-    else if (appSrc[i] === '}' && --depth === 0) break;
-  }
-  const box = { out: null };
-  vm.createContext(box);
-  vm.runInContext('out = ' + appSrc.slice(open, i + 1), box);
-  return box.out;
+let passed = 0, failed = 0;
+const check = (name, ok, detail = '') => {
+  if (ok) { passed++; console.log(`PASS  ${name}`); return; }
+  failed++;
+  console.log(`FAIL  ${name}${detail ? `  -- ${detail}` : ''}`);
 };
-const rules = liftRules();
-check('the shipped rules lifted', !!rules && rules.minShoulder != null);
 
-// Run the signature rather than read it: call the default into existence.
-const sig = detailsSrc.match(/function routeSummaryStats\(([^)]*)\)/);
-check('routeSummaryStats is still there to check', !!sig, String(sig));
-const fallback = sig && sig[1].match(/minShoulderFt\s*=\s*([\d.]+)/);
-check('and still takes a shoulder minimum', !!fallback, sig && sig[1]);
-if (fallback) {
-  checkEqual('Route Details falls back to the SAME shoulder minimum the app ships',
-    Number(fallback[1]), Number(rules.minShoulder));
-}
+const rules = {
+  maxSpeedNoShoulder: 35,
+  minShoulder: 6,
+  inferShoulderFromEdge: false,
+  lanesNoShoulderOver: 4,
+  busyNoShoulder: 2,
+  noUpperLimit: true,
+  upperMaxSpeed: 55,
+  allowSidewalkFallback: true,
+  allowMtbTrails: false,
+};
+const stale = {
+  name: 'Stale Stored Verdict Road', lenM: 1000, mph: 45, sh: 5,
+  lanes: 2, facility: 0, flags: 0, official: 0,
+  // This is deliberately wrong under the rules above. The page must ignore it.
+  level: 1, c0: 0, c1: 1,
+};
+await page.goto(`http://localhost:${site.port}/route-details.html`, { waitUntil: 'load' });
+await page.evaluate(({ liveRules, seg }) => {
+  localStorage.setItem('wa-bike-route-details-1', JSON.stringify({
+    rules: liveRules,
+    summary: { distM: seg.lenM, timeS: 240, ascentM: 0, descentM: 0 },
+    segs: [seg],
+  }));
+}, { liveRules: rules, seg: stale });
+await page.reload({ waitUntil: 'load' });
+await page.waitForFunction(() => typeof routeSegmentLevel === 'function'
+  && typeof routeSummaryStats === 'function');
 
-// I tried to add a check here that Route Details never decides a level itself,
-// by pattern-matching its source for a local level/verdict function with no
-// SafetyModel call. It false-positived, and AGENTS.md forbids asserting on
-// source text for exactly that reason. Proving it properly means running the
-// page against a fixture and comparing its levels to SafetyModel's, which is
-// worth doing and is not this test.
+const staleResult = await page.evaluate((seg) => {
+  const model = SafetyModel.evaluate(routeSegmentFacts(seg), details.rules).level;
+  const step = buildRouteSteps([seg])[0];
+  return {
+    model,
+    reported: routeSegmentLevel(seg),
+    verdict: safetyVerdict(seg),
+    step: { safetyLabel: step?.safetyLabel, safetyClass: step?.safetyClass },
+    mix: document.getElementById('summaryMix').textContent.replace(/\s+/g, ' ').trim(),
+  };
+}, stale);
+const failConcern = await page.evaluate(() => {
+  document.querySelector('#concern-fails .concern-section-toggle')?.click();
+  return document.querySelector('#concern-fails .concern-section-body')?.textContent
+    .replace(/\s+/g, ' ').trim() || '';
+});
+check('a stale stored pass is re-evaluated as the model\'s failure',
+  staleResult.model === 4 && staleResult.reported === 4, JSON.stringify(staleResult));
+check('the rider-facing step uses that same verdict',
+  staleResult.verdict.className === 'fail'
+    && staleResult.step.safetyClass === 'fail'
+    && staleResult.step.safetyLabel === 'Road fails rules', JSON.stringify(staleResult));
+check('the rendered percentages and concerns use the same failure',
+  /100%\s*Fails Rules/.test(staleResult.mix)
+    && /Stale Stored Verdict Road/.test(failConcern),
+  JSON.stringify({ ...staleResult, failConcern }));
 
-done();
+const sweep = await page.evaluate(() => {
+  const shapes = [];
+  const flags = [0, FLAG_FREEWAY, FLAG_INFRA, FLAG_LIMITED_ACCESS];
+  const measures = [null,
+    { adt: 400, fc: 7, edge: null },
+    { adt: 2500, fc: 5, edge: null },
+    { adt: 16000, fc: 3, edge: 8 }];
+  for (const facility of [0, 1, 2, 4, 5]) {
+    for (const flag of flags) {
+      for (const mph of [0, 15, 25, 35, 45, 60]) {
+        for (const sh of [-1, 0, 4, 6]) {
+          for (const lanes of [1, 2, 6]) {
+            for (const lts of [0, 4]) {
+              for (const measurement of measures) {
+                shapes.push({ lenM: 10, facility, flags: flag, mph, sh, lanes,
+                  lts, measures: measurement, official: 0,
+                  // Alternate wrong and absent stored values; neither is truth.
+                  level: shapes.length % 2 ? 1 : 0 });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  const disagreements = [];
+  for (const seg of shapes) {
+    const expected = SafetyModel.evaluate(routeSegmentFacts(seg), details.rules).level;
+    const actual = routeSegmentLevel(seg, details.rules);
+    if (actual !== expected && disagreements.length < 8) {
+      disagreements.push({ seg, expected, actual });
+    }
+  }
+  return { checked: shapes.length, disagreements };
+});
+check(`Route Details agrees with SafetyModel across ${sweep.checked} segment readings`,
+  sweep.checked >= 10000 && sweep.disagreements.length === 0,
+  JSON.stringify(sweep.disagreements));
+check('the rendered Route Details page has no JavaScript errors',
+  errors.length === 0, errors.join(' | '));
+
+await browser.close();
+await site.close();
+console.log(`\n${passed} passed${failed ? `, ${failed} FAILED` : ''}`);
+process.exitCode = failed ? 1 : 0;

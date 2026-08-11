@@ -129,23 +129,28 @@ Routing shorter hops inside the corridor finds it immediately:
 | **Viento → Hood River** | **5.8 mi** | **no route at all** |
 | Cascade Locks → Hood River | 18.1 mi | 98.5 mi (5.4×) |
 
-The trail is continuous and rideable from Cascade Locks east to Viento
-(−121.6386). East of there it stops. In the extract, the Mitchell Point section
-is mapped — `Wygant Trail`, `Historic Columbia River Highway`, `Mitchell Point
-Tunnel` — but as `highway=path` **with no `bicycle` tag**, and there is a
-~1.2 km hole between the last cycleway-tagged trail way at −121.6386 and the
-first of those paths at −121.6244. So the graph has the State Trail as two
-pieces with no bicycle-legal link between them.
+The graph's bicycle-legal trail is continuous from Cascade Locks east to Viento
+(−121.6386). East of there it stops. The Mitchell Point section is mapped —
+`Wygant Trail`, `Historic Columbia River Highway`, `Mitchell Point Tunnel` —
+but as `highway=path` **with no `bicycle` tag**, and there is a ~1.2 km hole
+between the last cycleway-tagged trail way at −121.6386 and the first of those
+paths at −121.6244. So the graph has the State Trail as two pieces with no
+bicycle-legal link between them.
 
 I-84 through the same stretch is tagged `bicycle=yes` in OSM and is legal here,
 but at the freeway weight the portfolio never offers it: the six options for
 Cascade Locks → Hood River are 98.5–126.5 miles, every one of them going around.
 
-**This is not a build defect and it is not fixable from this repository.** The
-graph correctly declines to route a bicycle down an untagged footpath chain. It
-is either an OSM mapping gap or the physical trail is genuinely not through —
-and *that* distinction needs someone standing at Mitchell Point, which is
-exactly the kind of thing readiness 8 is for.
+**This is not a build defect or an OSM omission.** ODOT's current project pages
+confirm a real 0.7-mile gap west of the tunnel. The temporary connection was
+hiker-only, not open to bicycles. Construction of the missing connection began
+in December 2025 and is expected to continue through late 2026; ODOT also says
+the existing trail is temporarily closed to all users two miles east of Viento
+during construction. The graph's refusal to present a through bicycle route is
+therefore the safe answer. Sources checked 2026-08-10:
+[ODOT State Trail status](https://www.oregon.gov/ODOT/Regions/Pages/State-Trail.aspx),
+[Mitchell Point overview](https://www.oregon.gov/odot/regions/pages/mitchellpoint.aspx),
+and [project 20677](https://www.oregon.gov/odot/projects/pages/project-details.aspx?project=20677).
 
 **What it teaches about the test.** Lesson C2 says a severance shows up as an
 unmissable ratio — 10.7× in Washington. It did not here, because the corridor I
@@ -184,21 +189,32 @@ end-to-end measure and reflects the router preferring the parallel road for part
 of the corridor, not an inability to use the trail.
 
 **Aufderheide Scenic Bikeway — 76% (was 100% on the OSM-only graph); worst hop
-5.9×. Crooked River Canyon 4.0×. Diagnosis: unknown; partly the chainer.**
+5.9×. Crooked River Canyon 4.0×. Diagnosis: the owner-unknown functional-class
+proxy changes the portfolio, not the verdict.**
 Aufderheide Drive is a single paved `tertiary` that loops around Box Canyon, and
 Crooked River Canyon switchbacks — corridors that double back are exactly where
-the chainer's member ordering is least reliable. But the end-to-end drop from
-100% to 76% after conflation is real and is *not* explained by the shoulder
-data (both are forest roads ODOT does not survey). The likely mechanism is the
-functional-class proxy: `data/funcclass-oregon.geojson` classes remote Forest
-Service collectors the same way it classes suburban ones, and lesson D3 prices
-a class-5 road as "a neighbourhood street" busy. **Not run to ground.** It is
-the first thing to look at with a rider.
+the chainer's member ordering is least reliable. An exact A/B on the current
+graph resolves the end-to-end change: removing only functional class whose
+owner is unknown/federal/other restores a 57.6-mile, 100%-overlap option. With
+the class present the best option is 75.6 miles and includes about 18 miles of
+off-corridor trails and forest roads. This is mainly a **route-cost** effect:
+for that owner group the class proxy lowers 3,380 readings and raises only six,
+so it makes alternative forest roads cheaper rather than making Aufderheide
+itself fail. The current route still has zero failing miles. That is a reason to
+field-check the detour, not enough evidence to discard official class statewide.
 
-**Corvallis to the Sea — 86% → 11% after conflation, and unroutable across
-Marys Peak. Diagnosis: unknown, same suspicion as above.** This corridor crosses
-the Coast Range on gravel forest roads. The collapse is the largest single
-regression the agency conflation caused and it deserves the same investigation.
+**Corvallis to the Sea — 86% on the first OSM-only build, 11% now, and
+unroutable across Marys Peak. Diagnosis: a later graph/topology change, not the
+functional-class or traffic import.** This corridor crosses the Coast Range on
+gravel forest roads. Exact current-graph A/B runs are unchanged at 62.9 miles,
+11% overlap when all functional class is removed, and also unchanged when AADT
+is removed. Removing all hill effort only moves it to 59.0 miles and 12%.
+Crucially, the old OSM-only graph and the conflated graph were not the same
+topology: they contain 634,000 versus 728,842 edges. The original report
+mistakenly attributed every difference between those builds to agency data.
+The current option follows OR 20 for 31.4 miles; a fresh OSM-only rebuild from
+the current extract is the next tool needed to isolate which topology or tag
+change displaced the published forest-road line.
 
 **Willamette Valley Scenic Bikeway — 20%, 108 mi against 132 published.
 Diagnosis: legitimate preference disagreement.** Hop-by-hop the corridor is
@@ -228,15 +244,13 @@ is fine (0.9×).
 
 ## 6. What could not be verified, and what it would take
 
-* **Whether the Mitchell Point gap is a mapping gap or a real one.** Requires
-  someone on the ground, or a check against ODOT's own trail-status publication.
-  This is the single highest-value thing a rider could resolve.
-* **Whether the functional-class proxy over-prices remote forest collectors.**
-  Two corridors (Aufderheide, Corvallis to the Sea) got worse after conflation
-  and the mechanism is inferred, not measured. The measurement to run is lesson
-  B6's: count how many edges change verdict when funcclass is conflated, split
-  by roadway owner, before deciding whether federal-land collectors should carry
-  the class proxy at all.
+* **Whether the Aufderheide detour is better to ride.** The cause is now
+  measured, and it is not that the signed road fails the rules. A rider must
+  decide whether the newly cheap forest-road/trail alternative is useful or an
+  18-mile mistake.
+* **Which current OSM/tag change displaced Corvallis to the Sea.** The agency
+  fields have been ruled out on the current graph. A new graph built from the
+  same current extract without enrichment would isolate the remaining cause.
 * **Anything about how the routes ride.** Grades, surface, traffic at the hour
   people actually ride, seasonal closures — OR 242 over McKenzie Pass is shut to
   cars in winter and open to bicycles, and nothing in this data knows that.
@@ -253,6 +267,9 @@ is fine (0.9×).
 ```bash
 node scripts/verify_against_routes.mjs oregon > data/_verify_oregon.json
 python3 scripts/verify_against_routes.py < data/_verify_oregon.json
+node scripts/audit_functional_class_blast_radius.mjs oregon
+node scripts/verify_against_routes.mjs oregon --without-unowned-functional-class Aufderheide
+node scripts/verify_against_routes.mjs oregon --without-functional-class 'Corvallis to the Sea'
 node scripts/verify_corridor_chain.mjs oregon 5
 npm test corridor_severance
 ```

@@ -145,6 +145,26 @@ check('and so is the left onto the trail 30 m later',
   ontoTrail.spoken.some((line) => /Turn left onto Interurban Trail/.test(line)),
   JSON.stringify(ontoTrail.spoken));
 
+/* ------------------------- the report shows the same maneuvers navigation says */
+const expectedDetailTurns = await page.evaluate(() => {
+  const turns = buildTurnInstructions(routing.last).instructions
+    .filter((instruction) => Number.isInteger(instruction.segmentIndex))
+    .map((instruction) => instruction.text);
+  storeRouteDetails(routing.last);
+  return turns;
+});
+const detailsPage = await page.context().newPage();
+await detailsPage.goto(`http://localhost:${site.port}/route-details.html`, { waitUntil: 'load' });
+await detailsPage.waitForFunction(() => typeof buildRouteSteps === 'function'
+  && typeof details !== 'undefined' && Array.isArray(details.segs));
+const reportedTurns = await detailsPage.evaluate(() =>
+  buildRouteSteps(details.segs, details.directions)
+    .filter((step) => step.instruction).map((step) => step.instruction));
+check('Route Details receives every maneuver navigation generated',
+  JSON.stringify(reportedTurns) === JSON.stringify(expectedDetailTurns),
+  JSON.stringify({ navigation: expectedDetailTurns, details: reportedTurns }));
+await detailsPage.close();
+
 /* ------------------------------------------ and the banner tells the truth
  * A maneuver stays on the banner for 60 m past it so a late fix cannot blank it
  * mid-turn. The distance was clamped at zero and printed, and navDistanceText's

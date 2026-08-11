@@ -60,19 +60,24 @@ function activeDetailRules() {
 }
 
 function routeSegmentLevel(seg, rules = activeDetailRules()) {
-  const stored = Number(seg?.level) || 0;
-  if (stored >= 1 && stored <= 4) return stored;
+  // This page is a report, not another source of truth. Re-evaluate the exact
+  // segment facts under the saved rider rules every time instead of trusting a
+  // cached byte written by whichever app version created the route.
+  if (seg?.dismountEscalated) return 4;
   return window.SafetyModel.evaluate(routeSegmentFacts(seg), rules).level;
 }
 
 // One non-ferry segment belongs to exactly one of these five map categories.
 // The ordering mirrors routeVisualStyle() in app.js, including its special
 // treatment for crossings and allowed mountain-bike trails.
-function routeDisplayCategory(seg) {
+function routeDisplayCategory(seg, rules = activeDetailRules()) {
   if (!seg || ((seg.flags || 0) & FLAG_FERRY)) return null;
-  if (ROUTE_CATEGORY_KEYS.includes(seg.displayCategory)) return seg.displayCategory;
+  // `displayCategory` is another cached rendering byte, just like `level`.
+  // Saved routes can carry one from an older build or different rider rules,
+  // so accepting it here would undo routeSegmentLevel()'s fact-based verdict
+  // and let this report disagree with the current map and route card.
   if (seg.crossing === 1) return 'pass';
-  const level = routeSegmentLevel(seg);
+  const level = routeSegmentLevel(seg, rules);
   if (level === 4) return 'fail';
   // Walking is a caution here too, or an older stored route would paint its
   // dismount stretches lime while the live map paints them amber.
@@ -131,31 +136,29 @@ function isSidewalkFallbackSegment(seg, rules = {}) {
     facts, window.SafetyModel.effectiveShoulder(facts, rules), rules);
 }
 
-// The worker stores the exact SafetyModel caution cause. The inference below
-// keeps route data made by an older app readable, while `other` is a deliberate
-// last line of defence: an amber segment must never disappear from Concerns
-// merely because a new cause was added elsewhere first.
+// Re-evaluate the cause from the same facts as the verdict. `other` is a
+// deliberate last line of defence: an amber segment must never disappear from
+// Concerns merely because a new cause was added elsewhere first.
 function routeCautionCause(seg, rules = {}) {
-  if (seg?.cautionCause) return seg.cautionCause;
-  if (isSidewalkFallbackSegment(seg, rules)) return 'sidewalk-fallback';
-  if (!(seg?.flags & FLAG_FREEWAY) && (seg?.flags & FLAG_LIMITED_ACCESS)) return 'limited-access';
-  if (Number(seg?.lts) >= (window.SafetyModel?.STRESS_CAUTION_AT || 4)) return 'high-stress';
+  const verdict = window.SafetyModel.evaluate(routeSegmentFacts(seg), rules);
+  if (verdict.level === 3 && verdict.caution) return verdict.caution;
   if (isDismountSegment(seg)) return 'dismount';
   if (isMountainBikeTrail(seg)) return 'mountain-bike';
-  return routeDisplayCategory(seg) === 'caution' ? 'other' : null;
+  return routeDisplayCategory(seg, rules) === 'caution' ? 'other' : null;
 }
 
 function cautionConcernKind(seg, rules = {}) {
-  if (routeDisplayCategory(seg) !== 'caution') return null;
+  if (routeDisplayCategory(seg, rules) !== 'caution') return null;
   const cause = routeCautionCause(seg, rules);
   return ['limited-access', 'sidewalk-fallback', 'high-stress', 'dismount', 'mountain-bike']
     .includes(cause) ? cause : 'other';
 }
 
 function safetyVerdict(seg) {
-  if (seg.level === 4) return { label: 'Road fails rules', className: 'fail' };
+  const level = routeSegmentLevel(seg);
+  if (level === 4) return { label: 'Road fails rules', className: 'fail' };
   if (isSidewalkFallbackSegment(seg, details?.rules)
-      || isMountainBikeTrail(seg) || seg.level === 3) {
+      || isMountainBikeTrail(seg) || level === 3) {
     return { label: 'Use caution', className: 'caution' };
   }
   if (seg.trailAll ?? isOffStreetTrail(seg)) return { label: 'Off-street trail', className: 'trail' };
@@ -608,6 +611,7 @@ function buildRouteSteps(segs, directions = []) {
   for (let index = 0; index < segs.length; index++) {
     const seg = segs[index];
     if (seg.flags & FLAG_FERRY) continue;
+    const segLevel = routeSegmentLevel(seg);
     const name = roadName(seg);
     const last = out[out.length - 1];
     if (last && last.endIndex === index - 1 && last.name === name
@@ -620,13 +624,13 @@ function buildRouteSteps(segs, directions = []) {
       last.facility = Math.max(last.facility || 0, seg.facility || 0);
       last.official |= seg.official || 0;
       last.mph = Math.max(last.mph, seg.mph || 0);
-      last.level = Math.max(last.level, seg.level || 0);
+      last.level = Math.max(last.level, segLevel);
       last.bikeNetworkAll = last.bikeNetworkAll && isBikeNetwork(seg);
       last.trailAll = last.trailAll && isOffStreetTrail(seg);
       last.designatedAll = last.designatedAll && isDesignated(seg);
       last.hazard = Math.max(last.hazard || 0, seg.hazard || 0);
       last.crossingM += seg.crossing ? Number(seg.lenM) || 0 : 0;
-      if (seg.level === 4) last.failM += seg.lenM;
+      if (segLevel === 4) last.failM += seg.lenM;
     } else {
       out.push({
         name,
@@ -643,13 +647,13 @@ function buildRouteSteps(segs, directions = []) {
         facility: seg.facility || 0,
         official: seg.official || 0,
         mph: seg.mph || 0,
-        level: seg.level || 0,
+        level: segLevel,
         bikeNetworkAll: isBikeNetwork(seg),
         trailAll: isOffStreetTrail(seg),
         designatedAll: isDesignated(seg),
         hazard: seg.hazard || 0,
         crossingM: seg.crossing ? Number(seg.lenM) || 0 : 0,
-        failM: seg.level === 4 ? seg.lenM : 0,
+        failM: segLevel === 4 ? seg.lenM : 0,
       });
     }
   }
@@ -1360,7 +1364,8 @@ if (!hasRoute) {
     meta: s.mph ? `${s.mph} mph highway` : 'Highway',
     riskScore: Number(s.mph) || 0,
   })));
-  const failing = consolidateConcernItems(sections(segs, (s) => s.level === 4, (s) => ({
+  const failing = consolidateConcernItems(sections(segs,
+    (s) => routeSegmentLevel(s, rules) === 4, (s) => ({
     name: roadName(s), ...failedRoadDetails(s, rules),
     // Speed dominates the representative choice, so a combined 50/60 mph
     // road reports the 60 mph condition. Freeways remain the worst class.

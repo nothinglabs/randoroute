@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-11.675';
+const APP_VERSION = '2026-08-11.676';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -114,10 +114,16 @@ const DEFAULT_RULES = Object.freeze({
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
 });
-// `allowFerries` is deliberately NOT in DEFAULT_RULES: presets spread the
-// defaults, and a safety preset must neither reset nor lay claim to this travel
-// option. It lives in Settings > Options but remains independent of presets.
-const rules = { ...DEFAULT_RULES, allowFerries: true };
+// These are deliberately NOT in DEFAULT_RULES: presets spread the defaults,
+// and a safety preset must neither reset nor lay claim to travel/routing
+// options. They live in Settings > Options but remain independent of presets.
+// `alwaysPreferBikeRoutes` changes COST only. SafetyModel ignores it, so a
+// signed route that fails still draws and speaks as a failure.
+const rules = {
+  ...DEFAULT_RULES,
+  allowFerries: true,
+  alwaysPreferBikeRoutes: false,
+};
 // Top of the lanes slider means "no limit" rather than a literal count. It
 // stops at 6 because a "6 lanes without a shoulder is fine" rule is one nobody
 // would pick over turning the rule off entirely.
@@ -2372,12 +2378,7 @@ function applyDisplayMode(src) {
   // The shared vector-road source knows each OSM class. Reveal its safety fill
   // at exactly the zoom where BikeBasemap reveals that class's street casing.
   const earlyBikeFacility = display.bikeFacilities ? bikeNetworkExpr(src) : ['boolean', false];
-  const opacity = (value) => {
-    // Opaque aligned fills remove alpha-addition seams. Their color expression
-    // is pre-blended to retain the previous muted visual strength.
-    const backgroundOpacity = alignRoadClasses ? 1 : backgroundLineOpacity(value);
-    const verdictOpacity = alignRoadClasses ? 1
-      : ['case', ['==', lvl, 3], cautionBackgroundLineOpacity(), backgroundOpacity];
+  const classMaskedOpacity = (verdictOpacity) => {
     if (!alignRoadClasses) return verdictOpacity;
     const visibleAtLocal = src.id === 'osm'
       ? ['any', ROAD_CLASS_MAJOR_EXPR, ROAD_CLASS_MEDIUM_EXPR,
@@ -2406,6 +2407,14 @@ function applyDisplayMode(src) {
       BikeBasemap.ROAD_MIN_ZOOM.local,
       ['case', visibleAtLocal, verdictOpacity, 0],
     ];
+  };
+  const opacity = (value) => {
+    // Opaque aligned fills remove alpha-addition seams. Their color expression
+    // is pre-blended to retain the previous muted visual strength.
+    const backgroundOpacity = alignRoadClasses ? 1 : backgroundLineOpacity(value);
+    const verdictOpacity = alignRoadClasses ? 1
+      : ['case', ['==', lvl, 3], cautionBackgroundLineOpacity(), backgroundOpacity];
+    return classMaskedOpacity(verdictOpacity);
   };
   // Keep background data present without competing with a planned route. The
   // broad invisible hit target below preserves easy road inspection even with
@@ -2486,7 +2495,13 @@ function applyDisplayMode(src) {
     // to stack, and reading as the strongest verdict matters more here.
     setPaint(vhId(src), 'line-color', COLORS[4]);
     setPaint(vhId(src), 'line-width', safetyRoadWidth(src));
-    setPaint(vhId(src), 'line-opacity', failBackgroundLineOpacity());
+    // Failures used to bypass the class mask used by every other road color.
+    // That painted thousands of failing residential fragments at metro zoom,
+    // visually merging into a solid red field and doing avoidable renderer
+    // work. Keep the strong failure opacity, but reveal each road at the same
+    // zoom as the basemap street beneath it.
+    setPaint(vhId(src), 'line-opacity',
+      classMaskedOpacity(failBackgroundLineOpacity()));
   }
   if (map.getLayer(prohibitedId(src))) {
     setPaint(prohibitedId(src), 'line-opacity', opacity(0.42));
@@ -3272,6 +3287,7 @@ function routeSegProps(s, routeIndex) {
     infra: flags & 8 ? 1 : 0, ferry: flags & 32 ? 1 : 0, desig: flags & 64 ? 1 : 0,
     facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
     dismount: isDismountSegment(s) ? 1 : 0,
+    dismountEscalated: s.dismountEscalated ? 1 : 0,
     surface: Number.isInteger(s.surface) ? s.surface : 0,
     roadClass: s.roadClass || 0,
     routeIndex,
@@ -3307,14 +3323,19 @@ function measureProps(m) {
 }
 // A route segment the worker did not label (older payloads). Scores the segment
 // through the same scorer the map and the card use.
-function fallbackRouteLevel(s) { return effectiveLevel(scoreRouteSeg(routeSegProps(s))); }
+function fallbackRouteLevel(s) {
+  // The worker can only identify a long continuous tagged-dismount run after
+  // assembling the route. Preserve that explicit structural fact, not an
+  // otherwise opaque and potentially stale stored level byte.
+  if (s?.dismountEscalated) return 4;
+  return effectiveLevel(scoreRouteSeg(routeSegProps(s)));
+}
 
 // Preserve WHY a route segment is amber, not only the amber level. Route
 // Details uses this to guarantee that every caution rendered on the route has
 // a matching item under Concerns. New worker payloads provide the exact cause;
 // the evaluation keeps older payloads useful.
 function routeSegmentCautionCause(s) {
-  if (s?.cautionCause) return s.cautionCause;
   const verdict = evaluateRoad(scoreRouteSeg(routeSegProps(s)));
   if (verdict.level === 3 && verdict.caution) return verdict.caution;
   if (s?.mtb) return 'mountain-bike';
@@ -3327,7 +3348,10 @@ function isHighwaySegment(s) {
 }
 
 function routeSegmentDisplayCategory(s) {
-  const level = s.level || fallbackRouteLevel(s);
+  // A stored worker byte is a cache, not truth. Re-evaluate the segment facts
+  // under the rider's live rules so the route line, summary, voice and Details
+  // cannot inherit a stale verdict from an older build or saved route.
+  const level = fallbackRouteLevel(s);
   const props = routeSegProps(s);
   props.level = level;
   return routeVisualStyle(props);
@@ -3344,7 +3368,7 @@ function routeSummaryStats(m) {
     if (flags & 32) continue; // ferry is reported separately, not a riding safety level
     if (isConfirmedUnpavedSurface(s.surface)) unpavedM += len;
     if (credibleSegmentGradePct(s) > 5) inclineOver5M += len;
-    const level = s.level || fallbackRouteLevel(s);
+    const level = fallbackRouteLevel(s);
     if (level >= 1 && level <= 4) levels[level] += len;
     // Use the selected route's actual paint classifier. These five buckets are
     // mutually exclusive, so the percentages beside the map describe exactly
@@ -3535,7 +3559,7 @@ function storeRouteDetails(m) {
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
-        dismount: isDismountSegment(s),
+        dismount: isDismountSegment(s), dismountEscalated: !!s.dismountEscalated,
         surface: Number.isInteger(s.surface) ? s.surface : 0,
         roadClass: s.roadClass || 0, lanes: Number(s.lanes) || 0,
         measures: s.measures || null, c0: s.c0, c1: s.c1,
@@ -3545,9 +3569,7 @@ function storeRouteDetails(m) {
         hazardLenM: s.hazardLenM || 0, hazC0: s.hazC0, hazC1: s.hazC1,
         hazardLocationStart: locationAt(s.hazC0), hazardLocationEnd: locationAt(s.hazC1),
         gradePct: s.gradePct || 0, timeS: Number(s.timeS) || 0,
-        lts: Number(s.lts) || 0, cautionCause: routeSegmentCautionCause(s),
-        level: s.level || fallbackRouteLevel(s), lenM: Number(s.lenM) || 0,
-        displayCategory: routeSegmentDisplayCategory(s),
+        lts: Number(s.lts) || 0, lenM: Number(s.lenM) || 0,
       })),
     }));
   } catch (e) { /* storage unavailable — the map still works normally */ }
@@ -4314,7 +4336,7 @@ function buildRouteSafetyRuns(segs, cumulative) {
     // chose that split deliberately, and a spoken "Caution" at every quiet
     // park connector is the noise the tagged-only rule exists to prevent.
     if (isDismountSegment(seg) && !isTaggedDismountSegment(seg)
-        && (seg.level || 0) < 3 && !seg.mtb) {
+        && fallbackRouteLevel(seg) < 3 && !seg.mtb) {
       run.quietWalkM = (run.quietWalkM || 0) + (endM - startM);
     }
     const reason = routeSegmentSafetyReason(seg);
@@ -7094,6 +7116,7 @@ function routeVisualStyle(p) {
   // selected route under live rules; otherwise the crossing turns red again
   // even though route totals and Route Details count it as passing.
   if (p.crossing === 1) return 'pass';
+  if (p.dismountEscalated === 1) return 'fail';
   if (effectiveLevel(scoreRouteSeg(p)) === 4) return 'fail';
   // Walking is a caution wherever the route is shown. A dismount stretch --
   // tagged or synthesised -- used to draw as lime trail, which read as the
@@ -7658,7 +7681,7 @@ function drawRoute(coords, ferrySegs, segs) {
     const props = routeSegProps(s, routeIndex);
     // Score the very properties the card will read, so the level baked into the
     // feature is the level the card recomputes from it.
-    props.level = s.level ?? effectiveLevel(scoreRouteSeg(props));
+    props.level = effectiveLevel(scoreRouteSeg(props));
     props.hwy = isHighwaySegment(s) ? 1 : 0;
     return {
       type: 'Feature',
@@ -7992,7 +8015,7 @@ const ROUTE_HIGHLIGHT_FILTERS = {
 
 function routeSegmentMatchesHighlight(seg, key) {
   const flags = seg.flags || 0;
-  const level = seg.level || fallbackRouteLevel(seg);
+  const level = fallbackRouteLevel(seg);
   if (key === 'bike-network') return !!(flags & (8 | 64)) || (seg.facility || 0) >= 1;
   if (key === 'highway') return isHighwaySegment(seg);
   if (key === 'freeway') return !!(flags & 4);
@@ -11295,12 +11318,20 @@ function renderMapTapCard({
   const safetySummary = compactReadoutSafety(rows, summary);
   safetySummary.style.setProperty('--readout-accent', swatchColor);
 
-  // Bike accommodation and (only when it is not paved) surface.
+  // Named designation, bike accommodation and (only when it is not paved)
+  // surface. A named route is rider-useful identity, not a technical detail:
+  // "US Bicycle Route 95" must not be displaced by the agency's vague
+  // "Bike facility: yes" row and then hidden behind Details.
   const shownAbove = new Set(['Result', 'Verdict', 'Why', 'Name']);
   const facts = document.createElement('div');
   facts.className = 'readout-core-facts';
-  const accommodationKeys = ['Bike facility', 'Cycleway', 'Trail type', 'Network',
-    'Bike route', 'Designated bike route'];
+  const bikeRouteKeys = ['Bike route', 'Designated bike route'];
+  // Prefer a real relation name over an earlier agency boolean. BLTS rows put
+  // “Designated bike route: yes” before the coincident OSM name, and the
+  // generic first-match helper therefore hid “US Bicycle Route 95”.
+  const bikeRoute = readoutRowValue(rows, 'Bike route')
+    || readoutRowValue(rows, 'Designated bike route');
+  const accommodationKeys = ['Bike facility', 'Cycleway', 'Trail type', 'Network'];
   const accommodation = readoutRowValue(rows, ...accommodationKeys);
   const addFact = (label, value, keys, { prominent = false } = {}) => {
     if (!value) return;
@@ -11316,6 +11347,7 @@ function renderMapTapCard({
     fact.append(name, text);
     facts.append(fact);
   };
+  addFact('Bike route', bikeRoute, bikeRouteKeys);
   addFact('Bike accommodation', accommodation, accommodationKeys,
     { prominent: cautionKinds.includes('odd') });
   // With no bike lane or trail, the shoulder is what decides whether the road
@@ -11699,7 +11731,9 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
     // rather than silently dropping the fact when the layer is hidden.
     const badge = routeBadgeAt(map.project(lngLat));
     if (badge) rows.push(['Bike route', badge]);
-    else if (p.g) rows.push(['Bike route', 'On a designated route (USBR / regional trail)']);
+    else if (p.g || Number(p.Designated) === 1) {
+      rows.push(['Bike route', 'On a designated route (USBR / regional trail)']);
+    }
   }
   rows = rows.filter(([, v]) => v != null && v !== '');
   const pointName = readoutRoutePointName(rows);
@@ -12643,6 +12677,8 @@ function buildRulesPanel() {
   };
   check('prefDesig', 'Heavily prefer bike routes & trails', routing, updateRoutePreference);
   check('prefResidential', 'Prefer residential streets', routing, updateRoutePreference);
+  check('alwaysPreferBikeRoutes', 'Always prefer bike routes (as if they are safe)', rules,
+    updateRoutePreference);
   check('allowFreeways', 'Route over freeway as last resort (still shows as failing)');
   check('allowFerries', 'Allow routes with ferries', rules, () => {
     // This is an itinerary permission, not a safety preset. Rebuild the full

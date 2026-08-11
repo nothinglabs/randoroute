@@ -116,12 +116,17 @@ const mapColors = await page.evaluate(() => ({
   colors: typeof COLORS !== 'undefined' ? { ...COLORS } : null,
   bike: typeof BIKE_NETWORK_COLOR !== 'undefined' ? BIKE_NETWORK_COLOR : null,
   designated: typeof DESIGNATED_COLOR !== 'undefined' ? DESIGNATED_COLOR : null,
+  layersIcon: [...document.querySelectorAll('#layersToggle circle')]
+    .map((circle) => getComputedStyle(circle).fill),
 }));
 for (const level of [0, 1, 2, 3, 4]) {
   check(`app COLORS[${level}]`, mapColors.colors[level], RoutePalette.LEVEL[level]);
 }
 check('app BIKE_NETWORK_COLOR', mapColors.bike, RoutePalette.bikeNetwork);
 check('app DESIGNATED_COLOR', mapColors.designated, RoutePalette.designated);
+check('layers icon bike-network dot', mapColors.layersIcon[0], hexToRgb(RoutePalette.bikeNetwork));
+check('layers icon passing dot', mapColors.layersIcon[1], hexToRgb(RoutePalette.pass));
+check('layers icon failing dot', mapColors.layersIcon[2], hexToRgb(RoutePalette.fail));
 
 /* --- and so does the route report, which is where the drift happened ------ */
 const detailsPage = await context.newPage();

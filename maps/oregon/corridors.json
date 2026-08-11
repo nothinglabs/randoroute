@@ -6,7 +6,7 @@
       "a": [-122.6765, 45.5231],
       "b": [-121.5211, 45.7054],
       "maxRatio": 2.5,
-      "why": "The Historic Columbia River Highway State Trail is the signed non-freeway way east through the Gorge, and its last gap (Mitchell Point) closed in 2024. If the trail is not stitched into the graph, I-84 is the only through route and this corridor is the state's DuPont: a single missing link between two walls of basalt."
+      "why": "The Historic Columbia River Highway State Trail is the signed non-freeway way east through the Gorge. The Mitchell Point tunnel opened in 2024, but ODOT confirms a remaining 0.7-mile bicycle gap west of it; construction of that connection began in December 2025 and is expected through late 2026. Until it opens, I-84 is the only through line and the router must not invent a bicycle-legal trail connection."
     },
     {
       "name": "Astoria -> Tillamook (north coast, US 101)",

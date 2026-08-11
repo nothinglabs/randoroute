@@ -146,7 +146,7 @@ check('a road block still keeps and reruns the selected route lineup',
 check('a new destination takes a fresh recommendation', regeneration.afterNewEnd === true,
   JSON.stringify(regeneration));
 
-/* -------------------- the obsolete dialog is gone; ferries live in Settings */
+/* ------- the obsolete dialog is gone; routing permissions live in Settings */
 const ui = await page.evaluate(() => {
   routing.worker = { postMessage: () => {} };
   routing.ready = true;
@@ -157,6 +157,7 @@ const ui = await page.evaluate(() => {
   renderRouteOptionControls();
   settingsPaneSelect?.('options');
   const toggle = document.getElementById('r-allowFerries');
+  const bikeRouteToggle = document.getElementById('r-alwaysPreferBikeRoutes');
   const out = {
     oldButtonGone: !document.getElementById('routeRemixBtn'),
     oldDialogGone: !document.getElementById('remixDialog'),
@@ -167,6 +168,10 @@ const ui = await page.evaluate(() => {
     optionsVisible: document.getElementById('settings-options')?.hidden === false,
     defaultChecked: toggle?.checked === true,
     ferryHint: toggle?.closest('.rule-card')?.querySelector('.rule-check-hint')?.textContent || '',
+    bikeRouteToggleExists: !!bikeRouteToggle,
+    bikeRouteToggleInOptions: !!bikeRouteToggle?.closest('#settings-options'),
+    bikeRouteDefaultChecked: bikeRouteToggle?.checked === true,
+    bikeRouteLabel: bikeRouteToggle?.closest('label')?.textContent.trim() || '',
   };
   routing.selectRecommendedNext = false;
   routing.pinnedLetters = [{ letter: 'A', profileId: 'old-ferry-route' }];
@@ -174,6 +179,11 @@ const ui = await page.evaluate(() => {
     toggle.checked = false;
     toggle.dispatchEvent(new Event('change'));
   }
+  if (bikeRouteToggle) {
+    bikeRouteToggle.checked = true;
+    bikeRouteToggle.dispatchEvent(new Event('change'));
+  }
+  out.bikeRouteRuleOn = rules.alwaysPreferBikeRoutes === true;
   out.ruleOff = rules.allowFerries === false;
   out.freshPortfolio = routing.selectRecommendedNext === true;
   // Restore the global for the rest of this browser session.
@@ -197,6 +207,13 @@ check('Allow routes with ferries lives in Settings > Options',
   JSON.stringify(ui));
 check('turning ferries off updates the rule and requests a fresh portfolio',
   ui.ruleOff && ui.freshPortfolio, JSON.stringify(ui));
+check('the strong signed-route preference is an Options toggle and defaults off',
+  ui.bikeRouteToggleExists && ui.bikeRouteToggleInOptions
+    && !ui.bikeRouteDefaultChecked
+    && ui.bikeRouteLabel === 'Always prefer bike routes (as if they are safe)',
+  JSON.stringify(ui));
+check('turning the signed-route preference on updates the routing rule',
+  ui.bikeRouteRuleOn, JSON.stringify(ui));
 
 // With no trip routed, the weights page's considered-routes button explains
 // itself by being disabled instead of opening an empty list.

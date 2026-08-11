@@ -24,7 +24,9 @@ function check(name, ok, detail = '') {
 const detailsUrl = site.url.replace('/index.html', '/route-details.html');
 await page.goto(detailsUrl, { waitUntil: 'load' });
 await page.evaluate(() => localStorage.setItem('wa-bike-route-details-1', JSON.stringify({
-  summary: { distM: 6836, timeS: 2400, ascentM: 20, descentM: 10 },
+  summary: { distM: 6836, timeS: 2400, ascentM: 20, descentM: 10,
+    avgUphillPct: 3.4 },
+  profile: [[0, 100], [2000, 120], [4000, 115], [6836, 130]],
   rules: { minShoulder: 4 },
   segs: [
     { name: 'Ferry', mph: 15, sh: -1, flags: 32, level: 2, lenM: 1609 },
@@ -36,9 +38,9 @@ await page.evaluate(() => localStorage.setItem('wa-bike-route-details-1', JSON.s
       level: 3, lenM: 400, displayCategory: 'caution' },
     { name: 'Tagged dismount', mph: 10, sh: 4, flags: 0, official: 136, dismount: true,
       level: 3, lenM: 160, displayCategory: 'caution' },
-    { name: '35 road', mph: 35, sh: 4, flags: 0, level: 1, lenM: 1609,
+    { name: '35 road', mph: 35, sh: 4, flags: 0, level: 1, lenM: 1609, gradePct: 6,
       displayCategory: 'pass' },
-    { name: '45 road', mph: 45, sh: 4, flags: 0, level: 1, lenM: 1609,
+    { name: '45 road', mph: 45, sh: 4, flags: 0, level: 1, lenM: 1609, gradePct: 12,
       displayCategory: 'pass' },
     { name: '55 road', mph: 55, sh: 4, flags: 0, level: 1, lenM: 1609,
       displayCategory: 'pass' },
@@ -49,6 +51,9 @@ const rendered = await page.evaluate(() => ({
   summary: document.getElementById('summary').textContent.replace(/\s+/g, ' ').trim(),
   quickSummary: document.getElementById('summaryMix').textContent.replace(/\s+/g, ' ').trim(),
   elevation: document.getElementById('summarySub').textContent.replace(/\s+/g, ' ').trim(),
+  elevationPreviewVisible: !document.getElementById('elevationPreview').hidden,
+  elevationDialogSummary: document.getElementById('elevationDialogSummary').textContent
+    .replace(/\s+/g, ' ').trim(),
   quickSummaryHeight: document.getElementById('routeQuickSummary').getBoundingClientRect().height,
   categoryLabelLines: [...document.querySelectorAll('.route-summary-category-item > span:last-child')]
     .map((label) => Math.round(label.getBoundingClientRect().height
@@ -87,7 +92,16 @@ check('while the concerns report keeps both walked stretches',
 check('the 5% grade metric moved out of the top summary',
   !/Incline over 5%|5%\+ uphill/.test(rendered.quickSummary), rendered.quickSummary);
 check('Elevation reports the 5%+ uphill distance in miles',
-  /5%\+ uphill\s*\d+(?:\.\d+)? mi/.test(rendered.elevation), rendered.elevation);
+  /5%\+ uphill\s*2\.0 mi/.test(rendered.elevation), rendered.elevation);
+check('Elevation preserves the route climb, descent and modelled grades',
+  /Climb\s*↗ 66 ft/.test(rendered.elevation)
+    && /Descent\s*↘ 33 ft/.test(rendered.elevation)
+    && /Avg\. grade\s*3\.4% uphill/.test(rendered.elevation)
+    && /Max grade\s*12\.0%/.test(rendered.elevation), rendered.elevation);
+check('the stored route profile reaches the rider-facing elevation preview',
+  rendered.elevationPreviewVisible
+    && /4\.2 mi · ↗ 66 ft climb · 3\.4% avg uphill · 12\.0% max grade/
+      .test(rendered.elevationDialogSummary), rendered.elevationDialogSummary);
 // One aligned row per category costs more height than the old two-column cram
 // (which is why the cram existed); ~110px is the single-column layout, and the
 // bound flags a regression that stacks or wraps rows rather than sub-pixel

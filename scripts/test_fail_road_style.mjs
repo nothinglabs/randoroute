@@ -167,6 +167,68 @@ check('the dash is about the same size on screen at both zooms',
   Math.abs(seen[12].medianDashPx - seen[15].medianDashPx) <= 9,
   `z12 ${seen[12].medianDashPx} px vs z15 ${seen[15].medianDashPx} px`);
 
+/* --------------------------------------------- metro view: judge the raster */
+// Below z12, walking each feature's geometry is the wrong instrument: vector
+// tiles split a statewide network into thousands of tiny fragments, and every
+// fragment restart looks like a two-pixel "dash" to the walker. What a rider
+// actually sees is the final raster. Render the same z9 view once with the real
+// dash and once with an effectively solid dash, then compare the amount of red
+// ink. This catches both failures that mattered on a phone: transparent gaps
+// disappearing, and local-road density filling the whole metro view.
+const rasterAt = async (zoom, center = [-122.3447, 47.6605]) => page.evaluate(async ({ z, at }) => {
+  const canvas = map.getCanvas();
+  const settle = () => new Promise((resolve) => {
+    const fallback = setTimeout(resolve, 800);
+    map.once('idle', () => { clearTimeout(fallback); resolve(); });
+    map.triggerRepaint();
+  });
+  map.jumpTo({ center: at, zoom: z });
+  await settle();
+  const countWarm = () => {
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width;
+    copy.height = canvas.height;
+    const ctx = copy.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(canvas, 0, 0);
+    const pixels = ctx.getImageData(0, 0, copy.width, copy.height).data;
+    let warm = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] > 70 && pixels[i] - pixels[i + 1] > 30
+          && pixels[i] - pixels[i + 2] > 20) warm++;
+    }
+    return { warm, total: pixels.length / 4 };
+  };
+  const dashed = countWarm();
+  const original = map.getPaintProperty('roads__vh', 'line-dasharray');
+  map.setPaintProperty('roads__vh', 'line-dasharray', [1000, 0.01]);
+  await settle();
+  const solid = countWarm();
+  map.setPaintProperty('roads__vh', 'line-dasharray', original);
+  await settle();
+  return { dashed: dashed.warm, solid: solid.warm, total: dashed.total };
+}, { z: zoom, at: center });
+const metro = await rasterAt(9);
+check('z9: failing roads stay context rather than filling the metro view',
+  metro.dashed / Math.max(1, metro.total) < 0.08,
+  JSON.stringify({ ...metro, coverage: metro.dashed / Math.max(1, metro.total) }));
+const lowZoomViews = [];
+for (const center of [
+  [-122.3447, 47.6605], // Seattle
+  [-122.208, 47.98],    // Everett
+  [-122.76, 48.02],     // Port Townsend / Whidbey
+  [-122.45, 47.25],     // Tacoma
+  [-122.9, 47.04],      // Olympia
+]) {
+  lowZoomViews.push({ center, ...(await rasterAt(11, center)) });
+}
+const city = lowZoomViews.reduce((best, view) =>
+  view.solid > best.solid ? view : best, lowZoomViews[0]);
+check('z11: zoomed-out failing roads are present somewhere in the shipped map to judge',
+  city.solid > 20, JSON.stringify(lowZoomViews));
+check('z11: transparent dash gaps materially reduce red ink in the final raster',
+  city.dashed < city.solid * 0.82,
+  JSON.stringify({ ...city, ratio: city.dashed / Math.max(1, city.solid) }));
+
 await browser.close();
 await site.close();
 done();

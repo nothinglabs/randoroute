@@ -364,6 +364,19 @@ function rulesSignature(rules) {
   }
   return out;
 }
+
+// Cost-only route-choice lenses belong in rulesSignature() because the arc
+// caches and A* potential genuinely change. They do not belong in the verdict
+// cache: SafetyModel deliberately ignores them, and throwing away 1.7 million
+// directed verdict bytes when the rider toggles one would only add latency.
+function safetyRulesSignature(rules) {
+  let out = '';
+  for (const key of Object.keys(rules || {}).sort()) {
+    if (key === 'requireSafe' || key === 'alwaysPreferBikeRoutes') continue;
+    out += `${key}=${rules[key]};`;
+  }
+  return out;
+}
 // Road blocks change which edges the bound may cross, so they belong in its key
 // too. Set once per request from the raw marker positions.
 let activeBlockSignature = '';
@@ -475,7 +488,7 @@ const verdictSlots = [
 ];
 function useVerdictSlot(slot, rules) {
   if (!slot.cache) slot.cache = new Uint8Array(2 * E);
-  const key = rulesSignature(rules);
+  const key = safetyRulesSignature(rules);
   // One value applies to every edge. Cache it per rule set instead of resolving
   // the compatibility keys on every relaxation.
   slot.noShoulderMax = SafetyModel.noShoulderMaxSpeed({}, rules);
@@ -498,7 +511,7 @@ function useVerdictCache(rules) { useVerdictSlot(verdictSlots[0], rules); }
 function verdictSlotFor(rules) {
   if (rules === verdictSlots[0].rules) return verdictSlots[0];
   if (rules === verdictSlots[1].rules) return verdictSlots[1];
-  const key = rulesSignature(rules);
+  const key = safetyRulesSignature(rules);
   for (const slot of verdictSlots) {
     if (slot.key === key) { slot.rules = rules; return slot; }
   }
@@ -583,6 +596,10 @@ function escalateLongDismounts(segs, levelM) {
         addedFailM += seg.lenM;
         seg.level = 4;
         seg.cautionCause = null;
+        // A per-edge verdict cannot know that adjacent dismount edges form a
+        // long run. Carry the named route-level fact so downstream consumers
+        // can re-score ordinary safety facts without losing this escalation.
+        seg.dismountEscalated = true;
       }
     }
     i = end;
@@ -1317,7 +1334,14 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   const actualLevel = edgeLevelFor(ei, rules, forward);
   const searchLevel = searchRules === rules
     ? actualLevel : edgeLevelFor(ei, searchRules, forward);
-  const mult = modeMult(mode, searchLevel);
+  // This opt-in is deliberately a routing lens, not a safety verdict. A signed
+  // bicycle route is treated like trusted separated infrastructure while A*
+  // prices it, even when the unchanged model calls it caution or failure.
+  // Permissions remain permissions: prohibited edges never reach here, and
+  // freeway/MTB/ferry admission is still handled by their own settings.
+  const trustSignedRoute = !!rules.alwaysPreferBikeRoutes && !!(fl & 64)
+    && !(fl & 32) && !isDismountEdge(ei);
+  const mult = modeMult(mode, trustSignedRoute ? 1 : searchLevel);
   if (!(mult < Infinity)) { partsSteep = 0; partsSurf = 0; partsDivOk = 0; return Infinity; }
   let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode);
   step += boardingWaitS;   // ferry boarding, when this end has land
@@ -1325,21 +1349,28 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // An exempted terminal-access block is a last resort, never a shortcut:
   // any reasonable fully-safe approach must still win.
   if (requiredSafeAccess) cost *= 30;
-  cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
-    edgeNoShoulderMaxFor(searchRules), edgeShoulder(ei, forward));
-  cost *= hazardMult(modeW, edgeHazard(ei, forward) || 0);
-  cost *= majorRoadMult(ei, modeW, forward);
-  cost *= trafficStressMult(ei, modeW, forward);
-  cost *= sidewalkExposureMult(ei, mode, forward);
-  if (sidewalkFallbackFor(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
-  if (fl & 4) cost *= activeWeights.freeway;
+  if (trustSignedRoute) {
+    // Similar to a shared path, by request. Keep hills and surface additive
+    // below so "prefer this vetted corridor" does not mean "pretend it is flat
+    // and paved." The actual verdict is still emitted from actualLevel.
+    cost *= Math.min(activeWeights.facilityPath, activeWeights.strongDesignated);
+  } else {
+    cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
+      edgeNoShoulderMaxFor(searchRules), edgeShoulder(ei, forward));
+    cost *= hazardMult(modeW, edgeHazard(ei, forward) || 0);
+    cost *= majorRoadMult(ei, modeW, forward);
+    cost *= trafficStressMult(ei, modeW, forward);
+    cost *= sidewalkExposureMult(ei, mode, forward);
+    if (sidewalkFallbackFor(ei, searchRules, forward)) cost *= sidewalkFallbackMult(mode);
+    if (fl & 4) cost *= activeWeights.freeway;
+  }
   // Every other signal costs more as the profile gets friendlier, and this
   // one must too: limitedAccessLowStress sat at 1.0, so the low-stress profile applied
   // no penalty at all to a bike-legal limited-access highway -- less than
   // balanced. The friendliest route was the one most willing to put a rider
   // on a highway shoulder.
-  if (edgeLimited(ei, forward)) cost *= modeW.limitedAccess;
-  if (eOfficial[ei] & EDGE_MTB) cost *= activeWeights.mtbTrail;
+  if (!trustSignedRoute && edgeLimited(ei, forward)) cost *= modeW.limitedAccess;
+  if (!trustSignedRoute && (eOfficial[ei] & EDGE_MTB)) cost *= activeWeights.mtbTrail;
   // Walking the bike is a bad OUTCOME, not merely a slow one. Dismount
   // stretches already cost their real walking time (V_DISMOUNT) plus the
   // six-minute entry below; this multiplier is the judgment on top, sized so
@@ -1376,13 +1407,13 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // designation was 0.86, weaker than every facility weight; at 0.5 it
   // silently inverted, making a signed road with no infrastructure beat a
   // road with a painted bike lane (0.68).
-  if (!(fl & (32 | 4)) && !isDismountEdge(ei) && actualLevel < 4) {
+  if (!trustSignedRoute && !(fl & (32 | 4)) && !isDismountEdge(ei) && actualLevel < 4) {
     const signed = fl & 64;
     cost *= eFacility[ei]
       ? facilityPrefMult(eFacility[ei])
       : (signed ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
   }
-  if (prefResidential && !(fl & (8 | 32 | 4))
+  if (!trustSignedRoute && prefResidential && !(fl & (8 | 32 | 4))
       && !edgeLimited(ei, forward) && isResidential(ei)) {
     cost *= activeWeights.residential;
   }
@@ -1391,7 +1422,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // common trunk: leaving excellent infrastructure merely to be different
   // creates fussy neighborhood detours instead of a useful alternative.
   // (The factor itself is applied by the caller -- it varies per candidate.)
-  const protectedInfrastructure = (fl & 8) || eFacility[ei] >= 4;
+  const protectedInfrastructure = trustSignedRoute || (fl & 8) || eFacility[ei] >= 4;
   // Grade is an independent rideability concern, applied after every
   // safety, facility, residential, and alternate-corridor multiplier so
   // a path bonus cannot shrink the penalty for a genuinely steep climb.
@@ -1538,18 +1569,22 @@ function edgeCostFloor(i, forward) {
   // under a discovery lens -- which reprices a road without restating it.
   const searchLevel = edgeLevelFor(i, searchRules, forward);
   const level = searchRules === rules ? searchLevel : edgeLevelFor(i, rules, forward);
-  let m = modeMult(mode, searchLevel);
+  const trustSignedRoute = !!rules.alwaysPreferBikeRoutes && !!(fl & 64)
+    && !(fl & 32) && !isDismountEdge(i);
+  let m = modeMult(mode, trustSignedRoute ? 1 : searchLevel);
   if (!(m < Infinity)) return Infinity;
-  if (fl & 4) m *= freewayFloor;
-  if (eOfficial[i] & EDGE_MTB) m *= mtbFloor;
-  if (!(fl & (8 | 32 | 4)) && isResidential(i)) m *= residentialFloor;
-  if (!(fl & (32 | 4)) && !isDismountEdge(i) && level < 4) {
+  if (trustSignedRoute) {
+    m *= Math.min(activeWeights.facilityPath, activeWeights.strongDesignated);
+  } else if (fl & 4) m *= freewayFloor;
+  if (!trustSignedRoute && (eOfficial[i] & EDGE_MTB)) m *= mtbFloor;
+  if (!trustSignedRoute && !(fl & (8 | 32 | 4)) && isResidential(i)) m *= residentialFloor;
+  if (!trustSignedRoute && !(fl & (32 | 4)) && !isDismountEdge(i) && level < 4) {
     // A facility bonus OR a designation bonus, never both, and never on a
     // ferry, freeway or dismount link. The rider may have set neither
     // preference, so take whichever of the two prices the edge lower.
     m *= eFacility[i] ? (facility[eFacility[i]] ?? 1) : ((fl & 64) ? designatedFloor : 1);
   }
-  if (!(fl & (8 | 32))) {
+  if (!trustSignedRoute && !(fl & (8 | 32))) {
     const below = noShoulderMax - edgeSpeed(i, forward);
     if (below > 0 && !(edgeShoulder(i, forward) > 0)) {
       m *= Math.max(SPEED_STRESS_FLOOR, 1 - belowRate * below);
@@ -1558,11 +1593,13 @@ function edgeCostFloor(i, forward) {
   // Everything the search charges ON TOP of the base time, read from this edge
   // rather than floored at 1. These are what make a Low-stress bound
   // meaningfully stronger than a Direct one.
-  m *= hazardMult(weights, edgeHazard(i, forward) || 0);
-  m *= majorRoadMult(i, weights, forward);
-  m *= trafficStressMult(i, weights, forward);
-  m *= sidewalkExposureMult(i, mode, forward);
-  if (edgeLimited(i, forward)) m *= limitedFloor;
+  if (!trustSignedRoute) {
+    m *= hazardMult(weights, edgeHazard(i, forward) || 0);
+    m *= majorRoadMult(i, weights, forward);
+    m *= trafficStressMult(i, weights, forward);
+    m *= sidewalkExposureMult(i, mode, forward);
+    if (edgeLimited(i, forward)) m *= limitedFloor;
+  }
   let climb = 0;
   if (!(fl & 32)) {
     const asc = forward ? eAsc[i] : eDes[i];

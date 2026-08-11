@@ -57,26 +57,38 @@ vm.runInContext([
 const rules = {
   allowSidewalkFallback: true,
   maxSpeedNoShoulder: 35,
+  upperMaxSpeed: 55,
+  noUpperLimit: true,
   minShoulder: 4,
   inferShoulderFromEdge: false,
 };
 const cases = [
-  [{ level: 3, displayCategory: 'caution', lts: 4, cautionCause: 'high-stress' }, 'high-stress'],
-  [{ level: 3, displayCategory: 'caution', lts: 4 }, 'high-stress'],
-  [{ level: 3, displayCategory: 'caution', flags: 128, cautionCause: 'limited-access' }, 'limited-access'],
-  [{ level: 3, displayCategory: 'caution', official: 16, mph: 45, sh: 0,
-    cautionCause: 'sidewalk-fallback' }, 'sidewalk-fallback'],
-  [{ level: 1, displayCategory: 'caution', mtb: true }, 'mountain-bike'],
-  [{ level: 3, displayCategory: 'caution', dismount: 1, cautionCause: 'dismount' }, 'dismount'],
-  [{ level: 3, displayCategory: 'caution', cautionCause: 'future-new-cause' }, 'other'],
-  [{ level: 3, displayCategory: 'caution' }, 'other'],
+  [{ lts: 4, mph: 35, sh: 5 }, 'high-stress'],
+  [{ flags: 128, mph: 25, sh: 0 }, 'limited-access'],
+  [{ official: 16, mph: 45, sh: 0 }, 'sidewalk-fallback'],
+  [{ mtb: true, facility: 5 }, 'mountain-bike'],
+  [{ dismount: 1, official: 8 }, 'dismount'],
 ];
 for (const [segment, expected] of cases) {
   assert.equal(context.cautionConcernKind(segment, rules), expected,
     `amber ${JSON.stringify(segment)} must map to the ${expected} concern group`);
 }
+// A future SafetyModel caution cause must still reach the generic group. Stub
+// the model's RESULT for one recognisable fact shape; do not manufacture that
+// result by writing stale cached bytes onto the segment.
+const evaluate = context.window.SafetyModel.evaluate;
+context.window.SafetyModel.evaluate = (facts, liveRules) =>
+  facts.speed === 29 ? { level: 3, caution: 'future-new-cause' }
+    : evaluate(facts, liveRules);
+assert.equal(context.cautionConcernKind({ mph: 29, sh: 4 }, rules), 'other',
+  'a genuinely amber future cause must map to the fallback concern group');
+context.window.SafetyModel.evaluate = evaluate;
+
 assert.equal(context.cautionConcernKind({ level: 2, displayCategory: 'pass' }, rules), null,
   'an ordinary passing segment must not become a concern');
+assert.equal(context.cautionConcernKind({ level: 3, displayCategory: 'caution',
+  cautionCause: 'future-new-cause', mph: 20, sh: 0 }, rules), null,
+  'cached amber bytes must not turn passing road facts into a concern');
 
 // The router's own segments must carry the cause, not merely the level --
 // checked by ROUTING, not by reading the worker's source (which is what this
@@ -103,8 +115,6 @@ assert.equal(context.cautionConcernKind({ level: 2, displayCategory: 'pass' }, r
   assert.ok(amber.some((seg) => seg.cautionCause === 'dismount'),
     'the dock approach dismount must be an amber segment with the dismount cause');
 }
-assert.match(app, /lts:\s*Number\(s\.lts\)\s*\|\|\s*0,\s*cautionCause:\s*routeSegmentCautionCause\(s\)/,
-  'Route Details storage must retain stress ratings and caution causes');
 for (const contract of [
   'Officially rated high-stress roads',
   'concern-high-stress',

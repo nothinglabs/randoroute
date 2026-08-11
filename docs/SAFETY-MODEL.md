@@ -130,10 +130,10 @@ what riders were told and nothing about where they were sent.
 
 | level | colour | means |
 |---|---|---|
-| 1 | blue `#168ad1`, or yellow-green if it is bike network | passes your rules |
+| 1 | blue `#1375b2`, or yellow-green if it is bike network | passes your rules |
 | 2 | same as 1 | passes; kept distinct for routing |
 | 3 | burnt orange `#c25d05` | caution — ride it, but know what it is |
-| 4 | maroon-red `#a51c30` | fails your rules; excluded when *Only show routes fully matching* is on |
+| 4 | maroon-red `#913847` | fails your rules; excluded when *Only show routes fully matching* is on |
 | 0 | grey `#999999` | not enough data to judge |
 
 ### Texture carries the verdict, not hue
@@ -148,14 +148,16 @@ hue separation:
 |---|---|---|
 | bike lane | solid | `#b7c900` |
 | off-street trail | same lime, dark dashed centreline | `#b7c900` + `#4c5c00` |
-| passes | solid | `#168ad1` |
+| passes | solid | `#1375b2` |
 | caution | perpendicular rungs in the danger red | `#c25d05` + `#a51c30` |
-| fails | dashed, with the map showing through the gaps | `#7d1526` |
+| fails | dashed, with the map showing through the gaps | `#913847` |
 | bikes prohibited | wide translucent dashed ribbon, over the verdict | `#a51c30` at 42% |
 
-**The colours were chosen numerically, not by eye.** Search for the pair that
-maximises the *smallest* CIELAB distance between any two roles, evaluated under
-normal, deuteranope and protanope vision. The original amber left caution only
+**The baseline colours were chosen numerically, not by eye.** The search
+maximised the *smallest* CIELAB distance between any two roles, evaluated under
+normal, deuteranope and protanope vision. The pass blue was subsequently made
+15% darker and the dashed fail red 15% lighter for field legibility; texture
+remains the primary distinction. The original amber left caution only
 **dE 13.2** from the bike-network lime — the weakest link in the palette, and
 the reason caution and green looked alike. `#c25d05` with `#a51c30` pulls them
 apart, and both keep the conventional warning/danger reading.
@@ -218,8 +220,8 @@ layer draws — so above z13 a road that merely fails your rules and a road
 bicycles may not legally use were the same symbol. And they existed only above
 z13, so a road changed appearance as the rider zoomed without anything about
 the road changing. Removing the white, nearly 40% of that pattern's pixels, is
-what makes the line read darker; the numerically-optimised palette above is
-untouched. `test_fail_road_style.mjs` walks the rendered pixels at z12 and z15
+what makes the line read as a dash rather than diagonal hatching.
+`test_fail_road_style.mjs` walks the rendered pixels at z12 and z15
 and asserts ink and gaps at both.
 
 **A prohibited road is a failing road**, the strongest kind, so it keeps its

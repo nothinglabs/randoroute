@@ -108,10 +108,13 @@ Conflation rates from the graph build: functional class matched 258,637 of
 
 ## Known quirks
 
-* **The Historic Columbia River Highway State Trail is severed at Mitchell
-  Point** in this data, so Portland → Hood River routes around Mount Hood
-  instead of along the river. `VERIFICATION.md` §4 has the diagnosis. It is an
-  OSM gap, not a build defect, and it is the first thing a rider should check.
+* **The Historic Columbia River Highway State Trail is genuinely severed at
+  Mitchell Point**, so Portland → Hood River routes around Mount Hood instead
+  of along the river. ODOT confirms a 0.7-mile bicycle gap west of the tunnel;
+  work on the connection began in December 2025 and is expected to continue
+  through late 2026. The existing trail two miles east of Viento is temporarily
+  closed to all users during construction. `VERIFICATION.md` §4 links the ODOT
+  status and project pages. This is not a graph or OSM defect.
 * The coverage box is a rectangle over a state whose northern border is a
   river, so it reaches into Washington. Vancouver and Longview appear in place
   search and are unroutable — the mirror image of the note in Washington's
@@ -133,13 +136,15 @@ Conflation rates from the graph build: functional class matched 258,637 of
 
 ## What a rider should check first
 
-1. **Mitchell Point.** Is the State Trail through, on the ground?
-2. **US 101 on the coast.** The router now offers a 455-mile line against a
+1. **US 101 on the coast.** The router now offers a 455-mile line against a
    364-mile signed route, down from 481 with 134 failing miles before the ODOT
    shoulder data landed. Does the remaining 27.5 miles of "failing" match what
    it feels like to ride?
-3. **A forest road.** Aufderheide Drive and Corvallis to the Sea both got
-   *worse* after the functional-class conflation. If a remote Forest Service
-   collector now reads as a busy road, the class proxy is being applied where it
-   does not belong — 60% of Oregon is federal land, which is not the network
-   Washington's thresholds were tuned on.
+2. **The Aufderheide alternative.** Functional class makes an 18-mile
+   forest-road/trail detour cheap enough to enter the portfolio, while the
+   signed road itself still has zero failing miles. Is that detour useful or a
+   route-cost mistake?
+3. **Corvallis to the Sea.** Current-graph A/B runs rule out functional class,
+   AADT and elevation effort as the cause of its 86% → 11% overlap change. The
+   old and current graphs differ by 94,842 edges, so a rider should first say
+   whether the current OR 20 option or the published gravel line is desirable.

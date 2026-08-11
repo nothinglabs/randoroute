@@ -26,11 +26,13 @@ const spoken = await page.evaluate(() => {
   const said = [];
   window.speakNavigation = (text) => said.push(text);
   const runs = [
-    ['trail', 1609, { flags: 8, facility: 5, level: 1 }],
-    ['bike', 1609, { facility: 2, level: 1, mph: 25, sh: 4 }],
-    ['pass', 1609, { level: 1, mph: 25, sh: 4 }],
-    ['caution', 300, { level: 3, mph: 25, sh: 4, lts: 4 }],
-    ['fail', 300, { level: 4, mph: 55, sh: 0 }],
+    // Every stored level is deliberately stale. Voice must classify the same
+    // raw facts as the map and Route Details, not repeat the worker's cache.
+    ['trail', 1609, { flags: 8, facility: 5, level: 4 }],
+    ['bike', 1609, { facility: 2, level: 4, mph: 25, sh: 4 }],
+    ['pass', 1609, { level: 4, mph: 25, sh: 4 }],
+    ['caution', 300, { level: 1, mph: 25, sh: 4, lts: 4 }],
+    ['fail', 300, { level: 1, mph: 55, sh: 0 }],
   ];
   const segs = [];
   const cumulative = [0];
@@ -124,8 +126,9 @@ const reasons = await page.evaluate(() => {
     stress: say({ level: 3, mph: 25, sh: 4, lts: 4 }),
     mtb: say({ level: 3, mtb: true, official: 4, flags: 8 }),
     limited: say({ level: 3, flags: 128, mph: 35, sh: 6 }),
-    // Nothing specific to say: the plain wording, not an invented reason.
-    plain: say({ level: 3, mph: 25, sh: 4, displayCategory: 'caution' }),
+    // The generic speech fallback is still honest if a future real caution has
+    // no specific phrase. Do not manufacture such a segment with a stale level.
+    plain: safetyRunSpeech('caution', null, navDistanceText(800), null),
     // A stretch that is mostly one thing and briefly another says the one that
     // covers most of it.
     mixed: (() => {

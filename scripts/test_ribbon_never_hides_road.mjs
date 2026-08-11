@@ -174,10 +174,10 @@ await page.waitForFunction(
     && typeof SOURCES !== 'undefined' && typeof routeBadgeAt === 'function',
   { timeout: 90000 });
 
-// The designation is not a table row in the rendered card: it is lifted above
-// the fold as the "Bike accommodation" block. So read what the card SAYS.
-const cardText = (badge, designatedFlag) => page.evaluate(
-  ({ badge, designatedFlag }) => {
+// The designation is lifted above the fold into its own named "Bike route"
+// fact. A generic facility record must not occupy that slot and bury the name.
+const cardText = (badge, designatedFlag, genericFacility = false) => page.evaluate(
+  ({ badge, designatedFlag, genericFacility }) => {
     roadInfoSuppressedUntil = 0;
     dismissRoadInfo();
     const wasFeature = featureAt, wasBadge = routeBadgeAt;
@@ -186,7 +186,8 @@ const cardText = (badge, designatedFlag) => page.evaluate(
       layer: { id: 'test-designation-hit' },
       properties: Object.assign(
         { n: 'Test Avenue', s: 30, w: 6, h: 'residential', u: 1 },
-        designatedFlag ? { g: 1 } : {}),
+        designatedFlag ? { g: 1 } : {},
+        genericFacility ? { f: 1 } : {}),
       geometry: { type: 'LineString',
         coordinates: [[-122.34, 47.61], [-122.335, 47.615]] },
     });
@@ -196,13 +197,15 @@ const cardText = (badge, designatedFlag) => page.evaluate(
     featureAt = wasFeature;
     routeBadgeAt = wasBadge;
     return document.getElementById('readout').textContent || '';
-  }, { badge, designatedFlag });
+  }, { badge, designatedFlag, genericFacility });
 
-const withBadge = await cardText('US Bicycle Route 10', false);
+const withBadge = await cardText('US Bicycle Route 10', false, true);
 assert.ok(withBadge.includes('US Bicycle Route 10'),
   'the road card must name the designated route running over it');
+assert.ok(/bike route/i.test(withBadge),
+  'and label it as a bike route, so the designation is not a bare string');
 assert.ok(/bike accommodation/i.test(withBadge),
-  'and label it, so the name is not a bare string on the card');
+  'a generic accommodation fact must remain separate from the named route');
 
 const withFlagOnly = await cardText(null, true);
 assert.ok(/designated route/i.test(withFlagOnly),
@@ -210,8 +213,38 @@ assert.ok(/designated route/i.test(withFlagOnly),
   + `hidden, got ${JSON.stringify(withFlagOnly.slice(-200))}`);
 
 const withNeither = await cardText(null, false);
-assert.ok(!/designated route|bike accommodation/i.test(withNeither),
+assert.ok(!/designated route|bike route|bike accommodation/i.test(withNeither),
   'and claims no designation when the road carries none');
+
+// Reproduce the field report exactly: an agency BLTS record says only
+// BikeFacilityType=yes while the coincident relation supplies the useful name.
+// The vague value and the real designation must not compete for one slot.
+const agencyCard = await page.evaluate(() => {
+  roadInfoSuppressedUntil = 0;
+  dismissRoadInfo();
+  const wasFeature = featureAt, wasBadge = routeBadgeAt;
+  HIT_SRC['test-agency-designation-hit'] = SOURCES.find((s) => s.id === 'blts');
+  featureAt = () => ({
+    layer: { id: 'test-agency-designation-hit' },
+    properties: {
+      RouteIdentifier: '534i', LTS_Bicycle: 4, SpeedLimit: 50,
+      LaneCount: 1, AADT: 655, ShoulderWidth: 2,
+      BikeFacilityType: 'yes', Designated: 1,
+    },
+    geometry: { type: 'LineString',
+      coordinates: [[-122.45, 48.25], [-122.445, 48.255]] },
+  });
+  routeBadgeAt = () => 'US Bicycle Route 95';
+  const point = { x: 220, y: 400 };
+  inspectRoadAt(point, map.unproject([point.x, point.y]));
+  featureAt = wasFeature;
+  routeBadgeAt = wasBadge;
+  return document.getElementById('readout').textContent || '';
+});
+assert.match(agencyCard, /Bike route\s*US Bicycle Route 95/i,
+  'the BLTS card must promote the coincident named bike route above Details');
+assert.match(agencyCard, /Bike accommodation\s*yes/i,
+  'the agency accommodation value may remain as a separate fact');
 console.log('PASS  the road card still reports the route running over it (4 cases)');
 
 await browser.close();

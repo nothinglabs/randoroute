@@ -45,17 +45,13 @@
   // red-green colour blindness flattens.
   var LEVEL = {
     0: '#999999',   // not enough data to judge
-    1: '#168ad1',   // passes your rules
-    2: '#168ad1',   // passes; kept distinct for routing only
+    // 15% darker than #168ad1 (each RGB channel moved 15% toward black).
+    1: '#1375b2',   // passes your rules
+    2: '#1375b2',   // passes; kept distinct for routing only
     3: '#c25d05',   // caution
-    // Deepened from #a51c30 on a field report ("make it darker red"). It moves
-    // in the direction this palette already prefers -- these roles separate by
-    // LIGHTNESS -- so every pair it touches gets further apart, not closer: the
-    // gap to the caution orange widens, and so does the contrast of the caution
-    // rungs, which are drawn in this red ON that orange. The governing pair is
-    // caution against the bike-network lime, which does not involve this value
-    // at all.
-    4: '#7d1526',   // fails your rules
+    // 15% lighter than #7d1526 (each RGB channel moved 15% toward white).
+    // Texture, not hue alone, continues to distinguish this from caution.
+    4: '#913847',   // fails your rules
   };
 
   var PALETTE = {

@@ -117,6 +117,7 @@ const CASES = [
   ['strict shoulder', { ...RIDER, minShoulder: 6, maxSpeedNoShoulder: 25, upperMaxSpeed: 35, noUpperLimit: false }, null],
   ['only matching routes', { ...RIDER, requireSafe: true }, null],
   ['freeways and MTB allowed', { ...RIDER, allowFreeways: true, allowMtbTrails: true }, null],
+  ['signed routes strongly preferred', { ...RIDER, alwaysPreferBikeRoutes: true }, null],
   ['unpaved welcome', { ...RIDER, preferPaved: false }, null],
   ['weights dragged about', RIDER, {
     residential: 0.5, facilityPath: 0.2, facilitySeparated: 0.25, strongDesignated: 0.3,

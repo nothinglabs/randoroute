@@ -79,12 +79,15 @@ assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 2, level:
 assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 4, level: 2, lts: 4 }),
   'bike', 'a SEPARATED lane keeps its credit whatever the rating says');
 assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 5, level: 1 }), 'trail');
-assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 5, level: 3 }), 'caution',
-  'a caution verdict must override facility styling');
-assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 5, level: 4 }), 'fail',
-  'a failing verdict must override facility styling');
+assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 5,
+  official: categoryContext.OFFICIAL_MTB }), 'caution',
+  'an actual mountain-bike caution must override facility styling');
+assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 5,
+  flags: categoryContext.FLAG_FREEWAY }), 'fail',
+  'an actual freeway failure must override facility styling');
 assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, facility: 5, level: 1,
-  displayCategory: 'caution' }), 'caution', 'Route Details must honor the exact stored map category');
+  displayCategory: 'caution' }), 'trail',
+  'Route Details must recompute facts instead of trusting a stale stored map category');
 assert.equal(categoryContext.routeDisplayCategory({ lenM: 1, flags: 32, level: 1 }), null,
   'ferry distance is outside the five riding categories');
 

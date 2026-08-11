@@ -45,7 +45,8 @@ const SHAPES = [];
 for (const facility of [0, 1, 2, 3, 4, 5]) {
   for (const flags of [0, 4, 8, 32, 64, 128]) {
     for (const extra of [{}, { mtb: true, official: 4 }, { crossing: 1 },
-      { sh: -128 }, { mph: 55, sh: 0 }, { mph: 45, sh: 2 }, { surface: 3 }]) {
+      { sh: -128 }, { mph: 55, sh: 0 }, { mph: 45, sh: 2 }, { surface: 3 },
+      { dismount: true, official: 136, dismountEscalated: true }]) {
       SHAPES.push({ lenM: 100, facility, flags, mph: 30, sh: 4, c0: 0, c1: 1, ...extra });
     }
   }
@@ -58,12 +59,31 @@ const scored = await app.evaluate((shapes) =>
   shapes.map((seg) => ({ ...seg, level: fallbackRouteLevel(seg) })), SHAPES);
 // ...and level 0 as well: an older release stored routes without one, and
 // "not scored" must not be read as "fine" on either page.
-const SEGMENTS = [...scored, ...SHAPES.map((seg) => ({ ...seg, level: 0 }))];
+// Cached bytes from older/saved routes may disagree with today's rider rules.
+// Every consumer must treat all of these as the same underlying facts.
+const SEGMENTS = [...scored,
+  ...SHAPES.map((seg) => ({ ...seg, level: 0 })),
+  ...SHAPES.map((seg, index) => ({ ...seg, level: index % 4 + 1 }))];
 
 const fromApp = await app.evaluate((segs) =>
   segs.map((seg) => routeSegmentDisplayCategory(seg)), SEGMENTS);
 const fromDetails = await details.evaluate((segs) =>
   segs.map((seg) => routeDisplayCategory(seg)), SEGMENTS);
+const modelTruth = await app.evaluate((segs) => segs.map((seg) => {
+  const props = routeSegProps(seg);
+  const level = effectiveLevel(scoreRouteSeg(props));
+  if ((seg.flags || 0) & 32) return null;
+  if (seg.crossing) return 'pass';
+  if (seg.dismountEscalated) return 'fail';
+  if (level === 4) return 'fail';
+  if (isDismountSegment(seg) || level === 3 || seg.mtb) return 'caution';
+  const bike = SafetyModel.isBikeNetwork(SafetyModel.sealFacts({
+    infra: !!((seg.flags || 0) & 8) || (seg.facility || 0) >= 4,
+    facility: Number(seg.facility) || 0,
+    stressRating: Number(seg.lts) || null,
+  }));
+  return bike ? ((seg.facility || 0) === 5 ? 'trail' : 'bike') : 'pass';
+}), SEGMENTS);
 
 const disagreements = [];
 SEGMENTS.forEach((seg, i) => {
@@ -83,6 +103,39 @@ check(`both pages classify all ${SEGMENTS.length} segment shapes the same way`,
   disagreements.length === 0,
   disagreements.slice(0, 5).map((d) =>
     `${JSON.stringify(d.seg)} -> card ${d.card}, details ${d.details}`).join(' | '));
+const modelDisagreements = SEGMENTS.flatMap((seg, index) =>
+  fromApp[index] === modelTruth[index] && fromDetails[index] === modelTruth[index]
+    ? [] : [{ seg, model: modelTruth[index], card: fromApp[index], details: fromDetails[index] }]);
+check('the card and Details classifications both follow the model facts, not cached levels',
+  modelDisagreements.length === 0, JSON.stringify(modelDisagreements.slice(0, 5)));
+
+const riderFacing = await app.evaluate((segs) => {
+  const cumulative = [0];
+  const routeSegs = segs.map((seg, index) => {
+    cumulative.push(cumulative[index] + (Number(seg.lenM) || 0));
+    return { ...seg, c0: index, c1: index + 1 };
+  });
+  const summary = routeSummaryStats({ segs: routeSegs });
+  const voice = buildRouteSafetyRuns(routeSegs, cumulative).map((run) => ({
+    category: run.category, metres: run.endM - run.startM,
+  }));
+  return { categoryM: summary.categoryM, voice };
+}, SEGMENTS.slice(0, 80));
+const expectedM = Object.fromEntries(['trail', 'bike', 'pass', 'caution', 'fail']
+  .map((category) => [category, 0]));
+SEGMENTS.slice(0, 80).forEach((seg, index) => {
+  const category = modelTruth[index];
+  if (Object.hasOwn(expectedM, category)) expectedM[category] += Number(seg.lenM) || 0;
+});
+check('route-summary distances aggregate those same model-backed categories',
+  JSON.stringify(riderFacing.categoryM) === JSON.stringify(expectedM),
+  JSON.stringify({ actual: riderFacing.categoryM, expected: expectedM }));
+check('voice-navigation runs use only those same model-backed categories',
+  riderFacing.voice.every((run) => ['trail', 'bike', 'pass', 'caution', 'fail', 'ferry'].includes(run.category))
+    && Math.round(riderFacing.voice.filter((run) => run.category !== 'ferry')
+      .reduce((sum, run) => sum + run.metres, 0))
+      === Math.round(Object.values(expectedM).reduce((sum, metres) => sum + metres, 0)),
+  JSON.stringify(riderFacing.voice));
 
 // A category outside the five buckets is silently dropped from the totals on
 // both pages, so it must not be reachable from a real segment.
