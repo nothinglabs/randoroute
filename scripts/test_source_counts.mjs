@@ -40,9 +40,10 @@ for (const state of MAP_STATES) {
       counts.blts, features(`${ROOT}/maps/${state.id}/blts.geojson.gz`));
   }
   // bikeinfra is filtered before tiling (sharrow-only ways are dropped), so the
-  // shipped total is an upper bound rather than the figure itself. Bounding it
-  // still catches the failure that actually happened -- one state's number
-  // reported for another -- because the two states' totals are far apart.
+  // shipped total is only an upper bound here. test_source_counts.py PINS it
+  // exactly, by importing the real sharrow_only() from the builder rather than
+  // reimplementing the rule in a second language -- which would be the very
+  // defect this family of tests exists to catch.
   const infra = features(`${ROOT}/maps/${state.id}/bikeinfra.geojson.gz`);
   check(`${state.id}: the bike-infrastructure count is within its own data`,
     counts.bikeinfra > 0 && counts.bikeinfra <= infra,
