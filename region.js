@@ -100,6 +100,11 @@
     // rest of the app speaks. Without it a card could only say "there is
     // something here", and a shared-use path scored the same as a painted lane.
     facilityLevels: active.facilityLevels || {},
+    // Feature counts for the overlay layers, shown in the layer list. A vector
+    // tile carries no global count, so these are baked at build time -- and
+    // they were baked into SOURCES in app.js, which meant Oregon's layer list
+    // reported Washington's numbers. A state fact belongs in the state.
+    sourceCounts: active.sourceCounts || {},
 
     /* ------------------------------------------------- what this state ships */
     // Which files the folder actually holds. A preview state may carry only a

@@ -22,7 +22,7 @@ const MAPS = join(ROOT, 'maps');
 const KNOWN = new Set(['id', 'name', 'status', 'readiness', 'summary', 'bounds',
   'defaultCenter', 'defaultZoom', 'stressAgency', 'restrictionAgency', 'speedAgency',
   'facilitySourceName', 'stressLayerName', 'restrictionLayerName',
-  'interstateRoutePrefixes', 'facilityLevels', 'routeDirectionSuffixes',
+  'interstateRoutePrefixes', 'facilityLevels', 'sourceCounts', 'routeDirectionSuffixes',
   'datasets', 'versions', 'attribution']);
 const REQUIRED = ['id', 'name', 'status', 'bounds', 'defaultCenter', 'defaultZoom', 'datasets'];
 

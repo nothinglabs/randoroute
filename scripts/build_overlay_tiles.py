@@ -128,8 +128,12 @@ def main():
     print(f'bikeinfra: {len(kept)} features ({dropped} sharrow-only ways dropped)')
     print(f'blts: {len(blts["features"])} features')
     print(f'wrote {out} ({out.stat().st_size / 1e6:.1f} MB)')
-    print(f'bake the counts above into SOURCES in app.js, then run '
+    print(f'record the counts above as "sourceCounts" in '
+          f'maps/{args.state}/region.json ({{"blts": N, "bikeinfra": N}}), run '
+          f'npm run maps:registry, then '
           f'node scripts/stamp_tiles_version.mjs {args.state}')
+    print('  they used to be baked into SOURCES in app.js, which meant every '
+          'state\'s layer list reported the first state\'s numbers')
 
 
 if __name__ == '__main__':

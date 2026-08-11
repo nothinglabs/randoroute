@@ -32,6 +32,11 @@
     "Bike Lane": 2,
     "Shared Lane": 1
   },
+  "sourceCounts": {
+    "blts": 81210,
+    "bikeinfra": 37256,
+    "roads": 308347
+  },
   "routeDirectionSuffixes": {
     "i": "increasing mileposts",
     "d": "decreasing mileposts"

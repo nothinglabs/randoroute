@@ -38,6 +38,11 @@
     "Buffered Bike Lane": 3,
     "Bike Lane": 2
   },
+  "sourceCounts": {
+    "blts": 55271,
+    "bikeinfra": 37788,
+    "roads": 338650
+  },
   "routeDirectionSuffixes": {
     "i": "increasing mileposts",
     "d": "decreasing mileposts"

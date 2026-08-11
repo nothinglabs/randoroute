@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-11.673';
+const APP_VERSION = '2026-08-11.674';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -610,7 +610,7 @@ const SOURCES = [
     vector: `pmtiles://${Region.dataUrl('overlays.pmtiles')}?v=2`,
     mapSourceId: 'overlays',
     sourceLayer: 'blts',
-    count: 55271, // baked by build_overlay_tiles.py (tiles carry no global count)
+    count: Region.sourceCounts.blts, // build_overlay_tiles.py -> region.json
     scorer: scoreBLTS,
     zRank: 1,
     minVisibleZoom: BikeBasemap.ROAD_MIN_ZOOM.major,
@@ -635,7 +635,7 @@ const SOURCES = [
     vector: `pmtiles://${Region.dataUrl('overlays.pmtiles')}?v=2`,
     mapSourceId: 'overlays',
     sourceLayer: 'bikeinfra',
-    count: 37788, // baked by build_overlay_tiles.py, after the sharrow-only drop
+    count: Region.sourceCounts.bikeinfra, // after the sharrow-only drop
     scorer: scoreOSM,
     zRank: 2,
     minVisibleZoom: BikeBasemap.ROAD_MIN_ZOOM.major,
@@ -680,7 +680,7 @@ const SOURCES = [
     // iOS does not decode or retain the same vector tiles twice.
     mapSourceId: 'basemap-roads',
     sourceLayer: 'roads',
-    count: 338650, // baked at build time (tiles don't carry a global count)
+    count: Region.sourceCounts.roads, // baked at build time; tiles carry no total
     scorer: scoreRoad,
     zRank: 0,      // above the designated underlay; authoritative layers draw on top
     expr: true,    // scored via map expressions (works identically on tiles)
