@@ -117,15 +117,22 @@ const localFirst = await page.evaluate(async () => {
   input.value = 'Seattle';
   input.dispatchEvent(new Event('input', { bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, ONLINE_PLACE_AUTO_DELAY_MS + 250));
+  const row = document.querySelector('.place-hit:not(.place-internet-search)');
   return {
     calls: [...window.__automaticOnlineCalls],
-    local: document.querySelector('.place-hit:not(.place-internet-search)')?.dataset.name,
+    local: row?.dataset.name,
     manualChoice: Boolean(document.querySelector('.place-internet-search')),
+    actions: [...(row?.querySelectorAll('.place-result-actions button') || [])]
+      .map((button) => button.textContent),
+    fits: row ? row.getBoundingClientRect().right
+      <= document.getElementById('placeResults').getBoundingClientRect().right + 1 : false,
   };
 });
 check('offline matches stay instant and do not trigger an automatic request',
   localFirst.calls.length === 0 && localFirst.local === 'Seattle' && localFirst.manualChoice,
   JSON.stringify(localFirst));
+check('generic results expose Route It and Map actions without overflowing the picker',
+  localFirst.actions.join('|') === 'Route It|Map' && localFirst.fits, JSON.stringify(localFirst));
 
 const automaticFailure = await page.evaluate(async () => {
   searchOnlinePlaces = async () => { throw new Error('offline'); };
@@ -143,6 +150,78 @@ check('an automatic live-search failure leaves the picker usable and retryable',
   automaticFailure.enabled && automaticFailure.retry
     && /internet search is unavailable/i.test(automaticFailure.message),
   JSON.stringify(automaticFailure));
+
+const routeIt = await page.evaluate(async () => {
+  clearRoute();
+  window.__routeItLocationCalls = 0;
+  getFreshDevicePosition = async () => {
+    window.__routeItLocationCalls++;
+    return { coords: { longitude: -122.3501, latitude: 47.6502 } };
+  };
+  placesIndex = [['Seattle', -122.3321, 47.6062, 'city']];
+  placesPromise = Promise.resolve();
+  openPlaceSearch();
+  const input = document.getElementById('placeSearch');
+  input.value = 'Seattle';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  document.querySelector('.place-result-route').click();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  return {
+    start: routing.start,
+    end: routing.end,
+    startName: routing.startName,
+    endName: routing.endName,
+    followsDevice: routing.startFromDevice,
+    pickerHidden: document.getElementById('placePicker').hidden,
+    locationCalls: window.__routeItLocationCalls,
+  };
+});
+check('Route It builds a current-location-to-result trip and closes search',
+  routeIt.start?.map((value) => +value.toFixed(4)).join() === '-122.3501,47.6502'
+    && routeIt.end?.map((value) => +value.toFixed(4)).join() === '-122.3321,47.6062'
+    && routeIt.startName === 'My location' && routeIt.endName === 'Seattle'
+    && routeIt.followsDevice && routeIt.pickerHidden && routeIt.locationCalls === 1,
+  JSON.stringify(routeIt));
+
+const routeItFailureAndMap = await page.evaluate(async () => {
+  const before = JSON.stringify({ start: routing.start, end: routing.end });
+  getFreshDevicePosition = async () => { throw new Error('permission denied'); };
+  openPlaceSearch();
+  const input = document.getElementById('placeSearch');
+  input.value = 'Seattle';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  document.querySelector('.place-result-route').click();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const afterFailure = JSON.stringify({ start: routing.start, end: routing.end });
+  const failure = {
+    tripPreserved: before === afterFailure,
+    pickerVisible: !document.getElementById('placePicker').hidden,
+    routeEnabled: !document.querySelector('.place-result-route').disabled,
+    hint: document.getElementById('placePickerHint').textContent,
+  };
+  document.querySelector('.place-result-map').click();
+  await new Promise((resolve) => setTimeout(resolve, 700));
+  return {
+    failure,
+    map: {
+      tripPreserved: before === JSON.stringify({ start: routing.start, end: routing.end }),
+      pickerHidden: document.getElementById('placePicker').hidden,
+      marker: document.querySelectorAll('.search-result-marker').length,
+      card: document.getElementById('readout').classList.contains('show'),
+    },
+  };
+});
+check('a Route It location failure preserves the trip and leaves both actions available',
+  routeItFailureAndMap.failure.tripPreserved && routeItFailureAndMap.failure.pickerVisible
+    && routeItFailureAndMap.failure.routeEnabled
+    && /couldn.t get your location|try route it again/i.test(routeItFailureAndMap.failure.hint),
+  JSON.stringify(routeItFailureAndMap.failure));
+check('Map previews the result without changing the trip',
+  routeItFailureAndMap.map.tripPreserved && routeItFailureAndMap.map.pickerHidden
+    && routeItFailureAndMap.map.marker === 1 && routeItFailureAndMap.map.card,
+  JSON.stringify(routeItFailureAndMap.map));
 
 check('no page errors', errors.length === 0, errors.join(' | '));
 await browser.close();

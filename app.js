@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-11.679';
+const APP_VERSION = '2026-08-11.680';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -8127,7 +8127,9 @@ async function resolveDefaultStartFromDevice() {
   }
 }
 
-function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false } = {}) {
+function setRoutePoint(kind, lngLat, name = 'Point on map', {
+  fromDevice = false, refreshDeviceStart = true,
+} = {}) {
   exitSharedRoute();
   const previous = routing[kind];
   const firstDestination = kind === 'end' && !Array.isArray(previous);
@@ -8176,7 +8178,7 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', { fromDevice = false
   computeRoute();
   updateArmButtons();
   if (kind === 'end') {
-    refreshDeviceStartForNewDestination();
+    if (refreshDeviceStart) refreshDeviceStartForNewDestination();
     resolveDefaultStartFromDevice();
   }
 }
@@ -9787,8 +9789,10 @@ function closePlacePicker() {
   picker.hidden = true;
   document.body.classList.remove('place-picker-open');
   restoreViewportAfterPlacePicker();
-  document.getElementById('placeResults').replaceChildren();
-  document.getElementById('placeResults').classList.remove('show');
+  const placeResults = document.getElementById('placeResults');
+  placeResults.replaceChildren();
+  placeResults.classList.remove('show');
+  placeResults.removeAttribute('aria-busy');
   setUseLocationBusy(false);
 }
 
@@ -9901,7 +9905,8 @@ function setPlacePickerHint(kind = 'map', message = '') {
   } else if (kind === 'location-error') {
     const lead = document.createElement('strong');
     lead.textContent = 'Couldn’t get your location.';
-    copy.append(lead, document.createTextNode(' Search or tap the map to set your start.'));
+    copy.append(lead, document.createTextNode(message
+      || ' Search or tap the map to set your start.'));
   } else {
     copy.textContent = message;
   }
@@ -9991,6 +9996,39 @@ function choosePlaceSearchResult(lngLat, name, { fromDevice = false } = {}) {
   setRouteStatus(`${label} set to ${normalizeEndpointName(name) || 'Point on map'}`);
 }
 
+async function routeToPlaceSearchResult(lngLat, name) {
+  // “Route It” is deliberately a new, simple trip: where the rider is now to
+  // the selected result. Do not destroy an existing itinerary until location
+  // succeeds, so a denied/slow GPS request cannot cost the rider their plan.
+  const requestId = ++placeSearchRequestId;
+  clearTimeout(placeSearchAutoTimer);
+  placeSearchAutoTimer = 0;
+  const results = document.getElementById('placeResults');
+  results.setAttribute('aria-busy', 'true');
+  results.querySelectorAll('.place-result-route').forEach((button) => { button.disabled = true; });
+  setPlacePickerHint('status', 'Finding your current location to build the route…');
+  setRouteStatus('Finding current location…');
+  try {
+    const pos = await getFreshDevicePosition({ timeout: 30000, retryUntilUsable: true });
+    if (requestId !== placeSearchRequestId) return;
+    const start = { lng: pos.coords.longitude, lat: pos.coords.latitude };
+    clearRoute();
+    clearSearchResultMarker();
+    setRoutePoint('start', start, 'My location', { fromDevice: true });
+    // The fix above is brand new. Suppress the ordinary “new destination”
+    // refresh so this one action does not immediately ask Core Location for
+    // the same point a second time.
+    setRoutePoint('end', lngLat, name, { refreshDeviceStart: false });
+    setRouteStatus(`Routing to ${normalizeEndpointName(name) || 'selected place'}`);
+  } catch {
+    if (requestId !== placeSearchRequestId) return;
+    results.removeAttribute('aria-busy');
+    results.querySelectorAll('.place-result-route').forEach((button) => { button.disabled = false; });
+    setPlacePickerHint('location-error', ' Choose Map to inspect it, or try Route It again.');
+    setRouteStatus('');
+  }
+}
+
 function buildPlacePicker() {
   const input = document.getElementById('placeSearch');
   const results = document.getElementById('placeResults');
@@ -10021,19 +10059,46 @@ function buildPlacePicker() {
         results.append(heading);
       }
       for (const item of matches) {
-        const hit = document.createElement('button');
-        hit.className = 'place-hit';
+        const hit = document.createElement('div');
+        hit.className = 'place-hit place-result-row';
         hit.dataset.lon = String(item.lon);
         hit.dataset.lat = String(item.lat);
         hit.dataset.name = item.name;
-        hit.append(document.createTextNode(item.name + ' '));
+        const summary = document.createElement('button');
+        summary.type = 'button';
+        summary.className = 'place-result-summary';
+        summary.setAttribute('aria-label', placeSearchTarget
+          ? `Choose ${item.name}` : `Show ${item.name} on map`);
+        const resultName = document.createElement('span');
+        resultName.className = 'place-result-name';
+        resultName.textContent = item.name;
         const detail = document.createElement('small');
         detail.textContent = item.source === 'online'
           ? (Number.isFinite(item.distanceM)
             ? `${item.type ? `${item.type} · ` : ''}${fmtMi(item.distanceM)} mi from map center · online`
             : 'online · OpenStreetMap')
           : (TYPE_LABEL[item.type] || item.type || 'place');
-        hit.append(detail);
+        summary.append(resultName, detail);
+        hit.append(summary);
+        // Targeted Start/Destination/Stop searches keep their direct one-tap
+        // assignment. Generic Find results add the two explicit choices the
+        // rider needs: make a fresh trip, or simply inspect the point.
+        if (!placeSearchTarget) {
+          const actions = document.createElement('div');
+          actions.className = 'place-result-actions';
+          const route = document.createElement('button');
+          route.type = 'button';
+          route.className = 'place-result-route';
+          route.textContent = 'Route It';
+          route.setAttribute('aria-label', `Route from current location to ${item.name}`);
+          const show = document.createElement('button');
+          show.type = 'button';
+          show.className = 'place-result-map';
+          show.textContent = 'Map';
+          show.setAttribute('aria-label', `Show ${item.name} on map`);
+          actions.append(route, show);
+          hit.append(actions);
+        }
         results.append(hit);
       }
     };
@@ -10166,6 +10231,10 @@ function buildPlacePicker() {
     }
     const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
     const name = hit.dataset.name;
+    if (e.target.closest('.place-result-route')) {
+      routeToPlaceSearchResult(lngLat, name);
+      return;
+    }
     input.value = '';
     render([]);
     choosePlaceSearchResult(lngLat, name);
