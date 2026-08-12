@@ -158,10 +158,14 @@ await page.waitForFunction(
   () => !routing.pendingRoute && !routing.routeRequestActive, null, { timeout: 30000 });
 const navigationTab = await page.evaluate(() => {
   const routeTipsRect = document.getElementById('routeTipsBtn').getBoundingClientRect();
+  const startBefore = document.getElementById('navStartButton').getBoundingClientRect();
+  const detailsBefore = document.getElementById('routeDetailsBtn').getBoundingClientRect();
   document.getElementById('navStartButton').click();
   const active = document.querySelector('.tab.active');
   const navTips = document.getElementById('navTipsBtn');
   const navTipsRect = navTips.getBoundingClientRect();
+  const startAfter = document.getElementById('navStartButton').getBoundingClientRect();
+  const detailsAfter = document.getElementById('navCardDetailsBtn').getBoundingClientRect();
   const result = {
     navigating: turnNav.active,
     activeTab: active?.id,
@@ -170,6 +174,8 @@ const navigationTab = await page.evaluate(() => {
     navTipsVisible: !navTips.hidden && getComputedStyle(navTips).display !== 'none',
     navTipsSize: { width: Math.round(navTipsRect.width), height: Math.round(navTipsRect.height) },
     helpRightAligned: Math.abs(navTipsRect.right - routeTipsRect.right) <= 1,
+    startShift: { x: startAfter.left - startBefore.left, y: startAfter.top - startBefore.top },
+    detailsShift: { x: detailsAfter.left - detailsBefore.left, y: detailsAfter.top - detailsBefore.top },
   };
   stopTurnNavigation(false);
   return result;
@@ -179,6 +185,10 @@ check('starting navigation keeps the permanent sheet on Route',
     && navigationTab.oldNavigationRemoved && navigationTab.panelOpen
     && navigationTab.navTipsVisible && navigationTab.navTipsSize.width >= 34
     && navigationTab.navTipsSize.height >= 34 && navigationTab.helpRightAligned,
+  JSON.stringify(navigationTab));
+check('Navigate and Route Details stay put when navigation starts',
+  Math.abs(navigationTab.startShift.x) <= 1 && Math.abs(navigationTab.startShift.y) <= 1
+    && Math.abs(navigationTab.detailsShift.x) <= 1 && Math.abs(navigationTab.detailsShift.y) <= 1,
   JSON.stringify(navigationTab));
 
 // The same control in two places. It read "Details" at one size on the route

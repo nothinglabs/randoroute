@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-11.680';
+const APP_VERSION = '2026-08-11.681';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3395,6 +3395,49 @@ function routeSummaryStats(m) {
   };
 }
 
+// Give each lettered choice one plain-language reason to exist, using the
+// recommended option as the reference point. The worker's `aggression` value
+// is the same normalized stress measure used to compare route candidates; the
+// fallback keeps old/shared routes useful when that newer field is absent.
+function routeStressIndex(route) {
+  const workerValue = route?.aggression;
+  const workerIndex = Number(workerValue);
+  if (workerValue != null && Number.isFinite(workerIndex)) return workerIndex;
+  const stats = routeSummaryStats(route);
+  const ridingM = Math.max(1,
+    ROUTE_CATEGORY_KEYS.reduce((sum, key) => sum + stats.categoryM[key], 0));
+  return (stats.categoryM.pass * 0.18 + stats.categoryM.caution * 0.75
+    + stats.categoryM.fail * 3.5 - stats.categoryM.trail * 0.12
+    - stats.categoryM.bike * 0.08) / ridingM;
+}
+
+function routeRelationship(route) {
+  const options = (routing.options || []).filter((option) => option?.ok);
+  const suggested = options.find((option) => option.optimization?.recommended);
+  if (!suggested || route === suggested || route?.optimization?.recommended) {
+    return { label: 'Suggested', description: 'Suggested route' };
+  }
+
+  // Ignore block-end and rounding noise. On a long trip, half a percent is
+  // still a useful human-scale distinction; on a short trip, require 50 m.
+  const distanceThresholdM = Math.max(50, Number(suggested.distM || 0) * 0.005);
+  const distanceDeltaM = Number(route?.distM || 0) - Number(suggested.distM || 0);
+  if (distanceDeltaM < -distanceThresholdM) {
+    return { label: 'Shorter', description: 'Shorter than the Suggested route' };
+  }
+
+  // Roughly two hundredths of the normalized stress scale is enough to
+  // describe a route as meaningfully lower-stress without promoting tiny
+  // data noise.
+  if (routeStressIndex(route) < routeStressIndex(suggested) - 0.02) {
+    return { label: 'Lower Stress', description: 'Lower stress than the Suggested route' };
+  }
+  if (distanceDeltaM > distanceThresholdM) {
+    return { label: 'Longer', description: 'Longer than the Suggested route' };
+  }
+  return { label: 'Alternative', description: 'An alternative to the Suggested route' };
+}
+
 function clearStoredRouteDetails() {
   try { localStorage.removeItem(ROUTE_DETAILS_KEY); } catch (e) { /* nonfatal */ }
 }
@@ -6612,10 +6655,12 @@ function renderRouteCard(m) {
     : `<span class="rc-secondary-item"><span class="rc-unpaved-swatch" aria-hidden="true"></span><b>${unpavedMiles}</b><span class="rc-secondary-label">Unpaved</span></span>`;
   const categoryRows = ROUTE_CATEGORY_LABELS
     .map(([key, label]) => `<span class="rc-category-item rc-category-${key}"><span class="rc-category-swatch ${key}" aria-hidden="true"></span><b>${categoryPct[key]}%</b><span>${label}</span></span>`).join('');
+  const relationship = routeRelationship(m);
   card.innerHTML = `
     <div id="routeControlsSlot"></div>
     <div class="rc-route-summary">
       <div class="rc-overview">
+        <span class="rc-route-context" title="${relationship.description}" aria-label="${relationship.description}">${relationship.label}</span>
         <div class="rc-main"><span class="rc-distance">${fmtMi(m.distM)} mi</span><span class="rc-duration">Est. ${fmtDur(m.timeS)}</span></div>
         <div id="routeDetailsSlot"></div>
       </div>

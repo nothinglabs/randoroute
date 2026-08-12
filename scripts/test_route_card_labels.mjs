@@ -44,6 +44,33 @@ const show = () => page.evaluate(() => {
   });
 });
 
+const relationshipLabels = await page.evaluate(() => {
+  const make = (distM, aggression, recommended = false) => ({
+    ok: true, distM, timeS: 3600, aggression, coords: [], segs: [],
+    optimization: { recommended },
+  });
+  const suggested = make(20000, 0.40, true);
+  const shorter = make(18000, 0.42);
+  const calmer = make(23000, 0.28);
+  const longer = make(23000, 0.41);
+  routing.options = [suggested, shorter, calmer, longer];
+  return [suggested, shorter, calmer, longer].map((route) => {
+    renderRouteCard(route);
+    const label = document.querySelector('.rc-route-context');
+    const distance = document.querySelector('.rc-distance');
+    const labelRect = label.getBoundingClientRect();
+    const distanceRect = distance.getBoundingClientRect();
+    return { text: label.textContent, description: label.getAttribute('aria-label'),
+      aboveMileage: labelRect.bottom <= distanceRect.top + 1 };
+  });
+});
+check('route choices explain their relationship to Suggested',
+  relationshipLabels.map((item) => item.text).join('|')
+    === 'Suggested|Shorter|Lower Stress|Longer', JSON.stringify(relationshipLabels));
+check('the route relationship sits above mileage and has an accessible comparison',
+  relationshipLabels.every((item) => item.aboveMileage && /Suggested route/i.test(item.description)),
+  JSON.stringify(relationshipLabels));
+
 // 390 is an iPhone 14/15; 375 an SE/13 mini; 360 the narrowest Android in wide
 // use. All three have to show the label whole.
 for (const width of [430, 390, 375, 360]) {

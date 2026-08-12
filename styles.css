@@ -270,14 +270,15 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   26%, 50% { color: #006fa9; background: #eef9fe; box-shadow: 0 0 0 2px rgba(44,157,213,.15); }
   100% { color: #304b5a; background: transparent; box-shadow: none; }
 }
-#routeCard .rc-main { display: grid; justify-items: center; gap: 1px; min-width: 0; color: #111; text-align: center; white-space: nowrap; }
-#routeCard .rc-distance { font: 700 18.5px/1.12 system-ui; white-space: nowrap; }
+#routeCard .rc-route-context { display: block; max-width: 100%; overflow: hidden; padding: 2px 7px; border-radius: 999px; background: #edf4f7; color: #486270; font: 800 8.5px/1.1 system-ui; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+#routeCard .rc-main { display: grid; justify-items: center; gap: 0; min-width: 0; color: #111; text-align: center; white-space: nowrap; }
+#routeCard .rc-distance { font: 700 17.5px/1.08 system-ui; white-space: nowrap; }
 #routeCard .rc-duration { color: #555; font: 600 11.4px/1.12 system-ui; letter-spacing: -.015em; white-space: nowrap; }
 /* The left column carries only the headline numbers and one button, so it is
    sized to them and no wider. Everything it gives up goes to the elevation
    chart, which is the one part of this row that gets better with width. */
 #routeCard .rc-route-summary { display: grid; grid-template-columns: minmax(72px, max-content) minmax(96px, 1fr) minmax(0, 1fr); grid-template-rows: 72px 25px; align-items: stretch; gap: 2px 4px; min-height: 0; margin-top: 6px; }
-#routeCard .rc-overview { display: flex; grid-row: 1 / 3; min-width: 0; overflow: hidden; flex-direction: column; align-items: center; justify-content: center; gap: 3px; transform: translateY(-3px); }
+#routeCard .rc-overview { display: flex; grid-row: 1 / 3; min-width: 0; overflow: hidden; flex-direction: column; align-items: center; justify-content: center; gap: 2px; transform: translateY(-3px); }
 #routeCard .rc-elevation-column { display: contents; }
 /* The chart and five map categories split the available route-detail width
    nearly evenly. The short "Trails" label lets the segment list move right
@@ -364,7 +365,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #tab-route.route-incomplete > :not(.route-incomplete-bar) { display: none !important; }
 body.navigation-active #routeCard, body.navigation-active #routeControls { display: none; }
 body:not(.navigation-active) #navCard { display: none; }
-.nav-card { display: flex; flex-direction: column; gap: 6px; padding: 2px 1px 5px; }
+.nav-card { display: flex; flex-direction: column; gap: 4.5px; padding: 2px 1px 5px; }
 .nav-card[hidden] { display: none; }
 .nav-card-head-row { display: flex; align-items: stretch; gap: 8px; min-height: 34px; }
 .nav-card-head { color: #40515c; font: 780 13px/1.2 system-ui; }
@@ -385,7 +386,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .nav-card-info { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; }
 .nav-dest { color: #223c4b; font: 750 11.5px/1.25 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-elevation-wrap { border: 1px solid #e2e9ee; border-radius: 9px; background: #fbfcfd; padding: 2px; }
-.nav-elevation { display: block; width: 100%; height: 62px; }
+.nav-elevation { display: block; width: 100%; height: 56px; }
 .nav-seg-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .nav-seg-label { color: #7c8b95; font: 800 8px/1.2 system-ui; letter-spacing: .05em; text-transform: uppercase; }
 .nav-seg-name { color: #223c4b; font: 800 12px/1.2 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -397,7 +398,7 @@ body:not(.navigation-active) #navCard { display: none; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
 @media (max-width: 375px) {
   #routeCard .rc-route-summary { grid-template-columns: minmax(66px, max-content) minmax(92px, 1fr) minmax(0, 1fr); column-gap: 4px; }
-  #routeCard .rc-distance { font-size: 18px; }
+  #routeCard .rc-distance { font-size: 17px; }
   #routeCard .rc-duration { font-size: 10.6px; }
   #routeCard .rc-category-item { grid-template-columns: 11px minmax(20px, max-content) minmax(0, 1fr); gap: 1px; font-size: 9.1px; }
   #routeCard .rc-category-item b { font-size: 10.6px; }
@@ -1281,6 +1282,13 @@ body.navigation-active #routeBar { display: none; }
   #routeBar .route-utility-actions > button { width: 46px; }
   #mobileNavDock { display: block; position: absolute; z-index: 15; left: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); transition: left .2s ease, bottom .2s ease; }
   body.panel-open #mobileNavDock { left: 10px; bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
+  /* Planning occupies 158px once the chooser and summary are present. The
+     compact navigation chart above is sized to fit that same footprint, so
+     the sheet top -- and the Navigate/Stop control anchored to it -- does not
+     jump when navigation starts. The optical offset puts Route Details on the
+     same baseline as its planning counterpart. */
+  body.navigation-active #tab-route { min-height: 158px; }
+  body.navigation-active #navCard .nav-card-details { transform: translate(-1px, -4px); }
   /* The scale bar (and attribution) ride above the open bottom sheet exactly
    * like the Navigate dock. They were mounted at the map's true bottom edge,
    * which the sheet covers whenever a route is on screen -- so the scale

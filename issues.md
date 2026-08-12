@@ -72,3 +72,7 @@ What to check against your own predictions:
 
 Three lessons did not travel — C2, D7, and B4's population — and those are the
 part of this worth reading first.
+
+### 4. Bike routes and safety
+Figure out the best way to handle defined bike routes in relation to safety,
+including whether to import county-level bike routes.
