@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-11.681';
+const APP_VERSION = '2026-08-11.682';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4972,6 +4972,40 @@ const NAV_ELEV_AHEAD = 'rgba(44,123,182,0.18)';
 const NAV_ELEV_LINE = '#2c7bb6';
 const NAV_ELEV_POSITION = '#00795c';
 let navCardStatsFor = null;
+let navEtaShowsTimeLeft = false;
+let navEtaFlipTimer = null;
+const NAV_ETA_FLIP_MS = 6000;
+
+function navigationEstimateText(remainingS, showTimeLeft = navEtaShowsTimeLeft,
+    nowMs = Date.now()) {
+  if (!(remainingS >= 30)) return 'Almost there';
+  if (showTimeLeft) {
+    const minutes = Math.max(1, Math.round(remainingS / 60));
+    if (minutes < 60) return `~${minutes} min left`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return `~${hours} hr${rest ? ` ${rest} min` : ''} left`;
+  }
+  const eta = new Date(nowMs + remainingS * 1000);
+  return `ETA ${eta.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+function toggleNavigationEstimate() {
+  navEtaShowsTimeLeft = !navEtaShowsTimeLeft;
+  updateNavCard();
+}
+
+function syncNavigationEstimateTimer(shouldRun) {
+  if (!shouldRun) {
+    if (navEtaFlipTimer != null) clearInterval(navEtaFlipTimer);
+    navEtaFlipTimer = null;
+    navEtaShowsTimeLeft = false;
+    return;
+  }
+  if (navEtaFlipTimer == null) {
+    navEtaFlipTimer = setInterval(toggleNavigationEstimate, NAV_ETA_FLIP_MS);
+  }
+}
 
 function drawNavElevation(canvas, profile, distM, progressM) {
   if (!canvas || !Array.isArray(profile) || profile.length < 2 || !(distM > 0)) return;
@@ -5120,7 +5154,12 @@ function navSegInfoHTML() {
 function updateNavCard() {
   const card = document.getElementById('navCard');
   if (!card) return;
-  if (!turnNav.active) { card.hidden = true; navCardStatsFor = null; return; }
+  if (!turnNav.active) {
+    card.hidden = true;
+    navCardStatsFor = null;
+    syncNavigationEstimateTimer(false);
+    return;
+  }
   card.hidden = false;
   const m = routing.last;
   const progressRoute = turnNav.followingConnector ? turnNav.plannedRoute : turnNav.route;
@@ -5141,13 +5180,11 @@ function updateNavCard() {
     ? remainingNavigationTimeS() + remainingNavigationTimeS(turnNav.plannedRouteM, turnNav.plannedRoute)
     : remainingNavigationTimeS();
   const etaEl = document.getElementById('navProgressEta');
+  syncNavigationEstimateTimer(turnNav.locationReady && !turnNav.arrived && remainingS >= 30);
   if (etaEl) {
     if (!turnNav.locationReady) etaEl.textContent = '';
     else if (turnNav.arrived) etaEl.textContent = 'Arrived';
-    else if (remainingS >= 30) {
-      const eta = new Date(Date.now() + remainingS * 1000);
-      etaEl.textContent = `ETA ${eta.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-    } else etaEl.textContent = 'Almost there';
+    else etaEl.textContent = navigationEstimateText(remainingS);
   }
   // Destination stays fixed for the route; refresh it only when the route changes.
   const destEl = document.getElementById('navDest');

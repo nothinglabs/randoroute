@@ -270,7 +270,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   26%, 50% { color: #006fa9; background: #eef9fe; box-shadow: 0 0 0 2px rgba(44,157,213,.15); }
   100% { color: #304b5a; background: transparent; box-shadow: none; }
 }
-#routeCard .rc-route-context { display: block; max-width: 100%; overflow: hidden; padding: 2px 7px; border-radius: 999px; background: #edf4f7; color: #486270; font: 800 8.5px/1.1 system-ui; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+#routeCard .rc-route-context { display: block; max-width: 100%; overflow: hidden; padding: 2px 7px; border-radius: 999px; background: #edf4f7; color: #486270; font: 800 10px/1.1 system-ui; letter-spacing: .02em; text-overflow: ellipsis; white-space: nowrap; }
 #routeCard .rc-main { display: grid; justify-items: center; gap: 0; min-width: 0; color: #111; text-align: center; white-space: nowrap; }
 #routeCard .rc-distance { font: 700 17.5px/1.08 system-ui; white-space: nowrap; }
 #routeCard .rc-duration { color: #555; font: 600 11.4px/1.12 system-ui; letter-spacing: -.015em; white-space: nowrap; }
@@ -377,9 +377,9 @@ body:not(.navigation-active) #navCard { display: none; }
 .nav-progress { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .nav-progress-track { position: relative; height: 8px; border-radius: 999px; background: #e5edf2; overflow: hidden; }
 #navProgressFill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 999px; background: linear-gradient(90deg, #00795c, #12a37c); transition: width .4s ease; }
-.nav-progress-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 1px 8px; }
-.nav-progress-meta span { color: #6a7a84; font: 800 11.5px/1.2 system-ui; }
-.nav-progress-meta strong { color: #223c4b; font: 800 12px/1.25 system-ui; }
+.nav-progress-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 1px 8px; padding-right: 6px; }
+.nav-progress-meta span { min-width: 0; overflow: hidden; color: #6a7a84; font: 800 11.5px/1.2 system-ui; text-overflow: ellipsis; white-space: nowrap; }
+.nav-progress-meta strong { flex: none; color: #223c4b; font: 800 12px/1.25 system-ui; white-space: nowrap; }
 /* Elevation chart at half width; destination + current-segment facts fill the
    other half so neither column carries dead space. */
 .nav-card-body { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; align-items: stretch; transform: translateY(-2px); }
@@ -1287,7 +1287,9 @@ body.navigation-active #routeBar { display: none; }
      the sheet top -- and the Navigate/Stop control anchored to it -- does not
      jump when navigation starts. The optical offset puts Route Details on the
      same baseline as its planning counterpart. */
-  body.navigation-active #tab-route { min-height: 158px; }
+  body.navigation-active #tab-route {
+    height: 158px; min-height: 158px; max-height: 158px; overflow: hidden;
+  }
   body.navigation-active #navCard .nav-card-details { transform: translate(-1px, -4px); }
   /* The scale bar (and attribution) ride above the open bottom sheet exactly
    * like the Navigate dock. They were mounted at the map's true bottom edge,

@@ -166,6 +166,16 @@ const navigationTab = await page.evaluate(() => {
   const navTipsRect = navTips.getBoundingClientRect();
   const startAfter = document.getElementById('navStartButton').getBoundingClientRect();
   const detailsAfter = document.getElementById('navCardDetailsBtn').getBoundingClientRect();
+  // Render the compact card's widest progress string. The first frame after
+  // tapping Navigate says "Waiting for GPS", which cannot catch an ETA that
+  // clips once location arrives.
+  turnNav.locationReady = true;
+  const etaClock = navigationEstimateText(3780, false, 0);
+  const etaRemaining = navigationEstimateText(3780, true, 0);
+  const etaElement = document.getElementById('navProgressEta');
+  etaElement.textContent = etaRemaining;
+  const etaRect = etaElement.getBoundingClientRect();
+  const progressRect = document.querySelector('.nav-progress').getBoundingClientRect();
   const result = {
     navigating: turnNav.active,
     activeTab: active?.id,
@@ -176,6 +186,8 @@ const navigationTab = await page.evaluate(() => {
     helpRightAligned: Math.abs(navTipsRect.right - routeTipsRect.right) <= 1,
     startShift: { x: startAfter.left - startBefore.left, y: startAfter.top - startBefore.top },
     detailsShift: { x: detailsAfter.left - detailsBefore.left, y: detailsAfter.top - detailsBefore.top },
+    estimates: { etaClock, etaRemaining },
+    etaInsideProgress: etaRect.right <= progressRect.right - 4,
   };
   stopTurnNavigation(false);
   return result;
@@ -190,6 +202,12 @@ check('Navigate and Route Details stay put when navigation starts',
   Math.abs(navigationTab.startShift.x) <= 1 && Math.abs(navigationTab.startShift.y) <= 1
     && Math.abs(navigationTab.detailsShift.x) <= 1 && Math.abs(navigationTab.detailsShift.y) <= 1,
   JSON.stringify(navigationTab));
+check('the navigation estimate alternates between arrival time and time left',
+  /^ETA /.test(navigationTab.estimates.etaClock)
+    && /^~1 hr 3 min left$/.test(navigationTab.estimates.etaRemaining),
+  JSON.stringify(navigationTab));
+check('the navigation estimate stays inset from the card edge',
+  navigationTab.etaInsideProgress, JSON.stringify(navigationTab));
 
 // The same control in two places. It read "Details" at one size on the route
 // card and another in the navigation footer, which made them look like two
