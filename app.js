@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-11.682';
+const APP_VERSION = '2026-08-12.683';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7806,11 +7806,12 @@ function drawRoute(coords, ferrySegs, segs) {
     paint: {
       'line-color': DESIGNATED_COLOR,
       'line-opacity': 0.85,
-      // Narrower than it was. The visible green is whatever exceeds the 12.5 px
-      // casing, so 20 px leaves a ~3.75 px edge each side: enough to read, not
-      // enough to compete with the verdict colour it is context for.
+      // The active route's 12.5 px white casing deliberately covers the middle
+      // of this band. Leave a broad green shoulder on both sides so a rider can
+      // still see, at a glance, which portions follow a designated cycle route;
+      // the safety verdict remains the narrower line in the centre.
       'line-width': ['interpolate', ['linear'], ['zoom'],
-        6, 7, 10, 12, 14, 20],
+        6, 18, 10, 24, 14, 32],
     },
   });
   forgetStyleValues(); map.addLayer({
