@@ -48,6 +48,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         let distanceM: Double
         let text: String
         var approachHandled = false
+        var aheadHandled = false
         var immediateHandled = false
     }
 
@@ -93,7 +94,6 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     private var speakHeadings = true
     private var statusUpdateIntervalS: TimeInterval = 0
     private var statusRoute = true
-    private var reassure = true
     private var statusSpeed = true
     private var statusMiles = true
     private var statusEta = true
@@ -450,7 +450,6 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         statusSpeed = call.getBool("statusSpeed") ?? statusSpeed
         statusMiles = call.getBool("statusMiles") ?? statusMiles
         statusEta = call.getBool("statusEta") ?? statusEta
-        reassure = call.getBool("reassure") ?? reassure
     }
 
     private func clearRouteGuidance() {
@@ -502,11 +501,21 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         // prompts remain owned by the web UI.
         if background,
            !instructions.isEmpty,
-           remainingToTurnM <= 90,
+           remainingToTurnM <= 30,
            !instructions[0].immediateHandled {
             instructions[0].immediateHandled = true
+            instructions[0].aheadHandled = true
             instructions[0].approachHandled = true
             speakText("\(instructions[0].text).")
+            return
+        }
+        if background,
+           !instructions.isEmpty,
+           remainingToTurnM <= 90,
+           !instructions[0].aheadHandled {
+            instructions[0].aheadHandled = true
+            instructions[0].approachHandled = true
+            speakText(aheadPrompt(instructions[0].text))
             return
         }
         if background,
@@ -514,17 +523,9 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
            remainingToTurnM <= 350,
            !instructions[0].approachHandled {
             instructions[0].approachHandled = true
-            speakText(
-                "In \(spokenDistance(remainingToTurnM)), "
-                    + instructions[0].text.lowercased() + "."
-            )
+            speakText(distancePrompt(instructions[0].text, distanceM: remainingToTurnM))
             return
         }
-        if maybeSpeakRouteReassurance(
-            nearestSegment: nearest.segment,
-            nextInstruction: instructions.first,
-            remainingToTurnM: remainingToTurnM
-        ) { return }
         maybeSpeakPeriodicStatus(
             location: location,
             priorLocation: previousLocation,
@@ -613,11 +614,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                 // finishTurnNavigation() on that side is idempotent.
                 notifyListeners("arrived", data: [:])
                 endTracking()
-            } else if background, !maybeSpeakRouteReassurance(
-                nearestSegment: nearest.segment,
-                nextInstruction: nil,
-                remainingToTurnM: .infinity
-            ) {
+            } else if background {
                 maybeSpeakPeriodicStatus(
                     location: location,
                     priorLocation: priorLocation,
@@ -630,23 +627,20 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         }
 
         let remainingM = instructions[0].distanceM - nearest.routeM
-        if remainingM <= 90, !instructions[0].immediateHandled {
+        if background, remainingM <= 30, !instructions[0].immediateHandled {
             instructions[0].immediateHandled = true
+            instructions[0].aheadHandled = true
             instructions[0].approachHandled = true
-            if background {
-                speakText("\(instructions[0].text).")
-            }
-        } else if remainingM <= 350, !instructions[0].approachHandled {
+            speakText("\(instructions[0].text).")
+        } else if background, remainingM <= 90, !instructions[0].aheadHandled {
+            instructions[0].aheadHandled = true
             instructions[0].approachHandled = true
-            if background {
-                speakText("In \(spokenDistance(remainingM)), \(instructions[0].text.lowercased()).")
-            }
+            speakText(aheadPrompt(instructions[0].text))
+        } else if background, remainingM <= 350, !instructions[0].approachHandled {
+            instructions[0].approachHandled = true
+            speakText(distancePrompt(instructions[0].text, distanceM: remainingM))
         }
-        if background, !maybeSpeakRouteReassurance(
-            nearestSegment: nearest.segment,
-            nextInstruction: instructions[0],
-            remainingToTurnM: remainingM
-        ) {
+        if background {
             maybeSpeakPeriodicStatus(
                 location: location,
                 priorLocation: priorLocation,
@@ -655,38 +649,6 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                 remainingToTurnM: remainingM
             )
         }
-    }
-
-    // Reported from the road: a mile of arterial with the next maneuver 0.6
-    // miles off and nothing said the whole way. Silence means "carry on" and it
-    // means "the app has stopped working", and a rider cannot tell which
-    // without looking down. On a long stretch, say the reassuring thing: which
-    // road they are on, and how far the next turn is.
-    //
-    // Mirrors maybeSpeakRouteReassurance in app.js. It has to live here as well
-    // because this guide owns the cadence on iOS in both foreground and
-    // background -- the web path returns early when native tracking is on, so a
-    // web-only version would never be heard on a phone.
-    private static let reassureSilenceS: TimeInterval = 105
-    private static let reassureMinTurnM: Double = 500
-    private func maybeSpeakRouteReassurance(
-        nearestSegment: Int,
-        nextInstruction: RouteInstruction?,
-        remainingToTurnM: Double
-    ) -> Bool {
-        guard reassure,
-              !arrived,
-              Date().timeIntervalSince(lastVoiceAt) >= Self.reassureSilenceS else { return false }
-        if nextInstruction != nil, remainingToTurnM < Self.reassureMinTurnM { return false }
-        let road = routeRoadName(at: nearestSegment)
-        // Without a name there is nothing reassuring to say: "you are on an
-        // unnamed road" tells the rider less than the silence did.
-        guard !road.isEmpty else { return false }
-        let ahead = nextInstruction != nil
-            ? " Next turn in \(spokenDistance(remainingToTurnM))."
-            : " Continue to your destination."
-        speakText("Still on \(road).\(ahead)")
-        return true
     }
 
     private func maybeSpeakPeriodicStatus(
@@ -698,6 +660,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     ) {
         guard statusUpdateIntervalS > 0,
               !arrived,
+              !speechSynthesizer.isSpeaking,
               Date().timeIntervalSince(lastVoiceAt) >= statusUpdateIntervalS else { return }
 
         var parts: [String] = []
@@ -705,7 +668,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
             if let nextInstruction {
                 parts.append(
                     "In \(spokenDistance(remainingToTurnM)), "
-                        + nextInstruction.text.lowercased()
+                        + midSentence(nextInstruction.text)
                 )
             } else {
                 parts.append("Continue to your destination")
@@ -728,6 +691,19 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         if !parts.isEmpty {
             speakText(parts.joined(separator: ". ") + ".")
         }
+    }
+
+    private func midSentence(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        return first.lowercased() + String(text.dropFirst())
+    }
+
+    private func aheadPrompt(_ instruction: String) -> String {
+        "Ahead, \(midSentence(instruction))."
+    }
+
+    private func distancePrompt(_ instruction: String, distanceM: Double) -> String {
+        "In \(spokenDistance(distanceM)), \(midSentence(instruction))."
     }
 
     private func currentSpeedMph(
@@ -995,12 +971,10 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         language: String = "en-US",
         webSpeechID: Int? = nil
     ) {
-        // Stop first. didCancel may release the old audio session
-        // synchronously; activating before this call could therefore leave the
-        // replacement utterance starting on a session its predecessor closed.
-        if speechSynthesizer.isSpeaking {
-            speechSynthesizer.stopSpeaking(at: .immediate)
-        }
+        // AVSpeechSynthesizer queues utterances in order. Do not stop the active
+        // sentence to start a newer one: that was the source of clipped prompts
+        // and, on devices where cancellation settles asynchronously, audible
+        // overlap between the old and replacement sentences.
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(

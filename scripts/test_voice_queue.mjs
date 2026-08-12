@@ -104,47 +104,38 @@ check('a status update already speaking is not restarted or dropped',
 check('and the safety change follows it', ranked[1]?.text.startsWith('Caution'),
   JSON.stringify(ranked));
 
-/* ---------------------------------- a maneuver may cut across something lesser */
+/* ---------------------------- a maneuver follows, but never clips, active speech */
 await install();
 await page.evaluate(async () => {
   speakNavigation('Caution. Heavy traffic for next 3.0 miles.', 'safety');
   await new Promise((resolve) => setTimeout(resolve, 10));
   speakNavigation('Turn right onto North 110th Street.', 'turn');
 });
-await page.waitForFunction(() => window.__said.length === 2, { timeout: 10000 }).catch(() => {});
+await page.waitForFunction(() => window.__said.length === 2 && window.__said[1].ended != null,
+  { timeout: 10000 }).catch(() => {});
 const urgent = await page.evaluate(() => window.__said);
-check('a maneuver does not wait behind a safety note',
-  urgent[0]?.text.startsWith('Caution') && urgent[0]?.cancelled
-    && urgent[1]?.text.startsWith('Turn right'),
+check('a maneuver waits for an active safety sentence to finish cleanly',
+  urgent[0]?.text.startsWith('Caution') && !urgent[0]?.cancelled
+    && urgent[1]?.text.startsWith('Turn right') && urgent[1].at >= urgent[0].ended,
   JSON.stringify(urgent));
 
-/* ------------------- an interrupt leaves a gap, because cancel() is not instant */
-// iOS Safari's cancel() returns before the engine actually stops; speaking the
-// replacement in the same tick is how a maneuver lands ON TOP of the prompt it
-// just cut off. The queue waits a beat, so the replacement starts strictly
-// after the cancelled prompt ended in wall-clock time.
+/* --------------------------- a turn discards summaries that are still waiting */
 await install();
-const gap = await page.evaluate(async () => {
-  const startedAt = [];
-  const original = window.speechSynthesis.speak.bind(window.speechSynthesis);
-  window.speechSynthesis.speak = (utterance) => {
-    startedAt.push({ text: utterance.text, at: performance.now() });
-    original(utterance);
-  };
+const superseded = await page.evaluate(async () => {
+  speakNavigation('First sentence already playing.', 'turn');
+  speakNavigation('Speed 12 miles per hour.', 'status');
   speakNavigation('Caution. Heavy traffic for next 3.0 miles.', 'safety');
   await new Promise((resolve) => setTimeout(resolve, 10));
-  const cutAt = performance.now();
   speakNavigation('Turn right onto North 110th Street.', 'turn');
-  await new Promise((resolve) => setTimeout(resolve, 600));
-  return { startedAt, cutAt, said: window.__said };
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  return window.__said;
 });
-const replacement = gap.startedAt.find((entry) => entry.text.startsWith('Turn right'));
-check('the interrupting maneuver is still said',
-  !!replacement && gap.said.some((entry) => entry.text.startsWith('Turn right')),
-  JSON.stringify(gap.startedAt));
-check('but not in the same instant the engine was told to stop',
-  replacement && replacement.at - gap.cutAt >= 250,
-  JSON.stringify({ delta: replacement && Math.round(replacement.at - gap.cutAt) }));
+check('a new maneuver drops queued summaries instead of delaying behind them',
+  superseded.length === 2
+    && superseded[0].text.startsWith('First sentence')
+    && superseded[1].text.startsWith('Turn right')
+    && superseded.every((entry) => !entry.cancelled),
+  JSON.stringify(superseded));
 
 /* --------------------------- an engine that stops reporting must not talk over */
 // The web engine's onend can simply never arrive (mobile Safari drops it when

@@ -4,11 +4,10 @@
 // Region.dataRoot, so the Maps screen writes a state id, and a reload does the
 // rest.
 //
-// The screen shows all fifty so the eventual scope is visible. The ones with a
-// maps/<state>/ folder are selectable and say what they can actually do; the
-// rest refuse the tap rather than accepting it and doing nothing. It has to be
-// radios: a checkbox promises that two can be on at once, which is exactly what
-// this cannot do.
+// The screen shows only maps the app can currently load. Future placeholders
+// made the picker look broken and forced riders through dozens of disabled
+// choices. It has to be radios: a checkbox promises that two can be on at once,
+// which is exactly what this cannot do.
 import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 // Two states, invented here and served over the generated index. The screen's
@@ -104,14 +103,14 @@ const screen = await page.evaluate(() => {
     fullScreen: document.getElementById('mapsDialog').classList.contains('full-help-dialog'),
   };
 });
-check('it opens a full-screen list of all fifty states, alphabetically',
-  screen.open && screen.fullScreen && screen.count === 50
-    && screen.first === 'Alabama' && screen.last === 'Wyoming', JSON.stringify(screen));
+check('it opens a full-screen list of available maps, alphabetically',
+  screen.open && screen.fullScreen && screen.count === STATES.length
+    && screen.first === 'Idaho' && screen.last === 'Washington', JSON.stringify(screen));
 check('the controls are one radio group, because one state loads at a time',
   screen.types.join() === 'radio' && screen.group.length === 1, JSON.stringify(screen));
 check('and the copy says so, and warns that switching restarts',
   /state to ride in/i.test(screen.lead || '')
-    && /one state is loaded at a time/i.test(screen.note || '')
+    && /one map is loaded at a time/i.test(screen.note || '')
     && /restarts/i.test(screen.note || ''), `${screen.lead} | ${screen.note}`);
 check('the loaded state is the checked one',
   screen.checked.join() === screen.loadedRegion, JSON.stringify(screen.checked));
@@ -133,11 +132,10 @@ const detail = await page.evaluate(() => {
     row.querySelector('.maps-state-name > span').textContent === name);
   const wa = find('Washington');
   const preview = find('Idaho');
-  const al = find('Alabama');
   return {
     washington: wa?.querySelector('.maps-state-detail')?.textContent,
     preview: preview?.querySelector('.maps-state-detail')?.textContent,
-    unavailableDetail: al?.querySelector('.maps-state-detail'),
+    names: rows.map((row) => row.querySelector('.maps-state-name > span').textContent),
     badges: rows.map((row) => row.querySelector('.maps-state-badge')?.textContent)
       .filter(Boolean),
   };
@@ -149,20 +147,9 @@ check('a preview state says what it is missing',
 check('and carries a Preview badge beside the loaded one',
   detail.badges.includes('Preview') && detail.badges.includes('Loaded'),
   JSON.stringify(detail.badges));
-check('a state with no folder makes no claim at all',
-  detail.unavailableDetail === null, String(detail.unavailableDetail));
-
-// An unavailable state must refuse the tap rather than take it and do nothing.
-const inert = await page.evaluate(() => {
-  const rows = [...document.querySelectorAll('#mapsStateList .maps-state')];
-  const alabama = rows.find((row) =>
-    row.querySelector('.maps-state-name > span').textContent === 'Alabama');
-  const input = alabama.querySelector('input');
-  input.click();
-  return { checked: input.checked, disabled: input.disabled };
-});
-check('tapping a state with no map changes nothing',
-  inert.checked === false && inert.disabled === true, JSON.stringify(inert));
+check('unavailable placeholder states are omitted entirely',
+  detail.names.length === STATES.length && !detail.names.includes('Alabama'),
+  JSON.stringify(detail.names));
 
 /* ---------------------------------------------- refusing at the wrong moment */
 // Mid-ride is the one time this must refuse: the rider is being spoken turn

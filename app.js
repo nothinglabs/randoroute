@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-11.677';
+const APP_VERSION = '2026-08-11.678';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -904,10 +904,6 @@ const navVoice = {
     ? true : savedState.keepScreenAwake,
   safetyLevels: !savedState || typeof savedState.voiceSafetyLevels !== 'boolean'
     ? true : savedState.voiceSafetyLevels,
-  // On by default, unlike the status report below it: a rider who has heard
-  // nothing for two minutes has no way to tell "carry on" from "it crashed".
-  reassure: !savedState || typeof savedState.voiceReassure !== 'boolean'
-    ? true : savedState.voiceReassure,
   offRouteMode: AUTOMATIC_OFF_ROUTE_RECOVERY_ENABLED ? savedOffRouteRecoveryMode : 'guidance',
 };
 
@@ -1107,7 +1103,6 @@ function saveStateNow() {
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
       voiceSafetyLevels: navVoice.safetyLevels,
-      voiceReassure: navVoice.reassure,
       keepScreenAwake: navVoice.keepScreenAwake,
       navigationOffRouteMode: navVoice.offRouteMode,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
@@ -3716,6 +3711,11 @@ function navSpokenApproach(remainingM, instruction) {
     : `In ${navDistanceText(remainingM)}, ${midSentence}.`;
 }
 
+function navSpokenAhead(instruction) {
+  const text = navInstructionText(instruction);
+  return `Ahead, ${text.charAt(0).toLowerCase()}${text.slice(1)}.`;
+}
+
 function plannedRouteDistanceTitle(distanceM) {
   const distance = navDistanceText(distanceM).replace(/^1\.0 miles$/, '1 mile');
   return `You're ${distance} from your planned route`;
@@ -5216,9 +5216,6 @@ function nativeVoiceStatusPayload() {
     statusMiles: navVoice.statusMiles,
     statusEta: navVoice.statusEta,
     safetyLevels: navVoice.safetyLevels,
-    // The native guide owns the cadence on iOS, so it has to be told about
-    // this one too or the setting would only work in the browser.
-    reassure: navVoice.reassure,
   };
 }
 
@@ -5406,50 +5403,32 @@ if (!nativeNavigationPlugin() && 'speechSynthesis' in window) {
  * neither engine's own interrupt is reached. The queue lives here because it
  * has to serve both, and because only this side knows which prompt matters
  * more: a maneuver outranks a safety change, which outranks a status update.
- * A higher-ranked prompt arriving mid-sentence is the one case where cutting in
- * is right, and it is the only case that still does.
+ * A higher-ranked prompt goes next, but never cuts off the sentence already
+ * being spoken. Road reports are short and turn warnings are raised early
+ * enough to queue; a whole sentence a moment later is safer than two fragments
+ * spoken on top of one another.
  *
- * Pacing differs by engine and cannot be made uniform. The web engine reports
- * when an utterance ends. The iOS plugin's speak() resolves as soon as speech
- * has STARTED -- `call.resolve()` sits directly after `speakText` -- so there
- * the queue advances on an estimate, deliberately generous: a prompt a moment
- * late beats a prompt cut in half.
- *
- * Two further iOS-only traps, both heard from the road as talking-over even
- * with the queue in place. `cancel()` does not stop the engine synchronously,
- * and it fires the cancelled utterance's end callback INSIDE the cancel call,
- * which re-enters the pump -- so the one legitimate interrupt started its
- * replacement on top of the tail it had just cut. Hence a wall-clock barrier
- * armed BEFORE the engine is stopped, not a timer scheduled after. And the
- * watchdog that rescues a queue whose onend never arrives must consult
- * `synth.speaking` before forcing on, or it advances while the engine is
- * audibly mid-sentence.
+ * Pacing differs by engine and cannot be made uniform. The browser reports
+ * `onend`; the iOS delegate reports `speechFinished` with the utterance ID.
+ * Both are authoritative. Long watchdogs exist only for an engine/bridge that
+ * never reports completion, and the browser watchdog still checks
+ * `synth.speaking` before advancing so a delayed callback cannot create
+ * overlap.
  */
 const SPEECH_RANK = { turn: 3, safety: 2, status: 1 };
 // A prompt that has waited this long is no longer about where the rider is.
 const SPEECH_STALE_MS = 15000;
-// iOS Safari's cancel() is not synchronous: a speak() issued right behind it
-// can overlap the tail of the utterance being cancelled — the app audibly
-// talking over itself. The one interrupt left (a maneuver cutting across a
-// lower-ranked prompt) waits this beat before speaking.
-const SPEECH_INTERRUPT_GAP_MS = 300;
 const speechQueue = [];
 let speechActive = null;
 let speechTimer = 0;
-let speechGapTimer = 0;
-// Wall-clock barrier, not just a timer: cancelling an utterance makes the
-// engine fire its end callback synchronously, which re-enters the pump. The
-// barrier is what actually holds the next prompt back.
-let speechGapUntil = 0;
 // iOS Safari garbage-collects an unreferenced utterance MID-SPEECH, which
 // silently kills its onend and can garble overlapping speech. Held here until
 // its finish runs.
 let activeBrowserUtterance = null;
 let nativeSpeechSequence = 0;
 let nativeSpeechCompletion = null;
-// A cancelled engine can deliver its old onend after a replacement has begun.
-// Only callbacks from the current generation may clear timers or advance the
-// queue; otherwise a stale finish can release a second prompt mid-sentence.
+// Explicitly ending navigation cancels the engine. A late callback from that
+// cancelled session must not release a prompt in a newer session.
 let speechGeneration = 0;
 
 function handleNativeSpeechFinished(event) {
@@ -5479,9 +5458,6 @@ function stopSpeechEngine() {
 
 function clearSpeechQueue() {
   speechQueue.length = 0;
-  clearTimeout(speechGapTimer);
-  speechGapTimer = 0;
-  speechGapUntil = 0;
   stopSpeechEngine();
 }
 
@@ -5565,11 +5541,6 @@ function speakThrough(text, done) {
 function pumpSpeech() {
   if (speechActive || !speechQueue.length) return;
   const now = Date.now();
-  if (now < speechGapUntil) {
-    clearTimeout(speechGapTimer);
-    speechGapTimer = setTimeout(pumpSpeech, speechGapUntil - now);
-    return;
-  }
   for (let i = speechQueue.length - 1; i >= 0; i--) {
     if (now - speechQueue[i].queuedAt > SPEECH_STALE_MS) speechQueue.splice(i, 1);
   }
@@ -5599,19 +5570,15 @@ function speakNavigation(text, kind = 'turn') {
   lastSpokenAt = now;
   turnNav.lastVoiceAt = now;
   const rank = SPEECH_RANK[kind] || SPEECH_RANK.turn;
-  speechQueue.push({ text, rank, queuedAt: now });
-  // A maneuver does not wait behind a safety note or a status update: it is
-  // about something the rider must do in the next few seconds. That is the
-  // ONLY interrupt left. A safety change is content to wait its turn -- it is
-  // raised far enough ahead to afford the second or two -- and cutting across a
-  // status update to deliver it would be the same talking-over, one rung down.
-  if (speechActive && rank === SPEECH_RANK.turn && speechActive.rank < SPEECH_RANK.turn) {
-    // Armed BEFORE the engine is stopped: cancelling fires the current
-    // utterance's end callback synchronously, which re-enters the pump, and an
-    // unarmed barrier lets the replacement start in that same tick.
-    speechGapUntil = Date.now() + SPEECH_INTERRUPT_GAP_MS;
-    stopSpeechEngine();
+  // A queued status line is disposable once a maneuver supersedes it. Do not
+  // cancel what is already audible; just keep obsolete summaries from delaying
+  // the next instruction.
+  if (rank === SPEECH_RANK.turn) {
+    for (let index = speechQueue.length - 1; index >= 0; index--) {
+      if (speechQueue[index].rank < SPEECH_RANK.turn) speechQueue.splice(index, 1);
+    }
   }
+  speechQueue.push({ text, rank, queuedAt: now });
   pumpSpeech();
 }
 
@@ -6321,14 +6288,13 @@ function updateTurnNavigation(pos) {
   while (turnNav.next < instructions.length
       && instructions[turnNav.next].distanceM - turnNav.routeM < -60) {
     instructions[turnNav.next].approach = true;
+    instructions[turnNav.next].ahead = true;
     instructions[turnNav.next].now = true;
     turnNav.next++;
   }
   const next = instructions[turnNav.next];
   if (!next) {
-    if (!maybeSpeakSafetyChange() && !maybeSpeakRouteReassurance(null, Infinity)) {
-      maybeSpeakPeriodicUpdate(null, Infinity);
-    }
+    if (!maybeSpeakSafetyChange()) maybeSpeakPeriodicUpdate(null, Infinity);
     refreshNavigationUI();
     return;
   }
@@ -6337,7 +6303,12 @@ function updateTurnNavigation(pos) {
   // but arrives mid-junction on a descent. Bounded so a freeway-speed GPS
   // glitch cannot announce a turn from a mile out.
   const paceMps = Number.isFinite(turnNav.speedMph) ? Math.max(0, turnNav.speedMph) / 2.23694 : 0;
-  const immediateM = Math.min(220, Math.max(90, paceMps * 12));
+  // The former "immediate" window was really an advance window: at the 90 m
+  // floor a rider can still be a city block away. Keep that useful warning,
+  // but say "Ahead" there; reserve the bare imperative for roughly the final
+  // four seconds before the maneuver.
+  const aheadM = Math.min(220, Math.max(90, paceMps * 12));
+  const immediateM = Math.min(55, Math.max(25, paceMps * 4));
   const approachM = Math.min(700, Math.max(350, paceMps * 45));
   let spoke = false;
   if (!turnNav.orientationSpoken) {
@@ -6346,7 +6317,7 @@ function updateTurnNavigation(pos) {
     // route's own geometry at the joined point — and folds in the first
     // maneuver, which could otherwise go unmentioned until its 350 m window.
     turnNav.orientationSpoken = true;
-    if (!next.now && remaining > immediateM) {
+    if (!next.now && remaining > aheadM) {
       const heading = compassWord(routeForwardBearing(nearest.index));
       const road = routeRoadNameAt(nearest.index);
       speakNavigation(`Head ${heading}${road ? ` on ${road}` : ''}. `
@@ -6360,8 +6331,14 @@ function updateTurnNavigation(pos) {
     // Inside the immediate window: speak only the turn itself, never both
     // the approach and the turn back-to-back.
     next.now = true;
+    next.ahead = true;
     next.approach = true;
     speakNavigation(`${navInstructionText(next)}.`);
+    spoke = true;
+  } else if (!next.ahead && remaining <= aheadM) {
+    next.ahead = true;
+    next.approach = true;
+    speakNavigation(navSpokenAhead(next));
     spoke = true;
   } else if (!next.approach && remaining <= approachM) {
     next.approach = true;
@@ -6375,9 +6352,7 @@ function updateTurnNavigation(pos) {
   if (maybeSpeakSafetyChange()) spoke = true;
   // A safety change is news; the periodic status is a summary. The summary
   // yields to both.
-  if (!spoke && !maybeSpeakRouteReassurance(next, remaining)) {
-    maybeSpeakPeriodicUpdate(next, remaining);
-  }
+  if (!spoke) maybeSpeakPeriodicUpdate(next, remaining);
   refreshNavigationUI();
 }
 
@@ -6389,37 +6364,6 @@ function speakDuration(seconds) {
 }
 
 // Optional status update on the rider's cadence (Settings -> Voice): any
-// Reported from the road: a mile of Northeast Ravenna Boulevard with the next
-// maneuver 0.6 miles off and NOTHING said the whole way. Silence is ambiguous
-// -- it means "carry on" and it means "the app has stopped working", and a
-// rider cannot tell which without looking down. So on a long stretch, say the
-// reassuring thing: which road they are on, and how far the next turn is.
-//
-// This is not the periodic status below. That one reports speed, miles left and
-// ETA, is off unless the rider asks for it, and is deliberately a mouthful.
-// This is one short line whose only job is to confirm nothing has gone wrong,
-// so it is on by default and says as little as possible.
-const NAV_REASSURE_SILENCE_MS = 105000;
-// Only where there is real silence to fill. Inside this, the next maneuver's
-// own prompt is close enough to be the reassurance.
-const NAV_REASSURE_MIN_TURN_M = 500;
-function maybeSpeakRouteReassurance(next, remainingToTurnM) {
-  // The native guide owns the cadence on iOS, foreground and background alike.
-  if (turnNav.nativeTracking) return false;
-  if (!navVoice.reassure || turnNav.arrived || !turnNav.locationReady) return false;
-  if (Date.now() - (turnNav.lastVoiceAt || 0) < NAV_REASSURE_SILENCE_MS) return false;
-  if (next && remainingToTurnM < NAV_REASSURE_MIN_TURN_M) return false;
-  const road = navRoadName(navCurrentSegment()?.name || '');
-  // Without a name there is nothing reassuring to say -- "you are on an unnamed
-  // road" tells the rider less than the silence did.
-  if (!road) return false;
-  const ahead = next && Number.isFinite(remainingToTurnM)
-    ? ` Next turn in ${navDistanceText(remainingToTurnM)}.`
-    : ' Continue to your destination.';
-  speakNavigation(`Still on ${road}.${ahead}`, 'status');
-  return true;
-}
-
 // combination of next maneuver, speed, distance remaining, and time left.
 function maybeSpeakPeriodicUpdate(next, remainingToTurnM) {
   // The native guide owns the cadence on iOS in both foreground and
@@ -12491,20 +12435,10 @@ function applyRoutingPreset(presetId) {
  * data path in the app, the router worker and the service worker is built from
  * Region.dataRoot, so the choice made here is the whole mechanism.
  *
- * The list of states that HAVE a map comes from maps/states.js, generated from
- * the folders. The other forty-something are named here only so a rider can
- * see that the country is the eventual scope -- no code below cares which
- * names those are, and adding a state to the app is adding a folder.
+ * The list comes from maps/states.js, generated from the folders. If a state is
+ * shown here it has a map package that the app can actually select; future
+ * states belong on this screen only after their package exists.
  */
-const US_STATES = Object.freeze(['Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California',
-  'Colorado', 'Connecticut', 'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois',
-  'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts',
-  'Michigan', 'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
-  'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota',
-  'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina',
-  'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
-  'West Virginia', 'Wisconsin', 'Wyoming']);
-
 // What a state's folder lets a rider do, in the order the answer matters:
 // routing is the app, tiles are the picture, and a place index alone is enough
 // to search but not to ride.
@@ -12550,45 +12484,36 @@ function buildMapsStateList() {
   const host = document.getElementById('mapsStateList');
   if (!host) return;
   host.replaceChildren();
-  const available = new Map(Region.states.map((state) => [state.name, state]));
-  for (const name of US_STATES) {
-    const state = available.get(name);
-    const loaded = state && state.id === Region.id;
+  const available = [...Region.states].sort((a, b) => a.name.localeCompare(b.name));
+  for (const state of available) {
+    const loaded = state.id === Region.id;
     const row = document.createElement('label');
-    row.className = `maps-state${loaded ? ' loaded' : ''}${state ? '' : ' unavailable'}`
-      + (state && state.status === 'preview' ? ' preview' : '');
+    row.className = `maps-state${loaded ? ' loaded' : ''}`
+      + (state.status === 'preview' ? ' preview' : '');
     const choice = document.createElement('input');
     // One state at a time, so: radios. A checkbox would promise that two can
     // be on at once, which is exactly what this cannot do.
     choice.type = 'radio';
     choice.name = 'mapsState';
-    choice.checked = !!loaded;
-    // A state with no folder is genuinely unavailable, and a control that
-    // accepts a tap and then does nothing is worse than one that says it
-    // cannot.
-    choice.disabled = !state;
-    if (state) {
-      choice.value = state.id;
-      choice.addEventListener('change', () => {
-        if (!choice.checked) return;
-        // A refused switch must not leave the list claiming the other state is
-        // loaded; put the selection back where the app actually is.
-        if (!switchMapState(state.id)) buildMapsStateList();
-      });
-    }
+    choice.checked = loaded;
+    choice.value = state.id;
+    choice.addEventListener('change', () => {
+      if (!choice.checked) return;
+      // A refused switch must not leave the list claiming the other state is
+      // loaded; put the selection back where the app actually is.
+      if (!switchMapState(state.id)) buildMapsStateList();
+    });
     const label = document.createElement('span');
     label.className = 'maps-state-name';
     const title = document.createElement('span');
-    title.textContent = name;
+    title.textContent = state.name;
     label.append(title);
-    if (state) {
-      const detail = document.createElement('span');
-      detail.className = 'maps-state-detail';
-      detail.textContent = mapsStateCapability(state);
-      label.append(detail);
-    }
+    const detail = document.createElement('span');
+    detail.className = 'maps-state-detail';
+    detail.textContent = mapsStateCapability(state);
+    label.append(detail);
     row.append(choice, label);
-    if (loaded || (state && state.status === 'preview')) {
+    if (loaded || state.status === 'preview') {
       const badge = document.createElement('span');
       // Loaded is the fact the rider is looking for; preview is a warning. A
       // loaded preview state gets the Loaded badge -- the row's own copy
@@ -12957,24 +12882,16 @@ function buildVoicePanel() {
   });
   host.appendChild(awake);
 
-  // Both in one card. They are the same kind of thing -- what the app says
-  // while a rider is simply riding -- and the four Settings panes are sized to
-  // the tallest of them, so a card apiece would push this one into an internal
-  // scroller. scripts/test_settings_panes_reachable.mjs holds that line.
-  const spoken = document.createElement('div');
-  spoken.className = 'check-rule rule-card';
-  spoken.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceSafetyLevels"
-    ${navVoice.safetyLevels ? 'checked' : ''}><span>Announce route safety levels</span></label>
-    <label class="rule-check"><input type="checkbox" id="v-voiceReassure"
-    ${navVoice.reassure ? 'checked' : ''}><span>Confirm the road you're on</span></label>`;
-  for (const [id, key] of [['v-voiceSafetyLevels', 'safetyLevels'], ['v-voiceReassure', 'reassure']]) {
-    spoken.querySelector(`#${id}`).addEventListener('change', (e) => {
-      navVoice[key] = e.target.checked;
-      syncNativeVoiceStatusPreferences();
-      saveStateSoon();
-    });
-  }
-  host.appendChild(spoken);
+  const safety = document.createElement('div');
+  safety.className = 'check-rule rule-card';
+  safety.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceSafetyLevels"
+    ${navVoice.safetyLevels ? 'checked' : ''}><span>Announce route safety levels</span></label>`;
+  safety.querySelector('input').addEventListener('change', (e) => {
+    navVoice.safetyLevels = e.target.checked;
+    syncNativeVoiceStatusPreferences();
+    saveStateSoon();
+  });
+  host.appendChild(safety);
 
   const choices = [[0, 'Never'], [1, 'Every minute'], [2, 'Every 2 minutes'],
     [3, 'Every 3 minutes'], [5, 'Every 5 minutes'], [10, 'Every 10 minutes'],

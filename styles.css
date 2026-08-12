@@ -528,8 +528,6 @@ body:not(.navigation-active) #navCard { display: none; }
 .maps-state.loaded .maps-state-detail { color: #3d738f; }
 /* Greyed, not hidden: the point of the screen is that these exist and are not
    ready yet. */
-.maps-state.unavailable { color: #93a3ad; background: #f6f8f9; }
-.maps-state.unavailable input { cursor: not-allowed; }
 .maps-state-badge { margin-left: auto; padding: 2px 7px; border-radius: 999px; background: #0a66c2; color: #fff; font: 800 9.5px/1.5 system-ui; letter-spacing: .04em; text-transform: uppercase; }
 .maps-state-badge.preview { background: #9a6b12; }
 /* Switching reloads the app, so the reason a switch is refused belongs where

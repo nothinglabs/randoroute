@@ -1,23 +1,12 @@
 # iOS handoff
 
-Last audited 2026-08-06 on macOS with Xcode 26.6, iOS 17.5 and 26.5
+Last audited 2026-08-11 on macOS with Xcode 26.6, iOS 17.5 and 26.5
 simulators, a generic physical-iPhone Release target, and Capacitor 8.4.2. The
-native target compiled without Swift warnings and passed Xcode's shallow store
-validation. The shared web tests and simulator checks are real coverage;
-locked-screen GPS, audio mixing, battery, and thermals still require a physical
-iPhone and a real ride.
-
-**Changed since that audit, and not yet compiled on a Mac:** `346e41b` (Wait
-through iOS location warmup) added a retry to
-`NativeNavigationPlugin.locationManager(_:didFailWithError:)`. Core Location
-emits `CLError.locationUnknown` while the radio warms up and then delivers a
-fix; that error used to reject the pending position call, so the first tap
-failed and a second one two seconds later worked. It now reschedules
-`requestLocation()` after 750 ms instead, bounded by the existing per-call
-timeout, with the retry work item cancelled in `deinit`, on resolve, on reject,
-and when the pending queue empties. Read for correctness, never built. Build it
-before the next release, and confirm on a device that the first location
-request after a cold launch resolves without a second tap.
+current native target, including the Core Location warmup retry and voice queue
+changes, compiles for the iOS 26.5 simulator without Swift warnings. Earlier
+store validation also passed. The shared web tests and simulator checks are
+real coverage; locked-screen GPS, audio mixing, battery, and thermals still
+require a physical iPhone and a real ride.
 
 ---
 
@@ -187,25 +176,22 @@ paths are exercised by `scripts/test_keep_screen_awake.mjs`.
 
 ### The speech queue advances on real native completion
 
-`speakText` still does this:
-
-```swift
-if speechSynthesizer.isSpeaking {
-    speechSynthesizer.stopSpeaking(at: .immediate)
-}
-```
-
-That branch is now unreachable in normal use, and should stay that way. The web
-layer owns a queue (`speakNavigation` in `app.js`) and never hands the plugin a
-second utterance while one is playing — riders were hearing prompts cut off
-mid-word because both engines were set to latest-wins.
+The web layer owns a queue (`speakNavigation` in `app.js`) and never hands its
+next utterance to the plugin while one is playing. The native background guide
+can also originate prompts directly, so `speakText` itself no longer calls
+`stopSpeaking(at: .immediate)` when the synthesizer is busy. It lets
+`AVSpeechSynthesizer` queue the sentence. That second guard matters on a real
+ride: the supposedly unreachable stop was clipping prompts and could start the
+replacement on top of the cancelled sentence's tail.
 
 Each web-owned utterance carries a `speechId`. The Swift delegate emits
 `speechFinished` from both `didFinish` and `didCancel`; the JS queue advances
 only for the matching ID. A deliberately long watchdog remains for a dead
 bridge/process, but the old spoken-duration estimate no longer clips normal
-sentences. `stopSpeaking` remains deliberate when a maneuver must interrupt a
-lower-priority prompt. `scripts/test_voice_queue.mjs` exercises the handshake.
+sentences. A maneuver removes obsolete status/safety lines that are still
+waiting, but it does not cut off a sentence already being spoken. Explicitly
+stopping navigation still stops speech. `scripts/test_voice_queue.mjs`
+exercises the handshake.
 
 The JS speech engine also assigns every queue session a generation. A late
 `onend` from a cancelled utterance is ignored once a replacement session has
@@ -219,6 +205,11 @@ native shell also skips the browser-only `speechSynthesis.getVoices()` startup
 scan. Before this, a map-only launch initialized two unused voice clients and
 immediately queried iOS voice assets; after the change, the TTS asset errors and
 work disappeared from the clean startup log.
+
+An older, independent reassurance path said “Still on …” after 105 seconds of
+silence even when **Status update** was set to **Never**. It existed in both JS
+and Swift, outside the cadence setting, and has been removed. Periodic status is
+now spoken only when the rider explicitly selects an interval.
 
 ---
 

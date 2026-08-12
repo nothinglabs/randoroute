@@ -40,7 +40,8 @@ const setup = (speedMps) => page.evaluate((mps) => {
   const coords = [];
   for (let i = 0; i <= 20; i++) coords.push([-122.3 + i * 0.001, 47.6]);
   const route = buildTurnInstructions({ coords, segs: [{ c0: 0, c1: coords.length - 1, name: 'Pine Street' }] });
-  route.instructions = [{ distanceM: 700, text: 'Turn left onto 1st Avenue', now: false, approach: false }];
+  route.instructions = [{ distanceM: 700, text: 'Turn left onto 1st Avenue',
+    now: false, ahead: false, approach: false }];
   turnNav.active = true;
   turnNav.arrived = false;
   turnNav.offRoute = false;
@@ -91,8 +92,13 @@ check('the approach window announces the turn with its distance',
   JSON.stringify(spoken));
 await page.evaluate(() => window.__fix(-122.2913)); // ~650 m ridden, inside the turn window
 spoken = await page.evaluate(() => window.__spoken);
-check('the immediate window speaks the turn itself',
-  spoken.length === 3 && /^Turn left onto 1st Avenue\.$/i.test(spoken[2].text),
+check('the advance window says the maneuver is ahead',
+  spoken.length === 3 && /^Ahead, turn left onto 1st Avenue\.$/.test(spoken[2].text),
+  JSON.stringify(spoken));
+await page.evaluate(() => window.__fix(-122.29075)); // final few metres before the turn
+spoken = await page.evaluate(() => window.__spoken);
+check('only the immediate window speaks the bare turn command',
+  spoken.length === 4 && /^Turn left onto 1st Avenue\.$/.test(spoken[3].text),
   JSON.stringify(spoken));
 
 /* ----------------------------------------- the windows grow with rider speed */
