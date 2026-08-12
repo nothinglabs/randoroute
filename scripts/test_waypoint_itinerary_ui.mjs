@@ -358,7 +358,10 @@ check('closing the searched point also removes its temporary indicator', await p
   document.querySelectorAll('.search-result-marker').length === 0));
 
 await page.locator('#rb-search').click();
-await page.locator('#placeSearch').fill('coffee');
+// Use a query with an offline match here so the explicit internet button stays
+// put long enough to exercise the manual path; zero-match queries now proceed
+// online automatically and have their own regression test.
+await page.locator('#placeSearch').fill('Seattle');
 await page.waitForSelector('#placeResults .place-internet-search');
 await page.evaluate(() => {
   searchOnlinePlaces = async () => [{
@@ -370,12 +373,17 @@ await page.locator('#placeResults .place-internet-search').click();
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');
 const internetMode = await page.evaluate(() => ({
   hint: document.getElementById('placePickerHint').textContent,
-  result: document.querySelector('#placeResults .place-hit:not(.place-internet-search)')?.textContent,
+  results: [...document.querySelectorAll('#placeResults .place-hit:not(.place-internet-search)')]
+    .map((button) => button.dataset.name),
+  sections: [...document.querySelectorAll('#placeResults .place-results-section')]
+    .map((heading) => heading.textContent),
   internetChoiceGone: !document.querySelector('#placeResults .place-internet-search'),
 }));
-check('the final result switches the dialog into internet-search mode',
+check('manual internet search appends its result without discarding local matches',
   /internet result/i.test(internetMode.hint)
-    && internetMode.result.includes('Test Coffee') && internetMode.internetChoiceGone,
+    && internetMode.results.includes('Seattle') && internetMode.results.includes('Test Coffee, Seattle, Washington')
+    && internetMode.sections.join('|') === 'On this device|From the internet'
+    && internetMode.internetChoiceGone,
   JSON.stringify(internetMode));
 await page.locator('#placeSearch').fill('Seattle');
 await page.waitForSelector('#placeResults .place-hit:not(.place-internet-search)');

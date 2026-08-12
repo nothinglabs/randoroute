@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-11.678';
+const APP_VERSION = '2026-08-11.679';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -9637,15 +9637,20 @@ function ensurePlaces() {
 }
 
 let placeSearchRequestId = 0;
+let placeSearchAutoTimer = 0;
 let placePickerViewportRestoreTimers = [];
 let searchResultMarker = null;
 let searchResultOpenToken = 0;
 let placeSearchTarget = null;
 const onlinePlaceCache = new Map();
 let onlinePlaceLastRequestAt = 0;
-const ONLINE_PLACE_SEARCH_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
-const ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS = 1100;
-const ONLINE_PLACE_RESULT_LIMIT = 6;
+// Photon is built for search-as-you-type and POI lookup. The public Nominatim
+// endpoint previously used here explicitly forbids autocomplete, so it cannot
+// legally power the automatic no-local-results fallback below.
+const ONLINE_PLACE_SEARCH_ENDPOINT = 'https://photon.komoot.io/api/';
+const ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS = 800;
+const ONLINE_PLACE_AUTO_DELAY_MS = 700;
+const ONLINE_PLACE_RESULT_LIMIT = 8;
 // The router only covers the region this build ships; drop any hit outside it
 // so a search result is always somewhere a route can reach.
 
@@ -9662,7 +9667,12 @@ async function searchOnlinePlaces(query) {
   if (normalized.length < 2) return [];
   const [refLon, refLat] = placeSearchReference();
 
-  let matches = onlinePlaceCache.get(normalized);
+  // Photon applies a location bias while finding candidates, not merely while
+  // sorting them. Include a coarse map cell in the cache key so searching for
+  // a common chain after moving to another city does not reuse the old city's
+  // candidate set.
+  const cacheKey = `${Region.id}|${normalized}|${Math.round(refLon * 5)},${Math.round(refLat * 5)}`;
+  let matches = onlinePlaceCache.get(cacheKey);
   if (!matches) {
     if (navigator.onLine === false) throw new Error('offline');
     const waitMs = Math.max(0, ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS - (Date.now() - onlinePlaceLastRequestAt));
@@ -9670,13 +9680,12 @@ async function searchOnlinePlaces(query) {
     onlinePlaceLastRequestAt = Date.now();
 
     const url = new URL(ONLINE_PLACE_SEARCH_ENDPOINT);
-    // A local viewbox biases results toward the current view; it is not a hard
-    // bound (so a store a bit farther out still comes back), and we then keep
-    // only in-region hits ourselves.
-    const halfLon = 1.1, halfLat = 0.7;
+    // Location bias makes a generic query ("coffee", "Fred Meyer", "library")
+    // useful without hard-bounding it to the current viewport. The region
+    // filter below remains the routing-coverage boundary.
     url.search = new URLSearchParams({
-      format: 'jsonv2', q: query.trim(), limit: '30', countrycodes: 'us', addressdetails: '1',
-      viewbox: `${refLon - halfLon},${refLat + halfLat},${refLon + halfLon},${refLat - halfLat}`,
+      q: query.trim(), limit: '30', lon: String(refLon), lat: String(refLat),
+      lang: String(navigator.language || 'en').split('-')[0],
     });
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
@@ -9688,15 +9697,20 @@ async function searchOnlinePlaces(query) {
     }
     if (!response.ok) throw new Error(`search failed (${response.status})`);
     const data = await response.json();
-    matches = (Array.isArray(data) ? data : [])
-      .map((item) => ({
-        name: onlinePlaceResultName(item),
-        lon: Number(item.lon), lat: Number(item.lat), source: 'online',
-      }))
+    matches = (Array.isArray(data?.features) ? data.features : [])
+      .map((feature) => {
+        const properties = feature?.properties || {};
+        const coordinates = feature?.geometry?.coordinates || [];
+        return {
+          name: onlinePlaceResultName(properties),
+          lon: Number(coordinates[0]), lat: Number(coordinates[1]), source: 'online',
+          type: String(properties.osm_value || properties.type || '').replace(/_/g, ' '),
+        };
+      })
       .filter((item) => item.name && Number.isFinite(item.lon) && Number.isFinite(item.lat))
       .filter((item) => Region.contains(item.lon, item.lat));
-    if (onlinePlaceCache.size >= 50) onlinePlaceCache.delete(onlinePlaceCache.keys().next().value);
-    onlinePlaceCache.set(normalized, matches);
+    if (onlinePlaceCache.size >= 80) onlinePlaceCache.delete(onlinePlaceCache.keys().next().value);
+    onlinePlaceCache.set(cacheKey, matches);
   }
 
   // Sort by distance from the current view and keep the nearest handful.
@@ -9707,6 +9721,23 @@ async function searchOnlinePlaces(query) {
 }
 
 function onlinePlaceResultName(item) {
+  // Photon result. A street address distinguishes multiple branches of a
+  // common local business; neighbourhood/city keeps landmarks understandable
+  // without dumping a full geocoder address into the compact picker.
+  if (item && ('osm_key' in item || 'osm_value' in item)) {
+    const primary = String(item.name || item.street || item.city || item.county || '').trim();
+    const street = [item.housenumber, item.street].map((part) => String(part || '').trim())
+      .filter(Boolean).join(' ');
+    const locality = String(item.district || item.locality || item.city || item.county || '').trim();
+    const state = String(item.state || Region.name).trim();
+    const parts = [primary];
+    if (street && street.toLowerCase() !== primary.toLowerCase()) parts.push(street);
+    if (locality && !parts.some((part) => part.toLowerCase() === locality.toLowerCase())) {
+      parts.push(locality);
+    }
+    if (state && !parts.some((part) => part.toLowerCase() === state.toLowerCase())) parts.push(state);
+    return parts.filter(Boolean).join(', ').slice(0, 180);
+  }
   const address = item?.address || {};
   const displayParts = String(item?.display_name || '').split(',').map((part) => part.trim()).filter(Boolean);
   const houseNumber = String(address.house_number || '').trim();
@@ -9744,6 +9775,8 @@ function restoreViewportAfterPlacePicker() {
 function closePlacePicker() {
   const target = placeSearchTarget;
   placeSearchRequestId++;
+  clearTimeout(placeSearchAutoTimer);
+  placeSearchAutoTimer = 0;
   placeSearchTarget = null;
   if (target && routing.arm === target) {
     routing.arm = null;
@@ -9967,9 +10000,12 @@ function buildPlacePicker() {
   const uniqueMatches = (items) => {
     const unique = [];
     for (const item of items) {
-      const label = item.name.split(',')[0].trim().toLowerCase();
-      const duplicate = unique.some((prior) => prior.name.split(',')[0].trim().toLowerCase() === label
-        && navDistanceM([prior.lon, prior.lat], [item.lon, item.lat]) < 10_000);
+      const label = item.name.trim().toLowerCase();
+      // Collapse the same OSM object returned through two paths, but retain
+      // separate branches of a chain. The old 10 km radius hid exactly the
+      // common-business results riders need to distinguish.
+      const duplicate = unique.some((prior) => prior.name.trim().toLowerCase() === label
+        && navDistanceM([prior.lon, prior.lat], [item.lon, item.lat]) < 120);
       if (!duplicate) unique.push(item);
     }
     return unique;
@@ -9994,7 +10030,7 @@ function buildPlacePicker() {
         const detail = document.createElement('small');
         detail.textContent = item.source === 'online'
           ? (Number.isFinite(item.distanceM)
-            ? `${fmtMi(item.distanceM)} mi from map center · online`
+            ? `${item.type ? `${item.type} · ` : ''}${fmtMi(item.distanceM)} mi from map center · online`
             : 'online · OpenStreetMap')
           : (TYPE_LABEL[item.type] || item.type || 'place');
         hit.append(detail);
@@ -10041,18 +10077,35 @@ function buildPlacePicker() {
 
   const showLocalMatches = () => {
     const query = input.value.trim();
-    render(localMatches(), '', { offerInternet: query.length >= 2 });
+    const local = localMatches();
+    clearTimeout(placeSearchAutoTimer);
+    placeSearchAutoTimer = 0;
+    const shouldSearchOnline = query.length >= 2 && Array.isArray(placesIndex) && local.length === 0;
+    render(local, shouldSearchOnline ? 'No offline matches. Searching the internet…' : '',
+      { offerInternet: query.length >= 2 });
+    if (shouldSearchOnline) {
+      const expectedQuery = query;
+      placeSearchAutoTimer = setTimeout(() => {
+        placeSearchAutoTimer = 0;
+        if (input.value.trim() === expectedQuery && localMatches().length === 0) {
+          searchOnline({ automatic: true });
+        }
+      }, ONLINE_PLACE_AUTO_DELAY_MS);
+    }
   };
-  const searchOnline = async () => {
+  const searchOnline = async ({ automatic = false } = {}) => {
+    clearTimeout(placeSearchAutoTimer);
+    placeSearchAutoTimer = 0;
     const query = input.value.trim();
     if (query.length < 2) {
       setRouteStatus('Enter at least two characters to search online');
       return;
     }
-    setPlacePickerHint('internet', placeSearchTarget
-      ? `Adding internet results below local matches for your ${placeSearchTarget === 'via'
-        ? 'stop' : placeSearchTarget === 'start' ? 'start' : 'destination'}.`
-      : 'Adding internet results below local matches.');
+    setPlacePickerHint('internet', automatic ? 'No offline matches — searching nearby places online.'
+      : placeSearchTarget
+        ? `Adding internet results below local matches for your ${placeSearchTarget === 'via'
+          ? 'stop' : placeSearchTarget === 'start' ? 'start' : 'destination'}.`
+        : 'Adding internet results below local matches.');
     const requestId = ++placeSearchRequestId;
     const local = localMatches();
     render(local, `Searching the internet for “${query}”…`);
@@ -10062,13 +10115,21 @@ function buildPlacePicker() {
       const combined = uniqueMatches([...local, ...onlineMatches]);
       const matches = combined.filter((item) => item.source === 'online');
       render(local, matches.length ? ''
-        : `No additional internet results for “${query}”.`, { onlineItems: matches });
+        : `No additional internet results for “${query}”.`, {
+        onlineItems: matches,
+        // A valid but empty response can be transient (or location-biased in
+        // an unhelpful direction). Keep an explicit retry path just as we do
+        // for a network error instead of leaving an empty, terminal picker.
+        offerInternet: matches.length === 0,
+      });
       setRouteStatus(onlineMatches.length
         ? `${onlineMatches.length} internet ${onlineMatches.length === 1 ? 'result' : 'results'} found`
         : 'No internet search results');
     } catch (e) {
       if (requestId === placeSearchRequestId) {
-        render(local, 'Internet search is unavailable. Local results are still available.',
+        render(local, local.length
+          ? 'Internet search is unavailable. Local results are still available.'
+          : 'Internet search is unavailable. You can try again or keep typing.',
           { offerInternet: true });
         setRouteStatus('Internet search unavailable');
       }
@@ -10080,6 +10141,8 @@ function buildPlacePicker() {
   });
   input.addEventListener('input', () => {
     placeSearchRequestId++;
+    clearTimeout(placeSearchAutoTimer);
+    placeSearchAutoTimer = 0;
     setUseLocationBusy(false);
     setPlacePickerHint('map');
     const query = input.value.trim();

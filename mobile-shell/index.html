@@ -442,11 +442,11 @@
       <li><b>Always prefer bike routes (as if they are safe)</b> — strongly follows signed bike routes for route choice only. Real road safety still controls the map color, Route Details, cautions, and voice warnings, so a signed road can remain animated red.</li>
       <li><b>Guess shoulder width from other data when it isn’t documented</b> — the county road log records how much pavement is left over once the lanes are taken out, per side. That is somewhere to pull over, not necessarily somewhere to ride, so 1 ft is subtracted and the rest counts as shoulder. Only fills a gap: a recorded shoulder always wins, and a zero is ignored because it can mean a paperwork error rather than a measured absence. Cards say when a figure was guessed. <b>On for The Randonneur only.</b> An undocumented shoulder counts as 0 ft and only about 7% of roads document one, so without this the map calls a road failing on missing data rather than on evidence. Weekend Wanderer and Casual Cruiser leave it off: both exist to honour slower roads literally, and Casual Cruiser filters routes to fully matching road, where a guessed shoulder should not be what lets a road in.</li>
       <li><b>Missing shoulder data</b> — always treated as 0 ft, and not adjustable. "No data" and "no shoulder" look the same from the saddle, so a fast road has to show a shoulder to pass rather than benefit from an absence of evidence. Slow roads never reach the shoulder rule at all.</li>
-      </ul><p><b>Find</b> searches local offline places first. Choose <b>Search with internet</b> at the end of the results when you need a broader lookup.</p></section>
+      </ul><p><b>Find</b> searches local offline places first. When there are no offline matches, it automatically searches online for nearby businesses, landmarks, services, parks, addresses, and other named places. <b>Search with internet</b> remains available whenever you want broader results.</p></section>
     <section><h3>Voice navigation</h3><ul class="help-list">
       <li><b>Setting off</b> — the first prompt of a ride names the compass direction and road to start on, plus the first turn, because your phone cannot know which way you are facing until you move.</li>
       <li><b>How far ahead turns are called</b> — the faster you are riding, the earlier each turn is announced.</li>
-      <li><b>One voice at a time</b> — prompts queue rather than talk over each other. Only a turn interrupts, and only something less urgent.</li>
+      <li><b>One voice at a time</b> — prompts queue rather than talk over each other. A turn moves ahead of lower-priority prompts that are still waiting, but never cuts off a sentence already being spoken.</li>
       <li><b>Off-route</b> — gives direction and distance back to your route. Open the off-route notice to manually route back or create a new route.</li>
       <li><b>Speak compass directions (N/S/E/W)</b> — adds headings to turn instructions.</li>
       <li><b>Status update</b> — choose how often it speaks, and whether it includes route status, current speed, miles remaining, and estimated time left.</li>
@@ -520,7 +520,7 @@
       <section>
         <h3>Optional online services</h3>
         <ul>
-          <li><a href="https://nominatim.org/" target="_blank" rel="noopener"><b>OpenStreetMap Nominatim</b></a> expands place search when the user requests an online search. Local place search remains available offline.</li>
+          <li><a href="https://github.com/komoot/photon" target="_blank" rel="noopener"><b>Photon</b></a>, built from OpenStreetMap data, expands place search with nearby businesses, landmarks, addresses, and other named places. Local place search remains available offline.</li>
           <li><a href="https://developers.google.com/maps/documentation/embed/embedding-map" target="_blank" rel="noopener"><b>Google Maps Embed API</b></a> provides the optional Street View screen and external Google Maps links. It is not the app’s basemap.</li>
         </ul>
       </section>
