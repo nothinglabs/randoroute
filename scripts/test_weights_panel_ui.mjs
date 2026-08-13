@@ -75,6 +75,22 @@ await pg.waitForTimeout(400);
 check('clicking it opens the weights dialog',
   await pg.evaluate(() => document.getElementById('weightsDialog').open));
 
+const advancedOptions = await pg.evaluate(() => {
+  const ids = ['r-prefDesig', 'r-prefResidential', 'r-allowSidewalkFallback',
+    'r-allowMtbTrails', 'r-allowFerries'];
+  return {
+    allPresent: ids.every((id) => document.getElementById(id)),
+    allInAdvanced: ids.every((id) =>
+      document.getElementById(id)?.closest('#advancedRoutingOptions')),
+    absentFromEveryday: ids.every((id) =>
+      !document.getElementById(id)?.closest('#settings-options')),
+  };
+});
+check('expert route switches sit above the weights in Advanced routing',
+  advancedOptions.allPresent && advancedOptions.allInAdvanced
+    && advancedOptions.absentFromEveryday,
+  JSON.stringify(advancedOptions));
+
 /* --------------------------- 2. every rendered slider names a real weight */
 const wired = await pg.evaluate(() => {
   const inputs = [...document.querySelectorAll('#routingWeightsEditor input[data-weight]')];

@@ -599,7 +599,8 @@ trails*), which makes a qualifying road cheaper to route over. That bonus is
 gated on the edge passing, so it can never pull a rider onto a failing road.
 Preference, never permission.
 
-The separate, default-off **Always prefer bike routes (as if they are safe)**
+The separate, default-off **Follow designated bike routes even if they fail
+safety rules (use with caution)**
 option is an explicit exception in route *cost*, not in the safety ladder. It
 lets a signed route earn a 0.12 multiplier even when the segment fails the
 rider's limits, slightly stronger than the ordinary trail multiplier of 0.16
@@ -923,7 +924,7 @@ even the urban/rural split, is still honoured behind both.
 | `allowSidewalkFallback` | Allow sidewalk fallback | rung 7 exists at all | ×1.9 / ×3.8 / ×8.0 |
 | `allowFreeways` | Route over freeway as last resort (still shows as failing) | **none** — a freeway always fails | traversable at all, ×60 |
 | `allowMtbTrails` | Allow mountain bike trails | none | traversable at all, `mtbTrail` |
-| `allowFerries` | Allow routes with ferries (Settings → Options) | none | traversable at all |
+| `allowFerries` | Allow routes with ferries (Advanced routing) | none | traversable at all |
 | `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |
 | `preferPaved` | Strongly prefer paved surfaces | none | surface cost |
 | `prefDesig` | Heavily prefer bike routes & trails | none | designation bonus |

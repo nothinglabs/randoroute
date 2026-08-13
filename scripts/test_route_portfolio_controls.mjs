@@ -146,7 +146,7 @@ check('a road block still keeps and reruns the selected route lineup',
 check('a new destination takes a fresh recommendation', regeneration.afterNewEnd === true,
   JSON.stringify(regeneration));
 
-/* ------- the obsolete dialog is gone; routing permissions live in Settings */
+/* ------- everyday and advanced routing options live in deliberate homes */
 const ui = await page.evaluate(() => {
   routing.worker = { postMessage: () => {} };
   routing.ready = true;
@@ -156,15 +156,22 @@ const ui = await page.evaluate(() => {
   routing.last = routing.options[0];
   renderRouteOptionControls();
   settingsPaneSelect?.('options');
-  const toggle = document.getElementById('r-allowFerries');
   const bikeRouteToggle = document.getElementById('r-alwaysPreferBikeRoutes');
+  openRoutingWeights();
+  const toggle = document.getElementById('r-allowFerries');
+  const advancedIds = ['r-prefDesig', 'r-prefResidential', 'r-allowSidewalkFallback',
+    'r-allowMtbTrails', 'r-allowFerries'];
   const out = {
     oldButtonGone: !document.getElementById('routeRemixBtn'),
     oldDialogGone: !document.getElementById('remixDialog'),
     chooserButtons: [...document.querySelectorAll('#routeOptions button')]
       .map((button) => button.textContent.trim()),
     toggleExists: !!toggle,
-    toggleInOptions: !!toggle?.closest('#settings-options'),
+    toggleInAdvanced: !!toggle?.closest('#advancedRoutingOptions'),
+    advancedAllPresent: advancedIds.every((id) =>
+      document.getElementById(id)?.closest('#advancedRoutingOptions')),
+    advancedAbsentFromOptions: advancedIds.every((id) =>
+      !document.getElementById(id)?.closest('#settings-options')),
     optionsVisible: document.getElementById('settings-options')?.hidden === false,
     defaultChecked: toggle?.checked === true,
     ferryHint: toggle?.closest('.rule-card')?.querySelector('.rule-check-hint')?.textContent || '',
@@ -193,6 +200,7 @@ const ui = await page.evaluate(() => {
     toggle.dispatchEvent(new Event('change'));
   }
   setRouteOptionsLoading(false);
+  document.getElementById('weightsDialog')?.close();
   clearRoute();
   return out;
 });
@@ -201,8 +209,9 @@ check('the route chooser contains only route choices',
     && ui.chooserButtons[0] === 'A (Only route)',
   JSON.stringify(ui));
 check('the Show me routes dialog is removed', ui.oldDialogGone, JSON.stringify(ui));
-check('Allow routes with ferries lives in Settings > Options',
-  ui.toggleExists && ui.toggleInOptions && ui.optionsVisible && ui.defaultChecked
+check('the five expert switches live in Advanced routing, not Options',
+  ui.toggleExists && ui.toggleInAdvanced && ui.advancedAllPresent
+    && ui.advancedAbsentFromOptions && ui.optionsVisible && ui.defaultChecked
     && ui.ferryHint === '',
   JSON.stringify(ui));
 check('turning ferries off updates the rule and requests a fresh portfolio',
@@ -210,7 +219,7 @@ check('turning ferries off updates the rule and requests a fresh portfolio',
 check('the strong signed-route preference is an Options toggle and defaults off',
   ui.bikeRouteToggleExists && ui.bikeRouteToggleInOptions
     && !ui.bikeRouteDefaultChecked
-    && ui.bikeRouteLabel === 'Always prefer bike routes (as if they are safe)',
+    && ui.bikeRouteLabel === 'Follow designated bike routes even if they fail safety rules (use with caution)',
   JSON.stringify(ui));
 check('turning the signed-route preference on updates the routing rule',
   ui.bikeRouteRuleOn, JSON.stringify(ui));

@@ -175,6 +175,23 @@ function ensureRouteMarkerImages(targetMap) {
     b.disc(8 * s, 11.2 * s, 0.95 * s, ink);
     add('route-marker-fail', b);
   }
+  { // fail-designated: the signed route is context, not a safety exemption.
+    // Pair ! with ? so the rider can distinguish “ordinary rule failure” from
+    // “this is a designated route, but it still fails my safety rules.”
+    const b = paintMarkerBadge([176, 32, 32, 255]);
+    const s = b.s, failInk = [176, 32, 32, 255], routeInk = [92, 119, 0, 255];
+    b.stroke(6.1 * s, 5.1 * s, 6.1 * s, 8.8 * s, 1.35 * s, failInk);
+    b.disc(6.1 * s, 11.2 * s, 0.82 * s, failInk);
+    // Compact question-mark hook, shifted right to remain readable beside !.
+    for (let deg = -180; deg <= 55; deg += 5) {
+      const a = deg * Math.PI / 180;
+      b.disc(10 * s + Math.cos(a) * 1.75 * s,
+        6.2 * s + Math.sin(a) * 1.75 * s, 0.6 * s, routeInk);
+    }
+    b.stroke(10.8 * s, 7.4 * s, 9.9 * s, 9.3 * s, 1.15 * s, routeInk);
+    b.disc(9.9 * s, 11.5 * s, 0.78 * s, routeInk);
+    add('route-marker-fail-designated', b);
+  }
   { // odd: a bold question mark -- "this is not an ordinary road".
     const b = paintMarkerBadge([54, 79, 96, 255]);
     const s = b.s, ink = [54, 79, 96, 255];

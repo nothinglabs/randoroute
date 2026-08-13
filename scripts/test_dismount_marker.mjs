@@ -76,7 +76,7 @@ const plan = await page.evaluate(() => {
     })(),
     walkChain: build(19, () => ({ dismount: true, official: 8 })).walk.length,
     // The ! on rules failures: one per contiguous failed area, two on a long
-    // one, none where another badge already invites the tap, none for slivers.
+    // one. Short failures and overlapping explanations must never erase it.
     failLong: build(19, () => ({ level: 4, mph: 50, sh: 0 })).other
       .filter((m) => m.kind === 'fail').length,
     failShort: build(5, () => ({ level: 4, mph: 50, sh: 0 })).other
@@ -88,6 +88,13 @@ const plan = await page.evaluate(() => {
     })(),
     failBlip: build(1, () => ({ level: 4, mph: 50, sh: 0 }), .0004).other
       .filter((m) => m.kind === 'fail').length,
+    failDesignatedBlip: build(1, () => ({ level: 4, mph: 50, sh: 0, flags: 64 }), .0004).other
+      .filter((m) => m.kind === 'fail-designated').length,
+    failDesignationTransition: (() => {
+      const m = build(12, (i) => ({ level: 4, mph: 50, sh: 0, flags: i >= 6 ? 64 : 0 }));
+      return [...new Set(m.other.filter((x) => x.kind.startsWith('fail'))
+        .map((x) => x.kind))].sort();
+    })(),
     // A steep reading against a ferry slip is shoreline DEM artifact --
     // Clinton's flat dock booked 11% -- so the mountain is blind near a leg.
     dockSteep: build(19, (i) => (i < 5 ? { flags: 32 }
@@ -127,10 +134,15 @@ check('a long failed stretch carries two !, not a chain', plan.failLong === 2,
   String(plan.failLong));
 check('a short failed stretch carries one', plan.failShort === 1,
   String(plan.failShort));
-check('where the mountain already invites the tap, the ! stays away',
-  plan.failSteep.fails === 0 && plan.failSteep.steeps >= 3,
+check('a hill badge never suppresses the fail badge',
+  plan.failSteep.fails >= 1 && plan.failSteep.steeps >= 3,
   JSON.stringify(plan.failSteep));
-check('a failed sliver stays quiet', plan.failBlip === 0, String(plan.failBlip));
+check('even a very short failed stretch gets !', plan.failBlip === 1, String(plan.failBlip));
+check('a very short designated-route failure gets !?',
+  plan.failDesignatedBlip === 1, String(plan.failDesignatedBlip));
+check('normal and designated failure runs keep their own icons',
+  plan.failDesignationTransition.join() === 'fail,fail-designated',
+  JSON.stringify(plan.failDesignationTransition));
 check('a steep reading at a ferry slip is artifact: no mountain on the dock',
   plan.dockSteep === 0, String(plan.dockSteep));
 check('while the same climb clear of the slip keeps its mountain',
@@ -166,6 +178,17 @@ check('inside the walked stretch, not somewhere else',
 check('the icon draws well above the old 18 px', drawn.cssPx >= 24, `${drawn.cssPx} CSS px`);
 check('the halo is sized to cover it', drawn.haloRadius * 2 >= drawn.cssPx,
   `radius ${drawn.haloRadius} against a ${drawn.cssPx} px icon`);
+
+const failLayer = await page.evaluate(() => ({
+  hasDesignatedImage: Boolean(map.style.getImage('route-marker-fail-designated')),
+  allowOverlap: map.getLayoutProperty('route-fail-marker', 'icon-allow-overlap'),
+  ignorePlacement: map.getLayoutProperty('route-fail-marker', 'icon-ignore-placement'),
+}));
+check('the !? icon is registered for active routes', failLayer.hasDesignatedImage,
+  JSON.stringify(failLayer));
+check('fail icons cannot be removed by symbol collisions',
+  failLayer.allowOverlap === true && failLayer.ignorePlacement === true,
+  JSON.stringify(failLayer));
 
 const taps = await page.evaluate((radius) => {
   const at = map.project(window.__markerAt);

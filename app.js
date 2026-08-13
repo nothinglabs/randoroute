@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-12.683';
+const APP_VERSION = '2026-08-12.684';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -118,7 +118,9 @@ const DEFAULT_RULES = Object.freeze({
 // and a safety preset must neither reset nor lay claim to travel/routing
 // options. They live in Settings > Options but remain independent of presets.
 // `alwaysPreferBikeRoutes` changes COST only. SafetyModel ignores it, so a
-// signed route that fails still draws and speaks as a failure.
+// signed route that fails still draws and speaks as a failure. The everyday
+// rider toggle stays in Settings > Options; the broader corridor/admission
+// switches live with Advanced routing weights.
 const rules = {
   ...DEFAULT_RULES,
   allowFerries: true,
@@ -7285,10 +7287,10 @@ const ROUTE_MARKER_SIZE_BY_ZOOM = ['interpolate', ['linear'], ['zoom'],
 // failures -- the safety model's "busy through road" (6,000/day) -- not just
 // full main-highway volumes.
 const HEAVY_TRAFFIC_ADT = SafetyModel.BUSY_LEVELS[3].adt;
-// The ! on a rules-failing stretch: one at the middle of a contiguous failed
-// area (two on a long one), only where no other badge is already telling a
-// story. Its job is to draw the tap that opens the card naming the rule.
-const FAIL_MARKER_MIN_RUN_M = 120;
+// The ! on a rules-failing stretch: one at the middle of every contiguous
+// failed area (two on a long one). Even a short failure matters, and the fail
+// badge is allowed to coexist with a hill/traffic badge so neither warning can
+// accidentally erase the other.
 const FAIL_MARKER_SECOND_AT_M = 2500;
 function routeMarkerKinds(p, style) {
   const kinds = [];
@@ -7316,7 +7318,7 @@ function buildRouteMarkerData(sdata) {
     for (let i = 1; i < coords.length; i++) lenM += markerSpanM(coords[i - 1], coords[i]);
     const style = p.ferry === 1 ? null : routeVisualStyle(p);
     return { kinds: routeMarkerKinds(p, style), coords, lenM,
-      ferry: p.ferry === 1, fail: style === 'fail' };
+      ferry: p.ferry === 1, fail: style === 'fail', designated: p.desig === 1 };
   });
   // A dock reads steep when it is not: the z12 DEM smears the shoreline bluff
   // onto the flats at a slip, and Clinton's flat terminal road booked 11%
@@ -7389,9 +7391,11 @@ function buildRouteMarkerData(sdata) {
       pos += d;
     }
   });
-  // The ! for rules failures sits outside the spacing clock: one per
-  // contiguous failed area (two on a long one), placed only where no chained
-  // badge already invites the tap. Slot -1 gives it top collision priority.
+  // The ! (or !? when a signed route itself fails) sits outside the spacing
+  // clock: one per contiguous failed area (two on a long one). Runs split when
+  // designation changes so a normal failure cannot hide an adjacent !? (or
+  // vice versa). A separate always-overlap layer below guarantees these points
+  // survive collision placement even beside another explanatory badge.
   const pointAt = (f, span, m) => {
     let at = span.startM;
     for (let i = 1; i < f.coords.length; i++) {
@@ -7404,27 +7408,30 @@ function buildRouteMarkerData(sdata) {
     }
     return f.coords[0] || null;
   };
-  const placeFailMarks = (startIdx, endIdx) => {
+  const placeFailMarks = (startIdx, endIdx, kind) => {
     const runStartM = spans[startIdx].startM, runLenM = spans[endIdx].endM - runStartM;
-    if (runLenM < FAIL_MARKER_MIN_RUN_M) return;
     const targets = runLenM >= FAIL_MARKER_SECOND_AT_M
       ? [runStartM + runLenM / 3, runStartM + 2 * runLenM / 3]
       : [runStartM + runLenM / 2];
     for (const target of targets) {
       const index = spans.findIndex((span) => target >= span.startM && target <= span.endM);
-      if (index < 0 || qualified[index].length) continue;
+      if (index < 0) continue;
       const at = pointAt(feats[index], spans[index], target);
       if (!at) continue;
-      other.push({ type: 'Feature', properties: { kind: 'fail', slot: -1 },
+      other.push({ type: 'Feature', properties: { kind, slot: -1 },
         geometry: { type: 'Point', coordinates: at } });
     }
   };
-  let failStart = -1;
+  let failStart = -1, failKind = null;
   feats.forEach((f, i) => {
-    if (f.fail && failStart < 0) failStart = i;
-    if (!f.fail && failStart >= 0) { placeFailMarks(failStart, i - 1); failStart = -1; }
+    const kind = !f.fail ? null : (f.designated ? 'fail-designated' : 'fail');
+    if (kind !== failKind) {
+      if (failStart >= 0) placeFailMarks(failStart, i - 1, failKind);
+      failStart = kind ? i : -1;
+      failKind = kind;
+    }
   });
-  if (failStart >= 0) placeFailMarks(failStart, feats.length - 1);
+  if (failStart >= 0) placeFailMarks(failStart, feats.length - 1, failKind);
   return { walk: { type: 'FeatureCollection', features: walk },
     other: { type: 'FeatureCollection', features: other } };
 }
@@ -7811,7 +7818,7 @@ function drawRoute(coords, ferrySegs, segs) {
       // still see, at a glance, which portions follow a designated cycle route;
       // the safety verdict remains the narrower line in the centre.
       'line-width': ['interpolate', ['linear'], ['zoom'],
-        6, 18, 10, 24, 14, 32],
+        6, 17.5, 10, 22, 14, 29],
     },
   });
   forgetStyleValues(); map.addLayer({
@@ -7919,6 +7926,7 @@ function drawRoute(coords, ferrySegs, segs) {
   // decides rare exact overlaps, and the access instruction wins those.
   forgetStyleValues(); map.addLayer({
     id: 'route-marker', type: 'symbol', source: 'route-marker',
+    filter: ['!', ['in', ['get', 'kind'], ['literal', ['fail', 'fail-designated']]]],
     layout: {
       'icon-image': ['concat', 'route-marker-', ['get', 'kind']],
       'icon-size': ROUTE_MARKER_SIZE_BY_ZOOM,
@@ -7929,6 +7937,18 @@ function drawRoute(coords, ferrySegs, segs) {
       // spot flickers between kinds as the rider zooms.
       'icon-allow-overlap': false, 'icon-ignore-placement': false,
       'symbol-sort-key': ['get', 'slot'],
+    },
+  });
+  // Fail badges are promises, not decoration: never let collision placement
+  // remove one because a hill, traffic badge, label, or very short geometry is
+  // nearby. The normal marker layer remains decluttered independently.
+  forgetStyleValues(); map.addLayer({
+    id: 'route-fail-marker', type: 'symbol', source: 'route-marker',
+    filter: ['in', ['get', 'kind'], ['literal', ['fail', 'fail-designated']]],
+    layout: {
+      'icon-image': ['concat', 'route-marker-', ['get', 'kind']],
+      'icon-size': ROUTE_MARKER_SIZE_BY_ZOOM,
+      'icon-allow-overlap': true, 'icon-ignore-placement': true,
     },
   });
   forgetStyleValues(); map.addLayer({
@@ -11192,6 +11212,12 @@ function compactReadoutSafety(rows, fallback = '') {
   return box;
 }
 
+function isFailingDesignatedReadout(rows) {
+  const verdict = String(readoutRowValue(rows, 'Result', 'Verdict') || '').toLowerCase();
+  const route = readoutRowValue(rows, 'Bike route', 'Designated bike route');
+  return verdict.includes('fail') && Boolean(route);
+}
+
 
 function mapPointRouteActions(lngLat, routeName, { disclosure = false } = {}) {
   const lat = Number(lngLat.lat);
@@ -11476,6 +11502,12 @@ function renderMapTapCard({
 
   const safetySummary = compactReadoutSafety(rows, summary);
   safetySummary.style.setProperty('--readout-accent', swatchColor);
+  let combinedWarning = null;
+  if (isFailingDesignatedReadout(rows)) {
+    combinedWarning = document.createElement('div');
+    combinedWarning.className = 'readout-designated-fail';
+    combinedWarning.textContent = 'Designated Route — but Fails Safety Rules.';
+  }
 
   // Named designation, bike accommodation and (only when it is not paved)
   // surface. A named route is rider-useful identity, not a technical detail:
@@ -11635,6 +11667,7 @@ function renderMapTapCard({
 
   readoutEl.append(close, heading);
   if (identity.childElementCount) readoutEl.append(identity);
+  if (combinedWarning) readoutEl.append(combinedWarning);
   readoutEl.append(safetySummary);
   if (facts.childElementCount) readoutEl.append(facts);
   readoutEl.append(primaryActions, details);
@@ -11890,7 +11923,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
     // rather than silently dropping the fact when the layer is hidden.
     const badge = routeBadgeAt(map.project(lngLat));
     if (badge) rows.push(['Bike route', badge]);
-    else if (p.g || Number(p.Designated) === 1) {
+    else if (p.g || p.desig === 1 || Number(p.Designated) === 1) {
       rows.push(['Bike route', 'On a designated route (USBR / regional trail)']);
     }
   }
@@ -12472,6 +12505,57 @@ function buildRoutingWeightsEditor() {
   }
 }
 
+// Route-shaping switches that are useful to expert tuners but add noise to
+// the everyday Options page live beside the numerical weights. They keep the
+// same state and routing behavior; this is a UI move, not a second source of
+// truth for the preference.
+function buildAdvancedRoutingOptions() {
+  const host = document.getElementById('advancedRoutingOptions');
+  if (!host) return;
+  host.replaceChildren();
+  const heading = document.createElement('h3');
+  heading.id = 'advancedRoutingOptionsTitle';
+  heading.textContent = 'Route options';
+  const note = document.createElement('p');
+  note.textContent = 'These choices can substantially change which corridors the router considers.';
+  host.append(heading, note);
+  const grid = document.createElement('div');
+  grid.className = 'weights-route-options-grid';
+  host.append(grid);
+
+  const add = (key, label, state, onChange) => {
+    const card = document.createElement('label');
+    card.className = 'weights-route-option';
+    card.htmlFor = `r-${key}`;
+    card.innerHTML = `<input type="checkbox" id="r-${key}" ${state[key] ? 'checked' : ''}>
+      <span>${label}</span>`;
+    const input = card.querySelector('input');
+    input.addEventListener('change', () => {
+      state[key] = input.checked;
+      suppressRoadInfo(900);
+      syncPresetSelection();
+      onChange();
+    });
+    grid.append(card);
+  };
+  const updatePreference = () => { saveStateSoon(); computeRoute(); };
+  add('prefDesig', 'Heavily prefer bike routes & trails', routing, updatePreference);
+  add('prefResidential', 'Prefer residential streets', routing, updatePreference);
+  add('allowSidewalkFallback', 'Allow sidewalk fallback', rules, scheduleRescore);
+  add('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
+    const osm = SOURCES.find((source) => source.id === 'osm');
+    if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
+    scheduleRescore();
+  });
+  add('allowFerries', 'Allow routes with ferries', rules, () => {
+    saveStateSoon();
+    if (routing.start && routing.end) {
+      routing.selectRecommendedNext = true;
+      computeRoute();
+    }
+  });
+}
+
 function activeRoutingPreset() {
   return ROUTING_PRESETS.find((preset) =>
     Object.entries(preset.rules).every(([key, value]) => rules[key] === value)
@@ -12815,31 +12899,11 @@ function buildRulesPanel() {
     saveStateSoon();
     computeRoute();
   };
-  check('prefDesig', 'Heavily prefer bike routes & trails', routing, updateRoutePreference);
-  check('prefResidential', 'Prefer residential streets', routing, updateRoutePreference);
-  check('alwaysPreferBikeRoutes', 'Always prefer bike routes (as if they are safe)', rules,
+  check('alwaysPreferBikeRoutes', 'Follow designated bike routes even if they fail safety rules '
+    + '<span class="rule-caution-copy">(use with caution)</span>', rules,
     updateRoutePreference);
   check('allowFreeways', 'Route over freeway as last resort (still shows as failing)');
-  check('allowFerries', 'Allow routes with ferries', rules, () => {
-    // This is an itinerary permission, not a safety preset. Rebuild the full
-    // portfolio so bridge-only and ferry itineraries are ranked from scratch
-    // rather than trying to preserve the old letter recipes.
-    saveStateSoon();
-    if (routing.start && routing.end) {
-      routing.selectRecommendedNext = true;
-      computeRoute();
-    }
-  });
-  check('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
-    // This option affects both eligibility in the graph and the OSM layer's
-    // feature filter. Repaint immediately, then recompute after the usual
-    // small debounce used for all rider settings.
-    const osm = SOURCES.find((source) => source.id === 'osm');
-    if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
-    scheduleRescore();
-  });
   check('preferPaved', 'Strongly prefer paved surfaces');
-  check('allowSidewalkFallback', 'Allow sidewalk fallback');
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');
 
@@ -13027,7 +13091,9 @@ function syncSettingsNavigationLock() {
   const controls = document.querySelectorAll(
     '#settings-presets button, #settings-presets input, #settings-presets select, '
     + '#settings-limits button, #settings-limits input, #settings-limits select, '
-    + '#settings-options button, #settings-options input, #settings-options select'
+    + '#settings-options button, #settings-options input, #settings-options select, '
+    + '#advancedRoutingOptions input, #routingWeightsEditor input, '
+    + '#routingWeightsEditor button, #resetRoutingWeights'
   );
   controls.forEach((control) => {
     if (turnNav.active) {
@@ -13398,8 +13464,10 @@ document.getElementById('techDetailsBtn').addEventListener('click', () => openHe
 // The weights panel is reachable from its optional map icon and Settings > Advanced.
 // Both keep the map behind the dialog so a tuning change stays tied to its route.
 function openRoutingWeights() {
+  buildAdvancedRoutingOptions();
   buildRoutingWeightsEditor();
   syncWeightsTunedBadge();
+  syncSettingsNavigationLock();
   // The considered-routes screen only has something to say once a trip has
   // been routed; until then the button explains itself instead of opening
   // an empty list.

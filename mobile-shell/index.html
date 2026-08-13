@@ -376,6 +376,7 @@
         <li><b>Three sliders = three searches.</b> Every route is searched as Direct, Balanced and Low stress; that's what makes A–F differ. A slider only moves its own mode.</li>
         <li><b>↺</b> resets one value, <b>Reset all defaults</b> resets everything. Changes re-route immediately.</li>
       </ul>
+      <section id="advancedRoutingOptions" class="weights-route-options" aria-labelledby="advancedRoutingOptionsTitle"></section>
       <div id="routingWeightsEditor" class="weights-groups"></div>
     </div>
   </dialog>
@@ -432,17 +433,20 @@
     <p>Amber is not a failure. It means the road meets your rules but there is something about it you should know before you ride it. Routes may use these roads, including when <b>Only show routes fully matching safety rules</b> is on.</p>
     <ul class="help-list" id="cautionCauseList"></ul></section>
     <section><h3>Options</h3><ul class="help-list">
-      <li><b>Heavily prefer bike routes &amp; trails</b> — favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
-      <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
       <li><b>Route over freeway as last resort (still shows as failing)</b> — a freeway always fails your rules. Off, routes never use one. On, one may be used as a heavily penalized last resort and is still reported as failing, so strict matching excludes it anyway.</li>
-      <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided. Any use appears in Route Details.</li>
       <li><b>Strongly prefer paved surfaces</b> — favors paved roads and trails. Gravel and unpaved paths remain available, and missing surface data is not penalized.</li>
-      <li><b>Allow sidewalk fallback</b> — lets an explicitly mapped sidewalk satisfy the shoulder rule. It remains strongly avoided and is called out in Route Details; it never overrides a bicycle restriction or speed cap.</li>
       <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
-      <li><b>Always prefer bike routes (as if they are safe)</b> — strongly follows signed bike routes for route choice only. Real road safety still controls the map color, Route Details, cautions, and voice warnings, so a signed road can remain animated red.</li>
+      <li><b>Follow designated bike routes even if they fail safety rules <span class="rule-caution-copy">(use with caution)</span></b> — strongly follows signed bike routes for route choice only. Real road safety still controls the map color, Route Details, cautions, and voice warnings, so a signed road can remain animated red.</li>
       <li><b>Guess shoulder width from other data when it isn’t documented</b> — the county road log records how much pavement is left over once the lanes are taken out, per side. That is somewhere to pull over, not necessarily somewhere to ride, so 1 ft is subtracted and the rest counts as shoulder. Only fills a gap: a recorded shoulder always wins, and a zero is ignored because it can mean a paperwork error rather than a measured absence. Cards say when a figure was guessed. <b>On for The Randonneur only.</b> An undocumented shoulder counts as 0 ft and only about 7% of roads document one, so without this the map calls a road failing on missing data rather than on evidence. Weekend Wanderer and Casual Cruiser leave it off: both exist to honour slower roads literally, and Casual Cruiser filters routes to fully matching road, where a guessed shoulder should not be what lets a road in.</li>
       <li><b>Missing shoulder data</b> — always treated as 0 ft, and not adjustable. "No data" and "no shoulder" look the same from the saddle, so a fast road has to show a shoulder to pass rather than benefit from an absence of evidence. Slow roads never reach the shoulder rule at all.</li>
       </ul><p><b>Find</b> searches local offline places first. When there are no offline matches, it automatically searches online for nearby businesses, landmarks, services, parks, addresses, and other named places. Choose <b>Route It</b> to make a new trip from your current location, or <b>Map</b> (or anywhere else on the result) to inspect it without changing your trip. <b>Search with internet</b> remains available whenever you want broader results.</p></section>
+    <section><h3>Advanced routing</h3><ul class="help-list">
+      <li><b>Heavily prefer bike routes &amp; trails</b> — favors bike facilities and designated corridors; physical infrastructure gets the stronger benefit.</li>
+      <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
+      <li><b>Allow sidewalk fallback</b> — lets an explicitly mapped sidewalk satisfy the shoulder rule. It remains strongly avoided and is called out in Route Details.</li>
+      <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided.</li>
+      <li><b>Allow routes with ferries</b> — includes ferry itineraries in route searches.</li>
+    </ul></section>
     <section><h3>Voice navigation</h3><ul class="help-list">
       <li><b>Setting off</b> — the first prompt of a ride names the compass direction and road to start on, plus the first turn, because your phone cannot know which way you are facing until you move.</li>
       <li><b>How far ahead turns are called</b> — the faster you are riding, the earlier each turn is announced.</li>
@@ -553,7 +557,7 @@
       <section><h3>Choose Route</h3><ul>
         <li>The app offers up to six routes, ordered shortest to longest as A–F. One is usually searched with a more-direct lens, so a quicker-but-bolder corridor shows up without asking. The app automatically selects the best match for your settings, which may not be A.</li>
         <li>Adding, moving, or removing a waypoint deals a fresh route lineup. Road blocks keep the current route recipes and letters so you can see what the block changed.</li>
-        <li>Use <b>Settings → Options → Allow routes with ferries</b> to include or exclude ferry itineraries. Loading a route from <b>Considered routes</b> in Advanced weights can add letters past F.</li>
+        <li>Use <b>Advanced routing → Allow routes with ferries</b> to include or exclude ferry itineraries. Loading a route from <b>Considered routes</b> can add letters past F.</li>
         <li>Tap a letter to show distance, estimated time, elevation, and the route’s road and safety information.</li>
         <li>Tap <b>Details</b> to see in-depth information on the route.</li>
       </ul></section>

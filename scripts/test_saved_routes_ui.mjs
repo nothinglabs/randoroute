@@ -94,6 +94,52 @@ check('incline appears before unpaved and unpaved uses miles',
   routeCardLayout.metricLabels[0]?.includes('Incline over 5%')
     && routeCardLayout.metricLabels[1] === '1.1 miUnpaved',
   JSON.stringify(routeCardLayout.metricLabels));
+
+// Relationship pills used to size the first grid track by their text, so
+// Suggested, Shorter, Lower Stress and Alternative nudged every item to their
+// right when the rider changed letters. Exercise the real labels and require
+// the card geometry to remain fixed.
+const relationshipLayout = await page.evaluate(() => {
+  const original = routing.last;
+  const base = { ...original, optimization: { recommended: true }, aggression: .5 };
+  const choices = [
+    base,
+    { ...original, distM: original.distM * .98, optimization: {}, aggression: .5 },
+    { ...original, optimization: {}, aggression: .1 },
+    { ...original, distM: original.distM * 1.02, optimization: {}, aggression: .5 },
+    { ...original, optimization: {}, aggression: .5 },
+  ];
+  routing.options = choices;
+  const samples = choices.map((choice) => {
+    routing.last = choice;
+    renderRouteCard(choice);
+    const box = (selector) => {
+      const rect = document.querySelector(selector).getBoundingClientRect();
+      return { x: Math.round(rect.x * 10) / 10, y: Math.round(rect.y * 10) / 10,
+        width: Math.round(rect.width * 10) / 10 };
+    };
+    return {
+      label: document.querySelector('.rc-route-context').textContent,
+      overview: box('.rc-overview'), chart: box('.rc-elevation-column'),
+      categories: box('.rc-category-list'), details: box('#routeDetailsBtn'),
+    };
+  });
+  routing.last = original;
+  routing.options = [original];
+  renderRouteCard(original);
+  return samples;
+});
+const layoutAnchor = relationshipLayout[0];
+const relationshipStable = relationshipLayout.every((sample) =>
+  ['overview', 'chart', 'categories', 'details'].every((key) =>
+    Math.abs(sample[key].x - layoutAnchor[key].x) <= .1
+      && Math.abs(sample[key].y - layoutAnchor[key].y) <= .1
+      && Math.abs(sample[key].width - layoutAnchor[key].width) <= .1));
+check('route descriptions do not move the route-card contents',
+  relationshipStable
+    && relationshipLayout.map((sample) => sample.label).join('|')
+      === 'Suggested|Shorter|Lower Stress|Longer|Alternative',
+  JSON.stringify(relationshipLayout));
 await page.evaluate(() => localStorage.setItem('wa-bike-saved-routes-1', JSON.stringify([{
   name: 'Lake loop', s: [-122.34, 47.60], e: [-122.30, 47.64], v: [], b: [],
 }])));
@@ -156,11 +202,12 @@ await page.evaluate(() => {
 // did nothing at all.
 await page.waitForFunction(
   () => !routing.pendingRoute && !routing.routeRequestActive, null, { timeout: 30000 });
-const navigationTab = await page.evaluate(() => {
+const navigationTab = await page.evaluate(async () => {
   const routeTipsRect = document.getElementById('routeTipsBtn').getBoundingClientRect();
   const startBefore = document.getElementById('navStartButton').getBoundingClientRect();
   const detailsBefore = document.getElementById('routeDetailsBtn').getBoundingClientRect();
   document.getElementById('navStartButton').click();
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const active = document.querySelector('.tab.active');
   const navTips = document.getElementById('navTipsBtn');
   const navTipsRect = navTips.getBoundingClientRect();
@@ -174,6 +221,7 @@ const navigationTab = await page.evaluate(() => {
   const etaRemaining = navigationEstimateText(3780, true, 0);
   const etaElement = document.getElementById('navProgressEta');
   etaElement.textContent = etaRemaining;
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const etaRect = etaElement.getBoundingClientRect();
   const progressRect = document.querySelector('.nav-progress').getBoundingClientRect();
   const result = {
