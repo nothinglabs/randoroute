@@ -109,34 +109,42 @@ function ensureRouteMarkerImages(targetMap) {
     peak(10.4 * b.s, 4.4 * b.s, 4.6 * b.s, [90, 62, 8, 255]);
     add('route-marker-steep', b);
   }
-  { // traffic: a side-view car -- rounded chassis, glazed cabin, two wheels.
+  { // traffic: a side-view tyrannosaur. The icon is deliberately playful,
+    // while the red ring still carries the serious “busy road” meaning.
     const b = paintMarkerBadge([140, 28, 28, 255]);
-    const s = b.s, body = [176, 32, 32, 255], glass = [223, 236, 244, 255],
-      tyre = [36, 26, 26, 255], hub = [205, 205, 210, 255];
-    // Cabin: a trapezoid, windshield raked toward the front (right).
-    for (let y = Math.round(5.3 * s); y <= Math.round(7.9 * s); y++) {
-      const t = (y - 5.3 * s) / (2.6 * s);
-      const left = 5.4 * s - 0.5 * s * t, right = 9.8 * s + 1.5 * s * t;
-      for (let x = Math.round(left); x <= Math.round(right); x++) b.paint(x, y, body);
-    }
-    // Chassis with rounded nose and tail.
-    for (let y = Math.round(7.9 * s); y <= Math.round(10.3 * s); y++) {
-      for (let x = Math.round(3.3 * s); x <= Math.round(12.7 * s); x++) b.paint(x, y, body);
-    }
-    b.disc(4 * s, 9.1 * s, 1.2 * s, body);
-    b.disc(12 * s, 9.1 * s, 1.2 * s, body);
-    // Two windows split by the door pillar.
-    for (let y = Math.round(5.9 * s); y <= Math.round(7.6 * s); y++) {
-      const t = (y - 5.9 * s) / (1.7 * s);
-      const right = 9.7 * s + 1 * s * t;
-      for (let x = Math.round(6.1 * s); x <= Math.round(right); x++) {
-        if (Math.abs(x - 8.1 * s) > 0.4 * s) b.paint(x, y, glass);
+    const s = b.s, body = [126, 38, 28, 255], eye = [255, 247, 215, 255];
+    // Heavy hips and torso.
+    b.disc(7.7 * s, 8.3 * s, 2.75 * s, body);
+    b.disc(9.5 * s, 7.8 * s, 2.1 * s, body);
+    // Long tapering tail, raised slightly so it reads separately from the feet.
+    for (let x = Math.round(2.1 * s); x <= Math.round(7.1 * s); x++) {
+      const t = (x / s - 2.1) / 5;
+      const cy = (5.7 + 2.1 * t) * s;
+      const half = (.35 + .75 * t) * s;
+      for (let y = Math.round(cy - half); y <= Math.round(cy + half); y++) {
+        if (b.inside(x, y)) b.paint(x, y, body);
       }
     }
-    b.disc(5.5 * s, 10.5 * s, 1.45 * s, tyre);
-    b.disc(10.5 * s, 10.5 * s, 1.45 * s, tyre);
-    b.disc(5.5 * s, 10.5 * s, 0.55 * s, hub);
-    b.disc(10.5 * s, 10.5 * s, 0.55 * s, hub);
+    // Upright neck into the oversized head and square snout.
+    b.stroke(9.5 * s, 7.2 * s, 10.7 * s, 5.1 * s, 1.8 * s, body);
+    b.disc(11.1 * s, 4.8 * s, 1.65 * s, body);
+    for (let y = Math.round(4.2 * s); y <= Math.round(5.8 * s); y++) {
+      for (let x = Math.round(11 * s); x <= Math.round(13.2 * s); x++) {
+        if (b.inside(x, y)) b.paint(x, y, body);
+      }
+    }
+    // Open lower jaw and one bright eye make the head legible at route scale.
+    b.stroke(11.1 * s, 6 * s, 12.6 * s, 6.5 * s, .75 * s, body);
+    b.disc(11.5 * s, 4.5 * s, .35 * s, eye);
+    b.disc(11.6 * s, 4.5 * s, .14 * s, [32, 22, 18, 255]);
+    // Tiny tyrannosaur arm.
+    b.stroke(9.7 * s, 7.2 * s, 11.1 * s, 8.1 * s, .65 * s, body);
+    b.stroke(11.1 * s, 8.1 * s, 11.8 * s, 7.8 * s, .5 * s, body);
+    // Two powerful legs and forward-pointing feet.
+    b.stroke(7.2 * s, 9.4 * s, 6.6 * s, 12.1 * s, 1.15 * s, body);
+    b.stroke(9.4 * s, 9.2 * s, 9.9 * s, 12 * s, 1.15 * s, body);
+    b.stroke(6.6 * s, 12.1 * s, 8 * s, 12.1 * s, .85 * s, body);
+    b.stroke(9.9 * s, 12 * s, 11.4 * s, 12 * s, .85 * s, body);
     add('route-marker-traffic', b);
   }
   { // unpaved: a serrated ground profile -- the steep badge's mountain

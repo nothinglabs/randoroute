@@ -50,7 +50,7 @@ const plan = await page.evaluate(() => {
       const m = build(19, () => ({ measures: { adt: 21000 } })).other;
       return m.length > 0 && m.every((x) => x.kind === 'traffic');
     })(),
-    // The car starts at the tier that starts driving cautions -- "a busy
+    // The dinosaur starts at the tier that starts driving cautions -- "a busy
     // through road" -- not only at main-highway volumes.
     busyTraffic: (() => {
       const m = build(19, () => ({ measures: { adt: 6500 } })).other;
@@ -60,7 +60,7 @@ const plan = await page.evaluate(() => {
     trafficOnInfra: build(19, () => ({ flags: 8, measures: { adt: 21000 } })).other.length,
     // A trusted bike lane keeps its lime unbadged however busy the road
     // beside it -- but a lane demoted to caution by a high stress rating
-    // carries the car again.
+    // carries the dinosaur again.
     trafficOnBikeLane: build(19, () => ({ facility: 2, measures: { adt: 21000 } })).other.length,
     trafficOnStressedLane: (() => {
       const m = build(19, () => ({ facility: 2, lts: 4, measures: { adt: 21000 } })).other;
@@ -111,7 +111,7 @@ check('spaced apart, never crowded', plan.gaps.every((g) => g >= 600),
 check('flat riding carries none', plan.flat === 0, String(plan.flat));
 check('a 30 m spike is noise, not a climb', plan.blip === 0, String(plan.blip));
 check('an incredible grade is the data error it is', plan.absurd === 0, String(plan.absurd));
-check('heavy traffic on a road gets the car', plan.traffic === true);
+check('heavy traffic on a road gets the dinosaur', plan.traffic === true);
 check('and so does busy-through-road traffic, where cautions begin',
   plan.busyTraffic === true);
 check('while a genuinely quiet road stays unbadged', plan.quietTraffic === 0,
@@ -120,7 +120,7 @@ check('but a busy road BESIDE separated infra does not badge the infra',
   plan.trafficOnInfra === 0, String(plan.trafficOnInfra));
 check('a trusted bike lane on a busy road stays unbadged',
   plan.trafficOnBikeLane === 0, String(plan.trafficOnBikeLane));
-check('a bike lane demoted to caution by its stress rating carries the car',
+check('a bike lane demoted to caution by its stress rating carries the dinosaur',
   plan.trafficOnStressedLane === true);
 check('confirmed unpaved gets the rocks', plan.rocks === true);
 check('a technical way gets the question mark', plan.odd === true);
@@ -160,6 +160,22 @@ const drawn = await page.evaluate(async () => {
   drawRoute(coords, [], segs);
   await new Promise((resolve) => { map.once('idle', resolve); setTimeout(resolve, 8000); });
   const image = map.style.getImage('route-dismount-marker-icon');
+  const trafficImage = map.style.getImage('route-marker-traffic');
+  const trafficPixels = trafficImage?.data?.data;
+  const trafficWidth = trafficImage?.data?.width || 0;
+  const trafficHeight = trafficImage?.data?.height || 0;
+  const bodyPixel = (x, y) => {
+    const offset = (y * trafficWidth + x) * 4;
+    return trafficPixels?.[offset] === 126 && trafficPixels?.[offset + 1] === 38
+      && trafficPixels?.[offset + 2] === 28 && trafficPixels?.[offset + 3] === 255;
+  };
+  const bodyCount = (x0, y0, x1, y1) => {
+    let count = 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) count += bodyPixel(x, y) ? 1 : 0;
+    }
+    return count;
+  };
   const markers = map.querySourceFeatures('route-dismount');
   window.__markerAt = markers[0]?.geometry.coordinates;
   return {
@@ -168,6 +184,17 @@ const drawn = await page.evaluate(async () => {
     hasSource: !!map.getSource('route-dismount'),
     cssPx: image ? Math.round(image.data.width / image.pixelRatio) : 0,
     haloRadius: map.getPaintProperty('route-dismount-halo', 'circle-radius'),
+    // Test the registered pixels, not marker-icons.js source text. These four
+    // separated zones describe the tyrannosaur silhouette: a raised tail,
+    // bulky body, oversized head, and feet. The old car has none of that
+    // distinctive high-left/high-right profile.
+    dinosaur: trafficPixels ? {
+      dimensions: [trafficWidth, trafficHeight],
+      tail: bodyCount(6, 14, 18, 22),
+      torso: bodyCount(20, 20, 31, 31),
+      head: bodyCount(31, 10, 41, 20),
+      feet: bodyCount(18, 34, 36, 38),
+    } : null,
   };
 });
 check('the walked stretch carries a walker on the map',
@@ -178,6 +205,11 @@ check('inside the walked stretch, not somewhere else',
 check('the icon draws well above the old 18 px', drawn.cssPx >= 24, `${drawn.cssPx} CSS px`);
 check('the halo is sized to cover it', drawn.haloRadius * 2 >= drawn.cssPx,
   `radius ${drawn.haloRadius} against a ${drawn.cssPx} px icon`);
+check('the busy-road badge is a recognizable dinosaur silhouette',
+  drawn.dinosaur?.dimensions?.join('x') === '48x48'
+    && drawn.dinosaur.tail >= 10 && drawn.dinosaur.torso >= 30
+    && drawn.dinosaur.head >= 30 && drawn.dinosaur.feet >= 10,
+  JSON.stringify(drawn.dinosaur));
 
 const failLayer = await page.evaluate(() => ({
   hasDesignatedImage: Boolean(map.style.getImage('route-marker-fail-designated')),

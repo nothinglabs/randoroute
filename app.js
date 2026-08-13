@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-12.684';
+const APP_VERSION = '2026-08-12.685';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7283,7 +7283,7 @@ const FERRY_GRADE_BLACKOUT_M = 250;
 // dominating a statewide view.
 const ROUTE_MARKER_SIZE_BY_ZOOM = ['interpolate', ['linear'], ['zoom'],
   9, 0.98, 12, 1.3, 14, 1.66, 16.5, 2.2];
-// The car flags traffic at the tier that starts driving cautions and rule
+// The dinosaur flags traffic at the tier that starts driving cautions and rule
 // failures -- the safety model's "busy through road" (6,000/day) -- not just
 // full main-highway volumes.
 const HEAVY_TRAFFIC_ADT = SafetyModel.BUSY_LEVELS[3].adt;
@@ -7300,9 +7300,9 @@ function routeMarkerKinds(p, style) {
   if (Number.isFinite(grade) && grade >= STEEP_MARKER_GRADE_PCT
       && grade <= MAX_CREDIBLE_GRADE_PCT) kinds.push('steep');
   if (Number(p.adt) >= HEAVY_TRAFFIC_ADT) {
-    // The car marks traffic the rider actually bears. A stretch still earning
+    // The dinosaur marks traffic the rider actually bears. A stretch still earning
     // trusted bike/trail paint keeps its lime unbadged, however busy the road
-    // beside the lane; the car appears where the road is a caution, or where
+    // beside the lane; the dinosaur appears where the road is a caution, or where
     // that traffic is part of why it draws as a bare pass instead.
     if (style === 'caution' || style === 'pass') kinds.push('traffic');
   }
