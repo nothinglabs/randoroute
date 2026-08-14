@@ -34,7 +34,10 @@ await page.evaluate(() => {
     { lenM: 4281, level: 3, mtb: true },
     { lenM: 856, level: 4, mph: 55, sh: 0 },
   ].map((segment, index) => ({ ...segment, c0: index, c1: index + 1 }));
-  const route = { ok: true, distM: 85616, timeS: 16200, maxGradePct: 7, coords, segs };
+  const profile = coords.map((_, index) => [index * 85616 / (coords.length - 1),
+    120 + (index % 3) * 35]);
+  const route = { ok: true, distM: 85616, timeS: 16200, maxGradePct: 7,
+    coords, segs, profile };
   routing.start = coords[0];
   routing.end = coords.at(-1);
   routing.last = route;
@@ -67,7 +70,8 @@ const routeCardLayout = await page.evaluate(() => {
     categoryWidth: categories.width,
     metricsHeight: metrics.height,
     metricsSpanRightColumns: Math.abs(metrics.left - chart.left) < 1
-      && Math.abs(metrics.right - categories.right) < 1,
+      && categories.right - metrics.right >= 6
+      && categories.right - metrics.right <= 10,
     metricLabels,
     clipped,
     truncated,
@@ -86,7 +90,7 @@ check('the left column is compact and the chart is at least as wide as the categ
   routeCardLayout.overviewWidth <= 90
     && routeCardLayout.chartWidth >= routeCardLayout.categoryWidth - 1,
   JSON.stringify(routeCardLayout));
-check('unpaved and incline share one compact full-width strip',
+check('unpaved and incline share one compact strip inset from the phone edge',
   routeCardLayout.metricsHeight <= 26 && routeCardLayout.metricsSpanRightColumns
     && routeCardLayout.height <= 100,
   JSON.stringify(routeCardLayout));
@@ -120,6 +124,8 @@ const relationshipLayout = await page.evaluate(() => {
     };
     return {
       label: document.querySelector('.rc-route-context').textContent,
+      labelClipped: document.querySelector('.rc-route-context').scrollWidth
+        > document.querySelector('.rc-route-context').clientWidth,
       overview: box('.rc-overview'), chart: box('.rc-elevation-column'),
       categories: box('.rc-category-list'), details: box('#routeDetailsBtn'),
     };
@@ -137,6 +143,7 @@ const relationshipStable = relationshipLayout.every((sample) =>
       && Math.abs(sample[key].width - layoutAnchor[key].width) <= .1));
 check('route descriptions do not move the route-card contents',
   relationshipStable
+    && relationshipLayout.every((sample) => !sample.labelClipped)
     && relationshipLayout.map((sample) => sample.label).join('|')
       === 'Suggested|Shorter|Lower Stress|Longer|Alternative',
   JSON.stringify(relationshipLayout));
@@ -203,6 +210,21 @@ await page.evaluate(() => {
 await page.waitForFunction(
   () => !routing.pendingRoute && !routing.routeRequestActive, null, { timeout: 30000 });
 const navigationTab = await page.evaluate(async () => {
+  const segmentIndex = 3;
+  const segment = routing.last.segs[segmentIndex];
+  const tap = {
+    lng: (routing.last.coords[segment.c0][0] + routing.last.coords[segment.c1][0]) / 2,
+    lat: (routing.last.coords[segment.c0][1] + routing.last.coords[segment.c1][1]) / 2,
+  };
+  HIT_SRC['route-seg-hit'] = ROUTESEG_SRC;
+  renderReadout({
+    layer: { id: 'route-seg-hit' },
+    properties: routeSegProps(segment, segmentIndex),
+    geometry: { type: 'LineString',
+      coordinates: routing.last.coords.slice(segment.c0, segment.c1 + 1) },
+  }, tap, { x: 195, y: 360 });
+  const planningSelection = Number(document.getElementById('rcElevCanvas')
+    .dataset.selectedDistanceM);
   const routeTipsRect = document.getElementById('routeTipsBtn').getBoundingClientRect();
   const startBefore = document.getElementById('navStartButton').getBoundingClientRect();
   const detailsBefore = document.getElementById('routeDetailsBtn').getBoundingClientRect();
@@ -213,6 +235,18 @@ const navigationTab = await page.evaluate(async () => {
   const navTipsRect = navTips.getBoundingClientRect();
   const startAfter = document.getElementById('navStartButton').getBoundingClientRect();
   const detailsAfter = document.getElementById('navCardDetailsBtn').getBoundingClientRect();
+  // Starting navigation dismisses the planning inspection card. Tap the same
+  // segment again in the live view: each mode should independently place the
+  // marker at the same profile distance.
+  renderReadout({
+    layer: { id: 'route-seg-hit' },
+    properties: routeSegProps(segment, segmentIndex),
+    geometry: { type: 'LineString',
+      coordinates: routing.last.coords.slice(segment.c0, segment.c1 + 1) },
+  }, tap, { x: 195, y: 360 });
+  const navElevation = document.getElementById('navElevationCanvas');
+  const navigationSelection = Number(navElevation.dataset.selectedDistanceM);
+  const navElevationHeight = navElevation.getBoundingClientRect().height;
   // Render the compact card's widest progress string. The first frame after
   // tapping Navigate says "Waiting for GPS", which cannot catch an ETA that
   // clips once location arrives.
@@ -234,10 +268,15 @@ const navigationTab = await page.evaluate(async () => {
     helpRightAligned: Math.abs(navTipsRect.right - routeTipsRect.right) <= 1,
     startShift: { x: startAfter.left - startBefore.left, y: startAfter.top - startBefore.top },
     detailsShift: { x: detailsAfter.left - detailsBefore.left, y: detailsAfter.top - detailsBefore.top },
+    selection: { planning: planningSelection, navigating: navigationSelection },
+    navElevationHeight,
     estimates: { etaClock, etaRemaining },
     etaInsideProgress: etaRect.right <= progressRect.right - 4,
   };
   stopTurnNavigation(false);
+  dismissRoadInfo();
+  result.selection.cleared = !document.getElementById('rcElevCanvas')
+    .dataset.selectedDistanceM;
   return result;
 });
 check('starting navigation keeps the permanent sheet on Route',
@@ -250,6 +289,14 @@ check('Navigate and Route Details stay put when navigation starts',
   Math.abs(navigationTab.startShift.x) <= 1 && Math.abs(navigationTab.startShift.y) <= 1
     && Math.abs(navigationTab.detailsShift.x) <= 1 && Math.abs(navigationTab.detailsShift.y) <= 1,
   JSON.stringify(navigationTab));
+check('tapping an active-route segment marks the same elevation in both views',
+  Number.isFinite(navigationTab.selection.planning)
+    && navigationTab.selection.planning > 0
+    && navigationTab.selection.planning === navigationTab.selection.navigating
+    && navigationTab.selection.cleared,
+  JSON.stringify(navigationTab.selection));
+check('the navigation elevation chart uses the available vertical room',
+  navigationTab.navElevationHeight >= 66, JSON.stringify(navigationTab));
 check('the navigation estimate alternates between arrival time and time left',
   /^ETA /.test(navigationTab.estimates.etaClock)
     && /^~1 hr 3 min left$/.test(navigationTab.estimates.etaRemaining),

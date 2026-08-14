@@ -915,7 +915,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'randonneur',
     label: 'The Randonneur',
     audience: 'For long-distance riders who want the widest range of route choices.',
-    blurb: 'Widest choice of routes; looser rules, fewer roads flagged as failing.',
+    blurb: 'Best for long-distance rides and maximum route choice. Looser limits mean fewer roads are marked as failures.',
     rules: Object.freeze({ ...DEFAULT_RULES }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
@@ -923,7 +923,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'weekend-wanderer',
     label: 'Weekend Wanderer',
     audience: 'For day riders who want slower roads with practical flexibility.',
-    blurb: 'Slower roads, flexible; more roads come back as amber cautions.',
+    blurb: 'Best for everyday and day rides on slower roads, while allowing practical compromises. Borderline roads appear as amber cautions.',
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
@@ -941,7 +941,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'casual-cruiser',
     label: 'Casual Cruiser',
     audience: 'For riders who want low-stress routes that fully honor their safety rules.',
-    blurb: "Relaxed riding. Routes must follow rules.",
+    blurb: 'Best for relaxed, low-stress riding. Only routes that fully match your safety rules are shown.',
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
@@ -5003,9 +5003,12 @@ const NAV_ELEV_DONE = 'rgba(0,121,92,0.30)';
 const NAV_ELEV_AHEAD = 'rgba(44,123,182,0.18)';
 const NAV_ELEV_LINE = '#2c7bb6';
 const NAV_ELEV_POSITION = '#00795c';
+const ROUTE_ELEV_SELECTION = '#7b2cbf';
 let navCardStatsFor = null;
 let navEtaShowsTimeLeft = false;
 let navEtaFlipTimer = null;
+let navDetailsButtonAnchor = null;
+let routeElevationSelection = null;
 const NAV_ETA_FLIP_MS = 6000;
 
 function navigationEstimateText(remainingS, showTimeLeft = navEtaShowsTimeLeft,
@@ -5039,7 +5042,51 @@ function syncNavigationEstimateTimer(shouldRun) {
   }
 }
 
+function selectedRouteElevationM(route = routing.last) {
+  return routeElevationSelection?.route === route
+    && Number.isFinite(routeElevationSelection.distanceM)
+    ? Math.max(0, Math.min(Number(route.distM) || 0, routeElevationSelection.distanceM))
+    : null;
+}
+
+function syncElevationSelectionMetadata(canvas, selectionM) {
+  if (!canvas) return;
+  const baseLabel = canvas.dataset.baseAriaLabel
+    || canvas.getAttribute('aria-label') || 'Route elevation';
+  canvas.dataset.baseAriaLabel = baseLabel;
+  if (Number.isFinite(selectionM)) {
+    canvas.dataset.selectedDistanceM = String(Math.round(selectionM));
+    canvas.setAttribute('aria-label', `${baseLabel}; selected segment at ${fmtMi(selectionM)} miles`);
+  } else {
+    delete canvas.dataset.selectedDistanceM;
+    canvas.setAttribute('aria-label', baseLabel);
+  }
+}
+
+function drawRouteElevationSelection(ctx, x, h, padT, padB) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x, Math.max(2, padT - 5));
+  ctx.lineTo(x, h - padB);
+  ctx.strokeStyle = 'rgba(255,255,255,.94)';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, Math.max(2, padT - 5));
+  ctx.lineTo(x, h - padB);
+  ctx.strokeStyle = ROUTE_ELEV_SELECTION;
+  ctx.lineWidth = 2.4;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, Math.max(3, padT - 5), 3.2, 0, Math.PI * 2);
+  ctx.fillStyle = ROUTE_ELEV_SELECTION;
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawNavElevation(canvas, profile, distM, progressM) {
+  const selectionM = selectedRouteElevationM();
+  syncElevationSelectionMetadata(canvas, selectionM);
   if (!canvas || !Array.isArray(profile) || profile.length < 2 || !(distM > 0)) return;
   const w = canvas.clientWidth || 0, h = canvas.clientHeight || 74;
   if (w < 2) return; // hidden panel: redraw once it becomes visible
@@ -5080,6 +5127,9 @@ function drawNavElevation(canvas, profile, distM, progressM) {
     ctx.beginPath(); ctx.arc(px, padT - 4, 2.6, 0, Math.PI * 2);
     ctx.fillStyle = NAV_ELEV_POSITION; ctx.fill();
   }
+  if (Number.isFinite(selectionM)) {
+    drawRouteElevationSelection(ctx, X(selectionM), h, padT, padB);
+  }
   ctx.fillStyle = '#607482'; ctx.font = '700 9px system-ui';
   ctx.textAlign = 'left'; ctx.textBaseline = 'top';
   ctx.fillText(`${fmtFt(hi)} ft`, padL + 2, 1);
@@ -5095,6 +5145,8 @@ function drawNavElevation(canvas, profile, distM, progressM) {
 // with no axis clutter. Fits the footprint the climb text used, so the card
 // height and the Details button stay put.
 function drawMiniElevation(canvas, profile, distM, ascentM) {
+  const selectionM = selectedRouteElevationM();
+  syncElevationSelectionMetadata(canvas, selectionM);
   if (!canvas) return;
   const w = canvas.clientWidth || 0, h = canvas.clientHeight || 36;
   if (w < 2 || !Array.isArray(profile) || profile.length < 2 || !(distM > 0)) return;
@@ -5119,6 +5171,9 @@ function drawMiniElevation(canvas, profile, distM, ascentM) {
   ctx.moveTo(X(profile[0][0]), Y(profile[0][1]));
   for (const [d, e] of profile) ctx.lineTo(X(d), Y(e));
   ctx.strokeStyle = NAV_ELEV_LINE; ctx.lineWidth = 1.4; ctx.stroke();
+  if (Number.isFinite(selectionM)) {
+    drawRouteElevationSelection(ctx, X(selectionM), h, padT, padB);
+  }
   ctx.font = '800 9.5px system-ui';
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#607482';
@@ -5136,6 +5191,106 @@ function drawRouteCardElevation() {
   if (canvas && m && m.ok) {
     drawMiniElevation(canvas, compactRouteProfile(m), Number(m.distM) || 0, Number(m.ascentM) || 0);
   }
+}
+
+function routeDistanceAtTappedSegment(route, routeIndex, lngLat) {
+  const coords = route?.coords || [];
+  const seg = route?.segs?.[routeIndex];
+  if (!seg || coords.length < 2 || !lngLat) return null;
+  const point = [Number(lngLat.lng ?? lngLat[0]), Number(lngLat.lat ?? lngLat[1])];
+  if (!point.every(Number.isFinite)) return null;
+  const cumulative = [0];
+  for (let i = 1; i < coords.length; i++) {
+    cumulative.push(cumulative[i - 1] + navDistanceM(coords[i - 1], coords[i]));
+  }
+  const first = Math.max(0, Math.min(coords.length - 2, Number(seg.c0) || 0));
+  const last = Math.max(first, Math.min(coords.length - 2,
+    Math.max(first, Number(seg.c1) - 1 || first)));
+  let bestIndex = first;
+  let bestProjection = null;
+  for (let i = first; i <= last; i++) {
+    const projection = projectNavigationSegment(point, coords[i], coords[i + 1]);
+    if (!bestProjection || projection.distanceM < bestProjection.distanceM) {
+      bestProjection = projection;
+      bestIndex = i;
+    }
+  }
+  if (!bestProjection) return null;
+  const geometryM = cumulative[bestIndex]
+    + bestProjection.fraction * (cumulative[bestIndex + 1] - cumulative[bestIndex]);
+  const geometryTotalM = cumulative[cumulative.length - 1] || 0;
+  const profileTotalM = Number(route.distM) || geometryTotalM;
+  return geometryTotalM > 0 ? geometryM * profileTotalM / geometryTotalM : geometryM;
+}
+
+function routeSegmentIndexNearTap(route, lngLat, toleranceM) {
+  const coords = route?.coords || [];
+  const segs = route?.segs || [];
+  const point = [Number(lngLat?.lng ?? lngLat?.[0]), Number(lngLat?.lat ?? lngLat?.[1])];
+  if (coords.length < 2 || !segs.length || !point.every(Number.isFinite)
+      || !(toleranceM > 0)) return null;
+  let bestCoordIndex = -1;
+  let bestDistanceM = Infinity;
+  for (let i = 0; i + 1 < coords.length; i++) {
+    const projection = projectNavigationSegment(point, coords[i], coords[i + 1]);
+    if (projection.distanceM < bestDistanceM) {
+      bestDistanceM = projection.distanceM;
+      bestCoordIndex = i;
+    }
+  }
+  if (bestCoordIndex < 0 || bestDistanceM > toleranceM) return null;
+  const index = segs.findIndex((seg) => bestCoordIndex >= Number(seg.c0)
+    && bestCoordIndex < Number(seg.c1));
+  return index >= 0 ? index : null;
+}
+
+function selectRouteElevationSegment(routeIndex, lngLat) {
+  const route = routing.last;
+  const distanceM = routeDistanceAtTappedSegment(route, routeIndex, lngLat);
+  routeElevationSelection = Number.isFinite(distanceM) ? { route, distanceM } : null;
+  drawRouteCardElevation();
+  updateNavCard();
+}
+
+function clearRouteElevationSelection() {
+  if (!routeElevationSelection) return;
+  routeElevationSelection = null;
+  drawRouteCardElevation();
+  updateNavCard();
+}
+
+function captureNavigationDetailsButtonAnchor() {
+  const tab = document.getElementById('tab-route');
+  const button = document.getElementById('routeDetailsBtn');
+  if (!tab || !button) return;
+  const tabRect = tab.getBoundingClientRect();
+  const buttonRect = button.getBoundingClientRect();
+  if (!(buttonRect.width > 0 && buttonRect.height > 0)) return;
+  navDetailsButtonAnchor = {
+    left: buttonRect.left - tabRect.left,
+    bottom: tabRect.bottom - buttonRect.bottom,
+    width: buttonRect.width,
+    height: buttonRect.height,
+  };
+}
+
+function positionNavigationDetailsButton() {
+  const button = document.getElementById('navCardDetailsBtn');
+  if (!button) return;
+  if (!turnNav.active || !navDetailsButtonAnchor) {
+    for (const property of ['position', 'left', 'bottom', 'width', 'height', 'minHeight', 'transform', 'zIndex']) {
+      button.style[property] = '';
+    }
+    return;
+  }
+  button.style.position = 'absolute';
+  button.style.left = `${navDetailsButtonAnchor.left}px`;
+  button.style.bottom = `${navDetailsButtonAnchor.bottom}px`;
+  button.style.width = `${navDetailsButtonAnchor.width}px`;
+  button.style.height = `${navDetailsButtonAnchor.height}px`;
+  button.style.minHeight = `${navDetailsButtonAnchor.height}px`;
+  button.style.transform = 'none';
+  button.style.zIndex = '2';
 }
 
 function navEscHTML(s) {
@@ -5190,9 +5345,11 @@ function updateNavCard() {
     card.hidden = true;
     navCardStatsFor = null;
     syncNavigationEstimateTimer(false);
+    positionNavigationDetailsButton();
     return;
   }
   card.hidden = false;
+  positionNavigationDetailsButton();
   const m = routing.last;
   const progressRoute = turnNav.followingConnector ? turnNav.plannedRoute : turnNav.route;
   const totalM = progressRoute?.totalM || 0;
@@ -6527,6 +6684,10 @@ function startTurnNavigation() {
     setStatus('Set a route and allow location access to start navigation.', true);
     return;
   }
+  // The planning card is the visual reference for this shared action. Capture
+  // its exact inset before the live card replaces it; anchoring from the
+  // sheet's bottom also survives the live elevation chart being taller.
+  captureNavigationDetailsButtonAnchor();
   turnNav.plannedRoute = buildTurnInstructions(routing.last);
   turnNav.route = turnNav.plannedRoute;
   turnNav.connectorRoute = null;
@@ -6606,6 +6767,7 @@ function stopTurnNavigation(announce = true) {
   releaseNavigationWakeLock();
   if (turnNav.marker) { turnNav.marker.remove(); turnNav.marker = null; }
   turnNav.active = false;
+  positionNavigationDetailsButton();
   turnNav.route = null;
   turnNav.plannedRoute = null;
   turnNav.connectorRoute = null;
@@ -9251,12 +9413,18 @@ function renderAllRoutesList() {
 
 // Tapping a row loads that route. Offered routes are already in hand; the rest
 // are fetched whole from the worker's portfolio cache.
+function closeConsideredRouteDialogs() {
+  const allRoutes = document.getElementById('allRoutesDialog');
+  const weights = document.getElementById('weightsDialog');
+  if (allRoutes?.open) allRoutes.close();
+  if (weights?.open) weights.close();
+}
+
 function chooseCandidate(c) {
-  const dialog = document.getElementById('allRoutesDialog');
   const existing = (routing.options || []).find((o) =>
     o.optimization?.profileId === c.profileId);
   if (existing) {
-    dialog.close();
+    closeConsideredRouteDialogs();
     activateRouteOption(existing, true);
     renderRouteOptionControls();
     return;
@@ -9265,7 +9433,7 @@ function chooseCandidate(c) {
   routing.candidateReqId = (routing.candidateReqId || 0) + 1;
   routing.worker.postMessage({ type: 'route-candidate', id: routing.candidateReqId,
     candidatesKey: routing.candidatesKey, profileId: c.profileId });
-  dialog.close();
+  closeConsideredRouteDialogs();
   showRouteActionToast(`Loading ${c.label}…`, { busy: true, duration: 8000 });
 }
 
@@ -10745,6 +10913,7 @@ let roadInfoSuppressedUntil = 0;
 function dismissRoadInfo() {
   clearSearchResultMarker();
   clearTapHighlight();
+  clearRouteElevationSelection();
   readoutPinned = false;
   readoutEl.classList.remove('show');
 }
@@ -11734,6 +11903,7 @@ function openMapPointNavigate(lngLat, routeName) {
 function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMarker = false } = {}) {
   resetRoadInfoPosition();
   if (!feature) {
+    clearRouteElevationSelection();
     renderMapTapCard({
       displayTitle: 'Point on map',
       pointName: 'Point on map',
@@ -11747,6 +11917,8 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
   }
   const src = HIT_SRC[feature.layer.id];
   const p = feature.properties;
+  if (src?.id === 'routeseg') selectRouteElevationSegment(Number(p.routeIndex), lngLat);
+  else clearRouteElevationSelection();
   if (src.closure) {
     // The one overlay that cannot be switched off must be able to explain
     // itself: these circles were the only marks on the map a tap ignored,
@@ -11848,7 +12020,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
       ['Name', p.n || null],
       ['Route', isUSBR ? 'US Bicycle Route ' + p.r : p.r || null],
       ['Network', p.t === 'ncn' ? 'National (AASHTO-designated)' : 'Regional trail / route'],
-      ['Map symbol', 'Blue dashed — designated cycling corridor'],
+      ['Map symbol', 'Olive-green dashed — designated cycling corridor'],
       ['Note', 'A designation is not necessarily a bike facility. The scored road or facility supplies the safety verdict and takes visual precedence.'],
     ];
   } else if (src.id === 'restrict') {
@@ -12138,6 +12310,18 @@ function inspectRoadAt(point, lngLat = null) {
       || point.x > canvas.clientWidth - edgeGuard
       || point.y > canvas.clientHeight - edgeGuard) return false;
   const feature = featureAt(point);
+  // The wide active-route ribbon often overlaps a road, trail, or designated
+  // bike-route layer. That underlying feature may legitimately win the card
+  // (it can have richer facts), but a tap inside the route's own hit target is
+  // still a tap on this trip and must mark the corresponding elevation. Query
+  // that hit target independently instead of making the chart depend on which
+  // overlapping source won the card-ranking tie.
+  let tappedRouteSegment = null;
+  if (routing.last?.ok && map.getLayer('route-seg-hit')) {
+    try {
+      tappedRouteSegment = map.queryRenderedFeatures(point, { layers: ['route-seg-hit'] })[0] || null;
+    } catch (error) { /* style changed between the layer check and query */ }
+  }
   // A deliberate tap is useful even between mapped segments: the generic
   // point card can still make it a destination, start, or stop and can open
   // Google Maps. Feature-backed taps simply add the richer road safety facts.
@@ -12146,6 +12330,19 @@ function inspectRoadAt(point, lngLat = null) {
   const picker = document.getElementById('placePicker');
   if (picker && !picker.hidden) closePlacePicker();
   const inspectedLngLat = lngLat || map.unproject([point.x, point.y]);
+  let tappedRouteIndex = Number(tappedRouteSegment?.properties?.routeIndex);
+  if (!Number.isInteger(tappedRouteIndex)) {
+    // MapLibre may omit a completely transparent hit layer from rendered
+    // queries on some WebKit/Metal paths. Fall back to the same on-screen
+    // geometry test the rider sees: a modest finger-sized distance around the
+    // active polyline, converted from pixels to metres at this latitude/zoom.
+    const onePixelAway = map.unproject([point.x + 1, point.y]);
+    const metresPerPixel = navDistanceM(
+      [inspectedLngLat.lng, inspectedLngLat.lat],
+      [onePixelAway.lng, onePixelAway.lat]);
+    tappedRouteIndex = routeSegmentIndexNearTap(
+      routing.last, inspectedLngLat, Math.max(4, metresPerPixel * 14));
+  }
   // A road gets its own stretch drawn instead of a pin: the card is about that
   // piece of road, and showing it is more use than marking the pixel the
   // finger landed on. A tap on nothing still gets the pin -- there the point
@@ -12155,6 +12352,9 @@ function inspectRoadAt(point, lngLat = null) {
   if (highlighted) clearSearchResultMarker();
   else showTemporaryMapMarker(inspectedLngLat);
   renderReadout(feature || null, inspectedLngLat, point, { avoidTemporaryMarker: true });
+  if (Number.isInteger(tappedRouteIndex)) {
+    selectRouteElevationSegment(tappedRouteIndex, inspectedLngLat);
+  }
   readoutPinned = true;
   return true;
 }
@@ -12472,12 +12672,13 @@ function weightSlider(key, label, min, max, step) {
     const value = Number(input.value);
     out.textContent = value === dflt ? String(value) : `${value} (was ${dflt})`;
     row.classList.toggle('changed', value !== dflt);
-    revert.hidden = value === dflt;
+    revert.classList.toggle('is-hidden', value === dflt);
+    revert.disabled = value === dflt;
+    revert.setAttribute('aria-hidden', value === dflt ? 'true' : 'false');
   };
   const commit = () => {
     routingWeights[key] = Number(input.value);
     paint();
-    syncWeightsTunedBadge();
     suppressRoadInfo(1200);
     // Route-only, never the full map re-score: weights are read by the router
     // and by nothing that paints the map, so re-scoring every source mid-drag
@@ -12487,10 +12688,15 @@ function weightSlider(key, label, min, max, step) {
     scheduleReroute();
   };
   input.addEventListener('input', commit);
+  // The page-level tuned notice changes the document flow. Updating it during
+  // a drag used to shove the slider out from under the rider's finger on the
+  // first off-default value; wait until the gesture is complete instead.
+  input.addEventListener('change', syncWeightsTunedBadge);
   revert.addEventListener('click', (e) => {
     e.preventDefault();
     input.value = String(dflt);
     commit();
+    syncWeightsTunedBadge();
   });
   paint();
   return row;
@@ -12611,10 +12817,6 @@ function syncPresetSelection() {
 
 function presetInfoRows(preset) {
   const presetRules = preset.rules;
-  const preferenceText = [
-    preset.preferences.prefDesig ? 'bike routes' : null,
-    preset.preferences.prefResidential ? 'residential streets' : null,
-  ].filter(Boolean).join(' and ');
   return [
     ['Never allow speed', presetRules.noUpperLimit
       ? 'No cutoff.' : `Ordinary roads over ${presetRules.upperMaxSpeed} mph fail; dedicated bike infrastructure is exempt.`],
@@ -12631,9 +12833,6 @@ function presetInfoRows(preset) {
     })()],
     ['Official stress rating', `A ${STRESS_AGENCY} Level of Traffic Stress of 4 always marks a road`
       + ' as caution. It never fails one.'],
-    ['Sidewalk fallback', presetRules.allowSidewalkFallback
-      ? 'Mapped sidewalks can satisfy the shoulder rule, but are strongly deprioritized and called out as a concern.'
-      : 'Mapped sidewalks do not satisfy the shoulder rule.'],
     ['Freeways', presetRules.allowFreeways
       ? 'Always fail your rules. Bike-legal segments may still be routed over as a last resort,'
         + ' and are reported as failing; strict matching excludes them entirely.'
@@ -12644,11 +12843,9 @@ function presetInfoRows(preset) {
     ['Guess shoulder width when undocumented', presetRules.inferShoulderFromEdge
       ? `Where no shoulder is recorded but the county logged edge space, ${SafetyModel.EDGE_SPACE_MARGIN_FT} ft is subtracted and the rest counts as shoulder.`
       : 'Off. Only a recorded shoulder counts.'],
-    ['Mountain-bike trails', presetRules.allowMtbTrails ? 'Available with a strong penalty.' : 'Not used.'],
     ['Surface', presetRules.preferPaved === true
       ? 'Strongly prefers paved roads and trails; unpaved routes remain available.'
       : 'Slightly prefers known paved roads and trails.'],
-    ['Route preferences', preferenceText ? `Strongly prefer ${preferenceText}.` : 'No additional preference.'],
   ];
 }
 
@@ -12941,7 +13138,7 @@ function buildRulesPanel() {
   advancedToolsCard.innerHTML = `
     <label class="rule-check" for="r-showAdvancedTools">
       <input type="checkbox" id="r-showAdvancedTools" ${uiPrefs.showAdvancedTools ? 'checked' : ''}>
-      <span>Show advanced options (not recommended)</span>
+      <span>Show advanced options and routing weights</span>
     </label>`;
   optionsHost.appendChild(advancedToolsCard);
   advancedToolsCard.querySelector('input').addEventListener('change', (e) => {
@@ -13092,11 +13289,6 @@ function buildRulesPanel() {
     document.getElementById('settingsHelpBtn').addEventListener('click', () => {
       buildCautionCauseHelp();
       openHelp('settings');
-    });
-    document.getElementById('settingsAdvancedWeightsBtn').addEventListener('click', () => {
-      const helpDialog = document.getElementById('helpDialog');
-      if (helpDialog.open) helpDialog.close();
-      openRoutingWeights();
     });
     document.getElementById('resetRoutingWeights').addEventListener('click', () => {
       Object.assign(routingWeights, DEFAULT_ROUTING_WEIGHTS);
@@ -13396,6 +13588,7 @@ function setPanelOpen() {
 }
 
 function selectPanelTab(tabId) {
+  if (tabId !== 'layers') setActiveRouteIconLegendOpen(false);
   document.body.classList.toggle('settings-panel-active', tabId === 'settings');
   document.body.classList.toggle('aux-panel-active', tabId === 'settings' || tabId === 'layers');
   document.querySelectorAll('.tab').forEach((t) =>
@@ -13425,15 +13618,77 @@ function syncLayersToggle() {
   toggle.title = open ? 'Hide map layers' : 'Show map layers';
 }
 
+const ACTIVE_ROUTE_ICON_DEFINITIONS = [
+  ['route-dismount-marker-icon', 'Walk bike', 'Dismount stretch'],
+  ['route-marker-steep', 'Steep hill', '10%+ grade'],
+  ['route-marker-traffic', 'Busy traffic', 'Traffic exposure'],
+  ['route-marker-unpaved', 'Unpaved', 'Loose surface'],
+  ['route-marker-odd', 'Technical trail', 'MTB / unusual way'],
+  ['route-marker-fail', 'Fails rules', 'Safety rule failed'],
+  ['route-marker-fail-designated', 'Bike route + fail', 'Designated, but fails'],
+  ['route-ferry-marker-icon', 'Ferry', 'Ferry connection'],
+];
+
+function buildActiveRouteIconLegend() {
+  const host = document.getElementById('activeRouteIconLegendItems');
+  if (!host || host.childElementCount) return;
+  const images = new Map();
+  const imageSink = {
+    hasImage: (id) => images.has(id),
+    addImage: (id, image, options = {}) => images.set(id,
+      { ...image, pixelRatio: Number(options.pixelRatio) || 1 }),
+  };
+  ensureRouteMarkerImages(imageSink);
+  ensureDismountMarkerImage(imageSink);
+  ensureFerryMarkerImage(imageSink);
+  for (const [id, label, detail] of ACTIVE_ROUTE_ICON_DEFINITIONS) {
+    const image = images.get(id);
+    if (!image) continue;
+    const item = document.createElement('div');
+    item.className = 'active-route-icon-item';
+    item.setAttribute('aria-label', `${label}: ${detail}`);
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const scale = id === 'route-ferry-marker-icon' ? 1.05 : 1.25;
+    canvas.style.width = `${Math.round(image.width / image.pixelRatio * scale)}px`;
+    canvas.style.height = `${Math.round(image.height / image.pixelRatio * scale)}px`;
+    const pixels = new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
+    canvas.getContext('2d').putImageData(pixels, 0, 0);
+    const copy = document.createElement('span');
+    copy.innerHTML = `<strong>${label}</strong><small>${detail}</small>`;
+    item.append(canvas, copy);
+    host.append(item);
+  }
+}
+
+function setActiveRouteIconLegendOpen(open) {
+  const legend = document.getElementById('activeRouteIconLegend');
+  if (!legend) return;
+  if (open) buildActiveRouteIconLegend();
+  legend.hidden = !open;
+}
+
+function closeLayersAndActiveRouteIcons() {
+  setActiveRouteIconLegendOpen(false);
+  selectPanelTab('route');
+}
+
 document.getElementById('layersToggle').addEventListener('click', () => {
   const open = layersMenuIsOpen();
   closePlacePicker(true);
   dismissRoadInfo();
-  selectPanelTab(open ? 'route' : 'layers');
+  if (open) closeLayersAndActiveRouteIcons();
+  else {
+    selectPanelTab('layers');
+    setActiveRouteIconLegendOpen(true);
+  }
   setPanelOpen(true);
   syncLayersToggle();
 });
-document.getElementById('layersPanelClose').addEventListener('click', () => selectPanelTab('route'));
+document.getElementById('layersPanelClose').addEventListener('click', closeLayersAndActiveRouteIcons);
+document.getElementById('activeRouteIconLegendClose')
+  .addEventListener('click', closeLayersAndActiveRouteIcons);
 
 function settingsMenuIsOpen() {
   return document.getElementById('tab-settings').classList.contains('active');

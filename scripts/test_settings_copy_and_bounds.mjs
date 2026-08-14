@@ -77,6 +77,40 @@ check('the weights screen carries a modified-state header', copy.weightsNotice);
 check('and no longer claims weights are "never a safety rule"',
   !copy.weightsBody.includes('Never a safety rule.'), copy.weightsBody.slice(0, 160));
 
+const presetRules = await page.evaluate(() => {
+  openPresetInfo('randonneur');
+  const labels = [...document.querySelectorAll('#presetInfoDetails strong')]
+    .map((node) => node.textContent.trim().replace(/:$/, ''));
+  document.getElementById('presetInfoDialog')?.close();
+  return labels;
+});
+check('preset rule listings omit controls that moved to Advanced routing',
+  !presetRules.some((label) => ['Sidewalk fallback', 'Mountain-bike trails',
+    'Route preferences'].includes(label)), JSON.stringify(presetRules));
+check('preset rule listings still expose their actual safety limits',
+  presetRules.includes('Speed without shoulder or bike lane')
+    && presetRules.includes('Minimum shoulder') && presetRules.includes('Freeways'),
+  JSON.stringify(presetRules));
+
+const presetCards = await page.evaluate(() => {
+  document.getElementById('settings-tab-presets').click();
+  return [...document.querySelectorAll('#settingsPresets .preset-card')].map((card) => {
+    const blurb = card.querySelector('.preset-audience');
+    const box = card.getBoundingClientRect();
+    return {
+      text: blurb.textContent.trim(),
+      fontSize: parseFloat(getComputedStyle(blurb).fontSize),
+      height: box.height,
+      clipped: card.scrollHeight > card.clientHeight,
+    };
+  });
+});
+check('preset cards use their space for useful plain-language descriptions',
+  presetCards.length === 3
+    && presetCards.every((card) => card.text.length >= 80 && card.fontSize >= 11
+      && card.height >= 50 && !card.clipped),
+  JSON.stringify(presetCards));
+
 /* ---------------- route settings stay inspectable, but fixed, while riding */
 const navigationLock = await page.evaluate(() => {
   turnNav.active = true;

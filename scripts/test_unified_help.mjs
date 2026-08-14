@@ -54,6 +54,39 @@ check('every tab has real content behind it', structure.panels.length === TOPICS
   && structure.panels.every((panel) => panel.children > 0 && panel.words > 20),
   JSON.stringify(structure.panels));
 
+const accuracy = await page.evaluate(() => {
+  const copy = (topic) => document.querySelector(`[data-help-tab="${topic}"]`)
+    ?.getAttribute('aria-controls');
+  const text = (topic) => document.getElementById(copy(topic))?.textContent
+    .replace(/\s+/g, ' ').trim() || '';
+  return {
+    gettingStarted: text('getting-started'),
+    routes: text('routes'),
+    layers: text('layers'),
+    settings: text('settings'),
+    advancedButton: !!document.getElementById('settingsAdvancedWeightsBtn'),
+  };
+});
+check('Getting started describes both actions offered by generic Find',
+  accuracy.gettingStarted.includes('Map') && accuracy.gettingStarted.includes('Route It'),
+  accuracy.gettingStarted.slice(0, 240));
+check('route help points ferry controls at Routing weights > Route options',
+  accuracy.routes.includes('Routing weights') && accuracy.routes.includes('Route options')
+    && !accuracy.routes.includes('Advanced routing →'), accuracy.routes.slice(0, 300));
+check('route help distinguishes a rule failure from an impassable prohibition',
+  accuracy.routes.includes('separate pale prohibited overlay')
+    && accuracy.routes.includes('never routed'), accuracy.routes.slice(-700));
+check('Layers help is portable across states and explains the icon guide',
+  accuracy.layers.includes('State transportation data')
+    && accuracy.layers.includes('Active Route Icons')
+    && !accuracy.layers.includes('WSDOT'), accuracy.layers.slice(0, 500));
+check('Settings help documents current voice and advanced controls without a weights launcher',
+  accuracy.settings.includes('Keep the screen awake while navigating')
+    && accuracy.settings.includes('Announce route safety levels')
+    && accuracy.settings.includes('Show advanced options and routing weights')
+    && !accuracy.advancedButton,
+  accuracy.settings.slice(-600));
+
 // The remaining contextual ways into help each land on their own topic. The
 // Getting started topic remains in the tab strip without occupying map UI.
 const ENTRY_POINTS = [

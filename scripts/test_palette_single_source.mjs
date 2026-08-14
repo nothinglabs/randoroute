@@ -90,7 +90,8 @@ const swatches = await page.evaluate(() => {
     el.className = `layer-toggle-swatch ${cls}`;
     document.body.appendChild(el);
     const cs = getComputedStyle(el);
-    out[cls] = { image: cs.backgroundImage, color: cs.backgroundColor };
+    out[cls] = { image: cs.backgroundImage, color: cs.backgroundColor,
+      height: el.getBoundingClientRect().height };
     el.remove();
   }
   return out;
@@ -103,6 +104,8 @@ check('meets swatch uses the pass blue', contains(swatches.meets, RoutePalette.p
 check('fails swatch uses the fail red', contains(swatches.fails, RoutePalette.fail), true);
 check('caution swatch uses the caution orange', contains(swatches.caution, RoutePalette.caution), true);
 check('designated swatch uses the designated green', contains(swatches.designated, RoutePalette.designated), true);
+check('designated swatch is broader than an ordinary road line',
+  swatches.designated.height > swatches.meets.height, true);
 check('trail swatch uses the trail centreline', contains(swatches.trail, RoutePalette.trailCentreline), true);
 // The prohibited swatch builds its own alpha from the published rgb triple.
 // It carried the OLD fail red in rgba() form for a while precisely because it

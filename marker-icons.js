@@ -152,13 +152,16 @@ function ensureRouteMarkerImages(targetMap) {
           if (b.inside(x, y)) b.paint(x, y, color);
         }
       }
+      // A small cap preserves the irregular gravel edge without turning each
+      // tooth into a needle-sharp mountain peak at phone scale.
+      b.disc(px, py + 0.3 * s, 0.62 * s, color);
     };
     // Alternating tooth heights give the ragged edge; the solid band under
     // them makes it one surface rather than a row of tiny mountains.
     tooth(3.9 * s, 8.4 * s, 1.3 * s, 10.2 * s, dark);
-    tooth(6 * s, 7.2 * s, 1.4 * s, 10.2 * s, deep);
+    tooth(6 * s, 7.6 * s, 1.4 * s, 10.2 * s, deep);
     tooth(8.1 * s, 8.6 * s, 1.3 * s, 10.2 * s, dark);
-    tooth(10.1 * s, 7.5 * s, 1.4 * s, 10.2 * s, deep);
+    tooth(10.1 * s, 7.9 * s, 1.4 * s, 10.2 * s, deep);
     tooth(12 * s, 8.7 * s, 1.2 * s, 10.2 * s, dark);
     for (let y = Math.round(10.2 * s); y <= Math.round(11.7 * s); y++) {
       for (let x = Math.round(3 * s); x <= Math.round(13 * s); x++) {

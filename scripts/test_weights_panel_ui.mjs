@@ -5,7 +5,8 @@
 // The static coverage test proves the KEYS line up. This proves the rendered
 // DOM does -- that the assembled base+mode+suffix keys survive into real
 // `data-weight` attributes, that dragging one writes to routingWeights, and
-// that the map icon opens the same dialog Settings does.
+// that hiding the advanced tools removes the map entry without leaving a
+// second, surprising launcher inside Help.
 // Playwright is installed globally in this container, not under the project, so
 // resolving it is the harness's job rather than each test file's.
 import { playwright, chromiumPath } from './testlib/harness.mjs';
@@ -59,7 +60,9 @@ const visible = await pg.evaluate(() => {
     menuItems: [...document.querySelectorAll('#routeMoreMenu > button')]
       .map((button) => button.lastElementChild?.textContent.trim()),
     helpRemoved: !document.getElementById('appHelpBtn'),
-    settingsCopy: document.querySelector('label[for="r-showAdvancedTools"] span')?.textContent };
+    settingsCopy: document.querySelector('label[for="r-showAdvancedTools"] span')?.textContent,
+    optionColumnLefts: [...new Set([...document.getElementById('settingsOptions').children]
+      .map((card) => Math.round(card.getBoundingClientRect().left)))] };
 });
 check('weights icon is on screen and a finger-sized map target',
   visible.onScreen && visible.floating && visible.w >= 34 && visible.h >= 34,
@@ -67,8 +70,10 @@ check('weights icon is on screen and a finger-sized map target',
 check('the compact trip menu omits Weights and the setting uses the requested warning copy',
   visible.menuItems.join('|') === 'Swap start & destination|Add stop|Show stops in trip bar|Save, load & share|Check for updates'
     && visible.helpRemoved
-    && visible.settingsCopy === 'Show advanced options (not recommended)',
+    && visible.settingsCopy === 'Show advanced options and routing weights',
   JSON.stringify(visible));
+check('the Options pane uses one clear checkbox column',
+  visible.optionColumnLefts.length === 1, JSON.stringify(visible));
 
 await pg.click('#appWeightsBtn');
 await pg.waitForTimeout(400);
@@ -78,17 +83,22 @@ check('clicking it opens the weights dialog',
 const advancedOptions = await pg.evaluate(() => {
   const ids = ['r-prefDesig', 'r-prefResidential', 'r-allowSidewalkFallback',
     'r-allowMtbTrails', 'r-allowFerries'];
+  const routeOptions = document.getElementById('advancedRoutingOptions');
+  const descriptions = document.querySelector('.weights-key');
+  const sliders = document.getElementById('routingWeightsEditor');
   return {
     allPresent: ids.every((id) => document.getElementById(id)),
     allInAdvanced: ids.every((id) =>
       document.getElementById(id)?.closest('#advancedRoutingOptions')),
     absentFromEveryday: ids.every((id) =>
       !document.getElementById(id)?.closest('#settings-options')),
+    readingOrder: routeOptions.compareDocumentPosition(descriptions) & Node.DOCUMENT_POSITION_FOLLOWING
+      && descriptions.compareDocumentPosition(sliders) & Node.DOCUMENT_POSITION_FOLLOWING,
   };
 });
 check('expert route switches sit above the weights in Advanced routing',
   advancedOptions.allPresent && advancedOptions.allInAdvanced
-    && advancedOptions.absentFromEveryday,
+    && advancedOptions.absentFromEveryday && advancedOptions.readingOrder,
   JSON.stringify(advancedOptions));
 
 /* --------------------------- 2. every rendered slider names a real weight */
@@ -140,7 +150,8 @@ const drag = await pg.evaluate(() => {
   const row = input.closest('.weight-row');
   const marked = row.classList.contains('changed');
   const revert = row.querySelector('.weight-revert');
-  const revertShown = revert && !revert.hidden;
+  const revertShown = revert && !revert.disabled
+    && !revert.classList.contains('is-hidden');
   revert.click();
   return { before, after, restored: routingWeights.busyHeavyBalanced,
     marked, revertShown, stillMarked: row.classList.contains('changed') };
@@ -158,13 +169,15 @@ check('revert restores exactly the default',
 // phone. Presence alone did not catch it, so this checks geometry.
 const revertBox = await pg.evaluate(() => {
   const input = document.querySelector('#routingWeightsEditor input[data-weight="facilityPath"]');
+  const row = input.closest('.weight-row');
+  const beforeRow = row.getBoundingClientRect();
+  const beforeSlider = input.getBoundingClientRect();
   // Away from the default, in whichever direction has room. Driving it to the
   // min silently did nothing on the day the default became the min, and the
   // geometry below then measured a hidden button's empty rectangle.
   input.value = String(Number(input.value) === Number(input.min)
     ? Number(input.max) : Number(input.min));
   input.dispatchEvent(new Event('input', { bubbles: true }));
-  const row = input.closest('.weight-row');
   const revert = row.querySelector('.weight-revert');
   const r = revert.getBoundingClientRect();
   const slider = input.getBoundingClientRect();
@@ -174,6 +187,8 @@ const revertBox = await pg.evaluate(() => {
     sharesRowWithValue: !(r.bottom <= out.top || r.top >= out.bottom),
     rightOfValue: r.left >= out.right - 1,
     rowHeight: row.getBoundingClientRect().height,
+    rowHeightChange: Math.abs(row.getBoundingClientRect().height - beforeRow.height),
+    sliderTopChange: Math.abs(slider.top - beforeSlider.top),
   };
   row.querySelector('.weight-revert').click();
   return result;
@@ -185,6 +200,9 @@ check('revert sits to the right of the value', revertBox.rightOfValue, JSON.stri
 // the button wrapped again.
 check('a changed row stays two rows tall', revertBox.rowHeight < 70,
   `${revertBox.rowHeight}px`);
+check('changing a weight cannot move its slider out from under a finger',
+  revertBox.rowHeightChange < 0.5 && revertBox.sliderTopChange < 0.5,
+  JSON.stringify(revertBox));
 
 /* --------------------------------- 5. the tuned badge tracks off-defaults */
 const badge = await pg.evaluate(() => {
@@ -195,11 +213,13 @@ const badge = await pg.evaluate(() => {
   const input = document.querySelector('#routingWeightsEditor input[data-weight="uphillFactor"]');
   input.value = String(Number(input.max));
   input.dispatchEvent(new Event('input', { bubbles: true }));
+  const stableDuringDrag = notice.hidden;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
   const dirty = button.classList.contains('tuned');
   const title = button.title;
   const noticeDirty = !notice.hidden && notice.textContent.includes('Weights have been modified');
   input.closest('.weight-row').querySelector('.weight-revert').click();
-  return { clean, dirty, title, noticeClean, noticeDirty,
+  return { clean, dirty, title, noticeClean, stableDuringDrag, noticeDirty,
     backToClean: button.classList.contains('tuned'), noticeBackToClean: notice.hidden };
 });
 check('the map icon is unmarked at defaults', badge.clean === false);
@@ -207,9 +227,10 @@ check('the map icon marks itself once a weight is off default',
   badge.dirty === true && /changed/.test(badge.title), badge.title);
 check('and clears again when reverted', badge.backToClean === false);
 check('the page-level modified header follows the same state',
-  badge.noticeClean && badge.noticeDirty && badge.noticeBackToClean, JSON.stringify(badge));
+  badge.noticeClean && badge.stableDuringDrag && badge.noticeDirty
+    && badge.noticeBackToClean, JSON.stringify(badge));
 
-/* ------------------------------------- 6. Settings opens the same dialog */
+/* ---------------------------- 6. advanced tools have one deliberate entry */
 await pg.evaluate(() => document.getElementById('weightsDialog').close());
 const hiddenFromMap = await pg.evaluate(() => {
   const control = document.getElementById('r-showAdvancedTools');
@@ -218,11 +239,18 @@ const hiddenFromMap = await pg.evaluate(() => {
   return document.getElementById('appWeightsBtn').hidden;
 });
 check('turning off advanced options hides the map icon', hiddenFromMap);
-const viaSettings = await pg.evaluate(() => {
-  document.getElementById('settingsAdvancedWeightsBtn')?.click();
-  return document.getElementById('weightsDialog').open;
+const helpEntry = await pg.evaluate(() => {
+  openHelp('settings');
+  const settingsHelp = document.getElementById('helpPanelSettings');
+  return {
+    buttonPresent: !!document.getElementById('settingsAdvancedWeightsBtn'),
+    explainsSetting: settingsHelp.textContent.includes('Show advanced options and routing weights'),
+    weightsOpen: document.getElementById('weightsDialog').open,
+  };
 });
-check('Settings > Advanced still opens the same panel', viaSettings === true);
+check('Help explains how to reveal weights without carrying a second launcher',
+  !helpEntry.buttonPresent && helpEntry.explainsSetting && !helpEntry.weightsOpen,
+  JSON.stringify(helpEntry));
 
 check('no page errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await b.close(); s.close();

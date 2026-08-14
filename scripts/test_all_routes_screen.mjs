@@ -275,10 +275,12 @@ if (target) {
   const after = await pg.evaluate(() => ({
     active: routing.last?.optimization?.profileId,
     dialogOpen: document.getElementById('allRoutesDialog').open,
+    weightsOpen: document.getElementById('weightsDialog').open,
     hasGeometry: (routing.last?.segs || []).length > 0,
     inChooser: routing.options.some((o) => o.optimization?.profileId === routing.last?.optimization?.profileId),
   }));
-  check('tapping a discarded route closes the screen', after.dialogOpen === false);
+  check('tapping a discarded route returns to the main map',
+    after.dialogOpen === false && after.weightsOpen === false, JSON.stringify(after));
   check('and loads that exact route', after.active === target.profileId,
     `wanted ${target.profileId}, got ${after.active} (was ${before})`);
   check('with real geometry, not just a summary', after.hasGeometry);

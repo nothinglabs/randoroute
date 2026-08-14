@@ -270,14 +270,14 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   26%, 50% { color: #006fa9; background: #eef9fe; box-shadow: 0 0 0 2px rgba(44,157,213,.15); }
   100% { color: #304b5a; background: transparent; box-shadow: none; }
 }
-#routeCard .rc-route-context { display: block; max-width: 100%; overflow: hidden; padding: 2px 7px; border-radius: 999px; background: #edf4f7; color: #486270; font: 800 10px/1.1 system-ui; letter-spacing: .02em; text-overflow: ellipsis; white-space: nowrap; }
+#routeCard .rc-route-context { display: block; box-sizing: border-box; width: 86px; max-width: 100%; overflow: hidden; padding: 2px 4px; border-radius: 999px; background: #edf4f7; color: #486270; font: 800 10.3px/1.1 system-ui; letter-spacing: 0; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 #routeCard .rc-main { display: grid; justify-items: center; gap: 0; min-width: 0; color: #111; text-align: center; white-space: nowrap; }
 #routeCard .rc-distance { font: 700 17.5px/1.08 system-ui; white-space: nowrap; }
 #routeCard .rc-duration { color: #555; font: 600 11.4px/1.12 system-ui; letter-spacing: -.015em; white-space: nowrap; }
 /* The left column carries only the headline numbers and one button, so it is
    sized to them and no wider. Everything it gives up goes to the elevation
    chart, which is the one part of this row that gets better with width. */
-#routeCard .rc-route-summary { display: grid; grid-template-columns: 82px minmax(96px, 1fr) minmax(0, 1fr); grid-template-rows: 72px 25px; align-items: stretch; gap: 2px 4px; min-height: 0; margin-top: 6px; }
+#routeCard .rc-route-summary { display: grid; grid-template-columns: 90px minmax(96px, 1fr) minmax(0, 1fr); grid-template-rows: 72px 25px; align-items: stretch; gap: 2px 4px; min-height: 0; margin-top: 6px; }
 #routeCard .rc-overview { display: flex; grid-row: 1 / 3; min-width: 0; overflow: hidden; flex-direction: column; align-items: center; justify-content: center; gap: 2px; transform: translateY(-3px); }
 #routeCard .rc-elevation-column { display: contents; }
 /* The chart and five map categories split the available route-detail width
@@ -326,7 +326,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
   content: '';
   transform: translateY(-50%);
 }
-#routeCard .rc-secondary-metrics { display: grid; grid-column: 2 / 4; grid-row: 2; grid-template-columns: minmax(0, 1.04fr) minmax(0, .96fr); align-items: end; gap: 5px; min-width: 0; padding-top: 2px; color: #415867; }
+#routeCard .rc-secondary-metrics { display: grid; grid-column: 2 / 4; grid-row: 2; grid-template-columns: minmax(0, 1.04fr) minmax(0, .96fr); align-items: end; justify-self: start; gap: 5px; width: calc(100% - 8px); min-width: 0; padding-top: 2px; color: #415867; }
 #routeCard .rc-secondary-item { position: relative; display: inline-grid; grid-template-columns: auto auto minmax(0, auto) auto; align-items: center; justify-content: center; gap: 2px; width: 100%; min-width: 0; min-height: 22px; padding: 2px 4px; border: 1px solid #dde6eb; border-radius: 5px; background: #f7fafb; font: 650 8.8px/1 system-ui; white-space: nowrap; }
 #routeCard .rc-secondary-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #routeCard .rc-secondary-item b { color: #172838; font: 850 12px/1 system-ui; text-align: left; }
@@ -351,7 +351,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 /* ---- Navigating Route panel: the Route tab while turn-by-turn is active. ---- */
 /* Pin the Route tab's height so switching between planning and navigating does
    not resize (bounce) the panel. */
-#tab-route { min-height: 152px; }
+#tab-route { position: relative; min-height: 152px; }
 .route-incomplete-bar { display: flex; align-items: stretch; gap: 10px; min-height: 50px; }
 .route-incomplete-bar[hidden] { display: none; }
 .route-incomplete-bar > strong {
@@ -372,7 +372,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .nav-card-head-row .nav-card-head { display: flex; flex: 1; align-items: center; min-width: 0; }
 /* Footer packs the Details button and the progress bar onto one row so the
    bar's short height stops wasting a whole band. */
-.nav-card-foot { display: flex; align-items: center; gap: 10px; height: 38px; min-height: 38px; margin-top: -2px; }
+.nav-card-foot { display: flex; align-items: center; gap: 10px; height: 38px; min-height: 38px; margin-top: -2px; padding-left: 82px; }
 #navCard .nav-card-details { flex: none; }
 .nav-progress { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .nav-progress-track { position: relative; height: 8px; border-radius: 999px; background: #e5edf2; overflow: hidden; }
@@ -386,7 +386,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .nav-card-info { display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 0; }
 .nav-dest { color: #223c4b; font: 750 11.5px/1.25 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-elevation-wrap { border: 1px solid #e2e9ee; border-radius: 9px; background: #fbfcfd; padding: 2px; }
-.nav-elevation { display: block; width: 100%; height: 56px; }
+.nav-elevation { display: block; width: 100%; height: 68px; }
 .nav-seg-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .nav-seg-label { color: #7c8b95; font: 800 8px/1.2 system-ui; letter-spacing: .05em; text-transform: uppercase; }
 .nav-seg-name { color: #223c4b; font: 800 12px/1.2 system-ui; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -397,7 +397,7 @@ body:not(.navigation-active) #navCard { display: none; }
 #routeCard .rc-leg { font-size: 12px; color: #555; margin: 2px 0; }
 #routeCard .rc-leg-warn { color: #b45309; font-weight: 600; }
 @media (max-width: 375px) {
-  #routeCard .rc-route-summary { grid-template-columns: 78px minmax(92px, 1fr) minmax(0, 1fr); column-gap: 4px; }
+  #routeCard .rc-route-summary { grid-template-columns: 88px minmax(92px, 1fr) minmax(0, 1fr); column-gap: 4px; }
   #routeCard .rc-distance { font-size: 17px; }
   #routeCard .rc-duration { font-size: 10.6px; }
   #routeCard .rc-category-item { grid-template-columns: 11px minmax(20px, max-content) minmax(0, 1fr); gap: 1px; font-size: 9.1px; }
@@ -409,7 +409,7 @@ body:not(.navigation-active) #navCard { display: none; }
   #routeCard .rc-unpaved-swatch, #routeCard .rc-incline-swatch { width: 11px; }
 }
 @media (max-width: 340px) {
-  #routeCard .rc-route-summary { grid-template-columns: 80px minmax(104px, 1fr) minmax(0, 1fr); column-gap: 3px; }
+  #routeCard .rc-route-summary { grid-template-columns: 88px minmax(104px, 1fr) minmax(0, 1fr); column-gap: 3px; }
   #routeCard .rc-category-item { grid-template-columns: 11px minmax(20px, max-content) minmax(0, 1fr); gap: 1px; font-size: 8px; }
   #routeCard .rc-category-item > span:last-child { padding-left: 2px; }
   #routeCard .rc-category-swatch { width: 11px; }
@@ -509,7 +509,9 @@ body:not(.navigation-active) #navCard { display: none; }
    swatch shows the same: a wide, pale dashed band, not a solid line. */
 .layer-toggle-swatch.prohibited { background: repeating-linear-gradient(90deg,rgba(var(--verdict-fail-rgb), .45) 0 5px,transparent 5px 8px); }
 .layer-toggle-swatch.caution { background: repeating-linear-gradient(90deg,var(--verdict-caution) 0 4px,var(--verdict-fail) 4px 6px); }
-.layer-toggle-swatch.designated { background: repeating-linear-gradient(90deg,var(--designated) 0 5px,transparent 5px 8px); opacity: .7; }
+/* The designated-route layer is a broad ribbon on the map, so its legend
+   sample should not read like another ordinary road centreline. */
+.layer-toggle-swatch.designated { height: 11px; border-radius: 3px; background: repeating-linear-gradient(90deg,var(--designated) 0 5px,transparent 5px 8px); opacity: .7; }
 .layer-toggle-swatch.unpaved { border: 1px solid #536672; background: repeating-linear-gradient(90deg,transparent 0 3px,#536672 3px 5px); }
 
 .rule { margin: 12px 0; }
@@ -560,8 +562,8 @@ body:not(.navigation-active) #navCard { display: none; }
 #settingsPresets, #settingsSliders, #settingsOptions, #settingsVoice { flex: 1; align-content: space-between; }
 .settings-summary { margin: 2px 1px 5px; color: #5f6f7a; font: 600 11px/1.3 system-ui; }
 #settingsSliders, #settingsOptions, #settingsVoice { display: grid; gap: 5px; }
-#settingsPresets { display: grid; gap: 4px; }
-.preset-card { width: 100%; padding: 6px 8px; border: 1px solid #d6e1e8; border-radius: 9px; background: #fbfcfd; color: #344b59; cursor: pointer; }
+#settingsPresets { display: grid; gap: 6px; }
+.preset-card { width: 100%; padding: 9px 10px; border: 1px solid #d6e1e8; border-radius: 9px; background: #fbfcfd; color: #344b59; cursor: pointer; }
 .preset-card:hover { border-color: #a8c4d7; background: #f6fafc; }
 .preset-card.active { border-color: #0a66c2; background: #eef6fc; box-shadow: inset 3px 0 #0a66c2; }
 .preset-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -571,7 +573,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .preset-title-row { display: flex; align-items: center; gap: 5px; }
 .preset-title { font: 750 12.5px/1.2 system-ui; }
 .preset-info { flex: 0 0 auto; min-height: 21px; padding: 2px 6px; border: 1px solid #b8cbd8; border-radius: 6px; background: #f7fafb; color: #0a66c2; font: 750 10.5px/1 system-ui; cursor: pointer; }
-.preset-audience, .preset-rule-summary { margin: 1px 0 0; color: #5c707c; font: 550 10.5px/1.3 system-ui; }
+.preset-audience, .preset-rule-summary { margin: 4px 0 0; color: #5c707c; font: 550 11px/1.35 system-ui; }
 .preset-rule-summary { color: #485f6d; }
 .preset-badge { padding: 2px 6px; border-radius: 999px; background: #0a66c2; color: #fff; font: 750 9px/1.2 system-ui; }
 .preset-status { margin: 2px 1px 5px; color: #55676f; font: 650 11px/1.3 system-ui; }
@@ -593,20 +595,19 @@ body:not(.navigation-active) #navCard { display: none; }
 #settingsOptions .check-rule.rule-card { display: block; }
 #settingsOptions .rule-check, #settingsVoice .rule-check { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
 #settingsOptions .rule-check span { flex: 1; }
-#settingsOptions { grid-template-columns: 1fr 1fr; gap: 4px 5px; }
+#settingsOptions { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 #settingsOptions .rule-card { min-height: 27px; padding: 4px 8px; }
 #settingsOptions .rule-check { gap: 6px; font-size: 11.5px; line-height: 1.2; }
 #settingsOptions .rule-check input { flex: 0 0 auto; margin: 0; }
 #settings-options { overflow-y: visible; }
 #settings-options .settings-summary { margin: 0 1px 2px; font-size: 10px; line-height: 1.1; }
-#settings-options #settingsOptions { align-content: start; gap: 3px 4px; }
+#settings-options #settingsOptions { align-content: start; gap: 3px; }
 #settings-options #settingsOptions .rule-card { min-height: 0; padding: 3px 6px; }
 #settings-options #settingsOptions .rule-check { gap: 5px; font-size: 10.5px; line-height: 1.1; }
 #settings-options #settingsOptions input[type="checkbox"] { width: 15px; height: 15px; }
-/* A display-only setting that sits outside the preset system. It spans the grid
-   and is set apart so the pane's "changes override any preset" summary is not
-   read as covering it. */
-#settingsOptions .rule-standalone { grid-column: 1 / -1; margin-top: 6px; border-color: #cbd9e2; background: #f3f8fa; }
+/* A display-only setting that sits outside the preset system. It is set apart
+   so the pane's "changes override any preset" summary is not read as covering it. */
+#settingsOptions .rule-standalone { margin-top: 6px; border-color: #cbd9e2; background: #f3f8fa; }
 .check-rule { display: flex; align-items: center; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
 .check-rule label { font-weight: 600; cursor: pointer; }
 input[type="checkbox"] { width: 17px; height: 17px; }
@@ -633,17 +634,36 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #layersToggle[aria-expanded="true"], #settingsToggle[aria-expanded="true"] { border-color: #0a66c2; background: rgba(234,244,251,.92); color: #0a66c2; }
 #layersToggle .layers-toggle-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 #settingsToggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.active-route-icon-legend {
+  position: absolute; z-index: 24; top: calc(env(safe-area-inset-top) + 8px); left: 8px;
+  width: min(680px, calc(100vw - 70px)); box-sizing: border-box; padding: 8px 10px 7px;
+  border: 1px solid #b8cedb; border-radius: 13px; background: rgba(250,253,255,.96);
+  box-shadow: 0 5px 18px rgba(20,46,62,.24); color: #294554;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.active-route-icon-legend[hidden] { display: none; }
+.active-route-icon-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.active-route-icon-head span { display: block; color: #68808d; font: 800 8px/1 system-ui; letter-spacing: .08em; text-transform: uppercase; }
+.active-route-icon-head h2 { margin: 2px 0 0; color: #233f50; font: 800 15px/1.1 system-ui; }
+#activeRouteIconLegendClose { flex: none; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 9px; background: #edf1f4; color: #50636e; font: 750 17px/1 system-ui; cursor: pointer; }
+.active-route-icon-items { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin-top: 7px; }
+.active-route-icon-item { display: flex; align-items: center; gap: 4px; min-width: 0; min-height: 38px; padding: 3px 4px; border: 1px solid #dbe6ec; border-radius: 8px; background: rgba(255,255,255,.86); }
+.active-route-icon-item canvas { flex: none; max-width: 34px; max-height: 31px; object-fit: contain; }
+.active-route-icon-item span { display: grid; gap: 1px; min-width: 0; }
+.active-route-icon-item strong { color: #294554; font: 780 9.5px/1.08 system-ui; }
+.active-route-icon-item small { color: #657984; font: 650 8px/1.08 system-ui; }
+.active-route-icon-legend > p { margin: 5px 1px 0; color: #627681; font: 650 8.5px/1.15 system-ui; }
 #map .maplibregl-ctrl-top-right, #map .maplibregl-ctrl-bottom-right { z-index: 16; }
 #map .maplibregl-ctrl-bottom-right { transition: bottom .2s ease; }
-/* The location button sits with the map's own furniture: under the scale, to
-   the left of the attribution info button, rather than floating above them.
+/* The location button sits with the map's own furniture: under the scale, at
+   the outer right edge where the attribution info button used to sit.
    The line break is a zero-height flex item -- the scale bar must keep its
    natural width, because that width IS the distance it reports. */
 #map .maplibregl-ctrl-bottom-right { display: flex; flex-flow: row wrap; align-items: flex-end; justify-content: flex-end; }
 #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-scale { order: 1; }
 #map .maplibregl-ctrl-bottom-right::after { content: ''; flex: 0 0 100%; order: 2; height: 0; }
-#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { order: 3; margin-bottom: 10px; }
-#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib { order: 4; }
+#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib { order: 3; }
+#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { order: 4; margin-bottom: 10px; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group,
 #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group {
   border: 1px solid #c8d5df; border-radius: 9px; box-shadow: 0 2px 9px rgba(0,0,0,.16);
@@ -651,7 +671,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group { margin: calc(env(safe-area-inset-top) + 10px) 10px 0 0; }
-#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { margin: 0 10px 8px 0; }
+#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { margin: 0 3px 8px 0; }
 #map .maplibregl-ctrl-top-right .maplibregl-ctrl-group button,
 #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group button { background-color: transparent; }
 #map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-geolocate { width: 34px; height: 34px; border-radius: 9px; }
@@ -1296,7 +1316,6 @@ body.navigation-active #routeBar { display: none; }
   body.navigation-active #tab-route {
     height: 158px; min-height: 158px; max-height: 158px; overflow: hidden;
   }
-  body.navigation-active #navCard .nav-card-details { transform: translate(4px, -3px); }
   /* The scale bar (and attribution) ride above the open bottom sheet exactly
    * like the Navigate dock. They were mounted at the map's true bottom edge,
    * which the sheet covers whenever a route is on screen -- so the scale
@@ -1320,6 +1339,7 @@ body.navigation-active #routeBar { display: none; }
   #layersToggle { top: calc(env(safe-area-inset-top) + 12px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
   #settingsToggle { top: calc(env(safe-area-inset-top) + 58px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
   #appWeightsBtn { top: calc(env(safe-area-inset-top) + 104px); right: 8px; width: 42px; height: 42px; border-radius: 12px; font-size: 20px; }
+  .active-route-icon-legend { right: 58px; width: auto; }
   .place-picker { top: -5px; right: auto; left: 0; width: calc(100vw - 16px); }
   body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
   body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 4px); }
@@ -1431,7 +1451,6 @@ body.navigation-active #routeBar { display: none; }
 .preset-info-details { display: grid; gap: 6px; margin: 11px 0 0; padding-left: 18px; color: #52616d; font: 12px/1.4 system-ui; }
 .preset-info-details strong { color: #2c3e4c; }
 .settings-advanced-section { padding-top: 10px; border-top: 1px solid #dce5ea; }
-.settings-advanced-section button { margin-top: 8px; padding: 7px 10px; border: 1px solid #bccbd4; border-radius: 8px; background: #f7f9fa; color: #52616d; font: 650 11px system-ui; cursor: pointer; }
 .app-help-dialog ol { display: grid; gap: 7px; margin: 13px 0 10px; padding-left: 21px; color: #405562; font: 12.5px/1.4 system-ui; }
 .app-help-dialog p { margin: 0; color: #667784; font: 11.5px/1.4 system-ui; }
 .app-help-dialog .app-help-note { margin: 10px 0 5px; color: #405562; }
@@ -1517,18 +1536,18 @@ body.street-view-open #map { visibility: hidden; }
 .weight-cost { margin: 9px 0 0; padding: 9px 10px; border: 1px solid #e4ecf1; border-radius: 9px; background: #fafcfd; }
 .weight-cost h4 { margin: 0; color: #26404f; font: 750 12.5px/1.3 system-ui; }
 .weight-hint { margin: 4px 0 2px; color: #5c6f7b; font: 500 11px/1.42 system-ui; }
-.weight-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px 8px; align-items: center; padding: 5px 0 3px; border-top: 1px solid #eef2f4; color: #52636d; font: 620 11px/1.2 system-ui; }
+.weight-row { display: grid; grid-template-columns: minmax(0, 1fr) 9em 26px; gap: 2px 8px; align-items: center; padding: 5px 0 3px; border-top: 1px solid #eef2f4; color: #52636d; font: 620 11px/1.2 system-ui; }
 .weight-cost > .weight-row:first-of-type { border-top: 1px solid #e4ecf1; margin-top: 6px; }
 .weight-row-label { min-width: 0; }
-.weight-row output { text-align: right; color: #0a66c2; font: 750 11px tabular-nums, system-ui; white-space: nowrap; }
+.weight-row output { width: 9em; overflow: hidden; text-align: right; text-overflow: ellipsis; color: #0a66c2; font: 750 11px tabular-nums, system-ui; white-space: nowrap; }
 .weight-row.changed output { color: #9a5b00; }
-.weight-row.changed .weight-row-label { color: #26404f; font-weight: 750; }
+.weight-row.changed .weight-row-label { color: #26404f; }
 .weight-row input { grid-row: 2; grid-column: 1 / -1; width: 100%; margin: 0; touch-action: pan-y; }
 /* Pinned to row 1, beside the value. The slider spans every column and so
    claims row 2; without an explicit position the revert button auto-places
    onto a THIRD row under the slider, which is where it landed on a phone. */
 .weight-revert { grid-row: 1; grid-column: 3; width: 22px; height: 22px; padding: 0; border: 1px solid #d8c39a; border-radius: 6px; background: #fff8ea; color: #9a5b00; font: 700 12px/1 system-ui; cursor: pointer; }
-.weight-revert[hidden] { display: none; }
+.weight-revert.is-hidden { visibility: hidden; pointer-events: none; }
 @media (max-width: 600px) {
   .full-help-head { padding-left: 12px; padding-right: 10px; }
   .full-help-head h2 { font-size: 17px; }
