@@ -53,19 +53,19 @@ const opened = await page.evaluate(() => {
 });
 check('the map legend button opens Route Icons with the Layers pane',
   opened.visible && opened.layersOpen && opened.title === 'Route Icons'
-    // The card was tightened on a field report: descriptions gone, ferry gone,
-    // labels that say the whole thing. It measured 160.9px in this container
-    // against 251.3 before -- a 36% cut against a 30% target. The bound gives
-    // ~15% of font headroom (the previous budget failed by 1.3px of font wrap)
-    // and still fails a card that grows a row, regrows descriptions, or loses
-    // its two-column grid.
-    && !opened.hasKicker && opened.height > 90 && opened.height <= 185,
+    // Tightened twice on field reports: descriptions and ferry gone, then
+    // spacing squeezed a further 15% -- 136.3px in this container against the
+    // original 251.3. The bound gives ~15% of font headroom (a previous budget
+    // failed on 1.3px of font wrap in a different container) and still fails a
+    // card that grows a row, regrows descriptions, or loses its two-column
+    // grid.
+    && !opened.hasKicker && opened.height > 80 && opened.height <= 157,
   JSON.stringify(opened));
 check('all six route icon meanings are present as self-sufficient labels, painted',
   opened.count === 6 && opened.painted
-    && opened.labels.some((label) => /Bike Route - but fails safety rule/.test(label))
+    && opened.labels.some((label) => /Designated route with safety issue/.test(label))
     && opened.labels.some((label) => /Walk your bike/.test(label))
-    && opened.labels.some((label) => /Hill over 10% grade/.test(label))
+    && opened.labels.some((label) => /Hill grade > 10%/.test(label))
     && !opened.labels.some((label) => /MTB|Technical trail/.test(label))
     // The ferry icon needs no legend -- it is a boat -- and the descriptions
     // are gone because the labels carry the meaning now.

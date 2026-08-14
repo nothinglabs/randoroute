@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.697';
+const APP_VERSION = '2026-08-14.698';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12585,7 +12585,7 @@ function buildSourcePanel() {
     ['meetRules', 'Road meets safety rules', 'meets'],
     ['failRules', 'Road fails safety rules', 'fails'],
     ['caution', 'Caution — ride with care', 'caution'],
-    ['designated', 'State & national bike routes', 'designated'],
+    ['designated', 'Designated bike route', 'designated'],
     ['unpavedBackground', 'Unpaved surfaces', 'unpaved'],
     ['bikesProhibited', 'Bikes prohibited', 'prohibited'],
   ];
@@ -13700,11 +13700,11 @@ function syncLayersToggle() {
 // ferry icon needs no legend: it is a boat.
 const ACTIVE_ROUTE_ICON_DEFINITIONS = [
   ['route-dismount-marker-icon', 'Walk your bike'],
-  ['route-marker-steep', 'Hill over 10% grade'],
+  ['route-marker-steep', 'Hill grade > 10%'],
   ['route-marker-traffic', 'Heavy Traffic'],
   ['route-marker-unpaved', 'Unpaved Surface'],
   ['route-marker-fail', 'Fails safety rules'],
-  ['route-marker-fail-designated', 'Bike Route - but fails safety rule'],
+  ['route-marker-fail-designated', 'Designated route with safety issue'],
 ];
 
 function buildActiveRouteIconLegend() {
