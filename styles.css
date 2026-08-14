@@ -1272,6 +1272,15 @@ body.navigation-active #routeBar { display: none; }
 #getUpdateBtn { min-height: 32px; padding: 6px 9px; border: none; border-radius: 8px; background: #0a66c2; color: #fff; font: 700 11px system-ui; cursor: pointer; }
 #updateLaterBtn { width: 32px; height: 32px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
 @media (max-width: 720px) {
+  /* The 31px corner buttons are a pointer-width economy; on a phone a finger
+     is the pointer, and test_native_place_search_startup holds these to a
+     36px floor on purpose ("larger close targets" was a field-driven fix).
+     Both asks hold: 31px where a cursor taps, 36px where a thumb does. */
+  .panel-view-close { width: 36px; height: 36px; }
+  .layers-help-btn, .settings-help-btn {
+    flex-basis: 36px; width: 36px; height: 36px;
+    min-height: 36px; max-height: 36px; font-size: 17px;
+  }
   /* Calculation belongs to the bottom sheet itself, not to a second card
      floating inside it. The border/bezel is intentionally gone; the extra
      height gives the phase copy and progress line room to breathe. */
