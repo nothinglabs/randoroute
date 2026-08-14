@@ -472,7 +472,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .layers-intro strong { color: #40515c; font: 750 12px/1.2 system-ui; }
 .layers-intro span { font: 600 11px/1.25 system-ui; }
 .tab-help-btn, .layers-help-btn, .settings-help-btn { display: grid; place-items: center; flex: 0 0 23px; width: 23px; height: 23px; min-height: 23px; max-height: 23px; padding: 0; border: 1px solid #b8cbd8; border-radius: 50%; background: #f7fafb; color: #0a66c2; font: 800 13px/1 system-ui; cursor: pointer; }
-.layers-help-btn, .settings-help-btn { flex-basis: 36px; width: 36px; height: 36px; min-height: 36px; max-height: 36px; font-size: 17px; }
+.layers-help-btn, .settings-help-btn { flex-basis: 31px; width: 31px; height: 31px; min-height: 31px; max-height: 31px; font-size: 15px; }
 .layers-special-note { position: relative; margin: 7px 0 0; padding: 7px 8px 7px 33px; border: 1px solid #c9dce9; border-radius: 8px; background: #f1f7fb; color: #425d70; font: 600 10.5px/1.35 system-ui; }
 .layers-special-note > span { position: absolute; top: 12px; left: 8px; width: 17px; height: 6px; border-radius: 2px; background: repeating-linear-gradient(90deg,var(--verdict-pass) 0 4px,transparent 4px 7px); }
 .layers-special-note b { color: #195d91; }
@@ -520,11 +520,11 @@ body:not(.navigation-active) #navCard { display: none; }
 .rule .val { color: #0a66c2; font-variant-numeric: tabular-nums; font-weight: 600; }
 .rule input[type="range"] { width: 100%; }
 .settings-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 3px 1px 2px; color: #40515c; }
-.settings-panel-head > strong { font: 750 12px/1.2 system-ui; }
+.settings-panel-head > strong { font: 780 14px/1.2 system-ui; }
 .panel-view-actions { display: flex; align-items: center; gap: 6px; }
-.panel-view-close { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 9px; background: #eef1f4; color: #53646e; font: 800 17px/1 system-ui; cursor: pointer; }
+.panel-view-close { display: grid; place-items: center; width: 31px; height: 31px; padding: 0; border: 0; border-radius: 9px; background: #eef1f4; color: #53646e; font: 800 17px/1 system-ui; cursor: pointer; }
 .settings-tabs { display: flex; gap: 4px; margin: 4px 0; }
-.settings-tabs button { flex: 1; min-height: 22px; padding: 1px 6px; border: 1px solid #d5dfe6; border-radius: 8px; background: #f2f5f7; color: #4c5b66; font: 700 11px/1.15 system-ui; cursor: pointer; }
+.settings-tabs button { flex: 1; min-height: 26px; padding: 2px 6px; border: 1px solid #d5dfe6; border-radius: 8px; background: #f2f5f7; color: #4c5b66; font: 700 11px/1.15 system-ui; cursor: pointer; }
 .settings-tabs .settings-help-btn { align-self: center; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }

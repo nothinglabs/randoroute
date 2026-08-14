@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.700';
+const APP_VERSION = '2026-08-14.701';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -930,7 +930,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'randonneur',
     label: 'The Randonneur',
     audience: 'For long-distance riders who want the widest range of route choices.',
-    blurb: 'Best for long-distance rides and maximum route choice. Looser limits mean fewer roads are marked as failures.',
+    blurb: 'Best for long-distance rides and maximum route choice, with looser safety limits.',
     rules: Object.freeze({ ...DEFAULT_RULES }),
     preferences: DEFAULT_ROUTE_PREFERENCES,
   },
@@ -938,7 +938,7 @@ const ROUTING_PRESETS = Object.freeze([
     id: 'weekend-wanderer',
     label: 'Weekend Wanderer',
     audience: 'For day riders who want slower roads with practical flexibility.',
-    blurb: 'Best for everyday and day rides on slower roads, while allowing practical compromises. Borderline roads appear as amber cautions.',
+    blurb: 'Best for everyday rides on slower roads; practical compromises show as amber cautions.',
     rules: Object.freeze({
       ...DEFAULT_RULES,
       allowFreeways: false,
