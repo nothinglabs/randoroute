@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.694';
+const APP_VERSION = '2026-08-14.695';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7483,9 +7483,9 @@ function buildRouteUnpavedData(sdata) {
   };
 }
 
-/* Route markers: one vocabulary, one planner. Five things a rider wants
+/* Route markers: one vocabulary, one planner. Four things a rider wants
  * flagged on the line itself -- walking (any dismount), a 10%+ wall, heavy
- * traffic, unpaved surface, and a technical/odd way -- share one spacing
+ * traffic, and unpaved surface -- share one spacing
  * clock (~700 m) so the map never drowns in icons. Where several apply to
  * the same stretch, ONE is picked per slot, deterministically pseudo-random
  * by slot index so a redraw never reshuffles and long shared stretches show
@@ -7493,10 +7493,11 @@ function buildRouteUnpavedData(sdata) {
  */
 const ROUTE_MARKER_SPACING_M = 700;
 // Below these run lengths a signal is a blip (or a DEM/data artefact), not a
-// stretch worth an icon. Traffic and surface need real length; walking and
-// technical ways matter even when short.
-const ROUTE_MARKER_MIN_RUN_M = { walk: 60, steep: 100, traffic: 400, unpaved: 400, odd: 60 };
-const ROUTE_MARKER_KINDS = ['walk', 'steep', 'traffic', 'unpaved', 'odd'];
+// stretch worth an icon. Traffic and surface need real length; walking matters
+// even when short. Technical-trail context remains in the road card, rather
+// than using the ambiguous standalone question-mark badge.
+const ROUTE_MARKER_MIN_RUN_M = { walk: 60, steep: 100, traffic: 400, unpaved: 400 };
+const ROUTE_MARKER_KINDS = ['walk', 'steep', 'traffic', 'unpaved'];
 // No mountain within this distance of a ferry leg: dockside DEM is artifact.
 const FERRY_GRADE_BLACKOUT_M = 250;
 // Badges grow as the rider zooms in, so they stay readable up close without
@@ -7527,17 +7528,16 @@ function routeMarkerKinds(p, style) {
     if (style === 'caution' || style === 'pass') kinds.push('traffic');
   }
   if (isConfirmedUnpavedSurface(p.surface)) kinds.push('unpaved');
-  if (p.mtb === 1) kinds.push('odd');
   return kinds;
 }
 function buildRouteMarkerData(sdata) {
-  const feats = (sdata.features || []).map((feature) => {
+  const feats = (sdata.features || []).map((feature, routeIndex) => {
     const p = feature.properties || {};
     const coords = feature.geometry?.coordinates || [];
     let lenM = 0;
     for (let i = 1; i < coords.length; i++) lenM += markerSpanM(coords[i - 1], coords[i]);
     const style = p.ferry === 1 ? null : routeVisualStyle(p);
-    return { kinds: routeMarkerKinds(p, style), coords, lenM,
+    return { kinds: routeMarkerKinds(p, style), coords, lenM, routeIndex,
       ferry: p.ferry === 1, fail: style === 'fail', designated: p.desig === 1 };
   });
   // A dock reads steep when it is not: the z12 DEM smears the shoreline bluff
@@ -7574,7 +7574,7 @@ function buildRouteMarkerData(sdata) {
   const walk = [], other = [];
   // Canonical order for a clustered badge id: marker-icons composites every
   // combination joined with '+' in exactly this order.
-  const comboOrder = { steep: 0, traffic: 1, unpaved: 2, odd: 3 };
+  const comboOrder = { steep: 0, traffic: 1, unpaved: 2 };
   let pos = 0, minNext = ROUTE_MARKER_SPACING_M / 4;
   feats.forEach((f, index) => {
     const active = qualified[index];
@@ -7600,7 +7600,8 @@ function buildRouteMarkerData(sdata) {
           // `slot` doubles as the collision priority: with a stable sort key
           // the placer culls the SAME markers at every zoom, so zooming thins
           // a chain monotonically instead of toggling which icon a spot shows.
-          const point = { type: 'Feature', properties: { kind, slot },
+          const point = { type: 'Feature', properties: { kind, slot,
+            routeIndex: f.routeIndex },
             geometry: { type: 'Point',
               coordinates: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] } };
           (kind === 'walk' ? walk : other).push(point);
@@ -7638,7 +7639,8 @@ function buildRouteMarkerData(sdata) {
       if (index < 0) continue;
       const at = pointAt(feats[index], spans[index], target);
       if (!at) continue;
-      other.push({ type: 'Feature', properties: { kind, slot: -1 },
+      other.push({ type: 'Feature', properties: { kind, slot: -1,
+        routeIndex: feats[index].routeIndex },
         geometry: { type: 'Point', coordinates: at } });
     }
   };
@@ -7920,6 +7922,20 @@ function setDetailSelectionPulse(on) {
   }
 }
 
+function routeSegmentMapFeature(coords, segment, routeIndex) {
+  if (!segment || !Array.isArray(coords)) return null;
+  const props = routeSegProps(segment, routeIndex);
+  // Score the very properties the card will read, so the level baked into the
+  // feature is the level the card recomputes from it.
+  props.level = effectiveLevel(scoreRouteSeg(props));
+  props.hwy = isHighwaySegment(segment) ? 1 : 0;
+  return {
+    type: 'Feature',
+    properties: props,
+    geometry: { type: 'LineString', coordinates: coords.slice(segment.c0, segment.c1 + 1) },
+  };
+}
+
 function drawRoute(coords, ferrySegs, segs) {
   routeIsDisplayed = Array.isArray(coords) && coords.length >= 2;
   clearRouteHighlight();
@@ -7930,18 +7946,9 @@ function drawRoute(coords, ferrySegs, segs) {
   const fdata = { type: 'FeatureCollection', features: (ferrySegs || []).map((c) => ({
     type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) };
   // Per-edge segments with graph attrs feed the invisible tap target.
-  const sdata = { type: 'FeatureCollection', features: (segs || []).map((s, routeIndex) => {
-    const props = routeSegProps(s, routeIndex);
-    // Score the very properties the card will read, so the level baked into the
-    // feature is the level the card recomputes from it.
-    props.level = effectiveLevel(scoreRouteSeg(props));
-    props.hwy = isHighwaySegment(s) ? 1 : 0;
-    return {
-      type: 'Feature',
-      properties: props,
-      geometry: { type: 'LineString', coordinates: coords.slice(s.c0, s.c1 + 1) },
-    };
-  }) };
+  const sdata = { type: 'FeatureCollection', features: (segs || [])
+    .map((segment, routeIndex) => routeSegmentMapFeature(coords, segment, routeIndex))
+    .filter(Boolean) };
   const renderData = buildRouteRenderData(sdata);
   const unpavedData = buildRouteUnpavedData(sdata);
   const routeMarkers = buildRouteMarkerData(sdata);
@@ -11015,6 +11022,53 @@ function dismountMarkerAt(point) {
     { layers: ['route-dismount-halo'] }).length > 0;
 }
 
+// Route badges are controls as well as explanations. They sit above the route
+// and often extend well beyond its invisible line hit target, so asking only
+// what road is under the finger makes taps at their edge arbitrary. Resolve a
+// visible badge first and use its source point (which is exactly on the route)
+// to identify the segment the badge explains.
+const ACTIVE_ROUTE_ICON_LAYERS = [
+  'route-fail-marker', 'route-marker', 'route-dismount-marker',
+  'route-dismount-halo', 'route-ferry-marker',
+];
+const ACTIVE_ROUTE_ICON_HIT_PX = 26;
+function activeRouteIconAt(point) {
+  const layers = ACTIVE_ROUTE_ICON_LAYERS.filter((id) => map.getLayer(id)
+    && map.getLayoutProperty(id, 'visibility') !== 'none');
+  if (!layers.length) return null;
+  const pad = ACTIVE_ROUTE_ICON_HIT_PX;
+  const features = map.queryRenderedFeatures(
+    [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]], { layers });
+  let best = null, bestDistance = Infinity;
+  for (const feature of features) {
+    const distance = screenDistanceToFeature(point, feature);
+    if (distance <= ACTIVE_ROUTE_ICON_HIT_PX && distance < bestDistance) {
+      best = feature;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function routeSegmentForActiveIcon(icon) {
+  if (!icon || !routing.last?.ok) return null;
+  const coordinates = icon.geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return null;
+  let routeIndex = Number(icon.properties?.routeIndex);
+  if (!Number.isInteger(routeIndex) || !routing.last.segs?.[routeIndex]) {
+    routeIndex = routeSegmentIndexNearTap(routing.last,
+      { lng: coordinates[0], lat: coordinates[1] }, 50);
+  }
+  if (!Number.isInteger(routeIndex)) return null;
+  const feature = routeSegmentMapFeature(
+    routing.last.coords, routing.last.segs[routeIndex], routeIndex);
+  if (!feature) return null;
+  // renderReadout uses this pseudo-layer to select the active-route scorer.
+  feature.layer = { id: 'route-seg-hit' };
+  return { feature, routeIndex,
+    lngLat: { lng: coordinates[0], lat: coordinates[1] } };
+}
+
 function featureAt(point) {
   const layers = HIT_LAYERS.filter(
     (id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none'
@@ -12339,7 +12393,8 @@ const roadInfoHoverMedia = window.matchMedia('(hover: hover) and (pointer: fine)
 map.on('mousemove', (e) => {
   if (!roadInfoHoverMedia.matches) return;
   if (routing.arm || Date.now() < roadInfoSuppressedUntil) return;
-  map.getCanvas().style.cursor = featureAt(e.point) ? 'pointer' : '';
+  map.getCanvas().style.cursor = activeRouteIconAt(e.point) || featureAt(e.point)
+    ? 'pointer' : '';
 });
 let lastPlacementTs = 0;
 let lastRoadInfoTouchAt = 0;
@@ -12348,10 +12403,12 @@ function inspectRoadAt(point, lngLat = null) {
   if (Date.now() < roadInfoSuppressedUntil) return false;
   const canvas = map.getCanvas();
   const edgeGuard = window.matchMedia('(pointer: coarse)').matches ? 50 : 40;
-  if (point.x < edgeGuard || point.y < edgeGuard
+  const routeIcon = activeRouteIconAt(point);
+  if (!routeIcon && (point.x < edgeGuard || point.y < edgeGuard
       || point.x > canvas.clientWidth - edgeGuard
-      || point.y > canvas.clientHeight - edgeGuard) return false;
-  const feature = featureAt(point);
+      || point.y > canvas.clientHeight - edgeGuard)) return false;
+  const iconSegment = routeSegmentForActiveIcon(routeIcon);
+  const feature = iconSegment?.feature || featureAt(point);
   // A deliberate tap is useful even between mapped segments: the generic
   // point card can still make it a destination, start, or stop and can open
   // Google Maps. Feature-backed taps simply add the richer road safety facts.
@@ -12359,8 +12416,9 @@ function inspectRoadAt(point, lngLat = null) {
   // search card and opens the normal route actions for that mapped feature.
   const picker = document.getElementById('placePicker');
   if (picker && !picker.hidden) closePlacePicker();
-  const inspectedLngLat = lngLat || map.unproject([point.x, point.y]);
-  const tappedRouteIndex = routeSegmentIndexAtMapTap(
+  const inspectedLngLat = iconSegment?.lngLat
+    || lngLat || map.unproject([point.x, point.y]);
+  const tappedRouteIndex = iconSegment?.routeIndex ?? routeSegmentIndexAtMapTap(
     routing.last, inspectedLngLat, point);
   // A road gets its own stretch drawn instead of a pin: the card is about that
   // piece of road, and showing it is more use than marking the pixel the
@@ -13638,14 +13696,14 @@ function syncLayersToggle() {
 }
 
 const ACTIVE_ROUTE_ICON_DEFINITIONS = [
-  ['route-dismount-marker-icon', 'Walk', 'Dismount'],
-  ['route-marker-steep', 'Hill', '10%+ grade'],
-  ['route-marker-traffic', 'Traffic', 'High volume'],
-  ['route-marker-unpaved', 'Unpaved', 'Loose'],
-  ['route-marker-odd', 'MTB', 'Technical trail'],
-  ['route-marker-fail', 'Fails', 'Safety rules'],
-  ['route-marker-fail-designated', 'Route !?', 'Signed bike route, but unsafe'],
-  ['route-ferry-marker-icon', 'Ferry', 'Crossing'],
+  ['route-dismount-marker-icon', 'Walk your bike', 'Dismount and walk here.'],
+  ['route-marker-steep', 'Steep hill', 'Grade 10% or steeper.'],
+  ['route-marker-traffic', 'Heavy traffic', 'High traffic volume.'],
+  ['route-marker-unpaved', 'Unpaved', 'Loose or unpaved surface.'],
+  ['route-marker-fail', 'Fails rules', 'Fails your safety settings.'],
+  ['route-marker-fail-designated', 'Designated route !?',
+    'Signed bike route; still fails your safety settings.'],
+  ['route-ferry-marker-icon', 'Ferry', 'Ferry crossing.'],
 ];
 
 function buildActiveRouteIconLegend() {
@@ -13675,7 +13733,11 @@ function buildActiveRouteIconLegend() {
     const pixels = new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
     canvas.getContext('2d').putImageData(pixels, 0, 0);
     const copy = document.createElement('span');
-    copy.innerHTML = `<strong>${label}</strong>`;
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    const description = document.createElement('small');
+    description.textContent = detail;
+    copy.append(strong, description);
     item.append(canvas, copy);
     host.append(item);
   }

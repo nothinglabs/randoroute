@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Route markers: one vocabulary, one spacing clock, never a pile of icons.
 //
-// Walking, steep climbing, heavy traffic, unpaved surface, and technical
-// ways each flag on the route line itself, ~700 m apart, and where several
+// Walking, steep climbing, heavy traffic, and unpaved surface each flag on the
+// route line itself, ~700 m apart, and where several
 // apply to one stretch exactly ONE icon is placed per slot. The walking
 // marker keeps its enlarged tap target: a tap on the figure answers with the
 // segment underneath.
@@ -67,7 +67,7 @@ const plan = await page.evaluate(() => {
       return m.length > 0 && m.every((x) => x.kind === 'traffic');
     })(),
     rocks: build(19, () => ({ surface: 2 })).other.every((m) => m.kind === 'unpaved'),
-    odd: build(19, () => ({ mtb: true })).other.every((m) => m.kind === 'odd'),
+    technical: build(19, () => ({ mtb: true })).other.length,
     // Steep AND unpaved together: one CLUSTERED badge per slot naming both.
     mixed: (() => {
       const m = build(19, () => ({ gradePct: 12, surface: 2 }));
@@ -123,7 +123,8 @@ check('a trusted bike lane on a busy road stays unbadged',
 check('a bike lane demoted to caution by its stress rating carries the car',
   plan.trafficOnStressedLane === true);
 check('confirmed unpaved gets the rocks', plan.rocks === true);
-check('a technical way gets the question mark', plan.odd === true);
+check('a technical way keeps its card context without an ambiguous ? badge',
+  plan.technical === 0, String(plan.technical));
 check('a steep AND unpaved stretch clusters both kinds in every slot',
   plan.mixed.count >= 3 && plan.mixed.count <= 5
     && plan.mixed.kinds.length === 1 && plan.mixed.kinds[0] === 'steep+unpaved',
@@ -153,18 +154,25 @@ const drawn = await page.evaluate(async () => {
   const lat = 47.60;
   const coords = Array.from({ length: 7 }, (_, i) => [-122.34 + i * .002, lat]);
   const segs = coords.slice(0, -1).map((_, i) => ({
-    lenM: 150, c0: i, c1: i + 1, level: 1, mph: 25, sh: 4,
+    lenM: 150, c0: i, c1: i + 1,
+    level: i === 5 ? 4 : 1, mph: i === 5 ? 50 : 25, sh: i === 5 ? 0 : 4,
     dismount: i >= 2 && i <= 3, official: i >= 2 && i <= 3 ? 136 : 0,
   }));
+  routing.last = { ok: true, coords, segs,
+    distM: segs.reduce((sum, segment) => sum + segment.lenM, 0) };
   map.jumpTo({ center: [-122.34 + 3 * .002, lat], zoom: 15 });
   drawRoute(coords, [], segs);
   await new Promise((resolve) => { map.once('idle', resolve); setTimeout(resolve, 8000); });
   const image = map.style.getImage('route-dismount-marker-icon');
   const markers = map.querySourceFeatures('route-dismount');
+  const failMarkers = map.querySourceFeatures('route-marker')
+    .filter((feature) => feature.properties.kind === 'fail');
   window.__markerAt = markers[0]?.geometry.coordinates;
+  window.__failMarkerAt = failMarkers[0]?.geometry.coordinates;
   return {
     markerCount: new Set(markers.map((f) => String(f.geometry.coordinates))).size,
     markerLng: markers[0]?.geometry.coordinates?.[0],
+    failMarkerCount: failMarkers.length,
     hasSource: !!map.getSource('route-dismount'),
     cssPx: image ? Math.round(image.data.width / image.pixelRatio) : 0,
     haloRadius: map.getPaintProperty('route-dismount-halo', 'circle-radius'),
@@ -172,6 +180,8 @@ const drawn = await page.evaluate(async () => {
 });
 check('the walked stretch carries a walker on the map',
   drawn.markerCount >= 1 && drawn.hasSource, JSON.stringify(drawn));
+check('the failed stretch carries a tappable warning icon',
+  drawn.failMarkerCount >= 1, JSON.stringify(drawn));
 check('inside the walked stretch, not somewhere else',
   drawn.markerLng > -122.34 + 2 * .002 - .0002 && drawn.markerLng < -122.34 + 4 * .002 + .0002,
   `marker at lng ${drawn.markerLng}`);
@@ -198,6 +208,17 @@ const taps = await page.evaluate((radius) => {
   };
   const onMarker = (dx, dy) => dismountMarkerAt({ x: at.x + dx, y: at.y + dy });
   const elsewhere = map.project([window.__markerAt[0] + .004, window.__markerAt[1]]);
+  const badgeAt = (coordinate, dx, dy) => {
+    const center = map.project(coordinate);
+    const point = { x: center.x + dx, y: center.y + dy };
+    const icon = activeRouteIconAt(point);
+    const segment = routeSegmentForActiveIcon(icon);
+    return { iconLayer: icon?.layer?.id || null,
+      routeIndex: segment?.routeIndex ?? null,
+      dismount: segment?.feature?.properties?.dismount ?? null,
+      opened: inspectRoadAt(point, map.unproject([point.x, point.y])),
+      cardVisible: readoutEl.classList.contains('show') };
+  };
   return {
     centre: inspect(0, 0),
     edge: inspect(0, -(radius - 2)),
@@ -205,6 +226,8 @@ const taps = await page.evaluate((radius) => {
     onEdge: onMarker(0, -(radius - 2)),
     onBeyond: onMarker(0, radius * 3),
     onElsewhere: dismountMarkerAt({ x: elsewhere.x, y: elsewhere.y }),
+    walkerBadge: badgeAt(window.__markerAt, 0, -(radius - 2)),
+    failBadge: badgeAt(window.__failMarkerAt, 0, -18),
   };
 }, drawn.haloRadius);
 check('tapping the walker reports the dismount',
@@ -214,6 +237,14 @@ check('and so does tapping its edge, clear of the route line',
 check('the marker owns the taps that land on it', taps.onCentre && taps.onEdge,
   JSON.stringify(taps));
 check('and no others', !taps.onBeyond && !taps.onElsewhere, JSON.stringify(taps));
+check('a tap near the walker opens the owning route segment card',
+  taps.walkerBadge.opened && taps.walkerBadge.cardVisible
+    && taps.walkerBadge.dismount === 1 && Number.isInteger(taps.walkerBadge.routeIndex),
+  JSON.stringify(taps.walkerBadge));
+check('a tap near a fail badge opens its exact failed route segment card',
+  taps.failBadge.opened && taps.failBadge.cardVisible
+    && taps.failBadge.routeIndex === 5,
+  JSON.stringify(taps.failBadge));
 
 // Every walked stretch draws AMBER on the route, tagged or synthesised: a
 // dismount that painted as lime trail read as the best riding on the route

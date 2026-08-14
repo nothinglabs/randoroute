@@ -43,6 +43,7 @@ const opened = await page.evaluate(() => {
     gridColumns: getComputedStyle(document.getElementById('activeRouteIconLegendItems')).gridTemplateColumns,
     hasKicker: /Map guide/i.test(legend.textContent),
     labels: items.map((item) => item.getAttribute('aria-label')),
+    descriptions: items.map((item) => item.querySelector('small')?.textContent || ''),
     painted: items.every((item) => {
       const canvas = item.querySelector('canvas');
       const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
@@ -52,12 +53,15 @@ const opened = await page.evaluate(() => {
 });
 check('the map legend button opens Route Icons with the Layers pane',
   opened.visible && opened.layersOpen && opened.title === 'Route Icons'
-    && !opened.hasKicker && opened.height <= 115, JSON.stringify(opened));
-check('all eight route icon meanings are present and painted',
-  opened.count === 8 && opened.painted
-    && opened.labels.some((label) => /Route !\?/.test(label))
-    && opened.labels.some((label) => /MTB: Technical trail/.test(label))
-    && opened.labels.some((label) => /Ferry/.test(label)), JSON.stringify(opened));
+    && !opened.hasKicker && opened.height > 115 && opened.height <= 250,
+  JSON.stringify(opened));
+check('all seven useful route icon meanings are present, explained, and painted',
+  opened.count === 7 && opened.painted
+    && opened.labels.some((label) => /Designated route !\?/.test(label))
+    && !opened.labels.some((label) => /MTB|Technical trail/.test(label))
+    && opened.labels.some((label) => /Ferry/.test(label))
+    && opened.descriptions.every((description) => description.length >= 12),
+  JSON.stringify(opened));
 
 await page.click('#activeRouteIconLegendClose');
 let closed = await page.evaluate(() => ({

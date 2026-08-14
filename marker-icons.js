@@ -195,18 +195,6 @@ function ensureRouteMarkerImages(targetMap) {
     b.disc(9.9 * s, 11.5 * s, 0.78 * s, routeInk);
     add('route-marker-fail-designated', b);
   }
-  { // odd: a bold question mark -- "this is not an ordinary road".
-    const b = paintMarkerBadge([54, 79, 96, 255]);
-    const s = b.s, ink = [54, 79, 96, 255];
-    // hook of the ?: an arc from the left shoulder over the top to mid-right
-    for (let deg = -180; deg <= 55; deg += 4) {
-      const a = deg * Math.PI / 180;
-      b.disc(8 * s + Math.cos(a) * 2.6 * s, 6 * s + Math.sin(a) * 2.6 * s, 0.85 * s, ink);
-    }
-    b.stroke(9.3 * s, 7.6 * s, 8 * s, 9.6 * s, 1.7 * s, ink);
-    b.disc(8 * s, 12.2 * s, 1.05 * s, ink);
-    add('route-marker-odd', b);
-  }
   // Combined badges: a spot can be steep AND trafficked, and one badge must
   // not hide the other -- the marker chain emits every active kind as ONE
   // clustered image (field: "a traffic icon will seem to hide that there is
@@ -214,7 +202,7 @@ function ensureRouteMarkerImages(targetMap) {
   // canonical order; buildRouteMarkerData joins kinds with '+' in the same
   // order. Leftmost badge paints last so the primary kind sits on top of
   // the overlap seam.
-  const COMBO_KINDS = ['steep', 'traffic', 'unpaved', 'odd'];
+  const COMBO_KINDS = ['steep', 'traffic', 'unpaved'];
   const overlap = Math.round(4 * STEEP_MARKER_SCALE);
   const composite = (parts) => {
     const w = parts[0].width, h = parts[0].height, step = w - overlap;

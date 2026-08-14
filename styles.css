@@ -636,20 +636,21 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #settingsToggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .active-route-icon-legend {
   position: absolute; z-index: 24; top: calc(env(safe-area-inset-top) + 8px); left: 8px;
-  width: min(680px, calc(100vw - 70px)); box-sizing: border-box; padding: 6px 8px;
+  width: min(720px, calc(100vw - 70px)); box-sizing: border-box; padding: 8px 10px;
   border: 1px solid #b8cedb; border-radius: 13px; background: rgba(250,253,255,.96);
   box-shadow: 0 5px 18px rgba(20,46,62,.24); color: #294554;
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
 }
 .active-route-icon-legend[hidden] { display: none; }
 .active-route-icon-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.active-route-icon-head h2 { margin: 0; color: #233f50; font: 800 12.5px/1.05 system-ui; }
+.active-route-icon-head h2 { margin: 0; color: #233f50; font: 820 15px/1.1 system-ui; }
 #activeRouteIconLegendClose { flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: #edf1f4; color: #50636e; font: 750 15px/1 system-ui; cursor: pointer; }
-.active-route-icon-items { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-top: 4px; }
-.active-route-icon-item { display: flex; align-items: center; gap: 3px; min-width: 0; min-height: 27px; padding: 2px 3px; border: 1px solid #dbe6ec; border-radius: 7px; background: rgba(255,255,255,.86); }
-.active-route-icon-item canvas { flex: none; width: 22px !important; height: 22px !important; object-fit: contain; }
-.active-route-icon-item span { display: block; min-width: 0; }
-.active-route-icon-item strong { color: #294554; font: 780 8.6px/1.04 system-ui; }
+.active-route-icon-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
+.active-route-icon-item { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 38px; padding: 4px 6px; border: 1px solid #dbe6ec; border-radius: 8px; background: rgba(255,255,255,.88); }
+.active-route-icon-item canvas { flex: none; width: 25px !important; height: 25px !important; object-fit: contain; }
+.active-route-icon-item span { display: grid; gap: 2px; min-width: 0; }
+.active-route-icon-item strong { color: #294554; font: 800 10px/1.06 system-ui; }
+.active-route-icon-item small { color: #617580; font: 620 8.3px/1.12 system-ui; }
 #map .maplibregl-ctrl-top-right, #map .maplibregl-ctrl-bottom-right { z-index: 16; }
 #map .maplibregl-ctrl-bottom-right { transition: bottom .2s ease; }
 /* The location button sits with the map's own furniture: under the scale, at
