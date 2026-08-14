@@ -53,19 +53,24 @@ const opened = await page.evaluate(() => {
 });
 check('the map legend button opens Route Icons with the Layers pane',
   opened.visible && opened.layersOpen && opened.title === 'Route Icons'
-    // 265, not 250: the card's descriptions wrap by font metrics, and a
-    // container whose fonts run a shade wide pushed two items to a second line
-    // and the card to 251.3px -- failing a budget it missed by 1.3px while
-    // being exactly as compact as intended. The bound still fails a card that
-    // grows a row or loses its two-column grid.
-    && !opened.hasKicker && opened.height > 115 && opened.height <= 265,
+    // The card was tightened on a field report: descriptions gone, ferry gone,
+    // labels that say the whole thing. It measured 160.9px in this container
+    // against 251.3 before -- a 36% cut against a 30% target. The bound gives
+    // ~15% of font headroom (the previous budget failed by 1.3px of font wrap)
+    // and still fails a card that grows a row, regrows descriptions, or loses
+    // its two-column grid.
+    && !opened.hasKicker && opened.height > 90 && opened.height <= 185,
   JSON.stringify(opened));
-check('all seven useful route icon meanings are present, explained, and painted',
-  opened.count === 7 && opened.painted
-    && opened.labels.some((label) => /Designated route !\?/.test(label))
+check('all six route icon meanings are present as self-sufficient labels, painted',
+  opened.count === 6 && opened.painted
+    && opened.labels.some((label) => /Bike Route - but fails safety rule/.test(label))
+    && opened.labels.some((label) => /Walk your bike/.test(label))
+    && opened.labels.some((label) => /Hill over 10% grade/.test(label))
     && !opened.labels.some((label) => /MTB|Technical trail/.test(label))
-    && opened.labels.some((label) => /Ferry/.test(label))
-    && opened.descriptions.every((description) => description.length >= 12),
+    // The ferry icon needs no legend -- it is a boat -- and the descriptions
+    // are gone because the labels carry the meaning now.
+    && !opened.labels.some((label) => /Ferry/.test(label))
+    && opened.descriptions.every((description) => description === ''),
   JSON.stringify(opened));
 
 await page.click('#activeRouteIconLegendClose');

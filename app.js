@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.696';
+const APP_VERSION = '2026-08-14.697';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -13695,15 +13695,16 @@ function syncLayersToggle() {
   toggle.title = open ? 'Hide map layers' : 'Show map layers';
 }
 
+// Label only -- the card used to carry a description under each label and a
+// ferry row, and read as a manual. The labels now say the whole thing, and the
+// ferry icon needs no legend: it is a boat.
 const ACTIVE_ROUTE_ICON_DEFINITIONS = [
-  ['route-dismount-marker-icon', 'Walk your bike', 'Dismount and walk here.'],
-  ['route-marker-steep', 'Steep hill', 'Grade 10% or steeper.'],
-  ['route-marker-traffic', 'Heavy traffic', 'High traffic volume.'],
-  ['route-marker-unpaved', 'Unpaved', 'Loose or unpaved surface.'],
-  ['route-marker-fail', 'Fails rules', 'Fails your safety settings.'],
-  ['route-marker-fail-designated', 'Designated route !?',
-    'Signed bike route; still fails your safety settings.'],
-  ['route-ferry-marker-icon', 'Ferry', 'Ferry crossing.'],
+  ['route-dismount-marker-icon', 'Walk your bike'],
+  ['route-marker-steep', 'Hill over 10% grade'],
+  ['route-marker-traffic', 'Heavy Traffic'],
+  ['route-marker-unpaved', 'Unpaved Surface'],
+  ['route-marker-fail', 'Fails safety rules'],
+  ['route-marker-fail-designated', 'Bike Route - but fails safety rule'],
 ];
 
 function buildActiveRouteIconLegend() {
@@ -13717,27 +13718,23 @@ function buildActiveRouteIconLegend() {
   };
   ensureRouteMarkerImages(imageSink);
   ensureDismountMarkerImage(imageSink);
-  ensureFerryMarkerImage(imageSink);
-  for (const [id, label, detail] of ACTIVE_ROUTE_ICON_DEFINITIONS) {
+  for (const [id, label] of ACTIVE_ROUTE_ICON_DEFINITIONS) {
     const image = images.get(id);
     if (!image) continue;
     const item = document.createElement('div');
     item.className = 'active-route-icon-item';
-    item.setAttribute('aria-label', `${label}: ${detail}`);
+    item.setAttribute('aria-label', label);
     const canvas = document.createElement('canvas');
     canvas.width = image.width;
     canvas.height = image.height;
-    const scale = id === 'route-ferry-marker-icon' ? 0.85 : 1;
-    canvas.style.width = `${Math.round(image.width / image.pixelRatio * scale)}px`;
-    canvas.style.height = `${Math.round(image.height / image.pixelRatio * scale)}px`;
+    canvas.style.width = `${Math.round(image.width / image.pixelRatio)}px`;
+    canvas.style.height = `${Math.round(image.height / image.pixelRatio)}px`;
     const pixels = new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
     canvas.getContext('2d').putImageData(pixels, 0, 0);
     const copy = document.createElement('span');
     const strong = document.createElement('strong');
     strong.textContent = label;
-    const description = document.createElement('small');
-    description.textContent = detail;
-    copy.append(strong, description);
+    copy.append(strong);
     item.append(canvas, copy);
     host.append(item);
   }
