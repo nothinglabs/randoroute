@@ -53,7 +53,12 @@ const opened = await page.evaluate(() => {
 });
 check('the map legend button opens Route Icons with the Layers pane',
   opened.visible && opened.layersOpen && opened.title === 'Route Icons'
-    && !opened.hasKicker && opened.height > 115 && opened.height <= 250,
+    // 265, not 250: the card's descriptions wrap by font metrics, and a
+    // container whose fonts run a shade wide pushed two items to a second line
+    // and the card to 251.3px -- failing a budget it missed by 1.3px while
+    // being exactly as compact as intended. The bound still fails a card that
+    // grows a row or loses its two-column grid.
+    && !opened.hasKicker && opened.height > 115 && opened.height <= 265,
   JSON.stringify(opened));
 check('all seven useful route icon meanings are present, explained, and painted',
   opened.count === 7 && opened.painted

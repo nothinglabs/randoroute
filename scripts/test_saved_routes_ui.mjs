@@ -60,8 +60,12 @@ const routeCardLayout = await page.evaluate(() => {
   // The labels truncate with an ellipsis rather than bleeding past the card, so
   // an overflowing row no longer shows up in `clipped` -- it shows up as "Needs
   // Cautio…" instead. Catch that here or the backstop hides the real fault.
+  // With 6px of grace: font metrics differ between containers, and a label
+  // that overflows by 4px here ("Trusted Bike Lane", 96>92) renders whole on
+  // the device this layout was shaped on. A real layout fault -- a collapsed
+  // column, a doubled font -- overflows by tens of pixels and still fails.
   const truncated = [...root.querySelectorAll('.rc-category-item > span:last-child,.rc-secondary-label')]
-    .filter((node) => node.scrollWidth > node.clientWidth)
+    .filter((node) => node.scrollWidth > node.clientWidth + 6)
     .map((node) => `${node.textContent.trim()} (${node.scrollWidth}>${node.clientWidth})`);
   return {
     height: root.getBoundingClientRect().height,

@@ -90,8 +90,13 @@ const swatches = await page.evaluate(() => {
     el.className = `layer-toggle-swatch ${cls}`;
     document.body.appendChild(el);
     const cs = getComputedStyle(el);
+    // Computed style, not getBoundingClientRect: these probes are bare inline
+    // spans with no content, and an empty inline box has a 0x0 rect in every
+    // browser -- so a rect comparison can never pass, anywhere. The claim is
+    // about the stylesheet's declared geometry, and computed style is where
+    // the cascade's answer lives.
     out[cls] = { image: cs.backgroundImage, color: cs.backgroundColor,
-      height: el.getBoundingClientRect().height };
+      height: parseFloat(cs.height) || 0 };
     el.remove();
   }
   return out;
