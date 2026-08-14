@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.698';
+const APP_VERSION = '2026-08-14.699';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12890,6 +12890,12 @@ function syncPresetSelection() {
       : 'Custom rules are being used instead of a preset.';
     status.classList.toggle('custom', !active);
   }
+  // The panel title carries the same fact on EVERY tab: which preset the
+  // rider is riding, or that they have departed from one. It replaced a
+  // "changes override any preset" line that sat on the Limits tab only --
+  // the title says it once, live, where every tab can see it.
+  const title = document.getElementById('settingsPanelTitle');
+  if (title) title.textContent = `Settings — ${active ? active.label : 'Custom'}`;
 }
 
 function presetInfoRows(preset) {
@@ -13286,7 +13292,7 @@ function buildRulesPanel() {
   // space of its own.
   const spaceHeading = document.createElement('p');
   spaceHeading.className = 'rule-group-head';
-  spaceHeading.textContent = 'Require a bike lane or safe-ish width shoulder.';
+  spaceHeading.textContent = 'Require a bike lane or safe-ish width shoulder if:';
   slidersHost.appendChild(spaceHeading);
   slider('maxSpeedNoShoulder', 'Speed limit is over', 15, 45, 5, ' mph', 'rule-sub');
   lanesSlider();

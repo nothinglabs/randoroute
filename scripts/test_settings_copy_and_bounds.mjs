@@ -71,7 +71,7 @@ const copy = await page.evaluate(() => ({
   })(),
 }));
 check('the bike-space rule reads as one requirement',
-  copy.settings.includes('Require a bike lane or safe-ish width shoulder.'),
+  copy.settings.includes('Require a bike lane or safe-ish width shoulder if:'),
   copy.settings.slice(0, 160));
 check('the weights screen carries a modified-state header', copy.weightsNotice);
 check('and no longer claims weights are "never a safety rule"',
