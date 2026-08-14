@@ -195,20 +195,35 @@ const RENAMED_ROUTING_WEIGHTS = Object.freeze({
   climbLowSecPerM: 'climbLowStressSecPerM', turnLowSec: 'turnLowStressSec',
 });
 const ROUTING_WEIGHTS_VERSION = 8;
+// Most weights share the legacy sanity range below. Values with narrower,
+// semantic domains live here so malformed saved/shared input cannot turn a
+// blend into extrapolation (and, for traffic, a negative edge cost).
+const ROUTING_WEIGHT_BOUNDS = Object.freeze({
+  useMeasuredTraffic: Object.freeze([0, 1]),
+});
+const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
+  'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
+  'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
+  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic']);
+function validatedRoutingWeight(key, sourceValue) {
+  const value = Number(sourceValue);
+  if (!Number.isFinite(value)) return null;
+  const bounds = ROUTING_WEIGHT_BOUNDS[key];
+  if (bounds) return Math.min(bounds[1], Math.max(bounds[0], value));
+  const minimum = ZERO_ROUTING_WEIGHTS.has(key) ? 0 : 0.1;
+  return value >= minimum && value <= 120 ? value : null;
+}
 function validRoutingWeights(source) {
   const clean = {};
-  const zeroOkay = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
-    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
-    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
-    'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic']);
   if (!source || typeof source !== 'object') return clean;
   const renamed = {};
   for (const [was, now] of Object.entries(RENAMED_ROUTING_WEIGHTS)) {
     if (source[was] !== undefined && source[now] === undefined) renamed[now] = source[was];
   }
   for (const key of Object.keys(DEFAULT_ROUTING_WEIGHTS)) {
-    const value = Number(source[key] !== undefined ? source[key] : renamed[key]);
-    if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) clean[key] = value;
+    const value = validatedRoutingWeight(key,
+      source[key] !== undefined ? source[key] : renamed[key]);
+    if (value !== null) clean[key] = value;
   }
   return clean;
 }
@@ -1038,7 +1053,8 @@ function decodeSharedRouteToken(token) {
       prefDesig: typeof data.p === 'boolean' ? data.p : null,
       prefResidential: typeof data.q === 'boolean' ? data.q : null,
       rules: sharedRules,
-      weights: data.w && typeof data.w === 'object' && !Array.isArray(data.w) ? data.w : null,
+      weights: data.w && typeof data.w === 'object' && !Array.isArray(data.w)
+        ? validRoutingWeights(data.w) : null,
     };
   } catch (e) {
     return null;
@@ -5242,6 +5258,21 @@ function routeSegmentIndexNearTap(route, lngLat, toleranceM) {
   const index = segs.findIndex((seg) => bestCoordIndex >= Number(seg.c0)
     && bestCoordIndex < Number(seg.c1));
   return index >= 0 ? index : null;
+}
+
+// Match the visible route casing, not the much wider invisible route hit
+// target. The latter is useful for opening a road card with a finger, but it
+// made an elevation selection appear after taps that were visibly off-route.
+// Resolving from the itinerary geometry also makes overlaps deterministic;
+// MapLibre's feature ordering at a crossing is not a route-order contract.
+const ROUTE_ELEVATION_TAP_RADIUS_PX = 6.5;
+function routeSegmentIndexAtMapTap(route, lngLat, screenPoint) {
+  if (!route?.ok || !lngLat || !screenPoint) return null;
+  const onePixelAway = map.unproject([screenPoint.x + 1, screenPoint.y]);
+  const metresPerPixel = navDistanceM(
+    [lngLat.lng, lngLat.lat], [onePixelAway.lng, onePixelAway.lat]);
+  return routeSegmentIndexNearTap(route, lngLat,
+    Math.max(1, metresPerPixel * ROUTE_ELEVATION_TAP_RADIUS_PX));
 }
 
 function selectRouteElevationSegment(routeIndex, lngLat) {
@@ -12310,18 +12341,6 @@ function inspectRoadAt(point, lngLat = null) {
       || point.x > canvas.clientWidth - edgeGuard
       || point.y > canvas.clientHeight - edgeGuard) return false;
   const feature = featureAt(point);
-  // The wide active-route ribbon often overlaps a road, trail, or designated
-  // bike-route layer. That underlying feature may legitimately win the card
-  // (it can have richer facts), but a tap inside the route's own hit target is
-  // still a tap on this trip and must mark the corresponding elevation. Query
-  // that hit target independently instead of making the chart depend on which
-  // overlapping source won the card-ranking tie.
-  let tappedRouteSegment = null;
-  if (routing.last?.ok && map.getLayer('route-seg-hit')) {
-    try {
-      tappedRouteSegment = map.queryRenderedFeatures(point, { layers: ['route-seg-hit'] })[0] || null;
-    } catch (error) { /* style changed between the layer check and query */ }
-  }
   // A deliberate tap is useful even between mapped segments: the generic
   // point card can still make it a destination, start, or stop and can open
   // Google Maps. Feature-backed taps simply add the richer road safety facts.
@@ -12330,19 +12349,8 @@ function inspectRoadAt(point, lngLat = null) {
   const picker = document.getElementById('placePicker');
   if (picker && !picker.hidden) closePlacePicker();
   const inspectedLngLat = lngLat || map.unproject([point.x, point.y]);
-  let tappedRouteIndex = Number(tappedRouteSegment?.properties?.routeIndex);
-  if (!Number.isInteger(tappedRouteIndex)) {
-    // MapLibre may omit a completely transparent hit layer from rendered
-    // queries on some WebKit/Metal paths. Fall back to the same on-screen
-    // geometry test the rider sees: a modest finger-sized distance around the
-    // active polyline, converted from pixels to metres at this latitude/zoom.
-    const onePixelAway = map.unproject([point.x + 1, point.y]);
-    const metresPerPixel = navDistanceM(
-      [inspectedLngLat.lng, inspectedLngLat.lat],
-      [onePixelAway.lng, onePixelAway.lat]);
-    tappedRouteIndex = routeSegmentIndexNearTap(
-      routing.last, inspectedLngLat, Math.max(4, metresPerPixel * 14));
-  }
+  const tappedRouteIndex = routeSegmentIndexAtMapTap(
+    routing.last, inspectedLngLat, point);
   // A road gets its own stretch drawn instead of a pin: the card is about that
   // piece of road, and showing it is more use than marking the pixel the
   // finger landed on. A tap on nothing still gets the pin -- there the point
@@ -12568,7 +12576,7 @@ const ROUTING_WEIGHT_GROUPS = [
     { key: 'designated', label: 'Signed bike route, no infrastructure', min: .25, max: 1.2, step: .01,
       hint: 'A route number on a sign. Deliberately a small bonus: signage is context, not protection.' },
     { key: 'strongDesignated', label: 'Signed bike route, when you asked to prefer them', min: .2, max: 1, step: .01,
-      hint: 'Replaces the value above while "Heavily prefer bike routes & trails" is on.' },
+      hint: 'Replaces the value above while "Heavily prefer designated bike routes" is on.' },
     { key: 'mtbTrail', label: 'Mountain-bike trail, when your rules allow one', min: 1, max: 30, step: .5,
       hint: 'Above 1: rideable on a mountain bike, avoided unless it is the only link.' },
   ]],
@@ -12772,7 +12780,7 @@ function buildAdvancedRoutingOptions() {
     grid.append(card);
   };
   const updatePreference = () => { saveStateSoon(); computeRoute(); };
-  add('prefDesig', 'Heavily prefer bike routes & trails', routing, updatePreference);
+  add('prefDesig', 'Heavily prefer designated bike routes', routing, updatePreference);
   add('prefResidential', 'Prefer residential streets', routing, updatePreference);
   add('allowSidewalkFallback', 'Allow sidewalk fallback', rules, scheduleRescore);
   add('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
@@ -13619,14 +13627,14 @@ function syncLayersToggle() {
 }
 
 const ACTIVE_ROUTE_ICON_DEFINITIONS = [
-  ['route-dismount-marker-icon', 'Walk bike', 'Dismount stretch'],
-  ['route-marker-steep', 'Steep hill', '10%+ grade'],
-  ['route-marker-traffic', 'Busy traffic', 'Traffic exposure'],
-  ['route-marker-unpaved', 'Unpaved', 'Loose surface'],
-  ['route-marker-odd', 'Technical trail', 'MTB / unusual way'],
-  ['route-marker-fail', 'Fails rules', 'Safety rule failed'],
-  ['route-marker-fail-designated', 'Bike route + fail', 'Designated, but fails'],
-  ['route-ferry-marker-icon', 'Ferry', 'Ferry connection'],
+  ['route-dismount-marker-icon', 'Walk', 'Dismount'],
+  ['route-marker-steep', 'Hill', '10%+ grade'],
+  ['route-marker-traffic', 'Traffic', 'High volume'],
+  ['route-marker-unpaved', 'Unpaved', 'Loose'],
+  ['route-marker-odd', 'MTB', 'Technical trail'],
+  ['route-marker-fail', 'Fails', 'Safety rules'],
+  ['route-marker-fail-designated', 'Route !?', 'Signed bike route, but unsafe'],
+  ['route-ferry-marker-icon', 'Ferry', 'Crossing'],
 ];
 
 function buildActiveRouteIconLegend() {
@@ -13650,13 +13658,13 @@ function buildActiveRouteIconLegend() {
     const canvas = document.createElement('canvas');
     canvas.width = image.width;
     canvas.height = image.height;
-    const scale = id === 'route-ferry-marker-icon' ? 1.05 : 1.25;
+    const scale = id === 'route-ferry-marker-icon' ? 0.85 : 1;
     canvas.style.width = `${Math.round(image.width / image.pixelRatio * scale)}px`;
     canvas.style.height = `${Math.round(image.height / image.pixelRatio * scale)}px`;
     const pixels = new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
     canvas.getContext('2d').putImageData(pixels, 0, 0);
     const copy = document.createElement('span');
-    copy.innerHTML = `<strong>${label}</strong><small>${detail}</small>`;
+    copy.innerHTML = `<strong>${label}</strong>`;
     item.append(canvas, copy);
     host.append(item);
   }

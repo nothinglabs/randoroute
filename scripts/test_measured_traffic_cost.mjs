@@ -119,6 +119,18 @@ for (let b = 0; b <= 1.0001; b += 0.1) {
 assert.ok(Math.abs(mult('low', { useMeasuredTraffic: 0.5 })
   - (1 + W.busyHeavyLowStress) / 2) < 1e-9, 'half blend must be the midpoint');
 
+/* --------------------------- malformed input is clamped before edge scoring */
+// With a heavy OSM tag and a quiet measurement, extrapolating far beyond 1
+// used to cross zero and produce a negative cost. Both ends now clamp to the
+// same behavior as the corresponding valid endpoint.
+setEdge({ cls: 8, adt: 100 });
+assert.strictEqual(mult('low', { useMeasuredTraffic: 999 }),
+  mult('low', { useMeasuredTraffic: 1 }), 'a blend above 1 must clamp to 1');
+assert.strictEqual(mult('low', { useMeasuredTraffic: -999 }),
+  mult('low', { useMeasuredTraffic: 0 }), 'a blend below 0 must clamp to 0');
+assert.ok(mult('low', { useMeasuredTraffic: 999 }) >= 1,
+  'malformed traffic blending must never create a negative edge multiplier');
+
 /* ------------------------------- 4. thresholds agree with the safety model */
 const model = fs.readFileSync(new URL('../safety-model.js', import.meta.url), 'utf8');
 for (const adt of [500, 2000, 6000, 15000]) {

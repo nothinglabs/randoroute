@@ -216,6 +216,9 @@ const navigationTab = await page.evaluate(async () => {
     lng: (routing.last.coords[segment.c0][0] + routing.last.coords[segment.c1][0]) / 2,
     lat: (routing.last.coords[segment.c0][1] + routing.last.coords[segment.c1][1]) / 2,
   };
+  const selectedIndex = routeSegmentIndexNearTap(routing.last, tap, 2);
+  const farFromRoute = routeSegmentIndexNearTap(routing.last,
+    { lng: tap.lng + 0.01, lat: tap.lat + 0.01 }, 2);
   HIT_SRC['route-seg-hit'] = ROUTESEG_SRC;
   renderReadout({
     layer: { id: 'route-seg-hit' },
@@ -258,6 +261,7 @@ const navigationTab = await page.evaluate(async () => {
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const etaRect = etaElement.getBoundingClientRect();
   const progressRect = document.querySelector('.nav-progress').getBoundingClientRect();
+  const chartRect = document.querySelector('.nav-elevation-wrap').getBoundingClientRect();
   const result = {
     navigating: turnNav.active,
     activeTab: active?.id,
@@ -268,10 +272,12 @@ const navigationTab = await page.evaluate(async () => {
     helpRightAligned: Math.abs(navTipsRect.right - routeTipsRect.right) <= 1,
     startShift: { x: startAfter.left - startBefore.left, y: startAfter.top - startBefore.top },
     detailsShift: { x: detailsAfter.left - detailsBefore.left, y: detailsAfter.top - detailsBefore.top },
-    selection: { planning: planningSelection, navigating: navigationSelection },
+    selection: { planning: planningSelection, navigating: navigationSelection,
+      selectedIndex, farFromRoute },
     navElevationHeight,
     estimates: { etaClock, etaRemaining },
     etaInsideProgress: etaRect.right <= progressRect.right - 4,
+    chartDetailsClearance: detailsAfter.top - chartRect.bottom,
   };
   stopTurnNavigation(false);
   dismissRoadInfo();
@@ -289,10 +295,14 @@ check('Navigate and Route Details stay put when navigation starts',
   Math.abs(navigationTab.startShift.x) <= 1 && Math.abs(navigationTab.startShift.y) <= 1
     && Math.abs(navigationTab.detailsShift.x) <= 1 && Math.abs(navigationTab.detailsShift.y) <= 1,
   JSON.stringify(navigationTab));
+check('the navigation elevation labels clear the fixed Route Details button',
+  navigationTab.chartDetailsClearance >= 2, JSON.stringify(navigationTab));
 check('tapping an active-route segment marks the same elevation in both views',
   Number.isFinite(navigationTab.selection.planning)
     && navigationTab.selection.planning > 0
     && navigationTab.selection.planning === navigationTab.selection.navigating
+    && navigationTab.selection.selectedIndex === 3
+    && navigationTab.selection.farFromRoute === null
     && navigationTab.selection.cleared,
   JSON.stringify(navigationTab.selection));
 check('the navigation elevation chart uses the available vertical room',

@@ -78,7 +78,7 @@ check('route help distinguishes a rule failure from an impassable prohibition',
     && accuracy.routes.includes('never routed'), accuracy.routes.slice(-700));
 check('Layers help is portable across states and explains the icon guide',
   accuracy.layers.includes('State transportation data')
-    && accuracy.layers.includes('Active Route Icons')
+    && accuracy.layers.includes('Route Icons')
     && !accuracy.layers.includes('WSDOT'), accuracy.layers.slice(0, 500));
 check('Settings help documents current voice and advanced controls without a weights launcher',
   accuracy.settings.includes('Keep the screen awake while navigating')

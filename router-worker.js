@@ -721,6 +721,24 @@ function modeSuffix(mode) {
 }
 let activeWeights = { ...DEFAULT_WEIGHTS };
 let weightsSignature = '';
+// Keep semantic bounds explicit instead of treating every weight as an
+// interchangeable multiplier. A traffic blend outside [0, 1] extrapolates
+// beyond both inputs and can make an edge cost negative.
+const ROUTING_WEIGHT_BOUNDS = Object.freeze({
+  useMeasuredTraffic: Object.freeze([0, 1]),
+});
+const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
+  'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
+  'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
+  'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic']);
+function validatedRoutingWeight(key, sourceValue) {
+  const value = Number(sourceValue);
+  if (!Number.isFinite(value)) return null;
+  const bounds = ROUTING_WEIGHT_BOUNDS[key];
+  if (bounds) return Math.min(bounds[1], Math.max(bounds[0], value));
+  const minimum = ZERO_ROUTING_WEIGHTS.has(key) ? 0 : 0.1;
+  return value >= minimum && value <= 120 ? value : null;
+}
 // A weight set KEEPS its epoch. The direct-lens probe switches weights inside
 // every request (main -> lens -> main); with a plain counter that round trip
 // minted two fresh epochs per request, and since every cache key embeds the
@@ -753,13 +771,9 @@ function useWeights(source) {
 }
 function applyWeights(source) {
   if (!source || typeof source !== 'object') return;
-  const zeroOkay = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
-    'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
-    'climbDirectSecPerM', 'climbBalancedSecPerM', 'climbLowStressSecPerM',
-    'turnDirectSec', 'turnBalancedSec', 'turnLowStressSec', 'useMeasuredTraffic']);
   for (const key of Object.keys(DEFAULT_WEIGHTS)) {
-    const value = Number(source[key]);
-    if (Number.isFinite(value) && value >= (zeroOkay.has(key) ? 0 : 0.1) && value <= 120) activeWeights[key] = value;
+    const value = validatedRoutingWeight(key, source[key]);
+    if (value !== null) activeWeights[key] = value;
   }
 }
 // Facility multipliers reflect the physical protection recorded on the edge.

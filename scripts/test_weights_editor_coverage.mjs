@@ -39,6 +39,10 @@ const box = vm.createContext({ console,
 vm.runInContext([
   lift('const DEFAULT_ROUTING_WEIGHTS', '\n});'),
   lift('const RENAMED_ROUTING_WEIGHTS', '\n});'),
+  lift('const ROUTING_WEIGHT_BOUNDS', '\n});'),
+  lift('const ZERO_ROUTING_WEIGHTS', '\n  \'turnDirectSec\', \'turnBalancedSec\', \'turnLowStressSec\', \'useMeasuredTraffic\']);'),
+  lift('function validatedRoutingWeight', '\n}'),
+  lift('function validRoutingWeights', '\n}'),
   lift('const WEIGHT_MODES', '\n];'),
   lift('const ROUTING_WEIGHT_GROUPS', '\n];'),
   lift('function weightControlsFor', '\n}'),
@@ -46,9 +50,15 @@ vm.runInContext([
   // Hand the values back out; `const` at script top level does not become a
   // property of the context object.
   'globalThis.OUT = { defaults: DEFAULT_ROUTING_WEIGHTS, renamed: RENAMED_ROUTING_WEIGHTS,'
+  + ' bounds: ROUTING_WEIGHT_BOUNDS, validate: validRoutingWeights,'
   + ' editor: editorWeightKeys(), groups: ROUTING_WEIGHT_GROUPS, modes: WEIGHT_MODES };',
 ].join('\n'), box);
 const { defaults, renamed, editor, groups, modes } = box.OUT;
+
+assert.strictEqual(box.OUT.validate({ useMeasuredTraffic: 999 }).useMeasuredTraffic, 1,
+  'app validation must clamp useMeasuredTraffic above its semantic maximum');
+assert.strictEqual(box.OUT.validate({ useMeasuredTraffic: -999 }).useMeasuredTraffic, 0,
+  'app validation must clamp useMeasuredTraffic below its semantic minimum');
 
 /* ------------------------------------------- every weight is reachable */
 const defKeys = new Set(Object.keys(defaults));

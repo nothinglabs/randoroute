@@ -94,12 +94,30 @@ const advancedOptions = await pg.evaluate(() => {
       !document.getElementById(id)?.closest('#settings-options')),
     readingOrder: routeOptions.compareDocumentPosition(descriptions) & Node.DOCUMENT_POSITION_FOLLOWING
       && descriptions.compareDocumentPosition(sliders) & Node.DOCUMENT_POSITION_FOLLOWING,
+    designatedLabel: document.querySelector('label[for="r-prefDesig"] span')?.textContent,
   };
 });
 check('expert route switches sit above the weights in Advanced routing',
   advancedOptions.allPresent && advancedOptions.allInAdvanced
-    && advancedOptions.absentFromEveryday && advancedOptions.readingOrder,
+    && advancedOptions.absentFromEveryday && advancedOptions.readingOrder
+    && advancedOptions.designatedLabel === 'Heavily prefer designated bike routes',
   JSON.stringify(advancedOptions));
+
+const sharedWeightBounds = await pg.evaluate(() => {
+  const decode = (value) => {
+    const payload = { v: 1, s: [-122.34, 47.60], e: [-122.30, 47.64],
+      w: { useMeasuredTraffic: value } };
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return decodeSharedRouteToken(btoa(binary).replace(/\+/g, '-').replace(/\//g, '_')
+      .replace(/=+$/, '')).weights.useMeasuredTraffic;
+  };
+  return { high: decode(999), low: decode(-999) };
+});
+check('shared route weights are clamped before their recipe reaches the router',
+  sharedWeightBounds.high === 1 && sharedWeightBounds.low === 0,
+  JSON.stringify(sharedWeightBounds));
 
 /* --------------------------- 2. every rendered slider names a real weight */
 const wired = await pg.evaluate(() => {
