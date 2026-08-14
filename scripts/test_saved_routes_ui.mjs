@@ -244,11 +244,34 @@ const navigationTab = await page.evaluate(async () => {
   }, offRouteTap, { x: 195, y: 350 }, { routeElevationIndex: null });
   const planningClearedOffRoute = !document.getElementById('rcElevCanvas')
     .dataset.selectedDistanceM;
+  // Settle BEFORE capturing any before-rect. Under full-suite load the reflow
+  // from the taps above can still be in flight here, so a "before" position
+  // was the transient one and the settled "after" read as an 8px shift of a
+  // button that never moved -- and the same staleness hit whichever element
+  // happened to be read first (routeTips, the chart, the button) as the load
+  // shifted. One rule now: settle, then read everything in the same frame.
+  const stableRect = (el) => new Promise((resolve) => {
+    let last = null, calm = 0, frames = 0;
+    const tick = () => {
+      const r = el.getBoundingClientRect();
+      const key = `${r.left},${r.top}`;
+      calm = key === last ? calm + 1 : 0;
+      last = key;
+      frames++;
+      if (calm >= 3 || frames > 120) return resolve(el.getBoundingClientRect());
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  await stableRect(document.getElementById('navStartButton'));
   const routeTipsRect = document.getElementById('routeTipsBtn').getBoundingClientRect();
   const startBefore = document.getElementById('navStartButton').getBoundingClientRect();
   const detailsBefore = document.getElementById('routeDetailsBtn').getBoundingClientRect();
   document.getElementById('navStartButton').click();
+  // Settled, not a fixed two frames: under load a fixed wait captured the
+  // panel mid-transition. Bounded, so a genuinely moved button still fails.
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await stableRect(document.getElementById('navStartButton'));
   const active = document.querySelector('.tab.active');
   const navTips = document.getElementById('navTipsBtn');
   const navTipsRect = navTips.getBoundingClientRect();
@@ -285,6 +308,16 @@ const navigationTab = await page.evaluate(async () => {
   const etaRect = etaElement.getBoundingClientRect();
   const progressRect = document.querySelector('.nav-progress').getBoundingClientRect();
   const chartRect = document.querySelector('.nav-elevation-wrap').getBoundingClientRect();
+  // The cross-element claims (chart vs button, help corner across views) mix
+  // rects, so both sides must come from the SAME settled frame. Settle on the
+  // chart, then read the pairs together.
+  await stableRect(document.querySelector('.nav-elevation-wrap'));
+  const settled = (() => {
+    const chart = document.querySelector('.nav-elevation-wrap').getBoundingClientRect();
+    const details = document.getElementById('navCardDetailsBtn').getBoundingClientRect();
+    const tips = navTips.getBoundingClientRect();
+    return { clearance: details.top - chart.bottom, tipsRight: tips.right };
+  })();
   const result = {
     navigating: turnNav.active,
     activeTab: active?.id,
@@ -292,7 +325,7 @@ const navigationTab = await page.evaluate(async () => {
     panelOpen: document.body.classList.contains('panel-open'),
     navTipsVisible: !navTips.hidden && getComputedStyle(navTips).display !== 'none',
     navTipsSize: { width: Math.round(navTipsRect.width), height: Math.round(navTipsRect.height) },
-    helpRightAligned: Math.abs(navTipsRect.right - routeTipsRect.right) <= 1,
+    helpRightAligned: Math.abs(settled.tipsRight - routeTipsRect.right) <= 1,
     startShift: { x: startAfter.left - startBefore.left, y: startAfter.top - startBefore.top },
     detailsShift: { x: detailsAfter.left - detailsBefore.left, y: detailsAfter.top - detailsBefore.top },
     selection: { planning: planningSelection, navigating: navigationSelection,
@@ -300,7 +333,7 @@ const navigationTab = await page.evaluate(async () => {
     navElevationHeight,
     estimates: { etaClock, etaRemaining },
     etaInsideProgress: etaRect.right <= progressRect.right - 4,
-    chartDetailsClearance: detailsAfter.top - chartRect.bottom,
+    chartDetailsClearance: settled.clearance,
   };
   stopTurnNavigation(false);
   dismissRoadInfo();
@@ -342,7 +375,7 @@ check('the navigation estimate stays inset from the card edge',
 // The same control in two places. It read "Details" at one size on the route
 // card and another in the navigation footer, which made them look like two
 // different buttons for two different things.
-const detailsButtons = await page.evaluate(() => {
+const detailsButtons = await page.evaluate(async () => {
   const size = (node) => {
     if (!node) return null;
     const rect = node.getBoundingClientRect();
@@ -354,7 +387,16 @@ const detailsButtons = await page.evaluate(() => {
   const nav = size(document.getElementById('navCardDetailsBtn'));
   document.getElementById('navCard').hidden = true;
   document.body.classList.remove('navigation-active');
-  return { card: size(document.querySelector('#routeCard .route-details-btn')), nav };
+  // The route card re-renders asynchronously after navigation ends, so the
+  // card button can be display:none at any single instant -- a pre-measure
+  // waitForFunction outside this evaluate raced the same re-render and still
+  // caught a 0x0 under load. Poll HERE, at the point of measurement, bounded.
+  let card = size(document.querySelector('#routeCard .route-details-btn'));
+  for (let i = 0; i < 120 && (!card || !card.width); i++) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    card = size(document.querySelector('#routeCard .route-details-btn'));
+  }
+  return { card, nav };
 });
 check('the route-details button is the same size in both views',
   detailsButtons.card && detailsButtons.nav
