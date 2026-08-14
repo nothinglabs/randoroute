@@ -519,7 +519,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .rule label { font-weight: 600; }
 .rule .val { color: #0a66c2; font-variant-numeric: tabular-nums; font-weight: 600; }
 .rule input[type="range"] { width: 100%; }
-.settings-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 5px 1px 3px; color: #40515c; }
+.settings-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 3px 1px 2px; color: #40515c; }
 .settings-panel-head > strong { font: 750 12px/1.2 system-ui; }
 .panel-view-actions { display: flex; align-items: center; gap: 6px; }
 .panel-view-close { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 9px; background: #eef1f4; color: #53646e; font: 800 17px/1 system-ui; cursor: pointer; }
@@ -556,14 +556,14 @@ body:not(.navigation-active) #navCard { display: none; }
 /* All four panes take the measured natural height of Limits. JavaScript sets
    this variable after the Settings view is laid out, so the panel no longer
    jumps between tabs without baking a control count into a magic pixel cap. */
-.settings-pane { display: flex; flex-direction: column; height: var(--settings-pane-height, auto); min-height: 196px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
+.settings-pane { display: flex; flex-direction: column; height: var(--settings-pane-height, auto); min-height: 170px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
 .settings-pane[hidden] { display: none; }
 .settings-pane > .settings-summary, .settings-pane > .preset-status { flex: none; }
 #settingsPresets, #settingsSliders, #settingsOptions, #settingsVoice { flex: 1; align-content: space-between; }
 .settings-summary { margin: 2px 1px 5px; color: #5f6f7a; font: 600 11px/1.3 system-ui; }
 #settingsSliders, #settingsOptions, #settingsVoice { display: grid; gap: 5px; }
-#settingsPresets { display: grid; gap: 6px; }
-.preset-card { width: 100%; padding: 9px 10px; border: 1px solid #d6e1e8; border-radius: 9px; background: #fbfcfd; color: #344b59; cursor: pointer; }
+#settingsPresets { display: grid; gap: 4px; }
+.preset-card { width: 100%; padding: 5px 10px; border: 1px solid #d6e1e8; border-radius: 9px; background: #fbfcfd; color: #344b59; cursor: pointer; }
 .preset-card:hover { border-color: #a8c4d7; background: #f6fafc; }
 .preset-card.active { border-color: #0a66c2; background: #eef6fc; box-shadow: inset 3px 0 #0a66c2; }
 .preset-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -573,14 +573,14 @@ body:not(.navigation-active) #navCard { display: none; }
 .preset-title-row { display: flex; align-items: center; gap: 5px; }
 .preset-title { font: 750 12.5px/1.2 system-ui; }
 .preset-info { flex: 0 0 auto; min-height: 21px; padding: 2px 6px; border: 1px solid #b8cbd8; border-radius: 6px; background: #f7fafb; color: #0a66c2; font: 750 10.5px/1 system-ui; cursor: pointer; }
-.preset-audience, .preset-rule-summary { margin: 4px 0 0; color: #5c707c; font: 550 11px/1.35 system-ui; }
+.preset-audience, .preset-rule-summary { margin: 1px 0 0; color: #5c707c; font: 550 11px/1.25 system-ui; }
 .preset-rule-summary { color: #485f6d; }
 .preset-badge { padding: 2px 6px; border-radius: 999px; background: #0a66c2; color: #fff; font: 750 9px/1.2 system-ui; }
 .preset-status { margin: 2px 1px 5px; color: #55676f; font: 650 11px/1.3 system-ui; }
 .preset-status:empty { display: none; }
 .preset-status.custom { color: #203442; font-weight: 800; }
-#settingsSliders .rule-card, #settingsOptions .rule-card, #settingsVoice .rule-card { margin: 0; padding: 6px 9px; border: 1px solid #dbe5eb; border-radius: 9px; background: #fbfcfd; }
-#settingsSliders .rule-head { margin-bottom: 5px; }
+#settingsSliders .rule-card, #settingsOptions .rule-card, #settingsVoice .rule-card { margin: 0; padding: 5px 9px; border: 1px solid #dbe5eb; border-radius: 9px; background: #fbfcfd; }
+#settingsSliders .rule-head { margin-bottom: 3px; }
 #settingsSliders .rule-card input[type="range"] { display: block; margin: 0; touch-action: pan-y; }
 /* Kept as a single sheet rather than a nested scroll area competing with the
    map panel -- but by sizing to content, not by clipping it. `visible` rather
@@ -1611,16 +1611,16 @@ body.navigation-active .maplibregl-user-location-accuracy-circle { display: none
 .voice-inline-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .voice-inline-head label { color: #324b59; font: 750 12px/1.2 system-ui; }
 .voice-select-inline { width: auto; min-width: 150px; max-width: 64%; margin-top: 0; padding: 5px 9px; }
-.voice-hint { margin: 3px 1px 0; color: #657985; font: 570 10px/1.25 system-ui; }
+.voice-hint { margin: 2px 1px 0; color: #657985; font: 570 10px/1.25 system-ui; }
 .voice-hint-warn { color: #85510a; }
 .voice-hint-warn strong { font-weight: 800; }
 
-.voice-status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin-top: 3px; }
+.voice-status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 10px; margin-top: 2px; }
 .voice-status-grid .rule-check { font-size: 11.5px; font-weight: 650; }
 /* Keep Voice controls grouped at the top instead of inheriting the other
    settings grids' space-between layout and opening large holes between them. */
 #settingsVoice { align-content: start; gap: 7px; }
-#settingsVoice .rule-card { padding: 6px 9px; }
+#settingsVoice .rule-card { padding: 4px 9px; }
 #settingsVoice .voice-status-grid .rule-check { line-height: 1.2; }
 #settingsVoice .voice-inline-head { min-height: 24px; }
 #settingsVoice .check-rule.rule-card { display: block; }
@@ -1644,7 +1644,7 @@ body.navigation-active .settings-pane :disabled { cursor: not-allowed; opacity: 
 /* The three "needs space" conditions read as one sentence, so they are
    introduced by a single heading and indented beneath it. Without the indent
    they look like three unrelated limits, which is what they used to be. */
-#settings-limits .rule-group-head { margin: 10px 0 4px; font: 700 12.5px/1.3 system-ui; color: #24333c; }
+#settings-limits .rule-group-head { margin: 6px 0 3px; font: 700 12.5px/1.3 system-ui; color: #24333c; }
 #settings-limits .rule-sub { margin-left: 24px; border-left: 2px solid #d8e0e6; padding-left: 9px; }
 
 /* The Navigate popup: three ways to use the tapped point. */
