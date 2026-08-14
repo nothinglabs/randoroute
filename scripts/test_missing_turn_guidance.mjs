@@ -165,26 +165,36 @@ check('Route Details receives every maneuver navigation generated',
   JSON.stringify({ navigation: expectedDetailTurns, details: reportedTurns }));
 await detailsPage.close();
 
-/* ------------------------------------------ and the banner tells the truth
- * A maneuver stays on the banner for 60 m past it so a late fix cannot blank it
- * mid-turn. The distance was clamped at zero and printed, and navDistanceText's
- * floor is 25 feet -- so a turn the rider was already through kept promising to
- * be a few steps ahead. Photographed forty metres up the trail.
+/* -------------------- and the banner releases a completed turn soon enough
+ * The banner used to retain a maneuver until 60 m after the junction. That
+ * kept the next turn hidden for most of a city block. A small jitter buffer is
+ * useful, but a nearby following maneuver must take over promptly.
  */
 const banner = await page.evaluate(() => {
   turnNav.active = true;
   turnNav.arrived = false;
   turnNav.message = '';
   turnNav.followingConnector = false;
-  turnNav.route = buildTurnInstructions(routing.last);
+  turnNav.route = {
+    totalM: 500,
+    instructions: [
+      { distanceM: 100, text: 'Turn left onto First Avenue' },
+      { distanceM: 150, text: 'Turn right onto Pine Street' },
+    ],
+  };
   turnNav.next = 0;
   const first = turnNav.route.instructions[0];
   const read = (routeM) => { turnNav.routeM = routeM; return navigationBannerInfo().headline; };
   const out = {
-    ahead: read(Math.max(0, first.distanceM - 200)),
+    ahead: read(Math.max(0, first.distanceM - 80)),
     at: read(first.distanceM),
-    past: read(first.distanceM + 40),
+    jitter: read(first.distanceM + 6),
   };
+  turnNav.routeM = first.distanceM + 11;
+  turnNav.next = advancePassedNavigationManeuvers(
+    turnNav.route.instructions, turnNav.next, turnNav.routeM);
+  out.after = navigationBannerInfo().headline;
+  out.index = turnNav.next;
   turnNav.active = false;
   return out;
 });
@@ -192,7 +202,11 @@ check('a maneuver still ahead reports the distance to it',
   /^In [\d.]+ (feet|miles) · /.test(banner.ahead), JSON.stringify(banner));
 check('one the rider has reached says so instead of "In 25 feet"',
   banner.at.startsWith('Now · '), JSON.stringify(banner));
-check('and so does one they are already past', banner.past.startsWith('Now · '),
+check('a few metres of GPS jitter does not drop the active turn',
+  banner.jitter.startsWith('Now · '),
+  JSON.stringify(banner));
+check('a completed turn promptly gives way to the following maneuver',
+  banner.index === 1 && /Turn right onto Pine Street/.test(banner.after),
   JSON.stringify(banner));
 
 check('no page errors', errors.length === 0, errors.join(' | '));

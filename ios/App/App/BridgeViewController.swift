@@ -108,6 +108,11 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     private let offRouteGoodAccuracyM = 60.0
     private let offRouteMaxAccuracyM = 120.0
     private let offRouteCandidateWindowS = 40.0
+    // Keep a completed maneuver briefly for GPS projection jitter, but never
+    // for the old fixed 60 m. That delay hid the following turn for most of a
+    // city block, in both the foreground banner and locked-screen guidance.
+    private let maneuverPassedHoldMinM = 8.0
+    private let maneuverPassedHoldMaxM = 15.0
 
     override func load() {
         locationManager.delegate = self
@@ -491,6 +496,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         guard tracking,
               let location = latestLocation,
               let nearest = nearestRoutePosition(to: location) else { return }
+        discardPassedInstructions(at: nearest.routeM)
         let background = UIApplication.shared.applicationState != .active
         let remainingToTurnM = instructions.first.map {
             $0.distanceM - nearest.routeM
@@ -600,9 +606,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         offRouteFixes = 0
         offRouteCandidateStartedAt = nil
 
-        while !instructions.isEmpty, instructions[0].distanceM - nearest.routeM < -60 {
-            instructions.removeFirst()
-        }
+        discardPassedInstructions(at: nearest.routeM)
         guard !instructions.isEmpty else {
             if background, !arrived,
                let destination = route.last,
@@ -648,6 +652,23 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                 nextInstruction: instructions[0],
                 remainingToTurnM: remainingM
             )
+        }
+    }
+
+    private func discardPassedInstructions(at routeM: Double) {
+        while let current = instructions.first {
+            let holdM: Double
+            if instructions.count > 1 {
+                let gapM = max(0, instructions[1].distanceM - current.distanceM)
+                holdM = min(maneuverPassedHoldMaxM,
+                            max(maneuverPassedHoldMinM, gapM * 0.2))
+            } else {
+                holdM = maneuverPassedHoldMaxM
+            }
+            guard routeM - current.distanceM > holdM else { return }
+            // A coarse or delayed fix may skip a junction entirely. Dropping a
+            // completed instruction is safer than speaking it behind the rider.
+            instructions.removeFirst()
         }
     }
 

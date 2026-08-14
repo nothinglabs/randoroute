@@ -3761,6 +3761,39 @@ function navSpokenAhead(instruction) {
   return `Ahead, ${text.charAt(0).toLowerCase()}${text.slice(1)}.`;
 }
 
+// Once the rider has completed a maneuver, release it quickly enough that the
+// following turn can become visible and audible. The old fixed 60 m hold kept
+// a just-completed turn on screen for most of a city block; close consecutive
+// turns were therefore hidden until the rider was nearly at the second one.
+// Keep a small buffer for GPS projection jitter, scaled down further when the
+// next maneuver is close.
+const MANEUVER_PASSED_HOLD_MIN_M = 8;
+const MANEUVER_PASSED_HOLD_MAX_M = 15;
+function maneuverPassedHoldM(instruction, following) {
+  if (!following) return MANEUVER_PASSED_HOLD_MAX_M;
+  const gapM = Math.max(0,
+    (Number(following.distanceM) || 0) - (Number(instruction?.distanceM) || 0));
+  return Math.min(MANEUVER_PASSED_HOLD_MAX_M,
+    Math.max(MANEUVER_PASSED_HOLD_MIN_M, gapM * 0.2));
+}
+
+function advancePassedNavigationManeuvers(instructions, startIndex, routeM) {
+  let index = Math.max(0, Number(startIndex) || 0);
+  const progressM = Number(routeM) || 0;
+  while (index < instructions.length) {
+    const instruction = instructions[index];
+    const holdM = maneuverPassedHoldM(instruction, instructions[index + 1]);
+    if (progressM - (Number(instruction.distanceM) || 0) <= holdM) break;
+    // Mark every speech stage handled. If a coarse fix skipped the junction,
+    // announcing the completed turn late is worse than omitting it.
+    instruction.approach = true;
+    instruction.ahead = true;
+    instruction.now = true;
+    index++;
+  }
+  return index;
+}
+
 function plannedRouteDistanceTitle(distanceM) {
   const distance = navDistanceText(distanceM).replace(/^1\.0 miles$/, '1 mile');
   return `You're ${distance} from your planned route`;
@@ -4687,12 +4720,9 @@ function navigationBannerInfo() {
     kicker: turnNav.followingConnector ? 'To your route' : 'Turn-by-turn navigation',
   };
   const remaining = next.distanceM - turnNav.routeM;
-  // A maneuver stays on the banner for 60 m after the rider reaches it, so that
-  // a GPS fix arriving slightly late does not blank it mid-turn. Clamping the
-  // distance to zero and printing it read "In 25 feet" -- navDistanceText's
-  // floor -- so a turn the rider was already through still claimed to be a few
-  // steps ahead. Photographed on the Interurban Trail: forty metres past the
-  // junction, still promising the turn onto the street behind them.
+  // Passed maneuvers are advanced by updateTurnNavigation after a short GPS
+  // jitter buffer. While still inside that buffer, say "Now" rather than
+  // inventing a minimum "In 25 feet" distance to a turn already reached.
   return {
     headline: remaining <= 5
       ? `Now · ${navInstructionText(next)}`
@@ -6366,14 +6396,11 @@ function updateTurnNavigation(pos) {
   turnNav.message = turnNav.screenMaySleep ? 'Screen may sleep on this device' : '';
   updateNavigationProgress();
   const instructions = turnNav.route.instructions;
-  // Passed maneuvers advance silently; announcing them late is noise.
-  while (turnNav.next < instructions.length
-      && instructions[turnNav.next].distanceM - turnNav.routeM < -60) {
-    instructions[turnNav.next].approach = true;
-    instructions[turnNav.next].ahead = true;
-    instructions[turnNav.next].now = true;
-    turnNav.next++;
-  }
+  // Passed maneuvers advance silently; announcing them late is noise. This is
+  // intentionally a short, next-turn-aware buffer rather than the former 60 m
+  // hold that obscured closely spaced city turns.
+  turnNav.next = advancePassedNavigationManeuvers(
+    instructions, turnNav.next, turnNav.routeM);
   const next = instructions[turnNav.next];
   if (!next) {
     if (!maybeSpeakSafetyChange()) maybeSpeakPeriodicUpdate(null, Infinity);
