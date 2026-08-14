@@ -225,9 +225,21 @@ const navigationTab = await page.evaluate(async () => {
     properties: routeSegProps(segment, segmentIndex),
     geometry: { type: 'LineString',
       coordinates: routing.last.coords.slice(segment.c0, segment.c1 + 1) },
-  }, tap, { x: 195, y: 360 });
+  }, tap, { x: 195, y: 360 }, { routeElevationIndex: segmentIndex });
   const planningSelection = Number(document.getElementById('rcElevCanvas')
     .dataset.selectedDistanceM);
+  // The card's invisible hit target is intentionally wider than the painted
+  // route. Reproduce that broad-hit/strict-miss combination: it must clear the
+  // prior elevation marker instead of treating the hit feature as sufficient.
+  const offRouteTap = { lng: tap.lng, lat: tap.lat + 0.001 };
+  renderReadout({
+    layer: { id: 'route-seg-hit' },
+    properties: routeSegProps(segment, segmentIndex),
+    geometry: { type: 'LineString',
+      coordinates: routing.last.coords.slice(segment.c0, segment.c1 + 1) },
+  }, offRouteTap, { x: 195, y: 350 }, { routeElevationIndex: null });
+  const planningClearedOffRoute = !document.getElementById('rcElevCanvas')
+    .dataset.selectedDistanceM;
   const routeTipsRect = document.getElementById('routeTipsBtn').getBoundingClientRect();
   const startBefore = document.getElementById('navStartButton').getBoundingClientRect();
   const detailsBefore = document.getElementById('routeDetailsBtn').getBoundingClientRect();
@@ -246,9 +258,16 @@ const navigationTab = await page.evaluate(async () => {
     properties: routeSegProps(segment, segmentIndex),
     geometry: { type: 'LineString',
       coordinates: routing.last.coords.slice(segment.c0, segment.c1 + 1) },
-  }, tap, { x: 195, y: 360 });
+  }, tap, { x: 195, y: 360 }, { routeElevationIndex: segmentIndex });
   const navElevation = document.getElementById('navElevationCanvas');
   const navigationSelection = Number(navElevation.dataset.selectedDistanceM);
+  renderReadout({
+    layer: { id: 'route-seg-hit' },
+    properties: routeSegProps(segment, segmentIndex),
+    geometry: { type: 'LineString',
+      coordinates: routing.last.coords.slice(segment.c0, segment.c1 + 1) },
+  }, offRouteTap, { x: 195, y: 350 }, { routeElevationIndex: null });
+  const navigationClearedOffRoute = !navElevation.dataset.selectedDistanceM;
   const navElevationHeight = navElevation.getBoundingClientRect().height;
   // Render the compact card's widest progress string. The first frame after
   // tapping Navigate says "Waiting for GPS", which cannot catch an ETA that
@@ -273,7 +292,7 @@ const navigationTab = await page.evaluate(async () => {
     startShift: { x: startAfter.left - startBefore.left, y: startAfter.top - startBefore.top },
     detailsShift: { x: detailsAfter.left - detailsBefore.left, y: detailsAfter.top - detailsBefore.top },
     selection: { planning: planningSelection, navigating: navigationSelection,
-      selectedIndex, farFromRoute },
+      selectedIndex, farFromRoute, planningClearedOffRoute, navigationClearedOffRoute },
     navElevationHeight,
     estimates: { etaClock, etaRemaining },
     etaInsideProgress: etaRect.right <= progressRect.right - 4,
@@ -303,6 +322,8 @@ check('tapping an active-route segment marks the same elevation in both views',
     && navigationTab.selection.planning === navigationTab.selection.navigating
     && navigationTab.selection.selectedIndex === 3
     && navigationTab.selection.farFromRoute === null
+    && navigationTab.selection.planningClearedOffRoute
+    && navigationTab.selection.navigationClearedOffRoute
     && navigationTab.selection.cleared,
   JSON.stringify(navigationTab.selection));
 check('the navigation elevation chart uses the available vertical room',

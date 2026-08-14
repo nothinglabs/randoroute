@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-12.686';
+const APP_VERSION = '2026-08-14.694';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11931,10 +11931,23 @@ function openMapPointNavigate(lngLat, routeName) {
   if (!dialog.open) dialog.showModal();
 }
 
-function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMarker = false } = {}) {
+function renderReadout(feature, lngLat, anchorPoint = null, {
+  avoidTemporaryMarker = false,
+  routeElevationIndex = null,
+} = {}) {
   resetRoadInfoPosition();
-  if (!feature) {
+  // The road-card hit target is deliberately wider than the route as drawn,
+  // so the feature returned by featureAt() is not proof that the rider tapped
+  // the visible active route. Only inspectRoadAt()'s stricter geometry check
+  // may supply routeElevationIndex. Clear the old chart marker for every other
+  // inspection, including the particularly confusing case where the wide hit
+  // target returns a route segment for a visibly off-route tap.
+  if (Number.isInteger(routeElevationIndex)) {
+    selectRouteElevationSegment(routeElevationIndex, lngLat);
+  } else {
     clearRouteElevationSelection();
+  }
+  if (!feature) {
     renderMapTapCard({
       displayTitle: 'Point on map',
       pointName: 'Point on map',
@@ -11948,8 +11961,6 @@ function renderReadout(feature, lngLat, anchorPoint = null, { avoidTemporaryMark
   }
   const src = HIT_SRC[feature.layer.id];
   const p = feature.properties;
-  if (src?.id === 'routeseg') selectRouteElevationSegment(Number(p.routeIndex), lngLat);
-  else clearRouteElevationSelection();
   if (src.closure) {
     // The one overlay that cannot be switched off must be able to explain
     // itself: these circles were the only marks on the map a tap ignored,
@@ -12359,10 +12370,10 @@ function inspectRoadAt(point, lngLat = null) {
   const highlighted = feature ? showTapHighlight(feature.geometry) : false;
   if (highlighted) clearSearchResultMarker();
   else showTemporaryMapMarker(inspectedLngLat);
-  renderReadout(feature || null, inspectedLngLat, point, { avoidTemporaryMarker: true });
-  if (Number.isInteger(tappedRouteIndex)) {
-    selectRouteElevationSegment(tappedRouteIndex, inspectedLngLat);
-  }
+  renderReadout(feature || null, inspectedLngLat, point, {
+    avoidTemporaryMarker: true,
+    routeElevationIndex: tappedRouteIndex,
+  });
   readoutPinned = true;
   return true;
 }
