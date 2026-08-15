@@ -185,6 +185,19 @@
       <h2 id="activeRouteIconLegendTitle">Route Icons</h2>
       <button id="activeRouteIconLegendClose" type="button" aria-label="Close route icons" title="Close route icons">✕</button>
     </div>
+    <p class="active-route-icon-intro">Tap any route line or icon to see details for that section.</p>
+    <section class="active-route-color-guide" aria-labelledby="activeRouteColorGuideTitle">
+      <h3 id="activeRouteColorGuideTitle">Route colors</h3>
+      <div class="active-route-color-items">
+        <div class="active-route-color-item"><span class="active-route-line trail" aria-hidden="true"></span><span><strong>Off-street trail</strong><small>Separated from motor traffic.</small></span></div>
+        <div class="active-route-color-item"><span class="active-route-line bike-lane" aria-hidden="true"></span><span><strong>Bike lane</strong><small>Marked bicycle space beside traffic.</small></span></div>
+        <div class="active-route-color-item"><span class="active-route-line passes" aria-hidden="true"></span><span><strong>Passes your rules</strong><small>Ordinary road within your limits.</small></span></div>
+        <div class="active-route-color-item"><span class="active-route-line caution" aria-hidden="true"></span><span><strong>Use caution</strong><small>Hill, traffic, or surface needs care.</small></span></div>
+        <div class="active-route-color-item"><span class="active-route-line fails" aria-hidden="true"></span><span><strong>Fails your rules</strong><small>Speed, traffic, shoulder, or access exceeds a limit.</small></span></div>
+        <div class="active-route-color-item"><span class="active-route-line designated" aria-hidden="true"></span><span><strong>Designated bike route</strong><small>Green band; center still shows safety.</small></span></div>
+      </div>
+    </section>
+    <h3 class="active-route-icons-heading">Icons on your route</h3>
     <div id="activeRouteIconLegendItems" class="active-route-icon-items"></div>
   </section>
 
@@ -329,6 +342,18 @@
       <div id="helpPanelSettings" class="help-panel full-help-body" role="tabpanel" aria-labelledby="helpTabSettings" data-help-source="settingsHelpTemplate" hidden></div>
       <div id="helpPanelSaveShare" class="help-panel full-help-body routes-help-dialog" role="tabpanel" aria-labelledby="helpTabSaveShare" data-help-source="routesHelpTemplate" hidden></div>
       <div id="helpPanelTechnical" class="help-panel full-help-body tech-details-body" role="tabpanel" aria-labelledby="helpTabTechnical" data-help-source="techDetailsTemplate" hidden></div>
+    </div>
+  </dialog>
+
+  <dialog id="onboardingDialog" class="onboarding-dialog" aria-labelledby="onboardingStepTitle">
+    <div class="onboarding-head">
+      <span id="onboardingDots" class="onboarding-dots" aria-hidden="true"></span>
+      <button id="onboardingClose" type="button" class="dialog-close" aria-label="Close tour">✕</button>
+    </div>
+    <div id="onboardingBody" class="onboarding-body"></div>
+    <div class="onboarding-foot">
+      <button id="onboardingBack" type="button" class="onboarding-back">Back</button>
+      <button id="onboardingNext" type="button" class="onboarding-next">Next</button>
     </div>
   </dialog>
 
@@ -477,6 +502,10 @@
 
   <template id="appHelpTemplate">
     <div class="dialog-head"><h2>Plan your route</h2></div>
+    <button id="startTourBtn" type="button" class="help-tour-btn">
+      <span class="help-tour-btn-title">▶ Take the app tour</span>
+      <span class="help-tour-btn-sub">A one-minute walkthrough with screenshots — and pick your riding style.</span>
+    </button>
     <ol>
       <li>Choose a <b>Destination</b>. The app uses your current location for <b>Start</b> when available; tap Start to plan from somewhere else.</li>
       <li>Search inside Start or Destination to set it directly. <b>Find</b> lets you search first: choose <b>Map</b> to inspect a result or <b>Route It</b> to route there from your current location.</li>
@@ -556,7 +585,7 @@
         <li><b>Bikes prohibited</b>: permanent state restriction data, where available, plus explicit OpenStreetMap bicycle prohibitions. These graph segments are excluded from routing.</li>
         <li><b>All roads (OpenStreetMap, estimated speeds)</b>: the connected road and path network, including names, direction, bicycle access, ferries, residential streets, and known route closures. Missing legal speeds use an estimate.</li>
       </ul></section>
-      <section><h3>Route Icons</h3><p>Opening <b>Map layers</b> from the map’s legend button also opens a compact guide to every marker that may appear on an active route. Closing either panel closes both. Opening Map layers by another path does not open the icon guide.</p></section>
+      <section><h3>Route Icons</h3><p>Opening <b>Map layers</b> from the map’s legend button also opens a guide to active-route colors and markers. Tap any route line or icon to inspect that section. Closing either panel closes both. Opening Map layers by another path does not open the guide.</p></section>
       <section><h3>Elevation &amp; cautions</h3><p>Elevation supplies climb, descent, grade, and travel-time estimates. Routes try to avoid any climbs over 12%, but steep segments remain routable. The app also flags a <b>possible limited-visibility uphill curve</b> when road geometry, grade, speed, and facility data suggest extra care. It is a directional planning cue—not measured sight distance—and does not itself fail your rules.</p></section>
       <section><h3>How choices are made</h3><p>The app tests several time, safety, and road-preference combinations, removes near-duplicates, and shows up to six meaningfully different routes. Bike-legal freeway segments are excluded unless last-resort freeway routing is enabled, legal limited-access highways are cautions, and permanent bicycle restrictions are impassable. A physical bike facility gets a stronger routing benefit than designation alone.</p><details class="technical-note"><summary>Technical data notes</summary><p>Missing speed limits use a road-class estimate, and the street popup identifies estimates. Roads tagged <b>bicycle=no</b> are excluded. A <b>bicycle=dismount</b> link is a walk-bike connection with a strong route cost and a map marker. Explicit MTB paths are excluded by default and can be enabled with a strong penalty. Higher OSM road classes add soft costs when no bike facility is recorded; this is a traffic-volume proxy, not a rule failure. Census urban-area context is shown as a descriptive road fact only; it does not change the rider's safety limits. Explicit <code>sidewalk=no</code> adds a small soft cost.</p></details></section>
       <section><h3>Limits of the data</h3><p>Coverage and tagging vary by place. Missing data is not proof that a shoulder, facility, traffic condition, surface, crossing control, or sight line is absent. Outside a selected route, unpaved cross-slats appear only on bike-infrastructure and trail features that already include confirmed OSM surface data. A selected route may identify additional unpaved road segments. Short crossings are inferred from route geometry and do not confirm a signal or crosswalk. Use local signs and conditions; this is a planning aid, not a guarantee of safety.</p></section>

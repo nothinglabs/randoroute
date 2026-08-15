@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.712';
+const APP_VERSION = '2026-08-15.713';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -13833,16 +13833,17 @@ function syncLayersToggle() {
   toggle.title = open ? 'Hide map layers' : 'Show map layers';
 }
 
-// Label only -- the card used to carry a description under each label and a
-// ferry row, and read as a manual. The labels now say the whole thing, and the
-// ferry icon needs no legend: it is a boat.
+// Keep this focused on route conditions a rider may need to interpret. The
+// ferry symbol is self-explanatory, while the six entries below benefit from a
+// short explanation alongside their exact on-map badge.
 const ACTIVE_ROUTE_ICON_DEFINITIONS = [
-  ['route-dismount-marker-icon', 'Walk your bike'],
-  ['route-marker-steep', 'Hill grade > 10%'],
-  ['route-marker-traffic', 'Heavy Traffic'],
-  ['route-marker-unpaved', 'Unpaved Surface'],
-  ['route-marker-fail', 'Fails safety rules'],
-  ['route-marker-fail-designated', 'Designated route with safety issue'],
+  ['route-dismount-marker-icon', 'Walk your bike', 'Dismount and walk here.'],
+  ['route-marker-steep', 'Steep hill', 'Grade 10% or steeper.'],
+  ['route-marker-traffic', 'Heavy traffic', 'High traffic volume.'],
+  ['route-marker-unpaved', 'Unpaved', 'Gravel or another loose surface.'],
+  ['route-marker-fail', 'Fails rules', 'One or more safety limits are exceeded.'],
+  ['route-marker-fail-designated', 'Designated route !?',
+    'Official bike route, but safety limits are exceeded.'],
 ];
 
 function buildActiveRouteIconLegend() {
@@ -13856,12 +13857,12 @@ function buildActiveRouteIconLegend() {
   };
   ensureRouteMarkerImages(imageSink);
   ensureDismountMarkerImage(imageSink);
-  for (const [id, label] of ACTIVE_ROUTE_ICON_DEFINITIONS) {
+  for (const [id, label, detail] of ACTIVE_ROUTE_ICON_DEFINITIONS) {
     const image = images.get(id);
     if (!image) continue;
     const item = document.createElement('div');
     item.className = 'active-route-icon-item';
-    item.setAttribute('aria-label', label);
+    item.setAttribute('aria-label', `${label}: ${detail}`);
     const canvas = document.createElement('canvas');
     canvas.width = image.width;
     canvas.height = image.height;
@@ -13872,7 +13873,9 @@ function buildActiveRouteIconLegend() {
     const copy = document.createElement('span');
     const strong = document.createElement('strong');
     strong.textContent = label;
-    copy.append(strong);
+    const description = document.createElement('small');
+    description.textContent = detail;
+    copy.append(strong, description);
     item.append(canvas, copy);
     host.append(item);
   }
