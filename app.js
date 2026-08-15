@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.705';
+const APP_VERSION = '2026-08-14.706';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -892,6 +892,9 @@ const uiPrefs = {
   // their editable rows occupy the compact Start/Destination trip bar.
   showRouteStops: typeof savedState?.showRouteStops === 'boolean'
     ? savedState.showRouteStops : true,
+  // Display only: the warnings still exist in Route Details and the voice
+  // guidance; this hides their badges on the map line.
+  hideRouteWarningIcons: savedState?.hideRouteWarningIcons === true,
 };
 
 // Voice guidance is a local device preference, not part of a shared route.
@@ -1126,6 +1129,7 @@ function saveStateNow() {
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
       showAdvancedTools: uiPrefs.showAdvancedTools,
       showRouteStops: uiPrefs.showRouteStops,
+      hideRouteWarningIcons: uiPrefs.hideRouteWarningIcons,
       // Layered over whatever was already stored, not replacing it: a state
       // that ships no scored linework has no SOURCES, and writing its empty
       // set would reset the rider's layer toggles for every other state the
@@ -8214,6 +8218,7 @@ function drawRoute(coords, ferrySegs, segs) {
     layout: { 'icon-image': 'route-ferry-marker-icon', 'icon-size': 1,
       'icon-allow-overlap': true, 'icon-ignore-placement': true },
   });
+  syncRouteWarningIconVisibility();
   setRoutePulses(renderData);
   // Ridden portion of the route darkens during navigation.
   forgetStyleValues(); map.addLayer({
@@ -13241,6 +13246,22 @@ function buildRulesPanel() {
     syncAdvancedToolsVisibility();
     saveStateSoon();
   });
+
+  // Display only, like the card above: no syncPresetSelection().
+  const warningIconsCard = document.createElement('div');
+  warningIconsCard.className = 'check-rule rule-card rule-standalone';
+  warningIconsCard.innerHTML = `
+    <label class="rule-check" for="r-hideRouteWarningIcons">
+      <input type="checkbox" id="r-hideRouteWarningIcons" ${uiPrefs.hideRouteWarningIcons ? 'checked' : ''}>
+      <span>Hide route warning icons</span>
+    </label>`;
+  optionsHost.appendChild(warningIconsCard);
+  warningIconsCard.querySelector('input').addEventListener('change', (e) => {
+    uiPrefs.hideRouteWarningIcons = e.target.checked;
+    suppressRoadInfo(900);
+    syncRouteWarningIconVisibility();
+    saveStateSoon();
+  });
   // Lanes slider: its TOP position means "no limit" rather than a count, the
   // same idiom the upper-speed cutoff uses. The setting reads "more lanes
   // than", so the number shown is the widest road that still passes.
@@ -13851,6 +13872,19 @@ function openRoutingWeights() {
   const considered = document.getElementById('moreRoutesBtn');
   if (considered) considered.disabled = !(routing.allCandidates || []).length;
   document.getElementById('weightsDialog').showModal();
+}
+
+// The route warning badges -- walk, hill, traffic, unpaved, fails -- as one
+// switch. The ferry marker stays: it marks a leg of the trip, not a warning.
+// Hiding the dismount marker also retires its widened tap halo, which is the
+// honest pairing: an icon that is not there should not be answering taps.
+const ROUTE_WARNING_ICON_LAYERS = ['route-marker', 'route-fail-marker',
+  'route-dismount-marker', 'route-dismount-halo'];
+function syncRouteWarningIconVisibility() {
+  const visibility = uiPrefs.hideRouteWarningIcons ? 'none' : 'visible';
+  for (const id of ROUTE_WARNING_ICON_LAYERS) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+  }
 }
 
 // The considered-routes screen rides along with the optional Weights tool: its
