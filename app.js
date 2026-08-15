@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.706';
+const APP_VERSION = '2026-08-14.707';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -13222,12 +13222,14 @@ function buildRulesPanel() {
     saveStateSoon();
     computeRoute();
   };
-  check('alwaysPreferBikeRoutes', 'Follow designated bike routes even if they fail safety rules '
-    + '<span class="rule-caution-copy">(use with caution)</span>', rules,
-    updateRoutePreference);
   check('allowFreeways', 'Route over freeway as last resort (still shows as failing)');
   check('preferPaved', 'Strongly prefer paved surfaces');
   check('requireSafe', 'Only show routes fully matching safety rules');
+  // Deliberately low in the list: it overrides the safety rules above it, and
+  // an override should not be the first thing a browsing finger meets.
+  check('alwaysPreferBikeRoutes', 'Follow designated bike routes even if they fail safety rules '
+    + '<span class="rule-caution-copy">(use with caution — not generally recommended)</span>', rules,
+    updateRoutePreference);
   check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');
 
   // This also only decides what the map shows, so it must not call
