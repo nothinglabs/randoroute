@@ -70,7 +70,7 @@ check('weights icon is on screen and a finger-sized map target',
 check('the compact trip menu omits Weights and the setting uses the requested warning copy',
   visible.menuItems.join('|') === 'Swap start & destination|Add stop|Show stops in trip bar|Save, load & share|Check for updates'
     && visible.helpRemoved
-    && visible.settingsCopy === 'Show advanced options and routing weights',
+    && visible.settingsCopy === 'Show advanced options and routing weights button',
   JSON.stringify(visible));
 check('the Options pane uses one clear checkbox column',
   visible.optionColumnLefts.length === 1, JSON.stringify(visible));
