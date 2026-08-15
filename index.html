@@ -332,6 +332,18 @@
     </div>
   </dialog>
 
+  <dialog id="onboardingDialog" class="onboarding-dialog" aria-labelledby="onboardingStepTitle">
+    <div class="onboarding-head">
+      <span id="onboardingDots" class="onboarding-dots" aria-hidden="true"></span>
+      <button id="onboardingClose" type="button" class="dialog-close" aria-label="Close tour">✕</button>
+    </div>
+    <div id="onboardingBody" class="onboarding-body"></div>
+    <div class="onboarding-foot">
+      <button id="onboardingBack" type="button" class="onboarding-back">Back</button>
+      <button id="onboardingNext" type="button" class="onboarding-next">Next</button>
+    </div>
+  </dialog>
+
   <template id="routesHelpTemplate">
     <div class="dialog-head"><h2>Save &amp; share routes</h2></div>
     <section><h3>Save on this device</h3><p>Name the current route and tap <b>Save</b>. Saved routes appear below; tap one to reopen it. They stay in this browser on this device.</p></section>
@@ -477,6 +489,10 @@
 
   <template id="appHelpTemplate">
     <div class="dialog-head"><h2>Plan your route</h2></div>
+    <button id="startTourBtn" type="button" class="help-tour-btn">
+      <span class="help-tour-btn-title">▶ Take the app tour</span>
+      <span class="help-tour-btn-sub">A one-minute walkthrough with screenshots — and pick your riding style.</span>
+    </button>
     <ol>
       <li>Choose a <b>Destination</b>. The app uses your current location for <b>Start</b> when available; tap Start to plan from somewhere else.</li>
       <li>Search inside Start or Destination to set it directly. <b>Find</b> lets you search first: choose <b>Map</b> to inspect a result or <b>Route It</b> to route there from your current location.</li>

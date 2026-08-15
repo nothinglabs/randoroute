@@ -1512,6 +1512,34 @@ body.navigation-active #routeBar { display: none; }
 .tech-details-body a:hover { text-decoration-thickness: 2px; }
 .tech-details-body section { box-shadow: 0 1px 3px rgba(32,57,71,.04); }
 .tech-details-body .tech-details-note { border-left: 4px solid #7aa7bd; background: #f9fcfd; }
+/* ------------------------------------------------------------- app tour */
+.help-tour-btn { display: block; width: 100%; margin: 0 0 10px; padding: 12px 14px; border: 1px solid #9ec4e0; border-radius: 11px; background: linear-gradient(180deg, #eaf4fc, #ddebf7); color: #17466e; text-align: left; cursor: pointer; touch-action: manipulation; }
+.help-tour-btn-title { display: block; font: 800 14.5px/1.2 system-ui; }
+.help-tour-btn-sub { display: block; margin-top: 3px; color: #3d5a75; font: 600 11.5px/1.35 system-ui; }
+
+.onboarding-dialog { width: min(430px, calc(100vw - 16px)); max-height: min(92dvh, 840px); border: 0; border-radius: 18px; padding: 0; background: #fff; color: #1d2935; box-shadow: 0 18px 48px rgba(0,0,0,.35); }
+.onboarding-dialog::backdrop { background: rgba(15,32,44,.5); }
+.onboarding-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.onboarding-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 6px; }
+.onboarding-dots { display: flex; gap: 5px; padding-left: 4px; }
+.onboarding-dot { width: 7px; height: 7px; border-radius: 50%; background: #cfdde7; }
+.onboarding-dot.active { background: #0a66c2; }
+.onboarding-head .dialog-close { width: 36px; height: 36px; font-size: 15px; }
+.onboarding-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 0 16px; }
+.onboarding-step img { display: block; width: 100%; height: auto; border: 1px solid #d3e0e9; border-radius: 12px; box-shadow: 0 2px 10px rgba(24,49,66,.12); }
+.onboarding-step h3 { margin: 12px 0 6px; color: #22384a; font: 800 17px/1.22 system-ui; }
+.onboarding-step p { margin: 0 0 8px; color: #475966; font: 500 13px/1.5 system-ui; }
+.onboarding-presets { display: grid; gap: 8px; margin: 10px 0 4px; }
+.onboarding-preset { display: grid; gap: 3px; padding: 10px 12px; border: 2px solid #d3dfe8; border-radius: 12px; background: #fbfdfe; text-align: left; cursor: pointer; touch-action: manipulation; }
+.onboarding-preset strong { color: #1f3a4e; font: 800 13.5px/1.2 system-ui; }
+.onboarding-preset span { color: #52667a; font: 600 11.5px/1.35 system-ui; }
+.onboarding-preset.selected { border-color: #0a66c2; background: #eef6fd; }
+.onboarding-preset.selected strong::after { content: " ✓"; color: #0a66c2; }
+.onboarding-foot { flex: none; display: flex; gap: 8px; padding: 10px 16px max(12px, env(safe-area-inset-bottom)); }
+.onboarding-back { flex: 1; min-height: 42px; border: 1px solid #cbd9e1; border-radius: 11px; background: #fff; color: #526675; font: 750 13px system-ui; cursor: pointer; touch-action: manipulation; }
+.onboarding-back:disabled { opacity: .4; cursor: default; }
+.onboarding-next { flex: 2; min-height: 42px; border: 1px solid #0a58a8; border-radius: 11px; background: #0a66c2; color: #fff; font: 750 13px system-ui; cursor: pointer; touch-action: manipulation; }
+
 .weights-dialog { overflow: hidden; }
 .weights-head-actions { display: flex; align-items: center; gap: 8px; }
 /* In-app Street View: a full-screen dialog whose body is the Google Maps

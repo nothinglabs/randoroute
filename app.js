@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.711';
+const APP_VERSION = '2026-08-14.712';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4919,6 +4919,171 @@ initializeHelpCenter();
 
 function openRouteTips() {
   openHelp('routes');
+}
+
+/* ------------------------------------------------------------- app tour */
+// The tour's pictures are CURATED screenshots shipped with the app, not live
+// UI: they must look right before the rider has a location fix, a route, or
+// any preset chosen. Reshoot with the capture script when the UI they show
+// changes materially (see docs in onboarding/).
+const ONBOARDING_STEPS = [
+  {
+    img: 'onboarding/tour-welcome.jpg',
+    alt: 'A route drawn across the city over safety-colored streets',
+    title: 'Welcome to Just Rolling Along',
+    copy: 'Bike routing that takes safety seriously. Every road and trail is scored against rules you control — and the whole map works offline. Here’s the one-minute tour.',
+  },
+  {
+    img: 'onboarding/tour-plan.jpg',
+    alt: 'The trip bar with a start and destination filled in',
+    title: 'Set up your ride',
+    copy: 'Tap Destination and pick where you’re going — Start is your current location unless you change it. Find searches for places, or tap anywhere on the map and choose Destination, Start, or Add stop.',
+  },
+  {
+    img: 'onboarding/tour-routes.jpg',
+    alt: 'The route chooser: options A through E with distance, climb, and route makeup',
+    title: 'Compare your options',
+    copy: 'Each search offers up to six routes with a Suggested pick — the letters are names, not grades. Every option shows distance, climbing, and its makeup: trails, bike lanes, roads that pass your rules, and any that fail them. Route Details breaks it down road by road.',
+  },
+  {
+    img: 'onboarding/tour-colors.jpg',
+    alt: 'City streets colored blue, olive-green, orange, and dashed dark red',
+    title: 'The map shows safety at a glance',
+    copy: 'Streets are colored by your rules: blue passes, olive-green marks designated bike routes and trails, orange needs caution, and dark-red dashes fail. Change a rule in Settings and the whole map recolors.',
+  },
+  {
+    img: 'onboarding/tour-road.jpg',
+    alt: 'A road card explaining why a street passes the safety rules',
+    title: 'Every road explains itself',
+    copy: 'Curious about a road? Tap it. You’ll see its speed and traffic, why it passes or fails your rules, and a Street View button to eyeball it before you commit.',
+  },
+  {
+    img: 'onboarding/tour-navigate.jpg',
+    alt: 'Turn-by-turn navigation running with distance and time remaining',
+    title: 'Ride it',
+    copy: 'Navigate starts GPS turn-by-turn with voice guidance, including heads-up warnings for dismounts, heavy traffic, and steep hills as you approach them.',
+  },
+  {
+    preset: true,
+    title: 'How do you like to ride?',
+    copy: 'Pick a starting style — it sets your safety rules and route preferences. Every rule stays adjustable in Settings, and changing anything simply makes it yours.',
+  },
+];
+let onboardingIndex = 0;
+
+function syncOnboardingPresetSelection() {
+  const activeId = activeRoutingPreset()?.id ?? null;
+  document.querySelectorAll('.onboarding-preset').forEach((card) => {
+    const selected = card.dataset.presetId === activeId;
+    card.classList.toggle('selected', selected);
+    card.setAttribute('aria-pressed', String(selected));
+  });
+}
+
+function buildOnboarding() {
+  const body = document.getElementById('onboardingBody');
+  const dots = document.getElementById('onboardingDots');
+  if (!body || body.childElementCount) { syncOnboardingPresetSelection(); return; }
+  for (const step of ONBOARDING_STEPS) {
+    const section = document.createElement('section');
+    section.className = 'onboarding-step';
+    section.hidden = true;
+    if (step.img) {
+      const image = document.createElement('img');
+      image.src = step.img;
+      image.alt = step.alt;
+      image.decoding = 'async';
+      section.appendChild(image);
+    }
+    const title = document.createElement('h3');
+    title.textContent = step.title;
+    const copy = document.createElement('p');
+    copy.textContent = step.copy;
+    section.append(title, copy);
+    if (step.preset) {
+      const host = document.createElement('div');
+      host.className = 'onboarding-presets';
+      for (const preset of ROUTING_PRESETS) {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'onboarding-preset';
+        card.dataset.presetId = preset.id;
+        const label = document.createElement('strong');
+        label.textContent = preset.label;
+        const blurb = document.createElement('span');
+        blurb.textContent = preset.blurb;
+        card.append(label, blurb);
+        card.addEventListener('click', () => {
+          applyRoutingPreset(preset.id);
+          syncOnboardingPresetSelection();
+        });
+        host.appendChild(card);
+      }
+      section.appendChild(host);
+    }
+    body.appendChild(section);
+    const dot = document.createElement('span');
+    dot.className = 'onboarding-dot';
+    dots.appendChild(dot);
+  }
+  // The single h3 the dialog is labelled by tracks the visible step.
+  body.firstElementChild?.querySelector('h3')?.setAttribute('id', 'onboardingStepTitle');
+  syncOnboardingPresetSelection();
+}
+
+function showOnboardingStep(index) {
+  onboardingIndex = Math.max(0, Math.min(ONBOARDING_STEPS.length - 1, index));
+  const steps = [...document.querySelectorAll('.onboarding-step')];
+  steps.forEach((step, i) => {
+    step.hidden = i !== onboardingIndex;
+    step.querySelector('h3')?.removeAttribute('id');
+  });
+  steps[onboardingIndex]?.querySelector('h3')?.setAttribute('id', 'onboardingStepTitle');
+  document.querySelectorAll('.onboarding-dot').forEach((dot, i) =>
+    dot.classList.toggle('active', i === onboardingIndex));
+  const back = document.getElementById('onboardingBack');
+  back.disabled = onboardingIndex === 0;
+  document.getElementById('onboardingNext').textContent =
+    onboardingIndex === ONBOARDING_STEPS.length - 1 ? 'Finish' : 'Next';
+  document.getElementById('onboardingBody').scrollTop = 0;
+}
+
+function openOnboarding() {
+  buildOnboarding();
+  showOnboardingStep(0);
+  const dialog = document.getElementById('onboardingDialog');
+  if (dialog?.showModal && !dialog.open) dialog.showModal();
+}
+
+function stepOnboarding(delta) {
+  if (onboardingIndex + delta >= ONBOARDING_STEPS.length) {
+    document.getElementById('onboardingDialog')?.close();
+    return;
+  }
+  showOnboardingStep(onboardingIndex + delta);
+}
+
+{
+  const dialog = document.getElementById('onboardingDialog');
+  document.getElementById('onboardingNext').addEventListener('click', () => stepOnboarding(1));
+  document.getElementById('onboardingBack').addEventListener('click', () => stepOnboarding(-1));
+  document.getElementById('onboardingClose').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowRight') stepOnboarding(1);
+    if (event.key === 'ArrowLeft') stepOnboarding(-1);
+  });
+  // Swipe between steps; a mostly-vertical drag stays a scroll.
+  let touchOrigin = null;
+  dialog.addEventListener('touchstart', (event) => {
+    touchOrigin = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }, { passive: true });
+  dialog.addEventListener('touchend', (event) => {
+    if (!touchOrigin) return;
+    const dx = event.changedTouches[0].clientX - touchOrigin.x;
+    const dy = event.changedTouches[0].clientY - touchOrigin.y;
+    touchOrigin = null;
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.5) stepOnboarding(dx < 0 ? 1 : -1);
+  }, { passive: true });
 }
 
 window.addEventListener('message', (event) => {
@@ -13794,6 +13959,10 @@ if (nativeAppVersionOnly) {
   document.getElementById('iosAppVersionLabel').hidden = false;
 }
 document.getElementById('techDetailsBtn').addEventListener('click', () => openHelp('technical'));
+document.getElementById('startTourBtn').addEventListener('click', () => {
+  document.getElementById('helpDialog')?.close();
+  openOnboarding();
+});
 // The weights panel is reachable from its optional map icon and Settings > Advanced.
 // Both keep the map behind the dialog so a tuning change stays tied to its route.
 function openRoutingWeights() {
