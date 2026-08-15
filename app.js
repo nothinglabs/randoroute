@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-15.713';
+const APP_VERSION = '2026-08-15.714';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4952,14 +4952,20 @@ const ONBOARDING_STEPS = [
     copy: 'Streets are colored by your rules: blue passes, olive-green marks designated bike routes and trails, orange needs caution, and dark-red dashes fail. Change a rule in Settings and the whole map recolors.',
   },
   {
+    img: 'onboarding/tour-warning.jpg',
+    alt: 'A route with a long dark-red dashed stretch marked by a warning badge',
+    title: 'Red stretches are never hidden',
+    copy: 'A route may still use a road that fails your rules — often there’s no other way through. That stretch is drawn in dark-red dashes with a warning badge, so you see it before you commit, not when you’re on it.',
+  },
+  {
     img: 'onboarding/tour-road.jpg',
-    alt: 'A road card explaining why a street passes the safety rules',
-    title: 'Every road explains itself',
-    copy: 'Curious about a road? Tap it. You’ll see its speed and traffic, why it passes or fails your rules, and a Street View button to eyeball it before you commit.',
+    alt: 'A road card naming the broken rule: heavy traffic with no shoulder recorded',
+    title: 'Tap it to see why',
+    copy: 'Tap any road — especially a red one. The card names the exact rule it breaks and the numbers behind it, and Street View lets you eyeball the road before deciding for yourself.',
   },
   {
     img: 'onboarding/tour-navigate.jpg',
-    alt: 'Turn-by-turn navigation running with distance and time remaining',
+    alt: 'Turn-by-turn navigation showing the next maneuver and the route ahead',
     title: 'Ride it',
     copy: 'Navigate starts GPS turn-by-turn with voice guidance, including heads-up warnings for dismounts, heavy traffic, and steep hills as you approach them.',
   },
