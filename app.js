@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.710';
+const APP_VERSION = '2026-08-14.711';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3064,10 +3064,11 @@ function showRouterProgress(detail, title = 'Loading routing engine', progress =
   setRouteStatus(detail || title);
   if (routing.start && routing.end && (routing.pendingRoute || routing.routeRequestActive)) {
     showRouteCalculationStatus(title, detail, progress);
-    // A previous short-lived notice must not sit over the calculation sheet.
-    // A quiet (settings-held) recompute shows no progress at all by field
-    // decision -- its one message is "Routes updated" at the end.
-    showRouteActionToast('');
+    // A previous short-lived notice must not sit over the calculation sheet --
+    // except during a quiet (settings-held) recompute, where the calc sheet is
+    // hidden behind Settings and the "Updating routes…" pill IS the status, so
+    // it rides out the progress stream untouched.
+    if (!routing.quietRecalcToast) showRouteActionToast('');
   } else {
     showRouteActionToast(title, { busy: true, detail, duration: 0, progress });
   }
@@ -7226,9 +7227,12 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
     });
   } else if (!routing.restoringRoute) {
     // A settings-held recompute runs QUIETLY -- it does not block the rider,
-    // so no spinner and no progress (field decision); the one message is
-    // "Routes updated" when the portfolio lands. Startup restore stays silent.
+    // so no spinner and no progress (field decision); just "Updating routes…"
+    // now and "Routes updated" when the portfolio lands. Startup restore
+    // stays silent. The duration is a backstop: the completion toast usually
+    // replaces this one well before it expires.
     routing.quietRecalcToast = true;
+    showRouteActionToast('Updating routes…', { duration: 6000 });
   }
   setRouteOptionsLoading(true);
   saveStateSoon();
