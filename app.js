@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.702';
+const APP_VERSION = '2026-08-14.703';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1659,7 +1659,11 @@ function scheduleRescore() {
   clearTimeout(_ruleRouteTimer);
   _ruleRouteTimer = setTimeout(() => {
     _ruleRouteTimer = null;
-    if (routing.ready && routing.start && routing.end) computeRoute();
+    // revealPanel: false -- the rider is IN Settings, mid-adjustment, and the
+    // default reveal switched the sheet to the Route tab 700ms after every
+    // slider settled, yanking the panel out from under them (field report).
+    // The recompute happens either way; the toast in computeRoute says so.
+    if (routing.ready && routing.start && routing.end) computeRoute({ revealPanel: false });
     else schedulePrewarm();
   }, 700);
 }
@@ -1675,7 +1679,8 @@ function scheduleReroute() {
   clearTimeout(_ruleRouteTimer);
   _ruleRouteTimer = setTimeout(() => {
     _ruleRouteTimer = null;
-    if (routing.ready && routing.start && routing.end) computeRoute();
+    // Same reveal suppression as scheduleRescore, same reason.
+    if (routing.ready && routing.start && routing.end) computeRoute({ revealPanel: false });
     else schedulePrewarm();
   }, 700);
 }
@@ -7243,7 +7248,11 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
         ? 'Reapplying your safety rules and route preferences…'
         : 'Comparing safer, quicker, and bike-friendly routes…');
     showRouteActionToast('');
-  } else if (turnNav.active) {
+  } else if (turnNav.active || !routing.restoringRoute) {
+    // Navigation, or a settings-triggered recompute with the panel held on
+    // Settings: the route sheet is not visible either way, so the toast is the
+    // only signal a recompute is running. Startup restore stays quiet -- it
+    // narrates itself.
     showRouteActionToast(routing.last?.ok ? 'Recalculating route' : 'Calculating route options', {
       busy: true,
       detail: routing.last?.ok
@@ -13871,6 +13880,10 @@ function syncWeightsTunedBadge() {
   }
 }
 document.getElementById('appWeightsBtn').addEventListener('click', openRoutingWeights);
+// The same tool from Settings, spelled out -- the map's scales icon can be
+// hidden (uiPrefs.showAdvancedTools), and a fallback nobody can find is not a
+// fallback.
+document.getElementById('settingsOpenWeights')?.addEventListener('click', openRoutingWeights);
 // Static markup on the weights page; openRoutingWeights() keeps its
 // disabled state in step with whether a trip is currently routed.
 document.getElementById('moreRoutesBtn')?.addEventListener('click', openAllRoutes);
