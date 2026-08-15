@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.707';
+const APP_VERSION = '2026-08-14.708';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2873,6 +2873,9 @@ const routing = {
   startMarker: null, endMarker: null,
   worker: null, ready: false, loading: false, pendingRoute: false, routeRequestActive: false,
   restoringRoute: false, pendingPanelReveal: false,
+  // True while a recompute runs with the route sheet hidden behind Settings:
+  // progress and completion then speak through the shared toast.
+  quietRecalcToast: false,
   loadedGraphVersion: null, // sha of the graph bytes the router actually has
   mode: ['direct', 'balanced', 'low'].includes(savedState?.mode)
     ? savedState.mode : 'balanced', // 'direct' | 'balanced' | 'low'
@@ -3067,8 +3070,16 @@ function showRouterProgress(detail, title = 'Loading routing engine', progress =
   setRouteStatus(detail || title);
   if (routing.start && routing.end && (routing.pendingRoute || routing.routeRequestActive)) {
     showRouteCalculationStatus(title, detail, progress);
-    // A previous short-lived notice must not sit over the calculation sheet.
-    showRouteActionToast('');
+    // A previous short-lived notice must not sit over the calculation sheet --
+    // but when Settings is holding the panel, that sheet is HIDDEN and this
+    // clear left the rider with no narrator at all: the busy toast appeared
+    // for one progress tick and vanished (field report). Progress goes to the
+    // toast whenever the sheet cannot be seen.
+    if (routing.quietRecalcToast && !turnNav.active) {
+      showRouteActionToast(title, { busy: true, detail, duration: 0, progress });
+    } else {
+      showRouteActionToast('');
+    }
   } else {
     showRouteActionToast(title, { busy: true, detail, duration: 0, progress });
   }
@@ -7180,6 +7191,12 @@ function onRouterMessage(ev) {
     routing.selectRecommendedNext = false;
     activateRouteOption(selected);
     notifySnapDistance(selected);
+    // A quiet recompute (Settings holding the panel) ends with an answer, not
+    // a vanishing spinner.
+    if (routing.quietRecalcToast && !turnNav.active) {
+      showRouteActionToast('Routes updated', { duration: 1600 });
+    }
+    routing.quietRecalcToast = false;
   } else if (m.type === 'route-candidate') {
     if (m.id !== routing.candidateReqId) return; // stale reply
     showRouteActionToast('');
@@ -7259,6 +7276,7 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
     // Settings: the route sheet is not visible either way, so the toast is the
     // only signal a recompute is running. Startup restore stays quiet -- it
     // narrates itself.
+    routing.quietRecalcToast = !turnNav.active;
     showRouteActionToast(routing.last?.ok ? 'Recalculating route' : 'Calculating route options', {
       busy: true,
       detail: routing.last?.ok
@@ -13220,7 +13238,10 @@ function buildRulesPanel() {
 
   const updateRoutePreference = () => {
     saveStateSoon();
-    computeRoute();
+    // revealPanel: false for the same reason as scheduleRescore -- the rider
+    // is IN Settings. This direct call was the one path the .703 fix missed,
+    // so the designated-routes checkbox still yanked the sheet (field report).
+    computeRoute({ revealPanel: false });
   };
   check('allowFreeways', 'Route over freeway as last resort (still shows as failing)');
   check('preferPaved', 'Strongly prefer paved surfaces');

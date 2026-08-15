@@ -219,7 +219,9 @@ check('turning ferries off updates the rule and requests a fresh portfolio',
 check('the strong signed-route preference is an Options toggle and defaults off',
   ui.bikeRouteToggleExists && ui.bikeRouteToggleInOptions
     && !ui.bikeRouteDefaultChecked
-    && ui.bikeRouteLabel === 'Follow designated bike routes even if they fail safety rules (use with caution)',
+    // The caution copy grew and the option moved below the rules it overrides
+    // (field direction); the label is the full sentence now.
+    && ui.bikeRouteLabel === 'Follow designated bike routes even if they fail safety rules (use with caution — not generally recommended)',
   JSON.stringify(ui));
 check('turning the signed-route preference on updates the routing rule',
   ui.bikeRouteRuleOn, JSON.stringify(ui));
