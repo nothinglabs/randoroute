@@ -603,7 +603,17 @@ body:not(.navigation-active) #navCard { display: none; }
 #settings-options .settings-summary { margin: 0 1px 2px; font-size: 10px; line-height: 1.1; }
 #settings-options #settingsOptions { align-content: start; gap: 3px; }
 #settings-options #settingsOptions .rule-card { min-height: 0; padding: 3px 6px; }
+/* Bigger label type where the cards have room for it. On a narrow phone
+   every extra wrap adds a line to the pane that sets the dialog's height, so
+   the bump is width-conditional: tablets and landscape get 12px, small
+   phones keep the compact 10.5px and today's exact layout. The pane's
+   summary line went the way of the Limits one -- the title carries the
+   preset state on every tab. */
 #settings-options #settingsOptions .rule-check { gap: 5px; font-size: 10.5px; line-height: 1.1; }
+@media (min-width: 480px) {
+  #settings-options #settingsOptions .rule-card { padding: 4px 9px; }
+  #settings-options #settingsOptions .rule-check { gap: 6px; font-size: 12px; line-height: 1.15; }
+}
 #settings-options #settingsOptions input[type="checkbox"] { width: 15px; height: 15px; }
 /* A display-only setting that sits outside the preset system. It is set apart
    so the pane's "changes override any preset" summary is not read as covering it. */
