@@ -531,10 +531,6 @@ body:not(.navigation-active) #navCard { display: none; }
 /* Opens a screen rather than swapping the panel below, so it never takes the
    selected-tab treatment however many times it is tapped. */
 .settings-tabs .settings-tab-standalone { flex: 0 0 auto; }
-/* The advanced-tools opener under the panes: present on every tab, styled as
-   a quiet full-width affordance rather than a sixth tab. */
-.settings-advanced-open { width: 100%; margin: 5px 0 1px; padding: 6px 10px; border: 1px solid #d5dfe6; border-radius: 8px; background: #f2f5f7; color: #0a66c2; font: 700 11.5px/1.2 system-ui; cursor: pointer; }
-.settings-advanced-open:hover { background: #eaf2fb; }
 
 /* ------------------------------------------------------------ maps screen */
 .maps-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(760px, calc(100% - 28px)); margin: 0 auto; padding: 16px 0 max(34px, env(safe-area-inset-bottom)); }

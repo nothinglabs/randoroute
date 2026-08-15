@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.703';
+const APP_VERSION = '2026-08-14.704';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -13230,7 +13230,7 @@ function buildRulesPanel() {
   advancedToolsCard.innerHTML = `
     <label class="rule-check" for="r-showAdvancedTools">
       <input type="checkbox" id="r-showAdvancedTools" ${uiPrefs.showAdvancedTools ? 'checked' : ''}>
-      <span>Show advanced options and routing weights</span>
+      <span>Show advanced options and routing weights button</span>
     </label>`;
   optionsHost.appendChild(advancedToolsCard);
   advancedToolsCard.querySelector('input').addEventListener('change', (e) => {
@@ -13880,10 +13880,6 @@ function syncWeightsTunedBadge() {
   }
 }
 document.getElementById('appWeightsBtn').addEventListener('click', openRoutingWeights);
-// The same tool from Settings, spelled out -- the map's scales icon can be
-// hidden (uiPrefs.showAdvancedTools), and a fallback nobody can find is not a
-// fallback.
-document.getElementById('settingsOpenWeights')?.addEventListener('click', openRoutingWeights);
 // Static markup on the weights page; openRoutingWeights() keeps its
 // disabled state in step with whether a trip is currently routed.
 document.getElementById('moreRoutesBtn')?.addEventListener('click', openAllRoutes);
