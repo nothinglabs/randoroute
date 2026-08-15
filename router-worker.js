@@ -3556,7 +3556,7 @@ function refineFerrySeed(seed, raw, rules, forceDesig, forceResidential, searchR
     hybrid._profile = {
       // UNIQUE per candidate. This pass can produce several adaptive
       // itineraries in one portfolio, and everything downstream -- the
-      // chooser's pinned lineup, the candidate cache, selection stickiness --
+      // chooser lineup, the candidate cache, selection stickiness --
       // keys candidates by profile id. Two candidates sharing one id
       // scrambled the route letters the first time a ferry trip offered two
       // adaptives (the chooser rendered A, B, E, D). Matching code tests
@@ -3637,7 +3637,7 @@ function trimRoutingCaches() {
 }
 
 function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false,
-    progress = null, requestSignature = null, pinned = null,
+    progress = null, requestSignature = null,
     mainWeights = null, lensWeights = null) {
   const started = Date.now();
   // Identifies this exact request, so a tap on the "More" screen that arrives
@@ -3993,30 +3993,11 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   }
   let presented = presentAsLetters(selected.slice(0, MAX_OFFERED), recommended);
 
-  // A PINNED request holds a trip's lettered lineup steady while the rider
-  // refines it -- waypoints, road blocks, settings. Present exactly the pinned
-  // recipes under their pinned letters: no re-ranking, no down-select, no
-  // letter shuffle. The full pipeline above still ran, so the troubleshooting
-  // record and the recommended flag stay truthful; a pinned recipe that found
-  // no route this time is reported in `missing` rather than silently swapped.
-  const missing = [];
-  if (Array.isArray(pinned) && pinned.length) {
-    presented = [];
-    for (const entry of pinned) {
-      const candidate = raw.find((c) => c._profile.id === entry.profileId);
-      if (!candidate) {
-        missing.push({ letter: entry.letter, profileId: entry.profileId });
-        continue;
-      }
-      candidate._outcome = {
-        label: `Route ${entry.letter}`,
-        reason: `Held from this trip's lineup. ${outcomeSnapshot(candidate)}.`,
-        recommended: candidate === recommended,
-      };
-      presented.push(candidate);
-    }
-  }
-
+  // Every request presents a freshly ranked, freshly lettered portfolio.
+  // Pinned requests -- re-running a frozen lineup's recipes under held
+  // letters, reporting the unroutable ones in `missing` -- left with the
+  // app-side pinning system (field decision: regenerate and re-letter
+  // normally; the app re-selects by letter).
   // ---- the troubleshooting record -------------------------------------
   // Mark every candidate with the stage that dropped it, so the "More" screen
   // can explain absence rather than merely listing survivors. Order matters:
@@ -4062,7 +4043,6 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   endPhase('ranking');
   return {
     ok: true, options: presented.map(publicCandidate), ms: Date.now() - started,
-    missing,
     timings: { ...phaseMs, totalMs: Date.now() - started },
     candidatesKey: String(routeKey),
     allCandidates: allCandidates.map((candidate) => ({
@@ -4242,7 +4222,7 @@ onmessage = (ev) => {
         !!m.forceResidential, m.weights || null, m.blocks || null]);
       const result = withRoadBlocks(m.blocks, m.rules, () => routeOptions(pts, m.rules,
         !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress,
-        signature, m.pinned, m.weights || null, m.directProbeWeights || null));
+        signature, m.weights || null, m.directProbeWeights || null));
       postMessage({ type: 'route-options', id: m.id, ...result });
     } else if (m.type === 'route-candidate') {
       // Full geometry for one candidate the "More" screen listed. Served from

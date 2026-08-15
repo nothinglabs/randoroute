@@ -76,6 +76,11 @@ check('the automatic lens never changes safety rules',
   request.rulesBefore === request.rulesAfter);
 
 /* ------------------------------------ which route survives a recompute */
+// The frozen-lineup system (pinned recipes, held letters, greyed unroutable
+// slots) is gone by field decision: every search generates, sorts and letters
+// its portfolio normally, and continuity is the SELECTION -- the rider's
+// letter is re-selected in the fresh lineup, falling to the last letter when
+// the new lineup is shorter.
 const regeneration = await page.evaluate(() => {
   const out = {};
   const posted = [];
@@ -83,67 +88,68 @@ const regeneration = await page.evaluate(() => {
   routing.ready = true;
   setRoutePoint('start', { lng: -122.335, lat: 47.61 });
   setRoutePoint('end', { lng: -122.31, lat: 47.62 });
-  routing.selectRecommendedNext = false;
-  routing.pinnedLetters = [
-    { letter: 'A', profileId: 'quick' },
-    { letter: 'B', profileId: 'low-stress' },
-  ];
-  routing.missingLetters = [{ letter: 'C', profileId: 'old-missing' }];
 
+  routing.selectRecommendedNext = false;
   addVia({ lng: -122.32, lat: 47.615 });
   out.afterWaypoint = routing.selectRecommendedNext;
-  out.waypointPinsCleared = routing.pinnedLetters === null
-    && routing.missingLetters === null;
-  out.waypointRequestPinned = posted.at(-1)?.pinned;
+  out.waypointRequestHasNoPins = !('pinned' in (posted.at(-1) || {}));
 
   const via = routing.vias.at(-1);
   routing.selectRecommendedNext = false;
-  routing.pinnedLetters = [{ letter: 'A', profileId: 'before-move' }];
   via.marker.setLngLat({ lng: -122.319, lat: 47.616 });
   via.marker.fire('dragend');
   out.afterWaypointMove = routing.selectRecommendedNext;
-  out.movePinsCleared = routing.pinnedLetters === null
-    && posted.at(-1)?.pinned == null;
-
   routing.selectRecommendedNext = false;
-  routing.pinnedLetters = [{ letter: 'A', profileId: 'before-remove' }];
   removeVia(via);
   out.afterWaypointRemove = routing.selectRecommendedNext;
-  out.removePinsCleared = routing.pinnedLetters === null
-    && posted.at(-1)?.pinned == null;
 
-  // Stand in for a fresh response before checking road-block behavior.
+  // A road block refines the trip; the fresh portfolio still re-letters, and
+  // the rider's place is kept by letter, not by recipe.
   routing.selectRecommendedNext = false;
-  routing.pinnedLetters = [
-    { letter: 'A', profileId: 'fresh-recommended' },
-    { letter: 'B', profileId: 'fresh-alternative' },
-  ];
   addRoadBlock({ lng: -122.322, lat: 47.617 });
   out.afterBlock = routing.selectRecommendedNext;
-  out.blockRequestPinned = posted.at(-1)?.pinned;
+  out.blockRequestHasNoPins = !('pinned' in (posted.at(-1) || {}));
 
   routing.selectRecommendedNext = false;
   setRoutePoint('end', { lng: -122.29, lat: 47.64 });
   out.afterNewEnd = routing.selectRecommendedNext;
+
+  // Letter continuity, the whole of it: same letter when it exists, last
+  // letter when the lineup shrank, recommendation when explicitly asked.
+  const lineup = (letters) => letters.map((letter, index) => ({
+    optimization: { label: `Route ${letter}`, profileId: `p-${letter}`,
+      recommended: index === 0 } }));
+  // setRoutePoint above set selectRecommendedNext; these probes are about
+  // ordinary continuity, so clear it first.
+  routing.selectRecommendedNext = false;
+  routing.last = { optimization: { label: 'Route C', profileId: 'old-c' } };
+  out.sameLetter = refreshedRouteSelection(lineup(['A', 'B', 'C', 'D']))
+    ?.optimization.label;
+  routing.last = { optimization: { label: 'Route F', profileId: 'old-f' } };
+  out.closestLetter = refreshedRouteSelection(lineup(['A', 'B', 'C']))
+    ?.optimization.label;
+  routing.selectRecommendedNext = true;
+  routing.last = { optimization: { label: 'Route C', profileId: 'old-c' } };
+  out.recommendedWins = refreshedRouteSelection(lineup(['A', 'B', 'C']))
+    ?.optimization.label;
+  routing.selectRecommendedNext = false;
   clearRoute();
   return out;
 });
 check('a waypoint regenerates the portfolio and takes its recommendation',
-  regeneration.afterWaypoint === true && regeneration.waypointPinsCleared === true
-    && regeneration.waypointRequestPinned == null,
+  regeneration.afterWaypoint === true && regeneration.waypointRequestHasNoPins === true,
   JSON.stringify(regeneration));
 check('moving or removing a waypoint also regenerates the full portfolio',
-  regeneration.afterWaypointMove === true && regeneration.movePinsCleared === true
-    && regeneration.afterWaypointRemove === true && regeneration.removePinsCleared === true,
+  regeneration.afterWaypointMove === true && regeneration.afterWaypointRemove === true,
   JSON.stringify(regeneration));
-check('a road block still keeps and reruns the selected route lineup',
-  regeneration.afterBlock === false
-    && JSON.stringify(regeneration.blockRequestPinned) === JSON.stringify([
-      { letter: 'A', profileId: 'fresh-recommended' },
-      { letter: 'B', profileId: 'fresh-alternative' },
-    ]),
+check('a road block keeps the rider\'s letter in a freshly lettered portfolio',
+  regeneration.afterBlock === false && regeneration.blockRequestHasNoPins === true,
   JSON.stringify(regeneration));
 check('a new destination takes a fresh recommendation', regeneration.afterNewEnd === true,
+  JSON.stringify(regeneration));
+check('selection continuity is by letter: same, closest, or the recommendation',
+  regeneration.sameLetter === 'Route C' && regeneration.closestLetter === 'Route C'
+    && regeneration.recommendedWins === 'Route A',
   JSON.stringify(regeneration));
 
 /* ------- everyday and advanced routing options live in deliberate homes */

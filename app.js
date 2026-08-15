@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.708';
+const APP_VERSION = '2026-08-14.709';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2888,12 +2888,6 @@ const routing = {
   reqId: 0,
   compareStartedAt: 0,
   selectRecommendedNext: false,
-  // The trip's frozen chooser lineup: [{ letter, profileId }]. Created by each
-  // fresh (re-lettering) search, held across refinements. missingLetters are
-  // pinned recipes the latest refinement could not route.
-  pinnedLetters: null,
-  missingLetters: null,
-  lastRequestPinned: false,
   options: [],
   // Summaries of every candidate the last portfolio built, offered or not, for
   // the "More" screen. Full geometry is fetched from the worker on tap.
@@ -3070,16 +3064,10 @@ function showRouterProgress(detail, title = 'Loading routing engine', progress =
   setRouteStatus(detail || title);
   if (routing.start && routing.end && (routing.pendingRoute || routing.routeRequestActive)) {
     showRouteCalculationStatus(title, detail, progress);
-    // A previous short-lived notice must not sit over the calculation sheet --
-    // but when Settings is holding the panel, that sheet is HIDDEN and this
-    // clear left the rider with no narrator at all: the busy toast appeared
-    // for one progress tick and vanished (field report). Progress goes to the
-    // toast whenever the sheet cannot be seen.
-    if (routing.quietRecalcToast && !turnNav.active) {
-      showRouteActionToast(title, { busy: true, detail, duration: 0, progress });
-    } else {
-      showRouteActionToast('');
-    }
+    // A previous short-lived notice must not sit over the calculation sheet.
+    // A quiet (settings-held) recompute shows no progress at all by field
+    // decision -- its one message is "Routes updated" at the end.
+    showRouteActionToast('');
   } else {
     showRouteActionToast(title, { busy: true, detail, duration: 0, progress });
   }
@@ -7021,30 +7009,16 @@ function refreshedRouteSelection(options) {
   if (!options.length) return null;
   const recommended = options.find((option) => option.optimization?.recommended);
   if (routing.selectRecommendedNext) return recommended || options[0];
-  const previous = routing.last?.optimization;
-  const profileId = previous?.profileId || routing.profileId;
-  const exact = profileId
-    ? options.find((option) => option.optimization?.profileId === profileId)
-    : null;
-  if (!previous) return recommended || options[0];
-  if (exact) return exact;
-
-  // A settings change can legitimately remove the old profile from the
-  // portfolio. In that case, keep the closest search method and preferences
-  // instead of falling all the way back to the newly recommended route.
-  const mismatch = (option) => {
-    const next = option.optimization || {};
-    let score = 0;
-    if (next.mode !== previous.mode) score += 8;
-    if (!!next.prefDesignated !== !!previous.prefDesignated) score += 3;
-    if (!!next.prefResidential !== !!previous.prefResidential) score += 3;
-    if (!!next.alternativeCorridor !== !!previous.alternativeCorridor) score += 2;
-    if (!!next.fullyMatchingRules !== !!previous.fullyMatchingRules) score += 2;
-    if ((next.discoveryMaxSpeed || null) !== (previous.discoveryMaxSpeed || null)) score += 1;
-    return score;
-  };
-  return options.reduce((best, option) =>
-    mismatch(option) < mismatch(best) ? option : best, options[0]);
+  // Selection continuity is by LETTER, not recipe. Letters are rank positions
+  // in a freshly sorted portfolio, so "the new C" is a route of similar
+  // standing to the old C rather than the old C's recipe re-run -- the field
+  // decision that replaced the frozen-lineup system. A letter past the end of
+  // a shorter lineup falls to the last (closest) one.
+  const previousLetter = (routing.last?.optimization?.label || '').replace(/^Route /, '');
+  if (!previousLetter || previousLetter.length !== 1) return recommended || options[0];
+  const sameLetter = options.find((option) =>
+    (option.optimization?.label || '').replace(/^Route /, '') === previousLetter);
+  return sameLetter || options[options.length - 1];
 }
 
 function onRouterMessage(ev) {
@@ -7150,32 +7124,11 @@ function onRouterMessage(ev) {
     routing.options = m.options;
     routing.allCandidates = Array.isArray(m.allCandidates) ? m.allCandidates : [];
     routing.candidatesKey = m.candidatesKey || null;
-    if (routing.lastRequestPinned) {
-      // A refinement under a frozen lineup: same letters, same recipes. A
-      // recipe that found nothing keeps its letter in the chooser, greyed --
-      // an honest empty slot, never a silently substituted route.
-      routing.missingLetters = Array.isArray(m.missing) ? m.missing : [];
-      const previous = routing.last?.optimization?.profileId;
-      const lost = previous
-        && routing.missingLetters.find((entry) => entry.profileId === previous);
-      if (lost) {
-        showRouteActionToast(`Route ${lost.letter} found no route with your changes`,
-          { duration: 3200 });
-      }
-    } else if (!routing.sharedActive) {
-      // A fresh search re-letters: pin the new lineup for this trip's
-      // refinements. See the chooser policy note in computeRoute().
-      // Duplicate profile ids are dropped defensively -- the lineup keys by
-      // id, and a worker from before adaptive itineraries carried unique
-      // suffixes could hand back two candidates under one id.
-      const seenProfiles = new Set();
-      routing.pinnedLetters = m.options.map((option) => ({
-        letter: (option.optimization?.label || '').replace(/^Route /, ''),
-        profileId: option.optimization?.profileId,
-      })).filter((entry) => entry.letter.length === 1 && entry.profileId
-        && !seenProfiles.has(entry.profileId) && seenProfiles.add(entry.profileId));
-      routing.missingLetters = [];
-    }
+    // Every search letters its portfolio fresh. Lineups used to FREEZE per
+    // trip -- refinements re-ran the same recipes under pinned letters, with
+    // greyed slots for recipes that stopped routing -- and the cost was that
+    // regenerating could never produce the natural current lineup (field
+    // decision: generate normally, sort normally, re-select by LETTER).
     let selected;
     if (routing.sharedActive) {
       // The sender's exact route is the option matching their profile; it goes
@@ -7208,14 +7161,6 @@ function onRouterMessage(ev) {
     // active selection and the rider can switch back without re-opening More.
     routing.options = [...(routing.options || []).filter((o) =>
       o.optimization?.profileId !== m.option.optimization?.profileId), m.option];
-    // An explicitly chosen candidate joins the trip's frozen lineup under its
-    // own letter, so refinements keep re-running it like any pinned recipe.
-    const chosenId = m.option.optimization?.profileId;
-    const chosenLetter = (m.option.optimization?.label || '').replace(/^Route /, '');
-    if (routing.pinnedLetters && chosenId && chosenLetter
-        && !routing.pinnedLetters.some((entry) => entry.profileId === chosenId)) {
-      routing.pinnedLetters.push({ letter: chosenLetter, profileId: chosenId });
-    }
     activateRouteOption(m.option, true);
     renderRouteOptionControls();
   } else if (m.type === 'route') {
@@ -7271,12 +7216,7 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
         ? 'Reapplying your safety rules and route preferences…'
         : 'Comparing safer, quicker, and bike-friendly routes…');
     showRouteActionToast('');
-  } else if (turnNav.active || !routing.restoringRoute) {
-    // Navigation, or a settings-triggered recompute with the panel held on
-    // Settings: the route sheet is not visible either way, so the toast is the
-    // only signal a recompute is running. Startup restore stays quiet -- it
-    // narrates itself.
-    routing.quietRecalcToast = !turnNav.active;
+  } else if (turnNav.active) {
     showRouteActionToast(routing.last?.ok ? 'Recalculating route' : 'Calculating route options', {
       busy: true,
       detail: routing.last?.ok
@@ -7284,6 +7224,11 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
         : 'Testing safer, quicker, and bike-friendly alternatives…',
       duration: 0,
     });
+  } else if (!routing.restoringRoute) {
+    // A settings-held recompute runs QUIETLY -- it does not block the rider,
+    // so no spinner and no progress (field decision); the one message is
+    // "Routes updated" when the portfolio lands. Startup restore stays silent.
+    routing.quietRecalcToast = true;
   }
   setRouteOptionsLoading(true);
   saveStateSoon();
@@ -7306,16 +7251,9 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
     // path reproduces exactly. The map still colors it with the receiver's
     // current rules (colors are re-scored client-side).
     const rec = routing.sharedActive ? routing.sharedRecipe : null;
-    // The chooser policy: a trip's lettered lineup is FROZEN between explicit
-    // re-searches. Road blocks and settings changes re-run the same recipes
-    // and keep the same letters, so the rider sees what their change did to
-    // the routes they were already comparing. Waypoint changes, endpoint
-    // changes (reverse included), and settings that change itinerary admission
-    // regenerate, re-rank, and re-letter the full portfolio; they set
-    // selectRecommendedNext.
-    const pinned = !rec && !routing.selectRecommendedNext && routing.pinnedLetters?.length
-      ? routing.pinnedLetters.map((entry) => ({ ...entry })) : null;
-    routing.lastRequestPinned = !!pinned;
+    // The chooser policy: every search is a fresh portfolio, sorted and
+    // lettered normally. Selection continuity is by LETTER, in
+    // refreshedRouteSelection().
     routing.worker.postMessage({
       type: 'route-options', id: routing.reqId, points,
       blocks: routing.blocks?.map((block) => block.pt) || [],
@@ -7323,7 +7261,6 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
       forceDesignated: rec ? !!rec.prefDesig : routing.prefDesig,
       forceResidential: rec ? !!rec.prefResidential : routing.prefResidential,
       preferredProfileId: rec ? (rec.profileId || routing.profileId) : routing.profileId,
-      pinned,
       // A shared route reproduces the SENDER's search exactly. Ordinary
       // searches use the rider's current weights without a hidden mode.
       weights: rec?.weights ? { ...rec.weights } : { ...routingWeights },
@@ -8881,8 +8818,6 @@ function regenerateRoutesAfterWaypointChange() {
   // the chooser. The new portfolio is free to recommend and letter routes
   // from scratch.
   routing.selectRecommendedNext = true;
-  routing.pinnedLetters = null;
-  routing.missingLetters = null;
 }
 
 function addVia(lngLat, { allowPastLimit = false, name = 'Point on map' } = {}) {
@@ -9069,8 +9004,6 @@ function removeRouteEndpoint(kind) {
   drawRoute([]);
   routing.last = null;
   routing.options = [];
-  routing.pinnedLetters = null;
-  routing.missingLetters = null;
   clearStoredRouteDetails();
   setRouteOptionsLoading(false);
   renderRouteOptionControls();
@@ -9137,9 +9070,7 @@ function clearRoute() {
   drawRoute([]);
   routing.last = null;
   routing.options = [];
-  routing.pinnedLetters = null;
   schedulePrewarm();
-  routing.missingLetters = null;
   clearStoredRouteDetails();
   renderRouteOptionControls();
   renderRouteCard(null);
@@ -9287,32 +9218,9 @@ function renderRouteOptionControls() {
       <span>${shortLabel}</span></button>`;
   };
   let cells;
-  if (routing.pinnedLetters?.length && !sharedInPlay) {
-    // A frozen lineup renders in PIN order. A pinned recipe the latest
-    // refinement could not route keeps its letter as a greyed, disabled slot:
-    // the honest statement of what the rider's change did to that route.
-    const byProfile = new Map(routing.options.map((option, index) =>
-      [option.optimization?.profileId, index]));
-    const unroutable = new Set((routing.missingLetters || []).map((e) => e.profileId));
-    cells = [];
-    for (const entry of routing.pinnedLetters) {
-      const index = byProfile.get(entry.profileId);
-      if (index != null) {
-        cells.push(buttonHtml(routing.options[index], index));
-        byProfile.delete(entry.profileId);
-      } else if (unroutable.has(entry.profileId)) {
-        cells.push(`<button type="button" class="route-option-missing" disabled
-          title="Route ${entry.letter} found no route with your current changes"
-          aria-label="Route ${entry.letter}: no route with your current changes">
-          <span>${entry.letter}</span></button>`);
-      }
-    }
-    // Anything outside the pin (a candidate parked from the considered-routes
-    // screen mid-reply) still renders rather than vanishing.
-    for (const [, index] of byProfile) cells.push(buttonHtml(routing.options[index], index));
-  } else {
-    cells = routing.options.map(buttonHtml);
-  }
+  // Fresh lineups render in portfolio order; the frozen-lineup rendering
+  // (pin order, greyed unroutable letters) left with the pinning system.
+  cells = routing.options.map(buttonHtml);
   host.innerHTML = cells.join('');
 }
 

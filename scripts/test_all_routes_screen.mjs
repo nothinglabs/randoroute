@@ -287,40 +287,38 @@ if (target) {
   check('and it joins the chooser so you can switch back', after.inChooser);
 }
 
-/* --------- the frozen lineup: a refinement keeps letters and recipes ----- */
-// The chooser policy: letters pin to search recipes for the life of a trip.
-// A road block re-runs the SAME recipes under the SAME letters -- including
-// the considered-routes pick parked above -- and keeps the selected route, so
-// the rider sees what their change did instead of a reshuffled portfolio.
+/* -------- fresh lineups: a refinement re-letters, selection follows letter */
+// The frozen-lineup system is gone by field decision: a refinement (road
+// block included) generates, sorts and letters its portfolio normally, and
+// continuity is the SELECTION -- the rider's letter is re-selected in the
+// fresh lineup, falling to the last letter when the lineup is shorter.
 await pg.evaluate(() => {
   document.querySelector('#routeOptions button[data-route-option="0"]')?.click();
 });
-const beforePin = await pg.evaluate(() => ({
-  pin: routing.pinnedLetters.map((entry) => ({ ...entry })),
-  selected: routing.last?.optimization?.profileId,
+const beforeBlock = await pg.evaluate(() => ({
+  letter: (routing.last?.optimization?.label || '').replace(/^Route /, ''),
 }));
-check('the trip carries a pinned lineup, grown by the considered-routes pick',
-  beforePin.pin.length >= 6 && !!beforePin.selected, JSON.stringify(beforePin));
 await pg.evaluate(() => addRoadBlock({ lng: -122.28, lat: 47.80 }));
-await pg.waitForFunction(() => routing.lastRequestPinned === true
+await pg.waitForFunction(() => routing.routeRequestActive === false
   && !document.getElementById('routeOptions')?.classList.contains('loading'),
-{ timeout: 300000 });
-const afterPin = await pg.evaluate(() => ({
-  pin: routing.pinnedLetters.map((entry) => ({ ...entry })),
-  selected: routing.last?.optimization?.profileId,
-  missing: routing.missingLetters,
-  chooserLetters: [...document.querySelectorAll('#routeOptions button[data-route-option] span, #routeOptions button.route-option-missing span')]
-    .map((span) => span.textContent.trim()),
+null, { timeout: 300000 });
+const afterBlock = await pg.evaluate(() => ({
+  letters: routing.options.map((option) =>
+    (option.optimization?.label || '').replace(/^Route /, '')),
+  selectedLetter: (routing.last?.optimization?.label || '').replace(/^Route /, ''),
+  selectedIsOffered: routing.options.includes(routing.last),
+  greyedSlots: document.querySelectorAll('#routeOptions button.route-option-missing').length,
 }));
-check('a road block keeps every letter bound to its recipe',
-  JSON.stringify(afterPin.pin) === JSON.stringify(beforePin.pin), JSON.stringify(afterPin));
-check('and keeps the selected route selected',
-  afterPin.selected === beforePin.selected
-    || afterPin.missing.some((entry) => entry.profileId === beforePin.selected),
-  JSON.stringify({ before: beforePin.selected, after: afterPin.selected, missing: afterPin.missing }));
-check('every pinned letter renders, routable or not',
-  afterPin.chooserLetters.length >= afterPin.pin.length,
-  JSON.stringify(afterPin.chooserLetters));
+check('a road block re-letters the portfolio normally, with no greyed slots',
+  afterBlock.letters.length >= 1 && afterBlock.greyedSlots === 0
+    && afterBlock.letters.every((letter, i) => letter === String.fromCharCode(65 + i)),
+  JSON.stringify(afterBlock));
+check('and the selection follows the letter: the same one, or the closest',
+  afterBlock.selectedIsOffered
+    && (afterBlock.selectedLetter === beforeBlock.letter
+      || (!afterBlock.letters.includes(beforeBlock.letter)
+        && afterBlock.selectedLetter === afterBlock.letters.at(-1))),
+  JSON.stringify({ before: beforeBlock, after: afterBlock }));
 
 check('no page errors', errs.length === 0, errs.slice(0, 3).join(' | '));
 await b.close(); s.close();
