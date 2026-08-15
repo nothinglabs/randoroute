@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-14.704';
+const APP_VERSION = '2026-08-14.705';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1639,7 +1639,9 @@ function rescoreAll(recomputeRoute = true) {
     }
   }
   const ms = Math.round(performance.now() - t0);
-  if (ms > 0) setStatus(`Recolored in ${ms} ms`);
+  // A timing readout is for the console, not the rider -- this used to flash
+  // "Recolored in 11 ms" on screen after every rules change (field report).
+  if (ms > 0) console.debug(`[rescore] recolored in ${ms} ms`);
   if (recomputeRoute && routing.ready && routing.start && routing.end) computeRoute();
 }
 
