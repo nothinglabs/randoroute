@@ -2,8 +2,8 @@
   "id": "oregon",
   "name": "Oregon",
   "status": "preview",
-  "readiness": 1,
-  "summary": "Selectable preview; Oregon data is being built from OSM, ODOT inventories and FHWA HPMS.",
+  "readiness": 7,
+  "summary": "Preview map pack with OSM routing, ODOT stress/speed/facility/shoulder data, current state AADT, HPMS traffic, and multi-region verification.",
   "bounds": {
     "minLon": -124.8,
     "maxLon": -116.3,
@@ -33,25 +33,30 @@
     "Shared Lane": 1
   },
   "sourceCounts": {
-    "blts": 0,
-    "bikeinfra": 0,
-    "roads": 0
+    "blts": 81210,
+    "bikeinfra": 37418,
+    "roads": 215485
   },
   "routeDirectionSuffixes": {
     "i": "increasing mileposts",
     "d": "decreasing mileposts"
   },
   "datasets": {
-    "graph": false,
-    "roads": false,
-    "basemap": false,
-    "overlays": false,
-    "places": false,
-    "bikeroutes": false,
+    "graph": true,
+    "roads": true,
+    "basemap": true,
+    "overlays": true,
+    "places": true,
+    "bikeroutes": true,
     "restrictions": false,
-    "closures": false
+    "closures": true
   },
-  "versions": {},
+  "versions": {
+    "roads": "sha-a77238a51315",
+    "basemap": "sha-4c10a8764862",
+    "overlays": "sha-0a5d52347b4c",
+    "graph": "sha-f35305320ee9"
+  },
   "attribution": {
     "extractName": "Oregon",
     "extractUrl": "https://download.geofabrik.de/north-america/us/oregon.html",

@@ -36,25 +36,30 @@
     "Shared Lane": 1
    },
    "sourceCounts": {
-    "blts": 0,
-    "bikeinfra": 0,
-    "roads": 0
+    "blts": 81210,
+    "bikeinfra": 37418,
+    "roads": 215485
    },
    "routeDirectionSuffixes": {
     "i": "increasing mileposts",
     "d": "decreasing mileposts"
    },
    "datasets": {
-    "graph": false,
-    "roads": false,
-    "basemap": false,
-    "overlays": false,
-    "places": false,
-    "bikeroutes": false,
+    "graph": true,
+    "roads": true,
+    "basemap": true,
+    "overlays": true,
+    "places": true,
+    "bikeroutes": true,
     "restrictions": false,
-    "closures": false
+    "closures": true
    },
-   "versions": {},
+   "versions": {
+    "roads": "sha-a77238a51315",
+    "basemap": "sha-4c10a8764862",
+    "overlays": "sha-0a5d52347b4c",
+    "graph": "sha-f35305320ee9"
+   },
    "attribution": {
     "extractName": "Oregon",
     "extractUrl": "https://download.geofabrik.de/north-america/us/oregon.html",
@@ -97,7 +102,43 @@
      }
     ]
    },
-   "files": []
+   "files": [
+    {
+     "dataset": "bikeroutes",
+     "path": "bikeroutes.geojson.gz",
+     "bytes": 681064
+    },
+    {
+     "dataset": "closures",
+     "path": "route_closures.geojson.gz",
+     "bytes": 1001
+    },
+    {
+     "dataset": "roads",
+     "path": "roads.pmtiles",
+     "bytes": 31522080
+    },
+    {
+     "dataset": "basemap",
+     "path": "basemap.pmtiles",
+     "bytes": 41344874
+    },
+    {
+     "dataset": "overlays",
+     "path": "overlays.pmtiles",
+     "bytes": 14173573
+    },
+    {
+     "dataset": "graph",
+     "path": "graph2.bin.gz",
+     "bytes": 26763186
+    },
+    {
+     "dataset": "places",
+     "path": "places.json",
+     "bytes": 68283
+    }
+   ]
   },
   {
    "id": "oregon-opus-1",

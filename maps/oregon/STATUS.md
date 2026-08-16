@@ -67,9 +67,8 @@ The source pages are cached under `data/.cache/` for rebuilds; normalized
 inputs are committed in this folder as `.gz` source artefacts. The plain
 GeoJSON expansion is a local build intermediate: `BUILD.md` will explicitly
 inflate it before invoking builders whose current readers require plain JSON.
-`sourceCounts` remains zero until the overlay and road artefacts exist, because
-the registry contract requires those counts to match the files that actually
-ship.
+The built registry counts are now `blts: 81,210`, `bikeinfra: 37,418` after
+the shared sharrow-only filter, and `roads: 215,485`.
 
 ## Portability finding
 
@@ -78,11 +77,69 @@ and `WA` route prefixes, but not Oregon's `OR` prefix. Official speed and
 facility matching is independent of that gate; BLTS-derived stress and
 shoulder matching use it for non-trunk state highways. This is a shared-code
 portability bug, not an Oregon data fact, so it is recorded here and is not
-being fixed within this import's allowed blast radius. The final coverage
-measurement will quantify its effect.
+being fixed within this import's allowed blast radius. The graph build reports
+102,917 ODOT-conflated edges; the exact effect of the prefix gate is therefore
+visible in that total but is not silently corrected in application code.
 
 ## Findings and blockers
 
 This section will record any documentation defect, source mismatch, or build
 blocker discovered during the import. The first census pass found no need for
 shared application-code changes.
+
+## Built artefacts and verification
+
+Completed 2026-08-16:
+
+- OSM extract: Oregon latest Geofabrik PBF; 309,278 graph-eligible ways kept.
+- bikeinfra.geojson.gz: 37,418 retained overlay features after dropping 2,113
+  sharrow-only ways in the shared overlay builder.
+- bikeroutes.geojson.gz: 45 route relations (2 national, 43 regional) and
+  10 source route-closure groups; route_closures.geojson.gz contains the
+  extracted closure collection.
+- roads.pmtiles: 215,485 street features from two road GeoJSON build parts.
+- basemap.pmtiles: 39.4 MiB; overlays.pmtiles: 14.2 MiB.
+- graph2.bin.gz: 631,212 nodes, 730,560 edges, 104,771 official-speed
+  edges, 11,368 official-facility edges, 18,210 MTB-tagged edges, and 19,370
+  densified dedicated-path edges.
+- region.json remains "status": "preview" and now records readiness 7,
+  after the gates below pass.
+
+The required corridor-severance test passes all five Oregon corridors and the
+existing Washington and prior-state corridors. The broad verification report
+is in VERIFICATION.md; it covers 30 Oregon published route relations across
+the Gorge, coast, Willamette Valley, southern, Central, and eastern regions.
+The wider HCRH trail-to-Hood-River probe found an OSM route-relation gap, which
+is retained as an explicit source finding rather than hidden by changing the
+graph or app.
+
+Coverage measurement from the shipped graph, using
+measure_coverage.py --add maps/oregon/hpms.geojson --label HPMS:
+
+- 74,503 road miles excluding paths and ferries.
+- 18,979 miles with a traffic count (25.5%).
+- 0 miles with county-derived bail-out space (0.0%), because Oregon has no
+  county road-log source; this metric does not count the separate ODOT state
+  shoulder inventory. The adapter matched shoulder values to 49,975 of 81,210
+  BLTS sections and carries the directional values into the graph where the
+  shared route gate matches.
+- Traffic-count coverage by functional class: Interstate 100.0%, principal
+  arterial 95.4%, minor arterial 90.9%, major collector 62.6%, minor collector
+  2.6%, local street 0.2%.
+
+The level-4/5/6/7 checks are green: agency speeds/facilities, HPMS traffic,
+the verification report, ODOT stress/speed/facility/shoulder inputs, and
+multi-region corridor coverage are all present. No field ride was performed,
+so readiness 8 is not claimed.
+
+## Documentation and source findings
+
+- The porting guide's statement that build_routes.py emits only the route
+  overlay is incomplete for this state: the build also emits the route-closure
+  collection used by the state pack. The exact command and outputs are now
+  recorded in BUILD.md.
+- The shared road builder's help text still calls its agency inputs WSDOT
+  inputs, but the Oregon adapter correctly supplies the generic field contract;
+  no shared-code edit was needed.
+- The OSM HCRH bicycle relation gap is a source-data issue requiring ODOT/OSM
+  or field confirmation. It is not patched with synthetic geometry.

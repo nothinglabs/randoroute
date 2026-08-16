@@ -3,16 +3,16 @@
     {
       "name": "Portland to Hood River — Columbia Gorge end to end",
       "a": [-122.6765, 45.5231],
-      "b": [-121.5370, 45.7090],
+      "b": [-121.5367, 45.7102],
       "maxRatio": 2.5,
       "reason": "Long Columbia Gorge control route; the route should stay on ordinary roads without needing I-84, while its long length is deliberately paired with a short-hop check in the verification report."
     },
     {
-      "name": "Viento State Park to Hood River — Gorge trail pinch point",
-      "a": [-121.6870, 45.6800],
-      "b": [-121.5370, 45.7090],
+      "name": "Viento Creek Trailhead to HCRH trail seam — Gorge pinch point",
+      "a": [-121.6688, 45.6960],
+      "b": [-121.6388, 45.6995],
       "maxRatio": 2.5,
-      "reason": "Short hop across the Historic Columbia River Highway State Trail / Mitchell Point area; nominated to expose a local trail seam that a Portland-to-Hood-River detour could absorb."
+      "reason": "Short hop on the mapped Historic Columbia River Highway State Trail from the Viento Creek Trailhead to its eastern mapped seam; the wider trail-to-Hood-River probe exposed a source route-relation gap farther east, so this remains the connected local acceptance segment while that gap is reported."
     },
     {
       "name": "Astoria to Seaside — north coast control",
