@@ -76,3 +76,24 @@ part of this worth reading first.
 ### 4. Bike routes and safety
 Figure out the best way to handle defined bike routes in relation to safety,
 including whether to import county-level bike routes.
+
+### 5. Downloadable map packs — machinery shipped, deployment pending
+The release plan: ship the app with no bundled map data; download states from
+a map store (ours on GitHub Releases; third parties can host their own).
+Shipped in v.717: the store contract (`maps/index.json`, "Map stores" in
+`maps/README.md`), the installer (`map-store.js` → same offline cache the
+service worker serves), the Maps-screen manager (add store / download with
+progress / sizes / remove), the slim iOS build (`JRA_SLIM_SHELL=1`), and the
+publish stage in `docs/IMPORT-A-STATE.md`. Remaining, in order:
+
+- **Host the store**: upload WA + OR packs and `index.json` to GitHub
+  Releases (or equivalent), then verify the by-hand flow in
+  `docs/IMPORT-A-STATE.md` from a clean profile.
+- **First-run picker**: with a slim deployment there is no map on first
+  launch — suggest by location or ask, then download. Not built; needs the
+  store live first.
+- **Slim iOS on a phone**: the slim shell has no service worker, so
+  downloaded packs need verifying inside the Capacitor WKWebView (cache
+  storage durability, range reads) before any App Store submission.
+- **Decide the web deployment**: keep serving maps same-origin (works today,
+  nothing changes) or move the web app to store downloads too.

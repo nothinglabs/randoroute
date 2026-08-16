@@ -25,17 +25,17 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // invisible to everyone who already has the app. v642 was maps/states.js
 // gaining Oregon (that file is SHELL, not data: it is the index naming which
 // states exist). v643 was app.js and styles.css; v644 app.js; v645 app.js and palette.js.
-const VERSION = 'v694'; // bump when app shell changes
+const VERSION = 'v695'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
-// v9 because every data file moved from ./data/ into ./maps/<state>/. A cache
-// is keyed by URL, so the v8 entries can never be hit again: leaving them would
-// strand about 150 MB of unreachable archives on every installed PWA forever.
-// Dropping the cache costs a re-download, which this release requires anyway --
-// activation refetches the archives and the graph comes back on the first
-// route.
-const DATA_CACHE = 'data-offline-map-v9';
+// The name itself lives in build-version.js (DATA_CACHE_NAME), because
+// map-store.js writes downloaded states into this same cache. It became v9
+// when every data file moved from ./data/ into ./maps/<state>/: a cache is
+// keyed by URL, so the v8 entries could never be hit again, and leaving them
+// would strand about 150 MB of unreachable archives on every installed PWA
+// forever.
+const DATA_CACHE = DATA_CACHE_NAME;
 
 const SHELL = [
   './',
@@ -45,6 +45,8 @@ const SHELL = [
   './app.js',
   './palette.js',
   './maps/states.js',
+  './maps/index.json',
+  './map-store.js',
   './region.js',
   './build-version.js',
   './safety-model.js',

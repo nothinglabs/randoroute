@@ -15,6 +15,7 @@ const files = [
   'route-common.js',
   'palette.js',
   'maps/states.js',
+  'map-store.js',
   'region.js',
   'build-version.js',
   'safety-model.js',
@@ -35,33 +36,38 @@ const files = [
   'fonts/Klokantech Noto Sans Regular/256-511.pbf',
   'fonts/Klokantech Noto Sans Regular/512-767.pbf',
   'fonts/Klokantech Noto Sans Regular/768-1023.pbf',
+  'maps/index.json',
+  'onboarding/tour-welcome.jpg',
+  'onboarding/tour-plan.jpg',
+  'onboarding/tour-routes.jpg',
+  'onboarding/tour-fast.jpg',
+  'onboarding/tour-safer.jpg',
+  'onboarding/tour-road.jpg',
+  'onboarding/tour-navigate.jpg',
 ];
 
-// The native app carries EVERY state's data, so a rider switching on the Maps
-// screen is switching between things already on the device rather than
-// starting a download. (The web app is the other way round: it fetches the one
-// state the rider selected.) On-demand delivery is the eventual answer to the
-// size this grows into; until then the whole thing ships in the bundle.
+// By default the native app carries EVERY state's data, so a rider switching
+// on the Maps screen is switching between things already on the device rather
+// than starting a download. (The web app is the other way round: it fetches
+// the one state the rider selected.)
 //
-// Which files a state has is its own declaration, in maps/<state>/region.json,
-// so a state under construction contributes only what it actually built. Note
-// what is NOT here: the *.geojson and *.geojson.gz source archives behind the
-// tiles are build inputs, and the runtime has not fetched them since those
-// overlays moved to PMTiles.
-const DATASET_FILES = {
-  bikeroutes: 'bikeroutes.geojson.gz',
-  restrictions: 'bike_restrictions.geojson.gz',
-  closures: 'route_closures.geojson.gz',
-  roads: 'roads.pmtiles',
-  basemap: 'basemap.pmtiles',
-  overlays: 'overlays.pmtiles',
-  graph: 'graph2.bin.gz',
-  places: 'places.json',
-};
+// JRA_SLIM_SHELL=1 builds the on-demand variant instead: the shell knows the
+// states (maps/states.js, maps/index.json) but carries none of their data --
+// MAP_STATES_BUNDLED flips to false, and the Maps screen offers downloads
+// from a map store instead of instant switches. Ship slim only once a store
+// is live and the download flow is field-verified.
+//
+// Which files a state has is baked into maps/index.json by the registry
+// builder -- the one home of the dataset->file table. Note what is NOT
+// bundled: the *.geojson and *.geojson.gz source archives behind the tiles
+// are build inputs, and the runtime has not fetched them since those overlays
+// moved to PMTiles.
+const SLIM = process.env.JRA_SLIM_SHELL === '1';
 const { MAP_STATES } = createRequire(import.meta.url)(join(root, 'maps/states.js'));
-for (const state of MAP_STATES) {
-  for (const [dataset, file] of Object.entries(DATASET_FILES)) {
-    if (state.datasets[dataset]) files.push(`maps/${state.id}/${file}`);
+const storeIndex = JSON.parse(await readFile(join(root, 'maps/index.json'), 'utf8'));
+if (!SLIM) {
+  for (const state of storeIndex.states) {
+    for (const file of state.files) files.push(`maps/${state.id}/${file.path}`);
   }
 }
 
@@ -93,6 +99,18 @@ await writeFile(
   sharedIndex.replace('data-app-runtime="web"', 'data-app-runtime="native"'),
 );
 
+if (SLIM) {
+  // The registry stays (the app must know which states exist) but the flag
+  // flips so the Maps screen offers downloads rather than instant switches.
+  const statesPath = join(output, 'maps/states.js');
+  const registry = await readFile(statesPath, 'utf8');
+  const flagged = registry.replace('root.MAP_STATES_BUNDLED = true;', 'root.MAP_STATES_BUNDLED = false;');
+  if (flagged === registry) throw new Error('maps/states.js is missing the MAP_STATES_BUNDLED flag');
+  await writeFile(statesPath, flagged);
+}
+
 console.log(`Prepared ${files.length} native shell assets in mobile-shell/`);
-console.log(`  ${MAP_STATES.length} state${MAP_STATES.length === 1 ? '' : 's'} bundled: `
-  + MAP_STATES.map((state) => `${state.name} (${state.status})`).join(', '));
+console.log(SLIM
+  ? `  SLIM shell: ${MAP_STATES.length} state${MAP_STATES.length === 1 ? '' : 's'} indexed, no data bundled`
+  : `  ${MAP_STATES.length} state${MAP_STATES.length === 1 ? '' : 's'} bundled: `
+    + MAP_STATES.map((state) => `${state.name} (${state.status})`).join(', '));

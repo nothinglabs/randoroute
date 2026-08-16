@@ -37,6 +37,12 @@
   }
   if (!region) throw new Error('build-version.js: region.js has not been loaded');
 
+  // The offline data cache's name, shared by the two writers: sw.js precaches
+  // and refreshes the loaded state's data there, and map-store.js installs
+  // downloaded states into it. Two files spelling out one cache name is the
+  // same non-mechanism as two files spelling out one URL was.
+  root.DATA_CACHE_NAME = 'data-offline-map-v9';
+
   root.GRAPH_DATA_VERSION = region.versions.graph || '';
   // Keeps a just-updated worker from being handed a graph cached by an older
   // service worker during the first post-update load.

@@ -11,6 +11,9 @@
        running on: bounds, opening view, and what to call the agency behind
        each enrichment. Before app.js, which reads it. -->
   <script src="maps/states.js"></script>
+  <!-- Between the bundled index and region.js: it records states installed
+       from a map store, and region.js merges them into the index. -->
+  <script src="map-store.js"></script>
   <script src="region.js"></script>
   <script src="build-version.js"></script>
   <link rel="manifest" href="manifest.json" />
@@ -287,6 +290,15 @@
       <p class="maps-note">One map is loaded at a time. Switching restarts the app and clears any route on screen.</p>
       <div id="mapsStateList" class="maps-state-list" role="radiogroup" aria-labelledby="mapsDialogTitle"></div>
       <p id="mapsStatus" class="maps-status" role="status" aria-live="polite"></p>
+      <div class="maps-stores">
+        <h3>Map stores</h3>
+        <p class="maps-note">A map store is a web address offering downloadable state maps. Anyone can host one; maps you download are stored on this device for offline use.</p>
+        <div id="mapsStoreList" class="maps-store-list"></div>
+        <div class="maps-store-add">
+          <input id="mapsStoreUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://example.com/maps/" aria-label="Map store address">
+          <button id="mapsStoreAdd" type="button">Add store</button>
+        </div>
+      </div>
     </div>
   </dialog>
 

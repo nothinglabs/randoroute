@@ -57,6 +57,25 @@ the entry point on why).
       only way to find out which of those are Washington artefacts.
 - [ ] `npm test` green.
 
+## Publishing the state as a map pack (optional, if commissioned)
+
+A state does not have to live in this repository to reach riders: the app
+installs states from any **map store** — an HTTPS directory serving the
+`maps/index.json` the registry builder emits, beside the state folders it
+describes ("Map stores" in `maps/README.md` is the contract). To publish:
+
+1. `npm run maps:registry` — it refuses to index a state whose declared
+   datasets are missing files, so a clean run is the pack's build proof.
+2. Upload `maps/index.json` and each `maps/<state>/<file>` the index lists to
+   any static host with CORS. GitHub Releases works (2 GB per asset); GitHub
+   Pages does not (100 MB per file, and the tile archives are bigger).
+3. Verify from a clean profile: open the app, **Settings → Maps → Add
+   store**, enter the store address, download the state, switch to it, and
+   confirm the map draws and a route computes **offline** afterwards.
+   `scripts/test_map_store_install.mjs` is the automated version of this
+   check against a synthetic store; your hosted store must survive the same
+   flow by hand.
+
 ## Working agreement
 
 - **Work on a branch.** Do not push to `main`.

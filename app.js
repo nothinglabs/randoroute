@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-15.716';
+const APP_VERSION = '2026-08-15.717';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -13230,7 +13230,9 @@ function setMapsStatus(message) {
 // under a running map. So the route goes first (it belongs to a graph that is
 // about to be gone), then the choice is stored, then the app restarts.
 function switchMapState(id) {
-  const target = Region.states.find((state) => state.id === id);
+  // allKnownStates, not Region.states: a state installed from a store this
+  // session is switchable now, not only after the next reload.
+  const target = allKnownStates().find((state) => state.id === id);
   if (!target || target.id === Region.id) return false;
   if (turnNav.active) {
     setMapsStatus('Finish navigating before switching states.');
@@ -13250,16 +13252,62 @@ function switchMapState(id) {
   return true;
 }
 
+const formatMapBytes = (bytes) => bytes >= 1048576 * 995
+  ? `${(bytes / (1048576 * 1024)).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1048576))} MB`;
+
+// Every state the app can name right now: the startup index (bundled +
+// installed-at-load) plus anything installed since, which region.js has not
+// seen yet because merging happens at reload.
+function allKnownStates() {
+  const states = [...Region.states];
+  const known = new Set(states.map((state) => state.id));
+  for (const entry of MapStore.installedStates()) {
+    if (!known.has(entry.state.id)) states.push(entry.state);
+  }
+  return states.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function buildMapsStateList() {
   const host = document.getElementById('mapsStateList');
   if (!host) return;
   host.replaceChildren();
-  const available = [...Region.states].sort((a, b) => a.name.localeCompare(b.name));
-  for (const state of available) {
+  for (const state of allKnownStates()) {
     const loaded = state.id === Region.id;
+    const availability = MapStore.availability(state.id);
+    // A remote state earns a row only when the app's own catalog names it
+    // (the slim shell: its data downloads from the app's origin). A state
+    // installed from a third-party store and then removed is simply gone
+    // from this list -- its store below still offers it.
+    if (availability === 'remote' && !loaded
+        && !(self.MAP_STATES || []).some((bundled) => bundled.id === state.id)) continue;
     const row = document.createElement('label');
     row.className = `maps-state${loaded ? ' loaded' : ''}`
       + (state.status === 'preview' ? ' preview' : '');
+    const label = document.createElement('span');
+    label.className = 'maps-state-name';
+    const title = document.createElement('span');
+    title.textContent = state.name;
+    label.append(title);
+    const detail = document.createElement('span');
+    detail.className = 'maps-state-detail';
+    detail.textContent = mapsStateCapability(state);
+    label.append(detail);
+    if (availability === 'remote') {
+      // Known but not on this device: the row offers a download, not a
+      // switch. This is the slim-shell path -- the bundled index names the
+      // state, a store has its data.
+      row.classList.add('remote');
+      row.append(label);
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.className = 'maps-state-download';
+      download.textContent = Array.isArray(state.files)
+        ? `Download ${formatMapBytes(MapStore.stateBytes(state))}` : 'Download';
+      download.addEventListener('click', () => downloadKnownState(state, download));
+      row.append(download);
+      host.append(row);
+      continue;
+    }
     const choice = document.createElement('input');
     // One state at a time, so: radios. A checkbox would promise that two can
     // be on at once, which is exactly what this cannot do.
@@ -13273,16 +13321,29 @@ function buildMapsStateList() {
       // loaded; put the selection back where the app actually is.
       if (!switchMapState(state.id)) buildMapsStateList();
     });
-    const label = document.createElement('span');
-    label.className = 'maps-state-name';
-    const title = document.createElement('span');
-    title.textContent = state.name;
-    label.append(title);
-    const detail = document.createElement('span');
-    detail.className = 'maps-state-detail';
-    detail.textContent = mapsStateCapability(state);
-    label.append(detail);
-    row.append(choice, label);
+    row.prepend(choice);
+    row.append(label);
+    if (availability === 'installed') {
+      const meta = document.createElement('span');
+      meta.className = 'maps-state-size';
+      meta.textContent = formatMapBytes(MapStore.stateBytes(MapStore.installedEntry(state.id).state));
+      row.append(meta);
+      if (!loaded) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'maps-state-remove';
+        remove.textContent = 'Remove';
+        remove.setAttribute('aria-label', `Remove the downloaded ${state.name} map`);
+        remove.addEventListener('click', async (event) => {
+          event.preventDefault();
+          setMapsStatus(`Removing ${state.name}…`);
+          await MapStore.removeState(state.id);
+          setMapsStatus(`${state.name} removed.`);
+          buildMapsStateList();
+        });
+        row.append(remove);
+      }
+    }
     if (loaded || state.status === 'preview') {
       const badge = document.createElement('span');
       // Loaded is the fact the rider is looking for; preview is a warning. A
@@ -13296,13 +13357,123 @@ function buildMapsStateList() {
   }
 }
 
+// Download a state named by the bundled index but absent from this device
+// (the slim shell). Its files come from the app's own origin store.
+async function downloadKnownState(state, button) {
+  await downloadStoreState('maps/', state, button);
+}
+
+async function downloadStoreState(storeUrl, state, button) {
+  if (button) button.disabled = true;
+  const name = state.name || state.id;
+  try {
+    // The bundled registry entries carry no file list (only the store index
+    // does), so fetch the store's word for what the state ships.
+    let full = state;
+    if (!Array.isArray(state.files)) {
+      const index = await MapStore.fetchIndex(storeUrl);
+      full = index.states.find((candidate) => candidate.id === state.id);
+      if (!full) throw new Error(`The store no longer offers ${name}.`);
+    }
+    setMapsStatus(`Downloading ${name}…`);
+    await MapStore.installState(storeUrl, full, ({ done, total }) => {
+      const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
+      setMapsStatus(`Downloading ${name}… ${pct}% of ${formatMapBytes(total)}`);
+    });
+    setMapsStatus(`${name} is ready to use.`);
+    buildMapsStateList();
+    buildMapsStoreList();
+  } catch (error) {
+    setMapsStatus(`Could not download ${name}: ${error.message}`);
+    if (button) button.disabled = false;
+  }
+}
+
+/* ------------------------------------------------------------- map stores */
+// Third-party stores the rider added. Each renders as its address plus the
+// states it offers that this device does not already have.
+function buildMapsStoreList() {
+  const host = document.getElementById('mapsStoreList');
+  if (!host) return;
+  host.replaceChildren();
+  for (const store of MapStore.customStores()) {
+    const row = document.createElement('div');
+    row.className = 'maps-store';
+    const head = document.createElement('div');
+    head.className = 'maps-store-head';
+    const address = document.createElement('span');
+    address.className = 'maps-store-url';
+    address.textContent = store.url;
+    const forget = document.createElement('button');
+    forget.type = 'button';
+    forget.className = 'maps-state-remove';
+    forget.textContent = 'Forget';
+    forget.setAttribute('aria-label', `Forget the store ${store.url}`);
+    forget.addEventListener('click', () => {
+      // Forgetting the store keeps any maps already downloaded from it; they
+      // are the rider's, listed above with their own Remove.
+      MapStore.removeCustomStore(store.url);
+      buildMapsStoreList();
+    });
+    head.append(address, forget);
+    const offers = document.createElement('div');
+    offers.className = 'maps-store-offers';
+    offers.textContent = 'Checking…';
+    row.append(head, offers);
+    host.append(row);
+    renderStoreOffers(store.url, offers);
+  }
+}
+
+async function renderStoreOffers(storeUrl, host) {
+  try {
+    const index = await MapStore.fetchIndex(storeUrl);
+    host.replaceChildren();
+    const known = new Set(allKnownStates().map((state) => state.id));
+    let offered = 0;
+    for (const state of index.states) {
+      if (known.has(state.id) && MapStore.availability(state.id) !== 'remote') continue;
+      offered += 1;
+      const row = document.createElement('div');
+      row.className = 'maps-store-offer';
+      const label = document.createElement('span');
+      label.textContent = `${state.name} (${state.status})`;
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.className = 'maps-state-download';
+      download.textContent = `Download ${formatMapBytes(MapStore.stateBytes(state))}`;
+      download.addEventListener('click', () => downloadStoreState(storeUrl, state, download));
+      row.append(label, download);
+      host.append(row);
+    }
+    if (!offered) {
+      host.textContent = 'Everything this store offers is already on this device.';
+    }
+  } catch (error) {
+    host.textContent = `Could not read this store: ${error.message}`;
+  }
+}
+
 function openMapsDialog() {
   const dialog = document.getElementById('mapsDialog');
   if (!dialog) return;
   setMapsStatus('');
   buildMapsStateList();
+  buildMapsStoreList();
   if (!dialog.open) dialog.showModal();
 }
+
+document.getElementById('mapsStoreAdd')?.addEventListener('click', () => {
+  const input = document.getElementById('mapsStoreUrl');
+  try {
+    const url = MapStore.addCustomStore(input.value);
+    input.value = '';
+    setMapsStatus(`Added ${url}`);
+    buildMapsStoreList();
+  } catch (error) {
+    setMapsStatus(error.message);
+  }
+});
 
 function buildRulesPanel() {
   const slidersHost = document.getElementById('settingsSliders');

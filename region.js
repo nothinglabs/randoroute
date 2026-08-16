@@ -30,6 +30,19 @@
   }
   if (!states || !states.length) throw new Error('region.js: maps/states.js has not been loaded');
 
+  // States installed from a map store (map-store.js records them; it loads
+  // before this file in the page). A bundled state wins an id collision --
+  // the origin is authoritative for what it ships. The service worker and
+  // Node land here without MapStore and simply see the bundled index; the
+  // worker serves installed states by URL pattern without needing to know
+  // their names.
+  if (root.MapStore) {
+    const bundledIds = new Set(states.map((state) => state.id));
+    const installed = root.MapStore.installedRegionConfigs()
+      .filter((state) => !bundledIds.has(state.id));
+    if (installed.length) states = [...states, ...installed];
+  }
+
   // Which state this session opens with. A rider switches on the Maps screen;
   // that writes STORED_STATE_KEY and reloads, and this reads it back. Switching
   // state means loading another folder -- there is no other difference.

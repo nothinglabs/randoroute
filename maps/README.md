@@ -41,10 +41,32 @@ Web and native differ in one way only:
 
 * **Web** serves whichever folder the rider selected; the rest are on the
   server, unfetched.
-* **iOS** bundles every state's files (`scripts/build_mobile_shell.mjs` walks
-  `states.js`), so switching is instant and offline. On-demand delivery is the
-  eventual answer to the size that grows into -- and becomes a precondition
-  well before fifty states, since one state is about 228 MB.
+* **iOS** bundles every state's files (`scripts/build_mobile_shell.mjs` reads
+  `maps/index.json`), so switching is instant and offline.
+  `JRA_SLIM_SHELL=1 npm run ios:sync` builds the on-demand variant instead:
+  the states are indexed but carry no data, `MAP_STATES_BUNDLED` flips to
+  false, and the Maps screen offers downloads. Ship slim only once a store is
+  live and the download flow is field-verified.
+
+## Map stores
+
+The registry builder also emits **`maps/index.json`** — the same registry as
+pure data, plus a per-state `files` list with byte sizes. That file is the
+**map store contract** (`storeFormat: 1`): a store is any HTTPS directory
+serving an `index.json` beside the state folders it describes, with CORS
+enabled (`Access-Control-Allow-Origin: *`). The app's own origin is the
+default store; a rider can add others on **Settings → Maps**, and
+`map-store.js` downloads a state's files into the same offline cache the
+service worker serves, under the same `maps/<id>/<file>` paths — nothing
+downstream can tell an installed state from a bundled one. Installed states
+are recorded in `localStorage` (`jra-installed-states-1`) and merged into the
+index by `region.js` at startup. The index is validated strictly on both
+ends: the builder refuses to emit an entry whose files are missing, and the
+client refuses an index with unknown keys, unsafe paths, or missing sizes.
+
+Hosting note: GitHub Pages caps files at 100 MB, which the tile archives
+exceed. GitHub Releases (2 GB per asset, CORS enabled) or any static host
+with CORS works; the files are served as-is, no packaging step.
 
 ## Adding a state
 
