@@ -139,7 +139,7 @@ check('a hill badge never suppresses the fail badge',
   plan.failSteep.fails >= 1 && plan.failSteep.steeps >= 3,
   JSON.stringify(plan.failSteep));
 check('even a very short failed stretch gets !', plan.failBlip === 1, String(plan.failBlip));
-check('a very short designated-route failure gets !?',
+check('a very short designated-route failure gets the bike-! badge',
   plan.failDesignatedBlip === 1, String(plan.failDesignatedBlip));
 check('normal and designated failure runs keep their own icons',
   plan.failDesignationTransition.join() === 'fail,fail-designated',
@@ -194,7 +194,7 @@ const failLayer = await page.evaluate(() => ({
   allowOverlap: map.getLayoutProperty('route-fail-marker', 'icon-allow-overlap'),
   ignorePlacement: map.getLayoutProperty('route-fail-marker', 'icon-ignore-placement'),
 }));
-check('the !? icon is registered for active routes', failLayer.hasDesignatedImage,
+check('the bike-! icon is registered for active routes', failLayer.hasDesignatedImage,
   JSON.stringify(failLayer));
 check('fail icons cannot be removed by symbol collisions',
   failLayer.allowOverlap === true && failLayer.ignorePlacement === true,

@@ -610,6 +610,17 @@ failure totals, still speaks its warning, and is still excluded by *Only show
 routes fully matching*. Legal prohibitions, ferries, dismount links, hills and
 surface costs are not erased.
 
+**Preferred routes** (Settings → Routes, or the checkbox on a tapped route
+ribbon's card) are the same exception scoped to individual signed routes: each
+marked route's edges earn the identical 0.12 multiplier with the identical
+carve-outs, while every other signed route stays ordinarily priced. The graph
+stores only an anonymous on-a-signed-route flag, so the router worker matches
+the chosen routes' overlay geometry onto its own edges (`preferred-routes`
+message; candidates are restricted to flagged edges and most of an edge's
+shape must lie within 30 m of the route). The selection is per state and
+persists; the selection key rides in the routing rules so every cost cache and
+search bound distinguishes selections.
+
 ### Rung 7 — the sidewalk fallback
 
 `allowSidewalkFallback` (default on) is the only way out of a rung-6 failure. It

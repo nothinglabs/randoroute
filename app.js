@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-16.721';
+const APP_VERSION = '2026-08-16.722';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -859,6 +859,29 @@ if (savedState) {
     }
   }
 }
+// Routes the rider marked Preferred (Settings → Routes / the route tap card),
+// keyed BY STATE: route names are coordinates in a state's data the same way
+// a viewport is, so Washington's picks must survive a trip to Oregon and be
+// waiting on return -- never applied to the wrong state's routes.
+const preferredRoutesByState = savedState?.preferredRoutesByState
+  && typeof savedState.preferredRoutesByState === 'object'
+  ? { ...savedState.preferredRoutesByState } : {};
+function preferredRouteNames() {
+  const names = preferredRoutesByState[Region.id];
+  return Array.isArray(names) ? names : [];
+}
+function isPreferredRoute(name) { return preferredRouteNames().includes(name); }
+// The routing rules carry only a compact selection KEY -- the worker gets the
+// geometry separately -- so every cost cache, bound and portfolio signature
+// distinguishes selections without hauling coordinates through them.
+function preferredRoutesRuleKey(names) { return names.slice().sort().join(''); }
+function applyPreferredRoutesRuleKey() {
+  const names = preferredRouteNames();
+  if (names.length) rules.preferredRoutes = preferredRoutesRuleKey(names);
+  else delete rules.preferredRoutes;
+}
+applyPreferredRoutesRuleKey();
+
 const savedRoutingWeights = validRoutingWeights(savedState?.weights);
 const savedWeightsVersion = savedState?.weightsVersion || 0;
 // Version 7 deliberately replaced every earlier advanced-weight set so the
@@ -1120,6 +1143,9 @@ function saveStateNow() {
         .map((key) => [key, savedLayer(key)])),
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig, prefResidential: routing.prefResidential,
+      // Whole map, every state's picks -- the same non-destructive rule as
+      // storedSourcePreferences: saving from Oregon must not erase Washington's.
+      preferredRoutesByState,
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
@@ -1310,6 +1336,23 @@ function updatePassiveMapLocation(position, reason = 'foreground') {
   const lat = Number(position?.coords?.latitude);
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return false;
   const point = [lng, lat];
+
+  // A fix outside the selected state's coverage must never become the camera
+  // target: the graph, the tiles and the places all stop at the state line,
+  // so flying there shows a void. Say so instead, and make sure the rider is
+  // looking at the map they selected -- an in-state saved view is left alone;
+  // a camera that is ALSO outside the state goes to the state's own center.
+  if (!Region.contains(lng, lat)) {
+    clearPassiveMapLocationMarker();
+    const center = map.getCenter();
+    if (!Region.contains(center.lng, center.lat)) {
+      map.easeTo({ center: Region.defaultCenter, zoom: Region.defaultZoom,
+        duration: 650, essential: true });
+    }
+    showRouteActionToast('GPS location outside selected map',
+      { duration: 3600, answer: true });
+    return false;
+  }
 
   // Navigation owns its live rider marker. Outside navigation, keep a simple
   // marker visible for locations obtained automatically or through the native
@@ -1771,7 +1814,7 @@ const PATTERN_CAUTION = 'verdict-caution';
 // levels").
 //
 // So the multiplier steps DOWN as the line widens, holding the drawn dash at
-// roughly 11 px of ink and 6 px of gap throughout.
+// roughly 8 px of ink and 4.5 px of gap throughout.
 //
 // It has to be the legacy `{ stops }` function, NOT a `['step', ['zoom'], ...]`
 // expression. `line-dasharray` is a cross-faded property: a bare map.addLayer()
@@ -1779,9 +1822,20 @@ const PATTERN_CAUTION = 'verdict-caution';
 // settled, but in the app's real layer stack the layer is silently DROPPED --
 // roads__vh and roads__prohibited both vanished and the style went from 57
 // layers to 50, with no page error anywhere. Do not "modernise" this.
+//
+// The dash held its drawn size, but the LINE under it did not: at the shared
+// road width a failing road was a 0.6-2 px hairline below z11, and a dashed
+// hairline at county scale reads as nothing at all (field report: the dashes
+// disappear when you zoom out). A failure is the strongest verdict on the
+// map, so it keeps a visible width floor when zoomed out and converges back
+// to the shared road-interior width by z13, where the roads are wide enough
+// to carry the dash themselves. The dash multiples below are recomputed for
+// THESE widths -- change one and you must change the other.
+const FAIL_ROAD_WIDTH = ['interpolate', ['linear'], ['zoom'],
+  5, 1.8, 8, 2.2, 11, 2.8, 13, 3.9, 15, 6.2, 17, 9];
 const FAIL_DASH = { stops: [
-  [5, [13.7, 7.5]], [8, [6.9, 3.8]], [11, [3.9, 2.1]],
-  [13, [2.3, 1.3]], [15, [1.5, 0.8]],
+  [5, [4.6, 2.5]], [8, [3.7, 2.0]], [11, [3.0, 1.6]],
+  [13, [2.1, 1.15]], [15, [1.3, 0.73]],
 ] };
 // The prohibition ribbon is wider than the road and rides over it, so the same
 // flat-dasharray problem showed up there first and worst: at z17 its 15 px
@@ -1988,10 +2042,11 @@ function ensureLayer(src) {
       // every zoom. The gaps are genuinely transparent -- the main layer's
       // filter (visibleRoadCategoryFilter) never matches level 4 -- so the map
       // shows through, which is what makes it read as a dashed line rather than
-      // a textured one.
+      // a textured one. Width comes from FAIL_ROAD_WIDTH, not the shared road
+      // width: the floor is what keeps the dash legible when zoomed out.
       'line-color': COLORS[4],
       'line-dasharray': FAIL_DASH,
-      'line-width': safetyRoadWidth(src),
+      'line-width': FAIL_ROAD_WIDTH,
       'line-opacity': failBackgroundLineOpacity(),
     },
     filter: ['==', ['get', 'level'], 4],
@@ -2113,12 +2168,15 @@ function ensureLayer(src) {
       paint: {
         // Trails share the lime of an on-street bike lane deliberately -- both
         // are bike network -- so the difference has to be carried by this
-        // centreline. A dash reads as "path" far more strongly than the fine
-        // dots it replaced, and survives being small.
-        'line-color': '#4c5c00',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.9, 10, 1.5, 14, 2.4],
+        // centreline. It speaks the SAME dot language as the active route's
+        // trail rendering (route-bike-trail-dots: [0.05, 2.1] under round
+        // caps draws circles): the map and a drawn route must not disagree
+        // about what an off-street trail looks like. The width floor is what
+        // keeps the dots legible where the old fine dots vanished.
+        'line-color': '#687d00',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.3, 10, 1.8, 14, 2.4],
         'line-opacity': backgroundLineOpacity(0.95),
-        'line-dasharray': [1.6, 1.5],
+        'line-dasharray': [0.05, 2.1],
       },
       filter: ['boolean', false],
     }, beforeId);
@@ -2473,7 +2531,7 @@ function applyDisplayMode(src) {
   }
   if (map.getLayer(trailDotsId(src))) {
     setLayerFilter(trailDotsId(src), and(visibleTrail));
-    setPaint(trailDotsId(src), 'line-color', display.passFail ? '#3f5200' : '#4c5c00');
+    setPaint(trailDotsId(src), 'line-color', display.passFail ? '#3f5200' : '#687d00');
     setPaint(trailDotsId(src), 'line-opacity', backgroundLineOpacity(0.95));
   }
   if (map.getLayer(backgroundUnpavedId(src))) {
@@ -2518,7 +2576,7 @@ function applyDisplayMode(src) {
     // its darkness. The dash has transparent gaps now, so there is far less ink
     // to stack, and reading as the strongest verdict matters more here.
     setPaint(vhId(src), 'line-color', COLORS[4]);
-    setPaint(vhId(src), 'line-width', safetyRoadWidth(src));
+    setPaint(vhId(src), 'line-width', FAIL_ROAD_WIDTH);
     // Failures used to bypass the class mask used by every other road color.
     // That painted thousands of failing residential fragments at metro zoom,
     // visually merging into a solid red field and doing avoidable renderer
@@ -2687,6 +2745,111 @@ function setBackgroundUnpavedVisible(on) {
       display.unpavedBackground ? 'visible' : 'none');
   }
   saveStateSoon();
+}
+
+/* --------------------------- the state's signed routes, by name */
+// The overlay concatenates overlapping routes into one feature name
+// ("10 (Washington) / 97 (Washington)"), so a FEATURE belongs to every route
+// its name lists. Splitting here is what turns 166 features into a readable
+// list of actual routes -- and what lets one route be Preferred without
+// dragging along everything it briefly shares pavement with.
+function routeOverlayNames(p) {
+  const names = String(p?.n || '').split(' / ').map((part) => part.trim()).filter(Boolean);
+  if (names.length) return names;
+  return String(p?.r || '').split(/[;,]/).map((part) => part.trim()).filter(Boolean)
+    .map((ref) => `Route ${ref}`);
+}
+
+// name -> { name, national, lines, lengthM } for every signed route in the
+// loaded state, built once from the bikeroutes overlay. Both consumers -- the
+// Settings → Routes list and the worker geometry sync -- read this one map.
+let stateRouteCatalogPromise = null;
+function ensureStateRouteCatalog() {
+  if (stateRouteCatalogPromise) return stateRouteCatalogPromise;
+  const src = SOURCES.find((source) => source.id === 'routes');
+  if (!src) return Promise.resolve(new Map());
+  stateRouteCatalogPromise = (async () => {
+    // loadSource() returns immediately when a load is already in flight (the
+    // startup load usually is), so wait on the source's own flags rather
+    // than the call; a failed earlier load gets one retry per attempt here.
+    const deadline = Date.now() + 20000;
+    while (!src.fc && Date.now() < deadline) {
+      if (!src.loading) {
+        if (src.loaded) break; // loaded with no fc: nothing to read
+        await loadSource(src);
+      }
+      if (!src.fc) await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    if (!src.fc) {
+      // Offline before first cache fill: allow a later retry instead of
+      // pinning an empty catalog for the session.
+      stateRouteCatalogPromise = null;
+      return new Map();
+    }
+    const catalog = new Map();
+    for (const feature of src.fc.features || []) {
+      const geometry = feature.geometry;
+      const lines = geometry?.type === 'LineString' ? [geometry.coordinates]
+        : geometry?.type === 'MultiLineString' ? geometry.coordinates : [];
+      if (!lines.length) continue;
+      const p = feature.properties || {};
+      for (const name of routeOverlayNames(p)) {
+        let entry = catalog.get(name);
+        if (!entry) catalog.set(name, entry = { name, national: false, lines: [], lengthM: 0 });
+        if (p.t === 'ncn') entry.national = true;
+        for (const line of lines) {
+          entry.lines.push(line);
+          for (let i = 1; i < line.length; i++) entry.lengthM += markerSpanM(line[i - 1], line[i]);
+        }
+      }
+    }
+    return catalog;
+  })();
+  return stateRouteCatalogPromise;
+}
+
+// Hand the worker the Preferred routes' geometry. The graph only knows an
+// anonymous on-a-signed-route bit, so the worker matches these lines onto its
+// own edges; rules.preferredRoutes (the key) makes every search signature
+// honest about which selection priced it. postMessage order does the rest: a
+// recompute posted after this sync always sees the new set.
+let preferredRoutesAckRecompute = false;
+function syncPreferredRoutesToWorker({ recomputeOnAck = false } = {}) {
+  if (!routing.worker) return;
+  const names = preferredRouteNames();
+  const key = names.length ? preferredRoutesRuleKey(names) : '';
+  if (!key) {
+    routing.worker.postMessage({ type: 'preferred-routes', key: '', lines: [] });
+    return;
+  }
+  preferredRoutesAckRecompute = recomputeOnAck;
+  ensureStateRouteCatalog().then((catalog) => {
+    const lines = [];
+    for (const name of names) {
+      const entry = catalog.get(name);
+      if (entry) for (const line of entry.lines) lines.push(line);
+    }
+    routing.worker?.postMessage({ type: 'preferred-routes', key, lines });
+  }).catch(() => {});
+}
+
+// Toggle one route, from either entry path (the Routes screen or the tap
+// card). Route CHOICE changes, so a live trip recomputes -- quietly, with the
+// same unobtrusive toast a Settings rules change uses, because the rider is
+// mid-dialog rather than watching the route panel.
+function setRoutePreferred(name, on) {
+  const names = new Set(preferredRouteNames());
+  if (on) names.add(name); else names.delete(name);
+  if (names.size) preferredRoutesByState[Region.id] = [...names].sort();
+  else delete preferredRoutesByState[Region.id];
+  applyPreferredRoutesRuleKey();
+  saveStateSoon();
+  syncPreferredRoutesToWorker();
+  if (routing.ready && routing.start && routing.end) {
+    routing.quietRecalcToast = true;
+    showRouteActionToast('Updating routes…', { duration: 6000 });
+    computeRoute({ revealPanel: false });
+  }
 }
 
 /* ------------------------------------------- blink a layer on enable */
@@ -7273,6 +7436,12 @@ function onRouterMessage(ev) {
     }
     routing.ready = true;
     routing.loading = false;
+    // The Preferred-routes geometry rides behind an async overlay fetch, so
+    // the restored trip below may compute first; the applied-ack recomputes
+    // it quietly in that case.
+    if (preferredRouteNames().length) {
+      syncPreferredRoutesToWorker({ recomputeOnAck: true });
+    }
     const revealPendingCalculation = routing.pendingPanelReveal;
     routing.pendingRoute = false;
     updateArmButtons();
@@ -7304,6 +7473,16 @@ function onRouterMessage(ev) {
       computeRoute({ revealPanel: revealPendingCalculation });
       schedulePrewarm();
     }
+  } else if (m.type === 'preferred-routes-applied') {
+    // Startup ordering only: a trip restored before the geometry landed was
+    // priced without the preference; bring it up to date once, quietly.
+    if (preferredRoutesAckRecompute && m.key && rules.preferredRoutes === m.key
+        && routing.start && routing.end) {
+      routing.quietRecalcToast = true;
+      showRouteActionToast('Updating routes…', { duration: 6000 });
+      computeRoute({ revealPanel: false });
+    }
+    preferredRoutesAckRecompute = false;
   } else if (m.type === 'route-options') {
     if (m.id !== routing.reqId) return;
     const remaining = 400 - (performance.now() - routing.compareStartedAt);
@@ -7804,11 +7983,12 @@ function buildRouteMarkerData(sdata) {
       pos += d;
     }
   });
-  // The ! (or !? when a signed route itself fails) sits outside the spacing
-  // clock: one per contiguous failed area (two on a long one). Runs split when
-  // designation changes so a normal failure cannot hide an adjacent !? (or
-  // vice versa). A separate always-overlap layer below guarantees these points
-  // survive collision placement even beside another explanatory badge.
+  // The ! (or the bike-! badge when a signed route itself fails) sits outside
+  // the spacing clock: one per contiguous failed area (two on a long one).
+  // Runs split when designation changes so a normal failure cannot hide an
+  // adjacent bike-! (or vice versa). A separate always-overlap layer below
+  // guarantees these points survive collision placement even beside another
+  // explanatory badge.
   const pointAt = (f, span, m) => {
     let at = span.startM;
     for (let i = 1; i < f.coords.length; i++) {
@@ -11876,7 +12056,7 @@ function renderMapTapCard({
   swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
   segmentName = null, placeName = null,
   debugData = null, cautionKinds = [], endpointRole = null,
-  avoidTemporaryMarker = false,
+  avoidTemporaryMarker = false, preferredRouteToggles = [],
 }) {
   const lat = Number(lngLat.lat);
   const lng = Number(lngLat.lng);
@@ -12115,6 +12295,29 @@ function renderMapTapCard({
   if (combinedWarning) readoutEl.append(combinedWarning);
   readoutEl.append(safetySummary);
   if (facts.childElementCount) readoutEl.append(facts);
+  // Tapping a signed route offers its Preferred toggle right on the card --
+  // the same per-state selection Settings → Routes edits. A segment where
+  // routes overlap lists one row per route, so preferring "10" does not
+  // silently prefer everything sharing its pavement.
+  if (preferredRouteToggles.length) {
+    const preferredBlock = document.createElement('div');
+    preferredBlock.className = 'readout-preferred-routes';
+    for (const name of preferredRouteToggles) {
+      const row = document.createElement('label');
+      row.className = 'readout-preferred-route';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = isPreferredRoute(name);
+      checkbox.setAttribute('aria-label', `Prefer ${name}`);
+      checkbox.addEventListener('change', () => setRoutePreferred(name, checkbox.checked));
+      const text = document.createElement('span');
+      text.textContent = preferredRouteToggles.length > 1
+        ? `Preferred route: ${name}` : 'Preferred route';
+      row.append(checkbox, text);
+      preferredBlock.append(row);
+    }
+    readoutEl.append(preferredBlock);
+  }
   readoutEl.append(primaryActions, details);
   readoutEl.classList.add('show');
   positionCard();
@@ -12409,6 +12612,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
     // rider happens to inspect nearby -- which is exactly "part of an active
     // route", since routeseg IS the drawn route.
     allowRoadBlock: src.id === 'routeseg' && p.ferry !== 1,
+    preferredRouteToggles: src.id === 'routes' ? routeOverlayNames(p) : [],
     cautionKinds: src.id === 'routeseg' && p.ferry !== 1
       ? [...routeMarkerKinds(p, routeVisualStyle(p)), ...(p.hazard ? ['curve'] : [])]
       : [],
@@ -13014,6 +13218,12 @@ function buildAdvancedRoutingOptions() {
   };
   const updatePreference = () => { saveStateSoon(); computeRoute(); };
   add('prefDesig', 'Heavily prefer designated bike routes', routing, updatePreference);
+  // The strongest override in the app, so it lives with the expert switches
+  // rather than on the everyday Options page (field direction): it changes
+  // route CHOICE only, and a signed road that fails the rules stays red.
+  add('alwaysPreferBikeRoutes', 'Follow designated bike routes even if they fail safety rules '
+    + '<span class="rule-caution-copy">(use with caution — not generally recommended)</span>',
+  rules, updatePreference);
   add('prefResidential', 'Prefer residential streets', routing, updatePreference);
   add('allowSidewalkFallback', 'Allow sidewalk fallback', rules, scheduleRescore);
   add('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
@@ -13463,6 +13673,72 @@ function openMapsDialog() {
   if (!dialog.open) dialog.showModal();
 }
 
+/* ----------------------------- Settings → Routes: the state's signed routes */
+function formatRouteMiles(lengthM) {
+  const miles = lengthM / 1609.344;
+  if (!(miles > 0.05)) return null;
+  return miles >= 10 ? `${Math.round(miles)} mi` : `${miles.toFixed(1)} mi`;
+}
+
+function buildStateRoutesList(catalog) {
+  const host = document.getElementById('stateRoutesList');
+  if (!host) return;
+  host.replaceChildren();
+  // Preferred first, so the rider's picks read as a group; alphabetical with
+  // numeric collation inside each half, so "Route 9" sorts before "Route 10".
+  const entries = [...catalog.values()].sort((a, b) =>
+    (isPreferredRoute(b.name) - isPreferredRoute(a.name))
+    || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+  for (const entry of entries) {
+    const row = document.createElement('label');
+    row.className = 'state-route-row';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = isPreferredRoute(entry.name);
+    checkbox.setAttribute('aria-label', `Prefer ${entry.name}`);
+    const text = document.createElement('span');
+    text.className = 'state-route-name';
+    const name = document.createElement('strong');
+    name.textContent = entry.name;
+    const detail = document.createElement('small');
+    detail.textContent = [entry.national ? 'National (USBR)' : 'Regional',
+      formatRouteMiles(entry.lengthM)].filter(Boolean).join(' · ');
+    text.append(name, detail);
+    const badge = document.createElement('span');
+    badge.className = 'state-route-preferred-badge';
+    badge.textContent = 'Preferred';
+    badge.hidden = !checkbox.checked;
+    checkbox.addEventListener('change', () => {
+      setRoutePreferred(entry.name, checkbox.checked);
+      badge.hidden = !checkbox.checked;
+    });
+    row.append(checkbox, text, badge);
+    host.append(row);
+  }
+}
+
+async function openStateRoutesDialog() {
+  const dialog = document.getElementById('stateRoutesDialog');
+  if (!dialog) return;
+  const region = document.getElementById('stateRoutesRegion');
+  if (region) region.textContent = Region.name;
+  const status = document.getElementById('stateRoutesStatus');
+  const host = document.getElementById('stateRoutesList');
+  if (host) host.replaceChildren();
+  if (status) status.textContent = 'Loading routes…';
+  if (!dialog.open) dialog.showModal();
+  try {
+    const catalog = await ensureStateRouteCatalog();
+    buildStateRoutesList(catalog);
+    if (status) {
+      status.textContent = catalog.size ? ''
+        : 'This state’s data includes no signed bicycle routes.';
+    }
+  } catch (e) {
+    if (status) status.textContent = 'Could not load the route list.';
+  }
+}
+
 document.getElementById('mapsStoreAdd')?.addEventListener('click', () => {
   const input = document.getElementById('mapsStoreUrl');
   try {
@@ -13537,21 +13813,9 @@ function buildRulesPanel() {
     });
   };
 
-  const updateRoutePreference = () => {
-    saveStateSoon();
-    // revealPanel: false for the same reason as scheduleRescore -- the rider
-    // is IN Settings. This direct call was the one path the .703 fix missed,
-    // so the designated-routes checkbox still yanked the sheet (field report).
-    computeRoute({ revealPanel: false });
-  };
   check('allowFreeways', 'Route over freeway as last resort (still shows as failing)');
   check('preferPaved', 'Strongly prefer paved surfaces');
   check('requireSafe', 'Only show routes fully matching safety rules');
-  // Deliberately low in the list: it overrides the safety rules above it, and
-  // an override should not be the first thing a browsing finger meets.
-  check('alwaysPreferBikeRoutes', 'Follow designated bike routes even if they fail safety rules '
-    + '<span class="rule-caution-copy">(use with caution — not generally recommended)</span>', rules,
-    updateRoutePreference);
   check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');
 
   // This also only decides what the map shows, so it must not call
@@ -13725,6 +13989,7 @@ function buildRulesPanel() {
       });
     });
     document.getElementById('settings-tab-maps').addEventListener('click', openMapsDialog);
+    document.getElementById('settings-tab-routes').addEventListener('click', openStateRoutesDialog);
     document.getElementById('settingsHelpBtn').addEventListener('click', () => {
       buildCautionCauseHelp();
       openHelp('settings');
@@ -14066,7 +14331,7 @@ const ACTIVE_ROUTE_ICON_DEFINITIONS = [
   ['route-marker-traffic', 'Heavy traffic', 'High traffic volume.'],
   ['route-marker-unpaved', 'Unpaved', 'Gravel or another loose surface.'],
   ['route-marker-fail', 'Fails rules', 'One or more safety limits are exceeded.'],
-  ['route-marker-fail-designated', 'Designated route !?',
+  ['route-marker-fail-designated', 'Bike route fails rules',
     'Official bike route, but safety limits are exceeded.'],
 ];
 

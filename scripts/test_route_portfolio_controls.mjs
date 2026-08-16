@@ -162,11 +162,11 @@ const ui = await page.evaluate(() => {
   routing.last = routing.options[0];
   renderRouteOptionControls();
   settingsPaneSelect?.('options');
-  const bikeRouteToggle = document.getElementById('r-alwaysPreferBikeRoutes');
   openRoutingWeights();
+  const bikeRouteToggle = document.getElementById('r-alwaysPreferBikeRoutes');
   const toggle = document.getElementById('r-allowFerries');
-  const advancedIds = ['r-prefDesig', 'r-prefResidential', 'r-allowSidewalkFallback',
-    'r-allowMtbTrails', 'r-allowFerries'];
+  const advancedIds = ['r-prefDesig', 'r-alwaysPreferBikeRoutes', 'r-prefResidential',
+    'r-allowSidewalkFallback', 'r-allowMtbTrails', 'r-allowFerries'];
   const out = {
     oldButtonGone: !document.getElementById('routeRemixBtn'),
     oldDialogGone: !document.getElementById('remixDialog'),
@@ -182,7 +182,7 @@ const ui = await page.evaluate(() => {
     defaultChecked: toggle?.checked === true,
     ferryHint: toggle?.closest('.rule-card')?.querySelector('.rule-check-hint')?.textContent || '',
     bikeRouteToggleExists: !!bikeRouteToggle,
-    bikeRouteToggleInOptions: !!bikeRouteToggle?.closest('#settings-options'),
+    bikeRouteToggleInAdvanced: !!bikeRouteToggle?.closest('#advancedRoutingOptions'),
     bikeRouteDefaultChecked: bikeRouteToggle?.checked === true,
     bikeRouteLabel: bikeRouteToggle?.closest('label')?.textContent.trim() || '',
   };
@@ -215,18 +215,18 @@ check('the route chooser contains only route choices',
     && ui.chooserButtons[0] === 'A (Only route)',
   JSON.stringify(ui));
 check('the Show me routes dialog is removed', ui.oldDialogGone, JSON.stringify(ui));
-check('the five expert switches live in Advanced routing, not Options',
+check('the six expert switches live in Advanced routing, not Options',
   ui.toggleExists && ui.toggleInAdvanced && ui.advancedAllPresent
     && ui.advancedAbsentFromOptions && ui.optionsVisible && ui.defaultChecked
     && ui.ferryHint === '',
   JSON.stringify(ui));
 check('turning ferries off updates the rule and requests a fresh portfolio',
   ui.ruleOff && ui.freshPortfolio, JSON.stringify(ui));
-check('the strong signed-route preference is an Options toggle and defaults off',
-  ui.bikeRouteToggleExists && ui.bikeRouteToggleInOptions
+check('the strong signed-route preference lives in Advanced routing and defaults off',
+  ui.bikeRouteToggleExists && ui.bikeRouteToggleInAdvanced
     && !ui.bikeRouteDefaultChecked
-    // The caution copy grew and the option moved below the rules it overrides
-    // (field direction); the label is the full sentence now.
+    // The caution copy stays with it through the move to Advanced routing
+    // (field direction); the label is the full sentence.
     && ui.bikeRouteLabel === 'Follow designated bike routes even if they fail safety rules (use with caution — not generally recommended)',
   JSON.stringify(ui));
 check('turning the signed-route preference on updates the routing rule',

@@ -356,6 +356,86 @@ function roadBlockEdgeSet(points) {
   return blocked.size ? blocked : null;
 }
 
+/* ---------------- per-route Preferred (Settings -> Routes / the tap card) */
+// The rider can mark individual signed routes Preferred. The graph stores
+// only an anonymous on-a-signed-route bit (flag 64), never which route, so
+// the main thread sends the chosen routes' geometry from the bikeroutes
+// overlay and the edges are matched here, once per selection. The selection
+// key rides in `rules.preferredRoutes`, so every cost, bound, and portfolio
+// signature already distinguishes selections; the key match below is what
+// keeps a search honest if it ever races the geometry message.
+let preferredEdges = null;      // Uint8Array(E): 1 = edge of a Preferred route
+let preferredRoutesKey = '';    // the selection the set was built for
+
+function receivePreferredRoutes(key, lines) {
+  preferredRoutesKey = String(key || '');
+  preferredEdges = null;
+  if (!preferredRoutesKey || !Array.isArray(lines) || !lines.length || !E) return;
+  // Candidates are only edges already flagged as signed-route members: the
+  // overlay and the graph are cut from the same OSM relations, so a Preferred
+  // route's edges are a subset of flag-64 edges — and the restriction keeps a
+  // parallel local street from being captured by proximity alone.
+  const TOL_M = 30;
+  const CELL_DEG = 0.005;
+  const PAD_DEG = 0.0006; // wider than TOL_M in degrees at mid latitudes
+  const grid = new Map(); // "x,y" cell -> flat [lon0, lat0, lon1, lat1, ...]
+  for (const line of lines) {
+    if (!Array.isArray(line)) continue;
+    for (let i = 1; i < line.length; i++) {
+      const a = line[i - 1], b = line[i];
+      const lon0 = Number(a?.[0]), lat0 = Number(a?.[1]);
+      const lon1 = Number(b?.[0]), lat1 = Number(b?.[1]);
+      if (!Number.isFinite(lon0) || !Number.isFinite(lat0)
+        || !Number.isFinite(lon1) || !Number.isFinite(lat1)) continue;
+      const xMin = Math.floor((Math.min(lon0, lon1) - PAD_DEG) / CELL_DEG);
+      const xMax = Math.floor((Math.max(lon0, lon1) + PAD_DEG) / CELL_DEG);
+      const yMin = Math.floor((Math.min(lat0, lat1) - PAD_DEG) / CELL_DEG);
+      const yMax = Math.floor((Math.max(lat0, lat1) + PAD_DEG) / CELL_DEG);
+      for (let x = xMin; x <= xMax; x++) {
+        for (let y = yMin; y <= yMax; y++) {
+          const cell = `${x},${y}`;
+          let bucket = grid.get(cell);
+          if (!bucket) grid.set(cell, bucket = []);
+          bucket.push(lon0, lat0, lon1, lat1);
+        }
+      }
+    }
+  }
+  if (!grid.size) return;
+  const tolSq = TOL_M * TOL_M;
+  const nearRoute = (lon, lat) => {
+    const bucket = grid.get(`${Math.floor(lon / CELL_DEG)},${Math.floor(lat / CELL_DEG)}`);
+    if (!bucket) return false;
+    const metersPerLon = 111_320 * Math.cos(lat * Math.PI / 180);
+    for (let s = 0; s < bucket.length; s += 4) {
+      const ax = (bucket[s] - lon) * metersPerLon, ay = (bucket[s + 1] - lat) * 110_540;
+      const bx = (bucket[s + 2] - lon) * metersPerLon, by = (bucket[s + 3] - lat) * 110_540;
+      const dx = bx - ax, dy = by - ay;
+      const spanSq = dx * dx + dy * dy;
+      const t = spanSq ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / spanSq)) : 0;
+      const px = ax + t * dx, py = ay + t * dy;
+      if (px * px + py * py <= tolSq) return true;
+    }
+    return false;
+  };
+  const set = new Uint8Array(E);
+  let marked = 0;
+  for (let ei = 0; ei < E; ei++) {
+    if (!(eFlags[ei] & 64)) continue;
+    // Most of an edge's stored shape must lie on the route: an edge that
+    // merely CROSSES a preferred route touches it at one point and must not
+    // inherit the preference.
+    const start = eOff[ei], count = eCnt[ei];
+    let hits = 0;
+    for (let i = start; i < start + count; i++) {
+      if (nearRoute(gLon[i], gLat[i])) hits++;
+    }
+    if (count >= 2 && hits / count >= 0.8) { set[ei] = 1; marked++; }
+  }
+  preferredEdges = set;
+  postMessage({ type: 'preferred-routes-applied', key: preferredRoutesKey, edges: marked });
+}
+
 function rulesSignature(rules) {
   let out = '';
   for (const key of Object.keys(rules || {}).sort()) {
@@ -372,7 +452,8 @@ function rulesSignature(rules) {
 function safetyRulesSignature(rules) {
   let out = '';
   for (const key of Object.keys(rules || {}).sort()) {
-    if (key === 'requireSafe' || key === 'alwaysPreferBikeRoutes') continue;
+    if (key === 'requireSafe' || key === 'alwaysPreferBikeRoutes'
+      || key === 'preferredRoutes') continue;
     out += `${key}=${rules[key]};`;
   }
   return out;
@@ -654,6 +735,24 @@ function preferredSignedRouteMult() {
     ALWAYS_PREFER_SIGNED_ROUTE_MULT);
 }
 
+// One semantics for both follow-signed-routes lenses: the global option
+// (alwaysPreferBikeRoutes) trusts EVERY signed edge; a per-route Preferred
+// (Settings -> Routes) trusts the edges of just the chosen routes. Both are
+// routing lenses, not safety verdicts -- the trusted edge is priced like the
+// best off-street path (better: 0.12 vs the shipped 0.16), and its actual
+// verdict still colors the map and the route.
+function trustRouteEdge(ei, fl, rules) {
+  if (!(fl & 64) || (fl & 32) || isDismountEdge(ei)) return false;
+  if (rules.alwaysPreferBikeRoutes) return true;
+  return preferredEdges !== null && preferredEdges[ei] === 1
+    && rules.preferredRoutes === preferredRoutesKey;
+}
+// Whether the per-route lens is live for this rules object -- the heuristic
+// needs a global answer where trustRouteEdge answers per edge.
+function preferredRoutesActive(rules) {
+  return preferredEdges !== null && rules?.preferredRoutes === preferredRoutesKey;
+}
+
 function heuristicSpeed(mode, prefResidential, rules = null) {
   const comfy = mode === 'direct' ? 1
     : mode === 'low' ? activeWeights.comfyRoadLowStress : activeWeights.comfyRoadBalanced;
@@ -663,7 +762,8 @@ function heuristicSpeed(mode, prefResidential, rules = null) {
     activeWeights.facilityShared, activeWeights.facilityLane,
     activeWeights.facilityBuffered, activeWeights.facilitySeparated,
     activeWeights.strongDesignated, activeWeights.designated,
-    rules?.alwaysPreferBikeRoutes ? preferredSignedRouteMult() : 1);
+    (rules?.alwaysPreferBikeRoutes || preferredRoutesActive(rules))
+      ? preferredSignedRouteMult() : 1);
   const residential = prefResidential ? Math.min(1, activeWeights.residential) : 1;
   const onStreet = SPEED_STRESS_FLOOR * onStreetBonus * residential * level;
   // Off-street: no speedStress, no residential, but the path bonus is available.
@@ -1370,8 +1470,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // prices it, even when the unchanged model calls it caution or failure.
   // Permissions remain permissions: prohibited edges never reach here, and
   // freeway/MTB/ferry admission is still handled by their own settings.
-  const trustSignedRoute = !!rules.alwaysPreferBikeRoutes && !!(fl & 64)
-    && !(fl & 32) && !isDismountEdge(ei);
+  const trustSignedRoute = trustRouteEdge(ei, fl, rules);
   const mult = modeMult(mode, trustSignedRoute ? 1 : searchLevel);
   if (!(mult < Infinity)) { partsSteep = 0; partsSurf = 0; partsDivOk = 0; return Infinity; }
   let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode);
@@ -1600,8 +1699,7 @@ function edgeCostFloor(i, forward) {
   // under a discovery lens -- which reprices a road without restating it.
   const searchLevel = edgeLevelFor(i, searchRules, forward);
   const level = searchRules === rules ? searchLevel : edgeLevelFor(i, rules, forward);
-  const trustSignedRoute = !!rules.alwaysPreferBikeRoutes && !!(fl & 64)
-    && !(fl & 32) && !isDismountEdge(i);
+  const trustSignedRoute = trustRouteEdge(i, fl, rules);
   let m = modeMult(mode, trustSignedRoute ? 1 : searchLevel);
   if (!(m < Infinity)) return Infinity;
   if (trustSignedRoute) {
@@ -4157,6 +4255,8 @@ onmessage = (ev) => {
         prefResidential: !!m.prefResidential,
       };
       postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }) });
+    } else if (m.type === 'preferred-routes') {
+      receivePreferredRoutes(m.key, m.lines);
     } else if (m.type === 'configure') {
       // Sent once at startup, before any search allocates. See the cap
       // comment at COST_CACHE_SLOTS: a phone survives startup by holding

@@ -559,6 +559,18 @@ body:not(.navigation-active) #navCard { display: none; }
 .maps-state-remove { flex: none; min-height: 30px; padding: 4px 10px; border: 1px solid #d3b1ac; border-radius: 8px; background: #fff6f4; color: #8c3a2b; font: 750 11px/1 system-ui; cursor: pointer; touch-action: manipulation; }
 .maps-state-download { flex: none; margin-left: auto; min-height: 34px; padding: 5px 12px; border: 1px solid #0a58a8; border-radius: 9px; background: #0a66c2; color: #fff; font: 750 11.5px/1 system-ui; cursor: pointer; touch-action: manipulation; white-space: nowrap; }
 .maps-state-download:disabled { opacity: .55; cursor: default; }
+/* Settings → Routes: the state's signed routes, each markable Preferred. */
+.state-routes-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px; }
+.state-route-row { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 6px 11px; border: 1px solid #dbe5ea; border-radius: 10px; background: #fff; color: #24343f; cursor: pointer; }
+.state-route-row input { width: 18px; height: 18px; flex: none; accent-color: #0a66c2; }
+.state-route-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.state-route-name strong { font: 700 13px/1.25 system-ui; overflow-wrap: anywhere; }
+.state-route-name small { color: #6a7d89; font: 600 10.5px/1.3 system-ui; }
+.state-route-preferred-badge { margin-left: auto; padding: 2px 7px; border-radius: 999px; background: #3c7a1e; color: #fff; font: 800 9.5px/1.5 system-ui; letter-spacing: .04em; text-transform: uppercase; }
+/* The same toggle on a tapped route segment's card. */
+.readout-preferred-routes { display: grid; gap: 4px; margin: 7px 0 0; }
+.readout-preferred-route { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 4px 9px; border: 1px solid #d6e2c9; border-radius: 9px; background: #f5f9ef; color: #33502a; font: 700 12px/1.25 system-ui; cursor: pointer; }
+.readout-preferred-route input { width: 17px; height: 17px; flex: none; accent-color: #3c7a1e; }
 .maps-stores { margin-top: 22px; }
 .maps-stores h3 { margin: 0 0 4px; color: #22323d; font: 800 14px/1.2 system-ui; }
 .maps-store { margin: 8px 0; padding: 9px 11px; border: 1px solid #dbe5ea; border-radius: 10px; background: #fff; }
@@ -673,23 +685,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .active-route-icon-head h2 { margin: 0; color: #233f50; font: 820 15px/1.1 system-ui; }
 #activeRouteIconLegendClose { flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: #edf1f4; color: #50636e; font: 750 15px/1 system-ui; cursor: pointer; }
 .active-route-icon-intro { margin: 3px 0 7px; color: #506875; font: 650 9.5px/1.2 system-ui; }
-.active-route-color-guide h3, .active-route-icons-heading { margin: 0 0 5px; color: #2d4b5b; font: 820 10px/1.1 system-ui; letter-spacing: .045em; text-transform: uppercase; }
-.active-route-color-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 6px; }
-.active-route-color-item { display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 35px; padding: 3px 6px; border: 1px solid #dbe6ec; border-radius: 8px; background: rgba(255,255,255,.88); }
-.active-route-color-item > span:last-child { display: grid; gap: 1px; min-width: 0; }
-.active-route-color-item strong { color: #294554; font: 800 9.5px/1.08 system-ui; }
-.active-route-color-item small { color: #617580; font: 620 8px/1.12 system-ui; }
-.active-route-line { position: relative; flex: 0 0 45px; width: 45px; height: 17px; border-radius: 9px; background: #fff; box-shadow: inset 0 0 0 1px #d7e1e7; overflow: hidden; }
-.active-route-line::before, .active-route-line::after { content: ''; position: absolute; left: 3px; right: 3px; top: 50%; transform: translateY(-50%); border-radius: 999px; }
-.active-route-line::before { height: 9px; background: #fff; box-shadow: 0 0 0 3px rgba(16,42,67,.72); }
-.active-route-line::after { height: 5px; background: var(--verdict-pass); }
-.active-route-line.trail::after { height: 6px; background-color: var(--bike-network); background-image: radial-gradient(circle,var(--trail-dots) 0 1.1px,transparent 1.25px); background-position: center; background-size: 5px 5px; }
-.active-route-line.bike-lane::after { background: var(--bike-network); }
-.active-route-line.caution::after { background: var(--verdict-caution); }
-.active-route-line.fails::after { border-radius: 0; background: repeating-linear-gradient(90deg,var(--verdict-fail) 0 7px,transparent 7px 11px); }
-.active-route-line.designated::before { height: 13px; background: var(--designated); box-shadow: none; }
-.active-route-line.designated::after { height: 5px; background: var(--verdict-pass); box-shadow: 0 0 0 2px #fff; }
-.active-route-icons-heading { margin-top: 8px; }
 .active-route-icon-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
 .active-route-icon-item { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 38px; padding: 4px 6px; border: 1px solid #dbe6ec; border-radius: 8px; background: rgba(255,255,255,.88); }
 .active-route-icon-item canvas { flex: none; width: 25px !important; height: 25px !important; object-fit: contain; }

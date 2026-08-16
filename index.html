@@ -189,18 +189,6 @@
       <button id="activeRouteIconLegendClose" type="button" aria-label="Close route icons" title="Close route icons">✕</button>
     </div>
     <p class="active-route-icon-intro">Tap any route line or icon to see details for that section.</p>
-    <section class="active-route-color-guide" aria-labelledby="activeRouteColorGuideTitle">
-      <h3 id="activeRouteColorGuideTitle">Route colors</h3>
-      <div class="active-route-color-items">
-        <div class="active-route-color-item"><span class="active-route-line trail" aria-hidden="true"></span><span><strong>Off-street trail</strong><small>Separated from motor traffic.</small></span></div>
-        <div class="active-route-color-item"><span class="active-route-line bike-lane" aria-hidden="true"></span><span><strong>Bike lane</strong><small>Marked bicycle space beside traffic.</small></span></div>
-        <div class="active-route-color-item"><span class="active-route-line passes" aria-hidden="true"></span><span><strong>Passes your rules</strong><small>Ordinary road within your limits.</small></span></div>
-        <div class="active-route-color-item"><span class="active-route-line caution" aria-hidden="true"></span><span><strong>Use caution</strong><small>Hill, traffic, or surface needs care.</small></span></div>
-        <div class="active-route-color-item"><span class="active-route-line fails" aria-hidden="true"></span><span><strong>Fails your rules</strong><small>Speed, traffic, shoulder, or access exceeds a limit.</small></span></div>
-        <div class="active-route-color-item"><span class="active-route-line designated" aria-hidden="true"></span><span><strong>Designated bike route</strong><small>Green band; center still shows safety.</small></span></div>
-      </div>
-    </section>
-    <h3 class="active-route-icons-heading">Icons on your route</h3>
     <div id="activeRouteIconLegendItems" class="active-route-icon-items"></div>
   </section>
 
@@ -260,8 +248,9 @@
           <button id="settings-tab-options" type="button" role="tab" aria-selected="false" aria-controls="settings-options" data-settings-pane="options">Options</button>
           <button id="settings-tab-voice" type="button" role="tab" aria-selected="false" aria-controls="settings-voice" data-settings-pane="voice">Voice-Nav</button>
         </div>
-        <!-- Not a tab: it opens a screen rather than swapping a panel below,
-             so it stays out of the tablist and says so to assistive tech. -->
+        <!-- Not tabs: these open screens rather than swapping a panel below,
+             so they stay out of the tablist and say so to assistive tech. -->
+        <button id="settings-tab-routes" class="settings-tab-standalone" type="button" aria-haspopup="dialog">Routes</button>
         <button id="settings-tab-maps" class="settings-tab-standalone" type="button" aria-haspopup="dialog">Maps</button>
       </div>
       <div id="settings-presets" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-presets">
@@ -299,6 +288,19 @@
           <button id="mapsStoreAdd" type="button">Add store</button>
         </div>
       </div>
+    </div>
+  </dialog>
+
+  <dialog id="stateRoutesDialog" class="full-help-dialog maps-dialog state-routes-dialog" aria-labelledby="stateRoutesTitle">
+    <div class="full-help-head">
+      <div><span>Settings</span><h2 id="stateRoutesTitle">Routes</h2></div>
+      <button class="dialog-close" data-close="stateRoutesDialog" aria-label="Close routes">✕</button>
+    </div>
+    <div class="maps-body">
+      <p class="maps-lead">Signed bicycle routes in <span id="stateRoutesRegion"></span>.</p>
+      <p class="maps-note">Mark a route <b>Preferred</b> and trip planning follows it even harder than an off-street trail — including where it fails your safety rules. Route choice only: map colors, Route Details, and warnings still show every road as it is.</p>
+      <div id="stateRoutesList" class="state-routes-list"></div>
+      <p id="stateRoutesStatus" class="maps-status" role="status" aria-live="polite"></p>
     </div>
   </dialog>
 
@@ -480,17 +482,20 @@
       <li><b>Route over freeway as last resort (still shows as failing)</b> — a freeway always fails your rules. Off, routes never use one. On, one may be used as a heavily penalized last resort and is still reported as failing, so strict matching excludes it anyway.</li>
       <li><b>Strongly prefer paved surfaces</b> — favors paved roads and trails. Gravel and unpaved paths remain available, and missing surface data is not penalized.</li>
       <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
-      <li><b>Follow designated bike routes even if they fail safety rules <span class="rule-caution-copy">(use with caution)</span></b> — strongly follows signed bike routes for route choice only. Real road safety still controls the map color, Route Details, cautions, and voice warnings, so a signed road can remain animated red.</li>
       <li><b>Guess shoulder width from other data when it isn’t documented</b> — the county road log records how much pavement is left over once the lanes are taken out, per side. That is somewhere to pull over, not necessarily somewhere to ride, so 1 ft is subtracted and the rest counts as shoulder. Only fills a gap: a recorded shoulder always wins, and a zero is ignored because it can mean a paperwork error rather than a measured absence. Cards say when a figure was guessed. <b>On for The Randonneur only.</b> An undocumented shoulder counts as 0 ft and only about 7% of roads document one, so without this the map calls a road failing on missing data rather than on evidence. Weekend Wanderer and Casual Cruiser leave it off: both exist to honour slower roads literally, and Casual Cruiser filters routes to fully matching road, where a guessed shoulder should not be what lets a road in.</li>
       <li><b>Missing shoulder data</b> — always treated as 0 ft, and not adjustable. "No data" and "no shoulder" look the same from the saddle, so a fast road has to show a shoulder to pass rather than benefit from an absence of evidence. Slow roads never reach the shoulder rule at all.</li>
       <li><b>Show advanced options and routing weights</b> — reveals the map’s weights button and the expert route switches described below. Leave it off unless you want to tune how the router searches.</li>
       </ul><p><b>Find</b> searches local offline places first. When there are no offline matches, it automatically searches online for nearby businesses, landmarks, services, parks, addresses, and other named places. Choose <b>Route It</b> to make a new trip from your current location, or <b>Map</b> (or anywhere else on the result) to inspect it without changing your trip. <b>Search with internet</b> remains available whenever you want broader results.</p></section>
     <section><h3>Advanced routing</h3><ul class="help-list">
       <li><b>Heavily prefer designated bike routes</b> — favors signed bike-route corridors. Trails and physical bike infrastructure have their own independent routing preferences.</li>
+      <li><b>Follow designated bike routes even if they fail safety rules <span class="rule-caution-copy">(use with caution)</span></b> — strongly follows signed bike routes for route choice only. Real road safety still controls the map color, Route Details, cautions, and voice warnings, so a signed road can remain animated red.</li>
       <li><b>Prefer residential streets</b> — every route choice favors streets mapped as residential or living streets.</li>
       <li><b>Allow sidewalk fallback</b> — lets an explicitly mapped sidewalk satisfy the shoulder rule. It remains strongly avoided and is called out in Route Details.</li>
       <li><b>Allow mountain bike trails</b> — makes explicitly MTB-tagged paths available, but strongly avoided.</li>
       <li><b>Allow routes with ferries</b> — includes ferry itineraries in route searches.</li>
+    </ul></section>
+    <section><h3>Routes</h3><ul class="help-list">
+      <li><b>Preferred routes</b> — <b>Settings → Routes</b> lists every signed bicycle route in the loaded state. Mark one <b>Preferred</b> and trip planning follows it even harder than an off-street trail, including where it fails your safety rules — route choice only, so map colors, Route Details, and warnings still show every road as it is. Tapping a route ribbon on the map offers the same checkbox. Your picks are saved per state.</li>
     </ul></section>
     <section><h3>Voice navigation</h3><ul class="help-list">
       <li><b>Setting off</b> — the first prompt of a ride names the compass direction and road to start on, plus the first turn, because your phone cannot know which way you are facing until you move.</li>

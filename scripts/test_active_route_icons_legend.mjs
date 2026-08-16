@@ -35,7 +35,6 @@ await page.evaluate(() => document.getElementById('layersToggle').click());
 const opened = await page.evaluate(() => {
   const legend = document.getElementById('activeRouteIconLegend');
   const items = [...legend.querySelectorAll('.active-route-icon-item')];
-  const colorItems = [...legend.querySelectorAll('.active-route-color-item')];
   return {
     title: document.getElementById('activeRouteIconLegendTitle').textContent,
     visible: !legend.hidden,
@@ -48,16 +47,7 @@ const opened = await page.evaluate(() => {
     hasKicker: /Map guide/i.test(legend.textContent),
     labels: items.map((item) => item.getAttribute('aria-label')),
     descriptions: items.map((item) => item.querySelector('small')?.textContent || ''),
-    colorCount: colorItems.length,
-    colorLabels: colorItems.map((item) => item.textContent.replace(/\s+/g, ' ').trim()),
-    colorSamples: colorItems.map((item) => {
-      const sample = item.querySelector('.active-route-line');
-      return {
-        before: getComputedStyle(sample, '::before').backgroundColor,
-        after: getComputedStyle(sample, '::after').backgroundColor,
-        afterImage: getComputedStyle(sample, '::after').backgroundImage,
-      };
-    }),
+    colorCount: legend.querySelectorAll('.active-route-color-item, .active-route-color-guide').length,
     painted: items.every((item) => {
       const canvas = item.querySelector('canvas');
       const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
@@ -67,21 +57,13 @@ const opened = await page.evaluate(() => {
 });
 check('the map legend button opens Route Icons with the Layers pane',
   opened.visible && opened.layersOpen && opened.title === 'Route Icons'
-    && !opened.hasKicker && opened.height > 280 && opened.height <= 560,
+    && !opened.hasKicker && opened.height > 140 && opened.height <= 560,
   JSON.stringify(opened));
-check('the guide explains every active-route color treatment',
-  opened.colorCount === 6
-    && opened.colorLabels.some((label) => /Off-street trail.*Separated from motor traffic/.test(label))
-    && opened.colorLabels.some((label) => /Bike lane.*Marked bicycle space beside traffic/.test(label))
-    && opened.colorLabels.some((label) => /Passes your rules.*within your limits/.test(label))
-    && opened.colorLabels.some((label) => /Use caution.*Hill, traffic, or surface needs care/.test(label))
-    && opened.colorLabels.some((label) => /Fails your rules.*exceeds a limit/.test(label))
-    && opened.colorLabels.some((label) => /Designated bike route.*center still shows safety/i.test(label))
-    && opened.colorSamples.every((sample) => sample.before !== sample.after
-      || sample.afterImage !== 'none'), JSON.stringify(opened));
+check('the retired Route colors section stays gone', opened.colorCount === 0,
+  JSON.stringify(opened));
 check('all six useful route icon meanings are present, explained, and painted',
   opened.count === 6 && opened.painted
-    && opened.labels.some((label) => /Designated route !\?/.test(label))
+    && opened.labels.some((label) => /Bike route fails rules/.test(label))
     && !opened.labels.some((label) => /MTB|Technical trail/.test(label))
     && !opened.labels.some((label) => /Ferry/.test(label))
     && opened.descriptions.every((description) => description.length >= 12),
