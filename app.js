@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-16.725';
+const APP_VERSION = '2026-08-16.726';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11494,7 +11494,25 @@ function featureAt(point) {
   // is the right rule here: the marker's own layer is on top because the
   // marker is what was tapped.
   if (onMarker) return pool[0];
-  return nearestOfHits(point, pool);
+  return dodgeBannedHit(point, pool, nearestOfHits(point, pool));
+}
+
+// A tap that could mean a rideable way or a bikes-banned one beside it means
+// the rideable way -- the same doctrine as the router's node snapping ("a tap
+// beside I-90 should not board I-90"). Beside the Interurban Trail the
+// nearest record is I-5's, and handing the rider a banned freeway's card for
+// a tap aimed at the trail is never the answer they wanted. Everything in
+// the pool is already inside the tap box, so no extra reach is granted; the
+// banned road's own card remains one clean tap away from anything else.
+function hitProhibited(feature) {
+  const src = HIT_SRC[feature.layer?.id];
+  if (!src?.scorer) return false;
+  try { return !!src.scorer(feature.properties || {}).prohibited; } catch (e) { return false; }
+}
+function dodgeBannedHit(point, pool, pick) {
+  if (!pick || !hitProhibited(pick)) return pick;
+  const rideable = pool.filter((feature) => !hitProhibited(feature));
+  return rideable.length ? nearestOfHits(point, rideable) : pick;
 }
 
 // Point-to-segment distance in screen pixels.
@@ -11918,12 +11936,15 @@ function bikeRouteContextRow(srcId, p, screenPoint) {
     ? ['Bike route', 'On a designated route (USBR / regional trail)'] : null;
 }
 
-// Which Preferred checkboxes a tapped feature's card offers. A bikes-banned
-// road cannot be the carrier of the route beside it, so its card never
-// offers the route's checkbox -- the same misattribution guard as above.
+// Which Preferred checkboxes a tapped feature's card offers. Proximity-based
+// on every card, banned roads included: when the banned road's record is the
+// only reachable card beside a trail, its card is also the only place the
+// trail's checkbox can live -- and the checkbox names its route explicitly,
+// while the row/banner gating above keeps the verdict from being pinned on
+// the wrong road. (An earlier gate hid it on banned cards; that traded the
+// misattribution for unreachability and gave up the wrong half.)
 function preferredRouteTogglesFor(srcId, p, n, lngLat) {
   if (srcId === 'routes') return routeOverlayNames(p);
-  if (n?.prohibited) return [];
   return routeNamesNear(lngLat);
 }
 

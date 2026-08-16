@@ -249,6 +249,9 @@ const attribution = await page.evaluate((mid) => {
   out.flaggedNoRibbon = bikeRouteContextRow('roads', { g: 1 }, point);
   out.plainRoad = bikeRouteContextRow('roads', {}, point);
   routeBadgeAt = original;
+  // Reachability: beside a trail the banned road's record often wins the tap,
+  // so its card still offers the trail's checkbox -- explicitly named, with
+  // the row/banner gating above keeping the verdict off the wrong road.
   out.prohibitedToggles = preferredRouteTogglesFor('blts',
     {}, { prohibited: true }, { lng: mid[0], lat: mid[1] });
   out.ordinaryToggles = preferredRouteTogglesFor('roads',
@@ -261,10 +264,33 @@ check('a proximity badge never lands on a road without its own route claim',
     && attribution.infrastructure?.[1] === 'Interurban Trail'
     && /designated route/.test(attribution.flaggedNoRibbon?.[1] || ''),
   JSON.stringify(attribution));
-check('a bikes-banned card never offers the neighbouring route’s checkbox',
-  attribution.prohibitedToggles.length === 0
+check('every card near the route offers its checkbox, banned roads included',
+  attribution.prohibitedToggles.includes('Interurban Trail')
     && attribution.ordinaryToggles.includes('Interurban Trail'),
   JSON.stringify(attribution));
+
+// An ambiguous tap -- a rideable way and a bikes-banned one both in reach --
+// resolves to the rideable way, even when the banned one is nearer.
+const dodge = await page.evaluate(() => {
+  const center = map.getCenter();
+  const at = map.project([center.lng, center.lat]);
+  const lineAt = (pxOffset) => {
+    const a = map.unproject([at.x - 30, at.y + pxOffset]);
+    const b = map.unproject([at.x + 30, at.y + pxOffset]);
+    return { type: 'LineString', coordinates: [[a.lng, a.lat], [b.lng, b.lat]] };
+  };
+  const banned = { layer: { id: 'roads__hit' }, properties: { b: 1 }, geometry: lineAt(0) };
+  const rideable = { layer: { id: 'roads__hit' }, properties: {}, geometry: lineAt(4) };
+  return {
+    bannedIsProhibited: hitProhibited(banned),
+    rideableIsNot: !hitProhibited(rideable),
+    pick: dodgeBannedHit(at, [banned, rideable], banned) === rideable,
+    aloneStays: dodgeBannedHit(at, [banned], banned) === banned,
+  };
+});
+check('an ambiguous tap resolves to the rideable way, not the banned one',
+  dodge.bannedIsProhibited && dodge.rideableIsNot && dodge.pick && dodge.aloneStays,
+  JSON.stringify(dodge));
 
 /* --------------------------------------------- GPS outside the selected map */
 const gps = await page.evaluate(async () => {
