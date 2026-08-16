@@ -33,12 +33,19 @@ def check(name, ok, detail=''):
 
 # Everything both builds need is ONE object, imported, not a lookalike copy.
 for symbol in ('parse_mph', 'parse_shoulder_ft', 'osm_facility_class',
-               'DEFAULT_MPH', 'DRIVE', 'LIMITED', 'REF_STATE',
+               'DEFAULT_MPH', 'DRIVE', 'LIMITED',
                'WSDOT_ALWAYS_CLASSES', 'SIMPLIFY_DEG', 'ROAD_CLASS',
                'surface_class', 'lane_class', 'sidewalk_flags', 'blts_match',
                'load_official_index', 'official_match', 'FACILITY_PATH'):
     check(f'{symbol} is shared, not copied',
           getattr(build_roads, symbol) is getattr(build_graph, symbol))
+
+# REF_STATE shares differently: --region reassigns it on build_graph, so a
+# from-import in build_roads would freeze the pre-region copy. Parity there
+# means build_roads has NO name of its own and reads build_graph.REF_STATE at
+# use time (test_state_ref_gate.py proves the reassignment is seen).
+check('REF_STATE is read live, never imported by name',
+      not hasattr(build_roads, 'REF_STATE'))
 
 # The drift that existed: 'maxspeed=50 km' parsed as 50 mph in the tile and
 # 31 mph in the graph. One parser now, and it converts.
