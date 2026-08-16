@@ -52,6 +52,40 @@ const content = await page.evaluate(async () => {
 check('the tour has its steps and shows exactly the first',
   content.stepCount >= 6 && content.visible === 1 && content.firstVisible,
   JSON.stringify(content));
+
+// ---- the two legend steps mirror the app's own vocabulary, not a copy:
+// category rows come from ROUTE_CATEGORY_LABELS and warning icons from
+// renderActiveRouteIconItems, so both must match those sources exactly.
+const legends = await page.evaluate(() => {
+  const levelRows = [...document.querySelectorAll('.onboarding-legend-row')];
+  const iconItems = [...document.querySelectorAll('.onboarding-icon-legend .active-route-icon-item')];
+  return {
+    levelLabels: levelRows.map((row) => row.querySelector('strong')?.textContent),
+    expectedLevels: ROUTE_CATEGORY_LABELS.map(([, label]) => label),
+    levelSwatches: levelRows.map((row) => {
+      const swatch = row.querySelector('.rc-category-swatch');
+      return swatch ? getComputedStyle(swatch).backgroundColor : null;
+    }),
+    levelNotes: levelRows.filter((row) => row.querySelector('small')?.textContent.trim()).length,
+    iconLabels: iconItems.map((item) => item.querySelector('strong')?.textContent),
+    expectedIcons: ACTIVE_ROUTE_ICON_DEFINITIONS.map(([, label]) => label),
+    iconCanvases: iconItems.filter((item) => {
+      const canvas = item.querySelector('canvas');
+      return canvas && canvas.width > 0;
+    }).length,
+  };
+});
+check('the color-legend step lists every route category, in order',
+  legends.levelLabels.join('|') === legends.expectedLevels.join('|'),
+  JSON.stringify({ got: legends.levelLabels, want: legends.expectedLevels }));
+check('every category row paints a real swatch and carries a note',
+  legends.levelSwatches.every((color) => color && color !== 'rgba(0, 0, 0, 0)')
+    && legends.levelNotes === legends.levelLabels.length,
+  JSON.stringify(legends.levelSwatches));
+check('the warning-icon step mirrors the route-guide legend exactly',
+  legends.iconLabels.join('|') === legends.expectedIcons.join('|')
+    && legends.iconCanvases === legends.expectedIcons.length,
+  JSON.stringify({ got: legends.iconLabels, want: legends.expectedIcons, drawn: legends.iconCanvases }));
 check('every step screenshot loads from the shipped assets',
   content.brokenImages.length === 0, content.brokenImages.join(' '));
 check('every screenshot carries alt text', content.missingAlt === 0, `${content.missingAlt} missing`);

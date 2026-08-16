@@ -25,7 +25,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // invisible to everyone who already has the app. v642 was maps/states.js
 // gaining Oregon (that file is SHELL, not data: it is the index naming which
 // states exist). v643 was app.js and styles.css; v644 app.js; v645 app.js and palette.js.
-const VERSION = 'v693'; // bump when app shell changes
+const VERSION = 'v694'; // bump when app shell changes
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -71,8 +71,8 @@ const SHELL = [
   './onboarding/tour-welcome.jpg',
   './onboarding/tour-plan.jpg',
   './onboarding/tour-routes.jpg',
-  './onboarding/tour-colors.jpg',
-  './onboarding/tour-warning.jpg',
+  './onboarding/tour-fast.jpg',
+  './onboarding/tour-safer.jpg',
   './onboarding/tour-road.jpg',
   './onboarding/tour-navigate.jpg',
 ];

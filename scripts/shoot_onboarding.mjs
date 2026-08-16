@@ -2,20 +2,22 @@
 // Phone-sized, dpr 2, JPEG, cropped to the band each step talks about.
 // Writes the final shipped assets into onboarding/ at the repo root.
 //
-// The scenes are STAGED, on two trips:
-//  - Ballard Locks -> UW for the welcome/plan/routes/colors scenes and for
-//    turn navigation, with the fake GPS walked a third of the way along so
-//    the banner shows a real maneuver instead of the wake-lock notice.
-//  - A second trip pinned to 15th Ave NW for the failing-road scenes: the
-//    arterial fails the default rules on traffic (34k vehicles/day) with no
-//    recorded shoulder -- a long, unmistakable dark-red dashed stretch on
-//    the active route, and a card that names the broken rule.
+// One STAGED trip drives every scene: Martha Lake -> Mukilteo. Its portfolio
+// splits cleanly into a fast option that rides the failing arterial corridor
+// (dark-red dashes, a chain of warning badges) and a safer option on
+// designated routes and trails nearly the whole way -- the fast/safer pair
+// shares one camera so swiping between those steps flips the comparison.
+// The fake GPS starts at Martha Lake and is walked along the safer route for
+// the navigation scene so the banner shows a real maneuver.
 // Eyeball every image after a reshoot -- the script cannot judge composition.
 import { launchBrowser, serveRepo } from './testlib/harness.mjs';
 import { mkdirSync } from 'node:fs';
 
 const OUT = new URL('../onboarding', import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
+
+const START = [-122.2390, 47.8508];
+const END = [-122.3046, 47.9479];
 
 const site = await serveRepo();
 const browser = await launchBrowser();
@@ -24,7 +26,7 @@ const context = await browser.newContext({
   viewport: { width: 430, height: 900 },
   deviceScaleFactor: 2,
   hasTouch: true, isMobile: true,
-  geolocation: { latitude: 47.6656, longitude: -122.3974 },
+  geolocation: { latitude: START[1], longitude: START[0] },
   permissions: ['geolocation'],
 });
 const page = await context.newPage();
@@ -38,14 +40,14 @@ const shot = async (name, clip) => {
   await page.screenshot({ path: `${OUT}/${name}.jpg`, type: 'jpeg', quality: 78, clip });
   console.log('shot', name, JSON.stringify(clip || null));
 };
-const route = (start, startName, end, endName) => page.evaluate(async (trip) => {
-  routing.start = trip.start; routing.startName = trip.startName;
+
+// ---- route it, and wait for a NEW portfolio (routing.last stays ok from
+// any previous trip, so `ok` alone would read stale options)
+console.log('routed:', await page.evaluate(async (trip) => {
+  routing.start = trip.start; routing.startName = 'Martha Lake';
   routing.startFromDevice = false;
-  routing.end = trip.end; routing.endName = trip.endName;
+  routing.end = trip.end; routing.endName = 'Mukilteo';
   updateArmButtons();
-  // Wait for a NEW portfolio, not merely an ok one -- routing.last stays ok
-  // from the previous trip, and reading routing.options before the fresh
-  // reply lands staged the wrong route's scenes once.
   const previous = routing.last;
   computeRoute();
   for (let i = 0; i < 240 && (routing.last === previous || !routing.last?.ok); i++) {
@@ -53,20 +55,48 @@ const route = (start, startName, end, endName) => page.evaluate(async (trip) => 
   }
   document.body.classList.remove('panel-open');
   return routing.last !== previous && !!routing.last?.ok;
-}, { start, startName, end, endName });
+}, { start: START, end: END }));
 
-/* ============================== trip 1: Ballard Locks -> UW (Burke-Gilman) */
-console.log('trip 1 routed:', await route([-122.3974, 47.6656], 'Ballard Locks',
-  [-122.3035, 47.6555], 'University of Washington'));
+// The two ends of the trade, straight from the live portfolio.
+const picks = await page.evaluate(() => {
+  const options = routing.options || [];
+  const fastest = [...options].sort((a, b) => (a.timeS || 9e9) - (b.timeS || 9e9))[0];
+  const safest = [...options].sort((a, b) => (a.failM || 0) - (b.failM || 0)
+    || (a.timeS || 9e9) - (b.timeS || 9e9))[0];
+  return {
+    fastI: options.indexOf(fastest), safeI: options.indexOf(safest),
+    fast: { label: fastest?.optimization?.label, mi: +(fastest.distM / 1609.34).toFixed(1), failMi: +(fastest.failM / 1609.34).toFixed(1) },
+    safe: { label: safest?.optimization?.label, mi: +(safest.distM / 1609.34).toFixed(1), failMi: +(safest.failM / 1609.34).toFixed(1) },
+  };
+});
+console.log('picks:', JSON.stringify(picks));
+const activate = (index) => page.evaluate(async (i) => {
+  activateRouteOption(routing.options[i]);
+  await new Promise((r) => setTimeout(r, 700));
+  document.body.classList.remove('panel-open');
+}, index);
 
-// ---- welcome: the suggested route across the city, panel closed
+// ---- welcome: the safer route's waterfront arrival, fitted to the route
+// tail so the framing follows the data rather than a hardcoded center
+await activate(picks.safeI);
+await page.evaluate(async () => {
+  const coords = routing.last.coords;
+  const tail = coords.slice(Math.floor(coords.length * 0.7));
+  let minX = 180, minY = 90, maxX = -180, maxY = -90;
+  for (const [x, y] of tail) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  map.fitBounds([[minX, minY], [maxX, maxY]],
+    { padding: { top: 280, bottom: 240, left: 46, right: 46 }, duration: 0 });
+});
 await idle(); await settle(1500);
-await shot('tour-welcome', { x: 0, y: 330, width: 430, height: 470 });
+await shot('tour-welcome', { x: 0, y: 240, width: 430, height: 470 });
 
 // ---- plan: the trip bar with real endpoints + Find button
 await shot('tour-plan', { x: 0, y: 0, width: 430, height: 205 });
 
-// ---- routes: the route chooser sheet (A-F chips, stats, makeup)
+// ---- routes: the route chooser sheet (lettered chips, stats, makeup)
 await page.evaluate(() => { setPanelOpen(); selectPanelTab('route'); });
 await settle(900);
 const sheet = await page.evaluate(() => {
@@ -74,14 +104,61 @@ const sheet = await page.evaluate(() => {
   return { x: 0, y: Math.max(0, r.top - 4), width: 430, height: Math.min(900 - r.top + 4, r.height + 8) };
 });
 await shot('tour-routes', sheet);
+await page.evaluate(() => document.body.classList.remove('panel-open'));
 
-// ---- colors: mixed safety colors near Fremont/Aurora, no sheet
-await page.evaluate(() => { document.body.classList.remove('panel-open'); map.jumpTo({ center: [-122.3493, 47.6535], zoom: 13.6 }); });
+// ---- fast vs safer: one camera fitted to the whole trip, two activations
+const frame = await page.evaluate(() => {
+  const coords = routing.last.coords;
+  let minX = 180, minY = 90, maxX = -180, maxY = -90;
+  for (const [x, y] of coords) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  map.fitBounds([[minX, minY], [maxX, maxY]],
+    { padding: { top: 230, bottom: 200, left: 44, right: 44 }, duration: 0 });
+  return { center: map.getCenter().toArray(), zoom: map.getZoom() };
+});
+await activate(picks.fastI);
+await page.evaluate((f) => map.jumpTo(f), frame);
 await idle(); await settle(1500);
-await shot('tour-colors', { x: 0, y: 215, width: 430, height: 480 });
+await shot('tour-fast', { x: 0, y: 195, width: 430, height: 545 });
 
-// ---- navigate: GPS walked a third of the way along, next maneuver showing
+await activate(picks.safeI);
+await page.evaluate((f) => map.jumpTo(f), frame);
+await idle(); await settle(1500);
+await shot('tour-safer', { x: 0, y: 195, width: 430, height: 545 });
+
+// ---- road card: tap the LONGEST failing stretch of the fast option;
+// the card names the broken rule with the numbers behind it
+await activate(picks.fastI);
+const cardTop = await page.evaluate(async () => {
+  const segLenM = (coords) => {
+    let m = 0;
+    for (let i = 1; i < coords.length; i++) {
+      const dx = (coords[i][0] - coords[i - 1][0]) * 111320 * Math.cos(coords[i][1] * Math.PI / 180);
+      const dy = (coords[i][1] - coords[i - 1][1]) * 110540;
+      m += Math.hypot(dx, dy);
+    }
+    return m;
+  };
+  const stretches = (map.getSource('route-fail')?._data?.features || [])
+    .map((f) => ({ coords: f.geometry.coordinates, lenM: segLenM(f.geometry.coordinates) }))
+    .sort((a, b) => b.lenM - a.lenM);
+  const target = stretches[0].coords[Math.floor(stretches[0].coords.length / 2)];
+  map.jumpTo({ center: target, zoom: 15.2 });
+  await new Promise((r) => { map.once('idle', r); setTimeout(r, 9000); });
+  const point = map.project(target);
+  inspectRoadAt(point, map.unproject(point));
+  await new Promise((r) => setTimeout(r, 900));
+  return Math.round(document.getElementById('readout').getBoundingClientRect().top);
+});
+console.log('card top', cardTop);
+await shot('tour-road', { x: 0, y: Math.max(0, cardTop - 140), width: 430, height: 480 });
+
+// ---- navigate: the safer route, GPS walked a third of the way along
+await activate(picks.safeI);
 console.log('nav:', await page.evaluate(() => {
+  document.getElementById('readout').classList.remove('show');
   try { startTurnNavigation(); } catch (e) { return 'threw: ' + e.message; }
   return true;
 }));
@@ -102,42 +179,6 @@ console.log('banner:', await page.evaluate(() => {
 }));
 await idle(); await settle(1200);
 await shot('tour-navigate', { x: 0, y: 0, width: 430, height: 560 });
-await page.evaluate(() => stopTurnNavigation(false));
-await settle(600);
-
-/* ============================= trip 2: straight down the 15th Ave NW wall */
-// Both endpoints sit ON 15th Ave NW, so the corridor ride exists in every
-// portfolio; the recommended pick detours around the failing arterial, so
-// activate the highest-fail option -- the one that rides 15th end to end.
-// That guarantees a long, unmistakable red-dashed active stretch no matter
-// how the portfolio shuffles between runs.
-console.log('trip 2 routed:', await route([-122.37655, 47.66855], '15th Ave NW & NW Market St',
-  [-122.37632, 47.65964], '15th Ave NW & NW Ballard Way'));
-console.log('fail option:', await page.evaluate(async () => {
-  const byFail = [...(routing.options || [])].sort((a, b) => (b.failM || 0) - (a.failM || 0));
-  activateRouteOption(byFail[0]);
-  await new Promise((r) => setTimeout(r, 700));
-  document.body.classList.remove('panel-open');
-  return { label: byFail[0]?.optimization?.label, failM: Math.round(byFail[0]?.failM || 0) };
-}));
-
-// ---- warning: the long dark-red dashed stretch down 15th Ave NW
-await page.evaluate(() => map.jumpTo({ center: [-122.3752, 47.6641], zoom: 14.7 }));
-await idle(); await settle(1500);
-await shot('tour-warning', { x: 0, y: 230, width: 430, height: 440 });
-
-// ---- road card: tap the failing stretch; the card names the broken rule
-const cardTop = await page.evaluate(async () => {
-  document.body.classList.remove('panel-open');
-  map.jumpTo({ center: [-122.37627, 47.66626], zoom: 15.4 });
-  await new Promise((r) => { map.once('idle', r); setTimeout(r, 9000); });
-  const point = map.project([-122.37627, 47.66626]);
-  inspectRoadAt(point, map.unproject(point));
-  await new Promise((r) => setTimeout(r, 900));
-  return Math.round(document.getElementById('readout').getBoundingClientRect().top);
-});
-console.log('card top', cardTop);
-await shot('tour-road', { x: 0, y: Math.max(0, cardTop - 140), width: 430, height: 480 });
 
 await browser.close();
 await site.close();

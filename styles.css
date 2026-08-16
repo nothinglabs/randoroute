@@ -305,17 +305,17 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 #routeCard .rc-category-caution, #routeCard .rc-category-caution b { color: #813e00; }
 #routeCard .rc-category-fail, #routeCard .rc-category-fail b { color: var(--verdict-fail); }
 #routeCard .rc-category-swatch { display: block; width: 12px; height: 8px; border-radius: 2px; }
-#routeCard .rc-category-swatch.trail { height: 9px; background-color: var(--bike-network); background-image: radial-gradient(circle, var(--trail-dots) 0 1.4px, transparent 1.6px); background-position: 1px center; background-size: 5px 8px; }
-#routeCard .rc-category-swatch.bike { background: var(--bike-network); }
-#routeCard .rc-category-swatch.pass { background: var(--verdict-pass); }
-#routeCard .rc-category-swatch.caution { background: var(--verdict-caution); }
-#routeCard .rc-category-swatch.fail {
+:is(#routeCard, .onboarding-legend) .rc-category-swatch.trail { height: 9px; background-color: var(--bike-network); background-image: radial-gradient(circle, var(--trail-dots) 0 1.4px, transparent 1.6px); background-position: 1px center; background-size: 5px 8px; }
+:is(#routeCard, .onboarding-legend) .rc-category-swatch.bike { background: var(--bike-network); }
+:is(#routeCard, .onboarding-legend) .rc-category-swatch.pass { background: var(--verdict-pass); }
+:is(#routeCard, .onboarding-legend) .rc-category-swatch.caution { background: var(--verdict-caution); }
+:is(#routeCard, .onboarding-legend) .rc-category-swatch.fail {
   position: relative;
   height: 9px;
   border: 1px solid #e5a6ad;
   background: #fff4f5;
 }
-#routeCard .rc-category-swatch.fail::after {
+:is(#routeCard, .onboarding-legend) .rc-category-swatch.fail::after {
   position: absolute;
   top: 50%;
   right: 1px;
@@ -1555,6 +1555,17 @@ body.navigation-active #routeBar { display: none; }
 .onboarding-preset span { color: #52667a; font: 600 11.5px/1.35 system-ui; }
 .onboarding-preset.selected { border-color: #0a66c2; background: #eef6fd; }
 .onboarding-preset.selected strong::after { content: " ✓"; color: #0a66c2; }
+/* The tour's two legend steps reuse the app's own building blocks: the
+   .rc-category-swatch classes (colors defined once, shared with the route
+   card via :is()) and renderActiveRouteIconItems() for the warning icons. */
+.onboarding-legend { display: grid; gap: 7px; margin: 10px 0 4px; }
+.onboarding-legend-row { display: flex; align-items: center; gap: 11px; min-height: 40px; padding: 6px 11px; border: 1px solid #dde6eb; border-radius: 10px; background: #fbfdfe; }
+.onboarding-legend .rc-category-swatch { display: block; flex: none; width: 44px; height: 10px; border-radius: 3px; }
+.onboarding-legend-row strong { display: block; color: #22384a; font: 780 12.5px/1.2 system-ui; }
+.onboarding-legend-row small { display: block; margin-top: 1px; color: #52667a; font: 600 11px/1.3 system-ui; }
+.onboarding-icon-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.onboarding-icon-legend .active-route-icon-item strong { font: 780 11.5px/1.15 system-ui; color: #22384a; display: block; }
+.onboarding-icon-legend .active-route-icon-item small { display: block; margin-top: 1px; color: #52667a; font: 600 9.5px/1.25 system-ui; }
 .onboarding-foot { flex: none; display: flex; gap: 8px; padding: 10px 16px max(12px, env(safe-area-inset-bottom)); }
 .onboarding-back { flex: 1; min-height: 42px; border: 1px solid #cbd9e1; border-radius: 11px; background: #fff; color: #526675; font: 750 13px system-ui; cursor: pointer; touch-action: manipulation; }
 .onboarding-back:disabled { opacity: .4; cursor: default; }

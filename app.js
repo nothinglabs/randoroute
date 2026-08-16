@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-15.715';
+const APP_VERSION = '2026-08-15.716';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4926,12 +4926,23 @@ function openRouteTips() {
 // UI: they must look right before the rider has a location fix, a route, or
 // any preset chosen. Reshoot with the capture script when the UI they show
 // changes materially (see docs in onboarding/).
+// One-phrase meaning per route category, for the tour's color legend. The
+// keys, labels, and swatch styling come from ROUTE_CATEGORY_LABELS and the
+// shared .rc-category-swatch classes — only these glosses live here.
+const ONBOARDING_CATEGORY_NOTES = {
+  trail: 'Dedicated paths away from traffic.',
+  bike: 'Streets with real bike infrastructure.',
+  pass: 'Ordinary roads that meet your rules.',
+  caution: 'Meets your rules, with a caveat.',
+  fail: 'Breaks at least one of your rules.',
+};
+
 const ONBOARDING_STEPS = [
   {
     img: 'onboarding/tour-welcome.jpg',
-    alt: 'A route drawn across the city over safety-colored streets',
+    alt: 'A green route descending through a gulch to the waterfront',
     title: 'Welcome to Just Rolling Along',
-    copy: 'Bike routing that takes safety seriously. Every road and trail is scored against rules you control — and the whole map works offline. Here’s the one-minute tour.',
+    copy: 'Bike routing that takes safety seriously. Every road and trail is scored against rules you control — and the whole map works offline. Here’s the quick tour.',
   },
   {
     img: 'onboarding/tour-plan.jpg',
@@ -4941,21 +4952,31 @@ const ONBOARDING_STEPS = [
   },
   {
     img: 'onboarding/tour-routes.jpg',
-    alt: 'The route chooser: options A through E with distance, climb, and route makeup',
+    alt: 'The route chooser: lettered options with distance, climb, and route makeup',
     title: 'Compare your options',
     copy: 'Each search offers up to six routes with a Suggested pick — the letters are names, not grades. Every option shows distance, climbing, and its makeup: trails, bike lanes, roads that pass your rules, and any that fail them. Route Details breaks it down road by road.',
   },
   {
-    img: 'onboarding/tour-colors.jpg',
-    alt: 'City streets colored blue, olive-green, orange, and dashed dark red',
-    title: 'The map shows safety at a glance',
-    copy: 'Streets are colored by your rules: blue passes, olive-green marks designated bike routes and trails, orange needs caution, and dark-red dashes fail. Change a rule in Settings and the whole map recolors.',
+    img: 'onboarding/tour-fast.jpg',
+    alt: 'The fastest route riding an arterial, with red dashed stretches and warning badges',
+    title: 'The fast way…',
+    copy: 'The quickest option often rides the big arterial. Nothing is forbidden — but every stretch that fails your rules is dashed dark red and badged, so you can see exactly what the shortcut costs.',
   },
   {
-    img: 'onboarding/tour-warning.jpg',
-    alt: 'A route with a long dark-red dashed stretch marked by a warning badge',
-    title: 'Red stretches are never hidden',
-    copy: 'A route may still use a road that fails your rules — often there’s no other way through. That stretch is drawn in dark-red dashes with a warning badge, so you see it before you commit, not when you’re on it.',
+    img: 'onboarding/tour-safer.jpg',
+    alt: 'The same trip on a safer route: designated bike routes and trails nearly the whole way',
+    title: '…or the safer way',
+    copy: 'The same trip, a few minutes more: designated bike routes and trails nearly the whole way. Every search offers both ends of this trade — you pick.',
+  },
+  {
+    legend: 'levels',
+    title: 'What the colors mean',
+    copy: 'Every road and trail — on a route or not — is scored against your rules and drawn in one of five colors. Change a rule in Settings and the whole map recolors.',
+  },
+  {
+    legend: 'icons',
+    title: 'Warning icons on your route',
+    copy: 'Badges along a route flag the spots worth knowing about before you reach them:',
   },
   {
     img: 'onboarding/tour-road.jpg',
@@ -5006,6 +5027,32 @@ function buildOnboarding() {
     const copy = document.createElement('p');
     copy.textContent = step.copy;
     section.append(title, copy);
+    if (step.legend === 'levels') {
+      const host = document.createElement('div');
+      host.className = 'onboarding-legend';
+      for (const [key, label] of ROUTE_CATEGORY_LABELS) {
+        const row = document.createElement('div');
+        row.className = 'onboarding-legend-row';
+        const swatch = document.createElement('span');
+        swatch.className = `rc-category-swatch ${key}`;
+        swatch.setAttribute('aria-hidden', 'true');
+        const text = document.createElement('span');
+        const name = document.createElement('strong');
+        name.textContent = label;
+        const note = document.createElement('small');
+        note.textContent = ONBOARDING_CATEGORY_NOTES[key] || '';
+        text.append(name, note);
+        row.append(swatch, text);
+        host.appendChild(row);
+      }
+      section.appendChild(host);
+    }
+    if (step.legend === 'icons') {
+      const host = document.createElement('div');
+      host.className = 'onboarding-legend onboarding-icon-legend';
+      renderActiveRouteIconItems(host);
+      section.appendChild(host);
+    }
     if (step.preset) {
       const host = document.createElement('div');
       host.className = 'onboarding-presets';
@@ -13855,6 +13902,12 @@ const ACTIVE_ROUTE_ICON_DEFINITIONS = [
 function buildActiveRouteIconLegend() {
   const host = document.getElementById('activeRouteIconLegendItems');
   if (!host || host.childElementCount) return;
+  renderActiveRouteIconItems(host);
+}
+
+// Renders the warning-icon rows into any host (the layers-panel legend and
+// the app tour both call this), so the tour can never drift from the legend.
+function renderActiveRouteIconItems(host) {
   const images = new Map();
   const imageSink = {
     hasImage: (id) => images.has(id),
