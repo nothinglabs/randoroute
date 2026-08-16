@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-16.723';
+const APP_VERSION = '2026-08-16.724';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2765,11 +2765,21 @@ function routeOverlayNames(p) {
 // where a route follows a road the road above it wins the tap -- which is
 // every practical tap on a route. This is what puts the Preferred checkbox
 // on whichever card the tap actually opened.
-function routeNamesNear(lngLat, toleranceM = 40) {
+function routeNamesNear(lngLat, toleranceM = null) {
   const src = SOURCES.find((source) => source.id === 'routes');
   const names = [];
   if (!src?.fc) return names;
   const point = [Number(lngLat.lng), Number(lngLat.lat)];
+  // A tap can land as far off the route line as the tapped road's hit target
+  // is wide -- and that width is PIXELS, so a fixed 40 m radius missed most
+  // taps at town zooms (field: the checkbox showed only half the time). The
+  // radius scales with the pixel size instead: floored near, capped so a
+  // parallel street two blocks over is never claimed.
+  if (toleranceM == null) {
+    const metersPerPixel = 40075016.686 * Math.cos(point[1] * Math.PI / 180)
+      / (512 * 2 ** (typeof map !== 'undefined' ? map.getZoom() : 14));
+    toleranceM = Math.max(40, Math.min(160, 16 * metersPerPixel));
+  }
   const kx = 111320 * Math.cos(point[1] * Math.PI / 180), ky = 111320;
   const segDistM = (a, b) => {
     const ax = (a[0] - point[0]) * kx, ay = (a[1] - point[1]) * ky;
@@ -2852,16 +2862,21 @@ function ensureStateRouteCatalog() {
 // honest about which selection priced it. postMessage order does the rest: a
 // recompute posted after this sync always sees the new set.
 let preferredRoutesAckRecompute = false;
+// Resolves once the geometry message has actually been POSTED -- a caller
+// that recomputes must await this, because the worker prices with whatever
+// selection it has when the route request arrives, and a recompute posted
+// first is priced against the OLD selection (field: toggling Preferred
+// recalculated but nothing changed until the route was redone).
 function syncPreferredRoutesToWorker({ recomputeOnAck = false } = {}) {
-  if (!routing.worker) return;
+  if (!routing.worker) return Promise.resolve();
   const names = preferredRouteNames();
   const key = names.length ? preferredRoutesRuleKey(names) : '';
   if (!key) {
     routing.worker.postMessage({ type: 'preferred-routes', key: '', lines: [] });
-    return;
+    return Promise.resolve();
   }
   preferredRoutesAckRecompute = recomputeOnAck;
-  ensureStateRouteCatalog().then((catalog) => {
+  return ensureStateRouteCatalog().then((catalog) => {
     const lines = [];
     for (const name of names) {
       const entry = catalog.get(name);
@@ -2882,11 +2897,13 @@ function setRoutePreferred(name, on) {
   else delete preferredRoutesByState[Region.id];
   applyPreferredRoutesRuleKey();
   saveStateSoon();
-  syncPreferredRoutesToWorker();
+  const synced = syncPreferredRoutesToWorker();
   if (routing.ready && routing.start && routing.end) {
     routing.quietRecalcToast = true;
     showRouteActionToast('Updating routes…', { duration: 6000 });
-    computeRoute({ revealPanel: false });
+    // AFTER the geometry message: the worker handles messages in order, so
+    // this is what makes the recompute price the toggle just made.
+    synced.then(() => computeRoute({ revealPanel: false }));
   }
 }
 
@@ -12418,6 +12435,9 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       swatchColor: '#fff', swatchLabel: 'Unspecified map point',
       debugData: { source: { id: 'map-tap', name: 'Map tap' } },
       avoidTemporaryMarker,
+      // A tap beside every feature still lands near enough to a route to
+      // mean it; the empty-point card offers the same checkbox.
+      preferredRouteToggles: routeNamesNear(lngLat),
     });
     return;
   }

@@ -127,6 +127,64 @@ check('routeNamesNear names the routes under a point, and only there',
   near.at.includes('Interurban Trail') && near.offshore.length === 0,
   JSON.stringify(near));
 
+// The default radius is pixels, not meters: a tap lands as far off the line
+// as the road's hit target is wide, which is what made a fixed 40 m radius
+// miss half of all real taps at town zooms.
+const radius = await page.evaluate((mid) => {
+  // Walk away from the trail until a 40 m radius no longer reaches it --
+  // the trail curves, so a fixed offset cannot be trusted to be "just past
+  // 40 m from everything". The first such point is at most ~60 m out.
+  // The trail is roughly north-south here, so walk each cardinal direction
+  // and take the first point past its 40 m reach (other routes may lie that
+  // way too; only the trail's own reach matters).
+  let probe = null;
+  outer: for (const [eastward, northward] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    for (let step = 1; step <= 12; step++) {
+      const candidate = {
+        lng: mid[0] + (eastward * step * 20) / (111320 * Math.cos(mid[1] * Math.PI / 180)),
+        lat: mid[1] + (northward * step * 20) / 111320,
+      };
+      if (!routeNamesNear(candidate, 40).includes('Interurban Trail')) {
+        probe = candidate;
+        break outer;
+      }
+    }
+  }
+  if (!probe) return { probe: null };
+  map.jumpTo({ center: mid, zoom: 12.5 });
+  const atTownZoom = routeNamesNear(probe);
+  map.jumpTo({ center: mid, zoom: 16 });
+  const atCloseZoom = routeNamesNear(probe);
+  return { probe, atTownZoom, atCloseZoom };
+}, near.mid);
+check('the search radius scales with zoom like the tap target does',
+  !!radius.probe && radius.atTownZoom.includes('Interurban Trail')
+    && !radius.atCloseZoom.includes('Interurban Trail'),
+  JSON.stringify(radius));
+
+// Toggling with a live trip must reprice THAT recompute: the geometry
+// message has to reach the worker before the route request does.
+const ordering = await page.evaluate(async () => {
+  const posted = [];
+  routing.worker = { postMessage: (message) => posted.push(message.type) };
+  routing.ready = true;
+  routing.start = [-122.335, 47.61];
+  routing.end = [-122.31, 47.62];
+  setRoutePreferred('Interurban Trail', true);
+  const deadline = Date.now() + 5000;
+  while (!posted.includes('route-options') && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  setRoutePreferred('Interurban Trail', false);
+  routing.start = null; routing.end = null;
+  clearRoute();
+  return posted;
+});
+check('a toggle recompute is posted after the geometry it should price',
+  ordering.includes('preferred-routes') && ordering.includes('route-options')
+    && ordering.indexOf('preferred-routes') < ordering.indexOf('route-options'),
+  JSON.stringify(ordering));
+
 const roadCard = await page.evaluate((names) => {
   renderMapTapCard({
     displayTitle: 'Road (OSM)', pointName: 'Beach Road',
