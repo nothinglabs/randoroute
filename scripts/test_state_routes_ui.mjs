@@ -201,6 +201,24 @@ check('a toggle recompute is posted after the geometry it should price',
     && ordering.indexOf('preferred-routes') < ordering.indexOf('route-options'),
   JSON.stringify(ordering));
 
+const navigationLock = await page.evaluate(() => {
+  const before = preferredRouteNames();
+  const posted = [];
+  routing.worker = { postMessage: (message) => posted.push(message.type) };
+  turnNav.active = true;
+  const changed = setRoutePreferred('Interurban Trail', true);
+  const toast = document.getElementById('routeActionText')?.textContent || '';
+  const after = preferredRouteNames();
+  turnNav.active = false;
+  return { before, after, posted, changed, toast };
+});
+check('preferred routes cannot change during active navigation',
+  navigationLock.changed === false
+    && JSON.stringify(navigationLock.after) === JSON.stringify(navigationLock.before)
+    && navigationLock.posted.length === 0
+    && /Stop navigation/.test(navigationLock.toast),
+  JSON.stringify(navigationLock));
+
 const roadCard = await page.evaluate((names) => {
   renderMapTapCard({
     displayTitle: 'Road (OSM)', pointName: 'Beach Road',
@@ -265,13 +283,14 @@ const attribution = await page.evaluate((mid) => {
   out.flaggedNoRibbon = bikeRouteContextRow('roads', { g: 1 }, point);
   out.plainRoad = bikeRouteContextRow('roads', {}, point);
   routeBadgeAt = original;
-  // Reachability: beside a trail the banned road's record often wins the tap,
-  // so its card still offers the trail's checkbox -- explicitly named, with
-  // the row/banner gating above keeping the verdict off the wrong road.
+  // A nearby ribbon is not enough to make an unrelated road's card control
+  // that route. A road with its own route flag still receives the control.
   out.prohibitedToggles = preferredRouteTogglesFor('blts',
     {}, { prohibited: true }, { lng: mid[0], lat: mid[1] });
   out.ordinaryToggles = preferredRouteTogglesFor('roads',
     {}, { prohibited: false }, { lng: mid[0], lat: mid[1] });
+  out.claimedToggles = preferredRouteTogglesFor('roads',
+    { g: 1 }, { prohibited: false }, { lng: mid[0], lat: mid[1] });
   return out;
 }, near.mid);
 check('a proximity badge never lands on a road without its own route claim',
@@ -280,9 +299,10 @@ check('a proximity badge never lands on a road without its own route claim',
     && attribution.infrastructure?.[1] === 'Interurban Trail'
     && /designated route/.test(attribution.flaggedNoRibbon?.[1] || ''),
   JSON.stringify(attribution));
-check('every card near the route offers its checkbox, banned roads included',
-  attribution.prohibitedToggles.includes('Interurban Trail')
-    && attribution.ordinaryToggles.includes('Interurban Trail'),
+check('only a segment that claims route membership offers its checkbox',
+  attribution.prohibitedToggles.length === 0
+    && attribution.ordinaryToggles.length === 0
+    && attribution.claimedToggles.includes('Interurban Trail'),
   JSON.stringify(attribution));
 
 // An ambiguous tap -- a rideable way and a bikes-banned one both in reach --

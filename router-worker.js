@@ -671,7 +671,7 @@ const DISMOUNT_WALK_COST_MULT = 8;
 // edges are how long unrideable trails appear in the graph, and the rider
 // bushwhacked one once because a router shrugged at it.
 const DISMOUNT_LONG_EDGE_M = 100;
-const DISMOUNT_LONG_EDGE_MULT = 16;
+const DISMOUNT_LONG_EDGE_MULT = 32;
 // A CONTIGUOUS tagged-dismount run longer than this reports as FAILING the
 // rules, not merely caution: a gate or a dock approach is a shrug, a real
 // stretch of signed trail you cannot ride is a route that failed to be a
@@ -2551,7 +2551,7 @@ function routeAggression(r) {
   const levels = r.levelM || [0, 0, 0, 0, 0];
   const stress = (levels[2] * 0.18 + levels[3] * 0.75 + levels[4] * 3.5
     + r.freewayM * 4 + r.limitedAccessM * 0.8 + (r.hazardM || 0) * 1.1
-    + (r.mtbM || 0) * 1.25 + (r.dismountM ? 450 + r.dismountM * 1.5 : 0)) / ridingM;
+    + (r.mtbM || 0) * 1.25 + (r.dismountM ? 450 + r.dismountM * 3 : 0)) / ridingM;
   // A trail is not merely another kind of lane: it removes motor-traffic
   // exposure altogether. Count physical facilities once, then give the
   // off-street portion a second, larger comfort credit.
@@ -2561,8 +2561,15 @@ function routeAggression(r) {
 }
 
 function compareSafety(a, b) {
-  // A known rule failure is the first-order distinction. The remaining
-  // metrics break ties between routes with the same failing distance.
+  // Walking is a more severe route compromise than riding a short known
+  // failure. Compare their weighted distances together first so a long
+  // dismount cannot become the "safest" candidate merely by avoiding a few
+  // metres of red road.
+  const severeA = a.failM + (a.dismountM || 0) * 3;
+  const severeB = b.failM + (b.dismountM || 0) * 3;
+  if (severeA !== severeB) return severeA - severeB;
+  // The remaining metrics break ties between routes with the same weighted
+  // severe outcome.
   if (a.failM !== b.failM) return a.failM - b.failM;
   if (a.freewayM !== b.freewayM) return a.freewayM - b.freewayM;
   if ((a.mtbM || 0) !== (b.mtbM || 0)) return (a.mtbM || 0) - (b.mtbM || 0);
@@ -2863,10 +2870,11 @@ function ensureFullyMatchingCandidate(raw, points, rules, snaps) {
 // the strictly safer route, and the strictly safest candidate keeps its
 // own lettered slot regardless (safestOverall, below).
 const FAIL_AVOID_PRICE_S_PER_M = 1;
-// Dismount meters carry the same price as failing meters: a meter the
-// rider cannot properly ride costs a second, whichever way it fails them.
-// The walking time itself is already inside timeS, so this stacks the
-// judgment on top of the slowness.
+// A mandatory walk is worse than riding a short known failure. Its honest
+// walking time is already inside timeS; this additional distance price keeps
+// a long walk from winning the star merely because it removes a small amount
+// of red road.
+const DISMOUNT_AVOID_PRICE_S_PER_M = 3;
 //
 // Ride QUALITY gets a vote too. Every riding meter that is neither trail nor
 // trusted lane (facilityM counts facility >= 2, so sharrows never qualify;
@@ -2881,7 +2889,8 @@ const FAIL_AVOID_PRICE_S_PER_M = 1;
 const NETWORK_GAP_PRICE_S_PER_M = 0.2;
 const TRAIL_BONUS_S_PER_M = 0.12;
 const recommendationScore = (route) =>
-  route.timeS + (route.failM + (route.dismountM || 0)) * FAIL_AVOID_PRICE_S_PER_M
+  route.timeS + route.failM * FAIL_AVOID_PRICE_S_PER_M
+  + (route.dismountM || 0) * DISMOUNT_AVOID_PRICE_S_PER_M
   + Math.max(0, route.distM - route.ferryM - route.facilityM) * NETWORK_GAP_PRICE_S_PER_M
   - (route.trailM || 0) * TRAIL_BONUS_S_PER_M;
 

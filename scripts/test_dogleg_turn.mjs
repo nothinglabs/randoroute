@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Reported from the Sammamish River Trail: the trail jogs -- a right then, 50
-// feet later, a left -- and the rider was told "Turn left to stay on Sammamish
-// River Trail" while the thing in front of them was the right. The first corner
-// was never announced at all.
+// Short chicanes on the same trail are route geometry, not navigation choices.
+// Reported after repeated left/right prompts along the Interurban Trail and at
+// traffic-calming circles: if the route resumes its approach direction within
+// about 200 ft, the line is enough and voice guidance should stay quiet.
 //
 // The cause is the guard that stops wiggly trails producing phantom turns. It
 // asks what the rider's course is 40-120 m past a junction and stays quiet when
@@ -10,13 +10,9 @@
 // the SECOND corner, back on the bearing the rider arrived on, so the first
 // corner reads as "no real turn" and only the second one speaks.
 //
-// No local-angle threshold can fix it: a trail weaving +/-30 deg every 30 m
-// throws the same 60 deg readings a real corner does -- measured, not assumed,
-// and the wander case at the bottom of this file is what holds that line. What
-// separates them is COMPANY. Wander is a train of corners; a jog is a PAIR with
-// straight running either side. So the rescue is granted only to a junction
-// with exactly one close neighbour and nothing past it, and both halves are
-// spoken in one prompt, in the order the rider meets them.
+// Named-street doglegs remain navigation decisions and still fold into one
+// prompt. A same-trail bend that does not restore the course, or whose second
+// corner is more than 200 ft away, remains eligible for guidance.
 //
 // This drives the geometry directly rather than routing a real trip, so it pins
 // the rule rather than one dogleg in one city's data.
@@ -70,31 +66,23 @@ check('the trail builder is available', build === true);
 // 200 m north, a 15 m jog to the right, then north again: the trail stepping
 // sideways across a bridge.
 const jog = await page.evaluate(() => buildTrail([[0, 200], [65, 15], [0, 200]]));
-check('a 15 m dogleg is announced at all', jog.length >= 1, JSON.stringify(jog));
-check('at the FIRST corner, not the second',
-  jog[0] && jog[0].m === 200, JSON.stringify(jog));
-check('naming the right the rider meets first',
-  /^Turn right/.test(jog[0]?.text || ''), jog[0]?.text);
-check('and the left that follows it, in that order',
-  /then left/.test(jog[0]?.text || ''), jog[0]?.text);
-check('as ONE prompt, so the two do not talk over each other',
-  jog.length === 1, JSON.stringify(jog));
-check('still saying which trail it keeps the rider on',
-  /Sammamish River Trail/.test(jog[0]?.text || ''), jog[0]?.text);
+check('a 15 m same-trail chicane produces no maneuver prompt',
+  jog.length === 0, JSON.stringify(jog));
 
-// The other way round, to prove the directions are read from the geometry
-// rather than fixed.
+// The other way round must be equally quiet.
 const mirrored = await page.evaluate(() => buildTrail([[0, 200], [-65, 15], [0, 200]]));
-check('a jog the other way says left then right',
-  mirrored.length === 1 && /^Turn left, then right,/.test(mirrored[0]?.text || ''),
+check('the mirrored same-trail chicane is quiet too',
+  mirrored.length === 0,
   JSON.stringify(mirrored));
 
-// Neither half of a 45 deg jog would rate a prompt alone -- on the road the
-// rider is already on, an ordinary bend has to clear 50 deg to be worth a word.
-// Two of them in opposite directions are still two things to do.
+// A shallower pair is even less useful as an instruction.
 const shallow = await page.evaluate(() => buildTrail([[0, 200], [45, 15], [0, 200]]));
-check('a shallower jog is still two steers, so it is still announced',
-  shallow.length === 1 && /then left/.test(shallow[0]?.text || ''), JSON.stringify(shallow));
+check('a shallower same-trail chicane is quiet',
+  shallow.length === 0, JSON.stringify(shallow));
+
+const longMinor = await page.evaluate(() => buildTrail([[0, 200], [65, 55], [0, 200]]));
+check('a same-trail chicane stays quiet through the full 200 ft look-ahead',
+  longMinor.length === 0, JSON.stringify(longMinor));
 
 /* ------------------------------------- far enough apart to be two prompts */
 // 90 m between the corners is 20 seconds at trail speed. Folding those into one

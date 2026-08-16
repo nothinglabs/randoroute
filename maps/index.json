@@ -4,9 +4,9 @@
   {
    "id": "oregon",
    "name": "Oregon",
-   "status": "preview",
+   "status": "released",
    "readiness": 7,
-   "summary": "Preview map pack with OSM routing, ODOT stress/speed/facility/shoulder data, current state AADT, HPMS traffic, and multi-region verification.",
+   "summary": "Map pack with OSM routing, ODOT stress/speed/facility/shoulder data, current state AADT, HPMS traffic, and multi-region verification.",
    "bounds": {
     "minLon": -124.8,
     "maxLon": -116.3,

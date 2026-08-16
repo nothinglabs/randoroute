@@ -975,16 +975,16 @@ differently. **Tagged** — a mapper wrote `bicycle=dismount`; the edge carries
 the graph build created from an untagged footway or path purely to keep the
 network connected (bit 8 without 128). Both are priced identically — walking
 pace, a six-minute entry penalty, and a ×8 search-cost multiplier on the
-walked time (×16 on an edge over 100 m, which is how a long unrideable trail
+walked time (×32 on an edge over 100 m, which is how a long unrideable trail
 appears in the graph): walking the bike is a bad outcome, not merely a slow
 one, and the multiplier is proportional by construction because it scales the
-walked seconds themselves. (The multipliers were doubled from ×4/×8 by field
-feedback — routes were still too willing to walk — but the flat entry fee
+walked seconds themselves. (The distance multipliers have been raised by field
+feedback whenever routes were still too willing to walk, but the flat entry fee
 stayed at six minutes: it hits a thirty-second dock approach as hard as a
 half-mile slog, and doubling it priced the Pier 50 fast ferry out of the
 Southworth route in favour of riding miles to Fauntleroy.) Both count as CAUTION in the route's level
 percentages (matching the amber they draw), and both are priced into the
-recommendation at the same one second per meter as failing road. One
+recommendation at three seconds per meter, versus one for failing road. One
 judgment applies to tagged dismounts alone: a contiguous tagged run longer
 than 100 m reports as FAILING the rules — a gate or a dock approach is a
 shrug; a real stretch of signed trail you cannot ride is a route that failed
@@ -1134,7 +1134,7 @@ whose every leg stays within a practical detour of the quickest option
 (1.5× distance + 800 m, 1.4× time + 5 min per leg — time is the binding
 clause; a tighter distance bound once stranded the star on a 56%-failing
 corridor), by minimizing
-`time + 1 s × (failing + dismount meters) + 0.2 s × ordinary-road meters`
+`time + 1 s × failing meters + 3 s × dismount meters + 0.2 s × ordinary-road meters`
 `− 0.12 s × trail meters`
 — where ordinary-riding meters are everything that is neither trail nor
 trusted lane (facility ≥ 2; sharrows never qualify, ferries are removed as

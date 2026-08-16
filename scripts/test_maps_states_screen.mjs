@@ -139,6 +139,7 @@ const detail = await page.evaluate(() => {
     names: rows.map((row) => row.querySelector('.maps-state-name > span').textContent),
     badges: rows.map((row) => row.querySelector('.maps-state-badge')?.textContent)
       .filter(Boolean),
+    storesVisible: !!document.querySelector('.maps-stores')?.getClientRects().length,
   };
 });
 check('a finished state says it can route', /routing/i.test(detail.washington || ''),
@@ -151,6 +152,7 @@ check('and carries a Preview badge beside the loaded one',
 check('unavailable placeholder states are omitted entirely',
   detail.names.length === STATES.length && !detail.names.includes('Alabama'),
   JSON.stringify(detail.names));
+check('the unfinished map-store controls stay hidden', detail.storesVisible === false);
 
 /* ---------------------------------------------- refusing at the wrong moment */
 // Mid-ride is the one time this must refuse: the rider is being spoken turn

@@ -15,6 +15,7 @@ const DEFAULT_RULES = { allowFreeways: true, allowMtbTrails: false, preferPaved:
 // TRAIL_BONUS_S_PER_M in
 // router-worker.js; the assertion below is what breaks if they drift.
 const PRICE_S_PER_M = 1;
+const DISMOUNT_PRICE_S_PER_M = 3;
 const NETWORK_GAP_PRICE_S_PER_M = 0.2;
 const TRAIL_BONUS_S_PER_M = 0.12;
 
@@ -26,11 +27,23 @@ w.context.recommendationQualityFixtures = {
     ferryM: 0, facilityM: 1000, trailM: 0 },
   trail: { timeS: 1000, failM: 0, dismountM: 0, distM: 1000,
     ferryM: 0, facilityM: 1000, trailM: 1000 },
+  shortFailure: { timeS: 1000, failM: 100, dismountM: 0, distM: 1000,
+    ferryM: 0, facilityM: 1000, trailM: 0 },
+  equalWalk: { timeS: 1000, failM: 0, dismountM: 100, distM: 1000,
+    ferryM: 0, facilityM: 1000, trailM: 0 },
 };
 const hierarchy = w.run(`Object.fromEntries(Object.entries(recommendationQualityFixtures)
   .map(([key, route]) => [key, recommendationScore(route)]))`);
 assert.ok(hierarchy.trail < hierarchy.lane && hierarchy.lane < hierarchy.road,
   `recommendation quality should rank trail < lane < passing road cost: ${JSON.stringify(hierarchy)}`);
+assert.equal(hierarchy.equalWalk - hierarchy.lane,
+  3 * (hierarchy.shortFailure - hierarchy.lane),
+  'each dismount meter should cost the recommendation three times a failing riding meter');
+const safetyOrder = w.run(`compareSafety(
+  { failM: 50, dismountM: 0, freewayM: 0, mtbM: 0, hazardM: 0, limitedAccessM: 0 },
+  { failM: 0, dismountM: 100, freewayM: 0, mtbM: 0, hazardM: 0, limitedAccessM: 0 })`);
+assert.ok(safetyOrder < 0,
+  'a short failing ride should rank ahead of a substantially longer mandatory walk');
 
 const reply = w.post({ type: 'route-options', id: 'star', rules: DEFAULT_RULES,
   points: [[-122.3321, 47.6062], [-122.2021, 47.9790]] });
@@ -40,10 +53,11 @@ const offered = reply.options.map((option) => ({
   label: option.optimization.label,
   recommended: !!option.optimization.recommended,
   timeS: option.timeS, failM: option.failM, dismountM: option.dismountM || 0,
-  // Dismount meters carry the same price as failing meters. Ordinary road
+  // A mandatory walk costs more than a failing riding meter. Ordinary road
   // costs 0.2 s/m, a trusted lane is neutral, and an off-street trail earns
   // 0.12 s/m -- the ranking must preserve that three-step hierarchy.
-  score: option.timeS + (option.failM + (option.dismountM || 0)) * PRICE_S_PER_M
+  score: option.timeS + option.failM * PRICE_S_PER_M
+    + (option.dismountM || 0) * DISMOUNT_PRICE_S_PER_M
     + Math.max(0, option.distM - option.ferryM - option.facilityM) * NETWORK_GAP_PRICE_S_PER_M
     - (option.trailM || 0) * TRAIL_BONUS_S_PER_M,
 }));

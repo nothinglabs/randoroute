@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-16.728';
+const APP_VERSION = '2026-08-16.729';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2966,6 +2966,13 @@ function syncPreferredRoutesToWorker({ recomputeOnAck = false } = {}) {
 // same unobtrusive toast a Settings rules change uses, because the rider is
 // mid-dialog rather than watching the route panel.
 function setRoutePreferred(name, on) {
+  if (turnNav.active) {
+    showRouteActionToast('Stop navigation before changing a preferred route.', {
+      duration: 3200,
+      answer: true,
+    });
+    return false;
+  }
   const names = new Set(preferredRouteNames());
   if (on) names.add(name); else names.delete(name);
   if (names.size) preferredRoutesByState[Region.id] = [...names].sort();
@@ -2973,7 +2980,7 @@ function setRoutePreferred(name, on) {
   applyPreferredRoutesRuleKey();
   saveStateSoon();
   const synced = syncPreferredRoutesToWorker();
-  if (deferSettingsRouteChange()) return;
+  if (deferSettingsRouteChange()) return true;
   if (routing.ready && routing.start && routing.end) {
     routing.quietRecalcToast = true;
     showRouteActionToast('Updating routes…', { duration: 6000 });
@@ -2981,6 +2988,7 @@ function setRoutePreferred(name, on) {
     // this is what makes the recompute price the toggle just made.
     synced.then(() => computeRoute({ revealPanel: false }));
   }
+  return true;
 }
 
 /* ------------------------------------------- blink a layer on enable */
@@ -4155,6 +4163,11 @@ const TURN_CHAIN_M = 70;
 // Both halves must be real steers. Below this a jog is a kink in the pavement,
 // not something a rider has to do anything about.
 const JOG_TURN_MIN_DEG = 40;
+// A short chicane on the same named road or trail is pavement geometry, not a
+// navigation decision. If the second bend restores the rider's course within
+// roughly 200 ft, suppress both instructions; the route line is sufficient.
+const MINOR_REJOIN_MAX_M = 61;
+const MINOR_REJOIN_MAX_DEG = 20;
 // Interpolated position at a distance along the polyline. Snapping to the
 // nearest vertex (the old approach) collapsed short edges: a turn's "incoming"
 // window could land entirely on the post-turn segment, reporting a 0° delta and
@@ -4415,6 +4428,17 @@ function buildTurnInstructions(m) {
     // Only announce a same-road bend when it's a genuine turn a rider could
     // miss (a fork), and phrase it as staying on, not turning onto.
     const sameRoad = !!to && !!from && to.toLowerCase() === from.toLowerCase();
+    const rejoinsSameRoute = doglegCandidate && gap <= MINOR_REJOIN_MAX_M
+      && !!from && !!partnerTo && from.toLowerCase() === partnerTo.toLowerCase();
+    if (rejoinsSameRoute) {
+      const afterPair = routeBearingOver(coords, cumulative, partnerM,
+        partnerM + MINOR_REJOIN_MAX_M);
+      if (Math.abs(navDelta(incoming, afterPair)) < MINOR_REJOIN_MAX_DEG) {
+        // The next loop iteration is the other half of this same chicane.
+        foldedIntoJog = i + 1;
+        continue;
+      }
+    }
     // Only announce an actual bend or turn. A road merely changing name while
     // the rider continues straight used to emit a "Continue onto X" prompt at
     // every name change; that flooded the voice guidance, interrupted itself,
@@ -12099,16 +12123,31 @@ function bikeRouteContextRow(srcId, p, screenPoint) {
     ? ['Bike route', 'On a designated route (USBR / regional trail)'] : null;
 }
 
-// Which Preferred checkboxes a tapped feature's card offers. Proximity-based
-// on every card, banned roads included: when the banned road's record is the
-// only reachable card beside a trail, its card is also the only place the
-// trail's checkbox can live -- and the checkbox names its route explicitly,
-// while the row/banner gating above keeps the verdict from being pinned on
-// the wrong road. (An earlier gate hid it on banned cards; that traded the
-// misattribution for unreachability and gave up the wrong half.)
-function preferredRouteTogglesFor(srcId, p, n, lngLat) {
+// Which Preferred checkboxes a tapped feature's card offers. A nearby route is
+// not enough: wide road hit targets can win several pixels away from the
+// painted ribbon, and dressing that unrelated street as a route is misleading.
+// The tap must land on the painted route itself, or the selected feature must
+// claim route membership in its own data. routeNamesNear then supplies the
+// human-readable route name for that second case.
+function routeNamesAtScreenPoint(screenPoint) {
+  if (!screenPoint || typeof map === 'undefined' || !map.getLayer('routes')) return [];
+  if (map.getLayoutProperty('routes', 'visibility') === 'none') return [];
+  const names = [];
+  for (const feature of map.queryRenderedFeatures(screenPoint, { layers: ['routes'] })) {
+    for (const name of routeOverlayNames(feature.properties)) {
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  return names;
+}
+
+function preferredRouteTogglesFor(srcId, p, n, lngLat, screenPoint = null) {
   if (srcId === 'routes') return routeOverlayNames(p);
-  return routeNamesNear(lngLat);
+  const visiblyTapped = routeNamesAtScreenPoint(screenPoint);
+  if (visiblyTapped.length) return visiblyTapped;
+  const claimsRoute = p?.g || p?.desig === 1 || Number(p?.Designated) === 1;
+  if (!claimsRoute) return [];
+  return routeNamesNear(lngLat, 30);
 }
 
 
@@ -12577,7 +12616,10 @@ function renderMapTapCard({
       checkbox.type = 'checkbox';
       checkbox.checked = isPreferredRoute(name);
       checkbox.setAttribute('aria-label', `Prefer ${name}`);
-      checkbox.addEventListener('change', () => setRoutePreferred(name, checkbox.checked));
+      checkbox.addEventListener('change', () => {
+        const requested = checkbox.checked;
+        if (setRoutePreferred(name, requested) === false) checkbox.checked = !requested;
+      });
       const text = document.createElement('span');
       // Name the route unless it is already the card's own title: on a road
       // card "Prefer route" alone would not say WHICH route runs here.
@@ -12648,9 +12690,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       swatchColor: '#fff', swatchLabel: 'Unspecified map point',
       debugData: { source: { id: 'map-tap', name: 'Map tap' } },
       avoidTemporaryMarker,
-      // A tap beside every feature still lands near enough to a route to
-      // mean it; the empty-point card offers the same checkbox.
-      preferredRouteToggles: routeNamesNear(lngLat),
+      preferredRouteToggles: [],
     });
     return;
   }
@@ -12883,7 +12923,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
     // Any tapped segment that lies on a signed route offers its Preferred
     // checkbox -- not only the ribbon's own card, which a road usually
     // outbids for the tap.
-    preferredRouteToggles: preferredRouteTogglesFor(src.id, p, n, lngLat),
+    preferredRouteToggles: preferredRouteTogglesFor(src.id, p, n, lngLat, anchorPoint),
     cautionKinds: src.id === 'routeseg' && p.ferry !== 1
       ? [...routeMarkerKinds(p, routeVisualStyle(p)), ...(p.hazard ? ['curve'] : [])]
       : [],
@@ -13545,7 +13585,7 @@ function syncPresetSelection() {
   if (overrideNote) {
     overrideNote.hidden = !active;
     overrideNote.textContent = active
-      ? `Changing a rule will override ${active.label} and use custom settings.` : '';
+      ? `Changes override the ${active.label} preset.` : '';
   }
 }
 
@@ -14012,7 +14052,8 @@ function buildStateRoutesList(catalog) {
     badge.textContent = 'Preferred';
     badge.hidden = !checkbox.checked;
     checkbox.addEventListener('change', () => {
-      setRoutePreferred(entry.name, checkbox.checked);
+      const requested = checkbox.checked;
+      if (setRoutePreferred(entry.name, requested) === false) checkbox.checked = !requested;
       badge.hidden = !checkbox.checked;
     });
     row.append(checkbox, text, badge);

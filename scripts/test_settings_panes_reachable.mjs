@@ -65,6 +65,23 @@ for (const [name, viewport] of [
   await pg.evaluate(() => selectPanelTab('settings'));
   await pg.waitForTimeout(500);
 
+  const tabs = await pg.evaluate(() => {
+    const host = document.getElementById('settingsTabs');
+    const buttons = [...host.querySelectorAll('[role="tab"]:not([hidden])')];
+    const rows = new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top)));
+    return {
+      rows: rows.size,
+      scrollWidth: host.scrollWidth,
+      clientWidth: host.clientWidth,
+      buttonHeights: buttons.map((button) => button.getBoundingClientRect().height),
+    };
+  });
+  check(`${name}: Settings tabs use two rows without horizontal scrolling`,
+    tabs.rows === 2 && tabs.scrollWidth <= tabs.clientWidth + 1,
+    JSON.stringify(tabs));
+  check(`${name}: Settings tabs stay compact`,
+    tabs.buttonHeights.every((height) => height <= 35), JSON.stringify(tabs.buttonHeights));
+
   const paneHeights = [];
   for (const pane of ['presets', 'rules', 'voice', 'routes', 'maps', 'weights']) {
     await pg.evaluate((id) => {
@@ -150,6 +167,21 @@ for (const [name, viewport] of [
   check(`${name}: "Never allow roads faster than" exists`, cap.found === true);
   check(`${name}: and sits inside its pane`, cap.insidePane === true, JSON.stringify(cap));
   check(`${name}: and remains reachable by scrolling`, cap.reachableByScroll === true, JSON.stringify(cap));
+
+  const rulesFit = await pg.evaluate(() => {
+    const host = document.getElementById('settings-rules');
+    const note = document.getElementById('settingsRulesPresetNote');
+    return {
+      scrollHeight: host.scrollHeight,
+      clientHeight: host.clientHeight,
+      noteWraps: note.hidden ? false : getComputedStyle(note).whiteSpace !== 'nowrap',
+      noteOverflows: note.hidden ? false : note.scrollWidth > note.clientWidth + 1,
+    };
+  });
+  check(`${name}: Rules fit without scrolling`,
+    rulesFit.scrollHeight <= rulesFit.clientHeight + 1, JSON.stringify(rulesFit));
+  check(`${name}: preset override note stays on one line`,
+    !rulesFit.noteWraps && !rulesFit.noteOverflows, JSON.stringify(rulesFit));
   check(`${name}: no page errors`, errs.length === 0, errs.slice(0, 2).join(' | '));
   await pg.close();
 }

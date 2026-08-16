@@ -1777,18 +1777,18 @@ body.settings-panel-active .settings-nav-lock {
   padding: 10px 12px; font-size: 12.5px;
 }
 body.settings-panel-active .settings-tabs {
-  flex: none; display: flex; gap: 7px; width: min(100% - 28px, 920px);
-  margin: 0 auto; padding: 12px 0 10px; overflow-x: auto;
-  overscroll-behavior-x: contain; scrollbar-width: none;
+  flex: none; display: block; width: min(100% - 28px, 920px);
+  margin: 0 auto; padding: 8px 0 7px; overflow: visible;
 }
-body.settings-panel-active .settings-tabs::-webkit-scrollbar { display: none; }
-body.settings-panel-active .settings-tab-pair { flex: 1 0 560px; gap: 7px; }
+body.settings-panel-active .settings-tab-pair {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px 7px;
+}
 body.settings-panel-active .settings-tabs button {
-  min-height: 40px; padding: 7px 13px; border-radius: 10px;
-  font: 750 12.5px/1.1 system-ui; white-space: nowrap;
+  min-width: 0; min-height: 34px; padding: 5px 8px; border-radius: 9px;
+  font: 750 11.5px/1.1 system-ui; white-space: nowrap;
 }
 body.settings-panel-active .settings-tabs .settings-weights-tab {
-  flex: 0 0 48px; padding-right: 8px; padding-left: 8px; font-size: 19px;
+  width: auto; padding-right: 8px; padding-left: 8px; font-size: 17px;
 }
 body.settings-panel-active .settings-tabs .settings-weights-tab.tuned {
   border-color: #c5872b; background: #fff6e4; color: #96590a;
@@ -1813,26 +1813,29 @@ body.settings-panel-active .preset-audience { margin-top: 5px; font-size: 12.5px
 body.settings-panel-active .preset-info { min-height: 34px; padding: 5px 10px; font-size: 12px; }
 body.settings-panel-active #settings-rules { display: block; }
 body.settings-panel-active #settings-rules[hidden] { display: none; }
+body.settings-panel-active #settings-rules {
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+}
 body.settings-panel-active .settings-rules-section {
-  margin: 0 0 12px; padding: 14px; border: 1px solid #d8e3e9;
+  margin: 0 0 7px; padding: 8px 10px; border: 1px solid #d8e3e9;
   border-radius: 12px; background: #fff;
 }
 body.settings-panel-active .settings-rules-section > h2 {
-  margin: 0 0 11px; padding: 0 0 8px; border-bottom: 1px solid #e2e9ed;
-  color: #2c4554; font: 780 16px/1.2 system-ui; letter-spacing: 0;
+  margin: 0 0 6px; padding: 0 0 4px; border-bottom: 1px solid #e2e9ed;
+  color: #2c4554; font: 780 13px/1.15 system-ui; letter-spacing: 0;
   text-transform: none;
 }
 body.settings-panel-active #settingsSliders,
 body.settings-panel-active #settingsOptions,
-body.settings-panel-active #settingsDisplayOptions { gap: 8px; }
+body.settings-panel-active #settingsDisplayOptions { gap: 4px; }
 body.settings-panel-active #settingsSliders .rule-card,
 body.settings-panel-active #settingsOptions .rule-card,
 body.settings-panel-active #settingsDisplayOptions .rule-card,
 body.settings-panel-active #settingsVoice .rule-card {
-  min-height: 46px; padding: 9px 12px; border-radius: 10px;
+  min-height: 39px; padding: 5px 9px; border-radius: 9px;
 }
 body.settings-panel-active #settingsSliders .rule-head {
-  min-height: 20px; margin-bottom: 5px; font-size: 12.5px; line-height: 1.25;
+  min-height: 18px; margin-bottom: 2px; font-size: 11.5px; line-height: 1.2;
 }
 body.settings-panel-active #settingsSliders .rule-card input[type="range"] { height: auto; }
 body.settings-panel-active #settingsOptions .rule-check,
@@ -1845,9 +1848,9 @@ body.settings-panel-active #settingsDisplayOptions input[type="checkbox"] { widt
 body.settings-panel-active #settingsOptions .rule-standalone,
 body.settings-panel-active #settingsDisplayOptions .rule-standalone { margin-top: 0; }
 body.settings-panel-active #settings-limits .rule-group-head {
-  margin: 12px 2px 6px; font-size: 13.5px;
+  margin: 6px 2px 3px; font-size: 11.5px;
 }
-body.settings-panel-active #settings-limits .rule-sub { margin-left: 18px; padding-left: 12px; }
+body.settings-panel-active #settings-limits .rule-sub { margin-left: 14px; padding-left: 8px; }
 body.settings-panel-active #settingsVoice { gap: 9px; }
 body.settings-panel-active .settings-data-pane .maps-body {
   width: 100%; height: auto; margin: 0; padding: 4px 0 max(34px, env(safe-area-inset-bottom));
@@ -1863,9 +1866,10 @@ body.settings-panel-active .settings-weights-pane .weights-body {
 }
 .settings-weights-toolbar > strong { color: #263f4d; font: 800 17px/1.2 system-ui; }
 .settings-preset-override-note {
-  margin: 0 0 10px; padding: 10px 12px; border: 1px solid #d7b36b;
-  border-radius: 10px; background: #fff8e9; color: #714c0b;
-  font: 700 12.5px/1.35 system-ui;
+  margin: 0 0 5px; padding: 5px 8px; border: 1px solid #d7b36b;
+  border-radius: 8px; background: #fff8e9; color: #714c0b;
+  font: 700 10px/1.15 system-ui; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (min-width: 760px) {
@@ -1880,26 +1884,41 @@ body.settings-panel-active .settings-weights-pane .weights-body {
 }
 
 @media (max-width: 520px) {
-  body.settings-panel-active .settings-panel-head { min-height: 58px; padding-right: 12px; padding-left: 14px; }
+  body.settings-panel-active .settings-panel-head {
+    min-height: 50px; padding-right: 12px; padding-bottom: 6px; padding-left: 14px;
+  }
   body.settings-panel-active .settings-panel-head > strong { font-size: 18px; }
   body.settings-panel-active .settings-tabs,
   body.settings-panel-active .settings-pane,
   body.settings-panel-active .settings-nav-lock { width: calc(100% - 20px); }
-  body.settings-panel-active .settings-tabs { gap: 5px; padding-top: 9px; }
-  body.settings-panel-active .settings-tab-pair { flex: 1 0 520px; min-width: 520px; gap: 5px; }
-  body.settings-panel-active .settings-tabs button { min-height: 38px; padding: 6px 8px; font-size: 11px; }
-  body.settings-panel-active .settings-tabs .settings-weights-tab { flex-basis: 42px; font-size: 17px; }
+  body.settings-panel-active .settings-tabs { padding-top: 5px; padding-bottom: 5px; }
+  body.settings-panel-active .settings-tab-pair { gap: 4px; }
+  body.settings-panel-active .settings-tabs button { min-height: 28px; padding: 3px 5px; font-size: 10.5px; }
+  body.settings-panel-active .settings-tabs .settings-weights-tab { font-size: 16px; }
   .settings-weights-toolbar { align-items: flex-start; }
   .settings-weights-toolbar > strong { font-size: 15px; }
   .settings-weights-toolbar .weights-head-actions { gap: 5px; }
   .settings-weights-toolbar :is(.weights-considered, .weights-reset) {
     min-height: 34px; padding: 0 8px; font-size: 10px;
   }
-  body.settings-panel-active .settings-rules-section { padding: 10px; }
+  body.settings-panel-active .settings-rules-section { margin-bottom: 4px; padding: 4px 6px; }
+  body.settings-panel-active .settings-rules-section > h2 {
+    margin-bottom: 3px; padding-bottom: 2px; font-size: 11px;
+  }
   body.settings-panel-active #settingsSliders .rule-card,
   body.settings-panel-active #settingsOptions .rule-card,
   body.settings-panel-active #settingsDisplayOptions .rule-card,
-  body.settings-panel-active #settingsVoice .rule-card { min-height: 42px; padding: 7px 9px; }
+  body.settings-panel-active #settingsVoice .rule-card { min-height: 31px; padding: 3px 6px; }
+  body.settings-panel-active #settingsSliders .rule-head {
+    min-height: 14px; margin-bottom: 0; font-size: 10.5px; line-height: 1.05;
+  }
+  body.settings-panel-active #settingsSliders .rule-card input[type="range"] { height: 13px; }
+  body.settings-panel-active #settingsOptions .rule-check,
+  body.settings-panel-active #settingsDisplayOptions .rule-check { font-size: 11px; line-height: 1.1; }
+  body.settings-panel-active #settings-limits .rule-group-head {
+    margin: 3px 2px 1px; font-size: 10.5px;
+  }
+  body.settings-panel-active #settings-limits .rule-sub { margin-left: 10px; padding-left: 6px; }
 }
 
 /* The Navigate popup: three ways to use the tapped point. */
