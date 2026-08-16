@@ -64,10 +64,12 @@ Completed 2026-08-15 from cached public ArcGIS pages:
   section record year carried as 2018 where present.
 
 The source pages are cached under `data/.cache/` for rebuilds; normalized
-inputs are committed in this folder in plain form for the shared builders and
-as `.gz` copies for source preservation. `sourceCounts` remains zero until the
-overlay and road artefacts exist, because the registry contract requires those
-counts to match the files that actually ship.
+inputs are committed in this folder as `.gz` source artefacts. The plain
+GeoJSON expansion is a local build intermediate: `BUILD.md` will explicitly
+inflate it before invoking builders whose current readers require plain JSON.
+`sourceCounts` remains zero until the overlay and road artefacts exist, because
+the registry contract requires those counts to match the files that actually
+ship.
 
 ## Portability finding
 
