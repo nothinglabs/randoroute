@@ -9,6 +9,9 @@ Important source ownership rules:
 
 * BLTS contributes only its derived bicycle stress rating. Its copied speed,
   shoulder, lane and facility fields are not treated as independent evidence.
+  The normalized stream does include a posted speed only when it is matched
+  from ODOT's separate posted-speed inventory, so the shared road builder and
+  graph builder consume the same owning source.
 * Shoulder, posted speed and bicycle facilities come from their own ODOT
   inventories.
 * ODOT's state AADT layer is point-rendered but carries route and milepost
@@ -219,6 +222,7 @@ def build(limit=None):
     raw_funcclass = [r for f in fetch('funcclass', limit) if (r := line_record(f))]
 
     shoulder_exact, shoulder_physical = index_records(raw_shoulder)
+    speed_exact, speed_physical = index_records(raw_speed)
     route_lines = defaultdict(list)
     route_lines_physical = defaultdict(list)
     for props, geometry, key, span in raw_blts:
@@ -229,6 +233,7 @@ def build(limit=None):
 
     blts_out = []
     shoulder_matches = 0
+    speed_matches = 0
     for props, geometry, key, span in raw_blts:
         target_direction = direction(key, props)
         shoulder = best_record(key, span, shoulder_exact, shoulder_physical,
@@ -242,6 +247,11 @@ def build(limit=None):
         # swaps the side used by the rider.
         side = 'RS' if shoulder_direction == target_direction else 'LS'
         shoulder_ft = width(shoulder_props, side) if shoulder_props else None
+        speed_record = best_record(key, span, speed_exact, speed_physical,
+                                   target_direction)
+        posted_speed = num(speed_record[0].get('SPEED')) if speed_record else None
+        if posted_speed is not None and posted_speed > 0:
+            speed_matches += 1
         lts_match = re.search(r'([1-4])', text(props.get('SegmentBLT')) or '')
         normalized = {
             'RouteIdentifier': route_identifier(key, props),
@@ -249,6 +259,8 @@ def build(limit=None):
             'LTS_Bicycle': int(lts_match.group(1)) if lts_match else None,
             'ShoulderWidth': shoulder_ft,
             'ShoulderSource': 'ODOT Shoulder Width and Type' if shoulder_ft is not None else None,
+            'SpeedLimit': int(posted_speed) if posted_speed is not None and posted_speed > 0 else None,
+            'SpeedSource': 'ODOT Posted Speed Inventory' if posted_speed is not None and posted_speed > 0 else None,
             'StressEffectiveDate': text(props.get('EFFECTV_DT')),
         }
         normalized = {k: v for k, v in normalized.items()
@@ -257,6 +269,7 @@ def build(limit=None):
             blts_out.append(feature(normalized, line))
     write_fc(os.path.join(OUT_DIR, 'blts.geojson'), blts_out)
     print(f'  BLTS segments with a shoulder inventory match: {shoulder_matches:,} / {len(raw_blts):,}')
+    print(f'  BLTS segments with a posted-speed inventory match: {speed_matches:,} / {len(raw_blts):,}')
 
     speed_out = []
     for props, geometry, key, span in raw_speed:
