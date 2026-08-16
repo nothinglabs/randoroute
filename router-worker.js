@@ -552,16 +552,20 @@ const V_DISMOUNT = 1.15;
 // The most this can discount an edge. heuristicSpeed() depends on it.
 const SPEED_STRESS_FLOOR = 0.25; // ~2.6 mph while walking a bike
 // 6 minutes, raised from 4 by field feedback: routes leaned on walk links a
-// little too readily once the network was fully connected.
+// little too readily once the network was fully connected. When the field
+// said "still too willing to walk", the DOUBLING went into the multipliers
+// below, not here: this flat fee hits a thirty-second dock approach as hard
+// as a half-mile slog, and at 12 minutes it priced the Pier 50 fast ferry
+// out of the Southworth route in favour of riding miles to Fauntleroy.
 const DISMOUNT_ENTRY_PENALTY_S = 6 * 60;
 // Search-cost multiplier on the walked time of a dismount stretch (the ETA
 // keeps the honest walking time). See the note at its use in edgeCostParts.
-const DISMOUNT_WALK_COST_MULT = 4;
+const DISMOUNT_WALK_COST_MULT = 8;
 // Above this, a single dismount EDGE prices even harsher in the search: long
 // edges are how long unrideable trails appear in the graph, and the rider
 // bushwhacked one once because a router shrugged at it.
 const DISMOUNT_LONG_EDGE_M = 100;
-const DISMOUNT_LONG_EDGE_MULT = 8;
+const DISMOUNT_LONG_EDGE_MULT = 16;
 // A CONTIGUOUS tagged-dismount run longer than this reports as FAILING the
 // rules, not merely caution: a gate or a dock approach is a shrug, a real
 // stretch of signed trail you cannot ride is a route that failed to be a

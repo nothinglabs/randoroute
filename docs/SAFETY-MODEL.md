@@ -963,11 +963,15 @@ differently. **Tagged** — a mapper wrote `bicycle=dismount`; the edge carries
 `official` bit 128 alongside the pricing bit 8. **Synthesised** — a walk link
 the graph build created from an untagged footway or path purely to keep the
 network connected (bit 8 without 128). Both are priced identically — walking
-pace, a six-minute entry penalty, and a ×4 search-cost multiplier on the
-walked time (×8 on an edge over 100 m, which is how a long unrideable trail
+pace, a six-minute entry penalty, and a ×8 search-cost multiplier on the
+walked time (×16 on an edge over 100 m, which is how a long unrideable trail
 appears in the graph): walking the bike is a bad outcome, not merely a slow
 one, and the multiplier is proportional by construction because it scales the
-walked seconds themselves. Both count as CAUTION in the route's level
+walked seconds themselves. (The multipliers were doubled from ×4/×8 by field
+feedback — routes were still too willing to walk — but the flat entry fee
+stayed at six minutes: it hits a thirty-second dock approach as hard as a
+half-mile slog, and doubling it priced the Pier 50 fast ferry out of the
+Southworth route in favour of riding miles to Fauntleroy.) Both count as CAUTION in the route's level
 percentages (matching the amber they draw), and both are priced into the
 recommendation at the same one second per meter as failing road. One
 judgment applies to tagged dismounts alone: a contiguous tagged run longer
