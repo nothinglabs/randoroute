@@ -67,7 +67,8 @@ FIELDS = {
                  'NOTE', 'EFFECTV_DT'],
     'aadt_state': ['OBJECTID', 'LRM_KEY', 'BEGMP', 'ENDMP', 'MP', 'AADT',
                    'EFFECTV_DT'],
-    'funcclass': ['OBJECTID', 'LRM_KEY', 'NEW_FC_CD', 'NEW_FC_TYP',
+    'funcclass': ['OBJECTID', 'LRM_KEY', 'BEGMP', 'ENDMP',
+                  'NEW_FC_CD', 'NEW_FC_TYP',
                   'JRSDCT', 'FC_CD', 'URBAN', 'EFFECTV_DT'],
 }
 
@@ -125,7 +126,11 @@ def paths(feature):
 
 def fetch(kind, limit=None):
     label = f'ODOT {kind}'
-    cache = os.path.join(CACHE_DIR, kind)
+    # The first census probe omitted BEGMP/ENDMP from the functional-class
+    # field list; keep its old pages isolated so a resumed build cannot reuse
+    # an incomplete schema while the other five layer caches remain valid.
+    cache_name = 'funcclass-v2' if kind == 'funcclass' else kind
+    cache = os.path.join(CACHE_DIR, cache_name)
     count = 0
     for feature in arcgis.fetch_all(
             LAYERS[kind], FIELDS[kind], cache_dir=cache,
@@ -215,9 +220,12 @@ def build(limit=None):
 
     shoulder_exact, shoulder_physical = index_records(raw_shoulder)
     route_lines = defaultdict(list)
+    route_lines_physical = defaultdict(list)
     for props, geometry, key, span in raw_blts:
         for line in geometry:
-            route_lines[key].append((props, line, key, span))
+            item = (props, line, key, span)
+            route_lines[key].append(item)
+            route_lines_physical[physical_key(key)].append(item)
 
     blts_out = []
     shoulder_matches = 0
@@ -326,7 +334,7 @@ def build(limit=None):
         target_direction = direction(key, props)
         candidates = list(route_lines.get(key, ()))
         if not candidates:
-            candidates = [item for item in route_lines.get(physical_key(key), ())]
+            candidates = list(route_lines_physical.get(physical_key(key), ()))
         seen = set()
         for route_props, line, source_key, source_span in candidates:
             if overlap(span, source_span) <= 0:

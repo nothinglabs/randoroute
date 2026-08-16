@@ -41,6 +41,44 @@ See `corridors.json` for the machine-checked endpoints.
   documented backlog, not silently treated as line coverage.
 - No application code or another state's data may be changed for this import.
 
+## Agency data stage
+
+Completed 2026-08-15 from cached public ArcGIS pages:
+
+- ODOT BLTS: 81,210 normalized segments; 49,975 received a shoulder value
+  from the owning Shoulder Width and Type inventory. The normalized BLTS file
+  carries the derived `LTS_Bicycle` rating, not the BLTS copies of speed,
+  lane-count, or facility fields.
+- ODOT shoulder inventory: 20,407 records. Directional side fallback is
+  applied when an opposite-direction record is the only span available.
+- ODOT Posted Speed: 2,532 source records, 2,549 line parts.
+- ODOT Bicycle Facilities: 1,800 `BL` and 266 `SL` records, 2,091 line
+  parts. `SH` (shoulder bikeway) and `NO` (no facility) were excluded.
+- ODOT Federal Functional Class: 83,112 usable line features after dropping
+  unknown/proposed class codes; 30,677 county-owned and 39,817 city-owned
+  features have a recognized owner code.
+- ODOT current state AADT: 6,544 route sections became 43,655 line parts by
+  projecting each milepost span onto the matching ODOT route linework; all
+  carry effective year 2024.
+- FHWA HPMS Oregon 2018: 67,861 counted rows, 71,826 line parts, with the
+  section record year carried as 2018 where present.
+
+The source pages are cached under `data/.cache/` for rebuilds; normalized
+inputs are committed in this folder in plain form for the shared builders and
+as `.gz` copies for source preservation. `sourceCounts` remains zero until the
+overlay and road artefacts exist, because the registry contract requires those
+counts to match the files that actually ship.
+
+## Portability finding
+
+The shared state-highway candidate gate currently recognizes `I`, `US`, `SR`,
+and `WA` route prefixes, but not Oregon's `OR` prefix. Official speed and
+facility matching is independent of that gate; BLTS-derived stress and
+shoulder matching use it for non-trunk state highways. This is a shared-code
+portability bug, not an Oregon data fact, so it is recorded here and is not
+being fixed within this import's allowed blast radius. The final coverage
+measurement will quantify its effect.
+
 ## Findings and blockers
 
 This section will record any documentation defect, source mismatch, or build
