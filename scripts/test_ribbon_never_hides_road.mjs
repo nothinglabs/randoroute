@@ -45,7 +45,9 @@ const ctx = {
   HIT_LAYERS: ['routes__hit', 'roads__hit', 'osm__hit'],
   HIT_SRC: {
     routes__hit: { id: 'routes', ribbon: true },
-    roads__hit: { id: 'roads' },
+    // The scorer mirrors the real one's shape: featureAt asks it whether a
+    // hit is bikes-banned before letting it win an ambiguous tap.
+    roads__hit: { id: 'roads', scorer: (p) => ({ prohibited: p.b === 1 }) },
     osm__hit: { id: 'osm' },
   },
   map: {
@@ -68,7 +70,7 @@ vm.createContext(ctx);
 vm.runInContext([
   lift('dismountMarkerAt'), lift('featureAt'), lift('pointToSegmentPx'),
   lift('screenDistanceToFeature'), lift('nearestOfHits'),
-  lift('reconcileCoincident'),
+  lift('reconcileCoincident'), lift('hitProhibited'), lift('dodgeBannedHit'),
 ].join('\n'), ctx);
 
 const at = (...ids) => {
@@ -113,6 +115,20 @@ assert.equal(
     .geometry.coordinates[0][0],
   100, 'and the same answer when the draw order is reversed');
 console.log('PASS  the tap resolves to the nearest feature, not the topmost');
+
+/* ------------- an ambiguous tap never means the bikes-banned road */
+// Beside the Interurban Trail the nearest record is I-5's; a tap that could
+// mean a rideable way or a banned one beside it means the rideable way, the
+// same doctrine as the router's node snapping.
+const NEXT = [[104, 90], [104, 140]];   // 4 px beside the tap
+assert.equal(
+  pick([line('roads__hit', HERE, { b: 1 }), line('roads__hit', NEXT)], 100, 100)
+    .geometry.coordinates[0][0],
+  104, 'a rideable way in reach wins over a nearer bikes-banned one');
+assert.equal(
+  pick([line('roads__hit', HERE, { b: 1 })], 100, 100).properties.b,
+  1, 'a banned road alone under the tap still answers for itself');
+console.log('PASS  an ambiguous tap resolves to the rideable way (2 cases)');
 
 /* ------------------ coincident records: measured beats blank, lowest wins */
 const both = (props) => line('blts__hit', HERE, props);
@@ -199,13 +215,23 @@ const cardText = (badge, designatedFlag, genericFacility = false) => page.evalua
     return document.getElementById('readout').textContent || '';
   }, { badge, designatedFlag, genericFacility });
 
-const withBadge = await cardText('US Bicycle Route 10', false, true);
+// A road genuinely under a ribbon always carries its own flag -- roads tiles
+// take `g` from the same collect_designated() relation membership that builds
+// the ribbon overlay -- so a badge with NO flag means the ribbon is merely
+// NEARBY: beside the Interurban Trail the nearest record is I-5's, and naming
+// the trail on the banned freeway's card is how it read as the trail failing
+// (field report). The name lands only where the road claims membership.
+const withBadge = await cardText('US Bicycle Route 10', true, true);
 assert.ok(withBadge.includes('US Bicycle Route 10'),
   'the road card must name the designated route running over it');
 assert.ok(/bike route/i.test(withBadge),
   'and label it as a bike route, so the designation is not a bare string');
 assert.ok(/bike accommodation/i.test(withBadge),
   'a generic accommodation fact must remain separate from the named route');
+
+const badgeWithoutFlag = await cardText('US Bicycle Route 10', false, true);
+assert.ok(!badgeWithoutFlag.includes('US Bicycle Route 10'),
+  'a nearby ribbon must not pin its name on a road that is not on the route');
 
 const withFlagOnly = await cardText(null, true);
 assert.ok(/designated route/i.test(withFlagOnly),
