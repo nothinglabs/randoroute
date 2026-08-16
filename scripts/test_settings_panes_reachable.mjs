@@ -66,7 +66,7 @@ for (const [name, viewport] of [
   await pg.waitForTimeout(500);
 
   const paneHeights = [];
-  for (const pane of ['presets', 'rules', 'voice']) {
+  for (const pane of ['presets', 'rules', 'voice', 'routes', 'maps', 'weights']) {
     await pg.evaluate((id) => {
       document.querySelector(`[data-settings-pane="${id}"]`)?.click();
     }, pane);

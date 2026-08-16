@@ -493,6 +493,22 @@ So: **a proxy may inform, and must never excuse.** If a new state's data tempts
 you to let a designation, a classification, or an agency's endorsement satisfy a
 physical rule, it is the same mistake wearing new clothes.
 
+### Optional: reviewed route sources beyond OSM
+
+OSM `route=bicycle` relations are the default and are sufficient for a normal
+state import. Do not search for additional route geometry as a routine build
+step. When external documentation demonstrates a meaningful omission, record
+it for human review. Only a source and exact records approved in
+`maps/ROUTE-SOURCES.md` and `maps/route-sources.json` may enter the generic
+supplemental-route builder.
+
+Approved geometry is reconciled with OSM so the Routes screen does not list the
+same corridor twice. It then receives the same designated-route bit and routing
+preference as an OSM relation. There is no separate safety treatment: speed,
+traffic, shoulder, surface, access and facility facts still determine the
+colour and warnings. The shared registry deliberately lives above state
+folders so a clean state re-import cannot discard the human decision.
+
 ### Things deliberately not imported, and why
 
 - **County and city speed limit layers.** On a rural county road the posted

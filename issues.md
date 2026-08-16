@@ -82,11 +82,7 @@ What to check against your own predictions:
 Lessons ledger: the re-import appended an "Oregon re-import (2026-08-16)"
 Travelled line to every lesson; C2/D7/B4 remain the ones worth reading first.
 
-### 4. Bike routes and safety
-Figure out the best way to handle defined bike routes in relation to safety,
-including whether to import county-level bike routes.
-
-### 5. Downloadable map packs — machinery shipped, deployment pending
+### 4. Downloadable map packs — machinery shipped, deployment pending
 The release plan: ship the app with no bundled map data; download states from
 a map store (ours on GitHub Releases; third parties can host their own).
 Shipped in v.717: the store contract (`maps/index.json`, "Map stores" in

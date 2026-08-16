@@ -16,7 +16,7 @@ one that has been ridden with.
 | Bike facilities | Yes — WSDOT Active Transportation Data plus OSM |
 | Prohibitions | Yes — WSDOT Permanent Bike Restrictions, excluded from the graph outright |
 | Traffic volume | Yes — WSDOT AADT on state routes, FHWA HPMS elsewhere |
-| Designated routes | Yes — 114 USBR/regional relations from OSM |
+| Designated routes | Yes — 106 named OSM routes plus 4 reviewed Island County touring routes |
 | Place search | Yes — 2,602 settlements and ferry terminals, offline |
 | Turn navigation | Yes |
 

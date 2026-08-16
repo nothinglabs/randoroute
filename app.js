@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-16.726';
+const APP_VERSION = '2026-08-16.727';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -904,10 +904,9 @@ const routingWeights = { ...DEFAULT_ROUTING_WEIGHTS, ...savedRoutingWeights };
 // and hiding a button changes nothing about that. Applying a preset must leave
 // this alone, and turning it off must not knock the rider off their preset.
 //
-// Off hides the two advanced entry points on the map — the weights button and
-// the "More" routes button — and nothing else. The weights panel itself stays
-// reachable from Settings > Advanced, so this tidies the map rather than
-// removing the feature.
+// Off hides the optional Advanced routing weights tab. The route-shaping
+// values themselves are preserved, so turning the editor back on restores the
+// rider's previous tuning instead of silently resetting it.
 const uiPrefs = {
   showAdvancedTools: typeof savedState?.showAdvancedTools === 'boolean'
     ? savedState.showAdvancedTools : true,
@@ -9613,6 +9612,19 @@ function clearRoute() {
   saveStateSoon();
 }
 
+function recalculateRoute() {
+  if (!routing.start || !routing.end || turnNav.active) return false;
+  exitSharedRoute();
+  closePlacePicker();
+  dismissRoadInfo();
+  clearSearchResultMarker();
+  // This is an explicit fresh search, not a request to preserve the currently
+  // selected letter/profile. Rebuild the portfolio and choose its recommendation.
+  routing.selectRecommendedNext = true;
+  computeRoute();
+  return true;
+}
+
 function updateArmButtons() {
   for (const kind of ['start', 'end']) {
     const button = document.getElementById(`rb-${kind}`);
@@ -9661,6 +9673,23 @@ function updateArmButtons() {
     showStopsButton.title = uiPrefs.showRouteStops
       ? 'Hide stops from the trip bar' : 'Show stops in the trip bar';
     showStopsButton.querySelector('.route-more-check').textContent = uiPrefs.showRouteStops ? '✓' : '';
+  }
+  const recalculateButton = document.getElementById('rb-recalculate');
+  if (recalculateButton) {
+    recalculateButton.disabled = !hasEndpoints || turnNav.active;
+    recalculateButton.title = !hasEndpoints
+      ? 'Set a start and destination to recalculate the route'
+      : turnNav.active ? 'Stop navigation before recalculating the route'
+        : 'Recalculate route';
+    recalculateButton.setAttribute('aria-label', recalculateButton.title);
+  }
+  const clearButton = document.getElementById('rb-clear');
+  if (clearButton) {
+    const hasRouteContent = Boolean(routing.start || routing.end || routing.vias.length
+      || routing.blocks.length || routing.last || turnNav.active);
+    clearButton.disabled = !hasRouteContent;
+    clearButton.title = hasRouteContent ? 'Clear route' : 'No route to clear';
+    clearButton.setAttribute('aria-label', clearButton.title);
   }
   renderRouteStops();
   syncRoutePaneVisibility();
@@ -9929,9 +9958,11 @@ function renderAllRoutesList() {
 // are fetched whole from the worker's portfolio cache.
 function closeConsideredRouteDialogs() {
   const allRoutes = document.getElementById('allRoutesDialog');
-  const weights = document.getElementById('weightsDialog');
   if (allRoutes?.open) allRoutes.close();
-  if (weights?.open) weights.close();
+  if (settingsMenuIsOpen()
+      && document.getElementById('settings-weights')?.hidden === false) {
+    selectPanelTab('route');
+  }
 }
 
 function chooseCandidate(c) {
@@ -10057,6 +10088,8 @@ function buildRoutingPanel() {
   document.getElementById('rb-search').addEventListener('click', () => openPlaceSearch());
   document.getElementById('rb-reverse').addEventListener('click', reverseRoute);
   document.getElementById('rb-add-stop').addEventListener('click', () => openPlaceSearch('via'));
+  document.getElementById('rb-recalculate').addEventListener('click', recalculateRoute);
+  document.getElementById('rb-clear').addEventListener('click', clearRoute);
   document.getElementById('rb-show-stops').addEventListener('click', () => {
     uiPrefs.showRouteStops = !uiPrefs.showRouteStops;
     routeStopsRenderKey = null;
@@ -11545,6 +11578,51 @@ function routeSegmentForActiveIcon(icon) {
     lngLat: { lng: coordinates[0], lat: coordinates[1] } };
 }
 
+// Resolve what the rider can actually see before consulting the deliberately
+// broader transparent hit layers. The hit archive contains every street in a
+// tile, including local streets the basemap hides until neighbourhood zoom;
+// without this first pass an invisible residential street could steal a tap
+// aimed at a visible designated-route ribbon.
+function visibleFeatureAt(point, pad = 6) {
+  const candidates = new Map();
+  const roadsHit = 'roads__hit';
+  for (const id of ['basemap-major', 'basemap-medium', 'basemap-minor', 'basemap-local']) {
+    if (map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none') {
+      candidates.set(id, roadsHit);
+    }
+  }
+  const addSourceLayers = (src, visibleLayers, targetLayer = hitId(src)) => {
+    if (!src || (!src.enabled && !src.alwaysOn && !src.fixed && !src.closure)) return;
+    for (const id of visibleLayers) {
+      if (map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none') {
+        candidates.set(id, targetLayer);
+      }
+    }
+  };
+  const routes = SOURCES.find((src) => src.id === 'routes');
+  addSourceLayers(routes, ['routes'], 'routes__hit');
+  const osm = SOURCES.find((src) => src.id === 'osm');
+  addSourceLayers(osm, [trailBaseId(osm || { id: 'osm' }), trailId(osm || { id: 'osm' })],
+    'osm__trail-hit');
+  for (const src of SOURCES) {
+    if (['roads', 'osm', 'routes', 'blts'].includes(src.id)) continue;
+    if (src.closure) addSourceLayers(src, [src.id, `${src.id}__line`], src.id);
+    else addSourceLayers(src,
+      [src.id, failId(src), vhId(src), cautionId(src), prohibitedId(src)]);
+  }
+  const layers = [...candidates.keys()];
+  if (!layers.length) return null;
+  const rendered = map.queryRenderedFeatures(
+    [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]], { layers });
+  if (!rendered.length) return null;
+  const features = rendered.map((feature) => ({ ...feature,
+    layer: { ...feature.layer, id: candidates.get(feature.layer.id) } }));
+  const isRibbon = (feature) => !!(HIT_SRC[feature.layer.id] || {}).ribbon;
+  const scored = features.filter((feature) => !isRibbon(feature));
+  const pool = scored.length ? scored : features;
+  return dodgeBannedHit(point, pool, nearestOfHits(point, pool));
+}
+
 function featureAt(point) {
   const layers = HIT_LAYERS.filter(
     (id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none'
@@ -11555,6 +11633,10 @@ function featureAt(point) {
   // the line and return whatever road happened to be behind it.
   const onMarker = dismountMarkerAt(point);
   const pad = onMarker ? DISMOUNT_MARKER_HIT_PX : 6;
+  if (!onMarker) {
+    const visible = visibleFeatureAt(point, pad);
+    if (visible) return visible;
+  }
   const feats = map.queryRenderedFeatures(
     [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]],
     { layers }
@@ -13455,6 +13537,12 @@ function syncPresetSelection() {
   // the title says it once, live, where every tab can see it.
   const title = document.getElementById('settingsPanelTitle');
   if (title) title.textContent = `Settings — ${active ? active.label : 'Custom'}`;
+  const overrideNote = document.getElementById('settingsRulesPresetNote');
+  if (overrideNote) {
+    overrideNote.hidden = !active;
+    overrideNote.textContent = active
+      ? `Changing a rule will override ${active.label} and use custom settings.` : '';
+  }
 }
 
 function presetInfoRows(preset) {
@@ -13849,13 +13937,18 @@ async function renderStoreOffers(storeUrl, host) {
   }
 }
 
-function openMapsDialog() {
-  const dialog = document.getElementById('mapsDialog');
-  if (!dialog) return;
+function populateMapsPane() {
   setMapsStatus('');
   buildMapsStateList();
   buildMapsStoreList();
-  if (!dialog.open) dialog.showModal();
+}
+
+function openMapsDialog() {
+  if (!settingsMenuIsOpen()) {
+    selectPanelTab('settings');
+    setPanelOpen(true);
+  }
+  settingsPaneSelect?.('maps');
 }
 
 /* ----------------------------- Settings → Routes: the state's signed routes */
@@ -13924,16 +14017,13 @@ function buildStateRoutesList(catalog) {
   }
 }
 
-async function openStateRoutesDialog() {
-  const dialog = document.getElementById('stateRoutesDialog');
-  if (!dialog) return;
+async function populateStateRoutesPane() {
   const region = document.getElementById('stateRoutesRegion');
   if (region) region.textContent = Region.name;
   const status = document.getElementById('stateRoutesStatus');
   const host = document.getElementById('stateRoutesList');
   if (host) host.replaceChildren();
   if (status) status.textContent = 'Loading routes…';
-  if (!dialog.open) dialog.showModal();
   try {
     const catalog = await ensureStateRouteCatalog();
     buildStateRoutesList(catalog);
@@ -13944,6 +14034,14 @@ async function openStateRoutesDialog() {
   } catch (e) {
     if (status) status.textContent = 'Could not load the route list.';
   }
+}
+
+function openStateRoutesDialog() {
+  if (!settingsMenuIsOpen()) {
+    selectPanelTab('settings');
+    setPanelOpen(true);
+  }
+  settingsPaneSelect?.('routes');
 }
 
 document.getElementById('mapsStoreAdd')?.addEventListener('click', () => {
@@ -13961,8 +14059,10 @@ document.getElementById('mapsStoreAdd')?.addEventListener('click', () => {
 function buildRulesPanel() {
   const slidersHost = document.getElementById('settingsSliders');
   const optionsHost = document.getElementById('settingsOptions');
+  const displayOptionsHost = document.getElementById('settingsDisplayOptions');
   slidersHost.replaceChildren();
   optionsHost.replaceChildren();
+  displayOptionsHost.replaceChildren();
   buildPresetPanel();
 
   // Safari can emit a delayed synthetic click after a range-thumb drag. Keep
@@ -14025,24 +14125,7 @@ function buildRulesPanel() {
   check('requireSafe', 'Only show routes fully matching safety rules');
   check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');
 
-  // This also only decides what the map shows, so it must not call
-  // syncPresetSelection(): hiding a button is not a departure from a preset.
-  const advancedToolsCard = document.createElement('div');
-  advancedToolsCard.className = 'check-rule rule-card rule-standalone';
-  advancedToolsCard.innerHTML = `
-    <label class="rule-check" for="r-showAdvancedTools">
-      <input type="checkbox" id="r-showAdvancedTools" ${uiPrefs.showAdvancedTools ? 'checked' : ''}>
-      <span>Show advanced options and routing weights button</span>
-    </label>`;
-  optionsHost.appendChild(advancedToolsCard);
-  advancedToolsCard.querySelector('input').addEventListener('change', (e) => {
-    uiPrefs.showAdvancedTools = e.target.checked;
-    suppressRoadInfo(900);
-    syncAdvancedToolsVisibility();
-    saveStateSoon();
-  });
-
-  // Display only, like the card above: no syncPresetSelection().
+  // Display-only options never knock the rider off a routing preset.
   const warningIconsCard = document.createElement('div');
   warningIconsCard.className = 'check-rule rule-card rule-standalone';
   warningIconsCard.innerHTML = `
@@ -14050,11 +14133,25 @@ function buildRulesPanel() {
       <input type="checkbox" id="r-hideRouteWarningIcons" ${uiPrefs.hideRouteWarningIcons ? 'checked' : ''}>
       <span>Hide route warning icons</span>
     </label>`;
-  optionsHost.appendChild(warningIconsCard);
+  displayOptionsHost.appendChild(warningIconsCard);
   warningIconsCard.querySelector('input').addEventListener('change', (e) => {
     uiPrefs.hideRouteWarningIcons = e.target.checked;
     suppressRoadInfo(900);
     syncRouteWarningIconVisibility();
+    saveStateSoon();
+  });
+  const advancedToolsCard = document.createElement('div');
+  advancedToolsCard.className = 'check-rule rule-card rule-standalone';
+  advancedToolsCard.innerHTML = `
+    <label class="rule-check" for="r-showAdvancedTools">
+      <input type="checkbox" id="r-showAdvancedTools" ${uiPrefs.showAdvancedTools ? 'checked' : ''}>
+      <span>Show advanced options and routing weights</span>
+    </label>`;
+  displayOptionsHost.appendChild(advancedToolsCard);
+  advancedToolsCard.querySelector('input').addEventListener('change', (e) => {
+    uiPrefs.showAdvancedTools = e.target.checked;
+    suppressRoadInfo(900);
+    syncAdvancedToolsVisibility();
     saveStateSoon();
   });
   // Lanes slider: its TOP position means "no limit" rather than a count, the
@@ -14164,6 +14261,8 @@ function buildRulesPanel() {
   if (!settingsTabs.dataset.bound) {
     const paneButtons = [...document.querySelectorAll('[data-settings-pane]')];
     const selectSettingsPane = (pane) => {
+      const requestedButton = paneButtons.find((button) => button.dataset.settingsPane === pane);
+      if (!requestedButton || requestedButton.hidden) pane = 'rules';
       paneButtons.forEach((button) => {
         const active = button.dataset.settingsPane === pane;
         button.classList.toggle('active', active);
@@ -14173,8 +14272,11 @@ function buildRulesPanel() {
       document.querySelectorAll('.settings-pane').forEach((panel) => {
         panel.hidden = panel.id !== `settings-${pane}`;
       });
-      if (pane === 'presets') syncPresetSelection();
+      if (pane === 'presets' || pane === 'rules') syncPresetSelection();
       syncSettingsNavigationLock();
+      if (pane === 'maps') populateMapsPane();
+      if (pane === 'routes') populateStateRoutesPane();
+      if (pane === 'weights') prepareRoutingWeightsPane();
     };
     settingsPaneSelect = selectSettingsPane;
     paneButtons.forEach((button) => {
@@ -14185,18 +14287,17 @@ function buildRulesPanel() {
       button.addEventListener('keydown', (event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
-        const current = paneButtons.indexOf(button);
-        const next = event.key === 'Home' ? 0 : event.key === 'End' ? paneButtons.length - 1
-          : (current + (event.key === 'ArrowRight' ? 1 : -1) + paneButtons.length) % paneButtons.length;
-        paneButtons[next].focus();
-        selectSettingsPane(paneButtons[next].dataset.settingsPane);
-        if (turnNav.active && paneButtons[next].dataset.settingsPane !== 'voice') {
+        const visibleButtons = paneButtons.filter((candidate) => !candidate.hidden);
+        const current = visibleButtons.indexOf(button);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? visibleButtons.length - 1
+          : (current + (event.key === 'ArrowRight' ? 1 : -1) + visibleButtons.length) % visibleButtons.length;
+        visibleButtons[next].focus();
+        selectSettingsPane(visibleButtons[next].dataset.settingsPane);
+        if (turnNav.active && visibleButtons[next].dataset.settingsPane !== 'voice') {
           flashSettingsNavLock();
         }
       });
     });
-    document.getElementById('settings-tab-maps').addEventListener('click', openMapsDialog);
-    document.getElementById('settings-tab-routes').addEventListener('click', openStateRoutesDialog);
     document.getElementById('settingsHelpBtn').addEventListener('click', () => {
       buildCautionCauseHelp();
       openHelp('settings');
@@ -14222,7 +14323,8 @@ function syncSettingsNavigationLock() {
     '#settings-presets button, #settings-presets input, #settings-presets select, '
     + '#settings-limits button, #settings-limits input, #settings-limits select, '
     + '#settings-options button, #settings-options input, #settings-options select, '
-    + '#stateRoutesDialog input, '
+    + '#settings-display-options button, #settings-display-options input, #settings-display-options select, '
+    + '#settings-routes input, #settings-maps input, #settings-maps button, '
     + '#advancedRoutingOptions input, #routingWeightsEditor input, '
     + '#routingWeightsEditor button, #resetRoutingWeights'
   );
@@ -14672,9 +14774,10 @@ document.getElementById('startTourBtn').addEventListener('click', () => {
   document.getElementById('helpDialog')?.close();
   openOnboarding();
 });
-// The weights panel is reachable from its optional map icon and Settings > Advanced.
-// Both keep the map behind the dialog so a tuning change stays tied to its route.
-function openRoutingWeights() {
+// The optional Settings tab keeps these expert controls out of the map chrome.
+// Build it when selected so its values and considered-route availability are
+// always current without paying the editor cost during normal route planning.
+function prepareRoutingWeightsPane() {
   buildAdvancedRoutingOptions();
   buildRoutingWeightsEditor();
   syncWeightsTunedBadge();
@@ -14684,7 +14787,16 @@ function openRoutingWeights() {
   // an empty list.
   const considered = document.getElementById('moreRoutesBtn');
   if (considered) considered.disabled = !(routing.allCandidates || []).length;
-  document.getElementById('weightsDialog').showModal();
+}
+
+function openRoutingWeights() {
+  if (!uiPrefs.showAdvancedTools) return false;
+  if (!settingsMenuIsOpen()) {
+    selectPanelTab('settings');
+    setPanelOpen(true);
+  }
+  settingsPaneSelect?.('weights');
+  return true;
 }
 
 // The route warning badges -- walk, hill, traffic, unpaved, fails -- as one
@@ -14700,18 +14812,23 @@ function syncRouteWarningIconVisibility() {
   }
 }
 
-// The considered-routes screen rides along with the optional Weights tool: its
-// button lives on the weights page, so hiding the map icon hides both advanced
-// map entry points while Settings retains the deliberate fallback.
+// The considered-routes screen rides along with the optional Weights tool, so
+// hiding its Settings tab hides the whole advanced surface without discarding
+// any saved values.
 function syncAdvancedToolsVisibility() {
-  const weightsButton = document.getElementById('appWeightsBtn');
-  if (weightsButton) weightsButton.hidden = !uiPrefs.showAdvancedTools;
+  const weightsTab = document.getElementById('settings-tab-weights');
+  if (weightsTab) weightsTab.hidden = !uiPrefs.showAdvancedTools;
+  if (!uiPrefs.showAdvancedTools
+      && document.getElementById('settings-weights')?.hidden === false) {
+    settingsPaneSelect?.('rules');
+  }
   renderRouteOptionControls();
+  syncSettingsPaneHeight();
 }
-// A weight left off its default silently changes every route. Mark the map
-// icon so the changed state remains discoverable.
+// A weight left off its default silently changes every route. Mark the tab so
+// the changed state remains discoverable whenever the advanced UI is enabled.
 function syncWeightsTunedBadge() {
-  const button = document.getElementById('appWeightsBtn');
+  const button = document.getElementById('settings-tab-weights');
   const off = Object.keys(DEFAULT_ROUTING_WEIGHTS)
     .filter((key) => routingWeights[key] !== DEFAULT_ROUTING_WEIGHTS[key]);
   if (button) {
@@ -14728,8 +14845,7 @@ function syncWeightsTunedBadge() {
       : `Weights have been modified (${off.length} changes)`;
   }
 }
-document.getElementById('appWeightsBtn').addEventListener('click', openRoutingWeights);
-// Static markup on the weights page; openRoutingWeights() keeps its
+// Static markup on the weights page; prepareRoutingWeightsPane() keeps its
 // disabled state in step with whether a trip is currently routed.
 document.getElementById('moreRoutesBtn')?.addEventListener('click', openAllRoutes);
 syncWeightsTunedBadge();

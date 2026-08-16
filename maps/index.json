@@ -63,7 +63,7 @@
     "roads": "sha-a77238a51315",
     "basemap": "sha-4c10a8764862",
     "overlays": "sha-0a5d52347b4c",
-    "graph": "sha-f35305320ee9"
+    "graph": "sha-5ab12bfaafb0"
    },
    "attribution": {
     "extractName": "Oregon",
@@ -111,12 +111,12 @@
     {
      "dataset": "bikeroutes",
      "path": "bikeroutes.geojson.gz",
-     "bytes": 681064
+     "bytes": 2043496
     },
     {
      "dataset": "closures",
      "path": "route_closures.geojson.gz",
-     "bytes": 1001
+     "bytes": 971
     },
     {
      "dataset": "roads",
@@ -136,7 +136,7 @@
     {
      "dataset": "graph",
      "path": "graph2.bin.gz",
-     "bytes": 26763186
+     "bytes": 26763633
     },
     {
      "dataset": "places",
@@ -211,7 +211,7 @@
     "closures": true
    },
    "versions": {
-    "graph": "sha-98d5168cff37",
+    "graph": "sha-0ea7be2cfede",
     "roads": "sha-dd29b387e828",
     "basemap": "sha-77136fe2672a",
     "overlays": "sha-04c278da789b"
@@ -247,17 +247,17 @@
     {
      "dataset": "bikeroutes",
      "path": "bikeroutes.geojson.gz",
-     "bytes": 575879
+     "bytes": 1511595
     },
     {
      "dataset": "restrictions",
      "path": "bike_restrictions.geojson.gz",
-     "bytes": 48809
+     "bytes": 48950
     },
     {
      "dataset": "closures",
      "path": "route_closures.geojson.gz",
-     "bytes": 2270
+     "bytes": 2295
     },
     {
      "dataset": "roads",
@@ -277,7 +277,7 @@
     {
      "dataset": "graph",
      "path": "graph2.bin.gz",
-     "bytes": 46000715
+     "bytes": 46001087
     },
     {
      "dataset": "places",

@@ -92,6 +92,41 @@ assert.ok(city.bikeFacilities + city.trails > 0,
   `cycling infrastructure should remain before local streets: ${JSON.stringify(city)}`);
 assert.ok(neighborhood.local > 0,
   `local streets should return at neighborhood scale: ${JSON.stringify(neighborhood)}`);
+
+// Transparent hit layers deliberately carry more streets than the current
+// map draws. A visible designated route must win over a closer local street
+// that exists only in that broad hit layer at the current zoom.
+const visibleTapPriority = await page.evaluate(() => {
+  const originalQuery = map.queryRenderedFeatures.bind(map);
+  const point = map.project(map.getCenter());
+  const coordinate = [map.getCenter().lng, map.getCenter().lat];
+  const feature = (layer, properties = {}) => ({
+    type: 'Feature', layer: { id: layer }, properties,
+    geometry: { type: 'LineString', coordinates: [
+      [coordinate[0] - 0.001, coordinate[1]],
+      [coordinate[0] + 0.001, coordinate[1]],
+    ] },
+  });
+  map.queryRenderedFeatures = (bounds, options = {}) => {
+    const layers = options.layers || [];
+    if (layers.length === 1 && layers[0] === 'route-dismount-halo') return [];
+    if (layers.includes('routes')) return [feature('routes', { n: 'Visible bike route' })];
+    if (layers.some((id) => HIT_LAYERS.includes(id))) return [
+      feature('roads__hit', { h: 'residential', name: 'Invisible local street' }),
+      feature('routes__hit', { n: 'Visible bike route' }),
+    ];
+    return [];
+  };
+  try {
+    const selected = featureAt(point);
+    return { layer: selected?.layer?.id, name: selected?.properties?.n };
+  } finally {
+    map.queryRenderedFeatures = originalQuery;
+  }
+});
+assert.deepEqual(visibleTapPriority,
+  { layer: 'routes__hit', name: 'Visible bike route' },
+  `visible route should beat an invisible local street: ${JSON.stringify(visibleTapPriority)}`);
 assert.equal(page.pageErrors.length, 0, page.pageErrors.join(' | '));
 
 await browser.close();

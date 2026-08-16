@@ -72,6 +72,7 @@ python3 maps/washington/tools/build_blts.py \
 python3 scripts/build_osm.py \
   --src data/washington-latest.osm.pbf --out maps/washington/bikeinfra.geojson
 python3 scripts/build_routes.py --src data/washington-latest.osm.pbf
+python3 scripts/merge_route_sources.py --region washington
 python3 scripts/build_places.py --src data/washington-latest.osm.pbf \
   --out maps/washington/places.json
 ```
@@ -122,11 +123,16 @@ traffic circles come back as spikes.
 
 ```bash
 python3 scripts/build_graph.py --src data/washington-latest.osm.pbf --region maps/washington/region.json
+node scripts/stamp_supplemental_route_edges.mjs washington
 ```
 
 Defaults already point at this folder. The builder hashes the artefact and
 writes `versions.graph` into `region.json`, then regenerates `maps/states.js`.
 `scripts/test_graph_version_stamp.mjs` fails the suite if the two disagree.
+The second command applies only the exact human-approved Island County routes
+from the committed shared snapshot. It adds the ordinary designated-route bit,
+not a safety exemption, and records only newly set edges in the sidecar so a
+later refresh can remove stale matches without disturbing OSM designations.
 
 Optional patches, each rewriting the graph in place:
 

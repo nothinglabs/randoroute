@@ -26,6 +26,7 @@ const routesScreen = await page.evaluate(async () => {
   const posted = [];
   routing.worker = { postMessage: (message) => posted.push(message) };
   routing.ready = true;
+  selectPanelTab('settings');
   document.getElementById('settings-tab-routes').click();
   const deadline = Date.now() + 30000;
   while (!document.querySelector('.state-route-row') && Date.now() < deadline) {
@@ -33,10 +34,18 @@ const routesScreen = await page.evaluate(async () => {
   }
   const rows = [...document.querySelectorAll('.state-route-row')];
   const out = {
-    dialogOpen: document.getElementById('stateRoutesDialog').open,
+    settingsOpen: settingsMenuIsOpen(),
+    paneVisible: document.getElementById('settings-routes').hidden === false,
+    tabsVisible: document.getElementById('settingsTabs').getBoundingClientRect().height > 0,
+    tabTitle: document.getElementById('settings-tab-routes').textContent.trim(),
     regionNamed: document.getElementById('stateRoutesRegion').textContent,
     rowCount: rows.length,
     detailsPresent: rows.every((row) => row.querySelector('small')?.textContent.length > 0),
+    sourceHeadings: [...document.querySelectorAll('.state-route-source-heading')]
+      .map((heading) => heading.textContent),
+    islandCountyRoute: rows.find((routeRow) =>
+      routeRow.querySelector('strong')?.textContent === 'North Whidbey')
+      ?.querySelector('small')?.textContent || '',
   };
   const row = rows.find((r) => r.querySelector('input') && !r.querySelector('input').checked);
   out.toggledName = row.querySelector('strong').textContent;
@@ -60,13 +69,20 @@ const routesScreen = await page.evaluate(async () => {
   box.dispatchEvent(new Event('change'));
   await new Promise((resolve) => setTimeout(resolve, 150));
   out.ruleKeyCleared = rules.preferredRoutes || null;
-  document.getElementById('stateRoutesDialog').close();
+  selectPanelTab('route');
   return out;
 });
 check('the Routes screen lists the state’s signed routes',
-  routesScreen.dialogOpen && routesScreen.rowCount > 20 && routesScreen.detailsPresent
+  routesScreen.settingsOpen && routesScreen.paneVisible && routesScreen.tabsVisible
+    && routesScreen.tabTitle === 'Designated Routes'
+    && routesScreen.rowCount > 20 && routesScreen.detailsPresent
     && /Washington/.test(routesScreen.regionNamed),
   JSON.stringify({ ...routesScreen, persisted: undefined, savedBlob: undefined }));
+check('reviewed routes are grouped separately from OSM without implying safety',
+  routesScreen.sourceHeadings.join('|') === 'OSM routes|Island County'
+    && /Official route/.test(routesScreen.islandCountyRoute)
+    && !/safe/i.test(routesScreen.islandCountyRoute),
+  JSON.stringify(routesScreen));
 check('marking Preferred sets the rules key and sends the worker the geometry',
   routesScreen.ruleKey === routesScreen.toggledName
     && routesScreen.messageKey === routesScreen.toggledName

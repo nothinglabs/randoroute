@@ -6,6 +6,9 @@ names a state.
 ```
 maps/
   states.js            GENERATED index of the folders below (do not edit)
+  ROUTE-SOURCES.md      human approvals for exceptional non-OSM route sources
+  route-sources.json   machine-readable companion to that approval record
+  supplemental-routes.geojson.gz  reviewed source snapshot shared by rebuilds
   <state>/
     region.json        the state's whole configuration
     STATUS.md          what works, what is missing, readiness against the rubric
@@ -22,6 +25,12 @@ maps/
     route_closures.geojson.gz          small runtime overlays
     *.geojson, *.geojson.gz            build inputs kept for rebuilds
 ```
+
+The three shared route-source files are the one deliberate exception to the
+per-state-folder rule. They preserve a human source decision when a state
+folder is deleted for a clean re-import. OSM remains the normal source. Read
+[`ROUTE-SOURCES.md`](./ROUTE-SOURCES.md) before touching them: supplemental
+route import is optional and approval-gated, not a standard state-import step.
 
 ## How the app finds a state
 

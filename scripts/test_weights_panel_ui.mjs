@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// The weights panel as a rider meets it: reachable from its optional map icon, every slider
+// The weights panel as a rider meets it: reachable from its optional Settings tab, every slider
 // wired to the weight its label claims, and the revert affordances working.
 //
 // The static coverage test proves the KEYS line up. This proves the rendered
 // DOM does -- that the assembled base+mode+suffix keys survive into real
 // `data-weight` attributes, that dragging one writes to routingWeights, and
-// that hiding the advanced tools removes the map entry without leaving a
+// that hiding the advanced tools removes the tab without leaving a
 // second, surprising launcher inside Help.
 // Playwright is installed globally in this container, not under the project, so
 // resolving it is the harness's job rather than each test file's.
@@ -49,36 +49,41 @@ await pg.waitForTimeout(1500);
 let pass = 0, fail = 0;
 const check = (n, ok, x = '') => { (ok ? pass++ : fail++); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${x ? '  -- ' + x : ''}`); };
 
-/* -------------------------------- 1. the optional map icon opens the panel */
-const btn = await pg.$('#appWeightsBtn');
-check('the map has a weights icon', !!btn);
+/* ----------------------------- 1. the optional Settings tab opens the panel */
+await pg.click('#settingsToggle');
+await pg.waitForTimeout(150);
+const btn = await pg.$('#settings-tab-weights');
+check('Settings has an optional weights tab', !!btn);
 const visible = await pg.evaluate(() => {
-  const el = document.getElementById('appWeightsBtn');
+  const el = document.getElementById('settings-tab-weights');
   const r = el.getBoundingClientRect();
   return { w: r.width, h: r.height, onScreen: r.top >= 0 && r.right <= innerWidth,
-    floating: el.parentElement === document.body,
+    isSettingsTab: !!el.closest('#settingsTabs'),
+    noMapButton: !document.getElementById('appWeightsBtn'),
     menuItems: [...document.querySelectorAll('#routeMoreMenu > button')]
       .map((button) => button.lastElementChild?.textContent.trim()),
     helpRemoved: !document.getElementById('appHelpBtn'),
     settingsCopy: document.querySelector('label[for="r-showAdvancedTools"] span')?.textContent,
-    optionColumnLefts: [...new Set([...document.getElementById('settingsOptions').children]
+    optionColumnLefts: [...new Set([...document.getElementById('settingsDisplayOptions').children]
       .map((card) => Math.round(card.getBoundingClientRect().left)))] };
 });
-check('weights icon is on screen and a finger-sized map target',
-  visible.onScreen && visible.floating && visible.w >= 34 && visible.h >= 34,
+check('weights is an on-screen Settings tab, not map chrome',
+  visible.onScreen && visible.isSettingsTab && visible.noMapButton
+    && visible.w >= 34 && visible.h >= 34,
   JSON.stringify(visible));
 check('the compact trip menu omits Weights and the setting uses the requested warning copy',
-  visible.menuItems.join('|') === 'Swap start & destination|Add stop|Show stops in trip bar|Save, load & share|Check for updates'
+  visible.menuItems.join('|') === 'Swap start & destination|Add stop|Show stops in trip bar|Recalculate route|Clear route|Save, load & share|Check for app updates'
     && visible.helpRemoved
-    && visible.settingsCopy === 'Show advanced options and routing weights button',
+    && visible.settingsCopy === 'Show advanced options and routing weights',
   JSON.stringify(visible));
 check('the Options pane uses one clear checkbox column',
   visible.optionColumnLefts.length === 1, JSON.stringify(visible));
 
-await pg.click('#appWeightsBtn');
+await pg.click('#settings-tab-weights');
 await pg.waitForTimeout(400);
-check('clicking it opens the weights dialog',
-  await pg.evaluate(() => document.getElementById('weightsDialog').open));
+check('clicking it opens the weights pane and keeps the Settings tabs',
+  await pg.evaluate(() => document.getElementById('settings-weights').hidden === false
+    && document.getElementById('settingsTabs').getBoundingClientRect().height > 0));
 
 const advancedOptions = await pg.evaluate(() => {
   const ids = ['r-prefDesig', 'r-prefResidential', 'r-allowSidewalkFallback',
@@ -224,7 +229,7 @@ check('changing a weight cannot move its slider out from under a finger',
 
 /* --------------------------------- 5. the tuned badge tracks off-defaults */
 const badge = await pg.evaluate(() => {
-  const button = document.getElementById('appWeightsBtn');
+  const button = document.getElementById('settings-tab-weights');
   const notice = document.getElementById('weightsModifiedNotice');
   const clean = button.classList.contains('tuned');
   const noticeClean = notice.hidden;
@@ -240,8 +245,8 @@ const badge = await pg.evaluate(() => {
   return { clean, dirty, title, noticeClean, stableDuringDrag, noticeDirty,
     backToClean: button.classList.contains('tuned'), noticeBackToClean: notice.hidden };
 });
-check('the map icon is unmarked at defaults', badge.clean === false);
-check('the map icon marks itself once a weight is off default',
+check('the weights tab is unmarked at defaults', badge.clean === false);
+check('the weights tab marks itself once a weight is off default',
   badge.dirty === true && /changed/.test(badge.title), badge.title);
 check('and clears again when reverted', badge.backToClean === false);
 check('the page-level modified header follows the same state',
@@ -249,21 +254,22 @@ check('the page-level modified header follows the same state',
     && badge.noticeBackToClean, JSON.stringify(badge));
 
 /* ---------------------------- 6. advanced tools have one deliberate entry */
-await pg.evaluate(() => document.getElementById('weightsDialog').close());
-const hiddenFromMap = await pg.evaluate(() => {
+const hiddenFromSettings = await pg.evaluate(() => {
+  settingsPaneSelect('rules');
   const control = document.getElementById('r-showAdvancedTools');
   control.checked = false;
   control.dispatchEvent(new Event('change', { bubbles: true }));
-  return document.getElementById('appWeightsBtn').hidden;
+  return document.getElementById('settings-tab-weights').hidden
+    && document.getElementById('settings-rules').hidden === false;
 });
-check('turning off advanced options hides the map icon', hiddenFromMap);
+check('turning off advanced options hides the weights tab', hiddenFromSettings);
 const helpEntry = await pg.evaluate(() => {
   openHelp('settings');
   const settingsHelp = document.getElementById('helpPanelSettings');
   return {
     buttonPresent: !!document.getElementById('settingsAdvancedWeightsBtn'),
     explainsSetting: settingsHelp.textContent.includes('Show advanced options and routing weights'),
-    weightsOpen: document.getElementById('weightsDialog').open,
+    weightsOpen: document.getElementById('settings-weights').hidden === false,
   };
 });
 check('Help explains how to reveal weights without carrying a second launcher',

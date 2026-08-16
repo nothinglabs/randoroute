@@ -94,9 +94,10 @@ Completed 2026-08-16:
 - OSM extract: Oregon latest Geofabrik PBF; 309,278 graph-eligible ways kept.
 - bikeinfra.geojson.gz: 37,418 retained overlay features after dropping 2,113
   sharrow-only ways in the shared overlay builder.
-- bikeroutes.geojson.gz: 45 route relations (2 national, 43 regional) and
-  10 source route-closure groups; route_closures.geojson.gz contains the
-  extracted closure collection.
+- bikeroutes.geojson.gz: 41 reconciled named routes: the OSM catalogue plus all
+  18 reviewed Oregon Scenic Bikeways (9 matched to OSM counterparts and 9
+  official-only). Ten source route-closure groups remain in
+  route_closures.geojson.gz.
 - roads.pmtiles: 215,485 street features from two road GeoJSON build parts.
 - basemap.pmtiles: 39.4 MiB; overlays.pmtiles: 14.2 MiB.
 - graph2.bin.gz: 631,212 nodes, 730,560 edges, 104,771 official-speed

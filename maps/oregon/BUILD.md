@@ -56,6 +56,7 @@ the graph builder reads the dedicated speed layer.
   --src data/oregon-latest.osm.pbf \
   --bounds=-124.8,41.8,-116.3,46.4 \
   --out maps/oregon/bikeroutes.geojson
+python3 scripts/merge_route_sources.py --region oregon
 
 gzip -c maps/oregon/bikeinfra.geojson > maps/oregon/bikeinfra.geojson.gz
 gzip -c maps/oregon/bikeroutes.geojson > maps/oregon/bikeroutes.geojson.gz
@@ -120,9 +121,15 @@ tippecanoe -o maps/oregon/roads.pmtiles -l roads --force -Z5 -z13 \
   --aadt maps/oregon/aadt.geojson \
   --hpms maps/oregon/hpms.geojson
 
+node scripts/stamp_supplemental_route_edges.mjs oregon
+
 node scripts/stamp_tiles_version.mjs oregon
 npm run maps:registry
 ```
+
+The merge and stamp commands use only the 18 Oregon Scenic Bikeways explicitly
+approved in the shared route-source registry. They reconcile overlaps with OSM
+and apply the ordinary designated-route bit; they do not alter safety facts.
 
 The graph builder stamps `graph`; the tile stamper stamps `roads`, `basemap`,
 and `overlays`. The generated registry files are

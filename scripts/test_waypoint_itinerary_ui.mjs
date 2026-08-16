@@ -30,6 +30,8 @@ const initial = await page.evaluate(() => {
       && !document.getElementById('reorderRouteDialog'),
     reverseDisabled: document.getElementById('rb-reverse').disabled,
     addStopDisabled: document.getElementById('rb-add-stop').disabled,
+    recalculateDisabled: document.getElementById('rb-recalculate').disabled,
+    clearDisabled: document.getElementById('rb-clear').disabled,
     moreVisible: !document.getElementById('rb-more').hidden,
     moreMenuHidden: document.getElementById('routeMoreMenu').hidden,
     moreText: document.getElementById('rb-more').textContent.trim(),
@@ -86,6 +88,7 @@ const initial = await page.evaluate(() => {
 check('a blank planner always shows Start and Destination without legacy reordering UI',
   initial.blank.startVisible && initial.blank.destinationVisible && initial.blank.reorderGone
     && initial.blank.reverseDisabled && initial.blank.addStopDisabled
+    && initial.blank.recalculateDisabled && initial.blank.clearDisabled
     && initial.blank.moreVisible && initial.blank.moreMenuHidden
     && initial.blank.compactPromptVisible
     && initial.blank.compactPrompt === 'Select destination to see routes'
@@ -207,13 +210,19 @@ const moreMenu = await page.evaluate(() => ({
     .filter((button) => !button.hidden).map((button) => button.lastElementChild?.textContent.trim()),
   saveMovedToMenu: document.getElementById('routeLibraryBtn').closest('#routeMoreMenu') !== null,
   helpRemoved: !document.getElementById('appHelpBtn'),
-  weightsMovedToMap: document.getElementById('appWeightsBtn').parentElement === document.body,
+  weightsMovedToSettings: !document.getElementById('appWeightsBtn')
+    && document.getElementById('settings-tab-weights')?.closest('#settingsTabs') !== null,
 }));
-check('Trip options contains trip editing, Save/Share, and updates while Weights is on the map',
+check('Trip options contains route actions, Save/Share, and app updates while Weights stays in Settings',
   moreMenu.visible && moreMenu.expanded === 'true'
-    && moreMenu.items.join('|') === 'Swap start & destination|Add stop|Show stops in trip bar|Save, load & share|Check for updates'
-    && moreMenu.saveMovedToMenu && moreMenu.helpRemoved && moreMenu.weightsMovedToMap,
+    && moreMenu.items.join('|') === 'Swap start & destination|Add stop|Show stops in trip bar|Recalculate route|Clear route|Save, load & share|Check for app updates'
+    && moreMenu.saveMovedToMenu && moreMenu.helpRemoved && moreMenu.weightsMovedToSettings,
   JSON.stringify(moreMenu));
+const beforeRecalculate = await page.evaluate(() => routing.reqId);
+await page.locator('#rb-recalculate').click();
+check('Recalculate route requests a fresh recommended portfolio', await page.evaluate((before) =>
+  routing.reqId > before && routing.selectRecommendedNext === true, beforeRecalculate));
+await page.locator('#rb-more').click();
 await page.locator('#rb-reverse').click();
 check('Reverse swaps endpoints and reverses stop order', await page.evaluate(() =>
   routing.startName === 'Port Townsend' && routing.endName === 'Seattle'
@@ -464,6 +473,16 @@ check('endpoint and stop X buttons can delete every route item', await page.eval
     && !document.getElementById('routeIncompleteBar').hidden
     && document.getElementById('routeIncompleteMessage').textContent === 'Select destination to see routes'
     && document.getElementById('navStartButton').hidden));
+
+await page.evaluate(() => {
+  setRoutePoint('start', { lng: -122.335, lat: 47.61 }, 'Seattle');
+  setRoutePoint('end', { lng: -122.31, lat: 47.62 }, 'Test destination');
+});
+await page.locator('#rb-more').click();
+await page.locator('#rb-clear').click();
+check('Clear route removes the complete trip from the menu', await page.evaluate(() =>
+  !routing.start && !routing.end && routing.vias.length === 0 && routing.blocks.length === 0
+    && document.getElementById('rb-clear').disabled));
 
 await page.locator('#routeIncompleteMessage').click();
 check('tapping the incomplete-route banner opens the same Destination picker as the endpoint row',

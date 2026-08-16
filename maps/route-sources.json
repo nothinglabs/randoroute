@@ -1,0 +1,59 @@
+{
+  "format": 1,
+  "regions": {
+    "washington": {
+      "sources": [
+        {
+          "id": "island-county",
+          "label": "Island County",
+          "authority": "Island County Public Works",
+          "approved": true,
+          "reviewed": "2026-08-16",
+          "adapter": "arcgis-geojson",
+          "sourceUrl": "https://maps.islandcountywa.gov/arcgis/rest/services/PublicWorksApps/Island_County_Bike_Map/MapServer/1",
+          "dataUrl": "https://maps.islandcountywa.gov/arcgis/rest/services/PublicWorksApps/Island_County_Bike_Map/MapServer/1/query?where=1%3D1&outFields=BikeRoute%2CRoadName&returnGeometry=true&outSR=4326&f=geojson",
+          "nameField": "BikeRoute",
+          "approvedValues": [
+            "North Whidbey",
+            "Central Whidbey",
+            "South Whidbey",
+            "Camano"
+          ]
+        }
+      ]
+    },
+    "oregon": {
+      "sources": [
+        {
+          "id": "oregon-scenic-bikeways",
+          "label": "Oregon Scenic Bikeways",
+          "authority": "Oregon Parks and Recreation Department",
+          "approved": true,
+          "reviewed": "2026-08-16",
+          "adapter": "ridewithgps-json",
+          "sourceUrl": "https://stateparks.oregon.gov/index.cfm?do=things-to-do.scenic-bikeways",
+          "routes": [
+            { "id": 5020009, "page": "https://ridewithgps.com/ambassador_routes/1211-cascading-rivers-scenic-bikeway" },
+            { "id": 48870043, "page": "https://ridewithgps.com/ambassador_routes/2853-aufderheide-scenic-bikeway" },
+            { "id": 3346360, "page": "https://ridewithgps.com/ambassador_routes/35-madras-mtn-views-scenic-bikeway" },
+            { "id": 3335458, "page": "https://ridewithgps.com/ambassador_routes/36-covered-bridges-scenic-bikeway" },
+            { "id": 3465951, "page": "https://ridewithgps.com/ambassador_routes/37-twin-bridges-scenic-bikeway" },
+            { "id": 3462424, "page": "https://ridewithgps.com/ambassador_routes/38-sisters-to-smith-rock-scenic-bikeway" },
+            { "id": 2262835, "page": "https://ridewithgps.com/ambassador_routes/388-cascade-siskiyou-scenic-bikeway" },
+            { "id": 3449875, "page": "https://ridewithgps.com/ambassador_routes/39-mckenzie-pass-scenic-bikeway" },
+            { "id": 3464536, "page": "https://ridewithgps.com/ambassador_routes/40-tualatin-valley-scenic-bikeway" },
+            { "id": 2277181, "page": "https://ridewithgps.com/ambassador_routes/411-wild-rivers-coast-scenic-bikeway" },
+            { "id": 3329023, "page": "https://ridewithgps.com/ambassador_routes/42-blue-mtn-century-scenic-bikeway" },
+            { "id": 2181698, "page": "https://ridewithgps.com/ambassador_routes/43-willamette-valley-scenic-bikeway" },
+            { "id": 2154998, "page": "https://ridewithgps.com/ambassador_routes/44-grande-tour-scenic-bikeway" },
+            { "id": 2682296, "page": "https://ridewithgps.com/ambassador_routes/45-old-west-scenic-bikeway" },
+            { "id": 6339389, "page": "https://ridewithgps.com/ambassador_routes/707-painted-hills-scenic-bikeway" },
+            { "id": 2262635, "page": "https://ridewithgps.com/ambassador_routes/925-oregon-outback-scenic-bikeway" },
+            { "id": 8819158, "page": "https://ridewithgps.com/routes/8819158" },
+            { "id": 8819348, "page": "https://ridewithgps.com/routes/8819348" }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -72,15 +72,14 @@ const tab = await page.evaluate(() => {
   return {
     exists: !!button,
     label: button?.textContent,
-    // It opens a screen, so it must not claim to control a tab panel.
     role: button?.getAttribute('role'),
     haspopup: button?.getAttribute('aria-haspopup'),
     inTablist: !!button?.closest('[role="tablist"]'),
   };
 });
-check('Settings offers a Maps tab that announces itself as opening a dialog',
-  tab.exists && tab.label === 'Maps' && tab.haspopup === 'dialog'
-    && tab.role === null && tab.inTablist === false, JSON.stringify(tab));
+check('Settings offers Maps as a real tab',
+  tab.exists && tab.label === 'Maps' && tab.haspopup === null
+    && tab.role === 'tab' && tab.inTablist === true, JSON.stringify(tab));
 
 await page.evaluate(() => openMapsDialog());
 const screen = await page.evaluate(() => {
@@ -88,9 +87,11 @@ const screen = await page.evaluate(() => {
   const named = (row) => row.querySelector('.maps-state-name > span').textContent;
   const input = (row) => row.querySelector('input');
   return {
-    open: document.getElementById('mapsDialog').open,
-    lead: document.querySelector('.maps-lead')?.textContent,
-    note: document.querySelector('.maps-note')?.textContent,
+    settingsOpen: settingsMenuIsOpen(),
+    paneVisible: document.getElementById('settings-maps').hidden === false,
+    tabsVisible: document.getElementById('settingsTabs').getBoundingClientRect().height > 0,
+    lead: document.querySelector('#settings-maps .maps-lead')?.textContent,
+    note: document.querySelector('#settings-maps .maps-note')?.textContent,
     count: rows.length,
     first: named(rows[0]),
     last: named(rows[rows.length - 1]),
@@ -99,12 +100,12 @@ const screen = await page.evaluate(() => {
     checked: rows.filter((row) => input(row).checked).map(named),
     enabled: rows.filter((row) => !input(row).disabled).map(named),
     loadedRegion: Region.name,
-    // A full-screen surface, not a small dialog wedged over the map.
-    fullScreen: document.getElementById('mapsDialog').classList.contains('full-help-dialog'),
+    fullScreen: document.body.classList.contains('settings-panel-active'),
   };
 });
 check('it opens a full-screen list of available maps, alphabetically',
-  screen.open && screen.fullScreen && screen.count === STATES.length
+  screen.settingsOpen && screen.paneVisible && screen.tabsVisible && screen.fullScreen
+    && screen.count === STATES.length
     && screen.first === 'Idaho' && screen.last === 'Washington', JSON.stringify(screen));
 check('the controls are one radio group, because one state loads at a time',
   screen.types.join() === 'radio' && screen.group.length === 1, JSON.stringify(screen));
@@ -181,8 +182,8 @@ check('and the list still shows the state the app is actually on',
   restored.join() === screen.loadedRegion, JSON.stringify(restored));
 
 const closed = await page.evaluate(() => {
-  document.querySelector('#mapsDialog [data-close]').click();
-  return document.getElementById('mapsDialog').open;
+  document.getElementById('settingsPanelClose').click();
+  return settingsMenuIsOpen();
 });
 check('closing leaves the screen', closed === false);
 

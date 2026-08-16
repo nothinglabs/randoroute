@@ -91,11 +91,10 @@ let state = await page.evaluate(() => ({
     ];
   })(),
   routeBarBackground: getComputedStyle(document.getElementById('routeBar')).backgroundColor,
-  weightsVisible: !document.getElementById('appWeightsBtn').hidden,
+  weightsAbsentFromMap: !document.getElementById('appWeightsBtn'),
   mapControlBackgrounds: [
     document.getElementById('layersToggle'),
     document.getElementById('settingsToggle'),
-    document.getElementById('appWeightsBtn'),
     document.querySelector('#map .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group'),
   ].map((element) => getComputedStyle(element).backgroundColor),
   helpButtonsCircular: [
@@ -131,7 +130,8 @@ check('the floating Layers and Settings buttons sit just below the trip-action r
 check('every help affordance uses the same circular question-mark treatment',
   state.helpButtonsCircular, JSON.stringify(state));
 check('floating map controls use a slight, consistent transparency',
-  state.weightsVisible && [...state.mapControlBackgrounds, state.routeBarBackground].every((background) => {
+  state.weightsAbsentFromMap
+    && [...state.mapControlBackgrounds, state.routeBarBackground].every((background) => {
     const alpha = Number(background.match(/,\s*(0?\.\d+)\)$/)?.[1]);
     return alpha >= 0.8 && alpha <= 0.92;
   }), JSON.stringify({ controls: state.mapControlBackgrounds, routeBar: state.routeBarBackground }));

@@ -178,7 +178,8 @@ const ui = await page.evaluate(() => {
       document.getElementById(id)?.closest('#advancedRoutingOptions')),
     advancedAbsentFromOptions: advancedIds.every((id) =>
       !document.getElementById(id)?.closest('#settings-options')),
-    rulesVisible: document.getElementById('settings-rules')?.hidden === false,
+    weightsVisible: document.getElementById('settings-weights')?.hidden === false,
+    tabsVisible: document.getElementById('settingsTabs')?.getBoundingClientRect().height > 0,
     defaultChecked: toggle?.checked === true,
     ferryHint: toggle?.closest('.rule-card')?.querySelector('.rule-check-hint')?.textContent || '',
     bikeRouteToggleExists: !!bikeRouteToggle,
@@ -206,7 +207,7 @@ const ui = await page.evaluate(() => {
     toggle.dispatchEvent(new Event('change'));
   }
   setRouteOptionsLoading(false);
-  document.getElementById('weightsDialog')?.close();
+  settingsPaneSelect?.('rules');
   clearRoute();
   return out;
 });
@@ -217,7 +218,7 @@ check('the route chooser contains only route choices',
 check('the Show me routes dialog is removed', ui.oldDialogGone, JSON.stringify(ui));
 check('the six expert switches live in Advanced routing, not Options',
   ui.toggleExists && ui.toggleInAdvanced && ui.advancedAllPresent
-    && ui.advancedAbsentFromOptions && ui.rulesVisible && ui.defaultChecked
+    && ui.advancedAbsentFromOptions && ui.weightsVisible && ui.tabsVisible && ui.defaultChecked
     && ui.ferryHint === '',
   JSON.stringify(ui));
 check('turning ferries off updates the rule and requests a fresh portfolio',
@@ -239,11 +240,11 @@ const considered = await page.evaluate(() => {
   openRoutingWeights();
   const button = document.getElementById('moreRoutesBtn');
   const out = { disabledWithoutTrip: button?.disabled === true };
-  document.getElementById('weightsDialog')?.close();
+  settingsPaneSelect?.('rules');
   routing.allCandidates = [{}];
   openRoutingWeights();
   out.enabledWithTrip = button?.disabled === false;
-  document.getElementById('weightsDialog')?.close();
+  settingsPaneSelect?.('rules');
   return out;
 });
 check('considered-routes sleeps until a trip is routed',

@@ -64,9 +64,9 @@ const copy = await page.evaluate(() => ({
   settings: document.getElementById('tab-settings')?.textContent.replace(/\s+/g, ' ') || '',
   weightsNotice: !!document.getElementById('weightsModifiedNotice'),
   weightsBody: (() => {
-    document.getElementById('weightsDialog')?.showModal?.();
+    openRoutingWeights();
     const text = document.querySelector('.weights-body')?.textContent.replace(/\s+/g, ' ') || '';
-    document.getElementById('weightsDialog')?.close?.();
+    settingsPaneSelect?.('rules');
     return text;
   })(),
 }));

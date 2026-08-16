@@ -62,6 +62,14 @@ file outside `maps/` names a state; `region.js` resolves whichever one the rider
 selected into the global `Region`, and every data path in the app, the router
 worker and the service worker comes from `Region.dataUrl(...)`.
 
+The deliberate exception is the reviewed supplemental-route registry:
+`maps/ROUTE-SOURCES.md` and `maps/route-sources.json`. It sits one level above
+state folders so deleting and re-importing a state cannot erase a human source
+decision. OSM bicycle relations remain the default. Do not discover or import
+another route source as a routine part of a state import; only use this optional
+pipeline when external evidence documents a real gap and a human has approved
+the exact source and records in that registry.
+
 **Commissioned to import a state?** `docs/IMPORT-A-STATE.md` is the brief.
 
 **Importing a state starts at `docs/PORTING-TO-ANOTHER-STATE.md`.** Its "Start

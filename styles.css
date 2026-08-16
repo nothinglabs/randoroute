@@ -528,9 +528,6 @@ body:not(.navigation-active) #navCard { display: none; }
 .settings-tabs .settings-help-btn { align-self: center; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }
-/* Opens a screen rather than swapping the panel below, so it never takes the
-   selected-tab treatment however many times it is tapped. */
-.settings-tabs .settings-tab-standalone { flex: 0 0 auto; }
 
 /* ------------------------------------------------------------ maps screen */
 .maps-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(760px, calc(100% - 28px)); margin: 0 auto; padding: 16px 0 max(34px, env(safe-area-inset-bottom)); }
@@ -595,9 +592,9 @@ body:not(.navigation-active) #navCard { display: none; }
 .settings-pane { display: flex; flex-direction: column; height: var(--settings-pane-height, auto); min-height: 170px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
 .settings-pane[hidden] { display: none; }
 .settings-pane > .settings-summary, .settings-pane > .preset-status { flex: none; }
-#settingsPresets, #settingsSliders, #settingsOptions, #settingsVoice { flex: 1; align-content: space-between; }
+#settingsPresets, #settingsSliders, #settingsOptions, #settingsDisplayOptions, #settingsVoice { flex: 1; align-content: space-between; }
 .settings-summary { margin: 2px 1px 5px; color: #5f6f7a; font: 600 11px/1.3 system-ui; }
-#settingsSliders, #settingsOptions, #settingsVoice { display: grid; gap: 5px; }
+#settingsSliders, #settingsOptions, #settingsDisplayOptions, #settingsVoice { display: grid; gap: 5px; }
 #settingsPresets { display: grid; gap: 4px; }
 .preset-card { width: 100%; padding: 5px 10px; border: 1px solid #d6e1e8; border-radius: 9px; background: #fbfcfd; color: #344b59; cursor: pointer; }
 .preset-card:hover { border-color: #a8c4d7; background: #f6fafc; }
@@ -666,7 +663,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .endpoint-marker.endpoint-moving { filter: drop-shadow(0 0 5px rgba(10,102,194,.9)); }
 
-#layersToggle, #settingsToggle, #appWeightsBtn {
+#layersToggle, #settingsToggle {
   position: absolute; z-index: 16; top: calc(env(safe-area-inset-top) + 52px); right: 10px;
   display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
   border: 1px solid #c8d5df; border-radius: 9px; background: rgba(255,255,255,.84);
@@ -674,9 +671,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
 }
 #settingsToggle { top: calc(env(safe-area-inset-top) + 92px); }
-#appWeightsBtn { top: calc(env(safe-area-inset-top) + 132px); font: 800 18px/1 system-ui; }
-#appWeightsBtn[hidden] { display: none; }
-#appWeightsBtn.tuned { border-color: #c5872b; background: rgba(255,246,228,.94); color: #96590a; }
 #layersToggle[aria-expanded="true"], #settingsToggle[aria-expanded="true"] { border-color: #0a66c2; background: rgba(234,244,251,.92); color: #0a66c2; }
 #layersToggle .layers-toggle-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 #settingsToggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -1405,7 +1399,6 @@ body.navigation-active #routeBar { display: none; }
      so the two control groups read as separate columns on a phone. */
   #layersToggle { top: calc(env(safe-area-inset-top) + 12px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
   #settingsToggle { top: calc(env(safe-area-inset-top) + 58px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
-  #appWeightsBtn { top: calc(env(safe-area-inset-top) + 104px); right: 8px; width: 42px; height: 42px; border-radius: 12px; font-size: 20px; }
   .active-route-icon-legend { right: 58px; width: auto; }
   .place-picker { top: -5px; right: auto; left: 0; width: calc(100vw - 16px); }
   body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
@@ -1789,12 +1782,17 @@ body.settings-panel-active .settings-tabs {
   overscroll-behavior-x: contain; scrollbar-width: none;
 }
 body.settings-panel-active .settings-tabs::-webkit-scrollbar { display: none; }
-body.settings-panel-active .settings-tab-pair { flex: 1 0 330px; gap: 7px; }
+body.settings-panel-active .settings-tab-pair { flex: 1 0 560px; gap: 7px; }
 body.settings-panel-active .settings-tabs button {
   min-height: 40px; padding: 7px 13px; border-radius: 10px;
   font: 750 12.5px/1.1 system-ui; white-space: nowrap;
 }
-body.settings-panel-active .settings-tabs .settings-tab-standalone { flex: 0 0 auto; }
+body.settings-panel-active .settings-tabs .settings-weights-tab {
+  flex: 0 0 48px; padding-right: 8px; padding-left: 8px; font-size: 19px;
+}
+body.settings-panel-active .settings-tabs .settings-weights-tab.tuned {
+  border-color: #c5872b; background: #fff6e4; color: #96590a;
+}
 body.settings-panel-active .settings-pane {
   flex: 1 1 auto; align-self: stretch; width: min(100% - 28px, 920px); height: auto;
   min-height: 0; margin: 0 auto; padding: 4px 0 max(34px, env(safe-area-inset-bottom));
@@ -1805,6 +1803,7 @@ body.settings-panel-active .settings-pane[hidden] { display: none; }
 body.settings-panel-active #settingsPresets,
 body.settings-panel-active #settingsSliders,
 body.settings-panel-active #settingsOptions,
+body.settings-panel-active #settingsDisplayOptions,
 body.settings-panel-active #settingsVoice { align-content: start; }
 body.settings-panel-active #settingsPresets { gap: 9px; }
 body.settings-panel-active .preset-status { margin: 2px 2px 10px; font-size: 13px; }
@@ -1824,9 +1823,11 @@ body.settings-panel-active .settings-rules-section > h2 {
   text-transform: none;
 }
 body.settings-panel-active #settingsSliders,
-body.settings-panel-active #settingsOptions { gap: 8px; }
+body.settings-panel-active #settingsOptions,
+body.settings-panel-active #settingsDisplayOptions { gap: 8px; }
 body.settings-panel-active #settingsSliders .rule-card,
 body.settings-panel-active #settingsOptions .rule-card,
+body.settings-panel-active #settingsDisplayOptions .rule-card,
 body.settings-panel-active #settingsVoice .rule-card {
   min-height: 46px; padding: 9px 12px; border-radius: 10px;
 }
@@ -1835,22 +1836,46 @@ body.settings-panel-active #settingsSliders .rule-head {
 }
 body.settings-panel-active #settingsSliders .rule-card input[type="range"] { height: auto; }
 body.settings-panel-active #settingsOptions .rule-check,
+body.settings-panel-active #settingsDisplayOptions .rule-check,
 body.settings-panel-active #settingsVoice .rule-check {
   gap: 9px; font-size: 13px; line-height: 1.3;
 }
-body.settings-panel-active #settingsOptions input[type="checkbox"] { width: 18px; height: 18px; }
-body.settings-panel-active #settingsOptions .rule-standalone { margin-top: 0; }
+body.settings-panel-active #settingsOptions input[type="checkbox"],
+body.settings-panel-active #settingsDisplayOptions input[type="checkbox"] { width: 18px; height: 18px; }
+body.settings-panel-active #settingsOptions .rule-standalone,
+body.settings-panel-active #settingsDisplayOptions .rule-standalone { margin-top: 0; }
 body.settings-panel-active #settings-limits .rule-group-head {
   margin: 12px 2px 6px; font-size: 13.5px;
 }
 body.settings-panel-active #settings-limits .rule-sub { margin-left: 18px; padding-left: 12px; }
 body.settings-panel-active #settingsVoice { gap: 9px; }
+body.settings-panel-active .settings-data-pane .maps-body {
+  width: 100%; height: auto; margin: 0; padding: 4px 0 max(34px, env(safe-area-inset-bottom));
+  overflow: visible;
+}
+body.settings-panel-active .settings-weights-pane .weights-body {
+  width: 100%; height: auto; margin: 0; padding: 4px 0 max(34px, env(safe-area-inset-bottom));
+  overflow: visible;
+}
+.settings-weights-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 0 10px;
+}
+.settings-weights-toolbar > strong { color: #263f4d; font: 800 17px/1.2 system-ui; }
+.settings-preset-override-note {
+  margin: 0 0 10px; padding: 10px 12px; border: 1px solid #d7b36b;
+  border-radius: 10px; background: #fff8e9; color: #714c0b;
+  font: 700 12.5px/1.35 system-ui;
+}
 
 @media (min-width: 760px) {
   body.settings-panel-active #settings-rules {
     display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr);
     gap: 14px; align-items: start;
   }
+  body.settings-panel-active #settings-limits { grid-column: 1; grid-row: 1 / span 2; }
+  body.settings-panel-active #settings-options { grid-column: 2; grid-row: 1; }
+  body.settings-panel-active #settings-display-options { grid-column: 2; grid-row: 2; }
   body.settings-panel-active #settings-rules[hidden] { display: none; }
 }
 
@@ -1861,11 +1886,19 @@ body.settings-panel-active #settingsVoice { gap: 9px; }
   body.settings-panel-active .settings-pane,
   body.settings-panel-active .settings-nav-lock { width: calc(100% - 20px); }
   body.settings-panel-active .settings-tabs { gap: 5px; padding-top: 9px; }
-  body.settings-panel-active .settings-tab-pair { flex: 1 1 210px; min-width: 210px; gap: 5px; }
+  body.settings-panel-active .settings-tab-pair { flex: 1 0 520px; min-width: 520px; gap: 5px; }
   body.settings-panel-active .settings-tabs button { min-height: 38px; padding: 6px 8px; font-size: 11px; }
+  body.settings-panel-active .settings-tabs .settings-weights-tab { flex-basis: 42px; font-size: 17px; }
+  .settings-weights-toolbar { align-items: flex-start; }
+  .settings-weights-toolbar > strong { font-size: 15px; }
+  .settings-weights-toolbar .weights-head-actions { gap: 5px; }
+  .settings-weights-toolbar :is(.weights-considered, .weights-reset) {
+    min-height: 34px; padding: 0 8px; font-size: 10px;
+  }
   body.settings-panel-active .settings-rules-section { padding: 10px; }
   body.settings-panel-active #settingsSliders .rule-card,
   body.settings-panel-active #settingsOptions .rule-card,
+  body.settings-panel-active #settingsDisplayOptions .rule-card,
   body.settings-panel-active #settingsVoice .rule-card { min-height: 42px; padding: 7px 9px; }
 }
 

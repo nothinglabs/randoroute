@@ -367,17 +367,19 @@ function roadBlockEdgeSet(points) {
 let preferredEdges = null;      // Uint8Array(E): 1 = edge of a Preferred route
 let preferredRoutesKey = '';    // the selection the set was built for
 
-function receivePreferredRoutes(key, lines) {
-  preferredRoutesKey = String(key || '');
-  preferredEdges = null;
-  if (!preferredRoutesKey || !Array.isArray(lines) || !lines.length || !E) return;
-  // Candidates are only edges already flagged as signed-route members: the
-  // overlay and the graph are cut from the same OSM relations, so a Preferred
-  // route's edges are a subset of flag-64 edges — and the restriction keeps a
-  // parallel local street from being captured by proximity alone.
+// Match published linework to graph edges by overlap AND bearing. Proximity
+// alone makes a parallel frontage road inherit the route, and a single shared
+// point makes a crossing road inherit it. Requiring most of an edge's stored
+// length to run near and parallel to the source avoids both. The build-time
+// supplemental-route stamper evaluates this same function against every edge;
+// Preferred-route changes evaluate only the already-designated candidates.
+function matchRouteLines(lines, eligibleEdge = () => true) {
+  if (!Array.isArray(lines) || !lines.length || !E) return new Uint8Array(E || 0);
   const TOL_M = 30;
   const CELL_DEG = 0.005;
   const PAD_DEG = 0.0006; // wider than TOL_M in degrees at mid latitudes
+  const MIN_OVERLAP = 0.8;
+  const MIN_PARALLEL_COS = Math.cos(35 * Math.PI / 180);
   const grid = new Map(); // "x,y" cell -> flat [lon0, lat0, lon1, lat1, ...]
   for (const line of lines) {
     if (!Array.isArray(line)) continue;
@@ -401,17 +403,26 @@ function receivePreferredRoutes(key, lines) {
       }
     }
   }
-  if (!grid.size) return;
+  if (!grid.size) return new Uint8Array(E);
   const tolSq = TOL_M * TOL_M;
-  const nearRoute = (lon, lat) => {
+  const segmentOnRoute = (lon0, lat0, lon1, lat1) => {
+    const lon = (lon0 + lon1) / 2, lat = (lat0 + lat1) / 2;
     const bucket = grid.get(`${Math.floor(lon / CELL_DEG)},${Math.floor(lat / CELL_DEG)}`);
     if (!bucket) return false;
     const metersPerLon = 111_320 * Math.cos(lat * Math.PI / 180);
+    const edgeDx = (lon1 - lon0) * metersPerLon;
+    const edgeDy = (lat1 - lat0) * 110_540;
+    const edgeSpan = Math.hypot(edgeDx, edgeDy);
+    if (!(edgeSpan > 0)) return false;
     for (let s = 0; s < bucket.length; s += 4) {
       const ax = (bucket[s] - lon) * metersPerLon, ay = (bucket[s + 1] - lat) * 110_540;
       const bx = (bucket[s + 2] - lon) * metersPerLon, by = (bucket[s + 3] - lat) * 110_540;
       const dx = bx - ax, dy = by - ay;
       const spanSq = dx * dx + dy * dy;
+      if (!spanSq) continue;
+      const parallel = Math.abs(edgeDx * dx + edgeDy * dy)
+        / (edgeSpan * Math.sqrt(spanSq));
+      if (parallel < MIN_PARALLEL_COS) continue;
       const t = spanSq ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / spanSq)) : 0;
       const px = ax + t * dx, py = ay + t * dy;
       if (px * px + py * py <= tolSq) return true;
@@ -419,19 +430,33 @@ function receivePreferredRoutes(key, lines) {
     return false;
   };
   const set = new Uint8Array(E);
-  let marked = 0;
   for (let ei = 0; ei < E; ei++) {
-    if (!(eFlags[ei] & 64)) continue;
-    // Most of an edge's stored shape must lie on the route: an edge that
-    // merely CROSSES a preferred route touches it at one point and must not
-    // inherit the preference.
+    if (!eligibleEdge(ei)) continue;
     const start = eOff[ei], count = eCnt[ei];
-    let hits = 0;
-    for (let i = start; i < start + count; i++) {
-      if (nearRoute(gLon[i], gLat[i])) hits++;
+    let totalM = 0, matchedM = 0;
+    for (let i = start; i + 1 < start + count; i++) {
+      const lon0 = gLon[i], lat0 = gLat[i], lon1 = gLon[i + 1], lat1 = gLat[i + 1];
+      const metresLon = 111_320 * Math.cos((lat0 + lat1) * Math.PI / 360);
+      const length = Math.hypot((lon1 - lon0) * metresLon, (lat1 - lat0) * 110_540);
+      totalM += length;
+      if (segmentOnRoute(lon0, lat0, lon1, lat1)) matchedM += length;
     }
-    if (count >= 2 && hits / count >= 0.8) { set[ei] = 1; marked++; }
+    if (totalM > 0 && matchedM / totalM >= MIN_OVERLAP) set[ei] = 1;
   }
+  return set;
+}
+
+function receivePreferredRoutes(key, lines) {
+  preferredRoutesKey = String(key || '');
+  preferredEdges = null;
+  if (!preferredRoutesKey || !Array.isArray(lines) || !lines.length || !E) return;
+  // Candidates are only edges already flagged as designated-route members.
+  // That now includes OSM relations plus reviewed supplemental sources stamped
+  // into the graph at build time; the restriction also keeps neighboring roads
+  // out of a rider's per-route preference.
+  const set = matchRouteLines(lines, (ei) => !!(eFlags[ei] & 64));
+  let marked = 0;
+  for (let ei = 0; ei < set.length; ei++) marked += set[ei];
   preferredEdges = set;
   postMessage({ type: 'preferred-routes-applied', key: preferredRoutesKey, edges: marked });
 }

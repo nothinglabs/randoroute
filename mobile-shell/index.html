@@ -146,8 +146,10 @@
         <button id="rb-reverse" class="route-more-item" type="button" role="menuitem" title="Set a start and destination to swap them" aria-label="Set a start and destination to swap them" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v15M7 4 3.5 7.5M7 4l3.5 3.5M17 20V5M17 20l-3.5-3.5M17 20l3.5-3.5"></path></svg><span>Swap start &amp; destination</span></button>
         <button id="rb-add-stop" class="route-more-item" type="button" role="menuitem" title="Set a start and destination before adding a stop" aria-label="Set a start and destination before adding a stop" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v8M8 12h8"></path></svg><span>Add stop</span></button>
         <button id="rb-show-stops" class="route-more-item" type="button" role="menuitemcheckbox" aria-checked="true" title="Hide stops from the trip bar" aria-label="Show stops in trip bar"><span class="route-more-check" aria-hidden="true">✓</span><span>Show stops in trip bar</span></button>
+        <button id="rb-recalculate" class="route-more-item" type="button" role="menuitem" title="Set a start and destination to recalculate the route" aria-label="Set a start and destination to recalculate the route" disabled><span class="route-more-symbol" aria-hidden="true">↻</span><span>Recalculate route</span></button>
+        <button id="rb-clear" class="route-more-item" type="button" role="menuitem" title="Clear all route points" aria-label="Clear all route points" disabled><span class="route-more-symbol route-clear-symbol" aria-hidden="true">✕</span><span>Clear route</span></button>
         <button id="routeLibraryBtn" class="route-more-item" type="button" role="menuitem" title="Save, load, or share routes" aria-label="Save, load, or share routes"><svg class="share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h13l3 3v15H4z"></path><path d="M7 3v6h9V3M7 21v-8h10v8"></path></svg><span>Save, load &amp; share</span></button>
-        <button id="routeUpdateBtn" class="route-more-item" type="button" role="menuitem" aria-label="Check for updates" title="Check for updates"><span class="route-more-symbol route-update-symbol" aria-hidden="true">↻</span><span>Check for updates</span></button>
+        <button id="routeUpdateBtn" class="route-more-item" type="button" role="menuitem" aria-label="Check for app updates" title="Check for app updates"><span class="route-more-symbol route-update-symbol" aria-hidden="true">↻</span><span>Check for app updates</span></button>
       </div>
       <span id="rb-status"></span>
       <div id="placePicker" class="place-picker" role="dialog" aria-modal="false" aria-labelledby="placePickerTitle" hidden>
@@ -180,7 +182,6 @@
   <button id="settingsToggle" type="button" aria-expanded="false" aria-controls="tab-settings" title="Show settings" aria-label="Show settings">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.07A1.7 1.7 0 0 0 8.97 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.53-1H3v-4h.07A1.7 1.7 0 0 0 4.6 8.97a1.7 1.7 0 0 0-.34-1.88l-.06-.06L7.03 4.2l.06.06A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.07V3h4v.07a1.7 1.7 0 0 0 1.03 1.53 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06a1.7 1.7 0 0 0-.34 1.88A1.7 1.7 0 0 0 20.93 10H21v4h-.07A1.7 1.7 0 0 0 19.4 15Z"></path></svg>
   </button>
-  <button id="appWeightsBtn" type="button" title="Advanced routing weights" aria-label="Advanced routing weights"><span aria-hidden="true">⚖</span></button>
 
   <section id="activeRouteIconLegend" class="active-route-icon-legend" role="dialog"
     aria-modal="false" aria-labelledby="activeRouteIconLegendTitle" hidden>
@@ -241,68 +242,81 @@
     <section class="tab" id="tab-settings">
       <div class="settings-panel-head"><strong id="settingsPanelTitle">Settings</strong><div class="panel-view-actions"><button type="button" id="settingsHelpBtn" class="settings-help-btn" aria-label="Routing settings help" title="Routing settings help">?</button><button id="settingsPanelClose" class="panel-view-close" type="button" aria-label="Close settings" title="Close settings">✕</button></div></div>
       <p id="settingsNavLockNotice" class="settings-nav-lock" role="alert" hidden>Stop navigation to change route settings.</p>
-      <div id="settingsTabs" class="settings-tabs">
-        <div class="settings-tab-pair" role="tablist" aria-label="Routing settings">
+      <div id="settingsTabs" class="settings-tabs" role="tablist" aria-label="Settings">
+        <div class="settings-tab-pair">
           <button id="settings-tab-presets" type="button" role="tab" aria-selected="true" aria-controls="settings-presets" data-settings-pane="presets" class="active">Presets</button>
-          <button id="settings-tab-limits" type="button" role="tab" aria-selected="false" aria-controls="settings-limits" data-settings-pane="limits">Limits</button>
-          <button id="settings-tab-options" type="button" role="tab" aria-selected="false" aria-controls="settings-options" data-settings-pane="options">Options</button>
+          <button id="settings-tab-rules" type="button" role="tab" aria-selected="false" aria-controls="settings-rules" data-settings-pane="rules">Rules</button>
           <button id="settings-tab-voice" type="button" role="tab" aria-selected="false" aria-controls="settings-voice" data-settings-pane="voice">Voice-Nav</button>
+          <button id="settings-tab-routes" type="button" role="tab" aria-selected="false" aria-controls="settings-routes" data-settings-pane="routes">Designated Routes</button>
+          <button id="settings-tab-maps" type="button" role="tab" aria-selected="false" aria-controls="settings-maps" data-settings-pane="maps">Maps</button>
+          <button id="settings-tab-weights" class="settings-weights-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-weights" data-settings-pane="weights" title="Advanced routing weights" aria-label="Advanced routing weights" hidden><span aria-hidden="true">⚖</span></button>
         </div>
-        <!-- Not tabs: these open screens rather than swapping a panel below,
-             so they stay out of the tablist and say so to assistive tech. -->
-        <button id="settings-tab-routes" class="settings-tab-standalone" type="button" aria-haspopup="dialog">Routes</button>
-        <button id="settings-tab-maps" class="settings-tab-standalone" type="button" aria-haspopup="dialog">Maps</button>
       </div>
       <div id="settings-presets" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-presets">
         <p id="settingsPresetStatus" class="preset-status" aria-live="polite"></p>
         <div id="settingsPresets"></div>
       </div>
-      <div id="settings-limits" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-limits" hidden>
-        <div id="settingsSliders"></div>
-      </div>
-      <div id="settings-options" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-options" hidden>
-        <div id="settingsOptions"></div>
+      <div id="settings-rules" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-rules" hidden>
+        <p id="settingsRulesPresetNote" class="settings-preset-override-note" hidden></p>
+        <section id="settings-limits" class="settings-rules-section" aria-labelledby="settingsLimitsTitle">
+          <h2 id="settingsLimitsTitle">Safety limits</h2>
+          <div id="settingsSliders"></div>
+        </section>
+        <section id="settings-options" class="settings-rules-section" aria-labelledby="settingsOptionsTitle">
+          <h2 id="settingsOptionsTitle">Routing rules</h2>
+          <div id="settingsOptions"></div>
+        </section>
+        <section id="settings-display-options" class="settings-rules-section" aria-labelledby="settingsDisplayOptionsTitle">
+          <h2 id="settingsDisplayOptionsTitle">Options</h2>
+          <div id="settingsDisplayOptions"></div>
+        </section>
       </div>
       <div id="settings-voice" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-voice" hidden>
         <div id="settingsVoice"></div>
       </div>
-    </section>
-  </div>
-
-  <dialog id="mapsDialog" class="full-help-dialog maps-dialog" aria-labelledby="mapsDialogTitle">
-    <div class="full-help-head">
-      <div><span>Settings</span><h2 id="mapsDialogTitle">Maps</h2></div>
-      <button class="dialog-close" data-close="mapsDialog" aria-label="Close maps">✕</button>
-    </div>
-    <div class="maps-body">
-      <p class="maps-lead">Choose the state to ride in.</p>
-      <p class="maps-note">One map is loaded at a time. Switching restarts the app and clears any route on screen.</p>
-      <div id="mapsStateList" class="maps-state-list" role="radiogroup" aria-labelledby="mapsDialogTitle"></div>
-      <p id="mapsStatus" class="maps-status" role="status" aria-live="polite"></p>
-      <div class="maps-stores">
-        <h3>Map stores</h3>
-        <p class="maps-note">A map store is a web address offering downloadable state maps. Anyone can host one; maps you download are stored on this device for offline use.</p>
-        <div id="mapsStoreList" class="maps-store-list"></div>
-        <div class="maps-store-add">
-          <input id="mapsStoreUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://example.com/maps/" aria-label="Map store address">
-          <button id="mapsStoreAdd" type="button">Add store</button>
+      <div id="settings-routes" class="settings-pane settings-data-pane" role="tabpanel" aria-labelledby="settings-tab-routes" hidden>
+        <div class="maps-body">
+          <p class="maps-lead">Designated bicycle routes in <span id="stateRoutesRegion"></span>.</p>
+          <p class="maps-note">Mark a route <b>Preferred</b> and trip planning follows it even harder than an off-street trail — including where it fails your safety rules. Route choice only: map colors, Route Details, and warnings still show every road as it is.</p>
+          <div id="stateRoutesList" class="state-routes-list"></div>
+          <p id="stateRoutesStatus" class="maps-status" role="status" aria-live="polite"></p>
         </div>
       </div>
-    </div>
-  </dialog>
-
-  <dialog id="stateRoutesDialog" class="full-help-dialog maps-dialog state-routes-dialog" aria-labelledby="stateRoutesTitle">
-    <div class="full-help-head">
-      <div><span>Settings</span><h2 id="stateRoutesTitle">Routes</h2></div>
-      <button class="dialog-close" data-close="stateRoutesDialog" aria-label="Close routes">✕</button>
-    </div>
-    <div class="maps-body">
-      <p class="maps-lead">Signed bicycle routes in <span id="stateRoutesRegion"></span>.</p>
-      <p class="maps-note">Mark a route <b>Preferred</b> and trip planning follows it even harder than an off-street trail — including where it fails your safety rules. Route choice only: map colors, Route Details, and warnings still show every road as it is.</p>
-      <div id="stateRoutesList" class="state-routes-list"></div>
-      <p id="stateRoutesStatus" class="maps-status" role="status" aria-live="polite"></p>
-    </div>
-  </dialog>
+      <div id="settings-maps" class="settings-pane settings-data-pane" role="tabpanel" aria-labelledby="settings-tab-maps" hidden>
+        <div class="maps-body">
+          <p class="maps-lead">Choose the state to ride in.</p>
+          <p class="maps-note">One map is loaded at a time. Switching restarts the app and clears any route on screen.</p>
+          <div id="mapsStateList" class="maps-state-list" role="radiogroup" aria-labelledby="settings-tab-maps"></div>
+          <p id="mapsStatus" class="maps-status" role="status" aria-live="polite"></p>
+          <div class="maps-stores">
+            <h3>Map stores</h3>
+            <p class="maps-note">A map store is a web address offering downloadable state maps. Anyone can host one; maps you download are stored on this device for offline use.</p>
+            <div id="mapsStoreList" class="maps-store-list"></div>
+            <div class="maps-store-add">
+              <input id="mapsStoreUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://example.com/maps/" aria-label="Map store address">
+              <button id="mapsStoreAdd" type="button">Add store</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="settings-weights" class="settings-pane settings-weights-pane" role="tabpanel" aria-labelledby="settings-tab-weights" hidden>
+        <div class="settings-weights-toolbar">
+          <strong>Advanced routing weights</strong>
+          <div class="weights-head-actions"><button id="moreRoutesBtn" class="weights-considered" type="button" disabled title="Every route the router built for the current trip, offered or not">Considered routes</button><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button></div>
+        </div>
+        <div class="weights-body">
+          <div id="weightsModifiedNotice" class="weights-modified-notice" role="status" hidden>Weights have been modified</div>
+          <section id="advancedRoutingOptions" class="weights-route-options" aria-labelledby="advancedRoutingOptionsTitle"></section>
+          <ul class="weights-key">
+            <li><b>Above 1 avoids, below 1 seeks out.</b> Each value multiplies how long a stretch of road looks to the router.</li>
+            <li><b>Three sliders = three searches.</b> Every route is searched as Direct, Balanced and Low stress; that's what makes A–F differ. A slider only moves its own mode.</li>
+            <li><b>↺</b> resets one value, <b>Reset all defaults</b> resets everything. Changes are applied when Settings closes.</li>
+          </ul>
+          <div id="routingWeightsEditor" class="weights-groups"></div>
+        </div>
+      </div>
+    </section>
+  </div>
 
   <dialog id="routesDialog" class="map-dialog" aria-label="Save and share routes" tabindex="-1">
     <div class="dialog-head"><h2>Save &amp; share routes</h2><div class="dialog-head-actions"><button id="routesHelpBtn" class="dialog-help-btn" type="button" aria-label="Save and share routes help" title="Save and share routes help">?</button><button class="dialog-close" data-close="routesDialog" aria-label="Close">✕</button></div></div>
@@ -413,20 +427,6 @@
     </div>
   </dialog>
 
-  <dialog id="weightsDialog" class="full-help-dialog weights-dialog" aria-label="Advanced routing weights">
-    <div class="full-help-head"><div><span>Advanced tool</span><h2>Routing weights</h2></div><div class="weights-head-actions"><button id="moreRoutesBtn" class="weights-considered" type="button" disabled title="Every route the router built for the current trip, offered or not">Considered routes</button><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button><button class="dialog-close" data-close="weightsDialog" aria-label="Close routing weights">✕</button></div></div>
-    <div class="weights-body">
-      <div id="weightsModifiedNotice" class="weights-modified-notice" role="status" hidden>Weights have been modified</div>
-      <section id="advancedRoutingOptions" class="weights-route-options" aria-labelledby="advancedRoutingOptionsTitle"></section>
-      <ul class="weights-key">
-        <li><b>Above 1 avoids, below 1 seeks out.</b> Each value multiplies how long a stretch of road looks to the router.</li>
-        <li><b>Three sliders = three searches.</b> Every route is searched as Direct, Balanced and Low stress; that's what makes A–F differ. A slider only moves its own mode.</li>
-        <li><b>↺</b> resets one value, <b>Reset all defaults</b> resets everything. Changes re-route immediately.</li>
-      </ul>
-      <div id="routingWeightsEditor" class="weights-groups"></div>
-    </div>
-  </dialog>
-
   <dialog id="streetViewDialog" class="full-help-dialog sv-dialog" aria-label="Street View">
     <div class="full-help-head"><div><span>Map</span><h2>Street View</h2></div><div class="sv-head-actions"><a id="streetViewExternal" class="sv-external" target="_blank" rel="noopener">Open in Google Maps ↗</a><button class="dialog-close streetview-close" data-close="streetViewDialog" aria-label="Close Street View"><span aria-hidden="true">✕</span><span>Close</span></button></div></div>
     <div class="sv-body"><iframe id="streetViewFrame" title="Street View" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><p id="streetViewLoadStatus" class="sv-load-status" role="status" aria-live="polite" hidden></p><div class="sv-overlay-notes"><p class="sv-coverage-note"><b>Location note:</b> The nearest available view may be up to 250 m away. For trails, it may show a nearby road.</p></div></div>
@@ -484,7 +484,7 @@
       <li><b>Only show routes fully matching safety rules</b> — hides options with rule failures. Minor exception: a short access link near a pin may remain and appear red.</li>
       <li><b>Guess shoulder width from other data when it isn’t documented</b> — the county road log records how much pavement is left over once the lanes are taken out, per side. That is somewhere to pull over, not necessarily somewhere to ride, so 1 ft is subtracted and the rest counts as shoulder. Only fills a gap: a recorded shoulder always wins, and a zero is ignored because it can mean a paperwork error rather than a measured absence. Cards say when a figure was guessed. <b>On for The Randonneur only.</b> An undocumented shoulder counts as 0 ft and only about 7% of roads document one, so without this the map calls a road failing on missing data rather than on evidence. Weekend Wanderer and Casual Cruiser leave it off: both exist to honour slower roads literally, and Casual Cruiser filters routes to fully matching road, where a guessed shoulder should not be what lets a road in.</li>
       <li><b>Missing shoulder data</b> — always treated as 0 ft, and not adjustable. "No data" and "no shoulder" look the same from the saddle, so a fast road has to show a shoulder to pass rather than benefit from an absence of evidence. Slow roads never reach the shoulder rule at all.</li>
-      <li><b>Show advanced options and routing weights</b> — reveals the map’s weights button and the expert route switches described below. Leave it off unless you want to tune how the router searches.</li>
+      <li><b>Show advanced options and routing weights</b> — reveals the ⚖ Settings tab and its expert route switches. Leave it off unless you want to tune how the router searches.</li>
       </ul><p><b>Find</b> searches local offline places first. When there are no offline matches, it automatically searches online for nearby businesses, landmarks, services, parks, addresses, and other named places. Choose <b>Route It</b> to make a new trip from your current location, or <b>Map</b> (or anywhere else on the result) to inspect it without changing your trip. <b>Search with internet</b> remains available whenever you want broader results.</p></section>
     <section><h3>Advanced routing</h3><ul class="help-list">
       <li><b>Heavily prefer designated bike routes</b> — favors signed bike-route corridors. Trails and physical bike infrastructure have their own independent routing preferences.</li>
@@ -507,7 +507,7 @@
       <li><b>Announce route safety levels</b> — speaks changes in the active segment’s safety category; it does not replace turn instructions.</li>
       <li><b>Status update</b> — choose how often it speaks, and whether it includes route status, current speed, miles remaining, and estimated time left.</li>
     </ul></section>
-    <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Usually leave these alone.</b> Presets and Limits are the intended controls. Weights are soft preferences for testing and fine-tuning; unusual values can create long or unintuitive routes. They never override bicycle prohibitions or hard Limits, and <b>Reset all defaults</b> restores them. Turn on <b>Show advanced options and routing weights</b> to reveal the weights button on the map.</p></section>
+    <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Usually leave these alone.</b> Presets and Rules are the intended controls. Weights are soft preferences for testing and fine-tuning; unusual values can create long or unintuitive routes. They never override bicycle prohibitions or hard safety limits, and <b>Reset all defaults</b> restores them. Turn on <b>Show advanced options and routing weights</b> to reveal the ⚖ Settings tab.</p></section>
     </div>
   </template>
 

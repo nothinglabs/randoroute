@@ -99,6 +99,12 @@ describes ("Map stores" in `maps/README.md` is the contract). To publish:
 - **Nominate your corridors before you build anything.** Four or five real
   routes across the state, written down first. They are the spec for stage 5,
   and choosing them afterwards means choosing the ones that happened to work.
+- **Do not routinely add non-OSM route sources.** OSM bicycle relations are the
+  default. Supplemental routes are an optional, exceptional step only when
+  external documentation demonstrates a meaningful omission and a human has
+  approved the exact source in `maps/ROUTE-SOURCES.md` and
+  `maps/route-sources.json`. Discovery by an importing agent is a finding for
+  review, not permission to put that geometry into routing.
 
 ## Fix what you find
 
