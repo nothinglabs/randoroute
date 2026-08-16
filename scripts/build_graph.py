@@ -149,7 +149,10 @@ _num = re.compile(r'^\s*(\d+(?:\.\d+)?)')
 # treatment. (A wider dead list used to sit here documenting a conflation
 # scope twice as broad as the real gate.)
 WSDOT_ALWAYS_CLASSES = frozenset({'motorway', 'motorway_link', 'trunk', 'trunk_link'})
-REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA)[-\s]?\d+', re.I)
+# One spelling per shipped state. Add the new state's route-ref prefix here
+# when importing one (the proper home would be a region.json fact; not worth
+# the plumbing while the list is this short).
+REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA|OR)[-\s]?\d+', re.I)
 WSDOT_MATCH_DEG = 0.00035  # ~30 m
 WSDOT_STRICT_DEG = 0.00009  # ~8–10 m; safe without a shared route number
 PROHIBITED_SHOULDER = -128
