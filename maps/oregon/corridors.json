@@ -1,0 +1,39 @@
+{
+  "corridors": [
+    {
+      "name": "Portland to Hood River — Columbia Gorge end to end",
+      "a": [-122.6765, 45.5231],
+      "b": [-121.5370, 45.7090],
+      "maxRatio": 2.5,
+      "reason": "Long Columbia Gorge control route; the route should stay on ordinary roads without needing I-84, while its long length is deliberately paired with a short-hop check in the verification report."
+    },
+    {
+      "name": "Viento State Park to Hood River — Gorge trail pinch point",
+      "a": [-121.6870, 45.6800],
+      "b": [-121.5370, 45.7090],
+      "maxRatio": 2.5,
+      "reason": "Short hop across the Historic Columbia River Highway State Trail / Mitchell Point area; nominated to expose a local trail seam that a Portland-to-Hood-River detour could absorb."
+    },
+    {
+      "name": "Astoria to Seaside — north coast control",
+      "a": [-123.8313, 46.1879],
+      "b": [-123.9227, 45.9932],
+      "maxRatio": 2.5,
+      "reason": "Coastal US 101 corridor, testing north-coast linework and the state highway data where the route is not an inland metro shortcut."
+    },
+    {
+      "name": "Corvallis to Newport — Willamette Valley to coast",
+      "a": [-123.2620, 44.5646],
+      "b": [-124.0534, 44.6368],
+      "maxRatio": 2.5,
+      "reason": "Long valley-to-coast control through a distinct terrain and road-network transition; checks that the route does not fall onto a freeway-only connection."
+    },
+    {
+      "name": "Medford to Ashland — southern Oregon control",
+      "a": [-122.8756, 42.3265],
+      "b": [-122.7144, 42.1946],
+      "maxRatio": 2.5,
+      "reason": "Southern Oregon urban corridor parallel to I-5; tests ordinary-road connectivity and functional-class coverage near a major interstate."
+    }
+  ]
+}
