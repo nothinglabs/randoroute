@@ -5,7 +5,9 @@
 > improved porting documents. It is the FIRST Oregon import, done by an
 > Opus-class agent, preserved unchanged as the baseline to compare that
 > attempt against. The build commands recorded below and in `BUILD.md` say
-> `maps/oregon/` because that is where they ran.
+> `maps/oregon/` and `scripts/build_odot.py` because that is where they ran;
+> the fetcher now lives in this folder's own `tools/build_odot.py`, under the
+> convention that a state's agency tooling travels with the state.
 
 `status: preview`. Imported from the documentation alone, by an agent that has
 never been to Oregon. **Nobody has ridden anything this produces.**

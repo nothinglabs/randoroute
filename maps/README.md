@@ -84,7 +84,11 @@ mechanical part: where the files go.
 2. Build whatever data you have and put it in the folder. Declare exactly what
    you built in `"datasets"` — a state that ships only `places.json` is a valid
    state, and the app degrades to place search rather than 404ing its way
-   through a startup.
+   through a startup. Your agency fetchers go in **`maps/<state>/tools/`**,
+   beside the data they produce (`maps/washington/tools/` is the model);
+   `scripts/` holds only the shared, state-agnostic machinery. The `tools/`
+   folder is build tooling, not shipped data — it is never listed in
+   `datasets` and never enters a map pack.
 3. `npm run maps:registry` to regenerate `maps/states.js`.
 4. Write `STATUS.md` and `BUILD.md`. `STATUS.md` is what the next person reads
    to know whether to trust the data; `BUILD.md` is what they read to rebuild

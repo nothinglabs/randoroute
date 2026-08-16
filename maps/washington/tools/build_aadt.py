@@ -26,7 +26,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'scripts'))
 import arcgis  # noqa: E402
 
 LAYER = ("https://data.wsdot.wa.gov/arcgis/rest/services/Shared/TrafficData/"

@@ -2080,11 +2080,11 @@ if __name__ == '__main__':
     ap.add_argument('--urban-areas', default='data/census-urban-areas-2020-washington.geojson',
                     help='Census 2020 urban-area GeoJSON (EPSG:4326, build-only)')
     ap.add_argument('--roadlog', default='data/roadlog.geojson',
-                    help='CRAB certified county road log (scripts/build_roadlog.py)')
+                    help='CRAB certified county road log (state tools/, e.g. maps/washington/tools/build_roadlog.py)')
     ap.add_argument('--funcclass', default='data/funcclass.geojson',
-                    help='WSDOT non-state functional class (scripts/build_funcclass.py)')
+                    help='WSDOT non-state functional class (state tools/, e.g. maps/washington/tools/build_funcclass.py)')
     ap.add_argument('--aadt', default='data/aadt.geojson',
-                    help='WSDOT traffic counts (scripts/build_aadt.py)')
+                    help='WSDOT traffic counts (state tools/, e.g. maps/washington/tools/build_aadt.py)')
     ap.add_argument('--hpms', default='data/hpms.geojson',
                     help='FHWA HPMS public release (scripts/build_hpms.py)')
     args = ap.parse_args()

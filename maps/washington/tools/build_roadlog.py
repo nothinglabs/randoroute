@@ -50,7 +50,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'scripts'))
 import arcgis  # noqa: E402
 
 LAYER = ("https://services9.arcgis.com/bwkxJJr72Wf3t8dm/arcgis/rest/services/"

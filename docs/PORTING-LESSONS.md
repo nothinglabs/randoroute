@@ -87,7 +87,7 @@ field versus the Active Transportation registry.
 **Oregon: held, and measurably.** ODOT's Bicycle Level of Traffic Stress layer
 is the same shape as WSDOT's -- a derived analysis carrying copies of the
 shoulder, speed, lane-count and facility inventories it was built from.
-`scripts/build_odot.py` reads the rating from it and every other fact from the
+`maps/oregon-opus-1/tools/build_odot.py` reads the rating from it and every other fact from the
 inventory that owns it, joined by linear reference, and prints the drift:
 **7.1% of 73,575 segments disagree with the shoulder inventory by more than
 1 ft, 3.3% with the speed inventory by more than 5 mph, and 12.0% of 35,890

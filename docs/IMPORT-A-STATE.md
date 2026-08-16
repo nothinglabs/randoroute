@@ -47,6 +47,9 @@ the entry point on why).
       publishes current traffic counts, the state-system portion is in scope
       — HPMS is the floor, not the finish.
 - [ ] `maps/<state>/region.json`, validated by `npm run maps:registry`
+- [ ] `maps/<state>/tools/` — your agency fetchers, beside the data they
+      produce. Nothing state-specific lands in `scripts/`; that folder is the
+      shared, state-agnostic machinery.
 - [ ] `maps/<state>/STATUS.md` — what works, what does not, and the readiness
       level with the gate you met for it. Washington's is the model: it explains
       its score in terms of **coverage**, not effort.

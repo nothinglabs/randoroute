@@ -92,17 +92,25 @@ none of which did before the first port: `fetch_census_urban_areas.py`,
 `build_hpms.py --state --year`, `stamp_tiles_version.mjs <state>`,
 `build_compressed_overlays.mjs` (walks the registry).
 
-### "Nothing outside `maps/` names a state" is about the APP, not the build
+### "Nothing outside `maps/` names a state" now covers the build too
 
-`region.js`, `app.js`, `router-worker.js` and `sw.js` genuinely resolve
-everything through `Region`. The **build scripts do not**, and cannot entirely:
-`scripts/build_odot.py` is Oregon's fetcher and `scripts/build_blts.py` is
-Washington's, because an agency's REST service and field names are not
-configuration. What matters is the boundary: a fetcher translates its agency's
-vocabulary into the field names the shared builders read (`RouteIdentifier`,
-`LTS_Bicycle`, `ShoulderWidth`, `SpeedLimit`, `BikeFacilityType`, `fc`,
-`owner`, `adt`, `adty`). Those names look like WSDOT's because Washington was
-first; treat them as the build contract and translate into them.
+`region.js`, `app.js`, `router-worker.js` and `sw.js` resolve everything
+through `Region`. The build honours the same boundary a different way:
+**a state's agency fetchers live in that state's own `maps/<state>/tools/`**
+— `maps/washington/tools/build_blts.py`, `build_aadt.py`, `build_roadlog.py`
+and friends are Washington's; write yours as `maps/<state>/tools/` scripts
+beside the data they produce. What stays in `scripts/` is genuinely shared
+and state-agnostic: the builders (`build_graph.py`, `build_roads.py`, …),
+`roadmeasure.py`, `build_hpms.py` (federal, parameterised), and the
+`arcgis.py` pagination helper your fetchers will import (the existing tools
+show the `sys.path` line that reaches it).
+
+The boundary that matters is the vocabulary: a fetcher translates its
+agency's REST services and field names into the field names the shared
+builders read (`RouteIdentifier`, `LTS_Bicycle`, `ShoulderWidth`,
+`SpeedLimit`, `BikeFacilityType`, `fc`, `owner`, `adt`, `adty`). Those names
+look like WSDOT's because Washington was first; treat them as the build
+contract and translate into them.
 
 One thing that is genuinely on the wrong side of the line and was left there:
 `SOURCES` in `app.js` bakes Washington's feature counts (`count: 55271`,

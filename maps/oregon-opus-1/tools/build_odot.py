@@ -68,7 +68,7 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'scripts'))
 import arcgis  # noqa: E402
 
 BASE = ("https://gis.odot.state.or.us/arcgis1006/rest/services/"

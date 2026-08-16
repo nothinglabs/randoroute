@@ -53,9 +53,9 @@ Each of these pages an ArcGIS service and caches pages under `data/.cache`, so
 an interrupted run resumes rather than restarting.
 
 ```bash
-python3 scripts/build_roadlog.py     # CRAB certified county road log
-python3 scripts/build_funcclass.py   # WSDOT non-state functional class
-python3 scripts/build_aadt.py        # WSDOT traffic counts, state routes
+python3 maps/washington/tools/build_roadlog.py     # CRAB certified county road log
+python3 maps/washington/tools/build_funcclass.py   # WSDOT non-state functional class
+python3 maps/washington/tools/build_aadt.py        # WSDOT traffic counts, state routes
 python3 scripts/build_hpms.py        # FHWA HPMS public release
 ```
 
@@ -66,8 +66,8 @@ does not have to re-page the services.
 ## 3. Safety linework
 
 ```bash
-python3 scripts/build_restrictions.py            # -> bike_restrictions.geojson
-python3 scripts/build_blts.py \
+python3 maps/washington/tools/build_restrictions.py            # -> bike_restrictions.geojson
+python3 maps/washington/tools/build_blts.py \
   --src data/BikePedLTS.gdb --out maps/washington/blts.geojson
 python3 scripts/build_osm.py \
   --src data/washington-latest.osm.pbf --out maps/washington/bikeinfra.geojson

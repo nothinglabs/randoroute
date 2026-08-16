@@ -159,7 +159,7 @@ curl -o data/BikePedLTS.zip \
 unzip -d data data/BikePedLTS.zip
 pip install geopandas pyogrio pyproj shapely
 python3 scripts/fetch_census_urban_areas.py
-python3 scripts/build_blts.py --src data/BikePedLTS.gdb --out maps/washington/blts.geojson
+python3 maps/washington/tools/build_blts.py --src data/BikePedLTS.gdb --out maps/washington/blts.geojson
 ```
 
 Source: WSDOT "Bicycle and Pedestrian Level of Traffic Stress (LTS)" (File
@@ -179,7 +179,7 @@ does not select a different shoulder or speed rule.
 curl -o data/PermanentBikeRestrictions.zip \
   https://data.wsdot.wa.gov/geospatial/DOT_ActiveTransportation/PermanentBikeRestrictions.zip
 unzip -d data/permbike data/PermanentBikeRestrictions.zip
-python3 scripts/build_restrictions.py
+python3 maps/washington/tools/build_restrictions.py
 ```
 
 Official State Traffic Engineer calendar actions prohibiting bicycles on
@@ -242,9 +242,9 @@ the rider-controlled **Allow mountain bike trails** option.
 python3 scripts/fetch_census_urban_areas.py
 # Statewide road measurements. Each pages an ArcGIS service and caches pages
 # under data/.cache, so an interrupted run resumes rather than restarting.
-python3 scripts/build_roadlog.py     # CRAB county road log, 115,582 segments
-python3 scripts/build_funcclass.py   # WSDOT non-state functional class
-python3 scripts/build_aadt.py        # WSDOT traffic counts, state routes
+python3 maps/washington/tools/build_roadlog.py     # CRAB county road log, 115,582 segments
+python3 maps/washington/tools/build_funcclass.py   # WSDOT non-state functional class
+python3 maps/washington/tools/build_aadt.py        # WSDOT traffic counts, state routes
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
                                --out-prefix data/roads \
                                --urban-areas data/census-urban-areas-2020-washington.geojson \
