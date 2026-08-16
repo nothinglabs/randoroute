@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-16.727';
+const APP_VERSION = '2026-08-16.728';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11616,6 +11616,10 @@ function visibleFeatureAt(point, pad = 6) {
     [[point.x - pad, point.y - pad], [point.x + pad, point.y + pad]], { layers });
   if (!rendered.length) return null;
   const features = rendered.map((feature) => ({ ...feature,
+    // MapLibre decodes geometry through a lazy prototype getter. Object spread
+    // does not copy that getter, so materialize it before replacing the layer
+    // id or road taps lose highlighting, nearest-distance ranking and heading.
+    geometry: feature.geometry,
     layer: { ...feature.layer, id: candidates.get(feature.layer.id) } }));
   const isRibbon = (feature) => !!(HIT_SRC[feature.layer.id] || {}).ribbon;
   const scored = features.filter((feature) => !isRibbon(feature));

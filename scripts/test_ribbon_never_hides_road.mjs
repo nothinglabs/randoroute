@@ -61,6 +61,9 @@ const ctx = {
   haloPresent: false,
   HIT_VERTEX_LIMIT: 400,
   HIT_TIE_PX: 0.5,
+  // This isolated suite exercises the broad hit-layer fallback. Visible-first
+  // selection has its own live-map coverage in test_map_road_declutter.
+  visibleFeatureAt: () => null,
   Math,
 };
 // map.project turns a [lng, lat] into a screen point. The fixtures below are

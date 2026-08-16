@@ -100,13 +100,17 @@ const visibleTapPriority = await page.evaluate(() => {
   const originalQuery = map.queryRenderedFeatures.bind(map);
   const point = map.project(map.getCenter());
   const coordinate = [map.getCenter().lng, map.getCenter().lat];
-  const feature = (layer, properties = {}) => ({
-    type: 'Feature', layer: { id: layer }, properties,
-    geometry: { type: 'LineString', coordinates: [
-      [coordinate[0] - 0.001, coordinate[1]],
-      [coordinate[0] + 0.001, coordinate[1]],
-    ] },
-  });
+  // MapLibre exposes geometry through a lazy prototype getter. Deliberately
+  // model that here: spreading a rendered feature without first reading the
+  // getter once shipped cards with correct properties but no line highlight.
+  const feature = (layer, properties = {}) => Object.assign(Object.create({
+    get geometry() {
+      return { type: 'LineString', coordinates: [
+        [coordinate[0] - 0.001, coordinate[1]],
+        [coordinate[0] + 0.001, coordinate[1]],
+      ] };
+    },
+  }), { type: 'Feature', layer: { id: layer }, properties });
   map.queryRenderedFeatures = (bounds, options = {}) => {
     const layers = options.layers || [];
     if (layers.length === 1 && layers[0] === 'route-dismount-halo') return [];
@@ -119,13 +123,24 @@ const visibleTapPriority = await page.evaluate(() => {
   };
   try {
     const selected = featureAt(point);
-    return { layer: selected?.layer?.id, name: selected?.properties?.n };
+    inspectRoadAt(point, map.unproject([point.x, point.y]));
+    return {
+      layer: selected?.layer?.id,
+      name: selected?.properties?.n,
+      geometryType: selected?.geometry?.type,
+      pinCount: document.querySelectorAll('.search-result-marker').length,
+      highlightVisible: TAP_HIGHLIGHT_LAYERS.every((id) =>
+        map.getLayoutProperty(id, 'visibility') === 'visible'),
+    };
   } finally {
     map.queryRenderedFeatures = originalQuery;
   }
 });
 assert.deepEqual(visibleTapPriority,
-  { layer: 'routes__hit', name: 'Visible bike route' },
+  {
+    layer: 'routes__hit', name: 'Visible bike route', geometryType: 'LineString',
+    pinCount: 0, highlightVisible: true,
+  },
   `visible route should beat an invisible local street: ${JSON.stringify(visibleTapPriority)}`);
 assert.equal(page.pageErrors.length, 0, page.pageErrors.join(' | '));
 
