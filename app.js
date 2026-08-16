@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-16.722';
+const APP_VERSION = '2026-08-16.723';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2758,6 +2758,44 @@ function routeOverlayNames(p) {
   if (names.length) return names;
   return String(p?.r || '').split(/[;,]/).map((part) => part.trim()).filter(Boolean)
     .map((ref) => `Route ${ref}`);
+}
+
+// The signed routes running under a tapped point, from the overlay DATA
+// rather than the rendered ribbon: the ribbon layer may be toggled off, and
+// where a route follows a road the road above it wins the tap -- which is
+// every practical tap on a route. This is what puts the Preferred checkbox
+// on whichever card the tap actually opened.
+function routeNamesNear(lngLat, toleranceM = 40) {
+  const src = SOURCES.find((source) => source.id === 'routes');
+  const names = [];
+  if (!src?.fc) return names;
+  const point = [Number(lngLat.lng), Number(lngLat.lat)];
+  const kx = 111320 * Math.cos(point[1] * Math.PI / 180), ky = 111320;
+  const segDistM = (a, b) => {
+    const ax = (a[0] - point[0]) * kx, ay = (a[1] - point[1]) * ky;
+    const bx = (b[0] - point[0]) * kx, by = (b[1] - point[1]) * ky;
+    const dx = bx - ax, dy = by - ay;
+    const spanSq = dx * dx + dy * dy;
+    const t = spanSq ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / spanSq)) : 0;
+    return Math.hypot(ax + t * dx, ay + t * dy);
+  };
+  for (const feature of src.fc.features || []) {
+    const geometry = feature.geometry;
+    const lines = geometry?.type === 'LineString' ? [geometry.coordinates]
+      : geometry?.type === 'MultiLineString' ? geometry.coordinates : [];
+    let near = false;
+    for (const line of lines) {
+      for (let i = 1; i < line.length && !near; i++) {
+        near = segDistM(line[i - 1], line[i]) <= toleranceM;
+      }
+      if (near) break;
+    }
+    if (!near) continue;
+    for (const name of routeOverlayNames(feature.properties)) {
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  return names;
 }
 
 // name -> { name, national, lines, lengthM } for every signed route in the
@@ -12311,7 +12349,10 @@ function renderMapTapCard({
       checkbox.setAttribute('aria-label', `Prefer ${name}`);
       checkbox.addEventListener('change', () => setRoutePreferred(name, checkbox.checked));
       const text = document.createElement('span');
+      // Name the route unless it is already the card's own title: on a road
+      // card "Preferred route" alone would not say WHICH route runs here.
       text.textContent = preferredRouteToggles.length > 1
+        || String(name) !== String(displayTitle)
         ? `Preferred route: ${name}` : 'Preferred route';
       row.append(checkbox, text);
       preferredBlock.append(row);
@@ -12612,7 +12653,11 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
     // rider happens to inspect nearby -- which is exactly "part of an active
     // route", since routeseg IS the drawn route.
     allowRoadBlock: src.id === 'routeseg' && p.ferry !== 1,
-    preferredRouteToggles: src.id === 'routes' ? routeOverlayNames(p) : [],
+    // Any tapped segment that lies on a signed route offers its Preferred
+    // checkbox -- not only the ribbon's own card, which a road usually
+    // outbids for the tap.
+    preferredRouteToggles: src.id === 'routes'
+      ? routeOverlayNames(p) : routeNamesNear(lngLat),
     cautionKinds: src.id === 'routeseg' && p.ferry !== 1
       ? [...routeMarkerKinds(p, routeVisualStyle(p)), ...(p.hazard ? ['curve'] : [])]
       : [],

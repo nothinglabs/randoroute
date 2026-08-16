@@ -109,6 +109,72 @@ check('the card checkbox edits the same per-state selection',
   tapCard.marked.join() === 'Interurban Trail' && tapCard.cleared === null,
   JSON.stringify(tapCard));
 
+/* ------------- the checkbox reaches the card a tap actually opens */
+// Where a route follows a road or a trail, the road/trail wins the tap, so
+// the checkbox must ride on THAT card, found from the overlay data.
+const near = await page.evaluate(async () => {
+  const catalog = await ensureStateRouteCatalog();
+  const entry = catalog.get('Interurban Trail');
+  const line = entry.lines.sort((a, b) => b.length - a.length)[0];
+  const mid = line[Math.floor(line.length / 2)];
+  return {
+    mid,
+    at: routeNamesNear({ lng: mid[0], lat: mid[1] }),
+    offshore: routeNamesNear({ lng: -124.5, lat: 47.5 }),
+  };
+});
+check('routeNamesNear names the routes under a point, and only there',
+  near.at.includes('Interurban Trail') && near.offshore.length === 0,
+  JSON.stringify(near));
+
+const roadCard = await page.evaluate((names) => {
+  renderMapTapCard({
+    displayTitle: 'Road (OSM)', pointName: 'Beach Road',
+    summary: '', rows: [], lngLat: { lng: -122.33, lat: 47.6 }, anchorPoint: null,
+    swatchColor: '#888', swatchLabel: 'test', preferredRouteToggles: names,
+  });
+  const labels = [...document.querySelectorAll('.readout-preferred-route span')]
+    .map((span) => span.textContent);
+  dismissRoadInfo();
+  return labels;
+}, near.at);
+check('a road card names the route its checkbox prefers',
+  roadCard.length === near.at.length
+    && roadCard.some((label) => label === 'Preferred route: Interurban Trail'),
+  JSON.stringify(roadCard));
+
+// End to end: a real tap on the trail on the real map opens whatever card
+// wins the hit test, and that card carries the checkbox.
+await page.evaluate((mid) => {
+  dismissRoadInfo();
+  map.jumpTo({ center: mid, zoom: 16 });
+}, near.mid);
+await page.evaluate(() => new Promise((resolve) => {
+  map.once('idle', resolve); setTimeout(resolve, 9000);
+}));
+let tapped = { toggles: [], title: '' };
+for (let attempt = 0; attempt < 3 && !tapped.toggles.length; attempt++) {
+  const at = await page.evaluate((mid) => map.project(mid), near.mid);
+  await page.mouse.click(at.x, at.y);
+  const deadline = Date.now() + 2500;
+  while (Date.now() < deadline && !tapped.toggles.length) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    tapped = await page.evaluate(() => ({
+      toggles: [...document.querySelectorAll('.readout-preferred-route span')]
+        .map((span) => span.textContent),
+      title: document.querySelector('.rt-title span:last-child')?.textContent || '',
+    }));
+  }
+}
+// Whichever card won the hit test -- the ribbon's own (titled by the route,
+// plain "Preferred route" label) or a road/trail card (label names the
+// route) -- the checkbox must identify the Interurban Trail.
+check('tapping the route on the real map offers its Preferred checkbox',
+  tapped.toggles.some((label) => /Interurban Trail/.test(label))
+    || (tapped.toggles.includes('Preferred route') && /Interurban Trail/.test(tapped.title)),
+  JSON.stringify(tapped));
+await page.evaluate(() => dismissRoadInfo());
+
 /* --------------------------------------------- GPS outside the selected map */
 const gps = await page.evaluate(async () => {
   const out = {};
