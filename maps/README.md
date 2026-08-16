@@ -176,6 +176,7 @@ places the data is thinnest — which `measure_coverage.py` will name for you.
 | `stressAgency`, `restrictionAgency`, `speedAgency` | Who publishes each enrichment, as cited on a road card. They need not be the same agency. |
 | `facilitySourceName`, `stressLayerName`, `restrictionLayerName` | The agency's own product names, as the layer list and cards spell them. |
 | `interstateRoutePrefixes` | Route ids the agency uses for Interstates, when it records no separate flag. Empty if it does. |
+| `stateRoutePrefixes` | How the state spells a route ref (`SR 520`, `OR 224`). The graph and tile builds gate agency conflation on these (`--region`), and the app's name-based highway test derives from them. |
 | `facilityLevels` | The agency's facility vocabulary mapped onto the shared 0–5 level. |
 | `routeDirectionSuffixes` | Trailing letters in a route id that mean a direction (`{"i": "increasing mileposts"}`). Empty if ids do not work that way. |
 | `datasets` | Which files this folder actually has. The app, the service worker and the iOS bundler all read this. |

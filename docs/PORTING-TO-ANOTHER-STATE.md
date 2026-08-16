@@ -86,6 +86,13 @@ them explicitly, and pass `""` for the ones your state does not have, which is
 a statement rather than an accident. Oregon's `maps/oregon/BUILD.md` does this
 and says why for each empty string.
 
+Pass `--region maps/<state>/region.json` to both builders as well. That is how
+a build-side state fact reaches the shared code — today the route-ref
+spellings (`stateRoutePrefixes`) that gate agency conflation; any future fact
+of the same kind should ride the same flag rather than grow its own. Omitting
+it keeps Washington's defaults, like every other default here, which is
+exactly the silent-wrong-state failure this section exists to prevent.
+
 The same goes for the small ones, all of which take a state or a bounds now and
 none of which did before the first port: `fetch_census_urban_areas.py`,
 `build_routes.py --bounds`, `build_overlay_tiles.py --state`,
@@ -112,12 +119,14 @@ builders read (`RouteIdentifier`, `LTS_Bicycle`, `ShoulderWidth`,
 look like WSDOT's because Washington was first; treat them as the build
 contract and translate into them.
 
-One thing that is genuinely on the wrong side of the line and was left there:
-`SOURCES` in `app.js` bakes Washington's feature counts (`count: 55271`,
-`count: 37788`) for the two overlay layers, since a vector tile carries no
-global count. Oregon's are 81,210 and 37,256. The value is only shown in the
-layer list, so it is cosmetic -- but it is a state fact in shared code and
-belongs in `region.json`.
+Two facts that once sat on the wrong side of this line have been moved:
+overlay feature counts (now `sourceCounts` in `region.json`; `SOURCES` in
+`app.js` reads `Region.sourceCounts`) and the route-ref spellings the
+conflation gate matches (now `stateRoutePrefixes`, reaching the builders via
+`--region` and the app's highway-name test via `Region`). If you find another
+— shared code behaving differently because of which state built or loaded it
+— that is a bug of the same species: the fact goes in `region.json`, the code
+reads it from the region, and the fix lands before the state does.
 
 ### Known blockers, so they are not discoveries
 
@@ -133,6 +142,11 @@ belongs in `region.json`.
   already portable. Its one external input is the Natural Earth land polygon --
   world coverage, clipped per state — fetched by
   `scripts/fetch_natural_earth.sh` into the path the builder now defaults to.
+  Its `--coastline osm` mode, however, assumes a **west-coast** state: it takes
+  the longest open coastline as the Pacific-facing mainland, expects it to run
+  north-to-south with land on its left, and closes the land polygon eastward.
+  Inverted for an Atlantic or Gulf state, untested for a Great Lakes shoreline;
+  a landlocked state should simply pass `--coastline natural-earth`.
 - `build_hpms.py --state <State> --year <year>` is the nationally-uniform
   traffic source and the highest-value single fetch (A3). **Probe the year**:
   FHWA has not published every state at the same vintage, and a wrong year is a

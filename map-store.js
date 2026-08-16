@@ -29,7 +29,7 @@
   const KNOWN = new Set(['id', 'name', 'status', 'readiness', 'summary', 'bounds',
     'defaultCenter', 'defaultZoom', 'stressAgency', 'restrictionAgency', 'speedAgency',
     'facilitySourceName', 'stressLayerName', 'restrictionLayerName',
-    'interstateRoutePrefixes', 'facilityLevels', 'sourceCounts', 'routeDirectionSuffixes',
+    'interstateRoutePrefixes', 'stateRoutePrefixes', 'facilityLevels', 'sourceCounts', 'routeDirectionSuffixes',
     'datasets', 'versions', 'attribution', 'files']);
   const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
   const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;

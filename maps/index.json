@@ -31,6 +31,11 @@
     "205",
     "405"
    ],
+   "stateRoutePrefixes": [
+    "I",
+    "US",
+    "OR"
+   ],
    "facilityLevels": {
     "Bike Lane": 2,
     "Shared Lane": 1
@@ -171,6 +176,12 @@
     "205",
     "405",
     "705"
+   ],
+   "stateRoutePrefixes": [
+    "I",
+    "US",
+    "SR",
+    "WA"
    ],
    "facilityLevels": {
     "Shared-Use Path": 5,

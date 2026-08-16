@@ -64,15 +64,19 @@ from shapely.geometry import LineString
 # outputs describe the same roads to the same app, and while each file kept
 # its own copies they drifted -- km/h speeds parsed differently, and
 # cycleway:buffer=yes counted as buffered in the graph but plain in the tile.
+import build_graph
 from build_graph import (DEFAULT_MPH, DRIVE, EDGE_SIDEWALK, EDGE_SIDEWALK_NO,
                          FACILITY_LANE, FACILITY_PATH, LANES_CENTER_TURN,
-                         LANES_COUNT_MASK, LIMITED, REF_STATE, ROAD_CLASS,
+                         LANES_COUNT_MASK, LIMITED, ROAD_CLASS,
                          SIMPLIFY_DEG, WSDOT_ALWAYS_CLASSES, blts_match,
                          collect_designated, is_urban_edge, lane_class,
                          load_blts_index, load_official_index,
                          load_urban_index, official_match, osm_facility_class,
                          parse_mph, parse_shoulder_ft, sidewalk_flags,
                          surface_class)
+# REF_STATE is deliberately NOT imported by name: --region reassigns it on
+# the module (set_state_route_prefixes), and a from-import would freeze the
+# pre-region copy here. Read build_graph.REF_STATE at use time instead.
 from roadmeasure import RoadMeasures
 from roadmeasure import length_m as measure_length_m
 
@@ -316,7 +320,7 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
         elif sidewalk & EDGE_SIDEWALK_NO:
             p['k'] = 2
         wsdot_candidate = (hw in WSDOT_ALWAYS_CLASSES
-                           or (tags.get('ref') and REF_STATE.search(tags['ref'])))
+                           or (tags.get('ref') and build_graph.REF_STATE.search(tags['ref'])))
         if not wsdot_candidate:
             for run_coords, meas in measured_runs(coords):
                 add_feature(run_coords, p, meas=meas)
@@ -392,6 +396,12 @@ if __name__ == '__main__':
                     help='official WSDOT bike facilities registry '
                          '(scripts/fetch_wsdot_graph_data.py); same input the '
                          'graph build reads')
+    ap.add_argument('--region', default=None,
+                    help="the state's region.json; supplies state facts the "
+                         'build needs (stateRoutePrefixes). Omitting it keeps '
+                         "Washington's defaults, like every default here")
     args = ap.parse_args()
+    if args.region:
+        build_graph.apply_region_config(args.region)
     build(args.src, args.out_prefix, args.urban_areas, args.blts,
           args.roadlog, args.funcclass, args.aadt, args.hpms, args.facilities)

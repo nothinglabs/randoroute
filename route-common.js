@@ -35,7 +35,18 @@ const ROUTE_CATEGORY_LABELS = [
   ['caution', 'Needs Caution'],
   ['fail', 'Fails Rules'],
 ];
-const HIGHWAY_NAME = /\b(highway|state route|sr\s*\d|us\s*(?:route\s*)?\d|i-?\s*\d)\b/i;
+// Name-based highway detection, used as the fallback when a segment's speed
+// is unknown. The route-number spellings are the loaded state's
+// (region.json's stateRoutePrefixes; region.js loads before this file in
+// both pages). The router worker and Node load this without a Region and get
+// the historical default -- neither consumes HIGHWAY_NAME.
+const HIGHWAY_NAME = (() => {
+  const prefixes = (typeof Region !== 'undefined' && Region.stateRoutePrefixes)
+    || ['SR', 'US', 'I'];
+  const refs = prefixes.map((prefix) =>
+    `${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s*route)?[-\\s]?\\s*\\d`);
+  return new RegExp(`\\b(highway|state route|${refs.join('|')})`, 'i');
+})();
 const SIGNIFICANT_UNPAVED_M = 1609.344;
 // Above this sustained grade the route card and the details page both raise
 // the steep-grade warning. It was a bare `> 18` in four places.

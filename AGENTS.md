@@ -117,6 +117,10 @@ anything else.
 
 - Keep replies short. Surface decisions instead of burying them; do not make
   design choices silently.
+- **Get specific approval before starting any potentially 20+ minute piece of
+  work** (a rebuild, a large download, a refactor, a long investigation).
+  Name the work and its rough cost first; an earlier general go-ahead does
+  not cover a new expensive step.
 - The user does the field testing on a phone. Do not simulate rides or run long
   routing comparisons to prove a change is safe.
 - All mechanics of the safety model belong in `docs/SAFETY-MODEL.md` — the

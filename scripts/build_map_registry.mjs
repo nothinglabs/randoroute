@@ -37,7 +37,7 @@ const DATASET_FILES = {
 const KNOWN = new Set(['id', 'name', 'status', 'readiness', 'summary', 'bounds',
   'defaultCenter', 'defaultZoom', 'stressAgency', 'restrictionAgency', 'speedAgency',
   'facilitySourceName', 'stressLayerName', 'restrictionLayerName',
-  'interstateRoutePrefixes', 'facilityLevels', 'sourceCounts', 'routeDirectionSuffixes',
+  'interstateRoutePrefixes', 'stateRoutePrefixes', 'facilityLevels', 'sourceCounts', 'routeDirectionSuffixes',
   'datasets', 'versions', 'attribution']);
 const REQUIRED = ['id', 'name', 'status', 'bounds', 'defaultCenter', 'defaultZoom', 'datasets'];
 

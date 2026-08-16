@@ -109,6 +109,11 @@
     // directly leaves this empty.
     interstateRoutePrefixes: active.interstateRoutePrefixes || [],
 
+    // How this state's agency spells a route ref ("SR 520", "OR 224"). The
+    // graph and tile builds gate agency conflation on these (--region), and
+    // route-common.js builds its name-based highway test from them.
+    stateRoutePrefixes: active.stateRoutePrefixes || null,
+
     // The agency's facility vocabulary, mapped onto the shared 0-5 level the
     // rest of the app speaks. Without it a card could only say "there is
     // something here", and a shared-use path scored the same as a painted lane.

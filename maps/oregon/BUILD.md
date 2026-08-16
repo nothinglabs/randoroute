@@ -13,7 +13,7 @@ python3 -m venv /private/tmp/randoroute-venv
 
 curl -L --fail --retry 3 -o data/oregon-latest.osm.pbf \
   https://download.geofabrik.de/north-america/us/oregon-latest.osm.pbf
-/private/tmp/randoroute-venv/bin/python scripts/fetch_census_urban_areas.py Oregon
+/private/tmp/randoroute-venv/bin/python scripts/fetch_census_urban_areas.py oregon
 bash scripts/fetch_natural_earth.sh
 bash scripts/fetch_dem.sh oregon
 ```
@@ -84,6 +84,7 @@ gzip -dc maps/oregon/hpms.geojson.gz > maps/oregon/hpms.geojson
 
 /private/tmp/randoroute-venv/bin/python scripts/build_roads.py \
   --src data/oregon-latest.osm.pbf \
+  --region maps/oregon/region.json \
   --out-prefix data/oregon-roads \
   --urban-areas data/census-urban-areas-2020-oregon.geojson \
   --blts maps/oregon/blts.geojson \
@@ -107,6 +108,7 @@ tippecanoe -o maps/oregon/roads.pmtiles -l roads --force -Z5 -z13 \
 
 /private/tmp/randoroute-venv/bin/python scripts/build_graph.py \
   --src data/oregon-latest.osm.pbf \
+  --region maps/oregon/region.json \
   --out maps/oregon/graph2.bin.gz \
   --blts maps/oregon/blts.geojson \
   --restrictions "" \

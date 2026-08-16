@@ -66,11 +66,15 @@ What to check against your own predictions:
 - **The coast.** The re-import routes Astoria→Newport at 164 mi with 6.0
   failing miles (the baseline demanded 231). Does the failing mileage match
   how US 101 rides?
-- **`OR`-prefix conflation gate (shared-code bug, found by the re-import).**
-  `REF_STATE` in `scripts/build_graph.py` recognizes `I|US|SR|WA` route refs
-  but not Oregon's `OR`, so OR-numbered non-trunk highways are under-conflated
-  — this affected the baseline too, unnoticed. Fix: the prefix list belongs in
-  `region.json` (like `interstateRoutePrefixes`); then rebuild Oregon.
+- **`OR`-prefix conflation gate — code fixed in .721, data heals on next
+  regenerate.** The prefixes now live in `region.json` as
+  `stateRoutePrefixes`; both builders take `--region`, the gate derives from
+  it (`scripts/test_state_ref_gate.py` guards this), and the app's
+  highway-name test reads `Region.stateRoutePrefixes`. Washington's default
+  is byte-identical to the historical gate, so no WA rebuild. The shipped
+  Oregon data predates the fix (OR-numbered non-trunk highways
+  under-conflated — stale, not broken) and is fixed by the next regeneration,
+  which now passes `--region` per `maps/oregon/BUILD.md`.
 - **Roads tile count question.** The re-import's `roads.pmtiles` carries
   215,485 features where the baseline carried 308,347. Live rendering looks
   healthy; understand which count is right before the next tile rebuild.

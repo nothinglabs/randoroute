@@ -149,10 +149,34 @@ _num = re.compile(r'^\s*(\d+(?:\.\d+)?)')
 # treatment. (A wider dead list used to sit here documenting a conflation
 # scope twice as broad as the real gate.)
 WSDOT_ALWAYS_CLASSES = frozenset({'motorway', 'motorway_link', 'trunk', 'trunk_link'})
-# One spelling per shipped state. Add the new state's route-ref prefix here
-# when importing one (the proper home would be a region.json fact; not worth
-# the plumbing while the list is this short).
-REF_STATE = re.compile(r'(^|[;,\s])(I|US|SR|WA|OR)[-\s]?\d+', re.I)
+# How the state spells a route ref is a state fact: it comes from
+# region.json's stateRoutePrefixes via --region. The default is Washington's,
+# like every other default here. build_roads.py reads the module attribute
+# (build_graph.REF_STATE) rather than importing the name, so one setter
+# serves both builds.
+DEFAULT_STATE_ROUTE_PREFIXES = ('I', 'US', 'SR', 'WA')
+
+
+def state_ref_pattern(prefixes):
+    alternation = '|'.join(re.escape(p) for p in prefixes)
+    return re.compile(r'(^|[;,\s])(' + alternation + r')[-\s]?\d+', re.I)
+
+
+REF_STATE = state_ref_pattern(DEFAULT_STATE_ROUTE_PREFIXES)
+
+
+def set_state_route_prefixes(prefixes):
+    global REF_STATE
+    REF_STATE = state_ref_pattern(prefixes)
+
+
+def apply_region_config(path):
+    """Adopt the state facts a region.json declares. --region on both builds."""
+    with open(path, encoding='utf-8') as f:
+        region = json.load(f)
+    if region.get('stateRoutePrefixes'):
+        set_state_route_prefixes(region['stateRoutePrefixes'])
+    return region
 WSDOT_MATCH_DEG = 0.00035  # ~30 m
 WSDOT_STRICT_DEG = 0.00009  # ~8–10 m; safe without a shared route number
 PROHIBITED_SHOULDER = -128
@@ -2090,6 +2114,12 @@ if __name__ == '__main__':
                     help='WSDOT traffic counts (state tools/, e.g. maps/washington/tools/build_aadt.py)')
     ap.add_argument('--hpms', default='data/hpms.geojson',
                     help='FHWA HPMS public release (scripts/build_hpms.py)')
+    ap.add_argument('--region', default=None,
+                    help="the state's region.json; supplies state facts the "
+                         'build needs (stateRoutePrefixes). Omitting it keeps '
+                         "Washington's defaults, like every default here")
     args = ap.parse_args()
+    if args.region:
+        apply_region_config(args.region)
     build(args.src, args.out, args.blts, args.restrictions, args.legal_speeds, args.facilities,
           args.urban_areas, args.roadlog, args.funcclass, args.aadt, args.hpms)

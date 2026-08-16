@@ -85,6 +85,7 @@ over-flags the opposite direction — deliberately conservative.
 
 ```bash
 python3 scripts/build_roads.py --src data/washington-latest.osm.pbf \
+                               --region maps/washington/region.json \
                                --out-prefix data/roads \
                                --urban-areas data/census-urban-areas-2020-washington.geojson \
                                --blts maps/washington/blts.geojson \
@@ -120,7 +121,7 @@ traffic circles come back as spikes.
 ## 5. Routing graph
 
 ```bash
-python3 scripts/build_graph.py --src data/washington-latest.osm.pbf
+python3 scripts/build_graph.py --src data/washington-latest.osm.pbf --region maps/washington/region.json
 ```
 
 Defaults already point at this folder. The builder hashes the artefact and
