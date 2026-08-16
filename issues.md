@@ -45,36 +45,38 @@ Follow-ups that hang on the verdict:
   caution-level riding was step 3 of the ferry plan, deferred to avoid
   over-fitting before field data.
 
-### 3. Oregon import — done by an agent, awaiting your verdict
-`maps/oregon-opus-1/` (renamed from `maps/oregon/` in August 2026; the first
-import, by an Opus-class agent, kept as the baseline for a fresh import
-attempt under the improved porting docs) ships at readiness 7: routing, tiles,
-place search, ODOT stress / speed / shoulder / facility conflation on the
-state highway system, and FHWA HPMS volume.
-`maps/oregon-opus-1/VERIFICATION.md` checks 30 published corridors and
-`docs/PORTING-LESSONS.md` now carries an Oregon line on every lesson.
+### 3. Oregon import — re-imported August 2026, awaiting your verdict
+`maps/oregon/` is the SECOND import, done cold under the improved porting
+docs (the first, "Oregon Opus 1", was kept as a baseline for the comparison
+and then removed on 2026-08-16; it lives in git history). The re-import ships
+at readiness 7: routing, tiles, place search, ODOT stress / speed / shoulder /
+facility conflation, FHWA HPMS volume, **and ODOT's current 2024 state-system
+AADT** (the signal the first import parked). Its `VERIFICATION.md` checks 30
+published route relations; the review found it equal or more direct than the
+baseline on every compared trip (Corvallis→Newport 64 vs 107 mi, coast
+Astoria→Newport 164 vs 231 mi) and its census/ledger discipline clean.
 
 What to check against your own predictions:
 
-- **The Historic Columbia River Highway State Trail is severed at Mitchell
-  Point**, so Portland → Hood River routes around Mount Hood. ODOT confirms a
-  real 0.7-mile bicycle gap; construction is expected through late 2026. Recheck
-  ODOT's status and rebuild after the connection opens.
-- **US 101 on the coast** — the router offers 455 mi against the 364 mi signed
-  route, down from 481 mi with 134 failing miles before the ODOT shoulder data.
-  Does the remaining 27.5 failing miles match how it rides?
-- **Field-check the Aufderheide alternative.** The B6 audit is complete:
-  owner-unknown functional class makes an 18-mile forest-road/trail detour cheap
-  enough to enter the portfolio; it does not make the signed road fail. Removing
-  that class restores a 57.6-mile, 100%-overlap option. Decide after riding
-  whether the alternative is useful or a route-cost mistake.
-- **Rebuild a current OSM-only Corvallis-to-the-Sea graph.** Functional class,
-  AADT and hill-effort A/B runs do not explain its 86% → 11% overlap change. The
-  old and current comparison used graphs with 634,000 versus 728,842 edges, so
-  it did not isolate agency conflation.
+- **The Historic Columbia River Highway trail gap near Mitchell Point.** The
+  first import diagnosed a genuine ODOT construction gap (0.7 mi, work
+  expected through late 2026); the re-import independently found the OSM
+  bicycle relation broken in the same area. Recheck ODOT's status and rebuild
+  after the connection opens.
+- **The coast.** The re-import routes Astoria→Newport at 164 mi with 6.0
+  failing miles (the baseline demanded 231). Does the failing mileage match
+  how US 101 rides?
+- **`OR`-prefix conflation gate (shared-code bug, found by the re-import).**
+  `REF_STATE` in `scripts/build_graph.py` recognizes `I|US|SR|WA` route refs
+  but not Oregon's `OR`, so OR-numbered non-trunk highways are under-conflated
+  — this affected the baseline too, unnoticed. Fix: the prefix list belongs in
+  `region.json` (like `interstateRoutePrefixes`); then rebuild Oregon.
+- **Roads tile count question.** The re-import's `roads.pmtiles` carries
+  215,485 features where the baseline carried 308,347. Live rendering looks
+  healthy; understand which count is right before the next tile rebuild.
 
-Three lessons did not travel — C2, D7, and B4's population — and those are the
-part of this worth reading first.
+Lessons ledger: the re-import appended an "Oregon re-import (2026-08-16)"
+Travelled line to every lesson; C2/D7/B4 remain the ones worth reading first.
 
 ### 4. Bike routes and safety
 Figure out the best way to handle defined bike routes in relation to safety,

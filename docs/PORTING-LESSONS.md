@@ -87,7 +87,7 @@ field versus the Active Transportation registry.
 **Oregon: held, and measurably.** ODOT's Bicycle Level of Traffic Stress layer
 is the same shape as WSDOT's -- a derived analysis carrying copies of the
 shoulder, speed, lane-count and facility inventories it was built from.
-`maps/oregon-opus-1/tools/build_odot.py` reads the rating from it and every other fact from the
+the first import's `tools/build_odot.py` (removed with that baseline; in git history) read -- and `maps/oregon/tools/build_odot.py` independently reads the rating from it and every other fact from the
 inventory that owns it, joined by linear reference, and prints the drift:
 **7.1% of 73,575 segments disagree with the shoulder inventory by more than
 1 ft, 3.3% with the speed inventory by more than 5 mph, and 12.0% of 35,890
@@ -281,7 +281,7 @@ AADT for 6,544 state and 5,028 non-state count sites -- newer than the 2018 HPMS
 release this state actually uses -- as **point** geometry that
 `scripts/roadmeasure.py` cannot conflate. That is a fetched-and-unused signal
 found *before* it was fetched rather than months after, which is the cheap
-version. It is recorded as known backlog in `maps/oregon-opus-1/STATUS.md`.
+version. It was recorded as known backlog in the first import's STATUS.md (that baseline folder is removed; in git history). The re-import then claimed the state-system layer -- see A9.
 
 **Postscript, August 2026:** the parking *reason* was later found wrong for
 half the signal. The state-system layer is milepost-addressed sections wearing
@@ -317,7 +317,7 @@ reason. "Points" is not. Reading a layer's schema costs one metadata request
 
 *Evidence.* Layer 155 fields (`LRM_KEY`, `BEGMP`, `ENDMP`, `AADT`,
 `EFFECTV_DT`) vs layer 156 fields (`STREETNAME`, `LOCATION`, `MP`, `SITE_ID`);
-the A8 Oregon postscript above; `maps/oregon-opus-1/STATUS.md` known-backlog note.
+the A8 Oregon postscript above; the first import's STATUS.md known-backlog note (baseline folder removed; in git history); claimed in `maps/oregon/STATUS.md`'s census.
 
 *Travelled.* Oregon is the origin. No second exercise yet.
 

@@ -9,7 +9,7 @@ import vm from 'node:vm';
 import zlib from 'node:zlib';
 
 const ROOT = new URL('..', import.meta.url).pathname;
-const state = process.argv[2] || 'oregon-opus-1';
+const state = process.argv[2] || 'oregon';
 const appSrc = readFileSync(`${ROOT}app.js`, 'utf8');
 
 function shippedRules() {

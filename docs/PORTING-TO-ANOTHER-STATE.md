@@ -83,7 +83,7 @@ every default names a Washington file. A port that forgets one does not fail --
 it silently conflates Washington's data onto its own state's geometry, or (if
 the file is absent) quietly skips a source it thinks it imported. Pass all of
 them explicitly, and pass `""` for the ones your state does not have, which is
-a statement rather than an accident. Oregon's `maps/oregon-opus-1/BUILD.md` does this
+a statement rather than an accident. Oregon's `maps/oregon/BUILD.md` does this
 and says why for each empty string.
 
 The same goes for the small ones, all of which take a state or a bounds now and
