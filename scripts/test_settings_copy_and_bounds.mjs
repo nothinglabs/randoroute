@@ -115,11 +115,8 @@ check('preset cards use their space for useful plain-language descriptions',
 const navigationLock = await page.evaluate(() => {
   turnNav.active = true;
   refreshNavigationUI();
-  const limitsTab = document.getElementById('settings-tab-limits');
-  const optionsTab = document.getElementById('settings-tab-options');
-  limitsTab.click();
-  const limitsVisible = !document.getElementById('settings-limits').hidden;
-  optionsTab.click();
+  const rulesTab = document.getElementById('settings-tab-rules');
+  rulesTab.click();
   const routeControls = [...document.querySelectorAll(
     '#settings-presets button, #settings-presets input, #settings-presets select, '
     + '#settings-limits button, #settings-limits input, #settings-limits select, '
@@ -128,9 +125,10 @@ const navigationLock = await page.evaluate(() => {
   const voiceControls = [...document.querySelectorAll(
     '#settings-voice button, #settings-voice input, #settings-voice select')];
   const result = {
-    limitsVisible,
-    optionsVisible: !document.getElementById('settings-options').hidden,
-    tabsEnabled: [limitsTab, optionsTab].every((button) => !button.disabled),
+    rulesVisible: !document.getElementById('settings-rules').hidden,
+    limitsAndOptionsCombined: !!document.querySelector('#settings-rules > #settings-limits')
+      && !!document.querySelector('#settings-rules > #settings-options'),
+    tabsEnabled: !rulesTab.disabled,
     routeControlsLocked: routeControls.length > 0 && routeControls.every((control) => control.disabled),
     voiceControlsLive: voiceControls.length > 0 && voiceControls.every((control) => !control.disabled),
     noticeVisible: !document.getElementById('settingsNavLockNotice').hidden,
@@ -143,7 +141,7 @@ const navigationLock = await page.evaluate(() => {
   return result;
 });
 check('navigation keeps every Settings tab browsable while route values are read-only',
-  navigationLock.limitsVisible && navigationLock.optionsVisible && navigationLock.tabsEnabled
+  navigationLock.rulesVisible && navigationLock.limitsAndOptionsCombined && navigationLock.tabsEnabled
     && navigationLock.routeControlsLocked && navigationLock.noticeVisible
     && /Stop navigation/.test(navigationLock.noticeText)
     && !/Pause navigation/.test(navigationLock.noticeText),

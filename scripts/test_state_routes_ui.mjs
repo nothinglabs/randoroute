@@ -103,7 +103,7 @@ const tapCard = await page.evaluate(async () => {
 });
 check('a tapped overlapping segment offers one checkbox per route it belongs to',
   tapCard.split.length === 2 && tapCard.count === 2
-    && tapCard.labels.every((label) => /Preferred route: /.test(label)),
+    && tapCard.labels.every((label) => /Prefer route: /.test(label)),
   JSON.stringify(tapCard));
 check('the card checkbox edits the same per-state selection',
   tapCard.marked.join() === 'Interurban Trail' && tapCard.cleared === null,
@@ -198,7 +198,7 @@ const roadCard = await page.evaluate((names) => {
 }, near.at);
 check('a road card names the route its checkbox prefers',
   roadCard.length === near.at.length
-    && roadCard.some((label) => label === 'Preferred route: Interurban Trail'),
+    && roadCard.some((label) => label === 'Prefer route: Interurban Trail'),
   JSON.stringify(roadCard));
 
 // End to end: a real tap on the trail on the real map opens whatever card
@@ -225,11 +225,11 @@ for (let attempt = 0; attempt < 3 && !tapped.toggles.length; attempt++) {
   }
 }
 // Whichever card won the hit test -- the ribbon's own (titled by the route,
-// plain "Preferred route" label) or a road/trail card (label names the
+// plain "Prefer route" label) or a road/trail card (label names the
 // route) -- the checkbox must identify the Interurban Trail.
 check('tapping the route on the real map offers its Preferred checkbox',
   tapped.toggles.some((label) => /Interurban Trail/.test(label))
-    || (tapped.toggles.includes('Preferred route') && /Interurban Trail/.test(tapped.title)),
+    || (tapped.toggles.includes('Prefer route') && /Interurban Trail/.test(tapped.title)),
   JSON.stringify(tapped));
 await page.evaluate(() => dismissRoadInfo());
 

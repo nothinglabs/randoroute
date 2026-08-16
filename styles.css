@@ -560,6 +560,15 @@ body:not(.navigation-active) #navCard { display: none; }
 .maps-state-download { flex: none; margin-left: auto; min-height: 34px; padding: 5px 12px; border: 1px solid #0a58a8; border-radius: 9px; background: #0a66c2; color: #fff; font: 750 11.5px/1 system-ui; cursor: pointer; touch-action: manipulation; white-space: nowrap; }
 .maps-state-download:disabled { opacity: .55; cursor: default; }
 /* Settings → Routes: the state's signed routes, each markable Preferred. */
+.state-route-source-heading {
+  margin: 14px 4px 6px;
+  color: #496473;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.state-route-source-heading:first-child { margin-top: 4px; }
 .state-routes-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px; }
 .state-route-row { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 6px 11px; border: 1px solid #dbe5ea; border-radius: 10px; background: #fff; color: #24343f; cursor: pointer; }
 .state-route-row input { width: 18px; height: 18px; flex: none; accent-color: #0a66c2; }
@@ -581,9 +590,8 @@ body:not(.navigation-active) #navCard { display: none; }
 .maps-store-add { display: flex; gap: 7px; margin-top: 10px; }
 .maps-store-add input { flex: 1; min-width: 0; min-height: 38px; padding: 6px 11px; border: 1px solid #cdd9e0; border-radius: 9px; font: 600 12.5px system-ui; }
 .maps-store-add button { flex: none; min-height: 38px; padding: 6px 13px; border: 1px solid #0a58a8; border-radius: 9px; background: #0a66c2; color: #fff; font: 750 12px/1 system-ui; cursor: pointer; touch-action: manipulation; }
-/* All four panes take the measured natural height of Limits. JavaScript sets
-   this variable after the Settings view is laid out, so the panel no longer
-   jumps between tabs without baking a control count into a magic pixel cap. */
+/* Base pane behavior; the full-screen Settings rules below replace the legacy
+   measured sheet height with one stable viewport and a reachable scroller. */
 .settings-pane { display: flex; flex-direction: column; height: var(--settings-pane-height, auto); min-height: 170px; margin-top: 2px; overflow-y: auto; overflow-x: hidden; }
 .settings-pane[hidden] { display: none; }
 .settings-pane > .settings-summary, .settings-pane > .preset-status { flex: none; }
@@ -1741,6 +1749,125 @@ body.navigation-active .settings-pane :disabled { cursor: not-allowed; opacity: 
    they look like three unrelated limits, which is what they used to be. */
 #settings-limits .rule-group-head { margin: 6px 0 3px; font: 700 12.5px/1.3 system-ui; color: #24333c; }
 #settings-limits .rule-sub { margin-left: 24px; border-left: 2px solid #d8e0e6; padding-left: 9px; }
+
+/* ------------------------------------------------ full-screen Settings
+   Route Details established the useful mobile pattern: one real screen, a
+   stable header, and a single scrolling body. Settings follows that pattern
+   on every viewport instead of squeezing controls into the map's bottom
+   sheet. Routes and Maps already open their own full-screen dialogs. */
+body.settings-panel-active #panel {
+  position: fixed; z-index: 40; inset: 0; width: 100vw; height: var(--app-height, 100dvh);
+  max-height: none; border-radius: 0; background: #f4f7f9; box-shadow: none;
+  visibility: visible; opacity: 1; pointer-events: auto;
+}
+body.settings-panel-active #tab-settings.active {
+  display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0;
+  padding: 0; overflow: hidden;
+}
+body.settings-panel-active .settings-panel-head {
+  flex: none; min-height: 64px; margin: 0;
+  padding: max(10px, env(safe-area-inset-top)) 18px 10px;
+  border-bottom: 1px solid #d8e2e8; background: rgba(255,255,255,.97);
+}
+body.settings-panel-active .settings-panel-head > strong {
+  min-width: 0; overflow: hidden; color: #263b48; font: 760 20px/1.15 system-ui;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+body.settings-panel-active .settings-panel-head .panel-view-actions { gap: 10px; }
+body.settings-panel-active .settings-panel-head .settings-help-btn,
+body.settings-panel-active .settings-panel-head .panel-view-close {
+  flex-basis: 38px; width: 38px; height: 38px; min-height: 38px; max-height: 38px;
+  font-size: 17px;
+}
+body.settings-panel-active .settings-nav-lock {
+  flex: none; width: min(100% - 28px, 920px); margin: 10px auto 0;
+  padding: 10px 12px; font-size: 12.5px;
+}
+body.settings-panel-active .settings-tabs {
+  flex: none; display: flex; gap: 7px; width: min(100% - 28px, 920px);
+  margin: 0 auto; padding: 12px 0 10px; overflow-x: auto;
+  overscroll-behavior-x: contain; scrollbar-width: none;
+}
+body.settings-panel-active .settings-tabs::-webkit-scrollbar { display: none; }
+body.settings-panel-active .settings-tab-pair { flex: 1 0 330px; gap: 7px; }
+body.settings-panel-active .settings-tabs button {
+  min-height: 40px; padding: 7px 13px; border-radius: 10px;
+  font: 750 12.5px/1.1 system-ui; white-space: nowrap;
+}
+body.settings-panel-active .settings-tabs .settings-tab-standalone { flex: 0 0 auto; }
+body.settings-panel-active .settings-pane {
+  flex: 1 1 auto; align-self: stretch; width: min(100% - 28px, 920px); height: auto;
+  min-height: 0; margin: 0 auto; padding: 4px 0 max(34px, env(safe-area-inset-bottom));
+  overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+body.settings-panel-active .settings-pane[hidden] { display: none; }
+body.settings-panel-active #settingsPresets,
+body.settings-panel-active #settingsSliders,
+body.settings-panel-active #settingsOptions,
+body.settings-panel-active #settingsVoice { align-content: start; }
+body.settings-panel-active #settingsPresets { gap: 9px; }
+body.settings-panel-active .preset-status { margin: 2px 2px 10px; font-size: 13px; }
+body.settings-panel-active .preset-card { min-height: 82px; padding: 12px 14px; border-radius: 12px; }
+body.settings-panel-active .preset-title { font-size: 15px; }
+body.settings-panel-active .preset-audience { margin-top: 5px; font-size: 12.5px; line-height: 1.4; }
+body.settings-panel-active .preset-info { min-height: 34px; padding: 5px 10px; font-size: 12px; }
+body.settings-panel-active #settings-rules { display: block; }
+body.settings-panel-active #settings-rules[hidden] { display: none; }
+body.settings-panel-active .settings-rules-section {
+  margin: 0 0 12px; padding: 14px; border: 1px solid #d8e3e9;
+  border-radius: 12px; background: #fff;
+}
+body.settings-panel-active .settings-rules-section > h2 {
+  margin: 0 0 11px; padding: 0 0 8px; border-bottom: 1px solid #e2e9ed;
+  color: #2c4554; font: 780 16px/1.2 system-ui; letter-spacing: 0;
+  text-transform: none;
+}
+body.settings-panel-active #settingsSliders,
+body.settings-panel-active #settingsOptions { gap: 8px; }
+body.settings-panel-active #settingsSliders .rule-card,
+body.settings-panel-active #settingsOptions .rule-card,
+body.settings-panel-active #settingsVoice .rule-card {
+  min-height: 46px; padding: 9px 12px; border-radius: 10px;
+}
+body.settings-panel-active #settingsSliders .rule-head {
+  min-height: 20px; margin-bottom: 5px; font-size: 12.5px; line-height: 1.25;
+}
+body.settings-panel-active #settingsSliders .rule-card input[type="range"] { height: auto; }
+body.settings-panel-active #settingsOptions .rule-check,
+body.settings-panel-active #settingsVoice .rule-check {
+  gap: 9px; font-size: 13px; line-height: 1.3;
+}
+body.settings-panel-active #settingsOptions input[type="checkbox"] { width: 18px; height: 18px; }
+body.settings-panel-active #settingsOptions .rule-standalone { margin-top: 0; }
+body.settings-panel-active #settings-limits .rule-group-head {
+  margin: 12px 2px 6px; font-size: 13.5px;
+}
+body.settings-panel-active #settings-limits .rule-sub { margin-left: 18px; padding-left: 12px; }
+body.settings-panel-active #settingsVoice { gap: 9px; }
+
+@media (min-width: 760px) {
+  body.settings-panel-active #settings-rules {
+    display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr);
+    gap: 14px; align-items: start;
+  }
+  body.settings-panel-active #settings-rules[hidden] { display: none; }
+}
+
+@media (max-width: 520px) {
+  body.settings-panel-active .settings-panel-head { min-height: 58px; padding-right: 12px; padding-left: 14px; }
+  body.settings-panel-active .settings-panel-head > strong { font-size: 18px; }
+  body.settings-panel-active .settings-tabs,
+  body.settings-panel-active .settings-pane,
+  body.settings-panel-active .settings-nav-lock { width: calc(100% - 20px); }
+  body.settings-panel-active .settings-tabs { gap: 5px; padding-top: 9px; }
+  body.settings-panel-active .settings-tab-pair { flex: 1 1 210px; min-width: 210px; gap: 5px; }
+  body.settings-panel-active .settings-tabs button { min-height: 38px; padding: 6px 8px; font-size: 11px; }
+  body.settings-panel-active .settings-rules-section { padding: 10px; }
+  body.settings-panel-active #settingsSliders .rule-card,
+  body.settings-panel-active #settingsOptions .rule-card,
+  body.settings-panel-active #settingsVoice .rule-card { min-height: 42px; padding: 7px 9px; }
+}
 
 /* The Navigate popup: three ways to use the tapped point. */
 .map-point-navigate-where { margin: 6px 0 10px; overflow: hidden; color: #40525d; font: 750 13px/1.3 system-ui; text-overflow: ellipsis; }

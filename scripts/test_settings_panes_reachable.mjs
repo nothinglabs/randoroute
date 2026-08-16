@@ -66,7 +66,7 @@ for (const [name, viewport] of [
   await pg.waitForTimeout(500);
 
   const paneHeights = [];
-  for (const pane of ['presets', 'limits', 'options', 'voice']) {
+  for (const pane of ['presets', 'rules', 'voice']) {
     await pg.evaluate((id) => {
       document.querySelector(`[data-settings-pane="${id}"]`)?.click();
     }, pane);
@@ -114,27 +114,42 @@ for (const [name, viewport] of [
     }
     paneHeights.push(result.clientHeight);
   }
-  check(`${name}: every Settings pane matches the Limits height`,
-    paneHeights.every((height) => Math.abs(height - paneHeights[1]) <= 1),
+  check(`${name}: every Settings pane fills the same screen`,
+    paneHeights.every((height) => Math.abs(height - paneHeights[0]) <= 1),
     JSON.stringify(paneHeights));
 
+  const fullScreen = await pg.evaluate(() => {
+    const panel = document.getElementById('panel').getBoundingClientRect();
+    const settings = document.getElementById('tab-settings').getBoundingClientRect();
+    return { panel: { left: panel.left, top: panel.top, width: panel.width, height: panel.height },
+      settings: { width: settings.width, height: settings.height },
+      viewport: { width: innerWidth, height: innerHeight } };
+  });
+  check(`${name}: Settings uses the full screen`,
+    Math.abs(fullScreen.panel.left) <= 1 && Math.abs(fullScreen.panel.top) <= 1
+      && Math.abs(fullScreen.panel.width - fullScreen.viewport.width) <= 1
+      && Math.abs(fullScreen.panel.height - fullScreen.viewport.height) <= 1,
+    JSON.stringify(fullScreen));
+
   // The specific control that went missing, by name, on every viewport.
-  await pg.evaluate(() => document.querySelector('[data-settings-pane="limits"]')?.click());
+  await pg.evaluate(() => document.querySelector('[data-settings-pane="rules"]')?.click());
   await pg.waitForTimeout(350);
   const cap = await pg.evaluate(() => {
     const el = document.getElementById('r-upperMaxSpeed');
     if (!el) return { found: false };
+    el.scrollIntoView({ block: 'center' });
     const r = el.getBoundingClientRect();
     const host = el.closest('.settings-pane');
     const p = host.getBoundingClientRect();
     return { found: true, insidePane: r.bottom <= p.bottom + 1 && r.top >= p.top - 1,
-      onScreen: r.top >= 0 && r.bottom <= innerHeight + 1,
+      reachableByScroll: host.scrollHeight <= host.clientHeight + 1
+        || ['auto', 'scroll'].includes(getComputedStyle(host).overflowY),
       label: [...document.querySelectorAll('label')]
         .find((l) => /Never allow roads faster/.test(l.textContent))?.textContent };
   });
   check(`${name}: "Never allow roads faster than" exists`, cap.found === true);
   check(`${name}: and sits inside its pane`, cap.insidePane === true, JSON.stringify(cap));
-  check(`${name}: and is on screen without scrolling`, cap.onScreen === true, JSON.stringify(cap));
+  check(`${name}: and remains reachable by scrolling`, cap.reachableByScroll === true, JSON.stringify(cap));
   check(`${name}: no page errors`, errs.length === 0, errs.slice(0, 2).join(' | '));
   await pg.close();
 }

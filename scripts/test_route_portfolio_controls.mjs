@@ -161,7 +161,7 @@ const ui = await page.evaluate(() => {
   routing.options = [{ optimization: { label: 'Route A', recommended: true } }];
   routing.last = routing.options[0];
   renderRouteOptionControls();
-  settingsPaneSelect?.('options');
+  settingsPaneSelect?.('rules');
   openRoutingWeights();
   const bikeRouteToggle = document.getElementById('r-alwaysPreferBikeRoutes');
   const toggle = document.getElementById('r-allowFerries');
@@ -178,7 +178,7 @@ const ui = await page.evaluate(() => {
       document.getElementById(id)?.closest('#advancedRoutingOptions')),
     advancedAbsentFromOptions: advancedIds.every((id) =>
       !document.getElementById(id)?.closest('#settings-options')),
-    optionsVisible: document.getElementById('settings-options')?.hidden === false,
+    rulesVisible: document.getElementById('settings-rules')?.hidden === false,
     defaultChecked: toggle?.checked === true,
     ferryHint: toggle?.closest('.rule-card')?.querySelector('.rule-check-hint')?.textContent || '',
     bikeRouteToggleExists: !!bikeRouteToggle,
@@ -217,7 +217,7 @@ check('the route chooser contains only route choices',
 check('the Show me routes dialog is removed', ui.oldDialogGone, JSON.stringify(ui));
 check('the six expert switches live in Advanced routing, not Options',
   ui.toggleExists && ui.toggleInAdvanced && ui.advancedAllPresent
-    && ui.advancedAbsentFromOptions && ui.optionsVisible && ui.defaultChecked
+    && ui.advancedAbsentFromOptions && ui.rulesVisible && ui.defaultChecked
     && ui.ferryHint === '',
   JSON.stringify(ui));
 check('turning ferries off updates the rule and requests a fresh portfolio',

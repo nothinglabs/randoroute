@@ -244,8 +244,7 @@
       <div id="settingsTabs" class="settings-tabs">
         <div class="settings-tab-pair" role="tablist" aria-label="Routing settings">
           <button id="settings-tab-presets" type="button" role="tab" aria-selected="true" aria-controls="settings-presets" data-settings-pane="presets" class="active">Presets</button>
-          <button id="settings-tab-limits" type="button" role="tab" aria-selected="false" aria-controls="settings-limits" data-settings-pane="limits">Limits</button>
-          <button id="settings-tab-options" type="button" role="tab" aria-selected="false" aria-controls="settings-options" data-settings-pane="options">Options</button>
+          <button id="settings-tab-rules" type="button" role="tab" aria-selected="false" aria-controls="settings-rules" data-settings-pane="rules">Rules</button>
           <button id="settings-tab-voice" type="button" role="tab" aria-selected="false" aria-controls="settings-voice" data-settings-pane="voice">Voice-Nav</button>
         </div>
         <!-- Not tabs: these open screens rather than swapping a panel below,
@@ -257,11 +256,15 @@
         <p id="settingsPresetStatus" class="preset-status" aria-live="polite"></p>
         <div id="settingsPresets"></div>
       </div>
-      <div id="settings-limits" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-limits" hidden>
-        <div id="settingsSliders"></div>
-      </div>
-      <div id="settings-options" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-options" hidden>
-        <div id="settingsOptions"></div>
+      <div id="settings-rules" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-rules" hidden>
+        <section id="settings-limits" class="settings-rules-section" aria-labelledby="settingsLimitsTitle">
+          <h2 id="settingsLimitsTitle">Safety limits</h2>
+          <div id="settingsSliders"></div>
+        </section>
+        <section id="settings-options" class="settings-rules-section" aria-labelledby="settingsOptionsTitle">
+          <h2 id="settingsOptionsTitle">Route options</h2>
+          <div id="settingsOptions"></div>
+        </section>
       </div>
       <div id="settings-voice" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-voice" hidden>
         <div id="settingsVoice"></div>
@@ -297,7 +300,7 @@
       <button class="dialog-close" data-close="stateRoutesDialog" aria-label="Close routes">✕</button>
     </div>
     <div class="maps-body">
-      <p class="maps-lead">Signed bicycle routes in <span id="stateRoutesRegion"></span>.</p>
+      <p class="maps-lead">Designated bicycle routes in <span id="stateRoutesRegion"></span>.</p>
       <p class="maps-note">Mark a route <b>Preferred</b> and trip planning follows it even harder than an off-street trail — including where it fails your safety rules. Route choice only: map colors, Route Details, and warnings still show every road as it is.</p>
       <div id="stateRoutesList" class="state-routes-list"></div>
       <p id="stateRoutesStatus" class="maps-status" role="status" aria-live="polite"></p>
@@ -507,7 +510,7 @@
       <li><b>Announce route safety levels</b> — speaks changes in the active segment’s safety category; it does not replace turn instructions.</li>
       <li><b>Status update</b> — choose how often it speaks, and whether it includes route status, current speed, miles remaining, and estimated time left.</li>
     </ul></section>
-    <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Usually leave these alone.</b> Presets and Limits are the intended controls. Weights are soft preferences for testing and fine-tuning; unusual values can create long or unintuitive routes. They never override bicycle prohibitions or hard Limits, and <b>Reset all defaults</b> restores them. Turn on <b>Show advanced options and routing weights</b> to reveal the weights button on the map.</p></section>
+    <section class="settings-advanced-section"><h3>Advanced routing weights</h3><p><b>Usually leave these alone.</b> Presets and Rules are the intended controls. Weights are soft preferences for testing and fine-tuning; unusual values can create long or unintuitive routes. They never override bicycle prohibitions or hard safety limits, and <b>Reset all defaults</b> restores them. Turn on <b>Show advanced options and routing weights</b> to reveal the weights button on the map.</p></section>
     </div>
   </template>
 

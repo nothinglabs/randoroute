@@ -1697,7 +1697,47 @@ function rescoreAll(recomputeRoute = true) {
 // enough style/data work during a drag to become unstable.
 let _rescoreTimer = null;
 let _ruleRouteTimer = null;
+// Settings is a full-screen editing session. The map and route are hidden
+// behind it, so doing heavyweight work after every thumb movement or checkbox
+// tap buys the rider nothing and can overwhelm mobile WebKit. Remember the
+// work instead; leaving Settings applies the final state once.
+let settingsRouteChangesPending = false;
+let settingsRescorePending = false;
+
+function deferSettingsRouteChange({ rescore = false } = {}) {
+  if (!settingsMenuIsOpen()) return false;
+  settingsRouteChangesPending = true;
+  settingsRescorePending ||= rescore;
+  saveStateSoon();
+  return true;
+}
+
+function beginSettingsEditSession() {
+  // If the rider opens Settings while a previous control's debounce is still
+  // pending, carry that work into this session rather than canceling it.
+  settingsRouteChangesPending = _ruleRouteTimer != null;
+  settingsRescorePending = _rescoreTimer != null;
+  clearTimeout(_rescoreTimer);
+  clearTimeout(_ruleRouteTimer);
+  _rescoreTimer = null;
+  _ruleRouteTimer = null;
+}
+
+function finishSettingsEditSession() {
+  const reroute = settingsRouteChangesPending;
+  const rescore = settingsRescorePending;
+  settingsRouteChangesPending = false;
+  settingsRescorePending = false;
+  if (!reroute && !rescore) return;
+  saveStateSoon();
+  if (rescore) rescoreAll(false);
+  if (!reroute) return;
+  if (routing.start && routing.end) computeRoute({ revealPanel: false });
+  else schedulePrewarm();
+}
+
 function scheduleRescore() {
+  if (deferSettingsRouteChange({ rescore: true })) return;
   saveStateSoon();
   if (_rescoreTimer == null) {
     _rescoreTimer = setTimeout(() => {
@@ -1724,6 +1764,7 @@ function scheduleRescore() {
 // memory churn during a drag to get the tab killed on iOS. Weights now only
 // save and re-route.
 function scheduleReroute() {
+  if (deferSettingsRouteChange()) return;
   saveStateSoon();
   clearTimeout(_ruleRouteTimer);
   _ruleRouteTimer = setTimeout(() => {
@@ -2835,6 +2876,38 @@ function ensureStateRouteCatalog() {
       return new Map();
     }
     const catalog = new Map();
+    const sourceLabels = new Map((src.fc.routeSources || [])
+      .map((source) => [source.id, source.label]));
+    // New route packs carry a canonical catalogue. It is built from OSM plus
+    // the small set of human-approved supplemental sources, with duplicates
+    // already reconciled and full per-route geometry retained for Preferred
+    // routing. Old packs keep using the feature-derived fallback below.
+    if (Array.isArray(src.fc.routeCatalog)) {
+      for (const route of src.fc.routeCatalog) {
+        if (!route?.name || !Array.isArray(route.lines) || !route.lines.length) continue;
+        const entry = {
+          id: route.id || route.name,
+          name: route.name,
+          national: route.network === 'national',
+          network: route.network || 'regional',
+          sourceIds: Array.isArray(route.sourceIds) && route.sourceIds.length
+            ? route.sourceIds.slice() : ['osm'],
+          sourceLabels: [],
+          lines: route.lines,
+          lengthM: Number.isFinite(route.lengthM) ? route.lengthM : 0,
+        };
+        entry.sourceLabels = entry.sourceIds.map((id) => sourceLabels.get(id) || id);
+        if (!(entry.lengthM > 0)) {
+          for (const line of entry.lines) {
+            for (let i = 1; i < line.length; i++) {
+              entry.lengthM += markerSpanM(line[i - 1], line[i]);
+            }
+          }
+        }
+        catalog.set(entry.name, entry);
+      }
+      return catalog;
+    }
     for (const feature of src.fc.features || []) {
       const geometry = feature.geometry;
       const lines = geometry?.type === 'LineString' ? [geometry.coordinates]
@@ -2843,7 +2916,10 @@ function ensureStateRouteCatalog() {
       const p = feature.properties || {};
       for (const name of routeOverlayNames(p)) {
         let entry = catalog.get(name);
-        if (!entry) catalog.set(name, entry = { name, national: false, lines: [], lengthM: 0 });
+        if (!entry) catalog.set(name, entry = {
+          id: `osm:${name}`, name, national: false, network: 'regional',
+          sourceIds: ['osm'], sourceLabels: ['OSM routes'], lines: [], lengthM: 0,
+        });
         if (p.t === 'ncn') entry.national = true;
         for (const line of lines) {
           entry.lines.push(line);
@@ -2898,6 +2974,7 @@ function setRoutePreferred(name, on) {
   applyPreferredRoutesRuleKey();
   saveStateSoon();
   const synced = syncPreferredRoutesToWorker();
+  if (deferSettingsRouteChange()) return;
   if (routing.ready && routing.start && routing.end) {
     routing.quietRecalcToast = true;
     showRouteActionToast('Updating routes…', { duration: 6000 });
@@ -12417,10 +12494,10 @@ function renderMapTapCard({
       checkbox.addEventListener('change', () => setRoutePreferred(name, checkbox.checked));
       const text = document.createElement('span');
       // Name the route unless it is already the card's own title: on a road
-      // card "Preferred route" alone would not say WHICH route runs here.
+      // card "Prefer route" alone would not say WHICH route runs here.
       text.textContent = preferredRouteToggles.length > 1
         || String(name) !== String(displayTitle)
-        ? `Preferred route: ${name}` : 'Preferred route';
+        ? `Prefer route: ${name}` : 'Prefer route';
       row.append(checkbox, text);
       preferredBlock.append(row);
     }
@@ -13792,12 +13869,30 @@ function buildStateRoutesList(catalog) {
   const host = document.getElementById('stateRoutesList');
   if (!host) return;
   host.replaceChildren();
-  // Preferred first, so the rider's picks read as a group; alphabetical with
-  // numeric collation inside each half, so "Route 9" sorts before "Route 10".
-  const entries = [...catalog.values()].sort((a, b) =>
-    (isPreferredRoute(b.name) - isPreferredRoute(a.name))
-    || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-  for (const entry of entries) {
+  const groups = new Map();
+  for (const entry of catalog.values()) {
+    // A route present in both sources appears once under OSM, with both source
+    // names in its detail. Official-only routes get their own agency section.
+    const sourceId = entry.sourceIds?.includes('osm') ? 'osm'
+      : entry.sourceIds?.[0] || 'osm';
+    const label = sourceId === 'osm' ? 'OSM routes'
+      : entry.sourceLabels?.[0] || sourceId;
+    let group = groups.get(sourceId);
+    if (!group) groups.set(sourceId, group = { label, entries: [] });
+    group.entries.push(entry);
+  }
+  const orderedGroups = [...groups.entries()].sort(([a], [b]) =>
+    a === 'osm' ? -1 : b === 'osm' ? 1 : groups.get(a).label.localeCompare(groups.get(b).label));
+  for (const [, group] of orderedGroups) {
+    const heading = document.createElement('h3');
+    heading.className = 'state-route-source-heading';
+    heading.textContent = group.label;
+    host.append(heading);
+    // Preferred first within each source, then numeric-aware alphabetical.
+    group.entries.sort((a, b) =>
+      (isPreferredRoute(b.name) - isPreferredRoute(a.name))
+      || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    for (const entry of group.entries) {
     const row = document.createElement('label');
     row.className = 'state-route-row';
     const checkbox = document.createElement('input');
@@ -13809,8 +13904,11 @@ function buildStateRoutesList(catalog) {
     const name = document.createElement('strong');
     name.textContent = entry.name;
     const detail = document.createElement('small');
-    detail.textContent = [entry.national ? 'National (USBR)' : 'Regional',
-      formatRouteMiles(entry.lengthM)].filter(Boolean).join(' · ');
+    const kind = entry.national ? 'National (USBR)'
+      : entry.network === 'official' ? 'Official route' : 'Regional';
+    const sources = entry.sourceLabels?.length > 1 ? entry.sourceLabels.join(' + ') : null;
+    detail.textContent = [kind, formatRouteMiles(entry.lengthM), sources]
+      .filter(Boolean).join(' · ');
     text.append(name, detail);
     const badge = document.createElement('span');
     badge.className = 'state-route-preferred-badge';
@@ -13822,6 +13920,7 @@ function buildStateRoutesList(catalog) {
     });
     row.append(checkbox, text, badge);
     host.append(row);
+    }
   }
 }
 
@@ -14109,7 +14208,7 @@ function buildRulesPanel() {
       scheduleReroute();
       showRouteActionToast('Routing weights reset to defaults', { duration: 2200 });
     });
-    selectSettingsPane(document.querySelector('[data-settings-pane].active')?.dataset.settingsPane || 'limits');
+    selectSettingsPane(document.querySelector('[data-settings-pane].active')?.dataset.settingsPane || 'rules');
     settingsTabs.dataset.bound = 'true';
   }
 }
@@ -14123,6 +14222,7 @@ function syncSettingsNavigationLock() {
     '#settings-presets button, #settings-presets input, #settings-presets select, '
     + '#settings-limits button, #settings-limits input, #settings-limits select, '
     + '#settings-options button, #settings-options input, #settings-options select, '
+    + '#stateRoutesDialog input, '
     + '#advancedRoutingOptions input, #routingWeightsEditor input, '
     + '#routingWeightsEditor button, #resetRoutingWeights'
   );
@@ -14145,6 +14245,13 @@ function syncSettingsNavigationLock() {
     if (note) note.hidden = true;
   }
 }
+
+// The Routes screen builds its checkboxes after an asynchronous catalog load.
+// Apply the same navigation lock when those late controls arrive; the screen
+// stays inspectable during a ride, but Preferred-route choices stay fixed.
+const stateRoutesLockObserver = new MutationObserver(() => syncSettingsNavigationLock());
+const stateRoutesLockHost = document.getElementById('stateRoutesList');
+if (stateRoutesLockHost) stateRoutesLockObserver.observe(stateRoutesLockHost, { childList: true });
 
 // Placed just above the settings panes (not as a top-of-screen toast) so a
 // rider who taps a route-settings tab during navigation sees why it is locked
@@ -14236,31 +14343,12 @@ function buildVoicePanel() {
   host.appendChild(cadence);
 }
 
-// One height for all the panes, so switching tabs does not resize the sheet
-// under the rider's thumb. It is the TALLEST pane's natural height, measured --
-// which was Limits for as long as Limits was the tallest, and was written that
-// way. Adding one checkbox to Voice made Voice the tallest, and a rule that
-// names one pane cannot notice: Voice simply grew an internal scroller nobody
-// asked for. Measure them all and take the maximum.
+// Settings is full-screen. Each pane gets the same remaining viewport and
+// scrolls its own content, so tab changes cannot resize the surrounding UI.
 function syncSettingsPaneHeight() {
   const settingsView = document.getElementById('tab-settings');
   if (!settingsView?.classList.contains('active')) return;
-  const panes = [...settingsView.querySelectorAll('.settings-pane')];
-  if (!panes.length) return;
-  let tallest = 0;
-  for (const pane of panes) {
-    const wasHidden = pane.hidden;
-    const priorHeight = pane.style.height;
-    const priorMinHeight = pane.style.minHeight;
-    pane.hidden = false;
-    pane.style.height = 'auto';
-    pane.style.minHeight = '0';
-    tallest = Math.max(tallest, Math.ceil(pane.scrollHeight));
-    pane.style.height = priorHeight;
-    pane.style.minHeight = priorMinHeight;
-    pane.hidden = wasHidden;
-  }
-  if (tallest > 0) settingsView.style.setProperty('--settings-pane-height', `${tallest}px`);
+  settingsView.style.removeProperty('--settings-pane-height');
 }
 
 /* ------------------------------------------------------------- boot */
@@ -14400,6 +14488,8 @@ function setPanelOpen() {
 }
 
 function selectPanelTab(tabId) {
+  const settingsWasOpen = settingsMenuIsOpen();
+  if (!settingsWasOpen && tabId === 'settings') beginSettingsEditSession();
   if (tabId !== 'layers') setActiveRouteIconLegendOpen(false);
   document.body.classList.toggle('settings-panel-active', tabId === 'settings');
   document.body.classList.toggle('aux-panel-active', tabId === 'settings' || tabId === 'layers');
@@ -14412,6 +14502,7 @@ function selectPanelTab(tabId) {
   if (tabId === 'route') { updateNavCard(); drawRouteCardElevation(); } // redraw elevation once visible
   if (tabId === 'settings') requestAnimationFrame(syncSettingsPaneHeight);
   if (tabId === 'settings') syncSettingsNavigationLock();
+  if (settingsWasOpen && tabId !== 'settings') finishSettingsEditSession();
 }
 
 selectPanelTab('route');
@@ -14531,8 +14622,20 @@ document.getElementById('settingsToggle').addEventListener('click', () => {
   dismissRoadInfo();
   selectPanelTab(open ? 'route' : 'settings');
   setPanelOpen(true);
+  if (open) document.getElementById('settingsToggle')?.focus();
+  else requestAnimationFrame(() =>
+    document.querySelector('#settingsTabs [role="tab"][aria-selected="true"]')?.focus());
 });
-document.getElementById('settingsPanelClose').addEventListener('click', () => selectPanelTab('route'));
+document.getElementById('settingsPanelClose').addEventListener('click', () => {
+  selectPanelTab('route');
+  document.getElementById('settingsToggle')?.focus();
+});
+document.getElementById('tab-settings').addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !settingsMenuIsOpen()) return;
+  event.preventDefault();
+  selectPanelTab('route');
+  document.getElementById('settingsToggle')?.focus();
+});
 
 // Dialog close buttons and the version shown inside Getting Started help.
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () =>
