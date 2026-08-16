@@ -68,7 +68,11 @@ const added = await page.evaluate(async (url) => {
   openMapsDialog();
   document.getElementById('mapsStoreUrl').value = url;
   document.getElementById('mapsStoreAdd').click();
-  await new Promise((r) => setTimeout(r, 600));
+  // The offers render after an async index fetch; under full-suite load a
+  // fixed wait loses the race, so poll for them.
+  for (let i = 0; i < 100 && !document.querySelector('.maps-store-offer'); i++) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
   return {
     stores: MapStore.customStores().map((entry) => entry.url),
     rows: document.querySelectorAll('#mapsStoreList .maps-store').length,

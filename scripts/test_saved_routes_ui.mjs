@@ -268,6 +268,33 @@ const navigationTab = await page.evaluate(async () => {
   const startBefore = document.getElementById('navStartButton').getBoundingClientRect();
   const detailsBefore = document.getElementById('routeDetailsBtn').getBoundingClientRect();
   document.getElementById('navStartButton').click();
+  // Navigation must actually ENGAGE before anything below is worth reading.
+  // The click can land in the window where a late route request is active,
+  // and startTurnNavigation then refuses silently ("Wait for the updated
+  // route") -- every later check fails with navigating:false, which reads as
+  // five layout bugs instead of one race. Wait it out and click once more;
+  // a genuine refusal still fails, after the timeout instead of instantly.
+  for (let attempt = 0; attempt < 2 && !turnNav.active; attempt++) {
+    for (let i = 0; i < 50 && !turnNav.active
+      && (routing.pendingRoute || routing.routeRequestActive); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (!turnNav.active) document.getElementById('navStartButton').click();
+    for (let i = 0; i < 20 && !turnNav.active; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  // KNOWN RARE FLAKE (~1 in 8 standalone, August 2026): the checks reading
+  // chartDetailsClearance/helpRightAligned can fail together with a -4.5px
+  // overlap. Mechanism, as far as it is pinned: startTurnNavigation anchors
+  // the live Details button from ONE instantaneous rect of the planning card
+  // (captureNavigationDetailsButtonAnchor), and the planning card is
+  // destroyed immediately after -- so a transient layout at that exact frame
+  // (--app-height sync or panel scrollbar mid-change is the suspicion) bakes
+  // a bad anchor for the whole session. That is an APP behavior a rider can
+  // hit, not a test artifact; fixing it means making the capture robust, not
+  // loosening these checks. Until then a failure here with exactly that
+  // signature is this, not a regression.
   // Settled, not a fixed two frames: under load a fixed wait captured the
   // panel mid-transition. Bounded, so a genuinely moved button still fails.
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
