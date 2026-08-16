@@ -233,6 +233,39 @@ check('tapping the route on the real map offers its Preferred checkbox',
   JSON.stringify(tapped));
 await page.evaluate(() => dismissRoadInfo());
 
+/* ---------- a route name is never pinned on a road that is not on it */
+// The field report: beside the trail, the nearest record is I-5's, and the
+// proximity badge dressed the banned freeway's card as the trail failing.
+const attribution = await page.evaluate((mid) => {
+  const original = routeBadgeAt;
+  const point = { x: 0, y: 0 };
+  routeBadgeAt = () => 'Interurban Trail'; // the ribbon is 6 px away
+  const out = {
+    bannedFreeway: bikeRouteContextRow('blts', { Designated: 0 }, point),
+    flaggedRecord: bikeRouteContextRow('blts', { Designated: 1 }, point),
+    infrastructure: bikeRouteContextRow('osm', {}, point),
+  };
+  routeBadgeAt = () => null; // ribbon layer hidden
+  out.flaggedNoRibbon = bikeRouteContextRow('roads', { g: 1 }, point);
+  out.plainRoad = bikeRouteContextRow('roads', {}, point);
+  routeBadgeAt = original;
+  out.prohibitedToggles = preferredRouteTogglesFor('blts',
+    {}, { prohibited: true }, { lng: mid[0], lat: mid[1] });
+  out.ordinaryToggles = preferredRouteTogglesFor('roads',
+    {}, { prohibited: false }, { lng: mid[0], lat: mid[1] });
+  return out;
+}, near.mid);
+check('a proximity badge never lands on a road without its own route claim',
+  attribution.bannedFreeway === null && attribution.plainRoad === null
+    && attribution.flaggedRecord?.[1] === 'Interurban Trail'
+    && attribution.infrastructure?.[1] === 'Interurban Trail'
+    && /designated route/.test(attribution.flaggedNoRibbon?.[1] || ''),
+  JSON.stringify(attribution));
+check('a bikes-banned card never offers the neighbouring route’s checkbox',
+  attribution.prohibitedToggles.length === 0
+    && attribution.ordinaryToggles.includes('Interurban Trail'),
+  JSON.stringify(attribution));
+
 /* --------------------------------------------- GPS outside the selected map */
 const gps = await page.evaluate(async () => {
   const out = {};

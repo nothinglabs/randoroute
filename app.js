@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-16.724';
+const APP_VERSION = '2026-08-16.725';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11898,6 +11898,35 @@ function isFailingDesignatedReadout(rows) {
   return verdict.includes('fail') && Boolean(route);
 }
 
+// The 'Bike route' context row for a non-ribbon card, and the gate that
+// decides whether there is one. A route name from SCREEN PROXIMITY alone must
+// never be pinned on a road that does not itself claim route membership:
+// beside a trail the nearest record is often a parallel road, and I-5's
+// WSDOT card wearing "Interurban Trail" -- which then fed the
+// designated-but-fails banner -- is how a banned freeway read as the trail
+// failing (field report). The road's own flag is the fact; the ribbon merely
+// supplies the name. Bike infrastructure is the one source allowed to lean on
+// proximity, because a path under a route ribbon is the route's own pavement.
+function bikeRouteContextRow(srcId, p, screenPoint) {
+  const claimsRoute = p.g || p.desig === 1 || Number(p.Designated) === 1;
+  if (!claimsRoute && srcId !== 'osm') return null;
+  const badge = routeBadgeAt(screenPoint);
+  if (badge) return ['Bike route', badge];
+  // routeBadgeAt can only name the route while its ribbon layer is switched
+  // on; the road's own record still states the fact when the layer is hidden.
+  return claimsRoute
+    ? ['Bike route', 'On a designated route (USBR / regional trail)'] : null;
+}
+
+// Which Preferred checkboxes a tapped feature's card offers. A bikes-banned
+// road cannot be the carrier of the route beside it, so its card never
+// offers the route's checkbox -- the same misattribution guard as above.
+function preferredRouteTogglesFor(srcId, p, n, lngLat) {
+  if (srcId === 'routes') return routeOverlayNames(p);
+  if (n?.prohibited) return [];
+  return routeNamesNear(lngLat);
+}
+
 
 function mapPointRouteActions(lngLat, routeName, { disclosure = false } = {}) {
   const lat = Number(lngLat.lat);
@@ -12641,14 +12670,8 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
   // If a designated route runs through this spot, include its designation in
   // the road details even though the ribbon is already visible on the map.
   if (src.id !== 'routes') {
-    // routeBadgeAt can only name the route while its ribbon layer is switched
-    // on. The road itself records that it belongs to one, so fall back to that
-    // rather than silently dropping the fact when the layer is hidden.
-    const badge = routeBadgeAt(map.project(lngLat));
-    if (badge) rows.push(['Bike route', badge]);
-    else if (p.g || p.desig === 1 || Number(p.Designated) === 1) {
-      rows.push(['Bike route', 'On a designated route (USBR / regional trail)']);
-    }
+    const routeRow = bikeRouteContextRow(src.id, p, map.project(lngLat));
+    if (routeRow) rows.push(routeRow);
   }
   rows = rows.filter(([, v]) => v != null && v !== '');
   const pointName = readoutRoutePointName(rows);
@@ -12676,8 +12699,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
     // Any tapped segment that lies on a signed route offers its Preferred
     // checkbox -- not only the ribbon's own card, which a road usually
     // outbids for the tap.
-    preferredRouteToggles: src.id === 'routes'
-      ? routeOverlayNames(p) : routeNamesNear(lngLat),
+    preferredRouteToggles: preferredRouteTogglesFor(src.id, p, n, lngLat),
     cautionKinds: src.id === 'routeseg' && p.ferry !== 1
       ? [...routeMarkerKinds(p, routeVisualStyle(p)), ...(p.hazard ? ['curve'] : [])]
       : [],
