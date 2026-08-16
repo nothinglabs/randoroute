@@ -250,7 +250,45 @@ AADT for 6,544 state and 5,028 non-state count sites -- newer than the 2018 HPMS
 release this state actually uses -- as **point** geometry that
 `scripts/roadmeasure.py` cannot conflate. That is a fetched-and-unused signal
 found *before* it was fetched rather than months after, which is the cheap
-version. It is recorded as known backlog in `maps/oregon/STATUS.md`.
+version. It is recorded as known backlog in `maps/oregon-opus-1/STATUS.md`.
+
+**Postscript, August 2026:** the parking *reason* was later found wrong for
+half the signal. The state-system layer is milepost-addressed sections wearing
+point geometry, claimable with the milepost slicer the import had already
+built. The audit surfaced the signal; the verdict on it was made from the
+geometry type instead of the schema. That failure mode is now its own lesson
+-- **A9**.
+
+### A9 — Geometry type is not the shape of the data. Park a source on its schema, never on its `geometryType`.
+
+*What happened.* ODOT's current AADT was parked as "points, and the conflation
+pipeline works on linework -- claiming it means new engineering." Months later
+a schema read showed the state-system layer (data catalogue 155) carries
+`LRM_KEY`, `BEGMP` and `ENDMP` on every record: milepost-addressed **route
+sections** whose point geometry is only a display location. Slicing ODOT route
+linework between mileposts is exactly what `build_odot.py` already does for
+the shoulder inventory, so the "new engineering" already existed. The
+non-state layer (156 -- one `MP`, street names, no end milepost) genuinely is
+point sites, and parking it was right.
+
+*Why.* A layer's `geometryType` describes how the publisher chose to *draw*
+the records, not how they are addressed. DOT data lives on a linear reference
+system; any layer whose fields carry a route key plus a milepost span is
+section data whatever its geometry says, and any layer with a bare milepost is
+a point whatever it looks like on a map. The two ODOT AADT layers have the
+same geometry type and opposite natures, so no rule keyed on geometry type can
+judge them.
+
+*The rule.* A source may be parked -- but the parking note must cite the
+**field list**, not the geometry type. "Single `MP`, no span, names only" is a
+reason. "Points" is not. Reading a layer's schema costs one metadata request
+(`<layer-url>?f=json`).
+
+*Evidence.* Layer 155 fields (`LRM_KEY`, `BEGMP`, `ENDMP`, `AADT`,
+`EFFECTV_DT`) vs layer 156 fields (`STREETNAME`, `LOCATION`, `MP`, `SITE_ID`);
+the A8 Oregon postscript above; `maps/oregon-opus-1/STATUS.md` known-backlog note.
+
+*Travelled.* Oregon is the origin. No second exercise yet.
 
 ---
 

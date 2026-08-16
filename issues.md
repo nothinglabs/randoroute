@@ -46,9 +46,12 @@ Follow-ups that hang on the verdict:
   over-fitting before field data.
 
 ### 3. Oregon import — done by an agent, awaiting your verdict
-`maps/oregon/` ships at readiness 7: routing, tiles, place search, ODOT stress /
-speed / shoulder / facility conflation on the state highway system, and FHWA
-HPMS volume. `maps/oregon/VERIFICATION.md` checks 30 published corridors and
+`maps/oregon-opus-1/` (renamed from `maps/oregon/` in August 2026; the first
+import, by an Opus-class agent, kept as the baseline for a fresh import
+attempt under the improved porting docs) ships at readiness 7: routing, tiles,
+place search, ODOT stress / speed / shoulder / facility conflation on the
+state highway system, and FHWA HPMS volume.
+`maps/oregon-opus-1/VERIFICATION.md` checks 30 published corridors and
 `docs/PORTING-LESSONS.md` now carries an Oregon line on every lesson.
 
 What to check against your own predictions:

@@ -40,6 +40,12 @@ the entry point on why).
 
 ## Deliverables
 
+- [ ] **The source census**, recorded in `STATUS.md`: every signal in the
+      census table (`docs/PORTING-TO-ANOTHER-STATE.md` §2) with a
+      claimed / parked / absent verdict. A parked source's reason must cite
+      its field list, never its geometry type (lesson A9), and if the DOT
+      publishes current traffic counts, the state-system portion is in scope
+      — HPMS is the floor, not the finish.
 - [ ] `maps/<state>/region.json`, validated by `npm run maps:registry`
 - [ ] `maps/<state>/STATUS.md` — what works, what does not, and the readiness
       level with the gate you met for it. Washington's is the model: it explains

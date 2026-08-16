@@ -83,7 +83,7 @@ every default names a Washington file. A port that forgets one does not fail --
 it silently conflates Washington's data onto its own state's geometry, or (if
 the file is absent) quietly skips a source it thinks it imported. Pass all of
 them explicitly, and pass `""` for the ones your state does not have, which is
-a statement rather than an accident. Oregon's `maps/oregon/BUILD.md` does this
+a statement rather than an accident. Oregon's `maps/oregon-opus-1/BUILD.md` does this
 and says why for each empty string.
 
 The same goes for the small ones, all of which take a state or a bounds now and
@@ -250,6 +250,47 @@ residential roads, and do not treat its absence there as a data gap you can fix.
 ---
 
 ## 2. Finding the state-specific sources
+
+### The source census comes first, and it is a deliverable
+
+Before building anything, walk the state's data catalogues against the fixed
+list of signals the app consumes, and record a verdict for every row in
+`STATUS.md`: **claimed** (with the layer URL), **parked** (with the reason —
+and the reason must cite the layer's *field list*, never its geometry type;
+see the schema rule below), or **absent** (with where you looked). The table
+below is the census form, with the two imports done so far as worked examples
+— for each signal it shows the kind of publisher that had it, so you know
+what to search for, not just whether Washington had it.
+
+| Signal the app consumes | Washington source | Oregon source | What to search for |
+|---|---|---|---|
+| Bicycle stress rating | WSDOT BLTS layer | ODOT BLTS layer | "level of traffic stress", "LTS", "bicycle stress" |
+| Shoulder width (per side) | inside WSDOT's BLTS layer | ODOT Shoulder Width & Type layer | "shoulder", "roadway characteristics" |
+| Posted / legal speed | WSDOT Roadway Characteristic Data | ODOT Posted Speed | "posted speed", "speed limit" |
+| Bike facility inventory | WSDOT Active Transportation Data | ODOT Bicycle Facilities | "bicycle facilities", "active transportation" |
+| Official bicycle prohibitions | WSDOT Permanent Bike Restrictions | **absent** — prose in OAR 734-020-0045; OSM tags carry it | "bicycle restrictions", "prohibited", the state's administrative code |
+| Traffic volume **+ its year** | WSDOT counts (state routes) + FHWA HPMS | FHWA HPMS 2018; ODOT current AADT claimable (see below) | "AADT", "traffic counts", "traffic volume" |
+| Functional class / road owner | WSDOT Functional Class Data | ODOT Federal Functional Class | "functional class" |
+| County road inventory | CRAB certified road log (custodian is NOT the DOT) | **absent** — no statewide equivalent | "county road log", "road inventory", who is legally required to collect it |
+| Long-term closures | hand-maintained | hand-maintained | the DOT's construction/closure pages |
+
+Two census rules that each cost an import real value:
+
+**HPMS is the floor, not the finish.** HPMS exists for every state (lesson
+A3), so volume coverage is never zero — but it is a vintage release. If the
+DOT publishes its own counts with fresher effective dates and linear-reference
+addressing, claiming at least the state-system portion is **in scope for the
+import**, not optional polish. Oregon shipped on 2018 HPMS with ODOT's current
+AADT sitting in the catalogue; the road card shows the count's year to the
+rider, so a stale year is a visible defect, not an internal one.
+
+**Geometry type is not the shape of the data** (lesson A9). Read every
+candidate layer's schema — one metadata request, `<layer-url>?f=json` —
+before deciding what it is. A "point" layer whose records carry a route key
+plus begin/end mileposts is section data wearing a display point, claimable
+with the same milepost slicing the other agency layers already need; a layer
+with a bare milepost and street names genuinely is points. ODOT's two AADT
+layers have the same geometry type and opposite natures.
 
 Three things worth knowing before starting, each of which cost real time here.
 

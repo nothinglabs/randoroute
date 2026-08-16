@@ -2,11 +2,11 @@
  "storeFormat": 1,
  "states": [
   {
-   "id": "oregon",
-   "name": "Oregon",
+   "id": "oregon-opus-1",
+   "name": "Oregon Opus 1",
    "status": "preview",
    "readiness": 7,
-   "summary": "Full routing, tiles, place search and ODOT enrichment on the state highway system. Not yet ridden.",
+   "summary": "The first Oregon import (August 2026, by an Opus-class agent working from the porting documents alone). Preserved as a baseline for comparison against later imports.",
    "bounds": {
     "minLon": -124.8,
     "maxLon": -116.3,

@@ -1,4 +1,11 @@
-# Oregon — readiness 7/10
+# Oregon Opus 1 — readiness 7/10
+
+> **Provenance.** This folder was `maps/oregon/` until August 2026, when it
+> was renamed to free the `oregon` id for a fresh import attempt under the
+> improved porting documents. It is the FIRST Oregon import, done by an
+> Opus-class agent, preserved unchanged as the baseline to compare that
+> attempt against. The build commands recorded below and in `BUILD.md` say
+> `maps/oregon/` because that is where they ran.
 
 `status: preview`. Imported from the documentation alone, by an agent that has
 never been to Oregon. **Nobody has ridden anything this produces.**
