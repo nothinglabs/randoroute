@@ -8,8 +8,13 @@ const site = await serveRepo();
 const browser = await launchBrowser();
 const page = await appPage(browser, site.port);
 
+// Wait for the router's ready message as well as the DOM: graph-ready
+// computes a restored trip the moment it lands, and a bigger graph made
+// that message arrive after this test had planted its endpoints -- the
+// startup restore then counted as a "Settings leak" it is not.
 await page.waitForFunction(() => typeof selectPanelTab === 'function'
-  && document.getElementById('r-maxSpeedNoShoulder'), null, { timeout: 60000 });
+  && document.getElementById('r-maxSpeedNoShoulder')
+  && routing.ready === true, null, { timeout: 60000 });
 
 const result = await page.evaluate(async () => {
   const savedRules = { ...rules };

@@ -276,12 +276,16 @@ if (target) {
     active: routing.last?.optimization?.profileId,
     dialogOpen: document.getElementById('allRoutesDialog').open,
     settingsOpen: settingsMenuIsOpen(),
-    weightsVisible: document.getElementById('settings-weights').hidden === false,
+    // The rider-visible claim: the Route tab is showing again. The weights
+    // PANE's hidden flag is Settings-internal bookkeeping -- with Settings
+    // itself closed it shows nothing, and it legitimately stays the active
+    // pane so reopening Settings returns where the rider left.
+    routeTabActive: document.getElementById('tab-route').classList.contains('active'),
     hasGeometry: (routing.last?.segs || []).length > 0,
     inChooser: routing.options.some((o) => o.optimization?.profileId === routing.last?.optimization?.profileId),
   }));
   check('tapping a discarded route returns to the main map',
-    after.dialogOpen === false && after.settingsOpen === false && after.weightsVisible === false,
+    after.dialogOpen === false && after.settingsOpen === false && after.routeTabActive === true,
     JSON.stringify(after));
   check('and loads that exact route', after.active === target.profileId,
     `wanted ${target.profileId}, got ${after.active} (was ${before})`);

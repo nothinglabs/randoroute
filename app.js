@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.738';
+const APP_VERSION = '2026-08-17.739';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -14274,7 +14274,9 @@ function buildRulesPanel() {
   check('allowFreeways', 'Route over freeway as last resort (still shows as failing)');
   check('preferPaved', 'Strongly prefer paved surfaces');
   check('requireSafe', 'Only show routes fully matching safety rules');
-  check('inferShoulderFromEdge', 'Guess shoulder width from other data when it isn’t documented');
+  // The preset-info card's phrasing; the longer sentence wrapped to two
+  // lines on a 375 px phone and pushed the Rules pane past one screen.
+  check('inferShoulderFromEdge', 'Guess shoulder width when undocumented');
 
   // Display-only options never knock the rider off a routing preset.
   const warningIconsCard = document.createElement('div');
@@ -14342,7 +14344,10 @@ function buildRulesPanel() {
     wrap.className = 'rule rule-card rule-sub';
     const label = (v) => {
       const lvl = levels[v] || levels[0];
-      return lvl.id ? `${lvl.label} (~${lvl.adt.toLocaleString()}/day)` : 'Not used';
+      // Compact "2k+/day": the spelled-out "~2,000/day" wrapped the row to
+      // two lines on a 375 px phone, and the Rules pane must fit one screen.
+      const perDay = lvl.adt >= 1000 ? `${lvl.adt / 1000}k` : String(lvl.adt);
+      return lvl.id ? `${lvl.label} (${perDay}+/day)` : 'Not used';
     };
     wrap.innerHTML = `
       <div class="rule-head">

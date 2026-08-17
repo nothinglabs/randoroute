@@ -182,14 +182,20 @@ const utilityPanels = await page.evaluate(() => {
     compactVisibleAgain: !document.getElementById('routeIncompleteBar').hidden,
   };
 });
+// Settings is a full-screen editing session (it fills the viewport edge to
+// edge); Layers stays a floating sheet with breathing room around it. Each
+// tab is held to ITS shape -- the old assertion required both to float,
+// which Settings deliberately stopped doing.
 check('Layers and Settings remain available without a route and have larger close targets',
   utilityPanels.settings.close.width >= 36 && utilityPanels.settings.close.height >= 36
     && utilityPanels.settings.help.width >= 36 && utilityPanels.settings.help.height >= 36
     && utilityPanels.layers.close.width >= 36 && utilityPanels.layers.close.height >= 36
     && utilityPanels.layers.help.width >= 36 && utilityPanels.layers.help.height >= 36
-    && [utilityPanels.settings.placement, utilityPanels.layers.placement]
-      .every((placement) => placement.left >= 6 && placement.right <= 384
-        && placement.bottomGap >= 6)
+    && utilityPanels.settings.placement.left <= 1
+    && utilityPanels.settings.placement.bottomGap <= 1
+    && utilityPanels.layers.placement.left >= 6
+    && utilityPanels.layers.placement.right <= 384
+    && utilityPanels.layers.placement.bottomGap >= 6
     && utilityPanels.compactVisibleAgain,
   JSON.stringify(utilityPanels));
 
