@@ -620,9 +620,14 @@ carve-outs, while every other signed route stays ordinarily priced. When at
 least one named route is Preferred, the portfolio also runs two deliberate
 alternatives: a moderate pull at the geometric midpoint between the strong
 multiplier and 1.0, and a neutral search without the named-route exception.
-The best practical strong result is Suggested and explicitly retained; the
+The best strong result is Suggested and explicitly retained; the
 moderate and neutral results compete for the remaining letters through the
-normal geometry-diversity selection. The graph
+normal geometry-diversity selection. The automatic more-direct lens also runs
+without the named-route exception. This matters because setting the multiplier
+to 1.0 alone is not neutral: trusted route edges bypass ordinary road-stress
+pricing as well as receiving a multiplier. Removing the scoped exception lets
+the direct lens actually escape a Preferred corridor when a useful alternative
+exists. The graph
 stores only an anonymous on-a-signed-route flag, so the router worker matches
 the chosen routes' overlay geometry onto its own edges (`preferred-routes`
 message; candidates are restricted to flagged edges and most of an edge's

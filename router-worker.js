@@ -796,6 +796,17 @@ function preferredRoutesActive(rules) {
   return preferredEdges !== null && rules?.preferredRoutes === preferredRoutesKey;
 }
 
+// A neutral portfolio lens must remove the scoped trust exception itself.
+// Setting its multiplier to 1 is not enough: trusted edges also bypass the
+// ordinary road-stress costs. Keep every actual riding rule and global route
+// option intact; remove only the selected named-route key.
+function withoutPreferredRouteSelection(rules) {
+  if (!rules || !Object.prototype.hasOwnProperty.call(rules, 'preferredRoutes')) return rules;
+  const neutral = { ...rules };
+  delete neutral.preferredRoutes;
+  return neutral;
+}
+
 function heuristicSpeed(mode, prefResidential, rules = null) {
   const comfy = mode === 'direct' ? 1
     : mode === 'low' ? activeWeights.comfyRoadLowStress : activeWeights.comfyRoadBalanced;
@@ -3880,8 +3891,7 @@ function addPreferredRouteSpectrumCandidates(raw, points, rules, forceDesig, for
         preferredRouteMultiplier: lens.multiplier,
       };
       const searchRules = lens.strength === 'neutral'
-        ? Object.fromEntries(Object.entries(rules).filter(([key]) => key !== 'preferredRoutes'))
-        : rules;
+        ? withoutPreferredRouteSelection(rules) : rules;
       useWeights({ ...mainWeights, preferredRoute: lens.multiplier });
       const result = route(points, searchRules, profile.mode, profile.prefDesig,
         profile.prefResidential, snaps);
@@ -4001,6 +4011,14 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     useWeights(lensWeights);
     if (weightsSignature !== mainSignature) {
       progress?.('Trying a more direct lens…', 0.76);
+      // A named Preferred route is deliberately strong in the ordinary
+      // candidates. Carrying that exception into the escape lens made the
+      // supposedly direct search follow the same corridor and collapse the
+      // portfolio to one route. The lens is the neutral end of the Preferred
+      // spectrum: keep the rider's rules, remove only the selected-route pull.
+      const directRules = preferredRoutesActive(rules)
+        ? withoutPreferredRouteSelection(rules) : rules;
+      const preferredRouteStrength = directRules === rules ? null : 'neutral';
       // Two lens candidates. The direct one finds the aggressive end --
       // useful, but on Duck Pond -> Kenmore it was ALSO the only lens find,
       // a 6.5 mi route that is 51% failing, and with nothing moderate
@@ -4011,8 +4029,9 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       // second candidate is a diversity probe seeded off the first: balanced
       // and friendly, pushed off the aggressive corridor's own edges.
       const lensProfile = { id: 'direct-lens', label: 'More-direct lens', mode: 'direct',
-        prefDesig: forceDesig, prefResidential: forceResidential, order: 0.46, directLens: true };
-      const direct = route(points, rules, lensProfile.mode, lensProfile.prefDesig,
+        prefDesig: forceDesig, prefResidential: forceResidential, order: 0.46, directLens: true,
+        preferredRouteStrength };
+      const direct = route(points, directRules, lensProfile.mode, lensProfile.prefDesig,
         lensProfile.prefResidential, snaps);
       if (direct.ok) {
         direct._profile = lensProfile;
@@ -4020,8 +4039,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
         raw.push(direct);
         const moderateProfile = { id: 'direct-lens-friendly', label: 'More-direct lens',
           mode: 'balanced', prefDesig: true, prefResidential: true, order: 1.46,
-          alternativeCorridor: true, directLens: true };
-        const moderate = route(points, rules, moderateProfile.mode, moderateProfile.prefDesig,
+          alternativeCorridor: true, directLens: true, preferredRouteStrength };
+        const moderate = route(points, directRules, moderateProfile.mode, moderateProfile.prefDesig,
           moderateProfile.prefResidential, snaps,
           new Set(direct.edgeIds), activeWeights.diversityBalanced);
         if (moderate.ok) {
@@ -4166,7 +4185,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const ordinaryPractical = practicalChoices.filter((route) => !route._profile.fullyMatchingProbe);
   const recommendationPool = ordinaryPractical.length ? ordinaryPractical : practicalChoices;
   const preferredRouteAnchor = preferredRoutesActive(rules)
-    ? bestStrongPreferredCandidate(practicalChoices) : null;
+    ? strongPreferredCandidate : null;
   let recommended = null;
   for (const route of recommendationPool) {
     if (!recommended) { recommended = route; continue; }
@@ -4203,9 +4222,10 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     }
   }
   // Marking a named route Preferred is an explicit recommendation request.
-  // The strong lens only takes the star when it found a practical route that
-  // actually uses the chosen corridor; moderate and neutral results remain in
-  // the portfolio so the request never turns into an all-or-nothing constraint.
+  // The strong lens takes the star when it found a route that actually uses
+  // the chosen corridor, even when a neutral alternative is materially
+  // shorter. Moderate and neutral results remain in the portfolio so this
+  // preference never turns into an all-or-nothing constraint.
   if (preferredRouteAnchor) recommended = preferredRouteAnchor;
   const boundedPreferred = (!hasStops || !preferred || boundedChoices.includes(preferred)
     || preferred === safestOverall) ? preferred : null;

@@ -83,6 +83,7 @@ const result = worker.run(`(() => {
   const facilityOnlyMult = facilityPrefMult(eFacility[facilityEdge]);
   const preferredFacilityMult = preferredSignedRouteMult(facilityEdge);
   const spectrum = preferredRouteSpectrum(activeWeights.preferredRoute);
+  const neutralRules = withoutPreferredRouteSelection(preferred);
   const candidateBase = {
     edgeIds: [onRoute], timeS: 1000, failM: 0, dismountM: 0,
     distM: 1000, ferryM: 0, facilityM: 0, trailM: 0,
@@ -133,6 +134,7 @@ const result = worker.run(`(() => {
     compoundedFacilityMult: defaultMult * facilityOnlyMult,
     tunedCost, tunedMult,
     spectrum: spectrum.map(({ strength, multiplier }) => ({ strength, multiplier })),
+    neutralRules,
     spectrumCalls,
     spectrumProfiles: spectrumRaw.map((candidate) => candidate._profile.preferredRouteStrength),
     anchorId: anchor?._profile.id,
@@ -163,6 +165,12 @@ assert.ok(result.spectrum[1].multiplier > result.spectrum[0].multiplier
   'the moderate multiplier must sit between strong and neutral');
 assert.equal(result.spectrum[2].multiplier, 1,
   'the neutral candidate must remove the Preferred-route multiplier');
+assert.equal(result.neutralRules.preferredRoutes, undefined,
+  'the neutral/direct lens must remove the scoped Preferred-route trust exception');
+assert.equal(result.neutralRules.minShoulder, RULES.minShoulder,
+  'neutralizing Preferred routes must preserve the rider\'s actual safety rules');
+assert.equal(result.neutralRules.allowFerries, RULES.allowFerries,
+  'neutralizing Preferred routes must preserve unrelated route options');
 assert.equal(result.spectrumCalls.length, 3,
   'the portfolio must execute all three Preferred-route searches');
 assert.equal(result.spectrumCalls[0].hasPreferredSelection, true,
@@ -201,6 +209,35 @@ const after = worker.run(`(() => {
 })()`);
 assert.equal(after.hasSet, false, 'clearing must drop the edge set');
 assert.equal(after.cost, result.onRouteOff, 'after clearing, the baseline price returns');
+
+// Field regression: preferring the Interurban Trail between Ravenna and
+// Woodland Park Zoo used to collapse the entire chooser to one 7+ mile route.
+// The direct lens carried the Preferred trust exception, so even flattened
+// weights could not escape. The real portfolio must retain the strong route as
+// Suggested while also surfacing a genuinely neutral corridor.
+const interurban = routes.get('Interurban Trail');
+assert.ok(interurban, 'the shipped route overlay must contain the Interurban Trail');
+worker.post({ type: 'preferred-routes', key: interurban.name, lines: interurban.lines });
+const fieldPortfolio = worker.run(`(() => {
+  const rules = { ...${JSON.stringify(RULES)}, preferredRoutes: 'Interurban Trail' };
+  const points = [[-122.296, 47.675], [-122.351, 47.6685]];
+  useWeights(null);
+  const main = { ...activeWeights };
+  // A small flattening is enough to activate the direct-lens branch; its
+  // neutral rules, not this exact tuning, are the behavior under test.
+  const lens = { ...main, facilityPath: 0.7 };
+  return routeOptions(points, rules, false, false, null, false, null,
+    'interurban-diversity-regression', main, lens);
+})()`);
+assert.ok(fieldPortfolio.ok, 'the Interurban field regression must remain routable');
+assert.ok(fieldPortfolio.options.length >= 2,
+  `a Preferred route must not collapse the chooser (got ${fieldPortfolio.options.length} option)`);
+const fieldRecommended = fieldPortfolio.options.find((option) => option.optimization.recommended);
+assert.equal(fieldRecommended?.optimization.preferredRouteStrength, 'strong',
+  'the practical strong Preferred-route candidate must remain Suggested');
+assert.ok(fieldPortfolio.options.some((option) =>
+  option.optimization.preferredRouteStrength === 'neutral'),
+'the offered portfolio must contain a neutral escape from the Preferred corridor');
 
 console.log(`Preferred route "${chosen.name}": ${result.marked} edges matched, `
   + `cost ${result.onRouteOff.toFixed(2)} -> ${result.onRouteOn.toFixed(2)} on its edges, `
