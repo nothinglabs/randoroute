@@ -190,9 +190,17 @@ function ensureRouteMarkerImages(targetMap) {
     // ring wheels at this size read as eyeglasses, not a bicycle -- larger
     // than before, with a level top bar, a saddle tick over the rear wheel
     // and a stem-and-handlebar over the front.
-    b.stroke(6.4 * s, 5.9 * s, 6.4 * s, 6.6 * s, 1.5 * s, ink);
-    b.stroke(6.4 * s, 6.6 * s, 6.4 * s, 8.7 * s, 1.24 * s, ink);
-    b.disc(6.4 * s, 10.5 * s, 0.82 * s, ink);
+    // The ! is painted on INTEGER pixels: at x = 6.4 units its centre fell
+    // on pixel 19.2, and every disc the stroke laid down rounded
+    // asymmetrically -- ragged single-pixel steps along both edges and a
+    // tail under the dot (field: "glitchy on the !"). A squared bar painted
+    // as an explicit rectangle plus one centred disc leaves nothing to
+    // rounding.
+    const bx = Math.round(6.4 * s), bh = Math.round(0.7 * s);
+    for (let y = Math.round(5.7 * s); y <= Math.round(8.9 * s); y++) {
+      for (let x = bx - bh; x <= bx + bh; x++) b.paint(x, y, ink);
+    }
+    b.disc(bx, Math.round(10.5 * s), 0.85 * s, ink);
     const rearHub = [9.5 * s, 10.2 * s], frontHub = [12.4 * s, 10.2 * s];
     b.disc(rearHub[0], rearHub[1], 1.0 * s, ink);
     b.disc(frontHub[0], frontHub[1], 1.0 * s, ink);
