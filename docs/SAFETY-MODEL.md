@@ -1054,12 +1054,7 @@ under a "more direct" flattening. `directLensRoutingWeights()` raises every
 subjective multiplier to exponent 0.22 and scales the per-mph speed rates,
 without editing the rider's stored weights. Physics (climb/turn seconds, ferry
 wait, elevation factors), last-resort walls, safety rules, verdicts, and colors
-remain unchanged. When the explicit **Follow designated bike routes even if
-they fail safety rules** preference is on, this single bounded search also
-relaxes that preference; otherwise it would force the normal profiles and the
-escape lens onto the same signed corridor. This changes only which alternative
-is discovered: admission and the returned safety measurements still use the
-rider's real rules. The result joins the pool as the `direct-lens` profile before
+remain unchanged. The result joins the pool as the `direct-lens` profile before
 dedupe and ranking. It exists because the facility pull can own every profile at once:
 on Ravenna → Phinney Ridge all nineteen normal candidates collapsed onto one
 greenway corridor while the flattened search found a genuinely shorter one

@@ -1512,11 +1512,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // prices it, even when the unchanged model calls it caution or failure.
   // Permissions remain permissions: prohibited edges never reach here, and
   // freeway/MTB/ferry admission is still handled by their own settings.
-  // Signed-route following is a search lens, so read it from searchRules.
-  // Usually that is the rider's rules object; the bounded direct lens passes
-  // a copy with this one preference relaxed so it can discover a genuinely
-  // different corridor while `rules` remains the reporting/safety truth.
-  const trustSignedRoute = trustRouteEdge(ei, fl, searchRules);
+  const trustSignedRoute = trustRouteEdge(ei, fl, rules);
   const mult = modeMult(mode, trustSignedRoute ? 1 : searchLevel);
   if (!(mult < Infinity)) { partsSteep = 0; partsSurf = 0; partsDivOk = 0; return Infinity; }
   let step = edgeTimeS(ei, forward) + climbPreferenceS(ei, forward, mode);
@@ -1746,7 +1742,7 @@ function edgeCostFloor(i, forward) {
   // under a discovery lens -- which reprices a road without restating it.
   const searchLevel = edgeLevelFor(i, searchRules, forward);
   const level = searchRules === rules ? searchLevel : edgeLevelFor(i, rules, forward);
-  const trustSignedRoute = trustRouteEdge(i, fl, searchRules);
+  const trustSignedRoute = trustRouteEdge(i, fl, rules);
   let m = modeMult(mode, trustSignedRoute ? 1 : searchLevel);
   if (!(m < Infinity)) return Infinity;
   if (trustSignedRoute) {
@@ -3796,7 +3792,7 @@ function trimRoutingCaches() {
 
 function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false,
     progress = null, requestSignature = null,
-    mainWeights = null, lensWeights = null, lensSearchRules = null) {
+    mainWeights = null, lensWeights = null) {
   const started = Date.now();
   // Identifies this exact request, so a tap on the "More" screen that arrives
   // after the rider changed something is refused rather than answered from a
@@ -3909,14 +3905,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       // and friendly, pushed off the aggressive corridor's own edges.
       const lensProfile = { id: 'direct-lens', label: 'More-direct lens', mode: 'direct',
         prefDesig: forceDesig, prefResidential: forceResidential, order: 0.46, directLens: true };
-      // A strong signed-route preference can otherwise own the direct lens as
-      // completely as it owns the normal profiles (field: U Village ->
-      // Woodland Park Zoo collapsed to one letter). `rules` remains the
-      // admission/reporting truth; only this candidate's search pricing uses
-      // the relaxed preference object supplied by the app.
-      const directSearchRules = lensSearchRules || rules;
       const direct = route(points, rules, lensProfile.mode, lensProfile.prefDesig,
-        lensProfile.prefResidential, snaps, null, 1, directSearchRules);
+        lensProfile.prefResidential, snaps);
       if (direct.ok) {
         direct._profile = lensProfile;
         direct.aggression = routeAggression(direct);
@@ -3926,7 +3916,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
           alternativeCorridor: true, directLens: true };
         const moderate = route(points, rules, moderateProfile.mode, moderateProfile.prefDesig,
           moderateProfile.prefResidential, snaps,
-          new Set(direct.edgeIds), activeWeights.diversityBalanced, directSearchRules);
+          new Set(direct.edgeIds), activeWeights.diversityBalanced);
         if (moderate.ok) {
           moderate._profile = moderateProfile;
           moderate.aggression = routeAggression(moderate);
@@ -4388,7 +4378,7 @@ onmessage = (ev) => {
         !!m.forceResidential, m.weights || null, m.blocks || null]);
       const result = withRoadBlocks(m.blocks, m.rules, () => routeOptions(pts, m.rules,
         !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress,
-        signature, m.weights || null, m.directProbeWeights || null, m.directProbeRules || null));
+        signature, m.weights || null, m.directProbeWeights || null));
       postMessage({ type: 'route-options', id: m.id, ...result });
     } else if (m.type === 'route-candidate') {
       // Full geometry for one candidate the "More" screen listed. Served from

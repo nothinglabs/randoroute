@@ -53,22 +53,16 @@ const request = await page.evaluate(() => {
   routing.end = [-122.31, 47.62];
   routing.selectRecommendedNext = true;
   routing.pinnedLetters = null;
-  const originalAlwaysPrefer = rules.alwaysPreferBikeRoutes;
-  rules.alwaysPreferBikeRoutes = true;
   const rulesBefore = JSON.stringify(rules);
   computeRoute();
   const message = captured.at(-1);
-  const rulesAfter = JSON.stringify(rules);
-  rules.alwaysPreferBikeRoutes = originalAlwaysPrefer;
   return {
     type: message?.type,
-    normalRules: message?.rules,
-    directRules: message?.directProbeRules,
     normalWeights: message?.weights,
     directWeights: message?.directProbeWeights,
     tunedWeights: { ...routingWeights },
     rulesBefore,
-    rulesAfter,
+    rulesAfter: JSON.stringify(rules),
   };
 });
 check('a route request uses the rider weights as its normal viewpoint',
@@ -78,11 +72,6 @@ check('and automatically carries a distinct more-direct probe',
   request.directWeights?.failRoadBalanced < request.normalWeights?.failRoadBalanced,
   JSON.stringify({ normal: request.normalWeights?.failRoadBalanced,
     direct: request.directWeights?.failRoadBalanced }));
-check('the direct lens can escape a global signed-route preference',
-  request.normalRules?.alwaysPreferBikeRoutes === true
-    && request.directRules?.alwaysPreferBikeRoutes === false,
-  JSON.stringify({ normal: request.normalRules?.alwaysPreferBikeRoutes,
-    direct: request.directRules?.alwaysPreferBikeRoutes }));
 check('the automatic lens never changes safety rules',
   request.rulesBefore === request.rulesAfter);
 

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.741';
+const APP_VERSION = '2026-08-17.740';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7824,12 +7824,6 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
       // without the rider knowing to ask. Not for shared routes -- those
       // reproduce the sender's exact search.
       directProbeWeights: rec ? null : directLensRoutingWeights(),
-      // This one bounded candidate exists specifically to escape preferences
-      // that make every normal profile converge. The rider's signed-route
-      // choice remains live for every ordinary candidate; the direct lens
-      // alone relaxes it as a SEARCH preference. The worker still scores and
-      // reports the result against `rules`, so no safety verdict changes.
-      directProbeRules: rec ? null : { ...rules, alwaysPreferBikeRoutes: false },
     });
   }
 }
