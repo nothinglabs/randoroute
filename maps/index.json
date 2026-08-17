@@ -116,7 +116,7 @@
     {
      "dataset": "closures",
      "path": "route_closures.geojson.gz",
-     "bytes": 971
+     "bytes": 1001
     },
     {
      "dataset": "roads",
@@ -252,12 +252,12 @@
     {
      "dataset": "restrictions",
      "path": "bike_restrictions.geojson.gz",
-     "bytes": 48950
+     "bytes": 48809
     },
     {
      "dataset": "closures",
      "path": "route_closures.geojson.gz",
-     "bytes": 2295
+     "bytes": 2270
     },
     {
      "dataset": "roads",
