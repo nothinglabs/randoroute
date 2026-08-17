@@ -657,19 +657,26 @@ const V_MIN = 1.3;    // steep-climb floor (~3 mph)
 const V_DISMOUNT = 1.15;
 // The most this can discount an edge. heuristicSpeed() depends on it.
 const SPEED_STRESS_FLOOR = 0.25; // ~2.6 mph while walking a bike
-// 6 minutes, raised from 4 by field feedback: routes leaned on walk links a
-// little too readily once the network was fully connected. When the field
-// said "still too willing to walk", the DOUBLING went into the multipliers
-// below, not here: this flat fee hits a thirty-second dock approach as hard
-// as a half-mile slog, and at 12 minutes it priced the Pier 50 fast ferry
-// out of the Southworth route in favour of riding miles to Fauntleroy.
-const DISMOUNT_ENTRY_PENALTY_S = 6 * 60;
+// One minute: dismounting is a mode switch, not a disaster. This was six,
+// and the flat fee's own comment warned it "hits a thirty-second dock
+// approach as hard as a half-mile slog" -- the field then found the
+// consequence: an Interurban Trail crossing gate (three edges, 27 m, level
+// 1) priced at ~10 minutes with the walk multipliers stacked on, so routes
+// LOOPED off the trail and around the gate on failing streets (the lollipop
+// at the rider's start). Length judgement belongs to the per-metre
+// multipliers below, which is also why 12 minutes here once priced the Pier
+// 50 fast ferry out of the Southworth route.
+const DISMOUNT_ENTRY_PENALTY_S = 60;
 // Search-cost multiplier on the walked time of a dismount stretch (the ETA
 // keeps the honest walking time). See the note at its use in edgeCostParts.
+// Three tiers by EDGE length: a bollard gate or crossing island (< 25 m)
+// costs a shrug, not a detour-off-the-trail; an ordinary walk link keeps the
+// doubled field-tuned judgment; and long edges -- how long unrideable trails
+// appear in the graph -- price harshest, because a rider bushwhacked one
+// once when a router shrugged at it.
+const DISMOUNT_GATE_EDGE_M = 25;
+const DISMOUNT_GATE_MULT = 3;
 const DISMOUNT_WALK_COST_MULT = 8;
-// Above this, a single dismount EDGE prices even harsher in the search: long
-// edges are how long unrideable trails appear in the graph, and the rider
-// bushwhacked one once because a router shrugged at it.
 const DISMOUNT_LONG_EDGE_M = 100;
 const DISMOUNT_LONG_EDGE_MULT = 32;
 // A CONTIGUOUS tagged-dismount run longer than this reports as FAILING the
@@ -1535,8 +1542,9 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // and a LONG dismount edge -- how a long unrideable trail appears in the
   // graph -- escalates further still.
   if (isDismountEdge(ei)) {
-    cost *= eLen[ei] > DISMOUNT_LONG_EDGE_M
-      ? DISMOUNT_LONG_EDGE_MULT : DISMOUNT_WALK_COST_MULT;
+    cost *= eLen[ei] > DISMOUNT_LONG_EDGE_M ? DISMOUNT_LONG_EDGE_MULT
+      : eLen[ei] < DISMOUNT_GATE_EDGE_M ? DISMOUNT_GATE_MULT
+        : DISMOUNT_WALK_COST_MULT;
   }
   // Bonuses never apply to ferries, freeways, or WSDOT limited-access
   // highways: preference must not erase their access/caution costs. For

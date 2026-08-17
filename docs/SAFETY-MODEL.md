@@ -974,15 +974,20 @@ differently. **Tagged** — a mapper wrote `bicycle=dismount`; the edge carries
 `official` bit 128 alongside the pricing bit 8. **Synthesised** — a walk link
 the graph build created from an untagged footway or path purely to keep the
 network connected (bit 8 without 128). Both are priced identically — walking
-pace, a six-minute entry penalty, and a ×8 search-cost multiplier on the
-walked time (×32 on an edge over 100 m, which is how a long unrideable trail
-appears in the graph): walking the bike is a bad outcome, not merely a slow
-one, and the multiplier is proportional by construction because it scales the
-walked seconds themselves. (The distance multipliers have been raised by field
-feedback whenever routes were still too willing to walk, but the flat entry fee
-stayed at six minutes: it hits a thirty-second dock approach as hard as a
-half-mile slog, and doubling it priced the Pier 50 fast ferry out of the
-Southworth route in favour of riding miles to Fauntleroy.) Both count as CAUTION in the route's level
+pace, a one-minute entry penalty, and a search-cost multiplier on the walked
+time in three tiers by edge length: ×3 under 25 m (a bollard gate or crossing
+island), ×8 for an ordinary walk link, ×32 over 100 m, which is how a long
+unrideable trail appears in the graph. Walking the bike is a bad outcome, not
+merely a slow one, and the multiplier is proportional by construction because
+it scales the walked seconds themselves. (The distance multipliers have been
+raised by field feedback whenever routes were still too willing to walk. The
+flat entry fee went the other way: at six minutes it priced an Interurban
+Trail crossing gate — three level-1 edges totalling 27 m — near ten minutes
+with the multipliers stacked on, and routes looped off the trail onto failing
+streets to ride around the gate. Length judgment belongs to the per-metre
+tiers; the flat fee is only the mode switch. Twelve minutes, tried once,
+priced the Pier 50 fast ferry out of the Southworth route in favour of riding
+miles to Fauntleroy.) Both count as CAUTION in the route's level
 percentages (matching the amber they draw), and both are priced into the
 recommendation at three seconds per meter, versus one for failing road. One
 judgment applies to tagged dismounts alone: a contiguous tagged run longer
