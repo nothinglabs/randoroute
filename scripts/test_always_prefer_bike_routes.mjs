@@ -72,7 +72,7 @@ assert.equal(result.directModelOn, 4,
   'the cost-only preference must not change SafetyModel or the route colour');
 assert.equal(result.legacy.cost, result.off.cost,
   'old states with no setting must behave exactly like the default-off setting');
-assert.equal(result.preferredMultiplier, 0.12,
+assert.equal(result.preferredMultiplier, 0.15,
   'the explicit toggle should price a signed route 25% more strongly than the default trail');
 assert.ok(result.preferredMultiplier < result.ordinaryTrailMultiplier,
   'the explicit toggle should resist small departures more strongly than ordinary trail preference');

@@ -100,13 +100,48 @@ const advancedOptions = await pg.evaluate(() => {
     readingOrder: routeOptions.compareDocumentPosition(descriptions) & Node.DOCUMENT_POSITION_FOLLOWING
       && descriptions.compareDocumentPosition(sliders) & Node.DOCUMENT_POSITION_FOLLOWING,
     designatedLabel: document.querySelector('label[for="r-prefDesig"] span')?.textContent,
+    note: routeOptions.querySelector('p')?.textContent,
   };
 });
 check('expert route switches sit above the weights in Advanced routing',
   advancedOptions.allPresent && advancedOptions.allInAdvanced
     && advancedOptions.absentFromEveryday && advancedOptions.readingOrder
-    && advancedOptions.designatedLabel === 'Heavily prefer designated bike routes',
+    && advancedOptions.designatedLabel === 'Heavily prefer designated bike routes'
+    && /Independent of presets/.test(advancedOptions.note),
   JSON.stringify(advancedOptions));
+
+const optionState = await pg.evaluate(() => {
+  const input = document.getElementById('r-prefDesig');
+  input.click();
+  const card = input.closest('.weights-route-option');
+  const afterChange = {
+    settingsOpen: settingsMenuIsOpen(),
+    weightsOpen: document.getElementById('settings-weights').hidden === false,
+    changed: card.classList.contains('changed'),
+    changedBadge: !card.querySelector('.weights-route-option-state').hidden,
+    tabTuned: document.getElementById('settings-tab-weights').classList.contains('tuned'),
+  };
+  document.getElementById('resetRoutingWeights').click();
+  const defaultsRestored = ADVANCED_ROUTE_PREFERENCE_KEYS.every((key) =>
+    routing[key] === ADVANCED_ROUTE_OPTION_DEFAULTS[key])
+    && ADVANCED_ROUTE_RULE_KEYS.every((key) =>
+      rules[key] === ADVANCED_ROUTE_OPTION_DEFAULTS[key]);
+  return {
+    afterChange, defaultsRestored,
+    optionsMarkedAfterReset: document.querySelectorAll('.weights-route-option.changed').length,
+    settingsStillOpen: settingsMenuIsOpen(),
+    weightsStillOpen: document.getElementById('settings-weights').hidden === false,
+  };
+});
+check('Advanced route options stay on screen when changed and show their modified state',
+  optionState.afterChange.settingsOpen && optionState.afterChange.weightsOpen
+    && optionState.afterChange.changed && optionState.afterChange.changedBadge
+    && optionState.afterChange.tabTuned,
+  JSON.stringify(optionState));
+check('Reset all defaults restores route options as well as weights without closing Settings',
+  optionState.defaultsRestored && optionState.optionsMarkedAfterReset === 0
+    && optionState.settingsStillOpen && optionState.weightsStillOpen,
+  JSON.stringify(optionState));
 
 const sharedWeightBounds = await pg.evaluate(() => {
   const decode = (value) => {
@@ -240,7 +275,7 @@ const badge = await pg.evaluate(() => {
   input.dispatchEvent(new Event('change', { bubbles: true }));
   const dirty = button.classList.contains('tuned');
   const title = button.title;
-  const noticeDirty = !notice.hidden && notice.textContent.includes('Weights have been modified');
+  const noticeDirty = !notice.hidden && notice.textContent.includes('Advanced routing has been modified');
   input.closest('.weight-row').querySelector('.weight-revert').click();
   return { clean, dirty, title, noticeClean, stableDuringDrag, noticeDirty,
     backToClean: button.classList.contains('tuned'), noticeBackToClean: notice.hidden };

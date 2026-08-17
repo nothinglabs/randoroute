@@ -5,7 +5,6 @@ import vm from 'node:vm';
 import zlib from 'node:zlib';
 
 const worker = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
-const app = fs.readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 const graph = zlib.gunzipSync(fs.readFileSync(new URL('../maps/washington/graph2.bin.gz', import.meta.url)));
 const messages = [];
 const context = vm.createContext({
@@ -26,17 +25,6 @@ const buffer = graph.byteOffset === 0 && graph.byteLength === graph.buffer.byteL
   ? graph.buffer : graph.buffer.slice(graph.byteOffset, graph.byteOffset + graph.byteLength);
 context.onmessage({ data: { type: 'graph', buffer } });
 assert.equal(messages.at(-1)?.type, 'ready', 'the production graph should load');
-assert.match(app, /const DEFAULT_RULES = Object\.freeze\(\{[\s\S]*?allowSidewalkFallback:\s*true/,
-  'sidewalk fallback should default on for new route settings');
-const presetsStart = app.indexOf('const ROUTING_PRESETS = Object.freeze([');
-const presetsEnd = app.indexOf('function validRoutePoint', presetsStart);
-assert.ok(presetsStart >= 0 && presetsEnd > presetsStart, 'routing presets should be defined');
-const presets = app.slice(presetsStart, presetsEnd);
-assert.equal((presets.match(/\.\.\.DEFAULT_RULES/g) || []).length, 3,
-  'every preset should inherit the sidewalk-fallback default');
-assert.doesNotMatch(presets, /allowSidewalkFallback:\s*false/,
-  'no preset should disable sidewalk fallback by default');
-
 const result = vm.runInContext(`(() => {
   // Pioneer Way E is the urban, 35 mph, explicitly-no-sidewalk test case.
   const lon = -122.248, lat = 47.183;

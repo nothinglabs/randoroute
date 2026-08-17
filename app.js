@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.740';
+const APP_VERSION = '2026-08-17.742';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -70,12 +70,27 @@ function isRoutinePavedSurface(surface) {
 }
 
 /* ------------------------------------------------- riding-rules state */
+// Expert route-shaping switches live beside the numerical weights and are
+// deliberately independent of safety presets. Applying a preset must preserve
+// them; the Advanced page's reset button is their one shared reset surface.
+const ADVANCED_ROUTE_OPTION_DEFAULTS = Object.freeze({
+  prefDesig: true,
+  alwaysPreferBikeRoutes: false,
+  prefResidential: true,
+  allowSidewalkFallback: true,
+  allowMtbTrails: false,
+  allowFerries: true,
+});
+const ADVANCED_ROUTE_RULE_KEYS = Object.freeze([
+  'alwaysPreferBikeRoutes', 'allowSidewalkFallback', 'allowMtbTrails', 'allowFerries',
+]);
+const ADVANCED_ROUTE_PREFERENCE_KEYS = Object.freeze(['prefDesig', 'prefResidential']);
 const DEFAULT_RULES = Object.freeze({
   // A routing permission, never a verdict: a freeway always fails. Off means
   // the router may not use one at all; on means it may, as a last resort, and
   // those segments still report as failing.
   allowFreeways: true,
-  allowMtbTrails: false, // technical MTB paths are opt-in, not ordinary bike routing
+  allowMtbTrails: ADVANCED_ROUTE_OPTION_DEFAULTS.allowMtbTrails,
   preferPaved: true,    // strongly prefer pavement by default; unpaved remains available
   minShoulder: 4,       // ft; below this a road gets penalized
   // On. It loosens the shoulder rule -- a road that recorded no shoulder can
@@ -109,22 +124,21 @@ const DEFAULT_RULES = Object.freeze({
   // SafetyModel.BUSY_LEVELS. 0 is off; 2 is "a neighborhood street", about
   // 2,000 vehicles a day or a major collector where there is no count.
   busyNoShoulder: 2,
-  allowSidewalkFallback: true, // a mapped sidewalk can satisfy the shoulder rule, with caution
+  allowSidewalkFallback: ADVANCED_ROUTE_OPTION_DEFAULTS.allowSidewalkFallback,
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
   requireSafe: false,   // limit the portfolio to routes whose every edge matches the rules
 });
-// These are deliberately NOT in DEFAULT_RULES: presets spread the defaults,
-// and a safety preset must neither reset nor lay claim to travel/routing
-// options. They live in Settings > Options but remain independent of presets.
-// `alwaysPreferBikeRoutes` changes COST only. SafetyModel ignores it, so a
-// signed route that fails still draws and speaks as a failure. The everyday
-// rider toggle stays in Settings > Options; the broader corridor/admission
-// switches live with Advanced routing weights.
+// Ferries and the strong signed-route lens are routing choices rather than
+// safety limits. Sidewalk fallback and MTB admission must exist in the rules
+// object because the verdict/router reads them, but all four are explicitly
+// excluded when presets are matched or applied. Their home and reset surface
+// is Advanced routing. `alwaysPreferBikeRoutes` changes COST only, so a signed
+// route that fails still draws and speaks as a failure.
 const rules = {
   ...DEFAULT_RULES,
-  allowFerries: true,
-  alwaysPreferBikeRoutes: false,
+  allowFerries: ADVANCED_ROUTE_OPTION_DEFAULTS.allowFerries,
+  alwaysPreferBikeRoutes: ADVANCED_ROUTE_OPTION_DEFAULTS.alwaysPreferBikeRoutes,
 };
 // Top of the lanes slider means "no limit" rather than a literal count. It
 // stops at 6 because a "6 lanes without a shoulder is fine" rule is one nobody
@@ -949,7 +963,10 @@ const navVoice = {
   offRouteMode: AUTOMATIC_OFF_ROUTE_RECOVERY_ENABLED ? savedOffRouteRecoveryMode : 'guidance',
 };
 
-const DEFAULT_ROUTE_PREFERENCES = Object.freeze({ prefDesig: true, prefResidential: true });
+const DEFAULT_ROUTE_PREFERENCES = Object.freeze({
+  prefDesig: ADVANCED_ROUTE_OPTION_DEFAULTS.prefDesig,
+  prefResidential: ADVANCED_ROUTE_OPTION_DEFAULTS.prefResidential,
+});
 const ROUTING_PRESETS = Object.freeze([
   {
     id: 'randonneur',
@@ -957,7 +974,6 @@ const ROUTING_PRESETS = Object.freeze([
     audience: 'For long-distance riders who want the widest range of route choices.',
     blurb: 'Best for long-distance rides and maximum route choice, with looser safety limits.',
     rules: Object.freeze({ ...DEFAULT_RULES }),
-    preferences: DEFAULT_ROUTE_PREFERENCES,
   },
   {
     id: 'weekend-wanderer',
@@ -975,7 +991,6 @@ const ROUTING_PRESETS = Object.freeze([
       // literally, so a shoulder it infers rather than reads is not good enough.
       inferShoulderFromEdge: false,
     }),
-    preferences: DEFAULT_ROUTE_PREFERENCES,
   },
   {
     id: 'casual-cruiser',
@@ -994,7 +1009,6 @@ const ROUTING_PRESETS = Object.freeze([
       // be what lets a road into that set.
       inferShoulderFromEdge: false,
     }),
-    preferences: DEFAULT_ROUTE_PREFERENCES,
   },
 ]);
 
@@ -5304,7 +5318,7 @@ const ONBOARDING_STEPS = [
   {
     preset: true,
     title: 'How do you like to ride?',
-    copy: 'Pick a starting style — it sets your safety rules and route preferences. Every rule stays adjustable in Settings, and changing anything simply makes it yours.',
+    copy: 'Pick a starting style — it sets your safety rules. Advanced route options and weights stay independent. Every rule remains adjustable in Settings.',
   },
 ];
 let onboardingIndex = 0;
@@ -13612,7 +13626,7 @@ function buildAdvancedRoutingOptions() {
   heading.id = 'advancedRoutingOptionsTitle';
   heading.textContent = 'Route options';
   const note = document.createElement('p');
-  note.textContent = 'These choices can substantially change which corridors the router considers.';
+  note.textContent = 'Independent of presets. Changed options are marked.';
   host.append(heading, note);
   const grid = document.createElement('div');
   grid.className = 'weights-route-options-grid';
@@ -13623,17 +13637,25 @@ function buildAdvancedRoutingOptions() {
     card.className = 'weights-route-option';
     card.htmlFor = `r-${key}`;
     card.innerHTML = `<input type="checkbox" id="r-${key}" ${state[key] ? 'checked' : ''}>
-      <span>${label}</span>`;
+      <span class="weights-route-option-label">${label}</span>
+      <small class="weights-route-option-state">Changed</small>`;
     const input = card.querySelector('input');
+    const paint = () => {
+      const changed = state[key] !== ADVANCED_ROUTE_OPTION_DEFAULTS[key];
+      card.classList.toggle('changed', changed);
+      card.querySelector('.weights-route-option-state').hidden = !changed;
+    };
     input.addEventListener('change', () => {
       state[key] = input.checked;
+      paint();
       suppressRoadInfo(900);
-      syncPresetSelection();
       onChange();
+      syncWeightsTunedBadge();
     });
+    paint();
     grid.append(card);
   };
-  const updatePreference = () => { saveStateSoon(); computeRoute(); };
+  const updatePreference = scheduleReroute;
   add('prefDesig', 'Heavily prefer designated bike routes', routing, updatePreference);
   // The strongest override in the app, so it lives with the expert switches
   // rather than on the everyday Options page (field direction): it changes
@@ -13643,24 +13665,15 @@ function buildAdvancedRoutingOptions() {
   rules, updatePreference);
   add('prefResidential', 'Prefer residential streets', routing, updatePreference);
   add('allowSidewalkFallback', 'Allow sidewalk fallback', rules, scheduleRescore);
-  add('allowMtbTrails', 'Allow mountain bike trails', rules, () => {
-    const osm = SOURCES.find((source) => source.id === 'osm');
-    if (osm && map.getLayer(osm.id)) applyDisplayMode(osm);
-    scheduleRescore();
-  });
-  add('allowFerries', 'Allow routes with ferries', rules, () => {
-    saveStateSoon();
-    if (routing.start && routing.end) {
-      routing.selectRecommendedNext = true;
-      computeRoute();
-    }
-  });
+  add('allowMtbTrails', 'Allow mountain bike trails', rules, scheduleRescore);
+  add('allowFerries', 'Allow routes with ferries', rules, scheduleReroute);
 }
 
 function activeRoutingPreset() {
   return ROUTING_PRESETS.find((preset) =>
-    Object.entries(preset.rules).every(([key, value]) => rules[key] === value)
-    && Object.entries(preset.preferences).every(([key, value]) => routing[key] === value)
+    Object.entries(preset.rules)
+      .filter(([key]) => !ADVANCED_ROUTE_RULE_KEYS.includes(key))
+      .every(([key, value]) => rules[key] === value)
   ) || null;
 }
 
@@ -13689,9 +13702,11 @@ function syncPresetSelection() {
   if (title) title.textContent = `Settings — ${active ? active.label : 'Custom'}`;
   const overrideNote = document.getElementById('settingsRulesPresetNote');
   if (overrideNote) {
-    overrideNote.hidden = !active;
+    overrideNote.hidden = false;
     overrideNote.textContent = active
-      ? `Changes override the ${active.label} preset.` : '';
+      ? `Changes override ${active.label}.`
+      : 'Settings modified — custom rules profile.';
+    overrideNote.classList.toggle('custom', !active);
   }
 }
 
@@ -13812,15 +13827,16 @@ function applyRoutingPreset(presetId) {
   // WebKit to terminate the page under memory pressure.
   if (active?.id === preset.id) return;
   if (!active && !window.confirm(
-    `Apply ${preset.label}?\n\nThis will replace your custom routing rules and route preferences. Those custom settings will be lost.`
+    `Apply ${preset.label}?\n\nThis will replace your custom safety rules. Advanced route options and weights will stay unchanged.`
   )) return;
 
   clearTimeout(_rescoreTimer);
   clearTimeout(_ruleRouteTimer);
   _rescoreTimer = null;
   _ruleRouteTimer = null;
-  Object.assign(rules, preset.rules);
-  Object.assign(routing, preset.preferences);
+  for (const [key, value] of Object.entries(preset.rules)) {
+    if (!ADVANCED_ROUTE_RULE_KEYS.includes(key)) rules[key] = value;
+  }
   suppressRoadInfo(900);
   buildRulesPanel();
   refreshNavigationUI();
@@ -14438,7 +14454,6 @@ function buildRulesPanel() {
     paneButtons.forEach((button) => {
       button.addEventListener('click', () => {
         selectSettingsPane(button.dataset.settingsPane);
-        if (turnNav.active && button.dataset.settingsPane !== 'voice') flashSettingsNavLock();
       });
       button.addEventListener('keydown', (event) => {
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -14449,9 +14464,6 @@ function buildRulesPanel() {
           : (current + (event.key === 'ArrowRight' ? 1 : -1) + visibleButtons.length) % visibleButtons.length;
         visibleButtons[next].focus();
         selectSettingsPane(visibleButtons[next].dataset.settingsPane);
-        if (turnNav.active && visibleButtons[next].dataset.settingsPane !== 'voice') {
-          flashSettingsNavLock();
-        }
       });
     });
     document.getElementById('settingsHelpBtn').addEventListener('click', () => {
@@ -14460,48 +14472,57 @@ function buildRulesPanel() {
     });
     document.getElementById('resetRoutingWeights').addEventListener('click', () => {
       Object.assign(routingWeights, DEFAULT_ROUTING_WEIGHTS);
+      for (const key of ADVANCED_ROUTE_PREFERENCE_KEYS) {
+        routing[key] = ADVANCED_ROUTE_OPTION_DEFAULTS[key];
+      }
+      for (const key of ADVANCED_ROUTE_RULE_KEYS) {
+        rules[key] = ADVANCED_ROUTE_OPTION_DEFAULTS[key];
+      }
+      buildAdvancedRoutingOptions();
       buildRoutingWeightsEditor();
       syncWeightsTunedBadge();
-      scheduleReroute();
-      showRouteActionToast('Routing weights reset to defaults', { duration: 2200 });
+      scheduleRescore();
+      showRouteActionToast('Advanced routing reset to defaults', { duration: 2200 });
     });
     selectSettingsPane(document.querySelector('[data-settings-pane].active')?.dataset.settingsPane || 'rules');
     settingsTabs.dataset.bound = 'true';
   }
 }
 
-// Route-shaping values must stay fixed for the lifetime of active navigation,
-// but the tabs remain useful documentation: riders can inspect every page and
-// see exactly what produced the route they are following. Voice controls stay
-// live because they affect presentation of the current ride, not its shape.
+// Route-shaping values stay fixed for the lifetime of active navigation, but
+// they remain fully legible instead of being greyed out. A tap is intercepted
+// before the control changes and explains how to unlock it. Voice controls
+// stay live because they affect presentation of the current ride, not its path.
 function syncSettingsNavigationLock() {
-  const controls = document.querySelectorAll(
-    '#settings-presets button, #settings-presets input, #settings-presets select, '
-    + '#settings-limits button, #settings-limits input, #settings-limits select, '
-    + '#settings-options button, #settings-options input, #settings-options select, '
-    + '#settings-display-options button, #settings-display-options input, #settings-display-options select, '
-    + '#settings-routes input, #settings-maps input, #settings-maps button, '
-    + '#advancedRoutingOptions input, #routingWeightsEditor input, '
-    + '#routingWeightsEditor button, #resetRoutingWeights'
-  );
-  controls.forEach((control) => {
-    if (turnNav.active) {
-      if (!control.hasAttribute('data-nav-lock-was-disabled')) {
-        control.dataset.navLockWasDisabled = String(control.disabled);
-      }
-      control.disabled = true;
-      control.setAttribute('aria-disabled', 'true');
-      return;
-    }
-    if (!control.hasAttribute('data-nav-lock-was-disabled')) return;
+  // Clean up disabled state left by an older shell before this interaction
+  // guard existed. Controls that were independently disabled stay disabled.
+  document.querySelectorAll('[data-nav-lock-was-disabled]').forEach((control) => {
     control.disabled = control.dataset.navLockWasDisabled === 'true';
     control.removeAttribute('data-nav-lock-was-disabled');
     if (!control.disabled) control.removeAttribute('aria-disabled');
   });
-  if (!turnNav.active) {
-    const note = document.getElementById('settingsNavLockNotice');
-    if (note) note.hidden = true;
-  }
+}
+
+function showSettingsNavigationLockDialog() {
+  const dialog = document.getElementById('settingsNavLockDialog');
+  if (dialog && !dialog.open) dialog.showModal();
+}
+
+function blockSettingsChangeDuringNavigation(event) {
+  if (!turnNav.active) return;
+  const pane = event.target.closest?.('.settings-pane');
+  if (!pane || pane.id === 'settings-voice') return;
+  const control = event.target.closest?.('button, input, select, label');
+  if (!control) return;
+  if (event.type === 'keydown' && ['Tab', 'Escape'].includes(event.key)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  showSettingsNavigationLockDialog();
+}
+
+const settingsPanel = document.getElementById('tab-settings');
+for (const eventName of ['pointerdown', 'click', 'keydown']) {
+  settingsPanel?.addEventListener(eventName, blockSettingsChangeDuringNavigation, true);
 }
 
 // The Routes screen builds its checkboxes after an asynchronous catalog load.
@@ -14510,21 +14531,6 @@ function syncSettingsNavigationLock() {
 const stateRoutesLockObserver = new MutationObserver(() => syncSettingsNavigationLock());
 const stateRoutesLockHost = document.getElementById('stateRoutesList');
 if (stateRoutesLockHost) stateRoutesLockObserver.observe(stateRoutesLockHost, { childList: true });
-
-// Placed just above the settings panes (not as a top-of-screen toast) so a
-// rider who taps a route-settings tab during navigation sees why it is locked
-// right where they are looking. Re-flashes on every tap.
-let settingsNavLockTimer = null;
-function flashSettingsNavLock() {
-  const note = document.getElementById('settingsNavLockNotice');
-  if (!note) return;
-  note.hidden = false;
-  note.classList.remove('flash');
-  void note.offsetWidth; // restart the flash animation on repeat taps
-  note.classList.add('flash');
-  clearTimeout(settingsNavLockTimer);
-  settingsNavLockTimer = setTimeout(() => { note.hidden = true; }, 4200);
-}
 
 function buildVoicePanel() {
   const host = document.getElementById('settingsVoice');
@@ -14780,16 +14786,16 @@ function syncLayersToggle() {
 }
 
 // Keep this focused on route conditions a rider may need to interpret. The
-// ferry symbol is self-explanatory, while the six entries below benefit from a
-// short explanation alongside their exact on-map badge.
+// ferry symbol is self-explanatory. Keep these six labels short enough to scan
+// at a glance; their fuller meaning remains in each item's accessible label.
 const ACTIVE_ROUTE_ICON_DEFINITIONS = [
-  ['route-dismount-marker-icon', 'Walk your bike', 'Dismount and walk here.'],
-  ['route-marker-steep', 'Steep hill', 'Grade 10% or steeper.'],
+  ['route-dismount-marker-icon', 'Walk your bike', 'Dismount here.'],
+  ['route-marker-steep', 'Steep hill', 'Grade of 10% or more.'],
   ['route-marker-traffic', 'Heavy traffic', 'High traffic volume.'],
-  ['route-marker-unpaved', 'Unpaved', 'Gravel or another loose surface.'],
-  ['route-marker-fail', 'Fails rules', 'One or more safety limits are exceeded.'],
+  ['route-marker-unpaved', 'Unpaved', 'Loose surface.'],
+  ['route-marker-fail', 'Fails rules', 'Outside your safety limits.'],
   ['route-marker-fail-designated', 'Bike route fails rules',
-    'Official bike route, but safety limits are exceeded.'],
+    'Official route, but outside your safety limits.'],
 ];
 
 function buildActiveRouteIconLegend() {
@@ -14822,13 +14828,9 @@ function renderActiveRouteIconItems(host) {
     canvas.style.height = `${Math.round(image.height / image.pixelRatio)}px`;
     const pixels = new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
     canvas.getContext('2d').putImageData(pixels, 0, 0);
-    const copy = document.createElement('span');
     const strong = document.createElement('strong');
     strong.textContent = label;
-    const description = document.createElement('small');
-    description.textContent = detail;
-    copy.append(strong, description);
-    item.append(canvas, copy);
+    item.append(canvas, strong);
     host.append(item);
   }
 }
@@ -14985,20 +14987,27 @@ function syncAdvancedToolsVisibility() {
 // the changed state remains discoverable whenever the advanced UI is enabled.
 function syncWeightsTunedBadge() {
   const button = document.getElementById('settings-tab-weights');
-  const off = Object.keys(DEFAULT_ROUTING_WEIGHTS)
+  const changedWeights = Object.keys(DEFAULT_ROUTING_WEIGHTS)
     .filter((key) => routingWeights[key] !== DEFAULT_ROUTING_WEIGHTS[key]);
+  const changedOptions = [
+    ...ADVANCED_ROUTE_PREFERENCE_KEYS.filter((key) =>
+      routing[key] !== ADVANCED_ROUTE_OPTION_DEFAULTS[key]),
+    ...ADVANCED_ROUTE_RULE_KEYS.filter((key) =>
+      rules[key] !== ADVANCED_ROUTE_OPTION_DEFAULTS[key]),
+  ];
+  const changed = changedWeights.length + changedOptions.length;
   if (button) {
-    button.classList.toggle('tuned', off.length > 0);
-    button.title = off.length
-      ? `Advanced routing weights (${off.length} changed from default)`
+    button.classList.toggle('tuned', changed > 0);
+    button.title = changed
+      ? `Advanced routing (${changed} changed from default)`
       : 'Advanced routing weights';
   }
   const notice = document.getElementById('weightsModifiedNotice');
   if (notice) {
-    notice.hidden = off.length === 0;
-    notice.textContent = off.length === 1
-      ? 'Weights have been modified (1 change)'
-      : `Weights have been modified (${off.length} changes)`;
+    notice.hidden = changed === 0;
+    notice.textContent = changed === 1
+      ? 'Advanced routing has been modified (1 change)'
+      : `Advanced routing has been modified (${changed} changes)`;
   }
 }
 // Static markup on the weights page; prepareRoutingWeightsPane() keeps its

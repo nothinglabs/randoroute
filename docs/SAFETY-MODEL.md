@@ -602,7 +602,7 @@ Preference, never permission.
 The separate, default-off **Follow designated bike routes even if they fail
 safety rules (use with caution)**
 option is an explicit exception in route *cost*, not in the safety ladder. It
-lets a signed route earn a 0.12 multiplier even when the segment fails the
+lets a signed route earn a 0.15 multiplier even when the segment fails the
 rider's limits, slightly stronger than the ordinary trail multiplier of 0.16
 so short geometric shortcuts do not make the route hop off and back on. The
 same segment still evaluates and renders as failing, still appears in the
@@ -612,7 +612,7 @@ surface costs are not erased.
 
 **Preferred routes** (Settings → Routes, or the checkbox on a tapped route
 ribbon's card) are the same exception scoped to individual signed routes: each
-marked route's edges earn the identical 0.12 multiplier with the identical
+marked route's edges earn the identical 0.15 multiplier with the identical
 carve-outs, while every other signed route stays ordinarily priced. The graph
 stores only an anonymous on-a-signed-route flag, so the router worker matches
 the chosen routes' overlay geometry onto its own edges (`preferred-routes`

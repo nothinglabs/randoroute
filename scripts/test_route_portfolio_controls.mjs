@@ -185,7 +185,8 @@ const ui = await page.evaluate(() => {
     bikeRouteToggleExists: !!bikeRouteToggle,
     bikeRouteToggleInAdvanced: !!bikeRouteToggle?.closest('#advancedRoutingOptions'),
     bikeRouteDefaultChecked: bikeRouteToggle?.checked === true,
-    bikeRouteLabel: bikeRouteToggle?.closest('label')?.textContent.trim() || '',
+    bikeRouteLabel: bikeRouteToggle?.closest('label')
+      ?.querySelector('.weights-route-option-label')?.textContent.trim() || '',
   };
   routing.selectRecommendedNext = false;
   routing.pinnedLetters = [{ letter: 'A', profileId: 'old-ferry-route' }];
@@ -199,7 +200,9 @@ const ui = await page.evaluate(() => {
   }
   out.bikeRouteRuleOn = rules.alwaysPreferBikeRoutes === true;
   out.ruleOff = rules.allowFerries === false;
-  out.freshPortfolio = routing.selectRecommendedNext === true;
+  out.deferredUntilSettingsClose = settingsRouteChangesPending === true;
+  out.settingsStayedOpen = settingsMenuIsOpen()
+    && document.getElementById('settings-weights')?.hidden === false;
   // Restore the global for the rest of this browser session.
   setRouteOptionsLoading(false);
   if (toggle) {
@@ -221,8 +224,8 @@ check('the six expert switches live in Advanced routing, not Options',
     && ui.advancedAbsentFromOptions && ui.weightsVisible && ui.tabsVisible && ui.defaultChecked
     && ui.ferryHint === '',
   JSON.stringify(ui));
-check('turning ferries off updates the rule and requests a fresh portfolio',
-  ui.ruleOff && ui.freshPortfolio, JSON.stringify(ui));
+check('turning ferries off updates the rule and defers one reroute until Settings closes',
+  ui.ruleOff && ui.deferredUntilSettingsClose && ui.settingsStayedOpen, JSON.stringify(ui));
 check('the strong signed-route preference lives in Advanced routing and defaults off',
   ui.bikeRouteToggleExists && ui.bikeRouteToggleInAdvanced
     && !ui.bikeRouteDefaultChecked

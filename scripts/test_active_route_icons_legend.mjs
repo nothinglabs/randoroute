@@ -46,7 +46,7 @@ const opened = await page.evaluate(() => {
     gridColumns: getComputedStyle(document.getElementById('activeRouteIconLegendItems')).gridTemplateColumns,
     hasKicker: /Map guide/i.test(legend.textContent),
     labels: items.map((item) => item.getAttribute('aria-label')),
-    descriptions: items.map((item) => item.querySelector('small')?.textContent || ''),
+    hasSecondaryCopy: items.some((item) => item.querySelector('small')),
     colorCount: legend.querySelectorAll('.active-route-color-item, .active-route-color-guide').length,
     painted: items.every((item) => {
       const canvas = item.querySelector('canvas');
@@ -61,12 +61,13 @@ check('the map legend button opens Route Icons with the Layers pane',
   JSON.stringify(opened));
 check('the retired Route colors section stays gone', opened.colorCount === 0,
   JSON.stringify(opened));
-check('all six useful route icon meanings are present, explained, and painted',
+check('all six useful route icon meanings are present, concise, and painted',
   opened.count === 6 && opened.painted
     && opened.labels.some((label) => /Bike route fails rules/.test(label))
     && !opened.labels.some((label) => /MTB|Technical trail/.test(label))
     && !opened.labels.some((label) => /Ferry/.test(label))
-    && opened.descriptions.every((description) => description.length >= 12),
+    && opened.labels.every((label) => label.includes(':'))
+    && !opened.hasSecondaryCopy,
   JSON.stringify(opened));
 
 await page.evaluate(() => document.getElementById('activeRouteIconLegendClose').click());

@@ -111,6 +111,53 @@ check('preset cards use their space for useful plain-language descriptions',
       && card.height >= 50 && !card.clipped),
   JSON.stringify(presetCards));
 
+/* ---------------- presets do not own the expert route-shaping options */
+const presetIndependence = await page.evaluate(() => {
+  window.confirm = () => true;
+  applyRoutingPreset('weekend-wanderer');
+  const note = document.getElementById('settingsRulesPresetNote');
+  const activeHeight = note.getBoundingClientRect().height;
+  const activeCopy = note.textContent;
+  rules.alwaysPreferBikeRoutes = true;
+  rules.allowSidewalkFallback = false;
+  rules.allowMtbTrails = true;
+  rules.allowFerries = false;
+  routing.prefDesig = false;
+  routing.prefResidential = false;
+  syncPresetSelection();
+  const activeAfterOptions = activeRoutingPreset()?.id;
+  applyRoutingPreset('casual-cruiser');
+  const preserved = rules.alwaysPreferBikeRoutes === true
+    && rules.allowSidewalkFallback === false && rules.allowMtbTrails === true
+    && rules.allowFerries === false && routing.prefDesig === false
+    && routing.prefResidential === false;
+  rules.minShoulder += 1;
+  syncPresetSelection();
+  const customHeight = note.getBoundingClientRect().height;
+  const customCopy = note.textContent;
+  Object.assign(rules, {
+    alwaysPreferBikeRoutes: ADVANCED_ROUTE_OPTION_DEFAULTS.alwaysPreferBikeRoutes,
+    allowSidewalkFallback: ADVANCED_ROUTE_OPTION_DEFAULTS.allowSidewalkFallback,
+    allowMtbTrails: ADVANCED_ROUTE_OPTION_DEFAULTS.allowMtbTrails,
+    allowFerries: ADVANCED_ROUTE_OPTION_DEFAULTS.allowFerries,
+  });
+  Object.assign(routing, {
+    prefDesig: ADVANCED_ROUTE_OPTION_DEFAULTS.prefDesig,
+    prefResidential: ADVANCED_ROUTE_OPTION_DEFAULTS.prefResidential,
+  });
+  return { activeCopy, activeAfterOptions, preserved, customCopy,
+    heightShift: Math.abs(customHeight - activeHeight) };
+});
+check('advanced route options remain independent when a safety preset changes',
+  presetIndependence.activeAfterOptions === 'weekend-wanderer'
+    && presetIndependence.preserved,
+  JSON.stringify(presetIndependence));
+check('the Rules notice keeps its space and changes to custom-profile wording',
+  /Changes override/.test(presetIndependence.activeCopy)
+    && /custom rules profile/i.test(presetIndependence.customCopy)
+    && presetIndependence.heightShift < 0.5,
+  JSON.stringify(presetIndependence));
+
 /* ---------------- route settings stay inspectable, but fixed, while riding */
 const navigationLock = await page.evaluate(() => {
   turnNav.active = true;
@@ -124,31 +171,37 @@ const navigationLock = await page.evaluate(() => {
   )];
   const voiceControls = [...document.querySelectorAll(
     '#settings-voice button, #settings-voice input, #settings-voice select')];
+  const routeCheckbox = document.querySelector('#settings-options input[type="checkbox"]');
+  const routeBefore = routeCheckbox?.checked;
+  const rulesVisible = !document.getElementById('settings-rules').hidden;
+  routeCheckbox?.click();
+  const lockDialog = document.getElementById('settingsNavLockDialog');
+  const routeBlocked = routeCheckbox?.checked === routeBefore && lockDialog?.open;
+  lockDialog?.close();
+  document.getElementById('settings-tab-voice').click();
+  const voiceCheckbox = document.querySelector('#settings-voice input[type="checkbox"]');
+  const voiceBefore = voiceCheckbox?.checked;
+  voiceCheckbox?.click();
   const result = {
-    rulesVisible: !document.getElementById('settings-rules').hidden,
+    rulesVisible,
     limitsAndOptionsCombined: !!document.querySelector('#settings-rules > #settings-limits')
       && !!document.querySelector('#settings-rules > #settings-options'),
     tabsEnabled: !rulesTab.disabled,
-    routeControlsLocked: routeControls.length > 0 && routeControls.every((control) => control.disabled),
+    routeControlsLegible: routeControls.length > 0 && routeControls.every((control) => !control.disabled),
+    routeBlocked,
     voiceControlsLive: voiceControls.length > 0 && voiceControls.every((control) => !control.disabled),
-    noticeVisible: !document.getElementById('settingsNavLockNotice').hidden,
-    noticeText: document.getElementById('settingsNavLockNotice').textContent,
+    voiceChanged: voiceCheckbox?.checked !== voiceBefore,
   };
   turnNav.active = false;
   refreshNavigationUI();
-  result.routeControlsRestored = routeControls.some((control) => !control.disabled);
-  result.noticeCleared = document.getElementById('settingsNavLockNotice').hidden;
   return result;
 });
 check('navigation keeps every Settings tab browsable while route values are read-only',
   navigationLock.rulesVisible && navigationLock.limitsAndOptionsCombined && navigationLock.tabsEnabled
-    && navigationLock.routeControlsLocked && navigationLock.noticeVisible
-    && /Stop navigation/.test(navigationLock.noticeText)
-    && !/Pause navigation/.test(navigationLock.noticeText),
+    && navigationLock.routeControlsLegible && navigationLock.routeBlocked,
   JSON.stringify(navigationLock));
-check('Voice-Nav stays live during the ride and route settings unlock when it stops',
-  navigationLock.voiceControlsLive && navigationLock.routeControlsRestored
-    && navigationLock.noticeCleared,
+check('Voice-Nav stays live during the ride',
+  navigationLock.voiceControlsLive && navigationLock.voiceChanged,
   JSON.stringify(navigationLock));
 
 /* ------------------------------------- re-picking the active preset is a no-op */

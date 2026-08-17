@@ -767,11 +767,11 @@ let maxFerryMps = FERRY_MAX_MPS_FALLBACK;
 // bound tight without assuming which tags the data happens to carry.
 // The explicit "always prefer" option is intentionally a little stronger than
 // the ordinary shared-path price. Equal pricing still let a tiny geometric
-// shortcut pull the route off a signed corridor and then rejoin it; 0.12 versus
+// shortcut pull the route off a signed corridor and then rejoin it; 0.15 versus
 // the shipped path weight of 0.16 gives the designation enough continuity to
 // win that close call without making it an absolute constraint. Rider-edited
 // path weights below this still win, so the advanced control remains truthful.
-const ALWAYS_PREFER_SIGNED_ROUTE_MULT = 0.12;
+const ALWAYS_PREFER_SIGNED_ROUTE_MULT = 0.15;
 function preferredSignedRouteMult() {
   return Math.min(activeWeights.facilityPath, activeWeights.strongDesignated,
     ALWAYS_PREFER_SIGNED_ROUTE_MULT);
@@ -781,7 +781,7 @@ function preferredSignedRouteMult() {
 // (alwaysPreferBikeRoutes) trusts EVERY signed edge; a per-route Preferred
 // (Settings -> Routes) trusts the edges of just the chosen routes. Both are
 // routing lenses, not safety verdicts -- the trusted edge is priced like the
-// best off-street path (better: 0.12 vs the shipped 0.16), and its actual
+// best off-street path (slightly better: 0.15 vs the shipped 0.16), and its actual
 // verdict still colors the map and the route.
 function trustRouteEdge(ei, fl, rules) {
   if (!(fl & 64) || (fl & 32) || isDismountEdge(ei)) return false;

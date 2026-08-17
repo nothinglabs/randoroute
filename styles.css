@@ -684,15 +684,14 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 }
 .active-route-icon-legend[hidden] { display: none; }
 .active-route-icon-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.active-route-icon-head h2 { margin: 0; color: #233f50; font: 820 15px/1.1 system-ui; }
-#activeRouteIconLegendClose { flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: #edf1f4; color: #50636e; font: 750 15px/1 system-ui; cursor: pointer; }
-.active-route-icon-intro { margin: 3px 0 7px; color: #506875; font: 650 9.5px/1.2 system-ui; }
-.active-route-icon-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
-.active-route-icon-item { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 38px; padding: 4px 6px; border: 1px solid #dbe6ec; border-radius: 8px; background: rgba(255,255,255,.88); }
-.active-route-icon-item canvas { flex: none; width: 25px !important; height: 25px !important; object-fit: contain; }
-.active-route-icon-item span { display: grid; gap: 2px; min-width: 0; }
-.active-route-icon-item strong { color: #294554; font: 800 10.5px/1.08 system-ui; }
-.active-route-icon-item small { color: #617580; font: 620 8.3px/1.12 system-ui; }
+.active-route-icon-head h2 { margin: 0; color: #233f50; font: 820 18px/1.1 system-ui; }
+#activeRouteIconLegendClose { flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 9px; background: #edf1f4; color: #50636e; font: 750 17px/1 system-ui; cursor: pointer; }
+.active-route-icon-intro { margin: 3px 0 5px; color: #506875; font: 650 12px/1.2 system-ui; }
+.active-route-icon-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; margin-top: 2px; }
+.active-route-icon-item { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 43px; padding: 4px 2px; border: 0; border-bottom: 1px solid rgba(184,206,219,.55); background: transparent; }
+.active-route-icon-item:nth-last-child(-n + 2) { border-bottom: 0; }
+.active-route-icon-item canvas { flex: none; width: 33px !important; height: 33px !important; object-fit: contain; }
+.active-route-icon-item strong { min-width: 0; color: #294554; font: 800 13px/1.12 system-ui; }
 #map .maplibregl-ctrl-top-right, #map .maplibregl-ctrl-bottom-right { z-index: 16; }
 #map .maplibregl-ctrl-bottom-right { transition: bottom .2s ease; }
 /* The location button sits with the map's own furniture: under the scale, at
@@ -1624,9 +1623,12 @@ body.street-view-open #map { visibility: hidden; }
 .weights-route-options h3 { margin: 0; color: #264a60; font: 800 15px/1.2 system-ui; }
 .weights-route-options > p { margin: 3px 0 10px; color: #56707e; font: 550 11.5px/1.4 system-ui; }
 .weights-route-options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 7px; }
-.weights-route-option { display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 7px 9px; border: 1px solid #cbdbe5; border-radius: 9px; background: rgba(255,255,255,.9); color: #294554; font: 720 12px/1.25 system-ui; cursor: pointer; }
+.weights-route-option { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 42px; padding: 7px 9px; border: 1px solid #cbdbe5; border-radius: 9px; background: rgba(255,255,255,.9); color: #294554; font: 720 12px/1.25 system-ui; cursor: pointer; }
 .weights-route-option input { flex: 0 0 auto; width: 18px; height: 18px; accent-color: #0a66c2; }
 .weights-route-option:has(input:checked) { border-color: #69a9d1; background: #e9f5fb; color: #075f91; }
+.weights-route-option.changed { border-color: #d59a3b; box-shadow: inset 3px 0 #b66a00; }
+.weights-route-option-state { padding: 2px 5px; border-radius: 999px; background: #fff0d2; color: #875000; font: 800 9px/1.1 system-ui; text-transform: uppercase; letter-spacing: .03em; }
+.weights-route-option-state[hidden] { display: none; }
 .weights-route-option:has(input:disabled) { opacity: .58; cursor: default; }
 .rule-caution-copy { color: var(--verdict-fail); font-weight: 900; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
 /* One cost, described once, with its mode sliders underneath. The block is the
@@ -1728,13 +1730,6 @@ body.navigation-active .maplibregl-user-location-accuracy-circle { display: none
 #routeOptions button.nav-locked { opacity: .45; }
 #routeOptions button.nav-locked.active { opacity: .7; }
 body.navigation-active .settings-pane :disabled { cursor: not-allowed; opacity: .58; }
-/* Shown just above the settings panes (not as a top-screen toast) when a rider
-   taps a locked route-settings tab during navigation, so it lands in view. */
-.settings-nav-lock { margin: 4px 1px 3px; padding: 7px 10px; border: 1px solid #e6b64c; border-radius: 8px; background: #fff6e2; color: #7a4e07; font: 750 11.5px/1.3 system-ui; }
-.settings-nav-lock[hidden] { display: none; }
-.settings-nav-lock.flash { animation: navLockFlash .55s ease; }
-@keyframes navLockFlash { 0% { background: #ffdd82; } 100% { background: #fff6e2; } }
-
 #navDetailsBtn { flex: none; align-self: center; margin-left: 4px; padding: 7px 10px; border: 1px solid #74b9a5; border-radius: 9px; background: #fff; color: #00795c; font: 750 11px system-ui; cursor: pointer; }
 
 /* The three "needs space" conditions read as one sentence, so they are
@@ -1771,10 +1766,6 @@ body.settings-panel-active .settings-panel-head .settings-help-btn,
 body.settings-panel-active .settings-panel-head .panel-view-close {
   flex-basis: 38px; width: 38px; height: 38px; min-height: 38px; max-height: 38px;
   font-size: 17px;
-}
-body.settings-panel-active .settings-nav-lock {
-  flex: none; width: min(100% - 28px, 920px); margin: 10px auto 0;
-  padding: 10px 12px; font-size: 12.5px;
 }
 body.settings-panel-active .settings-tabs {
   flex: none; display: block; width: min(100% - 28px, 920px);
@@ -1868,9 +1859,11 @@ body.settings-panel-active .settings-weights-pane .weights-body {
 .settings-preset-override-note {
   margin: 0 0 5px; padding: 5px 8px; border: 1px solid #d7b36b;
   border-radius: 8px; background: #fff8e9; color: #714c0b;
-  font: 700 10px/1.15 system-ui; overflow: hidden; text-overflow: ellipsis;
+  min-height: 25px; box-sizing: border-box; font: 700 11px/1.15 system-ui;
+  overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap;
 }
+.settings-preset-override-note.custom { border-color: #b9cbd6; background: #f1f6f9; color: #405965; }
 
 @media (min-width: 760px) {
   body.settings-panel-active #settings-rules {
@@ -1889,34 +1882,33 @@ body.settings-panel-active .settings-weights-pane .weights-body {
   }
   body.settings-panel-active .settings-panel-head > strong { font-size: 18px; }
   body.settings-panel-active .settings-tabs,
-  body.settings-panel-active .settings-pane,
-  body.settings-panel-active .settings-nav-lock { width: calc(100% - 20px); }
-  body.settings-panel-active .settings-tabs { padding-top: 5px; padding-bottom: 5px; }
-  body.settings-panel-active .settings-tab-pair { gap: 4px; }
-  body.settings-panel-active .settings-tabs button { min-height: 28px; padding: 3px 5px; font-size: 10.5px; }
-  body.settings-panel-active .settings-tabs .settings-weights-tab { font-size: 16px; }
+  body.settings-panel-active .settings-pane { width: calc(100% - 20px); }
+  body.settings-panel-active .settings-tabs { padding-top: 6px; padding-bottom: 6px; }
+  body.settings-panel-active .settings-tab-pair { gap: 5px; }
+  body.settings-panel-active .settings-tabs button { min-height: 33px; padding: 4px 5px; font-size: 11.5px; }
+  body.settings-panel-active .settings-tabs .settings-weights-tab { font-size: 17px; }
   .settings-weights-toolbar { align-items: flex-start; }
   .settings-weights-toolbar > strong { font-size: 15px; }
   .settings-weights-toolbar .weights-head-actions { gap: 5px; }
   .settings-weights-toolbar :is(.weights-considered, .weights-reset) {
     min-height: 34px; padding: 0 8px; font-size: 10px;
   }
-  body.settings-panel-active .settings-rules-section { margin-bottom: 4px; padding: 4px 6px; }
+  body.settings-panel-active .settings-rules-section { margin-bottom: 5px; padding: 5px 7px; }
   body.settings-panel-active .settings-rules-section > h2 {
-    margin-bottom: 3px; padding-bottom: 2px; font-size: 11px;
+    margin-bottom: 4px; padding-bottom: 3px; font-size: 12px;
   }
   body.settings-panel-active #settingsSliders .rule-card,
   body.settings-panel-active #settingsOptions .rule-card,
   body.settings-panel-active #settingsDisplayOptions .rule-card,
-  body.settings-panel-active #settingsVoice .rule-card { min-height: 31px; padding: 3px 6px; }
+  body.settings-panel-active #settingsVoice .rule-card { min-height: 34px; padding: 4px 7px; }
   body.settings-panel-active #settingsSliders .rule-head {
-    min-height: 14px; margin-bottom: 0; font-size: 10.5px; line-height: 1.05;
+    min-height: 15px; margin-bottom: 1px; font-size: 11.5px; line-height: 1.1;
   }
-  body.settings-panel-active #settingsSliders .rule-card input[type="range"] { height: 13px; }
+  body.settings-panel-active #settingsSliders .rule-card input[type="range"] { height: 14px; }
   body.settings-panel-active #settingsOptions .rule-check,
-  body.settings-panel-active #settingsDisplayOptions .rule-check { font-size: 11px; line-height: 1.1; }
+  body.settings-panel-active #settingsDisplayOptions .rule-check { font-size: 12px; line-height: 1.15; }
   body.settings-panel-active #settings-limits .rule-group-head {
-    margin: 3px 2px 1px; font-size: 10.5px;
+    margin: 4px 2px 2px; font-size: 11.5px;
   }
   body.settings-panel-active #settings-limits .rule-sub { margin-left: 10px; padding-left: 6px; }
 }
