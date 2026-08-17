@@ -178,41 +178,38 @@ function ensureRouteMarkerImages(targetMap) {
     b.disc(8 * s, 11.2 * s, 0.95 * s, ink);
     add('route-marker-fail', b);
   }
-  { // fail-designated: the plain fail badge's bold ! with a really SMALL
-    // bicycle tucked beneath it. The concern is the message; the bike is
-    // only the differentiator that says "and this is a signed bike route"
-    // (field direction: focus on the !, keep the bike tiny). One red.
+  { // fail-designated: one strong warning mark in a two-tone badge. The old
+    // badge squeezed a tiny bicycle beside a tiny exclamation point; at map
+    // size that became a ragged cluster of unrelated pixels. This keeps the
+    // ordinary fail badge's immediately recognisable `!`, while the olive
+    // lower rim matches the designated-route map underlay. The distinction is
+    // carried by the badge itself instead of a second microscopic pictogram.
     const b = paintMarkerBadge([176, 32, 32, 255]);
-    const s = b.s, ink = [176, 32, 32, 255];
-    // The exclamation slightly slimmer than route-marker-fail's and shifted
-    // left; the bike sits LOW in the right half (field direction: bike
-    // lower, ! a touch smaller, bike clearer). The wheels are SOLID discs --
-    // ring wheels at this size read as eyeglasses, not a bicycle -- larger
-    // than before, with a level top bar, a saddle tick over the rear wheel
-    // and a stem-and-handlebar over the front.
-    // The ! is painted on INTEGER pixels: at x = 6.4 units its centre fell
-    // on pixel 19.2, and every disc the stroke laid down rounded
-    // asymmetrically -- ragged single-pixel steps along both edges and a
-    // tail under the dot (field: "glitchy on the !"). A squared bar painted
-    // as an explicit rectangle plus one centred disc leaves nothing to
-    // rounding.
-    const bx = Math.round(6.4 * s), bh = Math.round(0.7 * s);
-    for (let y = Math.round(5.7 * s); y <= Math.round(8.9 * s); y++) {
-      for (let x = bx - bh; x <= bx + bh; x++) b.paint(x, y, ink);
+    const s = b.s;
+    const failInk = [176, 32, 32, 255];
+    const routeInk = [95, 128, 0, 255];
+
+    // Repaint only the lower portion of the existing outer ring. A broad arc
+    // survives downsampling cleanly and reads as one polished badge rather
+    // than two icons fighting for the same 24 pixels.
+    const cx = 8 * s, cy = 8 * s, outer = 7.6 * s, inner = outer - 1.4 * s;
+    for (let y = Math.round(10.2 * s); y < b.height; y++) {
+      for (let x = 0; x < b.width; x++) {
+        const distance = Math.hypot(x - cx, y - cy);
+        if (distance >= inner && distance <= outer) b.paint(x, y, routeInk);
+      }
     }
-    b.disc(bx, Math.round(10.5 * s), 0.85 * s, ink);
-    const rearHub = [9.5 * s, 10.2 * s], frontHub = [12.4 * s, 10.2 * s];
-    b.disc(rearHub[0], rearHub[1], 1.0 * s, ink);
-    b.disc(frontHub[0], frontHub[1], 1.0 * s, ink);
-    b.stroke(rearHub[0], rearHub[1], 10.1 * s, 8.7 * s, 0.6 * s, ink);
-    b.stroke(10.1 * s, 8.7 * s, 11.9 * s, 8.7 * s, 0.6 * s, ink);
-    b.stroke(11.9 * s, 8.7 * s, frontHub[0], frontHub[1], 0.6 * s, ink);
-    // Saddle and handlebar above the bar: the nubs that make a
-    // trapezoid-on-wheels read as a bicycle rather than a little car.
-    b.stroke(9.0 * s, 7.9 * s, 9.95 * s, 7.9 * s, 0.6 * s, ink);
-    b.stroke(10.1 * s, 8.7 * s, 9.55 * s, 7.95 * s, 0.5 * s, ink);
-    b.stroke(12.1 * s, 8.7 * s, 12.1 * s, 7.95 * s, 0.55 * s, ink);
-    b.stroke(11.6 * s, 7.75 * s, 12.65 * s, 7.75 * s, 0.6 * s, ink);
+
+    // A centred, squared exclamation stays crisp after MapLibre downsamples
+    // the 3x backing image. It is deliberately almost the size of the plain
+    // fail glyph: designation must never weaken the warning.
+    const bx = Math.round(8 * s), halfWidth = Math.round(0.82 * s);
+    for (let y = Math.round(4.6 * s); y <= Math.round(8.6 * s); y++) {
+      for (let x = bx - halfWidth; x <= bx + halfWidth; x++) {
+        b.paint(x, y, failInk);
+      }
+    }
+    b.disc(bx, 10.55 * s, 0.92 * s, failInk);
     add('route-marker-fail-designated', b);
   }
   // Combined badges: a spot can be steep AND trafficked, and one badge must

@@ -208,12 +208,31 @@ check('a tap on the drawn route answers for the route, not the street beneath',
     && routeClaim.awayLayer !== 'route-seg-hit',
   JSON.stringify(routeClaim));
 
-const failLayer = await page.evaluate(() => ({
-  hasDesignatedImage: Boolean(map.style.getImage('route-marker-fail-designated')),
-  allowOverlap: map.getLayoutProperty('route-fail-marker', 'icon-allow-overlap'),
-  ignorePlacement: map.getLayoutProperty('route-fail-marker', 'icon-ignore-placement'),
-}));
-check('the bike-! icon is registered for active routes', failLayer.hasDesignatedImage,
+const failLayer = await page.evaluate(() => {
+  const designated = map.style.getImage('route-marker-fail-designated');
+  const plain = map.style.getImage('route-marker-fail');
+  const countColor = (image, expected) => {
+    const pixels = image?.data?.data;
+    if (!pixels) return 0;
+    let count = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (expected.every((channel, offset) => pixels[i + offset] === channel)) count++;
+    }
+    return count;
+  };
+  return {
+    hasDesignatedImage: Boolean(designated),
+    designatedOlivePixels: countColor(designated, [95, 128, 0, 255]),
+    plainOlivePixels: countColor(plain, [95, 128, 0, 255]),
+    allowOverlap: map.getLayoutProperty('route-fail-marker', 'icon-allow-overlap'),
+    ignorePlacement: map.getLayoutProperty('route-fail-marker', 'icon-ignore-placement'),
+  };
+});
+check('the designated-route failure icon is registered for active routes',
+  failLayer.hasDesignatedImage,
+  JSON.stringify(failLayer));
+check('the designated failure badge carries a clean route-colored rim',
+  failLayer.designatedOlivePixels >= 20 && failLayer.plainOlivePixels === 0,
   JSON.stringify(failLayer));
 check('fail icons cannot be removed by symbol collisions',
   failLayer.allowOverlap === true && failLayer.ignorePlacement === true,
