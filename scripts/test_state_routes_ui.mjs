@@ -58,6 +58,11 @@ const routesScreen = await page.evaluate(async () => {
   out.messageKey = message?.key ?? null;
   out.messageLines = message?.lines?.length ?? 0;
   out.badgeShown = !row.querySelector('.state-route-preferred-badge').hidden;
+  const routeSource = SOURCES.find((source) => source.id === 'routes');
+  const matchingFeature = routeSource.fc.features.find((feature) =>
+    routeOverlayNames(feature.properties).includes(out.toggledName));
+  out.mapFeaturePreferred = matchingFeature?.properties?.pr === 1;
+  out.routeOpacityStyle = map.getPaintProperty('routes', 'line-opacity');
   out.persisted = (preferredRoutesByState[Region.id] || []).slice();
   // Per-state: the OTHER state's slot is untouched by this toggle.
   out.otherStatesUntouched = Object.keys(preferredRoutesByState).every((id) => id === Region.id);
@@ -69,6 +74,7 @@ const routesScreen = await page.evaluate(async () => {
   box.dispatchEvent(new Event('change'));
   await new Promise((resolve) => setTimeout(resolve, 150));
   out.ruleKeyCleared = rules.preferredRoutes || null;
+  out.mapFeatureCleared = matchingFeature?.properties?.pr === 0;
   selectPanelTab('route');
   return out;
 });
@@ -86,7 +92,14 @@ check('reviewed routes are grouped separately from OSM without implying safety',
 check('marking Preferred sets the rules key and sends the worker the geometry',
   routesScreen.ruleKey === routesScreen.toggledName
     && routesScreen.messageKey === routesScreen.toggledName
-    && routesScreen.messageLines > 0 && routesScreen.badgeShown,
+    && routesScreen.messageLines > 0 && routesScreen.badgeShown
+    && routesScreen.mapFeaturePreferred,
+  JSON.stringify(routesScreen));
+check('a Preferred route gets a modest map-opacity lift and clears it again',
+  Array.isArray(routesScreen.routeOpacityStyle)
+    && routesScreen.routeOpacityStyle[0] === 'case'
+    && routesScreen.routeOpacityStyle[2] > routesScreen.routeOpacityStyle[3]
+    && routesScreen.mapFeatureCleared,
   JSON.stringify(routesScreen));
 check('the choice persists per state and unmarking clears it',
   routesScreen.persisted.includes(routesScreen.toggledName)
@@ -257,12 +270,11 @@ for (let attempt = 0; attempt < 3 && !tapped.toggles.length; attempt++) {
     }));
   }
 }
-// Whichever card won the hit test -- the ribbon's own (titled by the route,
-// plain "Prefer route" label) or a road/trail card (label names the
-// route) -- the checkbox must identify the Interurban Trail.
+// Whichever card won the hit test, the control itself must always identify the
+// route. Relying on the card title made the same action read differently on a
+// route ribbon than on its underlying trail or road.
 check('tapping the route on the real map offers its Preferred checkbox',
-  tapped.toggles.some((label) => /Interurban Trail/.test(label))
-    || (tapped.toggles.includes('Prefer route') && /Interurban Trail/.test(tapped.title)),
+  tapped.toggles.some((label) => label === 'Prefer route: Interurban Trail'),
   JSON.stringify(tapped));
 await page.evaluate(() => dismissRoadInfo());
 

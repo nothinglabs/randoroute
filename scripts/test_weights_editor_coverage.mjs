@@ -59,6 +59,10 @@ assert.strictEqual(box.OUT.validate({ useMeasuredTraffic: 999 }).useMeasuredTraf
   'app validation must clamp useMeasuredTraffic above its semantic maximum');
 assert.strictEqual(box.OUT.validate({ useMeasuredTraffic: -999 }).useMeasuredTraffic, 0,
   'app validation must clamp useMeasuredTraffic below its semantic minimum');
+assert.strictEqual(box.OUT.validate({ preferredRoute: 999 }).preferredRoute, 1,
+  'app validation must clamp the Preferred-route multiplier above 1');
+assert.strictEqual(box.OUT.validate({ preferredRoute: -999 }).preferredRoute, 0.05,
+  'app validation must keep the Preferred-route multiplier positive');
 
 /* ------------------------------------------- every weight is reachable */
 const defKeys = new Set(Object.keys(defaults));

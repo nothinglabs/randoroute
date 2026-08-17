@@ -101,12 +101,19 @@ const advancedOptions = await pg.evaluate(() => {
       && descriptions.compareDocumentPosition(sliders) & Node.DOCUMENT_POSITION_FOLLOWING,
     designatedLabel: document.querySelector('label[for="r-prefDesig"] span')?.textContent,
     note: routeOptions.querySelector('p')?.textContent,
+    preferredWeightLabel: document.querySelector('input[data-weight="preferredRoute"]')
+      ?.closest('.weight-cost')?.querySelector('h4')?.textContent,
+    preferredWeightHint: document.querySelector('input[data-weight="preferredRoute"]')
+      ?.closest('.weight-cost')?.querySelector('.weight-hint')?.textContent,
   };
 });
 check('expert route switches sit above the weights in Advanced routing',
   advancedOptions.allPresent && advancedOptions.allInAdvanced
     && advancedOptions.absentFromEveryday && advancedOptions.readingOrder
     && advancedOptions.designatedLabel === 'Heavily prefer designated bike routes'
+    && advancedOptions.preferredWeightLabel === 'Strong Preferred-route pull'
+    && /moderate and neutral alternatives/.test(advancedOptions.preferredWeightHint)
+    && /never compounds/.test(advancedOptions.preferredWeightHint)
     && /Independent of presets/.test(advancedOptions.note),
   JSON.stringify(advancedOptions));
 
@@ -170,13 +177,15 @@ const wired = await pg.evaluate(() => {
   // express the default -- it would silently snap on first render.
   const snapped = inputs.filter((i) => Number(i.value) !== routingWeights[i.dataset.weight])
     .map((i) => `${i.dataset.weight}: shows ${i.value}, holds ${routingWeights[i.dataset.weight]}`);
-  return { count: keys.length, unknown, missing, dupes, snapped };
+  return { count: keys.length, expected: Object.keys(DEFAULT_ROUTING_WEIGHTS).length,
+    unknown, missing, dupes, snapped };
 });
 check('every slider names a weight that exists', wired.unknown.length === 0, wired.unknown.join(', '));
 check('every weight has a slider', wired.missing.length === 0, wired.missing.join(', '));
 check('no weight has two sliders', wired.dupes.length === 0, wired.dupes.join(', '));
 check('no slider snaps its value on render', wired.snapped.length === 0, wired.snapped.slice(0, 4).join(' | '));
-check('the panel renders every weight', wired.count === 62, `rendered ${wired.count}`);
+check('the panel renders every weight', wired.count === wired.expected,
+  `rendered ${wired.count}`);
 
 /* ------------------------------- 3. each cost block explains itself once */
 const structure = await pg.evaluate(() => {

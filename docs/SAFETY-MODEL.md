@@ -594,17 +594,20 @@ the road, and the rules below measure the road. A route drawn along a highway
 does not change what the highway is.
 
 Designation still *does* something: it earns a routing preference
-(`designated` ×0.94, `strongDesignated` ×0.5 under *Heavily prefer bike routes &
-trails*), which makes a qualifying road cheaper to route over. That bonus is
+(`designated` ×0.94, `strongDesignated` ×0.5 under *Heavily prefer designated
+bike routes*), which makes a qualifying road cheaper to route over. That bonus is
 gated on the edge passing, so it can never pull a rider onto a failing road.
 Preference, never permission.
 
 The separate, default-off **Follow designated bike routes even if they fail
 safety rules (use with caution)**
 option is an explicit exception in route *cost*, not in the safety ladder. It
-lets a signed route earn a 0.15 multiplier even when the segment fails the
-rider's limits, slightly stronger than the ordinary trail multiplier of 0.16
-so short geometric shortcuts do not make the route hop off and back on. The
+lets a signed route earn the `preferredRoute` multiplier (0.10 by default)
+even when the segment fails the rider's limits. This is one replacement bonus,
+not a second multiplier: if the edge is also a trail or bike lane, the router
+uses whichever single bonus is stronger rather than multiplying the two. That
+keeps short geometric shortcuts from making the route hop off and back on
+without turning a preferred trail into an ultra-sticky 0.15 × 0.15 edge. The
 same segment still evaluates and renders as failing, still appears in the
 failure totals, still speaks its warning, and is still excluded by *Only show
 routes fully matching*. Legal prohibitions, ferries, dismount links, hills and
@@ -612,8 +615,14 @@ surface costs are not erased.
 
 **Preferred routes** (Settings → Routes, or the checkbox on a tapped route
 ribbon's card) are the same exception scoped to individual signed routes: each
-marked route's edges earn the identical 0.15 multiplier with the identical
-carve-outs, while every other signed route stays ordinarily priced. The graph
+marked route's edges earn the identical `preferredRoute` multiplier with the identical
+carve-outs, while every other signed route stays ordinarily priced. When at
+least one named route is Preferred, the portfolio also runs two deliberate
+alternatives: a moderate pull at the geometric midpoint between the strong
+multiplier and 1.0, and a neutral search without the named-route exception.
+The best practical strong result is Suggested and explicitly retained; the
+moderate and neutral results compete for the remaining letters through the
+normal geometry-diversity selection. The graph
 stores only an anonymous on-a-signed-route flag, so the router worker matches
 the chosen routes' overlay geometry onto its own edges (`preferred-routes`
 message; candidates are restricted to flagged edges and most of an edge's
@@ -938,7 +947,8 @@ even the urban/rural split, is still honoured behind both.
 | `allowFerries` | Allow routes with ferries (Advanced routing) | none | traversable at all |
 | `requireSafe` | Only show routes fully matching safety rules | none | excludes every level-4 edge |
 | `preferPaved` | Strongly prefer paved surfaces | none | surface cost |
-| `prefDesig` | Heavily prefer bike routes & trails | none | designation bonus |
+| `prefDesig` | Heavily prefer designated bike routes | none | designation bonus |
+| `alwaysPreferBikeRoutes` / Preferred route selection | Follow designated routes / Prefer route | none | `preferredRoute` bonus, applied once |
 | `prefResidential` | Prefer residential streets | none | `residential` bonus |
 
 The first seven are named objectively and change the verdict. The rest are
@@ -1286,7 +1296,8 @@ about the road rather than anything they set. Gating on "passes cleanly" instead
 excluded 12,115 of the 17,097 edges where designation is the only preference,
 11,576 purely for carrying an LTS 4 rating.
 
-The explicit **Always prefer bike routes** routing lens described above removes
+The explicit **Follow designated bike routes even if they fail safety rules**
+routing lens described above removes
 that cost gate by request. It does not remove or restate the failure itself.
 
 **A WSDOT limited-access edge earns it too.** Its `limitedAccess*` penalty is applied

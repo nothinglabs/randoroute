@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.742';
+const APP_VERSION = '2026-08-17.744';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -158,7 +158,7 @@ const RULE_NUMBER_LIMITS = {
 const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
-  designated: 0.94, strongDesignated: 0.5, residential: 0.78,
+  designated: 0.94, strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.78,
   // Regraded from field riding 2026-08-05: full separation pulls harder
   // (path 0.21 -> 0.16, separated 0.31 -> 0.29) while paint alone pulls
   // less (buffered 0.32 -> 0.36, lane 0.36 -> 0.40) -- the rider's tuned
@@ -214,6 +214,7 @@ const ROUTING_WEIGHTS_VERSION = 8;
 // blend into extrapolation (and, for traffic, a negative edge cost).
 const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   useMeasuredTraffic: Object.freeze([0, 1]),
+  preferredRoute: Object.freeze([0.05, 1]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -2459,7 +2460,8 @@ function applyDisplayMode(src) {
     // without claiming to BE bike infrastructure.
     setPaint(src.id, 'line-color', DESIGNATED_COLOR);
     setPaint(src.id, 'line-width', designatedRibbonWidth());
-    setPaint(src.id, 'line-opacity', backgroundLineOpacity(0.4));
+    setPaint(src.id, 'line-opacity', ['case', ['==', ['get', 'pr'], 1],
+      backgroundLineOpacity(0.52), backgroundLineOpacity(0.4)]);
     setPaint(src.id, 'line-dasharray', [2, 1.4]);
     if (map.getLayer(failId(src))) setLayerFilter(failId(src), ['boolean', false]);
     if (map.getLayer(vhId(src))) setLayerFilter(vhId(src), ['boolean', false]);
@@ -2779,6 +2781,7 @@ async function loadSource(src) {
     src.count = Number.isFinite(fc.routeCount) ? fc.routeCount : fc.features.length;
     src.fc = fc;
     if (!src.expr) rescore(src); // sets .level on every feature
+    if (src.id === 'routes') syncPreferredRoutesMapDisplay();
     ensureLayer(src);
     if (src.expr) src.fc = null; // expression-scored: the map keeps its own copy
     src.loaded = true;
@@ -2812,6 +2815,24 @@ function routeOverlayNames(p) {
   if (names.length) return names;
   return String(p?.r || '').split(/[;,]/).map((part) => part.trim()).filter(Boolean)
     .map((ref) => `Route ${ref}`);
+}
+
+// Mark route-overlay features that belong to the rider's per-state Preferred
+// set. The same source paints all designated corridors, but a Preferred route
+// gets a modest opacity lift so it remains legible when it is not the active
+// route. This is display context only; the worker receives the actual route
+// geometry separately below.
+function syncPreferredRoutesMapDisplay() {
+  const src = SOURCES.find((source) => source.id === 'routes');
+  if (!src?.fc) return;
+  const preferred = new Set(preferredRouteNames());
+  for (const feature of src.fc.features || []) {
+    feature.properties ||= {};
+    feature.properties.pr = routeOverlayNames(feature.properties)
+      .some((name) => preferred.has(name)) ? 1 : 0;
+  }
+  const mapSource = map.getSource(src.id);
+  if (mapSource?.setData) mapSource.setData(src.fc);
 }
 
 // The signed routes running under a tapped point, from the overlay DATA
@@ -2985,6 +3006,7 @@ function setRoutePreferred(name, on) {
   if (names.size) preferredRoutesByState[Region.id] = [...names].sort();
   else delete preferredRoutesByState[Region.id];
   applyPreferredRoutesRuleKey();
+  syncPreferredRoutesMapDisplay();
   saveStateSoon();
   const synced = syncPreferredRoutesToWorker();
   if (deferSettingsRouteChange()) return true;
@@ -12741,11 +12763,10 @@ function renderMapTapCard({
         if (setRoutePreferred(name, requested) === false) checkbox.checked = !requested;
       });
       const text = document.createElement('span');
-      // Name the route unless it is already the card's own title: on a road
-      // card "Prefer route" alone would not say WHICH route runs here.
-      text.textContent = preferredRouteToggles.length > 1
-        || String(name) !== String(displayTitle)
-        ? `Prefer route: ${name}` : 'Prefer route';
+      // Always name the route. The card title may also happen to be the route
+      // name, but the control must remain explicit and consistent across route,
+      // road and trail cards.
+      text.textContent = `Prefer route: ${name}`;
       row.append(checkbox, text);
       preferredBlock.append(row);
     }
@@ -13445,6 +13466,8 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'A route number on a sign. Deliberately a small bonus: signage is context, not protection.' },
     { key: 'strongDesignated', label: 'Signed bike route, when you asked to prefer them', min: .2, max: 1, step: .01,
       hint: 'Replaces the value above while "Heavily prefer designated bike routes" is on.' },
+    { key: 'preferredRoute', label: 'Strong Preferred-route pull', min: .05, max: 1, step: .01,
+      hint: 'Controls the strongest candidate for routes you mark Preferred. The router also generates moderate and neutral alternatives. Applied once instead of the ordinary facility or designation bonus; it never compounds with a trail or bike-lane weight.' },
     { key: 'mtbTrail', label: 'Mountain-bike trail, when your rules allow one', min: 1, max: 30, step: .5,
       hint: 'Above 1: rideable on a mountain bike, avoided unless it is the only link.' },
   ]],

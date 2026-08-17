@@ -676,7 +676,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 #settingsToggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .active-route-icon-legend {
   position: absolute; z-index: 24; top: calc(env(safe-area-inset-top) + 8px); left: 8px;
-  width: min(720px, calc(100vw - 70px)); box-sizing: border-box; padding: 8px 10px;
+  width: min(720px, calc(100vw - 16px)); box-sizing: border-box; padding: 7px 10px;
   max-height: min(78dvh, 610px); overflow-y: auto;
   border: 1px solid #b8cedb; border-radius: 13px; background: rgba(250,253,255,.96);
   box-shadow: 0 5px 18px rgba(20,46,62,.24); color: #294554;
@@ -686,11 +686,11 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .active-route-icon-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .active-route-icon-head h2 { margin: 0; color: #233f50; font: 820 18px/1.1 system-ui; }
 #activeRouteIconLegendClose { flex: none; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 9px; background: #edf1f4; color: #50636e; font: 750 17px/1 system-ui; cursor: pointer; }
-.active-route-icon-intro { margin: 3px 0 5px; color: #506875; font: 650 12px/1.2 system-ui; }
+.active-route-icon-intro { margin: 2px 0 4px; color: #506875; font: 650 13.5px/1.2 system-ui; }
 .active-route-icon-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; margin-top: 2px; }
-.active-route-icon-item { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 43px; padding: 4px 2px; border: 0; border-bottom: 1px solid rgba(184,206,219,.55); background: transparent; }
+.active-route-icon-item { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 38px; padding: 2px; border: 0; border-bottom: 1px solid rgba(184,206,219,.55); background: transparent; }
 .active-route-icon-item:nth-last-child(-n + 2) { border-bottom: 0; }
-.active-route-icon-item canvas { flex: none; width: 33px !important; height: 33px !important; object-fit: contain; }
+.active-route-icon-item canvas { flex: none; width: 31px !important; height: 31px !important; object-fit: contain; }
 .active-route-icon-item strong { min-width: 0; color: #294554; font: 800 13px/1.12 system-ui; }
 #map .maplibregl-ctrl-top-right, #map .maplibregl-ctrl-bottom-right { z-index: 16; }
 #map .maplibregl-ctrl-bottom-right { transition: bottom .2s ease; }
@@ -1398,7 +1398,7 @@ body.navigation-active #routeBar { display: none; }
      so the two control groups read as separate columns on a phone. */
   #layersToggle { top: calc(env(safe-area-inset-top) + 12px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
   #settingsToggle { top: calc(env(safe-area-inset-top) + 58px); right: 8px; width: 42px; height: 42px; border-radius: 12px; }
-  .active-route-icon-legend { right: 58px; width: auto; }
+  .active-route-icon-legend { right: 6px; left: 6px; width: auto; }
   .place-picker { top: -5px; right: auto; left: 0; width: calc(100vw - 16px); }
   body:not(.panel-open) .nav-banner, body.panel-open .nav-banner { left: 112px; right: 10px; width: auto; bottom: calc(60px + env(safe-area-inset-bottom)); transform: none; transition: bottom .2s ease; }
   body.panel-open .nav-banner { bottom: calc(var(--mobile-panel-height, 0px) + 4px); }

@@ -765,23 +765,24 @@ let maxFerryMps = FERRY_MAX_MPS_FALLBACK;
 // its facility bonus alone. On-street edges get speedStress and residential but
 // can never claim the path bonus. Taking the worse of the two cases keeps the
 // bound tight without assuming which tags the data happens to carry.
-// The explicit "always prefer" option is intentionally a little stronger than
-// the ordinary shared-path price. Equal pricing still let a tiny geometric
-// shortcut pull the route off a signed corridor and then rejoin it; 0.15 versus
-// the shipped path weight of 0.16 gives the designation enough continuity to
-// win that close call without making it an absolute constraint. Rider-edited
-// path weights below this still win, so the advanced control remains truthful.
-const ALWAYS_PREFER_SIGNED_ROUTE_MULT = 0.15;
-function preferredSignedRouteMult() {
-  return Math.min(activeWeights.facilityPath, activeWeights.strongDesignated,
-    ALWAYS_PREFER_SIGNED_ROUTE_MULT);
+// A route explicitly marked Preferred gets one strong bonus, never a second
+// multiplier stacked on top of its physical facility. Use whichever single
+// bonus is stronger: the Preferred value or that edge's trail/lane value. The
+// no-edge form is the global lower bound used by the heuristic.
+function preferredSignedRouteMult(edge = null) {
+  const facility = edge == null
+    ? Math.min(1, activeWeights.facilityShared, activeWeights.facilityLane,
+      activeWeights.facilityBuffered, activeWeights.facilitySeparated,
+      activeWeights.facilityPath)
+    : facilityPrefMult(eFacility[edge]);
+  return Math.min(activeWeights.preferredRoute, facility);
 }
 
 // One semantics for both follow-signed-routes lenses: the global option
 // (alwaysPreferBikeRoutes) trusts EVERY signed edge; a per-route Preferred
 // (Settings -> Routes) trusts the edges of just the chosen routes. Both are
 // routing lenses, not safety verdicts -- the trusted edge is priced like the
-// best off-street path (slightly better: 0.15 vs the shipped 0.16), and its actual
+// a strong, rider-adjustable corridor bonus, and its actual
 // verdict still colors the map and the route.
 function trustRouteEdge(ei, fl, rules) {
   if (!(fl & 64) || (fl & 32) || isDismountEdge(ei)) return false;
@@ -825,7 +826,7 @@ function heuristicSpeed(mode, prefResidential, rules = null) {
 const DEFAULT_WEIGHTS = Object.freeze({
   failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
-  designated: 0.94, strongDesignated: 0.5, residential: 0.78,
+  designated: 0.94, strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.78,
   facilityShared: 0.82, facilityLane: 0.4, facilityBuffered: 0.36,
   facilitySeparated: 0.29, facilityPath: 0.16,
   mtbTrail: 6,
@@ -872,6 +873,7 @@ let weightsSignature = '';
 // beyond both inputs and can make an edge cost negative.
 const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   useMeasuredTraffic: Object.freeze([0, 1]),
+  preferredRoute: Object.freeze([0.05, 1]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -1525,7 +1527,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
     // Similar to a shared path, by request. Keep hills and surface additive
     // below so "prefer this vetted corridor" does not mean "pretend it is flat
     // and paved." The actual verdict is still emitted from actualLevel.
-    cost *= preferredSignedRouteMult();
+    cost *= preferredSignedRouteMult(ei);
   } else {
     cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
       edgeNoShoulderMaxFor(searchRules), edgeShoulder(ei, forward));
@@ -1746,7 +1748,7 @@ function edgeCostFloor(i, forward) {
   let m = modeMult(mode, trustSignedRoute ? 1 : searchLevel);
   if (!(m < Infinity)) return Infinity;
   if (trustSignedRoute) {
-    m *= preferredSignedRouteMult();
+    m *= preferredSignedRouteMult(i);
   } else if (fl & 4) m *= freewayFloor;
   if (!trustSignedRoute && (eOfficial[i] & EDGE_MTB)) m *= mtbFloor;
   if (!trustSignedRoute && !(fl & (8 | 32 | 4)) && isResidential(i)) m *= residentialFloor;
@@ -2530,6 +2532,65 @@ function candidateProfiles(forceDesig, forceResidential) {
   return profiles;
 }
 
+// A named Preferred route is a request to foreground that corridor, not to
+// erase every other useful answer. Run three otherwise-identical Balanced
+// searches: the rider-adjustable strong pull, a geometric midpoint toward
+// ordinary pricing, and a neutral search with the per-route exception removed.
+// The ordinary profile grid still runs as before; these are small, explicit
+// anchors that stop one strong preference from collapsing the whole portfolio.
+function preferredRouteSpectrum(strong = activeWeights.preferredRoute) {
+  const clampedStrong = Math.min(1, Math.max(0.05, Number(strong) || 1));
+  return [
+    { id: 'preferred-strong', label: 'Strong Preferred route',
+      strength: 'strong', multiplier: clampedStrong },
+    { id: 'preferred-moderate', label: 'Moderate Preferred route',
+      strength: 'moderate', multiplier: Math.sqrt(clampedStrong) },
+    { id: 'preferred-neutral', label: 'Preferred-route alternative',
+      strength: 'neutral', multiplier: 1 },
+  ];
+}
+
+function preferredRouteMeters(candidate) {
+  if (!preferredEdges || !candidate?.edgeIds) return 0;
+  let meters = 0;
+  for (const edge of candidate.edgeIds) {
+    if (preferredEdges[edge] === 1) meters += eLen[edge];
+  }
+  return meters;
+}
+
+function bestStrongPreferredCandidate(candidates) {
+  return candidates.filter((candidate) =>
+    candidate._profile?.preferredRouteStrength === 'strong'
+      && preferredRouteMeters(candidate) > 0)
+    .reduce((best, candidate) => !best
+      || recommendationScore(candidate) < recommendationScore(best)
+      || (recommendationScore(candidate) === recommendationScore(best)
+        && preferredRouteMeters(candidate) > preferredRouteMeters(best))
+      ? candidate : best, null);
+}
+
+function preferredStrengthRank(profile) {
+  return profile?.preferredRouteStrength === 'strong' ? 3
+    : profile?.preferredRouteStrength === 'moderate' ? 2
+      : profile?.preferredRouteStrength === 'neutral' ? 1 : 0;
+}
+
+// Equivalent geometry can be generated by several profiles. If normal dedupe
+// keeps another profile for its explanation or selection continuity, retain
+// the fact that this exact route was also found by the stronger Preferred lens.
+function carryPreferredStrength(candidate, equivalent) {
+  if (preferredStrengthRank(equivalent?._profile) <= preferredStrengthRank(candidate?._profile)) {
+    return candidate;
+  }
+  candidate._profile = {
+    ...candidate._profile,
+    preferredRouteStrength: equivalent._profile.preferredRouteStrength,
+    preferredRouteMultiplier: equivalent._profile.preferredRouteMultiplier,
+  };
+  return candidate;
+}
+
 function edgeOverlap(a, b) {
   const aSet = new Set(a.edgeIds);
   const bSet = new Set(b.edgeIds);
@@ -2677,6 +2738,15 @@ function profileExplanation(profile) {
     return `Discovery: same search with the no-shoulder speed dropped to ${profile.discoveryMaxSpeed} mph,`
       + ' to see whether a quieter corridor exists at all.';
   }
+  if (profile.preferredRouteStrength === 'strong') {
+    return 'Strongly followed the route you marked Preferred.';
+  }
+  if (profile.preferredRouteStrength === 'moderate') {
+    return 'Moderately favored the route you marked Preferred, allowing sensible departures.';
+  }
+  if (profile.preferredRouteStrength === 'neutral') {
+    return 'Ignored the Preferred-route pull to preserve a genuinely different alternative.';
+  }
   const parts = [`${MODE_WORDS[profile.mode] || profile.mode} cost model`];
   if (profile.prefDesig) parts.push('preferring signed bike routes and trails');
   if (profile.prefResidential) parts.push('preferring residential streets');
@@ -2744,6 +2814,7 @@ function candidateSummary(candidate) {
     timeS: candidate.timeS,
     failM: candidate.failM,
     refinedFrom: candidate._profile.refinedFrom || null,
+    preferredRouteStrength: profile.preferredRouteStrength || null,
     crossBred: !!profile.crossBred,
     crossBreedKind: profile.crossBreedKind || null,
     sectionFrontier: !!profile.sectionFrontier,
@@ -2770,6 +2841,7 @@ function publicCandidate(candidate) {
       mode: _profile.mode,
       prefDesignated: _profile.prefDesig,
       prefResidential: _profile.prefResidential,
+      preferredRouteStrength: _profile.preferredRouteStrength || null,
       alternativeCorridor: !!_profile.alternativeCorridor,
       crossBred: !!_profile.crossBred,
       sectionFrontier: !!_profile.sectionFrontier,
@@ -3790,6 +3862,39 @@ function trimRoutingCaches() {
   return { before, after: routingCacheStats(), candidatesRetained: !!lastCandidates };
 }
 
+function addPreferredRouteSpectrumCandidates(raw, points, rules, forceDesig, forceResidential,
+    snaps, progress = null) {
+  if (!preferredRoutesActive(rules)) return;
+  const mainWeights = { ...activeWeights };
+  const spectrum = preferredRouteSpectrum(mainWeights.preferredRoute);
+  try {
+    for (let index = 0; index < spectrum.length; index++) {
+      const lens = spectrum[index];
+      progress?.(`Testing Preferred-route alternatives… (${index + 1} of ${spectrum.length})`,
+        0.025 + index * 0.01);
+      const profile = {
+        id: lens.id, label: lens.label, mode: 'balanced',
+        prefDesig: forceDesig, prefResidential: forceResidential,
+        order: 0.86 + index * 0.01,
+        preferredRouteStrength: lens.strength,
+        preferredRouteMultiplier: lens.multiplier,
+      };
+      const searchRules = lens.strength === 'neutral'
+        ? Object.fromEntries(Object.entries(rules).filter(([key]) => key !== 'preferredRoutes'))
+        : rules;
+      useWeights({ ...mainWeights, preferredRoute: lens.multiplier });
+      const result = route(points, searchRules, profile.mode, profile.prefDesig,
+        profile.prefResidential, snaps);
+      if (!result.ok) continue;
+      result._profile = profile;
+      result.aggression = routeAggression(result);
+      raw.push(result);
+    }
+  } finally {
+    useWeights(mainWeights);
+  }
+}
+
 function routeOptions(points, rules, forceDesig, forceResidential, preferredProfileId, debug = false,
     progress = null, requestSignature = null,
     mainWeights = null, lensWeights = null) {
@@ -3819,6 +3924,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   endPhase('snap');
   const raw = [];
   let firstFailure = null;
+  addPreferredRouteSpectrumCandidates(raw, points, rules, forceDesig,
+    forceResidential, snaps, progress);
   for (let pi = 0; pi < profiles.length; pi++) {
     const profile = profiles[pi];
     progress?.(`Testing route profiles… (${pi + 1} of ${profiles.length})`, 0.03 + 0.37 * (pi / profiles.length));
@@ -3949,6 +4056,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
 
   const fastest = raw.reduce((best, r) => r.timeS < best.timeS ? r : best, raw[0]);
   const reasonable = raw.filter((r) => r._profile.fullyMatchingRules
+    || r._profile.preferredRouteStrength === 'strong'
     || r.timeS <= fastest.timeS * 2.2 + 600
     || r.failM + 80 < fastest.failM || r.freewayM + 80 < fastest.freewayM);
 
@@ -3961,13 +4069,13 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (!same) {
       unique.push(candidate);
     } else if (candidate._profile.id === preferredProfileId) {
-      unique[unique.indexOf(same)] = candidate;
+      unique[unique.indexOf(same)] = carryPreferredStrength(candidate, same);
     } else if (candidate._profile.fullyMatchingRules && !same._profile.fullyMatchingRules) {
-      unique[unique.indexOf(same)] = candidate;
+      unique[unique.indexOf(same)] = carryPreferredStrength(candidate, same);
     } else if (same._profile.id !== preferredProfileId
         && candidate._profile.prefDesig && candidate._profile.prefResidential
         && !(same._profile.prefDesig && same._profile.prefResidential)) {
-      unique[unique.indexOf(same)] = candidate;
+      unique[unique.indexOf(same)] = carryPreferredStrength(candidate, same);
     }
   }
 
@@ -3991,9 +4099,11 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const sectionFrontier = unique.filter((r) => r._profile.sectionFrontier)
     .reduce((best, route) => !best || compareSafety(route, best) < 0 ? route : best, null);
   const combinedCorridor = unique.find((r) => r._profile.id.startsWith('combined-corridor'));
+  const strongPreferredCandidate = preferredRoutesActive(rules)
+    ? bestStrongPreferredCandidate(unique) : null;
   const protectedCandidates = new Set([
     preferred, bothPreferences, fullyMatching, adaptiveCorridor, ferryCrossBreed,
-    sectionFrontier, combinedCorridor,
+    sectionFrontier, combinedCorridor, strongPreferredCandidate,
   ].filter(Boolean));
   const useful = unique.filter((candidate) => protectedCandidates.has(candidate)
     || !unique.some((other) => {
@@ -4055,6 +4165,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // ordinary profiles remains eligible to be recommended as before.
   const ordinaryPractical = practicalChoices.filter((route) => !route._profile.fullyMatchingProbe);
   const recommendationPool = ordinaryPractical.length ? ordinaryPractical : practicalChoices;
+  const preferredRouteAnchor = preferredRoutesActive(rules)
+    ? bestStrongPreferredCandidate(practicalChoices) : null;
   let recommended = null;
   for (const route of recommendationPool) {
     if (!recommended) { recommended = route; continue; }
@@ -4090,6 +4202,11 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       recommended = bestMatching;
     }
   }
+  // Marking a named route Preferred is an explicit recommendation request.
+  // The strong lens only takes the star when it found a practical route that
+  // actually uses the chosen corridor; moderate and neutral results remain in
+  // the portfolio so the request never turns into an all-or-nothing constraint.
+  if (preferredRouteAnchor) recommended = preferredRouteAnchor;
   const boundedPreferred = (!hasStops || !preferred || boundedChoices.includes(preferred)
     || preferred === safestOverall) ? preferred : null;
   const boundedBothPreferences = (!hasStops || !bothPreferences
@@ -4134,7 +4251,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const trailPortfolio = ferryCrossBreed || trailRich;
   const required = [...new Set([recommended, fastestOverall, safestOverall, boundedSafer,
     sectionFrontier, trailPortfolio, boundedBothPreferences, boundedPreferred, fullyMatching,
-    ferryCrossBreed, adaptiveCorridor, combinedCorridor].filter(Boolean))];
+    ferryCrossBreed, adaptiveCorridor, combinedCorridor, strongPreferredCandidate,
+    preferredRouteAnchor].filter(Boolean))];
   for (const candidate of required) {
     if (selected.includes(candidate)) continue;
     if (selected.length < MAX_OFFERED) {

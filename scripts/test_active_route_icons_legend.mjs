@@ -43,6 +43,8 @@ const opened = await page.evaluate(() => {
     height: legend.getBoundingClientRect().height,
     width: legend.getBoundingClientRect().width,
     itemHeights: items.map((item) => item.getBoundingClientRect().height),
+    intro: legend.querySelector('.active-route-icon-intro')?.textContent,
+    introFont: parseFloat(getComputedStyle(legend.querySelector('.active-route-icon-intro')).fontSize),
     gridColumns: getComputedStyle(document.getElementById('activeRouteIconLegendItems')).gridTemplateColumns,
     hasKicker: /Map guide/i.test(legend.textContent),
     labels: items.map((item) => item.getAttribute('aria-label')),
@@ -57,7 +59,10 @@ const opened = await page.evaluate(() => {
 });
 check('the map legend button opens Route Icons with the Layers pane',
   opened.visible && opened.layersOpen && opened.title === 'Route Icons'
-    && !opened.hasKicker && opened.height > 140 && opened.height <= 560,
+    && !opened.hasKicker && opened.height > 140 && opened.height <= 260
+    && opened.width >= 375 && Math.max(...opened.itemHeights) <= 40
+    && opened.intro === 'Tap a route or icon in the map for details.'
+    && opened.introFont >= 13,
   JSON.stringify(opened));
 check('the retired Route colors section stays gone', opened.colorCount === 0,
   JSON.stringify(opened));

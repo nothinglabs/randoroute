@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // A route marked Preferred (Settings → Routes) is the alwaysPreferBikeRoutes
-// lens scoped to ONE signed route: its matched edges price like the best
-// off-street path while every other signed route stays ordinarily priced and
-// every safety verdict stays exactly what it was. Proven against the real
-// graph and the real bikeroutes overlay, through the worker's own matcher.
+// lens scoped to ONE signed route. It gets a strong Suggested candidate plus
+// moderate and neutral alternatives, while every other signed route stays
+// ordinarily priced and every safety verdict stays exactly what it was.
+// Proven against the real graph and the real bikeroutes overlay, through the
+// worker's own matcher.
 import assert from 'node:assert/strict';
 import { gunzipSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
@@ -59,25 +60,64 @@ const result = worker.run(`(() => {
   useWeights(null);
 
   // A matched edge of the chosen route, and a signed edge of some OTHER route.
-  let onRoute = -1, offRoute = -1;
+  let onRoute = -1, offRoute = -1, facilityEdge = -1;
   for (let i = 0; i < E; i++) {
     const flags = eFlags[i];
+    if (facilityEdge < 0 && eFacility[i] > 0 && !(flags & 32) && !isDismountEdge(i)) {
+      facilityEdge = i;
+    }
     if (!(flags & 64) || (flags & (4 | 32)) || isDismountEdge(i)) continue;
     if (edgeShoulder(i, true) === PROHIBITED_SHOULDER) continue;
     if (preferredEdges[i] === 1 && onRoute < 0 && !eFacility[i]) onRoute = i;
     if (preferredEdges[i] === 0 && offRoute < 0) offRoute = i;
-    if (onRoute >= 0 && offRoute >= 0) break;
+    if (onRoute >= 0 && offRoute >= 0 && facilityEdge >= 0) break;
   }
   const price = (edge, rules) => {
     useVerdictCache(rules);
     return edgeCostParts(edge, true, 'balanced', modeWeights('balanced'),
       rules, rules, false, false, 0, false);
   };
+  const onRouteOff = price(onRoute, base);
+  const onRouteOn = price(onRoute, preferred);
+  const defaultMult = preferredSignedRouteMult(onRoute);
+  const facilityOnlyMult = facilityPrefMult(eFacility[facilityEdge]);
+  const preferredFacilityMult = preferredSignedRouteMult(facilityEdge);
+  const spectrum = preferredRouteSpectrum(activeWeights.preferredRoute);
+  const candidateBase = {
+    edgeIds: [onRoute], timeS: 1000, failM: 0, dismountM: 0,
+    distM: 1000, ferryM: 0, facilityM: 0, trailM: 0,
+  };
+  const strongCandidate = { ...candidateBase,
+    _profile: { id: 'strong', preferredRouteStrength: 'strong' } };
+  const moderateCandidate = { ...candidateBase, timeS: 500,
+    _profile: { id: 'moderate', preferredRouteStrength: 'moderate' } };
+  const anchor = bestStrongPreferredCandidate([moderateCandidate, strongCandidate]);
+  const originalRoute = route;
+  const spectrumCalls = [];
+  route = (_points, callRules) => {
+    spectrumCalls.push({
+      multiplier: activeWeights.preferredRoute,
+      hasPreferredSelection: callRules.preferredRoutes === ${JSON.stringify(KEY)},
+    });
+    return {
+      ok: true, edgeIds: [onRoute], timeS: 1000, failM: 0, dismountM: 0,
+      distM: 1000, ferryM: 0, facilityM: 0, trailM: 0, desigM: 1000,
+      residentialM: 0, freewayM: 0, limitedAccessM: 0, mtbM: 0, hazardM: 0,
+      levelM: [0, 0, 1000, 0, 0],
+    };
+  };
+  const spectrumRaw = [];
+  addPreferredRouteSpectrumCandidates(spectrumRaw, [], preferred, false, false, []);
+  route = originalRoute;
+  useWeights({ preferredRoute: 0.3 });
+  const tunedCost = price(onRoute, preferred);
+  const tunedMult = preferredSignedRouteMult(onRoute);
+  useWeights(null);
   return {
     marked: preferredEdges.reduce((sum, value) => sum + value, 0),
-    onRoute, offRoute,
-    onRouteOff: price(onRoute, base),
-    onRouteOn: price(onRoute, preferred),
+    onRoute, offRoute, facilityEdge,
+    onRouteOff,
+    onRouteOn,
     onRouteStale: price(onRoute, staleKey),
     offRouteOff: price(offRoute, base),
     offRouteOn: price(offRoute, preferred),
@@ -87,17 +127,54 @@ const result = worker.run(`(() => {
     heuristicOn: heuristicSpeed('balanced', false, preferred),
     safetyKeySame: safetyRulesSignature(base) === safetyRulesSignature(preferred),
     costKeyDiffers: rulesSignature(base) !== rulesSignature(preferred),
-    mult: preferredSignedRouteMult(),
+    mult: defaultMult,
     trailMult: activeWeights.facilityPath,
+    facilityOnlyMult, preferredFacilityMult,
+    compoundedFacilityMult: defaultMult * facilityOnlyMult,
+    tunedCost, tunedMult,
+    spectrum: spectrum.map(({ strength, multiplier }) => ({ strength, multiplier })),
+    spectrumCalls,
+    spectrumProfiles: spectrumRaw.map((candidate) => candidate._profile.preferredRouteStrength),
+    anchorId: anchor?._profile.id,
   };
 })()`);
 
 assert.ok(result.onRoute >= 0, 'a matched, ordinarily-signed edge must exist');
 assert.ok(result.offRoute >= 0, 'a signed edge outside the chosen route must exist');
+assert.ok(result.facilityEdge >= 0, 'the graph must contain a physical bicycle facility');
 assert.ok(result.onRouteOn < result.onRouteOff,
   `a Preferred route's edge must price cheaper (${result.onRouteOff.toFixed(2)} -> ${result.onRouteOn.toFixed(2)})`);
 assert.ok(result.mult < result.trailMult,
   'the Preferred price must beat the ordinary off-street trail price');
+assert.equal(result.preferredFacilityMult, Math.min(result.mult, result.facilityOnlyMult),
+  'a Preferred facility must use the stronger single bonus');
+assert.ok(result.preferredFacilityMult > result.compoundedFacilityMult,
+  'Preferred and facility bonuses must never compound');
+assert.equal(result.tunedMult, 0.3,
+  'the Advanced weight must directly control a Preferred road with no facility');
+assert.ok(result.tunedCost > result.onRouteOn && result.tunedCost < result.onRouteOff,
+  'weakening the Preferred weight must weaken, but not remove, its routing preference');
+assert.equal(result.spectrum.map((entry) => entry.strength).join(','), 'strong,moderate,neutral',
+  'Preferred-route portfolios must probe strong, moderate, and neutral pull');
+assert.equal(result.spectrum[0].multiplier, 0.1,
+  'the default strong candidate must be stronger now that alternatives coexist');
+assert.ok(result.spectrum[1].multiplier > result.spectrum[0].multiplier
+    && result.spectrum[1].multiplier < 1,
+  'the moderate multiplier must sit between strong and neutral');
+assert.equal(result.spectrum[2].multiplier, 1,
+  'the neutral candidate must remove the Preferred-route multiplier');
+assert.equal(result.spectrumCalls.length, 3,
+  'the portfolio must execute all three Preferred-route searches');
+assert.equal(result.spectrumCalls[0].hasPreferredSelection, true,
+  'the strong search must use the named Preferred-route exception');
+assert.equal(result.spectrumCalls[1].hasPreferredSelection, true,
+  'the moderate search must retain the named Preferred-route exception');
+assert.equal(result.spectrumCalls[2].hasPreferredSelection, false,
+  'the neutral search must genuinely remove the named-route exception, not merely use ×1');
+assert.equal(result.spectrumProfiles.join(','), 'strong,moderate,neutral',
+  'generated candidates must retain their Preferred-route strength metadata');
+assert.equal(result.anchorId, 'strong',
+  'the recommendation anchor must come from the strong lens even when an alternative is faster');
 assert.equal(result.offRouteOn, result.offRouteOff,
   'a signed route the rider did NOT prefer must price exactly as before');
 assert.equal(result.onRouteStale, result.onRouteOff,
