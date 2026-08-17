@@ -41,7 +41,6 @@ let eBearingA, eBearingB;
 let searchDist, searchPrevArc, searchStamp, searchGeneration = 0;
 let nodeHasLand;
 let inGiant;
-let nodeLocal, nodeNonMtb;
 // Set for the duration of one request. A road block snaps to a graph node and
 // makes every road edge through that location unavailable to the search.
 let activeRoadBlockEdges = null;
@@ -243,26 +242,6 @@ function loadGraph(buf) {
   for (const [k, v] of compSize) if (v > giantSize) { giantSize = v; giantRoot = k; }
   inGiant = new Uint8Array(N);
   for (let i = 0; i < N; i++) if (find(i) === giantRoot) inGiant[i] = 1;
-  postMessage({ type: 'progress', phase: 'engine', detail: 'Preparing fast start and destination matching…' });
-  // Nodes touching at least one LOCAL, bicycle-legal edge (not a true freeway,
-  // ferry, or permanent restriction):
-  // snapping prefers these so a tap near I-5 does not board it. A bike-legal
-  // limited-access state highway remains eligible as a normal snap target.
-  nodeLocal = new Uint8Array(N);
-  // Keep a second set with explicitly technical MTB paths removed. When the
-  // option is off, a point beside one should attach to the closest ordinary
-  // bike network rather than snap onto an edge that A* will reject.
-  nodeNonMtb = new Uint8Array(N);
-  for (let i = 0; i < E; i++) {
-    const hasLegalDirection = eSh[i] !== PROHIBITED_SHOULDER
-      || (!(eFlags[i] & 16) && eShBA[i] !== PROHIBITED_SHOULDER);
-    if (hasLegalDirection && !(eFlags[i] & (4 | 32))) {
-      nodeLocal[eA[i]] = 1; nodeLocal[eB[i]] = 1;
-      if (!(eOfficial[i] & EDGE_MTB)) {
-        nodeNonMtb[eA[i]] = 1; nodeNonMtb[eB[i]] = 1;
-      }
-    }
-  }
 }
 
 const R = 6371000;
@@ -273,27 +252,58 @@ function havM(lon1, lat1, lon2, lat2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+// Snap to the nearest EDGE, not the nearest node. Nodes are sparse on long
+// straight ways -- a rider standing ON the Interurban Trail snapped to a
+// street-side stub 9 m away (its only edge a dismount link) because the
+// trail's nearest NODE was far along the path, and the route then left on
+// the street and looped back to the trail it started beside (field report:
+// "something badly wrong with this route"). Distance is measured to the
+// stored edge geometry, the road-block matcher's method; the snap lands on
+// the edge's nearer endpoint along that geometry. The local-over-freeway
+// preference (>300 m extra before the absolute nearest wins -- a tap beside
+// I-90 should not board I-90) and the MTB filter keep their semantics,
+// applied per edge instead of per node.
 function nearestNode(lon, lat, rules = null) {
-  const coslat = Math.cos((lat * Math.PI) / 180);
-  let best = -1, bestD = Infinity;         // nearest of any kind
-  let bestL = -1, bestLD = Infinity;       // nearest usable local-network node
-  const usableLocal = rules?.allowMtbTrails ? nodeLocal : nodeNonMtb;
-  for (let i = 0; i < N; i++) {
-    if (!inGiant[i]) continue; // never snap onto a disconnected fragment
-    const dx = (nodeLon[i] - lon) * coslat;
-    const dy = nodeLat[i] - lat;
-    const d = dx * dx + dy * dy;
-    if (d < bestD) { bestD = d; best = i; }
-    if (usableLocal[i] && d < bestLD) { bestLD = d; bestL = i; }
+  const kx = 111320 * Math.cos((lat * Math.PI) / 180), ky = 110540;
+  const allowMtb = !!(rules && rules.allowMtbTrails);
+  let anyNode = -1, anyDm = Infinity;      // nearest of any kind
+  let localNode = -1, localDm = Infinity;  // nearest usable local-network edge
+  for (let ei = 0; ei < E; ei++) {
+    if (!inGiant[eA[ei]]) continue; // never snap onto a disconnected fragment
+    const start = eOff[ei], count = eCnt[ei];
+    if (count < 2) continue;
+    // The edge cannot come closer than its first geometry point's distance
+    // minus its own length; that lower bound skips almost everything once
+    // the running minima are small.
+    let px = (gLon[start] - lon) * kx, py = (gLat[start] - lat) * ky;
+    const reachable = Math.sqrt(px * px + py * py) - eLen[ei];
+    if (reachable > anyDm && reachable > localDm) continue;
+    let bestSegD = Infinity, alongAtBest = 0, cum = 0;
+    for (let i = start + 1; i < start + count; i++) {
+      const qx = (gLon[i] - lon) * kx, qy = (gLat[i] - lat) * ky;
+      const dx = qx - px, dy = qy - py;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 ? Math.max(0, Math.min(1, -(px * dx + py * dy) / len2)) : 0;
+      const nx = px + t * dx, ny = py + t * dy;
+      const d = Math.sqrt(nx * nx + ny * ny);
+      const segLen = Math.sqrt(len2);
+      if (d < bestSegD) { bestSegD = d; alongAtBest = cum + t * segLen; }
+      cum += segLen;
+      px = qx; py = qy;
+    }
+    if (!(bestSegD < anyDm) && !(bestSegD < localDm)) continue;
+    const node = alongAtBest * 2 <= cum ? eA[ei] : eB[ei];
+    if (bestSegD < anyDm) { anyDm = bestSegD; anyNode = node; }
+    const hasLegalDirection = eSh[ei] !== PROHIBITED_SHOULDER
+      || (!(eFlags[ei] & 16) && eShBA[ei] !== PROHIBITED_SHOULDER);
+    const isLocal = hasLegalDirection && !(eFlags[ei] & (4 | 32))
+      && (allowMtb || !(eOfficial[ei] & EDGE_MTB));
+    if (isLocal && bestSegD < localDm) { localDm = bestSegD; localNode = node; }
   }
-  // Prefer the local-road node unless it's much farther (>300 m extra) than
-  // the absolute nearest — a tap beside I-90 should not board I-90.
-  if (bestL >= 0 && best !== bestL) {
-    const dAny = havM(lon, lat, nodeLon[best], nodeLat[best]);
-    const dLoc = havM(lon, lat, nodeLon[bestL], nodeLat[bestL]);
-    if (dLoc <= dAny + 300) return { node: bestL, distM: dLoc };
+  if (localNode >= 0 && localNode !== anyNode && localDm <= anyDm + 300) {
+    return { node: localNode, distM: localDm };
   }
-  return { node: best, distM: havM(lon, lat, nodeLon[best], nodeLat[best]) };
+  return { node: anyNode, distM: anyDm };
 }
 
 const ROAD_BLOCK_NEARBY_M = 16;

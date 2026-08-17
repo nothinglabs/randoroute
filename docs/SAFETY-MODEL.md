@@ -972,8 +972,11 @@ entry has both a name and a description.
 A dismount is one of two things in the graph, and the app treats them
 differently. **Tagged** — a mapper wrote `bicycle=dismount`; the edge carries
 `official` bit 128 alongside the pricing bit 8. **Synthesised** — a walk link
-the graph build created from an untagged footway or path purely to keep the
-network connected (bit 8 without 128). Both are priced identically — walking
+the graph build created purely to keep the network connected (bit 8 without
+128): an untagged footway or path, or the few metres of an otherwise-excluded
+sidewalk that join two kept ways — the joins between a trail crossing's
+signalized halves are mapped as sidewalk, and dropping them left the
+crossings dangling as dead-end stubs. Both are priced identically — walking
 pace, a one-minute entry penalty, and a search-cost multiplier on the walked
 time in three tiers by edge length: ×3 under 25 m (a bollard gate or crossing
 island), ×8 for an ordinary walk link, ×32 over 100 m, which is how a long
@@ -1024,6 +1027,19 @@ is one colour over several meanings, which is why the card names which.
 
 Subjective by design: it chooses among *legal* roads and never makes one legal
 or illegal. Every multiplier applied to an edge, in `router-worker.js`:
+
+**Where a route begins: the nearest edge, not the nearest node.** A tapped or
+GPS start point snaps by measuring to every edge's stored *geometry* and
+entering the graph at the nearer endpoint of the closest edge — never by
+comparing stored node positions alone, which made the answer depend on where
+the build happened to place nodes: a rider mid-block beside a long street run
+would snap to whatever node sat closest, sometimes a dead-end crossing stub
+across the street, and the route began with a phantom detour. Two preferences
+survive from the node era, both re-expressed per edge: a snap onto an MTB-
+tagged edge requires `allowMtbTrails`, and an edge of the local network — not
+limited-access, not a ferry, with at least one legally ridable direction — is
+preferred over a nearer freeway edge unless it is more than 300 m farther,
+so a pin dropped on an overpass chooses the street below, not the mainline.
 
 **The search is weighted A\*** (`SEARCH_OVERSHOOT`, 1.15): a found route's
 cost is mathematically bounded at 1.15× the true optimum, and in practice the

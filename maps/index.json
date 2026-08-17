@@ -211,7 +211,7 @@
     "closures": true
    },
    "versions": {
-    "graph": "sha-0ea7be2cfede",
+    "graph": "sha-c043f268453b",
     "roads": "sha-dd29b387e828",
     "basemap": "sha-77136fe2672a",
     "overlays": "sha-04c278da789b"
@@ -277,7 +277,7 @@
     {
      "dataset": "graph",
      "path": "graph2.bin.gz",
-     "bytes": 46001087
+     "bytes": 58466205
     },
     {
      "dataset": "places",

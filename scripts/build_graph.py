@@ -1459,6 +1459,64 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     hazard_edges = [0]
     mtb_edges = [0]
     densified_paths = [0]
+    sidewalk_stitches = [0]
+    # Sidewalks stay out of the graph as a class -- a parallel walking network
+    # beside every urban street is noise, not connectivity -- but the class
+    # exclusion severs the one place a sidewalk IS the connectivity: the few
+    # metres of it that join two kept ways. Alderwood Mall Blvd in Lynnwood is
+    # the type case: the Interurban Trail's only street access there is
+    # street -> crossing -> 9 m of sidewalk -> crossing -> 4 m of sidewalk ->
+    # path -> trail. The crossings and the path are all kept, and with the two
+    # sidewalk scraps dropped every one of them dangles as a dead-end stub;
+    # the router then answers "join the trail" with an 800 m detour to the
+    # next access and rides back PAST the start -- the field-reported
+    # lollipop. So: admit a sidewalk FRAGMENT, as a walk-your-bike link, when
+    # it runs between two consecutive nodes that other kept ways already use
+    # and is no longer than STITCH_MAX_M. Both ends land on existing graph
+    # nodes, so a fragment can never dangle; the cap plus the consecutive-
+    # kept-node rule keeps the parallel network out (block-length runs between
+    # crossings blow the cap); dismount pricing keeps what does get in from
+    # ever being a shortcut.
+    STITCH_MAX_M = 30.0
+
+    def sidewalk_stitch_runs(obj, tags):
+        if (tags.get('footway') != 'sidewalk'
+                or tags.get('highway') != 'footway'
+                or tags.get('bicycle') is not None
+                or tags.get('foot') in ('no', 'private')
+                or tags.get('access') in ('no', 'private')):
+            return None
+        pts = [(n.ref, n.location.lon, n.location.lat)
+               for n in obj.nodes if n.location.valid()]
+        kept = [i for i, p in enumerate(pts) if p[0] in refcount]
+        runs = []
+        for ka, kb in zip(kept, kept[1:]):
+            frag = pts[ka:kb + 1]
+            aref, bref = frag[0][0], frag[-1][0]
+            if aref == bref:
+                continue
+            coords = [(x, y) for _, x, y in frag]
+            length = line_len_m(coords)
+            if not 0.5 < length <= STITCH_MAX_M:
+                continue
+            if len(coords) > 3:
+                coords = simplify_line(coords)
+            eflags = 2 | 8 | (64 if obj.id in designated else 0)
+            eofficial = (EDGE_DISMOUNT | sidewalk_flags(tags)
+                         | (EDGE_URBAN if is_urban_edge(coords, urban_index) else 0))
+            asc, des = edge_grade(coords, coords, tags, ele_at)
+            runs.append((
+                aref, coords[0], bref, coords[-1], True,
+                length, coords, eflags, 0, 0,
+                -1, -1, 0, 0,
+                FACILITY_PATH, eofficial, surface_class(tags),
+                0, 0, MEASURE_UNKNOWN, MEASURE_UNKNOWN, 0,
+                0, 0, 0,
+                asc, des, (0, 0, 0), (0, 0, 0),
+                False, False, tags.get('name') or ''))
+        sidewalk_stitches[0] += len(runs)
+        return runs or None
+
     # ``FileProcessor(...).with_locations()`` only works when Python also
     # iterates every source node, which is extremely slow for this statewide
     # extract.  SimpleHandler keeps the location index in libosmium and streams
@@ -1480,7 +1538,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
         tags = {tag.k: tag.v for tag in t}
         attrs = classify_way(tags)
         if attrs is None:
-            return
+            return sidewalk_stitch_runs(obj, tags)
         attrs['mtb'] = is_mountain_bike_way(tags, obj.id, mtb_route_members)
         pts = [(n.ref, n.location.lon, n.location.lat) for n in obj.nodes if n.location.valid()]
         if len(pts) < 2:
@@ -1781,7 +1839,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                               measures.aadt, measures.hpms)]
             queue.put(('done',
                        [conflated[0], restricted_edges[0], official_speeds[0],
-                        official_facilities[0], densified_paths[0]],
+                        official_facilities[0], densified_paths[0],
+                        sidewalk_stitches[0]],
                        layer_stats))
 
         procs = [ctx.Process(target=run_worker, args=(shard,), daemon=True)
@@ -1799,7 +1858,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                 counts, layer_stats = payload
                 for target, delta in zip((conflated, restricted_edges,
                                           official_speeds, official_facilities,
-                                          densified_paths), counts):
+                                          densified_paths, sidewalk_stitches),
+                                         counts):
                     target[0] += delta
                 for layer, stat in zip((measures.roadlog, measures.funcclass,
                                         measures.aadt, measures.hpms),
@@ -1992,6 +2052,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
     print(f'  WSDOT-conflated edges: {conflated[0]:,}; direct restrictions excluded: {restricted_edges[0]:,}', flush=True)
     print(f'  official legal speeds: {official_speeds[0]:,}; official facilities: {official_facilities[0]:,}', flush=True)
     print(f'  MTB-tagged edges: {mtb_edges[0]:,}; dedicated paths densified for snapping: {densified_paths[0]:,}', flush=True)
+    print(f'  sidewalk stitch fragments: {sidewalk_stitches[0]:,}', flush=True)
     measures.report()
     print(f'  directional curve-warning edges: {hazard_edges[0]:,}', flush=True)
 

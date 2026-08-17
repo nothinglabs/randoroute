@@ -142,5 +142,36 @@ if (pass?.ok) {
     JSON.stringify([...new Set((pass.segs || []).map((s) => s.name))].slice(0, 8)));
 }
 
+// The Interurban Trail passes 47 m from the kerb of Alderwood Mall Boulevard
+// in Lynnwood, and its only access there is two signalized crossings joined
+// by a few metres of sidewalk. Sidewalks are excluded from the graph as a
+// class, and the class exclusion used to swallow those joins: every crossing
+// dangled as a dead-end stub, the nearest usable trail entrance sat 800 m
+// northeast, and a route asked to join the trail rode out and back PAST its
+// own start -- the field-reported lollipop. The build now readmits a sidewalk
+// fragment when it is the short span between two kept ways, and this is the
+// join that noticed.
+w.messages.length = 0;
+const interurban = w.post({ type: 'route', id: 'interurban',
+  points: [[-122.2870, 47.8180], [-122.28813, 47.81685]],
+  rules: RULES, mode: 'balanced' });
+check('the Interurban Trail is joinable beside Alderwood Mall Blvd',
+  interurban?.ok === true,
+  JSON.stringify({ ok: interurban?.ok, reason: interurban?.reason }));
+if (interurban?.ok) {
+  check(`by the crossings, not a lollipop: ${Math.round(interurban.distM)} m (need < 400 m)`,
+    interurban.distM < 400, `${Math.round(interurban.distM)} m`);
+}
+
+// Start snapping measures to edge GEOMETRY, not to stored nodes. A rider
+// standing mid-block beside a long street run used to snap to whatever node
+// happened to be nearest -- sometimes a dead-end stub across the street --
+// and the route began with a phantom detour. The distance returned must be
+// the distance to the street itself.
+const midblock = w.run(
+  'nearestNode(-122.28709, 47.8186, { allowMtbTrails: false })');
+check(`a mid-block point snaps to the street beside it: ${Math.round(midblock.distM)} m (need < 20 m)`,
+  midblock.distM < 20, JSON.stringify(midblock));
+
 console.log(`\n${passed} passed${failed ? `, ${failed} FAILED` : ''}`);
 process.exitCode = failed ? 1 : 0;

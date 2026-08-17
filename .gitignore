@@ -27,7 +27,7 @@ _*.mjs
 _*.html
 data/dem/
 # Elevation tiles are a build input, fetched per state and never shipped.
-maps/*/dem/
+maps/*/dem
 # Natural Earth land polygon: a shared build input (scripts/fetch_natural_earth.sh).
 data/natural-earth/
 # tippecanoe intermediates (rebuilt from the PBF; output is roads.pmtiles)
