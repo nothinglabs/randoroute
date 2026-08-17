@@ -188,6 +188,50 @@ check('a start that could not be updated says so rather than pretending',
 check('and the route is still calculated from the start it has',
   failedFix.start[0] === -122.3321, JSON.stringify(failedFix));
 
+/* -------------- a coarse first fix keeps improving while planning */
+// The OS can claim 200 m and deliver 800: the pin lands up the trail while
+// the live dot walks to the right place (field report). A device start keeps
+// listening; a meaningfully MORE ACCURATE fix that lands elsewhere moves the
+// start, and an equally-vague different guess does not.
+await page.evaluate(() => {
+  window.__locationFails = false;
+  clearRoute();
+  window.__notices.length = 0;
+  DEVICE_START_REFINE_POLL_MS = 150; // the test should not sit through 4 s beats
+  window.__deviceFix = { lng: -122.3321, lat: 47.6062, accuracy: 200 };
+  window.getDevicePosition = () => Promise.resolve({ coords: {
+    longitude: window.__deviceFix.lng, latitude: window.__deviceFix.lat,
+    accuracy: window.__deviceFix.accuracy,
+  }, timestamp: Date.now() });
+  window.getFreshDevicePosition = window.getDevicePosition;
+  setRoutePoint('end', { lng: -122.2015, lat: 47.6101 }, 'Bellevue');
+});
+await page.waitForFunction(() => Boolean(routing.start), null, { timeout: 5000 });
+// An equally vague guess somewhere else must NOT move the pin.
+await page.evaluate(() => {
+  window.__deviceFix = { lng: -122.3421, lat: 47.6162, accuracy: 190 };
+});
+await new Promise((resolve) => setTimeout(resolve, 700));
+const unmoved = await page.evaluate(() => routing.start.map((v) => +v.toFixed(4)));
+check('an equally vague different guess does not move a planted start',
+  unmoved[0] === -122.3321, JSON.stringify(unmoved));
+// A genuinely better fix a real distance away MUST.
+await page.evaluate(() => {
+  window.__deviceFix = { lng: -122.3400, lat: 47.6000, accuracy: 12 };
+});
+await page.waitForFunction(
+  () => Array.isArray(routing.start) && Math.abs(routing.start[0] - -122.34) < 0.0001,
+  null, { timeout: 8000 });
+const refined = await page.evaluate(() => ({
+  start: routing.start.map((v) => +v.toFixed(4)),
+  accuracy: routing.deviceStartAccuracyM,
+  notice: window.__notices.join(' | '),
+}));
+check('a meaningfully better fix moves the planted start and says so',
+  refined.start[0] === -122.34 && refined.accuracy === 12
+    && /moved to your location/i.test(refined.notice),
+  JSON.stringify(refined));
+
 /* --------------------------------------------- clearing restores the default */
 const cleared = await page.evaluate(() => {
   window.__locationFails = false;

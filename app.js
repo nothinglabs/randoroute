@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.733';
+const APP_VERSION = '2026-08-17.734';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -8966,9 +8966,7 @@ async function resolveDefaultStartFromDevice() {
     const pos = await getFreshDevicePosition();
     if (request !== defaultStartRequest || routing.start || !routing.end
         || !routing.startDefaultsToDevice) return;
-    setRoutePoint('start', {
-      lng: pos.coords.longitude, lat: pos.coords.latitude,
-    }, 'My location', { fromDevice: true });
+    setDeviceStart(pos);
   } catch {
     if (request !== defaultStartRequest || !routing.startDefaultsToDevice) return;
     // Current location is a convenient default, not a required step. If the
@@ -9071,7 +9069,7 @@ async function refreshDeviceStartForNewDestination() {
       showRouteActionToast('');
       return;
     }
-    setRoutePoint('start', lngLat, 'My location', { fromDevice: true });
+    setDeviceStart(pos);
     showRouteActionToast('Start moved to your location', { duration: 4000 });
   } catch (e) {
     if (request !== deviceStartRequest) return;
@@ -9080,6 +9078,65 @@ async function refreshDeviceStartForNewDestination() {
     showRouteActionToast('Could not update your location', {
       detail: 'The route still starts from the pin on the map.', duration: 7000 });
   }
+}
+
+/* A fix that passes the freshness gate can still be an indoor WiFi/cell guess
+ * hundreds of metres out -- the OS CLAIMS 150 m and delivers 800 (field
+ * report: the start pin landed half a mile up the trail while the live
+ * location dot walked to the right place moments later). Nothing ever
+ * corrected the pin: the gate ran once, at planning time.
+ *
+ * So a device-set start keeps LISTENING for a while. Any later fix that is
+ * meaningfully more accurate than the one that placed the pin, and lands a
+ * real distance away, moves the start through the same visible flow the
+ * new-destination refresh uses. Each improvement restarts the window, and
+ * the accuracy ratchet means the pin converges instead of wandering.
+ * Navigation is untouched -- it owns the origin while running -- and a start
+ * the rider CHOSE never moves (startFromDevice gates every tick). */
+const DEVICE_START_REFINE_WINDOW_MS = 45000;
+let DEVICE_START_REFINE_POLL_MS = 4000; // let: tests shrink the wait
+let deviceStartRefineToken = 0;
+async function refineDeviceStartWhilePlanning() {
+  const token = ++deviceStartRefineToken;
+  const deadline = Date.now() + DEVICE_START_REFINE_WINDOW_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, DEVICE_START_REFINE_POLL_MS));
+    if (token !== deviceStartRefineToken || !routing.startFromDevice
+        || turnNav.active || !Array.isArray(routing.start)) return;
+    let position = null;
+    try {
+      position = await getDevicePosition({ maximumAge: 0, timeout: 8000 });
+    } catch (e) { continue; }
+    if (token !== deviceStartRefineToken || !routing.startFromDevice
+        || turnNav.active || !Array.isArray(routing.start)) return;
+    if (freshFixProblem(position)) continue;
+    const accuracy = Number(position.coords.accuracy);
+    const placedAccuracy = Number(routing.deviceStartAccuracyM);
+    // Meaningfully better than what placed the pin, never merely different:
+    // trading one 200 m guess for another only makes the pin wander.
+    if (Number.isFinite(placedAccuracy) && Number.isFinite(accuracy)
+        && !(accuracy < placedAccuracy * 0.7)) continue;
+    const next = [position.coords.longitude, position.coords.latitude];
+    if (navDistanceM(routing.start, next) <= DEVICE_START_MOVED_M) {
+      // Same place, better fix: the pin was right. Ratchet and stop chasing.
+      if (Number.isFinite(accuracy)) routing.deviceStartAccuracyM = accuracy;
+      continue;
+    }
+    setDeviceStart(position);
+    showRouteActionToast('Start moved to your location', { duration: 4000 });
+  }
+}
+
+// The one funnel for "the device says the rider is HERE" becoming the trip
+// start: records the fix's claimed accuracy (the refinement ratchet) and
+// keeps listening for a better one.
+function setDeviceStart(position) {
+  const accuracy = Number(position?.coords?.accuracy);
+  routing.deviceStartAccuracyM = Number.isFinite(accuracy) ? accuracy : null;
+  setRoutePoint('start', {
+    lng: position.coords.longitude, lat: position.coords.latitude,
+  }, 'My location', { fromDevice: true });
+  refineDeviceStartWhilePlanning();
 }
 
 function enableLongPressEndpointMove(kind, marker) {
@@ -10876,10 +10933,9 @@ async function routeToPlaceSearchResult(lngLat, name) {
   try {
     const pos = await getFreshDevicePosition({ timeout: 30000, retryUntilUsable: true });
     if (requestId !== placeSearchRequestId) return;
-    const start = { lng: pos.coords.longitude, lat: pos.coords.latitude };
     clearRoute();
     clearSearchResultMarker();
-    setRoutePoint('start', start, 'My location', { fromDevice: true });
+    setDeviceStart(pos);
     // The fix above is brand new. Suppress the ordinary “new destination”
     // refresh so this one action does not immediately ask Core Location for
     // the same point a second time.
@@ -11122,6 +11178,13 @@ function buildPlacePicker() {
       setUseLocationBusy(false);
       const lngLat = { lng: pos.coords.longitude, lat: pos.coords.latitude };
       choosePlaceSearchResult(lngLat, 'My location', { fromDevice: true });
+      // When that became the trip's device start, arm the same accuracy
+      // ratchet the other device-start paths get from setDeviceStart().
+      if (routing.startFromDevice) {
+        const accuracy = Number(pos.coords.accuracy);
+        routing.deviceStartAccuracyM = Number.isFinite(accuracy) ? accuracy : null;
+        refineDeviceStartWhilePlanning();
+      }
     }).catch(() => {
       clearTimeout(stillFindingTimer);
       if (requestId !== placeSearchRequestId) return;
