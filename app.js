@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.735';
+const APP_VERSION = '2026-08-17.736';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7255,6 +7255,12 @@ function startTurnNavigation() {
     setStatus('Set a route and allow location access to start navigation.', true);
     return;
   }
+  // Navigation owns the location stack from here. Cancel the planning-time
+  // start-refinement poller NOW, not at its next tick: on iOS its one-shot
+  // fixes ride the same CLLocationManager as the background watch, and one
+  // landing mid-ride is what silenced background voice guidance (the native
+  // side also defends itself, but not queueing the request is better).
+  deviceStartRefineToken++;
   // The planning card is the visual reference for this shared action. Capture
   // its exact inset before the live card replaces it; anchoring from the
   // sheet's bottom also survives the live elevation chart being taller.

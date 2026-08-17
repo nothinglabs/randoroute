@@ -77,6 +77,11 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     }()
     private var webSpeechIDs: [ObjectIdentifier: Int] = [:]
     private var tracking = false
+    // A requestLocation() one-shot is pending on the shared manager. Apple's
+    // requestLocation() STOPS continuous updates on that manager when it
+    // completes, so a one-shot that overlaps a ride must be followed by
+    // re-asserting the watch -- see requestOneShotFix() and the delegate.
+    private var oneShotRequestInFlight = false
     private var pendingStartCall: CAPPluginCall?
     private var pendingPositionCalls: [String: CAPPluginCall] = [:]
     private var pendingPositionTimeouts: [String: DispatchWorkItem] = [:]
@@ -176,11 +181,26 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
                 self.locationManager.requestWhenInUseAuthorization()
             case .authorizedAlways, .authorizedWhenInUse:
                 self.queuePositionCall(call)
-                self.locationManager.requestLocation()
+                self.requestOneShotFix()
             @unknown default:
                 call.reject("Location authorization is unavailable.")
             }
         }
+    }
+
+    /// A one-shot fix that never disturbs an active ride.
+    ///
+    /// requestLocation() stops continuous updates on the SAME manager when it
+    /// completes. The planning layer polls getCurrentPosition for a while
+    /// after a trip is planned (refining a coarse first fix), so a poll that
+    /// overlapped Navigate silently killed background tracking: the app
+    /// "paused" in the background and voice guidance stopped (field report).
+    /// While tracking, the continuous stream itself resolves queued position
+    /// calls on the next fix, so no one-shot is needed at all.
+    private func requestOneShotFix() {
+        guard !tracking else { return }
+        oneShotRequestInFlight = true
+        locationManager.requestLocation()
     }
 
     @objc func startTracking(_ call: CAPPluginCall) {
@@ -280,7 +300,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
             switch manager.authorizationStatus {
             case .authorizedAlways, .authorizedWhenInUse:
                 if !self.pendingPositionCalls.isEmpty {
-                    manager.requestLocation()
+                    self.requestOneShotFix()
                 }
                 if let call = self.pendingStartCall {
                     self.pendingStartCall = nil
@@ -306,6 +326,15 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
+        // A completing one-shot stops continuous updates. If a ride is on --
+        // a request that was already pending when Navigate was tapped -- put
+        // the watch back before it is missed.
+        if oneShotRequestInFlight {
+            oneShotRequestInFlight = false
+            if tracking {
+                locationManager.startUpdatingLocation()
+            }
+        }
         latestLocation = location
         let payload = locationPayload(location)
         latestLocationPayload = payload
@@ -322,6 +351,14 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        // A one-shot can end in failure too, with the same implicit stop of
+        // continuous updates; a ride that is on gets its watch back first.
+        if oneShotRequestInFlight {
+            oneShotRequestInFlight = false
+            if tracking {
+                locationManager.startUpdatingLocation()
+            }
+        }
         // Core Location commonly emits locationUnknown while the radio is
         // warming up, then delivers a valid fix a moment later. It is explicitly
         // transient; rejecting here made a second tap two seconds later work
@@ -384,7 +421,7 @@ final class NativeNavigationPlugin: CAPPlugin, CAPBridgedPlugin, CLLocationManag
         let retry = DispatchWorkItem { [weak self] in
             guard let self, !self.pendingPositionCalls.isEmpty else { return }
             self.pendingPositionRetry = nil
-            self.locationManager.requestLocation()
+            self.requestOneShotFix()
         }
         pendingPositionRetry = retry
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(750), execute: retry)
