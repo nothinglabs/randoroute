@@ -143,40 +143,39 @@ check('routeNamesNear names the routes under a point, and only there',
   near.at.includes('Interurban Trail') && near.offshore.length === 0,
   JSON.stringify(near));
 
-// The default radius is pixels, not meters: a tap lands as far off the line
-// as the road's hit target is wide, which is what made a fixed 40 m radius
-// miss half of all real taps at town zooms.
-const radius = await page.evaluate((mid) => {
-  // Walk away from the trail until a 40 m radius no longer reaches it --
-  // the trail curves, so a fixed offset cannot be trusted to be "just past
-  // 40 m from everything". The first such point is at most ~60 m out.
-  // The trail is roughly north-south here, so walk each cardinal direction
-  // and take the first point past its 40 m reach (other routes may lie that
-  // way too; only the trail's own reach matters).
-  let probe = null;
-  outer: for (const [eastward, northward] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-    for (let step = 1; step <= 12; step++) {
-      const candidate = {
-        lng: mid[0] + (eastward * step * 20) / (111320 * Math.cos(mid[1] * Math.PI / 180)),
-        lat: mid[1] + (northward * step * 20) / 111320,
-      };
-      if (!routeNamesNear(candidate, 40).includes('Interurban Trail')) {
-        probe = candidate;
-        break outer;
-      }
-    }
-  }
-  if (!probe) return { probe: null };
-  map.jumpTo({ center: mid, zoom: 12.5 });
-  const atTownZoom = routeNamesNear(probe);
-  map.jumpTo({ center: mid, zoom: 16 });
-  const atCloseZoom = routeNamesNear(probe);
-  return { probe, atTownZoom, atCloseZoom };
-}, near.mid);
-check('the search radius scales with zoom like the tap target does',
-  !!radius.probe && radius.atTownZoom.includes('Interurban Trail')
-    && !radius.atCloseZoom.includes('Interurban Trail'),
-  JSON.stringify(radius));
+// Membership by geometry: an unflagged feature earns the toggle only when
+// its own shape RUNS ALONG the route line -- the trail's pavement shares it
+// to the metre; a parallel street a block over and a road that merely
+// crosses the route do not (the Meadow Road field report).
+const along = await page.evaluate(async () => {
+  const catalog = await ensureStateRouteCatalog();
+  const entry = catalog.get('Interurban Trail');
+  const line = entry.lines.sort((a, b) => b.length - a.length)[0];
+  const start = Math.floor(line.length / 2);
+  const stretch = line.slice(start, Math.min(start + 10, line.length));
+  const kx = 111320 * Math.cos(stretch[0][1] * Math.PI / 180);
+  const offset = (coords, metres) => coords.map(([lng, lat]) => [lng + metres / kx, lat]);
+  const osmFeature = (coordinates) => preferredRouteTogglesFor('osm', {}, {},
+    { lng: coordinates[0][0], lat: coordinates[0][1] },
+    { geometry: { type: 'LineString', coordinates } });
+  const a = stretch[0], b = stretch[stretch.length - 1];
+  // A short way crossing the trail at its midpoint, perpendicular-ish.
+  const crossMid = stretch[Math.floor(stretch.length / 2)];
+  const crossing = [[crossMid[0] - 120 / kx, crossMid[1]], [crossMid[0] + 120 / kx, crossMid[1]]];
+  return {
+    onRoute: osmFeature(stretch),
+    parallel: osmFeature(offset(stretch, 60)),
+    crossing: osmFeature(crossing),
+    noGeometry: preferredRouteTogglesFor('osm', {}, {}, { lng: a[0], lat: a[1] }, null),
+    span: [a, b],
+  };
+});
+check('an unflagged feature earns the toggle only by running along the route',
+  along.onRoute.includes('Interurban Trail')
+    && !along.parallel.includes('Interurban Trail')
+    && !along.crossing.includes('Interurban Trail')
+    && along.noGeometry.length === 0,
+  JSON.stringify(along));
 
 // Toggling with a live trip must reprice THAT recompute: the geometry
 // message has to reach the worker before the route request does.

@@ -47,11 +47,20 @@
   // that writes STORED_STATE_KEY and reloads, and this reads it back. Switching
   // state means loading another folder -- there is no other difference.
   //
-  // The default is the first RELEASED state in folder order, never simply the
-  // first: a preview state sitting alphabetically ahead of a finished one must
-  // not become what a new rider opens the app to.
+  // The default is the released state with the HIGHEST readiness, folder
+  // order breaking ties -- never simply the first folder: releasing a second
+  // state must not silently change what a new rider opens the app to just
+  // because it sorts earlier ("oregon" ahead of "washington" did exactly
+  // that). Readiness is the rubric-scored trust level, so the default is the
+  // most trustworthy map, and the legacy meaning of defaultStateId -- which
+  // state pre-multistate persisted data was about -- keeps pointing at the
+  // original state for the same reason.
   const STORED_STATE_KEY = 'jra-map-state-1';
-  const fallback = states.find((state) => state.status === 'released') || states[0];
+  const released = states.filter((state) => state.status === 'released');
+  const fallback = released.length
+    ? released.reduce((best, state) =>
+      ((state.readiness || 0) > (best.readiness || 0) ? state : best))
+    : states[0];
   let stored = null;
   try {
     stored = root.localStorage ? root.localStorage.getItem(STORED_STATE_KEY) : null;

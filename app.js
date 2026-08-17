@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-16.729';
+const APP_VERSION = '2026-08-17.730';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -2805,21 +2805,14 @@ function routeOverlayNames(p) {
 // where a route follows a road the road above it wins the tap -- which is
 // every practical tap on a route. This is what puts the Preferred checkbox
 // on whichever card the tap actually opened.
-function routeNamesNear(lngLat, toleranceM = null) {
+function routeNamesNear(lngLat, toleranceM = 40) {
   const src = SOURCES.find((source) => source.id === 'routes');
   const names = [];
   if (!src?.fc) return names;
   const point = [Number(lngLat.lng), Number(lngLat.lat)];
-  // A tap can land as far off the route line as the tapped road's hit target
-  // is wide -- and that width is PIXELS, so a fixed 40 m radius missed most
-  // taps at town zooms (field: the checkbox showed only half the time). The
-  // radius scales with the pixel size instead: floored near, capped so a
-  // parallel street two blocks over is never claimed.
-  if (toleranceM == null) {
-    const metersPerPixel = 40075016.686 * Math.cos(point[1] * Math.PI / 180)
-      / (512 * 2 ** (typeof map !== 'undefined' ? map.getZoom() : 14));
-    toleranceM = Math.max(40, Math.min(160, 16 * metersPerPixel));
-  }
+  // A fixed radius, stated by each caller: the zoom-scaled radius this once
+  // had served the retired tap-anywhere-near-the-route design, and is exactly
+  // what dressed unrelated streets in a neighbouring route's controls.
   const kx = 111320 * Math.cos(point[1] * Math.PI / 180), ky = 111320;
   const segDistM = (a, b) => {
     const ax = (a[0] - point[0]) * kx, ay = (a[1] - point[1]) * ky;
@@ -12123,31 +12116,53 @@ function bikeRouteContextRow(srcId, p, screenPoint) {
     ? ['Bike route', 'On a designated route (USBR / regional trail)'] : null;
 }
 
-// Which Preferred checkboxes a tapped feature's card offers. A nearby route is
-// not enough: wide road hit targets can win several pixels away from the
-// painted ribbon, and dressing that unrelated street as a route is misleading.
-// The tap must land on the painted route itself, or the selected feature must
-// claim route membership in its own data. routeNamesNear then supplies the
-// human-readable route name for that second case.
-function routeNamesAtScreenPoint(screenPoint) {
-  if (!screenPoint || typeof map === 'undefined' || !map.getLayer('routes')) return [];
-  if (map.getLayoutProperty('routes', 'visibility') === 'none') return [];
-  const names = [];
-  for (const feature of map.queryRenderedFeatures(screenPoint, { layers: ['routes'] })) {
-    for (const name of routeOverlayNames(feature.properties)) {
-      if (!names.includes(name)) names.push(name);
+// The routes the tapped feature itself RUNS ALONG: most of its drawn shape
+// within conflation distance of a route line. Membership by geometry, for
+// sources that carry no membership flag -- the OSM path that IS the route's
+// pavement shares its line to the metre, where a parallel road or service
+// path does not. A feature that merely CROSSES a route touches it at one
+// point and stays out. Same 80%-of-shape doctrine as the router worker's
+// preferred-edge matcher.
+function routeNamesAlongFeature(feature, toleranceM = 20) {
+  const geometry = feature?.geometry;
+  const lines = geometry?.type === 'LineString' ? [geometry.coordinates]
+    : geometry?.type === 'MultiLineString' ? geometry.coordinates : [];
+  const coords = lines.flat();
+  if (coords.length < 2) return [];
+  const step = Math.max(1, Math.floor(coords.length / 12));
+  const counts = new Map();
+  let samples = 0;
+  for (let i = 0; i < coords.length; i += step) {
+    samples++;
+    for (const name of routeNamesNear({ lng: coords[i][0], lat: coords[i][1] }, toleranceM)) {
+      counts.set(name, (counts.get(name) || 0) + 1);
     }
   }
-  return names;
+  const needed = Math.max(2, Math.ceil(samples * 0.8));
+  return [...counts.entries()]
+    .filter(([, count]) => count >= needed)
+    .map(([name]) => name);
 }
 
-function preferredRouteTogglesFor(srcId, p, n, lngLat, screenPoint = null) {
+// Which Prefer-route checkboxes a tapped feature's card offers. MEMBERSHIP,
+// never pixel proximity: the painted ribbon is deliberately a wide band, so
+// "the tap pixel touches the ribbon" is true on unrelated streets beside a
+// route (field report: Meadow Road wearing the Interurban Trail's toggle)
+// and varies with zoom and the layer toggle. The toggle appears only when
+// the rider actually selected a segment OF the route: the ribbon's own card,
+// a feature whose own data claims membership (its geometry then names which
+// route), or an OSM path whose geometry runs along the route line.
+function preferredRouteTogglesFor(srcId, p, n, lngLat, feature = null) {
   if (srcId === 'routes') return routeOverlayNames(p);
-  const visiblyTapped = routeNamesAtScreenPoint(screenPoint);
-  if (visiblyTapped.length) return visiblyTapped;
   const claimsRoute = p?.g || p?.desig === 1 || Number(p?.Designated) === 1;
-  if (!claimsRoute) return [];
-  return routeNamesNear(lngLat, 30);
+  if (claimsRoute) {
+    const along = routeNamesAlongFeature(feature, 30);
+    // Degenerate tile geometry still deserves a name: the flag already
+    // established membership, so a point lookup only says WHICH route.
+    return along.length ? along : routeNamesNear(lngLat, 60);
+  }
+  if (srcId === 'osm') return routeNamesAlongFeature(feature);
+  return [];
 }
 
 
@@ -12923,7 +12938,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
     // Any tapped segment that lies on a signed route offers its Preferred
     // checkbox -- not only the ribbon's own card, which a road usually
     // outbids for the tap.
-    preferredRouteToggles: preferredRouteTogglesFor(src.id, p, n, lngLat, anchorPoint),
+    preferredRouteToggles: preferredRouteTogglesFor(src.id, p, n, lngLat, feature),
     cautionKinds: src.id === 'routeseg' && p.ferry !== 1
       ? [...routeMarkerKinds(p, routeVisualStyle(p)), ...(p.hazard ? ['curve'] : [])]
       : [],

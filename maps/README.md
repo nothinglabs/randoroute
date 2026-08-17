@@ -43,8 +43,9 @@ other difference.
 The rider chooses on **Settings → Maps**. One state at a time: the choice is
 stored in `localStorage` under `jra-map-state-1` and the app reloads, because a
 graph, three tile archives and a place index cannot be swapped under a running
-map. The default for a rider who has never chosen is the first state with
-`"status": "released"`.
+map. The default for a rider who has never chosen is the released state with
+the highest `readiness` (folder order breaks ties), so releasing a second
+state never changes what a new rider opens the app to.
 
 Web and native differ in one way only:
 
