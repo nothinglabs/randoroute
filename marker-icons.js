@@ -178,34 +178,32 @@ function ensureRouteMarkerImages(targetMap) {
     b.disc(8 * s, 11.2 * s, 0.95 * s, ink);
     add('route-marker-fail', b);
   }
-  { // fail-designated: a bicycle under a red ! -- "this IS a bike route, and
-    // it still fails your safety rules". All in the fail red: the signed
-    // route is context, not a safety exemption.
+  { // fail-designated: the plain fail badge's bold ! with a really SMALL
+    // bicycle tucked beneath it. The concern is the message; the bike is
+    // only the differentiator that says "and this is a signed bike route"
+    // (field direction: focus on the !, keep the bike tiny). One red.
     const b = paintMarkerBadge([176, 32, 32, 255]);
     const s = b.s, ink = [176, 32, 32, 255];
+    // The exclamation, nearly the full badge like route-marker-fail's,
+    // raised just enough to clear the little bike.
+    b.stroke(8 * s, 3.8 * s, 8 * s, 4.6 * s, 1.68 * s, ink);
+    b.stroke(8 * s, 4.6 * s, 8 * s, 6.9 * s, 1.38 * s, ink);
+    b.disc(8 * s, 8.5 * s, 0.88 * s, ink);
+    // The tiny bike: two wheel rings and a trapezoid frame, nothing more --
+    // at this size anything finer smears -- floated clear of the badge ring
+    // so it reads as its own little shape rather than a lump on the rim.
     const ring = (px, py, pr) => {
-      for (let deg = 0; deg < 360; deg += 6) {
+      for (let deg = 0; deg < 360; deg += 10) {
         const a = deg * Math.PI / 180;
-        b.disc(px + Math.cos(a) * pr, py + Math.sin(a) * pr, 0.5 * s, ink);
+        b.disc(px + Math.cos(a) * pr, py + Math.sin(a) * pr, 0.3 * s, ink);
       }
     };
-    // The bicycle: two wheel rings, chainstay, seat tube with saddle, top
-    // tube to the stem, fork, handlebar. Minimal, but it reads as a bike.
-    const rearHub = [4.9 * s, 10.9 * s], frontHub = [11.1 * s, 10.9 * s];
-    const crank = [8.05 * s, 10.9 * s], seatTop = [6.5 * s, 7.9 * s];
-    const stem = [10.2 * s, 8.05 * s];
-    ring(rearHub[0], rearHub[1], 1.95 * s);
-    ring(frontHub[0], frontHub[1], 1.95 * s);
-    b.stroke(rearHub[0], rearHub[1], crank[0], crank[1], 0.95 * s, ink);
-    b.stroke(crank[0], crank[1], seatTop[0], seatTop[1], 0.95 * s, ink);
-    b.stroke(5.7 * s, 7.75 * s, 7.3 * s, 7.75 * s, 0.95 * s, ink);   // saddle
-    b.stroke(seatTop[0], seatTop[1], stem[0], stem[1], 0.95 * s, ink);
-    b.stroke(stem[0], stem[1], frontHub[0], frontHub[1], 0.95 * s, ink);
-    b.stroke(9.6 * s, 7.65 * s, 10.9 * s, 7.75 * s, 0.95 * s, ink);  // handlebar
-    // The exclamation above the bike, clear of the top tube.
-    b.stroke(8 * s, 2.7 * s, 8 * s, 3.4 * s, 1.6 * s, ink);
-    b.stroke(8 * s, 3.4 * s, 8 * s, 4.8 * s, 1.3 * s, ink);
-    b.disc(8 * s, 6.1 * s, 0.72 * s, ink);
+    const rearHub = [6.2 * s, 11.5 * s], frontHub = [9.8 * s, 11.5 * s];
+    ring(rearHub[0], rearHub[1], 0.8 * s);
+    ring(frontHub[0], frontHub[1], 0.8 * s);
+    b.stroke(rearHub[0], rearHub[1], 7.45 * s, 10.5 * s, 0.5 * s, ink);
+    b.stroke(7.45 * s, 10.5 * s, 8.55 * s, 10.5 * s, 0.5 * s, ink);
+    b.stroke(8.55 * s, 10.5 * s, frontHub[0], frontHub[1], 0.5 * s, ink);
     add('route-marker-fail-designated', b);
   }
   // Combined badges: a spot can be steep AND trafficked, and one badge must
