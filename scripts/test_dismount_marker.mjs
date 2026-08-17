@@ -189,6 +189,25 @@ check('the icon draws well above the old 18 px', drawn.cssPx >= 24, `${drawn.css
 check('the halo is sized to cover it', drawn.haloRadius * 2 >= drawn.cssPx,
   `radius ${drawn.haloRadius} against a ${drawn.cssPx} px icon`);
 
+// The drawn route answers first inside its own hit band -- a tap ON the
+// route over a real street must return the route, not the street beneath
+// (field report: zoomed out it was really easy to select something else).
+// One finger-width away, ordinary resolution resumes.
+const routeClaim = await page.evaluate(() => {
+  // Segment 1: plain riding, clear of the dismount markers' own claim.
+  const onRoute = map.project([-122.34 + 1.5 * .002, 47.60]);
+  const hit = featureAt(onRoute);
+  const away = featureAt({ x: onRoute.x, y: onRoute.y - 90 });
+  return {
+    onRouteLayer: hit?.layer?.id || null,
+    awayLayer: away?.layer?.id || null,
+  };
+});
+check('a tap on the drawn route answers for the route, not the street beneath',
+  routeClaim.onRouteLayer === 'route-seg-hit'
+    && routeClaim.awayLayer !== 'route-seg-hit',
+  JSON.stringify(routeClaim));
+
 const failLayer = await page.evaluate(() => ({
   hasDesignatedImage: Boolean(map.style.getImage('route-marker-fail-designated')),
   allowOverlap: map.getLayoutProperty('route-fail-marker', 'icon-allow-overlap'),

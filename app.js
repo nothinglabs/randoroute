@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.730';
+const APP_VERSION = '2026-08-17.731';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -8789,8 +8789,11 @@ function drawRoute(coords, ferrySegs, segs) {
   forgetStyleValues(); map.addLayer({
     id: 'route-seg-hit', type: 'line', source: 'route-seg',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
+    // Wider than the route's own 12.5 px painted casing at EVERY zoom: the
+    // old 8 px at z6 was narrower than the line itself, so zoomed out there
+    // was no finger slack at all and the street beneath took the tap.
     paint: { 'line-color': '#000', 'line-opacity': 0,
-             'line-width': ['interpolate', ['linear'], ['zoom'], 6, 8, 12, 14, 16, 22] },
+             'line-width': ['interpolate', ['linear'], ['zoom'], 6, 18, 12, 20, 16, 26] },
   });
   attachHover(ROUTESEG_SRC, 'route-seg-hit');
   applyDisplayModeAll();
@@ -11644,6 +11647,17 @@ function visibleFeatureAt(point, pad = 6) {
   return dodgeBannedHit(point, pool, nearestOfHits(point, pool));
 }
 
+// The active route's own feature under a point, honoured within the widened
+// route-seg-hit band only; null with no trip drawn, so ordinary resolution
+// is untouched the rest of the time.
+function activeRouteFeatureAt(point) {
+  if (!routing.last?.ok || !map.getLayer('route-seg-hit')) return null;
+  // As an [x, y] pair: a bare {x, y} object is not a PointLike to MapLibre,
+  // which silently queries the whole viewport instead of the point.
+  const hits = map.queryRenderedFeatures([point.x, point.y], { layers: ['route-seg-hit'] });
+  return hits.length ? nearestOfHits(point, hits) : null;
+}
+
 function featureAt(point) {
   const layers = HIT_LAYERS.filter(
     (id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none'
@@ -11655,6 +11669,14 @@ function featureAt(point) {
   const onMarker = dismountMarkerAt(point);
   const pad = onMarker ? DISMOUNT_MARKER_HIT_PX : 6;
   if (!onMarker) {
+    // The drawn route answers first inside its own hit band -- the same
+    // draw-order claim the dismount marker makes in its halo. The route is
+    // what the rider is mid-trip with, and the visible-first pass below does
+    // not know route layers, so without this a tap ON the drawn line
+    // returned whichever street ran beneath it (field report, zoomed out).
+    // A street stays one finger-width away from the line.
+    const routeHit = activeRouteFeatureAt(point);
+    if (routeHit) return routeHit;
     const visible = visibleFeatureAt(point, pad);
     if (visible) return visible;
   }
