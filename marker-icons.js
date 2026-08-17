@@ -184,26 +184,25 @@ function ensureRouteMarkerImages(targetMap) {
     // (field direction: focus on the !, keep the bike tiny). One red.
     const b = paintMarkerBadge([176, 32, 32, 255]);
     const s = b.s, ink = [176, 32, 32, 255];
-    // The exclamation, nearly the full badge like route-marker-fail's,
-    // raised just enough to clear the little bike.
-    b.stroke(8 * s, 3.8 * s, 8 * s, 4.6 * s, 1.68 * s, ink);
-    b.stroke(8 * s, 4.6 * s, 8 * s, 6.9 * s, 1.38 * s, ink);
-    b.disc(8 * s, 8.5 * s, 0.88 * s, ink);
-    // The tiny bike: two wheel rings and a trapezoid frame, nothing more --
-    // at this size anything finer smears -- floated clear of the badge ring
-    // so it reads as its own little shape rather than a lump on the rim.
-    const ring = (px, py, pr) => {
-      for (let deg = 0; deg < 360; deg += 10) {
-        const a = deg * Math.PI / 180;
-        b.disc(px + Math.cos(a) * pr, py + Math.sin(a) * pr, 0.3 * s, ink);
-      }
-    };
-    const rearHub = [6.2 * s, 11.5 * s], frontHub = [9.8 * s, 11.5 * s];
-    ring(rearHub[0], rearHub[1], 0.8 * s);
-    ring(frontHub[0], frontHub[1], 0.8 * s);
-    b.stroke(rearHub[0], rearHub[1], 7.45 * s, 10.5 * s, 0.5 * s, ink);
-    b.stroke(7.45 * s, 10.5 * s, 8.55 * s, 10.5 * s, 0.5 * s, ink);
-    b.stroke(8.55 * s, 10.5 * s, frontHub[0], frontHub[1], 0.5 * s, ink);
+    // The exclamation IDENTICAL to route-marker-fail's, shifted one unit
+    // left so the corner glyph gets air; the tiny bike floats in the upper
+    // right, the only clear sky on the badge. The wheels are SOLID discs --
+    // ring wheels at this size read as eyeglasses, not a bicycle -- and the
+    // frame is a plain trapezoid.
+    b.stroke(7 * s, 5.3 * s, 7 * s, 6.2 * s, 1.7 * s, ink);
+    b.stroke(7 * s, 6.2 * s, 7 * s, 9 * s, 1.4 * s, ink);
+    b.disc(7 * s, 11.2 * s, 0.95 * s, ink);
+    const rearHub = [9.6 * s, 6.7 * s], frontHub = [12.05 * s, 6.7 * s];
+    b.disc(rearHub[0], rearHub[1], 0.75 * s, ink);
+    b.disc(frontHub[0], frontHub[1], 0.75 * s, ink);
+    b.stroke(rearHub[0], rearHub[1], 10.1 * s, 5.45 * s, 0.5 * s, ink);
+    b.stroke(10.1 * s, 5.45 * s, 11.6 * s, 5.45 * s, 0.5 * s, ink);
+    b.stroke(11.6 * s, 5.45 * s, frontHub[0], frontHub[1], 0.5 * s, ink);
+    // Saddle and handlebar ticks above the bar: the two nubs that make a
+    // trapezoid-on-wheels read as a bicycle rather than a little car.
+    b.stroke(9.65 * s, 4.85 * s, 10.35 * s, 4.85 * s, 0.5 * s, ink);
+    b.stroke(11.75 * s, 4.85 * s, 11.75 * s, 5.4 * s, 0.5 * s, ink);
+    b.stroke(11.35 * s, 4.7 * s, 12.15 * s, 4.7 * s, 0.5 * s, ink);
     add('route-marker-fail-designated', b);
   }
   // Combined badges: a spot can be steep AND trafficked, and one badge must
