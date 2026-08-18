@@ -236,11 +236,46 @@ const failLayer = await page.evaluate(() => {
     }
     return count;
   };
+  const redComponentSizes = (image) => {
+    const pixels = image?.data?.data;
+    const width = image?.data?.width;
+    const height = image?.data?.height;
+    if (!pixels || !width || !height) return [];
+    const seen = new Uint8Array(width * height);
+    const red = (at) => pixels[at * 4] === 176 && pixels[at * 4 + 1] === 32
+      && pixels[at * 4 + 2] === 32 && pixels[at * 4 + 3] === 255;
+    const sizes = [];
+    for (let at = 0; at < seen.length; at++) {
+      if (seen[at] || !red(at)) continue;
+      let size = 0;
+      const pending = [at];
+      seen[at] = 1;
+      while (pending.length) {
+        const next = pending.pop();
+        size++;
+        const x = next % width, y = Math.floor(next / width);
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if ((!dx && !dy) || x + dx < 0 || x + dx >= width
+              || y + dy < 0 || y + dy >= height) continue;
+            const neighbor = (y + dy) * width + x + dx;
+            if (!seen[neighbor] && red(neighbor)) {
+              seen[neighbor] = 1;
+              pending.push(neighbor);
+            }
+          }
+        }
+      }
+      sizes.push(size);
+    }
+    return sizes.sort((a, b) => b - a);
+  };
   return {
     hasDesignatedImage: Boolean(designated),
     designatedOlivePixels: countColor(designated, [95, 128, 0, 255]),
     designatedBikePixels: countRedInBikeArea(designated),
     plainBikePixels: countRedInBikeArea(plain),
+    designatedRedComponents: redComponentSizes(designated),
     allowOverlap: map.getLayoutProperty('route-fail-marker', 'icon-allow-overlap'),
     ignorePlacement: map.getLayoutProperty('route-fail-marker', 'icon-ignore-placement'),
   };
@@ -250,7 +285,11 @@ check('the designated-route failure icon is registered for active routes',
   JSON.stringify(failLayer));
 check('the designated failure badge carries a distinct red bicycle glyph',
   failLayer.designatedOlivePixels === 0
-    && failLayer.designatedBikePixels > failLayer.plainBikePixels + 60,
+    && failLayer.designatedBikePixels > failLayer.plainBikePixels + 40,
+  JSON.stringify(failLayer));
+check('the miniature bicycle stays visually separate from the circular rim',
+  failLayer.designatedRedComponents.length >= 4
+    && failLayer.designatedRedComponents[1] >= 30,
   JSON.stringify(failLayer));
 check('fail icons cannot be removed by symbol collisions',
   failLayer.allowOverlap === true && failLayer.ignorePlacement === true,
