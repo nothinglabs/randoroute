@@ -22,14 +22,26 @@ const rules = {
 const result = worker.run(`(() => {
   const points = ${JSON.stringify(points)};
   const rules = ${JSON.stringify(rules)};
-  const snaps = points.map((point) => nearestNode(point[0], point[1], rules));
-  const seed = route(points, rules, 'direct', false, false, snaps);
-  const raw = [seed];
-  const alternative = addForwardProgressCandidate(raw, points, rules, false, false, snaps);
+  const main = { ...activeWeights };
+  // Production also runs an aggressive direct lens. It owns the shortest
+  // endpoint in the six-route picker; .753 generated the forward-progress
+  // route but then let this lens crowd it back out.
+  const lens = { ...main,
+    failRoadDirect: 1.093, failRoadBalanced: 1.621, failRoadLowStress: 2.114,
+    facilityShared: 0.957, facilityLane: 0.817, facilityBuffered: 0.799,
+    facilitySeparated: 0.762, facilityPath: 0.668 };
+  const portfolio = routeOptions(points, rules, false, false, null, true, null,
+    'forward-progress-production-regression', main, lens);
+  const seed = portfolio.options.find((option) => option.optimization.profileId === 'quick');
+  const aggressive = portfolio.options.find((option) => option.optimization.profileId === 'direct-lens');
+  const alternative = portfolio.options.find((option) =>
+    option.optimization.profileId === 'forward-progress');
   return {
+    optionIds: portfolio.options.map((option) => option.optimization.profileId),
+    hasAggressiveLens: !!aggressive,
     seedRetreatM: routeMaxRetreatM(seed, points[1]),
     alternativeRetreatM: alternative && routeMaxRetreatM(alternative, points[1]),
-    alternativeId: alternative && alternative._profile.id,
+    alternativeId: alternative && alternative.optimization.profileId,
     alternativeDistanceM: alternative && alternative.distM,
     seedFailM: seed.failM,
     alternativeFailM: alternative && alternative.failM,
@@ -38,6 +50,8 @@ const result = worker.run(`(() => {
 
 assert.ok(result.seedRetreatM > 300,
   `field route should expose its bridge backtrack, got ${result.seedRetreatM.toFixed(0)} m`);
+assert.ok(result.hasAggressiveLens,
+  `regression setup must include the competing direct lens (${result.optionIds.join(', ')})`);
 assert.equal(result.alternativeId, 'forward-progress');
 assert.ok(result.alternativeRetreatM < result.seedRetreatM - 150,
   `alternative should remove the large retreat (${result.seedRetreatM.toFixed(0)} -> ${result.alternativeRetreatM.toFixed(0)} m)`);

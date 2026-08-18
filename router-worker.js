@@ -2801,6 +2801,7 @@ function addForwardProgressCandidate(raw, points, rules, forceDesig,
   if (!raw.length || points.length !== 2) return null;
   const seed = raw.reduce((best, candidate) => candidate.timeS < best.timeS
     ? candidate : best, raw[0]);
+  if (seed.ferryM > 0) return null;
   const straightM = havM(points[0][0], points[0][1], points[1][0], points[1][1]);
   const triggerM = Math.min(800, Math.max(180, straightM * 0.08));
   if (routeMaxRetreatM(seed, points[1]) < triggerM) return null;
@@ -4237,7 +4238,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const discoveryRules = addDiscoveryCandidates(raw, points, rules,
     forceDesig, forceResidential, snaps, progress);
   endPhase('discovery');
-  addForwardProgressCandidate(raw, points, rules, forceDesig,
+  const forwardProgressCandidate = addForwardProgressCandidate(raw, points, rules, forceDesig,
     forceResidential, snaps);
   endPhase('progress');
   // The more-direct lens: a bounded flattening run as ONE ordinary candidate
@@ -4512,8 +4513,11 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // tradeoff on a boat trip. Prefer it over a second global trail extreme when
   // the six slots cannot hold both; on ferry-free trips reserve `trailRich`.
   const trailPortfolio = ferryCrossBreed || trailRich;
+  const forwardProgressChoice = selectionChoices.includes(forwardProgressCandidate)
+    ? forwardProgressCandidate : null;
   const required = [...new Set([recommended, fastestOverall, safestOverall, boundedSafer,
-    sectionFrontier, trailPortfolio, boundedBothPreferences, boundedPreferred, fullyMatching,
+    forwardProgressChoice, sectionFrontier, trailPortfolio,
+    boundedBothPreferences, boundedPreferred, fullyMatching,
     ferryCrossBreed, adaptiveCorridor, combinedCorridor, strongPreferredCandidate,
     preferredRouteAnchor].filter(Boolean))];
   for (const candidate of required) {
@@ -4592,6 +4596,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       fullyMatching: fullyMatching?._profile.id, adaptiveCorridor: adaptiveCorridor?._profile.id,
       ferryCrossBreed: ferryCrossBreed?._profile.id,
       sectionFrontier: sectionFrontier?._profile.id,
+      forwardProgress: forwardProgressChoice?._profile.id,
       trailRich: trailRich?._profile.id,
       combinedCorridor: combinedCorridor?._profile.id,
       recommended: recommended?._profile.id,

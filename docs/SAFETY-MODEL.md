@@ -1118,7 +1118,10 @@ facility costs, but charges 0.25 seconds for each meter an edge moves away from
 the destination. This is a candidate-generation lens, not a verdict: it cannot
 make a road pass, change a color, or remove the lower-stress detour. It simply
 gives a short practical connector a chance to coexist with a large facility
-loop. A named Preferred-route pull is neutralized for this one candidate so it
+loop. When it survives the ordinary practicality and distinctness filters it
+holds one of the six offered slots; otherwise the aggressive direct lens can
+occupy the short endpoint and hide the useful middle route. A named
+Preferred-route pull is neutralized for this one candidate so it
 remains an actual alternative; the strong Preferred candidate still keeps the
 recommendation when present.
 
