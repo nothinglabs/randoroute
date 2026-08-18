@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.752';
+const APP_VERSION = '2026-08-17.753';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1034,6 +1034,7 @@ const ROUTE_PROFILE_IDS = new Set([
   'alt-quick', 'alt-balanced', 'alt-safer', 'alt-wide',
   'discover-quick', 'discover-gentle', 'discover-alternative', 'adaptive-corridor',
   'combined-corridor', 'section-frontier', 'fully-matching',
+  'forward-progress',
 ]);
 // Adaptive ferry, combined land, and section-frontier itineraries carry UNIQUE suffixed ids
 // because one portfolio can hold several and every structure downstream keys
@@ -3813,9 +3814,12 @@ function optimizationDescription(optimization) {
   const lens = optimization.directLens
     ? ' Found with a more-direct search; safety results still use your settings.'
     : '';
+  const progress = optimization.forwardProgress
+    ? ' Found by avoiding a large backtrack away from the destination; safety results still use your settings.'
+    : '';
   const matching = optimization.fullyMatchingRules
     ? ' Every segment matches your safety rules.' : '';
-  return `${optimization.reason ? `${optimization.reason} ` : ''}${method}${discovery}${lens}${matching}`;
+  return `${optimization.reason ? `${optimization.reason} ` : ''}${method}${discovery}${lens}${progress}${matching}`;
 }
 function optimizationMethodDescription(optimization) {
   if (optimization.sectionFrontier) {

@@ -692,6 +692,17 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 .active-route-icon-item:nth-last-child(-n + 2) { border-bottom: 0; }
 .active-route-icon-item canvas { flex: none; width: 31px !important; height: 31px !important; object-fit: contain; }
 .active-route-icon-item strong { min-width: 0; color: #294554; font: 800 13px/1.12 system-ui; }
+/* Layers and its route-icon key are companion panels on desktop. Keep the key
+   in the map column, below the trip bar, so the docked Layers panel remains
+   visible and usable alongside it. Phones keep the full-width top card and
+   bottom sheet arrangement below. */
+@media (min-width: 721px) {
+  .active-route-icon-legend {
+    top: calc(env(safe-area-inset-top) + 104px);
+    left: calc(24px + var(--desktop-panel-width));
+    width: min(720px, calc(100vw - var(--desktop-panel-width) - 36px));
+  }
+}
 #map .maplibregl-ctrl-top-right, #map .maplibregl-ctrl-bottom-right { z-index: 16; }
 #map .maplibregl-ctrl-bottom-right { transition: bottom .2s ease; }
 /* The location button sits with the map's own furniture: under the scale, at

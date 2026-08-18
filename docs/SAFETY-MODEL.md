@@ -1108,6 +1108,20 @@ sets keep their cache epoch (`useWeights` is content-keyed), so the
 main → lens → main round trip inside a request costs nothing in cache
 warmth and the lens's own arc costs cache under its own epoch.
 
+**The forward-progress candidate.** A facility can occasionally connect two
+nearby points only by carrying the rider a long way away from the destination
+first — the University Bridge out-and-back is the field case. When the quickest
+ordinary candidate contains a continuous geometric retreat of at least 180 m
+(or 8% of the trip's straight-line distance, capped at 800 m), the portfolio
+runs one additional Direct search. It keeps the rider's normal safety and
+facility costs, but charges 0.25 seconds for each meter an edge moves away from
+the destination. This is a candidate-generation lens, not a verdict: it cannot
+make a road pass, change a color, or remove the lower-stress detour. It simply
+gives a short practical connector a chance to coexist with a large facility
+loop. A named Preferred-route pull is neutralized for this one candidate so it
+remains an actual alternative; the strong Preferred candidate still keeps the
+recommendation when present.
+
 **Adaptive ferry hybrids.** On a ferry trip, a dedicated pass re-searches the
 LAND sections of an itinerary one at a time under the conservative discovery
 lens and splices the seed's boats back verbatim, producing "same ferries,

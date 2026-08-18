@@ -2064,7 +2064,7 @@ function goalPotential(goalNode, startNode, rules, searchRules, mode) {
 
 function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   startSnap, endSnap, diversityEdges = null, diversityFactor = 1, searchRules = rules,
-  blockedCrossingEdges = null, crossingRetry = 0) {
+  blockedCrossingEdges = null, crossingRetry = 0, progressPenaltySecPerM = 0) {
   const t0 = Date.now();
   const s = startSnap || nearestNode(startLL[0], startLL[1], rules);
   const t = endSnap || nearestNode(endLL[0], endLL[1], rules);
@@ -2096,6 +2096,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   }
 
   const goalLon = nodeLon[t.node], goalLat = nodeLat[t.node];
+  const progressLonMPerDegree = 111320 * Math.cos(goalLat * Math.PI / 180);
+  const progressDistanceM = progressPenaltySecPerM > 0
+    ? (n) => Math.hypot((nodeLon[n] - goalLon) * progressLonMPerDegree,
+      (nodeLat[n] - goalLat) * 111320)
+    : null;
   const startLon = nodeLon[s.node], startLat = nodeLat[s.node];
   const nearTerminal = (n) =>
     havM(nodeLon[n], nodeLat[n], startLon, startLat) <= ACCESS_RADIUS_M
@@ -2171,6 +2176,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     if (u === t.node) { foundArc = incomingArc; break; }
     const du = incomingArc === START_ARC ? 0 : searchDist[incomingArc];
     const incomingEdge = incomingArc === START_ARC ? -1 : outEdge[incomingArc];
+    const progressFromGoalM = progressDistanceM ? progressDistanceM(u) : 0;
     for (let a = outStart[u]; a < outStart[u + 1]; a++) {
       const v = outTarget[a];
       // A settled arc may still be improvable. Skipping it outright -- pure
@@ -2239,6 +2245,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       }
       let cost = diversityEdges && cDivOk[a] && diversityEdges.has(ei)
         ? mulC * diversityFactor : mulC;
+      if (progressPenaltySecPerM > 0) {
+        const awayM = progressDistanceM(v) - progressFromGoalM;
+        if (awayM > 0) cost += awayM * progressPenaltySecPerM;
+      }
       // An exempted terminal-access block is a last resort, never a shortcut
       // (multiplicative, so applying it here equals applying it inside the
       // chain; the additive terms below are rightly exempt).
@@ -2430,7 +2440,8 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     const blocked = new Set(blockedCrossingEdges || []);
     for (const ei of rejectedCrossingEdges) blocked.add(ei);
     return routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
-      s, t, diversityEdges, diversityFactor, searchRules, blocked, crossingRetry + 1);
+      s, t, diversityEdges, diversityFactor, searchRules, blocked, crossingRetry + 1,
+      progressPenaltySecPerM);
   }
   const ferrySegs = ferryRanges.map(([a, b]) => coords.slice(a, b + 1));
   failM += escalateLongDismounts(segs, levelM);
@@ -2447,12 +2458,14 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
 // Route through an ordered list of points (A -> B -> C ...): one A* per leg,
 // results merged into a single continuous route.
 function route(points, rules, mode, prefDesig, prefResidential, snaps,
-  diversityEdges = null, diversityFactor = 1, searchRules = rules) {
+  diversityEdges = null, diversityFactor = 1, searchRules = rules,
+  progressPenaltySecPerM = 0) {
   const t0 = Date.now();
   const legs = [];
   for (let i = 0; i + 1 < points.length; i++) {
     const leg = routeLeg(points[i], points[i + 1], rules, mode, prefDesig, prefResidential,
-      snaps?.[i], snaps?.[i + 1], diversityEdges, diversityFactor, searchRules);
+      snaps?.[i], snaps?.[i + 1], diversityEdges, diversityFactor, searchRules,
+      null, 0, progressPenaltySecPerM);
     if (!leg.ok) {
       if (leg.code === 'point-too-far') {
         leg.farPoints = leg.farPoints.map((p) => ({
@@ -2764,6 +2777,49 @@ function preferredStrengthRank(profile) {
       : profile?.preferredRouteStrength === 'neutral' ? 1 : 0;
 }
 
+// A route can be locally cheap yet make a large move away from its destination
+// to stay on a facility -- for example, riding across a bridge and back on the
+// other side instead of using a short street connection. This measures the
+// largest continuous retreat from the closest point reached so far. It is
+// deliberately geometric and route-level: ordinary winding roads do not add
+// up dozens of tiny bends into one false alarm.
+function routeMaxRetreatM(candidate, destination) {
+  if (!candidate?.coords?.length || !destination) return 0;
+  let closestM = Infinity;
+  let maxRetreatM = 0;
+  for (const point of candidate.coords) {
+    const remainingM = havM(point[0], point[1], destination[0], destination[1]);
+    closestM = Math.min(closestM, remainingM);
+    maxRetreatM = Math.max(maxRetreatM, remainingM - closestM);
+  }
+  return maxRetreatM;
+}
+
+const PROGRESS_LENS_SEC_PER_RETREAT_M = 0.25;
+function addForwardProgressCandidate(raw, points, rules, forceDesig,
+    forceResidential, snaps) {
+  if (!raw.length || points.length !== 2) return null;
+  const seed = raw.reduce((best, candidate) => candidate.timeS < best.timeS
+    ? candidate : best, raw[0]);
+  const straightM = havM(points[0][0], points[0][1], points[1][0], points[1][1]);
+  const triggerM = Math.min(800, Math.max(180, straightM * 0.08));
+  if (routeMaxRetreatM(seed, points[1]) < triggerM) return null;
+  const progressRules = preferredRoutesActive(rules)
+    ? withoutPreferredRouteSelection(rules) : rules;
+  const profile = { id: 'forward-progress', label: 'Forward-progress alternative',
+    mode: 'direct', prefDesig: forceDesig, prefResidential: forceResidential,
+    order: 0.47, forwardProgress: true,
+    preferredRouteStrength: progressRules === rules ? null : 'neutral' };
+  const result = route(points, progressRules, profile.mode, profile.prefDesig,
+    profile.prefResidential, snaps, null, 1, progressRules,
+    PROGRESS_LENS_SEC_PER_RETREAT_M);
+  if (!result.ok) return null;
+  result._profile = profile;
+  result.aggression = routeAggression(result);
+  raw.push(result);
+  return result;
+}
+
 // Equivalent geometry can be generated by several profiles. If normal dedupe
 // keeps another profile for its explanation or selection continuity, retain
 // the fact that this exact route was also found by the stronger Preferred lens.
@@ -2926,6 +2982,11 @@ function profileExplanation(profile) {
     return `Discovery: same search with the no-shoulder speed dropped to ${profile.discoveryMaxSpeed} mph,`
       + ' to see whether a quieter corridor exists at all.';
   }
+  if (profile.forwardProgress) {
+    return 'Looked for a practical connection that avoids a large backtrack away from the destination.'
+      + (profile.preferredRouteStrength === 'neutral'
+        ? ' Ignored the Preferred-route pull so this remains a real alternative.' : '');
+  }
   if (profile.preferredRouteStrength === 'strong') {
     return 'Strongly followed the route you marked Preferred.';
   }
@@ -3003,6 +3064,7 @@ function candidateSummary(candidate) {
     failM: candidate.failM,
     refinedFrom: candidate._profile.refinedFrom || null,
     preferredRouteStrength: profile.preferredRouteStrength || null,
+    forwardProgress: !!profile.forwardProgress,
     crossBred: !!profile.crossBred,
     crossBreedKind: profile.crossBreedKind || null,
     sectionFrontier: !!profile.sectionFrontier,
@@ -3034,6 +3096,7 @@ function publicCandidate(candidate) {
       crossBred: !!_profile.crossBred,
       sectionFrontier: !!_profile.sectionFrontier,
       directLens: !!_profile.directLens,
+      forwardProgress: !!_profile.forwardProgress,
       discoveryMaxSpeed: _profile.discoveryMaxSpeed || null,
       // This describes the route RESULT, not merely whether it came from the
       // strict probe. Ordinary searches often discover an all-matching route
@@ -4174,6 +4237,9 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const discoveryRules = addDiscoveryCandidates(raw, points, rules,
     forceDesig, forceResidential, snaps, progress);
   endPhase('discovery');
+  addForwardProgressCandidate(raw, points, rules, forceDesig,
+    forceResidential, snaps);
+  endPhase('progress');
   // The more-direct lens: a bounded flattening run as ONE ordinary candidate
   // inside every portfolio. Field case
   // (Ravenna -> Phinney Ridge): all nineteen normal candidates collapsed onto

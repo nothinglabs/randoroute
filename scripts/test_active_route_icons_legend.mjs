@@ -106,6 +106,45 @@ check('the location button now occupies the outer-right map corner',
   bottomControls.locationX > bottomControls.attributionX, JSON.stringify(bottomControls));
 check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 
+// Desktop has room for both companion panels. Opening the icon guide must not
+// hide the Layers panel beneath it (the regression this arrangement guards).
+const desktopContext = await browser.newContext({
+  serviceWorkers: 'block', viewport: { width: 1200, height: 820 },
+  hasTouch: false, isMobile: false,
+});
+const desktopPage = await desktopContext.newPage();
+const desktopErrors = [];
+desktopPage.on('pageerror', (error) => desktopErrors.push(error.message));
+await desktopPage.goto(site.url, { waitUntil: 'load' });
+await desktopPage.waitForFunction(() =>
+  document.documentElement.classList.contains('app-ready'), null, { timeout: 120000 });
+await desktopPage.evaluate(() => document.getElementById('layersToggle').click());
+const desktopPanels = await desktopPage.evaluate(() => {
+  const rect = (element) => {
+    const box = element.getBoundingClientRect();
+    return { top: box.top, right: box.right, bottom: box.bottom, left: box.left };
+  };
+  const overlaps = (a, b) =>
+    !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+  const layers = document.getElementById('panel');
+  const legend = document.getElementById('activeRouteIconLegend');
+  const layersBox = rect(layers);
+  const legendBox = rect(legend);
+  return {
+    layersVisible: document.getElementById('tab-layers').classList.contains('active'),
+    legendVisible: !legend.hidden,
+    overlap: overlaps(layersBox, legendBox),
+    layersBox,
+    legendBox,
+  };
+});
+check('desktop keeps Map Layers visible beside the Route Icons guide',
+  desktopPanels.layersVisible && desktopPanels.legendVisible && !desktopPanels.overlap,
+  JSON.stringify(desktopPanels));
+check('desktop icon guide opens without page errors', desktopErrors.length === 0,
+  desktopErrors.slice(0, 3).join(' | '));
+await desktopContext.close();
+
 console.log(`\n${passed} passed, ${failed} failed`);
 await browser.close();
 site.close();
