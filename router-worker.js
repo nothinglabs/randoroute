@@ -115,8 +115,10 @@ const CROSSING_RETRY_LIMIT = 8;
 // protected space resumes almost immediately. Keep the definition narrow so
 // ordinary bike-lane-to-bike-lane crossings (including Aurora) are not swept
 // in merely because they cross a large road.
-const FACILITY_GAP_MAX_EDGE_M = 40;
-const FACILITY_GAP_MAX_RUN_M = 80;
+const FACILITY_GAP_MAX_EDGE_M = 55;
+const FACILITY_GAP_MAX_RUN_M = 180;
+const FACILITY_GAP_CONNECTOR_MAX_EDGE_M = 40;
+const FACILITY_GAP_CONNECTOR_MAX_RUN_M = 50;
 const FACILITY_GAP_MIN_ROAD_CLASS = 4; // tertiary or larger
 const FACILITY_GAP_ENTRY_PENALTY_S = 120;
 const FACILITY_GAP_PENALTY_S_PER_M = 3;
@@ -225,8 +227,12 @@ function loadGraph(buf) {
   }
   // Identify short protected-space interruptions from topology, rather than
   // guessing from a route's visual U-turn. A legitimate switchback stays
-  // untouched; an explicit cycleway crossing stays infrastructure. Only a
-  // one-way SHARED-LANE road edge beside protected infrastructure qualifies.
+  // untouched. The core must be a short one-way SHARED-LANE run on a through
+  // road. It may connect to protected space through up to 50 m of ordinary
+  // road fragments: OSM splits the University Bridge movement into the shared
+  // lane, two pieces across Eastlake, NE 40th, and Cowlitz Road. The extended
+  // form must include a major-road fragment, which keeps ordinary
+  // bike-lane-to-bike-lane crossings (including Aurora) out.
   const protectedNode = new Uint8Array(N);
   for (let i = 0; i < E; i++) {
     if ((eFlags[i] & (4 | 32)) || isDismountEdge(i)) continue;
@@ -249,6 +255,41 @@ function loadGraph(buf) {
       else candidatesAtNode.set(node, [i]);
     }
   }
+  // Only index ordinary connector edges close to a core candidate. Building a
+  // statewide node-to-road map here would duplicate the graph adjacency and
+  // cost phones a large amount of memory. Two bounded expansion passes cover
+  // the field case while keeping this index tiny and one-time.
+  let connectorFrontier = new Set();
+  for (const i of candidateEdges) {
+    connectorFrontier.add(eA[i]);
+    connectorFrontier.add(eB[i]);
+  }
+  const connectorEdges = new Set();
+  const connectorEligible = (i) => {
+    const flags = eFlags[i];
+    return !(flags & (4 | 8 | 32)) && !isDismountEdge(i)
+      && eFacility[i] === 0 && eClass[i] > 0 && eClass[i] <= 6
+      && eLen[i] <= FACILITY_GAP_CONNECTOR_MAX_EDGE_M;
+  };
+  for (let hop = 0; hop < 2 && connectorFrontier.size; hop++) {
+    const nextFrontier = new Set();
+    for (let i = 0; i < E; i++) {
+      if (!connectorEligible(i)
+          || (!connectorFrontier.has(eA[i]) && !connectorFrontier.has(eB[i]))) continue;
+      connectorEdges.add(i);
+      nextFrontier.add(eA[i]);
+      nextFrontier.add(eB[i]);
+    }
+    connectorFrontier = nextFrontier;
+  }
+  const connectorsAtNode = new Map();
+  for (const i of connectorEdges) {
+    for (const node of [eA[i], eB[i]]) {
+      const beside = connectorsAtNode.get(node);
+      if (beside) beside.push(i);
+      else connectorsAtNode.set(node, [i]);
+    }
+  }
   eFacilityGap = new Uint8Array(E);
   const visitedCandidates = new Set();
   for (const seed of candidateEdges) {
@@ -268,10 +309,49 @@ function loadGraph(buf) {
         }
       }
     }
+    if (runM > FACILITY_GAP_MAX_RUN_M) continue;
+
+    // Find protected endpoints through no more than two very short ordinary
+    // road fragments. This is deliberately local and distance-bounded: it is
+    // a connector test, not a search for any trail somewhere down the street.
+    const connectorPaths = new Map();
+    for (const startNode of new Set(component.flatMap((i) => [eA[i], eB[i]]))) {
+      const queue = [{ node: startNode, metres: 0, path: [], major: false }];
+      const bestAtNode = new Map([[startNode, 0]]);
+      while (queue.length) {
+        const state = queue.shift();
+        if (state.metres > 0 && protectedNode[state.node]) {
+          const known = connectorPaths.get(state.node);
+          if (!known || state.metres < known.metres) connectorPaths.set(state.node, state);
+          continue;
+        }
+        if (state.path.length >= 2) continue;
+        for (const edge of connectorsAtNode.get(state.node) || []) {
+          if (state.path.includes(edge)) continue;
+          const node = eA[edge] === state.node ? eB[edge] : eA[edge];
+          const metres = state.metres + eLen[edge];
+          if (metres > FACILITY_GAP_CONNECTOR_MAX_RUN_M
+              || metres >= (bestAtNode.get(node) ?? Infinity)) continue;
+          bestAtNode.set(node, metres);
+          queue.push({ node, metres, path: [...state.path, edge],
+            major: state.major || eClass[edge] >= 6 });
+        }
+      }
+    }
+    const connectedProtected = new Set(protectedEnds);
+    for (const node of connectorPaths.keys()) connectedProtected.add(node);
+    const extendedMajorCrossing = [...connectorPaths.values()].some((path) => path.major)
+      && component.some((i) => eClass[i] >= 6);
     // It must be a brief interruption bounded by protected bike space, not a
-    // long sharrow corridor that merely begins beside a trail.
-    if (protectedEnds.size >= 2 && runM <= FACILITY_GAP_MAX_RUN_M) {
+    // long sharrow corridor that merely begins beside a trail. Directly
+    // bounded gaps preserve the original narrow rule; connector-assisted gaps
+    // additionally require a major-road crossing.
+    if (connectedProtected.size >= 2
+        && (protectedEnds.size >= 2 || extendedMajorCrossing)) {
       for (const i of component) eFacilityGap[i] = 1;
+      for (const path of connectorPaths.values()) {
+        for (const i of path.path) eFacilityGap[i] = 1;
+      }
     }
   }
   // Reuse the large edge-state workspace across the many profile searches in

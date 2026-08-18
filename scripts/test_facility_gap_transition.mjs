@@ -33,6 +33,36 @@ check('distance creates an additive penalty', facts.distancePenalty > 0);
 checkEqual('the conflict charges one entry penalty', facts.entryPenalty, 120);
 checkEqual('a contiguous run does not repeat the entry penalty', facts.continuedPenalty, 0);
 
+// The field route did not traverse only the tiny sharrow above. It entered
+// from protected space across two ordinary road fragments, followed the
+// one-way shared lane, then used NE 40th/Cowlitz to regain protected space.
+// Pin the major-road fragment too: the original implementation marked a
+// nearby 16 m piece but assigned no cost to the route the rider actually saw.
+const roadwayCrossing = nearestEdge(worker, -122.31824, 47.65554,
+  'eFacility[i] === 0 && eClass[i] >= 6 && eLen[i] < 6');
+const crossingFacts = worker.run(`(() => {
+  const i = ${roadwayCrossing.edge};
+  return { gap: isFacilityGapEdge(i), facility: eFacility[i], roadClass: eClass[i], lenM: eLen[i] };
+})()`);
+check('the bridge traffic-crossing fragment is found',
+  roadwayCrossing.edge >= 0 && roadwayCrossing.metres < 5, JSON.stringify(roadwayCrossing));
+checkEqual('the complete bridge traffic conflict is classified', crossingFacts.gap, true);
+checkEqual('the crossing fragment is not mistaken for a bike lane', crossingFacts.facility, 0);
+check('the extended movement crosses a major road', crossingFacts.roadClass >= 6,
+  JSON.stringify(crossingFacts));
+
+const rules = { allowFreeways: true, allowMtbTrails: false, preferPaved: true,
+  minShoulder: 4, inferShoulderFromEdge: true, maxSpeedNoShoulder: 35,
+  lanesNoShoulderOver: 3, busyNoShoulder: 2, allowSidewalkFallback: true,
+  upperMaxSpeed: 45, noUpperLimit: true, requireSafe: false };
+const fieldRoute = worker.run(`route(
+  [[-122.31758, 47.65756], [-122.3507, 47.6685]],
+  ${JSON.stringify(rules)}, 'balanced', false, false)`);
+check('the field route returns', fieldRoute.ok === true, fieldRoute.reason || '');
+check('routing avoids the classified bridge traffic conflict',
+  !fieldRoute.edgeIds.includes(roadwayCrossing.edge),
+  JSON.stringify({ distanceM: Math.round(fieldRoute.distM) }));
+
 const coverage = worker.run(`(() => {
   let gaps = 0, gapM = 0, infraMisclassified = 0, bikeLaneMisclassified = 0;
   for (let i = 0; i < E; i++) {

@@ -1042,13 +1042,15 @@ such as the Burke-Gilman / University Bridge approach where the mapped bicycle
 connection briefly puts the rider into moving traffic. It does **not** infer
 danger from a route line that happens to look like a U-turn.
 
-The signature is intentionally narrow: every connector edge must be at most
-40 m, the whole contiguous interruption at most 80 m, one-way, facility level
-1 (shared-lane marking), on-street, and bounded by protected infrastructure at
-both ends. Explicit cycleway crossings, bike-lane edges,
-ferries, freeways and dismount links are excluded. This preserves ordinary
-bike-facility crossings of roads such as Aurora rather than treating every
-large-road crossing as suspect.
+The signature is intentionally narrow. Its core is a one-way, on-street,
+facility-level-1 shared lane on a tertiary-or-larger road: each core edge is at
+most 55 m and the contiguous core at most 180 m. The core must be bounded by
+protected infrastructure. Either it touches protected space directly at both
+ends, or each end is reached through at most two ordinary-road fragments whose
+combined length is at most 50 m. The connector-assisted form additionally has
+to cross a major road. Bike-lane edges, ferries, freeways and dismount links
+are excluded. This preserves ordinary bike-facility crossings of roads such as
+Aurora rather than treating every large-road crossing as suspect.
 
 The transition remains legal and routable, but receives one 120-second entry
 penalty per contiguous run plus 3 seconds per metre. The route line and route
