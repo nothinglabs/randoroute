@@ -220,10 +220,27 @@ const failLayer = await page.evaluate(() => {
     }
     return count;
   };
+  const countRedInBikeArea = (image) => {
+    const pixels = image?.data?.data;
+    if (!pixels) return 0;
+    const width = image.data.width;
+    let count = 0;
+    // The bicycle occupies the inner lower-right of the badge. Staying inside
+    // the circular rim means this measures the glyph, not the shared border.
+    for (let y = Math.round(width * .43); y < Math.round(width * .78); y++) {
+      for (let x = Math.round(width * .51); x < Math.round(width * .84); x++) {
+        const i = (y * width + x) * 4;
+        if (pixels[i] === 176 && pixels[i + 1] === 32
+          && pixels[i + 2] === 32 && pixels[i + 3] === 255) count++;
+      }
+    }
+    return count;
+  };
   return {
     hasDesignatedImage: Boolean(designated),
     designatedOlivePixels: countColor(designated, [95, 128, 0, 255]),
-    plainOlivePixels: countColor(plain, [95, 128, 0, 255]),
+    designatedBikePixels: countRedInBikeArea(designated),
+    plainBikePixels: countRedInBikeArea(plain),
     allowOverlap: map.getLayoutProperty('route-fail-marker', 'icon-allow-overlap'),
     ignorePlacement: map.getLayoutProperty('route-fail-marker', 'icon-ignore-placement'),
   };
@@ -231,8 +248,9 @@ const failLayer = await page.evaluate(() => {
 check('the designated-route failure icon is registered for active routes',
   failLayer.hasDesignatedImage,
   JSON.stringify(failLayer));
-check('the designated failure badge carries a clean route-colored rim',
-  failLayer.designatedOlivePixels >= 20 && failLayer.plainOlivePixels === 0,
+check('the designated failure badge carries a distinct red bicycle glyph',
+  failLayer.designatedOlivePixels === 0
+    && failLayer.designatedBikePixels > failLayer.plainBikePixels + 60,
   JSON.stringify(failLayer));
 check('fail icons cannot be removed by symbol collisions',
   failLayer.allowOverlap === true && failLayer.ignorePlacement === true,
