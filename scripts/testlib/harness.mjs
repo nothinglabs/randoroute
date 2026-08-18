@@ -58,16 +58,39 @@ export function done() {
 }
 
 /* ------------------------------------------------------------ the graph */
-let graphBytes = null;
-/** The production graph, gunzipped at most once per process. */
-export function graphBuffer() {
-  if (!graphBytes) {
-    const gz = readSync(join(ROOT, 'maps/washington/graph2.bin.gz'));
+/** The generated registry: one entry per maps/<state>/region.json. */
+export const mapStates = () => require_(join(ROOT, 'maps/states.js')).MAP_STATES;
+
+/**
+ * The state a test gets when it does not name one.
+ *
+ * This file used to hardcode `maps/washington/graph2.bin.gz`, which made it
+ * the one place outside maps/ that named a state -- the thing maps/README
+ * forbids -- and meant no test could load a second state's graph at all.
+ * Washington still wins, but because it wins the app's OWN rule (released,
+ * highest readiness, in region.js), so the harness follows the registry
+ * rather than a literal.
+ */
+export function defaultStateId() {
+  const states = mapStates();
+  const released = states.filter((state) => state.status === 'released');
+  return (released.length
+    ? released.reduce((best, state) =>
+      ((state.readiness || 0) > (best.readiness || 0) ? state : best))
+    : states[0]).id;
+}
+
+const graphBytesByState = new Map();
+/** A state's production graph, gunzipped at most once per process. */
+export function graphBuffer(stateId = defaultStateId()) {
+  if (!graphBytesByState.has(stateId)) {
+    const gz = readSync(join(ROOT, 'maps', stateId, 'graph2.bin.gz'));
     const raw = zlib.gunzipSync(gz);
-    graphBytes = raw.byteOffset === 0 && raw.byteLength === raw.buffer.byteLength
-      ? raw.buffer : raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
+    graphBytesByState.set(stateId,
+      raw.byteOffset === 0 && raw.byteLength === raw.buffer.byteLength
+        ? raw.buffer : raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
   }
-  return graphBytes;
+  return graphBytesByState.get(stateId);
 }
 
 /* --------------------------------------------------- the router worker */
@@ -94,9 +117,9 @@ function workerGlobals(messages) {
  * the worker's own scope -- which is how a test reaches a function the worker
  * never exports.
  */
-let workerCache = null;
-export function routerWorker({ fresh = false } = {}) {
-  if (workerCache && !fresh) return workerCache;
+const workerCache = new Map();
+export function routerWorker({ fresh = false, state = defaultStateId() } = {}) {
+  if (workerCache.has(state) && !fresh) return workerCache.get(state);
   const messages = [];
   const context = vm.createContext(workerGlobals(messages));
   context.self = context;
@@ -106,14 +129,14 @@ export function routerWorker({ fresh = false } = {}) {
     for (const n of names) vm.runInContext(source(n), context);
   };
   vm.runInContext(source('router-worker.js'), context);
-  context.onmessage({ data: { type: 'graph', buffer: graphBuffer() } });
+  context.onmessage({ data: { type: 'graph', buffer: graphBuffer(state) } });
   const ready = messages.at(-1)?.type === 'ready';
   const api = {
-    context, messages, ready,
+    context, messages, ready, state,
     run: (expression) => vm.runInContext(expression, context),
     post: (message) => { context.onmessage({ data: message }); return messages.at(-1); },
   };
-  if (!fresh) workerCache = api;
+  if (!fresh) workerCache.set(state, api);
   return api;
 }
 
