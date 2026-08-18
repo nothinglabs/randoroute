@@ -155,8 +155,12 @@ ferryImageContext.ensureFerryMarkerImage({
 assert.equal(ferryImage.id, 'route-ferry-marker-icon');
 assert.deepEqual(JSON.parse(JSON.stringify({ width: ferryImage.image.width,
   height: ferryImage.image.height, pixelRatio: ferryImage.options.pixelRatio })),
-{ width: 80, height: 52, pixelRatio: 2 },
-'the ferry marker must use the wide Retina-sized boat silhouette');
+{ width: 160, height: 104, pixelRatio: 4 },
+'the ferry marker must use a high-density wide boat silhouette');
+assert.deepEqual({ width: ferryImage.image.width / ferryImage.options.pixelRatio,
+  height: ferryImage.image.height / ferryImage.options.pixelRatio },
+{ width: 40, height: 26 },
+'supersampling must preserve the ferry marker logical size');
 assert.equal(ferryImage.image.data[3], 0,
   'the ferry marker corner must remain transparent instead of becoming a badge');
 assert.ok(!app.includes("id: 'route-ferry-marker-halo'"),

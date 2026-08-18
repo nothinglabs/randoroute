@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.749';
+const APP_VERSION = '2026-08-17.750';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -8254,8 +8254,11 @@ function ensureFerryMarkerImage(targetMap, imageId = 'route-ferry-marker-icon') 
   // A wide, unbadged side-view ferry. A rounded transit badge made the boat
   // feel like a tiny face or app icon; the white keyline here lets the actual
   // vessel silhouette sit directly on any basemap while remaining legible.
-  // Draw at 2x for clean edges on Retina displays while staying fully offline.
-  const width = 80, height = 52;
+  // The existing artwork is 40 x 26 CSS px. Supersample its 2x painter once
+  // more and register at 4x so the logical size stays fixed while curves and
+  // diagonals remain crisp on high-density displays.
+  const s = 2, pixelRatio = 4;
+  const width = 80 * s, height = 52 * s;
   const data = new Uint8Array(width * height * 4);
   const blue = [10, 102, 167, 255], white = [255, 255, 255, 255];
   const paint = (x, y, color) => {
@@ -8265,6 +8268,7 @@ function ensureFerryMarkerImage(targetMap, imageId = 'route-ferry-marker-icon') 
     data[offset + 2] = color[2]; data[offset + 3] = color[3];
   };
   const roundedRect = (left, top, right, bottom, radius, color) => {
+    left *= s; top *= s; right *= s; bottom *= s; radius *= s;
     for (let y = top; y <= bottom; y++) {
       for (let x = left; x <= right; x++) {
         const cx = Math.max(left + radius, Math.min(right - radius, x));
@@ -8274,11 +8278,13 @@ function ensureFerryMarkerImage(targetMap, imageId = 'route-ferry-marker-icon') 
     }
   };
   const rect = (left, top, right, bottom, color) => {
+    left *= s; top *= s; right *= s; bottom *= s;
     for (let y = top; y <= bottom; y++) {
       for (let x = left; x <= right; x++) paint(x, y, color);
     }
   };
   const polygon = (points, color) => {
+    points = points.map(([x, y]) => [x * s, y * s]);
     const minY = Math.max(0, Math.floor(Math.min(...points.map((point) => point[1]))));
     const maxY = Math.min(height - 1, Math.ceil(Math.max(...points.map((point) => point[1]))));
     const minX = Math.max(0, Math.floor(Math.min(...points.map((point) => point[0]))));
@@ -8317,7 +8323,7 @@ function ensureFerryMarkerImage(targetMap, imageId = 'route-ferry-marker-icon') 
   // another enclosing shape.
   for (const [left, right] of [[11, 25], [30, 45], [50, 67]]) rect(left, 45, right, 47, white);
   for (const [left, right] of [[13, 25], [31, 45], [51, 65]]) rect(left, 45, right, 45, blue);
-  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 2 });
+  targetMap.addImage(imageId, { width, height, data }, { pixelRatio });
 }
 
 /* ------------------------------------------- the two route-line motions */

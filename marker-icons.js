@@ -13,8 +13,11 @@
 function ensureUnpavedSlatImage(targetMap, imageId = 'route-unpaved-slats') {
   if (targetMap.hasImage(imageId)) return;
   // Fixed-size symbols stay stable across zoom levels. Dense, narrow bars read
-  // as a surface texture while extending beyond the route stroke.
-  const width = 2, height = 12;
+  // as a surface texture while extending beyond the route stroke. Paint at 3x
+  // so MapLibre has enough source pixels on a high-density display without
+  // changing the slat's 2 x 12 CSS-pixel footprint.
+  const pixelRatio = 3;
+  const width = 2 * pixelRatio, height = 12 * pixelRatio;
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -25,13 +28,17 @@ function ensureUnpavedSlatImage(targetMap, imageId = 'route-unpaved-slats') {
       data[offset + 3] = 218;
     }
   }
-  targetMap.addImage(imageId, { width, height, data }, { pixelRatio: 1 });
+  targetMap.addImage(imageId, { width, height, data }, { pixelRatio });
 }
 
 // The route-marker badge family: one round badge, glyphs painted onto it.
 // Integer rows/columns only throughout -- a fractional index into the pixel
 // buffer paints nothing.
-const STEEP_MARKER_SCALE = 3;
+// These badges display at 24 CSS px. Painting them at 192 px and registering
+// that backing store at 8x keeps the exact same layout while avoiding the
+// visibly enlarged 48 px artwork on Retina screens and in the route legend.
+const STEEP_MARKER_SCALE = 12;
+const ROUTE_MARKER_PIXEL_RATIO = 8;
 function paintMarkerBadge(ringColor) {
   const s = STEEP_MARKER_SCALE;
   const width = 16 * s, height = 16 * s;
@@ -83,7 +90,7 @@ function ensureDismountMarkerImage(targetMap, imageId = 'route-dismount-marker-i
   b.stroke(7.9 * s, 9 * s, 9.7 * s, 12.2 * s, 1.3 * s, ink);  // striding leg
   b.stroke(7.9 * s, 9 * s, 6.3 * s, 12.2 * s, 1.3 * s, ink);  // trailing leg
   targetMap.addImage(imageId, { width: b.width, height: b.height, data: b.data },
-    { pixelRatio: 2 });
+    { pixelRatio: ROUTE_MARKER_PIXEL_RATIO });
 }
 
 function ensureRouteMarkerImages(targetMap) {
@@ -92,7 +99,8 @@ function ensureRouteMarkerImages(targetMap) {
   const add = (id, b) => {
     painted[id] = b;
     targetMap.addImage(id,
-      { width: b.width, height: b.height, data: b.data }, { pixelRatio: 2 });
+      { width: b.width, height: b.height, data: b.data },
+      { pixelRatio: ROUTE_MARKER_PIXEL_RATIO });
   };
   { // steep: two peaks; a hill profile reads as "mountain" at 16 px.
     const b = paintMarkerBadge([90, 62, 8, 255]);
@@ -259,7 +267,7 @@ function ensureRouteMarkerImages(targetMap) {
         targetMap.addImage('route-marker-' + next.join('+'),
           (({ width, height, data }) => ({ width, height, data }))(
             composite(next.map((kind) => painted['route-marker-' + kind]))),
-          { pixelRatio: 2 });
+          { pixelRatio: ROUTE_MARKER_PIXEL_RATIO });
       }
       combos(next, i + 1);
     }
