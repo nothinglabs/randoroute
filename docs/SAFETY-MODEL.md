@@ -1033,6 +1033,29 @@ stats and the spoken "Walk your bike" (a synthesised stretch is silent in
 the voice). A warning at every synthesised park connector would teach the
 rider to ignore the one that stands for a real sign.
 
+### Structural caution: protected bike space briefly ends in traffic
+
+One route-level caution is deliberately outside the ordinary road ladder. A
+very short, one-way sharrow connector on a tertiary-or-larger road is marked
+amber when it touches protected bike infrastructure. This catches transitions
+such as the Burke-Gilman / University Bridge approach where the mapped bicycle
+connection briefly puts the rider into moving traffic. It does **not** infer
+danger from a route line that happens to look like a U-turn.
+
+The signature is intentionally narrow: every connector edge must be at most
+40 m, the whole contiguous interruption at most 80 m, one-way, facility level
+1 (shared-lane marking), on-street, and bounded by protected infrastructure at
+both ends. Explicit cycleway crossings, bike-lane edges,
+ferries, freeways and dismount links are excluded. This preserves ordinary
+bike-facility crossings of roads such as Aurora rather than treating every
+large-road crossing as suspect.
+
+The transition remains legal and routable, but receives one 120-second entry
+penalty per contiguous run plus 3 seconds per metre. The route line and route
+details call it **Caution — traffic conflict**. It is topology-derived at graph
+load time, so it works consistently in every state without state-specific
+geometry or a graph-format migration.
+
 Note that the causes carry very different routing costs — a sidewalk fallback is
 ×8 in low-stress mode, a high-stress rating is priced through
 `trafficStressMult`, and a limited-access caution is barely priced at all. Amber

@@ -47,9 +47,9 @@ const probe = `
       // This block used to be a second transcription of that loop, kept in
       // step by hand; it fell behind the moment a term was added, and every
       // diagnostic anyone wrote became a third copy. Omitting the three
-      // path-dependent inputs (ferry boarding wait, dismount entry, turn
-      // friction) is deliberate and is exactly what the bound openly drops --
-      // all three are >= 0, so leaving them out keeps this comparison
+      // path-dependent inputs (ferry boarding wait, dismount or facility-gap
+      // entry, and turn friction) is deliberate and is exactly what the bound
+      // openly drops -- all are >= 0, so leaving them out keeps this comparison
       // conservative.
       const cost = edgeCost(ei, forward, {
         mode, modeW, rules, searchRules, prefDesig, prefResidential,

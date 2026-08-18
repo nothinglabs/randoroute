@@ -38,6 +38,11 @@ let eHazAB, eHazBA, eHazStartAB, eHazEndAB, eHazStartBA, eHazEndBA, eOff, eCnt;
 let outStart, outTarget, outEdge, gLon, gLat;
 let eName, nameOff, nameBytes;
 let eBearingA, eBearingB;
+// Derived from the existing graph topology at load time. No state-specific
+// data or graph-format change is needed: this marks only the narrow pattern
+// where protected bike space feeds into a tiny one-way sharrow connector on a
+// tertiary-or-larger road, then returns to protected space.
+let eFacilityGap;
 let searchDist, searchPrevArc, searchStamp, searchGeneration = 0;
 let nodeHasLand;
 let inGiant;
@@ -104,6 +109,17 @@ const CROSSING_MAX_M = 40;
 // valid crossing, retry with those fragments blocked. Bound the retries so a
 // pathological graph cannot turn one request into an unbounded search loop.
 const CROSSING_RETRY_LIMIT = 8;
+// A direct cycleway crossing is normal bicycle connectivity. The dangerous
+// pattern reported at the University Bridge is different: protected space
+// ends, the rider enters a one-way shared traffic lane on a through road, and
+// protected space resumes almost immediately. Keep the definition narrow so
+// ordinary bike-lane-to-bike-lane crossings (including Aurora) are not swept
+// in merely because they cross a large road.
+const FACILITY_GAP_MAX_EDGE_M = 40;
+const FACILITY_GAP_MAX_RUN_M = 80;
+const FACILITY_GAP_MIN_ROAD_CLASS = 4; // tertiary or larger
+const FACILITY_GAP_ENTRY_PENALTY_S = 120;
+const FACILITY_GAP_PENALTY_S_PER_M = 3;
 // Bit 4 of the graph's metadata byte marks OSM paths explicitly identified as
 // mountain-bike infrastructure (including mtb:scale:imba). They remain in the
 // graph for the rider-controlled option, but are unavailable by default.
@@ -206,6 +222,57 @@ function loadGraph(buf) {
     while (bNext > off && gLon[bNext] === gLon[end] && gLat[bNext] === gLat[end]) bNext--;
     eBearingA[i] = bearingDeg(gLon[off], gLat[off], gLon[aNext], gLat[aNext]);
     eBearingB[i] = bearingDeg(gLon[end], gLat[end], gLon[bNext], gLat[bNext]);
+  }
+  // Identify short protected-space interruptions from topology, rather than
+  // guessing from a route's visual U-turn. A legitimate switchback stays
+  // untouched; an explicit cycleway crossing stays infrastructure. Only a
+  // one-way SHARED-LANE road edge beside protected infrastructure qualifies.
+  const protectedNode = new Uint8Array(N);
+  for (let i = 0; i < E; i++) {
+    if ((eFlags[i] & (4 | 32)) || isDismountEdge(i)) continue;
+    if ((eFlags[i] & 8) || eFacility[i] >= 4) {
+      protectedNode[eA[i]] = 1;
+      protectedNode[eB[i]] = 1;
+    }
+  }
+  const candidateEdges = [];
+  const candidatesAtNode = new Map();
+  for (let i = 0; i < E; i++) {
+    const flags = eFlags[i];
+    if ((flags & (4 | 8 | 32)) || !(flags & 16) || isDismountEdge(i)) continue;
+    if (eFacility[i] !== 1 || eClass[i] < FACILITY_GAP_MIN_ROAD_CLASS
+        || eLen[i] > FACILITY_GAP_MAX_EDGE_M) continue;
+    candidateEdges.push(i);
+    for (const node of [eA[i], eB[i]]) {
+      const beside = candidatesAtNode.get(node);
+      if (beside) beside.push(i);
+      else candidatesAtNode.set(node, [i]);
+    }
+  }
+  eFacilityGap = new Uint8Array(E);
+  const visitedCandidates = new Set();
+  for (const seed of candidateEdges) {
+    if (visitedCandidates.has(seed)) continue;
+    const component = [], protectedEnds = new Set(), queue = [seed];
+    let runM = 0;
+    while (queue.length) {
+      const i = queue.pop();
+      if (visitedCandidates.has(i)) continue;
+      visitedCandidates.add(i);
+      component.push(i);
+      runM += eLen[i];
+      for (const node of [eA[i], eB[i]]) {
+        if (protectedNode[node]) protectedEnds.add(node);
+        for (const next of candidatesAtNode.get(node) || []) {
+          if (!visitedCandidates.has(next)) queue.push(next);
+        }
+      }
+    }
+    // It must be a brief interruption bounded by protected bike space, not a
+    // long sharrow corridor that merely begins beside a trail.
+    if (protectedEnds.size >= 2 && runM <= FACILITY_GAP_MAX_RUN_M) {
+      for (const i of component) eFacilityGap[i] = 1;
+    }
   }
   // Reuse the large edge-state workspace across the many profile searches in
   // one request. Generation stamps avoid clearing 1M+ entries each time.
@@ -1194,6 +1261,20 @@ function surfacePreferenceS(i, rules) {
   return 0;
 }
 
+function isFacilityGapEdge(i) {
+  return !!(eFacilityGap && eFacilityGap[i]);
+}
+
+function facilityGapDistancePenaltyS(i) {
+  return isFacilityGapEdge(i) ? eLen[i] * FACILITY_GAP_PENALTY_S_PER_M : 0;
+}
+
+function facilityGapEntryPenaltyS(incomingEdge, outgoingEdge) {
+  return isFacilityGapEdge(outgoingEdge)
+    && (incomingEdge == null || incomingEdge < 0 || !isFacilityGapEdge(incomingEdge))
+    ? FACILITY_GAP_ENTRY_PENALTY_S : 0;
+}
+
 // Ordinary 9–10% climbs remain available, but a run of them is meaningfully
 // tiring. Add a light route-choice cost above 9%, then a much stronger one
 // above 12%. The cost is intentionally bounded rather than a prohibition:
@@ -1480,11 +1561,11 @@ function useEdgeCostFloors(rules, searchRules, mode) {
  * behind the moment a term was added, and any diagnostic anyone wrote became a
  * third. Everything that prices an edge calls this now.
  *
- * `ctx` carries the search's settings plus the three path-dependent inputs,
+ * `ctx` carries the search's settings plus the path-dependent inputs,
  * which are the only reason this cannot be a pure function of the edge:
  * `boardingWaitS` (a ferry costs its wait only where this end has land),
- * `incomingEdge` and `fromNode` (a dismount run is charged once, and turn
- * friction depends on what you turned off). Omit them and you get the
+ * `incomingEdge` and `fromNode` (a dismount or traffic-conflict run is charged
+ * once, and turn friction depends on what you turned off). Omit them and you get the
  * edge-only price -- which is exactly what edgeCostFloor() has to bound.
  */
 function edgeCost(ei, forward, ctx) {
@@ -1500,6 +1581,7 @@ function edgeCost(ei, forward, ctx) {
       || !isDismountEdge(ctx.incomingEdge))) {
     cost += DISMOUNT_ENTRY_PENALTY_S;
   }
+  cost += facilityGapEntryPenaltyS(ctx.incomingEdge, ei);
   if (ctx.fromNode != null) cost += turnPreferenceS(ctx.incomingEdge, ctx.fromNode, ei, ctx.mode);
   return cost;
 }
@@ -1510,7 +1592,7 @@ function edgeCost(ei, forward, ctx) {
  * per arc), `steep`/`surf` the per-arc additive terms, `divOk` whether an
  * alternative-corridor diversity penalty may apply. What stays out is exactly
  * what depends on more than the arc and the search config: the diversity
- * factor itself (per candidate), the dismount entry charge and turn friction
+ * factor itself (per candidate), the dismount/traffic-conflict entry charges and turn friction
  * (per transition). edgeCost() above recombines them in the original order,
  * so the cached path and the reference path price an edge identically. */
 let partsSteep = 0, partsSurf = 0, partsDivOk = 0;
@@ -1615,7 +1697,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   partsSteep = steepUphillAvoidanceS(ei, forward, mode);
   // Similarly, a designated trail remains eligible but should not erase
   // the rider's explicit preference for pavement.
-  partsSurf = surfacePreferenceS(ei, rules);
+  partsSurf = surfacePreferenceS(ei, rules) + facilityGapDistancePenaltyS(ei);
   partsDivOk = !protectedInfrastructure && !(fl & 32) ? 1 : 0;
   return cost;
 }
@@ -1794,7 +1876,8 @@ function edgeCostFloor(i, forward) {
     climb = (netAsc * steepness + Math.max(0, asc - netAsc) * 0.5) * climbRate;
   }
   return (edgeTimeS(i, forward) + climb) * m
-    + steepUphillAvoidanceS(i, forward, mode) + surfacePreferenceS(i, rules);
+    + steepUphillAvoidanceS(i, forward, mode) + surfacePreferenceS(i, rules)
+    + facilityGapDistancePenaltyS(i);
 }
 
 // Keyed by goal node, mode and the bound signature, so a potential is only ever
@@ -2084,6 +2167,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       if (isDismountEdge(ei) && (incomingEdge < 0 || !isDismountEdge(incomingEdge))) {
         cost += DISMOUNT_ENTRY_PENALTY_S;
       }
+      cost += facilityGapEntryPenaltyS(incomingEdge, ei);
       cost += turnPreferenceS(incomingEdge, u, ei, mode);
       if (!(cost < Infinity)) continue;
       const nd = du + cost;
@@ -2167,9 +2251,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     // elevated the level, it is also the cause the Concerns list names
     // ('dismount' is already in SafetyModel.CAUTION_CAUSES).
     const dismountHere = isDismountEdge(ei);
-    const level = dismountHere && verdict.level < 3 ? 3 : verdict.level;
+    const facilityGap = isFacilityGapEdge(ei);
+    const level = (dismountHere || facilityGap) && verdict.level < 3 ? 3 : verdict.level;
     const cautionCause = level !== 3 ? null
-      : (verdict.level < 3 ? 'dismount' : (verdict.caution || (dismountHere ? 'dismount' : null)));
+      : (facilityGap ? 'facility-gap'
+        : (verdict.level < 3 ? 'dismount' : (verdict.caution || (dismountHere ? 'dismount' : null))));
     levelM[level] += eLen[ei];
     if (level === 4) failM += eLen[ei];
     const hazard = edgeHazard(ei, forward);
@@ -2197,7 +2283,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       shBack: edgeShoulder(ei, !forward),
       flags: eFlags[ei] | (edgeLimited(ei, forward) ? 128 : 0), roadClass: eClass[ei],
       facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
-      dismount: dismountHere, level, cautionCause,
+      dismount: dismountHere, facilityGap, level, cautionCause,
       surface: eSurface[ei], surfaceLabel: SURFACE_LABEL[eSurface[ei]] || SURFACE_LABEL[SURFACE_UNKNOWN],
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
       centerTurnLane: !!(eLanes && (eLanes[ei] & LANES_CENTER_TURN)),
@@ -2374,15 +2460,25 @@ function routeFragment(source, startEdge, endEdge, rules) {
   const coordStart = sourceSegs[0].c0;
   const coordEnd = sourceSegs[sourceSegs.length - 1].c1;
   const coords = source.coords.slice(coordStart, coordEnd + 1);
-  const segs = sourceSegs.map((seg, index) => ({
-    ...seg,
-    c0: seg.c0 - coordStart,
-    c1: seg.c1 - coordStart,
-    hazC0: seg.hazC0 == null ? null : seg.hazC0 - coordStart,
-    hazC1: seg.hazC1 == null ? null : seg.hazC1 - coordStart,
-    level: edgeLevel(sourceEdgeIds[index], rules,
-      eA[sourceEdgeIds[index]] === nodeIds[index]),
-  }));
+  const segs = sourceSegs.map((seg, index) => {
+    const ei = sourceEdgeIds[index];
+    const forward = eA[ei] === nodeIds[index];
+    const rawLevel = edgeLevel(ei, rules, forward);
+    const dismount = isDismountEdge(ei);
+    const facilityGap = isFacilityGapEdge(ei);
+    const level = (dismount || facilityGap) && rawLevel < 3 ? 3 : rawLevel;
+    return {
+      ...seg,
+      c0: seg.c0 - coordStart,
+      c1: seg.c1 - coordStart,
+      hazC0: seg.hazC0 == null ? null : seg.hazC0 - coordStart,
+      hazC1: seg.hazC1 == null ? null : seg.hazC1 - coordStart,
+      dismount, facilityGap, level,
+      cautionCause: level !== 3 ? null
+        : (facilityGap ? 'facility-gap'
+          : (rawLevel < 3 ? 'dismount' : (seg.cautionCause || (dismount ? 'dismount' : null)))),
+    };
+  });
   const ferryRanges = [];
   const profile = [[0, nodeEle[nodeIds[0]]]];
   const levelM = [0, 0, 0, 0, 0];
@@ -2421,7 +2517,8 @@ function routeFragment(source, startEdge, endEdge, rules) {
     // Same dismount-as-caution elevation as the primary route builder above,
     // so a rebuilt summary cannot disagree with the original one.
     const rawLevel = edgeLevel(ei, rules, forward);
-    const level = isDismountEdge(ei) && rawLevel < 3 ? 3 : rawLevel;
+    const level = (isDismountEdge(ei) || isFacilityGapEdge(ei)) && rawLevel < 3
+      ? 3 : rawLevel;
     levelM[level] += eLen[ei];
     if (level === 4) failM += eLen[ei];
     hazardM += Number(seg.hazardLenM) || 0;

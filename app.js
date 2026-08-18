@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.750';
+const APP_VERSION = '2026-08-17.751';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3643,6 +3643,7 @@ function routeSegProps(s, routeIndex) {
     facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
     dismount: isDismountSegment(s) ? 1 : 0,
     dismountEscalated: s.dismountEscalated ? 1 : 0,
+    facilityGap: s.facilityGap ? 1 : 0,
     surface: Number.isInteger(s.surface) ? s.surface : 0,
     roadClass: s.roadClass || 0,
     routeIndex,
@@ -3683,7 +3684,8 @@ function fallbackRouteLevel(s) {
   // assembling the route. Preserve that explicit structural fact, not an
   // otherwise opaque and potentially stale stored level byte.
   if (s?.dismountEscalated) return 4;
-  return effectiveLevel(scoreRouteSeg(routeSegProps(s)));
+  const level = effectiveLevel(scoreRouteSeg(routeSegProps(s)));
+  return s?.facilityGap && level < 3 ? 3 : level;
 }
 
 // Preserve WHY a route segment is amber, not only the amber level. Route
@@ -3691,6 +3693,7 @@ function fallbackRouteLevel(s) {
 // a matching item under Concerns. New worker payloads provide the exact cause;
 // the evaluation keeps older payloads useful.
 function routeSegmentCautionCause(s) {
+  if (s?.facilityGap && fallbackRouteLevel(s) === 3) return 'facility-gap';
   const verdict = evaluateRoad(scoreRouteSeg(routeSegProps(s)));
   if (verdict.level === 3 && verdict.caution) return verdict.caution;
   if (s?.mtb) return 'mountain-bike';
@@ -4650,6 +4653,7 @@ const SAFETY_REASON_SPEECH = Object.freeze({
   'heavy-traffic': 'Heavy traffic',
   'limited-access': 'Limited access road',
   'sidewalk-fallback': 'Sidewalk riding',
+  'facility-gap': 'Bike space ends in traffic',
   dismount: 'Walk your bike',
   'mountain-bike': 'Mountain bike trail',
 });
@@ -8495,7 +8499,7 @@ function routeSegmentMapFeature(coords, segment, routeIndex) {
   const props = routeSegProps(segment, routeIndex);
   // Score the very properties the card will read, so the level baked into the
   // feature is the level the card recomputes from it.
-  props.level = effectiveLevel(scoreRouteSeg(props));
+  props.level = fallbackRouteLevel(segment);
   props.hwy = isHighwaySegment(segment) ? 1 : 0;
   return {
     type: 'Feature',
@@ -11260,6 +11264,7 @@ const CAUTION_CAUSE_NAME = {
   'sidewalk-fallback': 'sidewalk instead of a shoulder',
   'high-stress': 'officially rated high stress',
   dismount: 'you must walk your bike',
+  'facility-gap': 'bike space ends in traffic',
 };
 // Sentence form, e.g. "... — but it is a limited-access highway, so ...".
 const CAUTION_CAUSE_PHRASE = {
@@ -11277,6 +11282,8 @@ const CAUTION_CAUSE_DETAIL = {
     + 'cautioned for this — you have space of your own — though a painted lane on a road rated '
     + 'this high draws blue rather than lime.',
   dismount: 'Bicycles are allowed, but you have to get off and walk.',
+  'facility-gap': 'Protected bike space briefly ends at a short one-way shared-traffic '
+    + 'connector on a through road. Routes strongly avoid this transition.',
 };
 
 // Help is generated from SafetyModel.CAUTION_CAUSES rather than hand-written,
@@ -12889,7 +12896,8 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
   // sides now ask safety-model.js, and asking once here means the card cannot
   // disagree with itself even if they ever diverge again.
   const verdict = evaluateRoad(n);
-  const lvl = verdict.level;
+  const facilityGap = src.id === 'routeseg' && p.facilityGap === 1;
+  const lvl = facilityGap && verdict.level < 3 ? 3 : verdict.level;
   const common = [
     ['Verdict', readoutVerdict(n, lvl, verdict)],
     ['Why', explainLevel(n, verdict)],
@@ -12905,7 +12913,10 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
         ['Speed', p.mph ? `~${p.mph} mph crossing` : null],
       ];
     } else {
-      const routeVerdict = p.crossing === 1 ? [
+      const routeVerdict = facilityGap && lvl === 3 ? [
+        ['Verdict', 'Caution — traffic conflict'],
+        ['Why', 'Protected bike space briefly ends at a short one-way shared-traffic connector on a through road. Routes strongly avoid this transition.'],
+      ] : p.crossing === 1 ? [
         ['Verdict', 'Blue — Intersection crossing'],
         ['Why', 'Short crossing between passing route segments; treated as crossing the road, not riding along it.'],
       ] : common;
@@ -12913,6 +12924,8 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
         ['Name', p.name || '(unnamed road)'],
         ['Access', p.dismount === 1 ? 'Dismount required — walk your bike.' : null],
         ...routeVerdict,
+        ['Traffic conflict', facilityGap && lvl === 4
+          ? 'Protected bike space briefly ends in a one-way shared-traffic lane here.' : null],
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
         ['Speed source', p.official & 1 ? `${Region.speedAgency} legal speed` : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft${p.shBack != null && p.shBack >= 0
@@ -13490,8 +13503,8 @@ const ROUTING_WEIGHT_GROUPS = [
   ['Road size and stress rating', 'Two signals for roads where the speed limit has stopped telling you anything. Physical separation exempts an edge; paint halves the cost. The two are combined by taking the larger, not by multiplying.', [
     { base: 'wideRoad', label: 'Four or more lanes', min: 1, max: 4, step: .01,
       hint: 'Counts a centre turn lane, so three through lanes plus one qualifies.' },
-    { base: 'stressedRoad', label: `${Region.stressAgency} rates it high stress`, min: 1, max: 4, step: .01,
-      hint: 'The state bicycle level of traffic stress rating. Applies at full weight to a 4 and half weight to a 3. State highways only, which is the only place the rating exists.' },
+    { base: 'stressedRoad', label: 'Official traffic-stress rating', min: 1, max: 4, step: .01,
+      hint: 'This map pack\'s normalized 1–4 Level of Traffic Stress rating. Applies at full weight to a 4 and half weight to a 3; coverage depends on the map pack.' },
   ]],
   ['Speed', 'Both are per mile-per-hour, so they accumulate: 10 mph over comfort at 0.02 is a 20% cost.', [
     { base: 'speedOver', label: 'Each mph above your comfort speed', min: 0, max: .1, step: .002, modes: ['Balanced', 'LowStress'],

@@ -46,6 +46,7 @@ for (const facility of [0, 1, 2, 3, 4, 5]) {
   for (const flags of [0, 4, 8, 32, 64, 128]) {
     for (const extra of [{}, { mtb: true, official: 4 }, { crossing: 1 },
       { sh: -128 }, { mph: 55, sh: 0 }, { mph: 45, sh: 2 }, { surface: 3 },
+      { facilityGap: true, facility: 1, flags: 16, mph: 25, sh: 4 },
       { dismount: true, official: 136, dismountEscalated: true }]) {
       SHAPES.push({ lenM: 100, facility, flags, mph: 30, sh: 4, c0: 0, c1: 1, ...extra });
     }
@@ -71,7 +72,8 @@ const fromDetails = await details.evaluate((segs) =>
   segs.map((seg) => routeDisplayCategory(seg)), SEGMENTS);
 const modelTruth = await app.evaluate((segs) => segs.map((seg) => {
   const props = routeSegProps(seg);
-  const level = effectiveLevel(scoreRouteSeg(props));
+  let level = effectiveLevel(scoreRouteSeg(props));
+  if (seg.facilityGap && level < 3) level = 3;
   if ((seg.flags || 0) & 32) return null;
   if (seg.crossing) return 'pass';
   if (seg.dismountEscalated) return 'fail';
@@ -108,6 +110,13 @@ const modelDisagreements = SEGMENTS.flatMap((seg, index) =>
     ? [] : [{ seg, model: modelTruth[index], card: fromApp[index], details: fromDetails[index] }]);
 check('the card and Details classifications both follow the model facts, not cached levels',
   modelDisagreements.length === 0, JSON.stringify(modelDisagreements.slice(0, 5)));
+
+const gapFeatureLevel = await app.evaluate(() => routeSegmentMapFeature(
+  [[-122.3185, 47.6556], [-122.3183, 47.6555]],
+  { c0: 0, c1: 1, lenM: 16, facility: 1, flags: 16, mph: 25, sh: 4,
+    facilityGap: true }, 0).properties.level);
+check('a traffic-conflict connector is baked into the drawn route as amber', gapFeatureLevel === 3,
+  `level ${gapFeatureLevel}`);
 
 const riderFacing = await app.evaluate((segs) => {
   const cumulative = [0];

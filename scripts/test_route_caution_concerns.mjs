@@ -68,6 +68,7 @@ const cases = [
   [{ official: 16, mph: 45, sh: 0 }, 'sidewalk-fallback'],
   [{ mtb: true, facility: 5 }, 'mountain-bike'],
   [{ dismount: 1, official: 8 }, 'dismount'],
+  [{ facilityGap: true, mph: 25, facility: 1, flags: 16 }, 'facility-gap'],
 ];
 for (const [segment, expected] of cases) {
   assert.equal(context.cautionConcernKind(segment, rules), expected,

@@ -105,6 +105,10 @@ const advancedOptions = await pg.evaluate(() => {
       ?.closest('.weight-cost')?.querySelector('h4')?.textContent,
     preferredWeightHint: document.querySelector('input[data-weight="preferredRoute"]')
       ?.closest('.weight-cost')?.querySelector('.weight-hint')?.textContent,
+    stressWeightLabel: document.querySelector('input[data-weight="stressedRoadBalanced"]')
+      ?.closest('.weight-cost')?.querySelector('h4')?.textContent,
+    stressWeightHint: document.querySelector('input[data-weight="stressedRoadBalanced"]')
+      ?.closest('.weight-cost')?.querySelector('.weight-hint')?.textContent,
   };
 });
 check('expert route switches sit above the weights in Advanced routing',
@@ -114,6 +118,9 @@ check('expert route switches sit above the weights in Advanced routing',
     && advancedOptions.preferredWeightLabel === 'Strong Preferred-route pull'
     && /moderate and neutral alternatives/.test(advancedOptions.preferredWeightHint)
     && /never compounds/.test(advancedOptions.preferredWeightHint)
+    && advancedOptions.stressWeightLabel === 'Official traffic-stress rating'
+    && /normalized 1–4 Level of Traffic Stress/.test(advancedOptions.stressWeightHint)
+    && /coverage depends on the map pack/.test(advancedOptions.stressWeightHint)
     && /Independent of presets/.test(advancedOptions.note),
   JSON.stringify(advancedOptions));
 
