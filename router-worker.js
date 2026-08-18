@@ -3077,6 +3077,12 @@ function candidateSummary(candidate) {
     unpavedM: candidate.unpavedM || 0,
     ferryM: candidate.ferryM || 0,
     ascentM: candidate.ascentM || 0,
+    suggestionScore: recommendationScoreBreakdown(candidate),
+    safetyEquivalentM: candidate.failM + (candidate.dismountM || 0) * 3,
+    preferredRouteM: preferredRouteMeters(candidate),
+    preferredRouteMultiplier: profile.preferredRouteStrength === 'neutral' ? 1
+      : (Number.isFinite(profile.preferredRouteMultiplier)
+        ? profile.preferredRouteMultiplier : null),
     shape: candidateShape(candidate),
   };
 }
@@ -3230,11 +3236,19 @@ const DISMOUNT_AVOID_PRICE_S_PER_M = 3;
 // worth about five and a half minutes of detour on better ground.
 const NETWORK_GAP_PRICE_S_PER_M = 0.2;
 const TRAIL_BONUS_S_PER_M = 0.12;
-const recommendationScore = (route) =>
-  route.timeS + route.failM * FAIL_AVOID_PRICE_S_PER_M
-  + (route.dismountM || 0) * DISMOUNT_AVOID_PRICE_S_PER_M
-  + Math.max(0, route.distM - route.ferryM - route.facilityM) * NETWORK_GAP_PRICE_S_PER_M
-  - (route.trailM || 0) * TRAIL_BONUS_S_PER_M;
+function recommendationScoreBreakdown(route) {
+  const travelS = route.timeS;
+  const failS = route.failM * FAIL_AVOID_PRICE_S_PER_M;
+  const dismountS = (route.dismountM || 0) * DISMOUNT_AVOID_PRICE_S_PER_M;
+  const ordinaryRoadM = Math.max(0, route.distM - route.ferryM - route.facilityM);
+  const ordinaryRoadS = ordinaryRoadM * NETWORK_GAP_PRICE_S_PER_M;
+  const trailCreditS = (route.trailM || 0) * TRAIL_BONUS_S_PER_M;
+  return {
+    totalS: travelS + failS + dismountS + ordinaryRoadS - trailCreditS,
+    travelS, failS, dismountS, ordinaryRoadS, trailCreditS, ordinaryRoadM,
+  };
+}
+const recommendationScore = (route) => recommendationScoreBreakdown(route).totalS;
 
 function ferryEdgeGroups(routeResult) {
   const groups = [];
@@ -4431,6 +4445,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   const preferredRouteAnchor = preferredRoutesActive(rules)
     ? strongPreferredCandidate : null;
   let recommended = null;
+  let recommendationBasis = 'lowest-score';
   for (const route of recommendationPool) {
     if (!recommended) { recommended = route; continue; }
     const delta = recommendationScore(route) - recommendationScore(recommended);
@@ -4463,6 +4478,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     if (bestMatching && recommendationScore(bestMatching)
         <= recommendationScore(recommended) + MATCHING_OVERRIDE_PRICE_S) {
       recommended = bestMatching;
+      recommendationBasis = 'fully-matching-override';
     }
   }
   // Marking a named route Preferred is an explicit recommendation request.
@@ -4470,7 +4486,10 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // the chosen corridor, even when a neutral alternative is materially
   // shorter. Moderate and neutral results remain in the portfolio so this
   // preference never turns into an all-or-nothing constraint.
-  if (preferredRouteAnchor) recommended = preferredRouteAnchor;
+  if (preferredRouteAnchor) {
+    recommended = preferredRouteAnchor;
+    recommendationBasis = 'preferred-route-override';
+  }
   const boundedPreferred = (!hasStops || !preferred || boundedChoices.includes(preferred)
     || preferred === safestOverall) ? preferred : null;
   const boundedBothPreferences = (!hasStops || !bothPreferences
@@ -4587,6 +4606,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     allCandidates: allCandidates.map((candidate) => ({
       ...candidateSummary(candidate),
       label: candidate._outcome?.label || candidate._extraLabel || candidate._profile.label,
+      recommendationBasis: candidate === recommended ? recommendationBasis : null,
     })),
     debug: debug ? {
       raw: raw.map((r) => r._profile.id), reasonable: reasonable.map((r) => r._profile.id),

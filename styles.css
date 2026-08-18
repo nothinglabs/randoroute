@@ -222,6 +222,13 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .all-route-stats .lvl-caution b { color: var(--verdict-caution); }
 .all-route-stats .lvl-fail b { color: var(--verdict-fail); }
 .all-route-stats .lvl-fac b { color: #6f7a00; }
+.all-route-score { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 11px; margin-top: 7px; padding: 7px 9px; border-radius: 8px; background: #f2f7fa; color: #506571; font: 600 10.5px/1.35 system-ui; }
+.all-route-score > strong { color: #173d55; font: 820 11.5px/1.25 system-ui; }
+.all-route-score b { color: #2e4b5c; font-weight: 800; }
+.all-route-score .score-credit b { color: #557000; }
+.all-route-score .score-penalty b { color: #8b4b13; }
+.all-route-score .score-fail b { color: var(--verdict-fail); }
+.all-route-score .score-basis { flex-basis: 100%; color: #385769; }
 .all-route-why, .all-route-stage-why { margin: 6px 0 0; color: #5c6f7b; font: 500 11px/1.45 system-ui; }
 .all-route-stage-why { color: #6b5330; }
 .all-route-why b, .all-route-stage-why b { color: #3d5261; }
@@ -528,6 +535,10 @@ body:not(.navigation-active) #navCard { display: none; }
 .settings-tabs .settings-help-btn { align-self: center; }
 .settings-tabs button.active { border-color: #0a66c2; background: #eaf2fb; color: #0a66c2; }
 .settings-tab-pair { display: flex; flex: 1; min-width: 0; gap: 4px; }
+.settings-tool-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; min-width: 0; }
+.settings-tool-tabs > button { width: auto; min-width: 0; padding-right: 3px; padding-left: 3px; font-size: 16px; }
+.settings-tool-tabs > button:disabled { opacity: .38; cursor: default; }
+.settings-considered-tab { color: #075b9f !important; }
 
 /* ------------------------------------------------------------ maps screen */
 .maps-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(760px, calc(100% - 28px)); margin: 0 auto; padding: 16px 0 max(34px, env(safe-area-inset-bottom)); }
@@ -1616,8 +1627,6 @@ body.street-view-open #map { visibility: hidden; }
 .sv-coverage-note { margin: 0; padding: 9px 11px; border: 1px solid rgba(255,211,118,.72); border-left: 4px solid #f0b44d; border-radius: 9px; background: rgba(16,27,35,.94); box-shadow: 0 2px 10px rgba(0,0,0,.28); color: #f6fafc; font: 700 12px/1.35 system-ui; text-align: center; }
 .sv-coverage-note b { color: #ffd376; font-weight: 850; }
 .weights-reset { min-height: 38px; padding: 0 15px; border: 1px solid #b34b3f; border-radius: 9px; background: #fff4f2; color: #9f352a; font: 750 12px system-ui; cursor: pointer; }
-.weights-considered { min-height: 38px; padding: 0 15px; border: 1px solid #7aaed5; border-radius: 9px; background: #edf6fc; color: #075b9f; font: 750 12px system-ui; cursor: pointer; }
-.weights-considered:disabled { opacity: .45; cursor: default; }
 .weights-body { height: calc(var(--app-height, 100dvh) - 65px); overflow-y: auto; overscroll-behavior: contain; width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 18px 0 max(34px, env(safe-area-inset-bottom)); }
 .weights-modified-notice { margin: 0 0 12px; padding: 11px 13px; border: 1px solid #d59a3b; border-left: 5px solid #b66a00; border-radius: 9px; background: #fff4df; color: #714000; font: 850 15px/1.2 system-ui; }
 .weights-body > .help-lead { max-width: 850px; margin: 0 0 14px; color: #435967; font: 650 13px/1.45 system-ui; }
@@ -1785,6 +1794,9 @@ body.settings-panel-active .settings-tabs {
 body.settings-panel-active .settings-tab-pair {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px 7px;
 }
+body.settings-panel-active .settings-tool-tabs {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px;
+}
 body.settings-panel-active .settings-tabs button {
   min-width: 0; min-height: 34px; padding: 5px 8px; border-radius: 9px;
   font: 750 11.5px/1.1 system-ui; white-space: nowrap;
@@ -1792,6 +1804,7 @@ body.settings-panel-active .settings-tabs button {
 body.settings-panel-active .settings-tabs .settings-weights-tab {
   width: auto; padding-right: 8px; padding-left: 8px; font-size: 17px;
 }
+body.settings-panel-active .settings-tabs .settings-considered-tab { font-size: 20px; }
 body.settings-panel-active .settings-tabs .settings-weights-tab.tuned {
   border-color: #c5872b; background: #fff6e4; color: #96590a;
 }

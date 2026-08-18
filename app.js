@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-17.754';
+const APP_VERSION = '2026-08-18.755';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3528,6 +3528,7 @@ function handleRouterFailure(message) {
   updateArmButtons();
   if (routeWasRequested) {
     routing.options = [];
+    clearCandidatePortfolio();
     renderRouteOptionControls();
     stopTurnNavigation(false);
     routing.last = { ok: false, code: 'router-error', reason };
@@ -7706,6 +7707,7 @@ function onRouterMessage(ev) {
     if (!m.ok || !Array.isArray(m.options) || !m.options.length) {
       showRouteActionToast('Could not calculate that route', { duration: 2600 });
       routing.options = [];
+      clearCandidatePortfolio();
       stopTurnNavigation(false);
       clearStoredRouteDetails();
       const failure = { ...m, ok: false, reason: m.reason || 'No useful route options were found.' };
@@ -7720,6 +7722,7 @@ function onRouterMessage(ev) {
     routing.options = m.options;
     routing.allCandidates = Array.isArray(m.allCandidates) ? m.allCandidates : [];
     routing.candidatesKey = m.candidatesKey || null;
+    syncConsideredRoutesButton();
     // Every search letters its portfolio fresh. Lineups used to FREEZE per
     // trip -- refinements re-ran the same recipes under pinned letters, with
     // greyed slots for recipes that stopped routing -- and the cost was that
@@ -7767,6 +7770,7 @@ function onRouterMessage(ev) {
     if (!m.ok) {
       showRouteActionToast('Could not calculate that route', { duration: 2600 });
       routing.options = [];
+      clearCandidatePortfolio();
       routing.last = m;
       renderRouteOptionControls();
       stopTurnNavigation(false);
@@ -9670,6 +9674,7 @@ function removeRouteEndpoint(kind) {
   drawRoute([]);
   routing.last = null;
   routing.options = [];
+  clearCandidatePortfolio();
   clearStoredRouteDetails();
   setRouteOptionsLoading(false);
   renderRouteOptionControls();
@@ -9736,6 +9741,7 @@ function clearRoute() {
   drawRoute([]);
   routing.last = null;
   routing.options = [];
+  clearCandidatePortfolio();
   schedulePrewarm();
   clearStoredRouteDetails();
   renderRouteOptionControls();
@@ -10040,6 +10046,17 @@ function candidateStatLine(c) {
   return { mi, hours: c.timeS / 3600, pass, caution, fail, facility };
 }
 
+function scoreMinutes(seconds) {
+  const value = Number(seconds) || 0;
+  return `${value < 0 ? '−' : ''}${(Math.abs(value) / 60).toFixed(1)}`;
+}
+
+function recommendationBasisLabel(basis) {
+  if (basis === 'preferred-route-override') return 'Starred because you marked this route Preferred.';
+  if (basis === 'fully-matching-override') return 'Starred because it fully matches your rules within the allowed score margin.';
+  return 'Starred as the lowest suggestion score among practical routes.';
+}
+
 function renderAllRoutesList() {
   const host = document.getElementById('allRoutesList');
   if (!host) return;
@@ -10080,6 +10097,17 @@ function renderAllRoutesList() {
         <span class="lvl-fail"><b>${s.fail}%</b> fail</span>
         <span class="lvl-fac"><b>${s.facility}%</b> trails / lanes</span>
       </div>
+      ${c.suggestionScore ? `<div class="all-route-score">
+        <strong>Suggestion score ${scoreMinutes(c.suggestionScore.totalS)} min</strong>
+        <span>travel <b>${scoreMinutes(c.suggestionScore.travelS)}</b></span>
+        <span class="score-fail">fails <b>+${scoreMinutes(c.suggestionScore.failS)}</b></span>
+        <span class="score-penalty">walk <b>+${scoreMinutes(c.suggestionScore.dismountS)}</b></span>
+        <span class="score-penalty">ordinary roads <b>+${scoreMinutes(c.suggestionScore.ordinaryRoadS)}</b></span>
+        <span class="score-credit">trails <b>−${scoreMinutes(c.suggestionScore.trailCreditS)}</b></span>
+        ${c.preferredRouteM > 0 && c.preferredRouteMultiplier != null
+          ? `<span>Preferred route <b>${(c.preferredRouteM / 1609.344).toFixed(1)} mi × ${Number(c.preferredRouteMultiplier).toFixed(2)}</b> search cost</span>` : ''}
+        ${c.recommendationBasis ? `<span class="score-basis">${recommendationBasisLabel(c.recommendationBasis)}</span>` : ''}
+      </div>` : ''}
       <p class="all-route-why"><b>Built as:</b> ${c.why}</p>
       ${c.stageWhy ? `<p class="all-route-stage-why"><b>${stage.label}:</b> ${c.stageWhy}</p>` : ''}`;
     row.addEventListener('click', () => chooseCandidate(c));
@@ -10092,10 +10120,7 @@ function renderAllRoutesList() {
 function closeConsideredRouteDialogs() {
   const allRoutes = document.getElementById('allRoutesDialog');
   if (allRoutes?.open) allRoutes.close();
-  if (settingsMenuIsOpen()
-      && document.getElementById('settings-weights')?.hidden === false) {
-    selectPanelTab('route');
-  }
+  if (settingsMenuIsOpen()) selectPanelTab('route');
 }
 
 function chooseCandidate(c) {
@@ -10118,6 +10143,17 @@ function chooseCandidate(c) {
 function openAllRoutes() {
   renderAllRoutesList();
   document.getElementById('allRoutesDialog').showModal();
+}
+
+function syncConsideredRoutesButton() {
+  const button = document.getElementById('moreRoutesBtn');
+  if (button) button.disabled = !(routing.allCandidates || []).length;
+}
+
+function clearCandidatePortfolio() {
+  routing.allCandidates = [];
+  routing.candidatesKey = null;
+  syncConsideredRoutesButton();
 }
 
 function activateRouteOption(option, updateNavigation = false) {
@@ -14986,11 +15022,7 @@ function prepareRoutingWeightsPane() {
   buildRoutingWeightsEditor();
   syncWeightsTunedBadge();
   syncSettingsNavigationLock();
-  // The considered-routes screen only has something to say once a trip has
-  // been routed; until then the button explains itself instead of opening
-  // an empty list.
-  const considered = document.getElementById('moreRoutesBtn');
-  if (considered) considered.disabled = !(routing.allCandidates || []).length;
+  syncConsideredRoutesButton();
 }
 
 function openRoutingWeights() {
@@ -15016,9 +15048,6 @@ function syncRouteWarningIconVisibility() {
   }
 }
 
-// The considered-routes screen rides along with the optional Weights tool, so
-// hiding its Settings tab hides the whole advanced surface without discarding
-// any saved values.
 function syncAdvancedToolsVisibility() {
   const weightsTab = document.getElementById('settings-tab-weights');
   if (weightsTab) weightsTab.hidden = !uiPrefs.showAdvancedTools;
@@ -15056,8 +15085,6 @@ function syncWeightsTunedBadge() {
       : `Advanced routing has been modified (${changed} changes)`;
   }
 }
-// Static markup on the weights page; prepareRoutingWeightsPane() keeps its
-// disabled state in step with whether a trip is currently routed.
 document.getElementById('moreRoutesBtn')?.addEventListener('click', openAllRoutes);
 syncWeightsTunedBadge();
 syncAdvancedToolsVisibility();

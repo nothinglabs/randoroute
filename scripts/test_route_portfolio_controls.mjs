@@ -236,18 +236,16 @@ check('the strong signed-route preference lives in Advanced routing and defaults
 check('turning the signed-route preference on updates the routing rule',
   ui.bikeRouteRuleOn, JSON.stringify(ui));
 
-// With no trip routed, the weights page's considered-routes button explains
+// With no trip routed, the Settings tab's considered-routes button explains
 // itself by being disabled instead of opening an empty list.
 const considered = await page.evaluate(() => {
   routing.allCandidates = [];
-  openRoutingWeights();
+  syncConsideredRoutesButton();
   const button = document.getElementById('moreRoutesBtn');
   const out = { disabledWithoutTrip: button?.disabled === true };
-  settingsPaneSelect?.('rules');
   routing.allCandidates = [{}];
-  openRoutingWeights();
+  syncConsideredRoutesButton();
   out.enabledWithTrip = button?.disabled === false;
-  settingsPaneSelect?.('rules');
   return out;
 });
 check('considered-routes sleeps until a trip is routed',

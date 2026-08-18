@@ -248,7 +248,10 @@
           <button id="settings-tab-voice" type="button" role="tab" aria-selected="false" aria-controls="settings-voice" data-settings-pane="voice">Voice-Nav</button>
           <button id="settings-tab-routes" type="button" role="tab" aria-selected="false" aria-controls="settings-routes" data-settings-pane="routes">Designated Routes</button>
           <button id="settings-tab-maps" type="button" role="tab" aria-selected="false" aria-controls="settings-maps" data-settings-pane="maps">Maps</button>
-          <button id="settings-tab-weights" class="settings-weights-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-weights" data-settings-pane="weights" title="Advanced routing weights" aria-label="Advanced routing weights" hidden><span aria-hidden="true">⚖</span></button>
+          <div class="settings-tool-tabs" role="group" aria-label="Route analysis tools">
+            <button id="settings-tab-weights" class="settings-weights-tab" type="button" role="tab" aria-selected="false" aria-controls="settings-weights" data-settings-pane="weights" title="Advanced routing weights" aria-label="Advanced routing weights" hidden><span aria-hidden="true">⚖</span></button>
+            <button id="moreRoutesBtn" class="settings-considered-tab" type="button" disabled title="Every route the router built for the current trip, offered or not" aria-label="All routes considered"><span aria-hidden="true">≋</span></button>
+          </div>
         </div>
       </div>
       <div id="settings-presets" class="settings-pane" role="tabpanel" aria-labelledby="settings-tab-presets">
@@ -301,7 +304,7 @@
       <div id="settings-weights" class="settings-pane settings-weights-pane" role="tabpanel" aria-labelledby="settings-tab-weights" hidden>
         <div class="settings-weights-toolbar">
           <strong>Advanced routing weights</strong>
-          <div class="weights-head-actions"><button id="moreRoutesBtn" class="weights-considered" type="button" disabled title="Every route the router built for the current trip, offered or not">Considered routes</button><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button></div>
+          <div class="weights-head-actions"><button id="resetRoutingWeights" class="weights-reset" type="button">Reset all defaults</button></div>
         </div>
         <div class="weights-body">
           <div id="weightsModifiedNotice" class="weights-modified-notice" role="status" hidden>Advanced routing has been modified</div>
@@ -427,7 +430,7 @@
   <dialog id="allRoutesDialog" class="full-help-dialog all-routes-dialog" aria-label="All routes considered">
     <div class="full-help-head"><div><span>Troubleshooting</span><h2>All routes considered</h2></div><button class="dialog-close" data-close="allRoutesDialog" aria-label="Close all routes">✕</button></div>
     <div class="all-routes-body">
-      <p class="all-routes-lead">Every route the portfolio built for these points — the ones offered on the map and the ones it discarded. Tap any to load it. <b>This is a diagnostic view:</b> a discarded route was discarded for a reason, and that reason is shown.</p>
+      <p class="all-routes-lead">Every route the portfolio built for these points — the ones offered on the map and the ones it discarded. Tap any to load it. The <b>suggestion score</b> chooses the star from practical routes; lower is better. Search weights first build each route, as explained by <b>Built as</b>.</p>
       <div id="allRoutesList" class="all-routes-list"></div>
     </div>
   </dialog>

@@ -137,8 +137,8 @@ check('section-frontier route details explain safety-first exact-junction compos
 
 /* ------------------------------------------- the button and the screen */
 // The route chooser now contains routes only. The considered-routes screen
-// lives on the WEIGHTS page, beside the rest of the router's workings, and
-// only wakes once a trip is routed.
+// lives in the Settings tab strip beside the optional weights tool, and only
+// wakes once a trip is routed.
 const placement = await pg.evaluate(() => {
   const buttons = [...document.querySelectorAll('#routeOptions button')];
   return {
@@ -152,15 +152,18 @@ check('the chooser row contains only the six lettered routes',
     && JSON.stringify(placement.labels) === JSON.stringify(['A', 'B', 'C', 'D', 'E', 'F']),
   JSON.stringify(placement));
 
-const weights = await pg.evaluate(() => {
-  openRoutingWeights();
+const settingsAccess = await pg.evaluate(() => {
+  selectPanelTab('settings');
   const button = document.getElementById('moreRoutesBtn');
   return { present: !!button, enabled: !button.disabled,
-    label: button?.textContent.trim() };
+    inTabs: !!button?.closest('#settingsTabs'),
+    outsideWeights: !button?.closest('#settings-weights'),
+    label: button?.getAttribute('aria-label') };
 });
-check('the weights page carries the considered-routes button, awake for this trip',
-  weights.present && weights.enabled && /considered/i.test(weights.label),
-  JSON.stringify(weights));
+check('the Settings tabs carry the considered-routes icon, awake for this trip',
+  settingsAccess.present && settingsAccess.enabled && settingsAccess.inTabs
+    && settingsAccess.outsideWeights && /considered/i.test(settingsAccess.label),
+  JSON.stringify(settingsAccess));
 await pg.click('#moreRoutesBtn');
 await pg.waitForTimeout(400);
 const opened = await pg.evaluate(() => document.getElementById('allRoutesDialog').open);
@@ -175,6 +178,7 @@ const rows = await pg.evaluate(() => {
     hasStageWhy: !!r.querySelector('.all-route-stage-why'),
     offered: r.classList.contains('is-offered'),
     stats: (r.querySelector('.all-route-stats')?.textContent || '').replace(/\s+/g, ' ').trim(),
+    score: (r.querySelector('.all-route-score')?.textContent || '').replace(/\s+/g, ' ').trim(),
     profileId: r.dataset.profileId,
   }));
 });
@@ -190,6 +194,13 @@ check('rows carry distance and the safety levels',
   rows.every((r) => /mi/.test(r.stats) && /pass/.test(r.stats)
     && /caution/.test(r.stats) && /fail/.test(r.stats)),
   rows[0]?.stats);
+check('every row shows the actual suggestion score and its weighted components',
+  rows.every((r) => /Suggestion score/.test(r.score) && /travel/.test(r.score)
+    && /fails/.test(r.score) && /walk/.test(r.score)
+    && /ordinary roads/.test(r.score) && /trails/.test(r.score)),
+  rows[0]?.score);
+check('the recommended row explains why it received the star',
+  rows.some((r) => /Starred/.test(r.score)), rows.find((r) => /Starred/.test(r.score))?.score);
 
 /* ------------------------------- thumbnails are drawn and comparable ---- */
 // The sketches share one bounding box on purpose: these are all routes between
