@@ -187,42 +187,42 @@ function ensureRouteMarkerImages(targetMap) {
     const ink = [176, 32, 32, 255];
     const badge = [255, 251, 240, 255];
 
-    // Leave the exclamation visually dominant, but move it left to give the
-    // bike a real silhouette instead of squeezing it underneath the dot.
-    const bx = Math.round(4.8 * s), halfWidth = Math.round(0.7 * s);
-    for (let y = Math.round(5.0 * s); y <= Math.round(8.5 * s); y++) {
+    // Match the supplied composition: a blocky exclamation in the left third,
+    // leaving most of the badge interior for a bicycle large enough to read.
+    const bx = Math.round(3.75 * s), halfWidth = Math.round(0.58 * s);
+    for (let y = Math.round(4.85 * s); y <= Math.round(8.45 * s); y++) {
       for (let x = bx - halfWidth; x <= bx + halfWidth; x++) {
         b.paint(x, y, ink);
       }
     }
-    b.disc(bx, 10.25 * s, 0.78 * s, ink);
+    b.disc(bx, 9.9 * s, 0.64 * s, ink);
 
     // Outlined wheels remain visibly separate from the frame. Their cream
     // centres are important: solid dots were what made the old bicycle look
     // like extra punctuation beside the exclamation point.
-    const rear = [8.05 * s, 10.0 * s];
-    const front = [11.55 * s, 10.0 * s];
+    const rear = [6.45 * s, 8.9 * s];
+    const front = [11.5 * s, 8.9 * s];
     for (const [x, y] of [rear, front]) {
-      b.disc(x, y, 1.0 * s, ink);
-      b.disc(x, y, 0.55 * s, badge);
+      b.disc(x, y, 1.35 * s, ink);
+      b.disc(x, y, 0.74 * s, badge);
     }
 
     // Open diamond frame, with a distinct saddle and handlebar. These strokes
     // are intentionally a little heavier than a literal bicycle drawing so
     // the shape survives at the map marker's smallest rendered size.
-    const crank = [9.55 * s, 9.9 * s];
-    const seat = [8.95 * s, 8.2 * s];
-    const head = [10.75 * s, 8.4 * s];
-    b.stroke(rear[0], rear[1], seat[0], seat[1], 0.58 * s, ink);
-    b.stroke(seat[0], seat[1], crank[0], crank[1], 0.58 * s, ink);
-    b.stroke(crank[0], crank[1], rear[0], rear[1], 0.58 * s, ink);
-    b.stroke(seat[0], seat[1], head[0], head[1], 0.58 * s, ink);
-    b.stroke(head[0], head[1], crank[0], crank[1], 0.58 * s, ink);
-    b.stroke(head[0], head[1], front[0], front[1], 0.58 * s, ink);
-    b.stroke(8.4 * s, 7.68 * s, 9.33 * s, 7.68 * s, 0.55 * s, ink);
-    b.stroke(seat[0], seat[1], 8.78 * s, 7.68 * s, 0.48 * s, ink);
-    b.stroke(head[0], head[1], 11.0 * s, 7.55 * s, 0.52 * s, ink);
-    b.stroke(10.7 * s, 7.38 * s, 11.65 * s, 7.38 * s, 0.55 * s, ink);
+    const crank = [8.55 * s, 8.82 * s];
+    const seat = [7.15 * s, 6.25 * s];
+    const head = [10.15 * s, 6.25 * s];
+    b.stroke(rear[0], rear[1], seat[0], seat[1], 0.66 * s, ink);
+    b.stroke(seat[0], seat[1], crank[0], crank[1], 0.66 * s, ink);
+    b.stroke(crank[0], crank[1], rear[0], rear[1], 0.66 * s, ink);
+    b.stroke(seat[0], seat[1], head[0], head[1], 0.66 * s, ink);
+    b.stroke(head[0], head[1], crank[0], crank[1], 0.66 * s, ink);
+    b.stroke(head[0], head[1], front[0], front[1], 0.66 * s, ink);
+    b.stroke(6.65 * s, 5.48 * s, 7.48 * s, 5.48 * s, 0.62 * s, ink);
+    b.stroke(seat[0], seat[1], 7.02 * s, 5.48 * s, 0.56 * s, ink);
+    b.stroke(head[0], head[1], 10.18 * s, 5.18 * s, 0.6 * s, ink);
+    b.stroke(9.8 * s, 5.05 * s, 10.72 * s, 5.05 * s, 0.62 * s, ink);
     add('route-marker-fail-designated', b);
   }
   // Combined badges: a spot can be steep AND trafficked, and one badge must
