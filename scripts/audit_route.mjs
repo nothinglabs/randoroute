@@ -197,6 +197,121 @@ export function suspicion(metrics) {
   return flags;
 }
 
+/* ------------------------------------------------- why a trip found no route
+ *
+ * "No route exists" is almost never a router defect, and reading it as one is
+ * expensive. Nearly every occurrence is a point the network can be LEFT from
+ * but not ENTERED, and the pocket it sits in says which of three things it is:
+ *
+ *   island        not in the giant component at all -- a real island, a gated
+ *                 area, a hamlet up a track. Correct. Not a finding.
+ *   one-way area  in the giant component, bounded entirely by one-way arcs --
+ *                 a downhill-only MTB trail, a freeway ramp, a military base
+ *                 whose gates are excluded as access=private. Correct data;
+ *                 the router is describing the road. Not a finding.
+ *   pinprick      a one- or two-node pocket at the head of a one-way segment.
+ *                 A rideable, reachable edge is usually metres away, so the
+ *                 snap picked a node it could not arrive at. Worth a look, and
+ *                 the ONLY one of the three that ever is.
+ *
+ * Measured once per worker: the flood fill is a couple of seconds and every
+ * later failure reuses it.
+ */
+const reachableCache = new WeakMap();
+
+export function diagnoseNoRoute(worker, from, to) {
+  if (!from || !to) return null;
+  if (!reachableCache.has(worker)) {
+    worker.run(`globalThis.__auditReach = (() => {
+      let seed = -1, bestDeg = -1;
+      for (let u = 0; u < N; u++) {
+        if (inGiant && !inGiant[u]) continue;
+        const d = outStart[u + 1] - outStart[u];
+        if (d > bestDeg) { bestDeg = d; seed = u; }
+      }
+      const seen = new Uint8Array(N);
+      const stack = [seed]; seen[seed] = 1;
+      while (stack.length) {
+        const u = stack.pop();
+        for (let a = outStart[u]; a < outStart[u + 1]; a++) {
+          const v = outTarget[a];
+          if (!seen[v]) { seen[v] = 1; stack.push(v); }
+        }
+      }
+      return seen;
+    })();`);
+    reachableCache.set(worker, true);
+  }
+  const look = (point) => worker.run(`(() => {
+    const LON = ${point[0]}, LAT = ${point[1]};
+    let snap = -1, sd = Infinity;
+    for (let u = 0; u < N; u++) {
+      const d = havM(LON, LAT, nodeLon[u], nodeLat[u]);
+      if (d < sd) { sd = d; snap = u; }
+    }
+    const reach = globalThis.__auditReach;
+    if (reach[snap]) return { snapM: Math.round(sd), reachable: true };
+    const giant = inGiant ? !!inGiant[snap] : true;
+    // Forward closure inside the unreachable set: the pocket.
+    const pocket = new Set([snap]);
+    const stack = [snap];
+    while (stack.length && pocket.size < 5000) {
+      const u = stack.pop();
+      for (let a = outStart[u]; a < outStart[u + 1]; a++) {
+        const v = outTarget[a];
+        if (!reach[v] && !pocket.has(v)) { pocket.add(v); stack.push(v); }
+      }
+    }
+    const names = new Map();
+    let onewayExits = 0, twoWayExits = 0;
+    for (const u of pocket) {
+      for (let a = outStart[u]; a < outStart[u + 1]; a++) {
+        const ei = outEdge[a];
+        const nm = edgeName(ei);
+        if (nm) names.set(nm, (names.get(nm) || 0) + 1);
+        if (!pocket.has(outTarget[a])) {
+          if (eFlags[ei] & 16) onewayExits++; else twoWayExits++;
+        }
+      }
+    }
+    return { snapM: Math.round(sd), reachable: false, giant,
+      pocket: pocket.size, onewayExits, twoWayExits,
+      names: [...names.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4)
+        .map((x) => x[0]) };
+  })()`);
+
+  const classify = (r) => {
+    if (!r || r.reachable) return 'reachable';
+    if (!r.giant) return 'island';
+    if (r.pocket <= 2) return 'pinprick';
+    return 'one-way area';
+  };
+  const start = look(from), end = look(to);
+  const verdict = [['start', start], ['end', end]]
+    .filter(([, r]) => r && !r.reachable)
+    .map(([which, r]) => ({ which, kind: classify(r), ...r }));
+  return {
+    start: { ...start, kind: classify(start) },
+    end: { ...end, kind: classify(end) },
+    // The one line a human should read.
+    summary: verdict.length === 0
+      ? 'both endpoints are reachable — the failure is something else, look closer'
+      : verdict.map((v) => {
+        const where = v.names.length ? ` (${v.names.join(', ')})` : '';
+        if (v.kind === 'island') {
+          return `${v.which} is on an island, ${v.pocket} nodes${where} — correct, not a finding`;
+        }
+        if (v.kind === 'one-way area') {
+          return `${v.which} is inside a ${v.pocket}-node one-way area${where}`
+            + `, ${v.onewayExits} one-way exits and ${v.twoWayExits} two-way`
+            + ' — a directional trail, a ramp or a restricted area; correct, not a finding';
+        }
+        return `${v.which} is a ${v.pocket}-node pinprick at the head of a one-way`
+          + `${where} — the snap chose a node it cannot arrive at; WORTH A LOOK`;
+      }).join('; '),
+  };
+}
+
 /* ----------------------------------------------------------------- runner */
 export function auditRoute(worker, route, rulesBase) {
   const rules = { ...rulesBase, ...(route.rules || {}) };
@@ -207,7 +322,14 @@ export function auditRoute(worker, route, rulesBase) {
   });
   if (!reply || reply.type !== 'route-options' || !reply.ok || !reply.options?.length) {
     return { id: route.id, name: route.name, ok: false,
-      reason: reply?.reason || reply?.type || 'no options', rules };
+      reason: reply?.reason || reply?.type || 'no options',
+      // A bare "no route" is not a finding, and treating it as one cost a
+      // multi-day goose chase: the audit reported Point Defiance as a router
+      // defect, twice, before anyone asked what was actually at that
+      // coordinate. Say what it is HERE, where the tool can still see the
+      // graph, so nobody has to re-derive it from a screenshot later.
+      diagnosis: diagnoseNoRoute(worker, route.from, route.to),
+      rules };
   }
   const options = reply.options.map((option, index) => {
     const metrics = routeMetrics(option.coords, route.from, route.to);
@@ -264,7 +386,9 @@ if (process.argv[1] && process.argv[1].endsWith('audit_route.mjs')) {
     writeFileSync(join(outDir, `${route.id}.json`), JSON.stringify(result));
     if (!result.ok) {
       console.log(`${route.id}  ${route.name}  NO ROUTE (${result.reason})`);
-      summary.push({ id: route.id, ok: false, reason: result.reason });
+      if (result.diagnosis?.summary) console.log(`    ${result.diagnosis.summary}`);
+      summary.push({ id: route.id, ok: false, reason: result.reason,
+        diagnosis: result.diagnosis?.summary || null });
       continue;
     }
     for (const option of result.options) {

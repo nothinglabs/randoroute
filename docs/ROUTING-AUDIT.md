@@ -10,6 +10,50 @@ This is a findings document, not a specification. `docs/SAFETY-MODEL.md` is
 where routing mechanics are defined; when a finding here changes a mechanic,
 the mechanic's description moves there and this file keeps the evidence.
 
+## Known non-findings — read this before chasing a "no route"
+
+**"No route exists on the rideable network between these points" is almost
+never a router defect.** It was reported as one twice, at multi-day cost, before
+anyone asked what was actually at the coordinate. Do not repeat that. Nearly
+every occurrence is a point the network can be LEFT from but not ENTERED, and
+`scripts/audit_route.mjs` now prints which of three kinds it is on every
+failure. Read that line first.
+
+| kind | what it is | finding? |
+| --- | --- | --- |
+| **island** | not in the giant component at all — a real island, a hamlet up a track | **No.** Correct. |
+| **one-way area** | in the giant component, bounded entirely by one-way arcs | **No.** Correct data. |
+| **pinprick** | a one- or two-node pocket at the head of a one-way segment | Maybe — the only kind that ever is. |
+
+**Why the one-way areas are correct, measured.** Every stranded node in both
+states, grouped into connected pockets: **all 470 Washington pockets and all 157
+Oregon pockets have ZERO two-way exits.** Reading the street names inside them
+says what they are — Galbraith Mountain and Capitol Forest downhill trails
+(*Wonderland*, *Huff and Puff*, *Snake Charmer*, *The Grunt*), freeway ramps on
+I-90, WA 16, the Valley Freeway and the West Seattle Bridge, Joint Base
+Lewis-McChord, and in Oregon the Beaverton-Tigard Freeway, Delta Highway ramps
+and the Post Canyon and Black Rock trail networks. A downhill-only trail cannot
+be ridden up. A freeway off-ramp is one-way. You cannot ride onto a military
+base — `build_graph.py:1020` drops its gates as `access=private`, which is the
+point.
+
+**The two worked examples, so the shapes are recognisable:**
+
+- `Tacoma → North Fort Lewis` — a 110-node one-way area, the base's street grid,
+  two one-way arcs out and none in. The only one of Washington's 2,604 offline
+  places that behaves this way. **Correct. Not a finding.**
+- `[-122.4443,47.2529] → [-122.5150,47.3060]` (Point Defiance) — a **1-node**
+  pinprick at the head of a one-way North Waterfront Drive segment. Two-way
+  cycleways run metres away (Trolley Lane, Promenade Lane, the `oneway=no`
+  North Waterfront Drive cycleway), which is why tapping nearby routes fine.
+  This is the shape worth looking at, and it is still only a snap-choice and a
+  wrong message — not the router failing to find a path that exists.
+
+**What is actually defective**, and it is small: the message blames a missing
+connection when the cause is an unenterable point, and the destination snap
+takes the nearest edge without asking whether it can be arrived at. Both are
+open by decision, not by oversight.
+
 ## How to reproduce anything in this file
 
 ```bash
