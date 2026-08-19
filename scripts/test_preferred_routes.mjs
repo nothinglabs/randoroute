@@ -210,17 +210,49 @@ const after = worker.run(`(() => {
 assert.equal(after.hasSet, false, 'clearing must drop the edge set');
 assert.equal(after.cost, result.onRouteOff, 'after clearing, the baseline price returns');
 
-// Field regression: preferring the Interurban Trail between Ravenna and
-// Woodland Park Zoo used to collapse the entire chooser to one 7+ mile route.
-// The direct lens carried the Preferred trust exception, so even flattened
-// weights could not escape. The real portfolio must retain the strong route as
-// Suggested while also surfacing a genuinely neutral corridor.
+// Field regression: preferring the Interurban Trail used to collapse the entire
+// chooser to one 7+ mile route. The direct lens carried the Preferred trust
+// exception, so even flattened weights could not escape. The real portfolio
+// must retain the strong route as Suggested while also surfacing a genuinely
+// neutral corridor.
+//
+// Re-anchored from Ravenna -> Woodland Park Zoo to Green Lake -> Shoreline.
+// The original pair runs east-west across north Seattle and the trail runs
+// north-south past its western end, so once the shipped overlay was rebuilt the
+// corridor was no longer ON the trip: all three preference lenses returned the
+// same 8,420 m route carrying zero preferred metres, collapsed to one candidate
+// by the dedupe stage, and the assertion below failed on geometry rather than
+// on behaviour. It took a session to tell those apart, hence the tripwire.
 const interurban = routes.get('Interurban Trail');
 assert.ok(interurban, 'the shipped route overlay must contain the Interurban Trail');
 worker.post({ type: 'preferred-routes', key: interurban.name, lines: interurban.lines });
+
+const FIELD_POINTS = [[-122.3400, 47.6800], [-122.3450, 47.7560]];
+
+// TRIPWIRE. Everything below is meaningless unless the preferred corridor is
+// genuinely reachable on this trip, so prove that first and say so plainly.
+// A future overlay or graph rebuild that moves the trail must report "the
+// fixture went stale", not "the Preferred feature broke".
+const reach = worker.run(`(() => {
+  const rules = { ...${JSON.stringify(RULES)}, preferredRoutes: 'Interurban Trail' };
+  useWeights(null);
+  const main = { ...activeWeights };
+  const raw = [];
+  addPreferredRouteSpectrumCandidates(raw, ${JSON.stringify(FIELD_POINTS)},
+    rules, false, false, null);
+  useWeights(main);
+  const strong = raw.find((r) => r._profile.preferredRouteStrength === 'strong');
+  return { built: raw.length, prefM: strong ? Math.round(preferredRouteMeters(strong)) : 0 };
+})()`);
+assert.equal(reach.built, 3, 'the preference spectrum must build all three lenses');
+assert.ok(reach.prefM > 3000,
+  `FIXTURE STALE, not a code failure: the strong lens put only ${reach.prefM} m of the`
+  + ' Interurban Trail on this trip, so there is no Preferred behaviour here to test.'
+  + ' Re-anchor FIELD_POINTS onto a trip the corridor actually serves.');
+
 const fieldPortfolio = worker.run(`(() => {
   const rules = { ...${JSON.stringify(RULES)}, preferredRoutes: 'Interurban Trail' };
-  const points = [[-122.296, 47.675], [-122.351, 47.6685]];
+  const points = ${JSON.stringify(FIELD_POINTS)};
   useWeights(null);
   const main = { ...activeWeights };
   // A small flattening is enough to activate the direct-lens branch; its
