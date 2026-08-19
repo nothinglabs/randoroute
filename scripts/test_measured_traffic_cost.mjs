@@ -132,20 +132,41 @@ assert.ok(mult('low', { useMeasuredTraffic: 999 }) >= 1,
   'malformed traffic blending must never create a negative edge multiplier');
 
 /* ------------------------------- 4. thresholds agree with the safety model */
-const model = fs.readFileSync(new URL('../safety-model.js', import.meta.url), 'utf8');
-for (const adt of [500, 2000, 6000, 15000]) {
-  assert.ok(model.includes(`adt: ${adt}`),
-    `BUSY_LEVELS must still carry ${adt}; the cost tiers are pinned to it`);
-}
-const router = fs.readFileSync(new URL('../router-worker.js', import.meta.url), 'utf8');
-for (const adt of [2000, 6000, 15000]) {
-  assert.ok(router.includes(`> ${adt}`),
-    `the cost tier at ${adt} must match BUSY_LEVELS, not drift from it`);
-}
+const busyLevels = JSON.parse(vm.runInContext('JSON.stringify(SafetyModel.BUSY_LEVELS)', context));
+assert.deepStrictEqual(busyLevels.map((level) => level.adt),
+  [null, 500, 2000, 6000, 15000, null],
+  'traffic-cost thresholds must come from the same levels the safety model presents');
 
-/* ---------------------------------------------- a bike facility still exempts */
-setEdge({ cls: 8, adt: 30000, facility: 1 });
+setEdge({ cls: 1, adt: 2000 });
 assert.strictEqual(mult('low', { useMeasuredTraffic: 1 }), 1,
-  'any recorded facility must still clear the no-facility proxy penalty');
+  '2,000/day remains below the first traffic-cost tier');
+setEdge({ cls: 1, adt: 2001 });
+assert.strictEqual(mult('low', { useMeasuredTraffic: 1 }), W.busyLightLowStress,
+  'the through-street cost tier starts above 2,000/day');
+setEdge({ cls: 1, adt: 6001 });
+assert.strictEqual(mult('low', { useMeasuredTraffic: 1 }), W.busyMediumLowStress,
+  'the busy-arterial cost tier starts above 6,000/day');
+setEdge({ cls: 1, adt: 15001 });
+assert.strictEqual(mult('low', { useMeasuredTraffic: 1 }), W.busyHeavyLowStress,
+  'the heaviest traffic-cost tier starts above 15,000/day');
 
-console.log('ok - measured traffic drives the major-road cost, and zeroes out cleanly');
+/* ----------------------- real bike space exempts traffic; sharrows do not */
+setEdge({ cls: 8, adt: 30000, facility: 1 });
+assert.strictEqual(mult('low', { useMeasuredTraffic: 1 }), W.busyHeavyLowStress,
+  'a sharrow must not erase the measured-traffic cost');
+setEdge({ cls: 8, adt: 30000, facility: 2 });
+assert.strictEqual(mult('low', { useMeasuredTraffic: 1 }), 1,
+  'a real bike lane still clears the no-facility traffic proxy');
+
+/* ---------------- a sharrow preference may apply without changing safety */
+vm.runInContext('useWeights({ facilityShared: 0.75 })', context);
+assert.strictEqual(vm.runInContext('facilityPrefMult(1)', context), 0.75,
+  'the shipped sharrow preference should be modest but visible');
+assert.strictEqual(vm.runInContext('facilityRouteBonusApplies(1, 4)', context), true,
+  'a sharrow keeps its route-choice benefit on a failing edge');
+assert.strictEqual(vm.runInContext('facilityRouteBonusApplies(0, 4)', context), false,
+  'an ordinary failing road receives no facility benefit');
+assert.strictEqual(vm.runInContext('facilityRouteBonusApplies(2, 4)', context), false,
+  'the exception is specific to sharrows, not every facility record');
+
+console.log('ok - measured traffic and sharrow routing preferences remain independent');

@@ -1418,9 +1418,11 @@ under strict matching. The card names which one it is for that reason.
 
 Facility level 1 is a shared-lane marking: paint in a traffic lane, no space of
 a rider's own. It gets **no bike-network lime** and does **not** count toward a
-route's "trails / lanes" percentage. It keeps its small routing weight
-(`facilityShared` 0.82) — it may still be worth a mild preference — so this is a
-statement about what the map claims, not about what the router prefers.
+route's "trails / lanes" percentage. It keeps a modest routing weight
+(`facilityShared` 0.75), including when the road still fails the rider's rules.
+That preference never changes the red failure verdict, and a sharrow does not
+erase the road's measured-traffic cost. This is a statement about what the map
+claims, not about what the router may mildly prefer.
 
 The rule has to be enforced in three places that cannot import each other, and
 it had leaked in all three:

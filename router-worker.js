@@ -985,7 +985,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   failRoadDirect: 1.5, failRoadBalanced: 9, failRoadLowStress: 30,
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   designated: 0.94, strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.78,
-  facilityShared: 0.82, facilityLane: 0.4, facilityBuffered: 0.36,
+  facilityShared: 0.75, facilityLane: 0.4, facilityBuffered: 0.36,
   facilitySeparated: 0.29, facilityPath: 0.16,
   mtbTrail: 6,
   freeway: 60,
@@ -1095,6 +1095,12 @@ function facilityPrefMult(level) {
     activeWeights.facilityBuffered, activeWeights.facilitySeparated,
     activeWeights.facilityPath][level] || 1;
 }
+function facilityRouteBonusApplies(level, safetyLevel) {
+  // A sharrow is a route-choice hint, not protection. Keep that modest hint on
+  // a failing road without allowing stronger facilities or signed-route-only
+  // bonuses to conceal a failure.
+  return safetyLevel < 4 || level === 1;
+}
 function isResidential(i) {
   return eClass[i] === 1 || eClass[i] === 2; // residential / living_street
 }
@@ -1155,8 +1161,8 @@ function hazardMult(weights, severity) {
 // the price: no new tier weights, and an edge OSM already classed pays exactly
 // what it paid before unless the measurements disagree with the tag.
 //
-// This is deliberately a finite route-choice cost, not a safety failure. Any
-// recorded bike facility removes the no-facility proxy penalty.
+// This is deliberately a finite route-choice cost, not a safety failure. Real
+// bike space removes the no-facility proxy penalty; a sharrow does not.
 const TIER_NONE = 0, TIER_TERTIARY = 1, TIER_SECONDARY = 2, TIER_PRIMARY = 3;
 
 function osmTrafficTier(i) {
@@ -1197,7 +1203,10 @@ function trafficTierMult(tier, weights) {
 }
 
 function majorRoadMult(i, weights, forward) {
-  if (eFacility[i] >= 1 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
+  // A real bike lane or separated facility makes motor-traffic exposure less
+  // relevant to route choice. A sharrow is only paint in the traffic lane, so
+  // measured traffic must still be priced normally.
+  if (eFacility[i] >= 2 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
   const osm = trafficTierMult(osmTrafficTier(i), weights);
   // `useMeasuredTraffic` blends from the OSM answer toward the measured one. At 0
   // this function is byte-for-byte the old behaviour, which is the point: the
@@ -1736,8 +1745,8 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // an ordinary road, a physical facility beats designation alone; when
   // both are present, use whichever benefit is stronger rather than
   // stacking them into an outsized corridor bonus.
-  // A signed route is a recommendation, not a fact about the road, so the
-  // bonus is withheld from an edge that FAILS the rider's rules. It is not
+  // A signed route is a recommendation, not a fact about the road, so its
+  // ordinary bonus is withheld from an edge that FAILS the rider's rules. It is not
   // withheld from a caution: a caution means the rules are met with a
   // caveat, and two of its three causes -- a limited-access highway and an
   // official high-stress rating -- are facts about the road rather than
@@ -1755,7 +1764,11 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // designation was 0.86, weaker than every facility weight; at 0.5 it
   // silently inverted, making a signed road with no infrastructure beat a
   // road with a painted bike lane (0.68).
-  if (!trustSignedRoute && !(fl & (32 | 4)) && !isDismountEdge(ei) && actualLevel < 4) {
+  // Sharrows are the narrow exception: their modest route-choice signal still
+  // applies on a failing road, while the unchanged failure multiplier and
+  // normal traffic cost keep that road appropriately expensive and red.
+  if (!trustSignedRoute && !(fl & (32 | 4)) && !isDismountEdge(ei)
+      && facilityRouteBonusApplies(eFacility[ei], actualLevel)) {
     const signed = fl & 64;
     cost *= eFacility[ei]
       ? facilityPrefMult(eFacility[ei])
@@ -1925,7 +1938,8 @@ function edgeCostFloor(i, forward) {
   } else if (fl & 4) m *= freewayFloor;
   if (!trustSignedRoute && (eOfficial[i] & EDGE_MTB)) m *= mtbFloor;
   if (!trustSignedRoute && !(fl & (8 | 32 | 4)) && isResidential(i)) m *= residentialFloor;
-  if (!trustSignedRoute && !(fl & (32 | 4)) && !isDismountEdge(i) && level < 4) {
+  if (!trustSignedRoute && !(fl & (32 | 4)) && !isDismountEdge(i)
+      && facilityRouteBonusApplies(eFacility[i], level)) {
     // A facility bonus OR a designation bonus, never both, and never on a
     // ferry, freeway or dismount link. The rider may have set neither
     // preference, so take whichever of the two prices the edge lower.
