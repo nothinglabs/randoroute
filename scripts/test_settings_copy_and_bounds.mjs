@@ -47,17 +47,29 @@ check('the shoulder control cannot be set below 2 ft',
 check('and it is labelled as the safe-ish width',
   /safe-ish/i.test(slider.label), slider.label);
 
+const speedSlider = await page.evaluate(() => {
+  const input = document.getElementById('r-maxSpeedNoShoulder');
+  return input ? { min: Number(input.min), max: Number(input.max), step: Number(input.step) }
+    : { missing: true };
+});
+check('the no-shoulder speed control starts at the automatic 20 mph pass threshold',
+  !speedSlider.missing && speedSlider.min === 20 && speedSlider.max === 45
+    && speedSlider.step === 5, JSON.stringify(speedSlider));
+
 // A rules object arriving from a shared link is untrusted input, and it reaches
 // the same bounds. Feed it something out of range and read back what stuck.
 const clamped = await page.evaluate(() => {
-  const low = validRuleOverrides({ ...rules, minShoulder: -50, upperMaxSpeed: 4000 });
+  const low = validRuleOverrides({ ...rules, minShoulder: -50,
+    maxSpeedNoShoulder: -50, upperMaxSpeed: 4000 });
   const high = validRuleOverrides({ ...rules, minShoulder: 99 });
-  return { low: low.minShoulder, lowSpeed: low.upperMaxSpeed, high: high.minShoulder };
+  return { low: low.minShoulder, lowNoShoulderSpeed: low.maxSpeedNoShoulder,
+    lowSpeed: low.upperMaxSpeed, high: high.minShoulder };
 });
 check('a shared link cannot push the shoulder outside those bounds',
   clamped.low === slider.min && clamped.high === slider.max, JSON.stringify(clamped));
 check('and the same holds for the speed cutoff it carries',
-  clamped.lowSpeed <= 65, JSON.stringify(clamped));
+  clamped.lowNoShoulderSpeed === speedSlider.min && clamped.lowSpeed <= 65,
+  JSON.stringify(clamped));
 
 /* ------------------------------------------------------- the grouped copy */
 const copy = await page.evaluate(() => ({

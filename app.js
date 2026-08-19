@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-18.755';
+const APP_VERSION = '2026-08-18.756';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -148,7 +148,7 @@ const RULE_NUMBER_LIMITS = {
   minShoulder: [2, 10],
   lanesNoShoulderOver: [1, MAX_LANES_NO_LIMIT],
   busyNoShoulder: [0, 4],
-  maxSpeedNoShoulder: [15, 45],
+  maxSpeedNoShoulder: [20, 45],
   upperMaxSpeed: [25, 65],
 };
 
@@ -14472,7 +14472,7 @@ function buildRulesPanel() {
   spaceHeading.className = 'rule-group-head';
   spaceHeading.textContent = 'Require a bike lane or safe-ish width shoulder if:';
   slidersHost.appendChild(spaceHeading);
-  slider('maxSpeedNoShoulder', 'Speed limit is over', 15, 45, 5, ' mph', 'rule-sub');
+  slider('maxSpeedNoShoulder', 'Speed limit is over', 20, 45, 5, ' mph', 'rule-sub');
   lanesSlider();
   busySlider();
   slider('minShoulder', 'Minimum shoulder width to count as safe-ish', 2, 10, 1, ' ft');

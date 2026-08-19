@@ -3119,7 +3119,7 @@ function conservativeDiscoveryRules(rules) {
   // One speed since the urban/rural split was collapsed; the shared model still
   // reads the old keys so a rider on saved settings is not stranded.
   const current = SafetyModel.noShoulderMaxSpeed({}, rules);
-  const stricter = Math.max(15, Math.min(30, current - 5));
+  const stricter = Math.max(20, Math.min(30, current - 5));
   return stricter < current ? { ...rules, maxSpeedNoShoulder: stricter } : null;
 }
 

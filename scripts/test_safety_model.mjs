@@ -342,22 +342,22 @@ assert.equal(SafetyModel.hasRidingSpace({ facility: 0 }, 6, wide), true,
 assert.equal(SafetyModel.hasRidingSpace({ facility: 1 }, 2, wide), false,
   'a sharrow plus too little shoulder is still not riding space');
 
-/* ------------------- 15 mph or under overrides the needs-space family --- */
+/* ------------------- 20 mph or under overrides the needs-space family --- */
 // A RECORDED parking-lot speed limit shares the lane whatever the shoulder,
 // lane count, traffic or stress rating say. Only recorded: an unknown speed
 // never earns the shortcut, and limited-access still cautions.
 const slowRules = { minShoulder: 4, maxSpeedNoShoulder: 30, upperMaxSpeed: 45,
   noUpperLimit: false, lanesNoShoulderOver: 3, busyNoShoulder: 2,
   allowSidewalkFallback: true, inferShoulderFromEdge: false };
-const busyBare = { speed: 15, shoulder: 0, lanes: 4, adt: 20000 };
+const busyBare = { speed: 20, shoulder: 0, lanes: 4, adt: 20000 };
 {
   const v = SafetyModel.evaluate(SafetyModel.sealFacts(busyBare), slowRules);
-  assert.equal(v.rule, 'slow-street', 'a 15 mph busy bare road is a slow street');
+  assert.equal(v.rule, 'slow-street', 'a 20 mph busy bare road is a slow street');
   assert.equal(v.level, 1, 'and it passes at the quiet-lane level');
 }
 {
-  const v = SafetyModel.evaluate(SafetyModel.sealFacts({ ...busyBare, speed: 20 }), slowRules);
-  assert.equal(v.rule, 'needs-space', 'at 20 mph the same road needs space again');
+  const v = SafetyModel.evaluate(SafetyModel.sealFacts({ ...busyBare, speed: 25 }), slowRules);
+  assert.equal(v.rule, 'needs-space', 'at 25 mph the same road needs space again');
   assert.equal(v.level, 4);
 }
 {
@@ -372,7 +372,7 @@ const busyBare = { speed: 15, shoulder: 0, lanes: 4, adt: 20000 };
 {
   const v = SafetyModel.evaluate(
     SafetyModel.sealFacts({ ...busyBare, limitedAccess: true }), slowRules);
-  assert.equal(v.level, 3, 'a limited-access caution survives: a 15 mph ramp is still a ramp');
+  assert.equal(v.level, 3, 'a limited-access caution survives: a 20 mph ramp is still a ramp');
 }
 {
   const v = SafetyModel.evaluate(
@@ -382,4 +382,4 @@ const busyBare = { speed: 15, shoulder: 0, lanes: 4, adt: 20000 };
 
 console.log(`Safety-model tests passed (${compared.toLocaleString()} property/rule combinations, `
   + `map expression and shared model agree; edge-space inference, the sharrow `
-  + `threshold and the 15 mph slow-street override checked directly).`);
+  + `threshold and the 20 mph slow-street override checked directly).`);

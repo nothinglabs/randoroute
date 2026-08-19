@@ -307,7 +307,7 @@ different rules.
 | 3 | `freeway` | a true motorway | 4 | — (see below) |
 | 4 | `infra` | dedicated bike infrastructure | its own `infraScore` | — |
 | 5 | `speed-cap` | speed over the absolute ceiling | 4 | `upperMaxSpeed`, `noUpperLimit` |
-| 6 | `slow-street` | a RECORDED limit of 15 mph or under | 1 | — |
+| 6 | `slow-street` | a RECORDED limit of 20 mph or under | 1 | — |
 | 7 | `needs-space` | too fast, too wide **or** too busy to share, and no shoulder or bike lane | 4 | `maxSpeedNoShoulder`, `lanesNoShoulderOver`, `busyNoShoulder`, `minShoulder` |
 | 8 | `sidewalk-fallback` | would fail rung 7, but has a mapped sidewalk | 3 | `allowSidewalkFallback` |
 | 9 | `shares-lane` | nothing about the road demands space of its own | 1 | — |
@@ -318,12 +318,12 @@ A road that trips the needs-space rung and *does* have the space falls through
 to `default` at level 2. That is deliberate: it is not the same thing as a
 quiet lane, so it does not get the quiet lane's level 1.
 
-`slow-street` (`SLOW_STREET_MAX_MPH`, 15) short-circuits the entire
+`slow-street` (`SLOW_STREET_MAX_MPH`, 20) short-circuits the entire
 needs-space family below it — shoulder, lanes, traffic count, sidewalk
 fallback — AND the high-stress soft caution: at parking-lot speeds the rider
 shares whatever space there is, and no warning teaches anything. Only a
 recorded speed limit earns the shortcut; an unknown speed never does, and the
-limited-access caution survives it (a 15 mph ramp is still a ramp). It sits
+limited-access caution survives it (a 20 mph ramp is still a ramp). It sits
 below `speed-cap` so "Never allow roads faster than" keeps meaning what it
 says, and below `infra`, whose own score already governs dedicated paths.
 
@@ -472,7 +472,7 @@ invisible. Merged, there is no order left to get wrong.
 #### Trigger 1 — speed
 
 `facts.speed > maxSpeedNoShoulder`. Strictly greater, so a road *at* the limit
-shares the lane. Default 35 mph; the slider runs 15–45. See "One speed limit,
+shares the lane. Default 35 mph; the slider runs 20–45. See "One speed limit,
 not two" below for why this is one setting and not an urban/rural pair.
 
 #### Trigger 2 — lanes

@@ -133,7 +133,7 @@ for (const [label, rules, weights] of CASES) {
   worker.withRoadBlocks([], rules, () => {
     // The lens the discovery candidates search under: the same rules with a
     // lower no-shoulder speed. Both it and the rider's own rules must hold.
-    const lens = { ...rules, maxSpeedNoShoulder: Math.max(15, Math.min(30,
+    const lens = { ...rules, maxSpeedNoShoulder: Math.max(20, Math.min(30,
       rules.maxSpeedNoShoulder - 5)) };
     for (const searchRules of [rules, lens]) {
       for (const mode of ['direct', 'balanced', 'low']) {

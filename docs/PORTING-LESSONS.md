@@ -776,9 +776,9 @@ rule.
 urban areas were built and consumed as context, but no urban/rural safety fork
 was introduced or changed.
 
-### D5 — A recorded 15 mph limit shares the lane.
+### D5 — A recorded 20 mph limit shares the lane.
 
-*The rule.* A **recorded** speed limit at or under `SLOW_STREET_MAX_MPH` (15)
+*The rule.* A **recorded** speed limit at or under `SLOW_STREET_MAX_MPH` (20)
 passes at the quiet-lane level whatever the shoulder, lane count, traffic count,
 stress rating or sidewalk say. Nobody needs riding space of their own at
 parking-lot speeds. Only a recorded limit earns it — an unknown speed never does

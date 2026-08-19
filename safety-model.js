@@ -169,7 +169,7 @@
   // At or under this recorded speed limit a street is slow enough to share
   // whatever its shoulder, lane count, traffic count or stress rating say.
   // Nobody needs riding space of their own at parking-lot speeds.
-  var SLOW_STREET_MAX_MPH = 15;
+  var SLOW_STREET_MAX_MPH = 20;
 
   // Every rung, in order. The first that matches wins. `rule` is what the card
   // explains and what tests assert on, so these keys are part of the contract.
@@ -534,7 +534,7 @@
         // needs-space family below it AND the high-stress caution: at these
         // speeds the rider shares whatever space there is. Only the recorded
         // limit counts -- an unknown speed never earns this shortcut -- and a
-        // limited-access caution survives it (a 15 mph ramp is still a ramp).
+        // limited-access caution survives it (a 20 mph ramp is still a ramp).
         { rule: 'slow-street',
           when: A.and([A.known(F.speed), A.gt(F.speed, 0),
             A.le(F.speed, SLOW_STREET_MAX_MPH)]),
