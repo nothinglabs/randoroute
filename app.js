@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-18.760';
+const APP_VERSION = '2026-08-18.761';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12288,11 +12288,17 @@ function isFailingDesignatedReadout(rows) {
 // failing (field report). The road's own flag is the fact; the ribbon merely
 // supplies the name. Bike infrastructure is the one source allowed to lean on
 // proximity, because a path under a route ribbon is the route's own pavement.
-function bikeRouteContextRow(srcId, p, screenPoint) {
+function bikeRouteContextRow(srcId, p, screenPoint, feature = null) {
   const claimsRoute = p.g || p.desig === 1 || Number(p.Designated) === 1;
-  if (!claimsRoute && srcId !== 'osm') return null;
+  // Reviewed supplemental routes are a separate overlay, so the ordinary road
+  // tile cannot carry their membership flag. Geometry may establish that an
+  // OSM road actually runs along the route; the 80%-of-shape requirement below
+  // still rejects a nearby parallel road or one that merely crosses it.
+  const along = srcId === 'roads' ? routeNamesAlongFeature(feature) : [];
+  if (!claimsRoute && srcId !== 'osm' && !along.length) return null;
   const badge = routeBadgeAt(screenPoint);
   if (badge) return ['Bike route', badge];
+  if (along.length) return ['Bike route', along.join(' · ')];
   // routeBadgeAt can only name the route while its ribbon layer is switched
   // on; the road's own record still states the fact when the layer is hidden.
   return claimsRoute
@@ -12344,7 +12350,7 @@ function preferredRouteTogglesFor(srcId, p, n, lngLat, feature = null) {
     // established membership, so a point lookup only says WHICH route.
     return along.length ? along : routeNamesNear(lngLat, 60);
   }
-  if (srcId === 'osm') return routeNamesAlongFeature(feature);
+  if (srcId === 'osm' || srcId === 'roads') return routeNamesAlongFeature(feature);
   return [];
 }
 
@@ -13097,7 +13103,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
   // If a designated route runs through this spot, include its designation in
   // the road details even though the ribbon is already visible on the map.
   if (src.id !== 'routes') {
-    const routeRow = bikeRouteContextRow(src.id, p, map.project(lngLat));
+    const routeRow = bikeRouteContextRow(src.id, p, map.project(lngLat), feature);
     if (routeRow) rows.push(routeRow);
   }
   rows = rows.filter(([, v]) => v != null && v !== '');

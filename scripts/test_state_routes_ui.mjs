@@ -190,6 +190,40 @@ check('an unflagged feature earns the toggle only by running along the route',
     && along.noGeometry.length === 0,
   JSON.stringify(along));
 
+// Supplemental Island County routes live in the route overlay rather than in
+// the OSM road tile's designation flag. The road card must recover membership
+// from shared geometry, while retaining the same rejection of nearby roads.
+const islandRoad = await page.evaluate(() => {
+  const coordinates = [
+    [-122.54980802536011, 48.003734898183524],
+    [-122.55227565765381, 48.00475423125323],
+    [-122.55313396453857, 48.00531413803009],
+    [-122.55952835083008, 48.009864949691405],
+    [-122.56025791168213, 48.01066883683228],
+    [-122.56038665771484, 48.0111856148057],
+  ];
+  const feature = { geometry: { type: 'LineString', coordinates } };
+  const at = { lng: coordinates[0][0], lat: coordinates[0][1] };
+  const toggles = preferredRouteTogglesFor('roads', {}, {}, at, feature);
+  const row = bikeRouteContextRow('roads', {}, { x: -1000, y: -1000 }, feature);
+  const kx = 111320 * Math.cos(coordinates[0][1] * Math.PI / 180);
+  const parallel = {
+    geometry: { type: 'LineString', coordinates: coordinates.map(([lng, lat]) =>
+      [lng + 60 / kx, lat]) },
+  };
+  return {
+    toggles,
+    row,
+    parallel: preferredRouteTogglesFor('roads', {}, {}, at, parallel),
+  };
+});
+check('a supplemental route appears on its underlying ordinary-road card',
+  islandRoad.toggles.includes('Central Whidbey')
+    && islandRoad.row?.[0] === 'Bike route'
+    && islandRoad.row?.[1].includes('Central Whidbey')
+    && islandRoad.parallel.length === 0,
+  JSON.stringify(islandRoad));
+
 // Toggling with a live trip must reprice THAT recompute: the geometry
 // message has to reach the worker before the route request does.
 const ordering = await page.evaluate(async () => {
