@@ -321,9 +321,10 @@ DEM_Z = 12
 # The state's own elevation tiles, beside its other data. Set from --out's
 # folder in build(), because a graph and the DEM it was sampled from belong to
 # the same state -- reading one state's terrain into another's graph produces a
-# plausible artefact with no error anywhere. The default only serves callers
-# that never set it (the profiling paths).
-DEM_DIR = 'maps/washington/dem'
+# plausible artefact with no error anywhere. There is deliberately no default:
+# a caller that reaches load_dem() without going through build() gets an
+# exception rather than one state's mountains under another state's roads.
+DEM_DIR = None
 # A marker placed in the middle of a long OSM path otherwise snaps to a distant
 # way endpoint or nearby road.  Add graph-only nodes at this spacing while
 # retaining the original path geometry for display and turn-by-turn output.
@@ -334,6 +335,10 @@ def load_dem():
     import glob
     import numpy as np
     from PIL import Image
+    if DEM_DIR is None:
+        raise RuntimeError(
+            'DEM_DIR is unset: load_dem() was reached without build() setting '
+            'it from the output folder. Set it to the state\'s own maps/<state>/dem.')
     files = glob.glob(f'{DEM_DIR}/{DEM_Z}_*.png')
     if not files:
         return None
