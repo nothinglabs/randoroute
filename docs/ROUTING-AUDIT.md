@@ -742,3 +742,129 @@ four lines. It does not address the root cause, which is the dismount weighting.
 filled" though `MAX_OFFERED` has been 6; `presentAsLetters:2963` re-sorts by
 distance, so the rider's A–F letters bear no relation to the slot positions the
 selection algorithm reasons about.
+
+## B3 — The freeway weight is a flat surcharge, not the intended rule (BUG, ROUTER)
+
+**The intent** is to refuse a short opportunistic hop onto a bicycle-legal
+freeway while preserving freeway use where it is genuinely the only link — a
+bridge, a gorge, a river crossing. **The code has no notion of "short" or
+"opportunistic."** `router-worker.js:1730` is a flat per-metre surcharge with no
+length term, no trip-length term and no test for whether an alternative exists.
+
+**Mechanism.** The freeway flag is set for OSM `motorway` and `motorway_link`
+only (`build_graph.py:124, 1120, 1587`). `safety-model.js:526` grades any freeway
+level 4 unconditionally, shoulder irrelevant — sampled 48,666/48,666 edges in
+Washington and 31,553/31,553 in Oregon. `router-worker.js:1709` applies the
+level-4 mode multiplier and `:1730` then applies ×60 on top of it, in the same
+branch. Repeated in the A* bound at `:1943`/`:1947`.
+
+Measured cost ÷ time on real edges: I-84 Gorge 91× / 739× / 3,148× for direct /
+balanced / low-stress; I-90 Vantage 95× / 984× / 5,355×. The 90/540/1800 figures
+are the floor — traffic, speed-stress and `limitedAccess` push the real number
+higher.
+
+**Break-even.** Ordinary road ridden to avoid one metre of freeway: 95–99 m
+direct, 884–1,259 m balanced, 4,007–8,500 m low-stress. In balanced mode one
+kilometre of interstate shoulder costs about 900 km of ordinary road. No real
+detour is ever long enough.
+
+**Consequence, measured.** Vantage → Quincy accepts +156.7 km of extra riding
+rather than 2.756 km of legal, 10 ft-shouldered I-90 across the only Columbia
+crossing for ~40 miles (205.4 km offered against 48.6 km available). Cascade
+Locks → Hood River: 159.3 km offered against 32.4 km available, needing 17.8 km
+of I-84 shoulder. Both alternatives exist and are admissible — refused purely on
+price, and a weight sweep recovers each at `freeway: 20`. So the weight is not
+merely past "forbid short hops"; it forbids essentially all freeway use,
+including the case the rule was meant to preserve.
+
+**Correction to round 2's O5.** "`allowFreeways: true` is arithmetically
+indistinguishable from `false`" is right about the arithmetic and wrong at the
+route level. `allowFreeways: false` is a hard admission gate
+(`router-worker.js:2232`, mirrored at `:1912` and `:2042`) — the edge does not
+exist to the search. On the Gorge, `true` returns six routes carrying 10,006 m
+of I-84 each and `false` returns no route at all. The toggle is decisive there.
+
+**Prohibited riding is separate and hard, and survives `allowFreeways: true`.**
+Two independent exclusions upstream of the toggle: `bicycle=no` never enters the
+graph (`build_graph.py:1006-1007`), and a WSDOT `Prohibited` record stores
+shoulder as `PROHIBITED_SHOULDER = -128` (`:182`, `:1647-1651`) which the router
+skips at `router-worker.js:2225` before any cost or rules logic. Freeways are
+also excluded from the terminal-access carve-out at `:2135-2137`.
+
+**Fix.** Replace the flat multiplier with a large fixed *entry* cost per freeway
+run plus a modest per-metre rate. An entry cost refuses the short hop by
+construction — the shorter the hop, the worse its cost per metre — while a long
+unavoidable crossing amortises it. The current shape has the opposite gradient.
+
+**Unproven.** That the weight refuses short hops *where one is available*. On all
+three short-hop trips tested, `freeway: 1` also produced zero freeway metres, so
+the hop was not in the routable graph at all — Portland's I-5 links there are
+dropped at build as `bicycle=no`. A trip where a short hop is demonstrably
+available and refused by price was not obtained.
+
+## P2 — The fail-share guard is correct code that never runs (UNREACHABLE IN PRACTICE)
+
+`router-worker.js:4569-4590`. If the star fails the rules across ≥15% of its own
+length, and another candidate carries ≤40% as many failing metres within 1.8×
+the star's distance and 1.85× its time, that candidate takes the star.
+
+**Zero fires across 86 real trips** — 48 urban, 38 rural, 18 re-run with the
+practical-window floor disabled. The share test passed 7 times; on every one all
+alternatives carried comparable failing distance.
+
+**It is not dead code.** Lifted verbatim into a synthetic harness it fires
+correctly on two cases and correctly declines on four boundary cases, including
+deferring to a Preferred-route anchor. The predicate is satisfiable; the
+conditions do not occur.
+
+**Why.** The two tests are anti-correlated in the real graph: a star reaches 15%
+fail share essentially only when the corridor is severed, and a severed corridor
+has no clean parallel. Urban star fail share is median 0.4%, max 13.2% — yet on
+12 of 48 trips some candidate exceeded 15%, so the pricing consistently declines
+to star them.
+
+**Nearest miss.** McMinnville → Newberg: star 24,789 m with 3,264 m failing =
+13.2%, 454 m short of the bar, with four qualifying alternatives already waiting
+(212, 194, 485, 451 m failing), all outside the priced pool.
+
+**The concern it raises.** Nothing bounds the detour the guard buys. Had it fired
+on that near-miss it would have traded 24.8 km / 75 min for 34.7 km / 110 min —
+a 35-minute automatic detour, unannounced. The share test bounds which stars it
+touches, not what it buys. Its alternative is drawn from the full candidate list
+rather than the priced pool, so it can select a route the pricing loop never
+scored against the star.
+
+**Ordering relative to `preferredRouteAnchor` is correct as shipped** —
+confirmed synthetically. But see below: the test cited as evidence for that
+ordering can no longer demonstrate it.
+
+## Two defects found outside the routing questions
+
+- **`scripts/test_preferred_routes.mjs` fails on HEAD.** The strong
+  Preferred-route candidate returns `neutral`; `preferredRouteAnchor` is null on
+  that trip and the star is `direct-lens-friendly`. It fails identically at
+  `72604ba` (pre-.762), `a2895bc` (.762), `a16923a` (.763) and HEAD, so it is not
+  a regression from the selection work — and it means the test cannot currently
+  demonstrate anything about the guard's ordering.
+- **Oregon has no bicycle-prohibition data at all.** Washington hard-excludes 254
+  edges (19.5 km), 156 of them freeway (13.7 km). Oregon excludes zero —
+  `maps/oregon/BUILD.md:22` records that no statewide dataset was available, so
+  the only prohibition signal is OSM `bicycle=no`. The I-5 Marquam Bridge sits in
+  the Oregon graph as a non-prohibited freeway edge (56 edges, 6 ft shoulder,
+  level 4 by the freeway rung alone). Only B3's ×60 price keeps riders off it.
+  **Any reduction of the freeway weight must not land in Oregon before a
+  prohibition layer does.**
+
+## Corrections to earlier rounds
+
+- **R12 / F5's dismount arithmetic was wrong.** `138 + 3×439` against
+  `165 + 3×365` tripled an already-tripled figure; those were priced seconds, not
+  metres. Actual dismount is 146.2 m against 121.7 m.
+- **The Fremont excursion is a detour, not a backtrack.** Max crow-flight retreat
+  is 0.77 km.
+- **The `.762` practical-window floor cannot be credited for Kirkland → Redmond.**
+  With the floor disabled the trip still yields six practical candidates and the
+  same 0.8%-fail star; the original regression does not reproduce at HEAD by
+  either mechanism. Round 2 recorded this fix as "WORKED" — the outcome is real,
+  the attribution is not.
+- **Round 3's F4 is withdrawn**, folded into B1. See B1's "What was refuted".
