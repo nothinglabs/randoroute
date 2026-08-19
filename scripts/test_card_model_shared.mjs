@@ -11,6 +11,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { appDefaultRules } from './testlib/harness.mjs';
 
 const here = (p) => new URL(p, import.meta.url);
 const modelSrc = fs.readFileSync(here('../safety-model.js'), 'utf8');
@@ -57,16 +58,7 @@ vm.runInContext([
   lift('fallbackRouteLevel'),
 ].join('\n'), ctx);
 
-const DEFAULTS = (() => {
-  const at = appSrc.indexOf('const DEFAULT_RULES');
-  assert.notEqual(at, -1, 'app.js should define DEFAULT_RULES');
-  const end = appSrc.indexOf('\n});', at);
-  assert.notEqual(end, -1, 'DEFAULT_RULES should be an Object.freeze({...}) literal');
-  const box = { out: null };
-  vm.createContext(box);
-  vm.runInContext(appSrc.slice(at, end + 4).replace('const DEFAULT_RULES', 'out'), box);
-  return box.out;
-})();
+const DEFAULTS = appDefaultRules();
 
 /* ------------------------------- one worker segment, scored both ways */
 // A worker segment carries a `flags` bitfield; the map's tap layer carries the
