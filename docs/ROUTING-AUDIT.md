@@ -89,7 +89,7 @@ which ships at readiness 7 against Washington's 8.
 | # | Finding | Verdict | Class |
 | --- | --- | --- | --- |
 | R7 | Kirkland → Redmond starred onto 3,304 m of failing arterial when 58 m alternatives exist | **BUG** | ROUTER |
-| R1 | `highway=steps` never enters the graph, so a `bicycle=yes` stairway leaves two nodes 18.7 m apart with 299 m between them | **BUG** | ROUTER (build) |
+| R1 | `highway=steps` stays out of the graph, so a junction is 299 m around | CLOSED — won't fix | owner's call |
 | O2 | The Gorge has no legal non-freeway link; 18.5 mi becomes 97 mi with no "no reasonable route" signal | **BUG** | ROUTER + DATA |
 | O1 | The shipped Oregon graph predates the route-prefix fix; `OR` highways carry no ODOT conflation | **BLOCKING** | DATA |
 | R8 | Lake Forest Park: the reported trip's real faults are the recommendation and a grid gap, not snapping | **BUG** | ROUTER + DATA |
@@ -105,7 +105,19 @@ the explainable ones down.
 
 ## Findings
 
-### R1 — Steps are the only link, so the router rides 299 m around 19 m (BUG, ROUTER)
+### R1 — Steps are the only link, so the router rides 299 m around 19 m (CLOSED — WON'T FIX)
+
+> **Closed by the project owner, 2026-08-19.** The Wahkiakum steps were
+> inspected on Street View and judged not something to send a rider over
+> (they are tagged `ramp=no`: no wheel gutter, so the bike is carried).
+> `highway=steps` stays out of the graph as a class. The detour below is
+> therefore CORRECT — the two sides of that junction genuinely are 299 m
+> apart by bike-legal ways, and the router is reporting the network
+> honestly. Kept here because the measurements are sound and the next
+> person to see a 900 m loop at this junction should find this rather than
+> re-investigate it.
+
+The original finding, now read as explanation rather than defect:
 
 **Where:** NE Wahkiakum Lane at the Burke-Gilman Trail, University District.
 **Repro:** `washington`, `[-122.3035,47.6570] -> [-122.3830,47.6660]` (UW → Ballard),
