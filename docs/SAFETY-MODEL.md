@@ -994,19 +994,21 @@ the graph build created purely to keep the network connected (bit 8 without
 128): an untagged footway or path, or the few metres of an otherwise-excluded
 sidewalk that join two kept ways — the joins between a trail crossing's
 signalized halves are mapped as sidewalk, and dropping them left the
-crossings dangling as dead-end stubs. Both are priced identically — walking
-pace, a one-minute entry penalty, and a search-cost multiplier on the walked
-time in three tiers by edge length: ×3 under 25 m (a bollard gate or crossing
+crossings dangling as dead-end stubs. Both pay walking pace and a search-cost
+multiplier on the walked time in three tiers by edge length: ×3 under 25 m (a bollard gate or crossing
 island), ×8 for an ordinary walk link, ×32 over 100 m, which is how a long
 unrideable trail appears in the graph. Walking the bike is a bad outcome, not
 merely a slow one, and the multiplier is proportional by construction because
-it scales the walked seconds themselves. (The distance multipliers have been
+it scales the walked seconds themselves. A **tagged** dismount additionally
+pays a one-minute entry penalty when the route enters a tagged run. A synthesised
+link pays no flat entry penalty: missing bicycle-access data is not evidence of
+a real stop-and-dismount event. (The distance multipliers have been
 raised by field feedback whenever routes were still too willing to walk. The
 flat entry fee went the other way: at six minutes it priced an Interurban
 Trail crossing gate — three level-1 edges totalling 27 m — near ten minutes
 with the multipliers stacked on, and routes looped off the trail onto failing
 streets to ride around the gate. Length judgment belongs to the per-metre
-tiers; the flat fee is only the mode switch. Twelve minutes, tried once,
+tiers; the flat fee is only the explicit mode switch. Twelve minutes, tried once,
 priced the Pier 50 fast ferry out of the Southworth route in favour of riding
 miles to Fauntleroy.) Both count as CAUTION in the route's level
 percentages (matching the amber they draw), and both are priced into the

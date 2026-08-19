@@ -8,6 +8,26 @@ import { routerWorker } from './testlib/harness.mjs';
 
 const worker = routerWorker({ fresh: true });
 assert.ok(worker.ready, 'the worker must load');
+const entry = JSON.parse(JSON.stringify(worker.run(`(() => {
+  eOfficial = new Uint8Array([
+    EDGE_DISMOUNT,
+    EDGE_DISMOUNT | EDGE_DISMOUNT_TAG,
+    EDGE_DISMOUNT | EDGE_DISMOUNT_TAG,
+  ]);
+  return {
+    inferred: dismountEntryPenaltyS(-1, 0),
+    explicit: dismountEntryPenaltyS(-1, 1),
+    inferredToExplicit: dismountEntryPenaltyS(0, 1),
+    continuedExplicit: dismountEntryPenaltyS(1, 2),
+  };
+})()`)));
+assert.deepEqual(entry, {
+  inferred: 0,
+  explicit: 60,
+  inferredToExplicit: 60,
+  continuedExplicit: 0,
+}, 'only entry into an explicitly tagged dismount run pays the fixed charge');
+
 const result = JSON.parse(JSON.stringify(worker.run(`(() => {
   const tagged = EDGE_DISMOUNT | EDGE_DISMOUNT_TAG;
   const long = [

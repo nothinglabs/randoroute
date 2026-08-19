@@ -1087,7 +1087,8 @@ field evidence supports retuning them.
 ### E6 — Price a dismount proportionally, and let length decide severity.
 
 *The rule as shipped.* Dismount stretches cost 4× their walked time (8× on an
-edge over 100 m) on top of walking pace and an entry penalty. Proportional by
+edge over 100 m) on top of walking pace; an explicitly tagged dismount also
+pays an entry penalty. Proportional by
 construction: **a gate stays a shrug; a fifth of a mile of unrideable trail
 prices like something to route around.**
 

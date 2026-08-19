@@ -254,8 +254,9 @@ EDGE_URBAN = 64
 
 # A LITERAL ``bicycle=dismount`` tag, as distinct from the walk-your-bike
 # links the build synthesises out of untagged footways and paths. Both carry
-# EDGE_DISMOUNT and price identically -- walking pace plus the entry penalty --
-# but the app's dismount warnings (map marker, stats lines, voice) show only
+# EDGE_DISMOUNT and pay walking pace plus a distance multiplier. Only a tagged
+# dismount pays the fixed entry penalty, and the app's louder dismount warnings
+# (map marker, stats lines, voice) also show only
 # where a mapper actually recorded the requirement; the synthesised links stay
 # quiet everywhere except the route-concerns report. The two are otherwise
 # byte-identical, so without this bit the distinction dies at build time.
@@ -1064,8 +1065,8 @@ def classify_way(tags):
     # span.
     #
     # They join the graph as WALK-YOUR-BIKE links: the dismount flag prices
-    # them at walking speed plus the fixed entry penalty and announces the
-    # walk, so they repair connectivity without ever being a shortcut. Tagged
+    # them at walking speed with a distance multiplier, but no fixed entry
+    # penalty, so they repair connectivity without becoming a shortcut. Tagged
     # sidewalks and crossings stay out -- a parallel walking network beside
     # every urban street is noise, not connectivity -- as do ways that exclude
     # pedestrians. bicycle=dismount says the same thing explicitly, and was

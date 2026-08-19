@@ -823,6 +823,9 @@ const SPEED_STRESS_FLOOR = 0.25; // ~2.6 mph while walking a bike
 // at the rider's start). Length judgement belongs to the per-metre
 // multipliers below, which is also why 12 minutes here once priced the Pier
 // 50 fast ferry out of the Southworth route.
+// Only an explicit OSM bicycle=dismount instruction pays the mode-switch
+// charge. Synthesised walk links exist because bicycle access was not mapped;
+// walking pace and the distance multiplier already price that uncertainty.
 const DISMOUNT_ENTRY_PENALTY_S = 60;
 // Search-cost multiplier on the walked time of a dismount stretch (the ETA
 // keeps the honest walking time). See the note at its use in edgeCostParts.
@@ -986,7 +989,7 @@ const DEFAULT_WEIGHTS = Object.freeze({
   comfyRoadBalanced: 0.92, comfyRoadLowStress: 0.9,
   designated: 0.94, strongDesignated: 0.5, preferredRoute: 0.1, residential: 0.78,
   facilityShared: 0.75, facilityLane: 0.4, facilityBuffered: 0.36,
-  facilitySeparated: 0.29, facilityPath: 0.16,
+  facilitySeparated: 0.29, facilityPath: 0.20,
   mtbTrail: 6,
   freeway: 60,
   limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
@@ -1106,6 +1109,15 @@ function isResidential(i) {
 }
 function isDismountEdge(i) {
   return !!(eOfficial[i] & EDGE_DISMOUNT);
+}
+function isTaggedDismountEdge(i) {
+  return i != null && i >= 0
+    && (eOfficial[i] & (EDGE_DISMOUNT | EDGE_DISMOUNT_TAG))
+      === (EDGE_DISMOUNT | EDGE_DISMOUNT_TAG);
+}
+function dismountEntryPenaltyS(incomingEdge, outgoingEdge) {
+  return isTaggedDismountEdge(outgoingEdge) && !isTaggedDismountEdge(incomingEdge)
+    ? DISMOUNT_ENTRY_PENALTY_S : 0;
 }
 // Freeways are a true last resort: even a short ordinary failure should win
 // over a much longer freeway detour.
@@ -1666,10 +1678,7 @@ function edgeCost(ei, forward, ctx) {
   if (ctx.diversityEdges?.has(ei) && partsDivOk) cost *= ctx.diversityFactor;
   cost += partsSteep;
   cost += partsSurf;
-  if (isDismountEdge(ei) && (ctx.incomingEdge == null || ctx.incomingEdge < 0
-      || !isDismountEdge(ctx.incomingEdge))) {
-    cost += DISMOUNT_ENTRY_PENALTY_S;
-  }
+  cost += dismountEntryPenaltyS(ctx.incomingEdge, ei);
   cost += facilityGapEntryPenaltyS(ctx.incomingEdge, ei);
   if (ctx.fromNode != null) cost += turnPreferenceS(ctx.incomingEdge, ctx.fromNode, ei, ctx.mode);
   return cost;
@@ -2268,9 +2277,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // chain; the additive terms below are rightly exempt).
       if (rules.requireSafe && actualLevel === 4) cost *= 30;
       cost += cAdd[a];
-      if (isDismountEdge(ei) && (incomingEdge < 0 || !isDismountEdge(incomingEdge))) {
-        cost += DISMOUNT_ENTRY_PENALTY_S;
-      }
+      cost += dismountEntryPenaltyS(incomingEdge, ei);
       cost += facilityGapEntryPenaltyS(incomingEdge, ei);
       cost += turnPreferenceS(incomingEdge, u, ei, mode);
       if (!(cost < Infinity)) continue;
