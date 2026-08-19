@@ -1130,3 +1130,90 @@ only to tagged `bicycle=dismount` runs rather than to every walk link.
 `test_settings_panes_reachable` — the last is the iPhone SE Rules pane
 overflowing by 67 px, a design decision). The fourth,
 `test_saved_routes_ui`, is the load-sensitivity described above.
+
+---
+
+# Round 5 — 2026-08-19, scattered across both states
+
+30 trips on ground no earlier round touched: the Palouse, the Columbia basin,
+the Olympic peninsula, the north-east corner, the Oregon high desert, the far
+south coast, the Snake River. Every trip was chosen from the app's own offline
+place index, so **each one reproduces by typing two names** — no coordinates
+anywhere. All 30 routed; no failures, so the new no-route classifier had nothing
+to explain.
+
+## D1 — Strictly dominated routes occupy slots (BUG, ROUTER)
+
+**14 of the 30 trips offer at least one route that is no longer, no slower, and
+carries less failing road than another route on the same screen.** 16 such
+options in total; 6 of them are beaten by the starred route itself.
+
+**The clearest case, Walla Walla → Dayton:**
+
+| | distance | time | failing |
+| --- | --- | --- | --- |
+| Route A | 49.0 km | 156 min | 3.5% |
+| Route D | 55.9 km | **188 min** | **19.5%** (10.9 km of Lower Waitsburg Road) |
+
+Route D is 7 km longer, 32 minutes slower, and carries 5.6× the failing road.
+It is offered anyway.
+
+**Mechanism.** `router-worker.js:4491-4502` prunes a dominated candidate only
+when `sameCorridor = edgeOverlap(other, candidate) >= 0.96`. The intent is sound
+and the comment says so — "A route may be objectively slower and no safer yet
+still give the rider a useful different corridor." But the test is geometry
+only: a route sharing less than 96% of its edges is never pruned, however much
+worse it is. Being a different corridor is treated as sufficient on its own,
+with no floor on how bad the route may be.
+
+**Confirmed on all three axes.** This was nearly published on distance and
+failing share alone, which is not dominance — a longer route can be the quicker
+one. `scripts/audit_route.mjs` did not record times, so it now persists `timeS`,
+`distM` and `failM` per option; four cases were checked individually, then the
+full corpus re-run.
+
+Others: Vancouver → Battle Ground (C 29.6 km/90 min/10.9% against the starred B
+at 29.3/90/**0.0%**), Port Angeles → Forks (C 98.0/322/11.6% against A
+97.0/321/1.5%), Oak Harbor → Coupeville, Moses Lake → Ephrata, Coos Bay →
+Bandon, Hood River → Parkdale, Anacortes → Mount Vernon.
+
+**Repro.** Washington pack, defaults, search `Walla Walla` → `Dayton`, compare
+Routes A and D. Or `Vancouver` → `Battle Ground` for the version where the star
+itself is the winner.
+
+**Fix, not applied.** Keep the corridor exemption but put a floor under it: a
+different corridor earns its slot when it offers the rider something — less
+failing road, less time, or less distance. A candidate worse on all three is not
+variety, and a 0.96 overlap test cannot see that because it only looks at shape.
+
+## Plausible, needing a verdict
+
+- **E1 — Routes at 80–87% failing beside a route at zero.** Lakeview → Paisley
+  stars Route E at 84.1 km and 0.0% failing, and also offers Route B at **87.0%
+  failing** (57.0 km of Fremont Highway) and Route C at 79.8%. Not dominated —
+  they are genuinely quicker — so the question is whether a route failing the
+  rules for seven eighths of its length should hold a slot. Three of six slots
+  go to zero-failing routes within 1.2 km of each other.
+- **E2 — The fully-matching admission fired six times in thirty**, against once
+  in round 4. Issaquah → North Bend offers 166.6 km for a 19.9 km crow (×8.38,
+  32.6 km backtrack) and Chehalis → Centralia 54.6 km for 6.7 km (×8.12). The
+  other four are ×1.6–1.7 and read as reasonable. Same rule kept deliberately
+  earlier; the new information is the frequency and the magnitude.
+- **E3 — Brookings → Gold Beach returns five near-identical options**,
+  45.1–47.1 km, all 23.2–24.5% failing, all on US 101. Honest — there is no
+  parallel — but five versions of one answer.
+- **E4 — Sequim → Port Townsend stars ×2.77 with a 10.1 km backtrack** to remove
+  8.5 km of SR 20. Correct under the pricing; a field call.
+
+## What went right
+
+- No trip failed, in some very sparse networks. Burns → Hines returns six sane
+  options over a 3.3 km crow; Ontario → Nyssa six between 19.1 and 20.5 km.
+- Baker City → Halfway spends 10 km to drop from **43.7% failing** (38.2 km of
+  the Baker-Copperfield Highway) **to 1.4%**. That is the trade the model exists
+  to make.
+- Clean with nothing worth chasing: Wenatchee → Leavenworth, Richland → Pasco,
+  Moses Lake → Ephrata, Colville → Kettle Falls, Pullman → Colfax, Mount Vernon
+  → La Conner, Anacortes → Mount Vernon, Chehalis → Centralia, Aberdeen →
+  Westport, Burns → Hines, Ontario → Nyssa, Prineville → Madras, Silverton →
+  Mount Angel, Klamath Falls → Chiloquin, Bend → Redmond.

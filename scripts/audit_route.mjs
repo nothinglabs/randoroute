@@ -337,6 +337,12 @@ export function auditRoute(worker, route, rulesBase) {
       letter: option.optimization?.label || `#${index}`,
       profileId: option.optimization?.profileId || null,
       recommended: !!option.optimization?.recommended,
+      // Distance and failing share are not enough to call one option worse
+      // than another: a longer route can be the quicker one, and calling that
+      // "dominated" is exactly the kind of claim this tool exists to prevent.
+      timeS: Math.round(option.timeS || 0),
+      distM: Math.round(option.distM || 0),
+      failM: Math.round(option.failM || 0),
       dismountM: Math.round(option.dismountM || 0),
       ferryM: Math.round(option.ferryM || 0),
       metrics,
