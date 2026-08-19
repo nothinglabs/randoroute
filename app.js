@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-18.761';
+const APP_VERSION = '2026-08-18.762';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -10057,6 +10057,7 @@ function scoreMinutes(seconds) {
 function recommendationBasisLabel(basis) {
   if (basis === 'preferred-route-override') return 'Starred because you marked this route Preferred.';
   if (basis === 'fully-matching-override') return 'Starred because it fully matches your rules within the allowed score margin.';
+  if (basis === 'fail-share-guard') return 'Starred because the quicker option fails your rules across most of itself.';
   return 'Starred as the lowest suggestion score among practical routes.';
 }
 
