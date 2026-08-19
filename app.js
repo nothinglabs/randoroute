@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-18.756';
+const APP_VERSION = '2026-08-18.757';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -121,8 +121,9 @@ const DEFAULT_RULES = Object.freeze({
   // MAX_LANES_NO_LIMIT disables it.
   lanesNoShoulderOver: 3,
   // How busy before a road needs space of its own, as an index into
-  // SafetyModel.BUSY_LEVELS. 0 is off; 2 is "a neighborhood street", about
-  // 2,000 vehicles a day or a major collector where there is no count.
+  // SafetyModel.BUSY_LEVELS. 0 is retained for old data; the selectable top
+  // value is No limit. 2 is "a neighborhood street", about 2,000 vehicles a
+  // day or a major collector where there is no count.
   busyNoShoulder: 2,
   allowSidewalkFallback: ADVANCED_ROUTE_OPTION_DEFAULTS.allowSidewalkFallback,
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
@@ -146,8 +147,8 @@ const rules = {
 const MAX_LANES_NO_LIMIT = 6;
 const RULE_NUMBER_LIMITS = {
   minShoulder: [2, 10],
-  lanesNoShoulderOver: [1, MAX_LANES_NO_LIMIT],
-  busyNoShoulder: [0, 4],
+  lanesNoShoulderOver: [2, MAX_LANES_NO_LIMIT],
+  busyNoShoulder: [1, SafetyModel.BUSY_LEVELS.length - 1],
   maxSpeedNoShoulder: [20, 45],
   upperMaxSpeed: [25, 65],
 };
@@ -8078,7 +8079,7 @@ const FERRY_GRADE_BLACKOUT_M = 250;
 const ROUTE_MARKER_SIZE_BY_ZOOM = ['interpolate', ['linear'], ['zoom'],
   9, 0.98, 12, 1.3, 14, 1.66, 16.5, 2.2];
 // The car flags traffic at the tier that starts driving cautions and rule
-// failures -- the safety model's "busy through road" (6,000/day) -- not just
+// failures -- the safety model's "through street" (6,000/day) -- not just
 // full main-highway volumes.
 const HEAVY_TRAFFIC_ADT = SafetyModel.BUSY_LEVELS[3].adt;
 // The ! on a rules-failing stretch: one at the middle of every contiguous
@@ -13804,7 +13805,7 @@ function presetInfoRows(preset) {
       : `More than ${presetRules.lanesNoShoulderOver} lanes with neither fails your rules. Lanes are counted as tagged, turn lanes included.`],
     ['Road is busier than', (() => {
       const lvl = SafetyModel.busyLevel(presetRules);
-      return lvl.id
+      return lvl.noLimit ? 'Traffic volume is not used.' : lvl.id
         ? `${lvl.label}, about ${lvl.adt.toLocaleString()} vehicles a day, needs a bike lane or a safe-ish-width shoulder. Where no count exists the road's class stands in.`
         : 'Traffic volume is not used.';
     })()],
@@ -14418,7 +14419,7 @@ function buildRulesPanel() {
         <label for="r-${key}">Lanes of traffic more than</label>
         <span class="val" id="v-${key}">${label(rules[key])}</span>
       </div>
-      <input type="range" id="r-${key}" min="1" max="${MAX_LANES_NO_LIMIT}" step="1" value="${rules[key]}">`;
+      <input type="range" id="r-${key}" min="2" max="${MAX_LANES_NO_LIMIT}" step="1" value="${rules[key]}">`;
     slidersHost.appendChild(wrap);
     const input = wrap.querySelector('input');
     protectSliderGesture(input);
@@ -14445,6 +14446,7 @@ function buildRulesPanel() {
       // Compact "2k+/day": the spelled-out "~2,000/day" wrapped the row to
       // two lines on a 375 px phone, and the Rules pane must fit one screen.
       const perDay = lvl.adt >= 1000 ? `${lvl.adt / 1000}k` : String(lvl.adt);
+      if (lvl.noLimit) return 'No limit';
       return lvl.id ? `${lvl.label} (${perDay}+/day)` : 'Not used';
     };
     wrap.innerHTML = `
@@ -14452,7 +14454,7 @@ function buildRulesPanel() {
         <label for="r-${key}">Road is busier than</label>
         <span class="val" id="v-${key}">${label(rules[key])}</span>
       </div>
-      <input type="range" id="r-${key}" min="0" max="${levels.length - 1}" step="1" value="${rules[key]}">`;
+      <input type="range" id="r-${key}" min="1" max="${levels.length - 1}" step="1" value="${rules[key]}">`;
     slidersHost.appendChild(wrap);
     const input = wrap.querySelector('input');
     protectSliderGesture(input);
@@ -14470,7 +14472,7 @@ function buildRulesPanel() {
   // space of its own.
   const spaceHeading = document.createElement('p');
   spaceHeading.className = 'rule-group-head';
-  spaceHeading.textContent = 'Require a bike lane or safe-ish width shoulder if:';
+  spaceHeading.textContent = 'Require bike lane or safe-ish shoulder if any of these:';
   slidersHost.appendChild(spaceHeading);
   slider('maxSpeedNoShoulder', 'Speed limit is over', 20, 45, 5, ' mph', 'rule-sub');
   lanesSlider();

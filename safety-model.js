@@ -192,8 +192,9 @@
     { id: 0, label: 'don\u2019t use traffic', adt: null, fc: null },
     { id: 1, label: 'a quiet lane', adt: 500, fc: 6 },
     { id: 2, label: 'a neighborhood street', adt: 2000, fc: 5 },
-    { id: 3, label: 'a busy through road', adt: 6000, fc: 4 },
-    { id: 4, label: 'a main highway', adt: 15000, fc: 3 },
+    { id: 3, label: 'a through street', adt: 6000, fc: 4 },
+    { id: 4, label: 'a busy arterial', adt: 15000, fc: 3 },
+    { id: 5, label: 'no limit', adt: null, fc: null, noLimit: true },
   ];
   function busyLevel(rules) {
     var id = Number(rules.busyNoShoulder) || 0;
@@ -300,7 +301,7 @@
   // a measurement; otherwise the road's functional class stands in for it.
   function trafficNeedsSpace(facts, rules) {
     var level = busyLevel(rules);
-    if (!level.id) return false;
+    if (!level.id || level.noLimit) return false;
     if (facts.adt != null) return facts.adt > level.adt;
     return facts.fc != null && facts.fc <= level.fc;
   }
@@ -495,7 +496,7 @@
       ? false : A.gt(F.lanes, lanesOver);
     // A measured count decides where there is one; otherwise the functional
     // class stands in, where a SMALLER number is a bigger road.
-    var tooBusy = !busy.id ? false
+    var tooBusy = (!busy.id || busy.noLimit) ? false
       : A.or([A.gt(F.adt, busy.adt),
         A.and([A.not(A.known(F.adt)), A.le(F.fc, busy.fc)])]);
     var wantsSpace = A.or([tooFast, tooWide, tooBusy]);

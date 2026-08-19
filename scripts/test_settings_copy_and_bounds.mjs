@@ -56,19 +56,49 @@ check('the no-shoulder speed control starts at the automatic 20 mph pass thresho
   !speedSlider.missing && speedSlider.min === 20 && speedSlider.max === 45
     && speedSlider.step === 5, JSON.stringify(speedSlider));
 
+const triggerSliders = await page.evaluate(() => {
+  const read = (id) => {
+    const input = document.getElementById(id);
+    return input ? { min: Number(input.min), max: Number(input.max),
+      value: Number(input.value) } : { missing: true };
+  };
+  const trafficInput = document.getElementById('r-busyNoShoulder');
+  const originalTraffic = trafficInput.value;
+  trafficInput.value = trafficInput.max;
+  trafficInput.dispatchEvent(new Event('input', { bubbles: true }));
+  const topLabel = document.getElementById('v-busyNoShoulder').textContent.trim();
+  trafficInput.value = originalTraffic;
+  trafficInput.dispatchEvent(new Event('input', { bubbles: true }));
+  return { lanes: read('r-lanesNoShoulderOver'),
+    traffic: { ...read('r-busyNoShoulder'), topLabel } };
+});
+check('the lane trigger cannot be set below two lanes',
+  triggerSliders.lanes.min === 2, JSON.stringify(triggerSliders));
+check('the traffic trigger starts at a quiet lane rather than Not used',
+  triggerSliders.traffic.min === 1, JSON.stringify(triggerSliders));
+check('the traffic trigger ends with a No limit choice',
+  triggerSliders.traffic.max === 5 && triggerSliders.traffic.topLabel === 'No limit',
+  JSON.stringify(triggerSliders));
+
 // A rules object arriving from a shared link is untrusted input, and it reaches
 // the same bounds. Feed it something out of range and read back what stuck.
 const clamped = await page.evaluate(() => {
   const low = validRuleOverrides({ ...rules, minShoulder: -50,
-    maxSpeedNoShoulder: -50, upperMaxSpeed: 4000 });
+    maxSpeedNoShoulder: -50, lanesNoShoulderOver: -50,
+    busyNoShoulder: -50, upperMaxSpeed: 4000 });
   const high = validRuleOverrides({ ...rules, minShoulder: 99 });
   return { low: low.minShoulder, lowNoShoulderSpeed: low.maxSpeedNoShoulder,
+    lowLanes: low.lanesNoShoulderOver, lowTraffic: low.busyNoShoulder,
     lowSpeed: low.upperMaxSpeed, high: high.minShoulder };
 });
 check('a shared link cannot push the shoulder outside those bounds',
   clamped.low === slider.min && clamped.high === slider.max, JSON.stringify(clamped));
 check('and the same holds for the speed cutoff it carries',
   clamped.lowNoShoulderSpeed === speedSlider.min && clamped.lowSpeed <= 65,
+  JSON.stringify(clamped));
+check('shared rules cannot bypass the lane or traffic slider minima',
+  clamped.lowLanes === triggerSliders.lanes.min
+    && clamped.lowTraffic === triggerSliders.traffic.min,
   JSON.stringify(clamped));
 
 /* ------------------------------------------------------- the grouped copy */
@@ -83,7 +113,7 @@ const copy = await page.evaluate(() => ({
   })(),
 }));
 check('the bike-space rule reads as one requirement',
-  copy.settings.includes('Require a bike lane or safe-ish width shoulder if:'),
+  copy.settings.includes('Require bike lane or safe-ish shoulder if any of these:'),
   copy.settings.slice(0, 160));
 check('the weights screen carries a modified-state header', copy.weightsNotice);
 check('and no longer claims weights are "never a safety rule"',

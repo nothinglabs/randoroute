@@ -450,7 +450,7 @@ Speed, lanes and traffic are three ways of asking one question: **how much of
 this lane is actually available to a rider?** They are therefore a single rung,
 and the settings read as one sentence in the panel:
 
-> **Require a bike lane or safe-ish width shoulder.**
+> **Require bike lane or safe-ish shoulder if any of these:**
 > Speed limit is over — `maxSpeedNoShoulder`
 > Lanes of traffic more than — `lanesNoShoulderOver`
 > Road is busier than — `busyNoShoulder`
@@ -480,7 +480,7 @@ not two" below for why this is one setting and not an urban/rural pair.
 `facts.lanes > lanesNoShoulderOver`. The setting is phrased "Lanes of traffic
 more than", so the number shown is **the widest road that still passes** — at 3,
 a four-lane road with neither shoulder nor bike lane fails and a three-lane road
-does not. It runs 1–5, then "No limit" at the top stop (`MAX_LANES_NO_LIMIT`,
+does not. It runs 2–5, then "No limit" at the top stop (`MAX_LANES_NO_LIMIT`,
 6), which switches the trigger off. A saved value from the old wider range
 clamps to the top stop and reads as No limit.
 
@@ -511,11 +511,12 @@ The rider picks a **road type**, not a number. Nobody has an intuition for
 
 | id | slider reads | count over | else class at or above |
 |---|---|---|---|
-| 0 | Not used | — | — |
+| 0 | Not used (internal compatibility value; not selectable) | — | — |
 | 1 | a quiet lane | 500/day | 6 minor collector |
 | 2 | a neighborhood street | 2,000/day | 5 major collector |
-| 3 | a busy through road | 6,000/day | 4 minor arterial |
-| 4 | a main highway | 15,000/day | 3 principal arterial |
+| 3 | a through street | 6,000/day | 4 minor arterial |
+| 4 | a busy arterial | 15,000/day | 3 principal arterial |
+| 5 | No limit | — | — |
 
 **Each level carries both a count and a class, and that is what makes the
 setting work everywhere.** Only about half the network has a traffic count. The
@@ -527,7 +528,8 @@ The card says which of the two decided — "2,357 vehicles/day" or "Minor
 arterial, no count" — because they are different kinds of claim, and the whole
 discipline of the measurement import is never flattening them together.
 
-The slider shows the figure alongside the label ("a neighborhood street
+The slider starts at level 1, **a quiet lane (500+/day)**, ends with **No
+limit**, and shows the figure alongside the label ("a neighborhood street
 (~2,000/day)") so a rider who does want the number has it, without having to
 reason in numbers to use the control.
 
@@ -961,7 +963,7 @@ named as permissions or preferences and change only where you are sent — which
 is what their names promise.
 
 The three rung-6 triggers plus `minShoulder` are presented as one indented group
-under the heading **"Require a bike lane or safe-ish width shoulder."**, because
+under the heading **"Require bike lane or safe-ish shoulder if any of these:"**, because
 they are one rule read as one sentence. Presenting them as four independent
 sliders was what let the old speed/lane ordering hide.
 
@@ -1021,7 +1023,7 @@ as caution (amber) wherever a route is shown — a walked stretch must never
 read as prime lime trail, and colour is the warning that works at every
 zoom, with the walker chain saying why. (The same
 pass places mountain icons on 10%+ climbs, a car on busy-tier traffic —
-the "busy through road" level, 6,000+/day, where cautions begin — but only
+the "through street" level, 6,000+/day, where cautions begin — but only
 where the stretch draws as caution or a bare pass, never on trusted
 bike/trail paint, a serrated-ground icon on confirmed-unpaved surface, and
 a question mark on technical ways, one icon per slot even where causes

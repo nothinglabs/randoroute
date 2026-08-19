@@ -361,6 +361,13 @@ const busyBare = { speed: 20, shoulder: 0, lanes: 4, adt: 20000 };
   assert.equal(v.level, 4);
 }
 {
+  const v = SafetyModel.evaluate(SafetyModel.sealFacts({ speed: 25, shoulder: 0,
+    lanes: 2, adt: 50000, fc: 3 }), { ...slowRules, maxSpeedNoShoulder: 35,
+    lanesNoShoulderOver: 3, busyNoShoulder: 5 });
+  assert.equal(v.rule, 'shares-lane', 'No limit disables the traffic trigger');
+  assert.equal(v.level, 1);
+}
+{
   const v = SafetyModel.evaluate(SafetyModel.sealFacts({ ...busyBare, speed: null }), slowRules);
   assert.notEqual(v.rule, 'slow-street', 'an unknown speed never earns the shortcut');
 }

@@ -728,8 +728,9 @@ one; the class covers the half of the network that has none (B3).
 | 0 | don't use traffic | — | — |
 | 1 | a quiet lane | 500 | 6 |
 | 2 | a neighborhood street | 2,000 | 5 |
-| 3 | a busy through road | 6,000 | 4 |
-| 4 | a main highway | 15,000 | 3 |
+| 3 | a through street | 6,000 | 4 |
+| 4 | a busy arterial | 15,000 | 3 |
+| 5 | No limit | — | — |
 
 *The constraint that makes it honest.* `facts.fc` must be the **official** class
 only. A mapper's `tertiary` must not be able to fail a road for being busy.
