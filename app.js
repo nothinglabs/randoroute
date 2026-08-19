@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-19.766';
+const APP_VERSION = '2026-08-19.767';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11050,7 +11050,8 @@ function buildPlacePicker() {
   const input = document.getElementById('placeSearch');
   const results = document.getElementById('placeResults');
   const TYPE_LABEL = { city: 'city', town: 'town', village: 'village', hamlet: 'hamlet',
-    suburb: 'suburb', neighbourhood: 'neighborhood', ferry: 'ferry terminal' };
+    suburb: 'suburb', neighbourhood: 'neighborhood', ferry: 'ferry terminal',
+    coordinates: 'coordinates' };
 
   const uniqueMatches = (items) => {
     const unique = [];
@@ -11143,7 +11144,37 @@ function buildPlacePicker() {
       || Boolean(message) || offerInternet);
   };
 
+  // A pasted coordinate pair is a place. Every routing bug worth reporting is
+  // a pair of points, and until now the only way to reach an exact one was to
+  // tap the map and hope -- which is useless for anything smaller than a few
+  // hundred metres. Point Defiance is unreachable from downtown Tacoma inside a
+  // dead zone tens of metres wide, and `places.json` has no record for it at
+  // all, so no amount of typing its name gets you there.
+  //
+  // Accepts what people actually have in the clipboard: "[-122.4443, 47.2529]",
+  // "-122.4443, 47.2529", "-122.4443 47.2529", and the same three in the
+  // lat-first order Google Maps hands out. Order is resolved by which reading
+  // lands inside the region rather than by asking the rider to know; where both
+  // readings are in bounds, lon-lat wins because that is the order the rest of
+  // this codebase speaks.
+  const coordinateMatch = () => {
+    const raw = input.value.trim();
+    const numbers = raw.replace(/^[[(\s]+|[\])\s]+$/g, '').split(/[,\s]+/)
+      .filter(Boolean).map(Number);
+    if (numbers.length !== 2 || !numbers.every(Number.isFinite)) return null;
+    const [first, second] = numbers;
+    const candidates = [[first, second], [second, first]]
+      .filter(([lon, lat]) => Math.abs(lon) <= 180 && Math.abs(lat) <= 90
+        && Region.contains(lon, lat));
+    if (!candidates.length) return null;
+    const [lon, lat] = candidates[0];
+    return { name: `${lon.toFixed(5)}, ${lat.toFixed(5)}`, lon, lat,
+      type: 'coordinates', source: 'local' };
+  };
+
   const localMatches = () => {
+    const coordinate = coordinateMatch();
+    if (coordinate) return [coordinate];
     const q = input.value.trim().toLowerCase();
     if (!q || !placesIndex) return [];
     const starts = [], contains = [];
@@ -11162,6 +11193,20 @@ function buildPlacePicker() {
     const local = localMatches();
     clearTimeout(placeSearchAutoTimer);
     placeSearchAutoTimer = 0;
+    // A coordinate is already an exact answer: no online lookup, no offer of
+    // one. Two numbers that parse but fall outside the loaded state say so,
+    // rather than silently becoming a failed name search.
+    const isCoordinate = local.length === 1 && local[0].type === 'coordinates';
+    if (isCoordinate) {
+      render(local, '', { offerInternet: false });
+      return;
+    }
+    const numbers = query.replace(/^[[(\s]+|[\])\s]+$/g, '').split(/[,\s]+/)
+      .filter(Boolean).map(Number);
+    if (numbers.length === 2 && numbers.every(Number.isFinite)) {
+      render([], `That point is outside ${Region.name}.`, { offerInternet: false });
+      return;
+    }
     const shouldSearchOnline = query.length >= 2 && Array.isArray(placesIndex) && local.length === 0;
     render(local, shouldSearchOnline ? 'No offline matches. Searching the internet…' : '',
       { offerInternet: query.length >= 2 });
