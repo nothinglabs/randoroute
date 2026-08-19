@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-19.765';
+const APP_VERSION = '2026-08-19.766';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -167,7 +167,7 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   facilityShared: 0.75, facilityLane: 0.4, facilityBuffered: 0.36,
   facilitySeparated: 0.29, facilityPath: 0.20,
   mtbTrail: 6,
-  freeway: 60,
+  freeway: 12,
   limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
   speedOverBalanced: 0.01, speedOverLowStress: 0.02,
   speedBelowDirect: 0.005, speedBelowBalanced: 0.015, speedBelowLowStress: 0.03,

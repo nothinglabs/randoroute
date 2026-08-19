@@ -1003,7 +1003,16 @@ const DEFAULT_WEIGHTS = Object.freeze({
   facilityShared: 0.75, facilityLane: 0.4, facilityBuffered: 0.36,
   facilitySeparated: 0.29, facilityPath: 0.20,
   mtbTrail: 6,
-  freeway: 60,
+  // Per-metre freeway surcharge, on top of the level-4 multiplier. Calibrated
+  // WITH FREEWAY_ENTRY_PENALTY_S against six trips whose right answer is known
+  // -- three where the freeway is the only sane link and three where it is an
+  // opportunistic hop beside a good parallel. The passing band is 8 to 20: at
+  // 60 (the old flat-price value) Vantage -> Quincy still offers 206 km rather
+  // than 2.8 km across the only Columbia crossing for forty miles, and at 4 or
+  // below the router takes 9 km of I-84 at Mosier to save 60 m. 12 sits inside
+  // the band with room on both sides. Move it and re-run scripts/audit_route
+  // against those six.
+  freeway: 12,
   limitedAccessDirect: 1.05, limitedAccessBalanced: 1.35, limitedAccessLowStress: 1.75,
   // speedOver* and speedBelow* are a pair: cost per mph above your comfort
   // speed, and cost per mph below it on a road with no riding space. The old
