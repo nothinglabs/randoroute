@@ -31,7 +31,10 @@ maps/*/dem
 # Natural Earth land polygon: a shared build input (scripts/fetch_natural_earth.sh).
 data/natural-earth/
 # tippecanoe intermediates (rebuilt from the PBF; output is roads.pmtiles)
-data/roads-*.geojson
+# The roads builder shards its output as <out-prefix>-N.geojson, and the
+# prefix carries the state on every state but the default -- so a rule
+# naming only `roads-` leaked data/oregon-roads-*.geojson into git status.
+data/*roads-*.geojson
 data/*.pmtiles-journal
 maps/*/*.pmtiles-journal
 __pycache__/

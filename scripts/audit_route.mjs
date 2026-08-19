@@ -31,7 +31,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import vm from 'node:vm';
-import { ROOT, routerWorker } from './testlib/harness.mjs';
+import { ROOT, routerWorker, appDefaultRules } from './testlib/harness.mjs';
 
 /* ---------------------------------------------- what the app actually asks */
 // Lifted from app.js source: a copy here would be a second source of truth
@@ -81,13 +81,16 @@ export function directLensWeights(base = DEFAULT_WEIGHTS) {
 
 /**
  * The rider's default rules: exactly app.js's `rules` initialiser, which is
- * DEFAULT_RULES with two advanced options layered over it. Composed the same
- * way rather than transcribed, so a default that moves in app.js moves here.
+ * DEFAULT_RULES with two advanced options layered over it.
+ *
+ * The lifting itself lives in the harness, because DEFAULT_RULES now
+ * references ADVANCED_ROUTE_OPTION_DEFAULTS and evaluating either literal
+ * alone throws -- which broke three tests and this tool at once.
  */
 export function defaultRules() {
   const advanced = liftFrozen('ADVANCED_ROUTE_OPTION_DEFAULTS');
   return {
-    ...liftFrozen('DEFAULT_RULES'),
+    ...appDefaultRules(),
     allowFerries: advanced.allowFerries,
     alwaysPreferBikeRoutes: advanced.alwaysPreferBikeRoutes,
   };

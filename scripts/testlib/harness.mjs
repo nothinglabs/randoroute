@@ -57,6 +57,45 @@ export function done() {
   return failures.length === 0;
 }
 
+/* ------------------------------------------------- the app's own rules */
+/**
+ * The rider's default rules, lifted from app.js rather than transcribed.
+ *
+ * app.js is a plain script with no exports, so a test that needs its
+ * constants has to evaluate the source. Three tests each hand-rolled that --
+ * find `const DEFAULT_RULES`, brace-match the literal, eval it -- and all
+ * three broke at once when DEFAULT_RULES grew a reference to
+ * ADVANCED_ROUTE_OPTION_DEFAULTS: the lifted literal no longer stands alone.
+ *
+ * The lesson is not "add the missing constant" but that the lifting belongs
+ * in ONE place. Evaluating the constants in dependency order into a single
+ * sandbox means the next constant that references another simply works, and
+ * a test never has to know app.js's internal order again.
+ */
+export function appDefaultRules() {
+  const source = readSync(join(ROOT, 'app.js'), 'utf8');
+  const literalAfter = (name) => {
+    const at = source.indexOf(`const ${name}`);
+    if (at === -1) throw new Error(`app.js no longer defines ${name}`);
+    const open = source.indexOf('{', at);
+    let depth = 0, i = open;
+    for (; i < source.length; i++) {
+      if (source[i] === '{') depth++;
+      else if (source[i] === '}' && --depth === 0) break;
+    }
+    return source.slice(open, i + 1);
+  };
+  const box = {};
+  vm.createContext(box);
+  // Order matters: later literals reference earlier ones.
+  for (const name of ['ADVANCED_ROUTE_OPTION_DEFAULTS', 'DEFAULT_RULES']) {
+    vm.runInContext(`var ${name} = ${literalAfter(name)}`, box);
+  }
+  const rules = box.DEFAULT_RULES;
+  if (!rules || rules.minShoulder == null) throw new Error('DEFAULT_RULES lift failed');
+  return rules;
+}
+
 /* ------------------------------------------------------------ the graph */
 /** The generated registry: one entry per maps/<state>/region.json. */
 export const mapStates = () => require_(join(ROOT, 'maps/states.js')).MAP_STATES;

@@ -32,27 +32,10 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import zlib from 'node:zlib';
+import { appDefaultRules } from './testlib/harness.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
-const appSrc = fs.readFileSync(ROOT + 'app.js', 'utf8');
-// Brace-match the literal: it does not end on a predictable `\n});`, and a
-// terminator guess silently lifts the wrong object.
-function liftRules() {
-  const at = appSrc.indexOf('const DEFAULT_RULES');
-  const open = appSrc.indexOf('{', at);
-  let depth = 0, i = open;
-  for (; i < appSrc.length; i++) {
-    const c = appSrc[i];
-    if (c === '{') depth++;
-    else if (c === '}') { depth--; if (!depth) break; }
-  }
-  const box = { out: null };
-  vm.createContext(box);
-  vm.runInContext('out = ' + appSrc.slice(open, i + 1), box);
-  if (box.out.minShoulder == null) throw new Error('DEFAULT_RULES lift failed');
-  return box.out;
-}
-const rules = liftRules();
+const rules = appDefaultRules();
 
 // maps/states.js is a classic script whose IIFE assigns onto `this`, which in
 // Node CJS is module.exports -- so require() reaches it and import() may not.

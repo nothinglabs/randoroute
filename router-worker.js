@@ -4536,15 +4536,6 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       recommendationBasis = 'fully-matching-override';
     }
   }
-  // Marking a named route Preferred is an explicit recommendation request.
-  // The strong lens takes the star when it found a route that actually uses
-  // the chosen corridor, even when a neutral alternative is materially
-  // shorter. Moderate and neutral results remain in the portfolio so this
-  // preference never turns into an all-or-nothing constraint.
-  if (preferredRouteAnchor) {
-    recommended = preferredRouteAnchor;
-    recommendationBasis = 'preferred-route-override';
-  }
   // Last resort: never star a route that fails the rider's rules across a
   // large share of itself while a comparable route beside it barely fails.
   //
@@ -4560,6 +4551,14 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // priced fail. A route failing 15% or more of its own length is a
   // different animal: Kirkland -> Redmond was 47%, two miles of 40 mph
   // arterial with no shoulder, offered beside routes carrying 58-131 m.
+  //
+  // Placed BEFORE the Preferred-route override on purpose. This guards the
+  // AUTOMATIC choice, where the comparison behind the star may have been
+  // thin; marking a route Preferred is the rider saying which corridor they
+  // want, and a safety net that quietly undid their instruction would be a
+  // worse failure than the one it prevents. Running it last did exactly that
+  // -- test_preferred_routes caught the strong Preferred candidate losing
+  // the star to this rule.
   const GUARD_FAIL_SHARE = 0.15;   // of the starred route's own length
   const GUARD_ALTERNATIVE_SHARE = 0.4;  // the alternative's fail, against the star's
   if (recommended && recommended.distM > 0
@@ -4581,6 +4580,15 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       recommended = bestSafer;
       recommendationBasis = 'fail-share-guard';
     }
+  }
+  // Marking a named route Preferred is an explicit recommendation request.
+  // The strong lens takes the star when it found a route that actually uses
+  // the chosen corridor, even when a neutral alternative is materially
+  // shorter. Moderate and neutral results remain in the portfolio so this
+  // preference never turns into an all-or-nothing constraint.
+  if (preferredRouteAnchor) {
+    recommended = preferredRouteAnchor;
+    recommendationBasis = 'preferred-route-override';
   }
   const boundedPreferred = (!hasStops || !preferred || boundedChoices.includes(preferred)
     || preferred === safestOverall) ? preferred : null;

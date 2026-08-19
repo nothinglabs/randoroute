@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import zlib from 'node:zlib';
-import { ROOT, SafetyModel, check, checkEqual, done, source } from './testlib/harness.mjs';
+import { ROOT, SafetyModel, check, checkEqual, done, source, appDefaultRules } from './testlib/harness.mjs';
 
 const appSrc = source('app.js');
 const { MAP_STATES } = createRequire(import.meta.url)(ROOT + '/maps/states.js');
@@ -86,19 +86,7 @@ function levelsFromGraph(state) {
 
 // The rider's shipped defaults, lifted from app.js the way every other test
 // that needs them does.
-const rules = (() => {
-  const at = appSrc.indexOf('const DEFAULT_RULES');
-  const open = appSrc.indexOf('{', at);
-  let depth = 0, i = open;
-  for (; i < appSrc.length; i++) {
-    if (appSrc[i] === '{') depth++;
-    else if (appSrc[i] === '}' && --depth === 0) break;
-  }
-  const b = { out: null };
-  vm.createContext(b);
-  vm.runInContext('out = ' + appSrc.slice(open, i + 1), b);
-  return b.out;
-})();
+const rules = appDefaultRules();
 check('the shipped rules lifted', !!rules && rules.minShoulder != null);
 
 for (const state of MAP_STATES) {

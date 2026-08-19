@@ -60,10 +60,10 @@
     "closures": true
    },
    "versions": {
-    "roads": "sha-a77238a51315",
+    "roads": "sha-7a2fda94fd93",
     "basemap": "sha-4c10a8764862",
     "overlays": "sha-0a5d52347b4c",
-    "graph": "sha-5ab12bfaafb0"
+    "graph": "sha-89519d129241"
    },
    "attribution": {
     "extractName": "Oregon",
@@ -121,7 +121,7 @@
     {
      "dataset": "roads",
      "path": "roads.pmtiles",
-     "bytes": 31522080
+     "bytes": 32258680
     },
     {
      "dataset": "basemap",
@@ -136,7 +136,7 @@
     {
      "dataset": "graph",
      "path": "graph2.bin.gz",
-     "bytes": 26763633
+     "bytes": 36627783
     },
     {
      "dataset": "places",
