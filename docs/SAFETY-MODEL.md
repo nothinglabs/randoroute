@@ -533,7 +533,8 @@ limit**, and shows the figure alongside the label ("a neighborhood street
 (~2,000/day)") so a rider who does want the number has it, without having to
 reason in numbers to use the control.
 
-Default is level 2. **This is the first rule that lets the statewide traffic
+The Randonneur uses level 3; Weekend Wanderer and Casual Cruiser use level 2.
+**This is the first rule that lets the statewide traffic
 data change a verdict** — see "Which signals reach which decision" below.
 
 #### The shoulder test, and what an unknown shoulder means

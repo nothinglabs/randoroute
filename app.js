@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-18.757';
+const APP_VERSION = '2026-08-18.758';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -122,9 +122,9 @@ const DEFAULT_RULES = Object.freeze({
   lanesNoShoulderOver: 3,
   // How busy before a road needs space of its own, as an index into
   // SafetyModel.BUSY_LEVELS. 0 is retained for old data; the selectable top
-  // value is No limit. 2 is "a neighborhood street", about 2,000 vehicles a
-  // day or a major collector where there is no count.
-  busyNoShoulder: 2,
+  // value is No limit. The Randonneur starts at 3, "a through street", about
+  // 6,000 vehicles a day or a minor arterial where there is no count.
+  busyNoShoulder: 3,
   allowSidewalkFallback: ADVANCED_ROUTE_OPTION_DEFAULTS.allowSidewalkFallback,
   upperMaxSpeed: 45,    // mph; roads above this absolute cutoff fail
   noUpperLimit: true,   // disable the upper-speed hard cap
@@ -986,6 +986,7 @@ const ROUTING_PRESETS = Object.freeze([
       ...DEFAULT_RULES,
       allowFreeways: false,
       maxSpeedNoShoulder: 25,
+      busyNoShoulder: 2,
       upperMaxSpeed: 45,
       noUpperLimit: false,
       requireSafe: false,
@@ -1003,6 +1004,7 @@ const ROUTING_PRESETS = Object.freeze([
       ...DEFAULT_RULES,
       allowFreeways: false,
       maxSpeedNoShoulder: 25,
+      busyNoShoulder: 2,
       upperMaxSpeed: 35,
       noUpperLimit: false,
       requireSafe: true,

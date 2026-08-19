@@ -134,6 +134,13 @@ check('preset rule listings still expose their actual safety limits',
     && presetRules.includes('Minimum shoulder') && presetRules.includes('Freeways'),
   JSON.stringify(presetRules));
 
+const presetTraffic = await page.evaluate(() => Object.fromEntries(
+  ROUTING_PRESETS.map((preset) => [preset.id, preset.rules.busyNoShoulder])));
+check('The Randonneur allows one more traffic level than the other presets',
+  presetTraffic.randonneur === 3 && presetTraffic['weekend-wanderer'] === 2
+    && presetTraffic['casual-cruiser'] === 2,
+  JSON.stringify(presetTraffic));
+
 const presetCards = await page.evaluate(() => {
   document.getElementById('settings-tab-presets').click();
   return [...document.querySelectorAll('#settingsPresets .preset-card')].map((card) => {
