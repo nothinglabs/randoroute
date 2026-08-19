@@ -873,6 +873,25 @@ ordering can no longer demonstrate it.
 
 # Round 4 — 2026-08-19, after the B1/B2/B3 fixes
 
+## Reproducing any of this
+
+All figures below were re-measured at `2026-08-19.767`, after every fix in this
+round had landed, so they match what the shipped app produces. Three things
+decide whether a repro works:
+
+- **Paste coordinates rather than tapping the map.** `.767` added coordinate
+  entry to the place picker — `[-122.4443, 47.2529]`, bare, space-separated, or
+  lat-first. Two findings sit in dead zones tens of metres wide, and Point
+  Defiance has no entry in the offline place index at all.
+- **Check the settings each finding names.** `allowFerries` is a persisted rider
+  toggle, default on. With it off, Puyallup → Orting's longest option is 17.8 km
+  rather than 226.6 km.
+- **Scroll to the letter named.** The star is not always the interesting route;
+  two findings here are about Route F.
+
+Coordinates are longitude first throughout.
+
+
 30 trips: 16 around Tacoma (Washington, `sha-c043f268453b`) and 14 around
 Eugene (Oregon, rebuilt to `sha-8ae4d0b5e2d3`). New ground in both states,
 chosen to exercise the three fixes as well as fresh corridors.
