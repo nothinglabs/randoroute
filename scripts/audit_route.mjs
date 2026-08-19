@@ -218,6 +218,12 @@ export function auditRoute(worker, route, rulesBase) {
       flags: suspicion(metrics),
       coords: option.coords,
       segNames: [...new Set((option.segs || []).map((s) => s.name).filter(Boolean))],
+      // Kept so a map render can paint the failing stretches in the app's own
+      // red: "47 % of this route fails the rules" is an abstraction until you
+      // can see which 47 %.
+      segs: (option.segs || []).map((s) => ({
+        c0: s.c0, c1: s.c1, level: s.level ?? null, name: s.name || '',
+      })),
     };
   });
   return { id: route.id, name: route.name, note: route.note || '', ok: true,
