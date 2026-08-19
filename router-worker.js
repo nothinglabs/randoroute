@@ -4363,6 +4363,13 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     endPhase('frontier');
   }
 
+  // Portfolio admission. The time bound keeps merely-slower duplicates out, but
+  // the two safety escapes below are deliberately UNBOUNDED in time and distance:
+  // a candidate carrying materially less failing road, or less freeway, is always
+  // offered no matter how far it goes around. A rider who wants the safe line is
+  // entitled to see it and decide; the audit of 2026-08-19 raised the 411-mile
+  // Marblemount -> Winthrop options as a defect and the answer was that this is
+  // the intended behaviour. Do not add a length or time ceiling to the escapes.
   const fastest = raw.reduce((best, r) => r.timeS < best.timeS ? r : best, raw[0]);
   const reasonable = raw.filter((r) => r._profile.fullyMatchingRules
     || r._profile.preferredRouteStrength === 'strong'

@@ -595,3 +595,35 @@ yet traced.**
 Clean with no flags worth chasing: Albany → Corvallis, Medford → Ashland
 (Bear Creek Greenway), Bend → Sisters, Portland → Sellwood, Portland →
 Vancouver, Eugene → Springfield, Salem → Keizer.
+
+---
+
+# Round 3 — 2026-08-19
+
+14 new trips, Washington and Oregon, on the rebuilt graphs. The full round-3
+write-up lives in the published report; what follows is the disposition record
+for findings whose status changed after review.
+
+## F2 — The unbounded safety escape is intended behaviour (CLOSED — WORKS AS DESIGNED)
+
+**What was reported.** Portfolio admission (`reasonable`, `router-worker.js`) is
+an OR chain. One disjunct — `failM + 80 < fastest.failM` — asks only for 80 m
+less failing road and carries no distance or time ceiling, so a candidate that
+avoids failing road qualifies at any length. Marblemount → Winthrop (59 mi crow,
+quickest 88.3 mi / 565 min, bound 1253 min) offers Routes E and F at 411.5 mi /
+2194 min and 414.9 mi / 2212 min. Both blow the 2.2× time bound; both are
+readmitted by the fail escape, on 3.6 mi less failing road for 323 extra miles.
+Also reproduces on Skykomish → Leavenworth (237 mi for a 33 mi crow) and more
+mildly on Sisters → McKenzie Bridge and Roseburg → Grants Pass.
+
+**Disposition: not a defect.** The escape is meant to be unbounded. A route that
+removes failing road is offered however far around it goes, and the rider decides
+whether the trade is worth taking; bounding it would mean the app silently
+withholding the only safe line because it judged the detour excessive. The star
+is unaffected — it is chosen from the practical window, which these options are
+nowhere near, and it was correct on all 14 round-3 trips. This is portfolio
+membership only.
+
+The behaviour is now specified in `docs/SAFETY-MODEL.md` ("The 'More' screen")
+and carries a comment at the filter in `router-worker.js`. **Do not add a length
+or time ceiling to the escapes.**

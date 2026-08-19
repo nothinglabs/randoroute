@@ -1494,6 +1494,22 @@ each candidate is tagged with the earliest stage it failed to reach:
 Offered routes keep their A–F letters; extras continue G, H, … and fall back to
 numbering past Z.
 
+**"without being safer" is the whole clause.** Admission to `reasonable` is a
+disjunction: a candidate enters if it fully matches the rules, if it is a strong
+Preferred-route match, if it is within `2.2× + 10 min` of the quickest — **or if
+it carries at least 80 m less failing road, or 80 m less freeway, than the
+quickest**. Those last two escapes carry no length or time ceiling by design. A
+route that removes failing road is offered however far around it goes, and the
+rider decides whether the trade is worth it; the alternative is the app quietly
+withholding the only safe line because it judged the detour excessive. The
+consequence is real and expected: Marblemount → Winthrop (59 mi crow, quickest
+88 mi / 565 min) offers two 411-mile options at 2,194 and 2,212 min, each
+admitted solely by the fail escape after the time bound had rejected them. They
+are not starred — the star is chosen from the practical window, which they are
+nowhere near — they are simply visible. This was raised as a defect in the
+routing audit of 2026-08-19 and settled as intended behaviour. Do not bound the
+escapes.
+
 **Payload.** Candidate *summaries* ship with every route reply (~5 KB); full
 geometry does not. Sending every candidate whole measures **3.4–4.2 MB** on a
 Puget Sound trip, which is too large a structured clone to pay on every request

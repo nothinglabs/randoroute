@@ -154,6 +154,14 @@ reads it from the region, and the fix lands before the state does.
 - `scripts/fetch_census_urban_areas.py <state>` reads the same box from the same
   `region.json` and writes `data/census-urban-areas-2020-<state>.geojson`. Both
   tile and graph builds want it.
+- **Road tiles are built from sharded intermediates, and stale shards are
+  invisible.** `build_roads.py` emits `<prefix>-N.geojson` — a numbered set, not
+  a single `.geojsonl` — and `tippecanoe` is then pointed at the whole set. Two
+  consequences, both silent: feeding it the wrong intermediate produces an empty
+  or partial tileset with no error, and a re-run that emits fewer shards than
+  the last one leaves the extras behind to be baked into the new tiles. `rm -f`
+  the state's shards before every run. `.gitignore` must match the state-prefixed
+  form (`data/*roads-*.geojson`), or the shards get committed.
 - **A state may simply not publish something.** Oregon has no county road
   inventory and no bicycle-prohibition layer, so `--roadlog` and
   `--restrictions` are empty strings there, and `inferShoulderFromEdge` -- which
