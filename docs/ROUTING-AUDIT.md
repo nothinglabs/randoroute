@@ -436,3 +436,162 @@ The shipped model is ×3/×8/×32 with a **60-second** entry penalty (`.735`,
 after the entry fee at six minutes priced an Interurban crossing gate near ten
 minutes and pushed routes onto failing streets). The lesson's `Travelled`
 ledger should record the correction rather than the superseded numbers.
+
+---
+
+# Round 2 — 2026-08-19, after the Oregon rebuild
+
+30 routes: 15 Washington (12 on ground round 1 never touched, 3 verifying the
+fixes round 1 produced) and 15 Oregon, run for the first time against a graph
+whose OR-signed highways actually carry ODOT data. Washington
+`sha-c043f268453b`; Oregon rebuilt to `sha-89519d129241`.
+
+## Did round 1's fixes work?
+
+| fix | verdict |
+| --- | --- |
+| `.762` practical-window floor | **WORKED** — Kirkland → Redmond now stars a 6.87 mi route with 90 m failing (0.8%), against the 4.35 mi / 2,759 m (39%) route it used to star |
+| `.762` fail-share guard | **UNTESTED** — the star came back with basis `lowest-score`, so the floor alone moved it. The guard never fired, on this or any of the other 29 trips |
+| `.763` trail credit 0.12 → 0.08 | **FAILED** — neither motivating trip changed its star |
+| `.764` Oregon rebuild | **WORKED at the data layer** — Barbur Blvd went from null stress to 57% shoulder-known, and Portland → Beaverton now produces a low-stress Fanno Creek route it could not have justified before |
+
+### R11 — Why the trail-credit change could not have worked (my error)
+
+**Repro:** `[-122.2835,47.7491] -> [-122.3543,47.6685]` still stars Route D at
+13.11 mi / 66 min over Route A at 9.46 mi / 49 min with **zero** failing
+metres. `[-122.2010,47.6150] -> [-122.3321,47.6062]` still stars Route F at
+14.00 mi over an 11.49 mi I-90 route.
+
+The score gap between a metre of ordinary road and a metre of trail is
+**0.28 s/m**, and only 0.08 of that is `TRAIL_BONUS_S_PER_M`. The other 0.2 is
+`NETWORK_GAP_PRICE_S_PER_M`, the charge on ordinary road, which the change
+never touched. From the router's own breakdown on Lake Forest Park:
+
+```
+A: 3497 = travel 2958 + dismount 19 + ordinary  818 - trail  298
+D: 2521 = travel 3930 + dismount 19 + ordinary   13 - trail 1442
+```
+
+Solving for the trail rate at which A wins gives **c < 0.0117** — a further
+7× cut, not the 1.5× that shipped. Bellevue needs **c < 0.0436**. No single
+value satisfies both, which is the real finding: the exchange rate is set by
+a *pair* of constants and tuning one of them cannot express "prefer trail,
+but not at any distance". Even at trail credit **zero** the exchange is still
+2:1 and Lake Forest Park flips by only 167 s.
+
+The lever that matches the intent is a price on *excess distance over the
+shortest practical candidate* — the rider declined a hard cap, and this is the
+soft form of the same idea.
+
+## Washington — new findings
+
+### R12 — Bellevue → Seattle computes the I-90 route and shows it to nobody (BUG, ROUTER)
+
+**Repro:** `[-122.2010,47.6150] -> [-122.3321,47.6062]`.
+
+All six offered routes cross on SR 520. The I-90 Trail route — 11.49 mi,
+62 min, 138 m failing — survives every filter, is lettered as an extra, and is
+never presented. Offered Route B is the same 11.45 mi length with **1,825 m**
+failing, thirteen times as much.
+
+**Probable mechanism** (read, not proven): the six slots go to `selected` plus
+the `required` roles, and the I-90 family holds none of them. It misses
+`safestOverall` because `compareSafety` prices dismount ×3: I-90 scores
+`138 + 3×439 = 1455` against the star's `165 + 3×365 = 1260`. A 74 m
+difference in walked distance, tripled, is what costs it the one slot that
+would have guaranteed it a place.
+
+**Open:** whether 439 m of dismount on a route through the Mount Baker Ridge
+*bicycle* tunnel is real or a tagging artefact. If artefact, this is also DATA.
+
+### R13 — The strict escape route takes two slots (BUG, ROUTER, minor)
+
+Bainbridge → Poulsbo is 12.1 mi across the Agate Pass Bridge. Routes E
+(44.5 mi, `fully-matching`) and F (47.0 mi, `friendly`) are both the same
+Bainbridge → Seattle → Edmonds → Kingston double-ferry loop. Two of six slots,
+one shape. Same at Bellingham → Ferndale, where Route F is 36.6 mi for a
+9.6 mi trip. The availability guarantee is right; showing it twice is not.
+
+### R14 — Washington explainables (EXPLAINABLE)
+
+| trip | flagged | the constraint |
+| --- | --- | --- |
+| Olympia → Tacoma | 8,947 m backtrack | Joint Base Lewis-McChord severs the direct corridor. The dip south is the Chehalis Western Trail to Yelm — the actual regional route. The coastal alternative carries 12,841 m of failing arterial |
+| Yakima → Ellensburg | star 49.7 mi vs 37.3 direct | SR 821 Canyon Road is **32,030 m of level 4**. Correct under the rules — but this is the best-known road ride in the state, and 60% of it scoring red deserves a field verdict on shoulder/speed scoring |
+| Bellingham → Anacortes | ×2.61 | Chuckanut Drive costs 7.3 km failing; the star goes inland via Old Samish with zero failing metres, on `fully-matching-override` |
+| Bainbridge → Poulsbo | ×4.56 | Agate Pass Bridge is the only land link off the island |
+| Spokane → Coeur d'Alene | 35 m self-touch | Centennial Trail passing itself at the Don Kardong Bridge — a known false positive of the self-touch metric on riverside loops |
+| Tri-Cities | 1,154 m backtrack | Kennewick and Richland sit across a confluence; crossings are only at the bridges |
+
+## Oregon — first honest audit
+
+### O5 — The freeway weight makes `allowFreeways: true` inert (BUG, ROUTER)
+
+**Repro:** Cascade Locks `[-121.8940,45.6790]` → Hood River `[-121.5150,45.7054]`,
+29.6 km crow. All six options come back **159–191 km** around Mount Hood;
+the recommendation is 167 km at ×5.65.
+
+A legal, admissible route exists at **31.4 km**: local streets → Forest Lane →
+**17.0 km of I-84** → Wyeth Road → Frontage Road. Zero prohibited arcs in
+67.7 km of I-84 checked; 10.1 km of it carries a 10 ft shoulder in the gap
+that matters.
+
+**Mechanism, verified in source.** `router-worker.js` applies
+`cost *= activeWeights.freeway` *on top of* `modeMult`, which returns the
+level-4 multiplier. A stress-rated interstate is level 4, so the combined
+multiplier is:
+
+| lens | freeway × failRoad | effective |
+| --- | --- | --- |
+| direct | 60 × 1.5 | **90×** |
+| balanced | 60 × 9 | **540×** |
+| low-stress | 60 × 30 | **1800×** |
+
+17 km at 90× prices as 1,530 km-equivalent against a 167 km detour on level-1
+road. **`allowFreeways: true` is arithmetically indistinguishable from `false`
+on any stress-rated interstate.** In Washington that is harmless; in the Gorge
+it turns Cascade Locks into a routing island.
+
+Underneath sits a real constraint: excluding freeways, a flood-fill from
+Cascade Locks reaches **1,013 nodes** against 685,865 from Hood River. The
+Historic Columbia River Highway State Trail is now **six** disconnected pieces
+(the rebuild fragmented it slightly further, 4 → 6). Whether each gap is
+unbuilt trail or an OSM severance is still undetermined — but the ~9.6 km
+Mitchell Point → Hood River gap is probably genuine, which is exactly what
+makes the freeway weight the deciding factor.
+
+### O6 — ODOT shoulder data is not reaching the graph (BUG, DATA)
+
+**Repro:** Corvallis `[-123.2620,44.5646]` → Newport `[-124.0534,44.6368]`
+still recommends 100.3 km over Marys Peak against 85.4 km on US 20.
+
+| road | shoulder known in graph | rule level |
+| --- | --- | --- |
+| US 20 Corvallis–Newport | **1%** | level 4 on 66.6 of 67.6 km |
+| Marys Peak Rd / FR 30 / 1000 Line | 0% | level 1 throughout |
+| *US 20 Albany–Corvallis (control)* | **77%** | level 2 on 16.2 of 18.7 km |
+
+The source has the data: `blts.geojson.gz` route `033` carries `ShoulderWidth`
+on **50%** of its length, evenly spread. `LTS_Bicycle` from the *same records*
+reaches 99% of graph edges; `ShoulderWidth` reaches 1%. Route `281` (Dee Hwy)
+is 49% in source → **0%** in graph. Route `026` is 51% → 51%, so the pipeline
+works in general.
+
+Unknown shoulder at 55 mph fails `maxSpeedNoShoulder`, so the measured highway
+scores 4 and the unmeasured gravel scores 1 — the same inversion the route-prefix
+fix was meant to end, one layer down. The 0.065 s/m unpaved penalty cannot
+close a 4-vs-1 gap. **Why 033 and 281 lose shoulder while 026 keeps it is not
+yet traced.**
+
+### O7 — Oregon explainables (EXPLAINABLE)
+
+| trip | the constraint |
+| --- | --- |
+| Portland → Gresham | Springwater Corridor is car-free and level 1 for all 28.1 km; the 1.15 km dogleg to Sellwood is the cost of reaching it |
+| Portland → Beaverton / Hillsboro | the West Hills. Every direct line is a steep level-2/4 climb; the recommendation trades ~8 km for the Fanno Creek Trail |
+| Eugene → Coburg | no low-stress river crossing exists — Coburg Rd is level 4 for 22.6 of 30.3 km and the next crossing is 25 km north. Three of six slots spent on the same 65–72 km detour is waste, though each is honest |
+| Astoria → Seaside, The Dalles → Hood River | single-corridor geography |
+
+Clean with no flags worth chasing: Albany → Corvallis, Medford → Ashland
+(Bear Creek Greenway), Bend → Sisters, Portland → Sellwood, Portland →
+Vancouver, Eugene → Springfield, Salem → Keizer.
