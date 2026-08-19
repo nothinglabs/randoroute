@@ -896,7 +896,65 @@ Coordinates are longitude first throughout.
 Eugene (Oregon, rebuilt to `sha-8ae4d0b5e2d3`). New ground in both states,
 chosen to exercise the three fixes as well as fresh corridors.
 
-## C1 — A destination inside the network can be unreachable, and the app says no route exists (BUG, ROUTER)
+## C1 — A destination you can only leave produces a refusal instead of a nearby answer (BUG, MESSAGE + SNAP)
+
+**This finding was published twice in a wrong and much larger form**, as "a
+destination inside the network can be unreachable", with 5,138 Washington nodes
+offered as the scale of a routing defect. Field review asked what those places
+actually are. They are almost entirely correct data, and the framing does not
+survive. The router is telling the truth; the defect is what it does with that
+truth and what it tells the rider.
+
+**The classification that corrects it.** Grouping every stranded node into
+connected pockets and reading the street names inside: **all 470 Washington
+pockets and all 157 Oregon pockets have ZERO two-way exits** — every one is
+bounded entirely by one-way arcs.
+
+| nodes | streets inside | what it is |
+| --- | --- | --- |
+| 255 | Wonderland, Huff and Puff, Keystone | Galbraith Mountain, directional MTB |
+| 182 | Telemark, Nexus, Oso Peligroso | MTB network |
+| 116 | 41st Division Drive, D Street, 32nd Division Drive | Joint Base Lewis-McChord |
+| 98 | Snake Charmer, Bipolar, Lazy Boy (The Couch) | MTB network |
+| 92, 88, 80 | Valley Freeway, WA 16, North Spokane Corridor | freeway ramps |
+| 67, 64, 55 | I 90 ×3 | freeway ramps |
+| 66 | Divide Trail South, The Grunt, Capitol Peak | Capitol Forest MTB |
+| 52 | West Seattle Bridge | ramps |
+
+Oregon repeats it: I-5 and Delta Highway ramps, the Beaverton-Tigard Freeway,
+and MTB networks named Basalt Rim, "Defibrulator / Passive Aggressive / Evil
+Twin", "Return Policy / Chainbreak / Goat".
+
+A downhill-only trail cannot be ridden up and a freeway off-ramp is one-way;
+both are the data being right. Fort Lewis is access control:
+`build_graph.py:1020` drops `access=private` ways, removing the gates, and what
+survives connecting the base to the outside is two one-way arcs pointing out.
+
+**What the defect actually is.**
+
+- The message is wrong about the cause. "No route exists on the rideable network
+  between these points" reads as *these places are not connected*. The truth is
+  *you cannot enter that spot on a bike* — a different statement, and one a
+  rider can act on.
+- The destination snap ignores directed reachability. It takes the nearest edge
+  geometrically; when that edge sits inside a one-way pocket the trip fails even
+  though a reachable point is metres away. That is why tapping slightly
+  differently works, and why this was hard to reproduce deliberately.
+- It costs a full graph exploration to produce that wrong message.
+
+**Repro without coordinates.** Washington pack, defaults, search `Tacoma` →
+search `North Fort Lewis`: no route. Reverse it: 31.8 km, six options. Lakewood,
+DuPont and Steilacoom also fail into it; DuPont is 4 km away. Of the 2,604
+places in Washington's offline index this is the **only** one that behaves this
+way, which is why coordinates were needed to show it at first.
+
+**Fix, not applied.** Two independent parts. The message should say what is
+true. The snap should prefer a reachable edge — it already ranks candidates by
+distance, so this asks it to skip one it cannot arrive at. The second is worth
+debating: routing to a point near the one requested is helpful on a one-way loop
+and misleading at a military gate, where "near" is the wrong side of a fence.
+
+### Superseded: the original C1 text
 
 **Repro.** `[-122.4443,47.2529] -> [-122.5150,47.3060]`, downtown Tacoma to
 Point Defiance — a major park about 6 km along Ruston Way, a signed waterfront
