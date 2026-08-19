@@ -627,3 +627,118 @@ membership only.
 The behaviour is now specified in `docs/SAFETY-MODEL.md` ("The 'More' screen")
 and carries a comment at the filter in `router-worker.js`. **Do not add a length
 or time ceiling to the escapes.**
+
+## B1 — Oregon shoulder data lands in one direction only (BUG, DATA, Oregon)
+
+Supersedes what round 3 first reported as two findings: a directional defect and
+a set of ODOT records "present in source, absent from the graph". They are one
+defect, in Oregon's own adapter.
+
+**Mechanism.** `maps/oregon/tools/build_odot.py:194-210` — `best_record` falls
+back to the physical-key bucket only `if not candidates`, meaning only when the
+exact route key has *no rows at all*, rather than when no row overlaps the span
+being asked about. US 101 has 35 decreasing-direction rows covering 13 of its
+363 miles, so `exact['00900D00']` is non-empty for the whole highway, the
+fallback never fires, and the decreasing carrier is emitted with no
+`ShoulderWidth` and no `SpeedLimit`.
+
+Nothing is missing at source: ODOT layer 127 carries both `LS_PVMT_WD` and
+`RS_PVMT_WD` on 20,407 of 20,407 rows. Separate direction rows exist only where
+a highway is physically divided.
+
+`scripts/build_graph.py` is correct — it writes both slots properly at
+1665-1670. The fault is entirely upstream, which is the right shape: a
+state-specific defect in the state's own tool.
+
+**Measured.** Carrier records with `ShoulderWidth`: Oregon increasing 90.2%,
+decreasing 29.2%; Washington 100% and 100%. Split the Oregon decreasing figure
+by whether the exact key exists and the mechanism is visible — 14.0% where it
+exists and suppresses the fallback, 79.7% where it is absent and the fallback
+fires. On roads ≥45 mph: both slots 14.5%, AB only 18.7%, BA only 23.0%,
+neither 43.8%. That is 8,473 km rated one way only.
+
+**Repro.** Graph edge 172452, US 101 at -124.0726,44.5487 → -124.0720,44.5533
+(A→B runs north): `eSh = -1`, `eShBA = 6`, speed 55/55. The `00900d` BLTS
+feature carries the LTS rating but no shoulder and no speed; `00900i` carries
+`ShoulderWidth 6.0`. The 6 ft that arrived is the southbound rider's shoulder
+and is correct. The northbound slot is simply empty.
+
+**Ground truth, Newport → Florence.** Levels recomputed with each empty slot
+filled from the opposite side of the same ODOT row, percentage of length at
+level 4:
+
+| stretch | shipped | fixed |
+| --- | --- | --- |
+| Southbound (B→A) | 27.7% | 24.7% |
+| Northbound (A→B) | 94.4% | 34.1% |
+| Newport → Yachats, 38.0 km | 98.7% | 8.3% |
+| Yachats → Florence, 42.5 km | 91.7% | 58.2% |
+| Heceta Head, 10.7 km | 98.1% | 91.1% |
+
+So the coast is not uniformly libelled. Heceta Head is correctly red — ODOT
+records 2 ft of shoulder for 7.3 of 10.7 km at 55 mph, and it stays 91% failing
+under any correct data. Newport → Yachats is the opposite: 98.7% red today
+against 8.3% true, on 5–6 ft recorded both sides for 97–99.7% of it.
+
+**What was refuted.** The join-key hypothesis is false. Keys are identically
+formatted on both sides (`00900I00`, `03300I00`, `28100I00`) and the join is an
+exact string match. "OR 281 source 49% → graph 0%" was measuring the AB slot
+alone; `eShBA` is 97.4% populated and either-direction coverage is 97–99% on
+every corridor flagged. AB fill tracks whichever way OSM happens to draw the
+road: US 26 "kept" its data only because OSM draws it 51.7% aligned.
+
+**Latent, not currently biting.** `_route_number` (`build_graph.py:606`) reads
+ODOT highway numbers (`00900i` → 900) while OSM refs give signed route numbers
+(`US 101` → 101), so `same_route` is never true in Oregon and the relaxed 30 m
+tolerance at 733-735 is dead code. Every Oregon match runs at the strict
+tolerance. It still succeeds on 99.6–100% of corridor length, but a future ODOT
+re-survey would drop conflation with no fallback.
+
+**Fix.** Rank exact ∪ physical rows together in `best_record`, preferring exact.
+No application-code change. Requires an Oregon graph rebuild.
+
+## B2 — A better route is computed, wins a slot, and is evicted (BUG, ROUTER)
+
+Round 2's R12 recorded that Bellevue → Seattle computes an I-90 route and shows
+it to nobody, and guessed the six slots go to fixed roles and the I-90 family
+holds none. The guess was right about the role and wrong about the removal: the
+candidate does not lose every slot, it **wins one and is spliced out of it**.
+
+**Mechanism.** `router-worker.js:4636` gives the last diversity seat to
+`friendly`, the I-90 candidate. The `required` back-fill at 4649-4658 then needs
+seats; `replaceAt` walks backwards for any non-required entry, lands on index 4,
+and 4657 splices `friendly` out. The rule evicts by array position, not by
+redundancy — the evicted seat was the most distinct in the set (max edgeOverlap
+0.024 against the rest) while two survivors overlap each other 0.696. Confirmed
+by replaying 4608-4658 against the live portfolio and reproducing the shipped
+selection exactly.
+
+**Why it holds no protected role.** `compareSafety:2913` ranks by
+`failM + dismountM * 3`. I-90 candidate 137.9 + 3×146.2 = 576.6; the star
+164.5 + 3×121.7 = 529.7. It loses `safestOverall` by 46.9 despite carrying the
+lowest failing distance of all twelve choices. Break-even multiplier is ×1.087.
+Proven by construction: with the `3` changed to `1` in a throwaway worker the
+I-90 route is presented as Route B and nothing else moves.
+
+The dismount gap is not the Mount Baker Ridge tunnel, which routes as ordinary
+rideable road with zero dismount metres. It is two unnamed ~8 m connectors at
+5th Ave / Spring St downtown. Sixteen metres of sidewalk, tripled, hides an
+11.5-mile route carrying 138 m of failing road against an offered route of the
+same length carrying 1,825 m.
+
+**Corrections.** R12's arithmetic — `138 + 3×439` against `165 + 3×365` —
+tripled an already-tripled figure; 438.7 and 365.2 are priced seconds from
+`recommendationScoreBreakdown`, not metres. Actual dismount is 146.2 m against
+121.7 m. And the Fremont excursion is a detour, not a backtrack: max crow-flight
+retreat is 0.77 km, apex 5.5 km north of the destination at 14.0 km along, with
+an 8.5 km southbound tail.
+
+**Fix.** Evict the most redundant seat rather than the last one — among
+non-required seats, drop the one with the highest max `edgeOverlap` against the
+rest of the selection. `edgeOverlap` is already computed two lines above. About
+four lines. It does not address the root cause, which is the dismount weighting.
+
+**Found while tracing.** `router-worker.js:4690` still says "five slots were
+filled" though `MAX_OFFERED` has been 6; `presentAsLetters:2963` re-sorts by
+distance, so the rider's A–F letters bear no relation to the slot positions the
+selection algorithm reasons about.
