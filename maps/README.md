@@ -189,6 +189,7 @@ places the data is thinnest — which `measure_coverage.py` will name for you.
 | `stateRoutePrefixes` | How the state spells a route ref (`SR 520`, `OR 224`). The graph and tile builds gate agency conflation on these (`--region`), and the app's name-based highway test derives from them. |
 | `facilityLevels` | The agency's facility vocabulary mapped onto the shared 0–5 level. |
 | `routeDirectionSuffixes` | Trailing letters in a route id that mean a direction (`{"i": "increasing mileposts"}`). Empty if ids do not work that way. |
+| `directionalShoulderFloor` | Optional. The lowest acceptable ratio of both-direction to either-direction shoulder fill on roads at 45+ mph, checked by `test_shoulder_directional_fill`. Omit it and the default (0.6) applies — Washington measures 0.86. Set it only when the agency genuinely publishes one side of the road, and say why in `STATUS.md`; a low ratio otherwise means the state's adapter is landing its measurement in one slot, which makes the same asphalt fail the rules one way and pass the other. |
 | `datasets` | Which files this folder actually has. The app, the service worker and the iOS bundler all read this. |
 | `versions` | Content hashes, written by `build_graph.py` and `scripts/stamp_tiles_version.mjs`. Never hand-edit. |
 

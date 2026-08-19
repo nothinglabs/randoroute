@@ -827,6 +827,18 @@ const SPEED_STRESS_FLOOR = 0.25; // ~2.6 mph while walking a bike
 // charge. Synthesised walk links exist because bicycle access was not mapped;
 // walking pace and the distance multiplier already price that uncertainty.
 const DISMOUNT_ENTRY_PENALTY_S = 60;
+// Freeway is a last resort, and "last resort" is a judgment about the DECISION
+// to get on one -- not about each metre once you are already there. A flat
+// per-metre surcharge has the wrong gradient: it prices a 300 m opportunistic
+// hop and a 17 km gorge crossing identically per metre, so the only freeway
+// that ever survives is one with no alternative at any price. Cascade Locks to
+// Hood River offered 159 km around Mount Hood when a legal 32 km route existed
+// on I-84 shoulder; Vantage to Quincy offered 205 km rather than 2.8 km across
+// the only Columbia crossing for forty miles. An ENTRY charge inverts the
+// gradient -- the shorter the run, the worse it amortises -- which is the rule
+// the surcharge was reaching for all along. Modelled on the dismount entry
+// charge above, and paid once per contiguous freeway run.
+const FREEWAY_ENTRY_PENALTY_S = 1200;
 // Search-cost multiplier on the walked time of a dismount stretch (the ETA
 // keeps the honest walking time). See the note at its use in edgeCostParts.
 // Three tiers by EDGE length: a bollard gate or crossing island (< 25 m)
@@ -1118,6 +1130,13 @@ function isTaggedDismountEdge(i) {
 function dismountEntryPenaltyS(incomingEdge, outgoingEdge) {
   return isTaggedDismountEdge(outgoingEdge) && !isTaggedDismountEdge(incomingEdge)
     ? DISMOUNT_ENTRY_PENALTY_S : 0;
+}
+function isFreewayEdge(i) {
+  return i != null && i >= 0 && !!(eFlags[i] & 4);
+}
+function freewayEntryPenaltyS(incomingEdge, outgoingEdge) {
+  return isFreewayEdge(outgoingEdge) && !isFreewayEdge(incomingEdge)
+    ? FREEWAY_ENTRY_PENALTY_S : 0;
 }
 // Freeways are a true last resort: even a short ordinary failure should win
 // over a much longer freeway detour.
@@ -1679,6 +1698,7 @@ function edgeCost(ei, forward, ctx) {
   cost += partsSteep;
   cost += partsSurf;
   cost += dismountEntryPenaltyS(ctx.incomingEdge, ei);
+  cost += freewayEntryPenaltyS(ctx.incomingEdge, ei);
   cost += facilityGapEntryPenaltyS(ctx.incomingEdge, ei);
   if (ctx.fromNode != null) cost += turnPreferenceS(ctx.incomingEdge, ctx.fromNode, ei, ctx.mode);
   return cost;
@@ -2278,6 +2298,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       if (rules.requireSafe && actualLevel === 4) cost *= 30;
       cost += cAdd[a];
       cost += dismountEntryPenaltyS(incomingEdge, ei);
+      cost += freewayEntryPenaltyS(incomingEdge, ei);
       cost += facilityGapEntryPenaltyS(incomingEdge, ei);
       cost += turnPreferenceS(incomingEdge, u, ei, mode);
       if (!(cost < Infinity)) continue;
@@ -2960,6 +2981,9 @@ function outcomeSnapshot(route) {
   return details.join(' · ');
 }
 
+// Letters run A..F by increasing distance, which is what a rider scanning a
+// list expects. They deliberately carry no relation to the slot positions the
+// selection above reasons about -- that ordering is by profile, and is internal.
 function presentAsLetters(routes, recommended) {
   if (!routes.length) return routes;
   const ordered = [...routes].sort((a, b) =>
@@ -3281,6 +3305,40 @@ function recommendationScoreBreakdown(route) {
   };
 }
 const recommendationScore = (route) => recommendationScoreBreakdown(route).totalS;
+
+// The fail-share guard: never star a route carrying far more failing road than
+// an option shown beside it. Factored out of routeOptions so it can be
+// exercised directly, because it cannot be exercised any other way -- it has
+// not fired once across 86 audited trips in two states, since the two tests are
+// anti-correlated in a real graph (a star reaches 15% fail share essentially
+// only when the corridor is severed, and a severed corridor has no clean
+// parallel to offer). A rule the corpus cannot reach has to be reachable by a
+// test, or it is shipped on reasoning alone -- which is how it got here.
+//
+// It draws from the FULL candidate list on purpose, not the priced pool. The
+// pool is bounded against the fastest route, so the very alternative worth
+// having is often outside it: McMinnville -> Newberg came 454 m of failing road
+// short of firing with four qualifying alternatives waiting, every one of them
+// unpriced. Catching what the practical window excludes is the whole job.
+const GUARD_FAIL_SHARE = 0.15;        // of the starred route's own length
+const GUARD_ALTERNATIVE_SHARE = 0.4;  // the alternative's fail, against the star's
+function failShareGuardPick(recommended, choices) {
+  if (!recommended || !(recommended.distM > 0)) return null;
+  if (recommended.failM < recommended.distM * GUARD_FAIL_SHARE) return null;
+  // The same "wider but sane detour" the fully-matching override uses,
+  // measured against the STAR: the question is whether a route of comparable
+  // length avoids what this one rides.
+  const saferComparable = choices.filter((route) => route !== recommended
+    && route.failM <= recommended.failM * GUARD_ALTERNATIVE_SHARE
+    && route.legs.length === recommended.legs.length
+    && route.legs.every((leg, index) => {
+      const starLeg = recommended.legs[index];
+      return leg.distM <= starLeg.distM * 1.8 + 1600
+        && leg.timeS <= starLeg.timeS * 1.85 + 600;
+    }));
+  return saferComparable.reduce((best, route) =>
+    !best || recommendationScore(route) < recommendationScore(best) ? route : best, null);
+}
 
 function ferryEdgeGroups(routeResult) {
   const groups = [];
@@ -4566,27 +4624,10 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // worse failure than the one it prevents. Running it last did exactly that
   // -- test_preferred_routes caught the strong Preferred candidate losing
   // the star to this rule.
-  const GUARD_FAIL_SHARE = 0.15;   // of the starred route's own length
-  const GUARD_ALTERNATIVE_SHARE = 0.4;  // the alternative's fail, against the star's
-  if (recommended && recommended.distM > 0
-      && recommended.failM >= recommended.distM * GUARD_FAIL_SHARE) {
-    // The same "wider but sane detour" the fully-matching override uses,
-    // measured against the STAR: the question is whether a route of
-    // comparable length avoids what this one rides.
-    const saferComparable = choices.filter((route) => route !== recommended
-      && route.failM <= recommended.failM * GUARD_ALTERNATIVE_SHARE
-      && route.legs.length === recommended.legs.length
-      && route.legs.every((leg, index) => {
-        const starLeg = recommended.legs[index];
-        return leg.distM <= starLeg.distM * 1.8 + 1600
-          && leg.timeS <= starLeg.timeS * 1.85 + 600;
-      }));
-    const bestSafer = saferComparable.reduce((best, route) =>
-      !best || recommendationScore(route) < recommendationScore(best) ? route : best, null);
-    if (bestSafer) {
-      recommended = bestSafer;
-      recommendationBasis = 'fail-share-guard';
-    }
+  const guarded = failShareGuardPick(recommended, choices);
+  if (guarded) {
+    recommended = guarded;
+    recommendationBasis = 'fail-share-guard';
   }
   // Marking a named route Preferred is an explicit recommendation request.
   // The strong lens takes the star when it found a route that actually uses
@@ -4652,8 +4693,23 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       selected.push(candidate);
       continue;
     }
-    let replaceAt = selected.length - 1;
-    while (replaceAt >= 0 && required.includes(selected[replaceAt])) replaceAt--;
+    // Drop the most REDUNDANT seat, not the last one. Walking backwards evicts
+    // whichever route the diversity pass seated last, and that is structurally
+    // the highest-order endpoint -- the most conservative candidate, usually the
+    // most distinct thing in the set. Bellevue -> Seattle lost its only I-90
+    // route that way (edgeOverlap 0.024 against the rest) while keeping two SR
+    // 520 variants that overlap each other 0.696. Redundancy is what a slot is
+    // wasted on, so redundancy is what should lose it.
+    let replaceAt = -1, worstOverlap = -Infinity;
+    for (let i = 0; i < selected.length; i++) {
+      if (required.includes(selected[i])) continue;
+      let overlap = 0;
+      for (let j = 0; j < selected.length; j++) {
+        if (j === i) continue;
+        overlap = Math.max(overlap, edgeOverlap(selected[i], selected[j]));
+      }
+      if (overlap > worstOverlap) { worstOverlap = overlap; replaceAt = i; }
+    }
     if (replaceAt >= 0) selected.splice(replaceAt, 1, candidate);
   }
   let presented = presentAsLetters(selected.slice(0, MAX_OFFERED), recommended);
@@ -4687,7 +4743,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       candidate._stageWhy = 'Another option shares this corridor and is no slower and no less safe.';
     } else {
       candidate._stage = 'not-chosen';
-      candidate._stageWhy = 'Survived every filter, but five slots were filled by more distinct routes.';
+      candidate._stageWhy = `Survived every filter, but ${MAX_OFFERED} slots were filled by more distinct routes.`;
     }
   }
   // Letter the extras so a rider can name them. A-E are the offered routes; the

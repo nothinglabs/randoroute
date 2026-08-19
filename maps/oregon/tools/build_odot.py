@@ -192,9 +192,16 @@ def index_records(records):
 
 
 def best_record(key, span, exact, physical, target_direction=None):
-    candidates = list(exact.get(key, ()))
-    if not candidates:
-        candidates = list(physical.get(physical_key(key), ()))
+    # Rank the whole physical corridor at once. `index_records` files every row
+    # under both its exact key and its physical key, so the physical bucket is a
+    # superset and `same_direction` below still prefers the row that matches the
+    # carrier's own direction. Consulting the opposite direction only when the
+    # exact key held NO rows at all is what starved US 101: its decreasing key
+    # covers 13 of 363 miles, so the bucket was never empty, the fallback never
+    # ran, and every decreasing carrier outside those 13 miles was emitted with
+    # no shoulder and no speed -- 8,473 km of Oregon rated in one direction only.
+    # Sparse is not the same as absent.
+    candidates = list(physical.get(physical_key(key), ()))
     ranked = []
     for item in candidates:
         props, geometry, source_key, source_span = item

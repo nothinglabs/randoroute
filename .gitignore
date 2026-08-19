@@ -54,3 +54,15 @@ data/.cache/
 # Scratch: build logs and the verification harness's dumps. Rebuildable, and
 # the route dumps are ~12 MB each because they carry every option's geometry.
 data/_*
+
+# A state's agency adapter writes an uncompressed intermediate beside the .gz
+# that actually ships, and only the .gz is tracked. Re-running an adapter
+# therefore drops eighty-odd megabytes of untracked geojson into maps/<state>/,
+# which is exactly the shard leak above wearing a different hat. bikeinfra and
+# bikeroutes are deliberately absent: those two ARE tracked uncompressed.
+maps/*/blts.geojson
+maps/*/odot_speed.geojson
+maps/*/odot_facilities.geojson
+maps/*/funcclass.geojson
+maps/*/aadt.geojson
+maps/*/hpms.geojson
