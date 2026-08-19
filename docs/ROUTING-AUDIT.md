@@ -868,3 +868,114 @@ ordering can no longer demonstrate it.
   either mechanism. Round 2 recorded this fix as "WORKED" — the outcome is real,
   the attribution is not.
 - **Round 3's F4 is withdrawn**, folded into B1. See B1's "What was refuted".
+
+---
+
+# Round 4 — 2026-08-19, after the B1/B2/B3 fixes
+
+30 trips: 16 around Tacoma (Washington, `sha-c043f268453b`) and 14 around
+Eugene (Oregon, rebuilt to `sha-8ae4d0b5e2d3`). New ground in both states,
+chosen to exercise the three fixes as well as fresh corridors.
+
+## C1 — A destination inside the network can be unreachable, and the app says no route exists (BUG, ROUTER)
+
+**Repro.** `[-122.4443,47.2529] -> [-122.5150,47.3060]`, downtown Tacoma to
+Point Defiance — a major park about 6 km along Ruston Way, a signed waterfront
+bike corridor. The router returns *"No route exists on the rideable network
+between these points."*
+
+**It is purely directional.** The reverse trip,
+`[-122.5150,47.3060] -> [-122.4443,47.2529]`, returns **9.8 km and six
+options**. Every origin tried fails to reach the point — Ruston waterfront and
+the Zoo entrance included — so this is the destination, not the path.
+
+**It is not an island.** The destination snaps at 29 m onto edge 695922, *North
+Waterfront Drive*, `eFlags = 16` (one-way), and **both of that edge's endpoints
+are in the undirected giant component** of 1,155,620 nodes.
+
+**The dead zone is tens of metres wide.** Moving the destination 0.0001° east
+(~7.5 m) routes in 9.8 km. Moving it west by 0.0001°, 0.0002° or 0.0005° all
+fail; 0.001° west (~75 m) routes again.
+
+**Scale, measured exactly.** A forward flood-fill over the directed arcs from a
+central seed, compared against the undirected giant component:
+
+| | nodes in giant | reachable | stranded | share |
+| --- | --- | --- | --- | --- |
+| Washington | 1,155,620 | 1,150,482 | **5,138** | 0.445% |
+| Oregon | 718,282 | 716,769 | **1,513** | 0.211% |
+
+Every stranded node is a destination that will report "no route exists" while a
+point a few metres away routes normally. Sample Washington points:
+`[-122.16093,47.75983]`, `[-122.3204,47.57227]`.
+
+**A second cost.** A failing request explores the whole graph before giving up:
+a six-probe script took ten minutes, nearly all of it in the four failures.
+
+**Fix, not yet applied.** When the destination's snap has no inbound directed
+path, fall back to the next-nearest snap instead of declaring the trip
+impossible. The snap already ranks candidate edges by distance; this asks it to
+skip a candidate that cannot be arrived at. Needs a decision on whether to spend
+the reachability check on every request or only on the failure path.
+
+## P — Plausible, and needing a rider's verdict
+
+- **A test that cannot tell "the app broke" from "the machine was busy".**
+  `test_saved_routes_ui.mjs` failed three checks in the full suite and passes
+  twice in isolation at the same commit. Its own comments record an earlier
+  round of the same thing: "In isolation it always had; under a loaded suite it
+  did not." Same species as the stale Interurban fixture — the cost is
+  diagnosis, not correctness. It took a controlled re-run to clear this work of
+  suspicion.
+- **The strict escape can still buy a 226 km route.** Puyallup → Orting is an
+  11.9 km crow with a car-free Foothills Trail answer at 15.6 km. The portfolio
+  also offers a 226.3 km `fully-matching` option: ×18.99, 52 km of backtrack,
+  25.3 km of ferry and 5.2 km of dismount. This is consistent with the closed
+  decision that a fully-rule-matching route is always admitted; noted because a
+  rider has six slots and this spends one on a two-ferry day trip.
+- **Short urban trips buy large detours to shed failing road.** Tacoma →
+  University Place stars 14.2 km against a 9.8 km direct option (×1.70) to take
+  the failing share from 26.9% to 0.5%. Eugene → Alton Baker Park stars 3.6 km
+  for a 0.8 km crow (×4.28) to take it from 67.6% to 3.9%. Both are the pricing
+  working as specified. Whether the trade is right is a field call.
+
+## Dismount weighting — researched, no action (P1 closed)
+
+The question was whether `compareSafety`'s `failM + dismountM * 3` should apply
+only to tagged `bicycle=dismount` runs rather than to every walk link.
+
+- **The connectors that decided the Bellevue ranking are NOT tagged.** The links
+  at 5th Ave / Spring St carry `official = 72` — `EDGE_DISMOUNT` plus
+  designated, without `EDGE_DISMOUNT_TAG`. So the tagged-only fix would have
+  moved that case.
+- **But the ratio makes it the wrong fix.** Washington carries 398,467 dismount
+  edges totalling 13,310 km, of which **398 edges and 12.4 km — 0.1% of the
+  metres — are tagged**. Restricting the multiplier to tagged runs would remove
+  it from 99.9% of the distance it currently touches, making 13,298 km of
+  untagged walk links cheaper in the ranking and unrideable-trail routes
+  correspondingly more likely. That is the opposite of what was asked for.
+- **The symptom is already fixed.** B2's eviction change presents the Bellevue
+  I-90 route as Route B without touching the weighting.
+- **The genuine inconsistency stands, unfixed and recorded.** `edgeCostParts`
+  already tiers dismount cost by edge length — under 25 m is "a shrug, not a
+  detour-off-the-trail" — while `compareSafety`, in the same file, counts a 4 m
+  kerb cut identically to 4 m of unrideable trail. Aligning the two is the
+  coherent change if this is revisited. It was not made here: with the symptom
+  gone, there is no measured defect left to justify moving `safestOverall` on
+  every trip in both states.
+
+## The three fixes, verified in the field
+
+| fix | verdict |
+| --- | --- |
+| B1 — Oregon shoulder adapter | **WORKED.** Decreasing-direction carriers 29.2% → 90.7%; both-direction graph fill 0.26 → 0.759 against Washington's 0.862; one-way-only land 8,473 km → 2,749 km |
+| B2 — evict the redundant seat | **WORKED.** Bellevue → Seattle now offers the I-90 route as Route B, 11.5 mi, 138 m failing, beside the unchanged star |
+| B3 — freeway entry charge | **WORKED.** Cascade Locks → Hood River is 31.2 km on I-84 shoulder (was 159 km around Mount Hood), and five of six options now sit within 19–20 mi of a 18 mi crow |
+
+## Suite status
+
+115 of 119 pass. Three failures are pre-existing and unrelated to this work
+(`test_missing_turn_guidance`, `test_forward_progress_route`,
+`test_settings_panes_reachable` — the last is the iPhone SE Rules pane
+overflowing by 67 px, a design decision). The fourth,
+`test_saved_routes_ui`, is the load-sensitivity described above.
