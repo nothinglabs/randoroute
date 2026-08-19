@@ -912,6 +912,13 @@ point a few metres away routes normally. Sample Washington points:
 **A second cost.** A failing request explores the whole graph before giving up:
 a six-probe script took ten minutes, nearly all of it in the four failures.
 
+**Reproducing it.** From `[-122.4443,47.2529]` to `[-122.5150,47.3060]`,
+longitude first. This could not be reproduced from the app at first, for two
+reasons worth recording: `places.json` carries **no record matching "Point
+Defiance"**, so name search cannot reach it, and the dead zone is far too narrow
+to hit by tapping. `.767` added coordinate entry to the place picker for exactly
+this.
+
 **Fix, not yet applied.** When the destination's snap has no inbound directed
 path, fall back to the next-nearest snap instead of declaring the trip
 impossible. The snap already ranks candidate edges by distance; this asks it to
@@ -933,6 +940,10 @@ the reachability check on every request or only on the failure path.
   25.3 km of ferry and 5.2 km of dismount. This is consistent with the closed
   decision that a fully-rule-matching route is always admitted; noted because a
   rider has six slots and this spends one on a two-ferry day trip.
+  **Two preconditions for seeing it**, both of which defeated a field repro
+  attempt: it needs `allowFerries` ON — with ferries off the longest option on
+  this trip is 17.8 km, not 226.6 km — and it is Route F, the sixth and longest
+  option rather than the star, so it is off-screen unless the list is scrolled.
 - **Short urban trips buy large detours to shed failing road.** Tacoma →
   University Place stars 14.2 km against a 9.8 km direct option (×1.70) to take
   the failing share from 26.9% to 0.5%. Eugene → Alton Baker Park stars 3.6 km
