@@ -1230,13 +1230,13 @@ new threshold.
 
 The star is then chosen by minimizing
 `time + 1 s × failing meters + 3 s × dismount meters + 0.2 s × ordinary-road meters`
-`− 0.12 s × trail meters`
+`− 0.08 s × trail meters`
 — where ordinary-riding meters are everything that is neither trail nor
 trusted lane (facility ≥ 2; sharrows never qualify, ferries are removed as
 not-riding). The three categories are deliberately not flattened: ordinary
 passing road is acceptable, a trusted lane is better, and removing motor
 traffic on an off-street trail is better again. A mile of ordinary road costs
-about five and a half minutes against a lane; a mile of trail earns about 3.2
+about five and a half minutes against a lane; a mile of trail earns about 2.1
 minutes beyond a lane. Fail avoidance pays a PRICE rather than holding a veto,
 and ride QUALITY has a vote,
 sized from a field case where the star saved 21 minutes by spending 12

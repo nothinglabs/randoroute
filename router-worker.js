@@ -3248,7 +3248,7 @@ const DISMOUNT_AVOID_PRICE_S_PER_M = 3;
 // Ride QUALITY gets a vote too. Every riding meter that is neither trail nor
 // trusted lane (facilityM counts facility >= 2, so sharrows never qualify;
 // ferries are removed as not-riding) costs a fifth of a second. A dedicated
-// trail earns another 0.12 s/m over a lane because it removes motor-traffic
+// trail earns another 0.08 s/m over a lane because it removes motor-traffic
 // exposure altogether. Sized from the field: 31.8 mi / 2h39 at 64%
 // trails-and-lanes was starred over 36.1 mi / 3h00 at 90% -- the star
 // saved 21 minutes by spending 12 extra kilometers alongside traffic,
@@ -3256,7 +3256,18 @@ const DISMOUNT_AVOID_PRICE_S_PER_M = 3;
 // this" about the other one. At 0.2 s/m, a mile of ordinary road is
 // worth about five and a half minutes of detour on better ground.
 const NETWORK_GAP_PRICE_S_PER_M = 0.2;
-const TRAIL_BONUS_S_PER_M = 0.12;
+// Was 0.12, which priced the score indifferent between 1 m of ordinary road
+// and 5.6 m of trail: at ~0.19 s/m of riding, an ordinary meter costs 0.39 s
+// and a trail meter 0.07 s. That ratio was sized on a case where the trail
+// route was 13% longer, and it also authorised Lake Forest Park -> Woodland
+// Park Zoo at 13.11 mi / 66 min over a 9.46 mi / 49 min option with ZERO
+// failing meters -- 3.65 extra miles bought not to avoid danger but to avoid
+// ordinary legal streets. At 0.08 the exchange is about 3.5 m of trail per
+// meter of road: still a deliberate pull toward trail, and deliberately not
+// a cap on how far a trail route may wander (the rider's verdict is that
+// long trail-heavy recommendations are welcome), just a gentler rate.
+// Rider's call, 2026-08-19.
+const TRAIL_BONUS_S_PER_M = 0.08;
 function recommendationScoreBreakdown(route) {
   const travelS = route.timeS;
   const failS = route.failM * FAIL_AVOID_PRICE_S_PER_M;
