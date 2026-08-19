@@ -938,6 +938,25 @@ Defiance"**, so name search cannot reach it, and the dead zone is far too narrow
 to hit by tapping. `.767` added coordinate entry to the place picker for exactly
 this.
 
+**The method was challenged and checked.** The objection was reasonable: the
+audit posts `route-options` to the worker directly while a rider taps the map,
+so the app might resolve a tap to a nearby routable point and the audit be
+testing something the app never does. It does not. A tap runs
+`placeArmedPoint` → `setRoutePoint`, which stores `[lngLat.lng, lngLat.lat]`
+unchanged, and `app.js:7841` builds the request as
+`[routing.start, ...vias, routing.end]` with no rounding or snapping. Driving
+the real app through its own click handler and intercepting the worker message
+gives byte-identical points and the same failure.
+
+Seven trips were then run both ways to check the harness against the app more
+broadly: University Place 9.8 vs 9.78 km, Fife 9.4 vs 9.41, Gig Harbor 18.1 vs
+18.1, Bellevue → Seattle 16.6 vs 16.64, Puyallup → Orting 15.5 vs 15.57, four
+blocks 0.7 vs 0.69, and Point Defiance NO ROUTE in both. The harness reproduces
+the app.
+
+What a nearby tap does show is the dead zone: a destination a few tens of metres
+away routes normally. That is the finding rather than a refutation of it.
+
 **Fix, not yet applied.** When the destination's snap has no inbound directed
 path, fall back to the next-nearest snap instead of declaring the trip
 impossible. The snap already ranks candidate edges by distance; this asks it to
