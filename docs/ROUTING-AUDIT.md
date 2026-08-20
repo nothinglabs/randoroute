@@ -1181,10 +1181,45 @@ Bandon, Hood River → Parkdale, Anacortes → Mount Vernon.
 Routes A and D. Or `Vancouver` → `Battle Ground` for the version where the star
 itself is the winner.
 
-**Fix, not applied.** Keep the corridor exemption but put a floor under it: a
-different corridor earns its slot when it offers the rider something — less
-failing road, less time, or less distance. A candidate worse on all three is not
-variety, and a 0.96 overlap test cannot see that because it only looks at shape.
+**Fix, applied — but graded, and the first draft of it was wrong.** The obvious
+change is to drop the `sameCorridor` requirement and prune whenever the winner
+is also no longer. Measured over the same 30 trips that produced this finding,
+that halves the dominated options (16 → 8, across 14 trips → 8) and keeps 29 of
+30 trips at a full six letters. It also **collapsed `test_preferred_routes` to a
+single option** — on a short trip where one route genuinely wins outright, strict
+dominance eats the entire portfolio, and a chooser showing one letter is a worse
+answer than one showing a redundant route. That is the exact failure the
+`sameCorridor` clause was there to prevent, so it stays.
+
+What ships instead is two-stage. Same-corridor dominance still prunes
+unconditionally. Cross-corridor dominance then trims the losers **worst-first,
+and stops once `useful.length` reaches `MAX_OFFERED`** — it only removes routes
+while the slots are contested, never while they are merely full. `MAX_OFFERED`
+moved up in `routeOptions` so the trim can see it.
+
+Re-measured across all 30 trips with the graded version:
+
+| | before | after |
+| --- | --- | --- |
+| Dominated options | 16 | **8** |
+| Trips with one | 14 | **8** |
+| Total routes offered | 179 | **179** |
+| Routes absent from the old boards | — | **24** |
+
+So it is not a subtraction: every slot freed is refilled, by a route the rider
+was not previously shown. Two stars moved, both toward less failing road — Oak
+Harbor → Coupeville 18.2 km/2.6% → 18.4 km/**0.0%**, and Issaquah → North Bend
+37.0 km/4.8% → 41.0 km/1.7%. The first is a strict improvement: the old star was
+itself beaten by a 17.3 km/1.5% route that the pruning surfaced.
+
+**The residual 8 are a different rule, not a leftover of this one.** Every one of
+them is profile `quick-friendly` — "Direct + both preferences" — which is
+reserved by name in `protectedCandidates` and therefore exempt from every
+dominance test by design. Whether that reservation should survive being beaten
+on all three axes is a separate decision, and an open one.
+
+Guarded by `scripts/test_dominated_options.mjs`, which audits three real trips
+through the app's own defaults and fails at the previous commit.
 
 ## Plausible, needing a verdict
 

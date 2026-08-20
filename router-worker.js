@@ -4488,18 +4488,47 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     preferred, bothPreferences, fullyMatching, adaptiveCorridor, ferryCrossBreed,
     sectionFrontier, combinedCorridor, strongPreferredCandidate,
   ].filter(Boolean));
+  // Six lettered slots, up from five: the direct-lens candidate widened the
+  // portfolio's real variety, and the extra slot lets it surface without
+  // pushing an ordinary choice out. Interior picks fill to two under the cap
+  // so the endpoints (shortest, longest) keep their seats.
+  const MAX_OFFERED = 6;
+  // `other` beats `candidate` on the two axes the rider is shown: no slower,
+  // no less safe, and strictly better on one of them.
+  const beats = (other, candidate) => {
+    if (other === candidate) return false;
+    const safety = compareSafety(other, candidate);
+    return other.timeS <= candidate.timeS + 5 && safety <= 0
+      && (other.timeS < candidate.timeS - 5 || safety < 0);
+  };
+  // A route may be objectively slower and no safer yet still give the rider a
+  // useful different corridor, so a beaten candidate is only pruned outright
+  // when its geometry is effectively the same as the winner's.
   const useful = unique.filter((candidate) => protectedCandidates.has(candidate)
-    || !unique.some((other) => {
-      if (other === candidate) return false;
-      const safety = compareSafety(other, candidate);
-      const noSlower = other.timeS <= candidate.timeS + 5;
-      // A route may be objectively slower and no safer yet still give the
-      // rider a useful different corridor. Only prune dominated candidates
-      // when their geometry is also effectively the same.
-      const sameCorridor = edgeOverlap(other, candidate) >= 0.96;
-      return sameCorridor && noSlower && safety <= 0
-        && (other.timeS < candidate.timeS - 5 || safety < 0);
-    }));
+    || !unique.some((other) => beats(other, candidate)
+      && edgeOverlap(other, candidate) >= 0.96));
+  // That shape-only test let a candidate on its own corridor keep a slot
+  // however much worse it was: Walla Walla -> Dayton offered a route 7 km
+  // longer, 32 minutes slower and carrying 5.6x the failing road, and 14 of 30
+  // audited trips had at least one like it. Variety has to be variety in
+  // something the rider can use -- fewer miles, less time, or less failing
+  // road -- so a candidate beaten on all three has earned nothing.
+  //
+  // But this cut has to be graded, not absolute. Applied unconditionally it
+  // collapses short trips where one route genuinely wins outright, and a
+  // chooser showing a single letter is a worse answer than a redundant one:
+  // it cost the Interurban Trail regression its whole portfolio. So trim the
+  // cross-corridor losers worst-first, and stop the moment the slots are
+  // merely full rather than contested.
+  if (useful.length > MAX_OFFERED) {
+    const losers = useful.filter((candidate) => !protectedCandidates.has(candidate)
+      && useful.some((other) => beats(other, candidate) && other.distM <= candidate.distM))
+      .sort((a, b) => compareSafety(b, a) || b.timeS - a.timeS);
+    for (const loser of losers) {
+      if (useful.length <= MAX_OFFERED) break;
+      useful.splice(useful.indexOf(loser), 1);
+    }
+  }
   const choices = useful.length ? useful : unique;
   progress?.('Comparing safety, travel time, and route variety…', 0.96);
 
@@ -4657,11 +4686,8 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // stops the rider actually chose, not several variations of the same loop.
   const selectionChoices = hasStops ? choices.filter((route) => boundedChoices.includes(route)
     || route === safestOverall || route === boundedPreferred) : choices;
-  // Six lettered slots, up from five: the direct-lens candidate widened the
-  // portfolio's real variety, and the extra slot lets it surface without
-  // pushing an ordinary choice out. Interior picks fill to two under the cap
-  // so the endpoints (shortest, longest) keep their seats.
-  const MAX_OFFERED = 6;
+  // MAX_OFFERED is declared with the dominance trim above, which needs to know
+  // how many slots are actually contested before it removes anything.
   const selected = [];
   if (selectionChoices.length <= MAX_OFFERED) {
     selected.push(...selectionChoices);
