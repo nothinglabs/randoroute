@@ -495,7 +495,7 @@ whose OR-signed highways actually carry ODOT data. Washington
 | fix | verdict |
 | --- | --- |
 | `.762` practical-window floor | **WORKED** — Kirkland → Redmond now stars a 6.87 mi route with 90 m failing (0.8%), against the 4.35 mi / 2,759 m (39%) route it used to star |
-| `.762` fail-share guard | **UNTESTED** — the star came back with basis `lowest-score`, so the floor alone moved it. The guard never fired, on this or any of the other 29 trips |
+| `.762` fail-share guard | **UNTESTED here** — the star came back with basis `lowest-score`, so the floor alone moved it. The guard did not fire on this trip or the other 29 of that round; it was later measured firing on Tillamook → Pacific City in round 5, see P2 |
 | `.763` trail credit 0.12 → 0.08 | **FAILED** — neither motivating trip changed its star |
 | `.764` Oregon rebuild | **WORKED at the data layer** — Barbur Blvd went from null stress to 57% shoulder-known, and Portland → Beaverton now produces a low-stress Fanno Creek route it could not have justified before |
 
@@ -846,7 +846,7 @@ the hop was not in the routable graph at all — Portland's I-5 links there are
 dropped at build as `bicycle=no`. A trip where a short hop is demonstrably
 available and refused by price was not obtained.
 
-## P2 — The fail-share guard is correct code that never runs (UNREACHABLE IN PRACTICE)
+## P2 — The fail-share guard fires about once in thirty trips (CORRECTED; was "never runs")
 
 `router-worker.js:4569-4590`. If the star fails the rules across ≥15% of its own
 length, and another candidate carries ≤40% as many failing metres within 1.8×
@@ -855,6 +855,26 @@ the star's distance and 1.85× its time, that candidate takes the star.
 **Zero fires across 86 real trips** — 48 urban, 38 rural, 18 re-run with the
 practical-window floor disabled. The share test passed 7 times; on every one all
 alternatives carried comparable failing distance.
+
+**CORRECTED 2026-08-20, and this heading is wrong.** Instrumenting the live
+worker across the 30-trip round-5 corpus caught the guard firing on **Tillamook
+→ Pacific City**, where it moves the star from Route C (45.9 km, 154 min, 19.8%
+failing) to Route D (51.2 km, 186 min, **6.4%** failing) — 5.4 km and 32 minutes
+bought for 13 points less failing road. So it is neither unreachable nor a
+no-op; it fires about once in thirty trips and does exactly what it was built to
+do. A first pass at this measurement reported no change, because the trip was
+probed with hand-typed coordinates ~130 m off the corpus's; the endpoints matter
+and the corpus spec is the source of truth for them.
+
+The same instrumentation found the **practical-window widening** (the other half
+of `.762`) firing **zero** times in 31 trips, including Kirkland → Redmond, the
+trip it was written for, which no longer reproduces a one-member pool.
+
+**Disposition (v.769):** the window widening is removed as dead weight. The
+guard was removed with it, on the rider's instruction to roll back `a2895bc`
+whole — a decision taken while the "never fires" claim above still stood.
+Restoring the guard alone is a one-commit change if the Tillamook trade is the
+one the rider wants.
 
 **It is not dead code.** Lifted verbatim into a synthetic harness it fires
 correctly on two cases and correctly declines on four boundary cases, including

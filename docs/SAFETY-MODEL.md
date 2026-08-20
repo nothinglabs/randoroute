@@ -1216,19 +1216,16 @@ off, an island with no bridge is honestly unreachable.
 whose every leg stays within a practical detour of the quickest option
 (1.5× distance + 800 m, 1.4× time + 5 min per leg — time is the binding
 clause; a tighter distance bound once stranded the star on a 56%-failing
-corridor), **and that window widens until at least two candidates fit it**
-(1.8×/1.65×, then 2.2×/2.0×, then 3×/2.6×, then everything). A window
-admitting one route is not a comparison: the anchor is the quickest
-candidate, which is usually the deliberately bold direct-lens find, so on
-some trips every safer alternative sits just outside 1.4× of *its* time and
-"lowest score among practical routes" becomes the lowest of a set of size
-one. Kirkland → Redmond starred 3,304 m of failing arterial — 47% of its own
-length — beside five offered routes carrying 58–131 m. Widening only when the
-comparison would otherwise be empty is deliberate: v.598 already tried
-widening it for everyone (1.35× → 1.5×) and the same collapse returned at the
-new threshold.
+corridor).
 
-The star is then chosen by minimizing
+v.762 made this window widen (1.8×/1.65×, 2.2×/2.0×, 3×/2.6×, then
+everything) whenever it admitted fewer than two candidates, on the argument
+that a one-member pool is not a comparison. v.769 removed it: measured across
+31 real trips in two states it fired **zero** times, including Kirkland →
+Redmond, the trip it was written for, which no longer reproduces the
+one-member pool. The window is a single fixed 1.5×/1.4× again.
+
+The star is chosen by minimizing
 `time + 1 s × failing meters + 3 s × dismount meters + 0.2 s × ordinary-road meters`
 `− 0.08 s × trail meters`
 — where ordinary-riding meters are everything that is neither trail nor
@@ -1255,18 +1252,14 @@ unconditional veto this override once starred a 40.1 mi / 3h22 zero-fail
 loop over a 30.7 mi / 2h33 route carrying ~1% failing distance — a
 49-minute detour taken automatically.
 
-**One hard floor sits under all of it.** If the starred route fails the
-rider's rules across **15% or more of its own length**, and another candidate
-within a wide-but-sane detour of *it* (1.8× distance + 1.6 km, 1.85× time +
-10 min per leg) carries at most 40% as many failing meters, that candidate
-takes the star — whatever the scores say. This is the only rule here that
-overrides price rather than expressing it, and it exists because every other
-rule assumes the comparison behind the star was a real one. The share test,
-not a meter count, is what separates the two cases above: a long ride with
-1% failing distance is an ordinary route with a bad block in it and must not
-trigger a 49-minute detour, while a four-mile route that fails across 47% of
-itself is a different animal. The card says so plainly: *"Starred because the
-quicker option fails your rules across most of itself."*
+**There is no hard floor under the star.** v.762 added one — if the star
+failed across 15% or more of its own length and a comparable candidate
+carried at most 40% as many failing metres, that candidate took the star
+regardless of score — and v.769 removed it. It changed no recommendation
+across 146 audited trips in two states; on the single trip where it selected
+anything, it re-selected the route already starred. It was the only rule here
+that overrode price rather than expressing it, and it was shipped on reasoning
+without a trip that needed it. Anything replacing it should arrive with one.
 
 | influence | function / weight | what it expresses |
 |---|---|---|

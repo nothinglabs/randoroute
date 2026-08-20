@@ -3315,40 +3315,6 @@ function recommendationScoreBreakdown(route) {
 }
 const recommendationScore = (route) => recommendationScoreBreakdown(route).totalS;
 
-// The fail-share guard: never star a route carrying far more failing road than
-// an option shown beside it. Factored out of routeOptions so it can be
-// exercised directly, because it cannot be exercised any other way -- it has
-// not fired once across 86 audited trips in two states, since the two tests are
-// anti-correlated in a real graph (a star reaches 15% fail share essentially
-// only when the corridor is severed, and a severed corridor has no clean
-// parallel to offer). A rule the corpus cannot reach has to be reachable by a
-// test, or it is shipped on reasoning alone -- which is how it got here.
-//
-// It draws from the FULL candidate list on purpose, not the priced pool. The
-// pool is bounded against the fastest route, so the very alternative worth
-// having is often outside it: McMinnville -> Newberg came 454 m of failing road
-// short of firing with four qualifying alternatives waiting, every one of them
-// unpriced. Catching what the practical window excludes is the whole job.
-const GUARD_FAIL_SHARE = 0.15;        // of the starred route's own length
-const GUARD_ALTERNATIVE_SHARE = 0.4;  // the alternative's fail, against the star's
-function failShareGuardPick(recommended, choices) {
-  if (!recommended || !(recommended.distM > 0)) return null;
-  if (recommended.failM < recommended.distM * GUARD_FAIL_SHARE) return null;
-  // The same "wider but sane detour" the fully-matching override uses,
-  // measured against the STAR: the question is whether a route of comparable
-  // length avoids what this one rides.
-  const saferComparable = choices.filter((route) => route !== recommended
-    && route.failM <= recommended.failM * GUARD_ALTERNATIVE_SHARE
-    && route.legs.length === recommended.legs.length
-    && route.legs.every((leg, index) => {
-      const starLeg = recommended.legs[index];
-      return leg.distM <= starLeg.distM * 1.8 + 1600
-        && leg.timeS <= starLeg.timeS * 1.85 + 600;
-    }));
-  return saferComparable.reduce((best, route) =>
-    !best || recommendationScore(route) < recommendationScore(best) ? route : best, null);
-}
-
 function ferryEdgeGroups(routeResult) {
   const groups = [];
   for (let index = 0; index < routeResult.edgeIds.length; index++) {
@@ -4554,35 +4520,22 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // the star on a 56%-failing corridor because the 17%-failing alternative
   // -- WITHIN the time window -- was 1.55x its distance. A route the rider
   // can ride in comparable time is practical, however the miles divide.
-  const withinPracticalWindow = (distScale, timeScale) => choices.filter((route) =>
+  // v.762 wrapped this in a loop that widened the window (1.8x, 2.2x, 3x, then
+  // everything) whenever it admitted fewer than two routes, and added a
+  // "fail-share guard" that overrode the star when it failed across 15% or more
+  // of its own length. Both were removed in v.769 after being measured rather
+  // than reasoned about: across 31 real trips in two states the widening fired
+  // ZERO times -- including Kirkland -> Redmond, the trip it was written for,
+  // which no longer reproduces -- and the guard changed no recommendation in
+  // 146 audited trips. They were shipped on argument, untested by the commit
+  // that added them, and never earned their keep. If the one-member pool
+  // becomes reachable again, reach for it with a trip that demonstrates it.
+  const practicalChoices = choices.filter((route) =>
     route.legs.length === fastestOverall.legs.length && route.legs.every((leg, index) => {
       const quickestLeg = fastestOverall.legs[index];
-      return leg.distM <= quickestLeg.distM * distScale + 800
-        && leg.timeS <= quickestLeg.timeS * timeScale + 300;
+      return leg.distM <= quickestLeg.distM * 1.5 + 800
+        && leg.timeS <= quickestLeg.timeS * 1.4 + 300;
     }));
-  let practicalChoices = withinPracticalWindow(1.5, 1.4);
-  // A window that admits ONE route is not a window, it is a foregone
-  // conclusion: the loop below then picks "the lowest score" out of a set of
-  // size one and reports it as a comparison. That is not hypothetical --
-  // Kirkland -> Redmond starred a route with 3,304 m of failing arterial
-  // (47% of its own length) because the anchor IS the bold lens candidate and
-  // every safer alternative sat just outside 1.4x of its time.
-  //
-  // Widening until a real comparison exists is deliberately preferred to
-  // widening the window for everyone. v.598 already tried the latter
-  // (1.35x -> 1.5x, after a star stranded on a 56%-failing corridor); it
-  // moved the threshold without removing the failure, and the same collapse
-  // reappeared at the new one. This costs nothing on the trips where the
-  // window already admits several routes, which is nearly all of them.
-  if (practicalChoices.length < 2 && choices.length > 1) {
-    for (const [distScale, timeScale] of [[1.8, 1.65], [2.2, 2.0], [3, 2.6]]) {
-      practicalChoices = withinPracticalWindow(distScale, timeScale);
-      if (practicalChoices.length >= 2) break;
-    }
-    // Legs that differ in count can never enter the window above; if even the
-    // widest scale finds nothing to compare, compare everything.
-    if (practicalChoices.length < 2) practicalChoices = choices.slice();
-  }
   // Preserve the strongest practical off-street option explicitly. Trails and
   // protected lanes used to share one aggregate, so a shorter lane-heavy route
   // could crowd the Interurban-heavy choice out even though both "counted" as
@@ -4638,34 +4591,6 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       recommended = bestMatching;
       recommendationBasis = 'fully-matching-override';
     }
-  }
-  // Last resort: never star a route that fails the rider's rules across a
-  // large share of itself while a comparable route beside it barely fails.
-  //
-  // Every rule above assumes the comparison that produced `recommended` was
-  // a real one. The floor on the practical window makes a one-member pool
-  // rare; this makes its consequence harmless, and unlike the window it does
-  // not depend on a threshold that has already had to move once.
-  //
-  // The test is the SHARE of the route that fails, not its metres. A long
-  // ride with 1% failing distance is an ordinary route with a bad block in
-  // it, and overriding there is what once starred a 40.1 mi zero-fail loop
-  // over a 30.7 mi route -- a 49-minute detour bought for eight minutes of
-  // priced fail. A route failing 15% or more of its own length is a
-  // different animal: Kirkland -> Redmond was 47%, two miles of 40 mph
-  // arterial with no shoulder, offered beside routes carrying 58-131 m.
-  //
-  // Placed BEFORE the Preferred-route override on purpose. This guards the
-  // AUTOMATIC choice, where the comparison behind the star may have been
-  // thin; marking a route Preferred is the rider saying which corridor they
-  // want, and a safety net that quietly undid their instruction would be a
-  // worse failure than the one it prevents. Running it last did exactly that
-  // -- test_preferred_routes caught the strong Preferred candidate losing
-  // the star to this rule.
-  const guarded = failShareGuardPick(recommended, choices);
-  if (guarded) {
-    recommended = guarded;
-    recommendationBasis = 'fail-share-guard';
   }
   // Marking a named route Preferred is an explicit recommendation request.
   // The strong lens takes the star when it found a route that actually uses
