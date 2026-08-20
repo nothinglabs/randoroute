@@ -44,12 +44,47 @@ const TRIPS = [
   // rider two routes 0.93 identical to each other and the real alternative
   // buried in All Routes. A dominated route that is also the most DISTINCT thing
   // in the set has earned its slot; this trip is where that is observable.
+  // Endpoints are the rider's real ones: Portage Bay Cafe at 4130 Roosevelt Way
+  // NE, and the zoo's 601 N 59th St entrance. An earlier version of this used
+  // the zoo's south gate instead, and that single difference hid the 11th
+  // Avenue case completely -- no candidate on the south-gate trip touches it.
   { state: 'washington', id: 'udistrict-zoo', name: 'University District -> Woodland Park Zoo',
-    from: [-122.31760, 47.65750], to: [-122.35200, 47.66260],
-    mustOffer: { street: /^stone way north$/i, metres: 500 },
-    // Its Stone Way options ARE beaten on all three axes, on purpose.
+    from: [-122.31757, 47.65760], to: [-122.35460, 47.67070],
+    // Two separate corridors, each lost to a different flaw in the same trim.
+    // Stone Way N went when the trim ranked losers by how badly they lost.
+    // 11th Ave NE went when distinctness was measured against the whole pool:
+    // two routes carry it and they are near-identical to each other, so each
+    // made the other look redundant and the corridor deleted itself.
+    mustOffer: [
+      { street: /^stone way north$/i, metres: 500 },
+      { street: /^11th avenue northeast$/i, metres: 800 },
+    ],
+    // Both corridors' routes ARE beaten on all three axes, on purpose.
     skipDominance: true },
 ];
+
+// Two routes are near-copies when they trace mostly the same ground. Measured
+// on sampled coordinates rather than edge ids, because that is all an audited
+// option carries -- coarse, but a twin and a genuinely different corridor are
+// nowhere near each other on this scale.
+const TWIN_OVERLAP = 0.9;
+function shape(option) {
+  return new Set((option.coords || []).filter((_, i) => i % 3 === 0)
+    .map(([lon, lat]) => `${lon.toFixed(4)},${lat.toFixed(4)}`));
+}
+function mostAlike(option, others) {
+  const mine = shape(option);
+  let best = { overlap: 0, other: option };
+  for (const other of others) {
+    if (other === option) continue;
+    const theirs = shape(other);
+    let shared = 0;
+    for (const point of mine) if (theirs.has(point)) shared++;
+    const overlap = shared / Math.max(1, Math.min(mine.size, theirs.size));
+    if (overlap > best.overlap) best = { overlap, other };
+  }
+  return best;
+}
 
 // A route is beaten outright when another offered route is no longer, no
 // slower, and carries meaningfully less failing road. The one-point margin on
@@ -76,8 +111,7 @@ for (const trip of TRIPS) {
     `${trip.name} collapsed to ${audit.options.length} options; the dominance trim`
     + ' must never take the chooser below the slots it can fill');
 
-  if (trip.mustOffer) {
-    const { street, metres } = trip.mustOffer;
+  for (const { street, metres } of (trip.mustOffer || [])) {
     const best = audit.options.reduce((most, option) => {
       const coords = option.coords || [];
       let m = 0;
@@ -107,7 +141,23 @@ for (const trip of TRIPS) {
       console.log(`  reserved seat kept: ${line(option)} <= ${line(winner)}`);
       continue;
     }
-    console.error(`  DOMINATED: ${line(option)}  <= beaten by ${line(winner)}`);
+    // Losing on all three axes is NOT by itself a reason to deny a slot, and an
+    // earlier version of this file asserted that it was. That rule deletes a
+    // corridor the moment its route is a little longer than the direct one --
+    // which is how Stone Way N and 11th Avenue NE both vanished from this very
+    // trip while near-identical twins held letters.
+    //
+    // What a slot must never hold is a route that is beaten AND is a near-copy
+    // of something already on the board. Beaten but genuinely different is the
+    // variety the six letters exist for; beaten and duplicated is the waste.
+    const twin = mostAlike(option, audit.options);
+    if (twin.overlap < TWIN_OVERLAP) {
+      console.log(`  beaten but distinct, slot earned: ${line(option)}`
+        + `  (closest other offered route overlaps ${twin.overlap.toFixed(2)})`);
+      continue;
+    }
+    console.error(`  DOMINATED TWIN: ${line(option)}  <= beaten by ${line(winner)}`
+      + `, and overlaps ${twin.overlap.toFixed(2)} with ${twin.other.letter}`);
     failures++;
   }
   const star = audit.options.find((o) => o.recommended);
@@ -117,7 +167,8 @@ for (const trip of TRIPS) {
 }
 
 assert.equal(failures, 0,
-  `${failures} offered route(s) are beaten on distance, time and failing road at once.`
-  + ' A route that is worse on every axis the app measures is not variety, it is a'
-  + ' wasted slot -- see the corridor exemption in routeOptions.');
-console.log('no offered route is beaten on distance, time and safety at once');
+  `${failures} offered route(s) are beaten on distance, time and failing road at once`
+  + ` AND are ${TWIN_OVERLAP}+ identical to another route on the same screen. Losing on`
+  + ' every axis is survivable for a route that shows the rider a different way to go;'
+  + ' being a worse copy of the route beside it is not.');
+console.log('no offered route is both beaten and a near-copy of another');

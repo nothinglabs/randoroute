@@ -4572,15 +4572,38 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // natural break, so any cutoff would be a number tuned to whichever trip was
   // in front of us. Ranking is relative and needs no such constant.
   if (useful.length > MAX_OFFERED) {
-    const twinness = new Map(useful.map((candidate) => [candidate,
-      Math.max(0, ...useful.filter((other) => other !== candidate)
-        .map((other) => edgeOverlap(candidate, other)))]));
-    const mostDistinct = new Set([...useful]
-      .sort((a, b) => twinness.get(a) - twinness.get(b)).slice(0, MAX_OFFERED));
+    // Distinctness has to be measured against what SURVIVES, not against the
+    // whole pool, or a corridor with two candidates on it deletes itself: each
+    // twin makes the other look redundant, both score badly, and neither is
+    // protected. University District -> Woodland Park Zoo lost 11th Avenue NE
+    // exactly that way -- 1,570 m of bike lane carried by two routes 0.99 alike,
+    // cut together, so the whole corridor left the board while the rider could
+    // still see both sitting in All Routes.
+    //
+    // Farthest-first: seed with the least redundant candidate, then repeatedly
+    // take whichever is most unlike everything kept so far. The first route on a
+    // corridor is then judged against the OTHER corridors -- where it is
+    // genuinely distinct -- and only its twin is judged against it.
+    const spreadFrom = (candidate, against) => Math.max(0, ...against
+      .filter((other) => other !== candidate)
+      .map((other) => edgeOverlap(candidate, other)));
+    const mostDistinct = new Set();
+    const pool = [...useful];
+    while (mostDistinct.size < MAX_OFFERED && pool.length) {
+      let pick = null, best = Infinity;
+      for (const candidate of pool) {
+        const score = mostDistinct.size
+          ? spreadFrom(candidate, [...mostDistinct])
+          : spreadFrom(candidate, pool);
+        if (score < best) { best = score; pick = candidate; }
+      }
+      mostDistinct.add(pick);
+      pool.splice(pool.indexOf(pick), 1);
+    }
     const losers = useful.filter((candidate) => !protectedCandidates.has(candidate)
       && !mostDistinct.has(candidate)
       && useful.some((other) => beats(other, candidate) && other.distM <= candidate.distM))
-      .sort((a, b) => twinness.get(b) - twinness.get(a));
+      .sort((a, b) => spreadFrom(b, [...mostDistinct]) - spreadFrom(a, [...mostDistinct]));
     for (const loser of losers) {
       if (useful.length <= MAX_OFFERED) break;
       useful.splice(useful.indexOf(loser), 1);
@@ -4842,7 +4865,15 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
         : 'Effectively the same roads as another option.';
     } else if (!inUseful.has(candidate)) {
       candidate._stage = 'dominated';
-      candidate._stageWhy = 'Another option shares this corridor and is no slower and no less safe.';
+      // Two different rules drop a candidate here and they are not the same
+      // fact about it. Saying "shares this corridor" for both sent the rider --
+      // and the session reading over their shoulder -- hunting for a duplicate
+      // that did not exist, when the route had actually lost on its own merits.
+      candidate._stageWhy = unique.some((other) => other !== candidate
+        && edgeOverlap(other, candidate) >= 0.96)
+        ? 'Another option shares this corridor and is no slower and no less safe.'
+        : 'Another option is shorter, no slower and no less safe, and the slots '
+          + 'went to routes less like the rest.';
     } else {
       candidate._stage = 'not-chosen';
       candidate._stageWhy = `Survived every filter, but ${MAX_OFFERED} slots were filled by more distinct routes.`;
