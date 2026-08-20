@@ -21,7 +21,7 @@
 // uses, so this cannot drift away from what a rider sees.
 import assert from 'node:assert';
 import { routerWorker } from './testlib/harness.mjs';
-import { auditRoute, defaultRules } from './audit_route.mjs';
+import { auditRoute, defaultRules, havM } from './audit_route.mjs';
 
 // `quick-friendly` -- "Direct + both preferences" -- is reserved by name in the
 // portfolio, so it is exempt from every dominance test by design. That is a
@@ -36,6 +36,19 @@ const TRIPS = [
     from: [-122.61267, 48.51264], to: [-122.33429, 48.42128] },
   { state: 'washington', id: 'pullman-colfax', name: 'Pullman -> Colfax',
     from: [-117.17966, 46.73138], to: [-117.36439, 46.88041] },
+  // The other half of the rule, and the reason the trim ranks by redundancy
+  // rather than by how badly a route loses. Stone Way N is the gentle climb out
+  // of Fremont; every parallel is steeper. The only candidates that ride it are
+  // slightly longer and slightly slower than the routes up Fremont Avenue, so a
+  // dominance trim that ignores geometry deletes them -- and it did, leaving the
+  // rider two routes 0.93 identical to each other and the real alternative
+  // buried in All Routes. A dominated route that is also the most DISTINCT thing
+  // in the set has earned its slot; this trip is where that is observable.
+  { state: 'washington', id: 'udistrict-zoo', name: 'University District -> Woodland Park Zoo',
+    from: [-122.31760, 47.65750], to: [-122.35200, 47.66260],
+    mustOffer: { street: /^stone way north$/i, metres: 500 },
+    // Its Stone Way options ARE beaten on all three axes, on purpose.
+    skipDominance: true },
 ];
 
 // A route is beaten outright when another offered route is no longer, no
@@ -62,6 +75,28 @@ for (const trip of TRIPS) {
   assert.ok(audit.options.length >= 5,
     `${trip.name} collapsed to ${audit.options.length} options; the dominance trim`
     + ' must never take the chooser below the slots it can fill');
+
+  if (trip.mustOffer) {
+    const { street, metres } = trip.mustOffer;
+    const best = audit.options.reduce((most, option) => {
+      const coords = option.coords || [];
+      let m = 0;
+      for (const seg of (option.segs || [])) {
+        if (!street.test(seg.name || '')) continue;
+        for (let k = seg.c0; k < seg.c1 && k + 1 < coords.length; k++) {
+          m += havM(coords[k], coords[k + 1]);
+        }
+      }
+      return Math.max(most, m);
+    }, 0);
+    console.log(`${trip.name}: best offered run of ${street.source} = ${Math.round(best)} m`);
+    assert.ok(best >= metres,
+      `${trip.name} offers at most ${Math.round(best)} m of ${street.source}, wanted `
+      + `${metres} m. The corridor is still being built -- check whether the dominance `
+      + 'trim deleted it for losing on distance and time while being the most distinct '
+      + 'route in the set.');
+  }
+  if (trip.skipDominance) continue;
 
   for (const option of audit.options) {
     const winner = beatenOutright(option, audit.options);

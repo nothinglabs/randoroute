@@ -4553,12 +4553,34 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // collapses short trips where one route genuinely wins outright, and a
   // chooser showing a single letter is a worse answer than a redundant one:
   // it cost the Interurban Trail regression its whole portfolio. So trim the
-  // cross-corridor losers worst-first, and stop the moment the slots are
-  // merely full rather than contested.
+  // losers, and stop the moment the slots are merely full rather than contested.
+  //
+  // WHICH losers is the whole question, and the first version of this got it
+  // backwards. Ranking them by how badly they lose ignores the only thing a
+  // slot is actually for. On University District -> Woodland Park Zoo it threw
+  // away the two most distinct routes in the set -- the only ones carrying a
+  // kilometre or more of Stone Way N, overlapping everything else by 0.61 --
+  // and kept a pair 0.93 identical to each other. The rider then had to dig the
+  // real alternative out of All Routes while two near-twins held letters.
+  //
+  // So rank by REDUNDANCY, and protect the most distinct MAX_OFFERED outright.
+  // Whatever else the six slots hold, they must not hold six versions of one
+  // road. This is the same principle the eviction pass below already uses.
+  //
+  // A fixed overlap threshold was measured and rejected: across the 30-trip
+  // corpus the 271 dominated candidates spread smoothly from 0.4 to 1.0 with no
+  // natural break, so any cutoff would be a number tuned to whichever trip was
+  // in front of us. Ranking is relative and needs no such constant.
   if (useful.length > MAX_OFFERED) {
+    const twinness = new Map(useful.map((candidate) => [candidate,
+      Math.max(0, ...useful.filter((other) => other !== candidate)
+        .map((other) => edgeOverlap(candidate, other)))]));
+    const mostDistinct = new Set([...useful]
+      .sort((a, b) => twinness.get(a) - twinness.get(b)).slice(0, MAX_OFFERED));
     const losers = useful.filter((candidate) => !protectedCandidates.has(candidate)
+      && !mostDistinct.has(candidate)
       && useful.some((other) => beats(other, candidate) && other.distM <= candidate.distM))
-      .sort((a, b) => compareSafety(b, a) || b.timeS - a.timeS);
+      .sort((a, b) => twinness.get(b) - twinness.get(a));
     for (const loser of losers) {
       if (useful.length <= MAX_OFFERED) break;
       useful.splice(useful.indexOf(loser), 1);
