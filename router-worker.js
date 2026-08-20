@@ -5139,6 +5139,50 @@ onmessage = (ev) => {
       };
       postMessage({ type: 'route-connector', id: m.id,
         ...publicCandidate({ ...r, _profile: profile }) });
+    } else if (m.type === 'edge-grade') {
+      // The grade of a road the rider TAPPED, which is not on their route.
+      //
+      // The road card is built from map-tile properties, and the tiles carry no
+      // elevation -- so tapping a street off the route showed every other fact
+      // about it and stayed silent on how steep it is, which is one of the
+      // things a rider most wants to know before committing to a corridor. The
+      // routing graph is already in memory and does carry it, so ask that
+      // instead of rebuilding the tiles.
+      //
+      // Reported UNSIGNED, unlike a route segment. A route segment knows which
+      // way the rider is going; a tapped road does not, and "9% uphill" would
+      // be a coin flip. The card says how steep the street is and leaves the
+      // direction to the rider looking at it.
+      //
+      // `name` narrows the match when the tile feature has one: two streets can
+      // pass within metres at a junction, and the nearest edge is then not
+      // necessarily the one under the finger.
+      const kx = 111320 * Math.cos((m.lat * Math.PI) / 180), ky = 110540;
+      const want = typeof m.name === 'string' && m.name ? m.name.toLowerCase() : null;
+      let best = -1, bestD = Infinity;
+      for (let ei = 0; ei < E; ei++) {
+        const start = eOff[ei], count = eCnt[ei];
+        if (count < 2 || eLen[ei] < MIN_REPORTED_GRADE_M) continue;
+        if (want && (edgeName(ei) || '').toLowerCase() !== want) continue;
+        let px = (gLon[start] - m.lon) * kx, py = (gLat[start] - m.lat) * ky;
+        if (Math.sqrt(px * px + py * py) - eLen[ei] > bestD) continue;
+        for (let i = start + 1; i < start + count; i++) {
+          const qx = (gLon[i] - m.lon) * kx, qy = (gLat[i] - m.lat) * ky;
+          const dx = qx - px, dy = qy - py;
+          const len2 = dx * dx + dy * dy;
+          const t = len2 ? Math.max(0, Math.min(1, -(px * dx + py * dy) / len2)) : 0;
+          const nx = px + t * dx, ny = py + t * dy;
+          const d = Math.sqrt(nx * nx + ny * ny);
+          if (d < bestD) { bestD = d; best = ei; }
+          px = qx; py = qy;
+        }
+      }
+      // Far enough away that the graph is answering about a different street.
+      const grade = best >= 0 && bestD <= 40
+        ? reportedGradePct(Math.max(eAsc[best], eDes[best]), eLen[best]) : null;
+      postMessage({ type: 'edge-grade', id: m.id,
+        gradePct: grade, metres: best >= 0 ? Math.round(bestD) : null,
+        name: best >= 0 ? (edgeName(best) || null) : null });
     } else if (m.type === 'navigation-new-route') {
       useWeights(m.weights);
       const points = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];

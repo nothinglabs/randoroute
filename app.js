@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-20.776';
+const APP_VERSION = '2026-08-20.777';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7611,6 +7611,8 @@ function onRouterMessage(ev) {
     // Exposed for field diagnosis and browser regression tests. It contains
     // counts only -- no route, location, or graph data.
     document.body.dataset.routerCacheTrim = JSON.stringify(m);
+  } else if (m.type === 'edge-grade') {
+    applyTappedRoadGrade(m);
   } else if (m.type === 'route-connector') {
     activateNavigationConnector(m);
     trimRouterCachesSoon();
@@ -8072,7 +8074,13 @@ const ROUTE_MARKER_SPACING_M = 700;
 // stretch worth an icon. Traffic and surface need real length; walking matters
 // even when short. Technical-trail context remains in the road card, rather
 // than using the ambiguous standalone question-mark badge.
-const ROUTE_MARKER_MIN_RUN_M = { walk: 60, steep: 100, traffic: 400, unpaved: 400 };
+// `steep` was 100 m and almost never fired, because the run must be
+// CONSECUTIVE and a city block is about 80 m: one flatter block resets it, so
+// an alternating climb never accumulates. Ballard -> Capitol Hill peaks at
+// 18.2% and drew no marker at all. 60 m is one block, which is what a rider
+// experiences as "a steep bit", and it is what makes the threshold below mean
+// anything.
+const ROUTE_MARKER_MIN_RUN_M = { walk: 60, steep: 60, traffic: 400, unpaved: 400 };
 const ROUTE_MARKER_KINDS = ['walk', 'steep', 'traffic', 'unpaved'];
 // No mountain within this distance of a ferry leg: dockside DEM is artifact.
 const FERRY_GRADE_BLACKOUT_M = 250;
@@ -8235,7 +8243,11 @@ function buildRouteMarkerData(sdata) {
     other: { type: 'FeatureCollection', features: other } };
 }
 
-const STEEP_MARKER_GRADE_PCT = 10;
+// 7.5%, down from 10%. Measured over four Seattle trips at the 60 m run above:
+// one marker on Phinney Ridge, one on the 18.2% Ballard climb, none on flat
+// Queen Anne -> Fremont, three on hilly Magnolia. 6% put three on Phinney Ridge
+// for grades a rider would not think worth flagging.
+const STEEP_MARKER_GRADE_PCT = 7.5;
 function markerSpanM(a, b) {
   const kx = 111320 * Math.cos(((a[1] + b[1]) / 2) * Math.PI / 180);
   return Math.hypot((b[0] - a[0]) * kx, (b[1] - a[1]) * 111320);
@@ -12264,6 +12276,39 @@ function wsdotShoulderText(point, p) {
   return `${p.ShoulderWidth} ft (${here}), ${other.ShoulderWidth} ft (${there})`;
 }
 
+// The grade of a road the rider tapped that is NOT on their route.
+//
+// Map tiles carry no elevation, so this one fact has to come from the routing
+// graph, which means it arrives after the card is already on screen. The card
+// therefore renders a placeholder row and this fills it in. A token guards the
+// obvious race: tap two streets quickly and the first answer must not land in
+// the second card.
+const TAPPED_GRADE_PENDING = 'measuring\u2026';
+let tappedGradeToken = 0;
+let tappedRoadGradeRequested = false;
+function requestTappedRoadGrade(lngLat, name) {
+  if (!routing.worker || !routing.ready) return null;
+  const token = ++tappedGradeToken;
+  routing.worker.postMessage({ type: 'edge-grade', id: token,
+    lon: Number(lngLat.lng), lat: Number(lngLat.lat), name: name || null });
+  return token;
+}
+function applyTappedRoadGrade(m) {
+  if (Number(m.id) !== tappedGradeToken) return;
+  const table = document.getElementById('mapTapDetails')?.querySelector('table');
+  if (!table) return;
+  for (const row of table.querySelectorAll('tr')) {
+    const [keyCell, valueCell] = row.children;
+    if (!keyCell || !valueCell || keyCell.textContent !== 'Grade') continue;
+    // Unsigned on purpose: a tapped road has no direction of travel, so
+    // "uphill" would be a coin flip. The route card, which does know which way
+    // the rider is going, still says uphill or downhill.
+    if (m.gradePct === null || m.gradePct === undefined) row.remove();
+    else valueCell.textContent = `${Math.abs(m.gradePct).toFixed(1)}% either way`;
+    return;
+  }
+}
+
 function readoutTable(rows) {
   const table = document.createElement('table');
   for (const [key, value] of rows) {
@@ -13078,13 +13123,21 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
     ];
   } else if (src.id === 'roads') {
     title = p.d ? `Road (OSM geometry + ${Region.speedAgency} data)` : 'Road (OSM)';
+    tappedRoadGradeRequested = requestTappedRoadGrade(lngLat, p.n) != null;
     rows = [
       ['Name', p.n],
       ...common,
       // Tapping a road off the route and a segment of the route describe the
-      // same street, so they use one vocabulary. Grade and curve caution stay
-      // exclusive to the route card: both need elevation along a direction of
-      // travel, which the map tiles do not carry.
+      // same street, so they use one vocabulary. Curve caution stays exclusive
+      // to the route card: it needs a direction of travel, which a tapped road
+      // has none of.
+      //
+      // Grade used to be exclusive too, for a different reason -- the map tiles
+      // carry no elevation. But the routing graph does and is already in
+      // memory, so the card asks it. The value lands after this row is built,
+      // which is why it starts as a placeholder; applyTappedRoadGrade() fills
+      // it in, or removes the row when the graph has nothing near the tap.
+      ['Grade', tappedRoadGradeRequested ? TAPPED_GRADE_PENDING : null],
       ['Speed limit', p.s != null ? `${p.s} mph${p.e ? ' (estimated from class)' : ''}` : null],
       // `w` keeps the WORSE direction (it is what the map paints); `w2` is
       // the better one when the inventory recorded the two sides differently.
@@ -14928,7 +14981,7 @@ function syncLayersToggle() {
 // at a glance; their fuller meaning remains in each item's accessible label.
 const ACTIVE_ROUTE_ICON_DEFINITIONS = [
   ['route-dismount-marker-icon', 'Walk your bike', 'Dismount here.'],
-  ['route-marker-steep', 'Steep hill', 'Grade of 10% or more.'],
+  ['route-marker-steep', 'Steep hill', 'Grade of 7.5% or more.'],
   ['route-marker-traffic', 'Heavy traffic', 'High traffic volume.'],
   ['route-marker-unpaved', 'Unpaved', 'Loose surface.'],
   ['route-marker-fail', 'Fails rules', 'Outside your safety limits.'],
