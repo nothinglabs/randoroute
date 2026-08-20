@@ -1,24 +1,23 @@
 #!/usr/bin/env node
-// Every lettered route has to be better than the others at SOMETHING.
+// Two corridors this trip must keep offering, and one shape of route it must
+// never offer.
 //
-// The portfolio prunes a beaten candidate only when its shape nearly matches
-// the winner's (edgeOverlap >= 0.96). That test looks at geometry and nothing
-// else, so a route on its own corridor used to keep a slot however much worse
-// it was. A 30-trip audit found 16 such options across 14 trips; the worst,
-// Walla Walla -> Dayton, offered a route 7 km longer, 32 minutes slower and
-// carrying 5.6x the failing road of one sitting beside it on the same screen.
+// Both corridors were lost, at different times, to the same idea: that a route
+// beaten on distance AND time AND failing road is a wasted slot whatever ground
+// it covers. v.768 acted on that idea and deleted 11th Avenue NE from
+// University District -> Woodland Park Zoo for six commits; the rider found it
+// sitting in All Routes marked DOMINATED while near-identical routes held
+// letters. The trim is gone (see routeOptions), and these assertions are what
+// stops it being reinvented from the numbers alone.
 //
-// Two things have to stay true, and they pull against each other:
+// What a slot must never hold is a route that is beaten AND is a near-copy of
+// something already on the board. Beaten but genuinely different is the variety
+// the six letters exist for; beaten and duplicated is the waste. That is the
+// distinction the deleted trim could not make.
 //
-//   1. A candidate beaten on distance AND time AND safety does not get a slot.
-//   2. Enforcing that must never shrink the chooser. Applied without a floor
-//      it collapsed short trips to a single letter -- a worse answer than a
-//      redundant one -- which is why the trim stops once the slots are merely
-//      full rather than contested.
-//
-// The trips below are real, reproduce by name in the app, and are audited
-// against the app's own defaults through the same entry point the audit tool
-// uses, so this cannot drift away from what a rider sees.
+// The trips are real, reproduce by name in the app, and are audited against the
+// app's own defaults through the same entry point the audit tool uses, so this
+// cannot drift away from what a rider sees.
 import assert from 'node:assert';
 import { routerWorker } from './testlib/harness.mjs';
 import { auditRoute, defaultRules, havM } from './audit_route.mjs';
@@ -50,11 +49,10 @@ const TRIPS = [
   // Avenue case completely -- no candidate on the south-gate trip touches it.
   { state: 'washington', id: 'udistrict-zoo', name: 'University District -> Woodland Park Zoo',
     from: [-122.31757, 47.65760], to: [-122.35460, 47.67070],
-    // Two separate corridors, each lost to a different flaw in the same trim.
-    // Stone Way N went when the trim ranked losers by how badly they lost.
-    // 11th Ave NE went when distinctness was measured against the whole pool:
-    // two routes carry it and they are near-identical to each other, so each
-    // made the other look redundant and the corridor deleted itself.
+    // Two separate corridors. 11th Ave NE was deleted outright by the dominance
+    // trim. Stone Way N appeared only once hills were priced by steepness --
+    // 11 m offered before that commit, 1,364 m after -- so it guards a second
+    // thing entirely: that the gentle climb out of Fremont stays reachable.
     mustOffer: [
       { street: /^stone way north$/i, metres: 500 },
       { street: /^11th avenue northeast$/i, metres: 800 },
@@ -126,9 +124,9 @@ for (const trip of TRIPS) {
     console.log(`${trip.name}: best offered run of ${street.source} = ${Math.round(best)} m`);
     assert.ok(best >= metres,
       `${trip.name} offers at most ${Math.round(best)} m of ${street.source}, wanted `
-      + `${metres} m. The corridor is still being built -- check whether the dominance `
-      + 'trim deleted it for losing on distance and time while being the most distinct '
-      + 'route in the set.');
+      + `${metres} m. Candidates on it are still being built -- check what dropped `
+      + 'them. A route being longer and slower than the direct one is not a reason '
+      + 'to withhold its corridor when nothing else on the board covers that ground.');
   }
   if (trip.skipDominance) continue;
 
@@ -142,10 +140,8 @@ for (const trip of TRIPS) {
       continue;
     }
     // Losing on all three axes is NOT by itself a reason to deny a slot, and an
-    // earlier version of this file asserted that it was. That rule deletes a
-    // corridor the moment its route is a little longer than the direct one --
-    // which is how Stone Way N and 11th Avenue NE both vanished from this very
-    // trip while near-identical twins held letters.
+    // earlier version of this file asserted that it was -- which is how it
+    // passed cleanly through the six commits where 11th Avenue NE was missing.
     //
     // What a slot must never hold is a route that is beaten AND is a near-copy
     // of something already on the board. Beaten but genuinely different is the

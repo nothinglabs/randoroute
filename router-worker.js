@@ -4523,92 +4523,40 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     preferred, bothPreferences, fullyMatching, adaptiveCorridor, ferryCrossBreed,
     sectionFrontier, combinedCorridor, strongPreferredCandidate,
   ].filter(Boolean));
-  // Six lettered slots, up from five: the direct-lens candidate widened the
-  // portfolio's real variety, and the extra slot lets it surface without
-  // pushing an ordinary choice out. Interior picks fill to two under the cap
-  // so the endpoints (shortest, longest) keep their seats.
-  const MAX_OFFERED = 6;
-  // `other` beats `candidate` on the two axes the rider is shown: no slower,
-  // no less safe, and strictly better on one of them.
-  const beats = (other, candidate) => {
-    if (other === candidate) return false;
-    const safety = compareSafety(other, candidate);
-    return other.timeS <= candidate.timeS + 5 && safety <= 0
-      && (other.timeS < candidate.timeS - 5 || safety < 0);
-  };
   // A route may be objectively slower and no safer yet still give the rider a
-  // useful different corridor, so a beaten candidate is only pruned outright
-  // when its geometry is effectively the same as the winner's.
+  // useful different corridor. Only prune dominated candidates when their
+  // geometry is also effectively the same.
+  //
+  // v.768 removed that geometry condition, on the finding that a route beaten
+  // on distance AND time AND failing road was a wasted slot whatever corridor
+  // it used. It is not, and the cost was measured on the road: University
+  // District -> Woodland Park Zoo stopped offering 11th Avenue NE -- 1,570 m of
+  // bike lane on a corridor nothing else touched -- and stayed that way for six
+  // commits while near-identical routes held letters. Three follow-ups tried to
+  // rescue it: rank the losers by redundancy, protect the most distinct six,
+  // measure distinctness farthest-first so a corridor's two candidates stop
+  // cancelling each other out. Each fixed a real defect in the one before it.
+  //
+  // With all three in place the trim was measured against the 30-trip corpus
+  // with itself switched off, and it had become a no-op: 179 options either
+  // way, 15 dominated either way, mean overlap 0.307 vs 0.303, and one MORE
+  // near-identical pair with it on than off. Its own guard rails had reduced it
+  // to nothing, because it may only remove candidates outside the most distinct
+  // six and those are the ones the selection pass drops anyway.
+  //
+  // So it is gone, and the geometry condition is back. What actually widened
+  // this trip's portfolio was pricing hills by steepness -- Stone Way N went
+  // from 11 m offered to 1,364 m at that commit, with no help from here. A
+  // route that loses on every axis is a wasted slot only when the rider already
+  // has its corridor; deciding that from the numbers alone deletes the map.
   const useful = unique.filter((candidate) => protectedCandidates.has(candidate)
-    || !unique.some((other) => beats(other, candidate)
-      && edgeOverlap(other, candidate) >= 0.96));
-  // That shape-only test let a candidate on its own corridor keep a slot
-  // however much worse it was: Walla Walla -> Dayton offered a route 7 km
-  // longer, 32 minutes slower and carrying 5.6x the failing road, and 14 of 30
-  // audited trips had at least one like it. Variety has to be variety in
-  // something the rider can use -- fewer miles, less time, or less failing
-  // road -- so a candidate beaten on all three has earned nothing.
-  //
-  // But this cut has to be graded, not absolute. Applied unconditionally it
-  // collapses short trips where one route genuinely wins outright, and a
-  // chooser showing a single letter is a worse answer than a redundant one:
-  // it cost the Interurban Trail regression its whole portfolio. So trim the
-  // losers, and stop the moment the slots are merely full rather than contested.
-  //
-  // WHICH losers is the whole question, and the first version of this got it
-  // backwards. Ranking them by how badly they lose ignores the only thing a
-  // slot is actually for. On University District -> Woodland Park Zoo it threw
-  // away the two most distinct routes in the set -- the only ones carrying a
-  // kilometre or more of Stone Way N, overlapping everything else by 0.61 --
-  // and kept a pair 0.93 identical to each other. The rider then had to dig the
-  // real alternative out of All Routes while two near-twins held letters.
-  //
-  // So rank by REDUNDANCY, and protect the most distinct MAX_OFFERED outright.
-  // Whatever else the six slots hold, they must not hold six versions of one
-  // road. This is the same principle the eviction pass below already uses.
-  //
-  // A fixed overlap threshold was measured and rejected: across the 30-trip
-  // corpus the 271 dominated candidates spread smoothly from 0.4 to 1.0 with no
-  // natural break, so any cutoff would be a number tuned to whichever trip was
-  // in front of us. Ranking is relative and needs no such constant.
-  if (useful.length > MAX_OFFERED) {
-    // Distinctness has to be measured against what SURVIVES, not against the
-    // whole pool, or a corridor with two candidates on it deletes itself: each
-    // twin makes the other look redundant, both score badly, and neither is
-    // protected. University District -> Woodland Park Zoo lost 11th Avenue NE
-    // exactly that way -- 1,570 m of bike lane carried by two routes 0.99 alike,
-    // cut together, so the whole corridor left the board while the rider could
-    // still see both sitting in All Routes.
-    //
-    // Farthest-first: seed with the least redundant candidate, then repeatedly
-    // take whichever is most unlike everything kept so far. The first route on a
-    // corridor is then judged against the OTHER corridors -- where it is
-    // genuinely distinct -- and only its twin is judged against it.
-    const spreadFrom = (candidate, against) => Math.max(0, ...against
-      .filter((other) => other !== candidate)
-      .map((other) => edgeOverlap(candidate, other)));
-    const mostDistinct = new Set();
-    const pool = [...useful];
-    while (mostDistinct.size < MAX_OFFERED && pool.length) {
-      let pick = null, best = Infinity;
-      for (const candidate of pool) {
-        const score = mostDistinct.size
-          ? spreadFrom(candidate, [...mostDistinct])
-          : spreadFrom(candidate, pool);
-        if (score < best) { best = score; pick = candidate; }
-      }
-      mostDistinct.add(pick);
-      pool.splice(pool.indexOf(pick), 1);
-    }
-    const losers = useful.filter((candidate) => !protectedCandidates.has(candidate)
-      && !mostDistinct.has(candidate)
-      && useful.some((other) => beats(other, candidate) && other.distM <= candidate.distM))
-      .sort((a, b) => spreadFrom(b, [...mostDistinct]) - spreadFrom(a, [...mostDistinct]));
-    for (const loser of losers) {
-      if (useful.length <= MAX_OFFERED) break;
-      useful.splice(useful.indexOf(loser), 1);
-    }
-  }
+    || !unique.some((other) => {
+      if (other === candidate) return false;
+      const safety = compareSafety(other, candidate);
+      return edgeOverlap(other, candidate) >= 0.96
+        && other.timeS <= candidate.timeS + 5 && safety <= 0
+        && (other.timeS < candidate.timeS - 5 || safety < 0);
+    }));
   const choices = useful.length ? useful : unique;
   progress?.('Comparing safety, travel time, and route variety…', 0.96);
 
@@ -4753,8 +4701,11 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // stops the rider actually chose, not several variations of the same loop.
   const selectionChoices = hasStops ? choices.filter((route) => boundedChoices.includes(route)
     || route === safestOverall || route === boundedPreferred) : choices;
-  // MAX_OFFERED is declared with the dominance trim above, which needs to know
-  // how many slots are actually contested before it removes anything.
+  // Six lettered slots, up from five: the direct-lens candidate widened the
+  // portfolio's real variety, and the extra slot lets it surface without
+  // pushing an ordinary choice out. Interior picks fill to two under the cap
+  // so the endpoints (shortest, longest) keep their seats.
+  const MAX_OFFERED = 6;
   const selected = [];
   if (selectionChoices.length <= MAX_OFFERED) {
     selected.push(...selectionChoices);
@@ -4865,15 +4816,7 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
         : 'Effectively the same roads as another option.';
     } else if (!inUseful.has(candidate)) {
       candidate._stage = 'dominated';
-      // Two different rules drop a candidate here and they are not the same
-      // fact about it. Saying "shares this corridor" for both sent the rider --
-      // and the session reading over their shoulder -- hunting for a duplicate
-      // that did not exist, when the route had actually lost on its own merits.
-      candidate._stageWhy = unique.some((other) => other !== candidate
-        && edgeOverlap(other, candidate) >= 0.96)
-        ? 'Another option shares this corridor and is no slower and no less safe.'
-        : 'Another option is shorter, no slower and no less safe, and the slots '
-          + 'went to routes less like the rest.';
+      candidate._stageWhy = 'Another option shares this corridor and is no slower and no less safe.';
     } else {
       candidate._stage = 'not-chosen';
       candidate._stageWhy = `Survived every filter, but ${MAX_OFFERED} slots were filled by more distinct routes.`;
