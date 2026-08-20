@@ -4789,6 +4789,29 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       }
       if (overlap > worstOverlap) { worstOverlap = overlap; replaceAt = i; }
     }
+    if (replaceAt < 0) {
+      // Every seat is itself required. There are fifteen required roles and six
+      // slots, so this happens -- and what happened then was that whoever came
+      // LATER in the list was dropped in silence, position deciding the board.
+      // Seattle -> Mukilteo lost its combined corridor exactly that way once the
+      // safest and quickest roles went to routes the redundancy-ranked trim had
+      // kept: a spliced corridor overlaps both its parents by construction, so
+      // it can never win a distinctness contest against them, and a guarantee
+      // that only holds when the feature's output happens to look unusual is
+      // not a guarantee.
+      //
+      // So the seat goes to whichever required route duplicates the rest of the
+      // board most -- never the recommendation, which is the one seat no rule
+      // here may take.
+      const overlapAgainstBoard = (route) => Math.max(0, ...selected
+        .filter((other) => other !== route)
+        .map((other) => edgeOverlap(route, other)));
+      for (let i = 0; i < selected.length; i++) {
+        if (selected[i] === recommended) continue;
+        const theirs = overlapAgainstBoard(selected[i]);
+        if (theirs > worstOverlap) { worstOverlap = theirs; replaceAt = i; }
+      }
+    }
     if (replaceAt >= 0) selected.splice(replaceAt, 1, candidate);
   }
   let presented = presentAsLetters(selected.slice(0, MAX_OFFERED), recommended);
