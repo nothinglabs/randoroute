@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-20.777';
+const APP_VERSION = '2026-08-20.778';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -181,6 +181,9 @@ const DEFAULT_ROUTING_WEIGHTS = Object.freeze({
   wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLowStress: 1.24,
   stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLowStress: 1.30,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
+  // The shape of the climb curve: nothing extra below the knee, and this much
+  // per metre climbed at 10%. 4 / 7.84 reproduces the curve exactly as shipped.
+  climbKneePct: 4, climbCostAt10Pct: 7.84,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowStressSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowStressSec: 15,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
@@ -216,6 +219,14 @@ const ROUTING_WEIGHTS_VERSION = 8;
 const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   useMeasuredTraffic: Object.freeze([0, 1]),
   preferredRoute: Object.freeze([0.05, 1]),
+  // A knee of 0 charges every metre climbed; 9 charges almost nothing until the
+  // grade is genuinely steep. Above 9 the anchor at 10% has nothing to bite on.
+  climbKneePct: Object.freeze([0, 9]),
+  // 1 is a flat rate per metre of ascent, ignoring steepness entirely -- which
+  // is what the app did before the curve existed, and is worth being able to
+  // return to. Anything below 1 would make a steep metre cheaper than a gentle
+  // one, so the floor is 1 rather than 0.
+  climbCostAt10Pct: Object.freeze([1, 40]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -8074,12 +8085,9 @@ const ROUTE_MARKER_SPACING_M = 700;
 // stretch worth an icon. Traffic and surface need real length; walking matters
 // even when short. Technical-trail context remains in the road card, rather
 // than using the ambiguous standalone question-mark badge.
-// `steep` was 100 m and almost never fired, because the run must be
-// CONSECUTIVE and a city block is about 80 m: one flatter block resets it, so
-// an alternating climb never accumulates. Ballard -> Capitol Hill peaks at
-// 18.2% and drew no marker at all. 60 m is one block, which is what a rider
-// experiences as "a steep bit", and it is what makes the threshold below mean
-// anything.
+// `steep` is not governed from here -- see STEEP_MARKER_TIERS, which needs a
+// run length per grade rather than one for the kind. The entry stays so the
+// table reads completely and so a future kind cannot silently inherit nothing.
 const ROUTE_MARKER_MIN_RUN_M = { walk: 60, steep: 60, traffic: 400, unpaved: 400 };
 const ROUTE_MARKER_KINDS = ['walk', 'steep', 'traffic', 'unpaved'];
 // No mountain within this distance of a ferry leg: dockside DEM is artifact.
@@ -8122,6 +8130,10 @@ function buildRouteMarkerData(sdata) {
     for (let i = 1; i < coords.length; i++) lenM += markerSpanM(coords[i - 1], coords[i]);
     const style = p.ferry === 1 ? null : routeVisualStyle(p);
     return { kinds: routeMarkerKinds(p, style), coords, lenM, routeIndex,
+      // The run loop below tests the steep TIERS, and needs each feature's own
+      // grade to do it -- a run qualifies at 7.5% over one block, or at a
+      // gentler grade held for much longer.
+      gradePct: Number(p.gradePct) || 0,
       ferry: p.ferry === 1, fail: style === 'fail', designated: p.desig === 1 };
   });
   // A dock reads steep when it is not: the z12 DEM smears the shoreline bluff
@@ -8149,7 +8161,10 @@ function buildRouteMarkerData(sdata) {
       if (!feats[start].kinds.includes(kind)) { start++; continue; }
       let end = start, total = 0;
       while (end < feats.length && feats[end].kinds.includes(kind)) { total += feats[end].lenM; end++; }
-      if (total >= ROUTE_MARKER_MIN_RUN_M[kind]) {
+      const longEnough = kind === 'steep'
+        ? steepRunQualifies(feats, start, end)
+        : total >= ROUTE_MARKER_MIN_RUN_M[kind];
+      if (longEnough) {
         for (let i = start; i < end; i++) qualified[i].push(kind);
       }
       start = end;
@@ -8243,11 +8258,48 @@ function buildRouteMarkerData(sdata) {
     other: { type: 'FeatureCollection', features: other } };
 }
 
-// 7.5%, down from 10%. Measured over four Seattle trips at the 60 m run above:
-// one marker on Phinney Ridge, one on the 18.2% Ballard climb, none on flat
-// Queen Anne -> Fremont, three on hilly Magnolia. 6% put three on Phinney Ridge
-// for grades a rider would not think worth flagging.
-const STEEP_MARKER_GRADE_PCT = 7.5;
+// A hill is worth flagging for two different reasons, and one threshold cannot
+// express both: a short wall, and a long grind that never gets steep. Measured
+// as the longest CONSECUTIVE run at each grade on real trips --
+//
+//                              3%     4%     5%     6%   7.5%
+//   Phinney Ridge             266    266    266    133     70
+//   Ballard -> Capitol Hill   107     76     66     66     66
+//   Queen Anne -> Fremont      91      0      0      0      0
+//   Downtown -> Magnolia      177    177    177    177    177
+//   North Bend -> the Pass   1468   1468    600    281    281
+//
+// Phinney Ridge holds 5% for 266 m and never reaches 7.5% for more than 70:
+// a sustained climb a single steep threshold cannot see. North Bend holds 4%
+// for nearly a mile and a half, which is a different experience again. Queen
+// Anne -> Fremont has nothing above 4% and must stay unmarked.
+//
+// So three tiers, any of which qualifies a run. The gentler the grade, the
+// longer it has to be held to mean anything.
+const STEEP_MARKER_TIERS = [
+  { gradePct: 7.5, runM: 60 },    // a steep block
+  { gradePct: 5, runM: 250 },     // a sustained climb
+  { gradePct: 4, runM: 800 },     // a long grind
+];
+// The lowest tier decides which features are candidates at all; the tier test
+// below then decides whether the run they form actually qualifies.
+const STEEP_MARKER_GRADE_PCT = Math.min(...STEEP_MARKER_TIERS.map((t) => t.gradePct));
+
+// Does feats[start..end) contain a stretch steep enough for long enough under
+// ANY tier? Each tier is measured on its own contiguous sub-run, because a
+// gentle stretch does not interrupt a grind but does interrupt a wall.
+function steepRunQualifies(feats, start, end) {
+  for (const tier of STEEP_MARKER_TIERS) {
+    let run = 0;
+    for (let i = start; i < end; i++) {
+      if (feats[i].gradePct >= tier.gradePct) {
+        run += feats[i].lenM;
+        if (run >= tier.runM) return true;
+      } else run = 0;
+    }
+  }
+  return false;
+}
 function markerSpanM(a, b) {
   const kx = 111320 * Math.cos(((a[1] + b[1]) / 2) * Math.PI / 180);
   return Math.hypot((b[0] - a[0]) * kx, (b[1] - a[1]) * 111320);
@@ -13676,6 +13728,13 @@ const ROUTING_WEIGHT_GROUPS = [
       hint: 'Charges repeated small climbs that a net-elevation figure hides.' },
     { base: 'climb', suffix: 'SecPerM', label: 'Detour to avoid climbing (sec per m)', min: 0, max: 5, step: .05,
       hint: 'Above and beyond the time climbing costs. This is how much you dislike it.' },
+    { key: 'climbKneePct', label: 'Grade where a climb starts to hurt (%)', min: 0, max: 9, step: .5,
+      hint: 'Below this, a metre climbed costs the same however it is taken. Raise it '
+        + 'if gentle grades do not bother you; lower it to start avoiding them sooner.' },
+    { key: 'climbCostAt10Pct', label: 'Cost of a 10% grade, per metre climbed', min: 1, max: 40, step: .25,
+      hint: 'How much worse a steep metre is than a gentle one, anchored at 10%. The whole '
+        + 'curve follows: at the default, 6% costs 1.8x and 12% costs 13x. Set it to 1 to '
+        + 'ignore steepness entirely and charge only for height gained.' },
     { base: 'turn', suffix: 'Sec', label: 'Cost of a turn (seconds)', min: 0, max: 90, step: 1,
       hint: 'Discourages zig-zag routes through a street grid.' },
     { key: 'ferryWaitMin', label: 'Ferry boarding wait (minutes)', min: 0, max: 60, step: 1,
@@ -14981,7 +15040,7 @@ function syncLayersToggle() {
 // at a glance; their fuller meaning remains in each item's accessible label.
 const ACTIVE_ROUTE_ICON_DEFINITIONS = [
   ['route-dismount-marker-icon', 'Walk your bike', 'Dismount here.'],
-  ['route-marker-steep', 'Steep hill', 'Grade of 7.5% or more.'],
+  ['route-marker-steep', 'Steep hill', '7.5% for a block, 5% held for 250 m, or 4% for 800 m.'],
   ['route-marker-traffic', 'Heavy traffic', 'High traffic volume.'],
   ['route-marker-unpaved', 'Unpaved', 'Loose surface.'],
   ['route-marker-fail', 'Fails rules', 'Outside your safety limits.'],

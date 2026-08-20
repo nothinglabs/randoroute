@@ -1038,6 +1038,9 @@ const DEFAULT_WEIGHTS = Object.freeze({
   wideRoadDirect: 1.03, wideRoadBalanced: 1.14, wideRoadLowStress: 1.24,
   stressedRoadDirect: 1.04, stressedRoadBalanced: 1.18, stressedRoadLowStress: 1.30,
   ferryWaitMin: 15, uphillFactor: 7, downhillFactor: 2.5, undulationSecPerM: 3,
+  // The shape of the climb curve: nothing extra below the knee, and this much
+  // per metre climbed at 10%. 4 / 7.84 reproduces the curve exactly as shipped.
+  climbKneePct: 4, climbCostAt10Pct: 7.84,
   climbDirectSecPerM: 0.25, climbBalancedSecPerM: 0.9, climbLowStressSecPerM: 1.6,
   turnDirectSec: 6, turnBalancedSec: 11, turnLowStressSec: 15,
   diversityQuick: 1.3, diversityBalanced: 1.35, diversitySafer: 1.35, diversityWide: 1.6,
@@ -1056,6 +1059,14 @@ let weightsSignature = '';
 const ROUTING_WEIGHT_BOUNDS = Object.freeze({
   useMeasuredTraffic: Object.freeze([0, 1]),
   preferredRoute: Object.freeze([0.05, 1]),
+  // A knee of 0 charges every metre climbed; 9 charges almost nothing until the
+  // grade is genuinely steep. Above 9 the anchor at 10% has nothing to bite on.
+  climbKneePct: Object.freeze([0, 9]),
+  // 1 is a flat rate per metre of ascent, ignoring steepness entirely -- which
+  // is what the app did before the curve existed, and is worth being able to
+  // return to. Anything below 1 would make a steep metre cheaper than a gentle
+  // one, so the floor is 1 rather than 0.
+  climbCostAt10Pct: Object.freeze([1, 40]),
 });
 const ZERO_ROUTING_WEIGHTS = new Set(['ferryWaitMin', 'speedOverBalanced', 'speedOverLowStress',
   'speedBelowDirect', 'speedBelowBalanced', 'speedBelowLowStress', 'downhillFactor', 'undulationSecPerM',
@@ -1382,9 +1393,21 @@ function edgeTimeS(i, forward) {
 // clamp on ascent bounds both, and 15% is where riding stops and walking
 // begins -- which the dismount model already prices.
 const MAX_PRICED_GRADE = 0.15;
+// The curve is anchored on a number a rider can actually judge: what a 10%
+// grade should cost per metre climbed against a gentle one. The quadratic
+// coefficient follows from it, so moving the slider moves the whole curve
+// without anyone having to reason about what 0.19 means.
+//
+//   costAt10 7.84 (default), knee 4%   ->   6%  1.8   8%  4.0   12%  13.2
+//
+// Both live in the routing weights, so the Advanced menu can reach them and a
+// shared route reproduces the sender's curve rather than the recipient's.
 function climbSteepness(netAsc, lengthM) {
   const gradePct = 100 * netAsc / Math.max(1, lengthM);
-  return 1 + 0.19 * Math.max(0, gradePct - 4) ** 2;
+  const knee = activeWeights.climbKneePct;
+  const excessAt10 = Math.max(1, 10 - knee);
+  const bite = (activeWeights.climbCostAt10Pct - 1) / (excessAt10 * excessAt10);
+  return 1 + Math.max(0, bite) * Math.max(0, gradePct - knee) ** 2;
 }
 function pricedAscent(netAsc, lengthM) {
   return Math.min(netAsc, lengthM * MAX_PRICED_GRADE);
