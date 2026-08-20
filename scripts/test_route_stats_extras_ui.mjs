@@ -55,7 +55,10 @@ const rendered = await page.evaluate(() => ({
   elevationDialogSummary: document.getElementById('elevationDialogSummary').textContent
     .replace(/\s+/g, ' ').trim(),
   quickSummaryHeight: document.getElementById('routeQuickSummary').getBoundingClientRect().height,
-  categoryLabelLines: [...document.querySelectorAll('.route-summary-category-item > span:last-child')]
+  mixText: [...document.querySelectorAll(
+    '.route-summary-category-item, .route-summary-secondary-item')]
+    .map((item) => item.textContent.replace(/\s+/g, ' ').trim()),
+  categoryLabelLines: [...document.querySelectorAll('.route-summary-category-label')]
     .map((label) => Math.round(label.getBoundingClientRect().height
       / Number.parseFloat(getComputedStyle(label).lineHeight))),
   // The mix is one aligned column: every row -- the five categories AND the
@@ -65,7 +68,10 @@ const rendered = await page.evaluate(() => ({
   mixAlignment: [...document.querySelectorAll(
     '.route-summary-category-item, .route-summary-secondary-item')].map((item) => {
     const pct = item.querySelector('b').getBoundingClientRect();
-    const label = item.querySelector('span:last-child').getBoundingClientRect();
+    // Addressed by CLASS, not position. This was `span:last-child`, and adding a
+    // distance column after the label silently made it null -- the selector was
+    // describing where the label sat rather than what it was.
+    const label = item.querySelector('.route-summary-category-label').getBoundingClientRect();
     return { pctRight: Math.round(pct.right), labelLeft: Math.round(label.left),
       gap: Math.round(label.left - pct.right) };
   }),
@@ -131,6 +137,14 @@ check('the threshold speeds are bold inside their labels',
     { text: 'At least 55 mph', bold: '55 mph' },
   ]), JSON.stringify(rendered.speedLabels));
 check('the shoulder statistic omits “confirmed”', !/confirmed/i.test(rendered.shoulder), rendered.shoulder);
+// A share alone does not tell a rider what they are in for: 10% caution is a
+// pleasant surprise on a four-mile ride and thirteen miles of it on a century.
+// Every mix row carries both, including Unpaved.
+check('every mix row shows a share AND a distance',
+  rendered.mixText.length === 6
+    && rendered.mixText.every((row) => /\d+%/.test(row) && /[\d.]+ mi\b/.test(row)),
+  rendered.mixText.join(' | '));
+
 check('the rendered Stats page has no JavaScript errors', errors.length === 0, errors.join(' | '));
 
 await browser.close();

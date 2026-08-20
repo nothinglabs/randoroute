@@ -1288,10 +1288,15 @@ if (!hasRoute) {
   const unpavedPct = routePercent(routeStats.unpavedM, ridingM, true);
   const hasSignificantUnpaved = routeStats.unpavedM > SIGNIFICANT_UNPAVED_M;
   const unpavedSummaryMetric = hasSignificantUnpaved
-    ? `<button class="route-summary-secondary-item mix-unpaved-warning" id="summaryUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></button>`
-    : `<span class="route-summary-secondary-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span>Unpaved</span></span>`;
+    ? `<button class="route-summary-secondary-item mix-unpaved-warning" id="summaryUnpavedWarningLink" type="button" aria-label="Review unpaved route concerns"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span class="route-summary-category-label">Unpaved</span><em class="route-summary-category-mi">${fmtCategoryMi(routeStats.unpavedM)}</em></button>`
+    : `<span class="route-summary-secondary-item"><span class="route-summary-unpaved-swatch" aria-hidden="true"></span><b>${unpavedPct}</b><span class="route-summary-category-label">Unpaved</span><em class="route-summary-category-mi">${fmtCategoryMi(routeStats.unpavedM)}</em></span>`;
+  // Share AND distance. A percentage alone does not tell a rider what they are
+  // in for: 10% caution is a pleasant surprise on a four-mile ride and thirteen
+  // miles of it on a century. The label carries a class rather than being found
+  // by position -- a test and the stylesheet both used `span:last-child`, and
+  // appending this column silently made both of them null.
   const categoryRows = ROUTE_CATEGORY_LABELS
-    .map(([key, label]) => `<span class="route-summary-category-item category-${key}"><span class="route-summary-category-swatch ${key}" aria-hidden="true"></span><b>${categoryPct[key]}%</b><span>${label}</span></span>`).join('');
+    .map(([key, label]) => `<span class="route-summary-category-item category-${key}"><span class="route-summary-category-swatch ${key}" aria-hidden="true"></span><b>${categoryPct[key]}%</b><span class="route-summary-category-label">${label}</span><em class="route-summary-category-mi">${fmtCategoryMi(routeStats.categoryM[key])}</em></span>`).join('');
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
   const tripNotes = [

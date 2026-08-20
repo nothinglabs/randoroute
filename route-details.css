@@ -39,8 +39,15 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
    widest value the code emits, "<0.1%". */
 .route-summary-mix { display: grid; align-content: center; gap: 4px; min-width: 0; color: #52616b; font: 700 10.5px/1.15 system-ui; }
 .route-summary-mix-items { display: grid; gap: 3px; min-width: 0; }
-.route-summary-category-item { display: grid; grid-template-columns: 18px 36px minmax(0, 1fr); align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
-.route-summary-category-item > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* swatch | share | label | distance. The label is the only column allowed to
+   shrink: a truncated "Needs Cautio…" still reads, a truncated "1.3 mi" does
+   not. */
+.route-summary-category-item { display: grid; grid-template-columns: 18px 36px minmax(0, 1fr) max-content; align-items: baseline; gap: 5px; min-width: 0; white-space: nowrap; }
+.route-summary-category-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Quieter than the share: the percentage is the headline, the distance is what
+   the rider checks second. */
+.route-summary-category-mi { font-style: normal; font-variant-numeric: tabular-nums; font-size: .82em; color: #5a6b7c; }
+@media (prefers-color-scheme: dark) { .route-summary-category-mi { color: #9fb0c0; } }
 .route-summary-mix b { color: #223c4b; font: 850 11.5px/1 system-ui; text-align: right; white-space: nowrap; }
 .route-summary-mix .category-caution, .route-summary-mix .category-caution b { color: #813e00; }
 .route-summary-mix .category-fail, .route-summary-mix .category-fail b { color: var(--verdict-fail); }
@@ -53,7 +60,8 @@ h1 { margin: 0; font: 750 30px/1.15 system-ui; letter-spacing: -.03em; }
 /* The unpaved row sits in the same three columns as the categories above it,
    under a hairline, instead of centring itself on its own axis. */
 .route-summary-secondary { min-width: 0; padding-top: 4px; border-top: 1px solid #e1e9ee; }
-.route-summary-secondary-item { display: grid; grid-template-columns: 18px 36px minmax(0, 1fr); align-items: center; gap: 5px; width: 100%; min-width: 0; color: #415867; text-align: left; white-space: nowrap; }
+/* Same four columns as a category row above, so Unpaved lines up with them. */
+.route-summary-secondary-item { display: grid; grid-template-columns: 18px 36px minmax(0, 1fr) max-content; align-items: baseline; gap: 5px; width: 100%; min-width: 0; color: #415867; text-align: left; white-space: nowrap; }
 .route-summary-mix button.mix-unpaved-warning { appearance: none; margin: 0; padding: 0; border: 0; background: transparent; font: inherit; cursor: pointer; }
 .route-summary-mix .mix-unpaved-warning, .route-summary-mix .mix-unpaved-warning b { color: #b42318; }
 .route-summary-mix .mix-unpaved-warning > span:last-child { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 2px; }

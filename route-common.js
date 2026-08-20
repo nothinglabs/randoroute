@@ -163,6 +163,11 @@ const fmtMiles = (m) => {
   const miles = m / 1609.34;
   return miles >= 10 ? String(Math.round(miles)) : miles.toFixed(1);
 };
+// A share on its own does not tell a rider what they are in for: 10% caution
+// is a pleasant surprise on a 4-mile ride and thirteen miles of it on a
+// century. The mix rows carry both, and both pages format the distance the
+// same way here so they cannot drift apart.
+const fmtCategoryMi = (m) => `${fmtMiles(m)} mi`;
 const fmtFt = (m) => Math.round(m * 3.28084).toLocaleString();
 const fmtDist = (m) => m < 160.934 ? `${fmtFt(m)} ft` : `${fmtMi(m)} mi`;
 function fmtDur(s) {
@@ -229,7 +234,7 @@ function googleStreetViewUrl(lat, lng, heading = null) {
     MAX_CREDIBLE_GRADE_PCT, SUSTAINED_GRADE_WINDOW_M,
     isConfirmedUnpavedSurface, isDismountSegment, isTaggedDismountSegment,
     credibleSegmentGradePct, sustainedUphillGradeSamples, routeGradeStats,
-    fmtMi, fmtMiles, fmtFt, fmtDist, fmtDur, routePercent,
+    fmtMi, fmtMiles, fmtCategoryMi, fmtFt, fmtDist, fmtDur, routePercent,
     routeCategoryPercentages, googleStreetViewUrl,
   });
 }(typeof self !== 'undefined' ? self : globalThis));
