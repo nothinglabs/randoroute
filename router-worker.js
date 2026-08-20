@@ -1359,6 +1359,37 @@ function edgeTimeS(i, forward) {
   return t;
 }
 
+// How much worse is a metre of climbing at this grade than a metre of gentle
+// climbing? Rises from 1x at 4% -- below which nobody minds -- and accelerates,
+// because the misery of a hill is not linear in its steepness: 8% is far worse
+// than twice 4%, and 10% is worse again.
+//
+//     4%  1.00      8%  4.04      12%  13.16
+//     6%  1.76     10%  7.84      15%  24.00
+//
+// This replaced `1 + max(0, grade - 0.04) * 8`, which rose only 1.00 -> 1.88
+// across the whole range 4% -> 15%. Because the charge is per metre of ASCENT,
+// and a steeper way to the same height is shorter, that shallow ramp very
+// nearly cancelled: gaining 50 m at 4% and at 12% cost almost the same. Fremont
+// Avenue N -- 557 m at 3-6%, 239 m at 6-9%, and a 15.8% block -- was charged 58
+// seconds against Stone Way N's 30 for the same hill, and Stone Way is the
+// gentler climb every local rider takes.
+//
+// ASCENT is clamped, not just the multiplier, and that ordering is the point.
+// The DEM cannot see a bridge deck or a trail benched into a hillside, so a
+// short edge can record a grade no bicycle could climb. Bounding the multiplier
+// alone would still leave the invented metres of ascent to be paid for. One
+// clamp on ascent bounds both, and 15% is where riding stops and walking
+// begins -- which the dismount model already prices.
+const MAX_PRICED_GRADE = 0.15;
+function climbSteepness(netAsc, lengthM) {
+  const gradePct = 100 * netAsc / Math.max(1, lengthM);
+  return 1 + 0.19 * Math.max(0, gradePct - 4) ** 2;
+}
+function pricedAscent(netAsc, lengthM) {
+  return Math.min(netAsc, lengthM * MAX_PRICED_GRADE);
+}
+
 // Route choice may be more climb-averse than the physical travel-time model.
 // Net climbing receives the full mode-specific cost; extra up-and-down within
 // an edge receives only half, so rolling terrain is discouraged without being
@@ -1367,13 +1398,12 @@ function climbPreferenceS(i, forward, mode) {
   if (eFlags[i] & 32) return 0;
   const asc = forward ? eAsc[i] : eDes[i];
   const des = forward ? eDes[i] : eAsc[i];
-  const netAsc = Math.max(0, asc - des);
-  const rollingAsc = Math.max(0, asc - netAsc);
+  const netAsc = pricedAscent(Math.max(0, asc - des), eLen[i]);
+  const rollingAsc = Math.max(0, asc - Math.max(0, asc - des));
   const key = mode === 'direct' ? 'climbDirectSecPerM'
     : mode === 'low' ? 'climbLowStressSecPerM' : 'climbBalancedSecPerM';
-  const grade = netAsc / Math.max(1, eLen[i]);
-  const steepness = 1 + Math.max(0, grade - 0.04) * 8;
-  return (netAsc * steepness + rollingAsc * 0.5) * activeWeights[key];
+  return (netAsc * climbSteepness(netAsc, eLen[i]) + rollingAsc * 0.5)
+    * activeWeights[key];
 }
 
 // Surface preference is intentionally a soft, distance-proportional route
@@ -2004,8 +2034,11 @@ function edgeCostFloor(i, forward) {
     const asc = forward ? eAsc[i] : eDes[i];
     const des = forward ? eDes[i] : eAsc[i];
     const netAsc = Math.max(0, asc - des);
-    const steepness = 1 + Math.max(0, netAsc / Math.max(1, eLen[i]) - 0.04) * 8;
-    climb = (netAsc * steepness + Math.max(0, asc - netAsc) * 0.5) * climbRate;
+    // Identical to climbPreferenceS: this is A*'s lower bound on the same
+    // quantity, and the two diverging breaks the search rather than the price.
+    const priced = pricedAscent(netAsc, eLen[i]);
+    climb = (priced * climbSteepness(priced, eLen[i])
+      + Math.max(0, asc - netAsc) * 0.5) * climbRate;
   }
   return (edgeTimeS(i, forward) + climb) * m
     + steepUphillAvoidanceS(i, forward, mode) + surfacePreferenceS(i, rules)

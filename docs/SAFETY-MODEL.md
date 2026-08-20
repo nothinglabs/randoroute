@@ -1284,7 +1284,39 @@ unreachable.
 | bike facility | `facility*` | separated lane or path can justify a detour |
 | signed bike route | `designated`, `strongDesignated` | a recommendation, worth a detour but not a fact about the road |
 | residential street | `residential` | quieter grid |
-| climbing | `climb*SecPerM`, `uphillFactor` | time model plus a preference |
+| climbing | `climb*SecPerM`, `uphillFactor`, `climbSteepness()` | time model plus a preference that rises with the square of the grade |
+
+**How a climb is priced.** Every metre of net ascent costs `climb*SecPerM`
+seconds, multiplied by how steep that metre was:
+
+    steepness = 1 + 0.19 x (gradePct - 4)^2
+
+     4%  1.00      8%  4.04      12%  13.16
+     6%  1.76     10%  7.84      15%  24.00
+
+Below 4% nobody minds and the multiplier is 1. Above it the cost accelerates,
+because the misery of a hill is not linear in its steepness: 8% is far worse
+than twice 4%. Until v.771 this ramp was linear -- `1 + max(0, grade - 0.04) * 8`
+-- rising only 1.00 to 1.88 across the whole range 4% to 15%. Since the charge
+is per metre of ASCENT, and a steeper way to the same height is shorter, that
+shallow ramp very nearly cancelled itself: gaining 50 m at 4% and at 12% cost
+about the same. Fremont Avenue N in Seattle -- 557 m at 3-6%, 239 m at 6-9%,
+and a 15.8% block -- was charged 58 seconds against Stone Way N's 30 for the
+same hill, and Stone Way is the gentler climb every local rider takes. It is
+now 190 against 35.
+
+**Ascent is clamped at 15% of the edge's length, and clamping ascent rather
+than the multiplier is the point.** The terrain model cannot see a bridge deck
+or a trail benched into a hillside, so a short edge can record a grade no
+bicycle could climb -- 8 m of the Spokane River Centennial Trail reads 87.7%.
+Bounding only the multiplier would still leave the invented metres of ascent to
+be paid for. One clamp on ascent bounds both, and 15% is where riding stops and
+walking begins, which the dismount model already prices. The Burke-Gilman's
+31.9 km costs 99 seconds of climb preference in total under this rule.
+
+The identical expression is used by A*'s admissible lower bound in
+`edgeCostFloor`. The two must never diverge: that breaks the search rather than
+the price, and `test_route_potential.mjs` is what proves it has not happened.
 | turns | `turn*Sec` | fewer manoeuvres |
 | route diversity | `diversity*` | keeps the six offered routes genuinely different |
 
