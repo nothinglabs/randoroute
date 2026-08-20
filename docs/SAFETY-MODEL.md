@@ -1252,14 +1252,23 @@ unconditional veto this override once starred a 40.1 mi / 3h22 zero-fail
 loop over a 30.7 mi / 2h33 route carrying ~1% failing distance — a
 49-minute detour taken automatically.
 
-**There is no hard floor under the star.** v.762 added one — if the star
-failed across 15% or more of its own length and a comparable candidate
-carried at most 40% as many failing metres, that candidate took the star
-regardless of score — and v.769 removed it. It changed no recommendation
-across 146 audited trips in two states; on the single trip where it selected
-anything, it re-selected the route already starred. It was the only rule here
-that overrode price rather than expressing it, and it was shipped on reasoning
-without a trip that needed it. Anything replacing it should arrive with one.
+**One hard floor sits under all of it.** If the starred route fails the
+rider's rules across **15% or more of its own length**, and another candidate
+within a wide-but-sane detour of *it* (1.8× distance + 1.6 km, 1.85× time +
+10 min per leg) carries at most 40% as many failing metres, that candidate
+takes the star — whatever the scores say. It is the only rule here that
+overrides price rather than expressing it. The share test, not a metre count,
+is what separates the two cases above: a long ride with 1% failing distance is
+an ordinary route with a bad block in it and must not trigger a 49-minute
+detour, while a short route failing across half of itself is a different
+animal. The card says so plainly: *"Starred because the quicker option fails
+your rules across most of itself."*
+
+It fires rarely — about one trip in thirty. v.769 deleted it on a record
+claiming it had never fired at all; instrumenting the live worker showed
+otherwise, on Tillamook → Pacific City (45.9 km / 154 min / **19.8%** failing
+→ 51.2 km / 186 min / **6.4%**), and v.770 restored it. Rare is not
+unreachable.
 
 | influence | function / weight | what it expresses |
 |---|---|---|

@@ -870,11 +870,14 @@ The same instrumentation found the **practical-window widening** (the other half
 of `.762`) firing **zero** times in 31 trips, including Kirkland → Redmond, the
 trip it was written for, which no longer reproduces a one-member pool.
 
-**Disposition (v.769):** the window widening is removed as dead weight. The
-guard was removed with it, on the rider's instruction to roll back `a2895bc`
-whole — a decision taken while the "never fires" claim above still stood.
-Restoring the guard alone is a one-commit change if the Tillamook trade is the
-one the rider wants.
+**Disposition (v.770):** the window widening stays removed as dead weight — 0
+fires in 31 trips. The guard is **restored**. It was deleted in v.769 alongside
+the window, on a decision taken while the "never fires" claim above still
+stood; once the Tillamook firing was measured, the basis for deleting it was
+gone. It is the only rule in the recommendation that overrides price rather
+than expressing it, and it earns that by turning a 19.8%-failing star into a
+6.4% one for 5.4 km and 32 minutes — the same trade Baker City → Halfway is
+praised for in round 5.
 
 **It is not dead code.** Lifted verbatim into a synthetic harness it fires
 correctly on two cases and correctly declines on four boundary cases, including

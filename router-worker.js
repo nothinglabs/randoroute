@@ -3315,6 +3315,42 @@ function recommendationScoreBreakdown(route) {
 }
 const recommendationScore = (route) => recommendationScoreBreakdown(route).totalS;
 
+// The fail-share guard: never star a route carrying far more failing road than
+// an option shown beside it. Factored out of routeOptions so it can be
+// exercised directly, and it needs that because it fires rarely -- roughly one
+// trip in thirty. It was once recorded here as having "not fired once across 86
+// audited trips", and on that claim it was deleted in v.769; instrumenting the
+// live worker over the 30-trip round-5 corpus caught it firing on Tillamook ->
+// Pacific City, moving the star from 45.9 km / 154 min / 19.8% failing to
+// 51.2 km / 186 min / 6.4%. Restored in v.770. Rare is not the same as
+// unreachable, and the way to tell them apart is to instrument the real thing
+// rather than reason about anti-correlated tests.
+//
+// It draws from the FULL candidate list on purpose, not the priced pool. The
+// pool is bounded against the fastest route, so the very alternative worth
+// having is often outside it: McMinnville -> Newberg came 454 m of failing road
+// short of firing with four qualifying alternatives waiting, every one of them
+// unpriced. Catching what the practical window excludes is the whole job.
+const GUARD_FAIL_SHARE = 0.15;        // of the starred route's own length
+const GUARD_ALTERNATIVE_SHARE = 0.4;  // the alternative's fail, against the star's
+function failShareGuardPick(recommended, choices) {
+  if (!recommended || !(recommended.distM > 0)) return null;
+  if (recommended.failM < recommended.distM * GUARD_FAIL_SHARE) return null;
+  // The same "wider but sane detour" the fully-matching override uses,
+  // measured against the STAR: the question is whether a route of comparable
+  // length avoids what this one rides.
+  const saferComparable = choices.filter((route) => route !== recommended
+    && route.failM <= recommended.failM * GUARD_ALTERNATIVE_SHARE
+    && route.legs.length === recommended.legs.length
+    && route.legs.every((leg, index) => {
+      const starLeg = recommended.legs[index];
+      return leg.distM <= starLeg.distM * 1.8 + 1600
+        && leg.timeS <= starLeg.timeS * 1.85 + 600;
+    }));
+  return saferComparable.reduce((best, route) =>
+    !best || recommendationScore(route) < recommendationScore(best) ? route : best, null);
+}
+
 function ferryEdgeGroups(routeResult) {
   const groups = [];
   for (let index = 0; index < routeResult.edgeIds.length; index++) {
@@ -4591,6 +4627,34 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
       recommended = bestMatching;
       recommendationBasis = 'fully-matching-override';
     }
+  }
+  // Last resort: never star a route that fails the rider's rules across a
+  // large share of itself while a comparable route beside it barely fails.
+  //
+  // Every rule above assumes the comparison that produced `recommended` was
+  // a real one. The floor on the practical window makes a one-member pool
+  // rare; this makes its consequence harmless, and unlike the window it does
+  // not depend on a threshold that has already had to move once.
+  //
+  // The test is the SHARE of the route that fails, not its metres. A long
+  // ride with 1% failing distance is an ordinary route with a bad block in
+  // it, and overriding there is what once starred a 40.1 mi zero-fail loop
+  // over a 30.7 mi route -- a 49-minute detour bought for eight minutes of
+  // priced fail. A route failing 15% or more of its own length is a
+  // different animal: Kirkland -> Redmond was 47%, two miles of 40 mph
+  // arterial with no shoulder, offered beside routes carrying 58-131 m.
+  //
+  // Placed BEFORE the Preferred-route override on purpose. This guards the
+  // AUTOMATIC choice, where the comparison behind the star may have been
+  // thin; marking a route Preferred is the rider saying which corridor they
+  // want, and a safety net that quietly undid their instruction would be a
+  // worse failure than the one it prevents. Running it last did exactly that
+  // -- test_preferred_routes caught the strong Preferred candidate losing
+  // the star to this rule.
+  const guarded = failShareGuardPick(recommended, choices);
+  if (guarded) {
+    recommended = guarded;
+    recommendationBasis = 'fail-share-guard';
   }
   // Marking a named route Preferred is an explicit recommendation request.
   // The strong lens takes the star when it found a route that actually uses
