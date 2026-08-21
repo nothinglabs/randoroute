@@ -1794,36 +1794,51 @@ for six commits (D1, and the revert in `b0b715b`). A guard that only moves which
 route wears the star removes nothing from the six letters and cannot repeat that
 failure.
 
-### Q3 — the one worth acting on, and it is stronger than filed.
+### Q3 — CORRECTED. Not dominated, and the fix I endorsed would have been a mistake.
 
-Re-measured independently at repo `e27af03`, and Cannon Beach → Manzanita is
-worse than the finding says. The full board, on a **19.3 km** crow-flight trip:
+> **This section said the opposite for several hours.** It claimed Cannon
+> Beach's Route F was "beaten by Route D on all three axes" and endorsed a
+> failing-share ceiling on the corridor exemption. The rider asked what D's
+> surface was. The answer settles it, and the answer was not in the audit
+> output.
 
-| | distance | time | failing |
-| --- | --- | --- | --- |
-| A\* `alt-quick` | 23.0 km | 92 min | 2,437 m (10.6%) |
-| B `discover-gentle` | 23.3 km | 94 min | 2,437 m (10.5%) |
-| C `combined-corridor` | 34.4 km | 134 min | 1,426 m (4.1%) |
-| D `friendly` | 45.3 km | 189 min | **0 m** |
-| E `alt-safer` | 51.0 km | 200 min | **0 m** |
-| **F `direct-lens-friendly`** | **55.2 km** | **190 min** | **21,269 m (38.5%)** |
+Re-measured at repo `e27af03`, with surface and climb read from the graph
+rather than from the audit JSON, which carries neither:
 
-The finding compares F against the star. The sharper comparison is **F against
-D**: F is 9.9 km longer, one minute slower, and carries 21.3 km of failing road
-where D carries none. F is beaten on every axis by another route *on the same
-screen*, and what it offers in exchange is the single thing the safety model
-exists to warn about. The corridor argument -- that a different road earns its
-slot however it scores -- is weakest exactly here.
+| | distance | time | failing | **gravel** | climb |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A\* `alt-quick` | 14.3 mi | 92 min | 10.6% | 0.0 mi | 861 m |
+| B `discover-gentle` | 14.5 mi | 94 min | 10.5% | 0.0 mi | 889 m |
+| C `combined-corridor` | 21.4 mi | 134 min | 4.1% | 6.9 mi | 1,066 m |
+| D `friendly` | 28.1 mi | 189 min | 0.0% | **19.9 mi** | 1,542 m |
+| E `alt-safer` | 31.7 mi | 200 min | 0.0% | **24.0 mi** | 1,519 m |
+| F `direct-lens-friendly` | 34.3 mi | 190 min | 38.5% | 0.8 mi | 1,001 m |
 
-**The narrow fix the finding proposes is the right one:** a ceiling on failing
-*share* for the corridor exemption, not a general dominance trim. Note it must
-be a share ceiling and not a dominance test, for the D1 reason above.
+D and E buy their zero failing metres with twenty and twenty-four miles of
+gravel and about 500 m more climbing. **F is the only long PAVED alternative on
+the board.** It is not dominated by anything. A ceiling on failing share for the
+corridor exemption would delete the one paved long way and leave a rider who
+does not ride gravel with the coast highway or nothing -- which is D1's mistake
+wearing different clothes: a rule that reads as obviously right across three
+columns and removes a genuinely distinct choice.
 
-**Second observation, not in the finding.** A and B are near-identical: 23.0 km
-/ 92 min / 10.6% against 23.3 km / 94 min / 10.5%. Two of six letters on this
-trip are the same route. The v.780 diversity sweep did not separate them, and a
-trip that spends a slot on a twin *and* a slot on F is offering four useful
-routes out of six.
+**What survives.** On a 12-mile crow-flight trip the board spends a slot on a
+34-mile route carrying 21 miles of failing highway. Whether that earns a letter
+is a judgement about how far "a different way to go" should stretch. It is not a
+dominance question, and it must not be answered with a dominance-shaped rule.
+
+**The twin stands.** A and B are 14.3 mi / 92 min / 10.6% against 14.5 mi /
+94 min / 10.5%. Two of six letters on this trip are the same route, and the
+v.780 diversity sweep did not separate them.
+
+**The tooling defect this exposes, and it is the important part.**
+`audit_route.mjs` exports `distM`, `timeS`, `failM`, `dismountM`, `ferryM` and
+the four shape metrics. It exports **no surface and no climb**. Every dominance
+argument in every round of this document was therefore made against the axes
+that happened to be in the JSON, and "beaten on every axis" has silently meant
+"beaten on the axes we exported". Two rounds have now proposed removing routes
+on that basis. Until the exporter carries surface and ascent, a dominance claim
+from this tool is not safe to act on.
 
 **The correction inside Q3 should stand on its own.** Round 5's D1 states the
 residual dominated options are "every one of them profile `quick-friendly` --
@@ -1831,7 +1846,8 @@ reserved by name in `protectedCandidates` and therefore exempt from every
 dominance test by design". Measured across these fifteen trips: **35 dominated
 options on 14 trips**, spread across nine profiles, with `quick-friendly`
 accounting for three. The protection clause is not what keeps them. That
-sentence in D1 would send the next reader to the wrong place.
+sentence in D1 would send the next reader to the wrong place -- and given the
+paragraph above, so would the count itself.
 
 ## What surprised me about the tooling
 
