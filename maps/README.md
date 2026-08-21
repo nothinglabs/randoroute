@@ -139,6 +139,18 @@ the same. Oregon's is the worked example of a state that reached an agent's
 ceiling: it explains the number by naming the sources the state does not
 publish, not the work that was not done.
 
+**When a gate names a source the state does not publish.** Levels 4 and 6 name
+specific enrichments, and a state can simply not have one — Nevada's DOT
+publishes no bicycle facility inventory and no stress rating at all. Read those
+gates as *"every enrichment in this row that the state publishes is conflated,
+and `STATUS.md`'s census records the absence of the rest with a field-level
+reason"*. An absent source is a fact about the state, not a failure of the
+import, and it must not park a finished state below a level it has otherwise
+cleared — the levels are not a checklist of sources but a ladder of how much of
+the state can be trusted. What is never acceptable is skipping a gate the state
+*could* have met. The census is what makes the difference auditable, which is
+why it is a deliverable rather than a note.
+
 ### The verification report (level 5 and up)
 
 Levels 5 and 7 are the ones an agent can reach without a bicycle, and they are

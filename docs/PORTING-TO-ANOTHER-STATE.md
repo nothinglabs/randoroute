@@ -96,8 +96,16 @@ exactly the silent-wrong-state failure this section exists to prevent.
 The same goes for the small ones, all of which take a state or a bounds now and
 none of which did before the first port: `fetch_census_urban_areas.py`,
 `build_routes.py --bounds`, `build_overlay_tiles.py --state`,
-`build_hpms.py --state --year`, `stamp_tiles_version.mjs <state>`,
-`build_compressed_overlays.mjs` (walks the registry).
+`build_hpms.py --state --year`, `stamp_tiles_version.mjs <state>`.
+
+`build_compressed_overlays.mjs` is the exception and needs saying plainly,
+because "walks the registry" reads like a convenience and is a hazard during an
+import: run bare, it rewrites **every** state's committed `.gz` overlays, and
+the bytes it writes are not identical to whatever wrote them last even when the
+content is. Nevada's import found Oregon's and Washington's overlays modified
+in `git status` for no reason. Pass the state — `build_compressed_overlays.mjs
+<state>` — and keep the bare form for a format change that genuinely should
+touch every state.
 
 ### "Nothing outside `maps/` names a state" now covers the build too
 
@@ -118,6 +126,27 @@ builders read (`RouteIdentifier`, `LTS_Bicycle`, `ShoulderWidth`,
 `SpeedLimit`, `BikeFacilityType`, `fc`, `owner`, `adt`, `adty`). Those names
 look like WSDOT's because Washington was first; treat them as the build
 contract and translate into them.
+
+**The facility VALUES are a closed vocabulary too, and `region.json` is not
+where you declare it.** `build_graph.WSDOT_FACILITY_TYPE` is a module constant,
+so a `--facilities` record is recognised only if `BikeFacilityType` is exactly
+one of `Shared Lane`, `Bike Lane`, `Buffered Bike Lane`, `One-Way Separated
+Bike Lane`, `Two-Way Separated Bike Lane`, `Shared-Use Path`, and only if
+`Status` is exactly `Existing`. Anything else is silently skipped.
+`facilityLevels` in `region.json` is the *app-side* half — what the card and
+the tap layer call a level — and setting it does not teach the builders a new
+word. Map your agency's codes onto those six in the fetcher, and where a code
+spans two of them, pick the one that cannot overstate the facility.
+
+Which per-source fields each builder reads is worth checking against the code
+rather than inferred: `--roadlog` takes `adt/adty/edge/clamped/shP/surface`,
+`--funcclass` takes `fc/owner`, `--aadt` takes `adt/adty`, `--hpms` takes
+`adt/adty/fc/owner`, and `--blts` takes the whole inventory record
+(`ShoulderWidth`, `SpeedLimit`, `LaneCount`, `LTS_Bicycle`, `Prohibited`,
+`LimitedAccess`, `RouteIdentifier`). Note the last one: `build_roads.py` reads
+posted speed out of the `--blts` stream while `build_graph.py` reads it from
+`--legal-speeds`, so a state with a separate speed layer has to join it into
+the inventory stream as well or the tiles and the router disagree.
 
 Two facts that once sat on the wrong side of this line have been moved:
 overlay feature counts (now `sourceCounts` in `region.json`; `SOURCES` in
@@ -336,6 +365,28 @@ https://www.arcgis.com/sharing/rest/search?q=<terms>&f=json&bbox=<state bbox>
 https://www.arcgis.com/sharing/rest/search?q=owner:<org>&f=json&num=50
 <server>/arcgis/rest/services?f=json          then walk the folders
 ```
+
+**A DOT may run more than one ArcGIS server, and the useful one is not always
+the one its open-data hub links to.** Nevada's is the worked example: the
+public-facing `gis.dot.nv.gov/arcgis/rest/services` holds mapping and
+application services, and the entire road inventory — shoulder, posted speed,
+lane count, access control, measured AADT, functional class, ownership — lives
+on `gis.dot.nv.gov/**rhgis**/rest/services`, in a folder called `EAMS`, in one
+service called `NDOT_ALRS` with 83 layers named for the asset rather than the
+subject. Nothing in `rhgis`, `EAMS` or `ALRS` says "road". Walk `/rest/services`
+on **every** host the agency serves from, not just the one the hub links.
+
+**Check which state's DOT you found.** Several share an abbreviation. Nevada
+and Nebraska are both "NDOT", and an ArcGIS Online search for "NDOT shoulder
+width" returns Nebraska's items — which do include a statewide shoulder-width
+feature service, so the wrong answer looks like a good one. Match the host
+(`gis.dot.nv.gov` vs `gis.ne.gov`) before believing a schema.
+
+**Time-sliced layers serve their own history.** A linear-referencing asset
+system keeps retired records in the same layer behind `FromDate`/`ToDate`, and
+the REST default returns all of them. Nevada's shoulder layer answers with
+4,390 rows of which 3,164 are superseded values. Filter to the current slice
+(`ToDate IS NULL`) or measure the past.
 
 **A re-publication may have been stripped.** WSDOT republishes the county road
 log as geometry and linear referencing with *every attribute removed*. The

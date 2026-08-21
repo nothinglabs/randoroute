@@ -1,0 +1,84 @@
+{
+  "state": "nevada",
+  "routes": [
+    { "id": "lv-strip-fremont", "name": "Bellagio, Las Vegas Strip -> Fremont Street Experience",
+      "from": [-115.17670, 36.11260], "to": [-115.14400, 36.16990],
+      "note": "The single most-ridden 4 miles in the state. Las Vegas Blvd is a six-lane arterial with no bike facility; the question is what the router offers instead." },
+
+    { "id": "lv-unlv-summerlin", "name": "UNLV -> Downtown Summerlin",
+      "from": [-115.14280, 36.10770], "to": [-115.33352, 36.15129],
+      "note": "Straight across the valley grid, 12 miles. Tests whether RTC's bike-lane registry actually reaches the arterials the grid is made of." },
+
+    { "id": "lv-henderson", "name": "Las Vegas City Hall -> Water Street District, Henderson",
+      "from": [-115.14841, 36.16743], "to": [-114.98227, 36.03196],
+      "note": "The valley's main diagonal. Corridor 4 in corridors.json; audited here for shape rather than existence." },
+
+    { "id": "lv-airport-nlv", "name": "North Las Vegas City Hall -> Harry Reid International Airport",
+      "from": [-115.12260, 36.19890], "to": [-115.15230, 36.08400],
+      "note": "North-south across the whole urban core past two freeway interchanges. Airports are the classic one-way-area trap; read the failure line before calling anything a defect." },
+
+    { "id": "lv-wetlands", "name": "Downtown Las Vegas -> Clark County Wetlands Park",
+      "from": [-115.14400, 36.16990], "to": [-115.02460, 36.09660],
+      "note": "The valley's flagship off-street ride, along the Las Vegas Wash. Should find shared-use path; if it does not, the RTC path layer is not reaching the graph." },
+
+    { "id": "lv-redrock", "name": "Summerlin South -> Red Rock Canyon scenic drive entrance",
+      "from": [-115.33112, 36.15326], "to": [-115.42700, 36.13500],
+      "note": "The road ride every Las Vegas cyclist does. NV 159 with a wide shoulder; a 6-mile trip that leaves the urban grid." },
+
+    { "id": "henderson-boulder", "name": "Water Street District, Henderson -> Boulder City",
+      "from": [-114.98227, 36.03196], "to": [-114.83376, 35.97876],
+      "note": "The River Mountains Loop Trail corridor. A 35-mile paved loop exists here; the direct road is US 93/95 freeway. What the router picks is the whole question." },
+
+    { "id": "boulder-hooverdam", "name": "Boulder City -> Hoover Dam",
+      "from": [-114.83376, 35.97876], "to": [-114.73770, 36.01610],
+      "note": "Corridor 3. Bikes are barred from the bypass bridge; the legal ways are the old dam road and the Historic Railroad Trail through five tunnels." },
+
+    { "id": "reno-sparks", "name": "Reno -> Victorian Square, Sparks",
+      "from": [-119.81266, 39.52618], "to": [-119.75525, 39.53477],
+      "note": "Corridor 2, and the shortest trip in this audit. The Tahoe-Pyramid Trail runs the whole way along the Truckee; a seam in it is exactly what a 4-mile hop is meant to expose." },
+
+    { "id": "reno-carson", "name": "Reno -> Nevada State Capitol, Carson City",
+      "from": [-119.81266, 39.52618], "to": [-119.76704, 39.16633],
+      "note": "Corridor 1. Washoe Valley squeezes everything between two ranges; I-580 is the only continuous line and the rideable answer is Old US 395 / Eastlake Blvd." },
+
+    { "id": "carson-spooner", "name": "Carson City -> Spooner Summit, Lake Tahoe",
+      "from": [-119.76704, 39.16633], "to": [-119.91300, 39.10800],
+      "note": "US 50 climbing 2,200 ft to the Tahoe rim in 12 miles. A mountain grade with no alternative, and the first real test of the DEM." },
+
+    { "id": "incline-stateline", "name": "Incline Village -> Stateline, Lake Tahoe east shore",
+      "from": [-119.95191, 39.25012], "to": [-119.93995, 38.96307],
+      "note": "NV 28 and US 50 down the east shore, 22 miles. Nevada's most scenic road ride, partly paralleled by the new Tahoe East Shore Trail." },
+
+    { "id": "carson-minden", "name": "Carson City -> Minden",
+      "from": [-119.76704, 39.16633], "to": [-119.76366, 38.95330],
+      "note": "Carson Valley, 15 miles, US 395 with a frontage-road alternative. A flat rural control against the mountain trips above." },
+
+    { "id": "elko-springcreek", "name": "Elko -> Spring Creek",
+      "from": [-115.76309, 40.83269], "to": [-115.59722, 40.73749],
+      "note": "Corridor 6. The only routine bicycle trip in Nevada's northeast, where the network is state highways plus subdivision streets and NDOT's inventories stop." },
+
+    { "id": "winnemucca-golconda", "name": "Winnemucca -> Golconda",
+      "from": [-117.73480, 40.97243], "to": [-117.48953, 40.95660],
+      "note": "14 miles beside I-80 on old US 40 / Golconda Rd. Tests whether the frontage road is in the graph or the router is pushed onto the Interstate." },
+
+    { "id": "ely-mcgill", "name": "Ely -> McGill",
+      "from": [-114.89172, 39.24806], "to": [-114.77872, 39.40519],
+      "note": "12 miles on US 93 in the emptiest quarter of the state. One road, 6,000 ft elevation, and almost nothing else in the graph." },
+
+    { "id": "mesquite-bunkerville", "name": "Mesquite -> Bunkerville",
+      "from": [-114.06714, 36.80356], "to": [-114.12677, 36.77177],
+      "note": "5 miles across the Virgin River. One bridge, on I-15's frontage system; a severed crossing here is a 40-mile detour." },
+
+    { "id": "lv-pahrump", "name": "Las Vegas -> Pahrump",
+      "from": [-115.14841, 36.16743], "to": [-115.97584, 36.19252],
+      "note": "Corridor 5, and long inter-city trip 1. 50 miles over the 5,500 ft Mountain Springs pass on NV 160, with no parallel road for forty of them." },
+
+    { "id": "reno-fallon", "name": "Reno -> Fallon",
+      "from": [-119.81266, 39.52618], "to": [-118.77790, 39.47452],
+      "note": "Long inter-city trip 2. 60 miles east across the Truckee Meadows and the Lahontan Valley on US 50 Alt, paralleling I-80 for the first half." },
+
+    { "id": "ely-baker", "name": "Ely -> Baker, Great Basin National Park",
+      "from": [-114.89172, 39.24806], "to": [-114.12333, 39.01218],
+      "note": "Long inter-city trip 3, and the loneliest road in the audit: 65 miles on US 6/50 over two 7,000 ft summits with one junction the whole way." }
+  ]
+}
