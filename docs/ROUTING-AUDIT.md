@@ -1342,13 +1342,13 @@ Southern Oregon University coordinate that snapped onto an I-5 ramp.
 
 | # | Finding | Verdict | Class |
 | --- | --- | --- | --- |
-| Q1 | Oregon has no riding-space source off the state system, so **two thirds of its level-4 road is red for want of a measurement** | EXPLAINABLE | DATA |
-| S2 | A trip across the Columbia stops 602 m short at the state line and reports success; the same trip the other way is refused with a message about the road network | **BUG** — ACCEPTED | ROUTER |
-| S1 | The star can be longer, slower **and** carry failing road an offered route does not — twice in fifteen trips | UNCLEAR | tuning |
-| S3 | The fail-share guard's share test passed on three trips and fired on none; twice the qualifying alternative was outside the window | UNCLEAR | tuning |
-| Q3 | Cannon Beach → Manzanita spends a slot on a route 2.4× longer, 2× slower and 8.7× more failing — and corrects round 5's D1 | UNCLEAR | tuning |
-| Q2 | Troutdale → Multnomah Falls has no non-failing option: 17.0 of 33.3 km of the Historic Columbia River Highway is level 4, and the data says so honestly | EXPLAINABLE | DATA |
-| S4 | Port Angeles → Hurricane Ridge fills two of six letters, correctly | EXPLAINABLE | — |
+| Q1 | Oregon has no riding-space source off the state system: 66.1% of its level-4 road is unmeasured, against 11.0% in Washington | EXPLAINABLE | DATA |
+| S2 | Six options end 602 m short at the state line and report success; the reverse trip is refused with a message about the road network | BUG — ACCEPTED | ROUTER |
+| S1 | On two of fifteen trips the recommended route is longer, slower and carries more failing road than an offered alternative | UNCLEAR | tuning |
+| S3 | The fail-share guard's share test passed on three trips and moved the star on none; twice the qualifying alternative was outside the window | UNCLEAR | tuning |
+| Q3 | Cannon Beach → Manzanita offers a 55.2 km route at 38.5% failing on a 19.3 km crow-flight trip; also corrects round 5's D1 | UNCLEAR | tuning |
+| Q2 | Troutdale → Multnomah Falls has no non-failing option: 17.0 of 33.3 km of the Historic Columbia River Highway is level 4 | EXPLAINABLE | DATA |
+| S4 | Port Angeles → Hurricane Ridge fills two of six letters; there is one road | EXPLAINABLE | — |
 | S5 | Washington explainables: SR 14, the Sehome bluff, the Spokane river crossings, the confluence bridges, the fully-matching escape | EXPLAINABLE | — |
 | Q4 | Oregon explainables: Skyliners Road, Fox Hollow Road, the Bear Creek Greenway, US 101 over Neahkahnie | EXPLAINABLE | — |
 
@@ -1365,7 +1365,7 @@ afterwards; that assessment is the last section of this round.
 
 ## Findings
 
-### Q1 — Two thirds of Oregon's red road is red because nobody measured it (EXPLAINABLE, DATA)
+### Q1 — Oregon has no riding-space source off the state system (EXPLAINABLE, DATA)
 
 > **Reclassified from BUG on 2026-08-21, by the project owner.** Nothing here is
 > defective. Treating an unrecorded shoulder as 0 ft above 35 mph is specified in
@@ -1451,7 +1451,7 @@ safety and is less obviously right across 8,382 km of one state. Either way the
 fact belongs in Oregon's `region.json` and its readiness score, not in
 application code.
 
-### S2 — A route stops at the state line and says it arrived (BUG — ACCEPTED)
+### S2 — Routes end 602 m short at the state line and report success (BUG — ACCEPTED)
 
 > **Accepted by the project owner on 2026-08-21.** One state loaded at a time is
 > a current limitation of the app, not something this round is asking to change,
@@ -1513,7 +1513,7 @@ drawing a silent 602 m gap or blaming the road network. With downloadable map
 packs (`issues.md` §4) this stops being a curiosity and becomes a first-run
 question: the two halves of a metro area are in different downloads.
 
-### S1 — The star can be longer, slower and dirtier than a route beside it (UNCLEAR, tuning)
+### S1 — The recommended route is beaten on distance, time and failing metres on two trips (UNCLEAR, tuning)
 
 Twice in fifteen trips the recommended route is beaten by an option on the same
 screen on **all three** of distance, time and failing metres. Both times the
@@ -1580,7 +1580,7 @@ the star alone — if a candidate in the practical pool is no longer, no slower
 and carries strictly less failing road, it takes the star — expresses the intent
 directly, is a few lines, and fires on exactly these two trips out of fifteen.
 
-### S3 — Three trips passed the fail-share guard's share test; it fired on none (UNCLEAR, tuning)
+### S3 — The fail-share guard's share test passed on three trips and moved the star on none (UNCLEAR, tuning)
 
 `failShareGuardPick` (`router-worker.js:3456`) moves the star when it fails the
 rules across ≥15% of its own length and another candidate within 1.8× distance
@@ -1659,7 +1659,7 @@ exactly when the different road is the kind the safety model exists to warn
 about. If anything changes here, the narrow version is a ceiling on failing
 *share* for the corridor exemption, not a general dominance trim.
 
-### Q2 — The Historic Columbia River Highway is red for half its length, honestly (EXPLAINABLE, DATA)
+### Q2 — 17.0 of 33.3 km of the Historic Columbia River Highway is level 4 (EXPLAINABLE, DATA)
 
 **Where:** the Historic Columbia River Highway, Troutdale to Multnomah Falls.
 **Repro:** `oregon`, `[-122.3874,45.5393] → [-122.1180,45.5775]`, Routes A–F —
@@ -1696,7 +1696,7 @@ Haines Road and Northeast Alex Barr Road and are still 24–27% failing.
 **Not a repeat of O5 / B3.** I-84 runs alongside the whole way and no option
 touched it. The freeway entry charge is doing its job here.
 
-### S4 — Two letters, correctly (EXPLAINABLE)
+### S4 — Port Angeles → Hurricane Ridge fills two of six letters (EXPLAINABLE)
 
 **Where:** Hurricane Ridge Road, Olympic National Park. **Repro:** `washington`,
 `[-123.4308,48.1207] → [-123.4977,47.9700]`, crow 17.5 km, **Routes A and B** —
@@ -1749,7 +1749,7 @@ strange, and the two options differ by twenty minutes rather than by hours.
 Written after the round closed, at the owner's request: which of these need
 investigating, and which need only a decision.
 
-### S3 — nothing to do. The guard is correct to decline.
+### S3 — assessed: no change. The guard is correct to decline.
 
 The share test passed on three trips and the guard moved the star on none, and
 that is the guard working. Bend → Phil's Trailhead is **7.5 km with 32.8%
@@ -1766,7 +1766,7 @@ decline"; this agrees. `test_fail_share_guard.mjs` already pins the behaviour.
 the guard declines and the rider wanted the longer route -- not on a count of
 how rarely it fires.
 
-### S1 — a decision, not an investigation. The computation is already done.
+### S1 — assessed: needs a rider's verdict, not further measurement.
 
 The arithmetic in S1 is complete and reproducible, and re-running it adds
 nothing. What is missing is a rider's verdict, and no amount of measurement
@@ -1794,7 +1794,7 @@ for six commits (D1, and the revert in `b0b715b`). A guard that only moves which
 route wears the star removes nothing from the six letters and cannot repeat that
 failure.
 
-### Q3 — CORRECTED. Not dominated, and the fix I endorsed would have been a mistake.
+### Q3 — corrected: Route F is not dominated
 
 > **This section said the opposite for several hours.** It claimed Cannon
 > Beach's Route F was "beaten by Route D on all three axes" and endorsed a
