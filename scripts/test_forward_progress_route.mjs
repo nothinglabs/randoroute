@@ -32,12 +32,24 @@ const result = worker.run(`(() => {
     facilitySeparated: 0.762, facilityPath: 0.668 };
   const portfolio = routeOptions(points, rules, false, false, null, true, null,
     'forward-progress-production-regression', main, lens);
-  const seed = portfolio.options.find((option) => option.optimization.profileId === 'quick');
-  const aggressive = portfolio.options.find((option) => option.optimization.profileId === 'direct-lens');
-  const alternative = portfolio.options.find((option) =>
-    option.optimization.profileId === 'forward-progress');
+  // Offered first, then the full generated pool. What this file is about is
+  // whether a forward-progress route EXISTS and removes the seed's retreat --
+  // not which six candidates win letters. Reading only the offered board made
+  // it a selection test by accident, and .780's diversity sweep duly swapped
+  // 'quick' off this trip's board and turned the whole file into a crash
+  // reading failM off undefined. lastCandidates holds every candidate built, with
+  // geometry; publicCandidate gives it the shape the assertions below expect.
+  const offered = new Map(portfolio.options.map((o) => [o.optimization.profileId, o]));
+  const built = (id) => offered.get(id)
+    || (lastCandidates.has(id) ? publicCandidate(lastCandidates.get(id)) : undefined);
+  const seed = built('quick');
+  const aggressive = built('direct-lens');
+  const alternative = built('forward-progress');
   return {
+    seedWasOffered: offered.has('quick'),
+    seedWasBuilt: !!seed,
     optionIds: portfolio.options.map((option) => option.optimization.profileId),
+    builtIds: [...lastCandidates.keys()],
     hasAggressiveLens: !!aggressive,
     seedRetreatM: routeMaxRetreatM(seed, points[1]),
     alternativeRetreatM: alternative && routeMaxRetreatM(alternative, points[1]),
@@ -48,6 +60,12 @@ const result = worker.run(`(() => {
   };
 })()`);
 
+// Being crowded off the six-letter board is allowed -- that is the portfolio's
+// job. Never being BUILT is not: the whole comparison below is against this
+// route's retreat, and without it there is nothing to prove.
+assert.ok(result.seedWasBuilt,
+  'the quick profile was never generated for this trip, so there is no reference '
+  + `route to measure the forward-progress alternative against. Built: ${result.builtIds?.join(', ')}`);
 assert.ok(result.seedRetreatM > 300,
   `field route should expose its bridge backtrack, got ${result.seedRetreatM.toFixed(0)} m`);
 assert.ok(result.hasAggressiveLens,

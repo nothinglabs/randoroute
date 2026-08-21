@@ -51,7 +51,8 @@ vm.runInContext([
   // property of the context object.
   'globalThis.OUT = { defaults: DEFAULT_ROUTING_WEIGHTS, renamed: RENAMED_ROUTING_WEIGHTS,'
   + ' bounds: ROUTING_WEIGHT_BOUNDS, validate: validRoutingWeights,'
-  + ' editor: editorWeightKeys(), groups: ROUTING_WEIGHT_GROUPS, modes: WEIGHT_MODES };',
+  + ' editor: editorWeightKeys(), groups: ROUTING_WEIGHT_GROUPS, modes: WEIGHT_MODES,'
+  + ' controlsFor: weightControlsFor };',
 ].join('\n'), box);
 const { defaults, renamed, editor, groups, modes } = box.OUT;
 
@@ -111,7 +112,13 @@ for (const [title, blurb, items] of groups) {
     // A default outside the slider range is unreachable: the rider can never
     // get back to it by dragging, and the revert button would jump the thumb
     // off the end.
-    for (const key of box.OUT.editor.filter((k) => k.startsWith(item.key || item.base))) {
+    // The keys this row ACTUALLY renders, from the app's own expander. This
+    // used to filter every editor key by the item's prefix, which is not the
+    // same thing: `base: 'climb'` swept up climbKneePct and climbCostAt10Pct
+    // -- separate sliders with their own ranges -- and checked them against
+    // the climb triple's 0-5, reporting a default of 7.84 as unreachable when
+    // its own slider reaches 40.
+    for (const { key } of box.OUT.controlsFor(item)) {
       if (!defKeys.has(key)) continue;
       const d = defaults[key];
       assert.ok(d >= item.min && d <= item.max,
