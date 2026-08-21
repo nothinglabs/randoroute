@@ -2,8 +2,8 @@
   "id": "nevada",
   "name": "Nevada",
   "status": "preview",
-  "readiness": 2,
-  "summary": "Place search and a basemap. Routing graph and road tiles not built yet.",
+  "readiness": 3,
+  "summary": "OSM routing with NDOT speed, shoulder, class and traffic data conflated; road tiles pending.",
   "bounds": {
     "minLon": -120.2,
     "maxLon": -113.9,
@@ -36,16 +36,22 @@
   },
   "routeDirectionSuffixes": {},
   "datasets": {
-    "graph": false,
+    "graph": true,
     "roads": false,
     "basemap": true,
-    "overlays": false,
+    "overlays": true,
     "places": true,
     "bikeroutes": true,
     "restrictions": false,
     "closures": true
   },
   "versions": {
-    "basemap": "sha-9cf23d75d7b2"
+    "basemap": "sha-9cf23d75d7b2",
+    "graph": "sha-63fd4ab49fd0"
+  },
+  "sourceCounts": {
+    "blts": 6055,
+    "bikeinfra": 17593,
+    "roads": 126509
   }
 }
