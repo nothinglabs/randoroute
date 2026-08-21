@@ -122,8 +122,14 @@ and owner, and carry no width, edge space or surface.
 
 ```bash
 python3 scripts/build_overlay_tiles.py --state nevada
-node scripts/build_compressed_overlays.mjs
+node scripts/build_compressed_overlays.mjs nevada
 ```
+
+**Pass the state.** Run bare, `build_compressed_overlays.mjs` walks the whole
+registry and rewrites *every* state's committed `.gz` overlays — during this
+import it left Oregon's and Washington's modified in `git status`, byte-different
+with identical content. The bare form is for a change to the overlay format that
+genuinely should touch every state.
 
 ## 5. Basemap
 

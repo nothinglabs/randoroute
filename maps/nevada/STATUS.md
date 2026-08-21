@@ -155,8 +155,33 @@ ownership layers extend to local streets even though its counts do not. The
 bottom line is identical in both states — a local street in the American West
 has a traffic count essentially never — and 22,152 of Nevada's 38,131 road
 miles are local streets. **More than half of this state's rideable network is
-priced by functional class and OSM tags rather than by a measurement**, and
-that is the single most important sentence in this file.
+priced by functional class and OSM tags rather than by a measurement.**
+
+### Shoulder, on the roads where the shoulder rung decides
+
+Traffic coverage is the number the rubric asks for. This is the number that
+actually explains Nevada's routes. On roads at 45 mph and above:
+
+| | Nevada | Oregon | Washington |
+| --- | ---: | ---: | ---: |
+| road miles at 45+ mph | 7,682 | 12,641 | 13,508 |
+| bike lane or better, shoulder moot | 7.2% | 5.3% | 2.1% |
+| passes on a **measured** shoulder ≥ 4 ft | 23.4% | 38.8% | 40.0% |
+| fails on a **measured** shoulder < 4 ft | **1.1%** | 15.3% | 14.8% |
+| fails on **no measurement at all** | **68.2%** | 40.5% | 43.1% |
+
+**98.4% of Nevada's failing fast-road mileage fails on the absence of evidence,
+not on evidence of absence** — 5,239 of 5,327 miles. Oregon's figure is 72.6%
+and Washington's 74.4%. An untagged shoulder reads as 0 ft by design, and the
+design is right; Nevada is where it becomes load-bearing across two thirds of a
+state, because NDOT's whole shoulder inventory is 1,226 current spans and OSM
+carries a `shoulder*` tag on 595 of 505,189 highway ways.
+
+`ROUTING-AUDIT.md` traces every over-long recommendation in the twenty-route
+audit back to this row, and measures the effect directly: with the shoulder
+rung switched off, four sample trips drop to **zero** failing metres and the
+recommendation's detour collapses from 1.76× to 1.06× (Carson City → Minden)
+and from 2.20× to 1.47× (North Las Vegas → the airport).
 
 ## Readiness
 
