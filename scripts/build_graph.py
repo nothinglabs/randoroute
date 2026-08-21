@@ -548,7 +548,7 @@ def load_blts_index(path):
                 # decreasing record applies against it.
                 'direction': suffix if suffix in {'i', 'd'} else None,
             })
-    print(f'  WSDOT index: {len(geoms):,} segments', flush=True)
+    print(f'  agency roadway inventory: {len(geoms):,} segments', flush=True)
     return STRtree(geoms), geoms, attrs
 
 
@@ -565,7 +565,7 @@ def load_restriction_index(path):
             if len(cs) >= 2:
                 geoms.append(LineString(cs))
                 routes.append(route)
-    print(f'  WSDOT restriction index: {len(geoms):,} segments', flush=True)
+    print(f'  agency restriction index: {len(geoms):,} segments', flush=True)
     return STRtree(geoms), geoms, routes
 
 
@@ -604,7 +604,7 @@ def load_official_index(path, kind):
                 continue
             geoms.append(LineString(coords))
             attrs.append({'value': int(value), 'route': route, **extra})
-    print(f'  WSDOT {kind} index: {len(geoms):,} segments', flush=True)
+    print(f'  agency {kind} index: {len(geoms):,} segments', flush=True)
     return STRtree(geoms), geoms, attrs
 
 
@@ -2055,7 +2055,7 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
 
     N, E, G = len(node_lon), len(eA), len(gLon)
     print(f'  nodes {N:,}  edges {E:,}  geom vertices {G:,}  oneway edges {oneway_arcs:,}', flush=True)
-    print(f'  WSDOT-conflated edges: {conflated[0]:,}; direct restrictions excluded: {restricted_edges[0]:,}', flush=True)
+    print(f'  agency-conflated edges: {conflated[0]:,}; direct restrictions excluded: {restricted_edges[0]:,}', flush=True)
     print(f'  official legal speeds: {official_speeds[0]:,}; official facilities: {official_facilities[0]:,}', flush=True)
     print(f'  MTB-tagged edges: {mtb_edges[0]:,}; dedicated paths densified for snapping: {densified_paths[0]:,}', flush=True)
     print(f'  sidewalk stitch fragments: {sidewalk_stitches[0]:,}', flush=True)
