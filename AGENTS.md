@@ -121,6 +121,39 @@ git log --oneline HEAD..origin/main     # must be empty
 If it is not empty, `git reset --hard origin/main` before doing
 anything else.
 
+## Writing
+
+Applies to replies, commit messages, documents in this repo, finding titles, and
+anything published as an artifact.
+
+Write flat. Conclusion first, then the measurement, then the caveat. Do not:
+
+- **Build to a reveal.** "The correction that matters most isn't X, it's Y."
+  Put the point first.
+- **Use fragments for emphasis.** "Three ways. Three."
+- **Title a finding like a headline.** "Two thirds of Oregon's red road is red
+  because nobody measured it" is a headline. "Oregon has no riding-space source
+  off the state system: 66.1% of its level-4 road is unmeasured against 11.0% in
+  Washington" is a finding.
+- **Reach for metaphor on a technical judgement.** "the same mistake in a
+  different costume" says less than naming the mistake.
+- **Bold for drama.** Bold labels and figures, so a table can be skimmed.
+- **End a section on a line whose only job is to land.**
+- **Characterise your own finding's importance.** Give the number.
+
+State uncertainty plainly. "I do not know" and "this needs a rider's verdict"
+are complete answers.
+
+This is a rule rather than a preference because the framing drives the work.
+Dramatic framing creates pressure to find drama, a finding that carries a
+headline has to be a defect to deserve one, and the shortest route to a headline
+is to file working behaviour as broken. That is what happened to Q1 in round 6 of
+`docs/ROUTING-AUDIT.md`: the shoulder rung was filed as a BUG when it is
+specified in `docs/SAFETY-MODEL.md`, surfaced in Settings, and deliberately
+non-optional. The measurement underneath was sound and is still in the record.
+The framing invented a defect around it, and two replies later there was a
+proposal to loosen a safety rung.
+
 ## Other standing rules
 
 - Keep replies short. Surface decisions instead of burying them; do not make
