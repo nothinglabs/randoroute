@@ -2,6 +2,56 @@
  "storeFormat": 1,
  "states": [
   {
+   "id": "nevada",
+   "name": "Nevada",
+   "status": "preview",
+   "readiness": 0,
+   "summary": "Import in progress: source census and corridor nominations written, nothing built yet.",
+   "bounds": {
+    "minLon": -120.2,
+    "maxLon": -113.9,
+    "minLat": 34.9,
+    "maxLat": 42.1
+   },
+   "defaultCenter": [
+    -115.1398,
+    36.1699
+   ],
+   "defaultZoom": 11,
+   "stressAgency": "NDOT",
+   "restrictionAgency": "OSM",
+   "speedAgency": "NDOT",
+   "facilitySourceName": "RTC of Southern Nevada bicycle facilities",
+   "stressLayerName": "NDOT roadway inventory (state highways; Nevada publishes no bicycle stress rating)",
+   "restrictionLayerName": "Bicycle prohibitions (OSM; no statewide NDOT layer found)",
+   "interstateRoutePrefixes": [],
+   "stateRoutePrefixes": [
+    "I",
+    "US",
+    "NV",
+    "SR"
+   ],
+   "facilityLevels": {
+    "Shared-Use Path": 5,
+    "Buffered Bike Lane": 3,
+    "Bike Lane": 2,
+    "Shared Lane": 1
+   },
+   "routeDirectionSuffixes": {},
+   "datasets": {
+    "graph": false,
+    "roads": false,
+    "basemap": false,
+    "overlays": false,
+    "places": false,
+    "bikeroutes": false,
+    "restrictions": false,
+    "closures": false
+   },
+   "versions": {},
+   "files": []
+  },
+  {
    "id": "oregon",
    "name": "Oregon",
    "status": "released",

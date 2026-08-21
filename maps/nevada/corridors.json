@@ -1,0 +1,46 @@
+{
+  "corridors": [
+    {
+      "name": "Reno to Carson City — Washoe Valley",
+      "a": [-119.8138, 39.5296],
+      "b": [-119.7674, 39.1638],
+      "maxRatio": 2.5,
+      "reason": "Nevada's second corridor of any density, and a genuine pinch point: between Reno and Carson City the Virginia Range and the Carson Range squeeze everything into Washoe Valley, where I-580 is the only continuous line on most maps. The rideable answer is Old US 395 / Eastlake Blvd on the east shore. If the graph loses that, the router must either take the freeway or leave the state's two biggest northern cities disconnected, and either outcome is a severance."
+    },
+    {
+      "name": "Reno to Sparks — Truckee River Path",
+      "a": [-119.8090, 39.5250],
+      "b": [-119.7530, 39.5349],
+      "maxRatio": 2.5,
+      "reason": "Short urban hop (about 4 miles) chosen deliberately under lesson C2: a long corridor absorbs a severance. The Tahoe-Pyramid Trail along the Truckee is a chain of separately mapped path ways through downtown Reno, which is exactly the same-name-seam geometry that severed Washington's cross-mountain trail. A 4-mile hop makes a broken seam unmissable."
+    },
+    {
+      "name": "Boulder City to Hoover Dam — US 93 and the Historic Railroad Trail",
+      "a": [-114.8319, 35.9787],
+      "b": [-114.7377, 36.0161],
+      "maxRatio": 2.5,
+      "reason": "Roughly 7 miles, and the most constrained piece of road in southern Nevada. Bicycles are excluded from the Mike O'Callaghan-Pat Tillman bypass bridge, so the only legal ways through are the old dam road and the Historic Railroad Trail through five tunnels. Both are the kind of feature (access-restricted service road, unpaved rail-trail) an over-strict classifier drops, and dropping either severs the state's best-known ride."
+    },
+    {
+      "name": "Las Vegas to Henderson — the valley crossing",
+      "a": [-115.1398, 36.1699],
+      "b": [-114.9817, 36.0397],
+      "maxRatio": 2.5,
+      "reason": "About 13 miles across the Las Vegas valley, where three quarters of Nevada lives. Control corridor for the metro: an ordinary urban trip that must not need a freeway and must not detour absurdly, on the one part of the state where bike lanes and shared-use paths actually exist in quantity."
+    },
+    {
+      "name": "Las Vegas to Pahrump — NV 160 over Mountain Springs",
+      "a": [-115.1398, 36.1699],
+      "b": [-115.9839, 36.2083],
+      "maxRatio": 2.5,
+      "reason": "About 50 miles, over a 5,500 ft pass, and NV 160 is the only road. There is no parallel alternative for 40 of those miles. This is the shape of most of Nevada: a single line between two towns. If the router will not use it, or the graph breaks it anywhere, the answer is either 'no route' or a 200-mile detour via US 95 and Amargosa Valley."
+    },
+    {
+      "name": "Elko to Spring Creek — rural northeast",
+      "a": [-115.7631, 40.8324],
+      "b": [-115.5852, 40.7266],
+      "maxRatio": 2.5,
+      "reason": "About 10 miles, and the only routine bicycle trip in Nevada's northeast. Chosen because the whole region has one town of any size and a road network of state highways plus subdivision streets: the case where NDOT's inventories stop and OSM is on its own. A control for whether a sparse rural county routes at all."
+    }
+  ]
+}
