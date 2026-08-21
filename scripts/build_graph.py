@@ -944,10 +944,31 @@ def collect_mtb_route_members(src):
 
 
 def is_mountain_bike_way(tags, way_id, mtb_route_members):
-    """Recognize direct OSM MTB tags and MTB route-relation membership."""
-    return (way_id in mtb_route_members
-            or 'mtb' in tags
-            or any(key.startswith('mtb:') for key in tags))
+    """Recognize direct OSM MTB tags and MTB route-relation membership.
+
+    The two sources are not equally trustworthy, and the difference is the
+    whole rule. A way-level ``mtb`` tag marks anything: a mapper who wrote it
+    was looking at that way. Relation membership marks only ways a car does not
+    drive on, because ``route=mtb`` relations include long-distance bikepacking
+    routes and those follow paved highway for long stretches by design.
+
+    Relation 8643414, "The Plateau Passage" (IMBA / bikepacking.com), lists
+    eight ways of Nevada's SR 170 among its 104 members. SR 170 is a two-lane
+    asphalt state highway, ``smoothness=excellent``, with a measured 6 ft
+    shoulder and 240 vehicles a day, and it carries the only bike-legal Virgin
+    River bridge. Marking it removed it from the routable network -- the router
+    skips MTB edges outright unless ``allowMtbTrails`` is on, and it is off by
+    default -- so Mesquite had no route to Bunkerville, four miles away, while
+    the map went on drawing the road as the level-2 road it is. Membership on
+    its own could never have meant "singletrack" there.
+
+    ``DRIVE`` rather than a path list, because that is the set ``classify_way``
+    already uses to decide whether a way is a road at all, and ``track`` sits
+    outside it: doubletrack in an MTB route really is MTB terrain.
+    """
+    if 'mtb' in tags or any(key.startswith('mtb:') for key in tags):
+        return True
+    return way_id in mtb_route_members and tags.get('highway') not in DRIVE
 
 
 def surface_class(tags):
