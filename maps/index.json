@@ -59,6 +59,43 @@
     "bikeinfra": 17593,
     "roads": 126509
    },
+   "attribution": {
+    "extractName": "Nevada",
+    "extractUrl": "https://download.geofabrik.de/north-america/us/nevada.html",
+    "agencyHeading": "Nevada transportation data",
+    "agencySources": [
+     {
+      "title": "NDOT Asset Linear Referencing System — Outside Shoulder",
+      "url": "https://gis.dot.nv.gov/rhgis/rest/services/EAMS/NDOT_ALRS/FeatureServer/16",
+      "note": "supplies measured outside-shoulder width and type on state routes; gravel and earth shoulders are recorded and deliberately not treated as riding space."
+     },
+     {
+      "title": "NDOT Asset Linear Referencing System — Speed Limit",
+      "url": "https://gis.dot.nv.gov/rhgis/rest/services/EAMS/NDOT_ALRS/FeatureServer/42",
+      "note": "supplies posted speed on state routes; 1,485 of 1,605 current spans carry a 2019 HPMS vintage, and agency speed fills only an estimated value."
+     },
+     {
+      "title": "NDOT Asset Linear Referencing System — AADT",
+      "url": "https://gis.dot.nv.gov/rhgis/rest/services/EAMS/NDOT_ALRS/FeatureServer/50",
+      "note": "supplies measured traffic counts with count stations and dates; every current span is a 2025 count."
+     },
+     {
+      "title": "NDOT Asset Linear Referencing System — Functional Class and Ownership",
+      "url": "https://gis.dot.nv.gov/rhgis/rest/services/EAMS/NDOT_ALRS/FeatureServer/65",
+      "note": "supplies FHWA functional class and roadway owner statewide, including local streets."
+     },
+     {
+      "title": "RTC of Southern Nevada bicycle facilities",
+      "url": "https://webgis.rtcsnv.com/arcgis/rest/services/Web/HUB/FeatureServer",
+      "note": "supplies the existing bike-lane, enhanced-lane and shared-use-path registry for Clark County. Nevada's DOT publishes no bicycle inventory."
+     },
+     {
+      "title": "FHWA Highway Performance Monitoring System (Nevada 2018)",
+      "url": "https://geo.dot.gov/server/rest/services/Hosted/Nevada_2018_PR/FeatureServer/0",
+      "note": "supplies traffic volume for state, county and city roads, with the 2018 release year carried as provenance."
+     }
+    ]
+   },
    "files": [
     {
      "dataset": "bikeroutes",

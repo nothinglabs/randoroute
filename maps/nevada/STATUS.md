@@ -210,5 +210,37 @@ Recorded as they were hit; the full list with fixes is in the import's commits.
   rejected it as an unknown key.
 - `.gitignore` spelled Oregon's adapter intermediates literally, so Nevada's
   leaked into `git status`.
+- `scripts/verify_against_routes.mjs` and `scripts/verify_corridor_chain.mjs` —
+  the two tools the porting method points an importer at for the level-5 report
+  — crashed on every state with `ADVANCED_ROUTE_OPTION_DEFAULTS is not defined`.
+  Each carried a hand-rolled copy of the harness's rules lifter. Fixed.
+- `verify_corridor_chain.mjs` reported U.S. Bicycle Route 50 SEVERED on a hop
+  whose two ends are the same coordinate. Fixed, and the skip is counted.
+- `build_compressed_overlays.mjs` walks the registry and rewrote Oregon's and
+  Washington's committed overlays during this import. Fixed with an optional
+  state id.
+- One routing defect, not repaired here because the repair is a judgement about
+  shared classification: `is_mountain_bike_way()` marks every way member of a
+  `route=mtb` relation, and a bikepacking relation includes paved state
+  highways. In Nevada that deletes SR 170 — the only bike-legal crossing of the
+  Virgin River — and Mesquite → Bunkerville returns "no route" for a 4.7-mile
+  trip. `ROUTING-AUDIT.md` N1 has the blast radius on all three states.
 - No application code needed changing for Nevada. Every state fact reached the
   builders through `region.json` and the adapters.
+
+## Known backlog, in the order a next session should take it
+
+1. **RTC Southern Nevada's `RS_WIDTH`** — a right-shoulder width riding along
+   inside the bike-facility layers, for Clark County city streets. No state in
+   this project has ever had a shoulder measurement on city streets. Needs a
+   field test before it may touch the model (lesson G1), and it is the only
+   Nevada signal that could feed `inferShoulderFromEdge`.
+2. **NDOT `ShoulderOutsideType` 4 and 6** — 148 spans of gravel and earth
+   shoulder width, counted and withheld. Bail-out space, not riding space; the
+   same inference input as (1), on rural highways instead of city streets.
+3. **NDOT `SurfaceType`** — 1,045 spans, 2025 HPMS vintage. Display-only in
+   Washington via CRAB's code table; there is no Nevada decoder and no consumer.
+4. **Map the Las Vegas valley's trails as `route=bicycle` relations upstream.**
+   The River Mountains Loop Trail and the Las Vegas Wash trails are in the graph
+   as ways and in no relation, which is why the level-5 method cannot reach
+   Clark County at all.
