@@ -380,9 +380,9 @@ it is 3 miles of a 25-mile corridor.
 These were nominated as pinch points before anything was built, and they behave:
 
 - **Boulder City → Hoover Dam**: 8.0 mi shortest, star at 10.2 mi with **zero**
-  failing metres and 150 m of dismount — the Historic Railroad Trail through
-  the tunnels. Bicycles are barred from the bypass bridge and the router never
-  offers it.
+  failing metres and 150 m of dismount, on the River Mountains Loop Trail into
+  the Historic Railroad Trail, the Railroad Tunnel Trail and the Hoover Dam
+  Access Road. No option offered uses the US 93 bypass bridge.
 - **Henderson → Boulder City**: star at **1.05×** the shortest with zero failing
   metres. The River Mountains Loop Trail is fully in the graph.
 - **Reno → Sparks**: star at 4.2 mi, zero failing metres, on the Truckee River
@@ -397,8 +397,10 @@ These were nominated as pinch points before anything was built, and they behave:
   and the provenance of a number, never about whether a road is pleasant.
 - **The Las Vegas valley has no published bicycle route relation at all**, so
   the level-5 method — compare the router against a corridor known to be good —
-  could not be applied to three quarters of the state's riders. Twelve of these
-  twenty trips are the substitute, and they are weaker evidence.
+  could not be applied to three quarters of the state's riders. Eight of these
+  twenty trips are the substitute, and they are weaker evidence: they show the
+  network connects and that RTC's facilities reach the graph, not that the
+  router's answer resembles what a local rides.
 - **The 0.2 s/m ride-quality term** in the recommendation price is not modelled
   in the price column above, which is `time + fail + dismount` only. The star is
   the router's, not this document's; where the two disagree the router is right
