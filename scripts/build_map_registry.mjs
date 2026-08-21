@@ -38,6 +38,12 @@ const KNOWN = new Set(['id', 'name', 'status', 'readiness', 'summary', 'bounds',
   'defaultCenter', 'defaultZoom', 'stressAgency', 'restrictionAgency', 'speedAgency',
   'facilitySourceName', 'stressLayerName', 'restrictionLayerName',
   'interstateRoutePrefixes', 'stateRoutePrefixes', 'facilityLevels', 'sourceCounts', 'routeDirectionSuffixes',
+  // Documented in maps/README.md and read by test_shoulder_directional_fill.mjs,
+  // and missing from this list until Nevada's import went looking for it: a
+  // state that set the key the contract told it to set failed the registry
+  // build with `unknown key`, which is the opposite of what an unknown-key
+  // check is for.
+  'directionalShoulderFloor',
   'datasets', 'versions', 'attribution']);
 const REQUIRED = ['id', 'name', 'status', 'bounds', 'defaultCenter', 'defaultZoom', 'datasets'];
 

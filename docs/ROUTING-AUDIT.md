@@ -24,6 +24,26 @@ failure. Read that line first.
 | **island** | not in the giant component at all — a real island, a hamlet up a track | **No.** Correct. |
 | **one-way area** | in the giant component, bounded entirely by one-way arcs | **No.** Correct data. |
 | **pinprick** | a one- or two-node pocket at the head of a one-way segment | Maybe — the only kind that ever is. |
+| **rule-excluded link** | both endpoints reachable, a path exists, and a rule the rider did not set deliberately removes the only edge on it | **Yes.** Nevada found the first one. |
+
+**The fourth kind was added by the Nevada import and it is the one that bites.**
+The diagnosis only asks whether each endpoint is *reachable*; it never asks
+whether a path between them survives the rules. When it does not, the tool
+prints "both endpoints are reachable — the failure is something else, look
+closer", which is exactly what a genuine defect looks like and also exactly what
+a working exclusion looks like. Mesquite → Bunkerville, a 4.7-mile trip, has an
+unconstrained path of 69 edges and 7.8 km and returns "no route" because 2.3 km
+of a paved state highway is marked as a mountain-bike trail (finding N1 of
+the Nevada audit, on branch `claude/nevada-import`). Finding that took an
+unconstrained BFS, an edge-flag dump and an OSM relation lookup. The marking
+itself is fixed -- `is_mountain_bike_way()` no longer lets relation membership
+mark a way a car drives on -- but the diagnosis gap it exposed is not, which is
+why this stays here.
+
+**So when you see "look closer", do this first:** re-run the same trip with the
+optional exclusions lifted one at a time — `allowMtbTrails`, `allowFreeways`,
+`preferPaved`, `allowFerries` — and if one of them returns a route, that rule is
+your answer and the road it unlocks is the finding.
 
 **Why the one-way areas are correct, measured.** Every stranded node in both
 states, grouped into connected pockets: **all 470 Washington pockets and all 157

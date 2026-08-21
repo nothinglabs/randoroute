@@ -329,9 +329,9 @@ class RoadMeasures:
     """All four sources together, resolved into one set of per-way values."""
 
     def __init__(self, roadlog=None, funcclass=None, aadt=None, hpms=None):
-        self.roadlog = MeasureIndex(roadlog, 'CRAB road log')
+        self.roadlog = MeasureIndex(roadlog, 'county road log')
         self.funcclass = MeasureIndex(funcclass, 'functional class')
-        self.aadt = MeasureIndex(aadt, 'WSDOT AADT')
+        self.aadt = MeasureIndex(aadt, 'state AADT')
         self.hpms = MeasureIndex(hpms, 'FHWA HPMS')
         self._gate = None
 

@@ -5,6 +5,14 @@
 // registry, because a hardcoded `maps/washington/...` here silently skipped a
 // second state's overlays and left them uncompressed with no error anywhere.
 // A state that does not ship one of these files simply has nothing to do.
+//
+// An optional state id narrows it to one folder. Walking the whole registry is
+// right when the overlay format changes; it is wrong during a state IMPORT,
+// where it rewrites the other states' committed .gz files. The bytes it writes
+// are deterministic but not identical to whatever wrote them before -- Nevada's
+// import found Oregon's and Washington's overlays rewritten byte-for-byte
+// differently with identical content, which is a diff touching two shipped
+// states for no reason, and the one thing an import is told not to do.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -17,7 +25,13 @@ const { MAP_STATES } = createRequire(import.meta.url)(join(root, 'maps/states.js
 const OVERLAYS = ['bikeroutes.geojson', 'blts.geojson', 'bikeinfra.geojson',
   'bike_restrictions.geojson', 'route_closures.geojson'];
 
+const only = process.argv[2];
+if (only && !MAP_STATES.some((state) => state.id === only)) {
+  throw new Error(`no such state in maps/states.js: ${only}`);
+}
+
 for (const state of MAP_STATES) {
+  if (only && state.id !== only) continue;
   for (const name of OVERLAYS) {
     const relativePath = `maps/${state.id}/${name}`;
     if (!existsSync(join(root, relativePath))) continue;

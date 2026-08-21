@@ -10,6 +10,7 @@ Every source we import is an ArcGIS FeatureServer or MapServer layer with a
 resultOffset with a stable sort, retry on transport errors, and cache each page
 to disk so a re-run after a failure does not start over.
 """
+import hashlib
 import json
 import os
 import time
@@ -19,6 +20,11 @@ import urllib.request
 
 TIMEOUT_S = 120
 RETRIES = 5
+# Some agency ArcGIS deployments reject urllib's default `Python-urllib/3.x`
+# with a flat 403 while serving the identical URL to a browser string. Southern
+# Nevada's is one, and the failure looks like a permissions problem on a public
+# open-data service rather than a header the client did not send.
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; randoroute-build/1.0)"}
 
 
 def _get(url, params, retries=RETRIES):
@@ -29,7 +35,8 @@ def _get(url, params, retries=RETRIES):
     last = None
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(f"{url}?{query}", timeout=TIMEOUT_S) as r:
+            request = urllib.request.Request(f"{url}?{query}", headers=HEADERS)
+            with urllib.request.urlopen(request, timeout=TIMEOUT_S) as r:
                 body = json.load(r)
             if isinstance(body, dict) and "error" in body:
                 raise RuntimeError(f"service error: {body['error']}")
@@ -60,16 +67,30 @@ def fetch_all(layer_url, fields, where="1=1", out_sr=4326, page=1000,
     A stable `order_by` is required: without it the service is free to return
     rows in a different order per page and paging silently drops and duplicates
     records. Pages are cached under `cache_dir` so an interrupted run resumes.
+
+    The cache file name carries a digest of the layer URL, the filter and the
+    field list, because a page name of `0000000.json` alone belongs to whichever
+    layer wrote it first. An adapter that reads several layers of one service
+    into one cache directory -- which is the natural way to write one, and how
+    Nevada's found this -- then served every later layer the FIRST layer's rows.
+    Silently: the attributes are simply the wrong ones, and the row-count guard
+    below cannot see it, because a big layer's pages overfill a small layer's
+    total and `got` ends up LARGER than `total`. The visible symptom was an
+    empty output file, which reads exactly like "the state does not publish
+    this".
     """
     total = count(layer_url, where)
     if label:
         print(f"  {label}: {total:,} features", flush=True)
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
+    key = hashlib.sha1(
+        f"{layer_url}|{where}|{','.join(fields)}|{out_sr}|{order_by}"
+        .encode()).hexdigest()[:8]
     got = 0
     offset = 0
     while offset < total:
-        cache_path = (os.path.join(cache_dir, f"{offset:07d}.json")
+        cache_path = (os.path.join(cache_dir, f"{key}-{offset:07d}.json")
                       if cache_dir else None)
         body = None
         if cache_path and os.path.exists(cache_path):
