@@ -817,7 +817,9 @@ not run.
 stitching fired **73 times** at the 2 m threshold (Washington 1, Oregon 129).
 Walk-link connectivity mattered more than in either predecessor: **61,190
 edges were pruned in walk-only components** and 7,903 sidewalk stitch
-fragments joined, on a graph of 477,810 edges. 10,967 dedicated paths were
+fragments joined, on a graph of 477,810 edges. The result holds the floor:
+**97.43% of nodes are in the giant component** (Washington 97.39%, Oregon
+98.00%), against the 96% the connectivity test requires. 10,967 dedicated paths were
 densified for snapping. Deck grades, `incline=` authority and the
 dismount-terminal case were not separately tested.
 
