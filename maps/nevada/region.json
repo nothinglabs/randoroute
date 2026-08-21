@@ -2,8 +2,8 @@
   "id": "nevada",
   "name": "Nevada",
   "status": "preview",
-  "readiness": 0,
-  "summary": "Import in progress: source census and corridor nominations written, nothing built yet.",
+  "readiness": 2,
+  "summary": "Place search and a basemap. Routing graph and road tiles not built yet.",
   "bounds": {
     "minLon": -120.2,
     "maxLon": -113.9,
@@ -38,12 +38,14 @@
   "datasets": {
     "graph": false,
     "roads": false,
-    "basemap": false,
+    "basemap": true,
     "overlays": false,
-    "places": false,
-    "bikeroutes": false,
+    "places": true,
+    "bikeroutes": true,
     "restrictions": false,
-    "closures": false
+    "closures": true
   },
-  "versions": {}
+  "versions": {
+    "basemap": "sha-9cf23d75d7b2"
+  }
 }
