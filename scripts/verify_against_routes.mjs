@@ -30,6 +30,7 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import zlib from 'node:zlib';
+import { appDefaultRules } from './testlib/harness.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const state = process.argv[2] || 'washington';
@@ -44,22 +45,14 @@ const wanted = process.argv.slice(3).filter((arg) =>
   !['--without-functional-class', '--without-unowned-functional-class', '--without-aadt',
     '--flat-effort'].includes(arg) && !arg.startsWith('--graph='));
 
-const appSrc = fs.readFileSync(ROOT + 'app.js', 'utf8');
-function liftRules() {
-  const at = appSrc.indexOf('const DEFAULT_RULES');
-  const open = appSrc.indexOf('{', at);
-  let depth = 0, i = open;
-  for (; i < appSrc.length; i++) {
-    const c = appSrc[i];
-    if (c === '{') depth++;
-    else if (c === '}') { depth--; if (!depth) break; }
-  }
-  const box = { out: null };
-  vm.createContext(box);
-  vm.runInContext('out = ' + appSrc.slice(open, i + 1), box);
-  return box.out;
-}
-const rules = liftRules();
+// The app's defaults come from the harness, which lifts
+// ADVANCED_ROUTE_OPTION_DEFAULTS before DEFAULT_RULES because the second
+// literal references the first. Both of these files used to carry their own
+// copy of that lifter, and neither knew about the first constant -- so the
+// tool the porting method points an importing agent at for the level-5
+// verification report threw `ADVANCED_ROUTE_OPTION_DEFAULTS is not defined`
+// on every state, in every state, before printing a line.
+const rules = appDefaultRules();
 
 const graph = zlib.gunzipSync(fs.readFileSync(graphPath));
 const messages = [];

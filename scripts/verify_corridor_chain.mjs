@@ -17,6 +17,7 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import zlib from 'node:zlib';
+import { appDefaultRules } from './testlib/harness.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const state = process.argv[2] || 'washington';
@@ -24,22 +25,14 @@ const hopMi = Number(process.argv[3]) || 5;
 const wanted = process.argv.slice(4);
 const MI = 1609.344;
 
-const appSrc = fs.readFileSync(ROOT + 'app.js', 'utf8');
-function liftRules() {
-  const at = appSrc.indexOf('const DEFAULT_RULES');
-  const open = appSrc.indexOf('{', at);
-  let depth = 0, i = open;
-  for (; i < appSrc.length; i++) {
-    const c = appSrc[i];
-    if (c === '{') depth++;
-    else if (c === '}') { depth--; if (!depth) break; }
-  }
-  const box = { out: null };
-  vm.createContext(box);
-  vm.runInContext('out = ' + appSrc.slice(open, i + 1), box);
-  return box.out;
-}
-const rules = liftRules();
+// The app's defaults come from the harness, which lifts
+// ADVANCED_ROUTE_OPTION_DEFAULTS before DEFAULT_RULES because the second
+// literal references the first. Both of these files used to carry their own
+// copy of that lifter, and neither knew about the first constant -- so the
+// tool the porting method points an importing agent at for the level-5
+// verification report threw `ADVANCED_ROUTE_OPTION_DEFAULTS is not defined`
+// on every state, in every state, before printing a line.
+const rules = appDefaultRules();
 
 const graph = zlib.gunzipSync(fs.readFileSync(`${ROOT}maps/${state}/graph2.bin.gz`));
 const messages = [];
@@ -131,10 +124,21 @@ for (const [name, lines] of byName) {
 
   const bad = [];
   let worst = 0;
+  let degenerate = 0;
   for (let i = 1; i < marks.length; i++) {
     const a = marks[i - 1].at, b = marks[i].at;
     const straight = marks[i].alongM / MI;
     if (straight < 0.5) continue;
+    // A hop whose two ends are the same PLACE is a defect of the spine, not of
+    // the graph. chain() stitches a relation's parts into one ribbon by
+    // nearest-endpoint, and a long national route arrives as hundreds of
+    // disconnected parts -- so the walk can leave a mark, wander a branch, and
+    // come back to within metres of where it started while `alongM` counts
+    // five miles. Routing that hop returns "start and destination snap to the
+    // same road point", and reporting THAT as a severance is the mistake
+    // lesson A7 is about: Nevada's U.S. Bicycle Route 50 was reported SEVERED
+    // on exactly this, on a corridor that routes end to end.
+    if (metres(a, b) < 25) { degenerate++; continue; }
     messages.length = 0;
     context.onmessage({ data: { type: 'route-options', id: 1, points: [a, b], rules,
       forceDesignated: true, forceResidential: true } });
@@ -155,7 +159,11 @@ for (const [name, lines] of byName) {
     }
   }
   const label = worst === Infinity ? 'SEVERED' : `worst ${worst.toFixed(1)}x`;
-  console.log(`${name}  (${marks.length - 1} hops of ~${hopMi} mi)  ${label}`);
+  // The skipped count is printed rather than swallowed: a corridor whose hops
+  // were mostly untestable has not been checked, and that is not the same
+  // answer as "checked and fine".
+  const skipped = degenerate ? `, ${degenerate} hop(s) skipped as degenerate` : '';
+  console.log(`${name}  (${marks.length - 1} hops of ~${hopMi} mi${skipped})  ${label}`);
   for (const line of bad) console.log(line);
   worstOverall.push([name, worst]);
 }
