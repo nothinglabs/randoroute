@@ -5,8 +5,8 @@
    "id": "nevada",
    "name": "Nevada",
    "status": "preview",
-   "readiness": 3,
-   "summary": "OSM routing with NDOT speed, shoulder, class and traffic data conflated; road tiles pending.",
+   "readiness": 5,
+   "summary": "OSM routing across Nevada with NDOT speed, shoulder, class and 2025 traffic counts, RTC Southern Nevada bike facilities, and FHWA HPMS 2018.",
    "bounds": {
     "minLon": -120.2,
     "maxLon": -113.9,

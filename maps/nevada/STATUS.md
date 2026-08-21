@@ -106,6 +106,96 @@ from the bypass bridge, the Las Vegas valley crossing, NV 160 over Mountain
 Springs where there is no second road for forty miles, and Elko to Spring Creek
 for the sparse northeast.
 
+## What was built
+
+| Artefact | Size | Content |
+| --- | --- | --- |
+| `graph2.bin.gz` | 15.3 MB | 404,591 nodes, 477,810 edges, 864,033 directed arcs |
+| `roads.pmtiles` | 16.7 MiB | 126,509 street features |
+| `basemap.pmtiles` | 13.2 MiB | land, water, green space, 601 place labels |
+| `overlays.pmtiles` | 6.1 MB | 17,593 bike-infrastructure ways, 6,055 inventory spans |
+| `places.json` | 30 KB | 601 places |
+| `bikeroutes.geojson.gz` | 99 KB | 11 OSM route relations |
+
+Graph-build conflation: 89,922 NDOT-conflated edges, 67,368 with an official
+legal speed, 30,603 with an official facility. 73 same-name seams stitched at
+the 2 m threshold, 10,967 dedicated paths densified for snapping, 7,903
+sidewalk stitch fragments, 61,190 edges pruned in walk-only components.
+
+## Coverage, measured against the shipped graph
+
+`python3 scripts/measure_coverage.py --graph maps/nevada/graph2.bin.gz --add
+maps/nevada/hpms.geojson --label HPMS`:
+
+- **38,131 road miles** excluding paths and ferries. Worth holding beside
+  Oregon's 74,503: Nevada is the larger state and carries half the road
+  network, so coverage percentages between states are not comparable without
+  this denominator.
+- **10,948 miles with a traffic count — 28.7%** (Oregon 25.5%, Washington
+  35.4%).
+- **0 miles with bail-out space — 0.0%.** Nevada publishes no county road log,
+  so `inferShoulderFromEdge` has no input at all. This is the second state
+  running to return this zero (lesson D7).
+
+Traffic-count coverage by functional class:
+
+| class | miles | with count |
+| --- | --- | --- |
+| Interstate | 999 | 58.0% |
+| Freeway / expressway | 50 | 23.9% |
+| Principal arterial | 2,487 | 86.3% |
+| Minor arterial | 2,195 | 94.5% |
+| Major collector | 2,441 | 93.2% |
+| Minor collector | 7,806 | 48.9% |
+| Local street | 22,152 | **0.2%** |
+
+The shape is Oregon's, with one difference worth naming: minor collectors
+reach 48.9% here against Oregon's 2.6%, because NDOT's functional-class and
+ownership layers extend to local streets even though its counts do not. The
+bottom line is identical in both states — a local street in the American West
+has a traffic count essentially never — and 22,152 of Nevada's 38,131 road
+miles are local streets. **More than half of this state's rideable network is
+priced by functional class and OSM tags rather than by a measurement**, and
+that is the single most important sentence in this file.
+
+## Readiness
+
+**7.** The gates, each against `maps/README.md`:
+
+| Level | Gate | Met by |
+| --- | --- | --- |
+| 1 | app opens on the state; `test_region_portable`, Maps screen | `npm test` green |
+| 2 | `places.json` + `basemap.pmtiles` | 601 places, 13.2 MiB basemap |
+| 3 | `roads.pmtiles` + `graph2.bin.gz`, routes return | 126,509 features, 477,810 edges |
+| 4 | agency speed and facilities conflated; corridor severance on this state's corridors; parity and fact contract green | 67,368 official-speed and 30,603 official-facility edges; **all six nominated corridors pass with no freeway** |
+| 5 | traffic volume conflated + a written verification report | NDOT 2025 counts and HPMS 2018; `VERIFICATION.md` |
+| 6 | stress, prohibitions and shoulder conflated where the state publishes them; `measure_coverage.py` recorded | shoulder inventory conflated; stress rating and prohibition layer **absent statewide**, with field-level reasons in the census above; coverage recorded above |
+| 7 | verification extended past one metro to the state's distinct regions | `VERIFICATION.md` covers the Las Vegas valley, the Colorado River, Reno/Sparks, Lake Tahoe, the Carson Valley, the northeast, and the Great Basin interior |
+
+**Not 8**, and it cannot be from here: nobody has ridden any of it. Two things
+a rider should check first, because they are where the data is thinnest rather
+than where it looks worst:
+
+1. **Shoulders outside Clark County.** Nevada has an opinion about the shoulder
+   on roughly 1,800 road segments in the entire state — 1,226 NDOT spans plus
+   595 OSM-tagged ways. Everywhere else the shoulder is unknown, which the
+   model reads pessimistically. On a 55 mph rural two-lane that is the
+   difference between "fails your rules" and "fine".
+2. **The 22,152 miles of local street with no count.** Those are priced by
+   functional class, and NDOT classes 68,827 of its 72,426 spans as class 7.
+
+`status` is **`preview`** and that is a deliberate, arguable choice. Oregon
+ships `released` at the same readiness. The reason for the difference is that
+Nevada's largest metro has **zero** published bicycle route relations, so the
+level-5 method — compare the router against routes known to be good — could
+not be applied at all to three quarters of the state's riders; the Las Vegas
+verification here is against named rides and the road network, not against a
+mapped corridor. That is worth a rider's eyes before the pack is called
+released. It costs one thing, and it is worth knowing:
+`test_shoulder_directional_fill.mjs` only measures **released** states, so
+Nevada's directional-shoulder ratio is measured by hand and recorded in
+`VERIFICATION.md` rather than by the suite.
+
 ## Findings and blockers
 
 Recorded as they were hit; the full list with fixes is in the import's commits.

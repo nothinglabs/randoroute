@@ -1,0 +1,203 @@
+[
+ {
+  "id": "lv-strip-fremont",
+  "ok": true,
+  "flagged": [
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "lv-unlv-summerlin",
+  "ok": true,
+  "flagged": [
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "lv-henderson",
+  "ok": true,
+  "flagged": [
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "lv-airport-nlv",
+  "ok": true,
+  "flagged": [
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "lv-wetlands",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "lv-redrock",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "henderson-boulder",
+  "ok": true,
+  "flagged": [
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "boulder-hooverdam",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D"
+  ]
+ },
+ {
+  "id": "reno-sparks",
+  "ok": true,
+  "flagged": [
+   "Route D",
+   "Route F"
+  ]
+ },
+ {
+  "id": "reno-carson",
+  "ok": true,
+  "flagged": [
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "carson-spooner",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "incline-stateline",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "carson-minden",
+  "ok": true,
+  "flagged": [
+   "Route C",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "elko-springcreek",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route C",
+   "Route D",
+   "Route F"
+  ]
+ },
+ {
+  "id": "winnemucca-golconda",
+  "ok": true,
+  "flagged": [
+   "Route C",
+   "Route D",
+   "Route E"
+  ]
+ },
+ {
+  "id": "ely-mcgill",
+  "ok": true,
+  "flagged": []
+ },
+ {
+  "id": "mesquite-bunkerville",
+  "ok": false,
+  "reason": "No route exists on the rideable network between these points.",
+  "diagnosis": "both endpoints are reachable — the failure is something else, look closer"
+ },
+ {
+  "id": "lv-pahrump",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "reno-fallon",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "ely-baker",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ }
+]
