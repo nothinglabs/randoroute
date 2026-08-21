@@ -1,7 +1,9 @@
 # Oregon import status
 
-Status: preview. This file is the running record of the import; the readiness
-number in `region.json` is updated only when its rubric gate is met.
+Status: released, readiness 7. This file is the running record of the import;
+the readiness number in `region.json` is updated only when its rubric gate is
+met. The three lines below that still say `preview` are kept as written at the
+time, because they record what was true during the import.
 
 ## Source census — completed before any build
 
@@ -36,7 +38,8 @@ See `corridors.json` for the machine-checked endpoints.
 ## Current state of the import
 
 - No Oregon build artefacts existed when the census and corridors were written.
-- The intended ceiling is readiness 7, shipped as `"status": "preview"`.
+- The intended ceiling is readiness 7, shipped at the time as
+  `"status": "preview"`. Oregon is `released` now.
 - ODOT's current state-system AADT is in scope; non-state point AADT is a
   documented backlog, not silently treated as line coverage.
 - No application code or another state's data may be changed for this import.
@@ -103,8 +106,8 @@ Completed 2026-08-16:
 - graph2.bin.gz: 631,212 nodes, 730,560 edges, 104,771 official-speed
   edges, 11,368 official-facility edges, 18,210 MTB-tagged edges, and 19,370
   densified dedicated-path edges.
-- region.json remains "status": "preview" and now records readiness 7,
-  after the gates below pass.
+- region.json recorded `"status": "preview"` and readiness 7 at this point,
+  after the gates below passed. It is `released` now.
 
 The required corridor-severance test passes all five Oregon corridors and the
 existing Washington and prior-state corridors. The broad verification report
