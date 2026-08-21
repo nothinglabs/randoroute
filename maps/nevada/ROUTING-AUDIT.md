@@ -50,7 +50,7 @@ Everything in the ROUTER column below is downstream of that row.
 | # | Finding | Verdict | Class | Source |
 | --- | --- | --- | --- | --- |
 | N1 | Mesquite → Bunkerville returns "no route" for a 4.7-mile trip: a bikepacking relation marks SR 170 as an MTB trail, and it is the only Virgin River crossing | **BUG** | ROUTER | shared logic + NEVADA DATA |
-| N2 | The recommendation is 1.0–2.2× the shortest option offered, and on four probes 100% of the failing metres it is paying to avoid come from the shoulder rung | **EXPLAINABLE, worth tuning** | ROUTER | NEVADA DATA |
+| N2 | The recommendation is 1.0–2.2× the shortest option offered, and on four probes every failing metre it is paying to avoid comes from the needs-space rung, which 68% of the state fails for want of a shoulder measurement | **EXPLAINABLE, worth tuning** | ROUTER | NEVADA DATA |
 | N3 | The Tahoe-Pyramid Bikeway routes at 100.6 mi against a published 37.9 mi, 14% on corridor | **BUG** | DATA | NEVADA DATA |
 | N4 | `verify_against_routes.mjs` and `verify_corridor_chain.mjs` — the two tools the porting method points an importer at — crashed on every state before printing a line | **BUG** | TOOLING | IMPORT PROCESS |
 | N5 | `verify_corridor_chain.mjs` reported U.S. Bicycle Route 50 SEVERED on a hop whose two ends are the same place | **BUG** | TOOLING | IMPORT PROCESS |
@@ -132,7 +132,7 @@ kind.
 The MTB marking comes from relation membership.
 `build_graph.collect_mtb_route_members()` marks every way member of any
 `route=mtb` relation, and OSM relation **8643414 — "The Plateau Passage"**, a
-1,960 km IMBA / bikepacking.com route, includes three Riverside Road ways among
+long-distance IMBA / bikepacking.com route, includes three Riverside Road ways among
 its 104 members. A bikepacking route follows paved highways for long stretches
 by design. So a mapper documenting a long-distance ride deleted a state highway
 from the routable network for every rider on default settings.
@@ -205,11 +205,17 @@ else:
 | N Las Vegas → the airport | 9,607 m | **0 m** | 2.20× → 1.47× |
 | Incline Village → Stateline | 20,690 m | **0 m** | 1.00× → 1.00× |
 
-**Every failing metre on all four routes is the shoulder rung.** Not the speed
-ceiling, not traffic, not lane count. And statewide only 23.4% of fast-road
-miles pass on a measured shoulder while 68.2% fail on no measurement at all, so
-the overwhelming majority of what the router is paying an hour and 48 minutes
-to avoid on the Pahrump ride is road nobody has measured.
+**Every failing metre on all four routes is the `needs-space` rung**, and
+turning off its shoulder half removes all of it. Nothing on these routes fails
+for a reason the shoulder could not have answered — not the absolute speed
+ceiling, not a prohibition, not a dismount. Be precise about what that does and
+does not show: `minShoulder: 0` makes `shoulderFails` false everywhere, so it
+disables the rung whichever of its three triggers fired (speed, lane count or
+traffic volume). What it isolates is that the rung is the whole story, and the
+statewide split says what the rung is running on — 23.4% of fast-road miles
+pass on a measured shoulder, 1.1% fail on one, and 68.2% fail on no measurement
+at all. So the overwhelming majority of what the router is paying an hour and
+48 minutes to avoid on the Pahrump ride is road nobody has measured.
 
 **Why this is EXPLAINABLE and not a bug.** The pessimistic reading is
 deliberate and correct: `safety-model.js` says *"no data" and "no shoulder"
@@ -333,15 +339,22 @@ use when.
 
 ### N8 — Winnemucca → Golconda rides the Interstate, correctly (EXPLAINABLE — DATA)
 
-16.8 miles against a 12.9-mile crow, 40.9% failing, using
-`Dwight D. Eisenhower Highway` — I-80. Nevada permits bicycles on rural
-Interstates where no alternative exists, and `allowFreeways` defaults on.
+16.8 miles against a 12.9-mile crow, 40.9% failing, on
+`Dwight D. Eisenhower Highway` — I-80. `allowFreeways` defaults on in the app,
+so this is within the rider's rules.
 
-**Checked, not assumed.** Re-run with `allowFreeways: false` and the shortest
-answer is **59.0 miles**. There is no parallel road: OSM has no mapped frontage
-route between the two towns (`Old Victory Highway`, old US 40, exists in
-Pershing County to the west and not here). The router is describing the network
-honestly and the network is genuinely one line.
+**Checked, not assumed, twice.** Re-run with `allowFreeways: false` and the
+shortest answer is **59.0 miles**, which proves the 16.8-mile answer really is
+using the Interstate rather than a similarly-named frontage road. And OSM has no
+mapped parallel route between the two towns: `Old Victory Highway`, old US 40,
+exists in Pershing County to the west and not here. The network is genuinely one
+line.
+
+**What is not claimed:** whether riding I-80 there is legal. The extract tags
+I-80 in this stretch as 25 ways `bicycle=no`, 17 `bicycle=yes` and 11 untagged,
+and the router used the permitted ones — so the graph is following the tags
+faithfully, and whether the tags follow the signs is a roadside question. A
+rider should check it before this counts as verified.
 
 ### N9 — Incline Village → Stateline is half failing on the only road there is (EXPLAINABLE — DATA)
 

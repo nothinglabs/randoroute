@@ -16,7 +16,8 @@ node scripts/audit_route.mjs maps/nevada/audit/routes.json maps/nevada/audit
 
 ## The constraint that shapes this report
 
-**Nevada has eleven `route=bicycle` relations in the entire state**, and none of
+**Nevada has twelve `route=bicycle` relations in the entire state**, eleven
+corridors after overlapping members are reconciled, and none of
 them is in Clark County. Oregon has forty-one. So the highest-value source in
 `maps/README.md`'s list — published long-distance routes already in the data —
 covers Lake Tahoe, the Truckee River and one national route across the middle,
@@ -173,7 +174,7 @@ breadth-first search over the directed arcs finds a path in 69 edges and 7.8 km,
 and both endpoints are in the giant component. The blocking run is 2.3 km of
 Riverside Road — **SR 170**, a paved two-lane state highway with a concrete
 bridge, the only bike-legal crossing of the Virgin River — marked as a
-mountain-bike trail because OSM relation **8643414**, the 1,960 km "Plateau
+mountain-bike trail because OSM relation **8643414**, the long-distance "Plateau
 Passage" bikepacking route, lists three of its ways among 104 members. With
 `allowMtbTrails: true` the trip is 4.7 miles.
 

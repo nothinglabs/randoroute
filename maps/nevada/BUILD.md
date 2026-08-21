@@ -167,9 +167,9 @@ python3 scripts/build_graph.py \
 ```
 
 `--restrictions ""` because Nevada publishes no permanent bicycle-prohibition
-inventory. Its prohibitions live in NRS 484B.763 and in per-segment NDOT
-traffic orders, not in a layer; OSM's `bicycle=no` carries 5,892 ways here and
-is the whole signal.
+inventory: its prohibitions are posted per segment rather than inventoried, and
+neither NDOT ArcGIS server carries a bicycle-access layer. OSM's `bicycle=no`
+carries 5,892 ways here and is the whole signal.
 
 No `patch_graph_*.py` steps: those three read Washington-specific inputs.
 
