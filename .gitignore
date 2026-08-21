@@ -66,3 +66,5 @@ maps/*/odot_facilities.geojson
 maps/*/funcclass.geojson
 maps/*/aadt.geojson
 maps/*/hpms.geojson
+# Claude Code agent worktrees. Working copies, not project content.
+.claude/worktrees/
