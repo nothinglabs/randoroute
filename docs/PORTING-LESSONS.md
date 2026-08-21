@@ -404,10 +404,6 @@ ODOT state AADT point records were claimed because LRM_KEY plus BEGMP/ENDMP
 describe sections; non-state AADT stayed parked because its field list has only
 MP, street/site names, and no span.
 
----
-
-# B. Conflation — getting agency data onto OSM geometry
-
 *Travelled — Nevada (2026-08-21): held, and generalised one step further.* The
 geometry-type trap did not arise: every NDOT layer is already polyline, and
 the ALRS event layers return real WGS84 linework, so no milepost slicing was
@@ -416,6 +412,44 @@ whose FIELD NAMES are as misleading as Oregon's geometry type. RTC Washoe's
 `Bike_LTS_S` reads like a stress score and is a path flag (see A1). The rule
 survives with a wider scope: park a source on what its records actually
 contain, which means reading the values, not only the schema.
+
+### A10 — A linear-referencing layer serves its own history, and the REST default returns all of it.
+
+*What happened.* NDOT's shoulder-width layer answered a plain query with 4,390
+rows. **3,164 of them were superseded values** for road that already had a
+current row in the same response. Conflating the lot would have landed retired
+measurements on live geometry, and the failure has no symptom at the fetch: the
+row count looks generous, every record validates, and the wrong answer is a
+plausible one.
+
+*Why.* A DOT asset system keeps an event's whole history in one layer, each
+version bounded by `FromDate` and `ToDate`, with the current version marked by
+a null `ToDate`. This is how the agency's own editors read it. The REST API has
+no opinion about which slice you meant, so the default is every slice. Nothing
+in the layer name says "history" -- Nevada's is `NDOT_ALRS` / `EAMS`, named for
+the asset management system rather than for what a query returns.
+
+*The rule.* Before conflating any agency layer, ask whether it is time-sliced,
+and filter to the current slice if it is. `ToDate IS NULL` is the usual
+spelling; the fields to look for are `FromDate`/`ToDate`, `EffectiveDate`,
+`RetireDate` or a `Status` column. Then check the arithmetic: a layer whose row
+count is a large multiple of the state's road segment count is serving history,
+whatever its schema says. Record the filter in `STATUS.md`'s census beside the
+layer URL, because the next person to refetch it will otherwise get the
+unfiltered answer and not know why their numbers moved.
+
+*Evidence.* `maps/nevada/tools/build_ndot.py` and the census in
+`maps/nevada/STATUS.md`: 4,390 rows returned, 3,164 superseded, 1,226 current.
+
+*Travelled.* Nevada is the origin. Washington and Oregon were not exercised
+against it -- WSDOT's and ODOT's inventories were fetched before this was
+understood, and neither has been rechecked for a history slice. That recheck is
+open, and a wrong answer there would look exactly like the one Nevada nearly
+shipped.
+
+---
+
+# B. Conflation — getting agency data onto OSM geometry
 
 ### B1 — An all-samples matcher silently discards data it has already found. This is the single most expensive bug in this category.
 
@@ -647,12 +681,12 @@ import did not change the shared functional-class precedence or run a new
 before/after blast-radius comparison; the existing audit result remains the
 baseline rather than new Oregon evidence.
 
+*Travelled — Nevada (2026-08-21): not exercised.* No shared precedence changed
+for this state, so there was no before/after to count.
+
 ---
 
 # C. The graph, and topology
-
-*Travelled — Nevada (2026-08-21): not exercised.* No shared precedence changed
-for this state, so there was no before/after to count.
 
 ### C1 — One severed link can cost forty-five miles, and nothing will fail.
 
@@ -1157,12 +1191,12 @@ branch that ships **on** by default.
 shared map/model sweep was not rerun as an Oregon-specific data study, and no
 application rule changed.
 
+*Travelled — Nevada (2026-08-21): not exercised.* No application rule changed,
+so the map/model sweep was run as a regression rather than as a Nevada study.
+
 ---
 
 # E. Routing cost calibration
-
-*Travelled — Nevada (2026-08-21): not exercised.* No application rule changed,
-so the map/model sweep was run as a regression rather than as a Nevada study.
 
 ### E1 — Facility multipliers are profile-independent, so tuning them moves every option, including the direct one.
 
@@ -1340,12 +1374,12 @@ caution, so ferry terminals keep working.
 contains dismount-priced OSM paths, but this import did not perform a dedicated
 length-severity calibration.
 
+*Travelled — Nevada (2026-08-21): not exercised.* Nevada's graph contains
+dismount-priced ways, but no length-severity calibration was run.
+
 ---
 
 # F. Tiles and rendering
-
-*Travelled — Nevada (2026-08-21): not exercised.* Nevada's graph contains
-dismount-priced ways, but no length-severity calibration was run.
 
 ### F1 — The app overzooms past the tile maxzoom, so simplification at maxzoom is simplification of the final picture.
 
@@ -1530,12 +1564,12 @@ a different verdict.
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* The
 application palette and motion rules were not changed or field-tested here.
 
+*Travelled — Nevada (2026-08-21): not exercised.* Palette and motion
+unchanged.
+
 ---
 
 # G. Discipline
-
-*Travelled — Nevada (2026-08-21): not exercised.* Palette and motion
-unchanged.
 
 ### G1 — A new signal is display-only until it has been field-tested.
 
