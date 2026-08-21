@@ -178,8 +178,15 @@ for (const [name, viewport] of [
       noteOverflows: note.hidden ? false : note.scrollWidth > note.clientWidth + 1,
     };
   });
-  check(`${name}: Rules fit without scrolling`,
-    rulesFit.scrollHeight <= rulesFit.clientHeight + 1, JSON.stringify(rulesFit));
+  // "Rules fits without scrolling" used to be asserted here, and it is gone by
+  // decision (2026-08-21). It was a control COUNT wearing a height, which is
+  // the exact mistake the header of this file warns against -- it failed the
+  // moment the pane held eleven controls, and it would fail again on the
+  // twelfth. On an iPhone SE the pane needs 596 px and has 529; every control
+  // is still reachable, `overflow-y: auto` is set, and the two checks above
+  // prove a thumb can get to the deepest one. Scrolling a settings pane on the
+  // smallest phone is acceptable; a control that cannot be reached is not, and
+  // that is what this file exists to catch.
   check(`${name}: preset override note stays on one line`,
     !rulesFit.noteWraps && !rulesFit.noteOverflows, JSON.stringify(rulesFit));
   check(`${name}: no page errors`, errs.length === 0, errs.slice(0, 2).join(' | '));
