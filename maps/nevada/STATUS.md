@@ -13,7 +13,7 @@ written; geometry type is never the reason for a verdict (lesson A9).
 **Where Nevada's data actually is, because no keyword search finds it.** NDOT
 runs *two* ArcGIS servers and the useful one is not the one its open-data hub
 links to. `gis.dot.nv.gov/arcgis/rest/services` holds mapping and application
-services; the road inventory is on `gis.dot.nv.gov/**rhgis**/rest/services`, in
+services; the road inventory is on **`gis.dot.nv.gov/rhgis/rest/services`**, in
 a folder called `EAMS`, in a service called `NDOT_ALRS`, as 83 layers named for
 the asset rather than the subject — `ShoulderOutside`, `SpeedLimit`, `AADT`,
 `FSystem`, `OwnershipMaintenance`. Nothing in `EAMS`, `rhgis` or `ALRS` says

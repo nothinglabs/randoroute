@@ -371,7 +371,7 @@ the one its open-data hub links to.** Nevada's is the worked example: the
 public-facing `gis.dot.nv.gov/arcgis/rest/services` holds mapping and
 application services, and the entire road inventory — shoulder, posted speed,
 lane count, access control, measured AADT, functional class, ownership — lives
-on `gis.dot.nv.gov/**rhgis**/rest/services`, in a folder called `EAMS`, in one
+on **`gis.dot.nv.gov/rhgis/rest/services`**, in a folder called `EAMS`, in one
 service called `NDOT_ALRS` with 83 layers named for the asset rather than the
 subject. Nothing in `rhgis`, `EAMS` or `ALRS` says "road". Walk `/rest/services`
 on **every** host the agency serves from, not just the one the hub links.
