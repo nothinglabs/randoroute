@@ -1,0 +1,83 @@
+[
+ {
+  "id": "spokane-gonzaga-manito",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "cheney-spokane",
+  "ok": true,
+  "flagged": [
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "tricities-howard-amon-sacajawea",
+  "ok": true,
+  "flagged": [
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "bellingham-birch-bay",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "port-angeles-hurricane-ridge",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B"
+  ]
+ },
+ {
+  "id": "wenatchee-chelan",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "white-salmon-stevenson",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "yakima-selah",
+  "ok": true,
+  "flagged": []
+ }
+]

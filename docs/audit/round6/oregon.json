@@ -1,0 +1,54 @@
+{
+  "state": "oregon",
+  "routes": [
+    {
+      "id": "portland-vancouver-crossing",
+      "name": "Kennedy School, NE Portland -> Esther Short Park, Vancouver WA",
+      "from": [-122.6476, 45.5626],
+      "to": [-122.6757, 45.6262],
+      "note": "The cross-river trip, run northbound on the Oregon pack because that is the pack a Portland rider has. Two bike crossings exist -- the Interstate Bridge sidewalk and the I-205 Glenn Jackson path 11 km east -- so the question is which one the router picks and what it charges."
+    },
+    {
+      "id": "bend-drake-phils",
+      "name": "Drake Park, Bend -> Phil's Trailhead, Bend",
+      "from": [-121.3157, 44.0582],
+      "to": [-121.3968, 44.0432],
+      "note": "The ride every Bend rider makes: downtown out to the west-side trailhead. Tests the approach to an MTB network from a town centre, with allowMtbTrails at its default."
+    },
+    {
+      "id": "eugene-spencer-butte",
+      "name": "University of Oregon, Eugene -> Spencer Butte trailhead",
+      "from": [-123.0726, 44.0448],
+      "to": [-123.0860, 43.9880],
+      "note": "Willamette Street is the direct line and is a fast arterial; the south-hills residential grid is the alternative. A short urban-to-trailhead trip with a real corridor choice."
+    },
+    {
+      "id": "ashland-jacksonville",
+      "name": "Southern Oregon University, Ashland -> Britt Gardens, Jacksonville",
+      "from": [-122.6890, 42.1875],
+      "to": [-122.9692, 42.3139],
+      "note": "Rogue Valley rural, off the Bear Creek Greenway that round 2 found clean. OR 99 and Old Stage Road are the two candidate corridors."
+    },
+    {
+      "id": "cannon-beach-manzanita",
+      "name": "Cannon Beach -> Manzanita",
+      "from": [-123.9615, 45.8918],
+      "to": [-123.9345, 45.7196],
+      "note": "US 101 over Neahkahnie Mountain: no parallel road, a sustained climb, and a stretch with very little shoulder. The coast findings so far are all south of Tillamook."
+    },
+    {
+      "id": "troutdale-multnomah-falls",
+      "name": "Troutdale -> Multnomah Falls Lodge",
+      "from": [-122.3874, 45.5393],
+      "to": [-122.1180, 45.5775],
+      "note": "The Historic Columbia River Highway, the piece of the Gorge that is intact and rideable. B3's freeway fix was measured on the severed piece further east; this checks the healthy half."
+    },
+    {
+      "id": "eugene-corvallis",
+      "name": "5th Street Public Market, Eugene -> OSU Memorial Union, Corvallis",
+      "from": [-123.0900, 44.0535],
+      "to": [-123.2789, 44.5646],
+      "note": "Long inter-city: OR 99W, the Peoria Road river route, and the Coburg/Harrisburg east-bank route are three genuinely different answers, so the portfolio has something to be right or wrong about."
+    }
+  ]
+}

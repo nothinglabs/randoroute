@@ -1,0 +1,61 @@
+{
+  "state": "washington",
+  "routes": [
+    {
+      "id": "spokane-gonzaga-manito",
+      "name": "Gonzaga University, Spokane -> Manito Park, Spokane",
+      "from": [-117.4013, 47.6673],
+      "to": [-117.4093, 47.6316],
+      "note": "Urban Spokane, which no round has audited inside the city. Crosses the Spokane River and climbs the South Hill; tests whether the router finds the signed river crossings and how it prices the bluff."
+    },
+    {
+      "id": "cheney-spokane",
+      "name": "Eastern Washington University, Cheney -> Riverfront Park, Spokane",
+      "from": [-117.5830, 47.4925],
+      "to": [-117.4205, 47.6605],
+      "note": "The real student commute into Spokane. The Fish Lake Trail parallels the direct SR 904 / I-90 corridor for much of it, so this is a trail-credit-versus-distance test on a 20 km crow."
+    },
+    {
+      "id": "tricities-howard-amon-sacajawea",
+      "name": "Howard Amon Park, Richland -> Sacajawea State Park, Pasco",
+      "from": [-119.2725, 46.2800],
+      "to": [-119.0475, 46.2100],
+      "note": "Tri-Cities on new endpoints: a park at the Snake/Columbia confluence reachable only across the river bridges. Round 2's Tri-Cities trip and round 5's Richland to Pasco both stayed inside the urban core."
+    },
+    {
+      "id": "bellingham-birch-bay",
+      "name": "Western Washington University, Bellingham -> Birch Bay State Park",
+      "from": [-122.4853, 48.7346],
+      "to": [-122.7660, 48.9085],
+      "note": "North Whatcom County rural ground no round has touched. Tests the choice between the Blaine Road farm grid and the I-5 frontage corridor."
+    },
+    {
+      "id": "port-angeles-hurricane-ridge",
+      "name": "Port Angeles waterfront -> Hurricane Ridge Visitor Center",
+      "from": [-123.4308, 48.1207],
+      "to": [-123.4977, 47.9700],
+      "note": "A single-road 1,500 m climb on Hurricane Ridge Road. Chosen to exercise the v.771 quadratic climb ramp where there is no alternative corridor to price against."
+    },
+    {
+      "id": "wenatchee-chelan",
+      "name": "Memorial Park, Wenatchee -> Riverwalk Park, Chelan",
+      "from": [-120.3145, 47.4235],
+      "to": [-120.0166, 47.8395],
+      "note": "Long inter-city rural: US 97A up the west bank of the Columbia, with US 2/97 on the east bank as the only alternative. A corridor choice between two state highways."
+    },
+    {
+      "id": "white-salmon-stevenson",
+      "name": "White Salmon -> Columbia Gorge Interpretive Center, Stevenson",
+      "from": [-121.4860, 45.7280],
+      "to": [-121.8890, 45.6940],
+      "note": "The Washington side of the Gorge; every earlier Gorge finding was about the Oregon side. SR 14 has tunnels and long no-shoulder stretches, and the question is whether the router has anything else to offer."
+    },
+    {
+      "id": "yakima-selah",
+      "name": "Downtown Yakima -> Selah Civic Center",
+      "from": [-120.5060, 46.6020],
+      "to": [-120.5320, 46.6540],
+      "note": "Short suburban trip across the Naches River. The Yakima Greenway runs most of the way and SR 823 is the direct road, so this is the trail-versus-arterial trade on a 7 km crow."
+    }
+  ]
+}

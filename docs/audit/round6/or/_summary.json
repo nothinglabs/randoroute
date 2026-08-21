@@ -1,0 +1,66 @@
+[
+ {
+  "id": "portland-vancouver-crossing",
+  "ok": true,
+  "flagged": [
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "bend-drake-phils",
+  "ok": true,
+  "flagged": [
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "eugene-spencer-butte",
+  "ok": true,
+  "flagged": [
+   "Route B",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "ashland-jacksonville",
+  "ok": true,
+  "flagged": [
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "cannon-beach-manzanita",
+  "ok": true,
+  "flagged": [
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "troutdale-multnomah-falls",
+  "ok": true,
+  "flagged": [
+   "Route A",
+   "Route B",
+   "Route C",
+   "Route D",
+   "Route E",
+   "Route F"
+  ]
+ },
+ {
+  "id": "eugene-corvallis",
+  "ok": true,
+  "flagged": [
+   "Route F"
+  ]
+ }
+]
