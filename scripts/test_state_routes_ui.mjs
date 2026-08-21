@@ -107,6 +107,98 @@ check('the choice persists per state and unmarking clears it',
     && routesScreen.otherStatesUntouched && routesScreen.ruleKeyCleared === null,
   JSON.stringify(routesScreen));
 
+/* ------------------------------- switching a non-OSM source off entirely */
+// A rider who does not trust a county's map should be able to put it away.
+// Off means off in three places at once: it stops being drawn, it stops being
+// offered on a tapped road, and the worker stops treating its edges as
+// designated. OSM has no switch -- it is the baseline, not an opinion.
+const sourceSwitch = await page.evaluate(async () => {
+  const posted = [];
+  routing.worker = { postMessage: (message) => posted.push(message) };
+  routing.ready = true;
+  selectPanelTab('settings');
+  document.getElementById('settings-tab-routes').click();
+  const deadline = Date.now() + 30000;
+  while (!document.querySelector('.state-route-source-toggle') && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  const headings = [...document.querySelectorAll('.state-route-source-heading')];
+  const toggle = document.querySelector('.state-route-source-toggle');
+  const box = toggle.querySelector('input');
+  const src = SOURCES.find((source) => source.id === 'routes');
+  const out = {
+    switchCount: document.querySelectorAll('.state-route-source-toggle').length,
+    headingCount: headings.length,
+    osmHasSwitch: !!headings.find((heading) => /^OSM/.test(heading.textContent.trim()))
+      ?.querySelector('input'),
+    switchLabel: toggle.querySelector('span').textContent,
+    onByDefault: box.checked,
+    featuresBefore: routeOverlayDisplayData(src).features.length,
+    totalFeatures: src.fc.features.length,
+  };
+  box.checked = false;
+  box.dispatchEvent(new Event('change'));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const message = posted.find((m) => m.type === 'suppressed-routes');
+  out.ruleKey = rules.suppressedRouteSources || null;
+  out.messageKey = message?.key ?? null;
+  out.messageLines = message?.lines?.length ?? 0;
+  out.messageKeepLines = message?.keepLines?.length ?? 0;
+  out.featuresAfter = routeOverlayDisplayData(src).features.length;
+  out.mapFeatures = map.getSource('routes')?._data?.features?.length ?? null;
+  out.rowsDimmed = document.querySelectorAll('.state-route-row-off').length;
+  out.rowsDisabled = [...document.querySelectorAll('.state-route-row-off input')]
+    .every((input) => input.disabled);
+  out.headingSaysOff = /off/i.test(toggle.textContent);
+  out.persisted = (suppressedRouteSourcesByState[Region.id] || []).slice();
+  saveStateNow();
+  out.savedBlob = (JSON.parse(localStorage.getItem('wa-bike-state-1'))
+    .suppressedRouteSourcesByState?.[Region.id] || []).slice();
+
+  // A road the switched-off source runs down stops offering its checkbox.
+  const feature = src.fc.features.find((f) => f.properties?.s === out.persisted[0]);
+  const geometry = feature?.geometry;
+  const line = geometry?.type === 'MultiLineString' ? geometry.coordinates[0]
+    : geometry?.coordinates || [];
+  const mid = line[Math.floor(line.length / 2)];
+  out.namesWhileOff = routeNamesNear({ lng: mid[0], lat: mid[1] });
+
+  box.checked = true;
+  box.dispatchEvent(new Event('change'));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  out.ruleKeyCleared = rules.suppressedRouteSources || null;
+  out.featuresRestored = routeOverlayDisplayData(src).features.length;
+  out.rowsDimmedAfter = document.querySelectorAll('.state-route-row-off').length;
+  out.namesWhileOn = routeNamesNear({ lng: mid[0], lat: mid[1] });
+  selectPanelTab('route');
+  return out;
+});
+check('only non-OSM sources carry a switch, and it starts on',
+  sourceSwitch.switchCount === sourceSwitch.headingCount - 1
+    && sourceSwitch.osmHasSwitch === false && sourceSwitch.onByDefault === true
+    && sourceSwitch.switchLabel === 'Island County',
+  JSON.stringify(sourceSwitch));
+check('switching a source off hides its routes and tells the worker which ones',
+  sourceSwitch.ruleKey === 'island-county' && sourceSwitch.messageKey === 'island-county'
+    && sourceSwitch.messageLines > 0 && sourceSwitch.messageKeepLines > 0
+    && sourceSwitch.featuresAfter < sourceSwitch.featuresBefore
+    && sourceSwitch.featuresBefore === sourceSwitch.totalFeatures
+    && sourceSwitch.mapFeatures === sourceSwitch.featuresAfter,
+  JSON.stringify(sourceSwitch));
+check('its routes stay listed but cannot be marked Preferred while it is off',
+  sourceSwitch.rowsDimmed > 0 && sourceSwitch.rowsDisabled && sourceSwitch.headingSaysOff
+    && sourceSwitch.rowsDimmedAfter === 0,
+  JSON.stringify(sourceSwitch));
+check('a road it runs down stops offering its Preferred checkbox',
+  sourceSwitch.namesWhileOff.length === 0 && sourceSwitch.namesWhileOn.length > 0,
+  JSON.stringify(sourceSwitch));
+check('the switch persists per state and switching back on restores everything',
+  sourceSwitch.persisted.join() === 'island-county'
+    && sourceSwitch.savedBlob.join() === 'island-county'
+    && sourceSwitch.ruleKeyCleared === null
+    && sourceSwitch.featuresRestored === sourceSwitch.featuresBefore,
+  JSON.stringify(sourceSwitch));
+
 /* ------------------------------------- the tap card's Preferred checkbox */
 const tapCard = await page.evaluate(async () => {
   const names = routeOverlayNames({ n: 'Interurban Trail / 10 (Washington)', t: 'rcn', r: '' });

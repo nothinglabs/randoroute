@@ -524,6 +524,29 @@ function roadBlockEdgeSet(points) {
 let preferredEdges = null;      // Uint8Array(E): 1 = edge of a Preferred route
 let preferredRoutesKey = '';    // the selection the set was built for
 
+// A rider can switch off a whole non-OSM route source -- a county's bike map,
+// a state's scenic bikeways -- and have it stop counting as a designated route
+// for both drawing and routing.
+//
+// The graph cannot answer this on its own. Reviewed supplemental sources are
+// stamped into eFlags bit 64 at build time, the SAME bit OSM relations use, and
+// nothing records which source stamped an edge. So the suppressed set is
+// re-derived at runtime from the published linework, using the same matcher
+// that applies a Preferred route.
+let suppressedRouteEdges = null;  // Uint8Array(E): 1 = designation suppressed
+let suppressedRoutesKey = '';     // the suppression the set was built for
+
+// THE one question "is this edge a designated route" -- every read of bit 64
+// goes through here, with one deliberate exception noted at
+// receiveSuppressedRoutes. Two of the callers are the cost/floor pair that A*
+// requires to agree: if edgeCostParts thinks an edge is designated and
+// edgeCostFloor does not, the search's lower bound stops being a lower bound
+// and routing breaks quietly rather than loudly.
+function designatedEdge(ei, fl) {
+  if (!(fl & 64)) return false;
+  return !(suppressedRouteEdges !== null && suppressedRouteEdges[ei] === 1);
+}
+
 // Match published linework to graph edges by overlap AND bearing. Proximity
 // alone makes a parallel frontage road inherit the route, and a single shared
 // point makes a crossing road inherit it. Requiring most of an edge's stored
@@ -603,6 +626,42 @@ function matchRouteLines(lines, eligibleEdge = () => true) {
   return set;
 }
 
+// `lines` is the linework of routes whose EVERY source the rider switched off.
+// `keepLines` is the linework of every route still standing. The subtraction is
+// the whole point, and it is not the same protection the caller already
+// applies. app.js keeps a route whose NAME is claimed by a surviving source as
+// well; this keeps a stretch of PAVEMENT that a differently-named surviving
+// route runs down. Measured, switching Oregon's Scenic Bikeways off without it
+// takes 1,505 edges off the TransAmerica Trail and 73 off the Oregon Coast
+// Scenic Bikeway -- separate OSM relations sharing road with a bikeway.
+// Washington's Island County map costs 103 edges the same way.
+//
+// The keep pass is restricted to edges the suppressed pass already matched, and
+// matchRouteLines tests eligibility before it touches geometry, so the second
+// call costs a fraction of the first however large the kept catalogue is.
+function receiveSuppressedRoutes(key, lines, keepLines) {
+  suppressedRoutesKey = String(key || '');
+  suppressedRouteEdges = null;
+  if (!suppressedRoutesKey || !Array.isArray(lines) || !lines.length || !E) {
+    postMessage({ type: 'suppressed-routes-applied', key: suppressedRoutesKey, edges: 0 });
+    return;
+  }
+  // The one place that reads bit 64 raw instead of through designatedEdge():
+  // this IS the pass that decides what designatedEdge() will answer, so it has
+  // to see every edge the graph stamped, including whatever the previous
+  // selection had suppressed.
+  const candidate = matchRouteLines(lines, (ei) => !!(eFlags[ei] & 64));
+  const kept = Array.isArray(keepLines) && keepLines.length
+    ? matchRouteLines(keepLines, (ei) => candidate[ei] === 1) : null;
+  let marked = 0;
+  for (let ei = 0; ei < candidate.length; ei++) {
+    if (kept && kept[ei] === 1) candidate[ei] = 0;
+    marked += candidate[ei];
+  }
+  suppressedRouteEdges = candidate;
+  postMessage({ type: 'suppressed-routes-applied', key: suppressedRoutesKey, edges: marked });
+}
+
 function receivePreferredRoutes(key, lines) {
   preferredRoutesKey = String(key || '');
   preferredEdges = null;
@@ -611,7 +670,7 @@ function receivePreferredRoutes(key, lines) {
   // That now includes OSM relations plus reviewed supplemental sources stamped
   // into the graph at build time; the restriction also keeps neighboring roads
   // out of a rider's per-route preference.
-  const set = matchRouteLines(lines, (ei) => !!(eFlags[ei] & 64));
+  const set = matchRouteLines(lines, (ei) => designatedEdge(ei, eFlags[ei]));
   let marked = 0;
   for (let ei = 0; ei < set.length; ei++) marked += set[ei];
   preferredEdges = set;
@@ -635,7 +694,7 @@ function safetyRulesSignature(rules) {
   let out = '';
   for (const key of Object.keys(rules || {}).sort()) {
     if (key === 'requireSafe' || key === 'alwaysPreferBikeRoutes'
-      || key === 'preferredRoutes') continue;
+      || key === 'preferredRoutes' || key === 'suppressedRouteSources') continue;
     out += `${key}=${rules[key]};`;
   }
   return out;
@@ -947,7 +1006,7 @@ function preferredSignedRouteMult(edge = null) {
 // a strong, rider-adjustable corridor bonus, and its actual
 // verdict still colors the map and the route.
 function trustRouteEdge(ei, fl, rules) {
-  if (!(fl & 64) || (fl & 32) || isDismountEdge(ei)) return false;
+  if (!designatedEdge(ei, fl) || (fl & 32) || isDismountEdge(ei)) return false;
   if (rules.alwaysPreferBikeRoutes) return true;
   return preferredEdges !== null && preferredEdges[ei] === 1
     && rules.preferredRoutes === preferredRoutesKey;
@@ -1860,7 +1919,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // normal traffic cost keep that road appropriately expensive and red.
   if (!trustSignedRoute && !(fl & (32 | 4)) && !isDismountEdge(ei)
       && facilityRouteBonusApplies(eFacility[ei], actualLevel)) {
-    const signed = fl & 64;
+    const signed = designatedEdge(ei, fl);
     cost *= eFacility[ei]
       ? facilityPrefMult(eFacility[ei])
       : (signed ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
@@ -2034,7 +2093,8 @@ function edgeCostFloor(i, forward) {
     // A facility bonus OR a designation bonus, never both, and never on a
     // ferry, freeway or dismount link. The rider may have set neither
     // preference, so take whichever of the two prices the edge lower.
-    m *= eFacility[i] ? (facility[eFacility[i]] ?? 1) : ((fl & 64) ? designatedFloor : 1);
+    m *= eFacility[i] ? (facility[eFacility[i]] ?? 1)
+      : (designatedEdge(i, fl) ? designatedFloor : 1);
   }
   if (!trustSignedRoute && !(fl & (8 | 32))) {
     const below = noShoulderMax - edgeSpeed(i, forward);
@@ -2430,7 +2490,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     timeS += segTimeS;
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
-    if (eFlags[ei] & 64) desigM += eLen[ei];
+    if (designatedEdge(ei, eFlags[ei])) desigM += eLen[ei];
     // >= 2, not >= 1: facility 1 is a sharrow, which is paint in a shared lane
     // and must not count toward the route's bike-facility mileage.
     if (eFacility[ei] >= 2) facilityM += eLen[ei];
@@ -2703,7 +2763,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
     seg.timeS = Math.round(segTimeS);
     ascentM += forward ? eAsc[ei] : eDes[ei];
     descentM += forward ? eDes[ei] : eAsc[ei];
-    if (eFlags[ei] & 64) desigM += eLen[ei];
+    if (designatedEdge(ei, eFlags[ei])) desigM += eLen[ei];
     // >= 2, not >= 1: facility 1 is a sharrow, which is paint in a shared lane
     // and must not count toward the route's bike-facility mileage.
     if (eFacility[ei] >= 2) facilityM += eLen[ei];
@@ -2858,11 +2918,15 @@ function preferredRouteSpectrum(strong = activeWeights.preferredRoute) {
   ];
 }
 
+// Metres of a candidate that ride a Preferred route. designatedEdge() is the
+// same gate trustRouteEdge() applies, so a Preferred route whose source the
+// rider switched off measures zero rather than winning the strong-Preferred
+// seat with ground nothing is actually pricing.
 function preferredRouteMeters(candidate) {
   if (!preferredEdges || !candidate?.edgeIds) return 0;
   let meters = 0;
   for (const edge of candidate.edgeIds) {
-    if (preferredEdges[edge] === 1) meters += eLen[edge];
+    if (preferredEdges[edge] === 1 && designatedEdge(edge, eFlags[edge])) meters += eLen[edge];
   }
   return meters;
 }
@@ -5061,6 +5125,8 @@ onmessage = (ev) => {
       postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }) });
     } else if (m.type === 'preferred-routes') {
       receivePreferredRoutes(m.key, m.lines);
+    } else if (m.type === 'suppressed-routes') {
+      receiveSuppressedRoutes(m.key, m.lines, m.keepLines);
     } else if (m.type === 'configure') {
       // Sent once at startup, before any search allocates. See the cap
       // comment at COST_CACHE_SLOTS: a phone survives startup by holding

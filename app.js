@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-20.779';
+const APP_VERSION = '2026-08-21.780';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -909,6 +909,29 @@ function applyPreferredRoutesRuleKey() {
 }
 applyPreferredRoutesRuleKey();
 
+// Switched-off route sources, keyed BY STATE for the same reason Preferred
+// routes are: a source id belongs to one state's data. Only NON-OSM sources
+// can be switched off -- OSM relations are the baseline the app is built on,
+// not an opinion a rider opts into.
+const suppressedRouteSourcesByState = savedState?.suppressedRouteSourcesByState
+  && typeof savedState.suppressedRouteSourcesByState === 'object'
+  ? { ...savedState.suppressedRouteSourcesByState } : {};
+function suppressedRouteSourceIds() {
+  const ids = suppressedRouteSourcesByState[Region.id];
+  return Array.isArray(ids) ? ids : [];
+}
+function isRouteSourceSuppressed(id) { return suppressedRouteSourceIds().includes(id); }
+// Like the Preferred key: the rules carry a compact string, the worker gets the
+// geometry separately. rulesSignature() hashes every key in `rules`, so putting
+// it here is what makes each cost cache, A* bound and portfolio signature
+// distinguish a board built with a source on from one built with it off.
+function applySuppressedRouteSourcesRuleKey() {
+  const ids = suppressedRouteSourceIds();
+  if (ids.length) rules.suppressedRouteSources = ids.slice().sort().join('\u0001');
+  else delete rules.suppressedRouteSources;
+}
+applySuppressedRouteSourcesRuleKey();
+
 const savedRoutingWeights = validRoutingWeights(savedState?.weights);
 const savedWeightsVersion = savedState?.weightsVersion || 0;
 // Version 7 deliberately replaced every earlier advanced-weight set so the
@@ -1175,6 +1198,7 @@ function saveStateNow() {
       // Whole map, every state's picks -- the same non-destructive rule as
       // storedSourcePreferences: saving from Oregon must not erase Washington's.
       preferredRoutesByState,
+      suppressedRouteSourcesByState,
       voiceHeadings: navVoice.headings, voiceUpdateMin: navVoice.updateMin,
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
@@ -2796,7 +2820,7 @@ async function loadSource(src) {
     src.count = Number.isFinite(fc.routeCount) ? fc.routeCount : fc.features.length;
     src.fc = fc;
     if (!src.expr) rescore(src); // sets .level on every feature
-    if (src.id === 'routes') syncPreferredRoutesMapDisplay();
+    if (src.id === 'routes') syncRouteOverlayDisplay();
     ensureLayer(src);
     if (src.expr) src.fc = null; // expression-scored: the map keeps its own copy
     src.loaded = true;
@@ -2832,22 +2856,41 @@ function routeOverlayNames(p) {
     .map((ref) => `Route ${ref}`);
 }
 
-// Mark route-overlay features that belong to the rider's per-state Preferred
-// set. The same source paints all designated corridors, but a Preferred route
-// gets a modest opacity lift so it remains legible when it is not the active
-// route. This is display context only; the worker receives the actual route
-// geometry separately below.
-function syncPreferredRoutesMapDisplay() {
-  const src = SOURCES.find((source) => source.id === 'routes');
-  if (!src?.fc) return;
+/** A route the rider has switched this state's source off for. */
+function routeOverlayHidden(feature) {
+  const ids = suppressedRouteSourceIds();
+  return ids.length > 0 && ids.includes(feature?.properties?.s);
+}
+
+// ONE place that turns the route overlay's data into what the map draws.
+//
+// Two rider choices rewrite the same collection: a Preferred route gets a
+// modest opacity lift (`pr`) so it stays legible when it is not the active
+// route, and a switched-off source is left out entirely. Applying those from
+// two places means whichever ran last wins -- switching a source off and then
+// marking a route Preferred would put the source back.
+//
+// `src.fc` keeps every feature: it is also the catalogue's backing data and
+// what answers "which routes run under this tap". Only the copy handed to the
+// map is filtered. This is display context only; the worker receives the
+// actual route geometry separately below.
+function routeOverlayDisplayData(src) {
   const preferred = new Set(preferredRouteNames());
+  const features = [];
   for (const feature of src.fc.features || []) {
     feature.properties ||= {};
     feature.properties.pr = routeOverlayNames(feature.properties)
       .some((name) => preferred.has(name)) ? 1 : 0;
+    if (routeOverlayHidden(feature)) continue;
+    features.push(feature);
   }
+  return { type: 'FeatureCollection', features };
+}
+function syncRouteOverlayDisplay() {
+  const src = SOURCES.find((source) => source.id === 'routes');
+  if (!src?.fc) return;
   const mapSource = map.getSource(src.id);
-  if (mapSource?.setData) mapSource.setData(src.fc);
+  if (mapSource?.setData) mapSource.setData(routeOverlayDisplayData(src));
 }
 
 // The signed routes running under a tapped point, from the overlay DATA
@@ -2873,6 +2916,11 @@ function routeNamesNear(lngLat, toleranceM = 40) {
     return Math.hypot(ax + t * dx, ay + t * dy);
   };
   for (const feature of src.fc.features || []) {
+    // A switched-off source is not drawn and is not routed, so it must not
+    // offer a Preferred checkbox on a tapped road either -- ticking it would
+    // do nothing, because the worker no longer treats those edges as
+    // designated.
+    if (routeOverlayHidden(feature)) continue;
     const geometry = feature.geometry;
     const lines = geometry?.type === 'LineString' ? [geometry.coordinates]
       : geometry?.type === 'MultiLineString' ? geometry.coordinates : [];
@@ -3004,6 +3052,65 @@ function syncPreferredRoutesToWorker({ recomputeOnAck = false } = {}) {
   }).catch(() => {});
 }
 
+// Hand the worker the geometry of routes whose EVERY source is switched off,
+// plus the geometry of everything still standing.
+//
+// Both halves matter. The graph stamps reviewed supplemental sources into the
+// same designated-route bit OSM uses and records nothing about which source did
+// it, so the worker re-derives the suppressed edges from linework -- and two
+// catalogue entries can run down the same pavement, so it has to subtract the
+// routes that survive. Measured: suppressing Island County matches 762 edges
+// and 103 of them are also OSM-designated; Oregon's Scenic Bikeways matches
+// 12,300 with 1,578 shared. Without the subtraction, switching off a county map
+// would quietly un-designate roads OSM designates too.
+let suppressedRoutesAckRecompute = false;
+function syncSuppressedRoutesToWorker({ recomputeOnAck = false } = {}) {
+  if (!routing.worker) return Promise.resolve();
+  const ids = suppressedRouteSourceIds();
+  const key = ids.slice().sort().join('\u0001');
+  if (!key) {
+    routing.worker.postMessage({ type: 'suppressed-routes', key: '', lines: [], keepLines: [] });
+    return Promise.resolve();
+  }
+  suppressedRoutesAckRecompute = recomputeOnAck;
+  return ensureStateRouteCatalog().then((catalog) => {
+    const lines = [], keepLines = [];
+    for (const entry of catalog.values()) {
+      const sources = entry.sourceIds?.length ? entry.sourceIds : ['osm'];
+      // Switched off only when NO surviving source still claims it. A route
+      // carried by both OSM and a county map stays, whatever the county says.
+      const gone = sources.every((id) => ids.includes(id));
+      for (const line of (entry.lines || [])) (gone ? lines : keepLines).push(line);
+    }
+    routing.worker?.postMessage({ type: 'suppressed-routes', key, lines, keepLines });
+  }).catch(() => {});
+}
+
+// Toggle one non-OSM route source. Route CHOICE changes and so does what the
+// map draws, so this recomputes a live trip the same quiet way a rules change
+// does.
+function setRouteSourceSuppressed(id, suppressed) {
+  if (id === 'osm') return false;
+  const ids = new Set(suppressedRouteSourceIds());
+  if (suppressed) ids.add(id); else ids.delete(id);
+  if (ids.size) suppressedRouteSourcesByState[Region.id] = [...ids].sort();
+  else delete suppressedRouteSourcesByState[Region.id];
+  applySuppressedRouteSourcesRuleKey();
+  syncRouteOverlayDisplay();
+  saveStateSoon();
+  const synced = syncSuppressedRoutesToWorker();
+  if (deferSettingsRouteChange()) return true;
+  if (routing.ready && routing.start && routing.end) {
+    routing.quietRecalcToast = true;
+    showRouteActionToast('Updating routes…', { duration: 6000 });
+    // AFTER the geometry message, for the same reason the Preferred toggle
+    // waits: the worker prices with whatever set it holds when the request
+    // arrives, so a recompute posted first is priced against the old one.
+    synced.then(() => computeRoute({ revealPanel: false }));
+  }
+  return true;
+}
+
 // Toggle one route, from either entry path (the Routes screen or the tap
 // card). Route CHOICE changes, so a live trip recomputes -- quietly, with the
 // same unobtrusive toast a Settings rules change uses, because the rider is
@@ -3021,7 +3128,7 @@ function setRoutePreferred(name, on) {
   if (names.size) preferredRoutesByState[Region.id] = [...names].sort();
   else delete preferredRoutesByState[Region.id];
   applyPreferredRoutesRuleKey();
-  syncPreferredRoutesMapDisplay();
+  syncRouteOverlayDisplay();
   saveStateSoon();
   const synced = syncPreferredRoutesToWorker();
   if (deferSettingsRouteChange()) return true;
@@ -7657,6 +7764,12 @@ function onRouterMessage(ev) {
     if (preferredRouteNames().length) {
       syncPreferredRoutesToWorker({ recomputeOnAck: true });
     }
+    // Same race, same remedy: a source the rider switched off is stored with
+    // the trip, and the worker only learns which EDGES it covers once the
+    // route overlay has been fetched and matched.
+    if (suppressedRouteSourceIds().length) {
+      syncSuppressedRoutesToWorker({ recomputeOnAck: true });
+    }
     const revealPendingCalculation = routing.pendingPanelReveal;
     routing.pendingRoute = false;
     updateArmButtons();
@@ -7698,6 +7811,14 @@ function onRouterMessage(ev) {
       computeRoute({ revealPanel: false });
     }
     preferredRoutesAckRecompute = false;
+  } else if (m.type === 'suppressed-routes-applied') {
+    if (suppressedRoutesAckRecompute && m.key && rules.suppressedRouteSources === m.key
+        && routing.start && routing.end) {
+      routing.quietRecalcToast = true;
+      showRouteActionToast('Updating routes…', { duration: 6000 });
+      computeRoute({ revealPanel: false });
+    }
+    suppressedRoutesAckRecompute = false;
   } else if (m.type === 'route-options') {
     if (m.id !== routing.reqId) return;
     const remaining = 400 - (performance.now() - routing.compareStartedAt);
@@ -14391,46 +14512,96 @@ function buildStateRoutesList(catalog) {
   }
   const orderedGroups = [...groups.entries()].sort(([a], [b]) =>
     a === 'osm' ? -1 : b === 'osm' ? 1 : groups.get(a).label.localeCompare(groups.get(b).label));
-  for (const [, group] of orderedGroups) {
-    const heading = document.createElement('h3');
-    heading.className = 'state-route-source-heading';
-    heading.textContent = group.label;
-    host.append(heading);
+  for (const [sourceId, group] of orderedGroups) {
+    const rows = [];
+    host.append(sourceId === 'osm'
+      ? plainSourceHeading(group.label)
+      : sourceToggleHeading(sourceId, group.label, rows));
     // Preferred first within each source, then numeric-aware alphabetical.
     group.entries.sort((a, b) =>
       (isPreferredRoute(b.name) - isPreferredRoute(a.name))
       || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
     for (const entry of group.entries) {
-    const row = document.createElement('label');
-    row.className = 'state-route-row';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = isPreferredRoute(entry.name);
-    checkbox.setAttribute('aria-label', `Prefer ${entry.name}`);
-    const text = document.createElement('span');
-    text.className = 'state-route-name';
-    const name = document.createElement('strong');
-    name.textContent = entry.name;
-    const detail = document.createElement('small');
-    const kind = entry.national ? 'National (USBR)'
-      : entry.network === 'official' ? 'Official route' : 'Regional';
-    const sources = entry.sourceLabels?.length > 1 ? entry.sourceLabels.join(' + ') : null;
-    detail.textContent = [kind, formatRouteMiles(entry.lengthM), sources]
-      .filter(Boolean).join(' · ');
-    text.append(name, detail);
-    const badge = document.createElement('span');
-    badge.className = 'state-route-preferred-badge';
-    badge.textContent = 'Preferred';
-    badge.hidden = !checkbox.checked;
-    checkbox.addEventListener('change', () => {
-      const requested = checkbox.checked;
-      if (setRoutePreferred(entry.name, requested) === false) checkbox.checked = !requested;
+      const row = document.createElement('label');
+      row.className = 'state-route-row';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = isPreferredRoute(entry.name);
+      checkbox.setAttribute('aria-label', `Prefer ${entry.name}`);
+      const text = document.createElement('span');
+      text.className = 'state-route-name';
+      const name = document.createElement('strong');
+      name.textContent = entry.name;
+      const detail = document.createElement('small');
+      const kind = entry.national ? 'National (USBR)'
+        : entry.network === 'official' ? 'Official route' : 'Regional';
+      const sources = entry.sourceLabels?.length > 1 ? entry.sourceLabels.join(' + ') : null;
+      detail.textContent = [kind, formatRouteMiles(entry.lengthM), sources]
+        .filter(Boolean).join(' · ');
+      text.append(name, detail);
+      const badge = document.createElement('span');
+      badge.className = 'state-route-preferred-badge';
+      badge.textContent = 'Preferred';
       badge.hidden = !checkbox.checked;
-    });
-    row.append(checkbox, text, badge);
-    host.append(row);
+      checkbox.addEventListener('change', () => {
+        const requested = checkbox.checked;
+        if (setRoutePreferred(entry.name, requested) === false) checkbox.checked = !requested;
+        badge.hidden = !checkbox.checked;
+      });
+      row.append(checkbox, text, badge);
+      rows.push({ row, checkbox });
+      host.append(row);
     }
+    if (sourceId !== 'osm') setSourceRowsOff(rows, isRouteSourceSuppressed(sourceId));
   }
+}
+
+function plainSourceHeading(label) {
+  const heading = document.createElement('h3');
+  heading.className = 'state-route-source-heading';
+  heading.textContent = label;
+  return heading;
+}
+
+// A switched-off source's routes stay listed and keep whatever Preferred marks
+// the rider gave them -- switching the source back on must restore exactly what
+// they had. They just cannot be MARKED while the source is off, because the
+// worker no longer treats their edges as designated and the checkbox would do
+// nothing.
+function setSourceRowsOff(rows, off) {
+  for (const { row, checkbox } of rows) {
+    row.classList.toggle('state-route-row-off', off);
+    checkbox.disabled = off;
+  }
+}
+
+// The switch for one non-OSM source. OSM has no switch: it is the baseline the
+// whole app is built on, not a source a rider opts into.
+function sourceToggleHeading(sourceId, label, rows) {
+  const heading = document.createElement('label');
+  heading.className = 'state-route-source-heading state-route-source-toggle';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = !isRouteSourceSuppressed(sourceId);
+  checkbox.setAttribute('aria-label', `Use ${label}`);
+  const text = document.createElement('span');
+  text.textContent = label;
+  const state = document.createElement('small');
+  const paint = () => {
+    state.textContent = checkbox.checked ? '' : 'Off — hidden and not routed';
+    heading.classList.toggle('state-route-source-heading-off', !checkbox.checked);
+  };
+  paint();
+  checkbox.addEventListener('change', () => {
+    const requested = !checkbox.checked;   // checked means "use it"
+    if (setRouteSourceSuppressed(sourceId, requested) === false) {
+      checkbox.checked = !checkbox.checked;
+    }
+    paint();
+    setSourceRowsOff(rows, isRouteSourceSuppressed(sourceId));
+  });
+  heading.append(checkbox, text, state);
+  return heading;
 }
 
 async function populateStateRoutesPane() {
