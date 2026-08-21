@@ -1298,6 +1298,12 @@ Every trip routed; nothing needed the no-route classifier. Raw scores, the
 recommendation's own arithmetic for every candidate it considered, and ten plots
 are committed under `docs/audit/round6/`.
 
+**Measured at `d889c20`.** `origin/main` moved on twice while this was being
+written, and `e27af03` — "Read the forward-progress reference route from the
+pool, not the board" — changes how the forward-progress candidate is chosen.
+Bellingham → Birch Bay stars a `forward-progress` route here, so that one number
+is the most likely to have moved; re-run it before quoting it.
+
 ## The trips, and why each one
 
 **Washington** — `docs/audit/round6/washington.json`
