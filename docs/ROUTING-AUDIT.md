@@ -1342,8 +1342,8 @@ Southern Oregon University coordinate that snapped onto an I-5 ramp.
 
 | # | Finding | Verdict | Class |
 | --- | --- | --- | --- |
-| Q1 | Oregon has no riding-space source off the state system, so **two thirds of its level-4 road is red for want of a measurement** | **BUG** | DATA |
-| S2 | A trip across the Columbia stops 602 m short at the state line and reports success; the same trip the other way is refused with a message about the road network | **BUG** | ROUTER |
+| Q1 | Oregon has no riding-space source off the state system, so **two thirds of its level-4 road is red for want of a measurement** | EXPLAINABLE | DATA |
+| S2 | A trip across the Columbia stops 602 m short at the state line and reports success; the same trip the other way is refused with a message about the road network | **BUG** — ACCEPTED | ROUTER |
 | S1 | The star can be longer, slower **and** carry failing road an offered route does not — twice in fifteen trips | UNCLEAR | tuning |
 | S3 | The fail-share guard's share test passed on three trips and fired on none; twice the qualifying alternative was outside the window | UNCLEAR | tuning |
 | Q3 | Cannon Beach → Manzanita spends a slot on a route 2.4× longer, 2× slower and 8.7× more failing — and corrects round 5's D1 | UNCLEAR | tuning |
@@ -1358,11 +1358,45 @@ Britt Gardens, and the Portland → Vancouver route's *shape* — its defect is
 where it stops, not how it gets there. Only Yakima → Selah drew no metric flag
 at all; the other five were flagged and are explained in S5 and Q4.
 
-Two BUG, four EXPLAINABLE, three UNCLEAR; six of the fifteen trips clean.
+One BUG (accepted), five EXPLAINABLE, three UNCLEAR; six of the fifteen trips
+clean. Q1 was filed as a BUG and reclassified by the project owner on the day it
+was written -- see its own opening note. The three UNCLEARs were assessed
+afterwards; that assessment is the last section of this round.
 
 ## Findings
 
-### Q1 — Two thirds of Oregon's red road is red because nobody measured it (BUG, DATA)
+### Q1 — Two thirds of Oregon's red road is red because nobody measured it (EXPLAINABLE, DATA)
+
+> **Reclassified from BUG on 2026-08-21, by the project owner.** Nothing here is
+> defective. Treating an unrecorded shoulder as 0 ft above 35 mph is specified in
+> `docs/SAFETY-MODEL.md`, is surfaced in Settings, and was made non-optional on
+> purpose -- effectiveShoulder()'s own comment records why: *"'no data' and 'no
+> shoulder' cannot be distinguished from the rider's seat, and the optimistic
+> reading let a 55 mph road with no recorded shoulder pass on an absence of
+> evidence."* Oregon's missing county road inventory is not a defect either; the
+> census table in `docs/PORTING-TO-ANOTHER-STATE.md` already records it as
+> **absent — no statewide equivalent**.
+>
+> What survives, and is why this stays in the record, is the **measurement**:
+> 66.1% against 11.0%. Nobody had put a number on what that documented gap costs
+> Oregon, and it is the honest description of what the state's readiness score
+> means. Any change to the rung itself is a **feature proposal**, to be argued on
+> its merits, and belongs in `issues.md` rather than here.
+>
+> Two follow-on measurements taken during the reclassification, both of which
+> close off the obvious cheap fixes:
+>
+> - **OSM shoulder tags are already read**, and they already outrank the agency
+>   inventory (`parse_shoulder_ft` in `build_graph.py`; the inventory fills only
+>   where OSM is silent). They are also nearly empty: `shoulder:width` appears on
+>   502 Washington ways (0.15%) and **3 Oregon ways**.
+> - **OSM `width` cannot substitute for the CRAB edge-space arithmetic.** That
+>   needs `width` and `lanes` on the same way: 271 ways in Washington and 305 in
+>   Oregon, and on road above 40 mph, **10 and 25**.
+>
+> So the 45.5% / 45.9% recorded-shoulder coverage in the table below is
+> essentially all agency data in both states. Washington is not better mapped;
+> it has a second agency behind it.
 
 **Where:** statewide, both packs. **Repro:** one pass over each graph, grading
 every non-freeway, non-ferry, non-trail edge under `DEFAULT_RULES`.
@@ -1417,7 +1451,17 @@ safety and is less obviously right across 8,382 km of one state. Either way the
 fact belongs in Oregon's `region.json` and its readiness score, not in
 application code.
 
-### S2 — A route stops at the state line and says it arrived (BUG, ROUTER)
+### S2 — A route stops at the state line and says it arrived (BUG — ACCEPTED)
+
+> **Accepted by the project owner on 2026-08-21.** One state loaded at a time is
+> a current limitation of the app, not something this round is asking to change,
+> and a trip that crosses a state line has no answer to give while it holds. The
+> finding stands as written because the *behaviour at the boundary* is still
+> wrong in two specific ways -- a route that stops short reports success, and a
+> destination outside the installed map is refused with a message about the road
+> network -- and both get worse once map packs are downloads rather than a
+> compiled-in pair. Fixing the message and the silent short-stop does not require
+> lifting the one-state limitation.
 
 **Where:** the Columbia at Vancouver, in both packs.
 
@@ -1699,6 +1743,95 @@ strange, and the two options differ by twenty minutes rather than by hours.
 | SOU Ashland → Britt Gardens | star 4.2 km longer than Route A | The Bear Creek Greenway for 17.2 km, then a choice at the Medford end: South Stage Road (3,686 m failing on Route A), West Main Street (2,890 m on Route B), or the Madrona Lane residential grid. The star takes the grid — 13.5% failing down to 3.9% for twelve minutes |
 | Cannon Beach → Manzanita | ×1.19 star, 10.6% failing | US 101 over Neahkahnie Mountain, measured: 30.3 km in the box, 8.8 km level 4, ODOT stress 4 on 14.9 km, shoulders recorded from 1 ft to 22 ft. There is no parallel road and the star rides the only one there is |
 | Portland → Vancouver, as a shape | 676 m backtrack on E and F | The Columbia Slough Trail and N Vancouver Avenue, then the Interstate Bridge, on every option; the I-205 path 11 km east is never competitive. Nothing wrong with the route — see S2 for what is |
+
+## The three UNCLEARs, assessed
+
+Written after the round closed, at the owner's request: which of these need
+investigating, and which need only a decision.
+
+### S3 — nothing to do. The guard is correct to decline.
+
+The share test passed on three trips and the guard moved the star on none, and
+that is the guard working. Bend → Phil's Trailhead is **7.5 km with 32.8%
+failing**; the qualifying alternatives are **20.3 km at 1.4%**. Carrying a rider
+thirteen kilometres further to avoid two and a half kilometres of failing road
+is not a service, and the window that stops it is doing its job. Troutdale is
+the clean case -- no cleaner route exists anywhere in that corridor. White
+Salmon's four candidates miss a 70.6 km bound by 1.4-3.9 km, which is the window
+being *narrowly* right rather than wrong.
+
+The audit's own read was "the window is right and the guard is correct to
+decline"; this agrees. `test_fail_share_guard.mjs` already pins the behaviour.
+**Close it.** If it is ever reopened, the thing to reopen it on is a trip where
+the guard declines and the rider wanted the longer route -- not on a count of
+how rarely it fires.
+
+### S1 — a decision, not an investigation. The computation is already done.
+
+The arithmetic in S1 is complete and reproducible, and re-running it adds
+nothing. What is missing is a rider's verdict, and no amount of measurement
+substitutes for it.
+
+Worth adding to the record before that verdict is sought: **on both trips the
+starred route is the nicer ride.** Cheney → Spokane's star is 12.5 km of
+car-free rail trail whose 969 m of failing road is four short connectors on a
+30 km ride; the route that beats it on all three axes spends 27.7 km on ordinary
+road. Eugene → Corvallis's star is the Willamette Valley Scenic Bikeway. The
+audit found no case of the star being beaten on all three axes AND being the
+worse ride, which is the case that would make this a defect rather than a
+preference.
+
+So the concern is real but theoretical: nothing in the pricing distinguishes
+spending ordinary-road credit to buy **time** from spending it to buy **failing
+road**, and `NETWORK_GAP_PRICE_S_PER_M` was sized on a case about time. On these
+two trips it happens to buy a better ride anyway.
+
+**What settles it:** riding Cheney → Spokane and comparing the starred letter
+against B. **If the verdict goes the other way,** the audit's own proposal is the
+right shape -- a guard on the star alone, not on the board. That distinction
+matters: v.768 put a dominance guard on the *board* and deleted 11th Avenue NE
+for six commits (D1, and the revert in `b0b715b`). A guard that only moves which
+route wears the star removes nothing from the six letters and cannot repeat that
+failure.
+
+### Q3 — the one worth acting on, and it is stronger than filed.
+
+Re-measured independently at repo `e27af03`, and Cannon Beach → Manzanita is
+worse than the finding says. The full board, on a **19.3 km** crow-flight trip:
+
+| | distance | time | failing |
+| --- | --- | --- | --- |
+| A\* `alt-quick` | 23.0 km | 92 min | 2,437 m (10.6%) |
+| B `discover-gentle` | 23.3 km | 94 min | 2,437 m (10.5%) |
+| C `combined-corridor` | 34.4 km | 134 min | 1,426 m (4.1%) |
+| D `friendly` | 45.3 km | 189 min | **0 m** |
+| E `alt-safer` | 51.0 km | 200 min | **0 m** |
+| **F `direct-lens-friendly`** | **55.2 km** | **190 min** | **21,269 m (38.5%)** |
+
+The finding compares F against the star. The sharper comparison is **F against
+D**: F is 9.9 km longer, one minute slower, and carries 21.3 km of failing road
+where D carries none. F is beaten on every axis by another route *on the same
+screen*, and what it offers in exchange is the single thing the safety model
+exists to warn about. The corridor argument -- that a different road earns its
+slot however it scores -- is weakest exactly here.
+
+**The narrow fix the finding proposes is the right one:** a ceiling on failing
+*share* for the corridor exemption, not a general dominance trim. Note it must
+be a share ceiling and not a dominance test, for the D1 reason above.
+
+**Second observation, not in the finding.** A and B are near-identical: 23.0 km
+/ 92 min / 10.6% against 23.3 km / 94 min / 10.5%. Two of six letters on this
+trip are the same route. The v.780 diversity sweep did not separate them, and a
+trip that spends a slot on a twin *and* a slot on F is offering four useful
+routes out of six.
+
+**The correction inside Q3 should stand on its own.** Round 5's D1 states the
+residual dominated options are "every one of them profile `quick-friendly` --
+reserved by name in `protectedCandidates` and therefore exempt from every
+dominance test by design". Measured across these fifteen trips: **35 dominated
+options on 14 trips**, spread across nine profiles, with `quick-friendly`
+accounting for three. The protection clause is not what keeps them. That
+sentence in D1 would send the next reader to the wrong place.
 
 ## What surprised me about the tooling
 
