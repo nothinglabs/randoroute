@@ -60,9 +60,13 @@ data/_*
 # therefore drops eighty-odd megabytes of untracked geojson into maps/<state>/,
 # which is exactly the shard leak above wearing a different hat. bikeinfra and
 # bikeroutes are deliberately absent: those two ARE tracked uncompressed.
+# The agency-name-shaped entries are globbed, not spelled: this block named
+# Oregon's `odot_speed` / `odot_facilities` literally, so Nevada's ndot_speed
+# and rtcsnv_facilities went straight into `git status` -- the same leak the
+# shard rule above documents, wearing a third hat.
 maps/*/blts.geojson
-maps/*/odot_speed.geojson
-maps/*/odot_facilities.geojson
+maps/*/*_speed.geojson
+maps/*/*_facilities.geojson
 maps/*/funcclass.geojson
 maps/*/aadt.geojson
 maps/*/hpms.geojson

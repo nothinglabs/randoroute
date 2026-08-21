@@ -112,6 +112,7 @@ people actually ride — have nothing.
 *Evidence.* `9a83c7b`.
 
 *Travelled.* Washington is the origin. **Expect this to generalise**; it is a
+consequence of how state DOTs are funded and scoped, not of Washington.
 
 **Oregon: held, and worse than Washington.** ODOT's AADT layers are keyed to its
 highway linear reference, and there is no county road log at all -- Oregon has
@@ -119,7 +120,6 @@ no CRAB equivalent. Measured on the shipped graph: **95.2% of principal-arterial
 miles carry a count and 0.1% of local-street miles do** (Washington: 76.5% and
 23.4%). The prediction that this generalises is confirmed; the *size* of the
 hole is a per-state fact and Oregon's is much bigger.
-consequence of how state DOTs are funded and scoped, not of Washington.
 
 *Travelled — Oregon re-import (2026-08-16): held.* The shipped graph has 25.5%
 of road miles with a traffic count, with 95.4% of principal arterials but 0.2%
@@ -147,6 +147,7 @@ HPMS also carries speed limits. They are deliberately **not** used here, for the
 same reason county speed layers were rejected.
 
 *Travelled.* Washington is the origin. The service URL pattern is per-state and
+documented in `PORTING-TO-ANOTHER-STATE.md`.
 
 **Oregon: held.** `https://geo.dot.gov/.../Oregon_2018_PR/FeatureServer/0` exists
 and returns **67,861 sections with a count**. The caveat about the year travelled
@@ -156,7 +157,6 @@ has to be probed per state. `scripts/build_hpms.py` now takes `--state` and
 `--year`; before this import it had them as a module constant, despite
 `PORTING-TO-ANOTHER-STATE.md` saying it "needs only the state name and year
 changed".
-documented in `PORTING-TO-ANOTHER-STATE.md`.
 
 *Travelled — Oregon re-import (2026-08-16): held.* Oregon's 2018 HPMS release
 was the uniform floor, with 67,861 counted rows and 71,826 line parts; the
@@ -290,6 +290,10 @@ built. The audit surfaced the signal; the verdict on it was made from the
 geometry type instead of the schema. That failure mode is now its own lesson
 -- **A9**.
 
+*Travelled — Oregon re-import (2026-08-16): held.* The field census records
+what each ODOT fetcher consumes, while display-only metadata and the parked
+non-state AADT site layer remain explicit rather than being silently promoted.
+
 ### A9 — Geometry type is not the shape of the data. Park a source on its schema, never on its `geometryType`.
 
 *What happened.* ODOT's current AADT was parked as "points, and the conflation
@@ -360,10 +364,10 @@ source.
 *Evidence.* `0a9a6be`, corrected in `3c74e1a` (the original commit quoted 34.2%
 from an intermediate version that matched on the best single segment).
 
-*Travelled.* Washington is the origin. **Expect this to generalise** — segmented
+*Travelled.* Washington is the origin. **Expect this to generalise** —
+segmented inventories are how road logs are kept everywhere.
 
 **Oregon: not exercised by this import.**
-inventories are how road logs are kept everywhere.
 
 *Travelled — Oregon re-import (2026-08-16): held.* ODOT's segmented route
 inventories are matched by aligned span coverage, and the adapter retains
@@ -474,7 +478,8 @@ than it might be.
 
 *Evidence.* `8d3e3bc`, `820bf70`.
 
-*Travelled.* Washington is the origin. Whether an agency surveys directionally is a
+*Travelled.* Washington is the origin. Whether an agency surveys directionally
+is a per-agency fact — check before assuming either way.
 
 **Oregon: held, and required work to honour.** ODOT books shoulder width per
 side against *increasing* mileposts, and books a divided highway as separate
@@ -484,7 +489,6 @@ the increasing one **with the sides swapped** -- the left side of a road
 measured up-milepost is the right side of the rider coming down it. That applies
 to **33,941 of 73,575 segments**, so getting it wrong would have given a third
 of Oregon's state highways the shoulder across the centre line.
-per-agency fact — check before assuming either way.
 
 *Travelled — Oregon re-import (2026-08-16): held and required.* ODOT shoulder
 records are directional by route key; opposite-direction fallback swaps left
@@ -517,12 +521,12 @@ forest-road/trail alternative. Removing only owner-unknown class restores the
 57.6-mile, 100%-overlap option. Corvallis to the Sea is unchanged when class is
 removed, so the original report's common-cause diagnosis was false.
 
----
-
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* This
 import did not change the shared functional-class precedence or run a new
 before/after blast-radius comparison; the existing audit result remains the
 baseline rather than new Oregon evidence.
+
+---
 
 # C. The graph, and topology
 
@@ -575,7 +579,9 @@ tuning change.
 
 *Evidence.* `a15944b`, `dd66fbc`, `scripts/test_corridor_severance.mjs`.
 
-*Travelled.* Washington is the origin. This is the single highest-value test to port
+*Travelled.* Washington is the origin. This is the single highest-value test to
+port first, because it is the one that catches a broken import rather than a
+broken opinion.
 
 **Oregon: DID NOT TRAVEL, and this is the most important line in this file.**
 The premise -- that a severance shows up as a ratio nobody could miss -- depends
@@ -592,8 +598,6 @@ the distance *along the corridor*. The severance that is invisible at 1.6x over
 90 miles is unmissable when the hop is 6. **Nominate short corridors across the
 pinch points as well as long ones** -- and the pinch points are where the map
 shows one line between two walls.
-first, because it is the one that catches a broken import rather than a broken
-opinion.
 
 *Travelled — Oregon re-import (2026-08-16): held after correction.* Five
 preselected Oregon corridors pass with no freeway and no excessive detour. The
@@ -613,12 +617,12 @@ A steep reading at a pier is an artefact, not a climb.
 
 *Evidence.* `15d494f`, `2912d86`.
 
-*Travelled.* Washington is the origin. Any state with a coastline and ferries should
+*Travelled.* Washington is the origin. Any state with a coastline and ferries
+should expect this to recur.
 
 **Oregon: did not apply.** Oregon has no bicycle-carrying ferry in the routing
 network, so neither the shoreline DEM smear nor the 250 m grade-marker
 suppression was exercised. A coastal state can still not have this problem.
-expect this to recur.
 
 *Travelled — Oregon re-import (2026-08-16): did not apply.* No bicycle-carrying
 ferry entered the Oregon graph, so the shoreline-ferry suppression branch was
@@ -649,12 +653,12 @@ connectivity held: the largest component holds **97.6%** of nodes, above the 96%
 floor. Deck grades, `incline=` authority and the dismount-terminal case were not
 separately tested here.
 
----
-
 *Travelled — Oregon re-import (2026-08-16): partially exercised again.* The
 Oregon graph built 19,370 dedicated-path densifications and retained walk-link
 connectivity; separate deck, incline-authority, and ferry-terminal audits were
 not run.
+
+---
 
 # D. The safety model, and where the thresholds came from
 
@@ -677,6 +681,7 @@ rewritten to assert the **opposite** so it cannot quietly return.
 *Evidence.* `4cb9a04`, `dd66fbc`, `451cdd8`.
 
 *Travelled.* Washington is the origin. **Expect this to generalise** — long
+road-running signed routes are the norm, not a Washington quirk.
 
 **Oregon: held, and it was a live temptation.** ODOT's bicycle facility
 inventory has four codes, and the **largest** of them is `SH`, "Shoulder
@@ -685,7 +690,6 @@ Bikeway" -- 2,637 of 6,955 rows, more than bike lanes (1,800) and shared lanes
 painted over a shoulder satisfy the shoulder rule on the busiest rural highways
 in the state. It is dropped, and so is `NO` (2,252 rows), which records the
 *absence* of a facility and would otherwise have read as one.
-road-running signed routes are the norm, not a Washington quirk.
 
 *Travelled — Oregon re-import (2026-08-16): held.* ODOT's SH shoulder-bikeway
 and NO no-facility codes were excluded from the facility layer, so designation
@@ -853,7 +857,9 @@ mileage 14,906 → 13,220 miles (−11%).
 `32277a8` (scoped to Randonneur, control reworded to "Guess shoulder width from
 other data when it isn't documented").
 
-*Travelled.* Washington is the origin. The 7%-tagged figure is an OSM coverage fact and
+*Travelled.* Washington is the origin. The 7%-tagged figure is an OSM coverage
+fact and should be re-measured per state — it is the number that decides
+whether this inference is worth having at all.
 
 **Oregon: DID NOT TRAVEL. The inference has no input here.** ODOT publishes no
 county road inventory and no equivalent of CRAB's edge space, so bail-out space
@@ -862,8 +868,6 @@ is **0.0% of 74,481 road miles** and `inferShoulderFromEdge` -- which recovers
 lesson asks for gives the answer directly: the inference is worth nothing in
 Oregon, not because it is wrong but because the state does not publish the
 number it reads.
-should be re-measured per state — it is the number that decides whether this
-inference is worth having at all.
 
 *Travelled — Oregon re-import (2026-08-16): did not apply.* Oregon has no
 county edge-space inventory, so the shipped graph reports 0 miles of
@@ -901,10 +905,10 @@ source reporting metres would pass every other check in the suite.*
 
 *Evidence.* `041505d`, `32277a8`.
 
-*Travelled.* Washington is the origin. **Expect this to generalise** — it is a property
+*Travelled.* Washington is the origin. **Expect this to generalise** — it is a
+property of having more than one scorer, not of Washington.
 
 **Oregon: not exercised by this import.**
-of having more than one scorer, not of Washington.
 
 *Travelled — Oregon re-import (2026-08-16): held.* The Oregon agency fields
 populate the generic contract and test_fact_contract passes; derived BLTS
@@ -941,11 +945,11 @@ branch that ships **on** by default.
 
 **Oregon: not exercised by this import.**
 
----
-
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* The
 shared map/model sweep was not rerun as an Oregon-specific data study, and no
 application rule changed.
+
+---
 
 # E. Routing cost calibration
 
@@ -970,10 +974,10 @@ because **paint in a traffic lane is not protection**.
 
 *Evidence.* `59fe15f`, `ac27511`, `c86a52a`.
 
-*Travelled.* Washington is the origin. These are riding judgements, not Washington
+*Travelled.* Washington is the origin. These are riding judgements, not
+Washington facts; port them as-is and re-tune from field reports.
 
 **Oregon: not exercised by this import.**
-facts; port them as-is and re-tune from field reports.
 
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* Oregon
 did not change facility multipliers or the route-cost ladder; field tuning
@@ -1025,10 +1029,10 @@ across the practical pool: avoiding a mile of failing road is worth up to about
 
 *Evidence.* `3146cc1`.
 
-*Travelled.* Washington is the origin. Requires a routing graph, so it is not reachable
+*Travelled.* Washington is the origin. Requires a routing graph, so it is not
+reachable in a preview import.
 
 **Oregon: not exercised by this import.**
-in a preview import.
 
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* The
 published-route comparison used the unchanged default profile and did not
@@ -1105,11 +1109,11 @@ caution, so ferry terminals keep working.
 
 **Oregon: not exercised by this import.**
 
----
-
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* Oregon
 contains dismount-priced OSM paths, but this import did not perform a dedicated
 length-severity calibration.
+
+---
 
 # F. Tiles and rendering
 
@@ -1136,13 +1140,13 @@ sitting in the intersection**.
 *Evidence.* `README.md` build section; guarded by
 `scripts/test_road_geometry.py` against that surveyed circle.
 
-*Travelled.* Washington is the origin. **Expect this to generalise exactly** — it is a
+*Travelled.* Washington is the origin. **Expect this to generalise exactly** —
+it is a property of tippecanoe and of overzooming, not of Washington.
 
 **Oregon: held by construction.** `--simplification=8 --simplify-only-low-zooms`
 was carried over unchanged; `test_road_geometry.py` still guards Washington's
 surveyed traffic circle and no Oregon equivalent was surveyed, so this is
 adoption of the rule rather than independent confirmation of it.
-property of tippecanoe and of overzooming, not of Washington.
 
 *Travelled — Oregon re-import (2026-08-16): held by construction.* The road
 tile uses simplification 8 with low-zoom-only simplification, and the shared
@@ -1164,7 +1168,8 @@ wide anyway; and bound the tile cache.
 
 *Evidence.* `fbacf2b`.
 
-*Travelled.* Washington is the origin. Expect it in any state of comparable size.
+*Travelled.* Washington is the origin. Expect it in any state of comparable
+size.
 
 **Oregon: held.** The same below-z9 filter was applied unchanged and produced a
 14.2 MB overlay archive from 81,210 BLTS segments and 37,256 bike-infrastructure
@@ -1270,10 +1275,10 @@ a different verdict.
 
 **Oregon: not exercised by this import.**
 
----
-
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* The
 application palette and motion rules were not changed or field-tested here.
+
+---
 
 # G. Discipline
 
@@ -1414,13 +1419,13 @@ work. Commit fetched sources compressed, with the loader falling back to the
 *Evidence.* `776bf11`, `94d9ca8`.
 
 *Travelled.* Washington is the origin. The container behaviour is a property of
+this build environment, not of any state.
 
 **Oregon: kept, untested.** The container was not reclaimed during this import,
 so the discipline cost nothing and proved nothing. Each artefact was committed
 as it built anyway -- the graph before the tiles, the tiles before the docs --
 and `blts.geojson` is committed compressed because paging ODOT's catalogue takes
 about 25 minutes, which is longer than the idle window that would destroy it.
-this build environment, not of any state.
 
 *Travelled — Oregon re-import (2026-08-16): held.* Large Oregon artifacts were
 published incrementally as they completed, and normalized source inputs are
@@ -1442,11 +1447,11 @@ squeezing it into a spare bit: a year needs seven bits of its own to span
 
 **Oregon: not exercised by this import.**
 
----
-
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* The
 existing graph readers accepted the current stamped format; no unfamiliar
 format was introduced by this state import.
+
+---
 
 ## What is not yet mined
 
@@ -1462,6 +1467,3 @@ oldest-first. Two seams remain and are worth a second pass:
 
 Add to this file as they are mined, and add a `Travelled` line to every lesson
 above as each new state either confirms them or proves them local.
-*Travelled — Oregon re-import (2026-08-16): held.* The field census records
-what each ODOT fetcher consumes, while display-only metadata and the parked
-non-state AADT site layer remain explicit rather than being silently promoted.
