@@ -1275,3 +1275,449 @@ through the app's own defaults and fails at the previous commit.
   → La Conner, Anacortes → Mount Vernon, Chehalis → Centralia, Aberdeen →
   Westport, Burns → Hines, Ontario → Nyssa, Prineville → Madras, Silverton →
   Mount Angel, Klamath Falls → Chiloquin, Bend → Redmond.
+
+---
+
+# Round 6 — 15 routes, 2026-08-21
+
+**A note on the number.** The brief for this round called it "round 2" and
+described this file as holding 40 audited routes; it holds 144, in five rounds.
+This is round 6, and for the same reason its findings are lettered `S1…` for
+Washington and `Q1…` for Oregon — the brief asked for `S…`/`P…`, but `P1` and
+`P2` are already taken by rounds 3 and 4, where `P` means *plausible* rather
+than *Oregon*.
+
+15 trips on ground no earlier round has touched: eight in Washington
+(`maps/washington` `sha-c043f268453b`) and seven in Oregon (`maps/oregon`
+`sha-8ae4d0b5e2d3`). Deliberately scattered away from Seattle and Portland —
+Spokane, the Tri-Cities, north Whatcom County, the Olympic Peninsula, the
+Wenatchee–Chelan corridor, the Washington side of the Gorge, Bend, Eugene, the
+Rogue Valley, the north coast, and the Historic Columbia River Highway.
+
+Every trip routed; nothing needed the no-route classifier. Raw scores, the
+recommendation's own arithmetic for every candidate it considered, and ten plots
+are committed under `docs/audit/round6/`.
+
+## The trips, and why each one
+
+**Washington** — `docs/audit/round6/washington.json`
+
+| trip | coordinates (lng, lat) | why |
+| --- | --- | --- |
+| Gonzaga University → Manito Park, Spokane | `[-117.4013,47.6673] → [-117.4093,47.6316]` | Spokane has only ever been audited as a city-to-city endpoint. This crosses the river and climbs the South Hill |
+| EWU Cheney → Riverfront Park, Spokane | `[-117.5830,47.4925] → [-117.4205,47.6605]` | The real student commute. The Fish Lake Trail parallels the SR 904 / I-90 corridor, so it is a trail-versus-distance test |
+| Howard Amon Park, Richland → Sacajawea State Park, Pasco | `[-119.2725,46.2800] → [-119.0475,46.2100]` | Tri-Cities on new endpoints: a park at the Snake/Columbia confluence, reachable only across the bridges |
+| WWU Bellingham → Birch Bay State Park | `[-122.4853,48.7346] → [-122.7660,48.9085]` | North Whatcom farm grid against the I-5 frontage corridor |
+| Port Angeles waterfront → Hurricane Ridge Visitor Center | `[-123.4308,48.1207] → [-123.4977,47.9700]` | A 1,500 m climb on one road, to exercise the v.771 quadratic climb ramp where there is no alternative to price against |
+| Memorial Park, Wenatchee → Riverwalk Park, Chelan | `[-120.3145,47.4235] → [-120.0166,47.8395]` | Long inter-city rural; US 97A on one bank, US 2/97 on the other |
+| White Salmon → Columbia Gorge Interpretive Center, Stevenson | `[-121.4860,45.7280] → [-121.8890,45.6940]` | Every earlier Gorge finding is about the Oregon side. SR 14 has tunnels and long no-shoulder stretches |
+| Downtown Yakima → Selah Civic Center | `[-120.5060,46.6020] → [-120.5320,46.6540]` | Short suburban trip across the Naches; Greenway trail against SR 823 |
+
+**Oregon** — `docs/audit/round6/oregon.json`
+
+| trip | coordinates (lng, lat) | why |
+| --- | --- | --- |
+| Kennedy School, NE Portland → Esther Short Park, Vancouver WA | `[-122.6476,45.5626] → [-122.6757,45.6262]` | The cross-river trip. Two bike crossings exist and the question was which one the router picks. It turned out to be a different question |
+| Drake Park → Phil's Trailhead, Bend | `[-121.3157,44.0582] → [-121.3968,44.0432]` | The ride every Bend rider makes; an MTB network approached from a town centre |
+| University of Oregon → Spencer Butte trailhead, Eugene | `[-123.0726,44.0448] → [-123.0860,43.9880]` | Willamette Street against the south-hills grid |
+| SOU Ashland → Britt Gardens, Jacksonville | `[-122.6890,42.1875] → [-122.9692,42.3139]` | Rogue Valley rural, off the Bear Creek Greenway round 2 found clean |
+| Cannon Beach → Manzanita | `[-123.9615,45.8918] → [-123.9345,45.7196]` | US 101 over Neahkahnie Mountain. Every coast finding so far is south of Tillamook |
+| Troutdale → Multnomah Falls Lodge | `[-122.3874,45.5393] → [-122.1180,45.5775]` | The Historic Columbia River Highway — the intact half of the Gorge, where B3's freeway work was measured on the severed half |
+| 5th Street Public Market, Eugene → OSU Memorial Union, Corvallis | `[-123.0900,44.0535] → [-123.2789,44.5646]` | Long inter-city with three genuinely different answers: OR 99W, Peoria Road, and the east bank |
+
+Endpoints were probed against the graph before anything was routed, and
+**thirteen of the thirty** were moved as a result — either more than 200 m from
+any edge, or simply not where their name said. The worst were WSU Tri-Cities at
+548 m and the Hurricane Ridge visitor centre at 2,310 m, both of which would
+have produced a walk-in the metrics would have blamed on the router, and a
+Southern Oregon University coordinate that snapped onto an I-5 ramp.
+
+## Summary
+
+| # | Finding | Verdict | Class |
+| --- | --- | --- | --- |
+| Q1 | Oregon has no riding-space source off the state system, so **two thirds of its level-4 road is red for want of a measurement** | **BUG** | DATA |
+| S2 | A trip across the Columbia stops 602 m short at the state line and reports success; the same trip the other way is refused with a message about the road network | **BUG** | ROUTER |
+| S1 | The star can be longer, slower **and** carry failing road an offered route does not — twice in fifteen trips | UNCLEAR | tuning |
+| S3 | The fail-share guard's share test passed on three trips and fired on none; twice the qualifying alternative was outside the window | UNCLEAR | tuning |
+| Q3 | Cannon Beach → Manzanita spends a slot on a route 2.4× longer, 2× slower and 8.7× more failing — and corrects round 5's D1 | UNCLEAR | tuning |
+| Q2 | Troutdale → Multnomah Falls has no non-failing option: 17.0 of 33.3 km of the Historic Columbia River Highway is level 4, and the data says so honestly | EXPLAINABLE | DATA |
+| S4 | Port Angeles → Hurricane Ridge fills two of six letters, correctly | EXPLAINABLE | — |
+| S5 | Washington explainables: SR 14, the Sehome bluff, the Spokane river crossings, the confluence bridges, the fully-matching escape | EXPLAINABLE | — |
+| Q4 | Oregon explainables: Skyliners Road, Fox Hollow Road, the Bear Creek Greenway, US 101 over Neahkahnie | EXPLAINABLE | — |
+
+**Clean, with nothing worth chasing:** downtown Yakima → Selah, Howard Amon Park
+→ Sacajawea State Park, WWU → Birch Bay, Wenatchee → Chelan, SOU Ashland →
+Britt Gardens, and the Portland → Vancouver route's *shape* — its defect is
+where it stops, not how it gets there. Only Yakima → Selah drew no metric flag
+at all; the other five were flagged and are explained in S5 and Q4.
+
+Two BUG, four EXPLAINABLE, three UNCLEAR; six of the fifteen trips clean.
+
+## Findings
+
+### Q1 — Two thirds of Oregon's red road is red because nobody measured it (BUG, DATA)
+
+**Where:** statewide, both packs. **Repro:** one pass over each graph, grading
+every non-freeway, non-ferry, non-trail edge under `DEFAULT_RULES`.
+
+**What happens.** The shoulder rung fires above `maxSpeedNoShoulder` (35 mph),
+and an unrecorded shoulder is unconditionally 0 ft. So the question that decides
+how much of a state reads red is: **on road above 35 mph, is there any evidence
+at all about the riding space?**
+
+| | Washington | Oregon |
+| --- | --- | --- |
+| rideable road | 148,273 km | 117,119 km |
+| level 4 | 14,326 km (9.7%) | 12,677 km (10.8%) |
+| road above 35 mph | 20,066 km | 18,336 km |
+| — carrying a bike facility ≥ 2 | 668 km (3.3%) | 1,320 km (7.2%) |
+| — with a **recorded** shoulder | 9,137 km (45.5%) | 8,411 km (45.9%) |
+| — with an **edge-space inference** | **8,476 km (42.2%)** | **0 km (0.0%)** |
+| — with **no evidence either way** | 1,784 km (8.9%) | **8,605 km (46.9%)** |
+| — and level 4 as a result | 1,575 km = **11.0%** of the state's level-4 road | 8,382 km = **66.1%** of the state's level-4 road |
+
+The two states have nearly identical *recorded* shoulder coverage — 45.5% and
+45.9%. The whole difference is the row between them. `inferShoulderFromEdge` is
+on by default, reads county edge space from the WSDOT/CRAB road log, and reaches
+8,476 km of Washington's fast road. **In Oregon it reaches nothing at all**,
+because no equivalent inventory was imported: `maps/oregon/`'s ODOT layers —
+BLTS shoulder, posted speed, facilities — all stop at the state highway system.
+Every county road above 35 mph therefore fails by default.
+
+This is neither a scoring defect nor a repeat of B1. B1 was a direction slot
+left empty on roads ODOT *had* measured, and it was fixed. This is roads nobody
+measured, and it is the single largest determinant of what Oregon looks like.
+
+**It is visible on the ground in this round.** Both Oregon trips whose stars
+carry a large failing share are unmeasured county roads:
+
+| road | trip | in the graph |
+| --- | --- | --- |
+| Skyliners Road, Bend | Drake Park → Phil's Trailhead | 4.1 of 10.0 km level 4; speed 45, `shoulder: null`, `stressRating: null`, `fc: 5`, AADT 1,400 |
+| Fox Hollow Road, Eugene | UO → Spencer Butte | 5.3 of 13.6 km level 4; speed 45, `shoulder: null`, `stressRating: null` |
+
+Both make their trips look worse than a Bend or Eugene rider would call them,
+and neither is a road the model got wrong — it is a road the model was told
+nothing about.
+
+**What I would change, not applied.** Two separable pieces. The honest one is a
+data import: ODOT's non-state linework already supplies `funcclass` and owner
+from the same catalogue `maps/oregon/tools/build_odot.py` pages, and whatever it
+carries about lane and shoulder width is what `inferShoulderFromEdge` needs. The
+cheaper one is presentational — a road with no evidence and a road measured at
+0 ft are the same colour today, which `docs/SAFETY-MODEL.md` argues is right for
+safety and is less obviously right across 8,382 km of one state. Either way the
+fact belongs in Oregon's `region.json` and its readiness score, not in
+application code.
+
+### S2 — A route stops at the state line and says it arrived (BUG, ROUTER)
+
+**Where:** the Columbia at Vancouver, in both packs.
+
+**Repro, Oregon pack:** `oregon`, `[-122.6476,45.5626] → [-122.6757,45.6262]`
+(Kennedy School, NE Portland → Esther Short Park, Vancouver WA), Routes A–F —
+all six.
+
+**Repro, Washington pack:** `washington`, the same trip reversed,
+`[-122.6757,45.6262] → [-122.6476,45.5626]`.
+
+**What happens.** On the Oregon pack: six options, 8.8–12.3 km, star Route C at
+10.7 km / 32 min. **Every one of the six ends at exactly
+`[-122.67381,45.62095]`** — the north end of the Interstate Bridge — which is
+**602 m from the destination**. The last four segments of every option are
+`Interstate Bridge`. Nothing in the reply says the route is short. On the
+Washington pack the same trip returns *"A route point is too far from a routable
+road or path."*
+
+**Mechanism, read and measured.** `nearestNode` (`router-worker.js:413`) has no
+distance cap; `routeLeg` (`:2240`) rejects a point only past **2,000 m**.
+Neither pack contains the other state's streets and both carry the bridge, so
+that one tolerance decides everything:
+
+| point | Washington pack | Oregon pack |
+| --- | --- | --- |
+| Esther Short Park, Vancouver WA | 7 m (Esther Street) | **602 m — the Interstate Bridge** |
+| Interstate Bridge, north end | 13 m (Columbia Riverfront Renaissance Trail) | 117 m (Interstate Bridge) |
+| Hayden Island, Portland OR | **438 m — the Interstate Bridge** | 108 m (N Hayden Bay Drive) |
+| Kenton, N Portland OR | 3,731 m | — |
+| Kennedy School, NE Portland | **5,694 m** | 17 m |
+| Camas, WA | — | 2,392 m |
+
+So a Portland destination is 3.7–5.7 km from anything in the Washington pack and
+fails the 2 km test honestly, if with the wrong words. A Vancouver destination
+is 602 m from the Oregon pack — inside the tolerance — and the rider is handed a
+route ending on a freeway bridge deck with a six-hundred-metre gap it never
+mentions. `docs/audit/round6/plots/portland-vancouver-crossing_RouteC.png` shows
+it: the polyline stops well short of the orange destination square.
+
+The message is wrong in the way round 4's C1 message is wrong. Nothing is "too
+far from a routable road" — Kennedy School is on NE 17th Avenue. It is outside
+the installed map.
+
+**What I would change, not applied.** The worker already computes both snap
+distances and does not report them. Carry `snapM` per point into the
+`route-options` reply and let the app say the true thing — *"this is as close as
+the Oregon map reaches; Vancouver is in the Washington map"* — instead of either
+drawing a silent 602 m gap or blaming the road network. With downloadable map
+packs (`issues.md` §4) this stops being a curiosity and becomes a first-run
+question: the two halves of a metro area are in different downloads.
+
+### S1 — The star can be longer, slower and dirtier than a route beside it (UNCLEAR, tuning)
+
+Twice in fifteen trips the recommended route is beaten by an option on the same
+screen on **all three** of distance, time and failing metres. Both times the
+basis is `lowest-score` and the arithmetic is exactly as specified.
+
+**Repro A:** `washington`, `[-117.5830,47.4925] → [-117.4205,47.6605]`
+(EWU Cheney → Riverfront Park, Spokane), crow 22.3 km. The star is **Route D**;
+compare **Routes B and C**. **What happens:**
+
+| | distance | time | failing | facility | trail |
+| --- | --- | --- | --- | --- | --- |
+| B `efficient` | 27.7 km | 85 min | **0 m** | 5,633 m | 588 m |
+| C `alt-safer` | 28.4 km | 87 min | **0 m** | 5,061 m | 221 m |
+| **D\* `combined-corridor`** | **30.0 km** | **94 min** | **969 m** | 15,980 m | 12,528 m |
+
+```
+D*  8567 = travel 5624 + fail  969 + dismount 177 + ordinary 2799 - trail 1002
+B   9675 = travel 5124 + fail    0 + dismount 177 + ordinary 4421 - trail   47
+```
+
+D loses on travel by 500 s and on failing road by 969 s and wins anyway, because
+it spends 10.3 km less on ordinary road — 1,622 s at `NETWORK_GAP_PRICE_S_PER_M`
+— and earns 955 s more trail credit. Set `TRAIL_BONUS_S_PER_M` to zero and D
+still wins by 153 s: as round 2's R11 said, the exchange rate is set by a *pair*
+of constants, and the larger one is the charge on ordinary road.
+
+**Repro B:** `oregon`, `[-123.0900,44.0535] → [-123.2789,44.5646]`
+(Eugene → Corvallis), crow 58.8 km. The star is **Route B**; compare **Route A**.
+**What happens:**
+
+| | distance | time | failing | facility | ordinary |
+| --- | --- | --- | --- | --- | --- |
+| A `friendly` | 66.3 km | 199 min | **0 m** | 30,347 m | 35,966 m |
+| **B\* `quick-friendly`** | **68.7 km** | **207 min** | **820 m** | 59,207 m | 9,481 m |
+
+```
+B* 14966 = travel 12402 + fail 820 + dismount 404 + ordinary 1896 - trail 556
+A  19191 = travel 11946 + fail   0 + dismount 404 + ordinary 7193 - trail 353
+```
+
+B rides about 34 km of Peoria Road, which OSM tags `cycleway=lane` and ODOT
+records as an 8 ft existing bike lane, so 26.5 km moves out of the ordinary-road
+bucket and B wins by 4,225 s.
+
+**Why this is UNCLEAR and not a bug.** Both stars are defensible rides. Route D
+is the Fish Lake Trail — 12.5 km of car-free rail trail — and its 969 m of
+failing road is four short connectors (S Cheney-Spokane Rd 498 m, S Grove Rd
+365 m, W Sunset Blvd 70 m, S Government Way 32 m). Route B is the Willamette
+Valley Scenic Bikeway. A rider may well want both, and the model says in so many
+words that ride quality has a vote and that fail avoidance pays a price rather
+than holding a veto.
+
+What is new is the *direction* the vote runs. `NETWORK_GAP_PRICE_S_PER_M` was
+sized on a field case about **time** — the star saved 21 minutes by spending 12
+km off the bike network and the rider wanted the other route. Nothing in the
+pricing distinguishes spending ordinary-road credit to buy time from spending it
+to buy **failing road**, and on these two trips it buys failing road that a
+shown alternative does not carry at all.
+
+**What would settle it:** a rider verdict on those two trips specifically,
+comparing the starred letter against the one named above. **What I would change
+if the verdict goes the other way:** not another constant. A dominance guard on
+the star alone — if a candidate in the practical pool is no longer, no slower
+and carries strictly less failing road, it takes the star — expresses the intent
+directly, is a few lines, and fires on exactly these two trips out of fifteen.
+
+### S3 — Three trips passed the fail-share guard's share test; it fired on none (UNCLEAR, tuning)
+
+`failShareGuardPick` (`router-worker.js:3456`) moves the star when it fails the
+rules across ≥15% of its own length and another candidate within 1.8× distance
++ 1.6 km and 1.85× time + 10 min carries ≤40% as many failing metres. P2
+recorded it firing about once in thirty trips.
+
+**Where:** all three trips below. **Repro:** `oregon`
+`[-121.3157,44.0582] → [-121.3968,44.0432]` (star Route A) and
+`[-122.3874,45.5393] → [-122.1180,45.5775]` (star Route C); `washington`
+`[-121.4860,45.7280] → [-121.8890,45.6940]` (star Route A).
+
+**What happens.** The share test passed on **three of fifteen** trips and the
+guard moved nothing — and the reason differs each time:
+
+| trip | star | share | candidates at ≤40% failing | why none qualified |
+| --- | --- | --- | --- | --- |
+| Bend → Phil's Trailhead | 7.5 km / 28 min | **32.8%** | 2, at 20.2 and 20.3 km with 282–288 m failing | both outside a **15.2 km / 61 min** window |
+| Troutdale → Multnomah Falls | 31.1 km / 121 min | **28.8%** | **0** | the whole corridor is failing; there is nothing to move to |
+| White Salmon → Stevenson | 38.3 km / 139 min | **17.6%** | 4, at 72.0–74.5 km with 1,113–1,346 m failing | all outside a **70.6 km / 266 min** window, by 1.4–3.9 km and 15–24 min |
+
+Troutdale is the guard behaving perfectly: no cleaner route exists, so there is
+nothing to prefer. The other two are the shape P2 named as its "nearest miss",
+now with two more instances and a measurement of *which* clause bites. It is the
+window, not the fail ratio: on White Salmon four qualifying candidates miss a
+70.6 km bound by as little as 1.4 km.
+
+**What would settle it:** whether a rider looking at Bend → Phil's Trailhead —
+7.5 km with a third of it failing, against 20.3 km at 1.4% — wants to be carried
+onto the long one automatically. P2 already records the concern that nothing
+bounds what the guard buys; these two trips are what widening the window would
+buy, and they cost 13 and 34 extra kilometres. My own read is that the window is
+right and the guard is correct to decline, but that is a judgement, not a
+measurement.
+
+### Q3 — A slot spent on 21 km of failing highway, and a correction (UNCLEAR, tuning)
+
+**Where:** the Necanicum and Sunset Highways, inland from the north coast.
+**Repro:** `oregon`, `[-123.9615,45.8918] → [-123.9345,45.7196]`
+(Cannon Beach → Manzanita), crow 19.3 km, **Route F** — the sixth letter, so it
+is off-screen unless the list is scrolled. **What happens:**
+
+| | distance | time | failing |
+| --- | --- | --- | --- |
+| A\* `alt-quick` | 23.0 km | 92 min | 2,437 m (10.6%) |
+| **F `direct-lens-friendly`** | **55.2 km** | **190 min** | **21,269 m (38.5%)** |
+
+F is 2.4× longer, 2× slower and carries 8.7× the failing road — 20.0 km of the
+Necanicum Highway alone, reached by way of 14.4 km of the Sunset Highway — and
+it holds one of six letters. Its admission is legitimate: at 190 min it clears
+the `2.2× + 10 min` time bound of 212 min, because the inland highway is fast
+and the coast route is slow. It then survives because the dominance trim
+requires `edgeOverlap >= 0.96` and F shares nothing with A.
+
+**This is deliberate behaviour, restored by commit `b0b715b`** — "Revert the
+dominance trim: it deleted a corridor, then became a no-op" — and the comment at
+`router-worker.js:4614` argues the case well. I am not asking for the trim back.
+Two things are worth recording anyway.
+
+**A correction to round 5's D1.** D1 says the residual dominated options are
+"every one of them profile `quick-friendly` — reserved by name in
+`protectedCandidates` and therefore exempt from every dominance test by design".
+That is no longer true. Across these fifteen trips, **35 options on 14 trips**
+are beaten by another option on the same screen on distance, time and failing
+metres together, and their profiles are spread across `direct-lens-friendly`
+(4), `discover-alternative` (4), the `combined-corridor` family (6), `friendly`
+(3), `alt-quick` (3), `discover-gentle` (3), `section-frontier` (3), `alt-safer`
+(2) and five others with one each. `quick-friendly` accounts for three of the
+35. The protection clause is not what is keeping them.
+
+**The magnitude is what deserves a look, not the count.** Most of the 35 are
+harmless — a route a kilometre longer with 200 m more failing road is a real
+alternative. Cannon Beach's Route F is not that. A rider on a 19 km coastal trip
+is offered a 55 km route with 21 km of failing highway on it, and the corridor
+argument — that a different road is worth showing however it scores — is weakest
+exactly when the different road is the kind the safety model exists to warn
+about. If anything changes here, the narrow version is a ceiling on failing
+*share* for the corridor exemption, not a general dominance trim.
+
+### Q2 — The Historic Columbia River Highway is red for half its length, honestly (EXPLAINABLE, DATA)
+
+**Where:** the Historic Columbia River Highway, Troutdale to Multnomah Falls.
+**Repro:** `oregon`, `[-122.3874,45.5393] → [-122.1180,45.5775]`, Routes A–F —
+all six.
+
+**What happens.** All six options carry **23.8%–52.8%** failing road; the star is
+Route C at 31.1 km / 121 min / 28.8%. Every option's failing metres are the same
+road.
+
+Measured over the 33.3 km of `Historic Columbia River Highway` inside
+`[-122.42,45.50]`–`[-122.10,45.62]`:
+
+| | km |
+| --- | --- |
+| level 1 / 2 / 3 / **4** | 7.6 / 4.4 / 4.3 / **17.0** |
+| ODOT posted speed conflated onto the edge | 29.0 (86.9%) |
+| level-4 km recorded at 40 mph | 15.7 |
+| — of those, with a **recorded** shoulder under 4 ft | 7.63 |
+| — of those, with **no** shoulder record at all | 7.10 |
+
+So a little over half the red is a road ODOT measured, at a speed ODOT posted,
+with less than the rider's 4 ft minimum: level 4 under `maxSpeedNoShoulder: 35`
+and `minShoulder: 4`, correctly. The rest is Q1 in miniature — 7.1 km with no
+shoulder record, red by the "unknown is zero" rule.
+
+The road really is a 1915 alignment about twenty feet wide, so this is not a
+libel. It is worth knowing that Oregon's best-loved cycling road reads as a
+third to a half failing on the default rules, and that a rider who moves
+`minShoulder` or `maxSpeedNoShoulder` by one class changes that picture
+completely. The trip has no cleaner alternative: no option avoids the HCRH at
+all, and the ones that ride less of it climb over Larch Mountain by way of East
+Haines Road and Northeast Alex Barr Road and are still 24–27% failing.
+
+**Not a repeat of O5 / B3.** I-84 runs alongside the whole way and no option
+touched it. The freeway entry charge is doing its job here.
+
+### S4 — Two letters, correctly (EXPLAINABLE)
+
+**Where:** Hurricane Ridge Road, Olympic National Park. **Repro:** `washington`,
+`[-123.4308,48.1207] → [-123.4977,47.9700]`, crow 17.5 km, **Routes A and B** —
+there is no C.
+
+**What happens.** The portfolio offers **two** options, not six.
+
+| | distance | time | failing |
+| --- | --- | --- | --- |
+| A `alt-quick` | 31.6 km | 161 min | 5,229 m (16.5%), 4,901 m of it Hurricane Ridge Road |
+| B\* `friendly` | 37.2 km | 181 min | **0 m** |
+
+There is exactly one road to Hurricane Ridge, so the only decision available is
+how to reach its foot: A rides the lower, 45 mph end of Hurricane Ridge Road out
+of town; B loops west on Black Diamond Road (7.1 km) and Little River Road
+(6.1 km) and joins above it. Twenty minutes for 5.2 km of failing road is the
+trade the model exists to make. The portfolio built **22 candidates and marked
+20 of them `duplicate`** — this is not a portfolio failure, it is a corridor
+with two answers in it. Both options carry an identical 1,719 m backtrack, which
+is the road's own alignment climbing east before switching back west; six
+options agreeing exactly was round 2's signature of a hard constraint, and two
+options agreeing is the same thing.
+
+The climb pricing behaved: 1,500 m of ascent did not push the star onto anything
+strange, and the two options differ by twenty minutes rather than by hours.
+
+### S5 — Washington explainables, with their constraints (EXPLAINABLE)
+
+| trip | flagged | the constraint |
+| --- | --- | --- |
+| White Salmon → Stevenson | star 17.6% failing | **SR 14, measured**: 33.6 km in the box, 81.4% level 3 and 18.2% level 4, shoulder recorded on 99.7% of it — 26.1 km at 4 ft, 6.1 km at 3 ft or less, 23.7 km posted 55, WSDOT stress 4 on 33.4 km. The star's 6.0 km of failing SR 14 is essentially all the level-4 SR 14 there is on that stretch; the alternatives are Forest Road 68 and the N-1000 line at 72–75 km |
+| Gonzaga → Manito Park | ×2.03, 234 m backtrack on all six | The 234 m is leaving Gonzaga for the nearest bike-legal river crossing, identical on every option. The ×2.03 is the star buying off 1,973 m of failing arterial — S Grand Blvd 929 m, S Browne St 640 m — for 1.8 km and seven minutes. Route A is the 6.4 km, 31%-failing version of the same trip |
+| WWU → Birch Bay State Park | 827–880 m backtrack, all six | WWU sits on Sehome Hill; every option drops north into Bellingham before turning out to the county. The star is the same 40.9 km and 125 minutes as Route A with 907 m less failing road |
+| Howard Amon Park → Sacajawea SP | 404 m backtrack, up to 4 reversals | Richland and Pasco face each other across the confluence and the crossings are only at the bridges. The star spends 2.7 km and nine minutes to take failing road from 6.0% to 2.4%, on 21.2 km of trail — most of it the Sacagawea Heritage Trail |
+| Wenatchee → Chelan | Route F at ×2.72, 6,707 m backtrack, 4,124 m dismount | The fully-matching escape, working exactly as F2 settled it. The star is the shortest option offered: 65.3 km at 1.1% failing on US 97A |
+| Downtown Yakima → Selah | nothing flagged | Named because it is the model at its best: 400 m and one minute moves the rider off 1,491 m of North/South 1st Street, from 22.5% failing to 1.7% |
+
+### Q4 — Oregon explainables, with their constraints (EXPLAINABLE)
+
+| trip | flagged | the constraint |
+| --- | --- | --- |
+| Bend → Phil's Trailhead | star 32.8% failing, 306 m dismount | Skyliners Road is the only way west out of Bend and 4.1 km of it is unmeasured county road at 45 mph (Q1). The dismount is the trailhead itself: the destination snaps onto Ben's Trail, and with `allowMtbTrails` at its default the router walks the last stretch honestly |
+| UO → Spencer Butte | ×1.51, 248 m backtrack | Fox Hollow Road carries 5.3 km of level 4 — again unmeasured county road at 45 mph — and every one of the six options rides 596–726 m of it, because there is no other way to the trailhead. The star spends 1.4 km avoiding the rest |
+| SOU Ashland → Britt Gardens | star 4.2 km longer than Route A | The Bear Creek Greenway for 17.2 km, then a choice at the Medford end: South Stage Road (3,686 m failing on Route A), West Main Street (2,890 m on Route B), or the Madrona Lane residential grid. The star takes the grid — 13.5% failing down to 3.9% for twelve minutes |
+| Cannon Beach → Manzanita | ×1.19 star, 10.6% failing | US 101 over Neahkahnie Mountain, measured: 30.3 km in the box, 8.8 km level 4, ODOT stress 4 on 14.9 km, shoulders recorded from 1 ft to 22 ft. There is no parallel road and the star rides the only one there is |
+| Portland → Vancouver, as a shape | 676 m backtrack on E and F | The Columbia Slough Trail and N Vancouver Avenue, then the Interstate Bridge, on every option; the I-205 path 11 km east is never competitive. Nothing wrong with the route — see S2 for what is |
+
+## What surprised me about the tooling
+
+- **The endpoint-probe stage earns its cost.** Thirteen of my first thirty
+  coordinates landed somewhere other than the place they were named after, twice
+  by hundreds of metres and once by 2.3 km. Probing every endpoint against the
+  graph before routing took four minutes and would otherwise have produced two
+  invented findings about walk-ins. The audit tool has no equivalent step; it
+  routes whatever it is given.
+- **`audit_route.mjs` persists none of the recommendation's arithmetic.** It
+  reads `reply.options[]`, which is `publicCandidate` — no `suggestionScore`, no
+  `facilityM`, no `trailM`, no `recommendationBasis`. All of that is in
+  `reply.allCandidates` (`candidateSummary`), along with every candidate the
+  portfolio built and the stage each one died at. Every finding above that
+  explains *why* the star is where it is came from a second pass written to read
+  that field, and a second pass costs another graph load. Persisting
+  `allCandidates` beside the options — about 5 KB per trip — would make the next
+  round's diagnosis a query rather than a re-run.
+- **`diagnoseNoRoute` does not know about `point-too-far`.** On the Vancouver →
+  Portland failure it printed *"both endpoints are reachable — the failure is
+  something else, look closer"*, which is true and unhelpful; the reply already
+  carried the reason. The classifier tests island / one-way-area / pinprick and
+  nothing else, so the one failure mode that is about the *map pack* rather than
+  the network falls through to the catch-all.
+- **The self-touch metric never fired.** Across all **86** options in this round,
+  `selfTouchM` never fell below its 60 m threshold — not once. Backtrack flagged
+  56 options and detour 32, and those were where the real questions were. The
+  self-touch gate cost nothing, but on this sample it also found nothing.
