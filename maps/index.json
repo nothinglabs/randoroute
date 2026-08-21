@@ -40,7 +40,7 @@
    "routeDirectionSuffixes": {},
    "datasets": {
     "graph": true,
-    "roads": false,
+    "roads": true,
     "basemap": true,
     "overlays": true,
     "places": true,
@@ -50,7 +50,9 @@
    },
    "versions": {
     "basemap": "sha-9cf23d75d7b2",
-    "graph": "sha-63fd4ab49fd0"
+    "graph": "sha-63fd4ab49fd0",
+    "roads": "sha-ec24adbb74d6",
+    "overlays": "sha-f3e9e5d62386"
    },
    "sourceCounts": {
     "blts": 6055,
@@ -67,6 +69,11 @@
      "dataset": "closures",
      "path": "route_closures.geojson.gz",
      "bytes": 633
+    },
+    {
+     "dataset": "roads",
+     "path": "roads.pmtiles",
+     "bytes": 17494045
     },
     {
      "dataset": "basemap",
