@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-21.780';
+const APP_VERSION = '2026-08-21.781';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -13852,7 +13852,11 @@ const ROUTING_WEIGHT_GROUPS = [
     { key: 'climbKneePct', label: 'Grade where a climb starts to hurt (%)', min: 0, max: 9, step: .5,
       hint: 'Below this, a metre climbed costs the same however it is taken. Raise it '
         + 'if gentle grades do not bother you; lower it to start avoiding them sooner.' },
-    { key: 'climbCostAt10Pct', label: 'Cost of a 10% grade, per metre climbed', min: 1, max: 40, step: .25,
+    // Step .01, not .25: the default 7.84 is the value that makes the curve's
+    // quadratic coefficient exactly 0.19, and a coarser step cannot reach it --
+    // the slider would render at 7.75 while the weight held 7.84, and a rider
+    // who dragged it could never get back.
+    { key: 'climbCostAt10Pct', label: 'Cost of a 10% grade, per metre climbed', min: 1, max: 40, step: .01,
       hint: 'How much worse a steep metre is than a gentle one, anchored at 10%. The whole '
         + 'curve follows: at the default, 6% costs 1.8x and 12% costs 13x. Set it to 1 to '
         + 'ignore steepness entirely and charge only for height gained.' },

@@ -53,7 +53,20 @@ const NORTH = [-122.35011, 47.70689];    // Fremont Ave N, north of the circle
 const SOUTH = [-122.35004, 47.70054];    // Fremont Ave N, south of the circle
 const SOUTHWEST = [-122.35078, 47.70360]; // Evanston Ave N, one turn before it
 
-const ride = (from, to) => page.evaluate(async ([start, end]) => {
+// `via` names a street the ride must actually use, as a regexp source string --
+// a real RegExp cannot cross into page.evaluate. Give one whenever the geometry
+// under test is a particular way through a junction rather than whichever route
+// the portfolio happens to star.
+//
+// This is not a convenience. Evanston -> Fremont offers three routes within
+// four seconds of each other -- N 103rd, N 104th and N 105th, 77 s, 81 s and
+// 79 s -- so which one wears the star is decided by differences far below what
+// a rider could feel, and any weight change flips it. It did: the star moved to
+// N 103rd, this file went on reading guidance off a route with no turn before
+// the circle, and the anti-chatter rule it exists to pin stopped being
+// exercised at all. `viaFound` below is what makes that show up as a failure
+// instead of a quiet pass on the wrong route (audit finding R5, same shape).
+const ride = (from, to, via = null) => page.evaluate(async ([start, end, viaSource]) => {
   // Drop the previous answer first, or the wait below is satisfied by it and
   // every ride reports the same instructions.
   routing.last = null;
@@ -67,15 +80,24 @@ const ride = (from, to) => page.evaluate(async ([start, end]) => {
     };
     tick();
   });
-  if (!routing.last?.ok) return { failed: true, spoken: [] };
+  if (!routing.last?.ok) return { failed: true, viaFound: false, spoken: [] };
+  let viaFound = true;
+  if (viaSource) {
+    const wanted = new RegExp(viaSource, 'i');
+    const option = (routing.options || []).find((offered) =>
+      (offered.segs || []).some((seg) => wanted.test(seg.name || '')));
+    viaFound = !!option;
+    if (option) activateRouteOption(option);
+  }
   const built = buildTurnInstructions(routing.last);
   return {
+    viaFound,
     spoken: built.instructions.map((instruction) => navInstructionText(instruction)),
     // The stubs that make up the circle, so a data change that removes it shows
     // up as a failure here rather than as a silently pointless test.
     stubs: routing.last.segs.filter((seg) => !seg.name && (seg.lenM || 0) < 30).length,
   };
-}, [from, to]);
+}, [from, to, via]);
 
 /* ------------------------------------ east on N 104th, out north on Fremont */
 const leftTurn = await ride(WEST, NORTH);
@@ -94,7 +116,11 @@ check('nothing else is said about the circle',
 /* ---------------------------- with a turn 48 m before it, as on the real ride */
 // This is the case that was reported. The right onto N 104th used to consume
 // the left onto Fremont through the 70 m anti-chatter window.
-const afterATurn = await ride(SOUTHWEST, NORTH);
+const afterATurn = await ride(SOUTHWEST, NORTH, '^north 104th street$');
+check('a route through N 104th into the circle is still offered',
+  afterATurn.viaFound,
+  'no offered route uses N 104th, so nothing below tests a turn before the circle: '
+  + JSON.stringify(afterATurn.spoken));
 check('a turn shortly before the circle no longer silences it',
   afterATurn.spoken.some((line) => /At the traffic circle, turn left onto Fremont/.test(line)),
   JSON.stringify(afterATurn.spoken));
