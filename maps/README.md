@@ -139,6 +139,10 @@ the same. Oregon's is the worked example of a state that reached an agent's
 ceiling: it explains the number by naming the sources the state does not
 publish, not the work that was not done.
 
+> **Accepted by the project owner on 2026-08-21.** This clause was written by
+> the agent importing Nevada, which was then scored against it and said so.
+> Under the literal reading Nevada is a 5 rather than a 7.
+
 **When a gate names a source the state does not publish.** Levels 4 and 6 name
 specific enrichments, and a state can simply not have one — Nevada's DOT
 publishes no bicycle facility inventory and no stress rating at all. Read those
