@@ -130,6 +130,13 @@ Write flat. Conclusion first, then the measurement, then the caveat. Do not:
 
 - **Build to a reveal.** "The correction that matters most isn't X, it's Y."
   Put the point first.
+- **Announce a finding instead of stating it.** "Validation is clean, and it
+  corrects something I told you." "Here is the part that matters." "One thing
+  worth knowing." Every one of these is a sentence spent on packaging, and the
+  finding still has to be written afterwards. Write the finding. If a result
+  and a correction both need reporting, that is two labelled statements --
+  "Validation passed: ..." then "Additional finding: ..." -- not a trailer for
+  the second one.
 - **Use fragments for emphasis.** "Three ways. Three."
 - **Title a finding like a headline.** "Two thirds of Oregon's red road is red
   because nobody measured it" is a headline. "Oregon has no riding-space source
