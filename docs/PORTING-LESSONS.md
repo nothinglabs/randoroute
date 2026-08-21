@@ -99,6 +99,17 @@ ODOT's derived BLTS stress separate from the owning shoulder, speed, and
 facility inventories; the normalized BLTS stream carries only matched owning
 facts.
 
+*Travelled — Nevada (2026-08-21): held, with the failure wearing a new
+disguise.* Nevada's DOT publishes no stress rating at all, so the only
+candidate was RTC Washoe's Reno/Sparks Bike LTS layer -- and it is a derived
+analysis carrying a copy of its facility input (`BikeFacili`) exactly as the
+lesson predicts. The new part: the field NAMED like the rating, `Bike_LTS_S`,
+is not one. Its values are 0 on 2,701 rows and 1 on 309, tracking `BikeFacili
+= 'Existing Path'` precisely; the actual rating sits in `MEAN_MEAN_`, an
+un-renamed spatial-join mean with fractional values and 404 unrated zeros.
+Classifying the layer was not enough -- the values had to be counted before
+either field could be believed. Parked.
+
 ### A2 — State agency traffic layers stop at the state route system and at the city line.
 
 *What happened.* W Pioneer Ave in Puyallup had no traffic count. Chasing it
@@ -124,6 +135,16 @@ hole is a per-state fact and Oregon's is much bigger.
 *Travelled — Oregon re-import (2026-08-16): held.* The shipped graph has 25.5%
 of road miles with a traffic count, with 95.4% of principal arterials but 0.2%
 of local streets covered; the state has no county road-log equivalent.
+
+*Travelled — Nevada (2026-08-21): held, and the shape is the same in a state
+built differently.* NDOT's AADT is keyed to its own route system and covers
+4,920 spans. Measured on the shipped graph: **86.3% of principal-arterial
+miles carry a count and 0.2% of local-street miles do** (Oregon 95.4% / 0.2%,
+Washington 76.5% / 23.4%). Nevada's middle is better than Oregon's -- minor
+collectors reach 48.9% against Oregon's 2.6%, because NDOT's functional-class
+and ownership layers extend to local streets even though its counts do not --
+and the bottom is identical. Three states now, and local streets have a count
+in exactly one of them.
 
 ### A3 — FHWA HPMS is the one nationally uniform volume source, and it exists for every state.
 
@@ -162,6 +183,15 @@ changed".
 was the uniform floor, with 67,861 counted rows and 71,826 line parts; the
 record year remains attached as provenance.
 
+*Travelled — Nevada (2026-08-21): held, and the year had to be probed again.*
+`Nevada_2018_PR` exists with **47,011 counted rows**; 2015, 2016, 2017 and
+2019-2023 all return "Service not found". Three states, three different
+reasons to check, and all three happen to be 2018 -- which is exactly the
+coincidence that would make a fourth import skip the probe. One new wrinkle
+worth carrying: the layer inside `Nevada_2018_PR` is named `NNevada_PR_2018`,
+with a doubled N. The service path is what matters, but a fetcher that
+validates the layer name will break on it.
+
 ### A4 — A measurement, a derived figure and a proxy are three different claims. Never flatten them.
 
 *The rule.* They get different labels in the UI and different precedence in the
@@ -180,6 +210,15 @@ a signed bike route look like a safety guarantee (see D1).
 *Travelled — Oregon re-import (2026-08-16): held.* The adapter keeps ODOT's
 derived stress rating, measured posted speed/shoulder/facility inventories, and
 HPMS/ODOT traffic counts in distinct fields and provenance paths.
+
+*Travelled — Nevada (2026-08-21): held, and it decided a verdict.* NDOT's
+shoulder inventory records a TYPE alongside the width, and 148 current spans
+are gravel or earth. Emitting those widths as `ShoulderWidth` would have
+flattened a proxy (there is graded material beside the lane) into a
+measurement (there is riding space). They are counted in the census and
+withheld from the build. The same discipline kept NDOT's `SurfaceType` out
+entirely: there is no Nevada decoder for its codes, and a raw code on a card
+is not a claim anyone can read.
 
 ### A5 — When several sources describe one road, write down which wins. Do not leave it to evaluation order.
 
@@ -206,6 +245,15 @@ build.* Current 2024 ODOT state-system AADT and 2018 HPMS both enter the shared
 measurement layer; the newer dated state sections are eligible to win on
 overlap. A statewide disagreement distribution was not separately measured.
 
+*Travelled — Nevada (2026-08-21): held, and exercised for the first time
+outside Washington.* Oregon's ledger records this lesson as a no-op because
+only one source conflated onto linework. Nevada has two that both do: NDOT's
+own AADT, every row of it dated **2025**, and HPMS **2018**. Recency
+arbitrates, so the state system takes NDOT's number and everything HPMS
+reaches alone keeps the 2018 one, with the year travelling to the card either
+way. A state can make this lesson live simply by having a DOT that publishes
+counts as lines.
+
 ### A6 — Agreeing medians do not mean agreeing roads.
 
 *What happened.* Having established the median ratio is 1.00, it would be easy to
@@ -230,6 +278,11 @@ are no medians to compare.
 *Travelled — Oregon re-import (2026-08-16): not separately measured.* Two
 traffic sources are present, but this import did not publish a ratio
 distribution or use agreement between them as evidence of correctness.
+
+*Travelled — Nevada (2026-08-21): not exercised.* The two count sources
+overlap almost entirely on the state system, where the newer one wins by rule;
+no ratio distribution between them was published, so this import adds no
+evidence about whether agreeing medians hide disagreeing roads.
 
 ### A7 — Withdraw a claim that does not survive its own measurement.
 
@@ -258,6 +311,14 @@ tool now measures against distance **along the corridor** and the same hops read
 traced to a route-relation gap before it was described as a graph or safety
 failure; the verification report distinguishes source topology from routing
 choice.
+
+*Travelled — Nevada (2026-08-21): held, and it withdrew a claim.* The first
+pass at this census recorded "NDOT publishes no shoulder inventory", on the
+strength of having walked the whole of `gis.dot.nv.gov/arcgis/rest/services`.
+It does publish one -- on a second ArcGIS server the first does not link to.
+The claim was wrong because the search was incomplete, not because the data
+was ambiguous, and the check that caught it was enumerating every host rather
+than every folder of one host.
 
 ### A8 — Audit for fields you fetched and never consumed.
 
@@ -293,6 +354,19 @@ geometry type instead of the schema. That failure mode is now its own lesson
 *Travelled — Oregon re-import (2026-08-16): held.* The field census records
 what each ODOT fetcher consumes, while display-only metadata and the parked
 non-state AADT site layer remain explicit rather than being silently promoted.
+
+*Travelled — Nevada (2026-08-21): held, done up front, and it found the most
+valuable thing in the import.* The fetched-versus-consumed audit was run
+before the fetchers were written rather than after. It parked NDOT's gravel
+shoulder widths and `SurfaceType` with reasons, and it surfaced one signal
+nobody was looking for: RTC of Southern Nevada's bike-facility layers carry a
+whole Mandli roadway inventory alongside the facility -- `LANE_WIDTH`,
+`BIKE_WIDTH`, `BUFF_WIDTH` and **`RS_WIDTH`**, a right-shoulder width, for
+Clark County. That is a shoulder measurement on CITY STREETS in the one place
+three quarters of Nevadans live, which no state in this project has ever had.
+It is not read here, because nothing downstream is prepared to attribute a
+shoulder to an MPO's bike-lane layer and doing so without a field test is what
+G1 forbids. It is written down as the largest known backlog Nevada leaves.
 
 ### A9 — Geometry type is not the shape of the data. Park a source on its schema, never on its `geometryType`.
 
@@ -334,6 +408,15 @@ MP, street/site names, and no span.
 
 # B. Conflation — getting agency data onto OSM geometry
 
+*Travelled — Nevada (2026-08-21): held, and generalised one step further.* The
+geometry-type trap did not arise: every NDOT layer is already polyline, and
+the ALRS event layers return real WGS84 linework, so no milepost slicing was
+needed anywhere. What did arise is the same mistake one level down -- a source
+whose FIELD NAMES are as misleading as Oregon's geometry type. RTC Washoe's
+`Bike_LTS_S` reads like a stress score and is a path flag (see A1). The rule
+survives with a wider scope: park a source on what its records actually
+contain, which means reading the values, not only the schema.
+
 ### B1 — An all-samples matcher silently discards data it has already found. This is the single most expensive bug in this category.
 
 *What happened.* Pioneer Way East showed no traffic count on 4.13 of its 5.83
@@ -374,6 +457,15 @@ inventories are matched by aligned span coverage, and the adapter retains
 source-side segment provenance rather than requiring one record to span an
 entire graph edge.
 
+*Travelled — Nevada (2026-08-21): held by construction, and the adapter had to
+do the same thing on the source side.* NDOT keeps shoulder, speed, lane count
+and access control as four independent milepost-addressed layers whose spans
+do not line up. `build_ndot.py` cuts them into atomic intervals per route --
+every breakpoint from any layer cuts every layer -- before the shared matcher
+ever sees them, because the alternative is one layer's boundary silently
+choosing the value for another layer's span. Same failure as B1, one stage
+earlier in the pipeline.
+
 ### B2 — Test a geometric matcher with true perpendicular offsets, in metres.
 
 *What happened.* A guard meant to prove the matcher rejects a parallel road was
@@ -396,6 +488,9 @@ first version of the B1 fix.
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* No new
 synthetic perpendicular-offset matcher test was added; the shared matcher
 tests remain the applicable coverage.
+
+*Travelled — Nevada (2026-08-21): not exercised.* No new synthetic matcher
+test was written; the shared matcher tests remain the coverage.
 
 ### B3 — Measure coverage against the routing graph, not against the source's own extent.
 
@@ -427,6 +522,14 @@ on ways a bicycle can use.
 graph measurement reports 18,979 of 74,503 road miles with traffic counts
 (25.5%), broken down by functional class in the Oregon status report.
 
+*Travelled — Nevada (2026-08-21): held, and the graph is the only honest
+denominator here.* NDOT's AADT layer has 4,920 rows and HPMS 47,011; against
+the shipped graph they come to **10,948 of 38,131 road miles, 28.7%**. Worth
+noting how much smaller the denominator is than the state: Nevada is larger
+than Oregon and carries **half** the road mileage (38,131 against 74,503).
+Coverage percentages between states are not comparable without that number
+beside them.
+
 ### B4 — An explicit tag beats an inventory, and an explicit zero is knowledge.
 
 *What happened.* A field report on WA-14: the inventory booked a 4 ft shoulder
@@ -455,6 +558,15 @@ absence, it is evidence that nobody has ever looked.
 *Travelled — Oregon re-import (2026-08-16): held.* The shared precedence
 remains OSM explicit shoulder tags first, ODOT inventory second, and unknown
 last; the Oregon adapter does not convert missing tags into zero.
+
+*Travelled — Nevada (2026-08-21): the precedence held; the population is now
+demonstrably a fact about OSM and not about any one state.* **595 ways in the
+whole of Nevada carry any `shoulder*` tag, out of 505,189 highway ways** --
+530 `shoulder`, 63 `shoulder:width`, 2 `shoulder:surface`. Washington 2,186,
+Oregon 650, Nevada 595. Three states, same order of magnitude, all negligible.
+The practical consequence is sharper here than anywhere: NDOT's inventory is
+1,226 spans, so between the two sources Nevada has a shoulder opinion about a
+low single-digit percentage of its roads and nothing at all about the rest.
 
 ### B5 — Inventories are directional. The display collapse must be labelled.
 
@@ -495,6 +607,15 @@ records are directional by route key; opposite-direction fallback swaps left
 and right, and 49,975 BLTS sections received a shoulder value from the owning
 inventory.
 
+*Travelled — Nevada (2026-08-21): DID NOT TRAVEL.* NDOT records one
+`ShoulderOutside` value per route section -- the outside shoulder of the
+roadway -- and books each direction of a divided highway as its own RouteID
+with its own geometry. So the directional split that cost Oregon real work is
+handled by the source's own structure, and the adapter sets both directions
+from one record rather than swapping sides. Nevada's `ShoulderInside` layer is
+the median side and is not riding space; it is not read. The lesson's warning
+to "check before assuming either way" is what travelled; its work did not.
+
 ### B6 — A precedence change deserves a blast-radius count before it ships.
 
 *The rule.* When you change which source wins, run one pass over the whole
@@ -529,6 +650,9 @@ baseline rather than new Oregon evidence.
 ---
 
 # C. The graph, and topology
+
+*Travelled — Nevada (2026-08-21): not exercised.* No shared precedence changed
+for this state, so there was no before/after to count.
 
 ### C1 — One severed link can cost forty-five miles, and nothing will fail.
 
@@ -567,6 +691,14 @@ keeps every parking aisle in the state out.
 corridor exposed a real source-route gap; the corrective action was to record
 the gap and narrow the acceptance segment, not to alter shared topology rules.
 
+*Travelled — Nevada (2026-08-21): not exercised as a defect, but the state is
+built for it.* Nevada is the sparsest network of the three -- 38,131 road
+miles over 110,000 square miles -- and several of its corridors are a single
+line between two towns with no second option for forty miles. That is the
+exact geometry in which one dropped way costs a hundred miles rather than
+forty-five, which is why three of the six nominated corridors are pinch points
+rather than city pairs.
+
 ### C2 — Assert corridor connectivity as an invariant, and it will catch the next one.
 
 *The rule.* For a handful of real corridors, assert: **a route exists**, it needs
@@ -604,6 +736,15 @@ preselected Oregon corridors pass with no freeway and no excessive detour. The
 first Viento nomination was corrected using mapped trailhead/seam coordinates;
 the wider source gap remains documented.
 
+*Travelled — Nevada (2026-08-21): the correction held, and it is why the
+nominations look the way they do.* Oregon's finding -- that a long corridor
+absorbs a severance -- was taken as instruction rather than as history. Three
+of Nevada's six nominations are deliberately SHORT hops across places where
+the map shows one line between two walls: four miles along the Truckee in
+Reno, seven miles from Boulder City to Hoover Dam where bicycles are barred
+from the bypass bridge, ten miles from Elko to Spring Creek. The long ones
+(Reno-Carson, Las Vegas-Pahrump) are there as controls, not as the test.
+
 ### C3 — Shoreline DEM smears terrain onto flat ground at the water's edge.
 
 *What happened.* Clinton's flat ferry terminal road booked an 11.2% grade over
@@ -627,6 +768,12 @@ suppression was exercised. A coastal state can still not have this problem.
 *Travelled — Oregon re-import (2026-08-16): did not apply.* No bicycle-carrying
 ferry entered the Oregon graph, so the shoreline-ferry suppression branch was
 not exercised.
+
+*Travelled — Nevada (2026-08-21): did not apply.* No bicycle-carrying ferry
+exists in Nevada, and the state has no marine shoreline. Two states running,
+two states where the shoreline-DEM branch is inert. The reservoir shorelines
+at Lake Mead and Lake Tahoe are the nearest analogue and were not separately
+examined for the same smear.
 
 ### C4 — Other terrain and topology traps, recorded together.
 
@@ -666,6 +813,14 @@ not run.
 > superseded ones are marked `[history]` and kept because the *reasoning* is
 > still the useful part.
 
+*Travelled — Nevada (2026-08-21): partially exercised.* Same-name seam
+stitching fired **73 times** at the 2 m threshold (Washington 1, Oregon 129).
+Walk-link connectivity mattered more than in either predecessor: **61,190
+edges were pruned in walk-only components** and 7,903 sidewalk stitch
+fragments joined, on a graph of 477,810 edges. 10,967 dedicated paths were
+densified for snapping. Deck grades, `incline=` authority and the
+dismount-terminal case were not separately tested.
+
 ### D1 — A designation cannot excuse a road. This killed a whole rung.
 
 *What happened.* A signed route was excusing US 101 at 60 mph with no shoulder.
@@ -695,6 +850,15 @@ in the state. It is dropped, and so is `NO` (2,252 rows), which records the
 and NO no-facility codes were excluded from the facility layer, so designation
 cannot excuse a road or turn a shoulder label into a bike facility.
 
+*Travelled — Nevada (2026-08-21): held, and the temptation was physical rather
+than administrative.* Oregon's version of this was a facility code called
+"Shoulder Bikeway". Nevada's is an eight-foot graded GRAVEL shoulder that the
+inventory records with a width like any other. Reporting that width would have
+let a surface nobody rides on satisfy the shoulder rule on exactly the rural
+highways where the rule matters most. 148 spans, dropped. The designation half
+of the lesson was never tested: Nevada has eleven `route=bicycle` relations in
+the entire state and none of them in Clark County.
+
 ### D2 — Sequencing separate rungs hides a real case. Merge questions that are one question.
 
 *What happened.* A five-lane arterial signed at 25 mph reached the speed rung and
@@ -717,6 +881,9 @@ only one invites the rider to go and change the wrong setting.
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* The
 shared needs-space rule was consumed unchanged; no Oregon-specific sequencing
 or threshold change was made.
+
+*Travelled — Nevada (2026-08-21): not exercised.* The shared needs-space rule
+was consumed unchanged.
 
 ### D3 — Express a threshold in road types, not numbers, and give it two paths.
 
@@ -758,6 +925,14 @@ provenance, are separate questions.
 ported unchanged, with 134,438 graph-way matches from 558,270 ways; ODOT's
 official class remains a proxy and is not converted into a measured number.
 
+*Travelled — Nevada (2026-08-21): held, and the class column carried more
+weight here than in either predecessor.* NDOT publishes FHWA classes 1-7
+statewide including local streets -- 72,426 spans, 68.3% of graph ways matched
+-- while its counts reach 28.7% of road miles. So on roughly forty per cent of
+Nevada's network the class path is the only one of D3's two paths that fires.
+The federal ladder needed no change, which is the portable half of the lesson
+confirming itself a third time.
+
 ### D4 — Do not fork a rule on urban/rural. The obvious direction is backwards.
 
 *What happened.* Two settings, 30 mph in town and 35 outside it.
@@ -781,6 +956,9 @@ rule.
 urban areas were built and consumed as context, but no urban/rural safety fork
 was introduced or changed.
 
+*Travelled — Nevada (2026-08-21): not exercised.* Census urban areas were
+built and consumed as context; no urban/rural fork was introduced.
+
 ### D5 — A recorded 20 mph limit shares the lane.
 
 *The rule.* A **recorded** speed limit at or under `SLOW_STREET_MAX_MPH` (20)
@@ -799,6 +977,9 @@ caution.
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* ODOT
 posted speeds were conflated, but this import did not run a dedicated
 low-speed/shoulder agreement sweep.
+
+*Travelled — Nevada (2026-08-21): not exercised.* No dedicated low-speed
+agreement sweep was run for this state.
 
 ### D6 — Pricing off a measurement mostly moves roads *down*. Say so before someone discovers it.
 
@@ -826,6 +1007,12 @@ tag — with all three landing on the same tiers, so the change moves the
 *Travelled — Oregon re-import (2026-08-16): not separately measured.* Current
 ODOT AADT, HPMS, and functional class were built into the graph, but no
 Oregon-specific before/after verdict and pricing blast radius was run.
+
+*Travelled — Nevada (2026-08-21): not separately measured.* NDOT's class,
+ownership and counts all entered the graph together in a first build, so there
+is no before to compare an after against. A state's FIRST import cannot
+produce this measurement; only a change to an existing one can, and that is
+worth saying because the lesson reads as though any import could run it.
 
 ### D7 — Inferring a shoulder from edge space: three constraints, and why it defaults on.
 
@@ -873,6 +1060,17 @@ number it reads.
 county edge-space inventory, so the shipped graph reports 0 miles of
 county-derived bail-out space and the inference has no input.
 
+*Travelled — Nevada (2026-08-21): DID NOT TRAVEL, for the second time running,
+and that now looks decisive.* `measure_coverage.py` against the shipped graph
+reports **0 of 38,131 road miles with bail-out space, 0.0%** -- the same zero
+Oregon returned. No board is required to certify a county road log in Nevada
+and none exists; NDOT's statewide layers carry identity, class and ownership
+for local streets and no width of any kind. Two independent states have now
+failed to supply this inference's input, which makes `inferShoulderFromEdge`
+look like a feature of CRAB's existence rather than a feature of American road
+data. The one Nevada signal that could feed it is RTC Southern Nevada's
+`RS_WIDTH` (see A8), and that is a field test away, not a fetch away.
+
 ### D8 — Give the model one facts contract, or omissions become invisible.
 
 *What happened.* Three separate wrong verdicts, all the same shape:
@@ -915,6 +1113,14 @@ populate the generic contract and test_fact_contract passes; derived BLTS
 stress, official speed/facility, traffic, class, and shoulder provenance remain
 separate.
 
+*Travelled — Nevada (2026-08-21): held.* Nevada's agency fields populate the
+generic contract -- `RouteIdentifier`, `ShoulderWidth`, `SpeedLimit`,
+`LaneCount`, `LimitedAccess`, `BikeFacilityType`, `fc`, `owner`, `adt`, `adty`
+-- and `test_fact_contract` passes. `LTS_Bicycle` is written as an explicit 0
+on every record rather than omitted, because the lesson's whole point is that
+a forgotten field and a genuinely absent one are indistinguishable, and
+Nevada's stress rating is genuinely absent.
+
 ### D9 — The map expression is the one implementation that cannot share the model's code. Sweep them against each other.
 
 *Why.* MapLibre evaluates paint expressions declaratively, so the map's copy of
@@ -953,6 +1159,9 @@ application rule changed.
 
 # E. Routing cost calibration
 
+*Travelled — Nevada (2026-08-21): not exercised.* No application rule changed,
+so the map/model sweep was run as a regression rather than as a Nevada study.
+
 ### E1 — Facility multipliers are profile-independent, so tuning them moves every option, including the direct one.
 
 *What happened.* Strengthening the facility bonuses moved the **shortest**
@@ -983,6 +1192,9 @@ Washington facts; port them as-is and re-tune from field reports.
 did not change facility multipliers or the route-cost ladder; field tuning
 remains outside an agent-only import.
 
+*Travelled — Nevada (2026-08-21): not exercised.* Facility multipliers were
+consumed unchanged; retuning needs field reports.
+
 ### E2 — Recompute the A\* admissibility bound whenever a multiplier floor moves.
 
 *The rule.* The heuristic must stay admissible across the **whole editable
@@ -1012,6 +1224,9 @@ contract and its verification legs still come back exactly optimal.
 existing graph and worker use the unchanged admissible-bound contract; no
 Oregon weight-floor change was introduced.
 
+*Travelled — Nevada (2026-08-21): not exercised.* No weight floor moved, so
+the admissibility bound was not recomputed.
+
 ### E3 — A lexicographic "safest wins" recommendation will pay any price for a rounding difference.
 
 *What happened.* Seattle → Everett on defaults starred a 40.4 mi / 3h19 route
@@ -1038,6 +1253,10 @@ reachable in a preview import.
 published-route comparison used the unchanged default profile and did not
 recalibrate recommendation selection.
 
+*Travelled — Nevada (2026-08-21): exercised by the routing audit rather than
+by the import.* See `maps/nevada/ROUTING-AUDIT.md` for what the priced star
+does on a network this sparse.
+
 ### E4 — Every veto in the pipeline must pay the same price, or it undoes the pricing.
 
 *What happened.* After E3, Phinney Ridge → Mukilteo still starred a 40.1 mi /
@@ -1063,6 +1282,9 @@ fail metres already charged.
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* No
 Oregon-specific veto or recommendation override was added.
 
+*Travelled — Nevada (2026-08-21): not exercised.* No veto or override was
+added.
+
 ### E5 — Give ride quality a vote, below safety.
 
 *What happened.* Seattle → Mukilteo starred 31.8 mi / 2h39 at 64% trails-and-lanes
@@ -1087,6 +1309,9 @@ detour onto better ground.
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* The
 unchanged ride-quality weights were used for research comparisons only; no
 field evidence supports retuning them.
+
+*Travelled — Nevada (2026-08-21): not exercised.* Ride-quality weights
+unchanged.
 
 ### E6 — Price a dismount proportionally, and let length decide severity.
 
@@ -1116,6 +1341,9 @@ length-severity calibration.
 ---
 
 # F. Tiles and rendering
+
+*Travelled — Nevada (2026-08-21): not exercised.* Nevada's graph contains
+dismount-priced ways, but no length-severity calibration was run.
 
 ### F1 — The app overzooms past the tile maxzoom, so simplification at maxzoom is simplification of the final picture.
 
@@ -1152,6 +1380,12 @@ adoption of the rule rather than independent confirmation of it.
 tile uses simplification 8 with low-zoom-only simplification, and the shared
 traffic-circle geometry test passes.
 
+*Travelled — Nevada (2026-08-21): held by construction.* `--simplification=8
+--simplify-only-low-zooms` carried over unchanged and `test_road_geometry.py`
+still guards Washington's surveyed traffic circle. No Nevada equivalent was
+surveyed, so this is adoption of the rule rather than independent
+confirmation.
+
 ### F2 — Below the low-zoom threshold, a statewide tile carries the entire state.
 
 *What happened.* A reliable crash on zoom-out on iPhone, and a Mac Safari tab
@@ -1180,6 +1414,12 @@ against a crash.
 is 14.2 MiB after the same below-z9 filtering and contains the state-specific
 BLTS and bike-infrastructure layers.
 
+*Travelled — Nevada (2026-08-21): held.* The same below-z9 filter produced a
+**6.1 MB** overlay archive from 17,593 bike-infrastructure ways and 6,055
+inventory spans, against Oregon's 14.2 MB from 118,628 features -- which is
+about the ratio of the two states' networks, so the rule scales with content
+rather than with area. Not re-measured against a device crash.
+
 ### F3 — Serve large overlays as tiles, not as GeoJSON collections.
 
 *What happened.* Two overlays (38k + 55k features) held about **440 MB of a
@@ -1200,6 +1440,10 @@ move earlier took a roads layer from 78 MB and crashing iOS to a tiled archive.
 *Travelled — Oregon re-import (2026-08-16): held by build.* Oregon ships
 overlays.pmtiles rather than loading its 118,628 source features as a runtime
 GeoJSON collection; device-memory behavior was not field-tested.
+
+*Travelled — Nevada (2026-08-21): held by build.* Nevada ships
+`overlays.pmtiles` rather than loading its source features at runtime; device
+memory was not field-tested.
 
 ### F4 — An overlay drawn above the roads must not answer a tap.
 
@@ -1225,6 +1469,9 @@ rather than the class means the next overlay reintroduces it.
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* The
 shared tap behavior was unchanged and no Oregon device interaction was tested.
 
+*Travelled — Nevada (2026-08-21): not exercised.* Shared tap behaviour
+unchanged; no device interaction tested.
+
 ### F5 — A right value that never reaches the rider is the same class of bug as a wrong one.
 
 *What happened.* Tapping a street showed traffic and edge space; tapping **the
@@ -1249,6 +1496,9 @@ one of them.
 
 *Travelled — Oregon re-import (2026-08-16): not separately exercised.* Oregon
 data passed the shared contract and tile builds, but no separate route-feature
+tap audit was run.
+
+*Travelled — Nevada (2026-08-21): not exercised.* No separate route-feature
 tap audit was run.
 
 ### F6 — Choose verdict colours by measured contrast under colour-blind vision, and choose motion by kind.
@@ -1282,6 +1532,9 @@ application palette and motion rules were not changed or field-tested here.
 
 # G. Discipline
 
+*Travelled — Nevada (2026-08-21): not exercised.* Palette and motion
+unchanged.
+
 ### G1 — A new signal is display-only until it has been field-tested.
 
 *The rule.* A newly conflated field reaches the card with its provenance and
@@ -1300,6 +1553,14 @@ unfetched rather than wired in.
 *Travelled — Oregon re-import (2026-08-16): held.* New ODOT signals are carried
 with provenance and do not introduce a new safety rule; readiness remains capped
 below field validation.
+
+*Travelled — Nevada (2026-08-21): held, three times over.* Nothing newly found
+was given model influence: NDOT's gravel shoulder widths, its `SurfaceType`
+codes, and RTC Southern Nevada's `RS_WIDTH` city-street shoulder measurements
+are all recorded in the census as backlog rather than wired in. The third of
+those was the hardest to leave alone -- it is the only shoulder measurement
+for city streets anywhere in this project -- which is roughly the definition
+of the case the rule exists for.
 
 ### G2 — Pin invariants, not measurements. A test that must be re-blessed after every deliberate change teaches the wrong reflex.
 
@@ -1332,6 +1593,11 @@ specific ferries was another preference encoded as a requirement.
 no-freeway, and bounded-detour corridor invariants; route mile totals remain
 reported for human review rather than pinned as exact measurements.
 
+*Travelled — Nevada (2026-08-21): held.* The corridor nominations assert
+existence, no-freeway and a bounded detour, and nothing else. Every route
+distance in this import's reports is printed for a human to read rather than
+asserted.
+
 ### G3 — A test asserting *weaker* behaviour than the code implements is the worst kind of stale.
 
 *Two examples, both found in one triage.* A service-worker test still required
@@ -1355,6 +1621,10 @@ real regression, which is the worst ratio a test can have.
 assertions were added, and the Oregon checks exercise built behavior through
 the shared harness/tests rather than matching source text.
 
+*Travelled — Nevada (2026-08-21): held as a constraint.* No source-text
+assertions were added; the Nevada checks run the built artefacts through the
+shared harness.
+
 ### G4 — Never let a missing build tool read as coverage.
 
 *The rule.* A test that needs tooling the environment lacks exits **77** and
@@ -1369,6 +1639,10 @@ prints `SKIP: <reason>`; the runner reports SKIP, not PASS.
 *Travelled — Oregon re-import (2026-08-16): held.* Missing optional tooling was
 not converted into a pass; the required data tools were installed and the
 resulting checks report their actual outcomes.
+
+*Travelled — Nevada (2026-08-21): held.* Every tool the build needed was
+present, so nothing was skipped; where a source was absent the census says so
+rather than the build passing quietly.
 
 ### G5 — The tile build and the graph build must share one decision layer.
 
@@ -1401,6 +1675,16 @@ data assertions is still Washington's.
 Oregon inputs, while fact-contract and source-count checks confirm that the
 state artifacts use the shared field vocabulary.
 
+*Travelled — Nevada (2026-08-21): held, with the same caveat Oregon recorded.*
+`test_build_parity.py` passes with the Nevada inputs in place. It checks that
+the two builds share one decision layer, not that either is right about
+Nevada, and every one of its data assertions is still Washington's. One
+consequence of the sharing bit Nevada specifically: `build_roads.py` reads
+posted speed out of the `--blts` stream while `build_graph.py` reads it from
+`--legal-speeds`, so NDOT's speed layer had to be joined into the inventory
+stream as well as passed separately, or the card and the router would have
+disagreed about every state highway.
+
 ### G6 — Commit built artefacts the moment they build, and commit fetched sources compressed.
 
 *What happened.* A build container was reclaimed **seven times**, taking
@@ -1430,6 +1714,12 @@ about 25 minutes, which is longer than the idle window that would destroy it.
 *Travelled — Oregon re-import (2026-08-16): held.* Large Oregon artifacts were
 published incrementally as they completed, and normalized source inputs are
 kept as compressed GeoJSON alongside rebuild instructions.
+
+*Travelled — Nevada (2026-08-21): kept, and untested again.* The container was
+not reclaimed. Each artefact was committed as it built -- the sources before
+the graph, the graph before the tiles, the tiles before the reports -- and the
+agency sources are committed compressed because re-paging NDOT's ownership and
+class layers takes about twenty minutes.
 
 ### G7 — A format reader must reject an unfamiliar magic rather than soldier on.
 
@@ -1467,3 +1757,7 @@ oldest-first. Two seams remain and are worth a second pass:
 
 Add to this file as they are mined, and add a `Travelled` line to every lesson
 above as each new state either confirms them or proves them local.
+
+*Travelled — Nevada (2026-08-21): not exercised.* No new format was
+introduced; the existing readers accepted the stamped graph.
+
