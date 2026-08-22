@@ -79,6 +79,13 @@ Hosting note: GitHub Pages caps files at 100 MB, which the tile archives
 exceed. GitHub Releases (2 GB per asset, CORS enabled) or any static host
 with CORS works; the files are served as-is, no packaging step.
 
+The production multi-state extension is specified in
+[`docs/MULTI-STATE-ARCHITECTURE.md`](../docs/MULTI-STATE-ARCHITECTURE.md).
+It adds versioned graph-partition catalogues and atomic routing acquisition
+units without removing this ordinary state-pack compatibility contract. Until
+that extension's client and publication tooling land, `storeFormat: 1` and one
+ordinary `graph2.bin.gz` remain the only published store format.
+
 ## Adding a state
 
 **Start at `docs/PORTING-TO-ANOTHER-STATE.md`** — it is the entry point for the

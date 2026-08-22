@@ -102,3 +102,13 @@ publish stage in `docs/IMPORT-A-STATE.md`. Remaining, in order:
   storage durability, range reads) before any App Store submission.
 - **Decide the web deployment**: keep serving maps same-origin (works today,
   nothing changes) or move the web app to store downloads too.
+
+### 5. Multi-state routing — implementation in progress
+Work is on `codex/multistate-routing`. Version 1 is capped at three contiguous
+installed states and partitions detailed graphs under the released Washington
+raw-input ceiling; it does not ship a fixed western coverage box. The contract
+and synthetic state-chain gate are the first milestone. Remaining gates are the
+partition builder, incremental worker/frontier behavior, per-edge state
+attribution, store/offline dependencies, national discovery and first-run,
+search continuation, Washington/Oregon crossing comparisons, preview, full
+suite, and the owner's physical-iPhone verdict.
