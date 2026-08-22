@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.783';
+const APP_VERSION = '2026-08-22.784';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1110,11 +1110,13 @@ function normalizeStoredRoute(route) {
   const blocks = Array.isArray(route.b) ? route.b : [];
   if (!vias.every(validRoutePoint) || !blocks.every(validRoutePoint)) return null;
   const viaNames = Array.isArray(route.vn) ? route.vn : [];
+  const blockNames = Array.isArray(route.bn) ? route.bn : [];
   // Preserve plans created before the editor gained a stop limit. New edits
   // cannot add past the limit, but opening an old plan must not delete stops.
   return {
     s: route.s, e: route.e, v: [...vias], b: [...blocks],
     vn: vias.map((_, index) => normalizeEndpointName(viaNames[index]) || 'Point on map'),
+    bn: blocks.map((_, index) => normalizeEndpointName(blockNames[index])),
     sn: normalizeEndpointName(route.sn), en: normalizeEndpointName(route.en),
     sd: route.sd === true,
   };
@@ -1140,6 +1142,8 @@ function decodeSharedRouteToken(token) {
         s: data.s, e: data.e, v: vias.slice(0, MAX_ROUTE_STOPS), b: blocks.slice(0, MAX_ROAD_BLOCKS),
         vn: vias.slice(0, MAX_ROUTE_STOPS).map((_, index) =>
           normalizeEndpointName(Array.isArray(data.y) ? data.y[index] : null) || 'Point on map'),
+        bn: blocks.slice(0, MAX_ROAD_BLOCKS).map((_, index) =>
+          normalizeEndpointName(Array.isArray(data.zn) ? data.zn[index] : null)),
         sn: normalizeEndpointName(data.a), en: normalizeEndpointName(data.b),
       },
       mode: ['direct', 'balanced', 'low'].includes(data.m) ? data.m : null,
@@ -1237,6 +1241,7 @@ function saveStateNow() {
             s: routing.start, e: routing.end, v: routing.vias.map((x) => x.pt),
             vn: routing.vias.map((x) => x.name),
             b: routing.blocks.map((x) => x.pt),
+            bn: routing.blocks.map((x) => x.ferryName || null),
             sn: routing.startName, en: routing.endName,
             sd: routing.startFromDevice,
           } : null,
@@ -2131,6 +2136,20 @@ function ensureLayer(src) {
         'line-dasharray': [1.1, 1.65],
       },
     }, roadAnchor);
+    // The visible ferry line is intentionally fine and dashed. Give it the
+    // same forgiving invisible tap target as roads and trails, and register
+    // that target with the shared feature-details system. Without this, the
+    // visible line highlighted but renderReadout had no source to describe.
+    forgetStyleValues(); map.addLayer({
+      id: hitId(src), type: 'line', source: mapSourceId,
+      minzoom: 7.5,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#000',
+        'line-opacity': 0,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 7.5, 12, 12, 18, 16, 26],
+      },
+    }, roadAnchor);
     forgetStyleValues(); map.addLayer({
       id: ferryContextLabelId(src), type: 'symbol', source: mapSourceId,
       minzoom: 10,
@@ -2146,6 +2165,7 @@ function ensureLayer(src) {
         'text-halo-width': 1.4, 'text-halo-blur': 0.3,
       },
     }, beforeId);
+    attachHover(src, hitId(src));
     updateVisibility(src);
     return;
   }
@@ -6900,7 +6920,7 @@ function requestNavigationConnector(target, purpose = 'start', automatic = false
   routing.worker.postMessage({
     type: 'route-connector', id,
     points: [turnNav.lastPosition, target],
-    blocks: routing.blocks?.map((block) => block.pt) || [],
+    blocks: routing.blocks?.map(routeBlockPayload) || [],
     rules: { ...rules, requireSafe: false },
     prefDesignated: routing.prefDesig,
     prefResidential: routing.prefResidential,
@@ -7054,7 +7074,7 @@ function requestNewRouteFromCurrentLocation({ automatic = false } = {}) {
   routing.worker.postMessage({
     type: 'navigation-new-route', id,
     points: [turnNav.newRouteStart, ...remainingVias.map((via) => via.pt), routing.end],
-    blocks: routing.blocks?.map((block) => block.pt) || [],
+    blocks: routing.blocks?.map(routeBlockPayload) || [],
     rules: { ...rules }, mode: selected.mode || routing.mode,
     profileId: selected.profileId || routing.profileId,
     profileLabel: 'Route A',
@@ -8052,7 +8072,7 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
   if (turnNav.active) {
     routing.worker.postMessage({
       type: 'route', id: routing.reqId, points, rules: { ...rules },
-      blocks: routing.blocks?.map((block) => block.pt) || [],
+      blocks: routing.blocks?.map(routeBlockPayload) || [],
       mode: selected?.mode || routing.mode,
       profileId: selected?.profileId || routing.profileId,
       profileLabel: selected?.label,
@@ -8071,7 +8091,7 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
     // refreshedRouteSelection().
     routing.worker.postMessage({
       type: 'route-options', id: routing.reqId, points,
-      blocks: routing.blocks?.map((block) => block.pt) || [],
+      blocks: routing.blocks?.map(routeBlockPayload) || [],
       rules: { ...(rec?.rules || rules) },
       forceDesignated: rec ? !!rec.prefDesig : routing.prefDesig,
       forceResidential: rec ? !!rec.prefResidential : routing.prefResidential,
@@ -9853,11 +9873,12 @@ function snapToDrawnRoute(lngLat) {
 // the point Add would actually place -- the snapped one -- so the question the
 // button answers is exactly "would pressing this again put a second block on
 // top of the first?", which is what makes Add/Remove the right pair.
-function roadBlockNear(lngLat, withinPx = 30) {
-  const target = map.project(snapToDrawnRoute(lngLat));
+function roadBlockNear(lngLat, withinPx = 30, { snap = true, ferryName = null } = {}) {
+  const target = map.project(snap ? snapToDrawnRoute(lngLat) : lngLat);
   let found = null;
   let best = Infinity;
   for (const block of routing.blocks) {
+    if (ferryName && block.ferryName !== ferryName) continue;
     const p = map.project(block.pt);
     const distance = Math.hypot(p.x - target.x, p.y - target.y);
     if (distance < best && distance <= withinPx) { best = distance; found = block; }
@@ -9865,7 +9886,15 @@ function roadBlockNear(lngLat, withinPx = 30) {
   return found;
 }
 
-function addRoadBlock(lngLat, { allowPastLimit = false, snap = true } = {}) {
+function routeBlockPayload(block) {
+  return block.ferryName
+    ? { point: block.pt, ferryName: block.ferryName }
+    : block.pt;
+}
+
+function addRoadBlock(lngLat, {
+  allowPastLimit = false, snap = true, ferryName = null,
+} = {}) {
   if (snap) lngLat = snapToDrawnRoute(lngLat);
   exitSharedRoute();
   if (!allowPastLimit && routing.blocks.length >= MAX_ROAD_BLOCKS) {
@@ -9877,7 +9906,11 @@ function addRoadBlock(lngLat, { allowPastLimit = false, snap = true } = {}) {
   const marker = new maplibregl.Marker({
     element: roadBlockMarkerElement(), anchor: 'bottom', draggable: true,
   }).setLngLat(lngLat).addTo(map);
-  const block = { pt: [lngLat.lng, lngLat.lat], marker };
+  const block = {
+    pt: [lngLat.lng, lngLat.lat],
+    ferryName: normalizeEndpointName(ferryName),
+    marker,
+  };
   routing.blocks.push(block);
   bindRouteConstraintMarker(marker, 'block', block);
   marker.on('dragend', () => {
@@ -10583,7 +10616,8 @@ function buildRoutingPanel() {
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn);
     for (const [index, p] of (rt.v || []).entries()) addVia(
       { lng: p[0], lat: p[1] }, { name: rt.vn?.[index] });
-    for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] });
+    for (const [index, p] of (rt.b || []).entries()) addRoadBlock(
+      { lng: p[0], lat: p[1] }, { ferryName: rt.bn?.[index] });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
     routing.sharedLoading = false;
     routing.restoringRoute = false;
@@ -10599,7 +10633,8 @@ function buildRoutingPanel() {
     setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn, { fromDevice: rt.sd });
     for (const [index, p] of (rt.v || []).entries()) addVia(
       { lng: p[0], lat: p[1] }, { allowPastLimit: true, name: rt.vn?.[index] });
-    for (const p of rt.b || []) addRoadBlock({ lng: p[0], lat: p[1] }, { allowPastLimit: true });
+    for (const [index, p] of (rt.b || []).entries()) addRoadBlock(
+      { lng: p[0], lat: p[1] }, { allowPastLimit: true, ferryName: rt.bn?.[index] });
     setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
     routing.restoringRoute = false;
   } else updateArmButtons();
@@ -10618,6 +10653,7 @@ function shareRouteUrl() {
     x: routing.vias.map((via) => point(via.pt)),
     y: routing.vias.map((via) => via.name),
     z: routing.blocks.map((block) => point(block.pt)),
+    zn: routing.blocks.map((block) => block.ferryName || null),
     m: routing.mode,
     o: routing.profileId,
     p: routing.prefDesig,
@@ -10661,7 +10697,8 @@ function loadSharedRouteIntoPlanner(shared) {
   setRoutePoint('start', { lng: route.s[0], lat: route.s[1] }, route.sn);
   for (const [index, p] of (route.v || []).entries()) addVia(
     { lng: p[0], lat: p[1] }, { name: route.vn?.[index] });
-  for (const p of route.b || []) addRoadBlock({ lng: p[0], lat: p[1] });
+  for (const [index, p] of (route.b || []).entries()) addRoadBlock(
+    { lng: p[0], lat: p[1] }, { ferryName: route.bn?.[index] });
   setRoutePoint('end', { lng: route.e[0], lat: route.e[1] }, route.en);
   routing.sharedLoading = false;
   fitRouteBounds(route);
@@ -10786,8 +10823,9 @@ function buildSavedRoutes() {
         for (const [viaIndex, point] of currentRoute.v.entries()) addVia(
           { lng: point[0], lat: point[1] },
           { allowPastLimit: true, name: currentRoute.vn?.[viaIndex] });
-        for (const point of currentRoute.b || []) addRoadBlock(
-          { lng: point[0], lat: point[1] }, { allowPastLimit: true });
+        for (const [blockIndex, point] of (currentRoute.b || []).entries()) addRoadBlock(
+          { lng: point[0], lat: point[1] },
+          { allowPastLimit: true, ferryName: currentRoute.bn?.[blockIndex] });
         setRoutePoint('end', { lng: currentRoute.e[0], lat: currentRoute.e[1] }, currentRoute.en);
         fitRouteBounds(currentRoute);
         saveStateSoon();
@@ -10882,6 +10920,7 @@ function buildSavedRoutes() {
       sn: routing.startName, en: routing.endName,
       v: routing.vias.map((x) => x.pt), vn: routing.vias.map((x) => x.name),
       b: routing.blocks.map((x) => x.pt),
+      bn: routing.blocks.map((x) => x.ferryName || null),
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig,
       prefResidential: routing.prefResidential, rules: { ...rules },
@@ -12726,21 +12765,7 @@ function mapPointRouteActions(lngLat, routeName, { disclosure = false } = {}) {
   const end = routeButton('map-point-end', 'Destination', 'Use this point as route destination',
     () => commitEndpoint('end'));
   const stop = routeButton('map-point-stop', disclosure ? 'New stop' : 'Add stop',
-    'Add this point as a route stop', () => {
-    setPanelOpen(false);
-    const point = { lng, lat };
-    let committedVia = null;
-    const chosenName = refineMapPointName(point, routeName, (resolved) => {
-      if (!committedVia || !routing.vias.includes(committedVia)) return;
-      committedVia.name = resolved;
-      renderRouteStops();
-      saveStateSoon();
-    });
-    if (!addVia(point, { name: chosenName })) return;
-    committedVia = routing.vias.at(-1);
-    dismissRoadInfo();
-    setRouteStatus('Stop added from map');
-  });
+    'Add this point as a route stop', () => commitMapPointStop({ lng, lat }, routeName));
   if (turnNav.active) {
     for (const button of [start, end]) {
       button.disabled = true;
@@ -12765,6 +12790,38 @@ function mapPointRouteActions(lngLat, routeName, { disclosure = false } = {}) {
     else routeActions.classList.add('two-actions');
   }
   return routeActions;
+}
+
+function canAddMapPointStop() {
+  return routing.start && routing.end && !turnNav.active
+    && routing.vias.length < MAX_ROUTE_STOPS;
+}
+
+function mapPointStopDisabledReason() {
+  if (turnNav.active) return 'Stop navigation to edit the route';
+  if (!routing.start || !routing.end) return 'Set a start and destination before adding a stop';
+  if (routing.vias.length >= MAX_ROUTE_STOPS) return `Maximum of ${MAX_ROUTE_STOPS} stops reached`;
+  return '';
+}
+
+function commitMapPointStop(lngLat, routeName) {
+  if (!canAddMapPointStop()) return false;
+  const lng = Number(lngLat.lng);
+  const lat = Number(lngLat.lat);
+  setPanelOpen(false);
+  const point = { lng, lat };
+  let committedVia = null;
+  const chosenName = refineMapPointName(point, routeName, (resolved) => {
+    if (!committedVia || !routing.vias.includes(committedVia)) return;
+    committedVia.name = resolved;
+    renderRouteStops();
+    saveStateSoon();
+  });
+  if (!addVia(point, { name: chosenName })) return false;
+  committedVia = routing.vias.at(-1);
+  dismissRoadInfo();
+  setRouteStatus('Stop added from map');
+  return true;
 }
 
 
@@ -12904,6 +12961,8 @@ function openMapTapDebug(title, record) {
 function renderMapTapCard({
   displayTitle, detailsTitle = displayTitle, pointName, summary, rows, lngLat, anchorPoint,
   swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
+  showStreetView = true, primaryStop = false, roadBlockKind = 'road', roadBlockSnap = true,
+  roadBlockFerryName = null,
   segmentName = null, placeName = null,
   debugData = null, cautionKinds = [], endpointRole = null,
   avoidTemporaryMarker = false, preferredRouteToggles = [],
@@ -13051,10 +13110,18 @@ function renderMapTapCard({
 
   let navigateButton = null;
   if (!endpointRole) {
-    navigateButton = readoutPrimaryButton('readout-primary-route', 'Navigate',
-      'Choose how to use this point in your route');
-    navigateButton.removeAttribute('aria-expanded');
-    navigateButton.addEventListener('click', () => openMapPointNavigate({ lng, lat }, routeName));
+    if (primaryStop) {
+      navigateButton = readoutPrimaryButton('readout-primary-stop', 'Add stop',
+        'Require this ferry by adding it as a route stop');
+      navigateButton.disabled = !canAddMapPointStop();
+      navigateButton.title = mapPointStopDisabledReason() || 'Require this ferry on the route';
+      navigateButton.addEventListener('click', () => commitMapPointStop({ lng, lat }, routeName));
+    } else {
+      navigateButton = readoutPrimaryButton('readout-primary-route', 'Navigate',
+        'Choose how to use this point in your route');
+      navigateButton.removeAttribute('aria-expanded');
+      navigateButton.addEventListener('click', () => openMapPointNavigate({ lng, lat }, routeName));
+    }
   }
 
   const streetViewBtn = document.createElement('button');
@@ -13096,18 +13163,33 @@ function renderMapTapCard({
 
   let blockButton = null;
   if (allowRoadBlock && !endpointRole) {
-    const existingBlock = roadBlockNear({ lng, lat });
+    const ferryBlock = roadBlockKind === 'ferry';
+    const existingBlock = roadBlockNear({ lng, lat }, 30, {
+      snap: roadBlockSnap,
+      ferryName: ferryBlock ? roadBlockFerryName : null,
+    });
     const canAddBlock = routing.start && routing.end && routing.blocks.length < MAX_ROAD_BLOCKS;
     if (existingBlock || canAddBlock) {
       blockButton = document.createElement('button');
       blockButton.type = 'button';
       blockButton.className = 'readout-road-block';
-      blockButton.innerHTML = '<span aria-hidden="true">🚧</span>';
-      blockButton.setAttribute('aria-label', existingBlock ? 'Remove roadblock' : 'Avoid this road');
-      blockButton.title = existingBlock ? 'Remove roadblock' : 'Avoid this road';
+      if (ferryBlock) {
+        blockButton.classList.add('is-labelled');
+        blockButton.textContent = existingBlock ? 'Use ferry' : 'Avoid ferry';
+      } else {
+        blockButton.innerHTML = '<span aria-hidden="true">🚧</span>';
+      }
+      const blockLabel = existingBlock
+        ? (ferryBlock ? 'Remove ferry roadblock' : 'Remove roadblock')
+        : (ferryBlock ? 'Prevent this ferry from being used' : 'Avoid this road');
+      blockButton.setAttribute('aria-label', blockLabel);
+      blockButton.title = blockLabel;
       blockButton.addEventListener('click', () => {
         if (existingBlock) removeRoadBlock(existingBlock);
-        else addRoadBlock({ lng, lat });
+        else addRoadBlock({ lng, lat }, {
+          snap: roadBlockSnap,
+          ferryName: ferryBlock ? roadBlockFerryName : null,
+        });
         dismissRoadInfo();
       });
     }
@@ -13134,9 +13216,10 @@ function renderMapTapCard({
   const primaryActions = document.createElement('div');
   primaryActions.className = 'readout-primary-actions';
   if (navigateButton) primaryActions.append(navigateButton);
-  primaryActions.append(streetViewBtn, detailsToggle);
+  if (showStreetView) primaryActions.append(streetViewBtn);
+  primaryActions.append(detailsToggle);
   if (blockButton) {
-    primaryActions.classList.add('has-road-block');
+    if (!blockButton.classList.contains('is-labelled')) primaryActions.classList.add('has-road-block');
     primaryActions.append(blockButton);
   }
 
@@ -13238,6 +13321,17 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
   }
   const src = HIT_SRC[feature.layer.id];
   const p = feature.properties;
+  if (!src) {
+    renderMapTapCard({
+      displayTitle: 'Point on map', pointName: 'Point on map',
+      summary: 'Use this point in your trip, or open Details.',
+      rows: [], lngLat, anchorPoint,
+      swatchColor: '#fff', swatchLabel: 'Unspecified map point',
+      debugData: { source: { id: 'unregistered-map-feature', name: 'Map feature' } },
+      avoidTemporaryMarker,
+    });
+    return;
+  }
   if (src.closure) {
     // The one overlay that cannot be switched off must be able to explain
     // itself: these circles were the only marks on the map a tap ignored,
@@ -13255,6 +13349,40 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       summary: [p.name, p.reason].filter(Boolean).join(' · ') || 'Closed route segment',
       rows, lngLat, anchorPoint,
       swatchColor: COLORS[4], swatchLabel: 'Route closure map color',
+      avoidTemporaryMarker,
+    });
+    return;
+  }
+  if (src.ferryContext) {
+    const rows = [
+      ['Name', p.n || 'Ferry crossing'],
+      ['Result', '⛴ Ferry route'],
+      ['Why', 'Add this ferry as a stop to require it, or avoid it to prevent its use.'],
+      ['Routing', rules.allowFerries === false
+        ? 'Ferries are currently disabled in Settings'
+        : 'Available to the route planner'],
+      ['Map symbol', 'Blue dashed — ferry crossing'],
+    ];
+    const pointName = readoutRoutePointName(rows);
+    renderMapTapCard({
+      displayTitle: pointName,
+      detailsTitle: 'Ferry route',
+      pointName,
+      segmentName: pointName,
+      summary: compactReadoutSummary(rows),
+      rows, lngLat, anchorPoint,
+      swatchColor: '#4f7f92', swatchLabel: 'Ferry route map color',
+      showStreetView: false,
+      primaryStop: true,
+      allowRoadBlock: true,
+      roadBlockKind: 'ferry',
+      roadBlockSnap: false,
+      roadBlockFerryName: p.n || null,
+      debugData: {
+        source: { id: src.id, name: src.name, hitLayer: feature.layer?.id || null },
+        rawProperties: { ...p },
+        geometry: feature.geometry || null,
+      },
       avoidTemporaryMarker,
     });
     return;
@@ -13475,7 +13603,10 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
     // the chosen route's own hit layer offers it, never an arbitrary road the
     // rider happens to inspect nearby -- which is exactly "part of an active
     // route", since routeseg IS the drawn route.
-    allowRoadBlock: src.id === 'routeseg' && p.ferry !== 1,
+    allowRoadBlock: src.id === 'routeseg',
+    roadBlockKind: p.ferry === 1 ? 'ferry' : 'road',
+    roadBlockSnap: p.ferry !== 1,
+    roadBlockFerryName: p.ferry === 1 ? p.name || null : null,
     // Any tapped segment that lies on a signed route offers its Preferred
     // checkbox -- not only the ribbon's own card, which a road usually
     // outbids for the tap.

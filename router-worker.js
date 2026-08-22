@@ -458,11 +458,16 @@ const ROAD_BLOCK_NEARBY_M = 16;
 function roadBlockEdgeSet(points) {
   if (!Array.isArray(points) || !points.length) return null;
   const blocks = [];
-  for (const point of points) {
+  for (const entry of points) {
+    const point = Array.isArray(entry) ? entry : entry?.point;
     if (!Array.isArray(point) || point.length < 2) continue;
     const lon = Number(point[0]), lat = Number(point[1]);
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-    blocks.push({ lon, lat, metersPerLon: 111_320 * Math.cos(lat * Math.PI / 180) });
+    blocks.push({
+      lon, lat,
+      metersPerLon: 111_320 * Math.cos(lat * Math.PI / 180),
+      ferryName: typeof entry?.ferryName === 'string' ? entry.ferryName.trim() : '',
+    });
   }
   if (!blocks.length) return null;
 
@@ -509,6 +514,17 @@ function roadBlockEdgeSet(points) {
     // closed, instead of letting the route slip across the marker.
     if (nearby[i].size) for (const edge of nearby[i]) blocked.add(edge);
     else if (closestEdge[i] >= 0) blocked.add(closestEdge[i]);
+  }
+  // A ferry service can have separate outbound and return tracks hundreds of
+  // feet apart. A point-only roadblock excluded one track and let the router
+  // switch to the same boat in the other direction. The map supplies the
+  // tapped service name, so exclude every graph edge of that named ferry while
+  // leaving all other ferry services available.
+  const ferryNames = new Set(blocks.map((block) => block.ferryName).filter(Boolean));
+  if (ferryNames.size) {
+    for (let edge = 0; edge < E; edge++) {
+      if ((eFlags[edge] & 32) && ferryNames.has(edgeName(edge))) blocked.add(edge);
+    }
   }
   return blocked.size ? blocked : null;
 }

@@ -835,6 +835,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   font: 780 9.5px/1.05 system-ui; cursor: pointer; white-space: nowrap;
 }
 .readout-primary-actions .readout-primary-route { border-color: #7db4d2; background: #edf7fc; color: #075f91; }
+.readout-primary-actions .readout-primary-stop { border-color: #8bbbab; background: #edf8f4; color: #176850; }
 .readout-primary-actions > button:hover,
 .readout-primary-actions > button:focus-visible { filter: brightness(.96); outline: 2px solid #78b8dd; outline-offset: 1px; }
 .readout-primary-actions .streetview-launch { border-color: #a9c6d6; background: #f2f8fb; color: #176b99; }
@@ -869,6 +870,9 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 @media (max-width: 720px) { .readout td { line-height: 1.28; padding-bottom: 2px; } }
 .readout td.k { width: 1%; padding-right: 8px; color: #777; white-space: nowrap; }
 .readout-primary-actions .readout-road-block { width: 36px; margin: 0; border-color: #d8c48c; background: #fdf6e3; color: #6b5310; }
+.readout-primary-actions .readout-road-block.is-labelled {
+  width: auto; padding: 5px 3px; font-size: 9.5px;
+}
 .streetview-launch {
   min-height: 32px; padding: 5px 6px; border: 1px solid #9fc4da; border-radius: 7px;
   background: #edf7fc; color: #075f91; font: 750 10px/1.1 system-ui; cursor: pointer;

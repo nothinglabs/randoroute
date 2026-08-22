@@ -18,7 +18,9 @@ const RULES = { allowFreeways: true, allowMtbTrails: false, preferPaved: true,
 // Pioneer Square -> Winslow (Bainbridge Island): a boat ride with the boat,
 // a trip around the Tacoma Narrows and up Kitsap without it.
 const TRIP = [[-122.334, 47.6], [-122.515, 47.625]];
-const request = (id, rules) => ({ type: 'route', id, rules, points: TRIP, mode: 'direct' });
+const request = (id, rules, blocks = null) => ({
+  type: 'route', id, rules, points: TRIP, mode: 'direct', blocks,
+});
 
 const worker = routerWorker({ fresh: true });
 const boat = worker.post(request('boat', RULES));
@@ -30,6 +32,20 @@ assert.ok(land.ok, 'a land route via the Tacoma Narrows should exist');
 assert.equal(Math.round(land.ferryM), 0, 'a banned-ferries route must contain zero ferry meters');
 assert.ok(land.distM > boat.distM * 3,
   `the land detour should be a real detour (${Math.round(land.distM / 1000)} km vs ${Math.round(boat.distM / 1000)} km)`);
+
+// A roadblock placed on the permanent Seattle–Bainbridge overlay is the UI's
+// "Avoid ferry" action. Ferry edges use the same geometry-aware block matcher
+// as roads, so the selected crossing must disappear without globally turning
+// off every other ferry.
+const blockedBoat = worker.post(request('blocked-boat', RULES, [{
+  point: [-122.43808, 47.604946], ferryName: 'Seattle–Bainbridge Ferry',
+}]));
+assert.ok(blockedBoat.ok, 'a ferry roadblock should leave a land route available');
+assert.ok(!blockedBoat.segs.some((segment) => (segment.flags & 32)
+    && segment.name === 'Seattle–Bainbridge Ferry'),
+  'a roadblock on the Seattle–Bainbridge crossing must prevent that named ferry');
+assert.ok(blockedBoat.distM > boat.distM * 3,
+  'the ferry roadblock should force a substantial alternate itinerary');
 
 // Old saved states and shared links carry no allowFerries key at all; a
 // missing key must mean allowed.
