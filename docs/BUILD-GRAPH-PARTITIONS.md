@@ -88,8 +88,11 @@ partition worker one uniform embedded format while preserving the ordinary
 single-state compatibility path.
 
 The catalogue records source compressed/raw sizes and hashes; partition owner,
-bounds, counts, compressed/raw sizes, hashes and format; sorted adjacency; exact
-portals; and deterministic build provenance.
+bounds, node/edge/arc/geometry/name counts, embedded/compressed/raw sizes,
+hashes and format; sorted adjacency; exact portals; and deterministic build
+provenance. The complete counts let the runtime allocate one composite output
+and copy partitions into it sequentially instead of retaining every
+decompressed input at once.
 
 ## Portal rules
 

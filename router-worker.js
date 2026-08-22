@@ -46,6 +46,17 @@ let eFacilityGap;
 let searchDist, searchPrevArc, searchStamp, searchGeneration = 0;
 let nodeHasLand;
 let inGiant;
+// Partition-composite sidecars. An ordinary graph leaves these null and keeps
+// the historical one-state behavior.
+let eStateIndex = null, ePartitionIndex = null;
+let graphStateIds = [], loadedPartitionIds = [];
+let loadedGraphInputBytes = 0, partitionGraphDiagnostics = null;
+let allowDisconnectedSnaps = false;
+// Nodes where the loaded composite reaches a validated portal into detail that
+// is not resident yet. A route request records only frontiers whose admissible
+// lower bound can still compete with its found route.
+let configuredFrontiers = new Map();
+let requestFrontierHits = new Map();
 // Set for the duration of one request. A road block snaps to a graph node and
 // makes every road edge through that location unavailable to the search.
 let activeRoadBlockEdges = null;
@@ -416,7 +427,7 @@ function nearestNode(lon, lat, rules = null) {
   let anyNode = -1, anyDm = Infinity;      // nearest of any kind
   let localNode = -1, localDm = Infinity;  // nearest usable local-network edge
   for (let ei = 0; ei < E; ei++) {
-    if (!inGiant[eA[ei]]) continue; // never snap onto a disconnected fragment
+    if (!allowDisconnectedSnaps && !inGiant[eA[ei]]) continue; // ordinary graph: skip fragments
     const start = eOff[ei], count = eCnt[ei];
     if (count < 2) continue;
     // The edge cannot come closer than its first geometry point's distance
@@ -2342,23 +2353,40 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   // alternatives into near-identical thumbnails on the More screen. Exact
   // search there; the probes are a small share of the portfolio's time.
   const overshoot = diversityEdges ? 1 : SEARCH_OVERSHOOT;
+  const geometricGoalBound = (n) =>
+    havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / vHeur;
   const h = (n) => {
     const settled = potDist[n];
     const bound = settled !== POTENTIAL_UNSETTLED ? settled * potScale
-      : Math.max(havM(nodeLon[n], nodeLat[n], goalLon, goalLat) / vHeur, potBeyond);
+      : Math.max(geometricGoalBound(n), potBeyond);
     return bound * overshoot;
   };
   const START_ARC = -1;
   heap.push(h(s.node), START_ARC);
 
   let foundArc = -1;
+  const legFrontierHits = new Map();
   while (heap.size) {
     const incomingArc = heap.pop();
     if (incomingArc !== START_ARC && searchStamp[incomingArc] === -generation) continue;
     if (incomingArc !== START_ARC) searchStamp[incomingArc] = -generation;
     const u = incomingArc === START_ARC ? s.node : outTarget[incomingArc];
-    if (u === t.node) { foundArc = incomingArc; break; }
     const du = incomingArc === START_ARC ? 0 : searchDist[incomingArc];
+    if (configuredFrontiers.has(u)) {
+      // A backward graph potential is admissible only for the currently loaded
+      // topology. Detail loaded beyond this portal may introduce a cheaper
+      // continuation, and weighted A* also does not promise that `du` is the
+      // cheapest prefix when the node is observed. Straight-line bounds from
+      // the snapped start to the portal and onward to the goal stay admissible
+      // under every future expansion.
+      const lowerBound = havM(nodeLon[s.node], nodeLat[s.node],
+        nodeLon[u], nodeLat[u]) / vHeur + geometricGoalBound(u);
+      const previous = legFrontierHits.get(u);
+      if (Number.isFinite(lowerBound) && (previous == null || lowerBound < previous)) {
+        legFrontierHits.set(u, lowerBound);
+      }
+    }
+    if (u === t.node) { foundArc = incomingArc; break; }
     const incomingEdge = incomingArc === START_ARC ? -1 : outEdge[incomingArc];
     const progressFromGoalM = progressDistanceM ? progressDistanceM(u) : 0;
     for (let a = outStart[u]; a < outStart[u + 1]; a++) {
@@ -2453,6 +2481,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     }
   }
   if (foundArc < 0) {
+    mergeFrontierHits(legFrontierHits, Infinity);
     return {
       ok: false,
       reason: rules.requireSafe
@@ -2460,6 +2489,11 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
         : 'No route exists on the rideable network between these points.',
     };
   }
+
+  // Weighted A* guarantees the found cost is within SEARCH_OVERSHOOT of the
+  // optimum. A frontier with a larger admissible lower bound cannot improve or
+  // diversify this search enough to justify another partition fetch.
+  mergeFrontierHits(legFrontierHits, searchDist[foundArc] * SEARCH_OVERSHOOT);
 
   // Reconstruct (goal -> start), then emit forward.
   const arcs = [];
@@ -3303,6 +3337,37 @@ function publicCandidate(candidate) {
       recommended: !!_outcome?.recommended,
     },
   };
+}
+
+function configurePartitionFrontiers(frontiers) {
+  configuredFrontiers = new Map();
+  for (const frontier of Array.isArray(frontiers) ? frontiers : []) {
+    const node = Number(frontier?.node);
+    if (!Number.isInteger(node) || node < 0 || node >= N) continue;
+    if (!configuredFrontiers.has(node)) configuredFrontiers.set(node, []);
+    configuredFrontiers.get(node).push({
+      portalId: String(frontier.portalId || ''),
+      adjacentPartitionId: String(frontier.adjacentPartitionId || ''),
+      adjacentStateId: String(frontier.adjacentStateId || ''),
+    });
+  }
+}
+
+function beginFrontierRequest() { requestFrontierHits = new Map(); }
+
+function mergeFrontierHits(hits, ceiling) {
+  for (const [node, lowerBound] of hits) {
+    if (!(lowerBound <= ceiling)) continue;
+    const previous = requestFrontierHits.get(node);
+    if (previous == null || lowerBound < previous) requestFrontierHits.set(node, lowerBound);
+  }
+}
+
+function publicFrontierHits() {
+  return [...requestFrontierHits]
+    .sort((a, b) => a[1] - b[1] || a[0] - b[0])
+    .map(([node, lowerBound]) => ({ node, lowerBound,
+      exits: configuredFrontiers.get(node) || [] }));
 }
 
 function conservativeDiscoveryRules(rules) {
@@ -4336,8 +4401,28 @@ function routingCacheStats() {
     verdictSlots: verdictSlotCount,
     incidence: !!incStart,
     potentialWork: !!potentialWork,
+    reusableBytes,
     reusableMiB: Math.round(reusableBytes / 104857.6) / 10,
     limits: { cost: costSlotCap, floor: floorSlotCap, potential: potentialCap },
+  };
+}
+
+function routingMemoryStats() {
+  const derivedPermanentBytes = [eBearingA, eBearingB, eFacilityGap,
+    searchDist, searchPrevArc, searchStamp, nodeHasLand, inGiant]
+    .reduce((sum, array) => sum + (array?.byteLength || 0), 0);
+  const sidecarBytes = (eStateIndex?.byteLength || 0) + (ePartitionIndex?.byteLength || 0);
+  const reusableBytes = routingCacheStats().reusableBytes;
+  return {
+    graphInputBytes: loadedGraphInputBytes,
+    derivedPermanentBytes,
+    sidecarBytes,
+    reusableBytes,
+    measuredBytes: loadedGraphInputBytes + derivedPermanentBytes + sidecarBytes + reusableBytes,
+    nodes: N, edges: E, directedArcs: D,
+    loadedPartitionIds: [...loadedPartitionIds],
+    stateIds: [...graphStateIds],
+    partitionInput: partitionGraphDiagnostics,
   };
 }
 
@@ -5109,23 +5194,50 @@ async function gunzip(buffer) {
   const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
   return new Response(stream).arrayBuffer();
 }
-function receiveGraph(buffer) {
+function receiveGraph(buffer, metadata = {}) {
+  // Frontier expansion replaces the whole composite. Anything keyed by an old
+  // node, edge or arc index must be gone before the new dimensions take over.
+  trimRoutingCaches();
+  lastCandidates = null;
+  lastCandidatesKey = null;
+  preferredEdges = null;
+  preferredRoutesKey = '';
+  suppressedRouteEdges = null;
+  suppressedRoutesKey = '';
+  activeRoadBlockEdges = null;
+  searchGeneration = 0;
   postMessage({ type: 'progress', phase: 'engine', detail: 'Reading the statewide routing map…' });
   loadGraph(buffer);
-  postMessage({ type: 'ready', nodes: N, edges: E });
+  loadedGraphInputBytes = buffer.byteLength;
+  allowDisconnectedSnaps = !!metadata.partitioned;
+  configuredFrontiers = new Map();
+  requestFrontierHits = new Map();
+  graphStateIds = Array.isArray(metadata.stateIds) ? [...metadata.stateIds] : [];
+  loadedPartitionIds = Array.isArray(metadata.loadedPartitionIds) ? [...metadata.loadedPartitionIds] : [];
+  partitionGraphDiagnostics = metadata.diagnostics || null;
+  const sidecar = (value, count) => {
+    if (value instanceof Uint16Array && value.length === count) return value;
+    if (value instanceof ArrayBuffer && value.byteLength === count * 2) return new Uint16Array(value);
+    return null;
+  };
+  eStateIndex = sidecar(metadata.edgeStateIndexes, E);
+  ePartitionIndex = sidecar(metadata.edgePartitionIndexes, E);
+  postMessage({ type: 'ready', nodes: N, edges: E, memory: routingMemoryStats(),
+    loadedPartitionIds: [...loadedPartitionIds] });
 }
 
 onmessage = (ev) => {
   const m = ev.data;
   try {
     if (m.type === 'graph') {
-      if (!isGzip(m.buffer)) { receiveGraph(m.buffer); return; }
+      if (!isGzip(m.buffer)) { receiveGraph(m.buffer, m); return; }
       postMessage({ type: 'progress', phase: 'engine',
         detail: 'Unpacking road, trail, ferry, and elevation data…' });
       gunzip(m.buffer)
-        .then((raw) => receiveGraph(raw))
+        .then((raw) => receiveGraph(raw, m))
         .catch((e) => postMessage({ type: 'error', message: `graph: ${e && e.message || e}` }));
     } else if (m.type === 'route') {
+      beginFrontierRequest();
       useWeights(m.weights);
       const pts = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       const mode = m.mode || 'balanced';
@@ -5138,7 +5250,12 @@ onmessage = (ev) => {
         mode, prefDesig: !!m.prefDesignated,
         prefResidential: !!m.prefResidential,
       };
-      postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }) });
+      postMessage({ type: 'route', id: m.id, ...publicCandidate({ ...r, _profile: profile }),
+        frontierHits: publicFrontierHits() });
+    } else if (m.type === 'partition-frontiers') {
+      configurePartitionFrontiers(m.frontiers);
+      postMessage({ type: 'partition-frontiers-ready', id: m.id,
+        nodes: configuredFrontiers.size });
     } else if (m.type === 'preferred-routes') {
       receivePreferredRoutes(m.key, m.lines);
     } else if (m.type === 'suppressed-routes') {
@@ -5160,6 +5277,8 @@ onmessage = (ev) => {
       }
     } else if (m.type === 'trim-caches') {
       postMessage({ type: 'trimmed', id: m.id, ...trimRoutingCaches() });
+    } else if (m.type === 'routing-memory') {
+      postMessage({ type: 'routing-memory', id: m.id, ...routingMemoryStats() });
     } else if (m.type === 'prewarm') {
       useWeights(m.weights);
       // The full working set: the 3-mode x 4-preference grid, then the three
@@ -5199,6 +5318,7 @@ onmessage = (ev) => {
       }
       prewarmArcCosts(m.rules, configs, m.id);
     } else if (m.type === 'route-options') {
+      beginFrontierRequest();
       // A real request outranks background warming; the search itself warms
       // whatever the cancelled sweep had not reached.
       prewarmToken++;
@@ -5213,7 +5333,8 @@ onmessage = (ev) => {
       const result = withRoadBlocks(m.blocks, m.rules, () => routeOptions(pts, m.rules,
         !!m.forceDesignated, !!m.forceResidential, m.preferredProfileId, !!m.debug, progress,
         signature, m.weights || null, m.directProbeWeights || null));
-      postMessage({ type: 'route-options', id: m.id, ...result });
+      postMessage({ type: 'route-options', id: m.id, ...result,
+        frontierHits: publicFrontierHits() });
     } else if (m.type === 'route-candidate') {
       // Full geometry for one candidate the "More" screen listed. Served from
       // the portfolio cache, so this is a lookup rather than a second search.
@@ -5228,6 +5349,7 @@ onmessage = (ev) => {
         : { type: 'route-candidate', id: m.id, ok: false,
             reason: 'That route is no longer available — the map or your rules changed.' });
     } else if (m.type === 'route-connector') {
+      beginFrontierRequest();
       useWeights(m.weights);
       const points = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       // A connector is deliberately a single balanced search. Current rider
@@ -5243,7 +5365,7 @@ onmessage = (ev) => {
         prefResidential: !!m.prefResidential,
       };
       postMessage({ type: 'route-connector', id: m.id,
-        ...publicCandidate({ ...r, _profile: profile }) });
+        ...publicCandidate({ ...r, _profile: profile }), frontierHits: publicFrontierHits() });
     } else if (m.type === 'edge-grade') {
       // The grade of a road the rider TAPPED, which is not on their route.
       //
@@ -5289,6 +5411,7 @@ onmessage = (ev) => {
         gradePct: grade, metres: best >= 0 ? Math.round(bestD) : null,
         name: best >= 0 ? (edgeName(best) || null) : null });
     } else if (m.type === 'navigation-new-route') {
+      beginFrontierRequest();
       useWeights(m.weights);
       const points = m.points && m.points.length >= 2 ? m.points : [m.start, m.end];
       // First preserve the exact single-route behavior that gets a rider
@@ -5308,7 +5431,8 @@ onmessage = (ev) => {
       });
       const { primary, portfolio } = result;
       if (!primary.ok) {
-        postMessage({ type: 'navigation-new-route', id: m.id, ...primary });
+        postMessage({ type: 'navigation-new-route', id: m.id, ...primary,
+          frontierHits: publicFrontierHits() });
         return;
       }
       const primaryProfile = {
@@ -5319,7 +5443,7 @@ onmessage = (ev) => {
       const options = portfolio?.ok && Array.isArray(portfolio.options) && portfolio.options.length
         ? portfolio.options : [publicCandidate({ ...primary, _profile: primaryProfile })];
       postMessage({ type: 'navigation-new-route', id: m.id, ok: true, options,
-        ms: portfolio?.ms || primary.ms });
+        ms: portfolio?.ms || primary.ms, frontierHits: publicFrontierHits() });
     }
   } catch (err) {
     const message = String(err && err.message || err);

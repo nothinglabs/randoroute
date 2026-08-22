@@ -179,6 +179,24 @@ export function routerWorker({ fresh = false, state = defaultStateId() } = {}) {
   return api;
 }
 
+/** A router worker loaded with caller-supplied ordinary graph bytes. */
+export function routerWorkerFromBuffer(buffer, metadata = {}) {
+  const messages = [];
+  const context = vm.createContext(workerGlobals(messages));
+  context.self = context;
+  context.importScripts = (...names) => {
+    for (const n of names) vm.runInContext(source(n), context);
+  };
+  vm.runInContext(source('router-worker.js'), context);
+  context.onmessage({ data: { type: 'graph', buffer, ...metadata } });
+  return {
+    context, messages,
+    ready: messages.at(-1)?.type === 'ready',
+    run: (expression) => vm.runInContext(expression, context),
+    post: (message) => { context.onmessage({ data: message }); return messages.at(-1); },
+  };
+}
+
 /**
  * The nearest graph edge to a point, which nearly every routing test needs and
  * each used to open-code. `where` is an optional JS expression over `i` that

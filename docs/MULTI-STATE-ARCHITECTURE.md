@@ -1,10 +1,11 @@
 # Multi-state routing architecture
 
 Status: the generic contract, synthetic state-chain tests, deterministic
-partition builder, versioned catalogue and exact-portal publication validator
-are implemented on `codex/multistate-routing`. Existing single-state routing
-remains the production compatibility path until the partition worker,
-acquisition flow and cross-border tests described here are complete.
+partition builder, versioned catalogue, exact-portal publication validator and
+incremental composite worker are implemented on `codex/multistate-routing`.
+Existing single-state routing remains the production compatibility path until
+page integration, acquisition and cross-border tests described here are
+complete.
 
 ## Product boundary
 
@@ -150,6 +151,21 @@ Diagnostics report request generation, route-state IDs, loaded partition IDs,
 compressed/raw bytes, derived-array bytes, retained partitions, frontier lower
 bounds, retries, cancellations and evictions.
 
+`partition-loader-worker.js` owns admission, cancellation, sequential
+decompression, composition and retained-partition policy. It posts a standard
+`BGRC` snapshot plus compact per-edge state and partition sidecars to the
+existing routing worker. Only one decompressed source partition is copied at a
+time. Exact catalogue portals merge duplicate local nodes, adjacency is rebuilt
+from the copied edges, and all ordinary edge fields, geometry, names and
+directions remain unchanged.
+
+The routing worker accepts the snapshot through its existing graph path and
+runs the existing scoring and portfolio code. Partition mode permits endpoint
+snaps in initially disconnected loaded components, then reports only reached
+portal nodes with admissible lower bounds that can compete with the current
+result. The page-side coordinator that chooses the initial partitions and
+drives repeated frontier expansion is the next integration milestone.
+
 ## Memory contract
 
 The v1 detailed graph input ceiling is 145,828,781 bytes, the measured raw size
@@ -160,8 +176,12 @@ test configurations. Catalogue/coarse-planner memory is measured separately.
 This ceiling covers decompressed detailed graph inputs admitted at one time. It
 does not claim that a phone uses only that amount: graph views, composite
 indices, bearings, A* arrays, portfolio caches, geometry, decompression overlap
-and the JavaScript runtime add memory. The worker must instrument those derived
-arrays. The physical-iPhone sheet in the verification guide owns the final
+and the JavaScript runtime add memory. The loader reports declared raw input,
+composite bytes, largest raw/compressed partition, mapping/working arrays and a
+composition peak estimate. The router reports graph bytes, permanent typed
+arrays, per-edge sidecars and reusable cache arrays. These figures omit engine
+and JavaScript-object overhead, so they are diagnostics rather than a heap
+limit. The physical-iPhone sheet in the verification guide owns the final
 memory-pressure verdict.
 
 ## Jurisdiction

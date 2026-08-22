@@ -80,6 +80,15 @@ try {
     if (raw.subarray(graphStart, graphStart + 4).toString() !== 'BGRC') {
       throw new Error(`${partition.path}: embedded graph is not BGRC`);
     }
+    const graph = raw.subarray(graphStart, graphStart + graphBytes);
+    const counts = [graph.readUInt32LE(4), graph.readUInt32LE(8), graph.readUInt32LE(12),
+      graph.readUInt32LE(16), graph.readUInt32LE(20), graph.readUInt32LE(24)];
+    const expected = [partition.nodeCount, partition.edgeCount, partition.directedArcCount,
+      partition.geometryPointCount, partition.nameCount, partition.nameBytes];
+    if (graphBytes !== partition.embeddedGraphBytes
+        || counts.some((count, index) => count !== expected[index])) {
+      throw new Error(`${partition.path}: embedded graph counts do not match catalogue`);
+    }
   }
   console.log(`validated ${catalogue.states.length} states, ${catalogue.partitions.length} partitions, ${catalogue.portals.length} exact portals`);
 } catch (error) {

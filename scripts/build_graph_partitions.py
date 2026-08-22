@@ -201,6 +201,8 @@ def build_state(state_dir: Path, output_root: Path, cell: Decimal) -> BuiltState
         filename = partition_filename(cell, key)
         subset, source_nodes, local_node = subset_graph(graph, edges)
         graph_raw = serialize_bgrc(subset)
+        _, node_count, edge_count, directed_arc_count, geometry_point_count, \
+            name_count, name_bytes = struct.unpack_from("<4sIIIIII", graph_raw, 0)
         metadata = {
             "partitionFormat": PARTITION_FORMAT,
             "partitionId": part_id,
@@ -225,6 +227,11 @@ def build_state(state_dir: Path, output_root: Path, cell: Decimal) -> BuiltState
             "bounds": graph_bounds(subset),
             "nodeCount": subset.node_count,
             "edgeCount": subset.edge_count,
+            "directedArcCount": directed_arc_count,
+            "geometryPointCount": geometry_point_count,
+            "nameCount": name_count,
+            "nameBytes": name_bytes,
+            "embeddedGraphBytes": len(graph_raw),
             "compressedBytes": len(compressed),
             "rawBytes": len(partition_raw),
             "sha256": sha256_bytes(compressed),

@@ -110,8 +110,11 @@ raw-input ceiling; it does not ship a fixed western coverage box. The contract
 and synthetic state-chain gate are complete. The deterministic partition
 builder, versioned catalogue, exact-portal validation, atomic publication and
 synthetic build gate are complete; the production Washington/Oregon artifact
-build remains approval-gated and has not run. Remaining gates are incremental
-worker/frontier behavior, per-edge state attribution, store/offline
+build remains approval-gated and has not run. The incremental loader, exact
+composite graph, real A* frontier reporting, cancellation, active-route pinning,
+eviction, budget enforcement and typed-array memory diagnostics pass their
+synthetic executable gate. Remaining gates are page/state-chain retry
+integration, per-edge state attribution through results and UI, store/offline
 dependencies, national discovery and first-run, search continuation,
 Washington/Oregon crossing comparisons, preview, full suite, and the owner's
 physical-iPhone verdict.

@@ -341,7 +341,9 @@
     for (const raw of catalogue.partitions) {
       const partition = assertObject(raw, 'partition');
       const keys = ['id', 'stateId', 'path', 'bounds', 'nodeCount', 'edgeCount', 'compressedBytes',
-        'rawBytes', 'sha256', 'sourceGraphVersion', 'graphFormat', 'adjacentPartitionIds'];
+        'directedArcCount', 'geometryPointCount', 'nameCount', 'nameBytes',
+        'embeddedGraphBytes', 'rawBytes', 'sha256', 'sourceGraphVersion', 'graphFormat',
+        'adjacentPartitionIds'];
       assertKnownKeys(partition, keys, `partition "${partition.id}"`);
       assertRequiredKeys(partition, keys, `partition "${partition.id}"`);
       const id = String(partition.id || '');
@@ -355,6 +357,11 @@
       validateBounds(partition.bounds, `partition "${id}" bounds`);
       positiveInteger(partition.nodeCount, `partition "${id}" nodeCount`);
       positiveInteger(partition.edgeCount, `partition "${id}" edgeCount`, { allowZero: true });
+      positiveInteger(partition.directedArcCount, `partition "${id}" directedArcCount`, { allowZero: true });
+      positiveInteger(partition.geometryPointCount, `partition "${id}" geometryPointCount`);
+      positiveInteger(partition.nameCount, `partition "${id}" nameCount`);
+      positiveInteger(partition.nameBytes, `partition "${id}" nameBytes`, { allowZero: true });
+      positiveInteger(partition.embeddedGraphBytes, `partition "${id}" embeddedGraphBytes`);
       positiveInteger(partition.compressedBytes, `partition "${id}" compressedBytes`);
       positiveInteger(partition.rawBytes, `partition "${id}" rawBytes`);
       if (!SHA256.test(String(partition.sha256 || ''))) fail(`partition "${id}" sha256 is invalid`);
