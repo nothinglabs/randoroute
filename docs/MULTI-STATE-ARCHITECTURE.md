@@ -1,9 +1,10 @@
 # Multi-state routing architecture
 
-Status: implementation contract for `codex/multistate-routing`. Existing
-single-state routing remains the production compatibility path until the
-partition worker, acquisition flow and cross-border tests described here are
-complete.
+Status: the generic contract, synthetic state-chain tests, deterministic
+partition builder, versioned catalogue and exact-portal publication validator
+are implemented on `codex/multistate-routing`. Existing single-state routing
+remains the production compatibility path until the partition worker,
+acquisition flow and cross-border tests described here are complete.
 
 ## Product boundary
 

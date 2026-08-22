@@ -64,6 +64,20 @@ straight-line distance while three control corridors passed (lesson C1/C2).
 Choose four or five real corridors in the state **before building anything** —
 they are the spec.
 
+### Multi-state publication starts after the ordinary graph passes
+
+A state import still ends its routing build at a verified ordinary
+`graph2.bin.gz`. Multi-state partitions are a generated publication layer over
+that file, not a second state-specific build and not permission to weaken the
+stage-5 corridor gate. Once the ordinary graph and its version stamp pass, use
+[`BUILD-GRAPH-PARTITIONS.md`](./BUILD-GRAPH-PARTITIONS.md) to include it in a
+partition catalogue with adjacent released states. The generic builder reads
+`region.json`; a new state does not add its name to shared application code.
+
+Do not declare adjacency by bounding boxes or distance. Cross-state routing is
+available only when the partition build validates exact shared portal nodes and
+the executable crossing tests pass.
+
 ### The tools, since no document used to say
 
 A bare container has none of them:

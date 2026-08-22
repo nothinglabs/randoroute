@@ -7,6 +7,7 @@
     "test": "npm run maps:registry --silent && node scripts/run_tests.mjs",
     "data:compress-overlays": "node scripts/build_compressed_overlays.mjs",
     "maps:registry": "node scripts/build_map_registry.mjs",
+    "maps:partitions": "python3 scripts/build_graph_partitions.py",
     "ios:add": "cap add ios",
     "ios:prepare-shell": "npm run data:compress-overlays && npm run maps:registry && node scripts/build_mobile_shell.mjs",
     "ios:sync": "npm run ios:prepare-shell && cap sync ios",

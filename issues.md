@@ -107,8 +107,11 @@ publish stage in `docs/IMPORT-A-STATE.md`. Remaining, in order:
 Work is on `codex/multistate-routing`. Version 1 is capped at three contiguous
 installed states and partitions detailed graphs under the released Washington
 raw-input ceiling; it does not ship a fixed western coverage box. The contract
-and synthetic state-chain gate are the first milestone. Remaining gates are the
-partition builder, incremental worker/frontier behavior, per-edge state
-attribution, store/offline dependencies, national discovery and first-run,
-search continuation, Washington/Oregon crossing comparisons, preview, full
-suite, and the owner's physical-iPhone verdict.
+and synthetic state-chain gate are complete. The deterministic partition
+builder, versioned catalogue, exact-portal validation, atomic publication and
+synthetic build gate are complete; the production Washington/Oregon artifact
+build remains approval-gated and has not run. Remaining gates are incremental
+worker/frontier behavior, per-edge state attribution, store/offline
+dependencies, national discovery and first-run, search continuation,
+Washington/Oregon crossing comparisons, preview, full suite, and the owner's
+physical-iPhone verdict.

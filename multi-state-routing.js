@@ -16,7 +16,7 @@
   const PARTITION_CATALOGUE_FORMAT = 1;
   const MAX_ROUTE_STATES = 3;
   const MAX_STATE_CHAIN_CANDIDATES = 8;
-  // Baseline measured from the released Washington BGRC graph on 2026-08-22.
+  // Baseline measured from the largest released BGRC graph on 2026-08-22.
   // This is an input-byte ceiling, not a claim about peak process memory.
   const MAX_DETAILED_GRAPH_INPUT_BYTES = 145828781;
   const ROUTE_STATE_LIMIT_MESSAGE = 'Routes may cross up to three states in this version.';
@@ -153,6 +153,9 @@
     const endStateId = stateId(input.endStateId, 'endStateId');
     const maxRouteStates = input.maxRouteStates === undefined
       ? MAX_ROUTE_STATES : positiveInteger(input.maxRouteStates, 'maxRouteStates');
+    if (maxRouteStates > MAX_ROUTE_STATES) {
+      fail(`maxRouteStates cannot exceed the version limit of ${MAX_ROUTE_STATES}`);
+    }
     if (!available.has(startStateId) || !available.has(endStateId)) {
       const unavailableStateIds = [startStateId, endStateId].filter((id) => !available.has(id));
       return Object.freeze({
@@ -212,12 +215,12 @@
     const available = new Set(availableStateIds);
     const installed = new Set(installedStateIds);
     for (const id of installedStateIds) if (!available.has(id)) fail(`installed state "${id}" is not available`);
-    for (const id of routeStateIds) if (!installed.has(id)) fail(`route state "${id}" is not installed`);
+    for (const id of routeStateIds) if (!available.has(id)) fail(`route state "${id}" is not available`);
     if (routeStateIds.length > MAX_ROUTE_STATES) fail(ROUTE_STATE_LIMIT_MESSAGE);
     const homeStateId = input.homeStateId == null ? null : stateId(input.homeStateId, 'homeStateId');
     const currentStateId = input.currentStateId == null ? null : stateId(input.currentStateId, 'currentStateId');
     if (homeStateId && !installed.has(homeStateId)) fail(`home state "${homeStateId}" is not installed`);
-    if (currentStateId && !available.has(currentStateId)) fail(`current state "${currentStateId}" is not available`);
+    const missingRouteStateIds = routeStateIds.filter((id) => !installed.has(id));
 
     if (!Array.isArray(input.loadedPartitions)) fail('loadedPartitions is not an array');
     const partitionIds = new Set();
@@ -249,6 +252,7 @@
       installedStateIds: Object.freeze([...installedStateIds]),
       homeStateId, currentStateId,
       routeStateIds: Object.freeze([...routeStateIds]),
+      missingRouteStateIds: Object.freeze(missingRouteStateIds),
       loadedPartitionIds: Object.freeze(loadedPartitions.map((partition) => partition.id)),
       loadedPartitions: Object.freeze(loadedPartitions),
       loadedGraphInputBytes, graphInputBudgetBytes,
@@ -263,6 +267,8 @@
     for (const key of ['minLon', 'minLat', 'maxLon', 'maxLat']) {
       if (!Number.isFinite(bounds[key])) fail(`${label}.${key} is not finite`);
     }
+    if (bounds.minLon < -180 || bounds.maxLon > 180
+        || bounds.minLat < -90 || bounds.maxLat > 90) fail(`${label} is outside WGS84 longitude/latitude ranges`);
     if (bounds.minLon > bounds.maxLon || bounds.minLat > bounds.maxLat) fail(`${label} is inverted`);
   }
 

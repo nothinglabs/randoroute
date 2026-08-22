@@ -85,6 +85,8 @@ It adds versioned graph-partition catalogues and atomic routing acquisition
 units without removing this ordinary state-pack compatibility contract. Until
 that extension's client and publication tooling land, `storeFormat: 1` and one
 ordinary `graph2.bin.gz` remain the only published store format.
+The deterministic build and publication-validation procedure is in
+[`docs/BUILD-GRAPH-PARTITIONS.md`](../docs/BUILD-GRAPH-PARTITIONS.md).
 
 ## Adding a state
 

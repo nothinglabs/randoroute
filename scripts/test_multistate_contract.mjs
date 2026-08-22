@@ -86,6 +86,18 @@ check('route states, loaded partitions, and visible sources stay distinct',
   JSON.stringify(runtime));
 checkEqual('loaded raw bytes are measured against the configured budget', runtime.loadedGraphInputBytes, 50);
 
+const pendingRuntime = M.createRoutingRuntimeState({
+  availableStateIds: ['state-a', 'state-b', 'state-c'],
+  installedStateIds: ['state-a', 'state-c'], currentStateId: 'state-not-offered',
+  routeStateIds: ['state-a', 'state-b', 'state-c'], loadedPartitions: [],
+  visibleSourceIds: ['national-orientation'],
+});
+check('a pending route retains an uninstalled transit state independently',
+  pendingRuntime.routeStateIds.join('|') === 'state-a|state-b|state-c'
+    && pendingRuntime.missingRouteStateIds.join() === 'state-b');
+checkEqual('local boundary resolution may identify a state whose map is unavailable',
+  pendingRuntime.currentStateId, 'state-not-offered');
+
 let budgetError = '';
 try {
   M.createRoutingRuntimeState({
