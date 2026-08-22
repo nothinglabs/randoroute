@@ -142,6 +142,13 @@ python3 scripts/patch_graph_limited_access.py
 python3 scripts/patch_graph_ferry_access.py
 ```
 
+After the graph builder and any optional patch above, regenerate the small
+always-on ferry overlay from the final graph:
+
+```bash
+node scripts/build_ferries.mjs washington
+```
+
 ## 6. Check
 
 ```bash

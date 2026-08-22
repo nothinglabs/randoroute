@@ -17,6 +17,7 @@ maps/
     corridors.json     the corridors test_corridor_severance.mjs asserts, with
                        the reason each was nominated (level 3+)
     graph2.bin.gz      routing graph
+    ferries.geojson.gz bicycle-routable ferry lines derived from the graph
     roads.pmtiles      street geometry, names, safety attributes
     basemap.pmtiles    land, water, green space, place labels
     overlays.pmtiles   traffic-stress and bike-infrastructure detail layers

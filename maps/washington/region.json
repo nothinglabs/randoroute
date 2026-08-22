@@ -54,6 +54,7 @@
   "d": "decreasing mileposts"
  },
  "datasets": {
+  "ferries": true,
   "graph": true,
   "roads": true,
   "basemap": true,

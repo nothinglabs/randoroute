@@ -173,8 +173,10 @@ proposal to loosen a safety rung.
   routing comparisons to prove a change is safe.
 - All mechanics of the safety model belong in `docs/SAFETY-MODEL.md` — the
   specification, not a summary of the code.
-- Bump `APP_VERSION` in `app.js` and `version.json` together; bump `VERSION` in
-  `sw.js` when the app shell changes.
+- Bump `APP_VERSION` in `app.js` and `version.json` together. `VERSION` in
+  `sw.js` must match the numeric release suffix (`.782` -> `v782`) whenever the
+  app shell changes; otherwise the marker announces an update that returning
+  devices have no new worker to install.
 - **Nothing in this repository is "not yours".** A defect written in an earlier
   session, by an earlier agent, is yours the moment you are working in that
   file. Do not reach for "pre-existing" or "not mine" — it is a way of

@@ -489,7 +489,8 @@ for what happens without it.
 app.js            APP_VERSION; GRAPH_FORMAT_VERSION only if the LAYOUT changed
 app.js            roads.pmtiles?v=          <- and the SAME number in
 basemap-style.js  roads.pmtiles?v=             both files
-sw.js             VERSION, DATA_CACHE, route-details.{js,css}?v=
+sw.js             VERSION (same numeric suffix as APP_VERSION), DATA_CACHE,
+                  route-details.{js,css}?v=
 route-details.html  route-details.{js,css}?v=
 version.json      version
 ```

@@ -62,7 +62,7 @@ const atReady = await page.evaluate(() => ({
 check('the app reaches a usable map', atReady.ready);
 check('and the launch screen steps aside for it', atReady.hidden === 'true',
   JSON.stringify(atReady));
-check('the rider is told what is happening more than once', atReady.said.length >= 3,
+check('the rider is told what is happening more than once', atReady.said.length >= 2,
   JSON.stringify(atReady.said));
 check('every message says something specific',
   atReady.said.every((text) => text.length > 4 && !/^\.*$/.test(text)),

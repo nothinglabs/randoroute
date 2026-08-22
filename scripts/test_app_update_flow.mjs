@@ -39,14 +39,10 @@ const check = (name, ok, detail = '') => {
   else { pass++; console.log(`PASS  ${name}${detail ? `  -- ${detail}` : ''}`); }
 };
 
-// The help screen and update decision read APP_VERSION, while the network
-// check reads version.json. Letting those drift made a fully updated device
-// keep calling itself .501 and claim every later release had not arrived.
-const appSource = readFileSync(join(ROOT, 'app.js'), 'utf8');
-const appVersion = /const APP_VERSION = '([^']+)'/.exec(appSource)?.[1] || '';
+// The network check reads version.json. The running value and the shell-cache
+// release are checked below from the installed app rather than inferred from
+// source text.
 const publishedMarker = JSON.parse(readFileSync(join(ROOT, 'version.json'), 'utf8')).version;
-check('the running app version matches the published release marker',
-  appVersion === publishedMarker, `${appVersion} vs ${publishedMarker}`);
 
 // The service worker precaches by exact URL string, so every versioned asset
 // reference in route-details.html must appear verbatim in sw.js's SHELL. A
@@ -76,6 +72,17 @@ await page.waitForFunction(() => navigator.serviceWorker.controller != null, { t
 await page.waitForTimeout(8000);      // long enough for a spurious reload to land
 check('a first visit does not reload itself', navigations.length === 1,
   `${navigations.length} navigations`);
+const installedRelease = await page.evaluate(async () => ({
+  appVersion: APP_VERSION,
+  cacheNames: await caches.keys(),
+}));
+check('the running app version matches the published release marker',
+  installedRelease.appVersion === publishedMarker,
+  `${installedRelease.appVersion} vs ${publishedMarker}`);
+const releaseSuffix = publishedMarker.split('.').at(-1);
+check('the worker cache advances with the app release',
+  installedRelease.cacheNames.includes(`shell-v${releaseSuffix}`),
+  JSON.stringify(installedRelease.cacheNames));
 
 const workerScript = async () => page.evaluate(async () => {
   const reg = await navigator.serviceWorker.getRegistration();
@@ -144,7 +151,7 @@ check('the button still works on a second check',
 const newVersion = '2026-12-25.999';
 site.publish('/version.json', JSON.stringify({ version: newVersion }));
 site.publish('/sw.js', readFileSync(join(ROOT, 'sw.js'), 'utf8')
-  .replace(/const VERSION = 'v\d+'/, "const VERSION = 'v9999'"));
+  .replace(/const VERSION = 'v\d+'/, "const VERSION = 'v999'"));
 
 const promptShown = () => page.waitForFunction(() => {
   const prompt = document.getElementById('updatePrompt');

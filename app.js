@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-21.781';
+const APP_VERSION = '2026-08-22.782';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -629,6 +629,22 @@ function effectiveLevel(n) { return evaluateRoad(n).level; }
 // zRank controls draw order: higher ranks render on top of lower ones.
 const SOURCES = [
   {
+    id: 'ferries',
+    name: 'Ferry routes',
+    url: Region.dataUrl('ferries.geojson.gz'),
+    // Permanent geographic context, underneath roads and every safety layer.
+    // This is a tiny graph-derived overlay rather than a routing-worker reply:
+    // a blank native planner can show the boats without retaining the 142 MB
+    // expanded graph before the rider asks for a route.
+    zRank: -2,
+    ferryContext: true,
+    alwaysOn: true,
+    enabled: true,
+    expr: true,
+    fc: null,
+    loading: false,
+  },
+  {
     id: 'routes',
     name: 'Designated routes (USBR & regional)',
     url: Region.dataUrl('bikeroutes.geojson.gz'),
@@ -750,7 +766,7 @@ const SOURCES = [
 // there means a toggle in the layer list that turns on a 404, and (for the
 // tiled ones) a MapLibre source that never loads.
 const SOURCE_DATASET = {
-  routes: 'bikeroutes', blts: 'overlays', osm: 'overlays',
+  ferries: 'ferries', routes: 'bikeroutes', blts: 'overlays', osm: 'overlays',
   restrict: 'restrictions', closures: 'closures', roads: 'roads',
 };
 for (let i = SOURCES.length - 1; i >= 0; i--) {
@@ -1980,6 +1996,8 @@ const trailHitId = (src) => src.id + '__trail-hit'; // dedicated wide target for
 const trailLabelId = (src) => src.id + '__trail-labels';
 const backgroundUnpavedId = (src) => src.id + '__unpaved-slats';
 const stateSidewalkProbeId = 'roads__state-sidewalk-probe';
+const ferryContextCasingId = (src) => src.id + '__casing';
+const ferryContextLabelId = (src) => src.id + '__labels';
 // Match BikeBasemap's road-interior width exactly. Safety colors then replace
 // the white street fill inside its gray casing instead of reading as a second,
 // narrower line painted on top of the road.
@@ -2084,6 +2102,53 @@ function ensureLayer(src) {
     else map.addSource(mapSourceId, { type: 'geojson', data: src.fc });
   }
   const SL = src.vector ? { 'source-layer': src.sourceLayer } : {};
+  if (src.ferryContext) {
+    // Ferry routes are water context, not a safety verdict. Put their line
+    // beneath the street network; the labels remain with the other basemap
+    // labels so terminal roads do not cover the text.
+    const roadAnchor = map.getLayer('basemap-major-casing')
+      ? 'basemap-major-casing' : beforeId;
+    forgetStyleValues(); map.addLayer({
+      id: ferryContextCasingId(src), type: 'line', source: mapSourceId,
+      minzoom: 7.5,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#f1f8fa',
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          7.5, 1.7, 10, 2.1, 13, 2.8, 16, 3.6],
+        'line-opacity': 0.72,
+      },
+    }, roadAnchor);
+    forgetStyleValues(); map.addLayer({
+      id: src.id, type: 'line', source: mapSourceId,
+      minzoom: 7.5,
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: {
+        'line-color': '#4f7f92',
+        'line-width': ['interpolate', ['linear'], ['zoom'],
+          7.5, 0.75, 10, 1, 13, 1.45, 16, 2],
+        'line-opacity': 0.78,
+        'line-dasharray': [1.1, 1.65],
+      },
+    }, roadAnchor);
+    forgetStyleValues(); map.addLayer({
+      id: ferryContextLabelId(src), type: 'symbol', source: mapSourceId,
+      minzoom: 10,
+      filter: ['all', ['has', 'n'], ['!=', ['get', 'n'], '']],
+      layout: {
+        'symbol-placement': 'line', 'symbol-spacing': 520,
+        'text-field': ['get', 'n'], 'text-font': [BikeBasemap.FONT_STACK],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 9, 10.5, 14, 12.5],
+        'text-max-angle': 30, 'text-padding': 7, 'text-keep-upright': true,
+      },
+      paint: {
+        'text-color': '#416c7d', 'text-halo-color': '#eaf5f8',
+        'text-halo-width': 1.4, 'text-halo-blur': 0.3,
+      },
+    }, beforeId);
+    updateVisibility(src);
+    return;
+  }
   if (src.closure) {
     forgetStyleValues(); map.addLayer({
       id: src.id + '__line', type: 'line', source: mapSourceId,
@@ -2422,6 +2487,12 @@ function updateVisibility(src) {
   const on = src.id === 'routes' ? display.designated
     : src.id === 'restrict' ? display.bikesProhibited
     : true;
+  if (src.ferryContext) {
+    for (const id of [ferryContextCasingId(src), src.id, ferryContextLabelId(src)]) {
+      if (map.getLayer(id)) setLayout(id, 'visibility', 'visible');
+    }
+    return;
+  }
   if (src.closure) {
     for (const id of [src.id, src.id + '__line']) {
       if (map.getLayer(id)) setLayout(id, 'visibility', on ? 'visible' : 'none');
@@ -2481,6 +2552,10 @@ function visibleRoadCategoryFilter(src, lvl) {
 
 function applyDisplayMode(src) {
   if (!map.getLayer(src.id)) return;
+  if (src.ferryContext) {
+    updateVisibility(src);
+    return;
+  }
   if (src.closure) {
     if (map.getLayer(src.id + '__line')) {
       setPaint(src.id + '__line', 'line-opacity', backgroundLineOpacity(0.92));

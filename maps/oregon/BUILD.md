@@ -122,6 +122,7 @@ tippecanoe -o maps/oregon/roads.pmtiles -l roads --force -Z5 -z13 \
   --hpms maps/oregon/hpms.geojson
 
 node scripts/stamp_supplemental_route_edges.mjs oregon
+node scripts/build_ferries.mjs oregon
 
 node scripts/stamp_tiles_version.mjs oregon
 npm run maps:registry

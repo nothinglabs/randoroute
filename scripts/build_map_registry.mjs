@@ -21,6 +21,7 @@ const MAPS = join(ROOT, 'maps');
 // downloads them -- all three read the file lists this script bakes into
 // maps/index.json rather than keeping their own copy of this table.
 const DATASET_FILES = {
+  ferries: 'ferries.geojson.gz',
   bikeroutes: 'bikeroutes.geojson.gz',
   restrictions: 'bike_restrictions.geojson.gz',
   closures: 'route_closures.geojson.gz',

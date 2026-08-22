@@ -25,7 +25,10 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // invisible to everyone who already has the app. v642 was maps/states.js
 // gaining Oregon (that file is SHELL, not data: it is the index naming which
 // states exist). v643 was app.js and styles.css; v644 app.js; v645 app.js and palette.js.
-const VERSION = 'v780'; // bump when app shell changes
+// Match the numeric release suffix in APP_VERSION. Release .781 changed the
+// app shell but left this at v780: version.json announced the release while
+// returning devices saw byte-identical worker code and had nothing to install.
+const VERSION = 'v782';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -89,6 +92,7 @@ const SHELL = [
 const ships = (dataset) => !!Region.datasets[dataset];
 const DATA = [
   ...[
+    ['ferries', 'ferries.geojson.gz'],
     ['bikeroutes', 'bikeroutes.geojson.gz'],
     ['restrictions', 'bike_restrictions.geojson.gz'],
     ['closures', 'route_closures.geojson.gz'],
@@ -104,7 +108,7 @@ const DATA = [
 // the big archives across UI releases -- "check for updates" must really
 // deliver everything new, and these together are a few MB.
 const ALWAYS_REFRESH_DATA = new Set(DATA.filter((path) => [
-  'bikeroutes.geojson.gz', 'bike_restrictions.geojson.gz',
+  'ferries.geojson.gz', 'bikeroutes.geojson.gz', 'bike_restrictions.geojson.gz',
   'route_closures.geojson.gz', 'places.json',
 ].some((file) => path.endsWith(`/${file}`))));
 

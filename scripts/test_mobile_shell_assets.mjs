@@ -51,6 +51,7 @@ for (const entry of ['index.html', 'route-details.html']) {
 // file for file.
 const { MAP_STATES } = createRequire(import.meta.url)(join(ROOT, 'maps/states.js'));
 const DATASET_FILES = {
+  ferries: 'ferries.geojson.gz',
   bikeroutes: 'bikeroutes.geojson.gz',
   restrictions: 'bike_restrictions.geojson.gz',
   closures: 'route_closures.geojson.gz',
