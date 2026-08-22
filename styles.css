@@ -835,7 +835,6 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   font: 780 9.5px/1.05 system-ui; cursor: pointer; white-space: nowrap;
 }
 .readout-primary-actions .readout-primary-route { border-color: #7db4d2; background: #edf7fc; color: #075f91; }
-.readout-primary-actions .readout-primary-stop { border-color: #8bbbab; background: #edf8f4; color: #176850; }
 .readout-primary-actions > button:hover,
 .readout-primary-actions > button:focus-visible { filter: brightness(.96); outline: 2px solid #78b8dd; outline-offset: 1px; }
 .readout-primary-actions .streetview-launch { border-color: #a9c6d6; background: #f2f8fb; color: #176b99; }

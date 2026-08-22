@@ -94,8 +94,8 @@ check('ferry context remains subordinate to the road verdicts', live.opacity < 0
 check('ferry context stays underneath the street network', live.belowRoads);
 
 // A permanent ferry is a real routing edge, not just decoration. Tapping its
-// mid-water line must open a named card and let a planned trip either require
-// that crossing with a stop or exclude it with a roadblock.
+// mid-water line must open a named card and let a planned trip exclude that
+// crossing with a roadblock.
 const ferryCard = await page.evaluate(async ({ name, target }) => {
   const source = SOURCES.find((candidate) => candidate.id === 'ferries');
   window.__testFerryTap = target;
@@ -150,9 +150,9 @@ check('a ferry tap resolves through its registered wide hit target',
   JSON.stringify(ferryCard));
 check('the ferry card names and explains the crossing',
   ferryCard.heading && ferryCard.heading !== 'Point on map' && /Ferry route/.test(ferryCard.summary)
-    && /require it/.test(ferryCard.summary), JSON.stringify(ferryCard));
-check('a planned route offers direct stop and ferry-roadblock actions',
-  ferryCard.actions.map((action) => action.text).join('|') === 'Add stop|Details|Avoid ferry'
+    && /prevent this crossing/.test(ferryCard.summary), JSON.stringify(ferryCard));
+check('a planned route offers Details and Avoid ferry without an Add stop action',
+  ferryCard.actions.map((action) => action.text).join('|') === 'Details|Avoid ferry'
     && ferryCard.actions.every((action) => !action.disabled), JSON.stringify(ferryCard.actions));
 
 await page.locator('#readout .readout-details-toggle').click();
@@ -160,19 +160,6 @@ const ferryDetails = await page.evaluate(() => document.getElementById('mapTapDe
 check('ferry Details reports planner availability and the map symbol',
   /RoutingAvailable to the route planner/.test(ferryDetails)
     && /Map symbolBlue dashed/.test(ferryDetails), ferryDetails);
-
-await page.locator('#readout .readout-primary-stop').click();
-const forced = await page.evaluate(() => ({
-  count: routing.vias.length,
-  point: routing.vias.at(-1)?.pt,
-  name: routing.vias.at(-1)?.name,
-  target: window.__testFerryTap,
-}));
-check('Add stop requires the selected ferry point in the itinerary',
-  forced.count === 1 && forced.name === ferryCard.heading
-    && Math.abs(forced.point[0] - forced.target.lng) < 1e-9
-    && Math.abs(forced.point[1] - forced.target.lat) < 1e-9,
-  JSON.stringify(forced));
 
 await page.evaluate(() => {
   const target = window.__testFerryTap;

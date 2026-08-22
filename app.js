@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.784';
+const APP_VERSION = '2026-08-22.785';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12797,13 +12797,6 @@ function canAddMapPointStop() {
     && routing.vias.length < MAX_ROUTE_STOPS;
 }
 
-function mapPointStopDisabledReason() {
-  if (turnNav.active) return 'Stop navigation to edit the route';
-  if (!routing.start || !routing.end) return 'Set a start and destination before adding a stop';
-  if (routing.vias.length >= MAX_ROUTE_STOPS) return `Maximum of ${MAX_ROUTE_STOPS} stops reached`;
-  return '';
-}
-
 function commitMapPointStop(lngLat, routeName) {
   if (!canAddMapPointStop()) return false;
   const lng = Number(lngLat.lng);
@@ -12961,7 +12954,7 @@ function openMapTapDebug(title, record) {
 function renderMapTapCard({
   displayTitle, detailsTitle = displayTitle, pointName, summary, rows, lngLat, anchorPoint,
   swatchColor, swatchLabel, streetViewHeading = null, allowRoadBlock = false,
-  showStreetView = true, primaryStop = false, roadBlockKind = 'road', roadBlockSnap = true,
+  showStreetView = true, showNavigate = true, roadBlockKind = 'road', roadBlockSnap = true,
   roadBlockFerryName = null,
   segmentName = null, placeName = null,
   debugData = null, cautionKinds = [], endpointRole = null,
@@ -13109,19 +13102,11 @@ function renderMapTapCard({
   }
 
   let navigateButton = null;
-  if (!endpointRole) {
-    if (primaryStop) {
-      navigateButton = readoutPrimaryButton('readout-primary-stop', 'Add stop',
-        'Require this ferry by adding it as a route stop');
-      navigateButton.disabled = !canAddMapPointStop();
-      navigateButton.title = mapPointStopDisabledReason() || 'Require this ferry on the route';
-      navigateButton.addEventListener('click', () => commitMapPointStop({ lng, lat }, routeName));
-    } else {
-      navigateButton = readoutPrimaryButton('readout-primary-route', 'Navigate',
-        'Choose how to use this point in your route');
-      navigateButton.removeAttribute('aria-expanded');
-      navigateButton.addEventListener('click', () => openMapPointNavigate({ lng, lat }, routeName));
-    }
+  if (!endpointRole && showNavigate) {
+    navigateButton = readoutPrimaryButton('readout-primary-route', 'Navigate',
+      'Choose how to use this point in your route');
+    navigateButton.removeAttribute('aria-expanded');
+    navigateButton.addEventListener('click', () => openMapPointNavigate({ lng, lat }, routeName));
   }
 
   const streetViewBtn = document.createElement('button');
@@ -13357,7 +13342,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
     const rows = [
       ['Name', p.n || 'Ferry crossing'],
       ['Result', '⛴ Ferry route'],
-      ['Why', 'Add this ferry as a stop to require it, or avoid it to prevent its use.'],
+      ['Why', 'Use Avoid ferry to prevent this crossing from being used.'],
       ['Routing', rules.allowFerries === false
         ? 'Ferries are currently disabled in Settings'
         : 'Available to the route planner'],
@@ -13373,7 +13358,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       rows, lngLat, anchorPoint,
       swatchColor: '#4f7f92', swatchLabel: 'Ferry route map color',
       showStreetView: false,
-      primaryStop: true,
+      showNavigate: false,
       allowRoadBlock: true,
       roadBlockKind: 'ferry',
       roadBlockSnap: false,
