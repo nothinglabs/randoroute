@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v782';
+const VERSION = 'v783';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -251,7 +251,14 @@ async function pmtilesCacheFirst(req) {
   // network remains the path for an archive the install never finished
   // (pmtilesRangeResponse fetches and stores the whole file on a miss).
   try {
-    return await pmtilesRangeResponse(req);
+    const response = await pmtilesRangeResponse(req);
+    // A ranged PMTiles read is only usable as 206. In particular, do not pass
+    // through a 416 derived from a truncated cached archive: FetchSource treats
+    // that as an ETag mismatch and retries the same bad cache entry forever.
+    if (req.headers.get('Range') && response.status !== 206) {
+      return rangeSafeNetworkFallback(req);
+    }
+    return response;
   } catch (e) {
     return rangeSafeNetworkFallback(req);
   }
@@ -282,6 +289,7 @@ async function rangeSafeNetworkFallback(req) {
     headers: {
       'Accept-Ranges': 'bytes',
       'Content-Range': `bytes ${start}-${end}/${buf.byteLength}`,
+      'Content-Length': String(end - start + 1),
       'Content-Type': res.headers.get('Content-Type') || 'application/octet-stream',
     },
   });
@@ -373,8 +381,10 @@ async function refreshReleaseData() {
 const PMTILES_CHUNK_BYTES = 8 * 1024 * 1024;
 const chunkRequest = (pathname, i) => new Request(`${pathname}__chunk-${i}`);
 const chunkIndexRequest = (pathname) => new Request(`${pathname}__chunkindex`);
+const validatedChunkIndexes = new Set();
 
 async function purgePmtilesChunks(cache, pathname) {
+  validatedChunkIndexes.delete(pathname);
   for (const request of await cache.keys()) {
     const url = new URL(request.url);
     if (url.pathname.startsWith(`${pathname}__chunk`)) await cache.delete(request);
@@ -401,17 +411,100 @@ function ensurePmtilesChunks(cache, pathname, fullRequest) {
   return inFlight;
 }
 
+// Missing archives are fetched once even when MapLibre asks several sources
+// and tiles for ranges together. Without this guard a damaged cached archive
+// could be deleted correctly and immediately replaced by half a dozen parallel
+// 40+ MB downloads.
+const fullArchiveFetchInFlight = new Map();
+function fetchAndCacheFullArchive(cache, pathname, fullRequest) {
+  let inFlight = fullArchiveFetchInFlight.get(pathname);
+  if (!inFlight) {
+    inFlight = (async () => {
+      // WebKit's HTTP cache can conflate a prior Range response with this
+      // range-free request. Bypass it, and never store a 206 under the key that
+      // means "complete archive" in Cache API.
+      const fetched = await fetch(fullRequest, { cache: 'no-store' });
+      if (fetched.status !== 200 || fetched.headers.get('Content-Range')) {
+        throw new Error(`full archive fetch returned HTTP ${fetched.status} for ${pathname}`);
+      }
+      await cache.put(fullRequest, fetched.clone());
+      const stored = await cache.match(fullRequest, {
+        ignoreVary: true, ignoreSearch: true,
+      });
+      if (!stored) throw new Error(`could not store complete archive ${pathname}`);
+      return stored;
+    })().finally(() => fullArchiveFetchInFlight.delete(pathname));
+    fullArchiveFetchInFlight.set(pathname, inFlight);
+  }
+  return inFlight;
+}
+
+function pmtilesHeaderUint64(view, offset) {
+  return view.getUint32(offset, true) + view.getUint32(offset + 4, true) * 2 ** 32;
+}
+
+async function declaredPmtilesBytes(blob) {
+  if (blob.size < 127) return null;
+  const prefix = new Uint8Array(await blob.slice(0, 127).arrayBuffer());
+  const magic = String.fromCharCode(...prefix.slice(0, 7));
+  if (magic !== 'PMTiles') return null;
+  const view = new DataView(prefix.buffer, prefix.byteOffset, prefix.byteLength);
+  return pmtilesHeaderUint64(view, 56) + pmtilesHeaderUint64(view, 64);
+}
+
 async function buildPmtilesChunks(cache, pathname, fullRequest) {
   const cachedIndex = await cache.match(chunkIndexRequest(pathname));
-  if (cachedIndex) return cachedIndex.json();
-  const full = await cache.match(fullRequest, { ignoreVary: true, ignoreSearch: true });
+  let full = await cache.match(fullRequest, { ignoreVary: true, ignoreSearch: true });
+  if (cachedIndex) {
+    const meta = await cachedIndex.json();
+    if (validatedChunkIndexes.has(pathname)) return meta;
+    // A previous worker may have completed a chunk index around a truncated
+    // HTTP 200. Validate that persisted metadata once per worker lifetime;
+    // otherwise every range beyond the false end of file becomes a 416 while
+    // the apparently complete chunk set prevents build-time validation. Read
+    // only chunk zero (at most 8 MB), not the 40+ MB full response: it contains
+    // the same PMTiles header without recreating the WebKit memory spike this
+    // chunk cache exists to avoid.
+    const firstChunk = await cache.match(chunkRequest(pathname, 0));
+    const firstBlob = firstChunk ? await firstChunk.blob() : null;
+    const declaredSize = firstBlob ? await declaredPmtilesBytes(firstBlob) : null;
+    const fullLengthHeader = full ? full.headers.get('Content-Length') : null;
+    const fullHeaderBytes = fullLengthHeader ? Number(fullLengthHeader) : null;
+    if (declaredSize === meta.size
+        && (!Number.isFinite(fullHeaderBytes) || fullHeaderBytes === meta.size)) {
+      validatedChunkIndexes.add(pathname);
+      return meta;
+    }
+    if (full) {
+      await cache.delete(fullRequest, { ignoreVary: true, ignoreSearch: true });
+    }
+    await purgePmtilesChunks(cache, pathname);
+    full = await fetchAndCacheFullArchive(cache, pathname, fullRequest);
+  }
   if (!full) throw new Error(`no cached archive to chunk for ${pathname}`);
   // blob() + slice, not body streaming: reading a cached response as a Blob
   // is the one primitive the v.583 era PROVED works on Safari, while cached
   // response streams are the flakier corner of WebKit's Cache API. Each
   // slice materializes at most one 8 MB piece.
-  const blob = await full.blob();
-  const size = blob.size;
+  let blob = await full.blob();
+  let size = blob.size;
+  // The PMTiles header declares where its final tile-data byte lands. A cached
+  // HTTP 200 containing only an earlier byte range can therefore be detected
+  // without hashing or materializing the whole archive. Remove that poisoned
+  // "full" entry and replace it with one coherent copy.
+  const declaredSize = await declaredPmtilesBytes(blob);
+  if (declaredSize !== size) {
+    await cache.delete(fullRequest, { ignoreVary: true, ignoreSearch: true });
+    await purgePmtilesChunks(cache, pathname);
+    full = await fetchAndCacheFullArchive(cache, pathname, fullRequest);
+    blob = await full.blob();
+    size = blob.size;
+    const repairedSize = await declaredPmtilesBytes(blob);
+    if (repairedSize !== size) {
+      await cache.delete(fullRequest, { ignoreVary: true, ignoreSearch: true });
+      throw new Error(`archive repair failed: ${pathname} has ${size} of ${repairedSize || 0} bytes`);
+    }
+  }
   let written = 0;
   for (let offset = 0; offset < size; offset += PMTILES_CHUNK_BYTES) {
     const piece = await blob.slice(offset, Math.min(size, offset + PMTILES_CHUNK_BYTES)).arrayBuffer();
@@ -420,24 +513,27 @@ async function buildPmtilesChunks(cache, pathname, fullRequest) {
   }
   const meta = { size, chunkBytes: PMTILES_CHUNK_BYTES, chunks: written };
   await cache.put(chunkIndexRequest(pathname), new Response(JSON.stringify(meta)));
+  validatedChunkIndexes.add(pathname);
   return meta;
 }
 
 async function pmtilesRangeResponse(req) {
   const cache = await caches.open(DATA_CACHE);
   const fullRequest = new Request(req.url, { method: 'GET' });
+  const pathname = new URL(req.url).pathname;
   let full = await cache.match(fullRequest, { ignoreVary: true, ignoreSearch: true });
+  if (full && (full.status !== 200 || full.headers.get('Content-Range'))) {
+    await cache.delete(fullRequest, { ignoreVary: true, ignoreSearch: true });
+    await purgePmtilesChunks(cache, pathname);
+    full = null;
+  }
   if (!full) {
-    const fetched = await fetch(fullRequest);
-    if (!fetched.ok) return fetched;
-    await cache.put(fullRequest, fetched.clone());
-    full = fetched;
+    full = await fetchAndCacheFullArchive(cache, pathname, fullRequest);
   }
   const range = req.headers.get('Range');
   if (!range) return full;
   const match = /^bytes=(\d+)-(\d*)$/i.exec(range);
   if (!match) return new Response(null, { status: 416 });
-  const pathname = new URL(req.url).pathname;
   const meta = await ensurePmtilesChunks(cache, pathname, fullRequest);
   const start = Number(match[1]);
   const requestedEnd = match[2] ? Number(match[2]) : meta.size - 1;
@@ -470,6 +566,7 @@ async function pmtilesRangeResponse(req) {
     headers: {
       'Accept-Ranges': 'bytes',
       'Content-Range': `bytes ${start}-${end}/${meta.size}`,
+      'Content-Length': String(end - start + 1),
       'Content-Type': full.headers.get('Content-Type') || 'application/octet-stream',
     },
   });
