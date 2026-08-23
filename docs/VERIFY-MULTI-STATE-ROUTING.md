@@ -12,8 +12,8 @@ Verification target:
 | --- | --- |
 | Branch | `codex/multistate-routing` |
 | Production-artifact baseline | `468765a` |
-| Review source commit | Pending `.797` preview deployment |
-| Preview deployment commit | Pending `.797` preview deployment |
+| Review source commit | `11eb23d31b718ea36030a9076098f0b8a48a717e` |
+| Preview deployment commit | `nothinglabs/randoroute-preview` `e18e22508c4885353e01624bd661faeb3acdc4f5` |
 | App / worker | `2026-08-23.797` / `v797` |
 | Partition catalogue | format 1, SHA-256 `3cafdd58116a7124b2b419d77d7cff83dc417f26ee45c285e594ebc724e4a4e4` |
 | Oregon graph | `sha-8ae4d0b5e2d3` |
@@ -50,7 +50,7 @@ an estimate; the confirmation-card byte totals must match the manifest.
 
 The review host is a separate public Pages repository and does not share the
 production `nothinglabs/randoroute` Pages environment. Its current Pages
-workflow run 32621536112 deployed successfully on 2026-08-22. The deployed `preview.json`
+workflow run 32649116386 deployed successfully on 2026-08-23. The deployed `preview.json`
 records source branch/commit, app and graph/catalogue versions, state readiness,
 exact acquisition totals, limitations and retention policy. A public PMTiles
 probe returned HTTP 206 with `Accept-Ranges: bytes`, the correct content range
