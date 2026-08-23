@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v793';
+const VERSION = 'v794';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -95,7 +95,16 @@ const SHELL = [
 // there fails the whole install -- the new worker never reaches waiting and
 // the app reports an update it can never apply.
 const ships = (dataset) => !!Region.datasets[dataset];
-const DATA = [
+// A slim web preview publishes state files as a map store on this origin but
+// declares none bundled. The worker does not have localStorage/MapStore, so it
+// must use the generated bundle flags rather than Region.datasets; otherwise
+// first registration would silently precache the fallback state's complete
+// pack before the rider confirms a download.
+const BUNDLED_STATE_IDS = Array.isArray(self.MAP_STATES_BUNDLED_IDS)
+  ? self.MAP_STATES_BUNDLED_IDS : (self.MAP_STATES || []).map((state) => state.id);
+const ACTIVE_STATE_DATA_BUNDLED = self.MAP_STATES_BUNDLED !== false
+  && BUNDLED_STATE_IDS.includes(Region.id);
+const DATA = ACTIVE_STATE_DATA_BUNDLED ? [
   ...[
     ['ferries', 'ferries.geojson.gz'],
     ['bikeroutes', 'bikeroutes.geojson.gz'],
@@ -107,7 +116,7 @@ const DATA = [
   ].filter(([dataset]) => ships(dataset)).map(([, file]) => stateFile(file)),
   ...(ships('graph') ? [`./${GRAPH_URL}`] : []),
   ...(ships('places') ? [stateFile('places.json')] : []),
-];
+] : [];
 // Small, release-generated overlays can change without changing the 100+ MB
 // statewide archives. Refresh ALL of them on every activation while retaining
 // the big archives across UI releases -- "check for updates" must really
@@ -122,11 +131,11 @@ const ALWAYS_REFRESH_DATA = new Set(DATA.filter((path) => [
 // entry beside the archive; no marker means an install that predates stamping,
 // which counts as stale -- one refresh, then it is stamped like everything
 // else.
-const ARCHIVE_VERSIONS = Object.fromEntries([
+const ARCHIVE_VERSIONS = ACTIVE_STATE_DATA_BUNDLED ? Object.fromEntries([
   ['roads', stateFile('roads.pmtiles'), ROADS_TILES_VERSION],
   ['basemap', stateFile('basemap.pmtiles'), BASEMAP_TILES_VERSION],
   ['overlays', stateFile('overlays.pmtiles'), OVERLAY_TILES_VERSION],
-].filter(([dataset]) => ships(dataset)).map(([, path, version]) => [path, version]));
+].filter(([dataset]) => ships(dataset)).map(([, path, version]) => [path, version])) : {};
 // Data lives in a STATE's folder -- maps/<state>/<file> -- and the generated
 // index that names those states does not: it sits at maps/states.js, and it is
 // a shell script, precached with app.js and served from the shell cache.

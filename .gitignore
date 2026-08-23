@@ -7,6 +7,7 @@ data/census-urban-areas-2020-*.geojson
 data/*.osm.pbf
 node_modules/
 .venv/
+.DS_Store
 *.tgz
 # Generated lightweight Capacitor web bundle. Rebuilt by `npm run ios:sync`.
 # Keep index.html as a tracked, immediately buildable copy; supporting assets
@@ -14,6 +15,9 @@ node_modules/
 mobile-shell/*
 !mobile-shell/README.md
 !mobile-shell/index.html
+# Generated static review site. Published from a disposable snapshot, not the
+# production Pages branch.
+web-preview/
 data/PermanentBikeRestrictions.zip
 data/PermBikeRestrictions.zip
 data/permbike/

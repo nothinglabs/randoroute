@@ -240,7 +240,7 @@ const TYPES = {
  * `offline` makes every request fail the way a dropped connection does, so a
  * test can assert what the app still does without a network.
  */
-export async function serveRepo({ offline = false } = {}) {
+export async function serveRepo({ offline = false, root = ROOT } = {}) {
   const state = { offline, requests: [], overrides: new Map() };
   const server = createServer(async (req, res) => {
     state.requests.push({ url: req.url, range: req.headers.range || null, at: Date.now() });
@@ -262,7 +262,7 @@ export async function serveRepo({ offline = false } = {}) {
     try {
       let path = decodeURIComponent(req.url.split('?')[0]);
       if (path === '/') path = '/index.html';
-      const full = join(ROOT, path);
+      const full = join(root, path);
       const info = await stat(full);
       const type = TYPES[extname(path)] || 'application/octet-stream';
       const range = req.headers.range && /^bytes=(\d+)-(\d*)$/.exec(req.headers.range);

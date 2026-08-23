@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const output = process.env.JRA_SHELL_OUTPUT
   ? resolve(process.env.JRA_SHELL_OUTPUT) : join(root, 'mobile-shell');
+const shellRuntime = process.env.JRA_SHELL_RUNTIME || 'native';
+if (!['native', 'web'].includes(shellRuntime)) {
+  throw new Error('JRA_SHELL_RUNTIME must be "native" or "web"');
+}
 const files = [
   'index.html',
   'street-view-embed.html',
@@ -111,9 +115,9 @@ files.splice(0, files.length, ...new Set(files));
 // iOS build and silently erase the intended size reduction.
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
-await writeFile(join(output, 'README.md'), `# Generated iOS web bundle
+await writeFile(join(output, 'README.md'), `# Generated ${shellRuntime === 'native' ? 'iOS' : 'web-preview'} bundle
 
-Run \`npm run ios:sync\` to rebuild this directory from the web app's current
+Run the repository's bundle script to rebuild this directory from the web app's current
 HTML, CSS, JavaScript, vendor libraries, manifest, and icons. Large routing and
 map datasets are also copied into the bundle so core mapping, routing, and
 navigation do not depend on GitHub or another runtime server.
@@ -131,7 +135,9 @@ if (!sharedIndex.includes('data-app-runtime="web"')) {
 }
 await writeFile(
   nativeIndexPath,
-  sharedIndex.replace('data-app-runtime="web"', 'data-app-runtime="native"'),
+  shellRuntime === 'native'
+    ? sharedIndex.replace('data-app-runtime="web"', 'data-app-runtime="native"')
+    : sharedIndex,
 );
 
 const statesPath = join(output, 'maps/states.js');
@@ -153,7 +159,7 @@ if (!registry.includes('root.MAP_STATES_BUNDLED_IDS =')) {
 }
 await writeFile(statesPath, registry);
 
-console.log(`Prepared ${files.length} native shell assets in mobile-shell/`);
+console.log(`Prepared ${files.length} ${shellRuntime} shell assets in ${output}`);
 console.log(SLIM
   ? `  SLIM shell: ${MAP_STATES.length} state${MAP_STATES.length === 1 ? '' : 's'} indexed, no data bundled`
   : `  ${bundledStateIds.length} of ${MAP_STATES.length} indexed state${MAP_STATES.length === 1 ? '' : 's'} bundled: `

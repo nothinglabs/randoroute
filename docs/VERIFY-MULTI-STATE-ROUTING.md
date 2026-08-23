@@ -12,13 +12,13 @@ Verification target:
 | --- | --- |
 | Branch | `codex/multistate-routing` |
 | Production-artifact baseline | `468765a` |
-| Review commit | Updated beside the milestone-12 preview record |
-| App / worker | `2026-08-22.793` / `v793` |
+| Review commit | Served at `preview.json` in the review site |
+| App / worker | `2026-08-22.794` / `v794` |
 | Partition catalogue | format 1, SHA-256 `3cafdd58116a7124b2b419d77d7cff83dc417f26ee45c285e594ebc724e4a4e4` |
 | Oregon graph | `sha-8ae4d0b5e2d3` |
 | Washington graph | `sha-c043f268453b` |
 | Detailed-input ceiling | 145,828,781 raw bytes |
-| Preview | Added in milestone 12; do not use the production Pages URL for branch review |
+| Preview | `https://nothinglabs.github.io/randoroute-preview/` (separate repository; production Pages is unchanged) |
 
 Run locally from the repository root:
 
@@ -47,19 +47,16 @@ an estimate; the confirmation-card byte totals must match the manifest.
 
 ## First launch
 
-Build a no-data shell in a temporary directory when testing the acquisition
-flow locally:
+The separate review preview is the preferred first-launch target. To build the
+same no-data web shell and its same-origin store in a temporary directory:
 
 ```sh
-JRA_SLIM_SHELL=1 JRA_SHELL_OUTPUT=/tmp/randoroute-slim-shell \
-  JRA_MAP_STORE_URL=https://nothinglabs.github.io/randoroute/maps/ \
-  node scripts/build_mobile_shell.mjs
-python3 -m http.server 8766 --directory /tmp/randoroute-slim-shell
+JRA_PREVIEW_OUTPUT=/tmp/randoroute-web-preview npm run preview:build
+python3 -m http.server 8766 --directory /tmp/randoroute-web-preview
 ```
 
-Use a live preview/store URL once milestone 12 records it; production Pages is
-shown above only as the current default-store contract, not as the branch
-preview.
+The generated local bundle still points at the HTTPS preview store. Production
+Pages is not the branch preview and is not modified by this workflow.
 
 - Allow location. The app should resolve the state locally and ask, for
   example, **Download Washington? This appears to be your current state.** It
