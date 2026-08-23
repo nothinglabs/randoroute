@@ -10,7 +10,7 @@
 // queue. Run them concurrently and the wall clock is roughly the slowest single
 // file.
 import { spawn } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,6 +33,31 @@ if (!files.length) {
 // software GL, so leave headroom rather than launching all of them at once.
 const LIMIT = Math.max(2, Math.min(6, availableParallelism() - 1));
 
+// Three software-GL browsers on a four-core container starve each other:
+// screenshots catch half-painted frames and waits time out, so a different
+// browser test failed on each full run while every one passed alone. Cap the
+// browsers at two concurrent; the remaining worker slots run the cheap
+// node/python files.
+const BROWSER_LIMIT = Math.max(1, Math.min(2, availableParallelism() >> 1));
+const isBrowserTest = (name) => {
+  if (!name.endsWith('.mjs')) return false;
+  try {
+    const source = readFileSync(join(HERE, name), 'utf8');
+    return source.includes('launchBrowser') || source.includes('playwright(');
+  } catch (error) { return false; }
+};
+let browsersRunning = 0;
+const browserQueue = [];
+const acquireBrowserSlot = () => new Promise((grant) => {
+  if (browsersRunning < BROWSER_LIMIT) { browsersRunning++; grant(); }
+  else browserQueue.push(grant);
+});
+const releaseBrowserSlot = () => {
+  const nextGrant = browserQueue.shift();
+  if (nextGrant) nextGrant();
+  else browsersRunning--;
+};
+
 function run(name) {
   const started = Date.now();
   const python = name.endsWith('.py');
@@ -49,11 +74,24 @@ function run(name) {
 }
 
 const results = [];
-let next = 0;
+const browserFiles = files.filter(isBrowserTest);
+const otherFiles = files.filter((name) => !browserFiles.includes(name));
 async function worker() {
-  while (next < files.length) {
-    const name = files[next++];
+  for (;;) {
+    let name = null, browser = false;
+    if (browserFiles.length && browsersRunning < BROWSER_LIMIT) {
+      name = browserFiles.shift();
+      browser = true;
+      await acquireBrowserSlot();
+    } else if (otherFiles.length) {
+      name = otherFiles.shift();
+    } else if (browserFiles.length) {
+      name = browserFiles.shift();
+      browser = true;
+      await acquireBrowserSlot();
+    } else return;
     const result = await run(name);
+    if (browser) releaseBrowserSlot();
     results.push(result);
     // 77 is the autotools convention for "this cannot run here", used by tests
     // that need a build tool the container has no reason to carry. A skip must

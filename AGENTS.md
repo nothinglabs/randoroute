@@ -14,8 +14,10 @@ start; update it when an issue opens, moves, or closes.
 
 ## Tests
 
-`npm test` runs everything. Eighteen to twenty minutes in the cloud container
-(bounded by `test_safety_model.mjs`), and it is green.
+`npm test` runs everything. Roughly thirty minutes in the cloud container, and
+it is green. The runner caps concurrent browser tests at two: three software-GL
+browsers on a four-core container starved each other, and a different browser
+test failed on each full run while every one passed alone.
 
 The hold that used to sit here is gone, along with what caused it. As of
 2026-07-31 the suite was 53 standalone scripts with no runner, ~20 minutes
