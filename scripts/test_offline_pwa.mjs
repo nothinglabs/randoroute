@@ -87,6 +87,9 @@ check('the generated state index is cached with the shell, not with the data',
     && !cached.some((path) => path.endsWith('/maps/states.js')),
   `shell ${shellCached.filter((p) => p.includes('states.js'))}, `
   + `data ${cached.filter((p) => p.includes('states.js'))}`);
+check('the national orientation layer is resident in the shell cache',
+  shellCached.some((path) => path.endsWith('/maps/national-states.geojson')),
+  shellCached.filter((path) => path.includes('national-states')).join(' ') || 'missing');
 
 /* ------------------------------------------------------- pull the plug */
 site.goOffline();

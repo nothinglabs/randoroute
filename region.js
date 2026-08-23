@@ -37,10 +37,14 @@
   // worker serves installed states by URL pattern without needing to know
   // their names.
   if (root.MapStore) {
-    const bundledIds = new Set(states.map((state) => state.id));
+    const bundledIds = new Set(root.MAP_STATES_BUNDLED === false
+      ? [] : states.map((state) => state.id));
     const installed = root.MapStore.installedRegionConfigs()
       .filter((state) => !bundledIds.has(state.id));
-    if (installed.length) states = [...states, ...installed];
+    if (installed.length) {
+      const installedIds = new Set(installed.map((state) => state.id));
+      states = [...states.filter((state) => !installedIds.has(state.id)), ...installed];
+    }
   }
 
   // Which state this session opens with. A rider switches on the Maps screen;
@@ -69,6 +73,10 @@
   // state, or a hand-edited value -- falls back rather than leaving the app
   // pointed at a directory that will 404 on every tile.
   const active = states.find((state) => state.id === stored) || fallback;
+  const localDataAvailable = !root.MapStore
+    || root.MapStore.availability(active.id) !== 'remote';
+  const activeDatasets = localDataAvailable ? active.datasets
+    : Object.fromEntries(Object.keys(active.datasets || {}).map((key) => [key, false]));
 
   const suffixes = active.routeDirectionSuffixes || {};
   const suffixLetters = Object.keys(suffixes);
@@ -137,7 +145,11 @@
     // Which files the folder actually holds. A preview state may carry only a
     // place index, and the app has to say so rather than spin on a graph
     // download that will 404.
-    datasets: active.datasets,
+    datasets: activeDatasets,
+    // A slim shell can name a state before its acquisition is on the device.
+    // That session is the resident national orientation map, not a broken
+    // attempt to load absent state archives.
+    localDataAvailable,
     // Who to credit: the OSM extract this state was cut from, and the agency
     // services behind its enrichment. The credits screen renders this rather
     // than a list written into the HTML, which would name one state's agency

@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.788';
+const APP_VERSION = '2026-08-22.789';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1235,7 +1235,10 @@ function saveStateNow() {
       // moment they looked at that one.
       sources: { ...storedSourcePreferences,
         ...Object.fromEntries(SOURCES.map((s) => [s.id, !!s.enabled])) },
-      view: { c: map.getCenter().toArray().map((v) => +v.toFixed(5)), z: +map.getZoom().toFixed(2) },
+      view: Region.localDataAvailable
+        ? { c: map.getCenter().toArray().map((v) => +v.toFixed(5)),
+            z: +map.getZoom().toFixed(2) }
+        : null,
       route: routing.start && routing.end
         ? {
             s: routing.start, e: routing.end, v: routing.vias.map((x) => x.pt),
@@ -1268,14 +1271,17 @@ const map = new maplibregl.Map({
   // Keep the required attribution one tap away behind MapLibre's own info
   // disclosure on every viewport; desktop users can expand it too.
   attributionControl: { compact: true },
-  center: (savedState && savedState.view && savedState.view.c) || Region.defaultCenter,
-  zoom: (savedState && savedState.view && savedState.view.z) || 6.4,
+  center: Region.localDataAvailable
+    ? ((savedState && savedState.view && savedState.view.c) || Region.defaultCenter)
+    : [-104, 39],
+  zoom: Region.localDataAvailable
+    ? ((savedState && savedState.view && savedState.view.z) || 6.4) : 2.25,
   // A build covers one state. Low-zoom statewide tiles make WebKit
   // retain and rebucket a very large generation during a pinch, which can
   // terminate iPhone Safari. Unconstrained browsers keep the wider z5 view;
   // WebKit and phones stop before that memory-heavy tile level.
-  minZoom: constrainedMapRuntime ? 6 : 5,
-  maxZoom: 17,
+  minZoom: Region.localDataAvailable ? (constrainedMapRuntime ? 6 : 5) : 1.5,
+  maxZoom: Region.localDataAvailable ? 17 : 6,
   // Cross-fading holds both tile generations during the exact gesture where
   // WebKit is under the most memory pressure. A direct swap is fine on phone.
   fadeDuration: constrainedMapRuntime ? 0 : 300,
@@ -14519,7 +14525,7 @@ function switchMapState(id) {
   // allKnownStates, not Region.states: a state installed from a store this
   // session is switchable now, not only after the next reload.
   const target = allKnownStates().find((state) => state.id === id);
-  if (!target || target.id === Region.id) return false;
+  if (!target || (target.id === Region.id && Region.localDataAvailable)) return false;
   if (turnNav.active) {
     setMapsStatus('Finish navigating before switching states.');
     return false;
@@ -14540,6 +14546,332 @@ function switchMapState(id) {
 
 const formatMapBytes = (bytes) => bytes <= 0 ? '0 MB' : bytes >= 1048576 * 995
   ? `${(bytes / (1048576 * 1024)).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1048576))} MB`;
+
+const NATIONAL_STATES_URL = 'maps/national-states.geojson';
+const MAP_FIRST_RUN_DISMISSED_KEY = 'jra-map-first-run-dismissed-1';
+const MAP_FIRST_RUN_REPROMPT_MS = 30 * 24 * 60 * 60 * 1000;
+let nationalCataloguePromise = null;
+let nationalFeatureCollection = null;
+let nationalMapOffers = new Map();
+let selectedNationalStateId = null;
+let nationalInstallController = null;
+
+function defaultMapStoreUrl() {
+  return window.MAP_STORE_DEFAULT_URL || 'maps/';
+}
+
+function mapStoreUrls() {
+  return [...new Set([defaultMapStoreUrl(),
+    ...MapStore.customStores().map((store) => store.url)])];
+}
+
+async function loadNationalCatalogue(force = false) {
+  if (force) nationalCataloguePromise = null;
+  if (nationalCataloguePromise) return nationalCataloguePromise;
+  nationalCataloguePromise = (async () => {
+    const response = await fetch(NATIONAL_STATES_URL);
+    if (!response.ok) throw new Error(`National state map: HTTP ${response.status}`);
+    const boundaries = await response.json();
+    if (boundaries?.type !== 'FeatureCollection' || boundaries.features?.length !== 51) {
+      throw new Error('National state map is not the expected 50 states plus DC.');
+    }
+    const offers = new Map();
+    const indexes = await Promise.allSettled(mapStoreUrls().map(async (storeUrl) => ({
+      storeUrl, index: await MapStore.fetchIndex(storeUrl),
+    })));
+    for (const result of indexes) {
+      if (result.status !== 'fulfilled') continue;
+      for (const state of result.value.index.states) {
+        if (!offers.has(state.id)) offers.set(state.id,
+          { storeUrl: result.value.storeUrl, state });
+      }
+    }
+    nationalFeatureCollection = boundaries;
+    nationalMapOffers = offers;
+    applyNationalMapFeatureStates();
+    return { boundaries, offers };
+  })().catch((error) => {
+    nationalCataloguePromise = null;
+    throw error;
+  });
+  return nationalCataloguePromise;
+}
+
+function nationalAvailability(id) {
+  const local = MapStore.availability(id);
+  if (local === 'bundled' || local === 'installed') return 'installed';
+  return nationalMapOffers.has(id) ? 'available' : 'unavailable';
+}
+
+function applyNationalMapFeatureStates() {
+  if (!map?.getSource?.('national-states') || !nationalFeatureCollection) return;
+  for (const feature of nationalFeatureCollection.features) {
+    try {
+      map.setFeatureState({ source: 'national-states', id: feature.properties.id }, {
+        availability: nationalAvailability(feature.properties.id),
+        selected: feature.properties.id === selectedNationalStateId,
+      });
+    } catch (error) { /* style/source is being replaced */ }
+  }
+}
+
+function projectNationalPoint(stateId, coordinate) {
+  let [lon, lat] = coordinate;
+  if (stateId === 'alaska') {
+    if (lon > 0) lon -= 360;
+    return [45 + ((lon + 181) / 52) * 275, 415 + ((72 - lat) / 21) * 135];
+  }
+  if (stateId === 'hawaii') {
+    return [350 + ((lon + 161) / 7) * 150, 470 + ((22.5 - lat) / 4) * 75];
+  }
+  return [35 + ((lon + 125) / 59) * 890, 25 + ((50 - lat) / 26) * 380];
+}
+
+function nationalFeaturePath(feature) {
+  const geometry = feature.geometry;
+  const polygons = geometry.type === 'Polygon' ? [geometry.coordinates]
+    : geometry.coordinates;
+  const points = [];
+  const commands = [];
+  for (const polygon of polygons) {
+    for (const ring of polygon) {
+      const projected = ring.map((point) => projectNationalPoint(feature.properties.id, point));
+      if (!projected.length) continue;
+      points.push(...projected);
+      commands.push(`M${projected.map((point) => `${point[0].toFixed(1)},${point[1].toFixed(1)}`)
+        .join('L')}Z`);
+    }
+  }
+  return { d: commands.join(''), points };
+}
+
+function renderNationalOrientationMap(host) {
+  if (!host) return;
+  host.classList.add('loading');
+  host.textContent = 'Loading state availability…';
+  loadNationalCatalogue().then(({ boundaries }) => {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 960 560');
+    svg.setAttribute('role', 'group');
+    svg.setAttribute('aria-label', 'State map availability');
+    for (const feature of boundaries.features) {
+      const id = feature.properties.id;
+      const projected = nationalFeaturePath(feature);
+      const group = document.createElementNS(ns, 'g');
+      group.classList.add('national-state', nationalAvailability(id));
+      if (id === 'alaska' || id === 'hawaii') group.classList.add('inset');
+      group.dataset.stateId = id;
+      group.setAttribute('role', 'button');
+      group.setAttribute('tabindex', '0');
+      group.setAttribute('aria-label', `${feature.properties.name}: ${nationalAvailability(id)}`);
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', projected.d);
+      path.setAttribute('fill-rule', 'evenodd');
+      group.append(path);
+      if (projected.points.length) {
+        const xs = projected.points.map((point) => point[0]);
+        const ys = projected.points.map((point) => point[1]);
+        const width = Math.max(...xs) - Math.min(...xs);
+        const height = Math.max(...ys) - Math.min(...ys);
+        if (width > 15 && height > 9) {
+          const label = document.createElementNS(ns, 'text');
+          label.setAttribute('x', String((Math.min(...xs) + Math.max(...xs)) / 2));
+          label.setAttribute('y', String((Math.min(...ys) + Math.max(...ys)) / 2 + 3));
+          label.textContent = feature.properties.abbreviation;
+          group.append(label);
+        }
+      }
+      const open = () => openNationalStateCard(id);
+      group.addEventListener('click', open);
+      group.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault(); open();
+      });
+      svg.append(group);
+    }
+    host.classList.remove('loading');
+    host.replaceChildren(svg);
+  }).catch((error) => {
+    host.textContent = `Could not load state availability: ${error.message}`;
+  });
+}
+
+function stateWithAcquisitions(state) {
+  if (!state) return null;
+  const acquisitions = state.acquisitions || window.MAP_STATE_ACQUISITIONS?.[state.id];
+  return acquisitions ? { ...state, acquisitions } : state;
+}
+
+function setStateCardFact(host, label, value) {
+  const term = document.createElement('dt');
+  term.textContent = label;
+  const detail = document.createElement('dd');
+  detail.textContent = value;
+  host.append(term, detail);
+}
+
+async function openNationalStateCard(id) {
+  let catalogue;
+  try { catalogue = await loadNationalCatalogue(); }
+  catch (error) { setMapsStatus(error.message); return; }
+  const feature = catalogue.boundaries.features.find((item) => item.properties.id === id);
+  if (!feature) return;
+  const offer = nationalMapOffers.get(id) || null;
+  const known = allKnownStates().find((state) => state.id === id) || offer?.state || null;
+  const state = stateWithAcquisitions(known);
+  const availability = nationalAvailability(id);
+  selectedNationalStateId = id;
+  applyNationalMapFeatureStates();
+  const dialog = document.getElementById('mapStateDialog');
+  const title = document.getElementById('mapStateTitle');
+  const status = document.getElementById('mapStateStatus');
+  const summary = document.getElementById('mapStateSummary');
+  const facts = document.getElementById('mapStateFacts');
+  const actionStatus = document.getElementById('mapStateActionStatus');
+  const primary = document.getElementById('mapStatePrimary');
+  const remove = document.getElementById('mapStateRemove');
+  const cancel = document.getElementById('mapStateCancelDownload');
+  title.textContent = feature.properties.name;
+  status.className = `map-state-card-status ${availability}`;
+  status.textContent = availability === 'installed' ? 'On this device'
+    : availability === 'available' ? 'Available to download' : 'Not offered';
+  summary.textContent = state?.summary || (availability === 'unavailable'
+    ? 'A downloadable map is not available from your configured map stores.'
+    : 'State boundary and name only.');
+  facts.replaceChildren();
+  setStateCardFact(facts, 'Capability', state ? mapsStateCapability(state) : 'Orientation only');
+  setStateCardFact(facts, 'Route use', state?.datasets?.graph
+    ? 'Enables trips in or across this state' : 'No routing graph offered');
+  if (state && availability !== 'unavailable') {
+    setStateCardFact(facts, 'Storage', formatMapBytes(MapStore.stateBytes(state)));
+  }
+  setStateCardFact(facts, 'Home map', Region.localDataAvailable && Region.id === id ? 'Yes' : 'No');
+  actionStatus.textContent = '';
+  remove.hidden = availability !== 'installed' || MapStore.availability(id) !== 'installed';
+  cancel.hidden = true;
+  primary.disabled = false;
+  remove.onclick = async () => {
+    remove.disabled = true;
+    actionStatus.textContent = `Removing ${feature.properties.name}…`;
+    await MapStore.removeState(id);
+    if (Region.id === id) {
+      localStorage.removeItem(Region.storageKey);
+      location.reload();
+      return;
+    }
+    nationalCataloguePromise = null;
+    dialog.close();
+    populateMapsPane();
+  };
+  if (availability === 'installed') {
+    const current = Region.localDataAvailable && Region.id === id;
+    primary.textContent = current ? 'Current home map' : 'Use as home map';
+    primary.disabled = current;
+    primary.onclick = () => { if (!current) switchMapState(id); };
+  } else if (availability === 'available' && offer) {
+    primary.textContent = `Download ${formatMapBytes(MapStore.stateBytes(offer.state))}`;
+    primary.onclick = async () => {
+      primary.disabled = true;
+      cancel.hidden = false;
+      nationalInstallController = new AbortController();
+      cancel.onclick = () => nationalInstallController?.abort();
+      const installed = await downloadStoreState(offer.storeUrl, offer.state, primary, {
+        signal: nationalInstallController.signal,
+        onStatus: (message) => { actionStatus.textContent = message; },
+      });
+      nationalInstallController = null;
+      cancel.hidden = true;
+      if (installed) {
+        try { localStorage.setItem(Region.storageKey, id); } catch (error) {
+          actionStatus.textContent = 'The map installed, but this device could not remember it as home.';
+          primary.disabled = false;
+          return;
+        }
+        location.reload();
+      } else primary.disabled = false;
+    };
+  } else {
+    primary.textContent = 'Done';
+    primary.onclick = () => dialog.close();
+  }
+  if (!dialog.open) dialog.showModal();
+}
+
+function pointInRing(point, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    if (((a[1] > point[1]) !== (b[1] > point[1]))
+        && point[0] < (b[0] - a[0]) * (point[1] - a[1])
+          / (b[1] - a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+
+function featureContainsPoint(feature, point) {
+  const polygons = feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates]
+    : feature.geometry.coordinates;
+  return polygons.some((polygon) => pointInRing(point, polygon[0])
+    && !polygon.slice(1).some((hole) => pointInRing(point, hole)));
+}
+
+function firstRunDismissed(offers) {
+  try {
+    const value = JSON.parse(localStorage.getItem(MAP_FIRST_RUN_DISMISSED_KEY) || 'null');
+    const prior = new Set(value?.offeredStateIds || []);
+    const newlyOffered = [...offers.keys()].some((id) => !prior.has(id));
+    return !newlyOffered && Number.isFinite(value?.dismissedAt)
+      && Date.now() - value.dismissedAt < MAP_FIRST_RUN_REPROMPT_MS;
+  } catch (error) { return false; }
+}
+
+async function initializeNationalOrientation() {
+  if (Region.localDataAvailable) return;
+  let catalogue;
+  try { catalogue = await loadNationalCatalogue(); }
+  catch (error) {
+    console.warn('National orientation unavailable:', error);
+    return;
+  }
+  if (map.getSource('national-states')) applyNationalMapFeatureStates();
+  else map.once('load', applyNationalMapFeatureStates);
+  map.on('click', 'national-state-fill', (event) => {
+    const id = event.features?.[0]?.properties?.id;
+    if (id) openNationalStateCard(id);
+  });
+  map.on('mouseenter', 'national-state-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'national-state-fill', () => { map.getCanvas().style.cursor = ''; });
+  renderNationalOrientationMap(document.getElementById('firstRunNationalMap'));
+  if (firstRunDismissed(catalogue.offers)) return;
+  const dialog = document.getElementById('mapFirstRunDialog');
+  const status = document.getElementById('mapFirstRunStatus');
+  document.getElementById('mapFirstRunLocation').onclick = async () => {
+    status.textContent = 'Finding your state…';
+    try {
+      const position = await getDevicePosition({ maximumAge: 30000, timeout: 15000 });
+      const point = [Number(position.coords.longitude), Number(position.coords.latitude)];
+      const feature = catalogue.boundaries.features.find((item) => featureContainsPoint(item, point));
+      if (!feature) {
+        status.textContent = 'That location is outside the 50 states and DC. Choose manually below.';
+        return;
+      }
+      status.textContent = `${feature.properties.name} found. Review its details before downloading.`;
+      openNationalStateCard(feature.properties.id);
+    } catch (error) {
+      status.textContent = 'Location was unavailable. Choose a state manually below.';
+    }
+  };
+  document.getElementById('mapFirstRunDismiss').onclick = () => {
+    try {
+      localStorage.setItem(MAP_FIRST_RUN_DISMISSED_KEY, JSON.stringify({
+        dismissedAt: Date.now(), offeredStateIds: [...catalogue.offers.keys()].sort(),
+      }));
+    } catch (error) { /* private mode: dismissal lasts for this page only */ }
+    dialog.close();
+  };
+  if (!dialog.open) dialog.showModal();
+}
 
 // Every state the app can name right now: the startup index (bundled +
 // installed-at-load) plus anything installed since, which region.js has not
@@ -14647,13 +14979,15 @@ function buildMapsStateList() {
 // Download a state named by the bundled index but absent from this device
 // (the slim shell). Its files come from the app's own origin store.
 async function downloadKnownState(state, button) {
-  await downloadStoreState('maps/', state, button);
+  const offer = nationalMapOffers.get(state.id);
+  await downloadStoreState(offer?.storeUrl || defaultMapStoreUrl(), offer?.state || state, button);
 }
 
-async function downloadStoreState(storeUrl, state, button) {
+async function downloadStoreState(storeUrl, state, button, options = {}) {
   if (button) button.disabled = true;
   const name = state.name || state.id;
   const updating = MapStore.availability(state.id) === 'installed';
+  const report = options.onStatus || setMapsStatus;
   try {
     // The bundled registry entries carry no file list (only the store index
     // does), so fetch the store's word for what the state ships.
@@ -14663,18 +14997,21 @@ async function downloadStoreState(storeUrl, state, button) {
       full = index.states.find((candidate) => candidate.id === state.id);
       if (!full) throw new Error(`The store no longer offers ${name}.`);
     }
-    setMapsStatus(`${updating ? 'Updating' : 'Downloading'} ${name}…`);
+    report(`${updating ? 'Updating' : 'Downloading'} ${name}…`);
     await MapStore.installState(storeUrl, full, ({ done, total }) => {
       const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
-      setMapsStatus(`${updating ? 'Updating' : 'Downloading'} ${name}… ${pct}% of ${formatMapBytes(total)}`);
-    });
-    setMapsStatus(`${name} is ${updating ? 'updated and ' : ''}ready to use.`);
+      report(`${updating ? 'Updating' : 'Downloading'} ${name}… ${pct}% of ${formatMapBytes(total)}`);
+    }, { signal: options.signal });
+    report(`${name} is ${updating ? 'updated and ' : ''}ready to use.`);
     buildMapsStateList();
     buildMapsStoreList();
     updateMapsStorageLine();
+    return full;
   } catch (error) {
-    setMapsStatus(`Could not download ${name}: ${error.message}`);
+    report(error?.name === 'AbortError' ? `${name} download cancelled.`
+      : `Could not download ${name}: ${error.message}`);
     if (button) button.disabled = false;
+    return null;
   }
 }
 
@@ -14703,6 +15040,8 @@ function buildMapsStoreList() {
       // are the rider's, listed above with their own Remove.
       MapStore.removeCustomStore(store.url);
       buildMapsStoreList();
+      nationalCataloguePromise = null;
+      renderNationalOrientationMap(document.getElementById('mapsNationalMap'));
     });
     head.append(address, forget);
     const offers = document.createElement('div');
@@ -14746,6 +15085,7 @@ async function renderStoreOffers(storeUrl, host) {
 
 function populateMapsPane() {
   setMapsStatus('');
+  renderNationalOrientationMap(document.getElementById('mapsNationalMap'));
   buildMapsStateList();
   buildMapsStoreList();
   updateMapsStorageLine();
@@ -14910,6 +15250,8 @@ document.getElementById('mapsStoreAdd')?.addEventListener('click', () => {
     input.value = '';
     setMapsStatus(`Added ${url}`);
     buildMapsStoreList();
+    nationalCataloguePromise = null;
+    renderNationalOrientationMap(document.getElementById('mapsNationalMap'));
   } catch (error) {
     setMapsStatus(error.message);
   }
@@ -15593,6 +15935,11 @@ document.getElementById('tab-settings').addEventListener('keydown', (event) => {
 // Dialog close buttons and the version shown inside Getting Started help.
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () =>
   document.getElementById(b.dataset.close).close()));
+document.getElementById('mapStateDialog')?.addEventListener('close', () => {
+  selectedNationalStateId = null;
+  applyNationalMapFeatureStates();
+});
+initializeNationalOrientation();
 // One line answers both "what app is this" and "what map is it routing on".
 // The map half reports the hash of the bytes the router loaded, so a stale
 // service-worker cache shows up as STALE here instead of as a weird route.
@@ -15991,6 +16338,7 @@ function onStyleReady(cb) {
 }
 
 onStyleReady(() => {
+  if (!Region.localDataAvailable) return;
   // Visual toggles must not create holes in street-information popups. Load
   // every source once; updateVisibility() independently hides painted lines.
   for (const src of SOURCES) loadSource(src);

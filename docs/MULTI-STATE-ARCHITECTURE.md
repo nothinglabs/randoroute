@@ -1,11 +1,11 @@
 # Multi-state routing architecture
 
 Status: the generic contract, deterministic partition build, incremental
-composite runtime, state-chain controller, end-to-end jurisdiction path and
-atomic store/offline acquisition are implemented on
+composite runtime, state-chain controller, end-to-end jurisdiction path,
+atomic store/offline acquisition and national/first-run orientation are implemented on
 `codex/multistate-routing`, with executable synthetic and browser gates.
 Existing single-state routing remains the production compatibility path until
-orientation, search continuation and cross-border comparisons are complete.
+search continuation and cross-border comparisons are complete.
 
 ## Product boundary
 
@@ -275,6 +275,18 @@ may suggest the current state under existing location-permission patterns. The
 app does not silently download. Denial, dismissal, cancellation and failure
 leave manual national-map and Maps-screen selection available; an explicit
 dismissal is persisted until a reasonable later trigger.
+
+The implemented resident asset is the Census Bureau 2025 1:20,000,000 state
+boundary file reduced to 51 polygon/name identities (268 KB). It is packaged in
+the PWA shell and both native-shell variants. A slim session declares the
+selected state's detailed datasets unavailable, so its MapLibre style contains
+only the national boundary source; installed state count never attaches tile
+archives. The main map and Settings render installed, available and unavailable
+states. A state tap opens a status card first. The card owns exact size,
+capabilities, home-map selection, removal, confirmed download and cancellation.
+Location is requested only from the explicit suggestion button and resolves by
+local point-in-polygon. Dismissal lasts 30 days or until the offered-state set
+changes; manual national discovery remains in Settings.
 
 Search loads place indexes for installed states only. Every result carries a
 state ID. Border duplicates use stable source identity when available and a

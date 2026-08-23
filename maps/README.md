@@ -6,6 +6,7 @@ names a state.
 ```
 maps/
   states.js            GENERATED index of the folders below (do not edit)
+  national-states.geojson  resident 50-state + DC orientation boundaries
   ROUTE-SOURCES.md      human approvals for exceptional non-OSM route sources
   route-sources.json   machine-readable companion to that approval record
   supplemental-routes.geojson.gz  reviewed source snapshot shared by rebuilds
@@ -27,9 +28,14 @@ maps/
     *.geojson, *.geojson.gz            build inputs kept for rebuilds
 ```
 
-The three shared route-source files are the one deliberate exception to the
+The three shared route-source files are one deliberate exception to the
 per-state-folder rule. They preserve a human source decision when a state
-folder is deleted for a clean re-import. OSM remains the normal source. Read
+folder is deleted for a clean re-import. The other shared asset is
+`national-states.geojson`: a 268 KB boundary-and-name-only orientation layer,
+not a state map or routing source. It is generated from the U.S. Census
+Bureau's 2025 1:20,000,000 Cartographic Boundary File with
+`scripts/build_national_states.mjs`; it contains the 50 states and DC and no
+streets. OSM remains the normal detailed source. Read
 [`ROUTE-SOURCES.md`](./ROUTE-SOURCES.md) before touching them: supplemental
 route import is optional and approval-gated, not a standard state-import step.
 
@@ -56,8 +62,10 @@ Web and native differ in one way only:
   `maps/index.json`), so switching is instant and offline.
   `JRA_SLIM_SHELL=1 npm run ios:sync` builds the on-demand variant instead:
   the states are indexed but carry no data, `MAP_STATES_BUNDLED` flips to
-  false, and the Maps screen offers downloads. Ship slim only once a store is
-  live and the download flow is field-verified.
+  false, the resident national layer remains, and the first-run/Maps screens
+  offer explicit downloads. Set `JRA_MAP_STORE_URL` to the HTTPS store root;
+  the project Pages map directory is the build default. Ship slim only once a
+  store is live and the download flow is field-verified.
 
 ## Map stores
 

@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v788';
+const VERSION = 'v789';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -49,6 +49,7 @@ const SHELL = [
   './palette.js',
   './maps/states.js',
   './maps/index.json',
+  './maps/national-states.geojson',
   './map-store.js',
   './region.js',
   './build-version.js',

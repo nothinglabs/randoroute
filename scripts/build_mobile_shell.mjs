@@ -1,10 +1,11 @@
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const output = join(root, 'mobile-shell');
+const output = process.env.JRA_SHELL_OUTPUT
+  ? resolve(process.env.JRA_SHELL_OUTPUT) : join(root, 'mobile-shell');
 const files = [
   'index.html',
   'street-view-embed.html',
@@ -41,6 +42,7 @@ const files = [
   'fonts/Klokantech Noto Sans Regular/512-767.pbf',
   'fonts/Klokantech Noto Sans Regular/768-1023.pbf',
   'maps/index.json',
+  'maps/national-states.geojson',
   'onboarding/tour-welcome.jpg',
   'onboarding/tour-plan.jpg',
   'onboarding/tour-routes.jpg',
@@ -117,7 +119,16 @@ if (SLIM) {
   // flips so the Maps screen offers downloads rather than instant switches.
   const statesPath = join(output, 'maps/states.js');
   const registry = await readFile(statesPath, 'utf8');
-  const flagged = registry.replace('root.MAP_STATES_BUNDLED = true;', 'root.MAP_STATES_BUNDLED = false;');
+  const storeUrl = process.env.JRA_MAP_STORE_URL
+    || 'https://nothinglabs.github.io/randoroute/maps/';
+  if (!/^https:\/\//.test(storeUrl)) {
+    throw new Error('JRA_MAP_STORE_URL must be an HTTPS directory URL');
+  }
+  const normalizedStoreUrl = storeUrl.endsWith('/') ? storeUrl : `${storeUrl}/`;
+  const flagged = registry
+    .replace('root.MAP_STATES_BUNDLED = true;', 'root.MAP_STATES_BUNDLED = false;')
+    .replace('root.MAP_STATES = [',
+      `root.MAP_STORE_DEFAULT_URL = ${JSON.stringify(normalizedStoreUrl)};\n  root.MAP_STATES = [`);
   if (flagged === registry) throw new Error('maps/states.js is missing the MAP_STATES_BUNDLED flag');
   await writeFile(statesPath, flagged);
 }

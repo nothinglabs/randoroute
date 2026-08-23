@@ -292,6 +292,14 @@
         <div class="maps-body">
           <p class="maps-lead">Choose the state to ride in.</p>
           <p class="maps-note">One map is loaded at a time. Switching restarts the app and clears any route on screen.</p>
+          <section class="national-map-section" aria-labelledby="nationalMapTitle">
+            <div class="national-map-heading">
+              <h3 id="nationalMapTitle">Browse maps</h3>
+              <span class="national-map-key"><i class="installed"></i>On device <i class="available"></i>Available <i class="unavailable"></i>Unavailable</span>
+            </div>
+            <div id="mapsNationalMap" class="national-map" aria-label="United States map availability"></div>
+            <p class="maps-note">Tap a state for status and download details.</p>
+          </section>
           <div id="mapsStateList" class="maps-state-list" role="radiogroup" aria-labelledby="settings-tab-maps"></div>
           <p id="mapsStorage" class="maps-storage"></p>
           <p id="mapsStatus" class="maps-status" role="status" aria-live="polite"></p>
@@ -324,6 +332,33 @@
       </div>
     </section>
   </div>
+
+  <dialog id="mapFirstRunDialog" class="map-dialog map-first-run-dialog" aria-labelledby="mapFirstRunTitle">
+    <div class="dialog-head"><h2 id="mapFirstRunTitle">Choose your first map</h2></div>
+    <div class="map-first-run-body">
+      <p>No street or routing map is installed yet. Choose one to download for offline use.</p>
+      <button id="mapFirstRunLocation" class="map-location-suggest" type="button">Use my location to suggest a state</button>
+      <p id="mapFirstRunStatus" class="maps-status" role="status" aria-live="polite"></p>
+      <div id="firstRunNationalMap" class="national-map" aria-label="Choose a state from the United States map"></div>
+      <p class="maps-note">Location is used only to identify a state. A map downloads only after you confirm it.</p>
+    </div>
+    <div class="dialog-actions"><button id="mapFirstRunDismiss" type="button">Not now</button></div>
+  </dialog>
+
+  <dialog id="mapStateDialog" class="map-dialog map-state-dialog" aria-labelledby="mapStateTitle">
+    <div class="dialog-head"><h2 id="mapStateTitle">State map</h2><div class="dialog-head-actions"><button class="dialog-close" data-close="mapStateDialog" aria-label="Close">✕</button></div></div>
+    <div class="map-state-card-body">
+      <span id="mapStateStatus" class="map-state-card-status"></span>
+      <p id="mapStateSummary"></p>
+      <dl id="mapStateFacts" class="map-state-facts"></dl>
+      <p id="mapStateActionStatus" class="maps-status" role="status" aria-live="polite"></p>
+    </div>
+    <div class="dialog-actions map-state-actions">
+      <button id="mapStateRemove" type="button" hidden>Remove</button>
+      <button id="mapStateCancelDownload" type="button" hidden>Cancel download</button>
+      <button id="mapStatePrimary" type="button">Done</button>
+    </div>
+  </dialog>
 
   <dialog id="routesDialog" class="map-dialog" aria-label="Save and share routes" tabindex="-1">
     <div class="dialog-head"><h2>Save &amp; share routes</h2><div class="dialog-head-actions"><button id="routesHelpBtn" class="dialog-help-btn" type="button" aria-label="Save and share routes help" title="Save and share routes help">?</button><button class="dialog-close" data-close="routesDialog" aria-label="Close">✕</button></div></div>

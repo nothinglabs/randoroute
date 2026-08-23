@@ -194,6 +194,7 @@
   }
 
   function createStyle() {
+    if (!Region.localDataAvailable) return createNationalStyle();
     ensureProtocol();
     const style = {
       version: 8,
@@ -311,6 +312,46 @@
       ],
     };
     return withoutMissingSources(style);
+  }
+
+  function createNationalStyle() {
+    return {
+      version: 8,
+      glyphs: glyphUrl(),
+      sources: {
+        'national-states': {
+          type: 'geojson', data: 'maps/national-states.geojson',
+          promoteId: 'id',
+          attribution: 'U.S. Census Bureau 2025 Cartographic Boundary Files',
+        },
+      },
+      layers: [
+        { id: 'national-ocean', type: 'background',
+          paint: { 'background-color': '#dcecf2' } },
+        { id: 'national-state-fill', type: 'fill', source: 'national-states',
+          paint: {
+            'fill-color': ['match', ['feature-state', 'availability'],
+              'installed', '#8cc6a9', 'available', '#90bfe5', '#d4d9dc'],
+            'fill-opacity': ['case', ['boolean', ['feature-state', 'selected'], false], 0.98, 0.88],
+          } },
+        { id: 'national-state-outline', type: 'line', source: 'national-states',
+          paint: {
+            'line-color': ['case', ['boolean', ['feature-state', 'selected'], false],
+              '#005f52', '#ffffff'],
+            'line-width': ['case', ['boolean', ['feature-state', 'selected'], false], 2.5, 0.9],
+          } },
+        { id: 'national-state-labels', type: 'symbol', source: 'national-states',
+          layout: {
+            'text-field': ['get', 'abbreviation'], 'text-font': [FONT_STACK],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 2, 9, 5, 13],
+            'text-allow-overlap': false, 'text-padding': 2,
+          },
+          paint: {
+            'text-color': '#405561', 'text-halo-color': '#f7f8f6',
+            'text-halo-width': 1,
+          } },
+      ],
+    };
   }
 
   // A state under construction may have a place index and no tiles yet. A

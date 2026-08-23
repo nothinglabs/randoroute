@@ -94,9 +94,10 @@ publish stage in `docs/IMPORT-A-STATE.md`. Remaining, in order:
 - **Host the store**: upload WA + OR packs and `index.json` to GitHub
   Releases (or equivalent), then verify the by-hand flow in
   `docs/IMPORT-A-STATE.md` from a clean profile.
-- **First-run picker**: with a slim deployment there is no map on first
-  launch — suggest by location or ask, then download. Not built; needs the
-  store live first.
+- **First-run field verification**: the resident national map, explicit local
+  location suggestion, confirmation card, exact-size download, cancellation,
+  reload and persisted dismissal are implemented. Verify the configured live
+  store and permission/download behavior in a slim WKWebView before shipping.
 - **Slim iOS on a phone**: the slim shell has no service worker, so
   downloaded packs need verifying inside the Capacitor WKWebView (cache
   storage durability, range reads) before any App Store submission.
@@ -124,6 +125,8 @@ The versioned store contract now publishes exact map/catalogue/partition
 acquisitions; installs are staged, byte/hash verified and atomic across failure,
 cancellation and update. Compatible installed catalogues restore offline into
 the multi-state controller, while removals preserve saved intent and report the
-missing dependency. Remaining gates are national discovery and first-run,
-search continuation, Washington/Oregon crossing comparisons, preview, full
-suite, and the owner's physical-iPhone verdict.
+missing dependency. The resident 51-jurisdiction national layer and slim
+first-run acquisition flow now pass browser and native-shell packaging gates.
+Remaining gates are search continuation, Washington/Oregon crossing
+comparisons, documentation/handoff, preview, full suite, and the owner's
+physical-iPhone verdict.

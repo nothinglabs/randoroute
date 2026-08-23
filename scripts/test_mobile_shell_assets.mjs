@@ -5,9 +5,10 @@
 // web tests could not see it because the file exists in the repository.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { access, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -91,6 +92,32 @@ await assert.doesNotReject(
   'the native-shell build did not copy maps/states.js',
 );
 checked++;
+await assert.doesNotReject(
+  access(join(SHELL, 'maps/national-states.geojson')),
+  'the native-shell build did not copy the resident national orientation layer',
+);
+checked++;
+
+const slim = await mkdtemp(join(tmpdir(), 'randoroute-slim-shell-'));
+try {
+  execFileSync(process.execPath, [join(HERE, 'build_mobile_shell.mjs')], {
+    cwd: ROOT, stdio: 'pipe', env: { ...process.env,
+      JRA_SLIM_SHELL: '1', JRA_SHELL_OUTPUT: slim,
+      JRA_MAP_STORE_URL: 'https://maps.example.test/releases/' },
+  });
+  const slimStates = await readFile(join(slim, 'maps/states.js'), 'utf8');
+  assert.match(slimStates, /MAP_STATES_BUNDLED = false/,
+    'the slim native shell did not mark state data as unbundled');
+  assert.match(slimStates, /https:\/\/maps\.example\.test\/releases\//,
+    'the slim native shell did not publish its configured HTTPS map store');
+  await assert.doesNotReject(access(join(slim, 'maps/national-states.geojson')),
+    'the slim native shell omitted the resident national orientation layer');
+  await assert.rejects(access(join(slim, `maps/${MAP_STATES[0].id}/graph2.bin.gz`)),
+    'the slim native shell bundled a detailed state graph');
+  checked += 4;
+} finally {
+  await rm(slim, { recursive: true, force: true });
+}
 
 console.log(`Native shell verified: ${checked} local resources are packaged `
   + `(${dataFiles} data files across ${MAP_STATES.length} states)`);
