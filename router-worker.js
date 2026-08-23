@@ -5248,8 +5248,17 @@ function isGzip(buffer) {
   return ((head[0] << 8) | head[1]) === GZIP_MAGIC;
 }
 async function gunzip(buffer) {
-  const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
-  return new Response(stream).arrayBuffer();
+  if (typeof DecompressionStream === 'function') {
+    const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Response(stream).arrayBuffer();
+  }
+  // WebKit before 16.4 ships no DecompressionStream, and the iOS deployment
+  // target admits such devices; the bundled fflate inflates the same bytes.
+  // Loaded only on this path so modern engines never parse it.
+  if (typeof fflate === 'undefined') importScripts('vendor/fflate.js');
+  const raw = fflate.gunzipSync(new Uint8Array(buffer));
+  return raw.byteOffset === 0 && raw.byteLength === raw.buffer.byteLength
+    ? raw.buffer : raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
 }
 function receiveGraph(buffer, metadata = {}) {
   // Frontier expansion replaces the whole composite. Anything keyed by an old

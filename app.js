@@ -11729,6 +11729,21 @@ function clearPendingMapRouteIntent() {
   try { localStorage.removeItem(PENDING_MAP_ROUTE_INTENT_KEY); } catch (error) { /* optional */ }
 }
 
+// A retained trip must survive the download it is waiting for. The intent
+// expires an hour after it was written, but a large state pack can take
+// longer — or finish after the phone sat overnight — so a completed install
+// restamps the clock and the post-install reload still finds the trip.
+function refreshPendingMapRouteIntent(stateId) {
+  try {
+    const value = JSON.parse(localStorage.getItem(PENDING_MAP_ROUTE_INTENT_KEY) || 'null');
+    if (value?.version !== 1) return;
+    const waitingFor = [...new Set([value.stateId, ...(value.requiredStateIds || [])])];
+    if (stateId && !waitingFor.includes(stateId)) return;
+    localStorage.setItem(PENDING_MAP_ROUTE_INTENT_KEY,
+      JSON.stringify({ ...value, createdAt: Date.now() }));
+  } catch (error) { /* optional */ }
+}
+
 async function beginMapInstallForPlace(item, action, target = null) {
   const stateId = item?.stateId;
   if (!stateId || MapStore.availability(stateId) !== 'remote') return false;
@@ -15524,6 +15539,7 @@ async function downloadStoreState(storeUrl, state, button, options = {}) {
       report(`${updating ? 'Updating' : 'Downloading'} ${name}… ${pct}% of ${formatMapBytes(total)}`);
     }, { signal: options.signal });
     report(`${name} is ${updating ? 'updated and ' : ''}ready to use.`);
+    refreshPendingMapRouteIntent(state.id);
     buildMapsStateList();
     buildMapsStoreList();
     updateMapsStorageLine();
