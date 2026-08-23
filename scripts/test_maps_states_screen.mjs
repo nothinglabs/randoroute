@@ -1,13 +1,12 @@
 #!/usr/bin/env node
-// One state at a time, and choosing one is the whole mechanism: every data path
-// in the app, the router worker and the service worker is built from
-// Region.dataRoot, so the Maps screen writes a state id, and a reload does the
-// rest.
+// One state is the Home map at a time, but every installed state remains
+// available to multi-state routing. The Maps screen writes the Home id, and a
+// reload applies its startup camera and state-local defaults.
 //
 // The screen shows only maps the app can currently load. Future placeholders
 // made the picker look broken and forced riders through dozens of disabled
 // choices. It has to be radios: a checkbox promises that two can be on at once,
-// which is exactly what this cannot do.
+// which would confuse Home selection with installed-map availability.
 import { appPage, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 // Two states, invented here and served over the generated index. The screen's
@@ -99,7 +98,8 @@ const screen = await page.evaluate(() => {
     group: [...new Set(rows.map((row) => input(row).name))],
     checked: rows.filter((row) => input(row).checked).map(named),
     enabled: rows.filter((row) => !input(row).disabled).map(named),
-    loadedRegion: Region.name,
+    homeRegion: Region.name,
+    storage: document.getElementById('mapsStorage')?.textContent,
     fullScreen: document.body.classList.contains('settings-panel-active'),
   };
 });
@@ -107,14 +107,19 @@ check('it opens a full-screen list of available maps, alphabetically',
   screen.settingsOpen && screen.paneVisible && screen.tabsVisible && screen.fullScreen
     && screen.count === STATES.length
     && screen.first === 'Idaho' && screen.last === 'Washington', JSON.stringify(screen));
-check('the controls are one radio group, because one state loads at a time',
+check('the controls are one radio group, because one state is Home at a time',
   screen.types.join() === 'radio' && screen.group.length === 1, JSON.stringify(screen));
-check('and the copy says so, and warns that switching restarts',
-  /state to ride in/i.test(screen.lead || '')
-    && /one map is loaded at a time/i.test(screen.note || '')
+check('the copy separates installed maps, Home, and the three-state route limit',
+  /manage state maps/i.test(screen.lead || '')
+    && /as many maps as this device can store/i.test(screen.note || '')
+    && /one home map for startup/i.test(screen.note || '')
+    && /up to three contiguous states marked on device/i.test(screen.note || '')
     && /restarts/i.test(screen.note || ''), `${screen.lead} | ${screen.note}`);
-check('the loaded state is the checked one',
-  screen.checked.join() === screen.loadedRegion, JSON.stringify(screen.checked));
+check('the Home state is the checked one',
+  screen.checked.join() === screen.homeRegion, JSON.stringify(screen.checked));
+check('the storage line distinguishes added downloads from bundled maps',
+  /added map downloads/i.test(screen.storage || '')
+    && !/^downloaded maps/i.test(screen.storage || ''), screen.storage);
 
 // Selectable is exactly "has a folder under maps/" -- not a list maintained
 // beside it, which is how the two drift.
@@ -146,8 +151,9 @@ check('a finished state says it can route', /routing/i.test(detail.washington ||
   detail.washington);
 check('a preview state says what it is missing',
   /nothing usable|no map or routing|map only/i.test(detail.preview || ''), detail.preview);
-check('and carries a Preview badge beside the loaded one',
-  detail.badges.includes('Preview') && detail.badges.includes('Loaded'),
+check('the rows distinguish Home from another map that remains On device',
+  detail.badges.includes('Home') && detail.badges.includes('On device')
+    && !detail.badges.includes('Loaded'),
   JSON.stringify(detail.badges));
 check('unavailable placeholder states are omitted entirely',
   detail.names.length === STATES.length && !detail.names.includes('Alabama'),
@@ -181,7 +187,7 @@ const restored = await page.evaluate(() => {
     .map((row) => row.querySelector('.maps-state-name > span').textContent);
 });
 check('and the list still shows the state the app is actually on',
-  restored.join() === screen.loadedRegion, JSON.stringify(restored));
+  restored.join() === screen.homeRegion, JSON.stringify(restored));
 
 const closed = await page.evaluate(() => {
   document.getElementById('settingsPanelClose').click();

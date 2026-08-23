@@ -68,12 +68,14 @@ visible viewport and now include safety overlays. Regional zooms use the small
 resident state polygons instead of oversized context tiles, while detailed
 land and water take over at closer zooms. The full iOS shell is bounded to two
 starter states rather than every future import.
+The Maps screen distinguishes the one startup Home map from every map On
+device and states the three-contiguous-state routing limit.
 
 Remaining gates:
 
 - run the full executable suite and record its passes/skips/runtime; and
-- prepare the iOS build/handoff, then get the owner's physical-iPhone verdict
-  for Cache Storage durability, memory pressure, navigation and real timings.
+- get the owner's physical-iPhone verdict for Cache Storage durability, memory
+  pressure, navigation and real timings.
 
 ### 4. Import and test all states
 Import every U.S. state under the documented state-import process and verify

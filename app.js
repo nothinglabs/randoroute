@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-23.800';
+const APP_VERSION = '2026-08-23.801';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -15011,9 +15011,9 @@ function applyRoutingPreset(presetId) {
 }
 
 /* ------------------------------------------------------------ maps
- * One state is loaded at a time, and switching is switching folders: every
- * data path in the app, the router worker and the service worker is built from
- * Region.dataRoot, so the choice made here is the whole mechanism.
+ * One installed state is the HOME map at a time: it supplies startup camera
+ * and state-local defaults through Region.dataRoot. Other installed states
+ * remain available to place search and multi-state partition routing.
  *
  * The list comes from maps/states.js, generated from the folders. If a state is
  * shown here it has a map package that the app can actually select; future
@@ -15039,16 +15039,16 @@ async function updateMapsStorageLine() {
   const host = document.getElementById('mapsStorage');
   if (!host) return;
   const estimate = await MapStore.storageEstimate();
-  const installed = `Downloaded maps: ${formatMapBytes(estimate.installedBytes)}`;
+  const installed = `Added map downloads: ${formatMapBytes(estimate.installedBytes)}`;
   host.textContent = estimate.usageBytes != null && estimate.quotaBytes != null
     ? `${installed} · App storage: ${formatMapBytes(estimate.usageBytes)} of ${formatMapBytes(estimate.quotaBytes)}`
     : installed;
 }
 
-// Switching is a reload: the graph, the tiles, the overlays and the place index
-// all come from the other folder, and there is no partial way to swap them
-// under a running map. So the route goes first (it belongs to a graph that is
-// about to be gone), then the choice is stored, then the app restarts.
+// Changing Home is a reload: the state-local graph, tiles, overlays and place
+// index come from the other folder, and there is no partial way to swap those
+// defaults under a running map. Other installed states remain installed and
+// available to cross-state routing after the reload.
 function switchMapState(id) {
   // allKnownStates, not Region.states: a state installed from a store this
   // session is switchable now, not only after the next reload.
@@ -15426,16 +15426,16 @@ function buildMapsStateList() {
   if (!host) return;
   host.replaceChildren();
   for (const state of allKnownStates()) {
-    const loaded = state.id === Region.id;
+    const home = state.id === Region.id;
     const availability = MapStore.availability(state.id);
     // A remote state earns a row only when the app's own catalog names it
     // (the slim shell: its data downloads from the app's origin). A state
     // installed from a third-party store and then removed is simply gone
     // from this list -- its store below still offers it.
-    if (availability === 'remote' && !loaded
+    if (availability === 'remote' && !home
         && !(self.MAP_STATES || []).some((bundled) => bundled.id === state.id)) continue;
     const row = document.createElement('label');
-    row.className = `maps-state${loaded ? ' loaded' : ''}`
+    row.className = `maps-state${home ? ' loaded' : ''}`
       + (state.status === 'preview' ? ' preview' : '');
     const label = document.createElement('span');
     label.className = 'maps-state-name';
@@ -15463,16 +15463,16 @@ function buildMapsStateList() {
       continue;
     }
     const choice = document.createElement('input');
-    // One state at a time, so: radios. A checkbox would promise that two can
-    // be on at once, which is exactly what this cannot do.
+    // Home is one state at a time, so: radios. Installation is independent;
+    // the On device badge shows which other maps routing can still use.
     choice.type = 'radio';
     choice.name = 'mapsState';
-    choice.checked = loaded;
+    choice.checked = home;
     choice.value = state.id;
     choice.addEventListener('change', () => {
       if (!choice.checked) return;
       // A refused switch must not leave the list claiming the other state is
-      // loaded; put the selection back where the app actually is.
+      // Home; put the selection back where the app actually starts.
       if (!switchMapState(state.id)) buildMapsStateList();
     });
     row.prepend(choice);
@@ -15482,7 +15482,7 @@ function buildMapsStateList() {
       meta.className = 'maps-state-size';
       meta.textContent = formatMapBytes(MapStore.stateBytes(MapStore.installedEntry(state.id).state));
       row.append(meta);
-      if (!loaded) {
+      if (!home) {
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'maps-state-remove';
@@ -15499,13 +15499,15 @@ function buildMapsStateList() {
         row.append(remove);
       }
     }
-    if (loaded || state.status === 'preview') {
+    if (home || availability === 'bundled' || availability === 'installed'
+        || state.status === 'preview') {
       const badge = document.createElement('span');
-      // Loaded is the fact the rider is looking for; preview is a warning. A
-      // loaded preview state gets the Loaded badge -- the row's own copy
-      // already says what it cannot do.
-      badge.className = `maps-state-badge${loaded ? '' : ' preview'}`;
-      badge.textContent = loaded ? 'Loaded' : 'Preview';
+      // Home is a startup/default choice, not an exclusive routing map.
+      // Every other locally available state says On device so the screen does
+      // not imply that selecting Home unloaded it.
+      const onDevice = availability === 'bundled' || availability === 'installed';
+      badge.className = `maps-state-badge${!home && !onDevice ? ' preview' : ''}`;
+      badge.textContent = home ? 'Home' : onDevice ? 'On device' : 'Preview';
       row.append(badge);
     }
     host.append(row);
