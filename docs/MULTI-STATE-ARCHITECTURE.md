@@ -163,8 +163,18 @@ The routing worker accepts the snapshot through its existing graph path and
 runs the existing scoring and portfolio code. Partition mode permits endpoint
 snaps in initially disconnected loaded components, then reports only reached
 portal nodes with admissible lower bounds that can compete with the current
-result. The page-side coordinator that chooses the initial partitions and
-drives repeated frontier expansion is the next integration milestone.
+result.
+
+`multi-state-route-coordinator.js` is the page-side controller. It derives
+state adjacency only from exact cross-state portals, plans all ordered route
+points, identifies missing transit maps, enforces the three-state limit, chooses
+equal-short coarse partition corridors that fit the input budget, and resumes a
+held request after its required maps become installed. Its browser bridge owns
+the loader and routing workers, transfers each replacement composite, retries
+the same route request while the real A* reports competitive frontiers, and
+cancels both workers when a newer endpoint generation wins. The store contract
+supplies installed catalogue acquisitions to this controller; ordinary packs
+without them continue through the single-state graph path.
 
 ## Memory contract
 

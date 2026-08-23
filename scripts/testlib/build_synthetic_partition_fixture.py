@@ -69,6 +69,8 @@ def main():
                         help="move the second state's border node by one Float32-scale step")
     parser.add_argument("--ambiguous", action="store_true",
                         help="give the second state two disconnected nodes at the exact border coordinate")
+    parser.add_argument("--chain-length", type=int, choices=range(2, 5), default=2,
+                        help="emit two to four exact-connected synthetic states")
     args = parser.parse_args()
     root = Path(args.output)
     root.mkdir(parents=True, exist_ok=True)
@@ -85,6 +87,12 @@ def main():
             [(border, 0.0), (0.8, 0.0), (1.8, 0.0)],
             [(0, 1), (1, 2)], one_way_edge=1)
     write_state(root, "state-b", graph_b)
+    for index in range(2, args.chain_length):
+        start = 1.8 + (index - 2) * 2.0
+        state_id = f"state-{chr(ord('a') + index)}"
+        write_state(root, state_id, make_graph(
+            [(start, 0.0), (start + 1.0, 0.0), (start + 2.0, 0.0)],
+            [(0, 1), (1, 2)]))
 
 
 if __name__ == "__main__":
