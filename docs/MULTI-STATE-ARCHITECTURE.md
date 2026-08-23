@@ -1,12 +1,14 @@
 # Multi-state routing architecture
 
-Status: the generic contract, deterministic partition build, incremental
-composite runtime, state-chain controller, end-to-end jurisdiction path,
-atomic store/offline acquisition, national/first-run orientation and
+Status: the generic contract, production Washington/Oregon partitions,
+incremental composite runtime, state-chain controller, end-to-end jurisdiction
+path, atomic store/offline acquisition, national/first-run orientation and
 cross-state search continuation are implemented on
-`codex/multistate-routing`, with executable synthetic and browser gates.
-Existing single-state routing remains the production compatibility path until
-cross-border comparisons are complete.
+`codex/multistate-routing`. Synthetic, browser, full-graph comparison and
+multiple Columbia-crossing gates pass. Ordinary in-state routing remains the
+compatibility path; cross-state requests use partition sessions when every
+required acquisition is installed. Preview, full-suite and physical-device
+handoff are the remaining delivery gates.
 
 ## Product boundary
 
@@ -248,6 +250,15 @@ must measure quota, durability and range behavior with expected pack sizes.
 Native-only storage is justified only by a failed measurement and must sit
 behind a small bridge.
 
+The released manifest sizes are 159,411,410 bytes for Oregon and 217,001,868
+bytes for Washington, or 372,783,591 unique declared bytes together after the
+shared catalogue is counted once. The browser implementation preflights the
+origin quota, streams responses into Cache Storage and restores the exact
+catalogue offline in executable coverage. That is sufficient to keep the web
+backend for this release. WKWebView persistence and eviction under those real
+sizes remain a named physical-device gate; a failed device measurement, not
+installed-state count alone, is the trigger for a native storage bridge.
+
 `scripts/build_map_registry.mjs` publishes this as `storeFormat: 2` whenever a
 validated partition catalogue is present. `map-store.js` accepts formats 1 and
 2, preflights browser quota, stages downloads in a temporary cache, verifies
@@ -309,6 +320,14 @@ portfolio cache for a later considered-route selection. A coordinator result
 that names missing transit states opens the same confirmed state card and
 persists `resume-route` until all required maps are installed.
 
+At zoom 5 and above, installed non-home PMTiles sources attach only when their
+state bounds intersect the viewport and detach after the viewport leaves.
+National zoom keeps only the resident state layer. The full native-shell build
+uses the same acquisition contract and carries at most two released starter
+states; `JRA_BUNDLED_STATE_IDS` may explicitly choose, but not enlarge, that
+set. Other indexed states remain discoverable and downloadable, so future
+imports cannot silently grow one iOS target without bound.
+
 ## Test boundary
 
 Synthetic executable fixtures prove three-state behavior without adding real
@@ -317,11 +336,14 @@ chains, missing-transit continuation, two border attribution changes, saved
 dependencies and removal, exact portals, boundary expansion, cancellation,
 budget enforcement and the fourth-state message.
 
-Partition-vs-full comparisons then protect representative in-state Washington
-and Oregon behavior. Cross-state tests cover several Columbia crossings,
-partition boundaries, one-way and restriction handling, false-nearby joins,
-waypoints, updates, removal and offline restoration. Comparisons assert route
-behavior rather than exact coordinates or source text.
+Partition-vs-full comparisons protect an Oregon route portfolio and the
+Seattle–Port Townsend ferry. Production partition tests route Seattle–Eugene,
+Astoria–Megler and The Dalles–Dallesport, force a real-frontier expansion from
+disconnected endpoint cells, and route a boundary waypoint. Synthetic gates
+cover partition-boundary one-way and restriction handling, false-nearby joins,
+endpoint cancellation, missing files, updates, removal and offline restoration.
+Comparisons assert route behavior rather than exact coordinates or source
+text. The production build record is in `docs/BUILD-GRAPH-PARTITIONS.md`.
 
 The full suite remains the final automated gate. Physical-device navigation and
 memory pressure remain human verdicts.

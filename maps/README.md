@@ -58,8 +58,11 @@ Web and native differ in one way only:
 
 * **Web** serves whichever folder the rider selected; the rest are on the
   server, unfetched.
-* **iOS** bundles every state's files (`scripts/build_mobile_shell.mjs` reads
-  `maps/index.json`), so switching is instant and offline.
+* **iOS full shell** bundles a bounded starter set of at most two released
+  states (`scripts/build_mobile_shell.mjs` reads `maps/index.json`), so adding
+  future states cannot silently create an unbounded national app bundle.
+  `JRA_BUNDLED_STATE_IDS=state-a,state-b` makes that starter set explicit;
+  every other indexed state remains downloadable from the configured store.
   `JRA_SLIM_SHELL=1 npm run ios:sync` builds the on-demand variant instead:
   the states are indexed but carry no data, `MAP_STATES_BUNDLED` flips to
   false, the resident national layer remains, and the first-run/Maps screens

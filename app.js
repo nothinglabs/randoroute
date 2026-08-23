@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.792';
+const APP_VERSION = '2026-08-22.793';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4307,6 +4307,14 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
     routing.multiStateActive = true;
     document.body.dataset.loadedPartitionCount = String(result.loadedPartitionIds?.length || 0);
     document.body.dataset.routeStateIds = (result.routeStateIds || []).join(',');
+    const partitionInputBytes = Number(result.routingDiagnostics?.partitionInput?.rawInputBytes);
+    const attempts = result.routingDiagnostics?.attempts;
+    if (Number.isFinite(partitionInputBytes)) {
+      document.body.dataset.routePartitionInputBytes = String(partitionInputBytes);
+    }
+    if (Array.isArray(attempts)) {
+      document.body.dataset.routePartitionRetries = String(Math.max(0, attempts.length - 1));
+    }
     onRouterMessage({ data: result });
   } catch (error) {
     if (error?.name === 'AbortError' || requestId !== routing.reqId) return;
@@ -8246,6 +8254,8 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
     routing.multiStateActive = false;
     document.body.removeAttribute('data-loaded-partition-count');
     document.body.removeAttribute('data-route-state-ids');
+    document.body.removeAttribute('data-route-partition-input-bytes');
+    document.body.removeAttribute('data-route-partition-retries');
   }
   const shouldRevealPanel = Boolean(revealPanel) && !turnNav.active;
   if (!routing.ready) { // re-runs once the graph is ready

@@ -37,8 +37,9 @@
   // worker serves installed states by URL pattern without needing to know
   // their names.
   if (root.MapStore) {
-    const bundledIds = new Set(root.MAP_STATES_BUNDLED === false
-      ? [] : states.map((state) => state.id));
+    const bundledIds = new Set(root.MAP_STATES_BUNDLED === false ? []
+      : Array.isArray(root.MAP_STATES_BUNDLED_IDS)
+        ? root.MAP_STATES_BUNDLED_IDS : states.map((state) => state.id));
     const installed = root.MapStore.installedRegionConfigs()
       .filter((state) => !bundledIds.has(state.id));
     if (installed.length) {

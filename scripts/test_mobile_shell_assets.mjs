@@ -46,11 +46,17 @@ for (const entry of ['index.html', 'route-details.html']) {
 // from route geometry) still looked fine, and nothing in the HTML would have
 // shown it.
 //
-// The native app carries EVERY state, so a rider switching on the Maps screen
-// is switching between things already on the device. Each state's own
-// region.json says which files it has; that is what must be in the bundle,
-// file for file.
+// The full shell carries a bounded starter set. Every indexed state remains
+// discoverable, but importing more states cannot silently grow one native
+// target without limit.
 const { MAP_STATES } = createRequire(import.meta.url)(join(ROOT, 'maps/states.js'));
+const shellRegistry = createRequire(import.meta.url)(join(SHELL, 'maps/states.js'));
+const bundledIds = shellRegistry.MAP_STATES_BUNDLED_IDS || [];
+assert.ok(bundledIds.length > 0 && bundledIds.length <= 2,
+  `the default full shell should bundle one or two starter states, got ${bundledIds.join(', ')}`);
+assert.equal(shellRegistry.MAP_STORE_DEFAULT_URL,
+  'https://nothinglabs.github.io/randoroute/maps/',
+  'the full shell should configure the store used by non-bundled states');
 const DATASET_FILES = {
   ferries: 'ferries.geojson.gz',
   bikeroutes: 'bikeroutes.geojson.gz',
@@ -67,7 +73,7 @@ let dataFiles = 0;
 for (const state of MAP_STATES) {
   for (const [dataset, file] of Object.entries(DATASET_FILES)) {
     const ref = `maps/${state.id}/${file}`;
-    if (!state.datasets[dataset]) {
+    if (!state.datasets[dataset] || !bundledIds.includes(state.id)) {
       // The reverse direction matters just as much: bundling a file the state
       // does not declare means the app will never ask for it, and the iOS
       // build silently carries dead megabytes.
@@ -83,6 +89,18 @@ for (const state of MAP_STATES) {
     );
     dataFiles++;
     checked++;
+  }
+}
+const storeIndex = JSON.parse(await readFile(join(ROOT, 'maps/index.json'), 'utf8'));
+for (const stateId of bundledIds) {
+  const state = storeIndex.states.find((candidate) => candidate.id === stateId);
+  const routing = state.acquisitions.find((unit) => unit.kind === 'routing-partitions');
+  if (!routing) continue;
+  await assert.doesNotReject(access(join(SHELL, 'maps', routing.catalogue.path)),
+    `${stateId} routing catalogue is absent from the full shell`);
+  for (const file of routing.files) {
+    await assert.doesNotReject(access(join(SHELL, 'maps', file.path)),
+      `${stateId} routing partition ${file.partitionId} is absent from the full shell`);
   }
 }
 // The generated index itself: without it region.js throws at startup and the
@@ -115,6 +133,20 @@ try {
   await assert.rejects(access(join(slim, `maps/${MAP_STATES[0].id}/graph2.bin.gz`)),
     'the slim native shell bundled a detailed state graph');
   checked += 4;
+
+  let overLimit = '';
+  try {
+    execFileSync(process.execPath, [join(HERE, 'build_mobile_shell.mjs')], {
+      cwd: ROOT, stdio: 'pipe', env: { ...process.env,
+        JRA_BUNDLED_STATE_IDS: 'washington,oregon,california',
+        JRA_SHELL_OUTPUT: slim },
+    });
+  } catch (error) {
+    overLimit = String(error.stderr || error.message);
+  }
+  assert.match(overLimit, /may name at most 2 states/,
+    'the native shell should reject an explicit starter set above the two-state bound');
+  checked++;
 } finally {
   await rm(slim, { recursive: true, force: true });
 }

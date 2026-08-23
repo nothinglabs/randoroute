@@ -52,10 +52,10 @@ const files = [
   'onboarding/tour-navigate.jpg',
 ];
 
-// By default the native app carries EVERY state's data, so a rider switching
-// on the Maps screen is switching between things already on the device rather
-// than starting a download. (The web app is the other way round: it fetches
-// the one state the rider selected.)
+// A full native shell carries a deliberately bounded starter set. Importing a
+// tenth or fiftieth state must not silently turn one iOS target into a national
+// multi-gigabyte bundle. The default chooses at most two released states by
+// readiness; JRA_BUNDLED_STATE_IDS makes a different explicit product choice.
 //
 // JRA_SLIM_SHELL=1 builds the on-demand variant instead: the shell knows the
 // states (maps/states.js, maps/index.json) but carries none of their data --
@@ -71,8 +71,28 @@ const files = [
 const SLIM = process.env.JRA_SLIM_SHELL === '1';
 const { MAP_STATES } = createRequire(import.meta.url)(join(root, 'maps/states.js'));
 const storeIndex = JSON.parse(await readFile(join(root, 'maps/index.json'), 'utf8'));
+const DEFAULT_BUNDLED_STATE_LIMIT = 2;
+const explicitBundledStateIds = String(process.env.JRA_BUNDLED_STATE_IDS || '')
+  .split(',').map((id) => id.trim()).filter(Boolean);
+const knownStateIds = new Set(storeIndex.states.map((state) => state.id));
+if (new Set(explicitBundledStateIds).size > DEFAULT_BUNDLED_STATE_LIMIT) {
+  throw new Error(`JRA_BUNDLED_STATE_IDS may name at most ${DEFAULT_BUNDLED_STATE_LIMIT} states`);
+}
+if (explicitBundledStateIds.some((id) => !knownStateIds.has(id))) {
+  throw new Error('JRA_BUNDLED_STATE_IDS names a state outside maps/index.json');
+}
+const defaultBundledStateIds = [...storeIndex.states]
+  .filter((state) => state.status === 'released')
+  .sort((a, b) => (b.readiness || 0) - (a.readiness || 0)
+    || a.id.localeCompare(b.id))
+  .slice(0, DEFAULT_BUNDLED_STATE_LIMIT)
+  .map((state) => state.id);
+const bundledStateIds = SLIM ? []
+  : explicitBundledStateIds.length ? [...new Set(explicitBundledStateIds)]
+    : defaultBundledStateIds;
 if (!SLIM) {
-  for (const state of storeIndex.states) {
+  for (const state of storeIndex.states.filter((candidate) =>
+    bundledStateIds.includes(candidate.id))) {
     for (const file of state.files) files.push(`maps/${state.id}/${file.path}`);
     for (const unit of state.acquisitions || []) {
       if (unit.kind !== 'routing-partitions') continue;
@@ -114,27 +134,27 @@ await writeFile(
   sharedIndex.replace('data-app-runtime="web"', 'data-app-runtime="native"'),
 );
 
-if (SLIM) {
-  // The registry stays (the app must know which states exist) but the flag
-  // flips so the Maps screen offers downloads rather than instant switches.
-  const statesPath = join(output, 'maps/states.js');
-  const registry = await readFile(statesPath, 'utf8');
-  const storeUrl = process.env.JRA_MAP_STORE_URL
-    || 'https://nothinglabs.github.io/randoroute/maps/';
-  if (!/^https:\/\//.test(storeUrl)) {
-    throw new Error('JRA_MAP_STORE_URL must be an HTTPS directory URL');
-  }
-  const normalizedStoreUrl = storeUrl.endsWith('/') ? storeUrl : `${storeUrl}/`;
-  const flagged = registry
-    .replace('root.MAP_STATES_BUNDLED = true;', 'root.MAP_STATES_BUNDLED = false;')
-    .replace('root.MAP_STATES = [',
-      `root.MAP_STORE_DEFAULT_URL = ${JSON.stringify(normalizedStoreUrl)};\n  root.MAP_STATES = [`);
-  if (flagged === registry) throw new Error('maps/states.js is missing the MAP_STATES_BUNDLED flag');
-  await writeFile(statesPath, flagged);
+const statesPath = join(output, 'maps/states.js');
+let registry = await readFile(statesPath, 'utf8');
+const storeUrl = process.env.JRA_MAP_STORE_URL
+  || 'https://nothinglabs.github.io/randoroute/maps/';
+if (!/^https:\/\//.test(storeUrl)) {
+  throw new Error('JRA_MAP_STORE_URL must be an HTTPS directory URL');
 }
+const normalizedStoreUrl = storeUrl.endsWith('/') ? storeUrl : `${storeUrl}/`;
+registry = registry
+  .replace('root.MAP_STATES_BUNDLED = true;',
+    `root.MAP_STATES_BUNDLED = ${String(!SLIM)};\n`
+      + `  root.MAP_STATES_BUNDLED_IDS = ${JSON.stringify(bundledStateIds)};`)
+  .replace('root.MAP_STATES = [',
+    `root.MAP_STORE_DEFAULT_URL = ${JSON.stringify(normalizedStoreUrl)};\n  root.MAP_STATES = [`);
+if (!registry.includes('root.MAP_STATES_BUNDLED_IDS =')) {
+  throw new Error('maps/states.js is missing the MAP_STATES_BUNDLED flag');
+}
+await writeFile(statesPath, registry);
 
 console.log(`Prepared ${files.length} native shell assets in mobile-shell/`);
 console.log(SLIM
   ? `  SLIM shell: ${MAP_STATES.length} state${MAP_STATES.length === 1 ? '' : 's'} indexed, no data bundled`
-  : `  ${MAP_STATES.length} state${MAP_STATES.length === 1 ? '' : 's'} bundled: `
-    + MAP_STATES.map((state) => `${state.name} (${state.status})`).join(', '));
+  : `  ${bundledStateIds.length} of ${MAP_STATES.length} indexed state${MAP_STATES.length === 1 ? '' : 's'} bundled: `
+    + bundledStateIds.map((id) => MAP_STATES.find((state) => state.id === id)?.name || id).join(', '));

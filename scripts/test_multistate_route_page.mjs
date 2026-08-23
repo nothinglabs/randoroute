@@ -20,6 +20,8 @@ try {
         return { type: value.type, id: value.id, ok: true,
           options: [{ ok: true }], routeStateIds: ['fixture-west', 'fixture-south'],
           loadedPartitionIds: ['fixture-detail'],
+          routingDiagnostics: { partitionInput: { rawInputBytes: 12345 },
+            attempts: [{ ok: false }, { ok: true }] },
         };
       },
     } });
@@ -42,6 +44,8 @@ try {
       active: routing.multiStateActive,
       routeStates: document.body.dataset.routeStateIds,
       loadedCount: document.body.dataset.loadedPartitionCount,
+      inputBytes: document.body.dataset.routePartitionInputBytes,
+      retries: document.body.dataset.routePartitionRetries,
     };
     installedMultiStateRouteSession = originalInstalled;
     onRouterMessage = originalMessage;
@@ -54,7 +58,8 @@ try {
     JSON.stringify(routed));
   check('the page records route-state and loaded-detail diagnostics without exposing IDs in route copy',
     routed.active && routed.routeStates === 'fixture-west,fixture-south'
-      && routed.loadedCount === '1', JSON.stringify(routed));
+      && routed.loadedCount === '1' && routed.inputBytes === '12345'
+      && routed.retries === '1', JSON.stringify(routed));
 
   const missing = await page.evaluate(async () => {
     const originalInstalled = installedMultiStateRouteSession;

@@ -235,8 +235,16 @@
     return acquisitionUnits(state).find((unit) => unit.kind === 'routing-partitions') || null;
   }
 
+  function bundledStateIds() {
+    if (root.MAP_STATES_BUNDLED === false) return [];
+    if (Array.isArray(root.MAP_STATES_BUNDLED_IDS)) {
+      return root.MAP_STATES_BUNDLED_IDS.map(String);
+    }
+    return (root.MAP_STATES || []).map((state) => state.id);
+  }
+
   function bundledState(id) {
-    if (root.MAP_STATES_BUNDLED === false) return null;
+    if (!bundledStateIds().includes(id)) return null;
     const state = (root.MAP_STATES || []).find((candidate) => candidate.id === id);
     if (!state) return null;
     const acquisitions = root.MAP_STATE_ACQUISITIONS?.[id];
@@ -270,14 +278,13 @@
         quotaBytes: Number.isFinite(estimate.quota) ? estimate.quota : null };
     },
     installedStateIds: () => [...new Set([
-      ...(root.MAP_STATES_BUNDLED === false ? [] : (root.MAP_STATES || []).map((state) => state.id)),
+      ...bundledStateIds(),
       ...readJson(INSTALLED_KEY).map((entry) => entry.state.id),
     ])].sort((a, b) => a.localeCompare(b)),
 
     // Whether a state's data can be used right now without a download.
     availability(id) {
-      const bundled = root.MAP_STATES_BUNDLED !== false
-        && (root.MAP_STATES || []).some((state) => state.id === id);
+      const bundled = bundledStateIds().includes(id);
       if (bundled) return 'bundled';
       if (MapStore.installedEntry(id)) return 'installed';
       return 'remote';

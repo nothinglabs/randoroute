@@ -74,11 +74,22 @@ installs states from any **map store** — an HTTPS directory serving the
 describes ("Map stores" in `maps/README.md` is the contract). To publish:
 
 1. `npm run maps:registry` — it refuses to index a state whose declared
-   datasets are missing files, so a clean run is the pack's build proof.
-2. Upload `maps/index.json` and each `maps/<state>/<file>` the index lists to
-   any static host with CORS. GitHub Releases works (2 GB per asset); GitHub
-   Pages does not (100 MB per file, and the tile archives are bigger).
-3. Verify from a clean profile: open the app, **Settings → Maps → Add
+   datasets are missing files, so a clean run is the ordinary pack's build
+   proof.
+2. If the state is commissioned for multi-state routing, build it together
+   with its released adjacent states and validate the exact catalogue/artifact
+   tree using `docs/BUILD-GRAPH-PARTITIONS.md`. Run `npm run maps:registry`
+   again so `maps/index.json` contains the state's atomic
+   `routing-partitions` acquisition. A state with no validated acquisition
+   remains internally routable but is not published as a cross-state route
+   dependency.
+3. Upload `maps/index.json`, each indexed `maps/<state>/<file>`, and every
+   catalogue/partition path named by its acquisitions to a static host with
+   CORS. PMTiles additionally require byte ranges. Choose a host against the
+   actual largest file and total release size; GitHub Releases supports large
+   individual assets, while a Pages preview is suitable only when every
+   artifact and the complete site remain inside its current limits.
+4. Verify from a clean profile: open the app, **Settings → Maps → Add
    store**, enter the store address, download the state, switch to it, and
    confirm the map draws and a route computes **offline** afterwards.
    `scripts/test_map_store_install.mjs` is the automated version of this

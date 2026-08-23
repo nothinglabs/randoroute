@@ -15,13 +15,11 @@ require a physical iPhone and a real ride.
 Capacitor 8 wrapping the same web app, with one custom plugin.
 
 - `scripts/build_mobile_shell.mjs` copies the web app into `mobile-shell/`,
-  flips `data-app-runtime="web"` to `"native"`, and **bundles the data for
-  every state**: it walks `maps/states.js` and copies whichever files each
-  state's `region.json` declares (`roads.pmtiles`, `basemap.pmtiles`,
-  `graph2.bin.gz`, the overlays, the place index). The native app reads them as
-  local files, so switching state on the Maps screen is instant and offline —
-  unlike the web app, which fetches only the selected state. On-demand delivery
-  is the eventual answer to the size that grows into; see `maps/README.md`.
+  flips `data-app-runtime="web"` to `"native"`, and bundles at most two released
+  starter states by readiness. `JRA_BUNDLED_STATE_IDS=state-a,state-b` makes
+  that bounded set explicit. Other indexed states remain discoverable and use
+  the same confirmed store download as the slim shell; importing more states
+  therefore cannot silently create an unbounded national app bundle.
 - Because of that flag, `index.html` **does not register the service worker**.
   None of the offline/service-worker machinery runs on iOS — it exists for the
   web PWA. Do not debug the worker on a device; it is not there.
@@ -37,16 +35,20 @@ is generated — never edit it.
 
 ### First-install startup profile
 
-The generated app carries about **189 MB** of local web/data resources — it was
-144 MB before Oregon's 39 MB preview basemap joined it, and every state added
-from here adds its own. Washington's three archives are still most of it:
-`basemap.pmtiles`, `roads.pmtiles`, and `graph2.bin.gz`, about 44 MB each. This
-number is now a function of how many states ship, and it is the reason
-on-demand delivery is on the list. A clean, disposable iOS 17.5 simulator
-install took **8.89 s before process launch**. A cold iOS 26.5 simulator took
-**25.92 s**; the same build installed in **0.94 s** after its caches were warm.
-A physical-device deployment can be slower, especially over Wi-Fi. That copy
-is Xcode deployment work, not a main-thread hang in the app.
+The 2026-08-22 generated full shell occupies **372 MiB** on disk with the two
+current starter states. Their manifests declare 372,783,591 unique bytes after
+the shared partition catalogue is counted once; the remaining shell size is
+application/vendor content and filesystem allocation. Oregon accounts for
+159,411,410 manifest bytes and Washington for 217,001,868. A future third state
+does not join the bundle automatically: it remains a confirmed store download
+unless the bounded two-state product choice changes.
+
+Historical install measurements predate the partition artifacts: a clean,
+disposable iOS 17.5 simulator install took **8.89 s before process launch**. A
+cold iOS 26.5 simulator took **25.92 s**; the same build installed in **0.94 s**
+after its caches were warm. Re-measure these in milestone 14 because the current
+shell is larger. A physical-device deployment can be slower, especially over
+Wi-Fi. That copy is Xcode deployment work, not a main-thread hang in the app.
 
 There is a second, independent first-run delay on a physical device. If Xcode
 shows **“Launching ‘App’ is taking longer than expected”** and specifically
@@ -58,13 +60,13 @@ screen; or temporarily uncheck **Edit Scheme → Run → Info → Debug executab
 Do not leave that unchecked for development, because breakpoints and crash
 inspection will not attach.
 
-With permission controlled, the first map was visible and usable in roughly
-1–2 s. The routing archive expands to about 142 MB and is inflated/indexed in a
-worker. On an empty planner, that work now starts only after the first map load
-and idle opportunity (with a 1.5 s bound); a saved trip or immediate planner
-tap still starts it at once. Cutting deployment time further would require
-smaller map coverage or moving offline archives out of the installed bundle,
-which is a product/offline-availability tradeoff rather than a launch-code fix.
+With permission controlled, the first map was historically visible and usable
+in roughly 1–2 s. Washington's ordinary graph expands to 145,828,781 bytes and
+is inflated/indexed in a worker for the single-state compatibility path. A
+cross-state route instead admits detailed partitions under that same raw-input
+ceiling and reports composition/derived-array estimates. On an empty planner,
+routing work starts only after the first map load and idle opportunity (with a
+1.5 s bound); a saved trip or immediate planner tap still starts it at once.
 
 The optimized Release build also survived ten consecutive terminate/relaunch
 cycles on an iPhone SE-sized iOS 17.5 simulator. Process launch requests took
