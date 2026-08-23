@@ -3927,7 +3927,7 @@ function routeSegProps(s, routeIndex) {
   const flags = s.flags || 0;
   return {
     name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
-    stateId: s.stateId || Region.id,
+    stateId: s.stateId || (typeof Region !== 'undefined' ? Region.id : null),
     partitionId: s.partitionId || null,
     localEdgeIndex: Number.isInteger(s.localEdgeIndex) ? s.localEdgeIndex : null,
     shBack: Number.isFinite(Number(s.shBack)) ? Number(s.shBack) : null,
@@ -4478,7 +4478,7 @@ function storeRouteDetails(m) {
       // router produced.
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
-        stateId: s.stateId || Region.id,
+        stateId: s.stateId || (typeof Region !== 'undefined' ? Region.id : null),
         partitionId: s.partitionId || null,
         localEdgeIndex: Number.isInteger(s.localEdgeIndex) ? s.localEdgeIndex : null,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
