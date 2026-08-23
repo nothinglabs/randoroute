@@ -350,6 +350,8 @@
         routeStateIds: plan.routeStateIds, budgetBytes: this.budgetBytes,
       });
       let loadedIds = [...corridor.partitionIds];
+      const partitionById = new Map(this.catalogue.partitions.map((partition) =>
+        [partition.id, partition]));
       const attempts = [];
       for (let retry = 0; retry <= this.catalogue.partitions.length; retry++) {
         checkAbort(controller.signal);
@@ -365,14 +367,34 @@
         const frontierHits = Array.isArray(result.frontierHits) ? result.frontierHits : [];
         attempts.push({ retry, loadedPartitionIds: [...composite.loadedPartitionIds],
           frontierHitCount: frontierHits.length, ok: !!result.ok });
-        const expansion = partitionRuntime.selectFrontierExpansion({
+        const competitiveTimes = (Array.isArray(result.options) ? result.options : [result])
+          .map((option) => Number(option?.timeS)).filter(Number.isFinite);
+        const expansionCandidates = partitionRuntime.selectFrontierExpansion({
           loadedPartitionIds: composite.loadedPartitionIds,
           frontiers: composite.frontiers,
           frontierHits,
-          routeFound: false,
-          maxAdditions: 2,
+          routeFound: !!result.ok,
+          worstCompetitiveCost: competitiveTimes.length
+            ? Math.max(...competitiveTimes) : Infinity,
+          maxAdditions: this.catalogue.partitions.length,
         });
+        let selectedBytes = [...new Set(composite.loadedPartitionIds)]
+          .reduce((sum, id) => sum + (partitionById.get(id)?.rawBytes || 0), 0);
+        const expansion = [];
+        for (const frontier of expansionCandidates) {
+          const partition = partitionById.get(frontier.adjacentPartitionId);
+          if (!partition || selectedBytes + partition.rawBytes > this.budgetBytes) continue;
+          expansion.push(frontier);
+          selectedBytes += partition.rawBytes;
+          if (expansion.length >= 2) break;
+        }
         if (!expansion.length) {
+          if (!result.ok && expansionCandidates.length) {
+            throw new RouteCoordinatorError('graph-input-budget',
+              'The detailed routing maps required for this trip do not fit this device’s routing-memory limit.',
+              { rawInputBytes: selectedBytes, budgetBytes: this.budgetBytes,
+                partitionIds: [...composite.loadedPartitionIds].sort() });
+          }
           const final = { ...result, routeStateIds: [...plan.routeStateIds],
             pointStateIds: [...pointStateIds],
             loadedPartitionIds: [...composite.loadedPartitionIds],

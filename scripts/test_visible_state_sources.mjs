@@ -52,7 +52,7 @@ class FakeMap {
 
 const state = (id, minLon, maxLon) => ({ id,
   bounds: { minLon, minLat: 0, maxLon, maxLat: 1 },
-  datasets: { basemap: true, roads: true } });
+  datasets: { basemap: true, roads: true, overlays: true } });
 const states = [state('home', 0, 1), state('visible', 1, 2), state('far', 8, 9)];
 const map = new FakeMap();
 const visible = context.BikeBasemap.syncVisibleStateSources(map, states, 'home');
@@ -62,7 +62,9 @@ check('the visible state receives ground and road sources at logical installed-m
   map.getSource('state-visible-basemap-context')?.url
     === 'pmtiles://maps/visible/basemap.pmtiles?v=5'
     && map.getSource('state-visible-basemap-roads')?.url
-      === 'pmtiles://maps/visible/roads.pmtiles?v=24');
+      === 'pmtiles://maps/visible/roads.pmtiles?v=24'
+    && map.getSource('state-visible-basemap-overlays')?.url
+      === 'pmtiles://maps/visible/overlays.pmtiles?v=2');
 check('visible-state basemap layers stay beneath the route overlay',
   map.layers.findIndex((layer) => layer.id === 'state-visible-basemap-major')
     < map.layers.findIndex((layer) => layer.id === 'route-line')
@@ -77,6 +79,7 @@ map.zoom = 4;
 const national = context.BikeBasemap.syncVisibleStateSources(map, states, 'home');
 check('national zoom removes non-home detailed sources and their layers',
   national.length === 0 && !map.getSource('state-visible-basemap-context')
+    && !map.getSource('state-visible-basemap-overlays')
     && !map.layers.some((layer) => layer.id.startsWith('state-visible-')));
 
 done();

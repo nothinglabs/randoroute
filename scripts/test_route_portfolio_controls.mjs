@@ -75,6 +75,48 @@ check('and automatically carries a distinct more-direct probe',
 check('the automatic lens never changes safety rules',
   request.rulesBefore === request.rulesAfter);
 
+const installedMapRequest = await page.evaluate(async () => {
+  const originalAcquisition = MapStore.routingAcquisitionForStates;
+  const originalInstalled = MapStore.installedStateIds;
+  const originalActive = { ...activeMultiStateRouting };
+  let captured = null;
+  try {
+    MapStore.routingAcquisitionForStates = () => ({ available: true,
+      compatibility: { catalogueSha256: 'portfolio-test' } });
+    MapStore.installedStateIds = () => ['oregon', 'washington'];
+    Object.assign(activeMultiStateRouting, {
+      key: 'portfolio-test|oregon', bridge: null, context: null, creating: null,
+      session: {
+        setInstalledStateIds() {}, cancel() {},
+        async route(message) {
+          captured = message;
+          return { type: message.type, id: message.id, ok: false, options: [],
+            reason: 'portfolio request captured' };
+        },
+      },
+    });
+    routing.start = [-122.6765, 45.5231];
+    routing.end = [-122.641, 45.564];
+    routing.startStateId = 'oregon';
+    routing.endStateId = 'oregon';
+    await computeMultiStateRoute({ revealPanel: false });
+    return { type: captured?.type, points: captured?.points,
+      normalWeights: captured?.weights, directWeights: captured?.directProbeWeights };
+  } finally {
+    MapStore.routingAcquisitionForStates = originalAcquisition;
+    MapStore.installedStateIds = originalInstalled;
+    Object.assign(activeMultiStateRouting, originalActive);
+    routing.startStateId = Region.id;
+    routing.endStateId = Region.id;
+  }
+});
+check('a trip inside an installed non-home map requests a full route portfolio',
+  installedMapRequest.type === 'route-options'
+    && installedMapRequest.points?.length === 2
+    && installedMapRequest.directWeights?.failRoadBalanced
+      < installedMapRequest.normalWeights?.failRoadBalanced,
+  JSON.stringify(installedMapRequest));
+
 /* ------------------------------------ which route survives a recompute */
 // The frozen-lineup system (pinned recipes, held letters, greyed unroutable
 // slots) is gone by field decision: every search generates, sorts and letters

@@ -147,6 +147,28 @@ try {
       && resumed.routeDependencies.partitions.length === resumed.partitionIds.length,
     JSON.stringify(resumed.routeDependencies));
 
+  const boundedLoads = [];
+  const boundedSession = new C.MultiStateRouteSession({ catalogue,
+    installedStateIds: ['state-a', 'state-b', 'state-c'], resolveStateId: pointState,
+    selectInitialCorridor: endpointOnly,
+    loadComposite: async ({ partitionIds, routeStateIds }) => {
+      boundedLoads.push([...partitionIds]);
+      return { loadedPartitionIds: [...partitionIds], stateIds: routeStateIds,
+        partitionRanges: [], diagnostics: {}, frontiers: portalsFor(partitionIds, routeStateIds) };
+    },
+    search: async ({ request: active, composite }) => ({ type: active.type, id: active.id,
+      ok: true, options: [{ ok: true, timeS: 45 }, { ok: true, timeS: 60 }],
+      partitionIds: [...composite.loadedPartitionIds],
+      frontierHits: composite.frontiers.map((frontier) =>
+        ({ node: frontier.node, lowerBound: 90, exits: [frontier] })) }),
+  });
+  const bounded = await boundedSession.route({ type: 'route-options', id: 18, points,
+    pointStateIds: ['state-a', 'state-c'] });
+  check('a working portfolio does not load frontiers too costly to improve its choices',
+    bounded.ok && bounded.options.length === 2 && boundedLoads.length === 1
+      && bounded.routingDiagnostics.attempts.length === 1,
+    JSON.stringify({ bounded, boundedLoads }));
+
   let slowStarted;
   const slowReady = new Promise((resolve) => { slowStarted = resolve; });
   const cancelledSession = new C.MultiStateRouteSession({ catalogue,

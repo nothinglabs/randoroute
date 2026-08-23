@@ -3,6 +3,12 @@
   'use strict';
 
   const FONT_STACK = 'Klokantech Noto Sans Regular';
+  // The context archive's z6-z8 OSM polygons can decode into tens of
+  // thousands of features in one tile. MapLibre drops those oversized tiles
+  // as rectangular holes on constrained renderers. A tiny resident state
+  // polygon source carries ground and labels at regional zoom; detailed
+  // context takes over only once the same data is split across smaller tiles.
+  const CONTEXT_MIN_ZOOM = 9;
   const CONTEXT_URL = `pmtiles://${Region.dataUrl('basemap.pmtiles')}?v=5`;
   // Must be the SAME ?v as app.js's roads source: two spellings of one
   // archive are two browser-cache entries and two PMTiles instances, so a
@@ -134,7 +140,7 @@
     for (const layer of [...layers].reverse()) {
       if (layer.id.startsWith(prefix) && map.getLayer?.(layer.id)) map.removeLayer(layer.id);
     }
-    for (const dataset of ['roads', 'context']) {
+    for (const dataset of ['roads', 'context', 'overlays']) {
       const id = visibleSourceId(stateId, dataset);
       if (map.getSource?.(id)) map.removeSource(id);
     }
@@ -166,8 +172,10 @@
     for (const state of [...wanted.values()].sort((a, b) => a.id.localeCompare(b.id))) {
       const contextId = visibleSourceId(state.id, 'context');
       const roadsId = visibleSourceId(state.id, 'roads');
+      const overlaysId = visibleSourceId(state.id, 'overlays');
       const contextUrl = stateArchiveUrl(state, 'basemap.pmtiles', 5);
       const roadsUrl = stateArchiveUrl(state, 'roads.pmtiles', 24);
+      const overlaysUrl = stateArchiveUrl(state, 'overlays.pmtiles', 2);
       if (state.datasets.basemap && !map.getSource(contextId)) {
         registerArchive(contextUrl);
         map.addSource(contextId, { type: 'vector', url: contextUrl,
@@ -176,6 +184,11 @@
       if (state.datasets.roads && !map.getSource(roadsId)) {
         registerArchive(roadsUrl);
         map.addSource(roadsId, { type: 'vector', url: roadsUrl,
+          attribution: '© OpenStreetMap contributors' });
+      }
+      if (state.datasets.overlays && !map.getSource(overlaysId)) {
+        registerArchive(overlaysUrl);
+        map.addSource(overlaysId, { type: 'vector', url: overlaysUrl,
           attribution: '© OpenStreetMap contributors' });
       }
       const style = map.getStyle();
@@ -307,6 +320,10 @@
       version: 8,
       glyphs: glyphUrl(),
       sources: {
+        'basemap-state-ground': {
+          type: 'geojson', data: assetUrl('maps/national-states.geojson'),
+          attribution: 'U.S. Census Bureau 2025 Cartographic Boundary Files',
+        },
         'basemap-context': {
           type: 'vector',
           url: CONTEXT_URL,
@@ -320,6 +337,12 @@
       },
       layers: [
         { id: 'basemap-ocean', type: 'background', paint: { 'background-color': '#dcecf2' } },
+        { id: 'basemap-state-ground', type: 'fill', source: 'basemap-state-ground',
+          maxzoom: CONTEXT_MIN_ZOOM + 0.5,
+          paint: { 'fill-color': '#f4f3ee', 'fill-opacity': 1 } },
+        { id: 'basemap-state-outline', type: 'line', source: 'basemap-state-ground',
+          maxzoom: CONTEXT_MIN_ZOOM + 0.5,
+          paint: { 'line-color': '#cbd2d4', 'line-width': 0.8 } },
         // The background is ocean, so ANY area without a land polygon renders as
         // open water. That makes a missing tile look like the rider is at sea,
         // which is the single most alarming way this map can fail -- and on a
@@ -338,12 +361,13 @@
         // the coarse backdrop and shorelines stay correct wherever the water
         // tile is present.
         { id: 'basemap-land', type: 'fill', source: 'basemap-context',
-          'source-layer': 'land',
+          'source-layer': 'land', minzoom: CONTEXT_MIN_ZOOM,
           paint: { 'fill-color': '#f4f3ee' } },
         { id: 'basemap-land-detail', type: 'fill', source: 'basemap-context',
-          'source-layer': 'land_detail', minzoom: 8,
+          'source-layer': 'land_detail', minzoom: CONTEXT_MIN_ZOOM,
           paint: { 'fill-color': '#f4f3ee' } },
         { id: 'basemap-green', type: 'fill', source: 'basemap-context', 'source-layer': 'green',
+          minzoom: CONTEXT_MIN_ZOOM,
           paint: {
             'fill-color': ['match', ['get', 'k'],
               'wetland', '#dfeadf',
@@ -353,9 +377,10 @@
             'fill-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.72, 11, 0.88],
           } },
         { id: 'basemap-water', type: 'fill', source: 'basemap-context', 'source-layer': 'water',
+          minzoom: CONTEXT_MIN_ZOOM,
           paint: { 'fill-color': '#dcecf2', 'fill-outline-color': '#c5dce6' } },
         { id: 'basemap-waterways', type: 'line', source: 'basemap-context',
-          'source-layer': 'waterway', minzoom: 8,
+          'source-layer': 'waterway', minzoom: CONTEXT_MIN_ZOOM,
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
             'line-color': '#b9d8e4',
@@ -398,7 +423,7 @@
         roadLabel('basemap-local-labels', ROAD_MIN_ZOOM.local + 0.35,
           localRoads, [12, 11, 17, 14.5]),
         { id: 'basemap-place-labels', type: 'symbol', source: 'basemap-context',
-          'source-layer': 'places',
+          'source-layer': 'places', minzoom: CONTEXT_MIN_ZOOM,
           layout: {
             'text-field': ['get', 'n'],
             'text-font': [FONT_STACK],
@@ -415,6 +440,17 @@
             'text-halo-color': '#f8f8f4',
             'text-halo-width': 1.7,
             'text-halo-blur': 0.4,
+          } },
+        { id: 'basemap-state-labels', type: 'symbol', source: 'basemap-state-ground',
+          maxzoom: CONTEXT_MIN_ZOOM,
+          layout: {
+            'text-field': ['get', 'abbreviation'], 'text-font': [FONT_STACK],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 5, 10, 8, 13],
+            'text-allow-overlap': false, 'text-padding': 4,
+          },
+          paint: {
+            'text-color': '#718087', 'text-halo-color': '#f4f3ee',
+            'text-halo-width': 1,
           } },
       ],
     };

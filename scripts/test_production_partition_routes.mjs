@@ -145,6 +145,20 @@ check('the partitioned Oregon portfolio does not introduce a distance or safety 
   JSON.stringify({ full: compact(portlandFull.options[0]),
     partitioned: compact(portlandPartitioned.options[0]) }));
 
+// A short cross-border trip exercises the same portfolio path the app uses
+// whenever one endpoint is outside the selected home map, without turning the
+// production test into another long-distance comparison ride.
+const columbiaPortfolioPoints = [[-122.6765, 45.5231], [-122.671, 45.638]];
+const columbiaPortfolioRequest = portfolioRequest('columbia-portfolio',
+  columbiaPortfolioPoints, ['oregon', 'washington']);
+const columbiaPortfolio = (await partitionRoute(columbiaPortfolioRequest)).result;
+check('a cross-border partition trip retains multiple useful choices',
+  columbiaPortfolio.ok && columbiaPortfolio.options?.length >= 2
+    && columbiaPortfolio.options.every((option) =>
+      option.stateIds.includes('oregon') && option.stateIds.includes('washington')),
+  JSON.stringify({ reply: compact(columbiaPortfolio),
+    options: columbiaPortfolio.options?.map(compact) }));
+
 // Seattle to Port Townsend is the repository's durable ferry tripwire. A
 // direct route is sufficient here: the invariant is that partitioning does not
 // sever the boat crossing or replace it with freeway mileage.

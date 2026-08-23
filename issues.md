@@ -59,10 +59,13 @@ exact portals. Its largest partition is 60,481,818 raw bytes, below the
 Seattle–Portland, Seattle–Eugene, Astoria–Megler and The Dalles–Dallesport,
 retain the important Washington ferry and an Oregon full-graph portfolio,
 route a boundary waypoint, and expand beyond deliberately disconnected endpoint
-partitions. Version 1 presents one active-profile route for a cross-state trip;
-single-state trips retain their ordinary portfolio. Installed non-home map
-sources now attach only for the visible viewport, and the full iOS shell is
-bounded to two starter states rather than every future import.
+partitions. Installed partition trips retain the ordinary route portfolio;
+competitive frontier expansion stops at the graph-input ceiling rather than
+discarding a valid lineup. Installed non-home map sources attach only for the
+visible viewport and now include safety overlays. Regional zooms use the small
+resident state polygons instead of oversized context tiles, while detailed
+land and water take over at closer zooms. The full iOS shell is bounded to two
+starter states rather than every future import.
 
 Remaining gates:
 

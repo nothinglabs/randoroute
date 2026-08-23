@@ -23,40 +23,14 @@
 // during the investigation that led to this file.
 // Playwright is installed globally in this container, not under the project, so
 // resolving it is the harness's job rather than each test file's.
-import { playwright, chromiumPath } from './testlib/harness.mjs';
-const { chromium } = await playwright();
-import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
-import { extname, join, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { launchBrowser, serveRepo } from './testlib/harness.mjs';
+import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = mkdtempSync(join(tmpdir(), 'landbackdrop-'));
-const T = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.gz': 'application/gzip', '.png': 'image/png', '.pmtiles': 'application/octet-stream', '.bin': 'application/octet-stream', '.pbf': 'application/octet-stream' };
-const server = createServer(async (q, r) => {
-  try {
-    let p = decodeURIComponent(q.url.split('?')[0]); if (p === '/') p = '/index.html';
-    const full = join(ROOT, p); const st = await stat(full);
-    const ct = T[extname(p)] || 'application/octet-stream';
-    const range = q.headers.range;
-    if (range) {
-      const m = /^bytes=(\d+)-(\d*)$/.exec(range);
-      if (m) {
-        const a = +m[1], b = m[2] ? +m[2] : st.size - 1;
-        const buf = (await readFile(full)).subarray(a, b + 1);
-        r.writeHead(206, { 'content-type': ct, 'accept-ranges': 'bytes', 'content-range': `bytes ${a}-${b}/${st.size}`, 'content-length': buf.length });
-        return r.end(buf);
-      }
-    }
-    const d = await readFile(full);
-    r.writeHead(200, { 'content-type': ct, 'accept-ranges': 'bytes' }); r.end(d);
-  } catch { r.writeHead(404); r.end('x'); }
-});
-await new Promise((r) => server.listen(0, r));
-const port = server.address().port;
+const python = process.env.PYTHON || 'python3';
 
 // Ocean #dcecf2, land #f4f3ee.
 function analyse(file) {
@@ -72,20 +46,22 @@ for y in range(0, h, 3):
         if abs(r-244) < 8 and abs(g-243) < 8 and abs(b-238) < 8: land += 1
 print(ocean*100//tot, land*100//tot)
 `;
-  const res = spawnSync('python3', ['-c', py], { encoding: 'utf8' });
+  const res = spawnSync(python, ['-c', py], { encoding: 'utf8' });
   if (res.status !== 0) throw new Error('pixel analysis failed: ' + res.stderr);
   const [ocean, land] = res.stdout.trim().split(/\s+/).map(Number);
   return { ocean, land };
 }
 
-const browser = await chromium.launch({ executablePath: chromiumPath(), args: ['--use-gl=swiftshader'] });
+const site = await serveRepo();
+const browser = await launchBrowser();
 const pg = await (await browser.newContext({ serviceWorkers: 'block', viewport: { width: 500, height: 500 } })).newPage();
-await pg.goto(`http://localhost:${port}/index.html`, { waitUntil: 'load' });
-await pg.waitForFunction(() => window.map && map.isStyleLoaded(), { timeout: 60000 });
+await pg.goto(site.url, { waitUntil: 'load' });
+await pg.waitForFunction(() => window.map && map.getLayer?.('basemap-land'), { timeout: 60000 });
 // Georgetown: inland Seattle, real water present but most of the frame is land.
-await pg.evaluate(() => new Promise((r) => {
-  map.once('idle', r); map.jumpTo({ center: [-122.3130, 47.5150], zoom: 13 });
-}));
+await pg.evaluate(() => map.jumpTo({ center: [-122.3130, 47.5150], zoom: 13 }));
+await pg.waitForFunction(() => map.isSourceLoaded('basemap-context')
+  && map.queryRenderedFeatures({ layers: ['basemap-land'] }).length > 0,
+{ timeout: 60000 });
 await pg.waitForTimeout(1500);
 
 let pass = 0, fail = 0;
@@ -128,6 +104,8 @@ check('control: with no land layer at all, ocean does take over',
   bare.ocean > present.ocean + 8 && bare.land < 5,
   `ocean ${present.ocean}% -> ${bare.ocean}%, land ${bare.land}%`);
 
-await browser.close(); server.close();
+await browser.close();
+await site.close();
+rmSync(OUT, { recursive: true, force: true });
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

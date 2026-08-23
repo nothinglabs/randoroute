@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-23.798';
+const APP_VERSION = '2026-08-23.799';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1331,11 +1331,56 @@ if (COARSE_POINTER) map.doubleClickZoom.disable();
 // during wheel, touch, keyboard, and programmatic zooms without rebuilding
 // feature filters in JavaScript.
 map.on('moveend', saveStateSoon);
+const visibleStateSafetySignatures = new Map();
+
+function visibleStateSafetyLayers() {
+  const layers = map.getStyle?.()?.layers || [];
+  return layers.filter((layer) =>
+    (layer.source === 'basemap-roads'
+      && (layer.id === 'roads' || layer.id.startsWith('roads__')))
+    || (layer.source === 'overlays'
+      && (layer.id === 'osm' || layer.id.startsWith('osm__'))));
+}
+
+function syncVisibleStateSafetyLayers(stateIds, { force = false } = {}) {
+  if (!map.getStyle?.()) return;
+  const templates = visibleStateSafetyLayers();
+  if (!templates.length) return;
+  const templateSignature = JSON.stringify(templates);
+  const active = new Set(stateIds || []);
+  for (const stateId of [...visibleStateSafetySignatures.keys()]) {
+    if (!active.has(stateId)) visibleStateSafetySignatures.delete(stateId);
+  }
+  for (const stateId of active) {
+    const prefix = `state-${stateId}-safety-`;
+    const firstLayerId = `${prefix}${templates[0].id}`;
+    if (!force && visibleStateSafetySignatures.get(stateId) === templateSignature
+      && map.getLayer(firstLayerId)) continue;
+    for (const layer of [...(map.getStyle().layers || [])].reverse()) {
+      if (layer.id.startsWith(prefix) && map.getLayer(layer.id)) map.removeLayer(layer.id);
+    }
+    for (const template of templates) {
+      const source = template.source === 'basemap-roads'
+        ? `state-${stateId}-basemap-roads`
+        : `state-${stateId}-basemap-overlays`;
+      if (!map.getSource(source)) continue;
+      const layer = JSON.parse(JSON.stringify(template));
+      layer.id = `${prefix}${template.id}`;
+      layer.source = source;
+      // Keep labels and the active route above both states' safety colors by
+      // placing every clone immediately below its home-state counterpart.
+      map.addLayer(layer, map.getLayer(template.id) ? template.id : undefined);
+    }
+    visibleStateSafetySignatures.set(stateId, templateSignature);
+  }
+}
+
 function syncVisibleDetailedMapSources() {
   if (!Region.localDataAvailable || !map.getStyle?.()) return;
   const installed = Region.states.filter((state) =>
     !window.MapStore || MapStore.availability(state.id) !== 'remote');
   const visible = BikeBasemap.syncVisibleStateSources(map, installed, Region.id);
+  syncVisibleStateSafetyLayers(visible);
   document.body.dataset.visibleMapStateIds = [Region.id, ...visible].join(',');
 }
 map.on('moveend', syncVisibleDetailedMapSources);
@@ -2860,6 +2905,9 @@ function applyDisplayMode(src) {
 
 function applyDisplayModeAll() {
   for (const src of SOURCES) applyDisplayMode(src);
+  const visible = (document.body.dataset.visibleMapStateIds || '')
+    .split(',').filter((stateId) => stateId && stateId !== Region.id);
+  syncVisibleStateSafetyLayers(visible, { force: true });
 }
 
 async function jsonAssetResponse(response, url) {
@@ -4296,11 +4344,11 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
   saveStateSoon();
   const points = [routing.start, ...routing.vias.map((via) => via.pt), routing.end];
   const pointStateIds = orderedRoutePointStateIds();
-  // Version 1 returns one cross-state route under the rider's active profile.
-  // A full multi-profile portfolio can make independent searches reach several
-  // frontier cells at once and exceed the same hard input budget even when one
-  // useful route fits. Single-state planning keeps its ordinary portfolio.
-  const request = multiStateWorkerRequest('route', requestId, points);
+  // Installed partition maps use the same route portfolio as the home graph.
+  // The coordinator expands only competitive frontiers that fit the hard graph
+  // input ceiling, so a valid portfolio is retained instead of being replaced
+  // by an avoidable memory error at the edge of the loaded corridor.
+  const request = multiStateWorkerRequest('route-options', requestId, points);
   request.pointStateIds = pointStateIds;
   try {
     const runtime = await installedMultiStateRouteSession(pointStateIds);
@@ -16785,7 +16833,8 @@ onStyleReady(() => {
   if (!Region.localDataAvailable) return;
   // Visual toggles must not create holes in street-information popups. Load
   // every source once; updateVisibility() independently hides painted lines.
-  for (const src of SOURCES) loadSource(src);
+  Promise.all(SOURCES.map((src) => loadSource(src)))
+    .finally(syncVisibleDetailedMapSources);
   ensureTapHighlightLayers();
 });
 
