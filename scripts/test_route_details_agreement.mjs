@@ -116,6 +116,50 @@ const sweep = await page.evaluate(() => {
 check(`Route Details agrees with SafetyModel across ${sweep.checked} segment readings`,
   sweep.checked >= 10000 && sweep.disagreements.length === 0,
   JSON.stringify(sweep.disagreements));
+
+const jurisdictionSegments = [
+  { name: 'Border Road', stateId: 'washington', lenM: 100, mph: 45, sh: 8,
+    lanes: 2, lts: 4, facility: 0, flags: 0, official: 1, c0: 0, c1: 1 },
+  { name: 'Border Road', stateId: 'oregon', lenM: 100, mph: 45, sh: 8,
+    lanes: 2, lts: 4, facility: 0, flags: 0, official: 1, c0: 1, c1: 2 },
+];
+await page.evaluate(({ liveRules, segs }) => {
+  localStorage.setItem('wa-bike-route-details-1', JSON.stringify({
+    rules: liveRules,
+    routeStateIds: ['washington', 'oregon'],
+    summary: { distM: 200, timeS: 50, ascentM: 0, descentM: 0 },
+    segs,
+  }));
+}, { liveRules: rules, segs: jurisdictionSegments });
+await page.reload({ waitUntil: 'load' });
+const jurisdiction = await page.evaluate(() => {
+  document.querySelector('#concern-high-stress .concern-section-toggle')?.click();
+  const routeSteps = buildRouteSteps(details.segs);
+  return {
+    routeStepCount: routeSteps.length,
+    stepMeta: routeSteps.map((step) => step.meta),
+    states: document.getElementById('summary').textContent.replace(/\s+/g, ' ').trim(),
+    concerns: document.querySelector('#concern-high-stress .concern-section-body')?.textContent
+      .replace(/\s+/g, ' ').trim() || '',
+    routeNumbers: {
+      washington: stateHighwayName('SR 520', 'washington'),
+      oregon: stateHighwayName('OR 224', 'oregon'),
+      wrongState: stateHighwayName('OR 224', 'washington'),
+    },
+  };
+});
+check('same-named roads stay separate at a state boundary',
+  jurisdiction.routeStepCount === 2, JSON.stringify(jurisdiction));
+check('route details attribute speed and stress facts to each source state',
+  jurisdiction.stepMeta.some((meta) => meta.includes('WSDOT legal speed'))
+    && jurisdiction.stepMeta.some((meta) => meta.includes('ODOT legal speed'))
+    && /Washington · WSDOT rates it/.test(jurisdiction.concerns)
+    && /Oregon · ODOT rates it/.test(jurisdiction.concerns), JSON.stringify(jurisdiction));
+check('multi-state summary and route-number interpretation follow the segment jurisdiction',
+  /States Washington → Oregon/.test(jurisdiction.states)
+    && jurisdiction.routeNumbers.washington
+    && jurisdiction.routeNumbers.oregon
+    && !jurisdiction.routeNumbers.wrongState, JSON.stringify(jurisdiction));
 check('the rendered Route Details page has no JavaScript errors',
   errors.length === 0, errors.join(' | '));
 

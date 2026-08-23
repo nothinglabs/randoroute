@@ -56,6 +56,7 @@ try {
     loadedPartitionIds: composed.loadedPartitionIds,
     edgeStateIndexes: composed.edgeStateIndexes,
     edgePartitionIndexes: composed.edgePartitionIndexes,
+    partitionRanges: composed.partitionRanges,
     diagnostics: composed.diagnostics,
   });
   check('the production router accepts the composed graph', worker.ready);
@@ -71,6 +72,19 @@ try {
   check('a route crosses both internal portals and the exact state portal',
     forward.type === 'route' && forward.ok && forward.coords.length >= 5,
     JSON.stringify({ type: forward.type, ok: forward.ok, reason: forward.reason }));
+  check('route segments retain state, partition, and partition-local edge identity',
+    forward.segs.map((segment) => segment.stateId).join('|')
+      === 'state-a|state-a|state-b|state-b'
+      && forward.segs.every((segment) => segment.partitionId
+        && Number.isInteger(segment.localEdgeIndex) && segment.localEdgeIndex >= 0),
+    JSON.stringify(forward.segs.map(({ stateId, partitionId, localEdgeIndex }) =>
+      ({ stateId, partitionId, localEdgeIndex }))));
+  check('route jurisdiction aggregation splits at the exact state border',
+    forward.jurisdictions.length === 2
+      && forward.jurisdictions.map((entry) => entry.stateId).join('|') === 'state-a|state-b'
+      && forward.stateIds.join('|') === 'state-a|state-b'
+      && forward.partitionIds.length === 4,
+    JSON.stringify(forward.jurisdictions));
   const reverse = worker.post({ type: 'route', id: 2, start: [1.8, 0], end: [-2, 0],
     rules, mode: 'balanced', prefDesignated: false, prefResidential: false });
   check('the composed route still respects the source graph one-way edge',

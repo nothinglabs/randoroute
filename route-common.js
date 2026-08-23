@@ -47,6 +47,24 @@ const HIGHWAY_NAME = (() => {
     `${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s*route)?[-\\s]?\\s*\\d`);
   return new RegExp(`\\b(highway|state route|${refs.join('|')})`, 'i');
 })();
+const _stateHighwayPatterns = new Map();
+function routeStateConfig(stateId) {
+  if (typeof Region === 'undefined') return null;
+  if (!stateId || stateId === Region.id) return Region;
+  return (Region.states || []).find((state) => state.id === stateId) || null;
+}
+function stateHighwayName(name, stateId = null) {
+  const state = routeStateConfig(stateId);
+  if (!state || state.id === Region.id) return HIGHWAY_NAME.test(name || '');
+  if (!_stateHighwayPatterns.has(state.id)) {
+    const prefixes = state.stateRoutePrefixes || ['SR', 'US', 'I'];
+    const refs = prefixes.map((prefix) =>
+      `${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s*route)?[-\\s]?\\s*\\d`);
+    _stateHighwayPatterns.set(state.id,
+      new RegExp(`\\b(highway|state route|${refs.join('|')})`, 'i'));
+  }
+  return _stateHighwayPatterns.get(state.id).test(name || '');
+}
 const SIGNIFICANT_UNPAVED_M = 1609.344;
 // Above this sustained grade the route card and the details page both raise
 // the steep-grade warning. It was a bare `> 18` in four places.
@@ -229,7 +247,8 @@ function googleStreetViewUrl(lat, lng, heading = null) {
     FLAG_LIMITED_ACCESS, OFFICIAL_MTB, OFFICIAL_DISMOUNT, OFFICIAL_SIDEWALK,
     OFFICIAL_SIDEWALK_NO, OFFICIAL_URBAN, OFFICIAL_DISMOUNT_TAG,
     PROHIBITED_SHOULDER, SURFACE_LABEL, ROUTE_CATEGORY_KEYS,
-    ROUTE_CATEGORY_LABELS, HIGHWAY_NAME, SIGNIFICANT_UNPAVED_M,
+    ROUTE_CATEGORY_LABELS, HIGHWAY_NAME, routeStateConfig, stateHighwayName,
+    SIGNIFICANT_UNPAVED_M,
     STEEP_GRADE_WARNING_PCT, ROUTE_DETAILS_KEY, MIN_REPORTED_GRADE_M,
     MAX_CREDIBLE_GRADE_PCT, SUSTAINED_GRADE_WINDOW_M,
     isConfirmedUnpavedSurface, isDismountSegment, isTaggedDismountSegment,

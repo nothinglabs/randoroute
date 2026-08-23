@@ -370,7 +370,9 @@
       }
       output.nameBytes.set(graph.nameBytes, nameByteBase);
       partitionRanges.push({ partitionId: partition.id, stateId: partition.stateId,
-        edgeStart: edgeBase, edgeCount: graph.E, rawBytes: partition.rawBytes });
+        edgeStart: edgeBase, edgeCount: graph.E, rawBytes: partition.rawBytes,
+        sourceGraphVersion: partition.sourceGraphVersion,
+        partitionSha256: partition.sha256 });
       edgeBase += graph.E; geomBase += graph.G; nameBase += graph.U; nameByteBase += graph.B;
       // No parsed graph or raw partition is retained past this iteration.
       input.onProgress?.({ phase: 'partition', partitionId: partition.id,

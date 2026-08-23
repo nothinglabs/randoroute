@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.786';
+const APP_VERSION = '2026-08-22.787';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3803,7 +3803,8 @@ async function ensureRouter() {
     } catch { routing.loadedGraphVersion = null; }
     syncGraphVersionLine();
     showRouterProgress('Starting the on-device route engine…');
-    routing.worker.postMessage({ type: 'graph', buffer: buf }, [buf]);
+    routing.worker.postMessage({ type: 'graph', buffer: buf,
+      stateIds: [Region.id] }, [buf]);
   } catch (e) {
     handleRouterFailure(`routing data could not load: ${e.message}`);
   }
@@ -3851,6 +3852,9 @@ function routeSegProps(s, routeIndex) {
   const flags = s.flags || 0;
   return {
     name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
+    stateId: s.stateId || Region.id,
+    partitionId: s.partitionId || null,
+    localEdgeIndex: Number.isInteger(s.localEdgeIndex) ? s.localEdgeIndex : null,
     shBack: Number.isFinite(Number(s.shBack)) ? Number(s.shBack) : null,
     e: flags & 1 ? 1 : 0, fac: flags & 2 ? 1 : 0, fw: flags & 4 ? 1 : 0,
     lim: flags & 128 ? 1 : 0,
@@ -3920,7 +3924,7 @@ function routeSegmentCautionCause(s) {
 
 function isHighwaySegment(s) {
   const flags = s.flags || 0;
-  return !(flags & (4 | 8 | 32)) && (s.mph >= 45 || HIGHWAY_NAME.test(s.name || ''));
+  return !(flags & (4 | 8 | 32)) && (s.mph >= 45 || stateHighwayName(s.name, s.stateId));
 }
 
 function routeSegmentDisplayCategory(s) {
@@ -4117,6 +4121,19 @@ function routeDetailsOptionTabs(selected) {
   }).filter(Boolean);
 }
 
+function routeDependencyMetadata(route) {
+  if (route?.routeDependencies) return route.routeDependencies;
+  const stateIds = Array.isArray(route?.stateIds) && route.stateIds.length
+    ? route.stateIds : [Region.id];
+  return {
+    states: stateIds.map((stateId) => {
+      const state = routeStateConfig(stateId) || Region;
+      return { stateId, graphVersion: state?.versions?.graph || null };
+    }),
+    partitions: [],
+  };
+}
+
 let _storeDetailsTimer = null;
 let _storeDetailsOption = null;
 function scheduleStoreRouteDetails(option) {
@@ -4142,6 +4159,7 @@ function storeRouteDetails(m) {
       .map((instruction) => ({
         segmentIndex: instruction.segmentIndex,
         text: instruction.text,
+        stateId: instruction.stateId || null,
       }));
     // Route Details needs a real on-road point for its Google Maps and Street
     // View actions, but not the complete (potentially large) route geometry.
@@ -4158,6 +4176,9 @@ function storeRouteDetails(m) {
       routeCoordIndices: routePreview?.indices || null,
       directions,
       routeOptions: routeDetailsOptionTabs(m),
+      routeStateIds: Array.isArray(m.stateIds) ? [...m.stateIds] : [],
+      jurisdictions: Array.isArray(m.jurisdictions) ? m.jurisdictions : [],
+      routeDependencies: routeDependencyMetadata(m),
       snapStartM: Number(m.snapStartM) || 0,
       snapEndM: Number(m.snapEndM) || 0,
       legs: (m.legs || []).map((l) => ({
@@ -4180,6 +4201,9 @@ function storeRouteDetails(m) {
       // router produced.
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
+        stateId: s.stateId || Region.id,
+        partitionId: s.partitionId || null,
+        localEdgeIndex: Number.isInteger(s.localEdgeIndex) ? s.localEdgeIndex : null,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
         dismount: isDismountSegment(s), dismountEscalated: !!s.dismountEscalated,
         surface: Number.isInteger(s.surface) ? s.surface : 0,
@@ -4600,6 +4624,7 @@ function buildTurnInstructions(m) {
       distanceM: entryM,
       coordIndex: run.entryIndex,
       segmentIndex: exit?.index ?? run.last + 1,
+      stateId: exitSeg?.stateId || null,
       text: navCircleText(delta, road, undefined),
       heading: compassWord(along),
     });
@@ -4608,6 +4633,7 @@ function buildTurnInstructions(m) {
     if (seg.hazard) {
       const at = Math.max(0, seg.hazC0 ?? seg.c0);
       instructions.push({ distanceM: cumulative[at] || 0, coordIndex: at,
+        stateId: seg.stateId || null,
         text: 'Caution: possible limited-visibility uphill curve ahead' });
     }
   }
@@ -4820,6 +4846,7 @@ function buildTurnInstructions(m) {
       distanceM,
       coordIndex: at,
       segmentIndex: destination?.index ?? i + 1,
+      stateId: destination?.seg?.stateId || next.stateId || null,
       text,
       // Report the heading of the road being named, not the bearing through the
       // junction itself. Where the two differ the junction reading is the one
@@ -10916,6 +10943,7 @@ function buildSavedRoutes() {
     const input = document.getElementById('savedRouteName');
     const name = input.value.trim() || `Route ${new Date().toLocaleDateString()}`;
     const list = loadSavedRoutes();
+    const routed = routing.last?.ok ? routing.last : null;
     list.unshift({ name: name.slice(0, 60), s: routing.start, e: routing.end,
       sn: routing.startName, en: routing.endName,
       v: routing.vias.map((x) => x.pt), vn: routing.vias.map((x) => x.name),
@@ -10924,6 +10952,8 @@ function buildSavedRoutes() {
       mode: routing.mode, profileId: routing.profileId,
       prefDesig: routing.prefDesig,
       prefResidential: routing.prefResidential, rules: { ...rules },
+      routeStateIds: routed?.stateIds ? [...routed.stateIds] : [Region.id],
+      routeDependencies: routeDependencyMetadata(routed),
       ts: Date.now() });
     const stored = storeSavedRoutes(list.slice(0, 30));
     if (stored) input.value = '';
@@ -13405,10 +13435,12 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
   ];
   let title, rows;
   if (src.id === 'routeseg') {
+    const segmentRegion = routeStateConfig(p.stateId) || Region;
     title = 'Your route — segment';
     if (p.ferry === 1) {
       rows = [
         ['Name', p.name || 'Ferry crossing'],
+        ['State', segmentRegion.name],
         ['Result', '⛴ Ferry'],
         ['Why', 'Crossing by ferry — road rules don’t apply on the boat.'],
         ['Speed', p.mph ? `~${p.mph} mph crossing` : null],
@@ -13423,17 +13455,18 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
       ] : common;
       rows = [
         ['Name', p.name || '(unnamed road)'],
+        ['State', segmentRegion.name],
         ['Access', p.dismount === 1 ? 'Dismount required — walk your bike.' : null],
         ...routeVerdict,
         ['Traffic conflict', facilityGap && lvl === 4
           ? 'Protected bike space briefly ends in a one-way shared-traffic lane here.' : null],
         ['Speed limit', p.mph != null && !p.infra ? `${p.mph} mph${p.e ? ' (estimated from class)' : ''}` : null],
-        ['Speed source', p.official & 1 ? `${Region.speedAgency} legal speed` : null],
+        ['Speed source', p.official & 1 ? `${segmentRegion.speedAgency} legal speed` : null],
         ['Shoulder', p.sh >= 0 ? `${p.sh} ft${p.shBack != null && p.shBack >= 0
           && p.shBack !== p.sh
           ? ` your direction (${p.shBack} ft the other way)` : ''}` : null],
         ['Lanes', p.lanes ? `${p.lanes}${p.ctl ? ', incl. centre turn lane' : ''}` : null],
-        ['Traffic stress', p.lts ? `${STRESS_AGENCY} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
+        ['Traffic stress', p.lts ? `${segmentRegion.stressAgency} rates it ${p.lts} of 4 (Level of Traffic Stress)` : null],
         // One builder, so the route card and the tap card cannot describe the
         // same road with different numbers.
         ...measurementRows(n.measures),
@@ -13443,7 +13476,7 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
         ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
         ['Bike facility', FACILITY_NAME[p.facility] || null],
-        ['Facility source', p.official & 2 ? Region.facilitySourceName : null],
+        ['Facility source', p.official & 2 ? segmentRegion.facilitySourceName : null],
         ['Surface (OSM)', routeSurfaceLabel(p.surface)],
         ['Route choice', routeClassNote(p)],
         ['Type', p.infra ? 'Dedicated bike infrastructure' : (p.fw || p.lim) ? 'Limited-access highway' : null],

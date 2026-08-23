@@ -283,7 +283,8 @@ function sustainedUphillGradeConcerns(segs, thresholdPct = STEEP_UPHILL_CONCERN_
     if (!start || !end) continue;
     const name = roadName(end);
     const previous = concerns[concerns.length - 1];
-    if (previous && previous.name === name && sample.startIndex <= previous.endIndex + 1) {
+    if (previous && previous.name === name && previous.stateId === (end.stateId || null)
+        && sample.startIndex <= previous.endIndex + 1) {
       previous.endIndex = sample.endIndex;
       previous.coordEnd = end.c1;
       previous.locationEnd = end.locationEnd;
@@ -294,6 +295,7 @@ function sustainedUphillGradeConcerns(segs, thresholdPct = STEEP_UPHILL_CONCERN_
     }
     concerns.push({
       name,
+      stateId: end.stateId || null,
       meta: `${sample.gradePct.toFixed(1)}% sustained uphill`,
       lenM: sample.lenM,
       startIndex: sample.startIndex,
@@ -308,15 +310,18 @@ function sustainedUphillGradeConcerns(segs, thresholdPct = STEEP_UPHILL_CONCERN_
   return concerns;
 }
 function roadName(seg) { return seg.name || 'Unnamed road'; }
+function segmentState(seg) { return routeStateConfig(seg?.stateId) || window.Region || null; }
 function isHighway(seg) {
   const f = seg.flags || 0;
   return !(f & (FLAG_FREEWAY | FLAG_LIMITED_ACCESS | FLAG_INFRA | FLAG_FERRY))
-    && (seg.mph >= 45 || HIGHWAY_NAME.test(seg.name || ''));
+    && (seg.mph >= 45 || stateHighwayName(seg.name, seg.stateId));
 }
 function failReason(seg, rules) {
   const facts = routeSegmentFacts(seg);
   const verdict = window.SafetyModel.evaluate(facts, rules);
-  if (verdict.rule === 'prohibited') return 'Bicycles are prohibited';
+  if (verdict.rule === 'prohibited') {
+    return `${segmentState(seg)?.restrictionAgency || 'Official data / OSM'}: bicycles are prohibited`;
+  }
   if (verdict.rule === 'freeway') return 'Limited-access freeway — last resort only';
   if (verdict.rule === 'speed-cap') return `Above your ${rules.upperMaxSpeed} mph maximum`;
   if (verdict.rule === 'needs-space') {
@@ -360,7 +365,8 @@ function sections(segs, include, describe) {
     const seg = segs[i];
     if (!include(seg)) { previousIndex = -2; continue; }
     const info = describe(seg);
-    const key = `${info.name}\u0000${info.meta}\u0000${JSON.stringify(info.metaFacts || [])}`;
+    const stateId = info.stateId || seg.stateId || null;
+    const key = `${stateId || ''}\u0000${info.name}\u0000${info.meta}\u0000${JSON.stringify(info.metaFacts || [])}`;
     const last = out[out.length - 1];
     const itemLenM = Number(info.lenM ?? seg.lenM) || 0;
     const locationStart = info.locationStart ?? seg.locationStart;
@@ -370,7 +376,7 @@ function sections(segs, include, describe) {
       last.endIndex = i;
       if (info.coordEnd != null) last.coordEnd = info.coordEnd;
       if (locationEnd != null) last.locationEnd = locationEnd;
-    } else out.push({ key, name: info.name, meta: info.meta, lenM: itemLenM,
+    } else out.push({ key, stateId, name: info.name, meta: info.meta, lenM: itemLenM,
       startIndex: i, endIndex: i, coordStart: info.coordStart, coordEnd: info.coordEnd,
       locationStart, locationEnd,
       surface: info.surface ?? seg.surface ?? 0,
@@ -393,7 +399,7 @@ function consolidateConcernItems(items) {
   for (const source of items || []) {
     const normalizedName = String(source.name || '').trim().toLocaleLowerCase();
     const canCombine = normalizedName && normalizedName !== 'unnamed road';
-    const key = canCombine ? normalizedName : null;
+    const key = canCombine ? `${source.stateId || ''}\u0000${normalizedName}` : null;
     const existing = key ? byName.get(key) : null;
     if (!existing) {
       const item = { ...source, lenM: Number(source.lenM) || 0, occurrenceCount: 1 };
@@ -459,11 +465,14 @@ function populateSectionBody(body, items, emptyText, cls, numbered, note) {
     line.append(name, distance);
     const meta = document.createElement('div');
     meta.className = 'meta';
+    const itemState = routeStateConfig(item.stateId);
+    const statePrefix = details?.routeStateIds?.length > 1 && itemState?.name
+      ? `${itemState.name} · ` : '';
     if (item.metaFacts?.length) {
       meta.classList.add('meta-structured');
       const reason = document.createElement('span');
       reason.className = 'meta-reason';
-      reason.textContent = item.meta;
+      reason.textContent = `${statePrefix}${item.meta}`;
       const facts = document.createElement('span');
       facts.className = 'meta-facts';
       for (const factText of item.metaFacts) {
@@ -473,7 +482,7 @@ function populateSectionBody(body, items, emptyText, cls, numbered, note) {
       }
       meta.append(reason, facts);
     } else {
-      meta.textContent = item.meta;
+      meta.textContent = `${statePrefix}${item.meta}`;
     }
     content.append(line, meta);
     if (content !== li) li.appendChild(content);
@@ -618,6 +627,7 @@ function buildRouteSteps(segs, directions = []) {
     const name = roadName(seg);
     const last = out[out.length - 1];
     if (last && last.endIndex === index - 1 && last.name === name
+        && last.stateId === (seg.stateId || null)
         && !directionBySegment.has(index)) {
       last.lenM += seg.lenM;
       last.endIndex = index;
@@ -637,6 +647,7 @@ function buildRouteSteps(segs, directions = []) {
     } else {
       out.push({
         name,
+        stateId: seg.stateId || null,
         instruction: directionBySegment.get(index) || '',
         startIndex: index,
         endIndex: index,
@@ -669,7 +680,8 @@ function buildRouteSteps(segs, directions = []) {
     const next = out[i + 1];
     const severe = bridge.flags & (FLAG_FREEWAY | FLAG_LIMITED_ACCESS | FLAG_INFRA);
     if (bridge.name === 'Unnamed road' && bridge.lenM <= 100 && !severe
-        && previous.name === next.name) {
+        && previous.name === next.name && previous.stateId === bridge.stateId
+        && bridge.stateId === next.stateId) {
       previous.lenM += bridge.lenM + next.lenM;
       previous.flags |= bridge.flags | next.flags;
       previous.endIndex = next.endIndex;
@@ -717,8 +729,10 @@ function stepMeta(step) {
   else if (flags & FLAG_INFRA) bits.push('bike infrastructure');
   else if (flags & FLAG_DESIGNATED) bits.push('bike route');
   else if (flags & FLAG_FACILITY) bits.push('bike facility');
-  if (step.official & 1) bits.push('WSDOT legal speed');
-  else if (HIGHWAY_NAME.test(step.name) || step.mph >= 45) bits.push('highway');
+  const state = segmentState(step);
+  if ((step.official & 2) && state?.facilitySourceName) bits.push(state.facilitySourceName);
+  if (step.official & 1) bits.push(`${state?.speedAgency || 'Transportation agency'} legal speed`);
+  else if (stateHighwayName(step.name, step.stateId) || step.mph >= 45) bits.push('highway');
   if (step.failM > 0) bits.push(`includes ${fmtDist(step.failM)} that fails rules`);
   else if (flags & FLAG_LIMITED_ACCESS) bits.push('caution');
   return bits.join(' · ') || 'follow this road';
@@ -1300,6 +1314,8 @@ if (!hasRoute) {
   document.getElementById('routeQuickSummary').hidden = false;
   summaryCard.hidden = false;
   const tripNotes = [
+    details.routeStateIds?.length > 1
+      ? `<span class="route-summary-trip-note"><b>States</b> ${details.routeStateIds.map((stateId) => routeStateConfig(stateId)?.name || stateId).join(' → ')}</span>` : '',
     routeStats.ferryM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⛴︎</span><b>Ferry</b> ${fmtMi(routeStats.ferryM)} mi</span>` : '',
     routeStats.dismountM > 0 ? `<span class="route-summary-trip-note"><span aria-hidden="true">⚠︎</span><b>Dismount</b> ${fmtMi(routeStats.dismountM)} mi</span>` : '',
   ].filter(Boolean).join('');
@@ -1408,7 +1424,8 @@ if (!hasRoute) {
   const highStress = consolidateConcernItems(sections(segs,
     (s) => cautionConcernKind(s, rules) === 'high-stress', (s) => ({
       name: roadName(s),
-      meta: `${window.Region?.stressAgency || 'Transportation agency'} rates it ${Number(s.lts) || 4} of 4 for traffic stress`,
+      stateId: s.stateId || null,
+      meta: `${segmentState(s)?.stressAgency || 'Transportation agency'} rates it ${Number(s.lts) || 4} of 4 for traffic stress`,
       riskScore: Number(s.lts) || 4,
     })));
   const otherCautions = consolidateConcernItems(sections(segs,

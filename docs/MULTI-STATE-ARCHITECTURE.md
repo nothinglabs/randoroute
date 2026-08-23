@@ -1,11 +1,10 @@
 # Multi-state routing architecture
 
-Status: the generic contract, synthetic state-chain tests, deterministic
-partition builder, versioned catalogue, exact-portal publication validator and
-incremental composite worker are implemented on `codex/multistate-routing`.
-Existing single-state routing remains the production compatibility path until
-page integration, acquisition and cross-border tests described here are
-complete.
+Status: the generic contract, deterministic partition build, incremental
+composite runtime, state-chain controller and end-to-end jurisdiction path are
+implemented on `codex/multistate-routing`, with executable synthetic and browser
+gates. Existing single-state routing remains the production compatibility path
+until acquisition and cross-border tests described here are complete.
 
 ## Product boundary
 
@@ -201,6 +200,14 @@ resolve to `(partitionId, localEdgeIndex, stateId)` and route results retain
 that identity through geometry and segment aggregation. UI adapters resolve
 agencies, route-number interpretation and facility vocabulary from the edge's
 state configuration, never from the home state.
+
+The routing worker emits ordered `jurisdictions`, distinct `stateIds` and
+`partitionIds`, and carries all three edge identity fields on each segment.
+The main map, Route Details, saved-route records and navigation instructions
+preserve those fields. Route cards select stress, speed, restriction and
+facility attribution from the segment state; same-named roads are not merged
+across a border. Each route also records the exact source graph and partition
+hash dependencies needed to decide later whether it can be restored offline.
 
 The identity must survive:
 

@@ -50,6 +50,7 @@ let inGiant;
 // the historical one-state behavior.
 let eStateIndex = null, ePartitionIndex = null;
 let graphStateIds = [], loadedPartitionIds = [];
+let graphPartitionRanges = [];
 let loadedGraphInputBytes = 0, partitionGraphDiagnostics = null;
 let allowDisconnectedSnaps = false;
 // Nodes where the loaded composite reaches a validated portal into detail that
@@ -152,6 +153,40 @@ const SURFACE_ROUGH = 3;
 function edgeName(i) {
   const id = eName[i];
   return _dec.decode(nameBytes.subarray(nameOff[id], nameOff[id + 1]));
+}
+
+function edgeJurisdiction(i) {
+  const stateIndex = eStateIndex ? eStateIndex[i] : 0;
+  const partitionIndex = ePartitionIndex ? ePartitionIndex[i] : -1;
+  const range = partitionIndex >= 0 ? graphPartitionRanges[partitionIndex] : null;
+  return {
+    stateId: graphStateIds[stateIndex] || null,
+    partitionId: partitionIndex >= 0 ? (loadedPartitionIds[partitionIndex] || null) : null,
+    localEdgeIndex: range && i >= range.edgeStart ? i - range.edgeStart : i,
+  };
+}
+
+function routeJurisdictionFields(segs) {
+  const jurisdictions = [];
+  const stateIds = [], partitionIds = [];
+  for (let index = 0; index < segs.length; index++) {
+    const seg = segs[index];
+    if (seg.stateId && !stateIds.includes(seg.stateId)) stateIds.push(seg.stateId);
+    if (seg.partitionId && !partitionIds.includes(seg.partitionId)) partitionIds.push(seg.partitionId);
+    let run = jurisdictions[jurisdictions.length - 1];
+    if (!run || run.stateId !== seg.stateId) {
+      run = { stateId: seg.stateId || null, edgeStart: index, edgeEnd: index,
+        coordStart: seg.c0, coordEnd: seg.c1, distM: 0, partitionIds: [] };
+      jurisdictions.push(run);
+    }
+    run.edgeEnd = index;
+    run.coordEnd = seg.c1;
+    run.distM += Number(seg.lenM) || 0;
+    if (seg.partitionId && !run.partitionIds.includes(seg.partitionId)) {
+      run.partitionIds.push(seg.partitionId);
+    }
+  }
+  return { jurisdictions, stateIds, partitionIds };
 }
 
 function bearingDeg(fromLon, fromLat, toLon, toLat) {
@@ -2583,6 +2618,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       hazardM += hazardLenM;
     }
     segs.push({ c0, c1: coords.length - 1, name: edgeName(ei),
+      ...edgeJurisdiction(ei),
       mph: edgeSpeed(ei, forward), sh: edgeShoulder(ei, forward),
       // The other direction's shoulder, so a card can say "(your direction)"
       // when the two sides differ instead of silently contradicting the road
@@ -2667,7 +2703,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
     desigM, residentialM, freewayM, limitedAccessM, facilityM, trailM,
     mtbM, dismountM, hazardM,
-    levelM, edgeIds, nodeIds, segs, ...gradeStats,
+    levelM, edgeIds, nodeIds, segs, ...routeJurisdictionFields(segs), ...gradeStats,
     profile, snapStartM: s.distM, snapEndM: t.distM, ms: Date.now() - t0,
   };
 }
@@ -2752,7 +2788,7 @@ function route(points, rules, mode, prefDesig, prefResidential, snaps,
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
     desigM, residentialM, freewayM, limitedAccessM, facilityM, trailM,
     mtbM, dismountM, hazardM,
-    levelM, edgeIds, nodeIds, segs, ...gradeStats,
+    levelM, edgeIds, nodeIds, segs, ...routeJurisdictionFields(segs), ...gradeStats,
     legs: legSummaries,
     profile: prof, snapStartM: legs[0].snapStartM, snapEndM: legs[legs.length - 1].snapEndM,
     ms: Date.now() - t0,
@@ -2841,7 +2877,8 @@ function routeFragment(source, startEdge, endEdge, rules) {
     ferrySegs: ferryRanges.map(([a, b]) => coords.slice(a, b + 1)),
     desigM, residentialM, freewayM, limitedAccessM, facilityM, trailM,
     mtbM, dismountM, hazardM,
-    levelM, edgeIds: sourceEdgeIds, nodeIds, segs, profile, ...gradeStats,
+    levelM, edgeIds: sourceEdgeIds, nodeIds, segs, profile,
+    ...routeJurisdictionFields(segs), ...gradeStats,
     snapStartM: 0, snapEndM: 0, ms: 0,
   };
 }
@@ -2906,7 +2943,8 @@ function mergeRouteParts(parts, snapStartM, snapEndM) {
     ok: true, coords, distM, timeS, ascentM, descentM, failM, ferryM, ferrySegs,
     desigM, residentialM, freewayM, limitedAccessM, facilityM, trailM,
     mtbM, dismountM, hazardM,
-    levelM, edgeIds, nodeIds, segs, profile: prof, snapStartM, snapEndM, ...gradeStats,
+    levelM, edgeIds, nodeIds, segs, profile: prof, snapStartM, snapEndM,
+    ...routeJurisdictionFields(segs), ...gradeStats,
     ms: Date.now() - started,
   };
   merged.legs = [routeSummary(merged)];
@@ -3308,6 +3346,8 @@ function candidateSummary(candidate) {
       : (Number.isFinite(profile.preferredRouteMultiplier)
         ? profile.preferredRouteMultiplier : null),
     shape: candidateShape(candidate),
+    stateIds: candidate.stateIds || [],
+    partitionIds: candidate.partitionIds || [],
   };
 }
 
@@ -5214,6 +5254,8 @@ function receiveGraph(buffer, metadata = {}) {
   requestFrontierHits = new Map();
   graphStateIds = Array.isArray(metadata.stateIds) ? [...metadata.stateIds] : [];
   loadedPartitionIds = Array.isArray(metadata.loadedPartitionIds) ? [...metadata.loadedPartitionIds] : [];
+  graphPartitionRanges = Array.isArray(metadata.partitionRanges)
+    ? metadata.partitionRanges.map((range) => ({ ...range })) : [];
   partitionGraphDiagnostics = metadata.diagnostics || null;
   const sidecar = (value, count) => {
     if (value instanceof Uint16Array && value.length === count) return value;

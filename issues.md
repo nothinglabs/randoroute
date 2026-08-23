@@ -116,8 +116,11 @@ eviction, budget enforcement and typed-array memory diagnostics pass their
 synthetic executable gate. Generic ordered-point state planning, missing-transit
 continuation, bounded coarse corridors, worker bridging, repeated real-frontier
 retry and endpoint-generation cancellation pass their synthetic executable
-gate. Remaining gates are feeding installed catalogue acquisitions into that
-controller, per-edge state attribution through results and UI, store/offline
-dependencies, national discovery and first-run, search continuation,
+gate. Per-edge partition/state/local-edge identity now survives real route
+results, map and details cards, agency and route-number interpretation,
+state-border aggregation, navigation metadata, diagnostics and saved-route
+dependency manifests; synthetic worker and browser gates cover the path.
+Remaining gates are feeding installed catalogue acquisitions into that
+controller, store/offline dependencies, national discovery and first-run, search continuation,
 Washington/Oregon crossing comparisons, preview, full suite, and the owner's
 physical-iPhone verdict.

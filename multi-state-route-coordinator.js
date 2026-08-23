@@ -242,6 +242,33 @@
     });
   }
 
+  function routeDependencies(catalogue, routeStateIds, partitionIds) {
+    const states = new Map(catalogue.states.map((state) => [state.id, state]));
+    const partitions = new Map(catalogue.partitions.map((partition) => [partition.id, partition]));
+    const usedPartitions = unique(partitionIds || []).filter((id) => partitions.has(id));
+    return Object.freeze({
+      partitionCatalogueFormat: catalogue.partitionCatalogueFormat,
+      graphFormat: catalogue.graphFormat,
+      build: Object.freeze({
+        builder: catalogue.build.builder,
+        builderVersion: catalogue.build.builderVersion,
+        algorithm: catalogue.build.algorithm,
+        sourceDateEpoch: catalogue.build.sourceDateEpoch,
+      }),
+      states: Object.freeze(routeStateIds.map((id) => {
+        const state = states.get(id);
+        return Object.freeze({ stateId: id, graphVersion: state.graphVersion,
+          sourceSha256: state.sourceSha256 });
+      })),
+      partitions: Object.freeze(usedPartitions.sort((a, b) => a.localeCompare(b)).map((id) => {
+        const partition = partitions.get(id);
+        return Object.freeze({ partitionId: id, stateId: partition.stateId,
+          sourceGraphVersion: partition.sourceGraphVersion,
+          sha256: partition.sha256 });
+      })),
+    });
+  }
+
   class MultiStateRouteSession {
     constructor(options = {}) {
       contract.validatePartitionCatalogue(options.catalogue);
@@ -346,6 +373,8 @@
           const final = { ...result, routeStateIds: [...plan.routeStateIds],
             pointStateIds: [...pointStateIds],
             loadedPartitionIds: [...composite.loadedPartitionIds],
+            routeDependencies: routeDependencies(this.catalogue, plan.routeStateIds,
+              result.partitionIds || []),
             routingDiagnostics: { generation, attempts,
               partitionInput: composite.diagnostics || null } };
           this.lastDiagnostics = final.routingDiagnostics;
@@ -442,6 +471,7 @@
           edgeStateIndexes: graph.edgeStateIndexes,
           edgePartitionIndexes: graph.edgePartitionIndexes,
           stateIds: graph.stateIds, loadedPartitionIds: graph.loadedPartitionIds,
+          partitionRanges: graph.partitionRanges,
           diagnostics: graph.diagnostics },
         [graph.buffer, graph.edgeStateIndexes.buffer, graph.edgePartitionIndexes.buffer]),
         (message) => ['ready', 'error'].includes(message.type), this.onProgress, request.signal);
@@ -467,12 +497,7 @@
     }
 
     retainActiveRoute({ result, composite }) {
-      const used = new Set();
-      for (const edge of result.edgeIds || []) {
-        const range = (composite.partitionRanges || []).find((entry) =>
-          edge >= entry.edgeStart && edge < entry.edgeStart + entry.edgeCount);
-        if (range) used.add(range.partitionId);
-      }
+      const used = new Set(result.partitionIds || []);
       if (used.size && this.loader) this.loader.postMessage({ type: 'active-route',
         id: `active-route-${++this.sequence}`, partitionIds: [...used] });
     }
@@ -491,6 +516,7 @@
     stateAdjacencyFromCatalogue,
     planRoutePointStates,
     selectInitialPartitionCorridor,
+    routeDependencies,
     MultiStateRouteSession,
     BrowserPartitionRouteBridge,
   });

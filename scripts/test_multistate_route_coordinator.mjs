@@ -117,6 +117,7 @@ try {
     const ok = isConnected(composite.loadedPartitionIds);
     return { type: request.type, id: request.id, ok,
       reason: ok ? '' : 'The loaded corridor is not connected yet.',
+      partitionIds: ok ? [...composite.loadedPartitionIds] : [],
       frontierHits: ok ? [] : composite.frontiers.map((frontier, index) =>
         ({ node: frontier.node, lowerBound: 100 + index, exits: [frontier] })) };
   };
@@ -139,6 +140,12 @@ try {
       ['state-a', 'state-b', 'state-c'].includes(partitionById.get(id).stateId))
       && loads.some((ids, index) => index && ids.length > loads[index - 1].length),
     JSON.stringify(loads));
+  check('a stable result records every state and used partition version as saved-route dependencies',
+    resumed.routeDependencies.states.map((entry) => entry.stateId).join('|')
+      === 'state-a|state-b|state-c'
+      && resumed.routeDependencies.states.every((entry) => entry.graphVersion && entry.sourceSha256)
+      && resumed.routeDependencies.partitions.length === resumed.partitionIds.length,
+    JSON.stringify(resumed.routeDependencies));
 
   let slowStarted;
   const slowReady = new Promise((resolve) => { slowStarted = resolve; });

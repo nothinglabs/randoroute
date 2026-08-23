@@ -168,7 +168,8 @@ export function routerWorker({ fresh = false, state = defaultStateId() } = {}) {
     for (const n of names) vm.runInContext(source(n), context);
   };
   vm.runInContext(source('router-worker.js'), context);
-  context.onmessage({ data: { type: 'graph', buffer: graphBuffer(state) } });
+  context.onmessage({ data: { type: 'graph', buffer: graphBuffer(state),
+    stateIds: [state] } });
   const ready = messages.at(-1)?.type === 'ready';
   const api = {
     context, messages, ready, state,
