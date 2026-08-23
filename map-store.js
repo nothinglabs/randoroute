@@ -512,9 +512,24 @@
             const contentLengthHeader = response.headers.get('content-length');
             const contentLength = contentLengthHeader == null ? null : Number(contentLengthHeader);
             if (!Number.isFinite(contentLength) || contentLength === descriptor.file.bytes) break;
+            if (contentLength > 0 && contentLength < descriptor.file.bytes) {
+              const resumed = await resumeShortResponse({ response, sourceUrl,
+                receivedBytes: contentLength, expectedBytes: descriptor.file.bytes,
+                nonce: `${nonce}-${attempt}`, signal });
+              if (resumed) {
+                response = resumed;
+                onProgress({ file: descriptor.file.path,
+                  acquisitionId: descriptor.acquisitionId, done, total,
+                  resuming: true, receivedBytes: contentLength,
+                  remainingBytes: descriptor.file.bytes - contentLength });
+                break;
+              }
+            }
             if (attempt === 1) {
+              await response.body?.cancel?.().catch?.(() => {});
               throw new Error(`${descriptor.file.path}: expected ${descriptor.file.bytes} bytes, received ${contentLength}`);
             }
+            await response.body?.cancel?.().catch?.(() => {});
             onProgress({ file: descriptor.file.path, acquisitionId: descriptor.acquisitionId,
               done, total, retrying: true });
           }
@@ -720,6 +735,73 @@
         controller.enqueue(value);
       },
       cancel(reason) { return reader.cancel(reason); },
+    }), { status: 200, headers });
+  }
+
+  // Mobile Safari can persistently stop a large same-origin response at the
+  // same byte even when a fresh query and no-store fetch are used. Resume only
+  // when the server proves the exact missing byte interval with Content-Range;
+  // otherwise the ordinary full retry remains the safe fallback. The two
+  // bodies are streamed into Cache Storage sequentially, so the complete
+  // archive never has to sit in JavaScript memory.
+  async function resumeShortResponse({ response, sourceUrl, receivedBytes,
+    expectedBytes, nonce, signal }) {
+    const rangeUrl = new URL(sourceUrl);
+    rangeUrl.searchParams.set('jra-store-install', `${nonce}-resume-${receivedBytes}`);
+    let tail = null;
+    try {
+      tail = await fetch(rangeUrl.href, {
+        cache: 'no-store', signal,
+        headers: { Range: `bytes=${receivedBytes}-${expectedBytes - 1}` },
+      });
+      if (tail.type === 'opaque') return null;
+      const tailLength = Number(tail.headers.get('content-length'));
+      // Some servers ignore Range and send a new complete response. It is a
+      // valid fresh retry by itself; discard the short first response.
+      if (tail.status === 200 && tailLength === expectedBytes) {
+        await response.body?.cancel?.().catch?.(() => {});
+        return tail;
+      }
+      const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(
+        tail.headers.get('content-range') || '');
+      const validRange = tail.status === 206 && tail.ok && match
+        && response.body && tail.body && typeof ReadableStream !== 'undefined'
+        && Number(match[1]) === receivedBytes
+        && Number(match[2]) === expectedBytes - 1
+        && Number(match[3]) === expectedBytes
+        && tailLength === expectedBytes - receivedBytes;
+      if (!validRange) {
+        await tail.body?.cancel?.().catch?.(() => {});
+        return null;
+      }
+      return concatenateResponses(response, tail, expectedBytes);
+    } catch (error) {
+      await tail?.body?.cancel?.().catch?.(() => {});
+      if (error?.name === 'AbortError') throw error;
+      return null;
+    }
+  }
+
+  function concatenateResponses(first, second, bytes) {
+    const readers = [first, second].map((response) => response.body.getReader());
+    let index = 0;
+    const headers = new Headers();
+    const contentType = first.headers.get('content-type');
+    if (contentType) headers.set('content-type', contentType);
+    headers.set('content-length', String(bytes));
+    return new Response(new ReadableStream({
+      async pull(controller) {
+        while (index < readers.length) {
+          const chunk = await readers[index].read();
+          if (!chunk.done) { controller.enqueue(chunk.value); return; }
+          index++;
+        }
+        controller.close();
+      },
+      cancel(reason) {
+        return Promise.all(readers.slice(index).map((reader) =>
+          reader.cancel(reason).catch(() => {})));
+      },
     }), { status: 200, headers });
   }
 

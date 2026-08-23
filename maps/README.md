@@ -85,7 +85,11 @@ downstream can tell an installed state from a bundled one. Installed states
 are recorded in `localStorage` (`jra-installed-states-1`) and merged into the
 index by `region.js` at startup. The index is validated strictly on both
 ends: the builder refuses to emit an entry whose files are missing, and the
-client refuses an index with unknown keys, unsafe paths, or missing sizes.
+client refuses an index with unknown keys, unsafe paths, or missing sizes. A
+large response that ends before its declared manifest size is resumed only
+when the store validates the exact missing interval with HTTP 206 and
+`Content-Range`; the joined stream still passes the ordinary size and hash
+checks before the staged acquisition commits.
 
 For states with `places.json`, each store entry also carries `placeSearch`
 format 1: at most 120 of the population-sorted records, their stable derived

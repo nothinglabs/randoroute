@@ -235,7 +235,10 @@ units. A routing-capable unit includes its partition catalogue, every file the
 catalogue declares necessary for offline use, source-state dependencies,
 versions, sizes and hashes. Installation streams each file into the existing
 data cache and records the unit only after every verification succeeds. Failure
-or cancellation removes the partial unit.
+or cancellation removes the partial unit. If a large response ends at a stable
+short length, the installer requests only the missing tail and accepts it only
+with an exact HTTP 206 `Content-Range`; the two bodies remain one sequential
+stream into staging and still undergo complete size/hash verification.
 
 Partition files use stable logical same-origin paths so web, service worker and
 slim Capacitor shells share the contract. CORS is required for cross-origin

@@ -75,12 +75,18 @@ try {
     const installBody = Buffer.from('complete-same-origin-preview-archive');
     const installRequests = [];
     site.publish('/maps/preview-fixture/roads.pmtiles', (req, res) => {
-      installRequests.push(req.url);
-      const body = installRequests.length === 1
-        ? installBody.subarray(0, installBody.length - 4) : installBody;
-      res.writeHead(200, {
+      installRequests.push({ url: req.url, range: req.headers.range || null });
+      const rangeStart = Number(/^bytes=(\d+)-/.exec(req.headers.range || '')?.[1]);
+      const ranged = Number.isFinite(rangeStart);
+      const body = ranged ? installBody.subarray(rangeStart)
+        : installBody.subarray(0, installBody.length - 4);
+      res.writeHead(ranged ? 206 : 200, {
         'content-type': 'application/octet-stream',
         'content-length': body.length,
+        ...(ranged ? {
+          'accept-ranges': 'bytes',
+          'content-range': `bytes ${rangeStart}-${installBody.length - 1}/${installBody.length}`,
+        } : {}),
       });
       res.end(body);
     });
@@ -100,12 +106,14 @@ try {
       const installed = MapStore.availability(state.id);
       await MapStore.removeState(state.id);
       return { storedBytes, installed,
-        retried: progress.some((event) => event.retrying) };
+        resumed: progress.some((event) => event.resuming) };
     }, installBody.length);
-    check('a truncated same-origin store response bypasses the live cache and retries once',
+    check('a truncated same-origin store response resumes the validated missing range',
       installRequests.length === 2
-        && installRequests.every((url) => /jra-store-install=/.test(url))
-        && sameOriginInstall.retried
+        && installRequests.every((request) => /jra-store-install=/.test(request.url))
+        && installRequests[0].range == null
+        && installRequests[1].range === `bytes=${installBody.length - 4}-${installBody.length - 1}`
+        && sameOriginInstall.resumed
         && sameOriginInstall.storedBytes === installBody.length
         && sameOriginInstall.installed === 'installed',
       JSON.stringify({ installRequests, sameOriginInstall }));

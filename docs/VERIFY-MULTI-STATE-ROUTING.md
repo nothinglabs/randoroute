@@ -12,9 +12,9 @@ Verification target:
 | --- | --- |
 | Branch | `codex/multistate-routing` |
 | Production-artifact baseline | `468765a` |
-| Review source commit | Pending `.796` preview deployment |
-| Preview deployment commit | Pending `.796` preview deployment |
-| App / worker | `2026-08-22.796` / `v796` |
+| Review source commit | Pending `.797` preview deployment |
+| Preview deployment commit | Pending `.797` preview deployment |
+| App / worker | `2026-08-23.797` / `v797` |
 | Partition catalogue | format 1, SHA-256 `3cafdd58116a7124b2b419d77d7cff83dc417f26ee45c285e594ebc724e4a4e4` |
 | Oregon graph | `sha-8ae4d0b5e2d3` |
 | Washington graph | `sha-c043f268453b` |
@@ -84,6 +84,9 @@ Pages is not the branch preview and is not modified by this workflow.
 - Stop a download or go offline part way through. No partially installed state
   should appear under Installed maps. Restore connectivity and retry; the
   complete map should initialize after its byte/hash checks finish.
+- A response shorter than its manifest size may resume from the missing byte.
+  The store must answer that request with the exact HTTP 206 `Content-Range`;
+  otherwise the installer falls back to a complete retry and commits nothing.
 
 ## National map
 
