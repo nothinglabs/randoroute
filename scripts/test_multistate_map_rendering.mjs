@@ -1,12 +1,29 @@
 #!/usr/bin/env node
 // A Washington-home map must remain complete at the statewide handoff and
 // paint installed Oregon's safety data, not only its neutral basemap.
-import { appPage, check, done, launchBrowser, serveRepo } from './testlib/harness.mjs';
+//
+// A CONSTRAINED page, deliberately: the resident-ground handoff exists because
+// constrained renderers drop the ~1.2 MB low-zoom context tiles; an
+// unconstrained browser keeps the archive's full range and has no handoff to
+// test (test_regional_basemap_bands proves that split).
+import { check, done, launchBrowser, serveRepo } from './testlib/harness.mjs';
 
 const site = await serveRepo();
 const browser = await launchBrowser();
 try {
-  const page = await appPage(browser, site.port, { desktop: true });
+  const context = await browser.newContext({
+    serviceWorkers: 'block', viewport: { width: 900, height: 800 },
+    hasTouch: true, isMobile: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
+      + 'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+  });
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.pageErrors = pageErrors;
+  await page.goto(`http://localhost:${site.port}/index.html`, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.map && map.loaded && map.loaded(),
+    { timeout: 120000 }).catch(() => {});
   await page.evaluate(() => {
     window.__multiStateMapErrors = [];
     map.on('error', (event) => {

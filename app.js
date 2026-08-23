@@ -1270,7 +1270,7 @@ window.__setAppLaunchStatus?.('Opening local map data…');
 const constrainedMapRuntime = isConstrainedDevice();
 const map = new maplibregl.Map({
   container: 'map',
-  style: BikeBasemap.createStyle(),
+  style: BikeBasemap.createStyle({ constrainedRenderer: constrainedMapRuntime }),
   // The full attribution sentence can span most of a phone and used to paint
   // over Navigate when the Route sheet raised both controls into one band.
   // Keep the required attribution one tap away behind MapLibre's own info
@@ -11333,6 +11333,7 @@ function ensurePlaces() {
       placesIndex = loaded.flatMap((entry) => entry?.rows || []);
       placeSearchLoadedStateIds = loaded.filter(Boolean).map((entry) => entry.stateId)
         .sort((a, b) => a.localeCompare(b));
+      updateRegionalPlaceLabels();
       availablePlacesIndex = [];
       try {
         const catalogue = await loadNationalCatalogue();
@@ -11351,6 +11352,24 @@ function ensurePlaces() {
   }
   return placesPromise;
 }
+
+// A constrained renderer can drop the big low-zoom context tiles that carry
+// town labels, leaving a bare regional map. The style holds an independent
+// point source for exactly that band; fill it with the installed states'
+// larger places so orientation never depends on a tile archive.
+function updateRegionalPlaceLabels() {
+  const source = map.getSource?.('basemap-regional-places');
+  if (!source || !Array.isArray(placesIndex)) return;
+  const features = placesIndex
+    .filter((row) => ['city', 'town'].includes(row[3]))
+    .sort((a, b) => (b[4] || 0) - (a[4] || 0))
+    .slice(0, 400)
+    .map((row) => ({ type: 'Feature',
+      geometry: { type: 'Point', coordinates: [row[1], row[2]] },
+      properties: { name: row[0], population: row[4] || 0 } }));
+  source.setData({ type: 'FeatureCollection', features });
+}
+onStyleReady(() => updateRegionalPlaceLabels());
 
 let placeSearchRequestId = 0;
 let placeSearchAutoTimer = 0;

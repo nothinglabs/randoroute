@@ -139,13 +139,25 @@
   // style as a permanently un-loaded source: one wedged source keeps
   // map.loaded() false for the app's lifetime, which reads as the app never
   // starting. The next viewport change re-attaches and retries.
+  //
+  // Detach ONLY a source that has never finished loading. A transient tile
+  // error on a spotty connection also arrives as a map error naming the
+  // source, and detaching then made every layer of an installed neighbor
+  // vanish mid-ride for one dropped request. Once a source has loaded, its
+  // failures are the renderer's ordinary retry problem, not attachment's.
   function ensureVisibleStateErrorHook(map) {
     if (map.__visibleStateSourceErrorHook || typeof map.on !== 'function') return;
     map.__visibleStateSourceErrorHook = true;
+    const everLoaded = new Set();
+    map.__visibleStateEverLoaded = everLoaded;
+    map.on('sourcedata', (event) => {
+      const sourceId = String(event?.sourceId || '');
+      if (sourceId.startsWith('state-') && event?.isSourceLoaded) everLoaded.add(sourceId);
+    });
     map.on('error', (event) => {
       const sourceId = String(event?.sourceId || event?.source?.id || '');
       const match = /^state-([a-z0-9-]+)-basemap-/.exec(sourceId);
-      if (match) {
+      if (match && !everLoaded.has(sourceId)) {
         try { removeVisibleState(map, match[1]); } catch (error) { /* already gone */ }
       }
     });
@@ -153,6 +165,11 @@
 
   function removeVisibleState(map, stateId) {
     const prefix = visibleLayerPrefix(stateId);
+    // A detached source starts over: its next attachment must earn loaded
+    // status again, so an attachment that wedges can still self-heal.
+    for (const id of [...(map.__visibleStateEverLoaded || [])]) {
+      if (id.startsWith(prefix)) map.__visibleStateEverLoaded.delete(id);
+    }
     const layers = map.getStyle?.()?.layers || [];
     for (const layer of [...layers].reverse()) {
       if (layer.id.startsWith(prefix) && map.getLayer?.(layer.id)) map.removeLayer(layer.id);
@@ -331,7 +348,14 @@
     };
   }
 
-  function createStyle() {
+  function createStyle({ constrainedRenderer = false } = {}) {
+    // The oversized-tile hole problem is a constrained-renderer failure:
+    // measured against the released Washington archive, z4-z7 context tiles
+    // peak at ~1.2 MB compressed and WebKit drops them under pressure, while
+    // desktop renderers draw them fine. Only constrained maps trade the low
+    // zoom band for the resident state polygons; everything else keeps the
+    // archive's full range.
+    const contextMinZoom = constrainedRenderer ? CONTEXT_MIN_ZOOM : 4;
     if (!Region.localDataAvailable) return createNationalStyle();
     ensureProtocol();
     const style = {
@@ -342,6 +366,15 @@
           type: 'geojson', data: assetUrl('maps/national-states.geojson'),
           attribution: 'U.S. Census Bureau 2025 Cartographic Boundary Files',
         },
+        // Populated by the app from the installed states' place indexes: a
+        // few hundred point features that do not depend on any tile archive,
+        // so a constrained renderer that drops big context tiles still shows
+        // which town is which. Empty until places load.
+        ...(constrainedRenderer ? {
+          'basemap-regional-places': {
+            type: 'geojson', data: { type: 'FeatureCollection', features: [] },
+          },
+        } : {}),
         'basemap-context': {
           type: 'vector',
           url: CONTEXT_URL,
@@ -379,13 +412,13 @@
         // the coarse backdrop and shorelines stay correct wherever the water
         // tile is present.
         { id: 'basemap-land', type: 'fill', source: 'basemap-context',
-          'source-layer': 'land', minzoom: CONTEXT_MIN_ZOOM,
+          'source-layer': 'land', minzoom: contextMinZoom,
           paint: { 'fill-color': '#f4f3ee' } },
         { id: 'basemap-land-detail', type: 'fill', source: 'basemap-context',
-          'source-layer': 'land_detail', minzoom: CONTEXT_MIN_ZOOM,
+          'source-layer': 'land_detail', minzoom: contextMinZoom,
           paint: { 'fill-color': '#f4f3ee' } },
         { id: 'basemap-green', type: 'fill', source: 'basemap-context', 'source-layer': 'green',
-          minzoom: CONTEXT_MIN_ZOOM,
+          minzoom: contextMinZoom,
           paint: {
             'fill-color': ['match', ['get', 'k'],
               'wetland', '#dfeadf',
@@ -395,10 +428,10 @@
             'fill-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.72, 11, 0.88],
           } },
         { id: 'basemap-water', type: 'fill', source: 'basemap-context', 'source-layer': 'water',
-          minzoom: CONTEXT_MIN_ZOOM,
+          minzoom: contextMinZoom,
           paint: { 'fill-color': '#dcecf2', 'fill-outline-color': '#c5dce6' } },
         { id: 'basemap-waterways', type: 'line', source: 'basemap-context',
-          'source-layer': 'waterway', minzoom: CONTEXT_MIN_ZOOM,
+          'source-layer': 'waterway', minzoom: contextMinZoom,
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
             'line-color': '#b9d8e4',
@@ -440,8 +473,30 @@
           minorRoads, [10, 11.5, 15, 14.5]),
         roadLabel('basemap-local-labels', ROAD_MIN_ZOOM.local + 0.35,
           localRoads, [12, 11, 17, 14.5]),
+        // Before the context place labels so those win the collision where
+        // both render; on a constrained renderer whose big context tiles
+        // dropped, these still name the towns.
+        ...(constrainedRenderer ? [{
+          id: 'basemap-regional-places', type: 'symbol', source: 'basemap-regional-places',
+          minzoom: 5, maxzoom: 13,
+          layout: {
+            'text-field': ['get', 'name'], 'text-font': [FONT_STACK],
+            'text-size': ['interpolate', ['linear'], ['zoom'],
+              5, ['case', ['>=', ['get', 'population'], 100000], 16.5, 12.5],
+              9, ['case', ['>=', ['get', 'population'], 25000], 17.5, 13]],
+            'text-padding': 10,
+            'text-allow-overlap': false,
+            'symbol-sort-key': ['-', 0, ['coalesce', ['get', 'population'], 0]],
+          },
+          paint: {
+            'text-color': '#4f5d64',
+            'text-halo-color': '#f8f8f4',
+            'text-halo-width': 1.7,
+            'text-halo-blur': 0.4,
+          },
+        }] : []),
         { id: 'basemap-place-labels', type: 'symbol', source: 'basemap-context',
-          'source-layer': 'places', minzoom: CONTEXT_MIN_ZOOM,
+          'source-layer': 'places', minzoom: contextMinZoom,
           layout: {
             'text-field': ['get', 'n'],
             'text-font': [FONT_STACK],
