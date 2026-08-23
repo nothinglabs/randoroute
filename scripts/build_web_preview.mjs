@@ -57,6 +57,9 @@ await writeFile(join(output, '.nojekyll'), '');
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
   cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'],
 }).trim();
+const sourceBranch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+  cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'],
+}).trim();
 const version = JSON.parse(await readFile(join(ROOT, 'version.json'), 'utf8')).version;
 const catalogue = JSON.parse(await readFile(join(ROOT, 'maps/partition-catalogue.json'), 'utf8'));
 const catalogueIdentity = store.states.flatMap((state) => state.acquisitions || [])
@@ -64,7 +67,7 @@ const catalogueIdentity = store.states.flatMap((state) => state.acquisitions || 
 const record = {
   previewFormat: 1,
   sourceRepository: 'nothinglabs/randoroute',
-  sourceBranch: 'codex/multistate-routing',
+  sourceBranch,
   sourceCommit,
   appVersion: version,
   partitionCatalogue: {
