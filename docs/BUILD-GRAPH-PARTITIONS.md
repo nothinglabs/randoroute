@@ -205,3 +205,11 @@ portfolio against their full graphs; routes a boundary waypoint; and expands
 from deliberately disconnected endpoint partitions before stabilizing. This
 record is a desktop artifact/behavior result. Physical-iPhone peak-memory and
 navigation verdicts remain in the handoff guide.
+
+The review publication is
+`https://nothinglabs.github.io/randoroute-preview/`, generated from source
+commit `8d78b4c1ee2107c595ade76e234a3a19a1380cbe`. Its public PMTiles response
+supports byte ranges and CORS. `preview.json` records the same catalogue and
+source graph identities. The separate preview repository is retained through
+PR #3 review and removed or archived after the pull request closes; production
+Pages is unchanged.

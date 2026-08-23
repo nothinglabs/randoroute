@@ -12,7 +12,8 @@ Verification target:
 | --- | --- |
 | Branch | `codex/multistate-routing` |
 | Production-artifact baseline | `468765a` |
-| Review commit | Served at `preview.json` in the review site |
+| Review source commit | `8d78b4c1ee2107c595ade76e234a3a19a1380cbe` |
+| Preview deployment commit | `nothinglabs/randoroute-preview` `389d11a24f198cebd65e6e142164b36841c9a7b2` |
 | App / worker | `2026-08-22.794` / `v794` |
 | Partition catalogue | format 1, SHA-256 `3cafdd58116a7124b2b419d77d7cff83dc417f26ee45c285e594ebc724e4a4e4` |
 | Oregon graph | `sha-8ae4d0b5e2d3` |
@@ -44,6 +45,21 @@ The released acquisition totals are exact manifest bytes:
 The shared 3,629,687-byte catalogue appears in both acquisition manifests but
 is stored once when both states are installed. Browser quota reporting may be
 an estimate; the confirmation-card byte totals must match the manifest.
+
+### Preview deployment record
+
+The review host is a separate public Pages repository and does not share the
+production `nothinglabs/randoroute` Pages environment. Its Pages workflow run
+32621010432 deployed successfully on 2026-08-22. The deployed `preview.json`
+records source branch/commit, app and graph/catalogue versions, state readiness,
+exact acquisition totals, limitations and retention policy. A public PMTiles
+probe returned HTTP 206 with `Accept-Ranges: bytes`, the correct content range
+and `Access-Control-Allow-Origin: *`.
+
+Real preview coverage is Washington and Oregon. The third-state gate remains
+synthetic, routes are capped at three states, and physical-iPhone Cache Storage,
+memory-pressure and navigation verdicts remain pending. Retain the preview
+through PR #3 review; remove or archive it after the pull request closes.
 
 ## First launch
 

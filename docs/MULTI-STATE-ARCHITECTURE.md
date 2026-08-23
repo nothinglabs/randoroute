@@ -7,8 +7,8 @@ cross-state search continuation are implemented on
 `codex/multistate-routing`. Synthetic, browser, full-graph comparison and
 multiple Columbia-crossing gates pass. Ordinary in-state routing remains the
 compatibility path; cross-state requests use partition sessions when every
-required acquisition is installed. Preview, full-suite and physical-device
-handoff are the remaining delivery gates.
+required acquisition is installed. The isolated slim Pages preview is live;
+the full suite and physical-device handoff are the remaining delivery gates.
 
 ## Product boundary
 

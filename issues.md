@@ -61,7 +61,6 @@ shell is bounded to two starter states rather than every future import.
 
 Remaining gates:
 
-- publish and record the separate review preview;
 - run the full executable suite and record its passes/skips/runtime; and
 - prepare the iOS build/handoff, then get the owner's physical-iPhone verdict
   for Cache Storage durability, memory pressure, navigation and real timings.
