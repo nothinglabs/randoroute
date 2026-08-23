@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.791';
+const APP_VERSION = '2026-08-22.792';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1331,6 +1331,16 @@ if (COARSE_POINTER) map.doubleClickZoom.disable();
 // during wheel, touch, keyboard, and programmatic zooms without rebuilding
 // feature filters in JavaScript.
 map.on('moveend', saveStateSoon);
+function syncVisibleDetailedMapSources() {
+  if (!Region.localDataAvailable || !map.getStyle?.()) return;
+  const installed = Region.states.filter((state) =>
+    !window.MapStore || MapStore.availability(state.id) !== 'remote');
+  const visible = BikeBasemap.syncVisibleStateSources(map, installed, Region.id);
+  document.body.dataset.visibleMapStateIds = [Region.id, ...visible].join(',');
+}
+map.on('moveend', syncVisibleDetailedMapSources);
+if (map.loaded()) syncVisibleDetailedMapSources();
+else map.once('load', syncVisibleDetailedMapSources);
 // On a phone, a completed route can leave hundreds of megabytes of reusable
 // worker caches alive. Give those back before MapLibre widens its tile set;
 // the graph, displayed routes, and the worker's More-route geometries remain.

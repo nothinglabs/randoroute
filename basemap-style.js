@@ -10,6 +10,8 @@
   // /data/ URLs, which is why installed PWAs never showed the double fetch.
   const ROADS_URL = `pmtiles://${Region.dataUrl('roads.pmtiles')}?v=24`;
   let protocol = null;
+  let protocolCache = null;
+  const registeredArchives = new Set();
 
   // A PMTiles tile is a byte-range read. On a phone one of those can fail for
   // reasons that have nothing to do with the archive -- a dropped cell
@@ -77,17 +79,122 @@
     // Register the archives up front, sharing one self-healing cache, so the
     // Protocol never has to construct its own (uncorrected) one lazily.
     if (global.pmtiles.SharedPromiseCache && global.pmtiles.PMTiles) {
-      const cache = forgetFailedReads(new global.pmtiles.SharedPromiseCache());
+      protocolCache = forgetFailedReads(new global.pmtiles.SharedPromiseCache());
       const archives = [
         Region.datasets.basemap ? CONTEXT_URL : null,
         Region.datasets.roads ? ROADS_URL : null,
       ].filter(Boolean);
       for (const url of archives) {
-        protocol.add(new global.pmtiles.PMTiles(archiveKey(url), cache));
+        protocol.add(new global.pmtiles.PMTiles(archiveKey(url), protocolCache));
+        registeredArchives.add(archiveKey(url));
       }
     }
     global.maplibregl.addProtocol('pmtiles', withTileRetry(protocol.tile));
     return protocol;
+  }
+
+  function stateArchiveUrl(state, file, version) {
+    return `pmtiles://maps/${state.id}/${file}?v=${version}`;
+  }
+
+  function registerArchive(url) {
+    ensureProtocol();
+    const key = archiveKey(url);
+    if (!protocol || registeredArchives.has(key) || !global.pmtiles?.PMTiles) return;
+    protocol.add(new global.pmtiles.PMTiles(key, protocolCache || undefined));
+    registeredArchives.add(key);
+  }
+
+  const visibleSourceId = (stateId, dataset) =>
+    `state-${stateId}-basemap-${dataset}`;
+  const visibleLayerPrefix = (stateId) => `state-${stateId}-`;
+
+  function viewportBounds(map) {
+    const bounds = map.getBounds?.();
+    if (!bounds) return null;
+    const value = (method, corner, axis) => typeof bounds[method] === 'function'
+      ? Number(bounds[method]()) : Number(bounds[corner]?.[axis]);
+    const result = {
+      minLon: value('getWest', '_sw', 'lng'),
+      minLat: value('getSouth', '_sw', 'lat'),
+      maxLon: value('getEast', '_ne', 'lng'),
+      maxLat: value('getNorth', '_ne', 'lat'),
+    };
+    return Object.values(result).every(Number.isFinite) ? result : null;
+  }
+
+  function intersects(left, right) {
+    return left.minLon <= right.maxLon && left.maxLon >= right.minLon
+      && left.minLat <= right.maxLat && left.maxLat >= right.minLat;
+  }
+
+  function removeVisibleState(map, stateId) {
+    const prefix = visibleLayerPrefix(stateId);
+    const layers = map.getStyle?.()?.layers || [];
+    for (const layer of [...layers].reverse()) {
+      if (layer.id.startsWith(prefix) && map.getLayer?.(layer.id)) map.removeLayer(layer.id);
+    }
+    for (const dataset of ['roads', 'context']) {
+      const id = visibleSourceId(stateId, dataset);
+      if (map.getSource?.(id)) map.removeSource(id);
+    }
+  }
+
+  // Only the home state is part of the initial style. Other installed state
+  // archives enter when their bounds intersect the current detailed viewport,
+  // and leave again when they cannot contribute. This keeps installed-state
+  // count independent from renderer memory and prevents a cross-state route
+  // from becoming bare ocean on its non-home side.
+  function syncVisibleStateSources(map, states, homeStateId, { minZoom = 5 } = {}) {
+    if (!map?.getStyle?.()) return [];
+    const bounds = viewportBounds(map);
+    const detailed = bounds && Number(map.getZoom?.()) >= minZoom;
+    const wanted = new Map((states || [])
+      .filter((state) => state?.id && state.id !== homeStateId
+        && detailed && state.bounds && intersects(bounds, state.bounds)
+        && (state.datasets?.basemap || state.datasets?.roads))
+      .map((state) => [state.id, state]));
+    const existing = new Set();
+    for (const layer of map.getStyle().layers || []) {
+      const match = /^state-([a-z0-9-]+)-basemap-land$/.exec(layer.id);
+      if (match) existing.add(match[1]);
+    }
+    for (const stateId of existing) {
+      if (!wanted.has(stateId)) removeVisibleState(map, stateId);
+    }
+
+    for (const state of [...wanted.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+      const contextId = visibleSourceId(state.id, 'context');
+      const roadsId = visibleSourceId(state.id, 'roads');
+      const contextUrl = stateArchiveUrl(state, 'basemap.pmtiles', 5);
+      const roadsUrl = stateArchiveUrl(state, 'roads.pmtiles', 24);
+      if (state.datasets.basemap && !map.getSource(contextId)) {
+        registerArchive(contextUrl);
+        map.addSource(contextId, { type: 'vector', url: contextUrl,
+          attribution: '© OpenStreetMap contributors · Natural Earth' });
+      }
+      if (state.datasets.roads && !map.getSource(roadsId)) {
+        registerArchive(roadsUrl);
+        map.addSource(roadsId, { type: 'vector', url: roadsUrl,
+          attribution: '© OpenStreetMap contributors' });
+      }
+      const style = map.getStyle();
+      const templates = (style.layers || []).filter((layer) =>
+        layer.id.startsWith('basemap-')
+          && ['basemap-context', 'basemap-roads'].includes(layer.source));
+      const before = (style.layers || []).find((layer) =>
+        layer.id.startsWith('basemap-') && layer.type === 'symbol')?.id
+        || (style.layers || []).find((layer) =>
+          !layer.id.startsWith('basemap-') && !layer.id.startsWith('state-'))?.id;
+      for (const template of templates) {
+        const source = template.source === 'basemap-context' ? contextId : roadsId;
+        const id = `${visibleLayerPrefix(state.id)}${template.id}`;
+        if (!map.getSource(source) || map.getLayer?.(id)) continue;
+        const layer = JSON.parse(JSON.stringify({ ...template, id, source }));
+        map.addLayer(layer, before);
+      }
+    }
+    return [...wanted.keys()].sort((a, b) => a.localeCompare(b));
   }
 
   function assetUrl(path) {
@@ -377,5 +484,6 @@
     ROAD_MIN_ZOOM,
     ensureProtocol,
     createStyle,
+    syncVisibleStateSources,
   };
 })(window);

@@ -145,6 +145,17 @@ try {
   });
   checkEqual('nearby but non-identical state nodes do not become connected', nearbyCross.length, 0);
 
+  const connectedDuplicateMaps = join(temp, 'connected-duplicate-maps');
+  execFileSync(python, [fixture, connectedDuplicateMaps, '--connected-duplicate'], { cwd: ROOT });
+  const connectedDuplicate = build(connectedDuplicateMaps, join(temp, 'connected-duplicate-out'));
+  const connectedCross = connectedDuplicate.value.portals.filter((portal) => {
+    const owners = portal.endpoints.map((endpoint) =>
+      connectedDuplicate.value.partitions.find((part) => part.id === endpoint.partitionId).stateId);
+    return owners[0] !== owners[1];
+  });
+  checkEqual('a legal sub-metre source seam selects one canonical node and all its partition placements',
+    connectedCross.length, 2);
+
   const ambiguousMaps = join(temp, 'ambiguous-maps');
   execFileSync(python, [fixture, ambiguousMaps, '--ambiguous'], { cwd: ROOT });
   const ambiguousOutput = join(temp, 'ambiguous-out');

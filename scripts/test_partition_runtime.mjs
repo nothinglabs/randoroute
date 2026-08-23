@@ -89,6 +89,12 @@ try {
     rules, mode: 'balanced', prefDesignated: false, prefResidential: false });
   check('the composed route still respects the source graph one-way edge',
     reverse.type === 'route' && reverse.ok === false, JSON.stringify(reverse));
+  const restrictedReverse = worker.post({ type: 'route', id: 'restricted-reverse',
+    start: [0.8, 0], end: [-2, 0], rules, mode: 'balanced',
+    prefDesignated: false, prefResidential: false });
+  check('a directional bicycle restriction remains impassable across the state boundary',
+    restrictedReverse.type === 'route' && restrictedReverse.ok === false,
+    JSON.stringify(restrictedReverse));
 
   const initialIds = [ids[0], ids.at(-1)];
   const initial = await P.composePartitions({ catalogue, partitionIds: initialIds,

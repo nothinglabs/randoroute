@@ -103,10 +103,16 @@ so the builder accepts only identical Float32 longitude/latitude bit patterns.
 There is no proximity tolerance.
 
 If either state has two distinct source nodes at a candidate cross-state
-coordinate, the build fails. Such multiplicity could be coincident but
-grade-separated topology and must not be guessed into a connection. If future
-ordinary graph inputs retain OSM node identities, prefer those identities and
-keep the exact-coordinate check as validation.
+coordinate, the build fails unless the source graph itself proves them to be a
+single seam: equal elevation, fully connected by legal two-way edges no longer
+than one metre, with every geometry point at the same exact Float32 coordinate.
+The lowest source-node index is then the deterministic representative. This
+narrow exception preserves an explicit source connection and handles graph
+builder seams; it does not infer connectivity from distance. Any disconnected,
+one-way, prohibited, longer, differently elevated or geometrically distinct
+duplicate remains ambiguous and fails. If future ordinary graph inputs retain
+OSM node identities, prefer those identities and keep the exact-coordinate
+check as validation.
 
 Every adjacency entry must be justified by at least one validated portal, and
 every portal must appear in adjacency. `multi-state-routing.js` enforces both
@@ -167,3 +173,35 @@ Record with a published catalogue:
 Never use portal count alone as cross-border proof. Executable crossing routes,
 false-nearby cases, restrictions, one-way behavior, expansion and full-graph
 comparisons remain separate acceptance gates.
+
+## Released Washington/Oregon build
+
+The 2026-08-22 production run used `global-grid-v1:1deg`, builder version 1,
+catalogue format 1 and graph format `bgp1-bgrc12`. The generated catalogue is
+3,629,687 bytes with SHA-256
+`3cafdd58116a7124b2b419d77d7cff83dc417f26ee45c285e594ebc724e4a4e4`.
+
+| Measurement | Result |
+| --- | ---: |
+| Partitions | 89 |
+| Exact portals | 7,620 |
+| Partition bytes, compressed | 75,549,493 |
+| Partition bytes, raw | 237,886,441 |
+| Embedded graph bytes | 237,862,617 |
+| Largest partition raw | 60,481,818 |
+| Largest partition compressed | 18,939,331 |
+
+The largest partition is
+`washington/grid-1000000/0057-137` with 503,235 nodes and 590,083 edges.
+Oregon's source is `sha-8ae4d0b5e2d3` (SHA-256
+`8ae4d0b5e2d32d82f22dfdfeb25cdd93b67964822936edcfeadcfbb4651f4329`);
+Washington's is `sha-c043f268453b` (SHA-256
+`c043f268453b0970afebb9dfdc5899d7d87eecf5fd0e7b04a0e86607fb6995d1`).
+
+The validator reported `validated 2 states, 89 partitions, 7620 exact
+portals`. The executable production gate routes Seattle–Eugene, Astoria–Megler
+and The Dalles–Dallesport; retains a Washington ferry plan and an Oregon
+portfolio against their full graphs; routes a boundary waypoint; and expands
+from deliberately disconnected endpoint partitions before stabilizing. This
+record is a desktop artifact/behavior result. Physical-iPhone peak-memory and
+navigation verdicts remain in the handoff guide.

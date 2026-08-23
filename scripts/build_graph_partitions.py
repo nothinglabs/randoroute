@@ -51,6 +51,7 @@ class BuiltState:
     partitions: list[dict]
     placements_by_node: dict[int, list[Placement]]
     nodes_by_coordinate: dict[tuple[int, int], dict[int, list[Placement]]]
+    canonical_cross_state_node: dict[tuple[int, int], int]
 
 
 def canonical_json(value, *, pretty=False) -> bytes:
@@ -161,6 +162,67 @@ def graph_bounds(graph: GraphData) -> dict:
             "maxLon": max(lon), "maxLat": max(lat)}
 
 
+def canonical_cross_state_nodes(graph: GraphData,
+                                nodes_by_coordinate: dict) -> dict[tuple[int, int], int]:
+    """Choose a source node only when duplicate nodes are provably equivalent.
+
+    Ordinary graphs no longer retain OSM node IDs. Most exact coordinates have
+    one source node and need no choice. A graph seam can deliberately create
+    two nodes at the same Float32 coordinate joined by a legal, two-way,
+    sub-metre edge whose complete geometry stays at that coordinate. That edge
+    is explicit source topology, not a proximity inference, and makes the
+    lowest source-node index a deterministic cross-state representative.
+
+    Any duplicate group that is not fully connected by those exact seam edges
+    is omitted and the portal builder will reject it as ambiguous.
+    """
+    canonical = {}
+    duplicates = {}
+    node_coordinate = {}
+    adjacency = {}
+    for coordinate, placements in nodes_by_coordinate.items():
+        nodes = set(placements)
+        if len(nodes) == 1:
+            canonical[coordinate] = next(iter(nodes))
+        elif len({int(graph.node_ele[node]) for node in nodes}) == 1:
+            duplicates[coordinate] = nodes
+            adjacency[coordinate] = {node: set() for node in nodes}
+            for node in nodes:
+                node_coordinate[node] = coordinate
+    for edge_index, (left_value, right_value) in enumerate(
+            zip(graph.edges["a"], graph.edges["b"])):
+        left, right = int(left_value), int(right_value)
+        coordinate = node_coordinate.get(left)
+        if left == right or coordinate is None or node_coordinate.get(right) != coordinate:
+            continue
+        if int(graph.edges["flags"][edge_index]) & 16:
+            continue
+        if int(graph.edges["shoulder"][edge_index]) == -128 \
+                or int(graph.edges["shoulder_ba"][edge_index]) == -128:
+            continue
+        if float(graph.edges["length"][edge_index]) > 1.0:
+            continue
+        start = int(graph.edges["geom_start"][edge_index])
+        count = int(graph.edges["geom_count"][edge_index])
+        if any((float32_bits(graph.geom_lon[index]),
+                float32_bits(graph.geom_lat[index])) != coordinate
+               for index in range(start, start + count)):
+            continue
+        adjacency[coordinate][left].add(right)
+        adjacency[coordinate][right].add(left)
+    for coordinate, nodes in duplicates.items():
+        start = min(nodes)
+        queue, seen = [start], {start}
+        for node in queue:
+            for neighbor in sorted(adjacency[coordinate][node]):
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    queue.append(neighbor)
+        if seen == nodes:
+            canonical[coordinate] = start
+    return canonical
+
+
 def read_region(state_dir: Path) -> dict:
     try:
         region = json.loads((state_dir / "region.json").read_text("utf-8"))
@@ -257,8 +319,10 @@ def build_state(state_dir: Path, output_root: Path, cell: Decimal) -> BuiltState
         "sourceRawBytes": len(source_raw),
         "partitionIds": [partition["id"] for partition in partitions],
     }
+    coordinate_nodes = {key: dict(nodes) for key, nodes in nodes_by_coordinate.items()}
     return BuiltState(catalogue_entry, partitions, dict(placements_by_node),
-                      {key: dict(nodes) for key, nodes in nodes_by_coordinate.items()})
+                      coordinate_nodes,
+                      canonical_cross_state_nodes(graph, coordinate_nodes))
 
 
 def endpoint_json(placement: Placement) -> dict:
@@ -313,11 +377,16 @@ def build_portals(states: list[BuiltState]) -> list[dict]:
     for coordinate, by_state in sorted(by_coordinate.items()):
         if len(by_state) < 2:
             continue
-        for state_id, nodes in by_state.items():
+        for state_id, nodes in list(by_state.items()):
             if len(nodes) != 1:
-                raise ValueError(
-                    f"ambiguous exact cross-state node {coordinate}: {state_id} has "
-                    f"{len(nodes)} source nodes at the same encoded coordinate")
+                built = next(item for item in states
+                             if item.catalogue_entry["id"] == state_id)
+                canonical = built.canonical_cross_state_node.get(coordinate)
+                if canonical is None:
+                    raise ValueError(
+                        f"ambiguous exact cross-state node {coordinate}: {state_id} has "
+                        f"{len(nodes)} source nodes at the same encoded coordinate")
+                by_state[state_id] = {canonical: nodes[canonical]}
         for left_state, right_state in itertools.combinations(sorted(by_state), 2):
             left_placements = next(iter(by_state[left_state].values()))
             right_placements = next(iter(by_state[right_state].values()))
