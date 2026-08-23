@@ -68,6 +68,8 @@ visible viewport and now include safety overlays. Regional zooms use the small
 resident state polygons instead of oversized context tiles, while detailed
 land and water take over at closer zooms. The full iOS shell is bounded to two
 starter states rather than every future import.
+The Maps screen distinguishes the one startup Home map from every map On
+device and states the three-contiguous-state routing limit.
 
 Remaining gates:
 
