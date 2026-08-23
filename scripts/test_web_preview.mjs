@@ -64,6 +64,8 @@ try {
     const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto(site.url, { waitUntil: 'load' });
+    check('the public preview hands Street View off without a repository credential',
+      await page.evaluate(() => !STREET_VIEW_IN_APP));
     await page.evaluate(() => navigator.serviceWorker.ready);
     await page.waitForFunction(() => navigator.serviceWorker.controller, { timeout: 10000 });
     await new Promise((resolve) => setTimeout(resolve, 250));

@@ -89,7 +89,11 @@ the cause, and fix the underlying stability issue.
 
 ### 8. Data licensing and Google Maps key usage
 Verify OSM and every other data source's licensing and attribution requirements.
-Audit Google Maps API-key usage, restrictions, and compliance with its terms.
+The tracked Google Maps Embed key was removed in `.797` after GitHub detected
+it in the public preview; Street View now hands off to Google Maps without a
+repository credential. The owner still needs to rotate/revoke that exposed key
+in Google Cloud and verify API restrictions and terms before any in-app embed is
+re-enabled.
 
 ### 9. Finalize app name
 Choose and approve the final public name for the app before release.

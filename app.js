@@ -14115,11 +14115,11 @@ readoutEl.addEventListener('click', (e) => {
   dismissRoadInfo();
 });
 
-// In-app Street View. With a Google Maps Embed API key the panorama opens in a
-// dialog iframe so the PWA is never left; without one it opens Google Maps in a
-// new tab as before. The key is a public, HTTP-referrer-restricted Embed API
-// key (that API has no usage charges); set it here to enable the in-app view.
-const GOOGLE_MAPS_EMBED_KEY = 'AIzaSyBQZNQ4jPlLjOH3efOD228wOjayupCfa6Y';
+// A static web/native bundle cannot keep a Google API key secret. Street View
+// therefore uses the external Google Maps handoff until key ownership,
+// restrictions and terms are verified outside the repository. The empty value
+// deliberately keeps the existing fallback path active.
+const GOOGLE_MAPS_EMBED_KEY = '';
 const NATIVE_STREET_VIEW_BRIDGE = 'https://nothinglabs.github.io/randoroute/street-view-embed.html';
 // Keep Street View in the app on every platform. While it is open we hide the
 // MapLibre canvas below the modal, so iOS composites only the panorama instead
@@ -14149,7 +14149,11 @@ function openStreetView(lat, lng, heading = null) {
     a.href = external;
     a.target = '_blank';
     a.rel = 'noopener';
-    document.body.appendChild(a);
+    // Keep the synthetic click inside the card. The document's ordinary
+    // click-away handler dismisses a pinned road card for body-level actions;
+    // an external Street View handoff should not erase what the rider was
+    // inspecting when they return.
+    readoutEl.appendChild(a);
     a.click();
     a.remove();
     return;

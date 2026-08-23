@@ -103,15 +103,16 @@ check('the richer collapsed phone card remains compact enough to leave the map v
 check('there is no Google Maps button left on the card', await page.evaluate(() =>
   !document.querySelector('#readout .readout-primary-google')
     && !document.querySelector('#readout .road-map-link')));
+const streetViewPagePromise = page.waitForEvent('popup');
 await page.locator('#readout .streetview-launch').click();
-check('Street View stays in the app while MapLibre is hidden underneath on iOS-safe compositing',
-  await page.evaluate(() => document.getElementById('streetViewDialog').open
-    && document.body.classList.contains('street-view-open')
-    && document.getElementById('streetViewFrame').src.includes('/maps/embed/v1/streetview')));
-await page.evaluate(() => document.getElementById('streetViewDialog').close());
-await page.waitForFunction(() => !document.body.classList.contains('street-view-open'));
-check('closing Street View restores the live map', await page.evaluate(() =>
-  !document.body.classList.contains('street-view-open')));
+const streetViewPage = await streetViewPagePromise;
+await streetViewPage.waitForURL(/google\.com\/maps/, { timeout: 10000 }).catch(() => {});
+check('Street View hands off to Google Maps without embedding a repository credential',
+  /google\.com\/maps/.test(streetViewPage.url())
+    && await page.evaluate(() => !document.getElementById('streetViewDialog').open
+      && !document.body.classList.contains('street-view-open')),
+  streetViewPage.url());
+await streetViewPage.close();
 
 await page.locator('#readout .readout-details-toggle').click();
 const originalDetails = await page.evaluate(() => ({

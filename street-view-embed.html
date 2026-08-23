@@ -36,9 +36,7 @@
     const params = new URLSearchParams(location.search);
     const lat = Number(params.get('lat'));
     const lng = Number(params.get('lng'));
-    const heading = Number(params.get('heading'));
     const status = document.getElementById('status');
-    const panorama = document.getElementById('panorama');
     const report = (state) => parent.postMessage({ type: 'jra-street-view', state }, '*');
 
     if (!Number.isFinite(lat) || !Number.isFinite(lng)
@@ -46,12 +44,8 @@
       status.textContent = 'Street View location is invalid.';
       report('error');
     } else {
-      const headingParam = Number.isFinite(heading) ? `&heading=${Math.round(heading)}` : '';
-      panorama.addEventListener('load', () => {
-        status.hidden = true;
-        report('ready');
-      }, { once: true });
-      panorama.src = `https://www.google.com/maps/embed/v1/streetview?key=AIzaSyBQZNQ4jPlLjOH3efOD228wOjayupCfa6Y&location=${lat.toFixed(6)},${lng.toFixed(6)}&radius=250${headingParam}&fov=90`;
+      status.textContent = 'Street View must be opened from Google Maps.';
+      report('error');
     }
   </script>
 </body>
