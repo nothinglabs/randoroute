@@ -18,7 +18,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { MAP_STATES } = createRequire(import.meta.url)(join(root, 'maps/states.js'));
@@ -41,6 +41,18 @@ for (const state of MAP_STATES) {
     JSON.parse(source);
     const outputPath = join(root, `${relativePath}.gz`);
     await mkdir(dirname(outputPath), { recursive: true });
+    // Determinism holds per zlib build, not across them: another container's
+    // zlib emits different bytes for identical content, and rewriting then
+    // changes the registry's sizes and hashes — every installed device would
+    // re-download packs that did not change. Content decides, not bytes.
+    if (existsSync(outputPath)) {
+      try {
+        if (gunzipSync(await readFile(outputPath)).equals(source)) {
+          console.log(`${relativePath}.gz already carries this content`);
+          continue;
+        }
+      } catch (error) { /* corrupt gz: rewrite it */ }
+    }
     await writeFile(outputPath, gzipSync(source, { level: 9, mtime: 0 }));
     console.log(`${relativePath} -> ${relativePath}.gz`);
   }
