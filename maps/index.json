@@ -1,5 +1,5 @@
 {
- "storeFormat": 1,
+ "storeFormat": 2,
  "states": [
   {
    "id": "oregon",
@@ -149,6 +149,59 @@
      "path": "places.json",
      "bytes": 68283
     }
+   ],
+   "acquisitions": [
+    {
+     "acquisitionFormat": 1,
+     "id": "map-oregon-760d7047e8bcdb33",
+     "kind": "state-map",
+     "stateIds": [
+      "oregon"
+     ],
+     "totalBytes": 126677669,
+     "files": [
+      {
+       "dataset": "ferries",
+       "path": "ferries.geojson.gz",
+       "bytes": 747
+      },
+      {
+       "dataset": "bikeroutes",
+       "path": "bikeroutes.geojson.gz",
+       "bytes": 2043496
+      },
+      {
+       "dataset": "closures",
+       "path": "route_closures.geojson.gz",
+       "bytes": 1001
+      },
+      {
+       "dataset": "roads",
+       "path": "roads.pmtiles",
+       "bytes": 32400799
+      },
+      {
+       "dataset": "basemap",
+       "path": "basemap.pmtiles",
+       "bytes": 41344874
+      },
+      {
+       "dataset": "overlays",
+       "path": "overlays.pmtiles",
+       "bytes": 14173573
+      },
+      {
+       "dataset": "graph",
+       "path": "graph2.bin.gz",
+       "bytes": 36644896
+      },
+      {
+       "dataset": "places",
+       "path": "places.json",
+       "bytes": 68283
+      }
+     ]
+    }
    ]
   },
   {
@@ -295,6 +348,64 @@
      "dataset": "places",
      "path": "places.json",
      "bytes": 122488
+    }
+   ],
+   "acquisitions": [
+    {
+     "acquisitionFormat": 1,
+     "id": "map-washington-a09db5e520fa7e03",
+     "kind": "state-map",
+     "stateIds": [
+      "washington"
+     ],
+     "totalBytes": 166926742,
+     "files": [
+      {
+       "dataset": "ferries",
+       "path": "ferries.geojson.gz",
+       "bytes": 12354
+      },
+      {
+       "dataset": "bikeroutes",
+       "path": "bikeroutes.geojson.gz",
+       "bytes": 1511595
+      },
+      {
+       "dataset": "restrictions",
+       "path": "bike_restrictions.geojson.gz",
+       "bytes": 48809
+      },
+      {
+       "dataset": "closures",
+       "path": "route_closures.geojson.gz",
+       "bytes": 2270
+      },
+      {
+       "dataset": "roads",
+       "path": "roads.pmtiles",
+       "bytes": 46615046
+      },
+      {
+       "dataset": "basemap",
+       "path": "basemap.pmtiles",
+       "bytes": 45854524
+      },
+      {
+       "dataset": "overlays",
+       "path": "overlays.pmtiles",
+       "bytes": 14293451
+      },
+      {
+       "dataset": "graph",
+       "path": "graph2.bin.gz",
+       "bytes": 58466205
+      },
+      {
+       "dataset": "places",
+       "path": "places.json",
+       "bytes": 122488
+      }
+     ]
     }
    ]
   }

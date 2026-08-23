@@ -62,12 +62,13 @@ Web and native differ in one way only:
 ## Map stores
 
 The registry builder also emits **`maps/index.json`** — the same registry as
-pure data, plus a per-state `files` list with byte sizes. That file is the
-**map store contract** (`storeFormat: 1`): a store is any HTTPS directory
+pure data, plus exact per-state acquisition manifests. That file is the
+**map store contract** (`storeFormat: 2`): a store is any HTTPS directory
 serving an `index.json` beside the state folders it describes, with CORS
 enabled (`Access-Control-Allow-Origin: *`). The app's own origin is the
 default store; a rider can add others on **Settings → Maps**, and
-`map-store.js` downloads a state's files into the same offline cache the
+`map-store.js` stages and verifies a state's files in Cache Storage before an
+atomic install into the same offline data cache the
 service worker serves, under the same `maps/<id>/<file>` paths — nothing
 downstream can tell an installed state from a bundled one. Installed states
 are recorded in `localStorage` (`jra-installed-states-1`) and merged into the
@@ -75,16 +76,28 @@ index by `region.js` at startup. The index is validated strictly on both
 ends: the builder refuses to emit an entry whose files are missing, and the
 client refuses an index with unknown keys, unsafe paths, or missing sizes.
 
+Every state has one `state-map` acquisition. When
+`maps/partition-catalogue.json` exists, the builder also publishes a
+`routing-partitions` acquisition containing the exact catalogue identity,
+owned partition files, source-graph dependencies, byte sizes and SHA-256
+hashes. A failed, corrupt or cancelled install leaves the old acquisition
+intact. Updates remove unreachable files only after the new manifest commits;
+removal preserves shared catalogue bytes while another installed state still
+references them. Saved routes retain their dependency manifests and remain
+listed but unavailable when a required acquisition is removed or outdated.
+
+The client still accepts `storeFormat: 1` indexes for existing ordinary map
+stores. Those entries have map files only and cannot satisfy partitioned
+multi-state routing.
+
 Hosting note: GitHub Pages caps files at 100 MB, which the tile archives
 exceed. GitHub Releases (2 GB per asset, CORS enabled) or any static host
 with CORS works; the files are served as-is, no packaging step.
 
 The production multi-state extension is specified in
 [`docs/MULTI-STATE-ARCHITECTURE.md`](../docs/MULTI-STATE-ARCHITECTURE.md).
-It adds versioned graph-partition catalogues and atomic routing acquisition
-units without removing this ordinary state-pack compatibility contract. Until
-that extension's client and publication tooling land, `storeFormat: 1` and one
-ordinary `graph2.bin.gz` remain the only published store format.
+Its versioned graph-partition catalogues and atomic routing acquisition units
+extend rather than remove the ordinary state-pack compatibility contract.
 The deterministic build and publication-validation procedure is in
 [`docs/BUILD-GRAPH-PARTITIONS.md`](../docs/BUILD-GRAPH-PARTITIONS.md).
 

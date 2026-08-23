@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.787';
+const APP_VERSION = '2026-08-22.788';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4132,6 +4132,27 @@ function routeDependencyMetadata(route) {
     }),
     partitions: [],
   };
+}
+
+async function createInstalledMultiStateRouteSession({ routeStateIds, resolveStateId,
+  onProgress = () => {}, budgetBytes = MultiStateRouting.MAX_DETAILED_GRAPH_INPUT_BYTES } = {}) {
+  const context = await MapStore.routingContext(routeStateIds);
+  const bridge = new MultiStateRouteCoordinator.BrowserPartitionRouteBridge({
+    catalogue: context.catalogue, baseUrl: context.baseUrl, budgetBytes, onProgress,
+  });
+  const session = new MultiStateRouteCoordinator.MultiStateRouteSession({
+    catalogue: context.catalogue,
+    catalogueIdentity: context.catalogueIdentity,
+    installedStateIds: context.installedStateIds,
+    resolveStateId,
+    budgetBytes,
+    onProgress,
+    loadComposite: bridge.loadComposite.bind(bridge),
+    search: bridge.search.bind(bridge),
+    retainActiveRoute: bridge.retainActiveRoute.bind(bridge),
+    cancel: bridge.cancel.bind(bridge),
+  });
+  return { session, bridge, context };
 }
 
 let _storeDetailsTimer = null;
@@ -10814,6 +10835,7 @@ function buildSavedRoutes() {
     }
     list.forEach((saved, index) => {
       const route = normalizeStoredRoute(saved);
+      const dependency = MapStore.routeDependencyStatus(saved?.routeDependencies);
       const name = String(saved?.name || `Saved route ${index + 1}`);
       const row = document.createElement('div');
       row.className = 'saved-row';
@@ -10825,13 +10847,20 @@ function buildSavedRoutes() {
       savedName.textContent = name;
       const loadAction = document.createElement('span');
       loadAction.className = 'saved-route-action';
-      loadAction.textContent = 'Load ›';
+      loadAction.textContent = dependency.available ? 'Load ›' : 'Unavailable';
       load.append(savedName, loadAction);
-      load.disabled = !route;
+      if (!dependency.available) {
+        const dependencyMessage = document.createElement('small');
+        dependencyMessage.className = 'saved-route-dependency';
+        dependencyMessage.textContent = dependency.message;
+        savedName.append(dependencyMessage);
+      }
+      load.disabled = !route || !dependency.available;
       load.addEventListener('click', () => {
         const current = loadSavedRoutes()[index];
         const currentRoute = normalizeStoredRoute(current);
-        if (!current || !currentRoute) return;
+        if (!current || !currentRoute
+            || !MapStore.routeDependencyStatus(current.routeDependencies).available) return;
         clearRoute();
         if (current.rules) {
           Object.assign(rules, validRuleOverrides(current.rules));
@@ -14472,6 +14501,16 @@ function setMapsStatus(message) {
   if (status) status.textContent = message || '';
 }
 
+async function updateMapsStorageLine() {
+  const host = document.getElementById('mapsStorage');
+  if (!host) return;
+  const estimate = await MapStore.storageEstimate();
+  const installed = `Downloaded maps: ${formatMapBytes(estimate.installedBytes)}`;
+  host.textContent = estimate.usageBytes != null && estimate.quotaBytes != null
+    ? `${installed} · App storage: ${formatMapBytes(estimate.usageBytes)} of ${formatMapBytes(estimate.quotaBytes)}`
+    : installed;
+}
+
 // Switching is a reload: the graph, the tiles, the overlays and the place index
 // all come from the other folder, and there is no partial way to swap them
 // under a running map. So the route goes first (it belongs to a graph that is
@@ -14499,7 +14538,7 @@ function switchMapState(id) {
   return true;
 }
 
-const formatMapBytes = (bytes) => bytes >= 1048576 * 995
+const formatMapBytes = (bytes) => bytes <= 0 ? '0 MB' : bytes >= 1048576 * 995
   ? `${(bytes / (1048576 * 1024)).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1048576))} MB`;
 
 // Every state the app can name right now: the startup index (bundled +
@@ -14587,6 +14626,7 @@ function buildMapsStateList() {
           await MapStore.removeState(state.id);
           setMapsStatus(`${state.name} removed.`);
           buildMapsStateList();
+          updateMapsStorageLine();
         });
         row.append(remove);
       }
@@ -14613,6 +14653,7 @@ async function downloadKnownState(state, button) {
 async function downloadStoreState(storeUrl, state, button) {
   if (button) button.disabled = true;
   const name = state.name || state.id;
+  const updating = MapStore.availability(state.id) === 'installed';
   try {
     // The bundled registry entries carry no file list (only the store index
     // does), so fetch the store's word for what the state ships.
@@ -14622,14 +14663,15 @@ async function downloadStoreState(storeUrl, state, button) {
       full = index.states.find((candidate) => candidate.id === state.id);
       if (!full) throw new Error(`The store no longer offers ${name}.`);
     }
-    setMapsStatus(`Downloading ${name}…`);
+    setMapsStatus(`${updating ? 'Updating' : 'Downloading'} ${name}…`);
     await MapStore.installState(storeUrl, full, ({ done, total }) => {
       const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
-      setMapsStatus(`Downloading ${name}… ${pct}% of ${formatMapBytes(total)}`);
+      setMapsStatus(`${updating ? 'Updating' : 'Downloading'} ${name}… ${pct}% of ${formatMapBytes(total)}`);
     });
-    setMapsStatus(`${name} is ready to use.`);
+    setMapsStatus(`${name} is ${updating ? 'updated and ' : ''}ready to use.`);
     buildMapsStateList();
     buildMapsStoreList();
+    updateMapsStorageLine();
   } catch (error) {
     setMapsStatus(`Could not download ${name}: ${error.message}`);
     if (button) button.disabled = false;
@@ -14676,10 +14718,11 @@ async function renderStoreOffers(storeUrl, host) {
   try {
     const index = await MapStore.fetchIndex(storeUrl);
     host.replaceChildren();
-    const known = new Set(allKnownStates().map((state) => state.id));
     let offered = 0;
     for (const state of index.states) {
-      if (known.has(state.id) && MapStore.availability(state.id) !== 'remote') continue;
+      const available = MapStore.availability(state.id);
+      const updating = available === 'installed' && MapStore.updateAvailable(state);
+      if (available !== 'remote' && !updating) continue;
       offered += 1;
       const row = document.createElement('div');
       row.className = 'maps-store-offer';
@@ -14688,7 +14731,7 @@ async function renderStoreOffers(storeUrl, host) {
       const download = document.createElement('button');
       download.type = 'button';
       download.className = 'maps-state-download';
-      download.textContent = `Download ${formatMapBytes(MapStore.stateBytes(state))}`;
+      download.textContent = `${updating ? 'Update' : 'Download'} ${formatMapBytes(MapStore.stateBytes(state))}`;
       download.addEventListener('click', () => downloadStoreState(storeUrl, state, download));
       row.append(label, download);
       host.append(row);
@@ -14705,6 +14748,7 @@ function populateMapsPane() {
   setMapsStatus('');
   buildMapsStateList();
   buildMapsStoreList();
+  updateMapsStorageLine();
 }
 
 function openMapsDialog() {

@@ -16,7 +16,7 @@ const index = JSON.parse(readFileSync(join(ROOT, 'maps/index.json'), 'utf8'));
 
 /* ------------------------------------------- the two registries agree */
 check('the bundled registry declares its data present', MAP_STATES_BUNDLED === true);
-check('index.json is storeFormat 1', index.storeFormat === 1);
+check('index.json is storeFormat 2', index.storeFormat === 2);
 check('index.json and states.js list the same states in the same order',
   index.states.map((state) => state.id).join('|') === MAP_STATES.map((state) => state.id).join('|'),
   index.states.map((state) => state.id).join('|'));
@@ -36,6 +36,11 @@ for (const state of index.states) {
   }
   check(`${state.id}: every listed file exists at its listed size`, sized);
   check(`${state.id}: a nonzero total download size`, MapStore.stateBytes(state) > 0);
+  check(`${state.id}: an atomic map acquisition exactly covers the ordinary file list`,
+    state.acquisitions.length >= 1
+      && state.acquisitions[0].kind === 'state-map'
+      && state.acquisitions[0].totalBytes === state.files.reduce((sum, file) => sum + file.bytes, 0)
+      && JSON.stringify(state.acquisitions[0].files) === JSON.stringify(state.files));
 }
 
 /* -------------------------------- the client refuses a broken promise */
@@ -68,6 +73,16 @@ const rejects = async (body, why) => {
   check('a well-formed store index is accepted',
     fetched.states.length === 1 && fetched.states[0].id === 'teststate');
 }
+{
+  const mapUnit = { acquisitionFormat: 1, id: 'map-teststate-v1', kind: 'state-map',
+    stateIds: ['teststate'], totalBytes: 10, files: goodState.files };
+  const { server, url } = await serveIndex({ storeFormat: 2,
+    states: [{ ...goodState, acquisitions: [mapUnit] }] });
+  const fetched = await MapStore.fetchIndex(url);
+  server.close();
+  check('a version 2 acquisition index is accepted',
+    fetched.storeFormat === 2 && fetched.states[0].acquisitions[0].id === mapUnit.id);
+}
 await rejects('this is not json {', 'invalid JSON');
 await rejects({ storeFormat: 99, states: [goodState] }, 'an unknown format version');
 await rejects({ storeFormat: 1, states: [] }, 'no states');
@@ -78,6 +93,7 @@ await rejects({ storeFormat: 1, states: [{ ...goodState, files: [{ dataset: 'pla
 await rejects({ storeFormat: 1, states: [{ ...goodState, files: [{ dataset: 'places', path: 'places.json' }] }] },
   'a file with no size');
 await rejects({ storeFormat: 1, states: [{ ...goodState, files: [] }] }, 'a state with no files');
+await rejects({ storeFormat: 2, states: [goodState] }, 'a version 2 state with no acquisitions');
 
 check('a plain-HTTP store address is refused', (() => {
   try { MapStore.normalizeStoreUrl('http://example.com/maps/'); return false; } catch (e) { return true; }

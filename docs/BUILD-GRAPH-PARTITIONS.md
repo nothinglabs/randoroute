@@ -4,9 +4,10 @@ Graph partitions are generated from ordinary `maps/<state>/graph2.bin.gz`
 files. Build and verify the ordinary state graphs first; partitioning does not
 replace the state-import gates and does not change route scoring.
 
-The multi-state store/client work is still in progress. Do not publish these
-artifacts as a production map-store contract until `maps/index.json` lists the
-acquisition and the released client understands that store format.
+After a validated catalogue is in place, run `npm run maps:registry`.
+`maps/index.json` then publishes one exact `routing-partitions` acquisition per
+participating state and the client verifies it atomically. Do not publish an
+unstamped index or a catalogue that has not passed the validator below.
 
 ## Before a production build
 

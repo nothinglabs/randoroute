@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v787';
+const VERSION = 'v788';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -54,6 +54,7 @@ const SHELL = [
   './build-version.js',
   './multi-state-routing.js',
   './partition-runtime.js',
+  './partition-loader-worker.js',
   './multi-state-route-coordinator.js',
   './safety-model.js',
   './basemap-style.js',
@@ -216,6 +217,13 @@ self.addEventListener('fetch', (e) => {
   } else if (url.origin === location.origin && url.pathname.endsWith('/graph2.bin.gz')) {
     // The one data file whose query string matters: it carries the graph's
     // build version, and ignoring it served a stale routing graph forever.
+    e.respondWith(cacheFirst(DATA_CACHE, e.request, false));
+  } else if (url.origin === location.origin
+      && url.pathname.endsWith('/maps/partition-catalogue.json')) {
+    // Installed routing acquisitions key the shared catalogue by its exact
+    // content hash in the query string. It belongs with state data and must
+    // remain available offline; ignoring search could pair old partitions
+    // with a newer topology manifest.
     e.respondWith(cacheFirst(DATA_CACHE, e.request, false));
   } else if (url.origin === location.origin && inStateFolder(url.pathname)) {
     // Any state's folder, not just the loaded one: a rider who switches back

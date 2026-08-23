@@ -1,7 +1,8 @@
 /* Map packs: install, list, and remove downloadable state map data.
  *
  * A MAP STORE is any HTTPS directory serving the `index.json` the registry
- * builder emits (storeFormat 1) beside the state folders it describes. The
+ * builder emits (storeFormat 2, with version 1 accepted for compatibility)
+ * beside the state folders it describes. The
  * app's own origin is the default store (`maps/`); a rider can add others.
  *
  * Installing a state is an ACQUISITION, not a new storage system: every file
@@ -21,6 +22,7 @@
 (function (root) {
   const INSTALLED_KEY = 'jra-installed-states-1';
   const STORES_KEY = 'jra-map-stores-1';
+  const ACQUISITION_FORMAT = 1;
   // Everything the store index promises about a state, mirrored from the
   // registry builder's contract. Unknown keys are rejected the same way the
   // builder rejects them in region.json: silently ignoring one is how a
@@ -30,9 +32,124 @@
     'defaultCenter', 'defaultZoom', 'stressAgency', 'restrictionAgency', 'speedAgency',
     'facilitySourceName', 'stressLayerName', 'restrictionLayerName',
     'interstateRoutePrefixes', 'stateRoutePrefixes', 'facilityLevels', 'sourceCounts', 'routeDirectionSuffixes',
-    'datasets', 'versions', 'attribution', 'files']);
+    'datasets', 'versions', 'attribution', 'files', 'acquisitions']);
   const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
   const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+  const SAFE_PATH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/;
+  const SAFE_ACQUISITION_ID = /^[a-z0-9][a-z0-9._-]{0,191}$/;
+  const SAFE_PARTITION_ID = /^[a-z0-9][a-z0-9._/-]{0,191}$/;
+  const SHA256 = /^[a-f0-9]{64}$/;
+  const MAP_FILE_KEYS = new Set(['dataset', 'path', 'bytes']);
+  const ROUTING_FILE_KEYS = new Set(['dataset', 'path', 'bytes', 'rawBytes', 'sha256',
+    'partitionId', 'stateId', 'sourceGraphVersion']);
+
+  function assertKnownKeys(value, known, label) {
+    for (const key of Object.keys(value || {})) {
+      if (!known.has(key)) throw new Error(`${label} has unknown key "${key}"`);
+    }
+  }
+
+  function validateMapFile(file, stateId) {
+    if (!file || typeof file !== 'object') throw new Error(`state "${stateId}" has an invalid file`);
+    assertKnownKeys(file, MAP_FILE_KEYS, `state "${stateId}" file`);
+    if (!SAFE_FILE.test(String(file.path))) {
+      throw new Error(`state "${stateId}" has an unsafe file path "${file.path}"`);
+    }
+    if (!Number.isSafeInteger(file.bytes) || file.bytes < 0) {
+      throw new Error(`state "${stateId}" file "${file.path}" has no byte size`);
+    }
+    return file;
+  }
+
+  function validateAcquisition(unit, stateId) {
+    if (!unit || typeof unit !== 'object') throw new Error(`state "${stateId}" has an invalid acquisition`);
+    const common = new Set(['acquisitionFormat', 'id', 'kind', 'stateIds', 'totalBytes', 'files']);
+    const routing = new Set([...common, 'compatibility', 'sourceStateDependencies', 'catalogue']);
+    assertKnownKeys(unit, unit.kind === 'routing-partitions' ? routing : common,
+      `acquisition "${unit.id || ''}"`);
+    if (unit.acquisitionFormat !== ACQUISITION_FORMAT) {
+      throw new Error(`acquisition "${unit.id || ''}" has an unsupported format`);
+    }
+    if (!SAFE_ACQUISITION_ID.test(String(unit.id || ''))) {
+      throw new Error(`state "${stateId}" has an unsafe acquisition id`);
+    }
+    if (!['state-map', 'routing-partitions'].includes(unit.kind)) {
+      throw new Error(`acquisition "${unit.id}" has an unknown kind`);
+    }
+    if (!Array.isArray(unit.stateIds) || unit.stateIds.length !== 1
+        || unit.stateIds[0] !== stateId) {
+      throw new Error(`acquisition "${unit.id}" does not belong exactly to state "${stateId}"`);
+    }
+    if (!Number.isSafeInteger(unit.totalBytes) || unit.totalBytes < 0 || !Array.isArray(unit.files)) {
+      throw new Error(`acquisition "${unit.id}" has invalid size or files`);
+    }
+    if (unit.kind === 'state-map') {
+      unit.files.forEach((file) => validateMapFile(file, stateId));
+      const bytes = unit.files.reduce((sum, file) => sum + file.bytes, 0);
+      if (bytes !== unit.totalBytes) throw new Error(`acquisition "${unit.id}" total size is wrong`);
+      return unit;
+    }
+    const compatibility = unit.compatibility;
+    const catalogue = unit.catalogue;
+    assertKnownKeys(compatibility, new Set(['partitionCatalogueFormat', 'graphFormat',
+      'catalogueSha256']), `acquisition "${unit.id}" compatibility`);
+    assertKnownKeys(catalogue, new Set(['path', 'bytes', 'sha256',
+      'partitionCatalogueFormat', 'graphFormat']), `acquisition "${unit.id}" catalogue`);
+    if (!compatibility || !Number.isSafeInteger(compatibility.partitionCatalogueFormat)
+        || typeof compatibility.graphFormat !== 'string'
+        || !SHA256.test(String(compatibility.catalogueSha256 || ''))) {
+      throw new Error(`acquisition "${unit.id}" has invalid compatibility metadata`);
+    }
+    if (!catalogue || !SAFE_FILE.test(String(catalogue.path || ''))
+        || !Number.isSafeInteger(catalogue.bytes) || catalogue.bytes <= 0
+        || catalogue.sha256 !== compatibility.catalogueSha256
+        || catalogue.partitionCatalogueFormat !== compatibility.partitionCatalogueFormat
+        || catalogue.graphFormat !== compatibility.graphFormat) {
+      throw new Error(`acquisition "${unit.id}" has invalid catalogue metadata`);
+    }
+    if (!Array.isArray(unit.sourceStateDependencies) || !unit.sourceStateDependencies.length) {
+      throw new Error(`acquisition "${unit.id}" lists no source-state dependencies`);
+    }
+    const dependencyIds = new Set();
+    for (const dependency of unit.sourceStateDependencies) {
+      assertKnownKeys(dependency, new Set(['stateId', 'graphVersion', 'sha256']),
+        `acquisition "${unit.id}" source dependency`);
+      if (!SAFE_ID.test(String(dependency?.stateId || ''))
+          || typeof dependency.graphVersion !== 'string'
+          || !SHA256.test(String(dependency.sha256 || ''))
+          || dependencyIds.has(dependency.stateId)) {
+        throw new Error(`acquisition "${unit.id}" has an invalid source-state dependency`);
+      }
+      dependencyIds.add(dependency.stateId);
+    }
+    const sortedDependencies = [...dependencyIds].sort((a, b) => a.localeCompare(b));
+    if ([...dependencyIds].some((id, index) => id !== sortedDependencies[index])) {
+      throw new Error(`acquisition "${unit.id}" source-state dependencies are not sorted`);
+    }
+    const partitionIds = new Set();
+    for (const file of unit.files) {
+      if (!file || typeof file !== 'object') throw new Error(`acquisition "${unit.id}" has an invalid file`);
+      assertKnownKeys(file, ROUTING_FILE_KEYS, `acquisition "${unit.id}" file`);
+      if (file.dataset !== 'graph-partition' || !SAFE_PATH.test(String(file.path || ''))
+          || String(file.path).includes('..') || file.stateId !== stateId
+          || !SAFE_PARTITION_ID.test(String(file.partitionId || ''))
+          || partitionIds.has(file.partitionId)
+          || !Number.isSafeInteger(file.bytes) || file.bytes <= 0
+          || !Number.isSafeInteger(file.rawBytes) || file.rawBytes <= 0
+          || !SHA256.test(String(file.sha256 || ''))
+          || typeof file.sourceGraphVersion !== 'string') {
+        throw new Error(`acquisition "${unit.id}" has an invalid partition file`);
+      }
+      partitionIds.add(file.partitionId);
+    }
+    const sortedPartitions = [...partitionIds].sort((a, b) => a.localeCompare(b));
+    if ([...partitionIds].some((id, index) => id !== sortedPartitions[index])) {
+      throw new Error(`acquisition "${unit.id}" partition files are not sorted`);
+    }
+    const bytes = catalogue.bytes + unit.files.reduce((sum, file) => sum + file.bytes, 0);
+    if (bytes !== unit.totalBytes) throw new Error(`acquisition "${unit.id}" total size is wrong`);
+    return unit;
+  }
 
   function readJson(key) {
     try {
@@ -57,15 +174,49 @@
     if (!Array.isArray(state.files) || !state.files.length) {
       throw new Error(`state "${state.id}" lists no files`);
     }
-    for (const file of state.files) {
-      if (!file || !SAFE_FILE.test(String(file.path))) {
-        throw new Error(`state "${state.id}" has an unsafe file path "${file && file.path}"`);
+    state.files.forEach((file) => validateMapFile(file, state.id));
+    if (state.acquisitions !== undefined) {
+      if (!Array.isArray(state.acquisitions) || !state.acquisitions.length) {
+        throw new Error(`state "${state.id}" lists no acquisition units`);
       }
-      if (!Number.isFinite(file.bytes) || file.bytes < 0) {
-        throw new Error(`state "${state.id}" file "${file.path}" has no byte size`);
+      const ids = new Set(), kinds = new Set();
+      for (const unit of state.acquisitions) {
+        validateAcquisition(unit, state.id);
+        if (ids.has(unit.id) || kinds.has(unit.kind)) {
+          throw new Error(`state "${state.id}" repeats an acquisition id or kind`);
+        }
+        ids.add(unit.id); kinds.add(unit.kind);
+      }
+      const mapUnit = state.acquisitions.find((unit) => unit.kind === 'state-map');
+      if (!mapUnit || JSON.stringify(mapUnit.files) !== JSON.stringify(state.files)) {
+        throw new Error(`state "${state.id}" map acquisition disagrees with its file list`);
       }
     }
     return state;
+  }
+
+  function acquisitionUnits(state) {
+    if (Array.isArray(state?.acquisitions)) return state.acquisitions;
+    return state?.files ? [{ acquisitionFormat: 0, id: `legacy-${state.id}`,
+      kind: 'state-map', stateIds: [state.id],
+      totalBytes: state.files.reduce((sum, file) => sum + (file.bytes || 0), 0),
+      files: state.files }] : [];
+  }
+
+  function routingUnit(state) {
+    return acquisitionUnits(state).find((unit) => unit.kind === 'routing-partitions') || null;
+  }
+
+  function bundledState(id) {
+    if (root.MAP_STATES_BUNDLED === false) return null;
+    const state = (root.MAP_STATES || []).find((candidate) => candidate.id === id);
+    if (!state) return null;
+    const acquisitions = root.MAP_STATE_ACQUISITIONS?.[id];
+    return acquisitions ? { ...state, acquisitions } : state;
+  }
+
+  function localState(id) {
+    return MapStore.installedEntry(id)?.state || bundledState(id);
   }
 
   const MapStore = {
@@ -73,7 +224,27 @@
     installedStates: () => readJson(INSTALLED_KEY),
     installedRegionConfigs: () => readJson(INSTALLED_KEY).map((entry) => entry.state),
     installedEntry: (id) => readJson(INSTALLED_KEY).find((entry) => entry.state.id === id) || null,
-    stateBytes: (state) => (state.files || []).reduce((sum, file) => sum + (file.bytes || 0), 0),
+    stateBytes: (state) => acquisitionUnits(state)
+      .reduce((sum, unit) => sum + (unit.totalBytes || 0), 0),
+    async storageEstimate() {
+      const installed = readJson(INSTALLED_KEY);
+      const unique = new Map();
+      for (const entry of installed) {
+        for (const item of acquisitionStorageItems(entry.state)) {
+          if (!unique.has(item.key)) unique.set(item.key, item.bytes);
+        }
+      }
+      let estimate = {};
+      try { estimate = await root.navigator?.storage?.estimate?.() || {}; }
+      catch (error) { /* optional browser signal */ }
+      return { installedBytes: [...unique.values()].reduce((sum, bytes) => sum + bytes, 0),
+        usageBytes: Number.isFinite(estimate.usage) ? estimate.usage : null,
+        quotaBytes: Number.isFinite(estimate.quota) ? estimate.quota : null };
+    },
+    installedStateIds: () => [...new Set([
+      ...(root.MAP_STATES_BUNDLED === false ? [] : (root.MAP_STATES || []).map((state) => state.id)),
+      ...readJson(INSTALLED_KEY).map((entry) => entry.state.id),
+    ])].sort((a, b) => a.localeCompare(b)),
 
     // Whether a state's data can be used right now without a download.
     availability(id) {
@@ -82,6 +253,132 @@
       if (bundled) return 'bundled';
       if (MapStore.installedEntry(id)) return 'installed';
       return 'remote';
+    },
+
+    updateAvailable(state) {
+      const installed = MapStore.installedEntry(state?.id);
+      if (!installed || !Array.isArray(state?.acquisitions)) return false;
+      const current = new Set(acquisitionUnits(installed.state).map((unit) => unit.id));
+      return state.acquisitions.some((unit) => !current.has(unit.id));
+    },
+
+    routingAcquisitionForStates(stateIds) {
+      const ids = [...new Set(stateIds || [])];
+      const states = ids.map((id) => localState(id));
+      const missingStateIds = ids.filter((id, index) => !states[index]);
+      if (missingStateIds.length) return { available: false, missingStateIds,
+        reason: 'required states are not installed' };
+      const units = states.map(routingUnit);
+      const missingRoutingStateIds = ids.filter((id, index) => !units[index]);
+      if (missingRoutingStateIds.length) return { available: false, missingStateIds: [],
+        missingRoutingStateIds, reason: 'required routing data is not installed' };
+      const catalogueSha256 = units[0].compatibility.catalogueSha256;
+      const compatible = units.every((unit) =>
+        unit.compatibility.catalogueSha256 === catalogueSha256
+          && unit.compatibility.partitionCatalogueFormat
+            === units[0].compatibility.partitionCatalogueFormat
+          && unit.compatibility.graphFormat === units[0].compatibility.graphFormat);
+      if (!compatible) return { available: false, missingStateIds: [],
+        incompatibleStateIds: ids, reason: 'installed routing maps need a compatible update' };
+      for (const [index, unit] of units.entries()) {
+        const stateId = ids[index];
+        const dependency = unit.sourceStateDependencies.find((item) => item.stateId === stateId);
+        if (!dependency || dependency.graphVersion !== states[index].versions?.graph) {
+          return { available: false, missingStateIds: [], outdatedStateIds: [stateId],
+            reason: 'installed routing data is older than its state map' };
+        }
+      }
+      return { available: true, stateIds: ids, units,
+        compatibility: units[0].compatibility, catalogue: units[0].catalogue };
+    },
+
+    async routingContext(stateIds) {
+      const acquisition = MapStore.routingAcquisitionForStates(stateIds);
+      if (!acquisition.available) {
+        const error = new Error(acquisition.reason || 'Required routing maps are unavailable.');
+        error.code = 'routing-acquisition-unavailable';
+        error.detail = acquisition;
+        throw error;
+      }
+      const request = catalogueRequest(acquisition.catalogue);
+      let response = null;
+      if (root.caches) {
+        response = await (await root.caches.open(root.DATA_CACHE_NAME)).match(request, {
+          ignoreVary: false, ignoreSearch: false,
+        });
+      }
+      if (!response) response = await fetch(request);
+      if (!response?.ok) throw new Error(`Partition catalogue: HTTP ${response?.status || 0}`);
+      await verifyStoredSha(response.clone(), acquisition.catalogue.sha256,
+        acquisition.catalogue.path);
+      const catalogue = await response.json();
+      root.MultiStateRouting?.validatePartitionCatalogue(catalogue);
+      return {
+        catalogue,
+        catalogueIdentity: { path: acquisition.catalogue.path,
+          sha256: acquisition.catalogue.sha256 },
+        baseUrl: new URL('maps/', location.href).href,
+        installedStateIds: MapStore.installedStateIds(),
+      };
+    },
+
+    routeDependencyStatus(dependencies) {
+      if (!dependencies?.states?.length) return { available: true, missingStateIds: [],
+        outdatedStateIds: [], missingPartitionIds: [], message: '' };
+      const missingStateIds = [], outdatedStateIds = [], missingPartitionIds = [];
+      for (const dependency of dependencies.states) {
+        const state = localState(dependency.stateId);
+        if (!state) { missingStateIds.push(dependency.stateId); continue; }
+        if (dependency.graphVersion && state.versions?.graph !== dependency.graphVersion) {
+          outdatedStateIds.push(dependency.stateId);
+        }
+        if (dependency.sourceSha256 && dependencies.partitions?.length) {
+          const source = routingUnit(state)?.sourceStateDependencies
+            ?.find((item) => item.stateId === dependency.stateId);
+          if (!source || source.sha256 !== dependency.sourceSha256) {
+            outdatedStateIds.push(dependency.stateId);
+          }
+        }
+      }
+      const routeStateIds = dependencies.states.map((dependency) => dependency.stateId);
+      const routing = dependencies.partitions?.length
+        ? MapStore.routingAcquisitionForStates(routeStateIds) : null;
+      if (routing && !routing.available) {
+        for (const id of routing.missingStateIds || routing.missingRoutingStateIds || []) {
+          if (!missingStateIds.includes(id)) missingStateIds.push(id);
+        }
+        for (const id of routing.outdatedStateIds || routing.incompatibleStateIds || []) {
+          if (!outdatedStateIds.includes(id)) outdatedStateIds.push(id);
+        }
+      }
+      if (routing?.available && dependencies.catalogueSha256
+          && routing.compatibility.catalogueSha256 !== dependencies.catalogueSha256) {
+        outdatedStateIds.push(...routeStateIds.filter((id) => !outdatedStateIds.includes(id)));
+      }
+      if (routing?.available) {
+        const files = new Map(routing.units.flatMap((unit) => unit.files)
+          .map((file) => [file.partitionId, file]));
+        for (const dependency of dependencies.partitions || []) {
+          const file = files.get(dependency.partitionId);
+          if (!file || file.sha256 !== dependency.sha256
+              || file.sourceGraphVersion !== dependency.sourceGraphVersion) {
+            missingPartitionIds.push(dependency.partitionId);
+          }
+        }
+      } else {
+        missingPartitionIds.push(...(dependencies.partitions || []).map((item) => item.partitionId));
+      }
+      const available = !(missingStateIds.length || outdatedStateIds.length || missingPartitionIds.length);
+      const stateName = (id) => localState(id)?.name
+        || (root.MAP_STATES || []).find((state) => state.id === id)?.name || id;
+      const message = missingStateIds.length
+        ? `Missing ${missingStateIds.map(stateName).join(', ')} — reinstall to use this route offline.`
+        : outdatedStateIds.length
+          ? `Update ${outdatedStateIds.map(stateName).join(', ')} to restore this saved route.`
+          : missingPartitionIds.length ? 'This saved route needs routing data that is no longer installed.' : '';
+      return { available, missingStateIds: [...new Set(missingStateIds)],
+        outdatedStateIds: [...new Set(outdatedStateIds)],
+        missingPartitionIds: [...new Set(missingPartitionIds)], message };
     },
 
     /* ------------------------------------------------------------- stores */
@@ -121,55 +418,133 @@
       try {
         index = await response.json();
       } catch (e) { throw new Error('The store index is not valid JSON.'); }
-      if (!index || index.storeFormat !== 1) {
+      if (!index || ![1, 2].includes(index.storeFormat)) {
         throw new Error('The store index is not a recognized format.');
       }
       if (!Array.isArray(index.states) || !index.states.length) {
         throw new Error('The store index lists no states.');
       }
-      return { storeUrl: base, states: index.states.map(validateStateEntry) };
+      const states = index.states.map(validateStateEntry);
+      if (index.storeFormat === 2
+          && states.some((state) => !Array.isArray(state.acquisitions))) {
+        throw new Error('The version 2 store index omits acquisition units.');
+      }
+      return { storeFormat: index.storeFormat, storeUrl: base, states };
     },
 
     /* ------------------------------------------------------------ install */
-    // Download every file of a state from its store into the offline data
-    // cache, under the logical path the app requests. All-or-nothing: a
-    // failure removes whatever partial data landed, so a state is either
-    // fully installed or absent.
-    async installState(storeUrl, state, onProgress = () => {}) {
+    // Download every declared acquisition into a staging cache first. A new
+    // install becomes visible only after every byte and declared hash passes;
+    // a failed update leaves the prior working acquisition untouched.
+    async installState(storeUrl, state, onProgress = () => {}, options = {}) {
       validateStateEntry(state);
       if (!root.caches) throw new Error('This browser cannot store offline maps.');
-      const cache = await root.caches.open(root.DATA_CACHE_NAME);
+      const signal = options.signal || null;
+      const descriptors = installDescriptors(state);
       const total = MapStore.stateBytes(state);
+      const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const stageName = `${root.DATA_CACHE_NAME}-install-${nonce}`;
+      const backupName = `${root.DATA_CACHE_NAME}-backup-${nonce}`;
+      let stage = null, backup = null, cache = null;
       let done = 0;
+      let commitStarted = false, committed = false;
+      const previous = MapStore.installedEntry(state.id);
       try {
-        for (const file of state.files) {
-          const sourceUrl = new URL(`${state.id}/${file.path}`, new URL(storeUrl, location.href)).href;
-          const response = await fetch(sourceUrl, { cache: 'no-store' });
+        stage = await root.caches.open(stageName);
+        backup = await root.caches.open(backupName);
+        cache = await root.caches.open(root.DATA_CACHE_NAME);
+        const estimate = await MapStore.storageEstimate();
+        if (estimate.quotaBytes != null && estimate.usageBytes != null
+            && estimate.quotaBytes - estimate.usageBytes < total) {
+          throw new Error(`This device needs ${total.toLocaleString()} free bytes for the map download.`);
+        }
+        for (const descriptor of descriptors) {
+          if (signal?.aborted) throw new DOMException('Download cancelled.', 'AbortError');
+          const sourceUrl = new URL(descriptor.sourcePath,
+            new URL(storeUrl, location.href)).href;
+          const response = await fetch(sourceUrl, { cache: 'no-store', signal });
           if (response.type === 'opaque') {
             throw new Error('The store does not allow cross-origin reads (CORS).');
           }
-          if (!response.ok) throw new Error(`${file.path}: HTTP ${response.status}`);
-          await cache.put(logicalRequest(state, file), countedResponse(response, (bytes) => {
-            done += bytes;
-            onProgress({ file: file.path, done: Math.min(done, total), total });
+          if (!response.ok) throw new Error(`${descriptor.file.path}: HTTP ${response.status}`);
+          const contentLengthHeader = response.headers.get('content-length');
+          const contentLength = contentLengthHeader == null ? null : Number(contentLengthHeader);
+          if (Number.isFinite(contentLength) && contentLength !== descriptor.file.bytes) {
+            throw new Error(`${descriptor.file.path}: expected ${descriptor.file.bytes} bytes, received ${contentLength}`);
+          }
+          let streamed = 0;
+          await stage.put(descriptor.request, countedResponse(response, (bytes) => {
+            streamed += bytes; done += bytes;
+            onProgress({ file: descriptor.file.path, acquisitionId: descriptor.acquisitionId,
+              done: Math.min(done, total), total });
           }));
-          await writeArchiveStamp(cache, state, file);
+          const stored = await stage.match(descriptor.request);
+          const storedBytes = stored ? (await stored.clone().blob()).size : -1;
+          if (storedBytes !== descriptor.file.bytes) {
+            throw new Error(`${descriptor.file.path}: expected ${descriptor.file.bytes} bytes, stored ${storedBytes}`);
+          }
+          if (!streamed) {
+            done += storedBytes;
+            onProgress({ file: descriptor.file.path, acquisitionId: descriptor.acquisitionId,
+              done: Math.min(done, total), total });
+          }
+          if (descriptor.sha256) await verifyStoredSha(stored, descriptor.sha256, descriptor.file.path);
+          if (descriptor.file.dataset !== 'partition-catalogue') {
+            await writeArchiveStamp(stage, state, descriptor.file);
+          }
+        }
+        commitStarted = true;
+        const stagedRequests = await stage.keys();
+        for (const request of stagedRequests) {
+          const old = await cache.match(request, { ignoreVary: false, ignoreSearch: false });
+          if (old) await backup.put(request, old);
+        }
+        for (const request of stagedRequests) {
+          const response = await stage.match(request);
+          if (!response) throw new Error(`staged file disappeared: ${new URL(request.url).pathname}`);
+          await cache.put(request, response);
+        }
+        const installed = readJson(INSTALLED_KEY).filter((entry) => entry.state.id !== state.id);
+        const cachedRequests = stagedRequests.map((request) => request.url).sort();
+        installed.push({ state, storeUrl, installedAt: Date.now(), cachedRequests });
+        installed.sort((a, b) => a.state.id.localeCompare(b.state.id));
+        writeJson(INSTALLED_KEY, installed);
+        committed = true;
+        try {
+          await removeUnreferencedRequests(cache, previous?.cachedRequests || [], installed);
+        } catch (cleanupError) {
+          root.console?.warn?.('Installed the map, but could not remove every obsolete cache entry.',
+            cleanupError);
         }
       } catch (error) {
-        await MapStore.removeStateData(state.id);
+        if (commitStarted && !committed) {
+          for (const request of await stage.keys()) await cache.delete(request);
+          for (const request of await backup.keys()) {
+            const response = await backup.match(request);
+            if (response) await cache.put(request, response);
+          }
+        }
         throw error;
+      } finally {
+        await root.caches.delete(stageName);
+        await root.caches.delete(backupName);
       }
-      const installed = readJson(INSTALLED_KEY).filter((entry) => entry.state.id !== state.id);
-      installed.push({ state, storeUrl, installedAt: Date.now() });
-      writeJson(INSTALLED_KEY, installed);
       onProgress({ file: null, done: total, total });
     },
 
-    // Drop a state's offline data: archives, graph (any query string), stamp
-    // markers, and the pmtiles chunk entries derived from the archives.
+    // Drop only the requests recorded by the acquisition manifest. Shared
+    // catalogue keys remain while another installed state references them.
     async removeStateData(id) {
       if (!root.caches) return;
       const cache = await root.caches.open(root.DATA_CACHE_NAME);
+      const entry = MapStore.installedEntry(id);
+      if (entry?.cachedRequests?.length) {
+        const remaining = readJson(INSTALLED_KEY).filter((candidate) => candidate.state.id !== id);
+        await removeUnreferencedRequests(cache, entry.cachedRequests, remaining);
+        return;
+      }
+      // Legacy v1 entries predate request manifests. Keep the broad fallback
+      // only for them so existing installs remain removable after an update.
       const prefix = new URL(`maps/${id}/`, location.href).pathname;
       for (const request of await cache.keys()) {
         const pathname = new URL(request.url).pathname;
@@ -184,6 +559,79 @@
       writeJson(INSTALLED_KEY, readJson(INSTALLED_KEY).filter((entry) => entry.state.id !== id));
     },
   };
+
+  function catalogueRequest(catalogue) {
+    return new Request(`maps/${catalogue.path}?sha256=${catalogue.sha256}`);
+  }
+
+  function acquisitionStorageItems(state) {
+    const items = [];
+    for (const unit of acquisitionUnits(state)) {
+      if (unit.kind === 'state-map') {
+        for (const file of unit.files) items.push({ key: `maps/${state.id}/${file.path}`,
+          bytes: file.bytes });
+      } else if (unit.kind === 'routing-partitions') {
+        items.push({ key: `catalogue:${unit.catalogue.sha256}`, bytes: unit.catalogue.bytes });
+        for (const file of unit.files) items.push({ key: `partition:${file.path}`, bytes: file.bytes });
+      }
+    }
+    return items;
+  }
+
+  function installDescriptors(state) {
+    const descriptors = [];
+    for (const unit of acquisitionUnits(state)) {
+      if (unit.kind === 'state-map') {
+        for (const file of unit.files) descriptors.push({
+          acquisitionId: unit.id, file,
+          sourcePath: `${state.id}/${file.path}`,
+          request: logicalRequest(state, file), sha256: file.sha256 || null,
+        });
+      } else if (unit.kind === 'routing-partitions') {
+        const catalogueFile = { ...unit.catalogue, dataset: 'partition-catalogue' };
+        descriptors.push({ acquisitionId: unit.id, file: catalogueFile,
+          sourcePath: unit.catalogue.path, request: catalogueRequest(unit.catalogue),
+          sha256: unit.catalogue.sha256 });
+        for (const file of unit.files) descriptors.push({
+          acquisitionId: unit.id, file, sourcePath: file.path,
+          request: new Request(`maps/${file.path}`), sha256: file.sha256,
+        });
+      }
+    }
+    const keys = new Set();
+    for (const descriptor of descriptors) {
+      if (keys.has(descriptor.request.url)) {
+        throw new Error(`state "${state.id}" acquisition repeats "${descriptor.file.path}"`);
+      }
+      keys.add(descriptor.request.url);
+    }
+    return descriptors;
+  }
+
+  async function verifyStoredSha(response, expected, path) {
+    if (!response) throw new Error(`${path}: downloaded file was not stored`);
+    if (!root.crypto?.subtle) throw new Error('This browser cannot verify routing-map downloads.');
+    const digest = await root.crypto.subtle.digest('SHA-256', await response.arrayBuffer());
+    const actual = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    if (actual !== expected) throw new Error(`${path}: downloaded file failed its SHA-256 check`);
+  }
+
+  async function removeUnreferencedRequests(cache, requestUrls, remainingEntries) {
+    const referenced = new Set((remainingEntries || [])
+      .flatMap((entry) => entry.cachedRequests || []));
+    const targets = [...new Set(requestUrls || [])].filter((url) => !referenced.has(url));
+    for (const url of targets) {
+      await cache.delete(new Request(url), { ignoreVary: false, ignoreSearch: false });
+      const pathname = new URL(url).pathname;
+      if (!pathname.endsWith('.pmtiles')) continue;
+      for (const request of await cache.keys()) {
+        if (new URL(request.url).pathname.startsWith(`${pathname}__chunk`)) {
+          await cache.delete(request);
+        }
+      }
+    }
+  }
 
   // The cache key each file is served back from. The graph is the one file
   // whose query string is part of its identity (build-version.js builds it;

@@ -120,7 +120,10 @@ gate. Per-edge partition/state/local-edge identity now survives real route
 results, map and details cards, agency and route-number interpretation,
 state-border aggregation, navigation metadata, diagnostics and saved-route
 dependency manifests; synthetic worker and browser gates cover the path.
-Remaining gates are feeding installed catalogue acquisitions into that
-controller, store/offline dependencies, national discovery and first-run, search continuation,
-Washington/Oregon crossing comparisons, preview, full suite, and the owner's
-physical-iPhone verdict.
+The versioned store contract now publishes exact map/catalogue/partition
+acquisitions; installs are staged, byte/hash verified and atomic across failure,
+cancellation and update. Compatible installed catalogues restore offline into
+the multi-state controller, while removals preserve saved intent and report the
+missing dependency. Remaining gates are national discovery and first-run,
+search continuation, Washington/Oregon crossing comparisons, preview, full
+suite, and the owner's physical-iPhone verdict.

@@ -242,13 +242,15 @@
     });
   }
 
-  function routeDependencies(catalogue, routeStateIds, partitionIds) {
+  function routeDependencies(catalogue, routeStateIds, partitionIds, catalogueIdentity = null) {
     const states = new Map(catalogue.states.map((state) => [state.id, state]));
     const partitions = new Map(catalogue.partitions.map((partition) => [partition.id, partition]));
     const usedPartitions = unique(partitionIds || []).filter((id) => partitions.has(id));
     return Object.freeze({
       partitionCatalogueFormat: catalogue.partitionCatalogueFormat,
       graphFormat: catalogue.graphFormat,
+      catalogueSha256: catalogueIdentity?.sha256 || null,
+      cataloguePath: catalogueIdentity?.path || null,
       build: Object.freeze({
         builder: catalogue.build.builder,
         builderVersion: catalogue.build.builderVersion,
@@ -279,6 +281,7 @@
           'The route coordinator needs state resolution, partition loading, and routing adapters.');
       }
       this.catalogue = options.catalogue;
+      this.catalogueIdentity = options.catalogueIdentity || null;
       this.resolveStateId = options.resolveStateId;
       this.loadComposite = options.loadComposite;
       this.search = options.search;
@@ -374,7 +377,7 @@
             pointStateIds: [...pointStateIds],
             loadedPartitionIds: [...composite.loadedPartitionIds],
             routeDependencies: routeDependencies(this.catalogue, plan.routeStateIds,
-              result.partitionIds || []),
+              result.partitionIds || [], this.catalogueIdentity),
             routingDiagnostics: { generation, attempts,
               partitionInput: composite.diagnostics || null } };
           this.lastDiagnostics = final.routingDiagnostics;

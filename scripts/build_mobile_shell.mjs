@@ -20,6 +20,7 @@ const files = [
   'build-version.js',
   'multi-state-routing.js',
   'partition-runtime.js',
+  'partition-loader-worker.js',
   'multi-state-route-coordinator.js',
   'safety-model.js',
   'router-worker.js',
@@ -71,8 +72,17 @@ const storeIndex = JSON.parse(await readFile(join(root, 'maps/index.json'), 'utf
 if (!SLIM) {
   for (const state of storeIndex.states) {
     for (const file of state.files) files.push(`maps/${state.id}/${file.path}`);
+    for (const unit of state.acquisitions || []) {
+      if (unit.kind !== 'routing-partitions') continue;
+      files.push(`maps/${unit.catalogue.path}`);
+      for (const file of unit.files) files.push(`maps/${file.path}`);
+    }
   }
 }
+
+// Shared routing catalogues appear in every participating state's manifest.
+// Copy each physical asset once.
+files.splice(0, files.length, ...new Set(files));
 
 // The shell is a generated bundle. Recreate it so assets removed from the
 // manifest (notably the former uncompressed map overlays) cannot linger in an

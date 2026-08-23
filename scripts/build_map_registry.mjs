@@ -9,12 +9,19 @@
 //
 // It is a build artefact, checked in like build-version.js: adding a state is
 // adding a folder and running `npm run maps:registry`.
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const MAPS = join(ROOT, 'maps');
+const option = (name, fallback) => {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : fallback;
+};
+const MAPS = resolve(option('--maps-root', join(ROOT, 'maps')));
+const STATES_OUTPUT = resolve(option('--states-output', join(MAPS, 'states.js')));
+const STORE_OUTPUT = resolve(option('--store-output', join(MAPS, 'index.json')));
 
 // The one home of "which file carries each dataset". sw.js precaches these
 // paths, build_mobile_shell.mjs bundles them, and the map-store installer
@@ -47,6 +54,9 @@ const KNOWN = new Set(['id', 'name', 'status', 'readiness', 'summary', 'bounds',
   'directionalShoulderFloor',
   'datasets', 'versions', 'attribution']);
 const REQUIRED = ['id', 'name', 'status', 'bounds', 'defaultCenter', 'defaultZoom', 'datasets'];
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const acquisitionId = (kind, stateId, value) =>
+  `${kind}-${stateId}-${sha256(Buffer.from(JSON.stringify(value))).slice(0, 16)}`;
 
 const states = [];
 for (const entry of readdirSync(MAPS, { withFileTypes: true }).sort((a, b) =>
@@ -84,12 +94,85 @@ for (const entry of readdirSync(MAPS, { withFileTypes: true }).sort((a, b) =>
     }
     files.push({ dataset, path: file, bytes: stat.size });
   }
-  states.push({ config, files });
+  const mapUnit = {
+    acquisitionFormat: 1,
+    id: acquisitionId('map', config.id, { versions: config.versions || {}, files }),
+    kind: 'state-map',
+    stateIds: [config.id],
+    totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
+    files,
+  };
+  states.push({ config, files, acquisitions: [mapUnit] });
 }
 if (!states.length) throw new Error('maps/ holds no states');
 
+// A partition catalogue is optional while ordinary state graphs remain the
+// compatibility path. When present, publish one state-owned routing unit per
+// catalogue state. Units share the exact catalogue identity but contain only
+// their owner's partition files, so installing another state never duplicates
+// every already-installed state's detailed graph data.
+const partitionCataloguePath = join(MAPS, 'partition-catalogue.json');
+if (existsSync(partitionCataloguePath)) {
+  const catalogueBytes = readFileSync(partitionCataloguePath);
+  const catalogueSha256 = sha256(catalogueBytes);
+  let catalogue;
+  try { catalogue = JSON.parse(catalogueBytes.toString('utf8')); }
+  catch (error) { throw new Error(`maps/partition-catalogue.json is invalid: ${error.message}`); }
+  const { MultiStateRouting } = await import('node:module')
+    .then(({ createRequire }) => createRequire(import.meta.url)(join(ROOT, 'multi-state-routing.js')));
+  MultiStateRouting.validatePartitionCatalogue(catalogue);
+  const stateById = new Map(states.map((entry) => [entry.config.id, entry]));
+  const sourceStateDependencies = catalogue.states.map((state) => ({
+    stateId: state.id, graphVersion: state.graphVersion, sha256: state.sourceSha256,
+  }));
+  for (const catalogueState of catalogue.states) {
+    const entry = stateById.get(catalogueState.id);
+    if (!entry) throw new Error(`partition catalogue names missing state "${catalogueState.id}"`);
+    if (entry.config.versions?.graph !== catalogueState.graphVersion) {
+      throw new Error(`${catalogueState.id}: partition catalogue graph version is stale`);
+    }
+    const files = catalogue.partitions
+      .filter((partition) => partition.stateId === catalogueState.id)
+      .map((partition) => {
+        const filePath = join(MAPS, partition.path);
+        let stat;
+        try { stat = statSync(filePath); }
+        catch (error) { throw new Error(`${partition.path}: partition catalogue file is missing`); }
+        if (stat.size !== partition.compressedBytes) {
+          throw new Error(`${partition.path}: partition catalogue byte size is stale`);
+        }
+        return {
+          dataset: 'graph-partition', path: partition.path,
+          bytes: partition.compressedBytes, rawBytes: partition.rawBytes,
+          sha256: partition.sha256, partitionId: partition.id,
+          stateId: partition.stateId, sourceGraphVersion: partition.sourceGraphVersion,
+        };
+      });
+    const catalogueFile = {
+      path: 'partition-catalogue.json', bytes: catalogueBytes.length,
+      sha256: catalogueSha256,
+      partitionCatalogueFormat: catalogue.partitionCatalogueFormat,
+      graphFormat: catalogue.graphFormat,
+    };
+    entry.acquisitions.push({
+      acquisitionFormat: 1,
+      id: `routing-${catalogueState.id}-${catalogueSha256.slice(0, 16)}`,
+      kind: 'routing-partitions', stateIds: [catalogueState.id],
+      totalBytes: catalogueFile.bytes + files.reduce((sum, file) => sum + file.bytes, 0),
+      compatibility: {
+        partitionCatalogueFormat: catalogue.partitionCatalogueFormat,
+        graphFormat: catalogue.graphFormat, catalogueSha256,
+      },
+      sourceStateDependencies,
+      catalogue: catalogueFile,
+      files,
+    });
+  }
+}
+
 const body = states.map(({ config }) => `  ${JSON.stringify(config)},`).join('\n');
-writeFileSync(join(MAPS, 'states.js'), `/* GENERATED by scripts/build_map_registry.mjs -- do not edit.
+const acquisitions = Object.fromEntries(states.map((entry) => [entry.config.id, entry.acquisitions]));
+writeFileSync(STATES_OUTPUT, `/* GENERATED by scripts/build_map_registry.mjs -- do not edit.
  *
  * One entry per maps/<state>/region.json, in folder order. A browser cannot
  * list a directory, so the folders are indexed here; region.js picks which one
@@ -106,18 +189,23 @@ writeFileSync(join(MAPS, 'states.js'), `/* GENERATED by scripts/build_map_regist
   root.MAP_STATES = [
 ${body}
   ];
+  // Artifact manifests are derived from the generated store contract rather
+  // than hand-authored state configuration. A full shell can use them
+  // directly; a slim shell receives the same manifests after installation.
+  root.MAP_STATE_ACQUISITIONS = ${JSON.stringify(acquisitions)};
 }(typeof self !== 'undefined' ? self : this));
 `);
 
 // The same registry as pure data, plus per-file sizes: the map-store contract.
 // A store is any HTTPS directory serving this file beside the state folders it
 // describes; the app's installer reads it, and so does build_mobile_shell.mjs.
-writeFileSync(join(MAPS, 'index.json'), `${JSON.stringify({
-  storeFormat: 1,
-  states: states.map(({ config, files }) => ({ ...config, files })),
+writeFileSync(STORE_OUTPUT, `${JSON.stringify({
+  storeFormat: 2,
+  states: states.map(({ config, files, acquisitions: units }) =>
+    ({ ...config, files, acquisitions: units })),
 }, null, 1)}\n`);
 
-console.log(`indexed ${states.length} state${states.length === 1 ? '' : 's'} -> maps/states.js, maps/index.json`);
+console.log(`indexed ${states.length} state${states.length === 1 ? '' : 's'} -> ${STATES_OUTPUT}, ${STORE_OUTPUT}`);
 for (const { config, files } of states) {
   const bytes = files.reduce((sum, file) => sum + file.bytes, 0);
   console.log(`  ${config.id.padEnd(12)} ${config.status.padEnd(9)} ${(bytes / 1048576).toFixed(0)} MB in ${files.length} files`);

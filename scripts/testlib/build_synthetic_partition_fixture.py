@@ -55,6 +55,15 @@ def write_state(root: Path, state_id: str, graph: GraphData, *, magic=b"BGRC"):
     (folder / "graph2.bin.gz").write_bytes(graph_gzip)
     region = {
         "id": state_id,
+        "name": state_id.replace("-", " ").title(),
+        "status": "preview",
+        "bounds": {
+            "minLon": min(graph.node_lon), "maxLon": max(graph.node_lon),
+            "minLat": min(graph.node_lat) - 0.1, "maxLat": max(graph.node_lat) + 0.1,
+        },
+        "defaultCenter": [sum(graph.node_lon) / len(graph.node_lon),
+                          sum(graph.node_lat) / len(graph.node_lat)],
+        "defaultZoom": 8,
         "datasets": {"graph": True},
         "versions": {"graph": f"fixture-{state_id}-v1"},
     }

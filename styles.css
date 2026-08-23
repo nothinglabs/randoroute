@@ -466,6 +466,8 @@ body:not(.navigation-active) #navCard { display: none; }
 .saved-row .saved-load:hover { border-color: #0a66c2; background: #e6f2fa; }
 .saved-route-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .saved-route-action { flex: 0 0 auto; color: #0a66c2; font: 850 10px/1 system-ui; letter-spacing: .04em; text-transform: uppercase; }
+.saved-route-name { display: grid; gap: 3px; text-align: left; }
+.saved-route-dependency { color: #a13b32; font: 650 10.5px/1.25 system-ui; }
 .saved-row .saved-load:disabled { opacity: .5; cursor: default; }
 .saved-row .saved-del {
   width: 36px; border: 1px solid #e6e6e6; border-radius: 10px;
@@ -564,6 +566,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .maps-state-size { margin-left: auto; color: #6a7d89; font: 700 10.5px/1.2 system-ui; white-space: nowrap; }
 .maps-state.loaded .maps-state-size { color: #3d738f; }
 .maps-state-size + .maps-state-badge, .maps-state-size + .maps-state-remove { margin-left: 8px; }
+.maps-storage { margin: 10px 2px 0; color: #566b78; font: 650 11.5px/1.35 system-ui; }
 .maps-state-remove { flex: none; min-height: 30px; padding: 4px 10px; border: 1px solid #d3b1ac; border-radius: 8px; background: #fff6f4; color: #8c3a2b; font: 750 11px/1 system-ui; cursor: pointer; touch-action: manipulation; }
 .maps-state-download { flex: none; margin-left: auto; min-height: 34px; padding: 5px 12px; border: 1px solid #0a58a8; border-radius: 9px; background: #0a66c2; color: #fff; font: 750 11.5px/1 system-ui; cursor: pointer; touch-action: manipulation; white-space: nowrap; }
 .maps-state-download:disabled { opacity: .55; cursor: default; }

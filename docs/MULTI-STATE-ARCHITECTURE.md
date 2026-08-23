@@ -1,10 +1,11 @@
 # Multi-state routing architecture
 
 Status: the generic contract, deterministic partition build, incremental
-composite runtime, state-chain controller and end-to-end jurisdiction path are
-implemented on `codex/multistate-routing`, with executable synthetic and browser
-gates. Existing single-state routing remains the production compatibility path
-until acquisition and cross-border tests described here are complete.
+composite runtime, state-chain controller, end-to-end jurisdiction path and
+atomic store/offline acquisition are implemented on
+`codex/multistate-routing`, with executable synthetic and browser gates.
+Existing single-state routing remains the production compatibility path until
+orientation, search continuation and cross-border comparisons are complete.
 
 ## Product boundary
 
@@ -245,6 +246,16 @@ Cache Storage remains the initial storage backend. Browser and WKWebView tests
 must measure quota, durability and range behavior with expected pack sizes.
 Native-only storage is justified only by a failed measurement and must sit
 behind a small bridge.
+
+`scripts/build_map_registry.mjs` publishes this as `storeFormat: 2` whenever a
+validated partition catalogue is present. `map-store.js` accepts formats 1 and
+2, preflights browser quota, stages downloads in a temporary cache, verifies
+declared bytes and routing SHA-256 values, then records exact cache requests.
+The same catalogue can restore a routing session with the network disabled.
+Executable browser coverage uses a generated three-state store and proves a
+missing transit state, install, offline restore, corrupt/failed update rollback,
+successful invalidation, removal, saved-route retention and cancellation
+cleanup. Physical WKWebView durability remains part of the device handoff.
 
 ## Orientation, acquisition and search
 
