@@ -146,9 +146,16 @@ lifecycle:
    tile visibility.
 
 The retry decision compares the frontier's admissible lower bound with the
-worst retained competitive candidate. An unloaded frontier is “not searched
-yet,” never “no road exists.” Corridor expansion is bounded by route-state IDs,
-partition compatibility and input budget rather than a geographic product box.
+worst retained competitive candidate, and a success-driven retry must pay for
+itself: frontier lower bounds are straight lines at the search's most
+optimistic speed, so on a long trip nearly every portal stays formally
+competitive and the byte budget would otherwise become the only stop. When a
+widened composite returns no better best time and no additional option, the
+session finalizes that result. Failed attempts keep widening until the network
+connects, no credible frontier remains, or nothing further fits the budget. An
+unloaded frontier is “not searched yet,” never “no road exists.” Corridor
+expansion is bounded by route-state IDs, partition compatibility and input
+budget rather than a geographic product box.
 
 Diagnostics report request generation, route-state IDs, loaded partition IDs,
 compressed/raw bytes, derived-array bytes, retained partitions, frontier lower
@@ -163,13 +170,14 @@ from the copied edges, and all ordinary edge fields, geometry, names and
 directions remain unchanged.
 
 The routing worker accepts the snapshot through its existing graph path and
-runs the existing scoring route or portfolio protocol. Version 1 page planning
-requests one cross-state route under the rider's active profile. A multi-profile
-portfolio can expand several independent frontier sets past the hard budget even
-when one useful crossing fits; single-state planning retains its ordinary
-portfolio. Partition mode permits endpoint snaps in initially disconnected
-loaded components, then reports only reached portal nodes with admissible lower
-bounds that can compete with the current result.
+runs the existing scoring route or portfolio protocol. Cross-state page
+planning requests the same route portfolio as the home graph. Partition mode
+permits endpoint snaps in initially disconnected loaded components, then
+reports only reached portal nodes with admissible lower bounds that can
+compete with the current result. Sub-searches between interior nodes of an
+existing candidate (ferry land-section refinement) never record request-level
+frontier hits: their section-scale lower bounds would compare against
+whole-trip ceilings and mark every adjacent partition competitive.
 
 `multi-state-route-coordinator.js` is the page-side controller. It derives
 state adjacency only from exact cross-state portals, plans all ordered route

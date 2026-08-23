@@ -169,6 +169,56 @@ try {
       && bounded.routingDiagnostics.attempts.length === 1,
     JSON.stringify({ bounded, boundedLoads }));
 
+  // Optimistic straight-line lower bounds keep every frontier formally
+  // competitive on a long trip, so hit filtering alone cannot end the loop.
+  // A widening retry that returns the same portfolio must finalize instead of
+  // expanding again; only a materially better attempt keeps the retries going.
+  const stallLoads = [];
+  const stallSession = new C.MultiStateRouteSession({ catalogue,
+    installedStateIds: ['state-a', 'state-b', 'state-c'], resolveStateId: pointState,
+    selectInitialCorridor: endpointOnly,
+    loadComposite: async ({ partitionIds, routeStateIds }) => {
+      stallLoads.push([...partitionIds]);
+      return { loadedPartitionIds: [...partitionIds], stateIds: routeStateIds,
+        partitionRanges: [], diagnostics: {}, frontiers: portalsFor(partitionIds, routeStateIds) };
+    },
+    search: async ({ request: active, composite }) => ({ type: active.type, id: active.id,
+      ok: true, options: [{ ok: true, timeS: 45 }, { ok: true, timeS: 60 }],
+      partitionIds: [...composite.loadedPartitionIds],
+      frontierHits: composite.frontiers.map((frontier) =>
+        ({ node: frontier.node, lowerBound: 5, exits: [frontier] })) }),
+  });
+  const stalled = await stallSession.route({ type: 'route-options', id: 19, points,
+    pointStateIds: ['state-a', 'state-c'] });
+  check('an expansion that does not improve the portfolio finalizes instead of widening again',
+    stalled.ok && stalled.options.length === 2 && stallLoads.length === 2
+      && stallLoads[1].length > stallLoads[0].length
+      && stalled.routingDiagnostics.attempts.length === 2,
+    JSON.stringify({ attempts: stalled.routingDiagnostics.attempts, stallLoads }));
+
+  const improveLoads = [];
+  const improveSession = new C.MultiStateRouteSession({ catalogue,
+    installedStateIds: ['state-a', 'state-b', 'state-c'], resolveStateId: pointState,
+    selectInitialCorridor: endpointOnly,
+    loadComposite: async ({ partitionIds, routeStateIds }) => {
+      improveLoads.push([...partitionIds]);
+      return { loadedPartitionIds: [...partitionIds], stateIds: routeStateIds,
+        partitionRanges: [], diagnostics: {}, frontiers: portalsFor(partitionIds, routeStateIds) };
+    },
+    search: async ({ request: active, composite }) => ({ type: active.type, id: active.id,
+      ok: true,
+      options: [{ ok: true, timeS: improveLoads.length === 1 ? 45 : 30 }],
+      partitionIds: [...composite.loadedPartitionIds],
+      frontierHits: composite.frontiers.map((frontier) =>
+        ({ node: frontier.node, lowerBound: 5, exits: [frontier] })) }),
+  });
+  const improved = await improveSession.route({ type: 'route-options', id: 20, points,
+    pointStateIds: ['state-a', 'state-c'] });
+  check('a materially better widened portfolio keeps expanding until it stabilizes',
+    improved.ok && improved.routingDiagnostics.attempts.length === 3
+      && improveLoads.length === 3,
+    JSON.stringify({ attempts: improved.routingDiagnostics.attempts }));
+
   let slowStarted;
   const slowReady = new Promise((resolve) => { slowStarted = resolve; });
   const cancelledSession = new C.MultiStateRouteSession({ catalogue,

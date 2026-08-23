@@ -353,6 +353,7 @@
       const partitionById = new Map(this.catalogue.partitions.map((partition) =>
         [partition.id, partition]));
       const attempts = [];
+      let lastSuccess = null;
       for (let retry = 0; retry <= this.catalogue.partitions.length; retry++) {
         checkAbort(controller.signal);
         this.onProgress({ generation, phase: retry ? 'expanding' : 'initial', retry,
@@ -369,6 +370,22 @@
           frontierHitCount: frontierHits.length, ok: !!result.ok });
         const competitiveTimes = (Array.isArray(result.options) ? result.options : [result])
           .map((option) => Number(option?.timeS)).filter(Number.isFinite);
+        // A success-driven expansion must pay for itself. Frontier lower
+        // bounds are straight lines at the search's most optimistic speed, so
+        // on a long trip nearly every portal in the composite stays formally
+        // "competitive" and the byte budget becomes the only stop — Seattle to
+        // Buckman re-ran a six-option portfolio five more times and pinned
+        // 99.7% of the input ceiling without changing the lineup. When a
+        // widened composite returns no better best time and no extra option,
+        // take the result. Failed attempts keep widening: a disconnected
+        // endpoint cell must expand until the network connects.
+        const bestTime = competitiveTimes.length ? Math.min(...competitiveTimes) : Infinity;
+        const optionCount = Array.isArray(result.options)
+          ? result.options.length : (result.ok ? 1 : 0);
+        const stalled = !!result.ok && !!lastSuccess
+          && bestTime >= lastSuccess.bestTime * 0.99
+          && optionCount <= lastSuccess.optionCount;
+        if (result.ok) lastSuccess = { bestTime, optionCount };
         const expansionCandidates = partitionRuntime.selectFrontierExpansion({
           loadedPartitionIds: composite.loadedPartitionIds,
           frontiers: composite.frontiers,
@@ -388,7 +405,7 @@
           selectedBytes += partition.rawBytes;
           if (expansion.length >= 2) break;
         }
-        if (!expansion.length) {
+        if (!expansion.length || stalled) {
           if (!result.ok && expansionCandidates.length) {
             throw new RouteCoordinatorError('graph-input-budget',
               'The detailed routing maps required for this trip do not fit this device’s routing-memory limit.',

@@ -134,8 +134,11 @@ Expected behavior:
 
 - The required route states are Washington then Oregon. The rider sees state
   names, never partition IDs or a fixed western coverage region.
-- Version 1 presents one cross-state route using the active routing profile;
-  single-state trips retain the ordinary route portfolio.
+- A cross-state trip presents the same route portfolio as a home-state trip,
+  with multiple useful options. The calculation converges: after one widening
+  retry that does not improve the portfolio, the result is presented instead of
+  re-searching toward the memory ceiling, so `routePartitionRetries` below
+  should be 0 or 1 rather than climbing with every calculation.
 - A route exists, uses no unintended freeway, and reports both Washington and
   Oregon in route/details attribution. State-border summaries must not label
   Oregon segments with Washington agencies.
