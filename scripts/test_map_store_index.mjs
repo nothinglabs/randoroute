@@ -41,6 +41,17 @@ for (const state of index.states) {
       && state.acquisitions[0].kind === 'state-map'
       && state.acquisitions[0].totalBytes === state.files.reduce((sum, file) => sum + file.bytes, 0)
       && JSON.stringify(state.acquisitions[0].files) === JSON.stringify(state.files));
+  if (state.datasets.places) {
+    const search = state.placeSearch;
+    check(`${state.id}: the store carries a bounded place-discovery summary`,
+      search?.format === 1 && search.sourcePath === 'places.json'
+        && search.sourceBytes === state.files.find((file) => file.dataset === 'places')?.bytes
+        && search.entries.length === search.resultCount && search.resultCount <= 120
+        && search.resultCount <= search.completeResultCount
+        && search.entries.every((entry) => entry.id.startsWith(`${state.id}:`)),
+      JSON.stringify(search && { resultCount: search.resultCount,
+        completeResultCount: search.completeResultCount, sourceBytes: search.sourceBytes }));
+  }
 }
 
 /* -------------------------------- the client refuses a broken promise */
@@ -94,6 +105,12 @@ await rejects({ storeFormat: 1, states: [{ ...goodState, files: [{ dataset: 'pla
   'a file with no size');
 await rejects({ storeFormat: 1, states: [{ ...goodState, files: [] }] }, 'a state with no files');
 await rejects({ storeFormat: 2, states: [goodState] }, 'a version 2 state with no acquisitions');
+await rejects({ storeFormat: 1, states: [{ ...goodState, placeSearch: {
+  format: 1, sourcePath: 'places.json', sourceBytes: 10,
+  completeResultCount: 1, resultCount: 1,
+  entries: [{ id: 'anotherstate:00000000000000000000', name: 'Elsewhere',
+    lon: 0, lat: 0, type: 'city', population: 1 }],
+} }] }, 'a place summary whose identity belongs to another state');
 
 check('a plain-HTTP store address is refused', (() => {
   try { MapStore.normalizeStoreUrl('http://example.com/maps/'); return false; } catch (e) { return true; }

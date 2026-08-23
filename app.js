@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.789';
+const APP_VERSION = '2026-08-22.790';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1119,6 +1119,9 @@ function normalizeStoredRoute(route) {
     bn: blocks.map((_, index) => normalizeEndpointName(blockNames[index])),
     sn: normalizeEndpointName(route.sn), en: normalizeEndpointName(route.en),
     sd: route.sd === true,
+    ss: typeof route.ss === 'string' ? route.ss : null,
+    es: typeof route.es === 'string' ? route.es : null,
+    vs: vias.map((_, index) => typeof route.vs?.[index] === 'string' ? route.vs[index] : null),
   };
 }
 
@@ -1247,6 +1250,8 @@ function saveStateNow() {
             bn: routing.blocks.map((x) => x.ferryName || null),
             sn: routing.startName, en: routing.endName,
             sd: routing.startFromDevice,
+            ss: routing.startStateId, es: routing.endStateId,
+            vs: routing.vias.map((x) => x.stateId || null),
           } : null,
     }));
     stateDirty = false;
@@ -3421,6 +3426,7 @@ const routing = {
   arm: null,                 // 'start' | 'end' — next map tap sets that point
   start: null, end: null,    // [lng, lat]
   startName: null, endName: null, startFromDevice: false,
+  startStateId: null, endStateId: null,
   startDefaultsToDevice: true,
   vias: [],                  // ordered stops: { pt: [lng,lat], name, marker }
   blocks: [],                // avoided road locations: { pt: [lng,lat], marker }
@@ -9377,7 +9383,7 @@ async function resolveDefaultStartFromDevice() {
 }
 
 function setRoutePoint(kind, lngLat, name = 'Point on map', {
-  fromDevice = false, refreshDeviceStart = true,
+  fromDevice = false, refreshDeviceStart = true, stateId = Region.id,
 } = {}) {
   exitSharedRoute();
   const previous = routing[kind];
@@ -9387,6 +9393,7 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', {
   }
   routing[kind] = [lngLat.lng, lngLat.lat];
   routing[`${kind}Name`] = normalizeEndpointName(name) || 'Point on map';
+  routing[`${kind}StateId`] = stateId || Region.id;
   // A start taken from the device is a statement about where the rider IS. A
   // start they tapped or searched for is a place they chose, and must not move
   // under them. Only the first kind follows.
@@ -9827,7 +9834,7 @@ function regenerateRoutesAfterWaypointChange() {
   routing.selectRecommendedNext = true;
 }
 
-function addVia(lngLat, { allowPastLimit = false, name = 'Point on map' } = {}) {
+function addVia(lngLat, { allowPastLimit = false, name = 'Point on map', stateId = Region.id } = {}) {
   exitSharedRoute();
   if (!allowPastLimit && routing.vias.length >= MAX_ROUTE_STOPS) {
     routing.arm = null;
@@ -9843,6 +9850,7 @@ function addVia(lngLat, { allowPastLimit = false, name = 'Point on map' } = {}) 
     _uiId: nextViaUiId++,
     pt: [lngLat.lng, lngLat.lat],
     name: normalizeEndpointName(name) || 'Point on map',
+    stateId: stateId || Region.id,
     marker,
   };
   routing.vias.push(via);
@@ -9851,6 +9859,7 @@ function addVia(lngLat, { allowPastLimit = false, name = 'Point on map' } = {}) 
     const ll = marker.getLngLat();
     via.pt = [ll.lng, ll.lat];
     via.name = 'Point on map';
+    via.stateId = Region.id;
     regenerateRoutesAfterWaypointChange();
     computeRoute();
     updateArmButtons();
@@ -10009,6 +10018,7 @@ function removeRouteEndpoint(kind) {
   routing.routeRequestActive = false;
   routing[kind] = null;
   routing[`${kind}Name`] = null;
+  routing[`${kind}StateId`] = null;
   const markerKey = `${kind}Marker`;
   routing[markerKey]?.remove();
   routing[markerKey] = null;
@@ -10044,10 +10054,13 @@ function reverseRoute() {
   clearSearchResultMarker();
   const oldStart = routing.start;
   const oldStartName = routing.startName;
+  const oldStartStateId = routing.startStateId;
   routing.start = routing.end;
   routing.startName = routing.endName;
+  routing.startStateId = routing.endStateId;
   routing.end = oldStart;
   routing.endName = oldStartName;
+  routing.endStateId = oldStartStateId;
   routing.vias.reverse();
   // Once reversed, the new start is a deliberately chosen route point. It
   // must not inherit the old start's "follow my device" behavior.
@@ -10073,6 +10086,7 @@ function clearRoute() {
   closePlacePicker(false);
   routing.start = routing.end = null;
   routing.startName = routing.endName = null;
+  routing.startStateId = routing.endStateId = null;
   routing.startFromDevice = false;
   routing.startDefaultsToDevice = true;
   defaultStartRequest++;
@@ -10684,14 +10698,18 @@ function buildRoutingPanel() {
   } else if (savedState && normalizeStoredRoute(savedState.route)) {
     const rt = normalizeStoredRoute(savedState.route);
     routing.restoringRoute = true;
-    setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn, { fromDevice: rt.sd });
+    setRoutePoint('start', { lng: rt.s[0], lat: rt.s[1] }, rt.sn,
+      { fromDevice: rt.sd, stateId: rt.ss || Region.id });
     for (const [index, p] of (rt.v || []).entries()) addVia(
-      { lng: p[0], lat: p[1] }, { allowPastLimit: true, name: rt.vn?.[index] });
+      { lng: p[0], lat: p[1] }, { allowPastLimit: true, name: rt.vn?.[index],
+        stateId: rt.vs?.[index] || Region.id });
     for (const [index, p] of (rt.b || []).entries()) addRoadBlock(
       { lng: p[0], lat: p[1] }, { allowPastLimit: true, ferryName: rt.bn?.[index] });
-    setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en);
+    setRoutePoint('end', { lng: rt.e[0], lat: rt.e[1] }, rt.en,
+      { stateId: rt.es || Region.id });
     routing.restoringRoute = false;
   } else updateArmButtons();
+  queueMicrotask(() => resumePendingMapRouteIntent());
 }
 
 /* --------------------------------------------------- saved routes */
@@ -11001,21 +11019,59 @@ function buildSavedRoutes() {
 }
 
 /* --------------------------------------- start/end location dialog */
-// Offline place search over a baked OSM index (maps/<state>/places.json).
+// Offline place search over the baked OSM indexes of INSTALLED maps. Store
+// catalogues separately expose a capped summary for discovering an
+// uninstalled destination; that summary never substitutes for an installed
+// state's complete places.json.
 let placesIndex = null, placesPromise = null;
+let availablePlacesIndex = [];
+let placeSearchLoadedStateIds = [];
+
+function placeStateConfig(stateId) {
+  return allKnownStates().find((state) => state.id === stateId)
+    || nationalMapOffers.get(stateId)?.state || null;
+}
+
+function placeSourceIdentity(stateId, row) {
+  return `${stateId}:${String(row[0] || '').trim().toLowerCase()}|${Number(row[1]).toFixed(6)}|${Number(row[2]).toFixed(6)}|${String(row[3] || '')}`;
+}
+
 function ensurePlaces() {
-  // A state declares what it ships. Asking for an index it does not have is a
-  // guaranteed 404 on every search, and the retry-next-time path means one per
-  // keystroke -- so the declaration is honoured here rather than discovered.
-  if (!Region.datasets.places) {
-    placesIndex = [];
-    return Promise.resolve();
-  }
   if (!placesPromise) {
-    placesPromise = fetch(Region.dataUrl('places.json'))
-      .then((res) => (res.ok ? res.json() : []))
-      .then((j) => { placesIndex = j; })
-      .catch(() => { placesPromise = null; }); // offline pre-cache: retry next time
+    placesPromise = (async () => {
+      const installedStateIds = MapStore.installedStateIds();
+      const loaded = await Promise.all(installedStateIds.map(async (stateId) => {
+        const state = placeStateConfig(stateId);
+        if (!state?.datasets?.places) return null;
+        try {
+          const response = await fetch(`maps/${stateId}/places.json`);
+          if (!response.ok) return null;
+          const rows = await response.json();
+          if (!Array.isArray(rows)) return null;
+          return { stateId, rows: rows.map((row) => [
+            row[0], row[1], row[2], row[3], row[4], stateId,
+            placeSourceIdentity(stateId, row),
+          ]) };
+        } catch (error) { return null; }
+      }));
+      placesIndex = loaded.flatMap((entry) => entry?.rows || []);
+      placeSearchLoadedStateIds = loaded.filter(Boolean).map((entry) => entry.stateId)
+        .sort((a, b) => a.localeCompare(b));
+      availablePlacesIndex = [];
+      try {
+        const catalogue = await loadNationalCatalogue();
+        for (const [stateId, offer] of catalogue.offers) {
+          if (MapStore.availability(stateId) !== 'remote') continue;
+          for (const entry of offer.state.placeSearch?.entries || []) {
+            availablePlacesIndex.push({ ...entry, stateId, source: 'store',
+              sourceId: entry.id, requiresDownload: true });
+          }
+        }
+      } catch (error) { /* installed offline search remains complete */ }
+    })().catch(() => {
+      placesPromise = null;
+      if (!Array.isArray(placesIndex)) placesIndex = [];
+    }); // offline/cache race: retry next time
   }
   return placesPromise;
 }
@@ -11026,6 +11082,8 @@ let placePickerViewportRestoreTimers = [];
 let searchResultMarker = null;
 let searchResultOpenToken = 0;
 let placeSearchTarget = null;
+const PENDING_MAP_ROUTE_INTENT_KEY = 'jra-pending-map-route-intent-1';
+const PENDING_MAP_ROUTE_INTENT_MAX_AGE_MS = 60 * 60 * 1000;
 const onlinePlaceCache = new Map();
 let onlinePlaceLastRequestAt = 0;
 // Photon is built for search-as-you-type and POI lookup. The public Nominatim
@@ -11035,8 +11093,30 @@ const ONLINE_PLACE_SEARCH_ENDPOINT = 'https://photon.komoot.io/api/';
 const ONLINE_PLACE_SEARCH_MIN_INTERVAL_MS = 800;
 const ONLINE_PLACE_AUTO_DELAY_MS = 700;
 const ONLINE_PLACE_RESULT_LIMIT = 8;
-// The router only covers the region this build ships; drop any hit outside it
-// so a search result is always somewhere a route can reach.
+
+function placeStateIdAt(lon, lat, properties = null) {
+  const point = [Number(lon), Number(lat)];
+  if (!point.every(Number.isFinite)) return null;
+  const stated = String(properties?.state || '').trim().toLowerCase();
+  const named = allKnownStates().find((state) => state.name.toLowerCase() === stated);
+  if (named && point[0] >= named.bounds.minLon && point[0] <= named.bounds.maxLon
+      && point[1] >= named.bounds.minLat && point[1] <= named.bounds.maxLat) return named.id;
+  const exact = nationalFeatureCollection?.features?.find((feature) =>
+    featureContainsPoint(feature, point));
+  if (exact) return exact.properties.id;
+  const candidates = allKnownStates().filter((state) => point[0] >= state.bounds.minLon
+    && point[0] <= state.bounds.maxLon && point[1] >= state.bounds.minLat
+    && point[1] <= state.bounds.maxLat);
+  candidates.sort((a, b) =>
+    (a.bounds.maxLon - a.bounds.minLon) * (a.bounds.maxLat - a.bounds.minLat)
+      - (b.bounds.maxLon - b.bounds.minLon) * (b.bounds.maxLat - b.bounds.minLat));
+  return candidates[0]?.id || null;
+}
+
+function placeStateIsDiscoverable(stateId) {
+  if (!stateId) return false;
+  return MapStore.availability(stateId) !== 'remote' || nationalMapOffers.has(stateId);
+}
 
 // Bias the search toward wherever the map is currently looking so a generic
 // query ("Fred Meyer", "hardware store") returns nearby matches rather than
@@ -11085,14 +11165,19 @@ async function searchOnlinePlaces(query) {
       .map((feature) => {
         const properties = feature?.properties || {};
         const coordinates = feature?.geometry?.coordinates || [];
+        const stateId = placeStateIdAt(coordinates[0], coordinates[1], properties);
+        const osmId = properties.osm_type && properties.osm_id != null
+          ? `${properties.osm_type}:${properties.osm_id}` : null;
         return {
           name: onlinePlaceResultName(properties),
           lon: Number(coordinates[0]), lat: Number(coordinates[1]), source: 'online',
           type: String(properties.osm_value || properties.type || '').replace(/_/g, ' '),
+          stateId, sourceId: osmId, requiresDownload: stateId
+            ? MapStore.availability(stateId) === 'remote' : false,
         };
       })
       .filter((item) => item.name && Number.isFinite(item.lon) && Number.isFinite(item.lat))
-      .filter((item) => Region.contains(item.lon, item.lat));
+      .filter((item) => placeStateIsDiscoverable(item.stateId));
     if (onlinePlaceCache.size >= 80) onlinePlaceCache.delete(onlinePlaceCache.keys().next().value);
     onlinePlaceCache.set(cacheKey, matches);
   }
@@ -11352,8 +11437,49 @@ function openPlaceSearch(target = null) {
   }
 }
 
-function choosePlaceSearchResult(lngLat, name, { fromDevice = false } = {}) {
+function readPendingMapRouteIntent() {
+  try {
+    const value = JSON.parse(localStorage.getItem(PENDING_MAP_ROUTE_INTENT_KEY) || 'null');
+    if (!value || value.version !== 1 || !Number.isFinite(value.createdAt)
+        || Date.now() - value.createdAt > PENDING_MAP_ROUTE_INTENT_MAX_AGE_MS) {
+      localStorage.removeItem(PENDING_MAP_ROUTE_INTENT_KEY);
+      return null;
+    }
+    return value;
+  } catch (error) { return null; }
+}
+
+function clearPendingMapRouteIntent() {
+  try { localStorage.removeItem(PENDING_MAP_ROUTE_INTENT_KEY); } catch (error) { /* optional */ }
+}
+
+async function beginMapInstallForPlace(item, action, target = null) {
+  const stateId = item?.stateId;
+  if (!stateId || MapStore.availability(stateId) !== 'remote') return false;
+  try {
+    localStorage.setItem(PENDING_MAP_ROUTE_INTENT_KEY, JSON.stringify({
+      version: 1, createdAt: Date.now(), action, target,
+      stateId, point: [Number(item.lon), Number(item.lat)], name: item.name,
+    }));
+  } catch (error) {
+    setRouteStatus('This device could not retain the trip while downloading the map.');
+    return true;
+  }
+  closePlacePicker();
+  setRouteStatus(`${placeStateConfig(stateId)?.name || 'That map'} is required for this trip.`);
+  await openNationalStateCard(stateId);
+  return true;
+}
+
+function choosePlaceSearchResult(lngLat, name, {
+  fromDevice = false, stateId = Region.id, requiresDownload = false,
+} = {}) {
   const target = placeSearchTarget;
+  if (requiresDownload) {
+    beginMapInstallForPlace({ ...lngLat, lon: lngLat.lng, lat: lngLat.lat, name, stateId },
+      'choose-place', target);
+    return;
+  }
   if (!target) {
     showPlaceOnMap(lngLat, name, { searchResult: true });
     setRouteStatus('Search result shown — choose how to use it');
@@ -11362,14 +11488,16 @@ function choosePlaceSearchResult(lngLat, name, { fromDevice = false } = {}) {
   closePlacePicker();
   clearSearchResultMarker();
   if (target === 'via') {
-    if (!addVia(lngLat, { name })) return;
+    if (!addVia(lngLat, { name, stateId })) return;
     // addVia() reframes the complete itinerary. Do not first fly to the stop
     // and immediately fly back out, especially while the router is working.
     if (!(routing.start && routing.end)) moveMapToPlace(lngLat.lng, lngLat.lat);
     setRouteStatus(`Stop added: ${normalizeEndpointName(name) || 'Point on map'}`);
     return;
   }
-  setRoutePoint(target, lngLat, name, { fromDevice: target === 'start' && fromDevice });
+  setRoutePoint(target, lngLat, name, {
+    fromDevice: target === 'start' && fromDevice, stateId,
+  });
   // When this choice completes the trip, computeRoute() owns the camera and
   // frames both points. The old point zoom followed by an immediate route fit
   // was the endpoint-selection memory spike that repeatedly killed iOS.
@@ -11378,7 +11506,14 @@ function choosePlaceSearchResult(lngLat, name, { fromDevice = false } = {}) {
   setRouteStatus(`${label} set to ${normalizeEndpointName(name) || 'Point on map'}`);
 }
 
-async function routeToPlaceSearchResult(lngLat, name) {
+async function routeToPlaceSearchResult(lngLat, name, {
+  stateId = Region.id, requiresDownload = false,
+} = {}) {
+  if (requiresDownload) {
+    await beginMapInstallForPlace({ ...lngLat, lon: lngLat.lng, lat: lngLat.lat, name, stateId },
+      'route-it');
+    return;
+  }
   // “Route It” is deliberately a new, simple trip: where the rider is now to
   // the selected result. Do not destroy an existing itinerary until location
   // succeeds, so a denied/slow GPS request cannot cost the rider their plan.
@@ -11399,7 +11534,7 @@ async function routeToPlaceSearchResult(lngLat, name) {
     // The fix above is brand new. Suppress the ordinary “new destination”
     // refresh so this one action does not immediately ask Core Location for
     // the same point a second time.
-    setRoutePoint('end', lngLat, name, { refreshDeviceStart: false });
+    setRoutePoint('end', lngLat, name, { refreshDeviceStart: false, stateId });
     setRouteStatus(`Routing to ${normalizeEndpointName(name) || 'selected place'}`);
   } catch {
     if (requestId !== placeSearchRequestId) return;
@@ -11408,6 +11543,36 @@ async function routeToPlaceSearchResult(lngLat, name) {
     setPlacePickerHint('location-error', ' Choose Map to inspect it, or try Route It again.');
     setRouteStatus('');
   }
+}
+
+async function resumePendingMapRouteIntent() {
+  const intent = readPendingMapRouteIntent();
+  if (!intent) return false;
+  if (MapStore.availability(intent.stateId) === 'remote') {
+    await openNationalStateCard(intent.stateId);
+    return true;
+  }
+  const [lng, lat] = intent.point || [];
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+    clearPendingMapRouteIntent();
+    return false;
+  }
+  clearPendingMapRouteIntent();
+  const point = { lng, lat };
+  if (intent.action === 'route-it') {
+    await routeToPlaceSearchResult(point, intent.name, { stateId: intent.stateId });
+    return true;
+  }
+  if (intent.target === 'via') {
+    addVia(point, { name: intent.name, stateId: intent.stateId });
+  } else if (['start', 'end'].includes(intent.target)) {
+    setRoutePoint(intent.target, point, intent.name, { stateId: intent.stateId });
+    if (!(routing.start && routing.end)) moveMapToPlace(lng, lat);
+  } else {
+    showPlaceOnMap(point, intent.name, { searchResult: true });
+  }
+  setRouteStatus(`${normalizeEndpointName(intent.name) || 'Place'} restored after map installation.`);
+  return true;
 }
 
 function buildPlacePicker() {
@@ -11421,14 +11586,21 @@ function buildPlacePicker() {
     const unique = [];
     for (const item of items) {
       const label = item.name.trim().toLowerCase();
-      // Collapse the same OSM object returned through two paths, but retain
-      // separate branches of a chain. The old 10 km radius hid exactly the
-      // common-business results riders need to distinguish.
-      const duplicate = unique.some((prior) => prior.name.trim().toLowerCase() === label
-        && navDistanceM([prior.lon, prior.lat], [item.lon, item.lat]) < 120);
+      // Prefer stable source identity when a source carries it. Older compact
+      // indexes do not, so border copies also get a display-only name/spatial
+      // collapse. Neither rule changes graph topology or routing portals.
+      const duplicate = unique.some((prior) => (item.sourceId && prior.sourceId === item.sourceId)
+        || (prior.name.trim().toLowerCase() === label
+          && navDistanceM([prior.lon, prior.lat], [item.lon, item.lat]) < 120));
       if (!duplicate) unique.push(item);
     }
     return unique;
+  };
+
+  const searchScopeStateNames = () => {
+    const ids = placeSearchLoadedStateIds.length ? placeSearchLoadedStateIds
+      : [...new Set((placesIndex || []).map((row) => row?.stateId || row?.[5] || Region.id))];
+    return ids.map((id) => placeStateConfig(id)?.name || id).sort((a, b) => a.localeCompare(b));
   };
 
   const render = (items, message = '', { offerInternet = false, onlineItems = [] } = {}) => {
@@ -11446,6 +11618,9 @@ function buildPlacePicker() {
         hit.dataset.lon = String(item.lon);
         hit.dataset.lat = String(item.lat);
         hit.dataset.name = item.name;
+        hit.dataset.stateId = item.stateId || Region.id;
+        hit.dataset.sourceId = item.sourceId || '';
+        hit.dataset.requiresDownload = String(Boolean(item.requiresDownload));
         const summary = document.createElement('button');
         summary.type = 'button';
         summary.className = 'place-result-summary';
@@ -11455,11 +11630,14 @@ function buildPlacePicker() {
         resultName.className = 'place-result-name';
         resultName.textContent = item.name;
         const detail = document.createElement('small');
-        detail.textContent = item.source === 'online'
+        const stateName = placeStateConfig(item.stateId)?.name || item.stateId || Region.name;
+        detail.textContent = item.requiresDownload
+          ? `${TYPE_LABEL[item.type] || item.type || 'place'} · ${stateName} · Download map`
+          : item.source === 'online'
           ? (Number.isFinite(item.distanceM)
-            ? `${item.type ? `${item.type} · ` : ''}${fmtMi(item.distanceM)} mi from map center · online`
-            : 'online · OpenStreetMap')
-          : (TYPE_LABEL[item.type] || item.type || 'place');
+            ? `${item.type ? `${item.type} · ` : ''}${stateName} · ${fmtMi(item.distanceM)} mi from map center · online`
+            : `${stateName} · online · OpenStreetMap`)
+          : `${TYPE_LABEL[item.type] || item.type || 'place'} · ${stateName}`;
         summary.append(resultName, detail);
         hit.append(summary);
         // Targeted Start/Destination/Stop searches keep their direct one-tap
@@ -11484,7 +11662,11 @@ function buildPlacePicker() {
         results.append(hit);
       }
     };
-    appendItems(items, onlineItems.length && items.length ? 'On this device' : '');
+    const onDevice = items.filter((item) => !item.requiresDownload);
+    const available = items.filter((item) => item.requiresDownload);
+    appendItems(onDevice, (onlineItems.length || available.length) && onDevice.length
+      ? 'On this device' : '');
+    appendItems(available, 'Available maps');
     if (message) {
       const notice = document.createElement('p');
       notice.className = 'place-results-message';
@@ -11493,6 +11675,15 @@ function buildPlacePicker() {
       results.append(notice);
     }
     appendItems(onlineItems, items.length ? 'From the internet' : 'Internet results');
+    if (items.length || onlineItems.length || message || offerInternet) {
+      const scope = document.createElement('p');
+      scope.className = 'place-results-scope';
+      const names = searchScopeStateNames();
+      scope.textContent = navigator.onLine === false
+        ? `Offline search covers installed maps: ${names.join(', ') || 'none'}.`
+        : `On-device search covers installed maps: ${names.join(', ') || 'none'}.`;
+      results.append(scope);
+    }
     if (offerInternet) {
       const internet = document.createElement('button');
       internet.type = 'button';
@@ -11528,12 +11719,14 @@ function buildPlacePicker() {
     if (numbers.length !== 2 || !numbers.every(Number.isFinite)) return null;
     const [first, second] = numbers;
     const candidates = [[first, second], [second, first]]
-      .filter(([lon, lat]) => Math.abs(lon) <= 180 && Math.abs(lat) <= 90
-        && Region.contains(lon, lat));
+      .filter(([lon, lat]) => Math.abs(lon) <= 180 && Math.abs(lat) <= 90)
+      .map(([lon, lat]) => ({ lon, lat, stateId: placeStateIdAt(lon, lat) }))
+      .filter((item) => placeStateIsDiscoverable(item.stateId));
     if (!candidates.length) return null;
-    const [lon, lat] = candidates[0];
+    const { lon, lat, stateId } = candidates[0];
     return { name: `${lon.toFixed(5)}, ${lat.toFixed(5)}`, lon, lat,
-      type: 'coordinates', source: 'local' };
+      type: 'coordinates', source: 'local', stateId,
+      requiresDownload: MapStore.availability(stateId) === 'remote' };
   };
 
   const localMatches = () => {
@@ -11543,13 +11736,22 @@ function buildPlacePicker() {
     if (!q || !placesIndex) return [];
     const starts = [], contains = [];
     for (const p of placesIndex) {
-      const n = p[0].toLowerCase();
-      if (n.startsWith(q)) starts.push(p);
-      else if (n.includes(q)) contains.push(p);
-      if (starts.length >= 8) break;
+      const row = Array.isArray(p) ? {
+        name: p[0], lon: p[1], lat: p[2], type: p[3], stateId: p[5] || Region.id,
+        sourceId: p[6] || placeSourceIdentity(p[5] || Region.id, p), source: 'local',
+      } : p;
+      const n = row.name.toLowerCase();
+      if (n.startsWith(q)) starts.push(row);
+      else if (n.includes(q)) contains.push(row);
     }
-    return starts.concat(contains).slice(0, 8).map(([name, lon, lat, type]) =>
-      ({ name, lon, lat, type, source: 'local' }));
+    if (navigator.onLine !== false) {
+      for (const item of availablePlacesIndex) {
+        const n = item.name.toLowerCase();
+        if (n.startsWith(q)) starts.push(item);
+        else if (n.includes(q)) contains.push(item);
+      }
+    }
+    return uniqueMatches(starts.concat(contains)).slice(0, 8);
   };
 
   const showLocalMatches = () => {
@@ -11571,9 +11773,11 @@ function buildPlacePicker() {
       render([], `That point is outside ${Region.name}.`, { offerInternet: false });
       return;
     }
-    const shouldSearchOnline = query.length >= 2 && Array.isArray(placesIndex) && local.length === 0;
+    const online = navigator.onLine !== false;
+    const shouldSearchOnline = online && query.length >= 2
+      && Array.isArray(placesIndex) && local.length === 0;
     render(local, shouldSearchOnline ? 'No offline matches. Searching the internet…' : '',
-      { offerInternet: query.length >= 2 });
+      { offerInternet: online && query.length >= 2 });
     if (shouldSearchOnline) {
       const expectedQuery = query;
       placeSearchAutoTimer = setTimeout(() => {
@@ -11657,13 +11861,15 @@ function buildPlacePicker() {
     }
     const lngLat = { lng: Number(hit.dataset.lon), lat: Number(hit.dataset.lat) };
     const name = hit.dataset.name;
+    const options = { stateId: hit.dataset.stateId || Region.id,
+      requiresDownload: hit.dataset.requiresDownload === 'true' };
     if (e.target.closest('.place-result-route')) {
-      routeToPlaceSearchResult(lngLat, name);
+      routeToPlaceSearchResult(lngLat, name, options);
       return;
     }
     input.value = '';
     render([]);
-    choosePlaceSearchResult(lngLat, name);
+    choosePlaceSearchResult(lngLat, name, options);
   });
 
   document.getElementById('placePickerClose').addEventListener('click', closePlacePicker);
@@ -14718,6 +14924,8 @@ async function openNationalStateCard(id) {
   const feature = catalogue.boundaries.features.find((item) => item.properties.id === id);
   if (!feature) return;
   const offer = nationalMapOffers.get(id) || null;
+  const pendingIntent = readPendingMapRouteIntent();
+  const continuesTrip = pendingIntent?.stateId === id;
   const known = allKnownStates().find((state) => state.id === id) || offer?.state || null;
   const state = stateWithAcquisitions(known);
   const availability = nationalAvailability(id);
@@ -14766,9 +14974,13 @@ async function openNationalStateCard(id) {
   };
   if (availability === 'installed') {
     const current = Region.localDataAvailable && Region.id === id;
-    primary.textContent = current ? 'Current home map' : 'Use as home map';
-    primary.disabled = current;
-    primary.onclick = () => { if (!current) switchMapState(id); };
+    primary.textContent = continuesTrip ? 'Continue trip'
+      : current ? 'Current home map' : 'Use as home map';
+    primary.disabled = current && !continuesTrip;
+    primary.onclick = () => {
+      if (continuesTrip) location.reload();
+      else if (!current) switchMapState(id);
+    };
   } else if (availability === 'available' && offer) {
     primary.textContent = `Download ${formatMapBytes(MapStore.stateBytes(offer.state))}`;
     primary.onclick = async () => {
@@ -14783,10 +14995,12 @@ async function openNationalStateCard(id) {
       nationalInstallController = null;
       cancel.hidden = true;
       if (installed) {
-        try { localStorage.setItem(Region.storageKey, id); } catch (error) {
-          actionStatus.textContent = 'The map installed, but this device could not remember it as home.';
-          primary.disabled = false;
-          return;
+        if (!continuesTrip) {
+          try { localStorage.setItem(Region.storageKey, id); } catch (error) {
+            actionStatus.textContent = 'The map installed, but this device could not remember it as home.';
+            primary.disabled = false;
+            return;
+          }
         }
         location.reload();
       } else primary.disabled = false;
@@ -15936,6 +16150,11 @@ document.getElementById('tab-settings').addEventListener('keydown', (event) => {
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () =>
   document.getElementById(b.dataset.close).close()));
 document.getElementById('mapStateDialog')?.addEventListener('close', () => {
+  const pending = readPendingMapRouteIntent();
+  if (pending?.stateId === selectedNationalStateId
+      && MapStore.availability(selectedNationalStateId) === 'remote') {
+    clearPendingMapRouteIntent();
+  }
   selectedNationalStateId = null;
   applyNationalMapFeatureStates();
 });

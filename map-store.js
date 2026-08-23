@@ -32,13 +32,14 @@
     'defaultCenter', 'defaultZoom', 'stressAgency', 'restrictionAgency', 'speedAgency',
     'facilitySourceName', 'stressLayerName', 'restrictionLayerName',
     'interstateRoutePrefixes', 'stateRoutePrefixes', 'facilityLevels', 'sourceCounts', 'routeDirectionSuffixes',
-    'datasets', 'versions', 'attribution', 'files', 'acquisitions']);
+    'datasets', 'versions', 'attribution', 'files', 'acquisitions', 'placeSearch']);
   const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
   const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
   const SAFE_PATH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/;
   const SAFE_ACQUISITION_ID = /^[a-z0-9][a-z0-9._-]{0,191}$/;
   const SAFE_PARTITION_ID = /^[a-z0-9][a-z0-9._/-]{0,191}$/;
   const SHA256 = /^[a-f0-9]{64}$/;
+  const PLACE_SEARCH_ID = /^[a-z0-9][a-z0-9-]{0,63}:[a-f0-9]{20}$/;
   const MAP_FILE_KEYS = new Set(['dataset', 'path', 'bytes']);
   const ROUTING_FILE_KEYS = new Set(['dataset', 'path', 'bytes', 'rawBytes', 'sha256',
     'partitionId', 'stateId', 'sourceGraphVersion']);
@@ -175,6 +176,33 @@
       throw new Error(`state "${state.id}" lists no files`);
     }
     state.files.forEach((file) => validateMapFile(file, state.id));
+    if (state.placeSearch !== undefined) {
+      const search = state.placeSearch;
+      assertKnownKeys(search, new Set(['format', 'sourcePath', 'sourceBytes',
+        'completeResultCount', 'resultCount', 'entries']), `state "${state.id}" place search`);
+      if (!search || search.format !== 1 || search.sourcePath !== 'places.json'
+          || !Number.isSafeInteger(search.sourceBytes) || search.sourceBytes < 0
+          || !Number.isSafeInteger(search.completeResultCount) || search.completeResultCount < 0
+          || !Number.isSafeInteger(search.resultCount) || search.resultCount < 0
+          || !Array.isArray(search.entries) || search.entries.length !== search.resultCount
+          || search.resultCount > 120 || search.resultCount > search.completeResultCount) {
+        throw new Error(`state "${state.id}" has invalid lightweight place search metadata`);
+      }
+      const identities = new Set();
+      for (const entry of search.entries) {
+        assertKnownKeys(entry, new Set(['id', 'name', 'lon', 'lat', 'type', 'population']),
+          `state "${state.id}" place search entry`);
+        if (!PLACE_SEARCH_ID.test(String(entry?.id || ''))
+            || !entry.id.startsWith(`${state.id}:`) || identities.has(entry.id)
+            || typeof entry.name !== 'string' || !entry.name.trim()
+            || !Number.isFinite(entry.lon) || Math.abs(entry.lon) > 180
+            || !Number.isFinite(entry.lat) || Math.abs(entry.lat) > 90
+            || typeof entry.type !== 'string' || !Number.isFinite(entry.population)) {
+          throw new Error(`state "${state.id}" has an invalid lightweight place result`);
+        }
+        identities.add(entry.id);
+      }
+    }
     if (state.acquisitions !== undefined) {
       if (!Array.isArray(state.acquisitions) || !state.acquisitions.length) {
         throw new Error(`state "${state.id}" lists no acquisition units`);

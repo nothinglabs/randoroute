@@ -2,10 +2,11 @@
 
 Status: the generic contract, deterministic partition build, incremental
 composite runtime, state-chain controller, end-to-end jurisdiction path,
-atomic store/offline acquisition and national/first-run orientation are implemented on
+atomic store/offline acquisition, national/first-run orientation and
+cross-state search continuation are implemented on
 `codex/multistate-routing`, with executable synthetic and browser gates.
 Existing single-state routing remains the production compatibility path until
-search continuation and cross-border comparisons are complete.
+cross-border comparisons are complete.
 
 ## Product boundary
 
@@ -295,6 +296,10 @@ connectivity. Lightweight online/store results may identify an uninstalled
 destination without fetching its complete place index. Selecting one stores a
 pending route intent, installs endpoint and transit states after confirmation,
 then resumes the same intent. Offline search reports the installed scope.
+The generated store summary is capped at 120 population-sorted records per
+state and records both its result count and the complete source byte/count
+measurements. Confirmation retains the current home state; reload consumes the
+one-hour pending intent only after the requested map is installed.
 
 ## Test boundary
 

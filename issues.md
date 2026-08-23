@@ -127,6 +127,9 @@ cancellation and update. Compatible installed catalogues restore offline into
 the multi-state controller, while removals preserve saved intent and report the
 missing dependency. The resident 51-jurisdiction national layer and slim
 first-run acquisition flow now pass browser and native-shell packaging gates.
-Remaining gates are search continuation, Washington/Oregon crossing
-comparisons, documentation/handoff, preview, full suite, and the owner's
-physical-iPhone verdict.
+Installed-state search, state-tagged and border-deduplicated results, capped
+store summaries, Oregon download confirmation and exact pending-endpoint
+continuation pass their browser gate without switching the rider's home state.
+Remaining gates are Washington/Oregon crossing comparisons,
+documentation/handoff, preview, full suite, and the owner's physical-iPhone
+verdict.

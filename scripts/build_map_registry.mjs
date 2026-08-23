@@ -22,6 +22,8 @@ const option = (name, fallback) => {
 const MAPS = resolve(option('--maps-root', join(ROOT, 'maps')));
 const STATES_OUTPUT = resolve(option('--states-output', join(MAPS, 'states.js')));
 const STORE_OUTPUT = resolve(option('--store-output', join(MAPS, 'index.json')));
+const PLACE_SEARCH_FORMAT = 1;
+const PLACE_SEARCH_LIMIT = 120;
 
 // The one home of "which file carries each dataset". sw.js precaches these
 // paths, build_mobile_shell.mjs bundles them, and the map-store installer
@@ -102,7 +104,35 @@ for (const entry of readdirSync(MAPS, { withFileTypes: true }).sort((a, b) =>
     totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
     files,
   };
-  states.push({ config, files, acquisitions: [mapUnit] });
+  let placeSearch = null;
+  if (config.datasets.places) {
+    const placesPath = join(MAPS, entry.name, DATASET_FILES.places);
+    const sourceBytes = statSync(placesPath).size;
+    let places;
+    try { places = JSON.parse(readFileSync(placesPath, 'utf8')); }
+    catch (error) { throw new Error(`maps/${entry.name}/places.json is not valid JSON: ${error.message}`); }
+    if (!Array.isArray(places)) throw new Error(`maps/${entry.name}/places.json is not an array`);
+    const entries = places.slice(0, PLACE_SEARCH_LIMIT).map((row, index) => {
+      if (!Array.isArray(row) || typeof row[0] !== 'string'
+          || !Number.isFinite(row[1]) || !Number.isFinite(row[2])) {
+        throw new Error(`maps/${entry.name}/places.json row ${index + 1} is invalid`);
+      }
+      const identity = sha256(Buffer.from(JSON.stringify(row.slice(0, 5)))).slice(0, 20);
+      return {
+        id: `${config.id}:${identity}`, name: row[0], lon: row[1], lat: row[2],
+        type: String(row[3] || 'place'), population: Number(row[4]) || 0,
+      };
+    });
+    placeSearch = {
+      format: PLACE_SEARCH_FORMAT,
+      sourcePath: DATASET_FILES.places,
+      sourceBytes,
+      completeResultCount: places.length,
+      resultCount: entries.length,
+      entries,
+    };
+  }
+  states.push({ config, files, acquisitions: [mapUnit], placeSearch });
 }
 if (!states.length) throw new Error('maps/ holds no states');
 
@@ -201,8 +231,8 @@ ${body}
 // describes; the app's installer reads it, and so does build_mobile_shell.mjs.
 writeFileSync(STORE_OUTPUT, `${JSON.stringify({
   storeFormat: 2,
-  states: states.map(({ config, files, acquisitions: units }) =>
-    ({ ...config, files, acquisitions: units })),
+  states: states.map(({ config, files, acquisitions: units, placeSearch }) =>
+    ({ ...config, files, acquisitions: units, ...(placeSearch ? { placeSearch } : {}) })),
 }, null, 1)}\n`);
 
 console.log(`indexed ${states.length} state${states.length === 1 ? '' : 's'} -> ${STATES_OUTPUT}, ${STORE_OUTPUT}`);

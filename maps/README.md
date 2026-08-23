@@ -84,6 +84,16 @@ index by `region.js` at startup. The index is validated strictly on both
 ends: the builder refuses to emit an entry whose files are missing, and the
 client refuses an index with unknown keys, unsafe paths, or missing sizes.
 
+For states with `places.json`, each store entry also carries `placeSearch`
+format 1: at most 120 of the population-sorted records, their stable derived
+identity, the complete index record count, and the measured source byte size.
+This lets search identify an available but uninstalled destination without
+fetching that state's complete place index. Full `places.json` files are read
+only for installed maps. The current generated summaries add about 15 KB per
+state to the store index; the complete Oregon and Washington indexes are 68 KB
+and 122 KB respectively. This summary is discovery data only and never changes
+routing topology.
+
 Every state has one `state-map` acquisition. When
 `maps/partition-catalogue.json` exists, the builder also publishes a
 `routing-partitions` acquisition containing the exact catalogue identity,

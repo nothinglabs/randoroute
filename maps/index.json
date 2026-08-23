@@ -202,7 +202,976 @@
       }
      ]
     }
-   ]
+   ],
+   "placeSearch": {
+    "format": 1,
+    "sourcePath": "places.json",
+    "sourceBytes": 68283,
+    "completeResultCount": 1465,
+    "resultCount": 120,
+    "entries": [
+     {
+      "id": "oregon:27c6c27724a38880756a",
+      "name": "Portland",
+      "lon": -122.67419,
+      "lat": 45.52025,
+      "type": "city",
+      "population": 652503
+     },
+     {
+      "id": "oregon:19df96fa3a073eb2826b",
+      "name": "Eugene",
+      "lon": -123.09505,
+      "lat": 44.05051,
+      "type": "city",
+      "population": 159150
+     },
+     {
+      "id": "oregon:8411c09bb7875d357fe9",
+      "name": "Salem",
+      "lon": -123.03312,
+      "lat": 44.93916,
+      "type": "city",
+      "population": 155469
+     },
+     {
+      "id": "oregon:c0d847669e62289dc4fb",
+      "name": "Gresham",
+      "lon": -122.43299,
+      "lat": 45.49786,
+      "type": "city",
+      "population": 112378
+     },
+     {
+      "id": "oregon:6388ab94a59457ea3197",
+      "name": "Bend",
+      "lon": -121.31531,
+      "lat": 44.05817,
+      "type": "city",
+      "population": 111823
+     },
+     {
+      "id": "oregon:04db087ff37a562eea88",
+      "name": "Hillsboro",
+      "lon": -122.98983,
+      "lat": 45.52289,
+      "type": "city",
+      "population": 106447
+     },
+     {
+      "id": "oregon:dbcfe20ca1198ef35a56",
+      "name": "Beaverton",
+      "lon": -122.80378,
+      "lat": 45.48717,
+      "type": "city",
+      "population": 97494
+     },
+     {
+      "id": "oregon:345657ae44f90db89bbd",
+      "name": "Medford",
+      "lon": -122.87186,
+      "lat": 42.32642,
+      "type": "city",
+      "population": 74907
+     },
+     {
+      "id": "oregon:4a4cdf8ae9a62003e0a8",
+      "name": "Springfield",
+      "lon": -123.02203,
+      "lat": 44.04624,
+      "type": "city",
+      "population": 62979
+     },
+     {
+      "id": "oregon:a8461aa025e702483310",
+      "name": "Corvallis",
+      "lon": -123.26204,
+      "lat": 44.56457,
+      "type": "city",
+      "population": 58641
+     },
+     {
+      "id": "oregon:b6207774e09278eb137b",
+      "name": "Tigard",
+      "lon": -122.77193,
+      "lat": 45.43075,
+      "type": "city",
+      "population": 54539
+     },
+     {
+      "id": "oregon:9704c0942f90901bd839",
+      "name": "Albany",
+      "lon": -123.10593,
+      "lat": 44.63651,
+      "type": "city",
+      "population": 54453
+     },
+     {
+      "id": "oregon:a9522446379b8e2cf173",
+      "name": "Aloha",
+      "lon": -122.86705,
+      "lat": 45.49428,
+      "type": "suburb",
+      "population": 49425
+     },
+     {
+      "id": "oregon:71eec1ae60580f07da87",
+      "name": "Lake Oswego",
+      "lon": -122.67065,
+      "lat": 45.42067,
+      "type": "town",
+      "population": 40731
+     },
+     {
+      "id": "oregon:e8a47ed7dd12e68fd622",
+      "name": "Oregon City",
+      "lon": -122.60676,
+      "lat": 45.35734,
+      "type": "town",
+      "population": 37572
+     },
+     {
+      "id": "oregon:3e14c02f1ebd689c61c5",
+      "name": "Keizer",
+      "lon": -123.02663,
+      "lat": 44.9969,
+      "type": "town",
+      "population": 35027
+     },
+     {
+      "id": "oregon:4d9bb97d3cc393d1e4d3",
+      "name": "Grants Pass",
+      "lon": -123.32725,
+      "lat": 42.43937,
+      "type": "town",
+      "population": 34533
+     },
+     {
+      "id": "oregon:8018e5426a239774b263",
+      "name": "Redmond",
+      "lon": -121.17392,
+      "lat": 44.27262,
+      "type": "city",
+      "population": 33274
+     },
+     {
+      "id": "oregon:801115b767f4bf52f8a1",
+      "name": "McMinnville",
+      "lon": -123.19446,
+      "lat": 45.21004,
+      "type": "town",
+      "population": 30410
+     },
+     {
+      "id": "oregon:b06b0c9eebdf65b458aa",
+      "name": "Tualatin",
+      "lon": -122.76944,
+      "lat": 45.38093,
+      "type": "town",
+      "population": 28175
+     },
+     {
+      "id": "oregon:05051a5a4c997ac1191a",
+      "name": "West Linn",
+      "lon": -122.61231,
+      "lat": 45.36568,
+      "type": "town",
+      "population": 27373
+     },
+     {
+      "id": "oregon:53427d56fe9726e744d3",
+      "name": "Wilsonville",
+      "lon": -122.76816,
+      "lat": 45.30992,
+      "type": "town",
+      "population": 26664
+     },
+     {
+      "id": "oregon:c2c698204b4e35d36fc6",
+      "name": "Forest Grove",
+      "lon": -123.11106,
+      "lat": 45.51904,
+      "type": "town",
+      "population": 26225
+     },
+     {
+      "id": "oregon:da8c0a2273a4289c7e54",
+      "name": "Newberg",
+      "lon": -122.97275,
+      "lat": 45.30035,
+      "type": "town",
+      "population": 25138
+     },
+     {
+      "id": "oregon:044519b036383e811d8f",
+      "name": "Happy Valley",
+      "lon": -122.49717,
+      "lat": 45.42868,
+      "type": "town",
+      "population": 23733
+     },
+     {
+      "id": "oregon:9fb1dd074c4c6bf5e7e6",
+      "name": "Woodburn",
+      "lon": -122.85537,
+      "lat": 45.14373,
+      "type": "town",
+      "population": 22035
+     },
+     {
+      "id": "oregon:222a0741cee89a6109a0",
+      "name": "Klamath Falls",
+      "lon": -121.78167,
+      "lat": 42.22487,
+      "type": "city",
+      "population": 21885
+     },
+     {
+      "id": "oregon:a4da2651f63945737282",
+      "name": "Springdale",
+      "lon": -122.32981,
+      "lat": 45.51901,
+      "type": "village",
+      "population": 21226
+     },
+     {
+      "id": "oregon:b4c70f08fbb05287900b",
+      "name": "Milwaukie",
+      "lon": -122.64125,
+      "lat": 45.44401,
+      "type": "town",
+      "population": 21119
+     },
+     {
+      "id": "oregon:208df6b7a3deecaa0b8e",
+      "name": "Roseburg",
+      "lon": -123.34174,
+      "lat": 43.2165,
+      "type": "town",
+      "population": 20991
+     },
+     {
+      "id": "oregon:10760830fcfef6ce7d78",
+      "name": "Sherwood",
+      "lon": -122.84037,
+      "lat": 45.35693,
+      "type": "town",
+      "population": 20450
+     },
+     {
+      "id": "oregon:47d12e8793e2e32c788c",
+      "name": "Ashland",
+      "lon": -122.7154,
+      "lat": 42.19725,
+      "type": "town",
+      "population": 20078
+     },
+     {
+      "id": "oregon:fd03867204f618dc0184",
+      "name": "Hermiston",
+      "lon": -119.28946,
+      "lat": 45.84041,
+      "type": "city",
+      "population": 19354
+     },
+     {
+      "id": "oregon:5a5bf518ca44a0520633",
+      "name": "Altamont",
+      "lon": -121.73722,
+      "lat": 42.20681,
+      "type": "town",
+      "population": 19341
+     },
+     {
+      "id": "oregon:b70aeaed72b64106b8c2",
+      "name": "Lebanon",
+      "lon": -122.90723,
+      "lat": 44.53634,
+      "type": "town",
+      "population": 18447
+     },
+     {
+      "id": "oregon:77dff32db2267fd17335",
+      "name": "Canby",
+      "lon": -122.6926,
+      "lat": 45.26291,
+      "type": "town",
+      "population": 18171
+     },
+     {
+      "id": "oregon:ef171b740f5185c614ba",
+      "name": "Pendleton",
+      "lon": -118.7886,
+      "lat": 45.67207,
+      "type": "town",
+      "population": 16881
+     },
+     {
+      "id": "oregon:abd416a26953021797b1",
+      "name": "Oak Grove",
+      "lon": -122.64216,
+      "lat": 45.41664,
+      "type": "suburb",
+      "population": 16629
+     },
+     {
+      "id": "oregon:437adc252afd99650151",
+      "name": "Troutdale",
+      "lon": -122.38731,
+      "lat": 45.53929,
+      "type": "town",
+      "population": 16300
+     },
+     {
+      "id": "oregon:51243499275d09410219",
+      "name": "Central Point",
+      "lon": -122.91272,
+      "lat": 42.37678,
+      "type": "town",
+      "population": 16150
+     },
+     {
+      "id": "oregon:31c45b2cb144843f405b",
+      "name": "Coos Bay",
+      "lon": -124.21746,
+      "lat": 43.36789,
+      "type": "town",
+      "population": 15999
+     },
+     {
+      "id": "oregon:993eb3f9fab62e23e6f6",
+      "name": "Rockwood",
+      "lon": -122.48281,
+      "lat": 45.51917,
+      "type": "suburb",
+      "population": 15397
+     },
+     {
+      "id": "oregon:78d002dd727dc81d9864",
+      "name": "Dallas",
+      "lon": -123.31587,
+      "lat": 44.91892,
+      "type": "town",
+      "population": 14748
+     },
+     {
+      "id": "oregon:bdb2dc6b8121103b1f34",
+      "name": "The Dalles",
+      "lon": -121.18416,
+      "lat": 45.60151,
+      "type": "town",
+      "population": 13620
+     },
+     {
+      "id": "oregon:294f78c1741211ddef49",
+      "name": "Oatfield",
+      "lon": -122.59465,
+      "lat": 45.41253,
+      "type": "suburb",
+      "population": 13415
+     },
+     {
+      "id": "oregon:851203614a1feb81228a",
+      "name": "La Grande",
+      "lon": -118.08787,
+      "lat": 45.32461,
+      "type": "town",
+      "population": 13082
+     },
+     {
+      "id": "oregon:a2ad4127785e7a0cd848",
+      "name": "North Central",
+      "lon": -122.43247,
+      "lat": 45.51803,
+      "type": "suburb",
+      "population": 12905
+     },
+     {
+      "id": "oregon:f6a8c9d963ca6a69a238",
+      "name": "Saint Helens",
+      "lon": -122.80649,
+      "lat": 45.864,
+      "type": "town",
+      "population": 12883
+     },
+     {
+      "id": "oregon:7d97ce614c038d8c9f70",
+      "name": "Cornelius",
+      "lon": -123.05562,
+      "lat": 45.5198,
+      "type": "town",
+      "population": 12694
+     },
+     {
+      "id": "oregon:ecb71216288c5dc45f8d",
+      "name": "Sandy",
+      "lon": -122.26163,
+      "lat": 45.39692,
+      "type": "town",
+      "population": 12612
+     },
+     {
+      "id": "oregon:1ef701f4601598dd173c",
+      "name": "Central Beaverton",
+      "lon": -122.80586,
+      "lat": 45.50142,
+      "type": "suburb",
+      "population": 12128
+     },
+     {
+      "id": "oregon:0360321c6cedef4e2d89",
+      "name": "Gladstone",
+      "lon": -122.59455,
+      "lat": 45.38033,
+      "type": "town",
+      "population": 12017
+     },
+     {
+      "id": "oregon:a1fa0509da53528cfa8b",
+      "name": "Ontario",
+      "lon": -116.96294,
+      "lat": 44.02655,
+      "type": "city",
+      "population": 11957
+     },
+     {
+      "id": "oregon:e0cebf92c8ee97061976",
+      "name": "Oak Hills",
+      "lon": -122.84089,
+      "lat": 45.54098,
+      "type": "suburb",
+      "population": 11903
+     },
+     {
+      "id": "oregon:98b0e2605e6230c2739d",
+      "name": "Neighbors Southwest",
+      "lon": -122.83661,
+      "lat": 45.4408,
+      "type": "suburb",
+      "population": 10906
+     },
+     {
+      "id": "oregon:6b91cfecca5a63bc6d9f",
+      "name": "Cottage Grove",
+      "lon": -123.0589,
+      "lat": 43.79747,
+      "type": "town",
+      "population": 10574
+     },
+     {
+      "id": "oregon:50fc0482a556c1374c32",
+      "name": "Fairview",
+      "lon": -122.43305,
+      "lat": 45.53855,
+      "type": "town",
+      "population": 10424
+     },
+     {
+      "id": "oregon:287596436dc6066ab2bb",
+      "name": "Sexton Mountain",
+      "lon": -122.84303,
+      "lat": 45.45916,
+      "type": "suburb",
+      "population": 10414
+     },
+     {
+      "id": "oregon:453eed24adf77c18309f",
+      "name": "Molalla",
+      "lon": -122.57703,
+      "lat": 45.14734,
+      "type": "town",
+      "population": 10228
+     },
+     {
+      "id": "oregon:c2a13e565af8bcf42a54",
+      "name": "Astoria",
+      "lon": -123.83198,
+      "lat": 46.1882,
+      "type": "town",
+      "population": 10181
+     },
+     {
+      "id": "oregon:f3e4ac36997f9bc7b8b5",
+      "name": "Kelly Creek",
+      "lon": -122.38417,
+      "lat": 45.48229,
+      "type": "suburb",
+      "population": 10162
+     },
+     {
+      "id": "oregon:85547c6a3284b653cdfb",
+      "name": "Rock Creek",
+      "lon": -122.88149,
+      "lat": 45.55355,
+      "type": "suburb",
+      "population": 9923
+     },
+     {
+      "id": "oregon:14c6a33fafdcb1405f5c",
+      "name": "Newport",
+      "lon": -124.05344,
+      "lat": 44.63676,
+      "type": "town",
+      "population": 9896
+     },
+     {
+      "id": "oregon:9cb942175c5f83e49bc2",
+      "name": "North Bend",
+      "lon": -124.22428,
+      "lat": 43.40651,
+      "type": "town",
+      "population": 9846
+     },
+     {
+      "id": "oregon:26aad44b8ae743977f12",
+      "name": "Damascus",
+      "lon": -122.45898,
+      "lat": 45.41763,
+      "type": "village",
+      "population": 9658
+     },
+     {
+      "id": "oregon:b385906dba4d945b76b6",
+      "name": "Baker City",
+      "lon": -117.83438,
+      "lat": 44.77487,
+      "type": "town",
+      "population": 9648
+     },
+     {
+      "id": "oregon:6e18cd77b398d236f99a",
+      "name": "Monmouth",
+      "lon": -123.22908,
+      "lat": 44.84864,
+      "type": "town",
+      "population": 9534
+     },
+     {
+      "id": "oregon:84d52f4450a614a98f2f",
+      "name": "West Beaverton",
+      "lon": -122.8392,
+      "lat": 45.48044,
+      "type": "suburb",
+      "population": 9390
+     },
+     {
+      "id": "oregon:529c338dbf0af7058c6b",
+      "name": "Prineville",
+      "lon": -120.84639,
+      "lat": 44.30349,
+      "type": "town",
+      "population": 9313
+     },
+     {
+      "id": "oregon:e93f8e4e0d37e1d0a0df",
+      "name": "Silverton",
+      "lon": -122.78329,
+      "lat": 45.00493,
+      "type": "town",
+      "population": 8993
+     },
+     {
+      "id": "oregon:38dc631489861941123f",
+      "name": "Independence",
+      "lon": -123.1913,
+      "lat": 44.856,
+      "type": "town",
+      "population": 8764
+     },
+     {
+      "id": "oregon:4a3f5e7fb9d8d5db499d",
+      "name": "Southwest",
+      "lon": -122.46321,
+      "lat": 45.47865,
+      "type": "suburb",
+      "population": 8712
+     },
+     {
+      "id": "oregon:86c48a59f03dbbba6fa4",
+      "name": "Sweet Home",
+      "lon": -122.73619,
+      "lat": 44.39762,
+      "type": "town",
+      "population": 8576
+     },
+     {
+      "id": "oregon:6a3d4a84fd5d895555d4",
+      "name": "Boring",
+      "lon": -122.36951,
+      "lat": 45.43266,
+      "type": "village",
+      "population": 8522
+     },
+     {
+      "id": "oregon:6f442bd16a1fad4f9951",
+      "name": "Stayton",
+      "lon": -122.79453,
+      "lat": 44.80068,
+      "type": "town",
+      "population": 8244
+     },
+     {
+      "id": "oregon:aff1f3076eb21eccfce6",
+      "name": "Florence",
+      "lon": -124.10131,
+      "lat": 43.98001,
+      "type": "town",
+      "population": 8122
+     },
+     {
+      "id": "oregon:3c76577edb6fb35629d0",
+      "name": "Vose",
+      "lon": -122.79995,
+      "lat": 45.47473,
+      "type": "suburb",
+      "population": 8026
+     },
+     {
+      "id": "oregon:2e45fd66cae964c0883f",
+      "name": "Eagle Point",
+      "lon": -122.80142,
+      "lat": 42.47183,
+      "type": "village",
+      "population": 7982
+     },
+     {
+      "id": "oregon:03bb3896a7164ae96934",
+      "name": "White City",
+      "lon": -122.8388,
+      "lat": 42.43198,
+      "type": "village",
+      "population": 7975
+     },
+     {
+      "id": "oregon:b8d93eae6f824abe4a4a",
+      "name": "Northwest",
+      "lon": -122.44775,
+      "lat": 45.50413,
+      "type": "suburb",
+      "population": 7974
+     },
+     {
+      "id": "oregon:b52c2f1287b3ae2007b1",
+      "name": "Lincoln City",
+      "lon": -124.01595,
+      "lat": 44.96179,
+      "type": "town",
+      "population": 7944
+     },
+     {
+      "id": "oregon:d5bbb276233de259ba7e",
+      "name": "South Beaverton",
+      "lon": -122.81565,
+      "lat": 45.45187,
+      "type": "suburb",
+      "population": 7824
+     },
+     {
+      "id": "oregon:8b2f2dba6c1b73510e37",
+      "name": "Powell Valley",
+      "lon": -122.39375,
+      "lat": 45.49551,
+      "type": "suburb",
+      "population": 7407
+     },
+     {
+      "id": "oregon:54de6cbea69149f0efef",
+      "name": "Umatilla",
+      "lon": -119.34252,
+      "lat": 45.91735,
+      "type": "town",
+      "population": 7363
+     },
+     {
+      "id": "oregon:96324289cb2fe86fbaae",
+      "name": "Sutherlin",
+      "lon": -123.31236,
+      "lat": 43.38966,
+      "type": "village",
+      "population": 7306
+     },
+     {
+      "id": "oregon:9c6418c93c2cc0cc4bd6",
+      "name": "Clackamas",
+      "lon": -122.55326,
+      "lat": 45.41465,
+      "type": "suburb",
+      "population": 6965
+     },
+     {
+      "id": "oregon:2c98feed2949de3a128b",
+      "name": "Junction City",
+      "lon": -123.20479,
+      "lat": 44.21919,
+      "type": "town",
+      "population": 6747
+     },
+     {
+      "id": "oregon:2d347a997810f413eafc",
+      "name": "Hood River",
+      "lon": -121.51237,
+      "lat": 45.70879,
+      "type": "town",
+      "population": 6673
+     },
+     {
+      "id": "oregon:d89d07470e70e555a8e9",
+      "name": "Scappoose",
+      "lon": -122.87436,
+      "lat": 45.7573,
+      "type": "town",
+      "population": 6658
+     },
+     {
+      "id": "oregon:30ef3056b0ab350a1384",
+      "name": "Northeast",
+      "lon": -122.40371,
+      "lat": 45.51173,
+      "type": "suburb",
+      "population": 6615
+     },
+     {
+      "id": "oregon:79d862b0f344705cd82b",
+      "name": "Highland",
+      "lon": -122.8147,
+      "lat": 45.4701,
+      "type": "suburb",
+      "population": 6590
+     },
+     {
+      "id": "oregon:a174321784f66ecf5261",
+      "name": "Wilkes East",
+      "lon": -122.48926,
+      "lat": 45.53457,
+      "type": "suburb",
+      "population": 6459
+     },
+     {
+      "id": "oregon:170a3717e4b4c969e4dc",
+      "name": "Milton-Freewater",
+      "lon": -118.38775,
+      "lat": 45.93291,
+      "type": "village",
+      "population": 6402
+     },
+     {
+      "id": "oregon:4a24cfe4cf302aab4722",
+      "name": "Madras",
+      "lon": -121.12949,
+      "lat": 44.63345,
+      "type": "town",
+      "population": 6351
+     },
+     {
+      "id": "oregon:c9c88565d9826339995b",
+      "name": "Raleigh Hills",
+      "lon": -122.74852,
+      "lat": 45.48633,
+      "type": "suburb",
+      "population": 6196
+     },
+     {
+      "id": "oregon:e654ff095f71af275ba3",
+      "name": "Seaside",
+      "lon": -123.92021,
+      "lat": 45.99325,
+      "type": "town",
+      "population": 6187
+     },
+     {
+      "id": "oregon:b73c14d5924e663e92ae",
+      "name": "Greenway",
+      "lon": -122.78911,
+      "lat": 45.45264,
+      "type": "suburb",
+      "population": 6184
+     },
+     {
+      "id": "oregon:a08ebe3b8de0c2dfca94",
+      "name": "Talent",
+      "lon": -122.78892,
+      "lat": 42.24381,
+      "type": "village",
+      "population": 6066
+     },
+     {
+      "id": "oregon:ee4cab4b67f5faa47a19",
+      "name": "Gresham Butte",
+      "lon": -122.43063,
+      "lat": 45.47924,
+      "type": "suburb",
+      "population": 5933
+     },
+     {
+      "id": "oregon:5a05e1a0c4e781d0c4c5",
+      "name": "Hogan",
+      "lon": -122.41376,
+      "lat": 45.48094,
+      "type": "suburb",
+      "population": 5890
+     },
+     {
+      "id": "oregon:7ff6574baf323a782abc",
+      "name": "Sheridan",
+      "lon": -123.39483,
+      "lat": 45.09928,
+      "type": "village",
+      "population": 5666
+     },
+     {
+      "id": "oregon:99af4466df040d4c1db2",
+      "name": "North Gresham",
+      "lon": -122.466,
+      "lat": 45.54527,
+      "type": "suburb",
+      "population": 5609
+     },
+     {
+      "id": "oregon:f3476af3c65c35b9fd48",
+      "name": "Philomath",
+      "lon": -123.36761,
+      "lat": 44.54,
+      "type": "town",
+      "population": 5350
+     },
+     {
+      "id": "oregon:7f32f9de429ffd6dea26",
+      "name": "King City",
+      "lon": -122.80411,
+      "lat": 45.40283,
+      "type": "village",
+      "population": 5184
+     },
+     {
+      "id": "oregon:2629d6bcc16db39855d0",
+      "name": "Mount Hood",
+      "lon": -122.40819,
+      "lat": 45.4902,
+      "type": "suburb",
+      "population": 5150
+     },
+     {
+      "id": "oregon:f30a062aaec351eecdba",
+      "name": "Winston",
+      "lon": -123.41314,
+      "lat": 43.12201,
+      "type": "village",
+      "population": 4780
+     },
+     {
+      "id": "oregon:3ea6f8cec8ad38710bd9",
+      "name": "Creswell",
+      "lon": -123.02453,
+      "lat": 43.9179,
+      "type": "village",
+      "population": 4754
+     },
+     {
+      "id": "oregon:8f8353cdb8a85fb83ea7",
+      "name": "Holly Brook",
+      "lon": -122.45231,
+      "lat": 45.4943,
+      "type": "suburb",
+      "population": 4553
+     },
+     {
+      "id": "oregon:2cea02901f573301243a",
+      "name": "Wood Village",
+      "lon": -122.41847,
+      "lat": 45.53705,
+      "type": "village",
+      "population": 4548
+     },
+     {
+      "id": "oregon:557a9ccdb1444e235125",
+      "name": "Phoenix",
+      "lon": -122.81533,
+      "lat": 42.27404,
+      "type": "village",
+      "population": 4538
+     },
+     {
+      "id": "oregon:be43d51c951b58709d1a",
+      "name": "Tillamook",
+      "lon": -123.84443,
+      "lat": 45.45592,
+      "type": "town",
+      "population": 4424
+     },
+     {
+      "id": "oregon:c46f30aafe9936555a1d",
+      "name": "Warrenton",
+      "lon": -123.92376,
+      "lat": 46.1651,
+      "type": "village",
+      "population": 4394
+     },
+     {
+      "id": "oregon:bc43ea552c08112f329a",
+      "name": "Estacada",
+      "lon": -122.33426,
+      "lat": 45.28647,
+      "type": "town",
+      "population": 4356
+     },
+     {
+      "id": "oregon:9672c358bf706c3a6838",
+      "name": "Reedsport",
+      "lon": -124.09708,
+      "lat": 43.70209,
+      "type": "town",
+      "population": 4355
+     },
+     {
+      "id": "oregon:b91650765bc5bc326f63",
+      "name": "Coquille",
+      "lon": -124.18761,
+      "lat": 43.17706,
+      "type": "village",
+      "population": 4239
+     },
+     {
+      "id": "oregon:95fe248baed64812335a",
+      "name": "Corbett",
+      "lon": -122.29226,
+      "lat": 45.53145,
+      "type": "village",
+      "population": 3947
+     },
+     {
+      "id": "oregon:9e6e8c5b642a4d8d2012",
+      "name": "Boardman",
+      "lon": -119.70058,
+      "lat": 45.83986,
+      "type": "village",
+      "population": 3828
+     },
+     {
+      "id": "oregon:058e7e636f3d3c83050e",
+      "name": "Historic Southeast",
+      "lon": -122.41972,
+      "lat": 45.49272,
+      "type": "suburb",
+      "population": 3773
+     },
+     {
+      "id": "oregon:f1062998ad3839aa72d3",
+      "name": "Metzger",
+      "lon": -122.75899,
+      "lat": 45.44651,
+      "type": "suburb",
+      "population": 3765
+     },
+     {
+      "id": "oregon:4d201fefbff4c34036fd",
+      "name": "Veneta",
+      "lon": -123.35151,
+      "lat": 44.04888,
+      "type": "town",
+      "population": 3757
+     }
+    ]
+   }
   },
   {
    "id": "washington",
@@ -407,7 +1376,976 @@
       }
      ]
     }
-   ]
+   ],
+   "placeSearch": {
+    "format": 1,
+    "sourcePath": "places.json",
+    "sourceBytes": 122488,
+    "completeResultCount": 2604,
+    "resultCount": 120,
+    "entries": [
+     {
+      "id": "washington:607f36e6fe9d6d112dc5",
+      "name": "Seattle",
+      "lon": -122.33006,
+      "lat": 47.60383,
+      "type": "city",
+      "population": 737015
+     },
+     {
+      "id": "washington:a07c335dfd374d4b1982",
+      "name": "Spokane",
+      "lon": -117.42351,
+      "lat": 47.65719,
+      "type": "city",
+      "population": 228989
+     },
+     {
+      "id": "washington:a48c2c5f10e52c7617ab",
+      "name": "Tacoma",
+      "lon": -122.43833,
+      "lat": 47.2455,
+      "type": "city",
+      "population": 219346
+     },
+     {
+      "id": "washington:db05faae2dba6674d1b9",
+      "name": "Vancouver",
+      "lon": -122.67446,
+      "lat": 45.6307,
+      "type": "city",
+      "population": 190915
+     },
+     {
+      "id": "washington:8803000d9a83668667ed",
+      "name": "Bellevue",
+      "lon": -122.19234,
+      "lat": 47.61442,
+      "type": "city",
+      "population": 151854
+     },
+     {
+      "id": "washington:603c3cae2d28a67e09f3",
+      "name": "Kent",
+      "lon": -122.22703,
+      "lat": 47.38269,
+      "type": "city",
+      "population": 136588
+     },
+     {
+      "id": "washington:3d6cb46f32681bcc3610",
+      "name": "Everett",
+      "lon": -122.2127,
+      "lat": 47.97934,
+      "type": "city",
+      "population": 110629
+     },
+     {
+      "id": "washington:1f81d162bc19dfc58c75",
+      "name": "Renton",
+      "lon": -122.20345,
+      "lat": 47.47991,
+      "type": "city",
+      "population": 106785
+     },
+     {
+      "id": "washington:7a72554f85c9046ca387",
+      "name": "Spokane Valley",
+      "lon": -117.26139,
+      "lat": 47.65711,
+      "type": "town",
+      "population": 102976
+     },
+     {
+      "id": "washington:8bf397f8dcd633628693",
+      "name": "Federal Way",
+      "lon": -122.33931,
+      "lat": 47.31349,
+      "type": "city",
+      "population": 101030
+     },
+     {
+      "id": "washington:d9cd626487ee7e522748",
+      "name": "Yakima",
+      "lon": -120.51084,
+      "lat": 46.60156,
+      "type": "city",
+      "population": 96968
+     },
+     {
+      "id": "washington:73b48af8afe6631f7d69",
+      "name": "Kirkland",
+      "lon": -122.20708,
+      "lat": 47.67654,
+      "type": "town",
+      "population": 92175
+     },
+     {
+      "id": "washington:9ff63edb8dbb9bff1dc7",
+      "name": "Bellingham",
+      "lon": -122.47884,
+      "lat": 48.7544,
+      "type": "city",
+      "population": 91482
+     },
+     {
+      "id": "washington:749ee566c77f5f7eb93b",
+      "name": "Auburn",
+      "lon": -122.23018,
+      "lat": 47.30754,
+      "type": "town",
+      "population": 87256
+     },
+     {
+      "id": "washington:acdd081be5b94f123613",
+      "name": "Kennewick",
+      "lon": -119.11992,
+      "lat": 46.20871,
+      "type": "city",
+      "population": 83921
+     },
+     {
+      "id": "washington:01a3e47683b81eeaefe0",
+      "name": "Pasco",
+      "lon": -119.0921,
+      "lat": 46.23067,
+      "type": "city",
+      "population": 77108
+     },
+     {
+      "id": "washington:c95ffce33d7ef2e2e16b",
+      "name": "Redmond",
+      "lon": -122.12388,
+      "lat": 47.66941,
+      "type": "town",
+      "population": 73256
+     },
+     {
+      "id": "washington:930d02f655503c365834",
+      "name": "Marysville",
+      "lon": -122.17682,
+      "lat": 48.05174,
+      "type": "town",
+      "population": 70714
+     },
+     {
+      "id": "washington:01cf712bdcb72d3e101d",
+      "name": "Sammamish",
+      "lon": -122.04168,
+      "lat": 47.60176,
+      "type": "town",
+      "population": 67455
+     },
+     {
+      "id": "washington:cdb1b75a139e8366fcca",
+      "name": "South Hill",
+      "lon": -122.2907,
+      "lat": 47.12109,
+      "type": "town",
+      "population": 64708
+     },
+     {
+      "id": "washington:d31999c1b60af1fcd00f",
+      "name": "Lakewood",
+      "lon": -122.51846,
+      "lat": 47.17176,
+      "type": "town",
+      "population": 63612
+     },
+     {
+      "id": "washington:c6bf79c2415e66287209",
+      "name": "Richland",
+      "lon": -119.2752,
+      "lat": 46.28043,
+      "type": "city",
+      "population": 60560
+     },
+     {
+      "id": "washington:8520faf1231395594945",
+      "name": "Shoreline",
+      "lon": -122.34375,
+      "lat": 47.75647,
+      "type": "town",
+      "population": 58608
+     },
+     {
+      "id": "washington:2213078623cdce376bbc",
+      "name": "Olympia",
+      "lon": -122.89501,
+      "lat": 47.0451,
+      "type": "city",
+      "population": 55605
+     },
+     {
+      "id": "washington:7cc8a1c4a3947f33fce7",
+      "name": "Lacey",
+      "lon": -122.80723,
+      "lat": 47.02639,
+      "type": "town",
+      "population": 53526
+     },
+     {
+      "id": "washington:0ea0634c915292642ed5",
+      "name": "Burien",
+      "lon": -122.34853,
+      "lat": 47.46992,
+      "type": "town",
+      "population": 52066
+     },
+     {
+      "id": "washington:1f25cd76ffaef7ba0172",
+      "name": "Bothell",
+      "lon": -122.2054,
+      "lat": 47.76232,
+      "type": "town",
+      "population": 48161
+     },
+     {
+      "id": "washington:4c9a33334e714fceee81",
+      "name": "Bremerton",
+      "lon": -122.62468,
+      "lat": 47.56537,
+      "type": "city",
+      "population": 43505
+     },
+     {
+      "id": "washington:f56a9f58ceb26ed026dc",
+      "name": "Puyallup",
+      "lon": -122.29214,
+      "lat": 47.1849,
+      "type": "town",
+      "population": 42973
+     },
+     {
+      "id": "washington:879306d461e3bacecb32",
+      "name": "Edmonds",
+      "lon": -122.3775,
+      "lat": 47.81057,
+      "type": "town",
+      "population": 42853
+     },
+     {
+      "id": "washington:7d6c44f5f1cfa0f6cd55",
+      "name": "Kittitas",
+      "lon": -120.41829,
+      "lat": 46.98382,
+      "type": "village",
+      "population": 40915
+     },
+     {
+      "id": "washington:c8caa10f6edca7e9d9ce",
+      "name": "Issaquah",
+      "lon": -122.0433,
+      "lat": 47.53488,
+      "type": "town",
+      "population": 40051
+     },
+     {
+      "id": "washington:bfd56c73789f98ccf55c",
+      "name": "Parkland",
+      "lon": -122.43703,
+      "lat": 47.15585,
+      "type": "town",
+      "population": 38623
+     },
+     {
+      "id": "washington:092879fb81293ce73db2",
+      "name": "Lynnwood",
+      "lon": -122.30539,
+      "lat": 47.82787,
+      "type": "town",
+      "population": 38568
+     },
+     {
+      "id": "washington:16c42cc74d0b62493acf",
+      "name": "Longview",
+      "lon": -122.93446,
+      "lat": 46.1377,
+      "type": "town",
+      "population": 37818
+     },
+     {
+      "id": "washington:e7196386bfdaa1c75674",
+      "name": "Lake Stevens",
+      "lon": -122.06609,
+      "lat": 48.01978,
+      "type": "town",
+      "population": 35630
+     },
+     {
+      "id": "washington:f2b2ae4635dbeb302fbd",
+      "name": "Wenatchee",
+      "lon": -120.31035,
+      "lat": 47.42346,
+      "type": "city",
+      "population": 35508
+     },
+     {
+      "id": "washington:b77374b12d043c018102",
+      "name": "Spanaway",
+      "lon": -122.42434,
+      "lat": 47.09795,
+      "type": "town",
+      "population": 35476
+     },
+     {
+      "id": "washington:c79e4dcbb52a2932b973",
+      "name": "Mount Vernon",
+      "lon": -122.32642,
+      "lat": 48.42005,
+      "type": "town",
+      "population": 35219
+     },
+     {
+      "id": "washington:f79277a2a82b9e67015d",
+      "name": "University Place",
+      "lon": -122.53713,
+      "lat": 47.22582,
+      "type": "town",
+      "population": 34866
+     },
+     {
+      "id": "washington:e78202276129c25e7cf4",
+      "name": "Walla Walla",
+      "lon": -118.33934,
+      "lat": 46.06673,
+      "type": "city",
+      "population": 34060
+     },
+     {
+      "id": "washington:2d94e31e3989f6fea0c3",
+      "name": "Pullman",
+      "lon": -117.17994,
+      "lat": 46.72958,
+      "type": "city",
+      "population": 33543
+     },
+     {
+      "id": "washington:bcadb80299efe0ea9820",
+      "name": "Des Moines",
+      "lon": -122.30991,
+      "lat": 47.39883,
+      "type": "town",
+      "population": 32888
+     },
+     {
+      "id": "washington:5070c4ada1fc8eaf2223",
+      "name": "Graham",
+      "lon": -122.27857,
+      "lat": 47.0396,
+      "type": "town",
+      "population": 32658
+     },
+     {
+      "id": "washington:9570ad9928fe875de845",
+      "name": "SeaTac",
+      "lon": -122.28308,
+      "lat": 47.44491,
+      "type": "town",
+      "population": 31454
+     },
+     {
+      "id": "washington:14708dd380f05a8c0db1",
+      "name": "Maple Valley",
+      "lon": -122.04371,
+      "lat": 47.36642,
+      "type": "town",
+      "population": 28013
+     },
+     {
+      "id": "washington:f58909ff42a31238f7e6",
+      "name": "Camas",
+      "lon": -122.40328,
+      "lat": 45.5863,
+      "type": "town",
+      "population": 26065
+     },
+     {
+      "id": "washington:8ee99ce2ef47f3673d3c",
+      "name": "Mercer Island",
+      "lon": -122.22764,
+      "lat": 47.57663,
+      "type": "town",
+      "population": 25748
+     },
+     {
+      "id": "washington:7151008e6af1c142d139",
+      "name": "Tumwater",
+      "lon": -122.91037,
+      "lat": 47.00807,
+      "type": "town",
+      "population": 25350
+     },
+     {
+      "id": "washington:064776990659a0218b39",
+      "name": "Moses Lake",
+      "lon": -119.27808,
+      "lat": 47.13014,
+      "type": "town",
+      "population": 25146
+     },
+     {
+      "id": "washington:dfaa79bc876e2833299e",
+      "name": "Frederickson",
+      "lon": -122.35873,
+      "lat": 47.09621,
+      "type": "town",
+      "population": 24906
+     },
+     {
+      "id": "washington:d120093a93047bd94418",
+      "name": "Oak Harbor",
+      "lon": -122.64322,
+      "lat": 48.29316,
+      "type": "town",
+      "population": 24622
+     },
+     {
+      "id": "washington:373ef5b611b042241022",
+      "name": "Kenmore",
+      "lon": -122.24964,
+      "lat": 47.75967,
+      "type": "town",
+      "population": 23914
+     },
+     {
+      "id": "washington:343e88244be4d3fdd8b8",
+      "name": "Cottage Lake",
+      "lon": -122.07881,
+      "lat": 47.73975,
+      "type": "town",
+      "population": 22857
+     },
+     {
+      "id": "washington:c6ecb92a60d803701982",
+      "name": "Union Hill-Novelty Hill",
+      "lon": -122.02772,
+      "lat": 47.67926,
+      "type": "town",
+      "population": 22683
+     },
+     {
+      "id": "washington:415c8da807fb21a127ad",
+      "name": "Bonney Lake",
+      "lon": -122.17023,
+      "lat": 47.18702,
+      "type": "town",
+      "population": 22487
+     },
+     {
+      "id": "washington:ebf032a1c3858207655a",
+      "name": "Silver Firs",
+      "lon": -122.15029,
+      "lat": 47.87027,
+      "type": "town",
+      "population": 22174
+     },
+     {
+      "id": "washington:92404d060547c2af1a7c",
+      "name": "Tukwila",
+      "lon": -122.25592,
+      "lat": 47.46274,
+      "type": "town",
+      "population": 21798
+     },
+     {
+      "id": "washington:5b3b0a7be39b545b2b51",
+      "name": "Mukilteo",
+      "lon": -122.3037,
+      "lat": 47.9474,
+      "type": "town",
+      "population": 21538
+     },
+     {
+      "id": "washington:82b2bd261b6d83ca3c16",
+      "name": "Mountlake Terrace",
+      "lon": -122.30664,
+      "lat": 47.79097,
+      "type": "town",
+      "population": 21286
+     },
+     {
+      "id": "washington:22f3068f971104a23bb8",
+      "name": "Mill Creek",
+      "lon": -122.22106,
+      "lat": 47.85775,
+      "type": "town",
+      "population": 20926
+     },
+     {
+      "id": "washington:2dfae24640743aaeee4f",
+      "name": "Covington",
+      "lon": -122.10022,
+      "lat": 47.36578,
+      "type": "town",
+      "population": 20777
+     },
+     {
+      "id": "washington:2928ba165cc97b938aba",
+      "name": "Battle Ground",
+      "lon": -122.53374,
+      "lat": 45.78135,
+      "type": "town",
+      "population": 20743
+     },
+     {
+      "id": "washington:1ae10ae4c036cf8d60eb",
+      "name": "Silverdale",
+      "lon": -122.67663,
+      "lat": 47.65941,
+      "type": "town",
+      "population": 20733
+     },
+     {
+      "id": "washington:f8d2dc6ef36a2ff849e9",
+      "name": "Port Angeles",
+      "lon": -123.43074,
+      "lat": 48.11815,
+      "type": "town",
+      "population": 19960
+     },
+     {
+      "id": "washington:1d42cecd164eff641610",
+      "name": "Arlington",
+      "lon": -122.12889,
+      "lat": 48.18968,
+      "type": "town",
+      "population": 19868
+     },
+     {
+      "id": "washington:24813285dc80eac111ee",
+      "name": "Monroe",
+      "lon": -121.97133,
+      "lat": 47.85523,
+      "type": "town",
+      "population": 19699
+     },
+     {
+      "id": "washington:fff2184b0cb73fc8697a",
+      "name": "Fairwood",
+      "lon": -122.15253,
+      "lat": 47.44687,
+      "type": "suburb",
+      "population": 19102
+     },
+     {
+      "id": "washington:b26bb21b13e5cbd43802",
+      "name": "Ellensburg",
+      "lon": -120.54512,
+      "lat": 46.99706,
+      "type": "town",
+      "population": 18666
+     },
+     {
+      "id": "washington:7b856caeacef302fab5b",
+      "name": "Centralia",
+      "lon": -122.96143,
+      "lat": 46.72045,
+      "type": "town",
+      "population": 18183
+     },
+     {
+      "id": "washington:ed095a0b083b8053356c",
+      "name": "Anacortes",
+      "lon": -122.61257,
+      "lat": 48.51684,
+      "type": "town",
+      "population": 17637
+     },
+     {
+      "id": "washington:ed0b13b0960a5a33d625",
+      "name": "Washougal",
+      "lon": -122.34799,
+      "lat": 45.58196,
+      "type": "town",
+      "population": 17039
+     },
+     {
+      "id": "washington:725ce2794808c571737f",
+      "name": "Aberdeen",
+      "lon": -123.81572,
+      "lat": 46.97537,
+      "type": "town",
+      "population": 17013
+     },
+     {
+      "id": "washington:784c8bc9f5cff2b3b432",
+      "name": "White Center",
+      "lon": -122.35574,
+      "lat": 47.51643,
+      "type": "town",
+      "population": 16631
+     },
+     {
+      "id": "washington:0be16c176e68e36adcaa",
+      "name": "Sunnyside",
+      "lon": -120.00819,
+      "lat": 46.32464,
+      "type": "town",
+      "population": 16375
+     },
+     {
+      "id": "washington:45cef6ad72f1a90832ff",
+      "name": "West Richland",
+      "lon": -119.34731,
+      "lat": 46.30039,
+      "type": "town",
+      "population": 16295
+     },
+     {
+      "id": "washington:f4f2c12123f91b9317fa",
+      "name": "Lynden",
+      "lon": -122.45693,
+      "lat": 48.9466,
+      "type": "town",
+      "population": 15749
+     },
+     {
+      "id": "washington:50d039f809168f5e1f17",
+      "name": "Port Orchard",
+      "lon": -122.63841,
+      "lat": 47.53156,
+      "type": "town",
+      "population": 15587
+     },
+     {
+      "id": "washington:2b45284fd03075effc31",
+      "name": "Ferndale",
+      "lon": -122.58972,
+      "lat": 48.84667,
+      "type": "town",
+      "population": 15048
+     },
+     {
+      "id": "washington:13a81f56b8f7521d3387",
+      "name": "Elk Plain",
+      "lon": -122.36681,
+      "lat": 47.04481,
+      "type": "town",
+      "population": 14534
+     },
+     {
+      "id": "washington:97ce1158591499d17201",
+      "name": "East Wenatchee",
+      "lon": -120.29313,
+      "lat": 47.41568,
+      "type": "town",
+      "population": 14158
+     },
+     {
+      "id": "washington:97f72194d35a3e28d4cb",
+      "name": "Snoqualmie",
+      "lon": -121.82709,
+      "lat": 47.52895,
+      "type": "town",
+      "population": 14121
+     },
+     {
+      "id": "washington:b0f9914b214b40ced78d",
+      "name": "Fort Lewis",
+      "lon": -122.55498,
+      "lat": 47.10869,
+      "type": "town",
+      "population": 14052
+     },
+     {
+      "id": "washington:bbfbe2a726b991f0ea41",
+      "name": "Artondale",
+      "lon": -122.62925,
+      "lat": 47.30005,
+      "type": "town",
+      "population": 13641
+     },
+     {
+      "id": "washington:9d7191f4436936f53650",
+      "name": "Lake Forest Park",
+      "lon": -122.28096,
+      "lat": 47.75677,
+      "type": "town",
+      "population": 13630
+     },
+     {
+      "id": "washington:91750c5fe29632115da0",
+      "name": "Cheney",
+      "lon": -117.5793,
+      "lat": 47.48922,
+      "type": "town",
+      "population": 13255
+     },
+     {
+      "id": "washington:d626ca767b8b87851ce0",
+      "name": "Woodinville",
+      "lon": -122.15889,
+      "lat": 47.75458,
+      "type": "town",
+      "population": 13069
+     },
+     {
+      "id": "washington:04b85d63656d053290eb",
+      "name": "Columbia City",
+      "lon": -122.28522,
+      "lat": 47.55791,
+      "type": "neighbourhood",
+      "population": 13031
+     },
+     {
+      "id": "washington:492c4f16736b10846c63",
+      "name": "Kelso",
+      "lon": -122.9053,
+      "lat": 46.14212,
+      "type": "town",
+      "population": 12720
+     },
+     {
+      "id": "washington:bebdebce770adee5e6c9",
+      "name": "Greenacres",
+      "lon": -117.1591,
+      "lat": 47.65922,
+      "type": "suburb",
+      "population": 12621
+     },
+     {
+      "id": "washington:08205317a74294aeb25f",
+      "name": "Enumclaw",
+      "lon": -121.99164,
+      "lat": 47.20478,
+      "type": "town",
+      "population": 12543
+     },
+     {
+      "id": "washington:39958517edc3dc8b2993",
+      "name": "Sedro-Woolley",
+      "lon": -122.23511,
+      "lat": 48.50499,
+      "type": "town",
+      "population": 12421
+     },
+     {
+      "id": "washington:d2d59990156da418ce66",
+      "name": "Edgewood",
+      "lon": -122.28437,
+      "lat": 47.23182,
+      "type": "town",
+      "population": 12327
+     },
+     {
+      "id": "washington:3b79ec9a463c2d58bc91",
+      "name": "Prairie Ridge",
+      "lon": -122.14873,
+      "lat": 47.1376,
+      "type": "town",
+      "population": 12288
+     },
+     {
+      "id": "washington:9a0c3e23c36aba943504",
+      "name": "Gig Harbor",
+      "lon": -122.58787,
+      "lat": 47.32597,
+      "type": "town",
+      "population": 12029
+     },
+     {
+      "id": "washington:774c08e25fe38e2b5a3b",
+      "name": "Liberty Lake",
+      "lon": -117.10487,
+      "lat": 47.66811,
+      "type": "town",
+      "population": 12003
+     },
+     {
+      "id": "washington:4684b247bb03648c2f33",
+      "name": "Poulsbo",
+      "lon": -122.63928,
+      "lat": 47.73914,
+      "type": "town",
+      "population": 11975
+     },
+     {
+      "id": "washington:4eecf3295b86068ac7ca",
+      "name": "Maltby",
+      "lon": -122.11449,
+      "lat": 47.80517,
+      "type": "town",
+      "population": 11277
+     },
+     {
+      "id": "washington:ea7f1e032330cab5b629",
+      "name": "Grandview",
+      "lon": -119.9017,
+      "lat": 46.25097,
+      "type": "town",
+      "population": 11078
+     },
+     {
+      "id": "washington:255c8a31122410e27a67",
+      "name": "Vashon",
+      "lon": -122.46067,
+      "lat": 47.44805,
+      "type": "town",
+      "population": 11055
+     },
+     {
+      "id": "washington:e5e45e736e60805bc497",
+      "name": "Fife",
+      "lon": -122.36264,
+      "lat": 47.23595,
+      "type": "town",
+      "population": 10999
+     },
+     {
+      "id": "washington:fbc889e7d6354275aa9b",
+      "name": "Lea Hill",
+      "lon": -122.18003,
+      "lat": 47.32591,
+      "type": "suburb",
+      "population": 10871
+     },
+     {
+      "id": "washington:dddbe90a1fca4014f815",
+      "name": "Airway Heights",
+      "lon": -117.59327,
+      "lat": 47.64461,
+      "type": "town",
+      "population": 10757
+     },
+     {
+      "id": "washington:0586838a57a44f56c5d4",
+      "name": "Sumner",
+      "lon": -122.23124,
+      "lat": 47.20619,
+      "type": "town",
+      "population": 10621
+     },
+     {
+      "id": "washington:f4bdcd20104db9c500f6",
+      "name": "Yelm",
+      "lon": -122.60639,
+      "lat": 46.94139,
+      "type": "town",
+      "population": 10617
+     },
+     {
+      "id": "washington:d3792e8e9ed715ec7bf6",
+      "name": "Newcastle",
+      "lon": -122.15633,
+      "lat": 47.53957,
+      "type": "village",
+      "population": 10380
+     },
+     {
+      "id": "washington:0fa14bdc24901ab5715a",
+      "name": "Shelton",
+      "lon": -123.10071,
+      "lat": 47.21509,
+      "type": "town",
+      "population": 10371
+     },
+     {
+      "id": "washington:35e3feb3088c33a9cff3",
+      "name": "Ridgefield",
+      "lon": -122.74338,
+      "lat": 45.81676,
+      "type": "town",
+      "population": 10319
+     },
+     {
+      "id": "washington:1447c42ff3749e845aad",
+      "name": "Alderwood Manor",
+      "lon": -122.25863,
+      "lat": 47.80238,
+      "type": "town",
+      "population": 10198
+     },
+     {
+      "id": "washington:6c6dd87a107127263ae4",
+      "name": "DuPont",
+      "lon": -122.63755,
+      "lat": 47.09907,
+      "type": "town",
+      "population": 10151
+     },
+     {
+      "id": "washington:314cda7e085518db529b",
+      "name": "Port Townsend",
+      "lon": -122.76954,
+      "lat": 48.11797,
+      "type": "town",
+      "population": 10148
+     },
+     {
+      "id": "washington:d940dc61c6d461d1cd53",
+      "name": "Snohomish",
+      "lon": -122.09551,
+      "lat": 47.91136,
+      "type": "town",
+      "population": 10126
+     },
+     {
+      "id": "washington:24faa1c550124e0b0068",
+      "name": "Midland",
+      "lon": -122.40478,
+      "lat": 47.16693,
+      "type": "village",
+      "population": 9962
+     },
+     {
+      "id": "washington:7bcc8a04bca3a89ba32d",
+      "name": "Terrace Heights",
+      "lon": -120.43979,
+      "lat": 46.60624,
+      "type": "suburb",
+      "population": 9244
+     },
+     {
+      "id": "washington:73c40b421da0ee0178c3",
+      "name": "Burlington",
+      "lon": -122.33045,
+      "lat": 48.47381,
+      "type": "town",
+      "population": 9152
+     },
+     {
+      "id": "washington:0154d6e02af9903c0f8d",
+      "name": "Orting",
+      "lon": -122.20428,
+      "lat": 47.09788,
+      "type": "village",
+      "population": 9051
+     },
+     {
+      "id": "washington:a4c562e4cce8e01e6214",
+      "name": "Othello",
+      "lon": -119.16956,
+      "lat": 46.82612,
+      "type": "town",
+      "population": 9001
+     },
+     {
+      "id": "washington:a6b2ff5a264a8505b1dc",
+      "name": "College Place",
+      "lon": -118.38804,
+      "lat": 46.04918,
+      "type": "village",
+      "population": 8980
+     },
+     {
+      "id": "washington:ee09697b7a82acc8b275",
+      "name": "Toppenish",
+      "lon": -120.30894,
+      "lat": 46.3775,
+      "type": "town",
+      "population": 8854
+     },
+     {
+      "id": "washington:23358e5b6454c0d5edbf",
+      "name": "Hoquiam",
+      "lon": -123.88934,
+      "lat": 46.98093,
+      "type": "town",
+      "population": 8776
+     }
+    ]
+   }
   }
  ]
 }
