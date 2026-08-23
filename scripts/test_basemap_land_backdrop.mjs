@@ -62,7 +62,18 @@ await pg.evaluate(() => map.jumpTo({ center: [-122.3130, 47.5150], zoom: 13 }));
 await pg.waitForFunction(() => map.isSourceLoaded('basemap-context')
   && map.queryRenderedFeatures({ layers: ['basemap-land'] }).length > 0,
 { timeout: 60000 });
-await pg.waitForTimeout(1500);
+// A fixed post-toggle wait raced the renderer when the suite shares the CPU
+// three ways: the screenshot caught a half-painted frame. Wait for the map's
+// own idle after a forced repaint, then two animation frames for the
+// compositor, with a short fixed tail.
+const settled = async () => {
+  await pg.evaluate(() => new Promise((resolve) => {
+    map.once('idle', () => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    map.triggerRepaint();
+  }));
+  await pg.waitForTimeout(500);
+};
+await settled();
 
 let pass = 0, fail = 0;
 const check = (n, ok, x = '') => { (ok ? pass++ : fail++); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${x ? '  -- ' + x : ''}`); };
@@ -83,7 +94,7 @@ check('land is actually drawn at z13', present.land > 5,
 
 // Detail tiles gone: this is the rider on flaky cell data.
 await pg.evaluate(() => map.setLayoutProperty('basemap-land-detail', 'visibility', 'none'));
-await pg.waitForTimeout(1500);
+await settled();
 await pg.screenshot({ path: join(OUT, 'nodetail.png'), clip });
 const nodetail = analyse(join(OUT, 'nodetail.png'));
 check('losing the detail tiles does not flood the map with ocean',
@@ -97,7 +108,7 @@ check('and land still covers the ground',
 // does not happen the test is not measuring anything and the checks above are
 // vacuous.
 await pg.evaluate(() => map.setLayoutProperty('basemap-land', 'visibility', 'none'));
-await pg.waitForTimeout(1500);
+await settled();
 await pg.screenshot({ path: join(OUT, 'nobackdrop.png'), clip });
 const bare = analyse(join(OUT, 'nobackdrop.png'));
 check('control: with no land layer at all, ocean does take over',

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import vm from 'node:vm';
 
 const index = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const details = fs.readFileSync(new URL('../route-details.html', import.meta.url), 'utf8');
@@ -23,10 +24,45 @@ assert.match(nativeController, /pinchGestureRecognizer\?\.isEnabled = false/,
   'WKWebView native page pinch must be disabled');
 assert.ok(!app.includes('touchZoomRotate?.disable') && !app.includes('touchZoomRotate.disable'),
   'MapLibre map pinch must remain enabled');
-assert.match(app, /minZoom:\s*constrainedMapRuntime\s*\?\s*6\s*:\s*5/,
+// The zoom floor and cross-fade are behaviors of the constructed options, not
+// spellings: evaluate the constructor's actual options literal under each
+// runtime combination instead of pinning the expression's text.
+function mapOptions(constrainedMapRuntime, localDataAvailable) {
+  const call = app.indexOf('new maplibregl.Map(');
+  assert.ok(call > 0, 'app.js constructs the MapLibre map');
+  const open = app.indexOf('{', call);
+  let depth = 0, close = open;
+  for (; close < app.length; close++) {
+    if (app[close] === '{') depth++;
+    else if (app[close] === '}' && --depth === 0) break;
+  }
+  const stub = () => new Proxy(function stubbed() {}, {
+    get: (target, key) => (key === Symbol.toPrimitive ? () => 0 : stub()),
+    apply: () => stub(),
+  });
+  const scope = {
+    constrainedMapRuntime,
+    Region: { localDataAvailable, defaultCenter: [-120.7, 47.4] },
+    savedState: null,
+  };
+  const proxy = new Proxy(scope, {
+    has: () => true,
+    get: (target, key) => (key === Symbol.unscopables ? undefined
+      : key in target ? target[key] : stub()),
+  });
+  const context = vm.createContext({ __scope: proxy });
+  return vm.runInContext(`with (__scope) { (${app.slice(open, close + 1)}) }`, context);
+}
+assert.equal(mapOptions(true, true).minZoom, 6,
   'phone and WebKit maps must stop before the memory-heavy statewide tile level');
-assert.match(app, /fadeDuration:\s*constrainedMapRuntime\s*\?\s*0\s*:\s*300/,
+assert.equal(mapOptions(false, true).minZoom, 5,
+  'unconstrained browsers keep the wider statewide view');
+assert.equal(mapOptions(false, false).minZoom, 1.5,
+  'a shell with no local state data must allow national orientation zoom');
+assert.equal(mapOptions(true, true).fadeDuration, 0,
   'phone and WebKit maps must not retain two tile generations for a zoom fade');
+assert.equal(mapOptions(false, true).fadeDuration, 300,
+  'unconstrained browsers keep the tile cross-fade');
 assert.match(app, /map\.on\('zoomstart', \(\) => trimRouterCachesSoon\(\)\)/,
   'map zoom must release disposable phone routing caches before widening the tile set');
 assert.match(app, /m\.type === 'route-options'[\s\S]*?trimRouterCachesSoon\(\)/,
