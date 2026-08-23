@@ -1,12 +1,13 @@
 # iOS handoff
 
-Last audited 2026-08-11 on macOS with Xcode 26.6, iOS 17.5 and 26.5
-simulators, a generic physical-iPhone Release target, and Capacitor 8.4.2. The
-current native target, including the Core Location warmup retry and voice queue
-changes, compiles for the iOS 26.5 simulator without Swift warnings. Earlier
-store validation also passed. The shared web tests and simulator checks are
-real coverage; locked-screen GPS, audio mixing, battery, and thermals still
-require a physical iPhone and a real ride.
+Last audited 2026-08-23 on macOS with Xcode 26.6, the iOS 26.5 simulator SDK,
+a generic physical-iPhone Release target, and Capacitor 8.4.2. Version .799 was
+synced with both released starter states and compiled in Release configuration
+for the simulator and generic iOS device with no Swift warnings; the unsigned
+products were 365 MiB and 361 MiB. Earlier store validation also passed. The
+shared web tests and simulator checks are real coverage; locked-screen GPS,
+audio mixing, battery, and thermals still require a physical iPhone and a real
+ride.
 
 ---
 

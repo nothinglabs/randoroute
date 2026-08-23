@@ -70,8 +70,8 @@ starter states rather than every future import.
 Remaining gates:
 
 - run the full executable suite and record its passes/skips/runtime; and
-- prepare the iOS build/handoff, then get the owner's physical-iPhone verdict
-  for Cache Storage durability, memory pressure, navigation and real timings.
+- get the owner's physical-iPhone verdict for Cache Storage durability, memory
+  pressure, navigation and real timings.
 
 ### 4. Import and test all states
 Import every U.S. state under the documented state-import process and verify
