@@ -14,7 +14,7 @@ Verification target:
 | Production-artifact baseline | `468765a` |
 | Review source commit | `8d78b4c1ee2107c595ade76e234a3a19a1380cbe` |
 | Preview deployment commit | `nothinglabs/randoroute-preview` `389d11a24f198cebd65e6e142164b36841c9a7b2` |
-| App / worker | `2026-08-22.794` / `v794` |
+| App / worker | `2026-08-22.795` / `v795` |
 | Partition catalogue | format 1, SHA-256 `3cafdd58116a7124b2b419d77d7cff83dc417f26ee45c285e594ebc724e4a4e4` |
 | Oregon graph | `sha-8ae4d0b5e2d3` |
 | Washington graph | `sha-c043f268453b` |

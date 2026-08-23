@@ -496,16 +496,27 @@
         for (const descriptor of descriptors) {
           if (signal?.aborted) throw new DOMException('Download cancelled.', 'AbortError');
           const sourceUrl = new URL(descriptor.sourcePath,
-            new URL(storeUrl, location.href)).href;
-          const response = await fetch(sourceUrl, { cache: 'no-store', signal });
-          if (response.type === 'opaque') {
-            throw new Error('The store does not allow cross-origin reads (CORS).');
-          }
-          if (!response.ok) throw new Error(`${descriptor.file.path}: HTTP ${response.status}`);
-          const contentLengthHeader = response.headers.get('content-length');
-          const contentLength = contentLengthHeader == null ? null : Number(contentLengthHeader);
-          if (Number.isFinite(contentLength) && contentLength !== descriptor.file.bytes) {
-            throw new Error(`${descriptor.file.path}: expected ${descriptor.file.bytes} bytes, received ${contentLength}`);
+            new URL(storeUrl, location.href));
+          let response = null;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            const attemptUrl = new URL(sourceUrl);
+            // The marker serves two purposes: it bypasses a same-origin
+            // service worker's ordinary data-cache path, preserving the
+            // staging transaction, and gives a retry a fresh CDN cache key.
+            attemptUrl.searchParams.set('jra-store-install', `${nonce}-${attempt}`);
+            response = await fetch(attemptUrl.href, { cache: 'no-store', signal });
+            if (response.type === 'opaque') {
+              throw new Error('The store does not allow cross-origin reads (CORS).');
+            }
+            if (!response.ok) throw new Error(`${descriptor.file.path}: HTTP ${response.status}`);
+            const contentLengthHeader = response.headers.get('content-length');
+            const contentLength = contentLengthHeader == null ? null : Number(contentLengthHeader);
+            if (!Number.isFinite(contentLength) || contentLength === descriptor.file.bytes) break;
+            if (attempt === 1) {
+              throw new Error(`${descriptor.file.path}: expected ${descriptor.file.bytes} bytes, received ${contentLength}`);
+            }
+            onProgress({ file: descriptor.file.path, acquisitionId: descriptor.acquisitionId,
+              done, total, retrying: true });
           }
           let streamed = 0;
           await stage.put(descriptor.request, countedResponse(response, (bytes) => {

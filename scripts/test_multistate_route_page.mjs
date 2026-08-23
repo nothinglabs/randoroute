@@ -97,6 +97,34 @@ try {
       && missing.pending?.requiredStateIds?.join() === 'fixture-middle'
       && /Required for this trip: fixture-middle/.test(missing.status),
     JSON.stringify(missing));
+
+  const resumed = await page.evaluate(async () => {
+    const originalFit = fitRouteBounds;
+    const originalCompute = computeRoute;
+    let framed = null, computed = 0;
+    routing.start = [-122.385, 47.812];
+    routing.end = [-122.499, 47.798];
+    routing.startStateId = Region.id;
+    routing.endStateId = Region.id;
+    routing.vias = [];
+    routing.blocks = [];
+    localStorage.setItem('jra-pending-map-route-intent-1', JSON.stringify({
+      version: 1, createdAt: Date.now(), action: 'resume-route',
+      stateId: Region.id, requiredStateIds: [Region.id],
+    }));
+    fitRouteBounds = (route) => { framed = route; };
+    computeRoute = () => { computed++; };
+    const handled = await resumePendingMapRouteIntent();
+    fitRouteBounds = originalFit;
+    computeRoute = originalCompute;
+    clearRoute();
+    return { handled, framed, computed,
+      pending: localStorage.getItem('jra-pending-map-route-intent-1') };
+  });
+  check('resuming after a required map install frames the retained trip before routing',
+    resumed.handled && resumed.computed === 1 && resumed.framed?.s?.[0] === -122.385
+      && resumed.framed?.e?.[0] === -122.499 && resumed.pending == null,
+    JSON.stringify(resumed));
 } finally {
   await browser.close();
   await site.close();

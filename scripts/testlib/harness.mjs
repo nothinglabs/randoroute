@@ -249,6 +249,7 @@ export async function serveRepo({ offline = false, root = ROOT } = {}) {
     const path = decodeURIComponent(req.url.split('?')[0]);
     if (state.overrides.has(path)) {
       const body = state.overrides.get(path);
+      if (typeof body === 'function') return body(req, res);
       res.writeHead(200, {
         'content-type': TYPES[extname(path)] || 'application/octet-stream',
         'content-length': Buffer.byteLength(body),
@@ -294,7 +295,7 @@ export async function serveRepo({ offline = false, root = ROOT } = {}) {
     // reaches for the network gets what a phone in a valley gets.
     goOffline() { state.offline = true; },
     goOnline() { state.offline = false; },
-    publish(path, body) { state.overrides.set(path, body); },
+    publish(path, bodyOrHandler) { state.overrides.set(path, bodyOrHandler); },
     unpublish(path) { state.overrides.delete(path); },
     get requests() { return state.requests; },
     close: () => server.close(),

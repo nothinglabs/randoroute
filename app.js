@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.794';
+const APP_VERSION = '2026-08-22.795';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11749,7 +11749,18 @@ async function resumePendingMapRouteIntent() {
       return true;
     }
     clearPendingMapRouteIntent();
-    if (routing.start && routing.end) computeRoute();
+    if (routing.start && routing.end) {
+      // A slim first launch is still at the national overview when the map
+      // finishes installing. Frame the retained trip immediately instead of
+      // leaving the rider looking at the whole country while the statewide
+      // graph initializes; the completed route will refine the same view.
+      fitRouteBounds({
+        s: routing.start, e: routing.end,
+        v: routing.vias.map((via) => via.pt),
+        b: routing.blocks.map((block) => block.pt),
+      });
+      computeRoute();
+    }
     setRouteStatus('Required maps installed. Resuming this trip…');
     return true;
   }

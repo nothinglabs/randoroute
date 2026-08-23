@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v794';
+const VERSION = 'v795';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -222,7 +222,12 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
-  if (url.origin === location.origin && url.pathname.endsWith('.pmtiles')) {
+  if (url.origin === location.origin && url.searchParams.has('jra-store-install')) {
+    // MapStore owns an atomic staging cache. Let its marked source fetch reach
+    // the network directly: cacheFirst would otherwise write an unverified or
+    // truncated response into the live data cache before MapStore checks it.
+    e.respondWith(fetch(e.request, { cache: 'no-store' }));
+  } else if (url.origin === location.origin && url.pathname.endsWith('.pmtiles')) {
     e.respondWith(pmtilesCacheFirst(e.request));
   } else if (url.origin === location.origin && url.pathname.endsWith('/graph2.bin.gz')) {
     // The one data file whose query string matters: it carries the graph's
