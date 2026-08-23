@@ -60,8 +60,10 @@ Seattle–Portland, Seattle–Eugene, Astoria–Megler and The Dalles–Dallespo
 retain the important Washington ferry and an Oregon full-graph portfolio,
 route a boundary waypoint, and expand beyond deliberately disconnected endpoint
 partitions. Installed partition trips retain the ordinary route portfolio;
-competitive frontier expansion stops at the graph-input ceiling rather than
-discarding a valid lineup. Installed non-home map sources attach only for the
+a widening retry that does not improve the portfolio finalizes the result, so
+a long cross-state calculation converges after at most one extra search
+instead of re-running the portfolio toward the graph-input ceiling (Seattle to
+Buckman formerly ran six). Installed non-home map sources attach only for the
 visible viewport and now include safety overlays. Regional zooms use the small
 resident state polygons instead of oversized context tiles, while detailed
 land and water take over at closer zooms. The full iOS shell is bounded to two

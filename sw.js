@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v799';
+const VERSION = 'v800';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -206,9 +206,19 @@ self.addEventListener('message', (e) => {
 
 self.addEventListener('activate', (e) => {
   const keep = [SHELL_CACHE, DATA_CACHE];
+  // MapStore's install staging/backup caches carry a Date.now() nonce. A
+  // fresh one belongs to a download that may be running right now — deleting
+  // it mid-install destroys the backup that makes rollback safe. A stale one
+  // is an orphan from a killed page and is reclaimed here.
+  const liveInstallCache = (name) => {
+    const match = /-(?:install|backup)-(\d+)-/.exec(name);
+    return match && Date.now() - Number(match[1]) < 24 * 60 * 60 * 1000;
+  };
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => !keep.includes(k)).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys
+        .filter((k) => !keep.includes(k) && !liveInstallCache(k))
+        .map((k) => caches.delete(k))))
       .then(() => purgeStaleGraph())
       .then(() => refreshReleaseData())
       .then(() => self.clients.claim())
@@ -367,6 +377,11 @@ async function refreshStaleArchives() {
 // it is simply not the one in use, and deleting it would make switching back
 // a fresh 46 MB download every time.
 async function purgeStaleGraph() {
+  // With no bundled state data the fallback Region's graph version describes
+  // the deployment, not what the rider installed from a store: purging by it
+  // would delete an installed pack's graph on every redeploy while MapStore
+  // still reports the state installed.
+  if (!ACTIVE_STATE_DATA_BUNDLED) return;
   const cache = await caches.open(DATA_CACHE);
   for (const request of await cache.keys()) {
     const url = new URL(request.url);

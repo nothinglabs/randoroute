@@ -134,6 +134,23 @@
       && left.minLat <= right.maxLat && left.maxLat >= right.minLat;
   }
 
+  // A visible-state archive that cannot actually load — offline with chunks
+  // never cached, or a deleted file — must detach rather than sit in the
+  // style as a permanently un-loaded source: one wedged source keeps
+  // map.loaded() false for the app's lifetime, which reads as the app never
+  // starting. The next viewport change re-attaches and retries.
+  function ensureVisibleStateErrorHook(map) {
+    if (map.__visibleStateSourceErrorHook || typeof map.on !== 'function') return;
+    map.__visibleStateSourceErrorHook = true;
+    map.on('error', (event) => {
+      const sourceId = String(event?.sourceId || event?.source?.id || '');
+      const match = /^state-([a-z0-9-]+)-basemap-/.exec(sourceId);
+      if (match) {
+        try { removeVisibleState(map, match[1]); } catch (error) { /* already gone */ }
+      }
+    });
+  }
+
   function removeVisibleState(map, stateId) {
     const prefix = visibleLayerPrefix(stateId);
     const layers = map.getStyle?.()?.layers || [];
@@ -153,6 +170,7 @@
   // from becoming bare ocean on its non-home side.
   function syncVisibleStateSources(map, states, homeStateId, { minZoom = 5 } = {}) {
     if (!map?.getStyle?.()) return [];
+    ensureVisibleStateErrorHook(map);
     const bounds = viewportBounds(map);
     const detailed = bounds && Number(map.getZoom?.()) >= minZoom;
     const wanted = new Map((states || [])

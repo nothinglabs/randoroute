@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-23.799';
+const APP_VERSION = '2026-08-23.800';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3536,6 +3536,11 @@ function trimRouterCachesSoon(delay = 0) {
     if (!routing.worker || !routing.ready || routing.loading
         || routing.pendingRoute || routing.routeRequestActive) return;
     routing.worker.postMessage({ type: 'trim-caches', id: ++routerCacheTrimId });
+    // The partition session's router holds the same full-size graph plus its
+    // own caches; a finished cross-state portfolio must not keep them warm
+    // while the renderer is at its hungriest.
+    activeMultiStateRouting.bridge?.router?.postMessage(
+      { type: 'trim-caches', id: routerCacheTrimId });
   }, Math.max(0, Number(delay) || 0));
 }
 
@@ -3922,7 +3927,7 @@ function routeSegProps(s, routeIndex) {
   const flags = s.flags || 0;
   return {
     name: s.name, mph: s.mph, sh: s.sh, lenM: s.lenM,
-    stateId: s.stateId || Region.id,
+    stateId: s.stateId || (typeof Region !== 'undefined' ? Region.id : null),
     partitionId: s.partitionId || null,
     localEdgeIndex: Number.isInteger(s.localEdgeIndex) ? s.localEdgeIndex : null,
     shBack: Number.isFinite(Number(s.shBack)) ? Number(s.shBack) : null,
@@ -4209,6 +4214,7 @@ async function createInstalledMultiStateRouteSession({ routeStateIds, resolveSta
   const context = await MapStore.routingContext(routeStateIds);
   const bridge = new MultiStateRouteCoordinator.BrowserPartitionRouteBridge({
     catalogue: context.catalogue, baseUrl: context.baseUrl, budgetBytes, onProgress,
+    constrained: isConstrainedDevice(),
   });
   const session = new MultiStateRouteCoordinator.MultiStateRouteSession({
     catalogue: context.catalogue,
@@ -4271,7 +4277,8 @@ async function installedMultiStateRouteSession(routeStateIds) {
       const detail = progress.type === 'progress' && progress.detail
         ? `${progress.detail} (${names})` : `${phase} for ${names}…`;
       showRouterProgress(detail, progress.type === 'progress'
-        ? 'Calculating multi-state route' : 'Preparing multi-state route');
+        ? 'Calculating multi-state route' : 'Preparing multi-state route',
+      Number.isFinite(progress.frac) ? progress.frac : null);
     },
   });
   activeMultiStateRouting.creating = creating;
@@ -4314,7 +4321,9 @@ async function promptForRequiredRouteStates(result) {
   const required = [...new Set(result.requiredStateIds || [])];
   if (!required.length) return;
   const names = stateNames(required);
-  const message = `Required for this trip: ${names.join(', ')}. This route passes through ${names.join(' and ')}.`;
+  const routeNames = stateNames(result.routeStateIds?.length
+    ? result.routeStateIds : required);
+  const message = `Required for this trip: ${names.join(', ')}. This route passes through ${routeNames.join(' and ')}.`;
   setRouteStatus(message);
   showRouteActionToast(message, { answer: true, duration: 8000 });
   saveStateSoon();
@@ -4334,6 +4343,12 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
   routing.pendingPanelReveal = false;
   routing.routeRequestActive = true;
   const requestId = ++routing.reqId;
+  // The home worker idles under the partition session but keeps its graph for
+  // the return trip; on a phone its cache complement must not stay warm while
+  // a second full-size composite loads beside it.
+  if (isConstrainedDevice()) {
+    routing.worker?.postMessage({ type: 'trim-caches', id: ++routerCacheTrimId });
+  }
   setRouteStatus('Preparing multi-state route…');
   setRouteOptionsLoading(true);
   if (shouldRevealPanel) {
@@ -4347,8 +4362,12 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
   // Installed partition maps use the same route portfolio as the home graph.
   // The coordinator expands only competitive frontiers that fit the hard graph
   // input ceiling, so a valid portfolio is retained instead of being replaced
-  // by an avoidable memory error at the edge of the loaded corridor.
-  const request = multiStateWorkerRequest('route-options', requestId, points);
+  // by an avoidable memory error at the edge of the loaded corridor. A reroute
+  // during turn navigation asks for one route under the selected profile, the
+  // same request the single-state path sends mid-ride — an off-route rider
+  // needs the next instruction, not a fresh portfolio.
+  const request = multiStateWorkerRequest(turnNav.active ? 'route' : 'route-options',
+    requestId, points);
   request.pointStateIds = pointStateIds;
   try {
     const runtime = await installedMultiStateRouteSession(pointStateIds);
@@ -4378,9 +4397,15 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
     routing.routeRequestActive = false;
     setRouteOptionsLoading(false);
     const missingRouting = error.code === 'routing-acquisition-unavailable';
+    const missingIds = [...new Set([...(error.detail?.missingStateIds || []),
+      ...(error.detail?.missingRoutingStateIds || [])])];
+    // A worker exception's raw message is not rider copy; the coordinator's
+    // own verdicts (route-state-limit, budget, disconnected corridor) are.
+    const internalFailure = ['worker', 'partition-runtime'].includes(error.code);
     const reason = missingRouting
-      ? `Multi-state routing data is not installed for ${stateNames(pointStateIds).join(' and ')}. Update the required maps and try again.`
-      : error.message || 'Could not prepare the required route maps.';
+      ? `Multi-state routing data is not installed for ${stateNames(missingIds.length ? missingIds : pointStateIds).join(' and ')}. Update the required maps and try again.`
+      : internalFailure ? 'Could not prepare the required route maps.'
+        : error.message || 'Could not prepare the required route maps.';
     onRouterMessage({ data: { type: request.type, id: requestId, ok: false,
       options: request.type === 'route-options' ? [] : undefined, reason } });
   }
@@ -4453,7 +4478,7 @@ function storeRouteDetails(m) {
       // router produced.
       segs: (m.segs || []).map((s) => ({
         name: s.name || '', mph: s.mph, sh: s.sh, flags: s.flags || 0,
-        stateId: s.stateId || Region.id,
+        stateId: s.stateId || (typeof Region !== 'undefined' ? Region.id : null),
         partitionId: s.partitionId || null,
         localEdgeIndex: Number.isInteger(s.localEdgeIndex) ? s.localEdgeIndex : null,
         facility: s.facility || 0, official: s.official || 0, mtb: !!s.mtb,
@@ -8306,8 +8331,12 @@ function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
     computeMultiStateRoute({ revealPanel });
     return;
   }
+  // Cancel any partition session unconditionally, not only after one has
+  // delivered a result: an in-flight cross-state search whose endpoint just
+  // moved home would otherwise keep searching and keep writing its progress
+  // over this request's status.
+  activeMultiStateRouting.session?.cancel();
   if (routing.multiStateActive) {
-    activeMultiStateRouting.session?.cancel();
     routing.multiStateActive = false;
     document.body.removeAttribute('data-loaded-partition-count');
     document.body.removeAttribute('data-route-state-ids');
@@ -9614,7 +9643,7 @@ async function resolveDefaultStartFromDevice() {
 }
 
 function setRoutePoint(kind, lngLat, name = 'Point on map', {
-  fromDevice = false, refreshDeviceStart = true, stateId = Region.id,
+  fromDevice = false, refreshDeviceStart = true, stateId = null,
 } = {}) {
   exitSharedRoute();
   const previous = routing[kind];
@@ -9624,7 +9653,12 @@ function setRoutePoint(kind, lngLat, name = 'Point on map', {
   }
   routing[kind] = [lngLat.lng, lngLat.lat];
   routing[`${kind}Name`] = normalizeEndpointName(name) || 'Point on map';
-  routing[`${kind}StateId`] = stateId || Region.id;
+  // A point placed with no declared state — a map tap, a marker drag, a shared
+  // link, a loaded saved route — resolves its state from where it actually is.
+  // Defaulting to the home state made every such point route single-state, so
+  // a tap on a visible installed neighbor failed with "move it closer".
+  routing[`${kind}StateId`] = stateId
+    || placeStateIdAt(lngLat.lng, lngLat.lat) || Region.id;
   // A start taken from the device is a statement about where the rider IS. A
   // start they tapped or searched for is a place they chose, and must not move
   // under them. Only the first kind follows.
@@ -10066,7 +10100,7 @@ function regenerateRoutesAfterWaypointChange() {
   routing.selectRecommendedNext = true;
 }
 
-function addVia(lngLat, { allowPastLimit = false, name = 'Point on map', stateId = Region.id } = {}) {
+function addVia(lngLat, { allowPastLimit = false, name = 'Point on map', stateId = null } = {}) {
   exitSharedRoute();
   if (!allowPastLimit && routing.vias.length >= MAX_ROUTE_STOPS) {
     routing.arm = null;
@@ -10082,7 +10116,7 @@ function addVia(lngLat, { allowPastLimit = false, name = 'Point on map', stateId
     _uiId: nextViaUiId++,
     pt: [lngLat.lng, lngLat.lat],
     name: normalizeEndpointName(name) || 'Point on map',
-    stateId: stateId || Region.id,
+    stateId: stateId || placeStateIdAt(lngLat.lng, lngLat.lat) || Region.id,
     marker,
   };
   routing.vias.push(via);
@@ -10091,7 +10125,7 @@ function addVia(lngLat, { allowPastLimit = false, name = 'Point on map', stateId
     const ll = marker.getLngLat();
     via.pt = [ll.lng, ll.lat];
     via.name = 'Point on map';
-    via.stateId = Region.id;
+    via.stateId = placeStateIdAt(ll.lng, ll.lat) || Region.id;
     regenerateRoutesAfterWaypointChange();
     computeRoute();
     updateArmButtons();
@@ -11693,6 +11727,21 @@ function readPendingMapRouteIntent() {
 
 function clearPendingMapRouteIntent() {
   try { localStorage.removeItem(PENDING_MAP_ROUTE_INTENT_KEY); } catch (error) { /* optional */ }
+}
+
+// A retained trip must survive the download it is waiting for. The intent
+// expires an hour after it was written, but a large state pack can take
+// longer — or finish after the phone sat overnight — so a completed install
+// restamps the clock and the post-install reload still finds the trip.
+function refreshPendingMapRouteIntent(stateId) {
+  try {
+    const value = JSON.parse(localStorage.getItem(PENDING_MAP_ROUTE_INTENT_KEY) || 'null');
+    if (value?.version !== 1) return;
+    const waitingFor = [...new Set([value.stateId, ...(value.requiredStateIds || [])])];
+    if (stateId && !waitingFor.includes(stateId)) return;
+    localStorage.setItem(PENDING_MAP_ROUTE_INTENT_KEY,
+      JSON.stringify({ ...value, createdAt: Date.now() }));
+  } catch (error) { /* optional */ }
 }
 
 async function beginMapInstallForPlace(item, action, target = null) {
@@ -15490,6 +15539,7 @@ async function downloadStoreState(storeUrl, state, button, options = {}) {
       report(`${updating ? 'Updating' : 'Downloading'} ${name}… ${pct}% of ${formatMapBytes(total)}`);
     }, { signal: options.signal });
     report(`${name} is ${updating ? 'updated and ' : ''}ready to use.`);
+    refreshPendingMapRouteIntent(state.id);
     buildMapsStateList();
     buildMapsStoreList();
     updateMapsStorageLine();

@@ -216,9 +216,11 @@ const reloaded = await page.evaluate(() => ({
   dataRoot: Region.dataRoot,
   centre: map.getCenter(),
   // Only what the folder holds. A layer whose file is not there is a toggle
-  // that turns on a 404.
+  // that turns on a 404. The resident national state-polygon source is
+  // exempt: it ships inside the app shell for every state and cannot 404.
   layers: SOURCES.map((source) => source.id),
-  styleSources: Object.keys(map.getStyle().sources).filter((id) => id.startsWith('basemap-')),
+  styleSources: Object.keys(map.getStyle().sources).filter((id) =>
+    id.startsWith('basemap-') && id !== 'basemap-state-ground'),
   graphUrl: GRAPH_URL,
 }));
 check('the app comes back up on the state that was chosen',
@@ -244,21 +246,22 @@ check('and neither are the layers that would draw from it',
 // A state that declares no place index must not go looking for one. The fetch
 // would 404 on every search, and the retry-next-time path makes that one per
 // keystroke -- so the declaration has to be honoured, not discovered.
-const searched = await page.evaluate(async () => {
+// Multi-state search still loads every INSTALLED state's declared index — a
+// result list may name places in another installed state — so the invariant
+// is scoped to this state: no fetch into its folder, no rows carrying its id.
+const searched = await page.evaluate(async (previewId) => {
   const asked = [];
   const realFetch = window.fetch;
   window.fetch = (input, init) => { asked.push(String(input)); return realFetch(input, init); };
   await ensurePlaces();
   window.fetch = realFetch;
   return {
-    count: Array.isArray(placesIndex) ? placesIndex.length : -1,
-    wentLooking: asked.some((url) => url.includes('places.json')),
-    // Whatever it holds, it must not still be the previous state's index.
-    hasSeattle: (placesIndex || []).some((row) => row[0] === 'Seattle'),
+    wentLooking: asked.some((url) => url.includes(`${previewId}/places.json`)),
+    ownRows: (placesIndex || []).filter((row) => row[5] === previewId).length,
   };
-});
+}, preview.id);
 check('a state with no place index does not go fetching one',
-  searched.wentLooking === false && searched.count === 0 && !searched.hasSeattle,
+  searched.wentLooking === false && searched.ownRows === 0,
   JSON.stringify(searched));
 
 // Routing must fail flat, once, with the reason -- not retry a URL that 404s

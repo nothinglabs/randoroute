@@ -485,7 +485,18 @@
     if (actual !== partition.sha256) throw new PartitionRuntimeError('partition-hash-mismatch',
       `${partition.path} does not match its catalogue hash.`);
     if (typeof DecompressionStream !== 'function') {
-      throw new PartitionRuntimeError('partition-decompression', 'This browser cannot decompress routing partitions.');
+      // WebKit before 16.4: fall back to the bundled fflate, as the router
+      // worker's graph path does. Available only where importScripts exists;
+      // elsewhere the original verdict stands.
+      if (typeof root.fflate === 'undefined' && typeof root.importScripts === 'function') {
+        try { root.importScripts('vendor/fflate.js'); } catch (error) { /* keep verdict */ }
+      }
+      if (typeof root.fflate === 'undefined') {
+        throw new PartitionRuntimeError('partition-decompression', 'This browser cannot decompress routing partitions.');
+      }
+      const raw = root.fflate.gunzipSync(new Uint8Array(compressed));
+      return raw.byteOffset === 0 && raw.byteLength === raw.buffer.byteLength
+        ? raw.buffer : raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
     }
     return new Response(new Blob([compressed]).stream()
       .pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();

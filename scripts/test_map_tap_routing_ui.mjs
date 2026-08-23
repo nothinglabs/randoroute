@@ -103,16 +103,23 @@ check('the richer collapsed phone card remains compact enough to leave the map v
 check('there is no Google Maps button left on the card', await page.evaluate(() =>
   !document.querySelector('#readout .readout-primary-google')
     && !document.querySelector('#readout .road-map-link')));
-const streetViewPagePromise = page.waitForEvent('popup');
-await page.locator('#readout .streetview-launch').click();
-const streetViewPage = await streetViewPagePromise;
-await streetViewPage.waitForURL(/google\.com\/maps/, { timeout: 10000 }).catch(() => {});
+// Capture the handoff URL at the anchor click instead of loading it: the
+// invariant is what the app hands to the OS, and google.com is not reachable
+// from every test container.
+const streetViewHandoff = await page.evaluate(() => new Promise((resolve) => {
+  const original = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function interceptedClick() {
+    HTMLAnchorElement.prototype.click = original;
+    resolve(this.href);
+  };
+  document.querySelector('#readout .streetview-launch').click();
+  setTimeout(() => resolve('(no handoff link clicked)'), 5000);
+}));
 check('Street View hands off to Google Maps without embedding a repository credential',
-  /google\.com\/maps/.test(streetViewPage.url())
+  /google\.com\/maps/.test(streetViewHandoff) && !/key=/.test(streetViewHandoff)
     && await page.evaluate(() => !document.getElementById('streetViewDialog').open
       && !document.body.classList.contains('street-view-open')),
-  streetViewPage.url());
-await streetViewPage.close();
+  streetViewHandoff);
 
 await page.locator('#readout .readout-details-toggle').click();
 const originalDetails = await page.evaluate(() => ({

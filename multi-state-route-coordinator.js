@@ -132,9 +132,17 @@
     });
   }
 
-  function pointInBounds(point, bounds) {
-    return point[0] >= bounds.minLon && point[0] <= bounds.maxLon
-      && point[1] >= bounds.minLat && point[1] <= bounds.maxLat;
+  // The router snaps a route point to streets up to 2 km away, so the corridor
+  // must load every same-state partition whose data could hold that street. A
+  // point inside a sparse cell's bounds — the 873-node Columbia-shore sliver —
+  // can be over 2 km from that cell's own streets while a neighbouring cell
+  // holds the nearest road; without the margin the snap fails point-too-far
+  // with no frontier hit, and nothing can widen the corridor.
+  const POINT_SNAP_MARGIN_M = 2000;
+
+  function pointInBounds(point, bounds, marginLonDeg = 0, marginLatDeg = 0) {
+    return point[0] >= bounds.minLon - marginLonDeg && point[0] <= bounds.maxLon + marginLonDeg
+      && point[1] >= bounds.minLat - marginLatDeg && point[1] <= bounds.maxLat + marginLatDeg;
   }
 
   function shortestPartitionPaths(catalogue, startIds, endIds, allowedStateIds, cap) {
@@ -190,11 +198,21 @@
       throw new RouteCoordinatorError('route-points', 'Route points and their state identities do not match.');
     }
     const budgetBytes = input.budgetBytes || contract.MAX_DETAILED_GRAPH_INPUT_BYTES;
-    const partitionsAtPoint = points.map((point, index) => catalogue.partitions
+    const strictPartitionsAtPoint = points.map((point, index) => catalogue.partitions
       .filter((partition) => partition.stateId === pointStateIds[index]
         && pointInBounds(point, partition.bounds))
       .map((partition) => partition.id)
       .sort((a, b) => a.localeCompare(b)));
+    const partitionsAtPoint = points.map((point, index) => {
+      const marginLatDeg = POINT_SNAP_MARGIN_M / 111320;
+      const marginLonDeg = POINT_SNAP_MARGIN_M
+        / (111320 * Math.max(0.2, Math.cos(point[1] * Math.PI / 180)));
+      return catalogue.partitions
+        .filter((partition) => partition.stateId === pointStateIds[index]
+          && pointInBounds(point, partition.bounds, marginLonDeg, marginLatDeg))
+        .map((partition) => partition.id)
+        .sort((a, b) => a.localeCompare(b));
+    });
     const missingPoint = partitionsAtPoint.findIndex((ids) => !ids.length);
     if (missingPoint >= 0) {
       throw new RouteCoordinatorError('point-outside-partitions',
@@ -216,6 +234,9 @@
     const byId = new Map(catalogue.partitions.map((partition) => [partition.id, partition]));
     const selected = new Set();
     const addPath = (path) => { for (const id of path) selected.add(id); };
+    // A cell strictly containing a route point is endpoint-critical: the
+    // shortest cell path reaches only one cell per point.
+    for (const ids of strictPartitionsAtPoint) for (const id of ids) selected.add(id);
     for (const paths of candidatePaths) addPath(paths[0]);
     const selectedBytes = () => [...selected]
       .reduce((sum, id) => sum + byId.get(id).rawBytes, 0);
@@ -223,6 +244,16 @@
       throw new RouteCoordinatorError('graph-input-budget',
         'The detailed routing maps required for this trip do not fit this device’s routing-memory limit.',
         { rawInputBytes: selectedBytes(), budgetBytes, partitionIds: [...selected].sort() });
+    }
+    // A margin-admitted neighbour may hold the street the router snaps to —
+    // the sparse Columbia-shore sliver's nearest road sits in the dense cell
+    // 900 m south of its data boundary. These load whenever they fit; they
+    // never turn a routable request into a budget error.
+    for (const ids of partitionsAtPoint) {
+      for (const id of ids) {
+        if (selected.has(id)) continue;
+        if (selectedBytes() + byId.get(id).rawBytes <= budgetBytes) selected.add(id);
+      }
     }
     // Preserve equal-short coarse corridors when they fit. A corridor that
     // does not fit remains discoverable through the real A* frontier retries.
@@ -353,6 +384,7 @@
       const partitionById = new Map(this.catalogue.partitions.map((partition) =>
         [partition.id, partition]));
       const attempts = [];
+      let lastSuccess = null;
       for (let retry = 0; retry <= this.catalogue.partitions.length; retry++) {
         checkAbort(controller.signal);
         this.onProgress({ generation, phase: retry ? 'expanding' : 'initial', retry,
@@ -369,6 +401,22 @@
           frontierHitCount: frontierHits.length, ok: !!result.ok });
         const competitiveTimes = (Array.isArray(result.options) ? result.options : [result])
           .map((option) => Number(option?.timeS)).filter(Number.isFinite);
+        // A success-driven expansion must pay for itself. Frontier lower
+        // bounds are straight lines at the search's most optimistic speed, so
+        // on a long trip nearly every portal in the composite stays formally
+        // "competitive" and the byte budget becomes the only stop — Seattle to
+        // Buckman re-ran a six-option portfolio five more times and pinned
+        // 99.7% of the input ceiling without changing the lineup. When a
+        // widened composite returns no better best time and no extra option,
+        // take the result. Failed attempts keep widening: a disconnected
+        // endpoint cell must expand until the network connects.
+        const bestTime = competitiveTimes.length ? Math.min(...competitiveTimes) : Infinity;
+        const optionCount = Array.isArray(result.options)
+          ? result.options.length : (result.ok ? 1 : 0);
+        const stalled = !!result.ok && !!lastSuccess
+          && bestTime >= lastSuccess.bestTime * 0.99
+          && optionCount <= lastSuccess.optionCount;
+        if (result.ok) lastSuccess = { bestTime, optionCount };
         const expansionCandidates = partitionRuntime.selectFrontierExpansion({
           loadedPartitionIds: composite.loadedPartitionIds,
           frontiers: composite.frontiers,
@@ -388,7 +436,7 @@
           selectedBytes += partition.rawBytes;
           if (expansion.length >= 2) break;
         }
-        if (!expansion.length) {
+        if (!expansion.length || stalled) {
           if (!result.ok && expansionCandidates.length) {
             throw new RouteCoordinatorError('graph-input-budget',
               'The detailed routing maps required for this trip do not fit this device’s routing-memory limit.',
@@ -457,6 +505,7 @@
       this.loaderUrl = options.loaderUrl || 'partition-loader-worker.js';
       this.routerUrl = options.routerUrl || 'router-worker.js';
       this.onProgress = options.onProgress || (() => {});
+      this.constrained = !!options.constrained;
       this.loader = null;
       this.router = null;
       this.initialized = false;
@@ -465,7 +514,13 @@
 
     ensureWorkers() {
       if (!this.loader) this.loader = this.createWorker(this.loaderUrl);
-      if (!this.router) this.router = this.createWorker(this.routerUrl);
+      if (!this.router) {
+        this.router = this.createWorker(this.routerUrl);
+        // A phone's router runs with capped caches; the composite router
+        // holds the same full-size graph as the home worker and must not
+        // additionally retain the desktop cache complement.
+        if (this.constrained) this.router.postMessage({ type: 'configure', constrained: true });
+      }
     }
 
     async ensureInitialized(signal = null) {

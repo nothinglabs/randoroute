@@ -58,6 +58,12 @@ let allowDisconnectedSnaps = false;
 // lower bound can still compete with its found route.
 let configuredFrontiers = new Map();
 let requestFrontierHits = new Map();
+// True while a sub-search runs between interior nodes of an existing candidate
+// (ferry land-section refinement). Its portal observations are section-scale:
+// merged into the request's hits, a few-kilometre lower bound was compared
+// against the whole trip's worst option time, and the coordinator chased
+// partitions far off the corridor. Only a request leg records request hits.
+let suppressFrontierHitRecording = false;
 // Set for the duration of one request. A road block snaps to a graph node and
 // makes every road edge through that location unavailable to the search.
 let activeRoadBlockEdges = null;
@@ -3396,6 +3402,7 @@ function configurePartitionFrontiers(frontiers) {
 function beginFrontierRequest() { requestFrontierHits = new Map(); }
 
 function mergeFrontierHits(hits, ceiling) {
+  if (suppressFrontierHitRecording) return;
   for (const [node, lowerBound] of hits) {
     if (!(lowerBound <= ceiling)) continue;
     const previous = requestFrontierHits.get(node);
@@ -4359,11 +4366,21 @@ function refineFerrySeed(seed, raw, rules, forceDesig, forceResidential, searchR
     const startPoint = [nodeLon[startNode], nodeLat[startNode]];
     const endPoint = [nodeLon[endNode], nodeLat[endNode]];
     const startSnap = { node: startNode, distM: 0 }, endSnap = { node: endNode, distM: 0 };
-    const direct = routeLeg(startPoint, endPoint, rules, 'direct', forceDesig, forceResidential,
-      startSnap, endSnap, null, 1, searchRules);
+    // These legs run between interior nodes of the seed. Their portal
+    // observations must not become request-level frontier hits: the seed's own
+    // request legs already routed, so the section search reports only how this
+    // land stretch might be refined, never that the trip needs more map.
+    suppressFrontierHitRecording = true;
+    let direct, alternative;
+    try {
+      direct = routeLeg(startPoint, endPoint, rules, 'direct', forceDesig, forceResidential,
+        startSnap, endSnap, null, 1, searchRules);
+      alternative = direct.ok
+        ? routeLeg(startPoint, endPoint, rules, 'balanced', true, true,
+          startSnap, endSnap, new Set(direct.edgeIds), activeWeights.diversityBalanced, searchRules)
+        : null;
+    } finally { suppressFrontierHitRecording = false; }
     if (!direct.ok) continue;
-    const alternative = routeLeg(startPoint, endPoint, rules, 'balanced', true, true,
-      startSnap, endSnap, new Set(direct.edgeIds), activeWeights.diversityBalanced, searchRules);
     if (!alternative.ok || !meaningfullyDifferent(alternative, original)) continue;
     // This probe re-imagines the LAND sections of a ferry itinerary; the
     // seed's boats are spliced back in verbatim. An "alternative" that
@@ -5231,8 +5248,17 @@ function isGzip(buffer) {
   return ((head[0] << 8) | head[1]) === GZIP_MAGIC;
 }
 async function gunzip(buffer) {
-  const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
-  return new Response(stream).arrayBuffer();
+  if (typeof DecompressionStream === 'function') {
+    const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Response(stream).arrayBuffer();
+  }
+  // WebKit before 16.4 ships no DecompressionStream, and the iOS deployment
+  // target admits such devices; the bundled fflate inflates the same bytes.
+  // Loaded only on this path so modern engines never parse it.
+  if (typeof fflate === 'undefined') importScripts('vendor/fflate.js');
+  const raw = fflate.gunzipSync(new Uint8Array(buffer));
+  return raw.byteOffset === 0 && raw.byteLength === raw.buffer.byteLength
+    ? raw.buffer : raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
 }
 function receiveGraph(buffer, metadata = {}) {
   // Frontier expansion replaces the whole composite. Anything keyed by an old

@@ -48,9 +48,11 @@ Pillow`) for the data tests, and Playwright for the forty-two browser tests.
 
 ### The long poles
 
-`test_safety_model.mjs` (~600 s) bounds the suite's wall time, then
-`test_route_potential.mjs` (~290 s), which proves the A* bound admissible, and
-`test_adaptive_corridor_ferries.mjs` (~275 s). `test_route_portfolio.mjs` and
+`test_production_cross_state_portfolios.mjs` (~630 s) bounds the suite's wall
+time — three cross-state route portfolios over the released partitions — then
+`test_safety_model.mjs` (~600 s), `test_route_potential.mjs` (~290 s), which
+proves the A* bound admissible, and `test_adaptive_corridor_ferries.mjs`
+(~275 s). `test_route_portfolio.mjs` and
 `test_corridor_severance.mjs` (~100–110 s each) are the ones that matter most:
 they catch a scoring change that severs a corridor. The runner runs files
 concurrently, so wall time is roughly the slowest file rather than the sum.
