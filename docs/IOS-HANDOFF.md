@@ -1,7 +1,7 @@
 # iOS handoff
 
 Last audited 2026-08-23 on macOS with Xcode 26.6, the iOS 26.5 simulator SDK,
-a generic physical-iPhone Release target, and Capacitor 8.4.2. Version .799 was
+a generic physical-iPhone Release target, and Capacitor 8.4.2. Version .800 was
 synced with both released starter states and compiled in Release configuration
 for the simulator and generic iOS device with no Swift warnings; the unsigned
 products were 365 MiB and 361 MiB. Earlier store validation also passed. The
