@@ -109,12 +109,14 @@ check('it opens a full-screen list of available maps, alphabetically',
     && screen.first === 'Idaho' && screen.last === 'Washington', JSON.stringify(screen));
 check('the controls are one radio group, because one state is Home at a time',
   screen.types.join() === 'radio' && screen.group.length === 1, JSON.stringify(screen));
-check('the copy separates installed maps, Home, and the three-state route limit',
-  /manage state maps/i.test(screen.lead || '')
-    && /as many maps as this device can store/i.test(screen.note || '')
-    && /one home map for startup/i.test(screen.note || '')
-    && /up to three contiguous states marked on device/i.test(screen.note || '')
-    && /restarts/i.test(screen.note || ''), `${screen.lead} | ${screen.note}`);
+// Three facts, briefly: what Home means, that routing uses every installed
+// map up to the three-state limit, and that changing Home restarts. Longer
+// copy on this screen drew a field complaint of "painful and rambling".
+check('the copy states Home, the three-state route limit, and the restart, briefly',
+  /home/i.test(screen.note || '')
+    && /three neighboring states/i.test(screen.note || '')
+    && /restarts/i.test(screen.note || '')
+    && (screen.note || '').length < 200, `${screen.lead} | ${screen.note}`);
 check('the Home state is the checked one',
   screen.checked.join() === screen.homeRegion, JSON.stringify(screen.checked));
 check('the storage line distinguishes added downloads from bundled maps',

@@ -557,7 +557,9 @@ body:not(.navigation-active) #navCard { display: none; }
 .national-map-key .unavailable { background: #d4d9dc; }
 .national-map { min-height: 150px; border-radius: 10px; background: #dcecf2; overflow: hidden; }
 .national-map.loading { display: grid; place-items: center; color: #657983; font: 700 12px/1.3 system-ui; }
-.national-map svg { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+/* Match the SVG's own viewBox: a wider CSS ratio letterboxed the country and
+ * the Maps screen showed a squat map with dead side margins. */
+.national-map svg { display: block; width: 100%; height: auto; aspect-ratio: 960 / 600; }
 .national-state { cursor: pointer; outline: none; }
 .national-state path { fill: #d4d9dc; stroke: #fff; stroke-width: 1.2; vector-effect: non-scaling-stroke; transition: fill .12s ease, stroke .12s ease; }
 .national-state.installed path { fill: #8cc6a9; }

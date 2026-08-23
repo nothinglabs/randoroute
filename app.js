@@ -15166,12 +15166,16 @@ function projectNationalPoint(stateId, coordinate) {
   let [lon, lat] = coordinate;
   if (stateId === 'alaska') {
     if (lon > 0) lon -= 360;
-    return [45 + ((lon + 181) / 52) * 275, 415 + ((72 - lat) / 21) * 135];
+    return [45 + ((lon + 181) / 52) * 275, 440 + ((72 - lat) / 21) * 135];
   }
   if (stateId === 'hawaii') {
-    return [350 + ((lon + 161) / 7) * 150, 470 + ((22.5 - lat) / 4) * 75];
+    return [350 + ((lon + 161) / 7) * 150, 500 + ((22.5 - lat) / 4) * 75];
   }
-  return [35 + ((lon + 125) / 59) * 890, 25 + ((50 - lat) / 26) * 380];
+  // Equirectangular with a 38°N standard parallel: one degree of longitude is
+  // cos(38°) of a degree of latitude, so states keep their shape. Packing the
+  // same latitude span into a 16:9-ish box flattened the whole country by a
+  // third and the Maps screen showed a squat, wrong-shaped map.
+  return [35 + ((lon + 125) / 59) * 890, 15 + ((50 - lat) / 26) * 497];
 }
 
 function nationalFeaturePath(feature) {
@@ -15199,7 +15203,7 @@ function renderNationalOrientationMap(host) {
   loadNationalCatalogue().then(({ boundaries }) => {
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
-    svg.setAttribute('viewBox', '0 0 960 560');
+    svg.setAttribute('viewBox', '0 0 960 600');
     svg.setAttribute('role', 'group');
     svg.setAttribute('aria-label', 'State map availability');
     for (const feature of boundaries.features) {
