@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.790';
+const APP_VERSION = '2026-08-22.791';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4167,6 +4167,150 @@ async function createInstalledMultiStateRouteSession({ routeStateIds, resolveSta
   return { session, bridge, context };
 }
 
+const activeMultiStateRouting = {
+  key: null, session: null, bridge: null, context: null, creating: null,
+};
+
+function orderedRoutePointStateIds() {
+  return [routing.startStateId || Region.id,
+    ...routing.vias.map((via) => via.stateId || Region.id),
+    routing.endStateId || Region.id];
+}
+
+function needsMultiStateRouting() {
+  return orderedRoutePointStateIds().some((stateId) => stateId !== Region.id);
+}
+
+function stateNames(stateIds) {
+  return [...new Set(stateIds || [])].map((stateId) => placeStateConfig(stateId)?.name || stateId);
+}
+
+async function installedMultiStateRouteSession(routeStateIds) {
+  const ids = [...new Set(routeStateIds)].sort((a, b) => a.localeCompare(b));
+  const acquisition = MapStore.routingAcquisitionForStates(ids);
+  if (!acquisition.available) {
+    const error = new Error(acquisition.reason || 'Required routing maps are unavailable.');
+    error.code = 'routing-acquisition-unavailable';
+    error.detail = acquisition;
+    throw error;
+  }
+  const key = `${acquisition.compatibility.catalogueSha256}|${ids.join('|')}`;
+  if (activeMultiStateRouting.key === key && activeMultiStateRouting.session) {
+    activeMultiStateRouting.session.setInstalledStateIds(MapStore.installedStateIds());
+    return activeMultiStateRouting;
+  }
+  activeMultiStateRouting.session?.cancel();
+  activeMultiStateRouting.key = key;
+  const creating = createInstalledMultiStateRouteSession({
+    routeStateIds: ids,
+    resolveStateId: async (point) => placeStateIdAt(point[0], point[1]),
+    onProgress: (progress) => {
+      const names = stateNames(progress.routeStateIds || ids).join(' and ');
+      const phase = progress.phase === 'expanding' ? 'Checking another route area'
+        : progress.type === 'partition-progress' ? 'Loading route data' : 'Preparing route maps';
+      showRouterProgress(`${phase} for ${names}…`, 'Preparing multi-state route');
+    },
+  });
+  activeMultiStateRouting.creating = creating;
+  const created = await creating;
+  if (activeMultiStateRouting.creating !== creating || activeMultiStateRouting.key !== key) {
+    created.session.cancel();
+    throw new DOMException('Route request was cancelled.', 'AbortError');
+  }
+  Object.assign(activeMultiStateRouting, created, { key, creating: null });
+  return activeMultiStateRouting;
+}
+
+function multiStateWorkerRequest(type, id, points) {
+  const selected = routing.last?.optimization;
+  if (type === 'route') {
+    return {
+      type, id, points, rules: { ...rules },
+      blocks: routing.blocks?.map(routeBlockPayload) || [],
+      mode: selected?.mode || routing.mode,
+      profileId: selected?.profileId || routing.profileId,
+      profileLabel: selected?.label,
+      prefDesignated: routing.prefDesig || !!selected?.prefDesignated,
+      prefResidential: routing.prefResidential || !!selected?.prefResidential,
+      weights: { ...routingWeights },
+    };
+  }
+  const rec = routing.sharedActive ? routing.sharedRecipe : null;
+  return {
+    type, id, points, blocks: routing.blocks?.map(routeBlockPayload) || [],
+    rules: { ...(rec?.rules || rules) },
+    forceDesignated: rec ? !!rec.prefDesig : routing.prefDesig,
+    forceResidential: rec ? !!rec.prefResidential : routing.prefResidential,
+    preferredProfileId: rec ? (rec.profileId || routing.profileId) : routing.profileId,
+    weights: rec?.weights ? { ...rec.weights } : { ...routingWeights },
+    directProbeWeights: rec ? null : directLensRoutingWeights(),
+  };
+}
+
+async function promptForRequiredRouteStates(result) {
+  const required = [...new Set(result.requiredStateIds || [])];
+  if (!required.length) return;
+  const names = stateNames(required);
+  const message = `Required for this trip: ${names.join(', ')}. This route passes through ${names.join(' and ')}.`;
+  setRouteStatus(message);
+  showRouteActionToast(message, { answer: true, duration: 8000 });
+  saveStateSoon();
+  saveStateNow();
+  try {
+    localStorage.setItem(PENDING_MAP_ROUTE_INTENT_KEY, JSON.stringify({
+      version: 1, createdAt: Date.now(), action: 'resume-route',
+      stateId: required[0], requiredStateIds: required,
+    }));
+  } catch (error) { return; }
+  await openNationalStateCard(required[0]);
+}
+
+async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } = {}) {
+  const shouldRevealPanel = Boolean(revealPanel) && !turnNav.active;
+  routing.pendingRoute = false;
+  routing.pendingPanelReveal = false;
+  routing.routeRequestActive = true;
+  const requestId = ++routing.reqId;
+  setRouteStatus('Preparing multi-state route…');
+  setRouteOptionsLoading(true);
+  if (shouldRevealPanel) {
+    revealRouteCalculation();
+    showRouteCalculationStatus('Preparing multi-state route',
+      `Loading only the route maps needed through ${stateNames(orderedRoutePointStateIds()).join(' and ')}…`);
+  }
+  saveStateSoon();
+  const points = [routing.start, ...routing.vias.map((via) => via.pt), routing.end];
+  const pointStateIds = orderedRoutePointStateIds();
+  const request = multiStateWorkerRequest(turnNav.active ? 'route' : 'route-options', requestId, points);
+  request.pointStateIds = pointStateIds;
+  try {
+    const runtime = await installedMultiStateRouteSession(pointStateIds);
+    if (requestId !== routing.reqId) return;
+    const result = await runtime.session.route(request);
+    if (requestId !== routing.reqId) return;
+    if (result.code === 'required-states') {
+      routing.routeRequestActive = false;
+      setRouteOptionsLoading(false);
+      await promptForRequiredRouteStates(result);
+      return;
+    }
+    routing.multiStateActive = true;
+    document.body.dataset.loadedPartitionCount = String(result.loadedPartitionIds?.length || 0);
+    document.body.dataset.routeStateIds = (result.routeStateIds || []).join(',');
+    onRouterMessage({ data: result });
+  } catch (error) {
+    if (error?.name === 'AbortError' || requestId !== routing.reqId) return;
+    routing.routeRequestActive = false;
+    setRouteOptionsLoading(false);
+    const missingRouting = error.code === 'routing-acquisition-unavailable';
+    const reason = missingRouting
+      ? `Multi-state routing data is not installed for ${stateNames(pointStateIds).join(' and ')}. Update the required maps and try again.`
+      : error.message || 'Could not prepare the required route maps.';
+    onRouterMessage({ data: { type: request.type, id: requestId, ok: false,
+      options: request.type === 'route-options' ? [] : undefined, reason } });
+  }
+}
+
 let _storeDetailsTimer = null;
 let _storeDetailsOption = null;
 function scheduleStoreRouteDetails(option) {
@@ -8083,6 +8227,16 @@ function onRouterMessage(ev) {
 
 function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
   if (!routing.start || !routing.end) return;
+  if (needsMultiStateRouting()) {
+    computeMultiStateRoute({ revealPanel });
+    return;
+  }
+  if (routing.multiStateActive) {
+    activeMultiStateRouting.session?.cancel();
+    routing.multiStateActive = false;
+    document.body.removeAttribute('data-loaded-partition-count');
+    document.body.removeAttribute('data-route-state-ids');
+  }
   const shouldRevealPanel = Boolean(revealPanel) && !turnNav.active;
   if (!routing.ready) { // re-runs once the graph is ready
     routing.pendingRoute = true;
@@ -9539,7 +9693,8 @@ function setDeviceStart(position) {
   routing.deviceStartAccuracyM = Number.isFinite(accuracy) ? accuracy : null;
   setRoutePoint('start', {
     lng: position.coords.longitude, lat: position.coords.latitude,
-  }, 'My location', { fromDevice: true });
+  }, 'My location', { fromDevice: true,
+    stateId: placeStateIdAt(position.coords.longitude, position.coords.latitude) || Region.id });
   refineDeviceStartWhilePlanning();
 }
 
@@ -10094,6 +10249,10 @@ function clearRoute() {
   routing.pendingPanelReveal = false;
   routing.routeRequestActive = false;
   routing.reqId++; // a route already being calculated must not reappear after clear
+  activeMultiStateRouting.session?.cancel();
+  routing.multiStateActive = false;
+  document.body.removeAttribute('data-loaded-partition-count');
+  document.body.removeAttribute('data-route-state-ids');
   for (const v of routing.vias) v.marker.remove();
   routing.vias = [];
   for (const block of routing.blocks) block.marker.remove();
@@ -10497,10 +10656,16 @@ function chooseCandidate(c) {
     renderRouteOptionControls();
     return;
   }
-  if (!routing.worker || !routing.candidatesKey) return;
+  if ((!routing.worker && !routing.multiStateActive) || !routing.candidatesKey) return;
   routing.candidateReqId = (routing.candidateReqId || 0) + 1;
-  routing.worker.postMessage({ type: 'route-candidate', id: routing.candidateReqId,
-    candidatesKey: routing.candidatesKey, profileId: c.profileId });
+  const request = { type: 'route-candidate', id: routing.candidateReqId,
+    candidatesKey: routing.candidatesKey, profileId: c.profileId };
+  if (routing.multiStateActive && activeMultiStateRouting.bridge) {
+    activeMultiStateRouting.bridge.search({ request, signal: new AbortController().signal })
+      .then((result) => onRouterMessage({ data: result }))
+      .catch((error) => showRouteActionToast(error.message || 'That route is unavailable',
+        { duration: 2800 }));
+  } else routing.worker.postMessage(request);
   closeConsideredRouteDialogs();
   showRouteActionToast(`Loading ${c.label}…`, { busy: true, duration: 8000 });
 }
@@ -11550,6 +11715,22 @@ async function resumePendingMapRouteIntent() {
   if (!intent) return false;
   if (MapStore.availability(intent.stateId) === 'remote') {
     await openNationalStateCard(intent.stateId);
+    return true;
+  }
+  if (intent.action === 'resume-route') {
+    const remaining = (intent.requiredStateIds || [])
+      .filter((stateId) => MapStore.availability(stateId) === 'remote');
+    if (remaining.length) {
+      const next = { ...intent, stateId: remaining[0], requiredStateIds: remaining,
+        createdAt: Date.now() };
+      try { localStorage.setItem(PENDING_MAP_ROUTE_INTENT_KEY, JSON.stringify(next)); }
+      catch (error) { clearPendingMapRouteIntent(); }
+      await openNationalStateCard(remaining[0]);
+      return true;
+    }
+    clearPendingMapRouteIntent();
+    if (routing.start && routing.end) computeRoute();
+    setRouteStatus('Required maps installed. Resuming this trip…');
     return true;
   }
   const [lng, lat] = intent.point || [];

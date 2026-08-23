@@ -301,6 +301,14 @@ state and records both its result count and the complete source byte/count
 measurements. Confirmation retains the current home state; reload consumes the
 one-hour pending intent only after the requested map is installed.
 
+The page planner selects the partition session whenever an endpoint or stop is
+outside the home state. It forwards the ordinary route/portfolio request,
+records route-state and loaded-detail diagnostics, cancels the partition
+session when the trip becomes home-state-only, and uses the partition worker's
+portfolio cache for a later considered-route selection. A coordinator result
+that names missing transit states opens the same confirmed state card and
+persists `resume-route` until all required maps are installed.
+
 ## Test boundary
 
 Synthetic executable fixtures prove three-state behavior without adding real

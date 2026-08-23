@@ -133,3 +133,9 @@ continuation pass their browser gate without switching the rider's home state.
 Remaining gates are Washington/Oregon crossing comparisons,
 documentation/handoff, preview, full suite, and the owner's physical-iPhone
 verdict.
+
+The page planner now dispatches non-home-state endpoint sets through the
+partition session and turns a coordinator-required transit state into a
+durable map-card install/resume flow. Its browser integration gate is green.
+Production Washington/Oregon artifacts and route comparisons still require the
+separately approved long build described in `docs/BUILD-GRAPH-PARTITIONS.md`.
