@@ -133,6 +133,10 @@
       assertKnownKeys(file, ROUTING_FILE_KEYS, `acquisition "${unit.id}" file`);
       if (file.dataset !== 'graph-partition' || !SAFE_PATH.test(String(file.path || ''))
           || String(file.path).includes('..') || file.stateId !== stateId
+          // A state's routing files stay inside that state's folder: a store
+          // entry must not be able to overwrite another installed state's
+          // cached partitions with its own bytes.
+          || !String(file.path).startsWith(`${stateId}/`)
           || !SAFE_PARTITION_ID.test(String(file.partitionId || ''))
           || partitionIds.has(file.partitionId)
           || !Number.isSafeInteger(file.bytes) || file.bytes <= 0
@@ -338,9 +342,14 @@
       const request = catalogueRequest(acquisition.catalogue);
       let response = null;
       if (root.caches) {
-        response = await (await root.caches.open(root.DATA_CACHE_NAME)).match(request, {
-          ignoreVary: false, ignoreSearch: false,
-        });
+        // WKWebView may reject Cache Storage operations on a capacitor://
+        // origin; a failed lookup falls through to fetch rather than failing
+        // the whole multi-state plan.
+        try {
+          response = await (await root.caches.open(root.DATA_CACHE_NAME)).match(request, {
+            ignoreVary: false, ignoreSearch: false,
+          });
+        } catch (error) { response = null; }
       }
       if (!response) response = await fetch(request);
       if (!response?.ok) throw new Error(`Partition catalogue: HTTP ${response?.status || 0}`);
@@ -447,7 +456,20 @@
     // error message, never a partial listing.
     async fetchIndex(storeUrl) {
       const base = storeUrl === 'maps/' ? storeUrl : MapStore.normalizeStoreUrl(storeUrl);
-      const response = await fetch(`${base}index.json`, { cache: 'no-cache' });
+      // The same-origin store's index sits in the service worker's shell
+      // precache, so a plain fetch returns the copy frozen at shell install
+      // and a data-only redeploy is invisible until the next app update. The
+      // install marker bypasses every worker cache branch; offline, fall back
+      // to whatever cached copy the worker can still serve.
+      let response = null;
+      if (root.location?.href) {
+        const fresh = new URL(`${base}index.json`, root.location.href);
+        fresh.searchParams.set('jra-store-install', `index-${Date.now()}`);
+        try {
+          response = await fetch(fresh.href, { cache: 'no-store' });
+        } catch (error) { response = null; }
+      }
+      if (!response) response = await fetch(`${base}index.json`, { cache: 'no-cache' });
       if (!response.ok) throw new Error(`The store answered HTTP ${response.status}.`);
       let index;
       try {
@@ -483,15 +505,21 @@
       let stage = null, backup = null, cache = null;
       let done = 0;
       let commitStarted = false, committed = false;
+      let stagedRequests = [];
       const previous = MapStore.installedEntry(state.id);
       try {
         stage = await root.caches.open(stageName);
         backup = await root.caches.open(backupName);
         cache = await root.caches.open(root.DATA_CACHE_NAME);
         const estimate = await MapStore.storageEstimate();
+        // During commit the download exists in staging while the live cache
+        // fills, and an update also holds a backup of every overwritten
+        // previous entry — the preflight must cover that peak, not just the
+        // download, or quota failures land inside the commit itself.
+        const backupBytes = previous ? MapStore.stateBytes(previous.state) : 0;
         if (estimate.quotaBytes != null && estimate.usageBytes != null
-            && estimate.quotaBytes - estimate.usageBytes < total) {
-          throw new Error(`This device needs ${total.toLocaleString()} free bytes for the map download.`);
+            && estimate.quotaBytes - estimate.usageBytes < total + backupBytes) {
+          throw new Error(`This device needs ${(total + backupBytes).toLocaleString()} free bytes for the map download.`);
         }
         for (const descriptor of descriptors) {
           if (signal?.aborted) throw new DOMException('Download cancelled.', 'AbortError');
@@ -554,16 +582,24 @@
             await writeArchiveStamp(stage, state, descriptor.file);
           }
         }
-        commitStarted = true;
-        const stagedRequests = await stage.keys();
+        if (signal?.aborted) throw new DOMException('Download cancelled.', 'AbortError');
+        stagedRequests = await stage.keys();
+        // Back up before commitStarted flips: a failure inside the backup loop
+        // (quota, at its tightest exactly here) must not trigger a rollback
+        // that deletes live entries it never copied. Until the first cache.put
+        // below, nothing in the live cache has changed.
         for (const request of stagedRequests) {
           const old = await cache.match(request, { ignoreVary: false, ignoreSearch: false });
           if (old) await backup.put(request, old);
         }
+        commitStarted = true;
         for (const request of stagedRequests) {
           const response = await stage.match(request);
           if (!response) throw new Error(`staged file disappeared: ${new URL(request.url).pathname}`);
           await cache.put(request, response);
+          // The staged copy has served its purpose; dropping it now keeps the
+          // storage peak near one copy of the download instead of two.
+          await stage.delete(request);
         }
         const installed = readJson(INSTALLED_KEY).filter((entry) => entry.state.id !== state.id);
         const cachedRequests = stagedRequests.map((request) => request.url).sort();
@@ -579,7 +615,10 @@
         }
       } catch (error) {
         if (commitStarted && !committed) {
-          for (const request of await stage.keys()) await cache.delete(request);
+          // stagedRequests, not stage.keys(): committed entries were already
+          // deleted from staging, and fresh files with no previous version
+          // must still be removed from the live cache.
+          for (const request of stagedRequests) await cache.delete(request);
           for (const request of await backup.keys()) {
             const response = await backup.match(request);
             if (response) await cache.put(request, response);
@@ -818,6 +857,20 @@
           reader.cancel(reason).catch(() => {})));
       },
     }), { status: 200, headers });
+  }
+
+  // A page killed mid-download orphans its staging/backup caches, and the
+  // service worker's activation sweep only runs when a new shell installs —
+  // weeks apart — while the orphaned bytes count against quota and fail the
+  // install preflight. Each cache name carries its Date.now() nonce; anything
+  // old enough that no install could still own it is reclaimed at load.
+  if (root.caches?.keys) {
+    root.caches.keys().then((keys) => Promise.all(keys
+      .filter((name) => {
+        const match = /-(?:install|backup)-(\d+)-/.exec(name);
+        return match && Date.now() - Number(match[1]) > 24 * 60 * 60 * 1000;
+      })
+      .map((name) => root.caches.delete(name)))).catch(() => {});
   }
 
   root.MapStore = MapStore;
