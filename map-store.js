@@ -774,7 +774,7 @@
         await tail.body?.cancel?.().catch?.(() => {});
         return null;
       }
-      return concatenateResponses(response, tail, expectedBytes);
+      return concatenateResponses(response, tail, receivedBytes, expectedBytes);
     } catch (error) {
       await tail?.body?.cancel?.().catch?.(() => {});
       if (error?.name === 'AbortError') throw error;
@@ -782,8 +782,9 @@
     }
   }
 
-  function concatenateResponses(first, second, bytes) {
+  function concatenateResponses(first, second, firstBytes, bytes) {
     const readers = [first, second].map((response) => response.body.getReader());
+    const remaining = [firstBytes, bytes - firstBytes];
     let index = 0;
     const headers = new Headers();
     const contentType = first.headers.get('content-type');
@@ -793,8 +794,22 @@
       async pull(controller) {
         while (index < readers.length) {
           const chunk = await readers[index].read();
-          if (!chunk.done) { controller.enqueue(chunk.value); return; }
-          index++;
+          if (chunk.done) {
+            if (remaining[index] > 0) {
+              controller.error(new Error('A resumed map response ended before its validated byte range.'));
+              return;
+            }
+            index++;
+            continue;
+          }
+          const take = Math.min(remaining[index], chunk.value.byteLength);
+          if (take > 0) controller.enqueue(chunk.value.subarray(0, take));
+          remaining[index] -= take;
+          if (remaining[index] === 0) {
+            await readers[index].cancel().catch(() => {});
+            index++;
+          }
+          if (take > 0) return;
         }
         controller.close();
       },

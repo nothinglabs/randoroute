@@ -26,8 +26,9 @@ Shipped in v.717: the store contract (`maps/index.json`, "Map stores" in
 service worker serves), the Maps-screen manager (add store / download with
 progress / sizes / remove), the slim iOS build (`JRA_SLIM_SHELL=1`), and the
 publish stage in `docs/IMPORT-A-STATE.md`. The web installer also resumes a
-stable short response through a validated byte-range tail before its normal
-size/hash commit. Remaining, in order:
+stable short response through a validated byte-range tail, caps each stream at
+that validated interval when WebKit over-delivers the body, then performs its
+normal size/hash commit. Remaining, in order:
 
 - **Host the store**: upload WA + OR packs and `index.json` to GitHub
   Releases (or equivalent), then verify the by-hand flow in

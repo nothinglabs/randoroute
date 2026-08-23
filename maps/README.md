@@ -88,8 +88,10 @@ ends: the builder refuses to emit an entry whose files are missing, and the
 client refuses an index with unknown keys, unsafe paths, or missing sizes. A
 large response that ends before its declared manifest size is resumed only
 when the store validates the exact missing interval with HTTP 206 and
-`Content-Range`; the joined stream still passes the ordinary size and hash
-checks before the staged acquisition commits.
+`Content-Range`. Each input stream is capped at its validated interval because
+WebKit can expose a short `Content-Length` while delivering additional body
+bytes; the joined stream still passes the ordinary size and hash checks before
+the staged acquisition commits.
 
 For states with `places.json`, each store entry also carries `placeSearch`
 format 1: at most 120 of the population-sorted records, their stable derived

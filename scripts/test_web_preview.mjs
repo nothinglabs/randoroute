@@ -119,6 +119,68 @@ try {
         && sameOriginInstall.storedBytes === installBody.length
         && sameOriginInstall.installed === 'installed',
       JSON.stringify({ installRequests, sameOriginInstall }));
+
+    // WebKit can expose the truncated Content-Length while its response stream
+    // contains more bytes than that header promises. Reproduce that mismatch
+    // in-process: the validated range must be joined at the declared offset,
+    // not after every byte the first body happens to deliver.
+    const overrunInstall = await page.evaluate(async () => {
+      const payload = 'complete-body-beyond-short-content-length';
+      const bytes = new TextEncoder().encode(payload);
+      const declaredBytes = bytes.byteLength - 7;
+      const originalFetch = window.fetch;
+      const ranges = [];
+      window.fetch = async (input, init = {}) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (!url.includes('/maps/preview-overrun/roads.pmtiles')) {
+          return originalFetch(input, init);
+        }
+        const headers = new Headers(init.headers
+          || (input instanceof Request ? input.headers : undefined));
+        const range = headers.get('range');
+        ranges.push(range);
+        if (!range) {
+          return new Response(bytes, { status: 200, headers: {
+            'content-type': 'application/octet-stream',
+            'content-length': String(declaredBytes),
+          } });
+        }
+        const start = Number(/^bytes=(\d+)-/.exec(range)?.[1]);
+        const tail = bytes.slice(start);
+        return new Response(tail, { status: 206, headers: {
+          'content-type': 'application/octet-stream',
+          'content-length': String(tail.byteLength),
+          'content-range': `bytes ${start}-${bytes.byteLength - 1}/${bytes.byteLength}`,
+        } });
+      };
+      try {
+        const state = {
+          id: 'preview-overrun', name: 'Preview Overrun', status: 'preview',
+          bounds: { minLon: 0, minLat: 0, maxLon: 1, maxLat: 1 },
+          defaultCenter: [0.5, 0.5], defaultZoom: 8,
+          datasets: { roads: true }, versions: { roads: 'fixture-roads-v1' },
+          files: [{ dataset: 'roads', path: 'roads.pmtiles', bytes: bytes.byteLength }],
+        };
+        await MapStore.installState('maps/', state);
+        const cache = await caches.open(DATA_CACHE_NAME);
+        const stored = await cache.match('maps/preview-overrun/roads.pmtiles');
+        const storedPayload = stored ? await stored.text() : null;
+        const installed = MapStore.availability(state.id);
+        await MapStore.removeState(state.id);
+        return { declaredBytes, expectedBytes: bytes.byteLength, installed,
+          ranges, storedPayload };
+      } finally {
+        window.fetch = originalFetch;
+      }
+    });
+    check('a body exceeding its short header is capped at the validated resume offset',
+      overrunInstall.ranges.length === 2
+        && overrunInstall.ranges[0] == null
+        && overrunInstall.ranges[1]
+          === `bytes=${overrunInstall.declaredBytes}-${overrunInstall.expectedBytes - 1}`
+        && overrunInstall.installed === 'installed'
+        && overrunInstall.storedPayload === 'complete-body-beyond-short-content-length',
+      JSON.stringify(overrunInstall));
     await context.close();
   } finally {
     await browser.close();

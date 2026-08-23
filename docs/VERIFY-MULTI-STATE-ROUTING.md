@@ -12,9 +12,9 @@ Verification target:
 | --- | --- |
 | Branch | `codex/multistate-routing` |
 | Production-artifact baseline | `468765a` |
-| Review source commit | `11eb23d31b718ea36030a9076098f0b8a48a717e` |
-| Preview deployment commit | `nothinglabs/randoroute-preview` `e18e22508c4885353e01624bd661faeb3acdc4f5` |
-| App / worker | `2026-08-23.797` / `v797` |
+| Review source commit | Pending `.798` preview deployment |
+| Preview deployment commit | Pending `.798` preview deployment |
+| App / worker | `2026-08-23.798` / `v798` |
 | Partition catalogue | format 1, SHA-256 `3cafdd58116a7124b2b419d77d7cff83dc417f26ee45c285e594ebc724e4a4e4` |
 | Oregon graph | `sha-8ae4d0b5e2d3` |
 | Washington graph | `sha-c043f268453b` |
@@ -87,6 +87,8 @@ Pages is not the branch preview and is not modified by this workflow.
 - A response shorter than its manifest size may resume from the missing byte.
   The store must answer that request with the exact HTTP 206 `Content-Range`;
   otherwise the installer falls back to a complete retry and commits nothing.
+  If WebKit delivers more body bytes than the short `Content-Length` reports,
+  the installer must cap that first stream at the validated resume offset.
 
 ## National map
 
