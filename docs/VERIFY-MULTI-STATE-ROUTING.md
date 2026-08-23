@@ -12,9 +12,9 @@ Verification target:
 | --- | --- |
 | Branch | `codex/multistate-routing` |
 | Production-artifact baseline | `468765a` |
-| Review source commit | `ee5eaf5f65c507fbcefc22d7089fb4b48ccb3815` |
-| Preview deployment commit | `nothinglabs/randoroute-preview` `68abb10d6dfda9f2b9333e28ba9dd2fee366d6a4` |
-| App / worker | `2026-08-22.795` / `v795` |
+| Review source commit | Pending `.796` preview deployment |
+| Preview deployment commit | Pending `.796` preview deployment |
+| App / worker | `2026-08-22.796` / `v796` |
 | Partition catalogue | format 1, SHA-256 `3cafdd58116a7124b2b419d77d7cff83dc417f26ee45c285e594ebc724e4a4e4` |
 | Oregon graph | `sha-8ae4d0b5e2d3` |
 | Washington graph | `sha-c043f268453b` |
@@ -129,6 +129,8 @@ Expected behavior:
 
 - The required route states are Washington then Oregon. The rider sees state
   names, never partition IDs or a fixed western coverage region.
+- Version 1 presents one cross-state route using the active routing profile;
+  single-state trips retain the ordinary route portfolio.
 - A route exists, uses no unintended freeway, and reports both Washington and
   Oregon in route/details attribution. State-border summaries must not label
   Oregon segments with Washington agencies.

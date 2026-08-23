@@ -134,13 +134,13 @@ lifecycle:
 3. Stream, decompress and validate partitions before admitting them.
 4. Refuse admission if the declared raw input would exceed the hard budget;
    evict non-participating, non-retained partitions and retry admission.
-5. Run the existing scoring and portfolio algorithms over the loaded composite
-   graph without changing safety rules or edge weights.
+5. Run the requested existing scoring search over the loaded composite graph
+   without changing safety rules or edge weights.
 6. Record competitive search frontiers that terminate at portals into unloaded
    adjacent partitions.
 7. Load the best frontier's adjacent partition set and retry. Continue until a
-   stable portfolio is found, no credible frontier remains, cancellation wins,
-   or the supported budget cannot contain the required connected working set.
+   stable result is found, no credible frontier remains, cancellation wins, or
+   the supported budget cannot contain the required connected working set.
 8. Retain partitions intersecting the selected route and navigation window.
    Evict other detailed data independently of installed state count and map
    tile visibility.
@@ -163,10 +163,13 @@ from the copied edges, and all ordinary edge fields, geometry, names and
 directions remain unchanged.
 
 The routing worker accepts the snapshot through its existing graph path and
-runs the existing scoring and portfolio code. Partition mode permits endpoint
-snaps in initially disconnected loaded components, then reports only reached
-portal nodes with admissible lower bounds that can compete with the current
-result.
+runs the existing scoring route or portfolio protocol. Version 1 page planning
+requests one cross-state route under the rider's active profile. A multi-profile
+portfolio can expand several independent frontier sets past the hard budget even
+when one useful crossing fits; single-state planning retains its ordinary
+portfolio. Partition mode permits endpoint snaps in initially disconnected
+loaded components, then reports only reached portal nodes with admissible lower
+bounds that can compete with the current result.
 
 `multi-state-route-coordinator.js` is the page-side controller. It derives
 state adjacency only from exact cross-state portals, plans all ordered route
@@ -313,10 +316,9 @@ measurements. Confirmation retains the current home state; reload consumes the
 one-hour pending intent only after the requested map is installed.
 
 The page planner selects the partition session whenever an endpoint or stop is
-outside the home state. It forwards the ordinary route/portfolio request,
-records route-state and loaded-detail diagnostics, cancels the partition
-session when the trip becomes home-state-only, and uses the partition worker's
-portfolio cache for a later considered-route selection. A coordinator result
+outside the home state. It forwards an ordinary route request using the active
+profile, records route-state and loaded-detail diagnostics, and cancels the
+partition session when the trip becomes home-state-only. A coordinator result
 that names missing transit states opens the same confirmed state card and
 persists `resume-route` until all required maps are installed.
 

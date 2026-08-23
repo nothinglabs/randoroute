@@ -160,6 +160,12 @@ check('the important Washington ferry plan survives partitioning',
 
 const crossBorderCases = [
   {
+    name: 'Seattle to Portland',
+    points: [[-122.33006, 47.60383], [-122.67419, 45.52025]],
+    pointStateIds: ['washington', 'oregon'],
+    maxStraightFactor: 2.2,
+  },
+  {
     name: 'Seattle to Eugene',
     points: [[-122.33006, 47.60383], [-123.09505, 44.05051]],
     pointStateIds: ['washington', 'oregon'],

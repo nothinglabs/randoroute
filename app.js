@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-22.795';
+const APP_VERSION = '2026-08-22.796';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -4217,8 +4217,13 @@ async function installedMultiStateRouteSession(routeStateIds) {
     onProgress: (progress) => {
       const names = stateNames(progress.routeStateIds || ids).join(' and ');
       const phase = progress.phase === 'expanding' ? 'Checking another route area'
-        : progress.type === 'partition-progress' ? 'Loading route data' : 'Preparing route maps';
-      showRouterProgress(`${phase} for ${names}…`, 'Preparing multi-state route');
+        : progress.type === 'partition-progress' ? 'Loading route data'
+          : progress.type === 'progress' ? (progress.detail || 'Calculating route')
+            : 'Preparing route maps';
+      const detail = progress.type === 'progress' && progress.detail
+        ? `${progress.detail} (${names})` : `${phase} for ${names}…`;
+      showRouterProgress(detail, progress.type === 'progress'
+        ? 'Calculating multi-state route' : 'Preparing multi-state route');
     },
   });
   activeMultiStateRouting.creating = creating;
@@ -4291,7 +4296,11 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
   saveStateSoon();
   const points = [routing.start, ...routing.vias.map((via) => via.pt), routing.end];
   const pointStateIds = orderedRoutePointStateIds();
-  const request = multiStateWorkerRequest(turnNav.active ? 'route' : 'route-options', requestId, points);
+  // Version 1 returns one cross-state route under the rider's active profile.
+  // A full multi-profile portfolio can make independent searches reach several
+  // frontier cells at once and exceed the same hard input budget even when one
+  // useful route fits. Single-state planning keeps its ordinary portfolio.
+  const request = multiStateWorkerRequest('route', requestId, points);
   request.pointStateIds = pointStateIds;
   try {
     const runtime = await installedMultiStateRouteSession(pointStateIds);

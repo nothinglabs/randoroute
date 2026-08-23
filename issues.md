@@ -53,11 +53,13 @@ download continuation are complete.
 The production Washington/Oregon release contains 89 partitions and 7,620
 exact portals. Its largest partition is 60,481,818 raw bytes, below the
 145,828,781-byte detailed-input ceiling. Executable gates route
-Seattle–Eugene, Astoria–Megler and The Dalles–Dallesport, retain the important
-Washington ferry and an Oregon full-graph portfolio, route a boundary waypoint,
-and expand beyond deliberately disconnected endpoint partitions. Installed
-non-home map sources now attach only for the visible viewport, and the full iOS
-shell is bounded to two starter states rather than every future import.
+Seattle–Portland, Seattle–Eugene, Astoria–Megler and The Dalles–Dallesport,
+retain the important Washington ferry and an Oregon full-graph portfolio,
+route a boundary waypoint, and expand beyond deliberately disconnected endpoint
+partitions. Version 1 presents one active-profile route for a cross-state trip;
+single-state trips retain their ordinary portfolio. Installed non-home map
+sources now attach only for the visible viewport, and the full iOS shell is
+bounded to two starter states rather than every future import.
 
 Remaining gates:
 

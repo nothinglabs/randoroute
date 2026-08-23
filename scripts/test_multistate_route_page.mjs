@@ -54,7 +54,7 @@ try {
   });
   check('the page sends cross-state endpoints to the partition session with state identity',
     routed.pointStateIds?.join('|') === 'fixture-west|fixture-south'
-      && routed.points?.length === 2 && routed.type === 'route-options' && routed.sameId,
+      && routed.points?.length === 2 && routed.type === 'route' && routed.sameId,
     JSON.stringify(routed));
   check('the page records route-state and loaded-detail diagnostics without exposing IDs in route copy',
     routed.active && routed.routeStates === 'fixture-west,fixture-south'
