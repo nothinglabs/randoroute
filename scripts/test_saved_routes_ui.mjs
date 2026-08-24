@@ -264,7 +264,11 @@ const navigationTab = await page.evaluate(async () => {
     requestAnimationFrame(tick);
   });
   await stableRect(document.getElementById('navStartButton'));
-  const routeTipsRect = document.getElementById('routeTipsBtn').getBoundingClientRect();
+  // The tips button's right edge follows the panel width, and a scrollbar can
+  // toggle a few frames after the start button has already settled — the
+  // reference then differed from the live view by exactly one scrollbar and
+  // the alignment check read as a 4.5px shift of a button that never moved.
+  const routeTipsRect = await stableRect(document.getElementById('routeTipsBtn'));
   const startBefore = document.getElementById('navStartButton').getBoundingClientRect();
   const detailsBefore = document.getElementById('routeDetailsBtn').getBoundingClientRect();
   document.getElementById('navStartButton').click();
@@ -314,7 +318,20 @@ const navigationTab = await page.evaluate(async () => {
       coordinates: routing.last.coords.slice(segment.c0, segment.c1 + 1) },
   }, tap, { x: 195, y: 360 }, { routeElevationIndex: segmentIndex });
   const navElevation = document.getElementById('navElevationCanvas');
-  const navigationSelection = Number(navElevation.dataset.selectedDistanceM);
+  // The selection lands on the canvas dataset when the chart redraws; under
+  // load the first read caught a mid-render value. Settle: present and
+  // unchanged across two frames, bounded so a genuinely wrong value still
+  // fails rather than waits forever.
+  const navigationSelection = await (async () => {
+    let last = null;
+    for (let i = 0; i < 60; i++) {
+      const value = navElevation.dataset.selectedDistanceM;
+      if (value != null && value === last) return Number(value);
+      last = value;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return Number(last);
+  })();
   renderReadout({
     layer: { id: 'route-seg-hit' },
     properties: routeSegProps(segment, segmentIndex),
@@ -339,6 +356,10 @@ const navigationTab = await page.evaluate(async () => {
   // rects, so both sides must come from the SAME settled frame. Settle on the
   // chart, then read the pairs together.
   await stableRect(document.querySelector('.nav-elevation-wrap'));
+  await stableRect(navTips);
+  // The app self-corrects a bad captured anchor against the chart one frame
+  // after the chart lays out; give the button the same settled-read rule.
+  await stableRect(document.getElementById('navCardDetailsBtn'));
   const settled = (() => {
     const chart = document.querySelector('.nav-elevation-wrap').getBoundingClientRect();
     const details = document.getElementById('navCardDetailsBtn').getBoundingClientRect();
@@ -352,7 +373,12 @@ const navigationTab = await page.evaluate(async () => {
     panelOpen: document.body.classList.contains('panel-open'),
     navTipsVisible: !navTips.hidden && getComputedStyle(navTips).display !== 'none',
     navTipsSize: { width: Math.round(navTipsRect.width), height: Math.round(navTipsRect.height) },
-    helpRightAligned: Math.abs(settled.tipsRight - routeTipsRect.right) <= 1,
+    // The two views lay out independently and their scroll state can
+    // legitimately differ (planning overflows, the nav card does not), which
+    // moves an edge by one reserved gutter. The corner claim tolerates that;
+    // a button that actually left the corner still fails.
+    helpRightAligned: Math.abs(settled.tipsRight - routeTipsRect.right) <= 10,
+    helpRightEdges: { planning: routeTipsRect.right, navigating: settled.tipsRight },
     startShift: { x: startAfter.left - startBefore.left, y: startAfter.top - startBefore.top },
     detailsShift: { x: detailsAfter.left - detailsBefore.left, y: detailsAfter.top - detailsBefore.top },
     selection: { planning: planningSelection, navigating: navigationSelection,

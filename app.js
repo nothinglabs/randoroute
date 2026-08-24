@@ -6417,6 +6417,8 @@ function positionNavigationDetailsButton() {
     for (const property of ['position', 'left', 'bottom', 'width', 'height', 'minHeight', 'transform', 'zIndex']) {
       button.style[property] = '';
     }
+    navDetailsChartObserver?.disconnect();
+    navDetailsChartObserver = null;
     return;
   }
   button.style.position = 'absolute';
@@ -6427,6 +6429,52 @@ function positionNavigationDetailsButton() {
   button.style.minHeight = `${navDetailsButtonAnchor.height}px`;
   button.style.transform = 'none';
   button.style.zIndex = '2';
+  correctNavDetailsAnchorSoon(button);
+}
+
+// The anchor is one instantaneous rect of the planning card, captured the
+// frame before that card is destroyed. A transient layout at that exact
+// frame — an --app-height sync, a panel scrollbar mid-change — bakes a bad
+// anchor for the whole navigation session and the elevation labels run into
+// the button (field/test signature: a ~4.5 px overlap). The capture cannot
+// be retried, so verify against live geometry instead: whenever the
+// navigation card or its elevation chart lays out, if the button intrudes
+// into the chart, lower the session's anchor by the deficit. The chart also
+// grows after the button is first placed (the profile renders once data
+// arrives), so the check follows the chart's size, not just the first frame.
+let navDetailsChartObserver = null;
+function correctNavDetailsAnchorSoon(button) {
+  let framesUntilChart = 90;
+  const correct = () => {
+    if (!turnNav.active || !navDetailsButtonAnchor || !button.isConnected) return;
+    const chart = document.querySelector('.nav-elevation-wrap');
+    if (!chart) {
+      // The chart enters the card after the button is first placed; keep
+      // looking briefly so the observer attaches to it when it arrives.
+      if (framesUntilChart-- > 0) requestAnimationFrame(correct);
+      return;
+    }
+    if (typeof ResizeObserver === 'function' && !navDetailsChartObserver) {
+      navDetailsChartObserver = new ResizeObserver(() => requestAnimationFrame(apply));
+      navDetailsChartObserver.observe(chart);
+    }
+    apply();
+  };
+  const apply = () => {
+    if (!turnNav.active || !navDetailsButtonAnchor || !button.isConnected) return;
+    const chart = document.querySelector('.nav-elevation-wrap');
+    if (!chart) return;
+    const chartRect = chart.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    if (!(chartRect.height > 0) || !(buttonRect.height > 0)) return;
+    const clearance = buttonRect.top - chartRect.bottom;
+    if (clearance >= 2) return;
+    const corrected = Math.max(8, navDetailsButtonAnchor.bottom - (2 - clearance));
+    if (corrected === navDetailsButtonAnchor.bottom) return;
+    navDetailsButtonAnchor.bottom = corrected;
+    button.style.bottom = `${corrected}px`;
+  };
+  requestAnimationFrame(correct);
 }
 
 function navEscHTML(s) {

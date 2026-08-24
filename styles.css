@@ -40,7 +40,11 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 }
 .hint { color: #667784; font-size: 11px; margin: 2px 0 6px; }
 
-.tab { display: none; overflow-y: auto; padding: 0 10px 8px; }
+/* stable gutter: panel content rides near the overflow threshold, and a
+ * scrollbar appearing shifted every row ~4.5px — the captured navigation
+ * anchors and the help-corner alignment then disagreed with the live view by
+ * exactly one scrollbar. Reserving the gutter keeps the width constant. */
+.tab { display: none; overflow-y: auto; scrollbar-gutter: stable; padding: 0 10px 8px; }
 .tab.active { display: block; flex: 1; min-height: 0; }
 
 /* Desktop: docked left panel */
