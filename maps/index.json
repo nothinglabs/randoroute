@@ -67,7 +67,7 @@
     "basemap": "sha-4c10a8764862",
     "overlays": "sha-0a5d52347b4c",
     "graph": "sha-8ae4d0b5e2d3",
-    "regional": "sha-43685255afb3"
+    "regional": "sha-a6e61cdab1f5"
    },
    "attribution": {
     "extractName": "Oregon",
@@ -135,7 +135,7 @@
     {
      "dataset": "regional",
      "path": "regional.pmtiles",
-     "bytes": 690267
+     "bytes": 398245
     },
     {
      "dataset": "basemap",
@@ -161,12 +161,12 @@
    "acquisitions": [
     {
      "acquisitionFormat": 1,
-     "id": "map-oregon-6098b76907f0a97f",
+     "id": "map-oregon-95b403931d57b16e",
      "kind": "state-map",
      "stateIds": [
       "oregon"
      ],
-     "totalBytes": 127367936,
+     "totalBytes": 127075914,
      "files": [
       {
        "dataset": "ferries",
@@ -191,7 +191,7 @@
       {
        "dataset": "regional",
        "path": "regional.pmtiles",
-       "bytes": 690267
+       "bytes": 398245
       },
       {
        "dataset": "basemap",
@@ -1774,7 +1774,7 @@
     "roads": "sha-dd29b387e828",
     "basemap": "sha-77136fe2672a",
     "overlays": "sha-04c278da789b",
-    "regional": "sha-620d17d40e11"
+    "regional": "sha-9f06ff02c8f1"
    },
    "attribution": {
     "extractName": "Washington",
@@ -1832,7 +1832,7 @@
     {
      "dataset": "regional",
      "path": "regional.pmtiles",
-     "bytes": 949281
+     "bytes": 542103
     },
     {
      "dataset": "basemap",
@@ -1858,12 +1858,12 @@
    "acquisitions": [
     {
      "acquisitionFormat": 1,
-     "id": "map-washington-c58a1e8128e50572",
+     "id": "map-washington-d2fe119eb3a03078",
      "kind": "state-map",
      "stateIds": [
       "washington"
      ],
-     "totalBytes": 167876023,
+     "totalBytes": 167468845,
      "files": [
       {
        "dataset": "ferries",
@@ -1893,7 +1893,7 @@
       {
        "dataset": "regional",
        "path": "regional.pmtiles",
-       "bytes": 949281
+       "bytes": 542103
       },
       {
        "dataset": "basemap",
