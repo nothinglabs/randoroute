@@ -539,6 +539,12 @@
           // slightly blocky true shoreline instead of to sea-as-land (the
           // capped version left z9-9.5 to the Census fill, which is exactly
           // the band where Whidbey drowned on every phone zoom-out).
+          // Generalized land first: land_detail is the coastline band only,
+          // and inland ground far from the coast lives solely in this layer
+          // (an archive from before it shipped simply renders nothing here).
+          { id: 'basemap-regional-land', type: 'fill', source: 'basemap-regional',
+            'source-layer': 'land', minzoom: 4,
+            paint: { 'fill-color': '#f4f3ee' } },
           { id: 'basemap-regional-land-detail', type: 'fill', source: 'basemap-regional',
             'source-layer': 'land_detail', minzoom: 4,
             paint: { 'fill-color': '#f4f3ee' } },

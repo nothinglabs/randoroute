@@ -15,7 +15,13 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MAPS = join(ROOT, 'maps');
 const SOURCE_ZOOM = 8;
 const MIN_ZOOM = 4;
-const LAYERS = ['land_detail', 'water'];
+// land_detail is the coastline band only -- inland areas far from the coast
+// (southern Washington between Longview and The Dalles, for one) exist solely
+// in the generalized land layer, on every zoom of the detailed archive. A
+// regional archive without that layer painted those areas as open sea the
+// moment nothing else backed it up. Carry both, in the same under-over order
+// the detailed band draws them.
+const LAYERS = ['land', 'land_detail', 'water'];
 
 function command(name) {
   try {

@@ -56,7 +56,10 @@ try {
       contextLandMin: layer('basemap-land')?.minzoom,
       regionalLandMin: layer('basemap-regional-land-detail')?.minzoom,
       regionalLandMax: layer('basemap-regional-land-detail')?.maxzoom,
-      coarseRegionalLand: !!layer('basemap-regional-land'),
+      coarseRegionalLandMin: layer('basemap-regional-land')?.minzoom,
+      coarseRegionalLandMax: layer('basemap-regional-land')?.maxzoom,
+      coarseRegionalLandIndex: map.getStyle().layers
+        .findIndex((item) => item.id === 'basemap-regional-land'),
       regionalWaterMin: layer('basemap-regional-water')?.minzoom,
       regionalWaterMax: layer('basemap-regional-water')?.maxzoom,
       administrativeGround: !!layer('basemap-state-ground'),
@@ -81,12 +84,16 @@ try {
       // and a dropped detail tile can never regress to sea-as-land.
       && phoneBands.regionalLandMin === 4 && phoneBands.regionalLandMax === undefined
       && phoneBands.regionalWaterMin === 4 && phoneBands.regionalWaterMax === undefined
-      && !phoneBands.coarseRegionalLand
+      // land_detail is the coastline band only; the generalized land layer is
+      // the ground for inland areas far from the coast, drawn beneath it.
+      && phoneBands.coarseRegionalLandMin === 4
+      && phoneBands.coarseRegionalLandMax === undefined
       && phoneBands.administrativeGround
       // The Census fill includes marine water; the home state must be carved
       // out of it wherever its coastline-true regional archive serves.
       && phoneBands.administrativeGroundFilter.includes('washington')
-      && phoneBands.administrativeGroundIndex < phoneBands.regionalLandIndex
+      && phoneBands.administrativeGroundIndex < phoneBands.coarseRegionalLandIndex
+      && phoneBands.coarseRegionalLandIndex < phoneBands.regionalLandIndex
       && phoneBands.regionalLandIndex < phoneBands.regionalWaterIndex
       && /regional\.pmtiles/.test(phoneBands.regionalSource || '')
       && phoneBands.reliefLayer && phoneBands.reliefMin === 5
