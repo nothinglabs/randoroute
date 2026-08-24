@@ -10,6 +10,7 @@
 // The store is a second local server on its own port -- a genuinely different
 // origin, with CORS headers, serving a tiny synthetic state.
 import { createServer } from 'node:http';
+import { gzipSync } from 'node:zlib';
 import { appPage, launchBrowser, serveRepo, check, done } from './testlib/harness.mjs';
 
 /* ----------------------------------------------------- a tiny map store */
@@ -58,6 +59,18 @@ const store = createServer((req, res) => {
   if (!body || (file[1] === 'brokenstate' && file[2] === 'roads.pmtiles')) {
     res.writeHead(404, cors);
     return res.end('not found');
+  }
+  if (file[1] === 'teststate' && file[2] === 'roads.pmtiles') {
+    // GitHub Pages compresses some archives on some responses, and the wire
+    // Content-Length then counts ENCODED bytes — which failed real installs
+    // ("regional.pmtiles: expected 915501 bytes, received 915593" was the
+    // gzip of the correct file). Serve this archive gzip-encoded, with the
+    // encoded length larger than the manifest's raw bytes, so the installer
+    // must ignore the wire length and judge the decoded, stored bytes.
+    const encoded = gzipSync(body);
+    res.writeHead(200, { ...cors, 'content-type': 'application/octet-stream',
+      'content-encoding': 'gzip', 'content-length': encoded.length });
+    return res.end(encoded);
   }
   res.writeHead(200, { ...cors, 'content-type': 'application/octet-stream', 'content-length': body.length });
   return res.end(body);

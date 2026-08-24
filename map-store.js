@@ -530,22 +530,40 @@
           if (signal?.aborted) throw new DOMException('Download cancelled.', 'AbortError');
           const sourceUrl = new URL(descriptor.sourcePath,
             new URL(storeUrl, location.href));
-          let response = null;
+          const sameOriginSource = sourceUrl.origin === location.origin;
+          // The wire Content-Length is NOT the file's size whenever the
+          // transfer is compressed — GitHub Pages gzips some archives on some
+          // responses, and comparing that header to the manifest failed real
+          // installs ("regional.pmtiles: expected 915501 bytes, received
+          // 915593" IS the gzip of the correct file, and a smaller encoded
+          // length was misread as truncation, driving raw-offset range resume
+          // against a compressed stream). Worse, Content-Encoding is not a
+          // CORS-safelisted header, so a third-party store's responses cannot
+          // even be checked. The header pair is therefore never grounds for
+          // failing a download: stream the body and judge the DECODED stored
+          // bytes — the only bytes the manifest describes — retrying once on
+          // a mismatch. Range resume stays, but only where identity encoding
+          // is provable (same origin, or an explicit identity header).
+          let stored = null;
           for (let attempt = 0; attempt < 2; attempt++) {
             const attemptUrl = new URL(sourceUrl);
             // The marker serves two purposes: it bypasses a same-origin
             // service worker's ordinary data-cache path, preserving the
             // staging transaction, and gives a retry a fresh CDN cache key.
             attemptUrl.searchParams.set('jra-store-install', `${nonce}-${attempt}`);
-            response = await fetch(attemptUrl.href, { cache: 'no-store', signal });
+            let response = await fetch(attemptUrl.href, { cache: 'no-store', signal });
             if (response.type === 'opaque') {
               throw new Error('The store does not allow cross-origin reads (CORS).');
             }
             if (!response.ok) throw new Error(`${descriptor.file.path}: HTTP ${response.status}`);
             const contentLengthHeader = response.headers.get('content-length');
+            const encodingHeader = response.headers.get('content-encoding');
+            const provablyIdentity = encodingHeader == null || encodingHeader === ''
+              ? sameOriginSource
+              : encodingHeader.toLowerCase() === 'identity';
             const contentLength = contentLengthHeader == null ? null : Number(contentLengthHeader);
-            if (!Number.isFinite(contentLength) || contentLength === descriptor.file.bytes) break;
-            if (contentLength > 0 && contentLength < descriptor.file.bytes) {
+            if (provablyIdentity && Number.isFinite(contentLength)
+                && contentLength > 0 && contentLength < descriptor.file.bytes) {
               const resumed = await resumeShortResponse({ response, sourceUrl,
                 receivedBytes: contentLength, expectedBytes: descriptor.file.bytes,
                 nonce: `${nonce}-${attempt}`, signal });
@@ -555,32 +573,32 @@
                   acquisitionId: descriptor.acquisitionId, done, total,
                   resuming: true, receivedBytes: contentLength,
                   remainingBytes: descriptor.file.bytes - contentLength });
-                break;
               }
             }
-            if (attempt === 1) {
-              await response.body?.cancel?.().catch?.(() => {});
-              throw new Error(`${descriptor.file.path}: expected ${descriptor.file.bytes} bytes, received ${contentLength}`);
+            let streamed = 0;
+            await stage.put(descriptor.request, countedResponse(response, (bytes) => {
+              streamed += bytes; done += bytes;
+              onProgress({ file: descriptor.file.path, acquisitionId: descriptor.acquisitionId,
+                done: Math.min(done, total), total });
+            }));
+            stored = await stage.match(descriptor.request);
+            const storedBytes = stored ? (await stored.clone().blob()).size : -1;
+            if (storedBytes === descriptor.file.bytes) {
+              if (!streamed) {
+                done += storedBytes;
+                onProgress({ file: descriptor.file.path, acquisitionId: descriptor.acquisitionId,
+                  done: Math.min(done, total), total });
+              }
+              break;
             }
-            await response.body?.cancel?.().catch?.(() => {});
+            await stage.delete(descriptor.request);
+            stored = null;
+            done -= streamed;
+            if (attempt === 1) {
+              throw new Error(`${descriptor.file.path}: expected ${descriptor.file.bytes} bytes, received ${storedBytes}`);
+            }
             onProgress({ file: descriptor.file.path, acquisitionId: descriptor.acquisitionId,
-              done, total, retrying: true });
-          }
-          let streamed = 0;
-          await stage.put(descriptor.request, countedResponse(response, (bytes) => {
-            streamed += bytes; done += bytes;
-            onProgress({ file: descriptor.file.path, acquisitionId: descriptor.acquisitionId,
-              done: Math.min(done, total), total });
-          }));
-          const stored = await stage.match(descriptor.request);
-          const storedBytes = stored ? (await stored.clone().blob()).size : -1;
-          if (storedBytes !== descriptor.file.bytes) {
-            throw new Error(`${descriptor.file.path}: expected ${descriptor.file.bytes} bytes, stored ${storedBytes}`);
-          }
-          if (!streamed) {
-            done += storedBytes;
-            onProgress({ file: descriptor.file.path, acquisitionId: descriptor.acquisitionId,
-              done: Math.min(done, total), total });
+              done: Math.max(0, done), total, retrying: true });
           }
           if (descriptor.sha256) await verifyStoredSha(stored, descriptor.sha256, descriptor.file.path);
           if (descriptor.file.dataset !== 'partition-catalogue') {
@@ -766,8 +784,15 @@
   function countedResponse(response, onBytes) {
     if (!response.body || typeof ReadableStream === 'undefined') return response;
     const reader = response.body.getReader();
+    const encoding = (response.headers.get('content-encoding') || '').toLowerCase();
+    const encodedTransfer = !!encoding && encoding !== 'identity';
     const headers = new Headers();
     for (const name of ['content-type', 'content-length', 'etag', 'last-modified']) {
+      // A compressed transfer's Content-Length describes the wire bytes,
+      // while the body streamed below is the DECODED file. Storing that
+      // header on the cached response would poison every later reader that
+      // trusts it (the service worker validates archives against it).
+      if (name === 'content-length' && encodedTransfer) continue;
       const value = response.headers.get(name);
       if (value) headers.set(name, value);
     }
@@ -799,6 +824,13 @@
         headers: { Range: `bytes=${receivedBytes}-${expectedBytes - 1}` },
       });
       if (tail.type === 'opaque') return null;
+      const tailEncoding = (tail.headers.get('content-encoding') || '').toLowerCase();
+      if (tailEncoding && tailEncoding !== 'identity') {
+        // Range offsets are raw-file positions; a compressed tail's bytes
+        // are not. Fall back to the ordinary full retry.
+        await tail.body?.cancel?.().catch?.(() => {});
+        return null;
+      }
       const tailLength = Number(tail.headers.get('content-length'));
       // Some servers ignore Range and send a new complete response. It is a
       // valid fresh retry by itself; discard the short first response.
