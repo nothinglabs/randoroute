@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-24.805';
+const APP_VERSION = '2026-08-24.806';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1363,9 +1363,13 @@ function syncVisibleStateSafetyLayers(stateIds, { force = false } = {}) {
   }
   for (const stateId of active) {
     const prefix = `state-${stateId}-safety-`;
-    const firstLayerId = `${prefix}${templates[0].id}`;
+    const expectedLayerIds = templates
+      .filter((template) => map.getSource(template.source === 'basemap-roads'
+        ? `state-${stateId}-basemap-roads`
+        : `state-${stateId}-basemap-overlays`))
+      .map((template) => `${prefix}${template.id}`);
     if (!force && visibleStateSafetySignatures.get(stateId) === templateSignature
-      && map.getLayer(firstLayerId)) continue;
+      && expectedLayerIds.every((id) => map.getLayer(id))) continue;
     for (const layer of [...(map.getStyle().layers || [])].reverse()) {
       if (layer.id.startsWith(prefix) && map.getLayer(layer.id)) map.removeLayer(layer.id);
     }

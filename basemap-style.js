@@ -163,9 +163,14 @@
     });
     map.on('error', (event) => {
       const sourceId = String(event?.sourceId || event?.source?.id || '');
-      const match = /^state-([a-z0-9-]+)-basemap-/.exec(sourceId);
+      const match = /^state-([a-z0-9-]+)-basemap-(context|roads|overlays)$/.exec(sourceId);
       if (match && !everLoaded.has(sourceId)) {
-        try { removeVisibleState(map, match[1]); } catch (error) { /* already gone */ }
+        // One archive can fail while its siblings are already drawing. The
+        // old state-wide removal turned an overlays header failure into lost
+        // land, roads, waterways, and safety paint, then retried all three
+        // archives together. Detach only the source MapLibre says is wedged;
+        // the next sync reattaches that dataset without disturbing good tiles.
+        try { removeVisibleStateSource(map, sourceId); } catch (error) { /* already gone */ }
         // A rider sitting still after a transient attach failure otherwise
         // waits for their next pan to get the state back. Retry through the
         // app's registered sync entry once things have settled.
@@ -177,6 +182,14 @@
         }
       }
     });
+  }
+
+  function removeVisibleStateSource(map, sourceId) {
+    for (const layer of [...(map.getStyle?.()?.layers || [])].reverse()) {
+      if (layer.source === sourceId && map.getLayer?.(layer.id)) map.removeLayer(layer.id);
+    }
+    map.__visibleStateEverLoaded?.delete(sourceId);
+    if (map.getSource?.(sourceId)) map.removeSource(sourceId);
   }
 
   function removeVisibleState(map, stateId) {
@@ -192,7 +205,7 @@
     }
     for (const dataset of ['roads', 'context', 'overlays']) {
       const id = visibleSourceId(stateId, dataset);
-      if (map.getSource?.(id)) map.removeSource(id);
+      if (map.getSource?.(id)) removeVisibleStateSource(map, id);
     }
   }
 
@@ -264,16 +277,20 @@
       const templates = (style.layers || []).filter((layer) =>
         layer.id.startsWith('basemap-')
           && ['basemap-context', 'basemap-roads'].includes(layer.source));
-      const before = (style.layers || []).find((layer) =>
-        layer.id.startsWith('basemap-') && layer.type === 'symbol')?.id
-        || (style.layers || []).find((layer) =>
-          !layer.id.startsWith('basemap-') && !layer.id.startsWith('state-'))?.id;
       for (const template of templates) {
         const source = template.source === 'basemap-context' ? contextId : roadsId;
         const id = `${visibleLayerPrefix(state.id)}${template.id}`;
         if (!map.getSource(source) || map.getLayer?.(id)) continue;
         const layer = JSON.parse(JSON.stringify({ ...template, id, source }));
-        map.addLayer(layer, before);
+        // Preserve the basemap's semantic stack one layer at a time. Adding
+        // every neighboring-state layer as a block before the first label put
+        // its land and neutral roads above the home state's waterways and
+        // safety paint. In an overlap band, land could therefore cover a
+        // river; everywhere in the neighboring state, its own neutral map
+        // covered the cloned safety colors. Pairing each clone with its home
+        // template keeps land below water, neutral roads below safety, and
+        // labels above both regardless of state attachment order.
+        map.addLayer(layer, map.getLayer?.(template.id) ? template.id : undefined);
       }
     }
     // Everything still attached after this sync — the freshly wanted states

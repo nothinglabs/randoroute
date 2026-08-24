@@ -70,6 +70,11 @@ land and water take over at closer zooms. The full iOS shell is bounded to two
 starter states rather than every future import.
 The Maps screen distinguishes the one startup Home map from every map On
 device and states the three-contiguous-state routing limit.
+Release `.806` keeps each visible neighboring state's land below water and
+neutral roads below safety paint, and a failed optional overlay source now
+retries without removing that state's working land and road sources. Focused
+constrained-iPhone browser gates cover the Washington/Oregon layer stack and
+partial-source recovery.
 
 Remaining gates:
 

@@ -25,7 +25,11 @@ class FakeMap {
       { id: 'basemap-ocean', type: 'background' },
       { id: 'basemap-land', type: 'fill', source: 'basemap-context',
         'source-layer': 'land' },
+      { id: 'basemap-water', type: 'fill', source: 'basemap-context',
+        'source-layer': 'water' },
       { id: 'basemap-major', type: 'line', source: 'basemap-roads',
+        'source-layer': 'roads' },
+      { id: 'roads', type: 'line', source: 'basemap-roads',
         'source-layer': 'roads' },
       { id: 'basemap-place-labels', type: 'symbol', source: 'basemap-context',
         'source-layer': 'places' },
@@ -72,6 +76,11 @@ check('visible-state basemap layers stay beneath the route overlay',
       > map.layers.findIndex((layer) => layer.id === 'basemap-ocean')
     && map.layers.findIndex((layer) => layer.id === 'state-visible-basemap-place-labels')
       < map.layers.findIndex((layer) => layer.id === 'basemap-place-labels'));
+check('visible-state land cannot cover water and neutral roads cannot cover safety paint',
+  map.layers.findIndex((layer) => layer.id === 'state-visible-basemap-land')
+      < map.layers.findIndex((layer) => layer.id === 'basemap-water')
+    && map.layers.findIndex((layer) => layer.id === 'state-visible-basemap-major')
+      < map.layers.findIndex((layer) => layer.id === 'roads'));
 check('installed maps outside the viewport do not attach tile archives',
   !map.getSource('state-far-basemap-context') && !map.getSource('state-far-basemap-roads'));
 

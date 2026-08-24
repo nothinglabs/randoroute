@@ -94,19 +94,33 @@ try {
       && map.queryRenderedFeatures({ layers: safetyLayers }).length > 0;
   }, null, { timeout: 60000 });
   const oregon = await page.evaluate(() => {
-    const layers = map.getStyle().layers.map((layer) => layer.id);
+    const styleLayers = map.getStyle().layers;
+    const layers = styleLayers.map((layer) => layer.id);
     const safetyLayers = layers.filter((id) => id.startsWith('state-oregon-safety-'));
+    const neutralPaintLayers = styleLayers
+      .filter((layer) => layer.id.startsWith('state-oregon-basemap-')
+        && layer.type !== 'symbol')
+      .map((layer) => layer.id);
+    const layerIndex = (id) => layers.indexOf(id);
     return {
       visible: document.body.dataset.visibleMapStateIds,
       safetyLayers,
       renderedSafety: safetyLayers.length
         ? map.queryRenderedFeatures({ layers: safetyLayers }).length : 0,
+      neutralBelowSafety: neutralPaintLayers.length > 0 && safetyLayers.length > 0
+        && Math.max(...neutralPaintLayers.map(layerIndex))
+          < Math.min(...safetyLayers.map(layerIndex)),
+      neighboringLandBelowHomeWater:
+        layerIndex('state-oregon-basemap-land') < layerIndex('basemap-water'),
       errors: window.__multiStateMapErrors,
     };
   });
   check('the Oregon viewport renders installed Oregon safety layers',
     oregon.visible.includes('oregon')
       && oregon.safetyLayers.length > 0 && oregon.renderedSafety > 0,
+    JSON.stringify(oregon));
+  check('neighboring land and neutral roads stay below water and safety paint',
+    oregon.neutralBelowSafety && oregon.neighboringLandBelowHomeWater,
     JSON.stringify(oregon));
   check('the complete Washington-to-Oregon source handoff raises no page errors',
     page.pageErrors.length === 0, page.pageErrors.join(' | '));
