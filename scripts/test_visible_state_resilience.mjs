@@ -31,16 +31,24 @@ try {
 
   // A transient error on a loaded source — one dropped tile request — must
   // not strip the state.
-  const afterTransient = await page.evaluate(() => {
+  const afterTransient = await page.evaluate(() => new Promise((resolve) => {
+    const source = map.getSource('state-oregon-basemap-roads');
+    const original = source.setUrl.bind(source);
+    let healed = 0;
+    source.setUrl = (url) => { healed += 1; return original(url); };
+    map.fire('error', { sourceId: 'state-oregon-basemap-roads', error: new Error('tile dropped') });
     map.fire('error', { sourceId: 'state-oregon-basemap-roads', error: new Error('tile dropped') });
     map.fire('error', { sourceId: 'state-oregon-basemap-context', error: new Error('tile dropped') });
-    return {
+    setTimeout(() => resolve({
       sources: Object.keys(map.getStyle().sources).filter((id) => id.startsWith('state-oregon')).length,
       layers: map.getStyle().layers.filter((l) => l.id.startsWith('state-oregon-')).length,
-    };
-  });
+      healed,
+    }), 6500);
+  }));
   check('a transient error on a loaded source does not strip the state',
     afterTransient.sources >= 2 && afterTransient.layers > 0, JSON.stringify(afterTransient));
+  check('a loaded source reloads itself once after an error burst',
+    afterTransient.healed === 1, JSON.stringify(afterTransient));
 
   // A sibling can still be in its first-load window after context and roads
   // are already useful. Its error must detach only that source; stripping the
@@ -71,23 +79,6 @@ try {
       && map.getStyle().layers.some((layer) =>
         layer.id.startsWith('state-oregon-safety-osm')),
     null, { timeout: 120000 });
-
-  // And it self-heals: MapLibre never re-asks for a tile it was handed an
-  // error for, so once the burst settles the wounded source must be reloaded
-  // (setUrl) — debounced, once — instead of leaving permanent holes. Field:
-  // lakes without water, safety color missing on whole archives.
-  const healed = await page.evaluate(() => new Promise((resolve) => {
-    const source = map.getSource('state-oregon-basemap-roads');
-    const original = source.setUrl.bind(source);
-    let called = 0;
-    source.setUrl = (url) => { called += 1; return original(url); };
-    map.fire('error', { sourceId: 'state-oregon-basemap-roads', error: new Error('range failed') });
-    map.fire('error', { sourceId: 'state-oregon-basemap-roads', error: new Error('range failed') });
-    setTimeout(() => resolve({ called,
-      still: !!map.getSource('state-oregon-basemap-roads') }), 6500);
-  }));
-  check('a loaded source reloads itself once after an error burst',
-    healed.called === 1 && healed.still, JSON.stringify(healed));
 
   // Pan home to detach, break the archive, pan back: the failed attachment
   // must self-heal by detaching rather than wedging the style.
