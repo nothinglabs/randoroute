@@ -26,10 +26,13 @@ const PROBES = [
   ['land-whidbey-center', -122.520, 48.000, 'land'],
   ['land-mainland-marysville', -122.130, 48.070, 'land'],
   ['lake-stevens', -122.0842, 48.005, 'lake'],
-  ['lake-green-seattle', -122.342, 47.676, 'lake'],
+  // Dead center: the shoreline bike loop's green facility paint owns the
+  // lake's edge pixels from z8.9, and the name label floats near but not on
+  // the centroid through z10.
+  ['lake-green-seattle', -122.339, 47.680, 'lake'],
 ];
 const FALLBACK_ZOOMS = [6, 7.8, 8.9, 9.2, 9.6, 10.5, 11.5];
-const HANDOFF_ZOOMS = [8.9, 9.2, 10.5];
+const HANDOFF_ZOOMS = [8.9, 9.2, 10];
 
 const site = await serveRepo();
 const browser = await launchBrowser();
