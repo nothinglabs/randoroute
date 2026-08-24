@@ -28,7 +28,10 @@ progress / sizes / remove), the slim iOS build (`JRA_SLIM_SHELL=1`), and the
 publish stage in `docs/IMPORT-A-STATE.md`. The web installer also resumes a
 stable short response through a validated byte-range tail, caps each stream at
 that validated interval when WebKit over-delivers the body, then performs its
-normal size/hash commit. Remaining, in order:
+normal size/hash commit. Since `.808` it judges completion by decoded stored
+bytes, never the wire Content-Length: CDNs gzip some transfers, the encoded
+size differs from the manifest's raw size, and Content-Encoding is not
+CORS-readable, so the header pair cannot be trusted cross-origin. Remaining, in order:
 
 - **Host the store**: upload WA + OR packs and `index.json` to GitHub
   Releases (or equivalent), then verify the by-hand flow in
@@ -84,8 +87,39 @@ zoom-9 detailed handoff, and tested tile seams filled. Existing store-installed
 maps expose the changed acquisition as **Update** and reload after the atomic
 install so the new geography becomes active.
 
+Release `.808` fixes two `.807` field failures. Washington installs failed
+with "expected 915501 bytes, received 915593": GitHub Pages served the file
+gzip-encoded, the installer compared the encoded wire size against the
+manifest's raw size, and Content-Encoding is invisible cross-origin. The
+installer now judges decoded stored bytes only (retrying one mismatch);
+`test_map_store_install` serves a gzip-encoded archive cross-origin to pin
+the field case, `test_store_manifest_integrity` checks all 129 declared
+store files against disk bytes and sha256, and
+`scripts/verify_store_deploy.mjs <url>` audits a deployed store. Second,
+`.807`'s Whidbey verification measured the wrong thing: its probes asserted
+which layers claimed a point, not the rendered color, and pixel sampling on
+a constrained renderer showed 36 of 81 probe cells wrong -- Saratoga
+Passage and the sea south of Whidbey painted the exact land fill from z6
+through z9.4, because the Census state polygon includes marine water and
+nothing above it painted the sea (the regional water layer carries lakes).
+`.808` excludes any state whose coastline-true regional archive is attached
+from the Census ground fill and removes the regional layers' z9 cap so
+overzoomed z8 tiles stay the permanent backdrop under the detailed layers;
+a state without a regional pack keeps its Census ground.
+`test_whidbey_stays_an_island` asserts rendered pixel color at
+pixel-verified sea, land and lake coordinates: with the detailed archive
+blocked, z6-z11.5 all hold; through the z9 handoff with detail serving,
+z8.9-z10 all hold. `test_road_safety_reveal_alignment` pins base road
+casings and the safety overlay to identical per-class reveal zooms, home
+state and cloned neighbors alike.
+
 Remaining gates:
 
+- `.808` focused gates recorded 2026-08-24 on
+  `claude/multi-state-routing-review-3khslx`: island pixel test 2/2, regional
+  bands 3/3, multistate rendering 10/10, reveal alignment 3/3, store install
+  8/8, manifest integrity, live deploy verified 129/129 at the preview URL.
+  The full-suite run for `.808` has not happened yet.
 - merged `.807` gate recorded 2026-08-24 on `codex/multistate-routing`: all
   required focused gates passed; the complete run passed 152 of 154 files in
   1650.5 s with no skips. `device_start_follows` and `saved_routes_ui` failed
