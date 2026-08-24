@@ -32,7 +32,12 @@
     'defaultCenter', 'defaultZoom', 'stressAgency', 'restrictionAgency', 'speedAgency',
     'facilitySourceName', 'stressLayerName', 'restrictionLayerName',
     'interstateRoutePrefixes', 'stateRoutePrefixes', 'facilityLevels', 'sourceCounts', 'routeDirectionSuffixes',
-    'datasets', 'versions', 'attribution', 'files', 'acquisitions', 'placeSearch']);
+    // graphRawBytes: the state's full-graph raw size, the fact the app uses
+    // to decide monolithic-versus-partition routing for an oversized home
+    // state (California-class). Its absence in this allowlist made .805's
+    // store reject every real state entry at install time.
+    'datasets', 'versions', 'attribution', 'files', 'acquisitions', 'placeSearch',
+    'graphRawBytes']);
   const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
   const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
   const SAFE_PATH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/;
