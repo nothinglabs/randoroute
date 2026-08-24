@@ -86,11 +86,12 @@ install so the new geography becomes active.
 
 Remaining gates:
 
-- suite gate recorded 2026-08-24 on `claude/multi-state-routing-review-3khslx`
-  at `.806`: 149 of 152 files passed, 2 skipped (missing `tippecanoe-decode` /
-  build inputs), 2351 s wall. The single failure (`fail_road_style`, a paint
-  sampler) passes standalone on the same tree — the one remaining in-suite
-  timing flake under the two-browser load cap.
+- merged `.807` gate recorded 2026-08-24 on `codex/multistate-routing`: all
+  required focused gates passed; the complete run passed 152 of 154 files in
+  1650.5 s with no skips. `device_start_follows` and `saved_routes_ui` failed
+  only under suite load and then passed standalone in 22.3 s and 16.7 s.
+  `fail_road_style`, the previously recorded suite-load flake, passed in this
+  run.
 - get the owner's physical-iPhone verdict for Cache Storage durability, memory
   pressure, navigation and real timings.
 
@@ -150,9 +151,10 @@ range, and an error burst on a loaded source reloads that source (once per
 45 s) since MapLibre never re-asks for a failed tile; (c) Mac desktop
 Safari was classed as a constrained RENDERER (Apple vendor), hiding lakes,
 green and land detail below z9 on a desktop — it now gets the desktop map
-while keeping the WebKit worker budgets. Phones keep the z9 context floor;
-lifting it needs the low-zoom context tile rebuild (tippecanoe, build
-machine). Needs a field verdict on .806.
+while keeping the WebKit worker budgets. Phones keep the z9 detailed-context
+floor, while `.807` supplies coastline-correct land and water at z4–8 from the
+small regional archives instead of oversized context tiles. Needs a field
+verdict on .807.
 
 ### 11. Directional bike lanes — code shipped, graph rebuild pending
 A lane on one side of a two-way street (OSM `cycleway:right`/`:left`) is now
