@@ -112,7 +112,13 @@ try {
     JSON.stringify(card));
 
   await Promise.all([
-    page.waitForFunction(() => Region.id === 'washington'
+    // This wait SPANS the continue-trip reload, so the predicate re-runs in
+    // the new document — including the window after the head scripts define
+    // Region/MapStore but before app.js has defined routing. Guard every
+    // global or a mid-boot evaluation throws instead of retrying.
+    page.waitForFunction(() => typeof Region !== 'undefined'
+      && typeof MapStore !== 'undefined' && typeof routing !== 'undefined'
+      && Region.id === 'washington'
       && MapStore.availability('oregon') === 'installed'
       && routing.endStateId === 'oregon' && routing.endName === 'Eugene', { timeout: 30000 }),
     page.click('#mapStatePrimary'),
