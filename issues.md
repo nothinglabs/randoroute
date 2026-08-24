@@ -113,6 +113,23 @@ z8.9-z10 all hold. `test_road_safety_reveal_alignment` pins base road
 casings and the safety overlay to identical per-class reveal zooms, home
 state and cloned neighbors alike.
 
+Release `.809` fixes the `.808` field boot failure on the slim PWA: a
+resurrected iOS launch can answer localStorage reads with nothing for the
+first moments, region.js decides localDataAvailable synchronously in that
+window, and a device with its home state installed booted to the national
+map with no prompt while Settings called Washington ready to use. The app
+now re-checks the registry after a dataless boot and reloads once (a
+location-hash marker prevents looping without needing storage), and
+downloadStoreState reloads when the state it installed is the data-less
+home region instead of reporting ready-to-use over the national map.
+`test_storage_blind_boot` drives blind-then-recovered, truly-empty and
+install-recovery worlds. The remaining field report -- ambient streets
+white while a route shows its colors -- did not reproduce: masks are
+aligned and ambient verdict blue renders in both normal and route-dimmed
+modes at z13; the symptom matches the roads safety source still streaming
+tiles right after the 208 MB re-install and forced restart. Needs a field
+verdict on whether it persists in steady state.
+
 Remaining gates:
 
 - `.808` focused gates recorded 2026-08-24 on
