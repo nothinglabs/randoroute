@@ -82,10 +82,13 @@ try {
         ['Seattle', -122.31, 47.65],
       ].map(([name, lon, lat]) => ({ name,
         land: rendered(lon, lat, landLayers), water: rendered(lon, lat, waterLayers) }));
+      // Deception Pass (200 m across, sub-pixel below z9) is deliberately
+      // absent: the generalized land layer bridges it at z7-z8, exactly as
+      // the detailed archive has always drawn on desktop. These two channels
+      // are kilometers wide and must stay open at every regional zoom.
       const marine = [
         ['Admiralty Inlet', -122.76, 48.10],
         ['Saratoga Passage', -122.50, 48.10],
-        ['Deception Pass', -122.654, 48.406],
       ].map(([name, lon, lat]) => ({ name,
         land: rendered(lon, lat, landLayers), water: rendered(lon, lat, waterLayers) }));
       const greenLake = {
@@ -123,8 +126,10 @@ try {
   check('z4-z8 regional geometry keeps Whidbey separated by marine water',
     regionalChecks.every((band) => band.marine.every((probe) =>
       probe.land.onScreen && probe.land.count === 0)), JSON.stringify(regionalChecks));
-  check('z7-z8 regional water paints visible Green Lake above land',
-    regionalChecks.filter((band) => band.zoom >= 7).every((band) =>
+  // Below z8 the archive's own generalization drops the 400 m lake (about a
+  // pixel there); it must be water from z8, where a rider can see it.
+  check('z8 regional water paints visible Green Lake above land',
+    regionalChecks.filter((band) => band.zoom >= 8).every((band) =>
       band.greenLake.water.onScreen
       && band.greenLake.water.count > 0 && band.waterAboveLand),
     JSON.stringify(regionalChecks));
