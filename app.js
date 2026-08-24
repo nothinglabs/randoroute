@@ -3855,6 +3855,11 @@ async function ensureRouter() {
       + 'Search and browse work; pick another state on the Maps screen to plan a ride.');
     return;
   }
+  // A graph bigger than the device budget never loads in one piece — trips
+  // in this state route through the partition session instead (computeRoute
+  // branches there), so there is nothing for the monolithic worker to do.
+  // Guards the desktop background prewarm as well as direct calls.
+  if (homeGraphExceedsDeviceBudget()) return;
   routing.loading = true;
   // Endpoint editing is safe while the graph initializes: computeRoute()
   // records a pending request and runs it once the worker reports ready. Keep
@@ -4273,6 +4278,32 @@ function needsMultiStateRouting() {
   return orderedRoutePointStateIds().some((stateId) => stateId !== Region.id);
 }
 
+// The largest single graph allocation this device may hold — one number with
+// one meaning, governing both the composite admission ceiling and whether the
+// home state's monolithic graph is loadable at all. The native shell (which
+// knows the physical device) or a test can lower it via the override; the
+// web default is the contract ceiling, which the released Washington graph
+// meets exactly.
+function deviceRoutingBudgetBytes() {
+  const override = Number(window.JRA_ROUTING_BUDGET_BYTES);
+  if (Number.isFinite(override) && override > 0) return override;
+  return MultiStateRouting.MAX_DETAILED_GRAPH_INPUT_BYTES;
+}
+
+// A state whose full graph exceeds the device budget cannot use the
+// monolithic home worker — California-scale graphs never fit a phone in one
+// piece. Its own trips route through the partition session, which admits a
+// corridor under the same budget. States imported before graphRawBytes was
+// recorded keep the monolith path.
+function homeGraphExceedsDeviceBudget() {
+  const rawBytes = Number(Region.graphRawBytes);
+  return Number.isFinite(rawBytes) && rawBytes > deviceRoutingBudgetBytes();
+}
+
+function routingRequiresPartitionSession() {
+  return needsMultiStateRouting() || homeGraphExceedsDeviceBudget();
+}
+
 // "Can a settings change recompute the current trip right now?" On a
 // cross-state trip the partition session is the engine; routing.ready only
 // describes the home worker, which a phone may never have loaded (or has
@@ -4304,6 +4335,7 @@ async function installedMultiStateRouteSession(routeStateIds) {
   activeMultiStateRouting.key = key;
   const creating = createInstalledMultiStateRouteSession({
     routeStateIds: ids,
+    budgetBytes: deviceRoutingBudgetBytes(),
     resolveStateId: async (point) => placeStateIdAt(point[0], point[1]),
     onProgress: (progress) => {
       const names = stateNames(progress.routeStateIds || ids).join(' and ');
@@ -8532,7 +8564,7 @@ function onRouterMessage(ev) {
 
 function computeRoute({ revealPanel = !routing.restoringRoute } = {}) {
   if (!routing.start || !routing.end) return;
-  if (needsMultiStateRouting()) {
+  if (routingRequiresPartitionSession()) {
     computeMultiStateRoute({ revealPanel });
     return;
   }
@@ -16491,7 +16523,8 @@ if (routing.start && routing.end) {
   // here would put a second full-size graph beside the composite during the
   // relaunch after a kill — the exact state being relaunched from. Skip it
   // on constrained devices; a later single-state request loads it lazily.
-  if (!(isConstrainedDevice() && needsMultiStateRouting())) {
+  if (!(isConstrainedDevice() && routingRequiresPartitionSession())
+      && !homeGraphExceedsDeviceBudget()) {
     ensureRouterAfterMapSettles();
   }
 } else if (isNativeAppRuntime() || isConstrainedDevice()) {

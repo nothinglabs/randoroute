@@ -54,6 +54,12 @@ const KNOWN = new Set(['id', 'name', 'status', 'readiness', 'summary', 'bounds',
   // build with `unknown key`, which is the opposite of what an unknown-key
   // check is for.
   'directionalShoulderFloor',
+  // The state's full routing graph, decompressed, in bytes — the same value
+  // the partition catalogue records as sourceRawBytes. The app compares it to
+  // the device routing budget to decide whether this state's own trips must
+  // route through the partition session instead of loading the monolith
+  // (a California-scale graph never fits a phone in one piece).
+  'graphRawBytes',
   'datasets', 'versions', 'attribution']);
 const REQUIRED = ['id', 'name', 'status', 'bounds', 'defaultCenter', 'defaultZoom', 'datasets'];
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');

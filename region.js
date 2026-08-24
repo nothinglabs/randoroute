@@ -105,6 +105,14 @@
     defaultCenter: active.defaultCenter,
     defaultZoom: active.defaultZoom,
 
+    // The full routing graph's decompressed size (the catalogue's
+    // sourceRawBytes for this state). The app compares it to the device
+    // routing budget: a state whose graph exceeds what one allocation may
+    // hold routes its own trips through the partition session instead of the
+    // monolithic home worker. Absent for a state imported before this fact
+    // was recorded; the monolith path then remains the default.
+    graphRawBytes: active.graphRawBytes || null,
+
     /* ------------------------------------------------------- attribution */
     // The state authority behind each enrichment, as it appears on a road card
     // and in the settings copy. OSM is the universal base everywhere; these

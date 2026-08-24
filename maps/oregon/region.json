@@ -57,6 +57,7 @@
     "restrictions": false,
     "closures": true
   },
+  "graphRawBytes": 91457588,
   "versions": {
     "roads": "sha-2bd3d7bced02",
     "basemap": "sha-4c10a8764862",
