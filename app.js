@@ -9170,7 +9170,30 @@ function routeSegmentMapFeature(coords, segment, routeIndex) {
   };
 }
 
+// A letter flip on a long route used to push thirteen full-route geojson
+// payloads through MapLibre's tiling in one frame: ~2.7 s from tap to paint
+// on a Seattle–Spokane portfolio (measured), all main-thread serialization.
+// The eye needs the geometry, safety colors, fails and ferries immediately;
+// the decorations — the invisible per-edge tap targets (the largest payload),
+// the surface/designated bands and the walk/ferry markers — coalesce onto a
+// short settle so a rider flipping A-B-C-D pays them once. Stale decorations
+// are cleared instantly rather than shown against the wrong route; a route
+// tap inside the settle window falls through to the ordinary road card.
+let routeDecorationTimer = null;
+let pendingRouteDecorations = null;
+function scheduleRouteDecorations(apply) {
+  pendingRouteDecorations = apply;
+  clearTimeout(routeDecorationTimer);
+  routeDecorationTimer = setTimeout(() => {
+    routeDecorationTimer = null;
+    const run = pendingRouteDecorations;
+    pendingRouteDecorations = null;
+    if (run) run();
+  }, 250);
+}
+
 function drawRoute(coords, ferrySegs, segs) {
+  const wasDisplayed = routeIsDisplayed;
   routeIsDisplayed = Array.isArray(coords) && coords.length >= 2;
   clearRouteHighlight();
   const data = { type: 'Feature', properties: {},
@@ -9184,7 +9207,6 @@ function drawRoute(coords, ferrySegs, segs) {
     .map((segment, routeIndex) => routeSegmentMapFeature(coords, segment, routeIndex))
     .filter(Boolean) };
   const renderData = buildRouteRenderData(sdata);
-  const unpavedData = buildRouteUnpavedData(sdata);
   const routeMarkers = buildRouteMarkerData(sdata);
   const ferryMarkerData = buildRouteFerryMarkerData(ferrySegs);
   // Failing portions (scored live against the current rules) pulse red on top.
@@ -9194,44 +9216,61 @@ function drawRoute(coords, ferrySegs, segs) {
     features: renderData.features.filter((f) => f.properties.style === 'fail') };
   const emptyHighlights = { type: 'FeatureCollection', features: [] };
   const emptyLine = { type: 'FeatureCollection', features: [] };
-  const designatedData = buildRouteDesignatedData(sdata);
   const srcExisting = map.getSource('route');
   if (srcExisting) {
     srcExisting.setData(data);
     map.getSource('route-ferry').setData(fdata);
-    map.getSource('route-seg').setData(sdata);
     map.getSource('route-render').setData(renderData);
     map.getSource('route-fail').setData(failData);
-    map.getSource('route-unpaved').setData(unpavedData);
-    map.getSource('route-designated').setData(designatedData);
-    map.getSource('route-dismount').setData(routeMarkers.walk);
-    map.getSource('route-marker').setData(routeMarkers.other);
-    map.getSource('route-ferry-marker').setData(ferryMarkerData);
+    map.getSource('route-seg').setData(emptyLine);
+    map.getSource('route-unpaved').setData(emptyLine);
+    map.getSource('route-designated').setData(emptyLine);
+    map.getSource('route-dismount').setData(emptyHighlights);
+    map.getSource('route-marker').setData(emptyHighlights);
+    map.getSource('route-ferry-marker').setData(emptyHighlights);
     map.getSource('route-highlight-marker').setData(emptyHighlights);
     map.getSource('route-detail-marker').setData(emptyHighlights);
     map.getSource('route-detail-selection').setData(emptyLine);
     map.getSource('route-progress').setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } });
     setRoutePulses(renderData);
-    applyDisplayModeAll();
+    // Background dimming follows whether A route shows, not which one: only
+    // the transition needs the full display-mode pass, never a letter flip.
+    if (wasDisplayed !== routeIsDisplayed) applyDisplayModeAll();
+    scheduleRouteDecorations(() => {
+      if (!map.getSource('route-seg')) return;
+      map.getSource('route-seg').setData(sdata);
+      map.getSource('route-unpaved').setData(buildRouteUnpavedData(sdata));
+      map.getSource('route-designated').setData(buildRouteDesignatedData(sdata));
+      map.getSource('route-dismount').setData(routeMarkers.walk);
+      map.getSource('route-marker').setData(routeMarkers.other);
+      map.getSource('route-ferry-marker').setData(ferryMarkerData);
+    });
     return;
   }
-  map.addSource('route', { type: 'geojson', data });
-  map.addSource('route-ferry', { type: 'geojson', data: fdata });
-  map.addSource('route-seg', { type: 'geojson', data: sdata });
-  map.addSource('route-render', { type: 'geojson', data: renderData });
-  map.addSource('route-fail', { type: 'geojson', data: failData });
-  map.addSource('route-unpaved', { type: 'geojson', data: unpavedData });
-  map.addSource('route-designated', { type: 'geojson', data: designatedData });
+  const unpavedData = buildRouteUnpavedData(sdata);
+  const designatedData = buildRouteDesignatedData(sdata);
+  // maxzoom 14 on the line sources: a route line overzooms cleanly past its
+  // deepest tiles, and stopping the pyramid four levels early does a third of
+  // the tiling work per setData — which also runs on every GPS fix for the
+  // progress line during navigation.
+  const routeLineSource = (value) => ({ type: 'geojson', data: value, maxzoom: 14 });
+  map.addSource('route', routeLineSource(data));
+  map.addSource('route-ferry', routeLineSource(fdata));
+  map.addSource('route-seg', routeLineSource(sdata));
+  map.addSource('route-render', routeLineSource(renderData));
+  map.addSource('route-fail', routeLineSource(failData));
+  map.addSource('route-unpaved', routeLineSource(unpavedData));
+  map.addSource('route-designated', routeLineSource(designatedData));
   map.addSource('route-dismount', { type: 'geojson', data: routeMarkers.walk });
   map.addSource('route-marker', { type: 'geojson', data: routeMarkers.other });
   map.addSource('route-ferry-marker', { type: 'geojson', data: ferryMarkerData });
   map.addSource('route-highlight-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-marker', { type: 'geojson', data: emptyHighlights });
   map.addSource('route-detail-selection', { type: 'geojson', data: emptyLine });
-  map.addSource('route-connector', { type: 'geojson', data: {
+  map.addSource('route-connector', routeLineSource({
     type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] },
-  } });
-  map.addSource('route-progress', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } } });
+  }));
+  map.addSource('route-progress', routeLineSource({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } }));
   // The optional route-to-start remains a separate violet line. It sits under
   // the planned route so their meeting point reads as a clean handoff rather
   // than changing the planned route's safety colors.
