@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+// Whidbey stays an island at every zoom, in PIXELS. Field (three rounds of
+// reports): zooming out on a phone turned the water around Whidbey into land
+// and paved Green Lake — the Census state polygon includes marine water, and
+// it back-filled every zoom band where coastline-true geometry was absent or
+// still loading. This drives the constrained renderer with the DETAILED
+// archive unreachable, so the regional backdrop is the only geography — the
+// exact world a phone lives in mid-zoom or with a dropped tile — and asserts
+// the rendered color of fixed sea, land and lake coordinates across the zoom
+// ladder. A sea point that paints land-colored anywhere is the bug.
+import { check, done, launchBrowser, serveRepo } from './testlib/harness.mjs';
+
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)'
+  + ' AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
+const PROBES = [
+  ['sea-admiralty-mid', -122.620, 48.090, 'water'],
+  ['sea-saratoga', -122.480, 48.100, 'water'],
+  ['sea-possession', -122.350, 47.950, 'water'],
+  ['sea-south-whidbey', -122.500, 47.880, 'water'],
+  ['land-whidbey-center', -122.520, 48.000, 'land'],
+  ['land-mainland-marysville', -122.130, 48.070, 'land'],
+  ['lake-goss', -122.576, 48.020, 'water'],
+  ['lake-green-seattle', -122.339, 47.680, 'water'],
+];
+const FALLBACK_ZOOMS = [6, 7.8, 8.9, 9.2, 9.6, 10.5, 11.5];
+const HANDOFF_ZOOMS = [8.9, 9.2, 10.5];
+
+const site = await serveRepo();
+const browser = await launchBrowser();
+
+async function bootPhone() {
+  const context = await browser.newContext({ serviceWorkers: 'block',
+    userAgent: IPHONE_UA, viewport: { width: 430, height: 900 },
+    hasTouch: true, isMobile: true });
+  const page = await context.newPage();
+  await page.goto(`http://localhost:${site.port}/index.html`, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.map && typeof map.getCanvas === 'function',
+    null, { timeout: 60000 });
+  await page.waitForTimeout(1500);
+  return { context, page };
+}
+
+async function samplePixel(page, lng, lat, zoom) {
+  await page.evaluate(({ lng, lat, zoom }) =>
+    map.jumpTo({ center: [lng, lat], zoom }), { lng, lat, zoom });
+  await page.evaluate(() => new Promise((resolve) => {
+    if (map.loaded()) return resolve();
+    map.once('idle', resolve);
+    setTimeout(resolve, 9000);
+  }));
+  await page.waitForTimeout(200);
+  return page.evaluate(() => new Promise((resolve) => {
+    map.once('render', () => {
+      const gl = map.getCanvas();
+      const out = document.createElement('canvas');
+      out.width = 4; out.height = 4;
+      const ctx = out.getContext('2d');
+      ctx.drawImage(gl, gl.width / 2 - 2, gl.height / 2 - 2, 4, 4, 0, 0, 4, 4);
+      const d = ctx.getImageData(2, 2, 1, 1).data;
+      resolve([d[0], d[1], d[2]]);
+    });
+    map.triggerRepaint();
+  }));
+}
+
+// The land fill is warm cream (r >= b); every water paint is blue-leaning.
+const isWaterColor = ([r, g, b]) => (b - r) > 8;
+
+try {
+  // Phase A: the detailed archive never answers — the regional backdrop and
+  // the ocean background are the only geography at EVERY zoom.
+  site.publish('/maps/washington/basemap.pmtiles', (req, res) => {
+    res.writeHead(404); res.end();
+  });
+  const fallback = await bootPhone();
+  const wrong = [];
+  for (const zoom of FALLBACK_ZOOMS) {
+    for (const [name, lng, lat, expected] of PROBES) {
+      const rgb = await samplePixel(fallback.page, lng, lat, zoom);
+      const water = isWaterColor(rgb);
+      if ((expected === 'water') !== water) {
+        wrong.push(`${name}@z${zoom}=(${rgb}) expected ${expected}`);
+      }
+    }
+  }
+  check('with no detailed tiles at all, sea stays sea and land stays land at every zoom',
+    wrong.length === 0, wrong.slice(0, 8).join(' | '));
+  await fallback.context.close();
+
+  // Phase B: the full world — the handoff band must also hold with the
+  // detailed archive serving normally.
+  site.unpublish('/maps/washington/basemap.pmtiles');
+  const full = await bootPhone();
+  const wrongFull = [];
+  for (const zoom of HANDOFF_ZOOMS) {
+    for (const [name, lng, lat, expected] of PROBES) {
+      const rgb = await samplePixel(full.page, lng, lat, zoom);
+      const water = isWaterColor(rgb);
+      if ((expected === 'water') !== water) {
+        wrongFull.push(`${name}@z${zoom}=(${rgb}) expected ${expected}`);
+      }
+    }
+  }
+  check('through the z9 handoff with detail serving, the same points hold',
+    wrongFull.length === 0, wrongFull.slice(0, 8).join(' | '));
+  await full.context.close();
+} finally {
+  await browser.close();
+  site.close();
+}
+
+done();

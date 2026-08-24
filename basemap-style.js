@@ -349,6 +349,20 @@
     for (const stateId of existing) {
       if (keep.has(stateId)) attached.add(stateId);
     }
+    // The Census ground fill includes marine water, so every state whose
+    // coastline-true regional archive is attached must be carved out of it —
+    // the home state from style construction, neighbors as their regional
+    // sources come and go. A state without a regional pack keeps its Census
+    // backdrop until its map update ships one.
+    if (map.getLayer?.('basemap-state-ground') && typeof map.setFilter === 'function') {
+      const excluded = [];
+      if (regionalRenderer) excluded.push(homeStateId);
+      for (const state of candidates) {
+        if (map.getSource(visibleSourceId(state.id, 'regional'))) excluded.push(state.id);
+      }
+      map.setFilter('basemap-state-ground', excluded.length
+        ? ['!', ['in', ['get', 'id'], ['literal', excluded.sort()]]] : null);
+    }
     return [...attached].sort((a, b) => a.localeCompare(b));
   }
 
@@ -504,21 +518,32 @@
       },
       layers: [
         { id: 'basemap-ocean', type: 'background', paint: { 'background-color': '#dcecf2' } },
-        // Administrative state polygons include inland and coastal water, so
-        // they are only a last-resort backdrop. Keep them BELOW both regional
-        // land and regional water: the compact archive corrects Green Lake,
-        // Whidbey and every other shoreline where it exists, while an older
-        // installed neighboring pack still has dry ground until its separate
-        // map update adds regional.pmtiles.
+        // Administrative state polygons include inland and coastal water —
+        // the Census outline of Washington FILLS Puget Sound, joins Whidbey
+        // to the mainland and paves Green Lake. They are therefore a backdrop
+        // ONLY for a state with no regional archive (an older installed
+        // neighboring pack). A state whose coastline-true regional archive is
+        // attached is EXCLUDED from this fill (syncVisibleStateSources keeps
+        // the filter current as neighbor sources come and go):
+        // inside its territory, land is regional land_detail and the sea is
+        // the ocean background, which is the only way a marine strait can
+        // stay water — the regional water layer carries lakes, not the sea.
         { id: 'basemap-state-ground', type: 'fill', source: 'basemap-state-ground',
           maxzoom: CONTEXT_MIN_ZOOM + 0.5,
+          ...(regionalGround ? { filter: ['!=', ['get', 'id'], Region.id] } : {}),
           paint: { 'fill-color': '#f4f3ee', 'fill-opacity': 1 } },
         ...(regionalGround ? [
+          // No maxzoom on either: overzoomed z8 regional tiles are the
+          // permanent coastline-correct backdrop UNDER the detailed layers,
+          // so the z9 handoff and any dropped detail tile degrade to a
+          // slightly blocky true shoreline instead of to sea-as-land (the
+          // capped version left z9-9.5 to the Census fill, which is exactly
+          // the band where Whidbey drowned on every phone zoom-out).
           { id: 'basemap-regional-land-detail', type: 'fill', source: 'basemap-regional',
-            'source-layer': 'land_detail', minzoom: 4, maxzoom: CONTEXT_MIN_ZOOM,
+            'source-layer': 'land_detail', minzoom: 4,
             paint: { 'fill-color': '#f4f3ee' } },
           { id: 'basemap-regional-water', type: 'fill', source: 'basemap-regional',
-            'source-layer': 'water', minzoom: 4, maxzoom: CONTEXT_MIN_ZOOM,
+            'source-layer': 'water', minzoom: 4,
             paint: { 'fill-color': '#dcecf2', 'fill-outline-color': '#c5dce6' } },
         ] : []),
         { id: 'basemap-state-outline', type: 'line', source: 'basemap-state-ground',

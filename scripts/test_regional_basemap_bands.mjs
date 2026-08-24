@@ -60,6 +60,7 @@ try {
       regionalWaterMin: layer('basemap-regional-water')?.minzoom,
       regionalWaterMax: layer('basemap-regional-water')?.maxzoom,
       administrativeGround: !!layer('basemap-state-ground'),
+      administrativeGroundFilter: JSON.stringify(layer('basemap-state-ground')?.filter || null),
       administrativeGroundIndex: map.getStyle().layers
         .findIndex((item) => item.id === 'basemap-state-ground'),
       regionalLandIndex: map.getStyle().layers
@@ -75,10 +76,16 @@ try {
   });
   check('a constrained renderer uses regional geometry below its z9 context floor',
     phoneBands.constrained === true && phoneBands.contextLandMin === 9
-      && phoneBands.regionalLandMin === 4 && phoneBands.regionalLandMax === 9
-      && phoneBands.regionalWaterMin === 4 && phoneBands.regionalWaterMax === 9
+      // No maxzoom: overzoomed regional tiles stay the coastline-correct
+      // backdrop under the detailed layers at every zoom, so the z9 handoff
+      // and a dropped detail tile can never regress to sea-as-land.
+      && phoneBands.regionalLandMin === 4 && phoneBands.regionalLandMax === undefined
+      && phoneBands.regionalWaterMin === 4 && phoneBands.regionalWaterMax === undefined
       && !phoneBands.coarseRegionalLand
       && phoneBands.administrativeGround
+      // The Census fill includes marine water; the home state must be carved
+      // out of it wherever its coastline-true regional archive serves.
+      && phoneBands.administrativeGroundFilter.includes('washington')
       && phoneBands.administrativeGroundIndex < phoneBands.regionalLandIndex
       && phoneBands.regionalLandIndex < phoneBands.regionalWaterIndex
       && /regional\.pmtiles/.test(phoneBands.regionalSource || '')
