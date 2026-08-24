@@ -85,7 +85,15 @@ Remaining gates:
 ### 4. Import and test all states
 Import every U.S. state under the documented state-import process and verify
 each state's data, routing, map rendering, place search, and cross-state
-behavior.
+behavior. Feasibility study 2026-08-24 (PORTING-LESSONS G8,
+`test_partition_catalogue_budget.mjs`): corridor memory is bounded by metro
+partition size, not corridor length, so a large-metro state (California)
+must be built with a finer partition grid; a state whose full graph exceeds
+the device budget now routes its own trips through the partition session
+automatically (`graphRawBytes` in region.json). The native iOS shell still
+cannot serve store-installed states (no service worker) — that gap blocks
+any store-delivered state on native and is the biggest open item for a
+California release.
 
 ### 5. Data-completeness approach for all states
 Define a repeatable way to measure source coverage, freshness, and quality for
