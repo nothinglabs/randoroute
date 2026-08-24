@@ -4613,7 +4613,9 @@ function navTurnText(delta, road, heading, staying, thenDelta) {
   // part of the second steer.
   const then = thenDelta == null ? ''
     : `, then ${thenDelta > 0 ? 'right' : 'left'}${staying && onto ? ',' : ''}`;
-  if (abs >= 150) return `Make a U-turn${then}${onto}${toward}`;
+  // "Hairpin", not "U-turn": these are planned switchbacks on the route, and
+  // "make a U-turn" sounded like the app correcting a rider who was fine.
+  if (abs >= 150) return `Make a hairpin turn${then}${onto}${toward}`;
   if (abs >= 55) return `Turn ${delta > 0 ? 'right' : 'left'}${then}${onto}${toward}`;
   if (abs >= 20) return `Bear ${delta > 0 ? 'right' : 'left'}${then}${onto}${toward}`;
   return road ? `Continue ${staying ? 'on' : 'onto'} ${road}${toward}` : `Continue${toward}`;
