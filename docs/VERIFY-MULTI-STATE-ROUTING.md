@@ -10,11 +10,11 @@ Verification target:
 
 | Item | Expected value |
 | --- | --- |
-| Branch | `codex/multistate-routing` |
+| Branch | `claude/multi-state-routing-review-3khslx` |
 | Production-artifact baseline | `468765a` |
-| Review source commit | `5e5c0fe2119d87b67bcae487301d9a6bc82bf686` |
-| Preview deployment commit | `nothinglabs/randoroute-preview` `e75d1f5be3cc276074e4543698e89b81fe9d1e25` |
-| App / worker | `2026-08-23.798` / `v798` |
+| Review source commit | `dcdb1113fdefa09788918014b16cef3eed649f08` |
+| Preview deployment commit | `nothinglabs/randoroute-preview` `a7f263c3a2aefd5e9acea7d63d79130810f50471` |
+| App / worker | `2026-08-24.803` / `v803` |
 | Partition catalogue | format 1, SHA-256 `3cafdd58116a7124b2b419d77d7cff83dc417f26ee45c285e594ebc724e4a4e4` |
 | Oregon graph | `sha-8ae4d0b5e2d3` |
 | Washington graph | `sha-c043f268453b` |
@@ -24,7 +24,7 @@ Verification target:
 Run locally from the repository root:
 
 ```sh
-git switch codex/multistate-routing
+git switch claude/multi-state-routing-review-3khslx
 python3 scripts/serve.py --port 8765
 ```
 
