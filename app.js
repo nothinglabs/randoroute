@@ -4144,6 +4144,11 @@ function routeDetailsOptimizationDescription(optimization) {
 function compactRouteProfile(m) {
   const profile = m.profile || [];
   if (profile.length < 2) return null;
+  // The navigation card rebuilds its chart on every GPS fix; compacting the
+  // full per-coordinate profile each time allocated a fresh ~1200-entry array
+  // per fix for the whole ride. The route object is immutable once received —
+  // cache the compaction on it.
+  if (m._compactProfile && m._compactProfileFrom === profile) return m._compactProfile;
   const stride = Math.max(1, Math.ceil(profile.length / 1200));
   const out = [];
   for (let i = 0; i < profile.length; i += stride) {
@@ -4153,6 +4158,8 @@ function compactRouteProfile(m) {
   if (out[out.length - 1][0] !== Math.round(last[0])) {
     out.push([Math.round(last[0]), Math.round(last[1])]);
   }
+  m._compactProfile = out;
+  m._compactProfileFrom = profile;
   return out;
 }
 
@@ -5497,8 +5504,34 @@ function updateOffRouteGuidance(nearest, previousFix) {
   }
 }
 
+// The native shell keeps streaming background location fixes, and the whole
+// per-fix render pipeline — camera eases, canvas redraws, progress re-tiling,
+// DOM writes — used to run with the phone in a pocket. A backgrounded WebKit
+// content process doing sustained allocation work is the canonical jetsam
+// target, and the kill is only discovered when the phone comes back out.
+// Voice guidance and all navigation logic keep running; only rendering waits,
+// and one catch-up paints the current state when the app returns.
+let navRenderPending = false;
+function navRenderSuppressed() {
+  if (!turnNav.active || document.visibilityState !== 'hidden') return false;
+  navRenderPending = true;
+  return true;
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !navRenderPending) return;
+  navRenderPending = false;
+  if (turnNav.active) {
+    if (turnNav.lastPosition) updateNavigationCamera(turnNav.lastPosition);
+    updateNavigationProgress();
+  }
+  refreshNavigationUI();
+});
+
 let lastProgressSent = null;
+let lastProgressSentRouteM = 0;
+let lastProgressSentAt = 0;
 function updateNavigationProgress() {
+  if (navRenderSuppressed()) return;
   const source = map.getSource('route-progress');
   if (!source) return;
   let coords = [];
@@ -5507,14 +5540,22 @@ function updateNavigationProgress() {
     ? turnNav.plannedNearestSegment : turnNav.nearestSegment;
   const nearestPoint = turnNav.followingConnector
     ? turnNav.plannedNearestPoint : turnNav.nearestPoint;
-  // The ridden line grows with the ride and re-tiles on every send. A rider
-  // waiting at a light produced an identical multi-thousand-coordinate
-  // payload every GPS second; only an actual advance is worth one.
+  // The ridden line grows with the ride and re-tiles on every send — late in
+  // a long ride, tens of thousands of coordinates per GPS fix. A rider at a
+  // light produced an identical payload every second, and a moving rider a
+  // near-identical one; only a real advance (or a few seconds) earns a send.
+  // The line's tail trails the marker by at most ~25 m, within GPS accuracy.
   const signature = turnNav.active && route && nearestPoint
     ? `${route === turnNav.plannedRoute ? 'p' : 'r'}:${nearestSegment}:${nearestPoint[0]},${nearestPoint[1]}`
     : 'off';
   if (signature === lastProgressSent) return;
+  if (signature !== 'off' && lastProgressSent && lastProgressSent !== 'off') {
+    const advancedM = Math.abs((Number(turnNav.routeM) || 0) - lastProgressSentRouteM);
+    if (advancedM < 25 && Date.now() - lastProgressSentAt < 5000) return;
+  }
   lastProgressSent = signature;
+  lastProgressSentRouteM = Number(turnNav.routeM) || 0;
+  lastProgressSentAt = Date.now();
   if (turnNav.active && route && nearestPoint) {
     const lastComplete = Math.max(0,
       Math.min(route.coords.length - 1, nearestSegment));
@@ -6062,6 +6103,7 @@ document.getElementById('routeDetailsDialog')?.addEventListener('close', () => {
 });
 
 function refreshNavigationUI() {
+  if (navRenderSuppressed()) return;
   const routeAvailable = !!(routing.last?.ok && routing.last.coords?.length > 1);
   const routeReady = routeAvailable && Boolean(routing.start && routing.end)
     && !routing.pendingRoute && !routing.routeRequestActive;
@@ -6224,8 +6266,16 @@ function drawNavElevation(canvas, profile, distM, progressM) {
   const w = canvas.clientWidth || 0, h = canvas.clientHeight || 74;
   if (w < 2) return; // hidden panel: redraw once it becomes visible
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = w * dpr; canvas.height = h * dpr;
+  // Setting canvas.width discards and reallocates the backing store — at
+  // dpr 3 nearly a megabyte of surface — and this redraws on EVERY GPS fix
+  // for the whole ride. WebKit reclaims discarded canvas stores slowly, and
+  // hours of per-fix churn is a documented Safari page-kill class. Reallocate
+  // only when the size actually changed; otherwise clear and reuse.
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width = w * dpr; canvas.height = h * dpr;
+  }
   const ctx = canvas.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, w, h);
   let lo = Infinity, hi = -Infinity;
@@ -7541,6 +7591,7 @@ function maybeAutomaticallyRecoverOffRoute() {
 }
 
 function updateNavigationCamera(point) {
+  if (navRenderSuppressed()) return;
   if (!turnNav.initialCameraAt) {
     const plannedStart = routing.last?.coords?.[0] || turnNav.route?.coords?.[0] || point;
     const bounds = new maplibregl.LngLatBounds(point, point).extend(plannedStart);
@@ -16325,7 +16376,14 @@ syncSettingsNavigationLock();
 // terminate the page. Existing/saved trips still start at once; unconstrained
 // desktop browsers retain the latency-saving background prewarm.
 if (routing.start && routing.end) {
-  ensureRouter();
+  // A saved trip used to start the graph load immediately, concurrent with
+  // MapLibre's first tile parse — the exact overlap the cache-cap comments
+  // above record as a WebKit kill loop. Worse, a mid-ride kill relaunches
+  // into this same collision with the same saved trip, so one kill could
+  // cascade into several. On constrained devices the settle helper defers
+  // the load until the launch camera has its tiles; desktop keeps the
+  // immediate start.
+  ensureRouterAfterMapSettles();
 } else if (isNativeAppRuntime() || isConstrainedDevice()) {
   ensurePlaces();
 } else {
