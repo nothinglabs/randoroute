@@ -613,9 +613,11 @@
 
     retainActiveRoute({ result, composite }) {
       const used = new Set(result.partitionIds || []);
-      if (!used.size) return;
+      if (!used.size || !this.loader) return;
+      // Mirrors the loader's own pin set exactly: loadComposite's reuse key
+      // assumes the loader will admit requested ∪ these.
       this.pinnedPartitionIds = [...used].sort((a, b) => a.localeCompare(b));
-      if (this.loader) this.loader.postMessage({ type: 'active-route',
+      this.loader.postMessage({ type: 'active-route',
         id: `active-route-${++this.sequence}`, partitionIds: [...used] });
     }
 
