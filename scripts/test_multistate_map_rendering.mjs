@@ -171,8 +171,12 @@ try {
         { layers: ['basemap-water'] }).length,
     };
   });
-  check('z9 hands Green Lake from regional geometry to detailed land and water',
-    handoff.regional === 0 && handoff.detailedLand > 0 && handoff.detailedWater > 0,
+  // The regional layers no longer retire at z9: overzoomed z8 tiles stay the
+  // coastline-correct backdrop under the detailed layers, so a dropped detail
+  // tile degrades to a blocky true shoreline instead of to sea-as-land. The
+  // handoff is that detailed land and water claim Green Lake ABOVE it.
+  check('z9 keeps the regional backdrop while detailed land and water claim Green Lake',
+    handoff.regional > 0 && handoff.detailedLand > 0 && handoff.detailedWater > 0,
     JSON.stringify(handoff));
 
   await page.evaluate(() => map.jumpTo({ center: [-122.6765, 45.5231], zoom: 13 }));
