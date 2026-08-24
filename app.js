@@ -1287,6 +1287,13 @@ const map = new maplibregl.Map({
   // WebKit and phones stop before that memory-heavy tile level.
   minZoom: Region.localDataAvailable ? (constrainedMapRuntime ? 6 : 5) : 1.5,
   maxZoom: Region.localDataAvailable ? 17 : 6,
+  // Retained-tile budget. The default keeps ~5 zoom levels of decoded tiles
+  // per source; with two state archives plus seven route GeoJSON pyramids on
+  // a long trip, zooming in and out measured multi-GB renderer growth from
+  // retained tiles alone — on iOS unified memory that spend counts straight
+  // against the same ceiling that kills the page. Two levels keeps
+  // pinch-reversal smooth while capping retention; desktop keeps the default.
+  ...(constrainedMapRuntime ? { maxTileCacheZoomLevels: 2 } : {}),
   // Cross-fading holds both tile generations during the exact gesture where
   // WebKit is under the most memory pressure. A direct swap is fine on phone.
   fadeDuration: constrainedMapRuntime ? 0 : 300,
@@ -1832,7 +1839,7 @@ function rescoreAll(recomputeRoute = true) {
   // A timing readout is for the console, not the rider -- this used to flash
   // "Recolored in 11 ms" on screen after every rules change (field report).
   if (ms > 0) console.debug(`[rescore] recolored in ${ms} ms`);
-  if (recomputeRoute && routing.ready && routing.start && routing.end) computeRoute();
+  if (recomputeRoute && routeEngineReady() && routing.start && routing.end) computeRoute();
 }
 
 // Rule sliders may update several large GeoJSON sources. Throttle map work and
@@ -1895,7 +1902,7 @@ function scheduleRescore() {
     // default reveal switched the sheet to the Route tab 700ms after every
     // slider settled, yanking the panel out from under them (field report).
     // The recompute happens either way; the toast in computeRoute says so.
-    if (routing.ready && routing.start && routing.end) computeRoute({ revealPanel: false });
+    if (routeEngineReady() && routing.start && routing.end) computeRoute({ revealPanel: false });
     else schedulePrewarm();
   }, 700);
 }
@@ -1913,7 +1920,7 @@ function scheduleReroute() {
   _ruleRouteTimer = setTimeout(() => {
     _ruleRouteTimer = null;
     // Same reveal suppression as scheduleRescore, same reason.
-    if (routing.ready && routing.start && routing.end) computeRoute({ revealPanel: false });
+    if (routeEngineReady() && routing.start && routing.end) computeRoute({ revealPanel: false });
     else schedulePrewarm();
   }, 700);
 }
@@ -3267,7 +3274,7 @@ function setRouteSourceSuppressed(id, suppressed) {
   saveStateSoon();
   const synced = syncSuppressedRoutesToWorker();
   if (deferSettingsRouteChange()) return true;
-  if (routing.ready && routing.start && routing.end) {
+  if (routeEngineReady() && routing.start && routing.end) {
     routing.quietRecalcToast = true;
     showRouteActionToast('Updating routes…', { duration: 6000 });
     // AFTER the geometry message, for the same reason the Preferred toggle
@@ -3299,7 +3306,7 @@ function setRoutePreferred(name, on) {
   saveStateSoon();
   const synced = syncPreferredRoutesToWorker();
   if (deferSettingsRouteChange()) return true;
-  if (routing.ready && routing.start && routing.end) {
+  if (routeEngineReady() && routing.start && routing.end) {
     routing.quietRecalcToast = true;
     showRouteActionToast('Updating routes…', { duration: 6000 });
     // AFTER the geometry message: the worker handles messages in order, so
@@ -4264,6 +4271,15 @@ function orderedRoutePointStateIds() {
 
 function needsMultiStateRouting() {
   return orderedRoutePointStateIds().some((stateId) => stateId !== Region.id);
+}
+
+// "Can a settings change recompute the current trip right now?" On a
+// cross-state trip the partition session is the engine; routing.ready only
+// describes the home worker, which a phone may never have loaded (or has
+// released for the session). Gating recomputes on routing.ready alone made
+// rules changes silently keep a stale multi-state portfolio.
+function routeEngineReady() {
+  return routing.ready || (routing.multiStateActive && !!activeMultiStateRouting.bridge);
 }
 
 function stateNames(stateIds) {

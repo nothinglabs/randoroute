@@ -63,6 +63,10 @@ assert.equal(mapOptions(true, true).fadeDuration, 0,
   'phone and WebKit maps must not retain two tile generations for a zoom fade');
 assert.equal(mapOptions(false, true).fadeDuration, 300,
   'unconstrained browsers keep the tile cross-fade');
+assert.equal(mapOptions(true, true).maxTileCacheZoomLevels, 2,
+  'phone maps must cap retained tile zoom levels (multi-GB zoom retention measured)');
+assert.equal(mapOptions(false, true).maxTileCacheZoomLevels, undefined,
+  'unconstrained browsers keep the default retained-tile budget');
 assert.match(app, /map\.on\('zoomstart', \(\) => trimRouterCachesSoon\(\)\)/,
   'map zoom must release disposable phone routing caches before widening the tile set');
 assert.match(app, /m\.type === 'route-options'[\s\S]*?trimRouterCachesSoon\(\)/,
