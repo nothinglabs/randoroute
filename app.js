@@ -5371,7 +5371,10 @@ function maybeSpeakSafetyChange() {
 const OFF_ROUTE_ENTER_M = 65;
 const OFF_ROUTE_REJOIN_M = 40;
 const OFF_ROUTE_APPROACH_M = 130;
-const OFF_ROUTE_RESPEAK_MS = 30_000;
+// 60s, field-tuned down from 30s: the repeated "Rejoin route…" while riding
+// deliberately off the line was twice as chatty as wanted. Entry and
+// approach announcements are unchanged; only the periodic reminder halved.
+const OFF_ROUTE_RESPEAK_MS = 60_000;
 const OFF_ROUTE_GOOD_ACCURACY_M = 60;
 const OFF_ROUTE_MAX_ACCURACY_M = 120;
 const OFF_ROUTE_CANDIDATE_WINDOW_MS = 40_000;
