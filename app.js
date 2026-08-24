@@ -1012,6 +1012,8 @@ const navVoice = {
     ? true : savedState.keepScreenAwake,
   safetyLevels: !savedState || typeof savedState.voiceSafetyLevels !== 'boolean'
     ? true : savedState.voiceSafetyLevels,
+  hillTaunt: !savedState || typeof savedState.voiceHillTaunt !== 'boolean'
+    ? true : savedState.voiceHillTaunt,
   offRouteMode: AUTOMATIC_OFF_ROUTE_RECOVERY_ENABLED ? savedOffRouteRecoveryMode : 'guidance',
 };
 
@@ -1226,6 +1228,7 @@ function saveStateNow() {
       voiceStatusRoute: navVoice.statusRoute, voiceStatusSpeed: navVoice.statusSpeed,
       voiceStatusMiles: navVoice.statusMiles, voiceStatusEta: navVoice.statusEta,
       voiceSafetyLevels: navVoice.safetyLevels,
+      voiceHillTaunt: navVoice.hillTaunt,
       keepScreenAwake: navVoice.keepScreenAwake,
       navigationOffRouteMode: navVoice.offRouteMode,
       weights: routingWeights, weightsVersion: ROUTING_WEIGHTS_VERSION,
@@ -5266,9 +5269,78 @@ function buildTurnInstructions(m) {
   return {
     coords, cumulative, instructions, segs,
     safetyRuns: buildRouteSafetyRuns(segs, cumulative),
+    climbRuns: buildRouteClimbRuns(segs, cumulative),
     totalM: cumulative[cumulative.length - 1] || 0,
     totalTimeS: segmentTimeS || Math.max(0, Number(m.timeS) || 0),
   };
+}
+
+/* --------------------------------------------------- hill taunt
+ * A voice option that lightly needles the rider on a real climb. Not
+ * guidance: it ranks below every maneuver and safety announcement, fires at
+ * most twice per route with a five-minute gap, and only on a sustained hill
+ * — a driveway lip must never spend one of the two taunts.
+ */
+const HILL_TAUNT_GRADE_PCT = 6;
+// A real hill, not a blip: at least this much continuous 6%+ climbing.
+const HILL_TAUNT_MIN_RUN_M = 200;
+// Sub-runs separated by less than this much easier ground are one hill.
+const HILL_TAUNT_MERGE_GAP_M = 80;
+// Speak only once the rider is demonstrably ON the climb...
+const HILL_TAUNT_MIN_INTO_M = 60;
+// ...and not when it is effectively over.
+const HILL_TAUNT_MIN_LEFT_M = 40;
+const HILL_TAUNT_COOLDOWN_MS = 5 * 60_000;
+const HILL_TAUNT_MAX_PER_ROUTE = 2;
+const HILL_TAUNT_LINES = Object.freeze([
+  'It looks like you are going up a hill right now. Hope you are enjoying your hill.',
+  'Still climbing. The hill is very impressed with you. Probably.',
+  'This hill was your idea. Just so we are clear.',
+  'Good news: the top of this hill exists. You will see it eventually.',
+  'You could have taken a flatter route. Anyway, enjoy.',
+  'Gravity is winning on points, but you have heart.',
+  'The hill does not care how you feel about it. Keep pedaling.',
+  'Your legs voted no, and yet here we are.',
+]);
+
+// Contiguous stretches of credible 6%+ uphill, in route meters. Small easier
+// interruptions merge, so a flat driveway crossing does not split one hill
+// into two; ferries end a run outright.
+function buildRouteClimbRuns(segs, cumulative) {
+  const runs = [];
+  for (const seg of segs || []) {
+    const startM = cumulative[seg.c0], endM = cumulative[seg.c1];
+    if (!Number.isFinite(startM) || !Number.isFinite(endM) || endM <= startM) continue;
+    const steep = !((seg.flags || 0) & 32)
+      && credibleSegmentGradePct(seg) > HILL_TAUNT_GRADE_PCT;
+    const last = runs[runs.length - 1];
+    if (steep && last && startM - last.endM < HILL_TAUNT_MERGE_GAP_M
+        && !((seg.flags || 0) & 32)) {
+      last.endM = endM;
+    } else if (steep) {
+      runs.push({ startM, endM, taunted: false });
+    }
+  }
+  return runs.filter((run) => run.endM - run.startM >= HILL_TAUNT_MIN_RUN_M);
+}
+
+function maybeSpeakHillTaunt() {
+  if (!navVoice.hillTaunt || turnNav.arrived) return false;
+  if ((turnNav.hillTauntCount || 0) >= HILL_TAUNT_MAX_PER_ROUTE) return false;
+  const now = Date.now();
+  if (now - (turnNav.hillTauntAt || 0) < HILL_TAUNT_COOLDOWN_MS) return false;
+  const runs = turnNav.route?.climbRuns;
+  if (!runs || !runs.length) return false;
+  const at = turnNav.routeM;
+  const run = runs.find((r) => !r.taunted
+    && at >= r.startM + HILL_TAUNT_MIN_INTO_M && at < r.endM - HILL_TAUNT_MIN_LEFT_M);
+  if (!run) return false;
+  run.taunted = true;
+  turnNav.hillTauntCount = (turnNav.hillTauntCount || 0) + 1;
+  turnNav.hillTauntAt = now;
+  speakNavigation(
+    HILL_TAUNT_LINES[Math.floor(Math.random() * HILL_TAUNT_LINES.length)], 'status');
+  return true;
 }
 
 /* ------------------------------------------- safety levels, spoken aloud
@@ -7677,6 +7749,7 @@ function activateNewRouteFromCurrentLocation(result) {
   activateRouteOption(selected);
   turnNav.plannedRoute = buildTurnInstructions(selected);
   turnNav.route = turnNav.plannedRoute;
+  turnNav.hillTauntCount = 0;
   turnNav.next = 0;
   turnNav.nearest = 0;
   turnNav.nearestSegment = 0;
@@ -7938,7 +8011,9 @@ function updateTurnNavigation(pos) {
     instructions, turnNav.next, turnNav.routeM);
   const next = instructions[turnNav.next];
   if (!next) {
-    if (!maybeSpeakSafetyChange()) maybeSpeakPeriodicUpdate(null, Infinity);
+    if (!maybeSpeakSafetyChange() && !maybeSpeakHillTaunt()) {
+      maybeSpeakPeriodicUpdate(null, Infinity);
+    }
     refreshNavigationUI();
     return;
   }
@@ -7994,6 +8069,8 @@ function updateTurnNavigation(pos) {
   // junction meant it never got the moment it needed. Queued behind the
   // maneuver, it can be raised whenever it comes due without cutting in.
   if (maybeSpeakSafetyChange()) spoke = true;
+  // The taunt is entertainment: it waits for a fix with no real news on it.
+  if (!spoke && maybeSpeakHillTaunt()) spoke = true;
   // A safety change is news; the periodic status is a summary. The summary
   // yields to both.
   if (!spoke) maybeSpeakPeriodicUpdate(next, remaining);
@@ -8076,6 +8153,8 @@ function startTurnNavigation() {
   turnNav.route = turnNav.plannedRoute;
   turnNav.connectorRoute = null;
   turnNav.followingConnector = false;
+  turnNav.hillTauntCount = 0;
+  turnNav.hillTauntAt = 0;
   turnNav.plannedRouteM = 0;
   turnNav.plannedNearestSegment = 0;
   turnNav.plannedNearestPoint = null;
@@ -11093,6 +11172,7 @@ function activateRouteOption(option, updateNavigation = false) {
     turnNav.plannedRoute = buildTurnInstructions(option);
     if (!turnNav.followingConnector) {
       turnNav.route = turnNav.plannedRoute;
+      turnNav.hillTauntCount = 0;
       turnNav.next = 0;
       turnNav.nearest = 0;
       turnNav.routeM = 0;
@@ -16468,6 +16548,16 @@ function buildVoicePanel() {
     saveStateSoon();
   });
   host.appendChild(safety);
+
+  const taunt = document.createElement('div');
+  taunt.className = 'check-rule rule-card';
+  taunt.innerHTML = `<label class="rule-check"><input type="checkbox" id="v-voiceHillTaunt"
+    ${navVoice.hillTaunt ? 'checked' : ''}><span>Hill Taunt — light mockery on steep climbs</span></label>`;
+  taunt.querySelector('input').addEventListener('change', (e) => {
+    navVoice.hillTaunt = e.target.checked;
+    saveStateSoon();
+  });
+  host.appendChild(taunt);
 
   const choices = [[0, 'Never'], [1, 'Every minute'], [2, 'Every 2 minutes'],
     [3, 'Every 3 minutes'], [5, 'Every 5 minutes'], [10, 'Every 10 minutes'],
