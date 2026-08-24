@@ -130,6 +130,31 @@ modes at z13; the symptom matches the roads safety source still streaming
 tiles right after the 208 MB re-install and forced restart. Needs a field
 verdict on whether it persists in steady state.
 
+Release `.810` fixes the `.809` field report of southern Washington
+rendering as open sea between Longview and The Dalles on a phone without
+Oregon installed. Root cause: `land_detail` is the coastline band only --
+inland ground far from the coast exists solely in the generalized `land`
+layer at every zoom of the detailed archive -- and the `.807` regional
+build re-tiled only land_detail and water. The Census-fill exclusion that
+fixed sea-as-land exposed the gap (an attached Oregon regional clone
+papers over it, which is why container probes missed it). The regional
+archive is now a verbatim tile-join copy of the detailed archive's z4-z8
+tiles restricted to land, land_detail and water: the per-zoom
+generalizations desktop has always rendered, with no re-simplification.
+Washington 542,103 bytes, Oregon 398,245 -- smaller than both prior
+builds. Known limit, accepted: the narrow throat of Admiralty Inlet
+(about 5 km, two pixels at z6) generalizes closed below z7 in the
+archive's own low-zoom cartography, as it always has on desktop; the wide
+reach of Admiralty, Saratoga Passage, Possession Sound and the south
+channel stay open at every zoom (pixel-gated). A composite build (pushed-
+down z8 coastline unioned with inland-only generalized land) could
+restore the throat; parked, trigger: a rider judging the z6 closure
+objectionable in the field. `test_regional_ground_inland` pins the field
+world in pixels (Washington only, detailed archive blocked, wedge land,
+Saratoga water, z6-z10.5). A route that fails because a state's maps are
+not installed now offers an "Open the Maps screen" button on the failure
+card (`test_route_unavailable_maps_action`).
+
 Remaining gates:
 
 - `.808` focused gates recorded 2026-08-24 on

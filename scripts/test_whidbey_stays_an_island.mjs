@@ -19,7 +19,12 @@ const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)'
 // at z12 by the pixel probe — a probe that renders land there with detail
 // serving is a bad coordinate, not a map defect.
 const PROBES = [
-  ['sea-admiralty-mid', -122.620, 48.090, 'sea'],
+  // Mid-channel of Admiralty Inlet's wide reach. NOT the narrow throat off
+  // Fort Casey (-122.62, 48.09): that reach is ~5 km -- two pixels at z6 --
+  // and the archive's own generalized land closes it below z7, exactly as
+  // the detailed archive has always drawn on desktop. Known limit, recorded
+  // in issues.md; the channels asserted here are the ones a rider can see.
+  ['sea-admiralty-mid', -122.760, 48.100, 'sea'],
   ['sea-saratoga', -122.480, 48.100, 'sea'],
   ['sea-possession-sound', -122.3446, 47.930, 'sea'],
   ['sea-south-whidbey', -122.500, 47.880, 'sea'],
