@@ -16029,6 +16029,15 @@ async function downloadStoreState(storeUrl, state, button, options = {}) {
     }, { signal: options.signal });
     report(`${name} is ${updating ? 'updated and ' : ''}ready to use.`);
     refreshPendingMapRouteIntent(state.id);
+    // Installing the data for the state the session is already homed on --
+    // a slim shell's first download, or a re-install after a storage-blind
+    // boot -- can only take effect through region.js, which binds at boot.
+    // Without this reload the screen keeps the national map while saying
+    // "ready to use", and only a forced restart recovers.
+    if (state.id === Region.id && !Region.localDataAvailable) {
+      rebootIntoInstalledHomeState();
+      return full;
+    }
     buildMapsStateList();
     buildMapsStoreList();
     updateMapsStorageLine();
@@ -17003,6 +17012,38 @@ document.getElementById('mapStateDialog')?.addEventListener('close', () => {
   selectedNationalStateId = null;
   applyNationalMapFeatureStates();
 });
+// A resurrected iOS PWA can answer localStorage reads with nothing for the
+// first moments of a launch. region.js runs synchronously in that window, so
+// a device with its home state fully installed can boot as if it had no data:
+// national map, no state sources, while every later read (Settings, the
+// restored route) sees healthy storage. When the registry turns out to hold
+// the active state after all, one reload reboots region.js against working
+// storage. The hash marker survives without any storage, so a boot whose
+// registry is STILL empty after a marked reload stays on the national map
+// instead of looping.
+const STORAGE_RETRY_MARK = '#jra-storage-retry';
+async function healStorageBlindBoot() {
+  if (Region.localDataAvailable) {
+    if (location.hash === STORAGE_RETRY_MARK) {
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+    return;
+  }
+  if (!window.MapStore || location.hash === STORAGE_RETRY_MARK) return;
+  for (const delay of [400, 2000]) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    let installed = false;
+    try { installed = !!MapStore.installedEntry(Region.id); } catch (error) { /* still blind */ }
+    if (installed) {
+      location.hash = STORAGE_RETRY_MARK;
+      rebootIntoInstalledHomeState();
+      return;
+    }
+  }
+}
+// Named so a test can observe the decision without navigating the harness.
+function rebootIntoInstalledHomeState() { location.reload(); }
+healStorageBlindBoot();
 initializeNationalOrientation();
 // One line answers both "what app is this" and "what map is it routing on".
 // The map half reports the hash of the bytes the router loaded, so a stale
