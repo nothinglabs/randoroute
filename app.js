@@ -1384,6 +1384,9 @@ function syncVisibleDetailedMapSources() {
   document.body.dataset.visibleMapStateIds = [Region.id, ...visible].join(',');
 }
 map.on('moveend', syncVisibleDetailedMapSources);
+// The error hook's detach retry re-enters through this entry point rather
+// than waiting for the rider's next pan.
+map.__visibleStateResync = syncVisibleDetailedMapSources;
 if (map.loaded()) syncVisibleDetailedMapSources();
 else map.once('load', syncVisibleDetailedMapSources);
 // On a phone, a completed route can leave hundreds of megabytes of reusable
@@ -3528,19 +3531,24 @@ const routing = {
 let routerCacheTrimTimer = null;
 let routerCacheTrimId = 0;
 function trimRouterCachesSoon(delay = 0) {
-  if (!isConstrainedDevice() || !routing.worker || !routing.ready
+  // The home worker may be released entirely while a partition session owns
+  // routing (releaseHomeRouterForPartitionSession); the session's own router
+  // still deserves its trims — it holds the composite plus the same caches.
+  const bridgeRouter = () => (routing.multiStateActive
+    ? activeMultiStateRouting.bridge?.router : null);
+  if (!isConstrainedDevice() || (!(routing.worker && routing.ready) && !bridgeRouter())
       || routing.loading || routing.pendingRoute || routing.routeRequestActive) return;
   clearTimeout(routerCacheTrimTimer);
   routerCacheTrimTimer = setTimeout(() => {
     routerCacheTrimTimer = null;
-    if (!routing.worker || !routing.ready || routing.loading
-        || routing.pendingRoute || routing.routeRequestActive) return;
-    routing.worker.postMessage({ type: 'trim-caches', id: ++routerCacheTrimId });
+    if (routing.loading || routing.pendingRoute || routing.routeRequestActive) return;
+    if (routing.worker && routing.ready) {
+      routing.worker.postMessage({ type: 'trim-caches', id: ++routerCacheTrimId });
+    }
     // The partition session's router holds the same full-size graph plus its
     // own caches; a finished cross-state portfolio must not keep them warm
     // while the renderer is at its hungriest.
-    activeMultiStateRouting.bridge?.router?.postMessage(
-      { type: 'trim-caches', id: routerCacheTrimId });
+    bridgeRouter()?.postMessage({ type: 'trim-caches', id: ++routerCacheTrimId });
   }, Math.max(0, Number(delay) || 0));
 }
 
@@ -3864,9 +3872,15 @@ async function ensureRouter() {
       handleRouterFailure(event.message || 'routing worker stopped');
     };
     routing.worker.onmessageerror = () => handleRouterFailure('routing worker sent unreadable data');
+    // A partition session can release this worker while the graph bytes are
+    // still downloading (releaseHomeRouterForPartitionSession). That is a
+    // deliberate hand-off, not a failure: abandon quietly and let the next
+    // single-state request start a fresh load.
+    const startedWorker = routing.worker;
     const res = await fetch(GRAPH_URL);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const buf = await readRoutingGraphResponse(res);
+    if (routing.worker !== startedWorker) return;
     // The version the router ACTUALLY loaded, from the bytes themselves --
     // GRAPH_DATA_VERSION only says what the shell asked for, and the one
     // failure worth diagnosing is precisely when an older service worker
@@ -4344,7 +4358,44 @@ async function promptForRequiredRouteStates(result) {
   await openNationalStateCard(required[0]);
 }
 
+// A phone cannot hold two statewide graphs. Once a partition session owns
+// routing, the idle home worker's graph (~142 MB expanded, plus derived
+// arrays) is the single largest reclaimable allocation in the page, and
+// keeping it warm "for the return trip" left every cross-state calculation
+// running beside it. Terminate the worker outright: ensureRouter() rebuilds
+// it lazily the next time a single-state route asks, with its normal
+// progress copy, and the ready handler re-sends preferred/suppressed routes
+// and the pending request. Desktop keeps the warm worker.
+function releaseHomeRouterForPartitionSession() {
+  if (!isConstrainedDevice() || !routing.worker) return;
+  routing.worker.terminate();
+  routing.worker = null;
+  routing.ready = false;
+  routing.loading = false;
+}
+
+let multiStateSettleDeferred = false;
 async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } = {}) {
+  // Relaunch with a saved cross-state trip: the composite load (catalogue,
+  // partitions, compose) must not run inside the launch camera's tile burst —
+  // that pairing is the same WebKit kill the single-state path already defers
+  // around via the ready handler's idle wait. First call on a constrained
+  // device with an unsettled map waits for idle (8 s stop) and re-enters.
+  if (isConstrainedDevice() && typeof map?.loaded === 'function' && !map.loaded()
+      && !turnNav.active && !multiStateSettleDeferred) {
+    multiStateSettleDeferred = true;
+    setRouteStatus('Preparing multi-state route…');
+    setRouteOptionsLoading(true);
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      computeRoute({ revealPanel });
+    };
+    map.once('idle', start);
+    setTimeout(start, 8000);
+    return;
+  }
   const shouldRevealPanel = Boolean(revealPanel) && !turnNav.active;
   routing.pendingRoute = false;
   routing.pendingPanelReveal = false;
@@ -4379,6 +4430,7 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
   try {
     const runtime = await installedMultiStateRouteSession(pointStateIds);
     if (requestId !== routing.reqId) return;
+    releaseHomeRouterForPartitionSession();
     const result = await runtime.session.route(request);
     if (requestId !== routing.reqId) return;
     if (result.code === 'required-states') {
@@ -7307,10 +7359,27 @@ function useNearestPlannedRoute(reason = '', purpose = turnNav.connectorPurpose)
   refreshNavigationUI();
 }
 
+// Mid-ride recovery searches go to whichever engine holds the active route's
+// graph. On a cross-state route that is the partition session's composite
+// router — the home worker may hold a different state entirely, or (on a
+// phone) have been released when the session took over. Falls back to the
+// home worker, and reports false when neither engine is available.
+function postNavigationRouteRequest(request, onUnavailable = null) {
+  if (routing.multiStateActive && activeMultiStateRouting.bridge) {
+    activeMultiStateRouting.bridge.search({ request, signal: new AbortController().signal })
+      .then((result) => onRouterMessage({ data: result }))
+      .catch(() => onUnavailable?.());
+    return true;
+  }
+  if (!routing.worker) return false;
+  routing.worker.postMessage(request);
+  return true;
+}
+
 function requestNavigationConnector(target, purpose = 'start', automatic = false) {
   if (!turnNav.active || !turnNav.lastPosition || !turnNav.plannedRoute
       || turnNav.connectorRequestId != null || turnNav.newRouteRequestId != null) return;
-  if (!routing.worker) {
+  if (!routing.worker && !(routing.multiStateActive && activeMultiStateRouting.bridge)) {
     useNearestPlannedRoute('The routing engine is unavailable.', purpose);
     return;
   }
@@ -7333,7 +7402,7 @@ function requestNavigationConnector(target, purpose = 'start', automatic = false
     duration: 0,
   });
   refreshNavigationUI();
-  routing.worker.postMessage({
+  postNavigationRouteRequest({
     type: 'route-connector', id,
     points: [turnNav.lastPosition, target],
     blocks: routing.blocks?.map(routeBlockPayload) || [],
@@ -7341,7 +7410,7 @@ function requestNavigationConnector(target, purpose = 'start', automatic = false
     prefDesignated: routing.prefDesig,
     prefResidential: routing.prefResidential,
     weights: { ...routingWeights },
-  });
+  }, () => useNearestPlannedRoute('The routing engine is unavailable.', purpose));
 }
 
 function requestRouteBackToCurrentRoute({ automatic = false } = {}) {
@@ -7471,10 +7540,17 @@ function requestNewRouteFromCurrentLocation({ automatic = false } = {}) {
   const offRouteDialog = document.getElementById('offRouteDialog');
   if (offRouteDialog?.open) offRouteDialog.close();
   turnNav.autoRecoveryAttempted = true;
-  if (!routing.worker) {
+  const engineUnavailable = () => {
+    turnNav.newRouteRequestId = null;
+    turnNav.newRouteStart = null;
+    turnNav.newRouteVias = null;
     showRouteActionToast('Could not calculate a new route', {
       detail: 'The routing engine is unavailable. Your current route is unchanged.', duration: 7000,
     });
+    refreshNavigationUI();
+  };
+  if (!routing.worker && !(routing.multiStateActive && activeMultiStateRouting.bridge)) {
+    engineUnavailable();
     return;
   }
   const selected = routing.last?.optimization || {};
@@ -7487,7 +7563,7 @@ function requestNewRouteFromCurrentLocation({ automatic = false } = {}) {
     busy: true, detail: 'Using your current location, safety rules, and route preferences…', duration: 0,
   });
   refreshNavigationUI();
-  routing.worker.postMessage({
+  postNavigationRouteRequest({
     type: 'navigation-new-route', id,
     points: [turnNav.newRouteStart, ...remainingVias.map((via) => via.pt), routing.end],
     blocks: routing.blocks?.map(routeBlockPayload) || [],
@@ -7497,7 +7573,7 @@ function requestNewRouteFromCurrentLocation({ automatic = false } = {}) {
     prefDesignated: routing.prefDesig,
     prefResidential: routing.prefResidential,
     weights: { ...routingWeights },
-  });
+  }, engineUnavailable);
 }
 
 function activateNewRouteFromCurrentLocation(result) {
@@ -13335,10 +13411,18 @@ const TAPPED_GRADE_PENDING = 'measuring\u2026';
 let tappedGradeToken = 0;
 let tappedRoadGradeRequested = false;
 function requestTappedRoadGrade(lngLat, name) {
-  if (!routing.worker || !routing.ready) return null;
+  // On a cross-state trip the composite router owns the loaded corridor (and
+  // on a phone the home worker may be released entirely) — ask it instead.
+  const bridged = routing.multiStateActive && activeMultiStateRouting.bridge;
+  if (!bridged && (!routing.worker || !routing.ready)) return null;
   const token = ++tappedGradeToken;
-  routing.worker.postMessage({ type: 'edge-grade', id: token,
-    lon: Number(lngLat.lng), lat: Number(lngLat.lat), name: name || null });
+  const request = { type: 'edge-grade', id: token,
+    lon: Number(lngLat.lng), lat: Number(lngLat.lat), name: name || null };
+  if (bridged) {
+    activeMultiStateRouting.bridge.search({ request, signal: new AbortController().signal })
+      .then((result) => onRouterMessage({ data: result }))
+      .catch(() => { /* the placeholder row simply stays out */ });
+  } else routing.worker.postMessage(request);
   return token;
 }
 function applyTappedRoadGrade(m) {
@@ -16385,7 +16469,15 @@ if (routing.start && routing.end) {
   // cascade into several. On constrained devices the settle helper defers
   // the load until the launch camera has its tiles; desktop keeps the
   // immediate start.
-  ensureRouterAfterMapSettles();
+  //
+  // A saved CROSS-STATE trip never touches the home graph: its recompute
+  // goes straight to the partition session, so loading the statewide graph
+  // here would put a second full-size graph beside the composite during the
+  // relaunch after a kill — the exact state being relaunched from. Skip it
+  // on constrained devices; a later single-state request loads it lazily.
+  if (!(isConstrainedDevice() && needsMultiStateRouting())) {
+    ensureRouterAfterMapSettles();
+  }
 } else if (isNativeAppRuntime() || isConstrainedDevice()) {
   ensurePlaces();
 } else {

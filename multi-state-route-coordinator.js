@@ -508,6 +508,7 @@
       this.constrained = !!options.constrained;
       this.loader = null;
       this.router = null;
+      this.routerHasGraph = false;
       this.initialized = false;
       this.sequence = 0;
     }
@@ -538,6 +539,18 @@
     async loadComposite(request) {
       await this.ensureInitialized(request.signal);
       checkAbort(request.signal);
+      // A widening retry replaces the whole composite. The router's copy of
+      // the previous one (graph plus derived arrays) must not sit beside the
+      // new composite while the loader composes it — on a phone that pairing
+      // is a second full-size graph at the exact peak. A fresh worker starts
+      // empty; a reused one frees the old arrays only after the new buffer
+      // has already been built and transferred in.
+      if (this.routerHasGraph) {
+        this.router?.terminate();
+        this.router = null;
+        this.routerHasGraph = false;
+        this.ensureWorkers();
+      }
       const id = `partition-load-${request.generation}-${++this.sequence}`;
       const graph = await waitForWorker(this.loader,
         () => this.loader.postMessage({ type: 'load', id,
@@ -555,6 +568,7 @@
           diagnostics: graph.diagnostics },
         [graph.buffer, graph.edgeStateIndexes.buffer, graph.edgePartitionIndexes.buffer]),
         (message) => ['ready', 'error'].includes(message.type), this.onProgress, request.signal);
+      this.routerHasGraph = true;
       const frontierId = `partition-frontiers-${request.generation}-${++this.sequence}`;
       await waitForWorker(this.router,
         () => this.router.postMessage({ type: 'partition-frontiers', id: frontierId,
@@ -587,6 +601,7 @@
       this.router?.terminate();
       this.loader = null;
       this.router = null;
+      this.routerHasGraph = false;
       this.initialized = false;
     }
   }

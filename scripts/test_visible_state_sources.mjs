@@ -77,9 +77,22 @@ check('installed maps outside the viewport do not attach tile archives',
 
 map.zoom = 4;
 const national = context.BikeBasemap.syncVisibleStateSources(map, states, 'home');
-check('national zoom removes non-home detailed sources and their layers',
-  national.length === 0 && !map.getSource('state-visible-basemap-context')
+check('zooming out retains the attached neighbor instead of churning it',
+  national.join() === 'visible' && !!map.getSource('state-visible-basemap-context'));
+
+map.zoom = 7;
+map.bounds = { minLon: 2.5, minLat: 0.2, maxLon: 3.2, maxLat: 0.8 };
+const nearby = context.BikeBasemap.syncVisibleStateSources(map, states, 'home');
+check('a neighbor just out of view is retained by hysteresis, not detached',
+  nearby.join() === 'visible' && !!map.getSource('state-visible-basemap-roads')
+    && map.layers.some((layer) => layer.id.startsWith('state-visible-')));
+
+map.bounds = { minLon: 6, minLat: 0.2, maxLon: 7.5, maxLat: 0.8 };
+const moved = context.BikeBasemap.syncVisibleStateSources(map, states, 'home');
+check('panning a full viewport away detaches the old neighbor and attaches the new',
+  moved.join() === 'far' && !map.getSource('state-visible-basemap-context')
     && !map.getSource('state-visible-basemap-overlays')
-    && !map.layers.some((layer) => layer.id.startsWith('state-visible-')));
+    && !map.layers.some((layer) => layer.id.startsWith('state-visible-'))
+    && !!map.getSource('state-far-basemap-context'));
 
 done();

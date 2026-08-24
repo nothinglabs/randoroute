@@ -134,6 +134,13 @@
       && left.minLat <= right.maxLat && left.maxLat >= right.minLat;
   }
 
+  function expandBounds(bounds, lonMargin, latMargin) {
+    return {
+      minLon: bounds.minLon - lonMargin, maxLon: bounds.maxLon + lonMargin,
+      minLat: bounds.minLat - latMargin, maxLat: bounds.maxLat + latMargin,
+    };
+  }
+
   // A visible-state archive that cannot actually load — offline with chunks
   // never cached, or a deleted file — must detach rather than sit in the
   // style as a permanently un-loaded source: one wedged source keeps
@@ -159,6 +166,15 @@
       const match = /^state-([a-z0-9-]+)-basemap-/.exec(sourceId);
       if (match && !everLoaded.has(sourceId)) {
         try { removeVisibleState(map, match[1]); } catch (error) { /* already gone */ }
+        // A rider sitting still after a transient attach failure otherwise
+        // waits for their next pan to get the state back. Retry through the
+        // app's registered sync entry once things have settled.
+        if (typeof map.__visibleStateResync === 'function' && !map.__visibleStateResyncTimer) {
+          map.__visibleStateResyncTimer = global.setTimeout(() => {
+            map.__visibleStateResyncTimer = null;
+            try { map.__visibleStateResync(); } catch (error) { /* next moveend */ }
+          }, 4000);
+        }
       }
     });
   }
@@ -190,18 +206,36 @@
     ensureVisibleStateErrorHook(map);
     const bounds = viewportBounds(map);
     const detailed = bounds && Number(map.getZoom?.()) >= minZoom;
-    const wanted = new Map((states || [])
-      .filter((state) => state?.id && state.id !== homeStateId
-        && detailed && state.bounds && intersects(bounds, state.bounds)
-        && (state.datasets?.basemap || state.datasets?.roads))
+    // Attach ahead of arrival and detach only well past departure. The first
+    // version attached and detached on the exact viewport/bounds intersection,
+    // so riding or panning along a state line cycled the neighbor's sources on
+    // every moveend — and each re-attachment starts over with header,
+    // directory and tile reads, which the field reads as that state's layers
+    // "randomly missing". The margins are viewport-relative (capped so a wide
+    // view cannot attach the whole country): a state enters a bit before its
+    // edge scrolls in, and leaves only when the rider is a full viewport away.
+    const spanLon = bounds ? Math.max(0, bounds.maxLon - bounds.minLon) : 0;
+    const spanLat = bounds ? Math.max(0, bounds.maxLat - bounds.minLat) : 0;
+    const attachLon = Math.min(0.35 * spanLon, 1.2);
+    const attachLat = Math.min(0.35 * spanLat, 0.9);
+    const attachBounds = bounds ? expandBounds(bounds, attachLon, attachLat) : null;
+    const keepBounds = bounds ? expandBounds(bounds, 3 * attachLon, 3 * attachLat) : null;
+    const candidates = (states || []).filter((state) => state?.id
+      && state.id !== homeStateId && state.bounds
+      && (state.datasets?.basemap || state.datasets?.roads));
+    const wanted = new Map(candidates
+      .filter((state) => detailed && intersects(attachBounds, state.bounds))
       .map((state) => [state.id, state]));
+    const keep = new Set(candidates
+      .filter((state) => keepBounds && intersects(keepBounds, state.bounds))
+      .map((state) => state.id));
     const existing = new Set();
     for (const layer of map.getStyle().layers || []) {
       const match = /^state-([a-z0-9-]+)-basemap-land$/.exec(layer.id);
       if (match) existing.add(match[1]);
     }
     for (const stateId of existing) {
-      if (!wanted.has(stateId)) removeVisibleState(map, stateId);
+      if (!wanted.has(stateId) && !keep.has(stateId)) removeVisibleState(map, stateId);
     }
 
     for (const state of [...wanted.values()].sort((a, b) => a.id.localeCompare(b.id))) {
@@ -242,7 +276,14 @@
         map.addLayer(layer, before);
       }
     }
-    return [...wanted.keys()].sort((a, b) => a.localeCompare(b));
+    // Everything still attached after this sync — the freshly wanted states
+    // plus those retained in the hysteresis band. The caller mirrors safety
+    // layers from this list, so a retained state must not drop out of it.
+    const attached = new Set(wanted.keys());
+    for (const stateId of existing) {
+      if (keep.has(stateId)) attached.add(stateId);
+    }
+    return [...attached].sort((a, b) => a.localeCompare(b));
   }
 
   function assetUrl(path) {
