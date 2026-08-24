@@ -12,9 +12,9 @@ Verification target:
 | --- | --- |
 | Branch | `claude/multi-state-routing-review-3khslx` |
 | Production-artifact baseline | `468765a` |
-| Review source commit | `dcdb1113fdefa09788918014b16cef3eed649f08` |
-| Preview deployment commit | `nothinglabs/randoroute-preview` `a7f263c3a2aefd5e9acea7d63d79130810f50471` |
-| App / worker | `2026-08-24.803` / `v803` |
+| Review source commit | `b844567ab1227d5c29b73699342c1d3506294206` |
+| Preview deployment commit | `nothinglabs/randoroute-preview` `65d000b732efa480f539f8fc1bd0a2edd1ec5efd` |
+| App / worker | `2026-08-24.805` / `v805` |
 | Partition catalogue | format 1, SHA-256 `3cafdd58116a7124b2b419d77d7cff83dc417f26ee45c285e594ebc724e4a4e4` |
 | Oregon graph | `sha-8ae4d0b5e2d3` |
 | Washington graph | `sha-c043f268453b` |

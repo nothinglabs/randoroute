@@ -74,11 +74,12 @@ device and states the three-contiguous-state routing limit.
 Remaining gates:
 
 - suite gate recorded 2026-08-24 on `claude/multi-state-routing-review-3khslx`
-  at `.803`: 139 of 146 files passed, 2 skipped (missing `tippecanoe-decode` /
-  build inputs), 2195 s wall. Four failures were in-suite timing flakes that
-  each pass standalone (`device_start_follows`, `fail_road_style`,
-  `national_map_first_run`, `pmtiles_truncated_cache_recovery`); the one real
-  failure (`web_preview` pinning the retired source branch name) is fixed.
+  at `.805`: 146 of 151 files passed, 2 skipped (missing `tippecanoe-decode` /
+  build inputs), 2195 s wall. Of the three failures, two were in-suite timing
+  flakes that pass standalone (`fail_road_style`, `saved_routes_ui`) and one
+  was a test defect now fixed (`multistate_place_search`'s wait predicate
+  spans the continue-trip reload and threw during the new document's boot
+  window instead of retrying).
 - get the owner's physical-iPhone verdict for Cache Storage durability, memory
   pressure, navigation and real timings.
 
