@@ -50,8 +50,10 @@ try {
 
   const record = JSON.parse(await readFile(join(output, 'preview.json'), 'utf8'));
   const release = JSON.parse(await readFile(join(ROOT, 'version.json'), 'utf8'));
+  const currentBranch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'],
+    { cwd: ROOT, encoding: 'utf8' }).trim();
   check('the preview record identifies source, app, catalogue, datasets and retention',
-    record.sourceBranch === 'codex/multistate-routing'
+    record.sourceBranch === currentBranch
       && /^[a-f0-9]{40}$/.test(record.sourceCommit)
       && record.appVersion === release.version
       && /^[a-f0-9]{64}$/.test(record.partitionCatalogue.sha256)
