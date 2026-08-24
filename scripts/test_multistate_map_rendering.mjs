@@ -53,7 +53,7 @@ try {
     map.jumpTo({ center: [-122.48, 48.02], zoom: 4 });
   });
   await page.waitForFunction(() => map.queryRenderedFeatures({
-    layers: ['basemap-regional-land-detail'],
+    layers: ['basemap-regional-land', 'basemap-regional-land-detail'],
   }).length > 0, null, { timeout: 45000 });
   const regionalChecks = [];
   for (const zoom of [4, 5, 6, 7, 8]) {
@@ -64,7 +64,11 @@ try {
       requestAnimationFrame(resolve))));
     regionalChecks.push(await page.evaluate((z) => {
       const layerIds = map.getStyle().layers.map((layer) => layer.id);
-      const landLayers = ['basemap-regional-land-detail'];
+      // Regional ground is the union: the archive carries the coastline band
+      // (land_detail) only at z8, and the generalized land layer is the whole
+      // ground at z4-z7 -- exactly as the detailed archive draws on desktop.
+      // A marine point must be claimed by NEITHER.
+      const landLayers = ['basemap-regional-land', 'basemap-regional-land-detail'];
       const waterLayers = ['basemap-regional-water'];
       const rendered = (lon, lat, layers) => {
         const point = map.project([lon, lat]);
