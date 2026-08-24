@@ -159,8 +159,29 @@
     map.__visibleStateEverLoaded = everLoaded;
     map.on('sourcedata', (event) => {
       const sourceId = String(event?.sourceId || '');
-      if (sourceId.startsWith('state-') && event?.isSourceLoaded) everLoaded.add(sourceId);
+      if (sourceId && event?.isSourceLoaded) everLoaded.add(sourceId);
     });
+    // A tile error on a source that HAS loaded is not attachment's problem —
+    // but MapLibre never re-asks for a tile it was handed an error for, so a
+    // burst of failed ranges (a torn cache, a dropped connection outlasting
+    // the short low-level retry) leaves permanent holes: lakes without water,
+    // roads without safety color, until the rider happens to pan them back
+    // in. Reload the wounded source once things settle — debounced past the
+    // burst, at most once per source per 45 s, straight from the local cache
+    // when one is serving.
+    const sourceHealAt = new Map();
+    const sourceHealTimer = new Map();
+    const scheduleSourceSelfHeal = (sourceId) => {
+      if (sourceHealTimer.has(sourceId)) return;
+      sourceHealTimer.set(sourceId, global.setTimeout(() => {
+        sourceHealTimer.delete(sourceId);
+        if (Date.now() - (sourceHealAt.get(sourceId) || 0) < 45000) return;
+        const source = map.getSource?.(sourceId);
+        if (!source || typeof source.setUrl !== 'function' || !source.url) return;
+        sourceHealAt.set(sourceId, Date.now());
+        try { source.setUrl(source.url); } catch (error) { /* the next error retries */ }
+      }, 5000));
+    };
     map.on('error', (event) => {
       const sourceId = String(event?.sourceId || event?.source?.id || '');
       const match = /^state-([a-z0-9-]+)-basemap-/.exec(sourceId);
@@ -175,7 +196,9 @@
             try { map.__visibleStateResync(); } catch (error) { /* next moveend */ }
           }, 4000);
         }
+        return;
       }
+      if (sourceId && everLoaded.has(sourceId)) scheduleSourceSelfHeal(sourceId);
     });
   }
 
