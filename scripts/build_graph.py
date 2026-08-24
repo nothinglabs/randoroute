@@ -33,8 +33,11 @@ phone, and the next data rebuild upgrades them without a coordinated deploy.
     (-128 permanent prohibition, -1 unknown, else ft),
   edgeLimitedDir u8[E] (bit 0 = a->b, bit 1 = b->a),
   edgeRoadClass u8[E] (OSM highway class; 0 for infrastructure/ferries),
-  edgeFacility u8[E] (0=none, 1=shared lane, 2=bike lane,
-                      3=buffered lane, 4=separated lane, 5=shared-use path),
+  edgeFacility u8[E] (low nibble = a->b rung: 0=none, 1=shared lane,
+                      2=bike lane, 3=buffered lane, 4=separated lane,
+                      5=shared-use path; high nibble 0 = same rung both
+                      directions, else the b->a rung + 1 — a lane painted on
+                      one side of a two-way street serves one direction),
   edgeOfficial u8[E] (1=WSDOT legal speed, 2=WSDOT facility,
                       4=explicit mountain-bike path, 8=priced as dismount,
                       16=mapped sidewalk, 32=explicitly no sidewalk,
@@ -823,6 +826,79 @@ def parse_shoulder_ft(tags):
     return None
 
 
+OPPOSITE_CYCLEWAY_VALUES = frozenset({'opposite', 'opposite_lane', 'opposite_track'})
+
+
+def _facility_rung(values, buffered):
+    """One direction's cycleway vocabulary -> ladder rung."""
+    if values & {'track', 'separated', 'opposite_track'}:
+        return FACILITY_SEPARATED
+    if 'buffered_lane' in values or buffered:
+        return FACILITY_BUFFERED
+    if values & {'lane', 'opposite_lane'}:
+        return FACILITY_LANE
+    if 'shared_lane' in values:
+        return FACILITY_SHARED
+    return FACILITY_NONE
+
+
+def osm_facility_directional(tags):
+    """(way-forward, way-reverse) facility rungs from OSM cycleway sides.
+
+    OSM sides are relative to the way as drawn, and this app serves
+    right-hand-traffic US states: on a two-way street `cycleway:right`
+    serves way-forward travel, `cycleway:left` serves way-reverse travel,
+    and plain `cycleway`/`cycleway:both` serve both. A lane painted on one
+    side of a two-way street therefore belongs to ONE direction of travel;
+    the other direction is just riding the road (field: 37th Avenue NE
+    carried cycleway:right=lane and the route claimed a bike lane to a
+    rider heading the other way). On a car-oneway street any
+    non-contraflow lane serves the legal direction, and only opposite_*
+    values describe the contraflow side.
+    """
+    def rung(keys, opposite):
+        values = set()
+        buffered = False
+        for key in keys:
+            value = tags.get(key)
+            if value and (value in OPPOSITE_CYCLEWAY_VALUES) == opposite:
+                values.add(value)
+            if not opposite and tags.get(f'{key}:buffer') == 'yes':
+                buffered = True
+        return _facility_rung(values, buffered)
+
+    ow = tags.get('oneway')
+    car_oneway = (1 if ow in ('yes', 'true', '1')
+                  or tags.get('junction') in ('roundabout', 'circular')
+                  else -1 if ow == '-1' else 0)
+    if car_oneway:
+        with_flow = rung(CYCLEWAY_KEYS, opposite=False)
+        against_flow = rung(CYCLEWAY_KEYS, opposite=True)
+        return ((with_flow, against_flow) if car_oneway == 1
+                else (against_flow, with_flow))
+    both = rung(('cycleway', 'cycleway:both'), opposite=False)
+    # opposite_* on a way with no oneway tag is a mapper describing contraflow
+    # of a oneway they forgot to tag; count it toward reverse rather than
+    # dropping a facility the pooled ladder used to see.
+    contraflow = rung(CYCLEWAY_KEYS, opposite=True)
+    return (max(both, rung(('cycleway:right',), opposite=False)),
+            max(both, contraflow, rung(('cycleway:left',), opposite=False)))
+
+
+def pack_directional_facility(forward, reverse):
+    """One eFacility byte: low nibble = the A->B rung; high nibble 0 = the
+    same rung both ways, else the B->A rung + 1. High nibble 0 is exactly
+    the encoding every previously built graph already contains, so old
+    graphs keep meaning what they always meant with no version gate."""
+    return forward | (0 if reverse == forward else (reverse + 1) << 4)
+
+
+def facility_rung_max(packed):
+    """The better rung of the two directions of a packed eFacility byte."""
+    back = packed >> 4
+    return max(packed & 15, back - 1 if back else 0)
+
+
 def osm_facility_class(tags):
     """The typed bike-facility ladder, one rung per OSM cycleway vocabulary.
 
@@ -830,18 +906,12 @@ def osm_facility_class(tags):
     one road the same way instead of "yes" versus "Buffered bike lane" -- and
     so cycleway:buffer=yes cannot count as buffered in one and plain in the
     other, which is exactly what happened while each file kept its own copy.
+    The STREET's rung is the better direction; the graph additionally stores
+    the per-direction split (osm_facility_directional) so a route can price
+    and describe the direction actually ridden.
     """
-    values = {tags[k] for k in CYCLEWAY_KEYS if tags.get(k)}
-    if values & {'track', 'separated', 'opposite_track'}:
-        return FACILITY_SEPARATED
-    if 'buffered_lane' in values or any(
-            tags.get(f'{key}:buffer') == 'yes' for key in CYCLEWAY_KEYS):
-        return FACILITY_BUFFERED
-    if values & {'lane', 'opposite_lane'}:
-        return FACILITY_LANE
-    if 'shared_lane' in values:
-        return FACILITY_SHARED
-    return FACILITY_NONE
+    forward, reverse = osm_facility_directional(tags)
+    return max(forward, reverse)
 
 
 def sidewalk_flags(tags):
@@ -1144,6 +1214,10 @@ def classify_way(tags):
     return {
         'speed': min(spd, 255), 'est': est,
         'facility': osm_facility_class(tags), 'lim': hw in LIMITED,
+        # Way-relative (forward, reverse); emission swaps the pair when
+        # oneway=-1 reverses the point list so the packed byte is always
+        # edge-relative (A->B, B->A).
+        'facility_dir': osm_facility_directional(tags),
         'infra': False, 'sh': parse_shoulder_ft(tags),
         'road_class': ROAD_CLASS[hw], 'surface': surface_class(tags),
         'lanes': lane_class(tags), 'dismount': dismount, 'dismount_tag': dismount,
@@ -1640,7 +1714,11 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                             espeed, espeed_ba = attrs['speed'], attrs['speed']
                             esh, esh_ba, eflags = sh, sh, flags
                             limited_dir = 0
-                            efacility = attrs['facility']
+                            fac_fwd, fac_rev = attrs.get('facility_dir',
+                                                         (attrs['facility'], attrs['facility']))
+                            if reversed_way:
+                                fac_fwd, fac_rev = fac_rev, fac_fwd
+                            efacility = pack_directional_facility(fac_fwd, fac_rev)
                             elanes = attrs.get('lanes', 0)
                             elts = 0
                             eofficial = ((EDGE_DISMOUNT_TAG if attrs.get('dismount_tag') else 0)
@@ -1695,7 +1773,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                                 espeed = speed
                                             else:
                                                 espeed_ba = speed
-                                        if match['limited'] and efacility < FACILITY_LANE:
+                                        if (match['limited']
+                                                and facility_rung_max(efacility) < FACILITY_LANE):
                                             limited_dir |= 1 << direction
                                         # The two inventory directions describe
                                         # one roadway, so take the worse rating
@@ -1726,11 +1805,15 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                     # on-street facilities belong on road topology.
                                     compatible = ((official_type == FACILITY_PATH) == bool(attrs['infra']))
                                     if compatible:
+                                        # The official inventory records the
+                                        # roadway without a side, so it
+                                        # replaces the OSM claim symmetrically
+                                        # (high nibble 0), as it always has.
                                         efacility = official_type
                                         eflags |= 2
                                         eofficial |= OFFICIAL_FACILITY
                                         official_facilities[0] += 1
-                                        if efacility >= FACILITY_LANE:
+                                        if facility_rung_max(efacility) >= FACILITY_LANE:
                                             limited_dir = 0
                             # ---- format 11: statewide measurements.
                             # Deliberately after the WSDOT block and deliberately
@@ -1765,7 +1848,8 @@ def build(src, out, blts=None, restrictions=None, legal_speeds=None, facilities=
                                 known_shoulders = [value for value in (esh, esh_ba) if value >= 0]
                                 hazard_shoulder = min(known_shoulders) if known_shoulders else -1
                                 haz_ab, haz_ba = directional_curve_hazard(
-                                    coords, ele_at, hazard_speed, hazard_shoulder, efacility)
+                                    coords, ele_at, hazard_speed, hazard_shoulder,
+                                    facility_rung_max(efacility))
                             way_runs.append((
                                 aref, coords[0], bref, coords[-1], True,
                                 length, coords, eflags, espeed, espeed_ba,

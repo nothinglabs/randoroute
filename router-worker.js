@@ -288,7 +288,7 @@ function loadGraph(buf) {
   const protectedNode = new Uint8Array(N);
   for (let i = 0; i < E; i++) {
     if ((eFlags[i] & (4 | 32)) || isDismountEdge(i)) continue;
-    if ((eFlags[i] & 8) || eFacility[i] >= 4) {
+    if ((eFlags[i] & 8) || edgeFacilityBest(i) >= 4) {
       protectedNode[eA[i]] = 1;
       protectedNode[eB[i]] = 1;
     }
@@ -298,7 +298,7 @@ function loadGraph(buf) {
   for (let i = 0; i < E; i++) {
     const flags = eFlags[i];
     if ((flags & (4 | 8 | 32)) || !(flags & 16) || isDismountEdge(i)) continue;
-    if (eFacility[i] !== 1 || eClass[i] < FACILITY_GAP_MIN_ROAD_CLASS
+    if (edgeFacilityBest(i) !== 1 || eClass[i] < FACILITY_GAP_MIN_ROAD_CLASS
         || eLen[i] > FACILITY_GAP_MAX_EDGE_M) continue;
     candidateEdges.push(i);
     for (const node of [eA[i], eB[i]]) {
@@ -320,7 +320,7 @@ function loadGraph(buf) {
   const connectorEligible = (i) => {
     const flags = eFlags[i];
     return !(flags & (4 | 8 | 32)) && !isDismountEdge(i)
-      && eFacility[i] === 0 && eClass[i] > 0 && eClass[i] <= 6
+      && edgeFacilityBest(i) === 0 && eClass[i] > 0 && eClass[i] <= 6
       && eLen[i] <= FACILITY_GAP_CONNECTOR_MAX_EDGE_M;
   };
   for (let hop = 0; hop < 2 && connectorFrontier.size; hop++) {
@@ -802,6 +802,27 @@ function edgeLimited(i, forward) {
   return !!(eLimitedDir[i] & (forward ? 1 : 2));
 }
 
+// eFacility packs both directions in one byte: low nibble = the A->B rung,
+// high nibble 0 = the same rung both ways (every graph built before the
+// split, and any symmetrically tagged road), else the B->A rung + 1. A lane
+// painted on one side of a two-way street serves one direction of travel;
+// the other direction is just riding the road (field: 37th Avenue NE showed
+// "Bike lane" to a rider on the unlaned side).
+function edgeFacility(i, forward) {
+  const packed = eFacility[i];
+  if (forward) return packed & 15;
+  const back = packed >> 4;
+  return back ? back - 1 : packed & 15;
+}
+
+// The better direction — for structural passes with no travel direction
+// (facility-gap detection) and for describing the STREET rather than a ride.
+function edgeFacilityBest(i) {
+  const packed = eFacility[i];
+  const back = packed >> 4;
+  return Math.max(packed & 15, back ? back - 1 : 0);
+}
+
 // Routing cost asks the same question the verdict does, through the same model.
 function sidewalkFallbackApplies(i, rules, forward) {
   const facts = edgeFacts(i, forward);
@@ -823,9 +844,9 @@ function edgeFacts(i, forward) {
     prohibited: shoulder === PROHIBITED_SHOULDER,
     ferry: !!(flags & 32),
     freeway: !!(flags & 4),
-    infra: !!(flags & 8) || eFacility[i] >= 4,
+    infra: !!(flags & 8) || edgeFacility(i, forward) >= 4,
     infraScore: 1,
-    facility: eFacility[i],
+    facility: edgeFacility(i, forward),
     limitedAccess: edgeLimited(i, forward),
     speed: edgeSpeed(i, forward),
     shoulder: shoulder >= 0 ? shoulder : null,
@@ -1058,12 +1079,12 @@ let maxFerryMps = FERRY_MAX_MPS_FALLBACK;
 // multiplier stacked on top of its physical facility. Use whichever single
 // bonus is stronger: the Preferred value or that edge's trail/lane value. The
 // no-edge form is the global lower bound used by the heuristic.
-function preferredSignedRouteMult(edge = null) {
+function preferredSignedRouteMult(edge = null, forward = true) {
   const facility = edge == null
     ? Math.min(1, activeWeights.facilityShared, activeWeights.facilityLane,
       activeWeights.facilityBuffered, activeWeights.facilitySeparated,
       activeWeights.facilityPath)
-    : facilityPrefMult(eFacility[edge]);
+    : facilityPrefMult(edgeFacility(edge, forward));
   return Math.min(activeWeights.preferredRoute, facility);
 }
 
@@ -1384,7 +1405,8 @@ function majorRoadMult(i, weights, forward) {
   // A real bike lane or separated facility makes motor-traffic exposure less
   // relevant to route choice. A sharrow is only paint in the traffic lane, so
   // measured traffic must still be priced normally.
-  if (eFacility[i] >= 2 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
+  if (edgeFacility(i, forward) >= 2 || (eFlags[i] & (8 | 32 | 4))
+      || edgeLimited(i, forward)) return 1;
   const osm = trafficTierMult(osmTrafficTier(i), weights);
   // `useMeasuredTraffic` blends from the OSM answer toward the measured one. At 0
   // this function is byte-for-byte the old behaviour, which is the point: the
@@ -1419,8 +1441,9 @@ function trafficStressMult(i, weights, forward) {
   // and exempting anything with a stripe meant the road that prompted this was
   // the one road it could never affect. A bike lane or buffer does help, so it
   // halves the cost rather than clearing it.
-  if (eFacility[i] >= 4 || (eFlags[i] & (8 | 32 | 4)) || edgeLimited(i, forward)) return 1;
-  const paintRelief = eFacility[i] >= 2 ? 0.5 : 1;
+  if (edgeFacility(i, forward) >= 4 || (eFlags[i] & (8 | 32 | 4))
+      || edgeLimited(i, forward)) return 1;
+  const paintRelief = edgeFacility(i, forward) >= 2 ? 0.5 : 1;
   const packed = eLanes ? eLanes[i] : 0;
   const lanes = packed & LANES_COUNT_MASK;
   // A centre turn lane is the signature of a wide suburban arterial, so three
@@ -1442,7 +1465,8 @@ function trafficStressMult(i, weights, forward) {
 // never a claim about bicycle legality or actual traffic counts.
 function sidewalkExposureMult(i, mode, forward) {
   if ((eOfficial[i] & (EDGE_URBAN | EDGE_SIDEWALK_NO)) !== (EDGE_URBAN | EDGE_SIDEWALK_NO)
-      || eFacility[i] >= 1 || edgeSpeed(i, forward) < 30 || (eFlags[i] & (8 | 32 | 4))) return 1;
+      || edgeFacility(i, forward) >= 1 || edgeSpeed(i, forward) < 30
+      || (eFlags[i] & (8 | 32 | 4))) return 1;
   return mode === 'direct' ? 1.06 : mode === 'low' ? 1.30 : 1.16;
 }
 
@@ -1927,7 +1951,7 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
     // Similar to a shared path, by request. Keep hills and surface additive
     // below so "prefer this vetted corridor" does not mean "pretend it is flat
     // and paved." The actual verdict is still emitted from actualLevel.
-    cost *= preferredSignedRouteMult(ei);
+    cost *= preferredSignedRouteMult(ei, forward);
   } else {
     cost *= speedStress(mode, fl, edgeSpeed(ei, forward),
       edgeNoShoulderMaxFor(searchRules), edgeShoulder(ei, forward));
@@ -1985,11 +2009,12 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // Sharrows are the narrow exception: their modest route-choice signal still
   // applies on a failing road, while the unchanged failure multiplier and
   // normal traffic cost keep that road appropriately expensive and red.
+  const ridingFacility = edgeFacility(ei, forward);
   if (!trustSignedRoute && !(fl & (32 | 4)) && !isDismountEdge(ei)
-      && facilityRouteBonusApplies(eFacility[ei], actualLevel)) {
+      && facilityRouteBonusApplies(ridingFacility, actualLevel)) {
     const signed = designatedEdge(ei, fl);
-    cost *= eFacility[ei]
-      ? facilityPrefMult(eFacility[ei])
+    cost *= ridingFacility
+      ? facilityPrefMult(ridingFacility)
       : (signed ? activeWeights[prefDesig ? 'strongDesignated' : 'designated'] : 1);
   }
   if (!trustSignedRoute && prefResidential && !(fl & (8 | 32 | 4))
@@ -2001,7 +2026,8 @@ function edgeCostParts(ei, forward, mode, modeW, rules, searchRules,
   // common trunk: leaving excellent infrastructure merely to be different
   // creates fussy neighborhood detours instead of a useful alternative.
   // (The factor itself is applied by the caller -- it varies per candidate.)
-  const protectedInfrastructure = trustSignedRoute || (fl & 8) || eFacility[ei] >= 4;
+  const protectedInfrastructure = trustSignedRoute || (fl & 8)
+    || edgeFacility(ei, forward) >= 4;
   // Grade is an independent rideability concern, applied after every
   // safety, facility, residential, and alternate-corridor multiplier so
   // a path bonus cannot shrink the penalty for a genuinely steep climb.
@@ -2152,16 +2178,17 @@ function edgeCostFloor(i, forward) {
   let m = modeMult(mode, trustSignedRoute ? 1 : searchLevel);
   if (!(m < Infinity)) return Infinity;
   if (trustSignedRoute) {
-    m *= preferredSignedRouteMult(i);
+    m *= preferredSignedRouteMult(i, forward);
   } else if (fl & 4) m *= freewayFloor;
   if (!trustSignedRoute && (eOfficial[i] & EDGE_MTB)) m *= mtbFloor;
   if (!trustSignedRoute && !(fl & (8 | 32 | 4)) && isResidential(i)) m *= residentialFloor;
+  const floorFacility = edgeFacility(i, forward);
   if (!trustSignedRoute && !(fl & (32 | 4)) && !isDismountEdge(i)
-      && facilityRouteBonusApplies(eFacility[i], level)) {
+      && facilityRouteBonusApplies(floorFacility, level)) {
     // A facility bonus OR a designation bonus, never both, and never on a
     // ferry, freeway or dismount link. The rider may have set neither
     // preference, so take whichever of the two prices the edge lower.
-    m *= eFacility[i] ? (facility[eFacility[i]] ?? 1)
+    m *= floorFacility ? (facility[floorFacility] ?? 1)
       : (designatedEdge(i, fl) ? designatedFloor : 1);
   }
   if (!trustSignedRoute && !(fl & (8 | 32))) {
@@ -2584,7 +2611,7 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
     if (designatedEdge(ei, eFlags[ei])) desigM += eLen[ei];
     // >= 2, not >= 1: facility 1 is a sharrow, which is paint in a shared lane
     // and must not count toward the route's bike-facility mileage.
-    if (eFacility[ei] >= 2) facilityM += eLen[ei];
+    if (edgeFacility(ei, forward) >= 2) facilityM += eLen[ei];
     if (eFlags[ei] & 8) trailM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
@@ -2631,7 +2658,10 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
       // card, which shows the worse of the two.
       shBack: edgeShoulder(ei, !forward),
       flags: eFlags[ei] | (edgeLimited(ei, forward) ? 128 : 0), roadClass: eClass[ei],
-      facility: eFacility[ei], official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
+      // The direction actually ridden, same contract as sh/shBack: a lane on
+      // one side of a two-way street must not describe the other side's ride.
+      facility: edgeFacility(ei, forward), facilityOther: edgeFacility(ei, !forward),
+      official: eOfficial[ei], mtb: !!(eOfficial[ei] & EDGE_MTB),
       dismount: dismountHere, facilityGap, level, cautionCause,
       surface: eSurface[ei], surfaceLabel: SURFACE_LABEL[eSurface[ei]] || SURFACE_LABEL[SURFACE_UNKNOWN],
       lanes: eLanes ? eLanes[ei] & LANES_COUNT_MASK : 0,
@@ -2858,7 +2888,7 @@ function routeFragment(source, startEdge, endEdge, rules) {
     if (designatedEdge(ei, eFlags[ei])) desigM += eLen[ei];
     // >= 2, not >= 1: facility 1 is a sharrow, which is paint in a shared lane
     // and must not count toward the route's bike-facility mileage.
-    if (eFacility[ei] >= 2) facilityM += eLen[ei];
+    if (edgeFacility(ei, forward) >= 2) facilityM += eLen[ei];
     if (eFlags[ei] & 8) trailM += eLen[ei];
     if (eOfficial[ei] & EDGE_MTB) mtbM += eLen[ei];
     if (isDismountEdge(ei)) dismountM += eLen[ei];
@@ -3909,7 +3939,7 @@ function sectionFrontierArcMetrics(source, index) {
   const dismountM = isDismountEdge(edge) ? len : 0;
   const hazardM = Number(seg.hazardLenM) || 0;
   const limitedM = !(flags & 4) && edgeLimited(edge, forward) ? len : 0;
-  const gapM = flags & (8 | 32) || eFacility[edge] >= 2 ? 0 : len;
+  const gapM = flags & (8 | 32) || (seg.facility || 0) >= 2 ? 0 : len;
   const nonTrailM = flags & (8 | 32) ? 0 : len;
   const roughM = !(flags & 32) && eSurface[edge] >= SURFACE_GRAVEL ? len : 0;
   return {
@@ -4009,7 +4039,7 @@ function crossBreedPrefixMetrics(route) {
       timeS: previous.timeS + (Number(seg.timeS) || 0),
       failM: previous.failM + (seg.level === 4 ? eLen[edge] : 0),
       dismountM: previous.dismountM + (isDismountEdge(edge) ? eLen[edge] : 0),
-      facilityM: previous.facilityM + (eFacility[edge] >= 2 ? eLen[edge] : 0),
+      facilityM: previous.facilityM + ((seg.facility || 0) >= 2 ? eLen[edge] : 0),
       trailM: previous.trailM + (eFlags[edge] & 8 ? eLen[edge] : 0),
     });
   }

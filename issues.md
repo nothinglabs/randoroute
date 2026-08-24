@@ -124,3 +124,14 @@ re-enabled.
 
 ### 9. Finalize app name
 Choose and approve the final public name for the app before release.
+
+### 10. Directional bike lanes — code shipped, graph rebuild pending
+A lane on one side of a two-way street (OSM `cycleway:right`/`:left`) is now
+stored, priced, judged and described per direction of travel (field: 37th
+Avenue NE claimed "Bike lane" on the unlaned side; "A bike lane can also
+depend on which way you ride" in `docs/SAFETY-MODEL.md`). The encoding is
+backward-compatible, so shipped graphs behave exactly as before until the
+Washington and Oregon graphs (and their partitions) are rebuilt with
+`build_graph.py` on a machine with the OSM extracts — this container has no
+build inputs. WSDOT's `BikeFacilitySides` attribute is recorded but not yet
+used for direction; a later refinement.

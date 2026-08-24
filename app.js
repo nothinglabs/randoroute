@@ -3963,7 +3963,12 @@ function routeSegProps(s, routeIndex) {
     lanes: s.lanes || 0, ctl: s.centerTurnLane ? 1 : 0, lts: s.lts || 0,
     ow: flags & 16 ? 1 : 0,
     infra: flags & 8 ? 1 : 0, ferry: flags & 32 ? 1 : 0, desig: flags & 64 ? 1 : 0,
-    facility: s.facility || 0, official: s.official || 0, mtb: s.mtb ? 1 : 0,
+    facility: s.facility || 0,
+    // The other direction's facility, same contract as shBack: a lane on one
+    // side of a two-way street belongs to one direction of travel, and the
+    // card says so instead of contradicting what the rider sees.
+    facilityOther: Number.isFinite(Number(s.facilityOther)) ? Number(s.facilityOther) : null,
+    official: s.official || 0, mtb: s.mtb ? 1 : 0,
     dismount: isDismountSegment(s) ? 1 : 0,
     dismountEscalated: s.dismountEscalated ? 1 : 0,
     facilityGap: s.facilityGap ? 1 : 0,
@@ -14338,7 +14343,13 @@ function renderReadout(feature, lngLat, anchorPoint = null, {
         ['Area', n.urban ? 'Urban (Census)' : 'Rural (Census)'],
         ['Sidewalk (OSM)', n.sidewalk || 'not mapped'],
         ['Rule override', sidewalkFallbackApplies(n) ? 'Sidewalk fallback — strongly deprioritized' : null],
-        ['Bike facility', FACILITY_NAME[p.facility] || null],
+        // The facility for the DIRECTION RIDDEN. A lane painted on the other
+        // side of a two-way street is named as such rather than letting the
+        // card claim a lane the rider cannot see from their side (field:
+        // 37th Avenue NE, cycleway:right=lane, ridden the other way).
+        ['Bike facility', FACILITY_NAME[p.facility]
+          || (Number(p.facilityOther) >= 1
+            ? `${FACILITY_NAME[p.facilityOther]} — other direction only` : null)],
         ['Facility source', p.official & 2 ? segmentRegion.facilitySourceName : null],
         ['Surface (OSM)', routeSurfaceLabel(p.surface)],
         ['Route choice', routeClassNote(p)],

@@ -56,6 +56,30 @@ nothing extra when they agree.
 with two answers, and of the two the safe reading is the one that can never make
 a road look better than it might be.
 
+## A bike lane can also depend on which way you ride
+
+OSM tags cycleway facilities by SIDE of the way (`cycleway:right`,
+`cycleway:left`, `cycleway:both`), and in right-hand traffic a lane painted on
+one side of a two-way street serves one direction of travel. The graph packs a
+per-direction rung pair into the existing `eFacility` byte (low nibble = the
+A→B rung; high nibble 0 = same rung both ways — byte-identical to every graph
+built before the split — else the B→A rung + 1), and the router resolves it
+through `edgeFacility(edge, forward)` everywhere a direction exists: the
+verdict facts, `good_facility`, the facility route bonus, paint relief, the
+sidewalk-exposure exemption, and the route card's segment properties. On a
+car-oneway street any with-flow lane serves the legal direction and only
+`opposite_*` values describe the contraflow side.
+
+Field origin: 37th Avenue NE carries `cycleway:right=lane`; the route card
+said "Bike lane" to a rider on the unlaned side. The route card now reports
+the direction ridden and says "— other direction only" when the lane is on
+the other side; the STREET card and the background layers keep describing the
+road by its better direction, the same one-line-per-road convention the
+shoulder section above records. Direction-less structural passes (facility-gap
+detection) read the better direction (`edgeFacilityBest`), preserving their
+street-level semantics. Effective only on graphs rebuilt with the directional
+builder; earlier graphs decode symmetrically by construction.
+
 Precedence for the shoulder itself, in `build_graph.py`: OSM tags are the base,
 WSDOT `ShoulderWidth` overrides per direction where a match exists, and the CRAB
 county paved shoulder is deliberately **never** written into it — it travels in
