@@ -5497,6 +5497,7 @@ function updateOffRouteGuidance(nearest, previousFix) {
   }
 }
 
+let lastProgressSent = null;
 function updateNavigationProgress() {
   const source = map.getSource('route-progress');
   if (!source) return;
@@ -5506,6 +5507,14 @@ function updateNavigationProgress() {
     ? turnNav.plannedNearestSegment : turnNav.nearestSegment;
   const nearestPoint = turnNav.followingConnector
     ? turnNav.plannedNearestPoint : turnNav.nearestPoint;
+  // The ridden line grows with the ride and re-tiles on every send. A rider
+  // waiting at a light produced an identical multi-thousand-coordinate
+  // payload every GPS second; only an actual advance is worth one.
+  const signature = turnNav.active && route && nearestPoint
+    ? `${route === turnNav.plannedRoute ? 'p' : 'r'}:${nearestSegment}:${nearestPoint[0]},${nearestPoint[1]}`
+    : 'off';
+  if (signature === lastProgressSent) return;
+  lastProgressSent = signature;
   if (turnNav.active && route && nearestPoint) {
     const lastComplete = Math.max(0,
       Math.min(route.coords.length - 1, nearestSegment));
@@ -9232,6 +9241,7 @@ function drawRoute(coords, ferrySegs, segs) {
     map.getSource('route-detail-marker').setData(emptyHighlights);
     map.getSource('route-detail-selection').setData(emptyLine);
     map.getSource('route-progress').setData({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } });
+    lastProgressSent = null;
     setRoutePulses(renderData);
     // Background dimming follows whether A route shows, not which one: only
     // the transition needs the full display-mode pass, never a letter flip.
