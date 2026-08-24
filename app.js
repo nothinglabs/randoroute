@@ -4542,7 +4542,10 @@ async function computeMultiStateRoute({ revealPanel = !routing.restoringRoute } 
       : internalFailure ? 'Could not prepare the required route maps.'
         : error.message || 'Could not prepare the required route maps.';
     onRouterMessage({ data: { type: request.type, id: requestId, ok: false,
-      options: request.type === 'route-options' ? [] : undefined, reason } });
+      options: request.type === 'route-options' ? [] : undefined, reason,
+      // The card offers the Maps screen directly: the cure for a missing
+      // state map is a download, not rephrasing the route.
+      needsMaps: missingRouting } });
   }
 }
 
@@ -8312,7 +8315,7 @@ function renderRouteCard(m) {
     const slot = card.querySelector('#routeDetailsSlot');
     if (slot && details) slot.replaceWith(details);
   };
-  const showRouteMessage = (title, message, hint = '', error = false) => {
+  const showRouteMessage = (title, message, hint = '', error = false, action = null) => {
     card.innerHTML = `<div id="routeControlsSlot"></div>
       <div class="rc-route-message${error ? ' error' : ''}">
         <strong></strong><span></span><small></small>
@@ -8326,6 +8329,15 @@ function renderRouteCard(m) {
     box.querySelector('span').hidden = !message;
     box.querySelector('small').textContent = hint;
     box.querySelector('small').hidden = !hint;
+    if (action) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.id = 'routeMessageAction';
+      button.className = 'rc-route-message-action';
+      button.textContent = action.label;
+      button.addEventListener('click', action.onClick);
+      box.append(button);
+    }
     moveControls();
     moveDetails();
     refreshNavigationUI();
@@ -8351,7 +8363,8 @@ function renderRouteCard(m) {
     const hint = reason === 'No route fully matches your safety rules.'
       ? 'Adjust a rule, or turn off “Only show routes fully matching safety rules”.'
       : '';
-    showRouteMessage('Route unavailable', reason, hint, true);
+    showRouteMessage('Route unavailable', reason, hint, true,
+      m.needsMaps ? { label: 'Open the Maps screen', onClick: openMapsDialog } : null);
     return;
   }
   const stats = routeSummaryStats(m);
