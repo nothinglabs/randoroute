@@ -55,6 +55,10 @@ the entry point on why).
       its score in terms of **coverage**, not effort.
 - [ ] `maps/<state>/BUILD.md` — every command that produced every file, in
       order, so the next person can rebuild it without you.
+- [ ] `maps/<state>/regional.pmtiles`, built from the state's reviewed
+      `basemap.pmtiles` with `node scripts/build_regional_basemap.mjs <state>`;
+      declare and stamp both archives so regional zooms retain coastlines,
+      islands, and inland water offline.
 - [ ] `maps/<state>/VERIFICATION.md` — the level-5 gate. `maps/README.md` says
       what it must contain. The part that matters: **every disagreement between
       the router and a known-good route needs a diagnosis**, not just a note

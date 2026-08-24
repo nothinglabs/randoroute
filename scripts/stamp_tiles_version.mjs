@@ -25,6 +25,7 @@ const stamp = (name) => `sha-${createHash('sha256')
 const versions = { ...config.versions };
 for (const [dataset, file] of [
   ['roads', 'roads.pmtiles'],
+  ['regional', 'regional.pmtiles'],
   ['basemap', 'basemap.pmtiles'],
   ['overlays', 'overlays.pmtiles'],
 ]) {

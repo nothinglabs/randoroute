@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-24.806';
+const APP_VERSION = '2026-08-24.807';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1284,11 +1284,11 @@ const map = new maplibregl.Map({
     : [-104, 39],
   zoom: Region.localDataAvailable
     ? ((savedState && savedState.view && savedState.view.z) || 6.4) : 2.25,
-  // A build covers one state. Low-zoom statewide tiles make WebKit
-  // retain and rebucket a very large generation during a pinch, which can
-  // terminate iPhone Safari. Unconstrained browsers keep the wider z5 view;
-  // WebKit and phones stop before that memory-heavy tile level.
-  minZoom: Region.localDataAvailable ? (constrainedMapRuntime ? 6 : 5) : 1.5,
+  // Detailed statewide archives remain above the WebKit-safe handoff, while
+  // the lightweight regional archive now carries coastline-correct land and
+  // water below it. Phones can therefore use the full regional range without
+  // decoding the oversized low-zoom context tiles. Desktop remains at z5.
+  minZoom: Region.localDataAvailable ? (constrainedMapRuntime ? 4 : 5) : 1.5,
   maxZoom: Region.localDataAvailable ? 17 : 6,
   // Retained-tile budget. The default keeps ~5 zoom levels of decoded tiles
   // per source; with two state archives plus seven route GeoJSON pyramids on
@@ -15480,6 +15480,7 @@ const MAP_FIRST_RUN_REPROMPT_MS = 30 * 24 * 60 * 60 * 1000;
 let nationalCataloguePromise = null;
 let nationalFeatureCollection = null;
 let nationalMapOffers = new Map();
+let nationalMapOffersByStore = new Map();
 let selectedNationalStateId = null;
 let nationalInstallController = null;
 
@@ -15490,6 +15491,13 @@ function defaultMapStoreUrl() {
 function mapStoreUrls() {
   return [...new Set([defaultMapStoreUrl(),
     ...MapStore.customStores().map((store) => store.url)])];
+}
+
+function mapStoreOfferKey(storeUrl, stateId) {
+  let resolved = String(storeUrl || '');
+  try { resolved = new URL(resolved, location.href).href; }
+  catch (error) { /* comparison falls back to the supplied store address */ }
+  return `${resolved}\n${stateId}`;
 }
 
 async function loadNationalCatalogue(force = false) {
@@ -15503,18 +15511,21 @@ async function loadNationalCatalogue(force = false) {
       throw new Error('National state map is not the expected 50 states plus DC.');
     }
     const offers = new Map();
+    const offersByStore = new Map();
     const indexes = await Promise.allSettled(mapStoreUrls().map(async (storeUrl) => ({
       storeUrl, index: await MapStore.fetchIndex(storeUrl),
     })));
     for (const result of indexes) {
       if (result.status !== 'fulfilled') continue;
       for (const state of result.value.index.states) {
-        if (!offers.has(state.id)) offers.set(state.id,
-          { storeUrl: result.value.storeUrl, state });
+        const offer = { storeUrl: result.value.storeUrl, state };
+        offersByStore.set(mapStoreOfferKey(result.value.storeUrl, state.id), offer);
+        if (!offers.has(state.id)) offers.set(state.id, offer);
       }
     }
     nationalFeatureCollection = boundaries;
     nationalMapOffers = offers;
+    nationalMapOffersByStore = offersByStore;
     applyNationalMapFeatureStates();
     return { boundaries, offers };
   })().catch((error) => {
@@ -15634,6 +15645,29 @@ function stateWithAcquisitions(state) {
   return acquisitions ? { ...state, acquisitions } : state;
 }
 
+// An installed map retains the manifest it was downloaded with. The generated
+// shell catalogue is the current default-store offer, while the fetched
+// catalogue is the current offer from the store that supplied the install.
+// Compare either CURRENT offer with the retained manifest; comparing the old
+// installed state to itself hid upgrades such as a newly added regional tile
+// archive. Bundled states deliberately never enter this path.
+function installedMapUpdateOffer(id) {
+  if (MapStore.availability(id) !== 'installed') return null;
+  const installed = MapStore.installedEntry(id);
+  if (!installed) return null;
+  const currentStoreUrl = installed.storeUrl || defaultMapStoreUrl();
+  const fetched = nationalMapOffersByStore.get(mapStoreOfferKey(currentStoreUrl, id));
+  if (fetched && MapStore.updateAvailable(fetched.state)) return fetched;
+
+  if (mapStoreOfferKey(currentStoreUrl, id) !== mapStoreOfferKey(defaultMapStoreUrl(), id)) {
+    return null;
+  }
+  const indexed = (self.MAP_STATES || []).find((state) => state.id === id);
+  const state = stateWithAcquisitions(indexed);
+  return state && MapStore.updateAvailable(state)
+    ? { storeUrl: defaultMapStoreUrl(), state } : null;
+}
+
 function setStateCardFact(host, label, value) {
   const term = document.createElement('dt');
   term.textContent = label;
@@ -15651,8 +15685,9 @@ async function openNationalStateCard(id) {
   const offer = nationalMapOffers.get(id) || null;
   const pendingIntent = readPendingMapRouteIntent();
   const continuesTrip = pendingIntent?.stateId === id;
+  const updateOffer = installedMapUpdateOffer(id);
   const known = allKnownStates().find((state) => state.id === id) || offer?.state || null;
-  const state = stateWithAcquisitions(known);
+  const state = stateWithAcquisitions(updateOffer?.state || known);
   const availability = nationalAvailability(id);
   selectedNationalStateId = id;
   applyNationalMapFeatureStates();
@@ -15666,8 +15701,9 @@ async function openNationalStateCard(id) {
   const remove = document.getElementById('mapStateRemove');
   const cancel = document.getElementById('mapStateCancelDownload');
   title.textContent = feature.properties.name;
-  status.className = `map-state-card-status ${availability}`;
-  status.textContent = availability === 'installed' ? 'On this device'
+  status.className = `map-state-card-status ${updateOffer ? 'update' : availability}`;
+  status.textContent = updateOffer ? 'Update available'
+    : availability === 'installed' ? 'On this device'
     : availability === 'available' ? 'Available to download' : 'Not offered';
   summary.textContent = state?.summary || (availability === 'unavailable'
     ? 'A downloadable map is not available from your configured map stores.'
@@ -15697,7 +15733,24 @@ async function openNationalStateCard(id) {
     dialog.close();
     populateMapsPane();
   };
-  if (availability === 'installed') {
+  if (updateOffer) {
+    primary.textContent = `Update ${formatMapBytes(MapStore.stateBytes(updateOffer.state))}`;
+    primary.onclick = async () => {
+      primary.disabled = true;
+      cancel.hidden = false;
+      nationalInstallController = new AbortController();
+      cancel.onclick = () => nationalInstallController?.abort();
+      const installed = await downloadStoreState(updateOffer.storeUrl,
+        updateOffer.state, primary, {
+          signal: nationalInstallController.signal,
+          onStatus: (message) => { actionStatus.textContent = message; },
+        });
+      nationalInstallController = null;
+      cancel.hidden = true;
+      if (installed) location.reload();
+      else primary.disabled = false;
+    };
+  } else if (availability === 'installed') {
     const current = Region.localDataAvailable && Region.id === id;
     primary.textContent = continuesTrip ? 'Continue trip'
       : current ? 'Current home map' : 'Use as home map';
@@ -15831,6 +15884,7 @@ function buildMapsStateList() {
   for (const state of allKnownStates()) {
     const home = state.id === Region.id;
     const availability = MapStore.availability(state.id);
+    const updateOffer = installedMapUpdateOffer(state.id);
     // A remote state earns a row only when the app's own catalog names it
     // (the slim shell: its data downloads from the app's origin). A state
     // installed from a third-party store and then removed is simply gone
@@ -15885,6 +15939,20 @@ function buildMapsStateList() {
       meta.className = 'maps-state-size';
       meta.textContent = formatMapBytes(MapStore.stateBytes(MapStore.installedEntry(state.id).state));
       row.append(meta);
+      if (updateOffer) {
+        const update = document.createElement('button');
+        update.type = 'button';
+        update.className = 'maps-state-download maps-state-update';
+        update.textContent = 'Update';
+        update.setAttribute('aria-label', `Update the downloaded ${state.name} map (${formatMapBytes(MapStore.stateBytes(updateOffer.state))})`);
+        update.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          downloadStoreState(updateOffer.storeUrl, updateOffer.state, update)
+            .then((installed) => { if (installed) location.reload(); });
+        });
+        row.append(update);
+      }
       if (!home) {
         const remove = document.createElement('button');
         remove.type = 'button';
@@ -16013,7 +16081,10 @@ async function renderStoreOffers(storeUrl, host) {
       download.type = 'button';
       download.className = 'maps-state-download';
       download.textContent = `${updating ? 'Update' : 'Download'} ${formatMapBytes(MapStore.stateBytes(state))}`;
-      download.addEventListener('click', () => downloadStoreState(storeUrl, state, download));
+      download.addEventListener('click', () => {
+        downloadStoreState(storeUrl, state, download)
+          .then((installed) => { if (installed && updating) location.reload(); });
+      });
       row.append(label, download);
       host.append(row);
     }
@@ -16029,6 +16100,10 @@ function populateMapsPane() {
   setMapsStatus('');
   renderNationalOrientationMap(document.getElementById('mapsNationalMap'));
   buildMapsStateList();
+  // The shell catalogue makes default-store updates visible immediately. A
+  // custom-store install needs its current remote catalogue first, so refresh
+  // the rows once the same request driving the orientation map completes.
+  loadNationalCatalogue().then(() => buildMapsStateList()).catch(() => {});
   buildMapsStoreList();
   updateMapsStorageLine();
 }

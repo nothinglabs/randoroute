@@ -35,6 +35,17 @@ for (const state of index.states) {
     if (!stat || stat.size !== file.bytes) { sized = false; break; }
   }
   check(`${state.id}: every listed file exists at its listed size`, sized);
+  if (state.datasets.basemap) {
+    const regional = state.files.find((file) => file.dataset === 'regional');
+    check(`${state.id}: a detailed basemap includes compact regional geometry`,
+      state.datasets.regional === true
+        && regional?.path === 'regional.pmtiles'
+        && regional.bytes > 0
+        && typeof state.versions?.regional === 'string'
+        && state.versions.regional.length > 0,
+      JSON.stringify({ dataset: state.datasets.regional, regional,
+        version: state.versions?.regional }));
+  }
   check(`${state.id}: a nonzero total download size`, MapStore.stateBytes(state) > 0);
   check(`${state.id}: an atomic map acquisition exactly covers the ordinary file list`,
     state.acquisitions.length >= 1

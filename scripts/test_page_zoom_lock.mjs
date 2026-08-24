@@ -53,8 +53,8 @@ function mapOptions(constrainedMapRuntime, localDataAvailable) {
   const context = vm.createContext({ __scope: proxy });
   return vm.runInContext(`with (__scope) { (${app.slice(open, close + 1)}) }`, context);
 }
-assert.equal(mapOptions(true, true).minZoom, 6,
-  'phone and WebKit maps must stop before the memory-heavy statewide tile level');
+assert.equal(mapOptions(true, true).minZoom, 4,
+  'phone and WebKit maps may use the compact regional archive through the statewide view');
 assert.equal(mapOptions(false, true).minZoom, 5,
   'unconstrained browsers keep the wider statewide view');
 assert.equal(mapOptions(false, false).minZoom, 1.5,

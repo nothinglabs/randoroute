@@ -58,6 +58,7 @@
   // scripts/stamp_tiles_version.mjs after a tile rebuild -- run it, never
   // hand-edit.
   root.ROADS_TILES_VERSION = region.versions.roads || '';
+  root.REGIONAL_TILES_VERSION = region.versions.regional || '';
   root.BASEMAP_TILES_VERSION = region.versions.basemap || '';
   root.OVERLAY_TILES_VERSION = region.versions.overlays || '';
 }(typeof self !== 'undefined' ? self : this));

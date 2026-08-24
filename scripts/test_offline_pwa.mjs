@@ -49,10 +49,16 @@ const check = (name, ok, detail = '') => {
 await page.goto(site.url, { waitUntil: 'load' });
 await page.waitForFunction(() => window.map && map.loaded && map.loaded(), { timeout: 300000 })
   .catch(() => {});
-// The worker precaches the offline dataset. Wait for it rather than guessing.
-await page.waitForFunction(
-  async () => (await (await caches.open('data-offline-map-v9')).keys()).length >= 9,
-  { timeout: 900000 });
+// The worker precaches the offline dataset. Wait for the exact archive and
+// marker contract rather than a count that can become true halfway through an
+// expanded map pack.
+await page.waitForFunction(async () => {
+  const keys = (await (await caches.open('data-offline-map-v9')).keys())
+    .map((request) => new URL(request.url).pathname);
+  return ['regional.pmtiles', 'basemap.pmtiles', 'roads.pmtiles'].every((file) =>
+    keys.includes(`/maps/washington/${file}`)
+      && keys.includes(`/maps/washington/.stamp/${file}`));
+}, null, { timeout: 900000 });
 
 const cached = await page.evaluate(async () => {
   const cache = await caches.open('data-offline-map-v9');
@@ -68,8 +74,12 @@ check('the routing graph is cached under the URL the app actually requests',
 check('one copy of the graph, not two',
   cached.filter((u) => u.includes('graph2.bin.gz')).length === 1,
   `${cached.filter((u) => u.includes('graph2.bin.gz')).length} copies`);
-for (const archive of ['/maps/washington/basemap.pmtiles', '/maps/washington/roads.pmtiles']) {
-  check(`${archive} is stored for offline use`, cached.includes(archive));
+for (const archive of ['/maps/washington/regional.pmtiles',
+  '/maps/washington/basemap.pmtiles', '/maps/washington/roads.pmtiles']) {
+  const marker = archive.replace('/maps/washington/', '/maps/washington/.stamp/');
+  check(`${archive} and its content stamp are stored for offline use`,
+    cached.includes(archive) && cached.includes(marker),
+    `archive=${cached.includes(archive)}, stamp=${cached.includes(marker)}`);
 }
 
 // maps/states.js lives under /maps/ but is a SHELL script, not data -- it is

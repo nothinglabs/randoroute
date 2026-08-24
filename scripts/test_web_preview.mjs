@@ -29,10 +29,11 @@ try {
       && registry.includes(`${expectedBase}maps/`));
 
   const store = JSON.parse(await readFile(join(output, 'maps/index.json'), 'utf8'));
-  let assets = 0;
+  let assets = 0, regionalAssets = 0;
   for (const state of store.states) {
     for (const file of state.files) {
       await access(join(output, 'maps', state.id, file.path));
+      if (file.dataset === 'regional' && file.path === 'regional.pmtiles') regionalAssets++;
       assets++;
     }
     for (const unit of state.acquisitions || []) {
@@ -47,6 +48,10 @@ try {
   }
   check('the preview origin contains every exact state and routing-store artifact', assets > 80,
     `${assets} assets`);
+  check('the preview publishes one compact regional archive for every detailed basemap',
+    regionalAssets === store.states.filter((state) => state.datasets.basemap).length,
+    `${regionalAssets} regional archives for `
+      + `${store.states.filter((state) => state.datasets.basemap).length} basemaps`);
 
   const record = JSON.parse(await readFile(join(output, 'preview.json'), 'utf8'));
   const release = JSON.parse(await readFile(join(ROOT, 'version.json'), 'utf8'));

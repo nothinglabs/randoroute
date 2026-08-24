@@ -107,6 +107,8 @@ tippecanoe -o maps/oregon/roads.pmtiles -l roads --force -Z5 -z13 \
   --bounds=-124.8,41.8,-116.3,46.4 \
   --out maps/oregon/basemap.pmtiles
 
+node scripts/build_regional_basemap.mjs oregon
+
 /private/tmp/randoroute-venv/bin/python scripts/build_graph.py \
   --src data/oregon-latest.osm.pbf \
   --region maps/oregon/region.json \
@@ -132,9 +134,13 @@ The merge and stamp commands use only the 18 Oregon Scenic Bikeways explicitly
 approved in the shared route-source registry. They reconcile overlaps with OSM
 and apply the ordinary designated-route bit; they do not alter safety facts.
 
-The graph builder stamps `graph`; the tile stamper stamps `roads`, `basemap`,
-and `overlays`. The generated registry files are
+The graph builder stamps `graph`; the tile stamper stamps `roads`, `regional`,
+`basemap`, and `overlays`. The generated registry files are
 `maps/states.js` and `maps/index.json`.
+
+`regional.pmtiles` is the zoom 4-8 handoff archive derived from the reviewed
+zoom 8 `land_detail` and `water` layers in `basemap.pmtiles`; it needs no source
+download or OSM rebuild.
 
 ## Verification
 

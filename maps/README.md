@@ -20,6 +20,7 @@ maps/
     graph2.bin.gz      routing graph
     ferries.geojson.gz bicycle-routable ferry lines derived from the graph
     roads.pmtiles      street geometry, names, safety attributes
+    regional.pmtiles   small zoom 4-8 land/water handoff derived from basemap
     basemap.pmtiles    land, water, green space, place labels
     overlays.pmtiles   traffic-stress and bike-infrastructure detail layers
     places.json        offline place-search index
@@ -173,7 +174,7 @@ highest thing it has ever done.
 |---|---|---|
 | 0 | folder only | `region.json` exists and validates; nothing built |
 | 1 | selectable | app opens on the state, `test_region_portable` and the Maps screen pass |
-| 2 | **basic imports** | `places.json` + `basemap.pmtiles`. Search and a map; no routing |
+| 2 | **basic imports** | `places.json` + `basemap.pmtiles` + derived `regional.pmtiles`. Search and a map; no routing |
 | 3 | routable | `roads.pmtiles` + `graph2.bin.gz`. Routes return. OSM only — class-estimated speeds, no agency data |
 | 4 | **routing is meaningful** | agency speed limits and bike facilities conflated; `test_corridor_severance` passes on the state's nominated corridors; `test_build_parity` and `test_fact_contract` green |
 | 5 | **traffic, and verified by research** | traffic volume conflated (HPMS at minimum) **and** a written verification report — see below |
@@ -271,6 +272,22 @@ itself and regenerate `states.js`:
 python3 scripts/build_graph.py --out maps/<state>/graph2.bin.gz ...
 node scripts/stamp_tiles_version.mjs <state>
 ```
+
+`regional.pmtiles` is derived without a source download from the reviewed zoom
+8 `land_detail` and `water` layers in `basemap.pmtiles`:
+
+```
+node scripts/build_regional_basemap.mjs <state>
+node scripts/stamp_tiles_version.mjs <state>
+```
+
+The small archive is resident at regional zooms so coastlines, islands, and
+inland water remain geographically correct without loading the much larger
+detailed context archive. It deliberately omits the generalized `land` layer,
+which can bridge narrow marine gaps; a landlocked state's empty coastline layer
+falls back to its generalized land during this build. It is a separate declared
+dataset and stamp because map-store installs, service-worker refreshes, and
+native shells all need the same exact file manifest.
 
 `scripts/test_graph_version_stamp.mjs` fails the suite if a shipped graph does
 not match its stamp, so a rebuild cannot ship quietly.

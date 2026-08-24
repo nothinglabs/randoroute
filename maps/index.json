@@ -53,6 +53,7 @@
     "ferries": true,
     "graph": true,
     "roads": true,
+    "regional": true,
     "basemap": true,
     "overlays": true,
     "places": true,
@@ -65,7 +66,8 @@
     "roads": "sha-2bd3d7bced02",
     "basemap": "sha-4c10a8764862",
     "overlays": "sha-0a5d52347b4c",
-    "graph": "sha-8ae4d0b5e2d3"
+    "graph": "sha-8ae4d0b5e2d3",
+    "regional": "sha-52798c61649d"
    },
    "attribution": {
     "extractName": "Oregon",
@@ -131,6 +133,11 @@
      "bytes": 32400799
     },
     {
+     "dataset": "regional",
+     "path": "regional.pmtiles",
+     "bytes": 683788
+    },
+    {
      "dataset": "basemap",
      "path": "basemap.pmtiles",
      "bytes": 41344874
@@ -154,12 +161,12 @@
    "acquisitions": [
     {
      "acquisitionFormat": 1,
-     "id": "map-oregon-760d7047e8bcdb33",
+     "id": "map-oregon-6af0d824d4bf247f",
      "kind": "state-map",
      "stateIds": [
       "oregon"
      ],
-     "totalBytes": 126677669,
+     "totalBytes": 127361457,
      "files": [
       {
        "dataset": "ferries",
@@ -180,6 +187,11 @@
        "dataset": "roads",
        "path": "roads.pmtiles",
        "bytes": 32400799
+      },
+      {
+       "dataset": "regional",
+       "path": "regional.pmtiles",
+       "bytes": 683788
       },
       {
        "dataset": "basemap",
@@ -1748,6 +1760,7 @@
     "ferries": true,
     "graph": true,
     "roads": true,
+    "regional": true,
     "basemap": true,
     "overlays": true,
     "places": true,
@@ -1760,7 +1773,8 @@
     "graph": "sha-c043f268453b",
     "roads": "sha-dd29b387e828",
     "basemap": "sha-77136fe2672a",
-    "overlays": "sha-04c278da789b"
+    "overlays": "sha-04c278da789b",
+    "regional": "sha-468921433b5b"
    },
    "attribution": {
     "extractName": "Washington",
@@ -1816,6 +1830,11 @@
      "bytes": 46615046
     },
     {
+     "dataset": "regional",
+     "path": "regional.pmtiles",
+     "bytes": 915501
+    },
+    {
      "dataset": "basemap",
      "path": "basemap.pmtiles",
      "bytes": 45854524
@@ -1839,12 +1858,12 @@
    "acquisitions": [
     {
      "acquisitionFormat": 1,
-     "id": "map-washington-a09db5e520fa7e03",
+     "id": "map-washington-159672c237f08d3d",
      "kind": "state-map",
      "stateIds": [
       "washington"
      ],
-     "totalBytes": 166926742,
+     "totalBytes": 167842243,
      "files": [
       {
        "dataset": "ferries",
@@ -1870,6 +1889,11 @@
        "dataset": "roads",
        "path": "roads.pmtiles",
        "bytes": 46615046
+      },
+      {
+       "dataset": "regional",
+       "path": "regional.pmtiles",
+       "bytes": 915501
       },
       {
        "dataset": "basemap",

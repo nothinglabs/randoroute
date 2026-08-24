@@ -17,18 +17,21 @@ const FILES = {
   'graph2.bin.gz': Buffer.from('fake-graph-bytes-for-install-test'),
   'places.json': Buffer.from(JSON.stringify({ places: [] })),
   'roads.pmtiles': Buffer.from('fake-roads-archive-bytes'),
+  'regional.pmtiles': Buffer.from('fake-regional-archive-bytes'),
 };
 const STORE_STATE = {
   id: 'teststate', name: 'Test State', status: 'preview',
   summary: 'A synthetic state for the install test.',
   bounds: { minLon: -1, minLat: -1, maxLon: 1, maxLat: 1 },
   defaultCenter: [0, 0], defaultZoom: 8,
-  datasets: { graph: true, places: true, roads: true },
-  versions: { graph: 'sha-test-graph', roads: 'sha-test-roads' },
+  datasets: { graph: true, places: true, roads: true, regional: true },
+  versions: { graph: 'sha-test-graph', roads: 'sha-test-roads',
+    regional: 'sha-test-regional' },
   files: [
     { dataset: 'graph', path: 'graph2.bin.gz', bytes: FILES['graph2.bin.gz'].length },
     { dataset: 'places', path: 'places.json', bytes: FILES['places.json'].length },
     { dataset: 'roads', path: 'roads.pmtiles', bytes: FILES['roads.pmtiles'].length },
+    { dataset: 'regional', path: 'regional.pmtiles', bytes: FILES['regional.pmtiles'].length },
   ],
 };
 // Identical shape, but its archive 404s: the download must fail CLEANLY.
@@ -114,8 +117,10 @@ check('the download completes and reports ready', installed.status.includes('rea
 check('every file lands under its logical serving key, the graph query included',
   installed.keys.includes('/maps/teststate/places.json')
     && installed.keys.includes('/maps/teststate/roads.pmtiles')
+    && installed.keys.includes('/maps/teststate/regional.pmtiles')
     && installed.keys.includes('/maps/teststate/graph2.bin.gz?format=bgr10-1&gv=sha-test-graph')
-    && installed.keys.includes('/maps/teststate/.stamp/roads.pmtiles'),
+    && installed.keys.includes('/maps/teststate/.stamp/roads.pmtiles')
+    && installed.keys.includes('/maps/teststate/.stamp/regional.pmtiles'),
   JSON.stringify(installed.keys));
 check('the state is recorded and listed as switchable with size and Remove',
   installed.entry && installed.availability === 'installed' && installed.hasRadio

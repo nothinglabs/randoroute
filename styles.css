@@ -596,6 +596,7 @@ body:not(.navigation-active) #navCard { display: none; }
 .maps-state-remove { flex: none; min-height: 30px; padding: 4px 10px; border: 1px solid #d3b1ac; border-radius: 8px; background: #fff6f4; color: #8c3a2b; font: 750 11px/1 system-ui; cursor: pointer; touch-action: manipulation; }
 .maps-state-download { flex: none; margin-left: auto; min-height: 34px; padding: 5px 12px; border: 1px solid #0a58a8; border-radius: 9px; background: #0a66c2; color: #fff; font: 750 11.5px/1 system-ui; cursor: pointer; touch-action: manipulation; white-space: nowrap; }
 .maps-state-download:disabled { opacity: .55; cursor: default; }
+.maps-state-update { margin-left: 8px; min-height: 30px; padding: 4px 10px; }
 .map-first-run-dialog { width: min(94vw, 680px); max-height: min(90dvh, 720px); overflow-y: auto; }
 .map-first-run-body > p { margin: 5px 0 10px; color: #435762; font: 600 13px/1.45 system-ui; }
 .map-first-run-body .national-map { min-height: 210px; margin-top: 10px; }
@@ -604,12 +605,24 @@ body:not(.navigation-active) #navCard { display: none; }
 .map-state-card-status { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #eef1f3; color: #50636e; font: 800 10px/1.3 system-ui; letter-spacing: .04em; text-transform: uppercase; }
 .map-state-card-status.installed { background: #e3f2e8; color: #286344; }
 .map-state-card-status.available { background: #e5f1fb; color: #155c8d; }
+.map-state-card-status.update { background: #fff0d8; color: #874b12; }
 .map-state-card-body > p { margin: 10px 0; }
 .map-state-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 10px; margin: 10px 0; }
 .map-state-facts dt { color: #647681; font-weight: 700; }
 .map-state-facts dd { margin: 0; color: #2d424e; font-weight: 750; }
 .map-state-actions #mapStatePrimary { border-color: #0a66c2; background: #0a66c2; color: #fff; }
 .map-state-actions #mapStateRemove { border-color: #c9978e; color: #8c3a2b; }
+@media (max-width: 480px) {
+  /* An installed non-home map can carry four trailing facts/actions during an
+     upgrade. Keep all four visible without squeezing the state name down to
+     a few characters on phone-width Settings screens. */
+  .maps-state { gap: 6px; padding-right: 8px; padding-left: 8px; }
+  .maps-state-update { margin-left: 0; padding-right: 7px; padding-left: 7px; }
+  .maps-state-remove { padding-right: 7px; padding-left: 7px; }
+  .maps-state-badge { padding-right: 4px; padding-left: 4px; font-size: 9px; }
+  .maps-state-size + .maps-state-badge,
+  .maps-state-size + .maps-state-remove { margin-left: 0; }
+}
 /* Settings → Routes: the state's signed routes, each markable Preferred. */
 .state-route-source-heading {
   grid-column: 1 / -1;

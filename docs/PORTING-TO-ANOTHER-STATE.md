@@ -44,7 +44,7 @@ suggestion:
 |---|---|---|---|
 | 1 | `region.json` + `npm run maps:registry` | `test_region_portable.mjs`, `test_maps_states_screen.mjs` | yes |
 | 2 | `places.json` | search returns that state's towns and not the previous state's | yes |
-| 3 | `basemap.pmtiles` | map opens on the state; coastline the right way round | yes |
+| 3 | `basemap.pmtiles` + derived `regional.pmtiles` | map opens on the state; coastline and inland water remain correct through the regional/detailed zoom handoff | yes |
 | 4 | `roads.pmtiles` | `test_build_parity.py`, `test_road_geometry.py` | **no** |
 | 5 | `graph2.bin.gz` | **`test_corridor_severance.mjs`, with that state's corridors** | yes |
 | 6 | agency stress / speeds / facilities | `test_fact_contract.mjs` | **no** |
@@ -110,7 +110,11 @@ exactly the silent-wrong-state failure this section exists to prevent.
 The same goes for the small ones, all of which take a state or a bounds now and
 none of which did before the first port: `fetch_census_urban_areas.py`,
 `build_routes.py --bounds`, `build_overlay_tiles.py --state`,
-`build_hpms.py --state --year`, `stamp_tiles_version.mjs <state>`.
+`build_hpms.py --state --year`, `build_regional_basemap.mjs <state>`,
+`stamp_tiles_version.mjs <state>`. Build `regional.pmtiles` after
+`basemap.pmtiles`; it extracts the reviewed zoom 8 detailed-land and water
+geometry and needs no additional source download. A landlocked state's empty
+coastline layer automatically uses its generalized land instead.
 
 `build_compressed_overlays.mjs` is the exception and needs saying plainly,
 because "walks the registry" reads like a convenience and is a hazard during an

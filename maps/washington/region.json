@@ -57,6 +57,7 @@
     "ferries": true,
     "graph": true,
     "roads": true,
+    "regional": true,
     "basemap": true,
     "overlays": true,
     "places": true,
@@ -69,7 +70,8 @@
     "graph": "sha-c043f268453b",
     "roads": "sha-dd29b387e828",
     "basemap": "sha-77136fe2672a",
-    "overlays": "sha-04c278da789b"
+    "overlays": "sha-04c278da789b",
+    "regional": "sha-468921433b5b"
   },
   "attribution": {
     "extractName": "Washington",

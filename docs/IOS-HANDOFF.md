@@ -5,6 +5,9 @@ a generic physical-iPhone Release target, and Capacitor 8.4.2. Version .801 was
 synced with both released starter states and compiled in Release configuration
 for the simulator and generic iOS device with no Swift warnings; the unsigned
 products were 365 MiB and 361 MiB. Earlier store validation also passed. The
+shared `.807` shell was synced on 2026-08-24 and its unsigned Release simulator
+build succeeded against the iOS 26.5 SDK; the product is 366 MiB and contains
+the stamped Washington and Oregon regional geography archives. The
 shared web tests and simulator checks are real coverage; locked-screen GPS,
 audio mixing, battery, and thermals still require a physical iPhone and a real
 ride.
@@ -36,11 +39,11 @@ is generated — never edit it.
 
 ### First-install startup profile
 
-The 2026-08-22 generated full shell occupies **372 MiB** on disk with the two
-current starter states. Their manifests declare 372,783,591 unique bytes after
+The 2026-08-24 generated full shell occupies **374 MiB** on disk with the two
+current starter states. Their manifests declare 374,382,880 unique bytes after
 the shared partition catalogue is counted once; the remaining shell size is
 application/vendor content and filesystem allocation. Oregon accounts for
-159,411,410 manifest bytes and Washington for 217,001,868. A future third state
+160,095,198 manifest bytes and Washington for 217,917,369. A future third state
 does not join the bundle automatically: it remains a confirmed store download
 unless the bounded two-state product choice changes.
 

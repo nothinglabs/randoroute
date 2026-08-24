@@ -75,6 +75,14 @@ neutral roads below safety paint, and a failed optional overlay source now
 retries without removing that state's working land and road sources. Focused
 constrained-iPhone browser gates cover the Washington/Oregon layer stack and
 partial-source recovery.
+Release `.807` replaces the constrained renderer's administrative-polygon
+ground at zooms 4–8 with deterministic per-state `regional.pmtiles` archives.
+The two archives add 1,599,289 bytes; Washington's largest decoded regional
+tile is 450,298 bytes. Browser probes keep Whidbey dry, Admiralty Inlet,
+Saratoga Passage and Deception Pass open, Green Lake water-filled through the
+zoom-9 detailed handoff, and tested tile seams filled. Existing store-installed
+maps expose the changed acquisition as **Update** and reload after the atomic
+install so the new geography becomes active.
 
 Remaining gates:
 

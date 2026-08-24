@@ -63,6 +63,7 @@ const DATASET_FILES = {
   restrictions: 'bike_restrictions.geojson.gz',
   closures: 'route_closures.geojson.gz',
   roads: 'roads.pmtiles',
+  regional: 'regional.pmtiles',
   basemap: 'basemap.pmtiles',
   overlays: 'overlays.pmtiles',
   graph: 'graph2.bin.gz',

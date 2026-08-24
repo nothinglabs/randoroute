@@ -10,6 +10,8 @@ const browser = await launchBrowser();
 const context = await browser.newContext({
   serviceWorkers: 'block', viewport: { width: 430, height: 900 },
   hasTouch: true, isMobile: true,
+  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
+    + 'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
 });
 await context.addInitScript(() => localStorage.setItem('jra-map-state-1', 'oregon'));
 const page = await context.newPage();
@@ -38,9 +40,12 @@ const observed = await page.evaluate(async () => {
       String(place[0] || '').toLowerCase() === 'portland'),
   };
 });
+await page.evaluate(() => map.jumpTo({ center: [-122.6765, 45.5231], zoom: 7 }));
+await page.waitForFunction(() => map.isSourceLoaded('basemap-regional'),
+  null, { timeout: 60000 });
 const sourceText = JSON.stringify(observed.sources);
 const oregonArchiveRequests = site.requests.filter((request) =>
-  /\/maps\/oregon\/(?:basemap|roads|overlays)\.pmtiles/.test(request.url));
+  /\/maps\/oregon\/(?:regional|basemap|roads|overlays)\.pmtiles/.test(request.url));
 
 check('the real app opens in Oregon',
   observed.region === 'oregon' && observed.dataRoot === 'maps/oregon',
@@ -49,11 +54,13 @@ check('it opens over Portland rather than restoring another state\'s view',
   Math.abs(observed.centre.lng - -122.6765) < 0.2
     && Math.abs(observed.centre.lat - 45.5231) < 0.2,
   `${observed.centre.lng.toFixed(3)}, ${observed.centre.lat.toFixed(3)}`);
-check('the live style points at Oregon\'s real basemap and road archives',
-  sourceText.includes('maps/oregon/basemap.pmtiles')
+check('the live style points at Oregon\'s compact regional, detailed basemap and road archives',
+  sourceText.includes('maps/oregon/regional.pmtiles')
+    && sourceText.includes('maps/oregon/basemap.pmtiles')
     && sourceText.includes('maps/oregon/roads.pmtiles'), sourceText);
 check('PMTiles actually reads byte ranges from the Oregon archives',
-  oregonArchiveRequests.some((request) => /basemap\.pmtiles/.test(request.url) && request.range)
+  oregonArchiveRequests.some((request) => /regional\.pmtiles/.test(request.url) && request.range)
+    && oregonArchiveRequests.some((request) => /basemap\.pmtiles/.test(request.url) && request.range)
     && oregonArchiveRequests.some((request) => /roads\.pmtiles/.test(request.url) && request.range),
   JSON.stringify(oregonArchiveRequests.slice(0, 12)));
 check('Oregon tile features reach the rendered map', observed.rendered > 0,

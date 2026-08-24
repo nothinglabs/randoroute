@@ -751,7 +751,7 @@
   // like one it precached itself.
   async function writeArchiveStamp(cache, state, file) {
     const version = state.versions && state.versions[file.dataset];
-    if (!version || !['roads', 'basemap', 'overlays'].includes(file.dataset)) return;
+    if (!version || !['roads', 'regional', 'basemap', 'overlays'].includes(file.dataset)) return;
     await cache.put(new Request(`maps/${state.id}/.stamp/${file.path}`), new Response(version));
   }
 

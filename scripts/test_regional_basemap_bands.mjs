@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// The regional zoom band must never be a bare cream sheet. Unconstrained
-// renderers draw the full context archive from its own minimum zoom; a
-// constrained renderer (which drops the ~1.2 MB low-zoom context tiles under
-// memory pressure) keeps the z9 floor but carries an independent place-label
-// source that no tile archive can take down. Field report: a 5-mile view on
-// an iPhone showed overlays over blank ground with no town names at all.
+// The regional zoom band must remain coastline-correct without loading the
+// detailed archive's ~1.2 MB low-zoom tiles. Unconstrained renderers draw the
+// full context archive from its own minimum zoom; a constrained renderer uses
+// the compact regional archive at z4-z8 plus an archive-free place-label
+// source. Field reports: a 5-mile iPhone view showed blank ground, then the
+// administrative fallback filled Green Lake and joined Whidbey to mainland.
 import { appPage, check, done, launchBrowser, playwright, chromiumPath, serveRepo }
   from './testlib/harness.mjs';
 
@@ -13,13 +13,14 @@ const browser = await launchBrowser();
 try {
   const desktop = await appPage(browser, site.port, { desktop: true });
   await desktop.waitForFunction(() => window.map && map.loaded && map.loaded(),
-    { timeout: 120000 });
+    null, { timeout: 120000 });
   const desktopBands = await desktop.evaluate(() => {
     const layer = (id) => map.getStyle().layers.find((l) => l.id === id);
     return {
       constrained: isConstrainedDevice(),
       landMin: layer('basemap-land')?.minzoom,
       waterMin: layer('basemap-water')?.minzoom,
+      regionalLayer: !!layer('basemap-regional-land-detail'),
       placesMin: layer('basemap-place-labels')?.minzoom,
       reliefLayer: !!layer('basemap-regional-places'),
     };
@@ -27,7 +28,8 @@ try {
   check('an unconstrained renderer draws context from the archive floor',
     desktopBands.constrained === false && desktopBands.landMin === 4
       && desktopBands.waterMin === 4 && desktopBands.placesMin === 4
-      && !desktopBands.reliefLayer, JSON.stringify(desktopBands));
+      && !desktopBands.regionalLayer && !desktopBands.reliefLayer,
+    JSON.stringify(desktopBands));
   await desktop.close();
 
   const phoneContext = await browser.newContext({
@@ -38,12 +40,12 @@ try {
   const phone = await phoneContext.newPage();
   await phone.goto(`http://localhost:${site.port}/index.html`, { waitUntil: 'load' });
   await phone.waitForFunction(() => window.map && map.loaded && map.loaded(),
-    { timeout: 120000 });
+    null, { timeout: 120000 });
   await phone.waitForFunction(async () => {
     await ensurePlaces();
     const source = map.getSource('basemap-regional-places');
     return !!source && (map.querySourceFeatures?.('basemap-regional-places') || []).length >= 0;
-  }, { timeout: 60000 });
+  }, null, { timeout: 60000 });
   const phoneBands = await phone.evaluate(async () => {
     await ensurePlaces();
     updateRegionalPlaceLabels();
@@ -51,15 +53,35 @@ try {
     const data = map.getSource('basemap-regional-places')?.serialize?.()?.data;
     return {
       constrained: isConstrainedDevice(),
-      landMin: layer('basemap-land')?.minzoom,
+      contextLandMin: layer('basemap-land')?.minzoom,
+      regionalLandMin: layer('basemap-regional-land-detail')?.minzoom,
+      regionalLandMax: layer('basemap-regional-land-detail')?.maxzoom,
+      coarseRegionalLand: !!layer('basemap-regional-land'),
+      regionalWaterMin: layer('basemap-regional-water')?.minzoom,
+      regionalWaterMax: layer('basemap-regional-water')?.maxzoom,
+      administrativeGround: !!layer('basemap-state-ground'),
+      administrativeGroundIndex: map.getStyle().layers
+        .findIndex((item) => item.id === 'basemap-state-ground'),
+      regionalLandIndex: map.getStyle().layers
+        .findIndex((item) => item.id === 'basemap-regional-land-detail'),
+      regionalWaterIndex: map.getStyle().layers
+        .findIndex((item) => item.id === 'basemap-regional-water'),
+      regionalSource: map.getSource('basemap-regional')?.serialize?.()?.url,
       reliefLayer: !!layer('basemap-regional-places'),
       reliefMin: layer('basemap-regional-places')?.minzoom,
       features: Array.isArray(data?.features) ? data.features.length : -1,
       sampleNames: (data?.features || []).slice(0, 3).map((f) => f.properties.name),
     };
   });
-  check('a constrained renderer keeps the z9 context floor with archive-free town labels',
-    phoneBands.constrained === true && phoneBands.landMin === 9
+  check('a constrained renderer uses regional geometry below its z9 context floor',
+    phoneBands.constrained === true && phoneBands.contextLandMin === 9
+      && phoneBands.regionalLandMin === 4 && phoneBands.regionalLandMax === 9
+      && phoneBands.regionalWaterMin === 4 && phoneBands.regionalWaterMax === 9
+      && !phoneBands.coarseRegionalLand
+      && phoneBands.administrativeGround
+      && phoneBands.administrativeGroundIndex < phoneBands.regionalLandIndex
+      && phoneBands.regionalLandIndex < phoneBands.regionalWaterIndex
+      && /regional\.pmtiles/.test(phoneBands.regionalSource || '')
       && phoneBands.reliefLayer && phoneBands.reliefMin === 5
       && phoneBands.features >= 100, JSON.stringify(phoneBands));
   check('the biggest cities lead the label set',

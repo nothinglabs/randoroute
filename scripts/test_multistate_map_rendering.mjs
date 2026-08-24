@@ -1,14 +1,31 @@
 #!/usr/bin/env node
-// A Washington-home map must remain complete at the statewide handoff and
-// paint installed Oregon's safety data, not only its neutral basemap.
+// A Washington-home map must keep real coastline and lake geometry through
+// the compact regional band, hand off cleanly to detailed context, and paint
+// installed Oregon's safety data rather than only its neutral basemap.
 //
 // A CONSTRAINED page, deliberately: the resident-ground handoff exists because
-// constrained renderers drop the ~1.2 MB low-zoom context tiles; an
-// unconstrained browser keeps the archive's full range and has no handoff to
-// test (test_regional_basemap_bands proves that split).
+// constrained renderers drop the ~1.2 MB low-zoom context tiles. Their compact
+// regional archive owns z4-z8; an unconstrained browser keeps the detailed
+// archive's full range and has no handoff to test (test_regional_basemap_bands
+// proves that split).
 import { check, done, launchBrowser, serveRepo } from './testlib/harness.mjs';
+import { createRequire } from 'node:module';
 
 const site = await serveRepo();
+// Simulate the real upgrade interval: Washington has the new regional
+// archive, while an existing Oregon install still carries its retained .806
+// manifest and therefore does not declare one until the rider updates it.
+const require = createRequire(import.meta.url);
+const registry = require('../maps/states.js');
+const mixedStates = structuredClone(registry.MAP_STATES);
+const oldOregon = mixedStates.find((state) => state.id === 'oregon');
+delete oldOregon.datasets.regional;
+delete oldOregon.versions.regional;
+site.publish('/maps/states.js', `(function (root) {
+  root.MAP_STATES_BUNDLED = true;
+  root.MAP_STATES = ${JSON.stringify(mixedStates)};
+  root.MAP_STATE_ACQUISITIONS = ${JSON.stringify(registry.MAP_STATE_ACQUISITIONS)};
+}(typeof self !== 'undefined' ? self : this));`);
 const browser = await launchBrowser();
 try {
   const context = await browser.newContext({
@@ -27,59 +44,136 @@ try {
   await page.evaluate(() => {
     window.__multiStateMapErrors = [];
     map.on('error', (event) => {
-      window.__multiStateMapErrors.push(String(event?.error?.message || event?.message || event));
+      window.__multiStateMapErrors.push({
+        message: String(event?.error?.message || event?.message || event),
+        name: String(event?.error?.name || ''),
+        sourceId: String(event?.sourceId || event?.source?.id || ''),
+      });
     });
-    map.jumpTo({ center: [-120.4, 46.75], zoom: 6.4 });
+    map.jumpTo({ center: [-122.48, 48.02], zoom: 4 });
   });
   await page.waitForFunction(() => map.queryRenderedFeatures({
-    layers: ['basemap-state-ground'],
+    layers: ['basemap-regional-land-detail'],
   }).length > 0, null, { timeout: 45000 });
-  const washington = await page.evaluate(() => {
-    const dry = [
-      ['Centralia', -122.9543, 46.7162],
-      ['Morton', -122.2751, 46.5584],
-      ['Yakima', -120.5059, 46.6021],
-      ['Goldendale', -120.8217, 45.8207],
-    ];
-    return {
-      zoom: map.getZoom(),
-      errors: window.__multiStateMapErrors,
-      probes: dry.map(([name, lon, lat]) => {
+  const regionalChecks = [];
+  for (const zoom of [4, 5, 6, 7, 8]) {
+    await page.evaluate((z) => map.jumpTo({ center: [-122.48, 48.02], zoom: z }), zoom);
+    await page.waitForFunction(() => map.loaded() && map.isSourceLoaded('basemap-regional'),
+      null, { timeout: 45000 });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() =>
+      requestAnimationFrame(resolve))));
+    regionalChecks.push(await page.evaluate((z) => {
+      const layerIds = map.getStyle().layers.map((layer) => layer.id);
+      const landLayers = ['basemap-regional-land-detail'];
+      const waterLayers = ['basemap-regional-water'];
+      const rendered = (lon, lat, layers) => {
         const point = map.project([lon, lat]);
-        const onScreen = point.x >= 0 && point.x < map.getCanvas().width
-          && point.y >= 0 && point.y < map.getCanvas().height;
-        const groundLayers = ['basemap-state-ground', 'basemap-land']
-          .filter((id) => map.getLayer(id));
-        const land = onScreen && groundLayers.length
-          ? map.queryRenderedFeatures(point, { layers: groundLayers }).length : 0;
-        return { name, onScreen, land };
-      }),
+        const onScreen = point.x >= 0 && point.x < map.getCanvas().clientWidth
+          && point.y >= 0 && point.y < map.getCanvas().clientHeight;
+        return { onScreen, count: onScreen
+          ? map.queryRenderedFeatures(point, { layers }).length : 0 };
+      };
+      const dry = [
+        ['Whidbey Island', -122.686, 48.219],
+        ['Seattle', -122.31, 47.65],
+      ].map(([name, lon, lat]) => ({ name,
+        land: rendered(lon, lat, landLayers), water: rendered(lon, lat, waterLayers) }));
+      const marine = [
+        ['Admiralty Inlet', -122.76, 48.10],
+        ['Saratoga Passage', -122.50, 48.10],
+        ['Deception Pass', -122.654, 48.406],
+      ].map(([name, lon, lat]) => ({ name,
+        land: rendered(lon, lat, landLayers), water: rendered(lon, lat, waterLayers) }));
+      const greenLake = {
+        land: rendered(-122.3397, 47.6804, landLayers),
+        water: rendered(-122.3397, 47.6804, waterLayers),
+      };
+      // Washington is wholly inside one z4 tile. At z5-z8, probe dry land on
+      // both sides of an actual Web Mercator tile boundary: a missing or
+      // clipped tile becomes an ocean-colored strip at exactly this seam.
+      const seamByZoom = {
+        5: [-123.75, 47.45], 6: [-123.75, 47.45],
+        7: [-120.9375, 47.30], 8: [-122.34375, 47.55],
+      };
+      const seam = seamByZoom[z]
+        ? [-0.03, 0.03].map((offset) => ({
+          land: rendered(seamByZoom[z][0] + offset, seamByZoom[z][1], landLayers),
+          water: rendered(seamByZoom[z][0] + offset, seamByZoom[z][1], waterLayers),
+        })) : [];
+      const detailedLayers = ['basemap-land', 'basemap-land-detail', 'basemap-green',
+        'basemap-water', 'basemap-waterways'];
+      return {
+        zoom: z,
+        sourceLoaded: map.isSourceLoaded('basemap-regional'),
+        dry, marine, greenLake, seam,
+        detailed: map.queryRenderedFeatures({ layers: detailedLayers }).length,
+        waterAboveLand: Math.min(...waterLayers.map((id) => layerIds.indexOf(id)))
+          > Math.max(...landLayers.map((id) => layerIds.indexOf(id))),
+      };
+    }, zoom));
+  }
+  check('z4-z8 regional geometry keeps Whidbey and Seattle dry',
+    regionalChecks.every((band) => band.dry.every((probe) =>
+      probe.land.onScreen && probe.land.count > 0 && probe.water.count === 0)),
+    JSON.stringify(regionalChecks));
+  check('z4-z8 regional geometry keeps Whidbey separated by marine water',
+    regionalChecks.every((band) => band.marine.every((probe) =>
+      probe.land.onScreen && probe.land.count === 0)), JSON.stringify(regionalChecks));
+  check('z7-z8 regional water paints visible Green Lake above land',
+    regionalChecks.filter((band) => band.zoom >= 7).every((band) =>
+      band.greenLake.water.onScreen
+      && band.greenLake.water.count > 0 && band.waterAboveLand),
+    JSON.stringify(regionalChecks));
+  check('z5-z8 dry land stays continuous across regional tile seams',
+    regionalChecks.filter((band) => band.zoom >= 5).every((band) =>
+      band.seam.length === 2 && band.seam.every((probe) =>
+        probe.land.onScreen && probe.land.count > 0 && probe.water.count === 0)),
+    JSON.stringify(regionalChecks));
+  await page.evaluate(() => map.jumpTo({ center: [-121.5, 46.5], zoom: 4 }));
+  await page.waitForFunction(() => map.loaded() && map.isSourceLoaded('basemap-regional'),
+    null, { timeout: 45000 });
+  const mixedNeighbor = await page.evaluate(() => {
+    const point = map.project([-123.0351, 44.9429]); // dry land in Salem, Oregon
+    const layers = map.getStyle().layers.map((layer) => layer.id);
+    return {
+      onScreen: point.x >= 0 && point.x < map.getCanvas().clientWidth
+        && point.y >= 0 && point.y < map.getCanvas().clientHeight,
+      administrativeGround: map.queryRenderedFeatures(point,
+        { layers: ['basemap-state-ground'] }).length,
+      neighborRegionalAttached: !!map.getSource('state-oregon-basemap-regional'),
+      fallbackBelowRegional: layers.indexOf('basemap-state-ground')
+          < layers.indexOf('basemap-regional-land-detail')
+        && layers.indexOf('basemap-state-ground')
+          < layers.indexOf('basemap-regional-water'),
     };
   });
-  check('southern Washington has rendered low-zoom ground at every dry probe',
-    washington.probes.every((probe) => probe.onScreen && probe.land > 0),
-    JSON.stringify(washington));
-  check('the low-zoom Washington handoff raises no map source errors',
-    washington.errors.length === 0, washington.errors.join(' | '));
-  const detailedLowZoom = await page.evaluate(() => {
-    const layers = ['basemap-land', 'basemap-land-detail', 'basemap-green',
-      'basemap-water', 'basemap-waterways'].filter((id) => map.getLayer(id));
-    return map.queryRenderedFeatures({ layers }).length;
-  });
-  check('the statewide view does not render oversized detailed context tiles',
-    detailedLowZoom === 0, String(detailedLowZoom));
+  check('an old neighboring install retains low-zoom ground below the new home geometry',
+    mixedNeighbor.onScreen && mixedNeighbor.administrativeGround > 0
+      && !mixedNeighbor.neighborRegionalAttached && mixedNeighbor.fallbackBelowRegional,
+    JSON.stringify(mixedNeighbor));
+  const regionalErrors = await page.evaluate(() => window.__multiStateMapErrors);
+  check('z4-z8 uses only the compact regional archive without source failures',
+    regionalChecks.every((band) => band.sourceLoaded && band.detailed === 0)
+      && regionalErrors.length === 0,
+    JSON.stringify({ regionalChecks, errors: regionalErrors }));
 
-  await page.evaluate(() => map.jumpTo({ center: [-122.2, 46.35], zoom: 8.75 }));
-  await page.waitForFunction(() => map.queryRenderedFeatures({
-    layers: ['basemap-state-ground'],
-  }).length > 0, null, { timeout: 45000 });
-  const contextAtHandoff = await page.evaluate(() => {
-    const layers = ['basemap-land', 'basemap-land-detail', 'basemap-green',
-      'basemap-water', 'basemap-waterways'].filter((id) => map.getLayer(id));
-    return map.queryRenderedFeatures({ layers }).length;
+  await page.evaluate(() => map.jumpTo({ center: [-122.3397, 47.6804], zoom: 9.25 }));
+  await page.waitForFunction(() => map.isSourceLoaded('basemap-context'),
+    null, { timeout: 45000 });
+  const handoff = await page.evaluate(() => {
+    const greenLake = map.project([-122.3397, 47.6804]);
+    return {
+      regional: map.queryRenderedFeatures({ layers: ['basemap-regional-land-detail',
+        'basemap-regional-water'] }).length,
+      detailedLand: map.queryRenderedFeatures(greenLake,
+        { layers: ['basemap-land', 'basemap-land-detail'] }).length,
+      detailedWater: map.queryRenderedFeatures(greenLake,
+        { layers: ['basemap-water'] }).length,
+    };
   });
-  check('southern Washington stays on complete resident ground through the z8 handoff',
-    contextAtHandoff === 0, String(contextAtHandoff));
+  check('z9 hands Green Lake from regional geometry to detailed land and water',
+    handoff.regional === 0 && handoff.detailedLand > 0 && handoff.detailedWater > 0,
+    JSON.stringify(handoff));
 
   await page.evaluate(() => map.jumpTo({ center: [-122.6765, 45.5231], zoom: 13 }));
   await page.waitForFunction(() =>

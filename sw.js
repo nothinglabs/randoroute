@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v806';
+const VERSION = 'v807';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -111,6 +111,7 @@ const DATA = ACTIVE_STATE_DATA_BUNDLED ? [
     ['restrictions', 'bike_restrictions.geojson.gz'],
     ['closures', 'route_closures.geojson.gz'],
     ['roads', 'roads.pmtiles'],
+    ['regional', 'regional.pmtiles'],
     ['basemap', 'basemap.pmtiles'],
     ['overlays', 'overlays.pmtiles'],
   ].filter(([dataset]) => ships(dataset)).map(([, file]) => stateFile(file)),
@@ -133,6 +134,7 @@ const ALWAYS_REFRESH_DATA = new Set(DATA.filter((path) => [
 // else.
 const ARCHIVE_VERSIONS = ACTIVE_STATE_DATA_BUNDLED ? Object.fromEntries([
   ['roads', stateFile('roads.pmtiles'), ROADS_TILES_VERSION],
+  ['regional', stateFile('regional.pmtiles'), REGIONAL_TILES_VERSION],
   ['basemap', stateFile('basemap.pmtiles'), BASEMAP_TILES_VERSION],
   ['overlays', stateFile('overlays.pmtiles'), OVERLAY_TILES_VERSION],
 ].filter(([dataset]) => ships(dataset)).map(([, path, version]) => [path, version])) : {};
@@ -184,7 +186,13 @@ self.addEventListener('install', (e) => {
       // has the complete data cache; touching every 30–44 MB archive here can
       // make mobile Safari discard the candidate worker before it reaches the
       // waiting state.
-      updatingExistingApp ? Promise.resolve() : precacheData(),
+      // A returning installation already has the large archives named by its
+      // previous manifest, but a release can add a NEW required dataset. Do
+      // not let that shell reach waiting/activation until every missing data
+      // entry is resident: otherwise the new style can take control offline
+      // while the archive it newly depends on does not exist. Existing files
+      // are left untouched here; activation's stamp pass owns refreshes.
+      updatingExistingApp ? precacheMissingData() : precacheData(),
     ])
   );
 });
@@ -342,6 +350,25 @@ async function precacheData() {
     if (!hit) await cache.add(request);
     // Record which stamp this archive copy corresponds to, so a later
     // activation can tell fresh from stale without re-downloading.
+    if (path in ARCHIVE_VERSIONS) {
+      await cache.put(archiveMarker(path), new Response(ARCHIVE_VERSIONS[path]));
+    }
+  }
+}
+
+// Updating workers used to skip DATA entirely on the assumption that the
+// existing worker had already cached the complete set. That assumption stops
+// being true when a release introduces another declared file. Populate only
+// absent logical entries during install, and stamp only bytes fetched by this
+// pass; stamping an existing archive without refreshing it would falsely mark
+// an older copy current.
+async function precacheMissingData() {
+  const cache = await caches.open(DATA_CACHE);
+  for (const path of DATA) {
+    const request = new Request(path, { cache: 'reload' });
+    const hit = await cache.match(request, { ignoreSearch: true });
+    if (hit) continue;
+    await cache.add(request);
     if (path in ARCHIVE_VERSIONS) {
       await cache.put(archiveMarker(path), new Response(ARCHIVE_VERSIONS[path]));
     }

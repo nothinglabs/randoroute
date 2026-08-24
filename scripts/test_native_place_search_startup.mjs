@@ -599,7 +599,9 @@ check('expanded attribution remains readable beside rather than over Navigate',
 // A blank Safari/Web visit used to eagerly retain the expanded route graph,
 // leaving too little headroom for MapLibre when a rider zoomed out. Web now
 // follows the same request-driven startup as native, and the map stops at a
-// useful statewide view instead of accepting continent-scale zooms.
+// useful regional view instead of accepting continent-scale zooms. The compact
+// regional archive makes z4 safe without loading the memory-heavy detailed
+// context tiles that previously forced the phone floor to z6.
 const webContext = await browser.newContext({
   serviceWorkers: 'block', viewport: { width: 390, height: 844 },
   hasTouch: true, isMobile: true,
@@ -638,8 +640,8 @@ const webIdle = await webPage.evaluate(() => {
 });
 check('a blank web planner keeps the large route graph unloaded', webIdle.workers === 0,
   JSON.stringify(webIdle));
-check('web zoom-out stops before the memory-heavy statewide tile level',
-  webIdle.minZoom === 6 && webIdle.zoom >= 6, JSON.stringify(webIdle));
+check('web zoom-out stops at the compact regional archive floor',
+  webIdle.minZoom === 4 && webIdle.zoom >= 4, JSON.stringify(webIdle));
 check('the blank web phone also uses the compact prompt and hides Navigate',
   webIdle.panelOpen && webIdle.compactVisible && webIdle.navigateHidden
     && webIdle.oldNavigationGone, JSON.stringify(webIdle));

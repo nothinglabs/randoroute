@@ -5,11 +5,20 @@
   const FONT_STACK = 'Klokantech Noto Sans Regular';
   // The context archive's z6-z8 OSM polygons can decode into tens of
   // thousands of features in one tile. MapLibre drops those oversized tiles
-  // as rectangular holes on constrained renderers. A tiny resident state
-  // polygon source carries ground and labels at regional zoom; detailed
-  // context takes over only once the same data is split across smaller tiles.
+  // as rectangular holes on constrained renderers. A compact regional archive
+  // carries coastline-correct ground there, while resident state polygons
+  // retain boundaries and labels. Detailed context takes over once the same
+  // data is split across smaller tiles.
   const CONTEXT_MIN_ZOOM = 9;
   const CONTEXT_URL = `pmtiles://${Region.dataUrl('basemap.pmtiles')}?v=5`;
+  // The low-zoom regional archive is a map-pack dataset, so its cache identity
+  // follows the content stamp in region.json rather than an application-code
+  // constant. A rebuilt archive can then replace itself without requiring a
+  // change here, and installed states use the same rule as the bundled state.
+  const archiveDatasetVersion = (state, dataset, fallback = 1) =>
+    encodeURIComponent(String(state?.versions?.[dataset] || fallback));
+  const REGIONAL_URL = `pmtiles://${Region.dataUrl('regional.pmtiles')}`
+    + `?v=${archiveDatasetVersion(Region, 'regional')}`;
   // Must be the SAME ?v as app.js's roads source: two spellings of one
   // archive are two browser-cache entries and two PMTiles instances, so a
   // first visit fetched the 80 MB file twice. The service worker normalizes
@@ -163,7 +172,7 @@
     });
     map.on('error', (event) => {
       const sourceId = String(event?.sourceId || event?.source?.id || '');
-      const match = /^state-([a-z0-9-]+)-basemap-(context|roads|overlays)$/.exec(sourceId);
+      const match = /^state-([a-z0-9-]+)-basemap-(regional|context|roads|overlays)$/.exec(sourceId);
       if (match && !everLoaded.has(sourceId)) {
         // One archive can fail while its siblings are already drawing. The
         // old state-wide removal turned an overlays header failure into lost
@@ -203,7 +212,7 @@
     for (const layer of [...layers].reverse()) {
       if (layer.id.startsWith(prefix) && map.getLayer?.(layer.id)) map.removeLayer(layer.id);
     }
-    for (const dataset of ['roads', 'context', 'overlays']) {
+    for (const dataset of ['regional', 'roads', 'context', 'overlays']) {
       const id = visibleSourceId(stateId, dataset);
       if (map.getSource?.(id)) removeVisibleStateSource(map, id);
     }
@@ -218,7 +227,13 @@
     if (!map?.getStyle?.()) return [];
     ensureVisibleStateErrorHook(map);
     const bounds = viewportBounds(map);
-    const detailed = bounds && Number(map.getZoom?.()) >= minZoom;
+    const zoom = Number(map.getZoom?.());
+    const detailed = bounds && zoom >= minZoom;
+    // Only a constrained style backed by the compact regional dataset carries
+    // this source. Its installed neighbors can safely enter below the detailed
+    // archive handoff without making desktop load an otherwise unused source.
+    const regionalRenderer = !!map.getSource?.('basemap-regional');
+    const regional = bounds && regionalRenderer && zoom >= 4;
     // Attach ahead of arrival and detach only well past departure. The first
     // version attached and detached on the exact viewport/bounds intersection,
     // so riding or panning along a state line cycled the neighbor's sources on
@@ -235,16 +250,18 @@
     const keepBounds = bounds ? expandBounds(bounds, 3 * attachLon, 3 * attachLat) : null;
     const candidates = (states || []).filter((state) => state?.id
       && state.id !== homeStateId && state.bounds
-      && (state.datasets?.basemap || state.datasets?.roads));
+      && (state.datasets?.regional || state.datasets?.basemap || state.datasets?.roads));
     const wanted = new Map(candidates
-      .filter((state) => detailed && intersects(attachBounds, state.bounds))
+      .filter((state) => ((regional && state.datasets?.regional)
+          || (detailed && (state.datasets?.basemap || state.datasets?.roads)))
+        && intersects(attachBounds, state.bounds))
       .map((state) => [state.id, state]));
     const keep = new Set(candidates
       .filter((state) => keepBounds && intersects(keepBounds, state.bounds))
       .map((state) => state.id));
     const existing = new Set();
     for (const layer of map.getStyle().layers || []) {
-      const match = /^state-([a-z0-9-]+)-basemap-land$/.exec(layer.id);
+      const match = /^state-([a-z0-9-]+)-basemap-(?:regional-land-detail|land)$/.exec(layer.id);
       if (match) existing.add(match[1]);
     }
     for (const stateId of existing) {
@@ -252,23 +269,31 @@
     }
 
     for (const state of [...wanted.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+      const regionalId = visibleSourceId(state.id, 'regional');
       const contextId = visibleSourceId(state.id, 'context');
       const roadsId = visibleSourceId(state.id, 'roads');
       const overlaysId = visibleSourceId(state.id, 'overlays');
+      const regionalUrl = stateArchiveUrl(state, 'regional.pmtiles',
+        archiveDatasetVersion(state, 'regional'));
       const contextUrl = stateArchiveUrl(state, 'basemap.pmtiles', 5);
       const roadsUrl = stateArchiveUrl(state, 'roads.pmtiles', 24);
       const overlaysUrl = stateArchiveUrl(state, 'overlays.pmtiles', 2);
-      if (state.datasets.basemap && !map.getSource(contextId)) {
+      if (regionalRenderer && state.datasets.regional && !map.getSource(regionalId)) {
+        registerArchive(regionalUrl);
+        map.addSource(regionalId, { type: 'vector', url: regionalUrl,
+          attribution: '© OpenStreetMap contributors' });
+      }
+      if (detailed && state.datasets.basemap && !map.getSource(contextId)) {
         registerArchive(contextUrl);
         map.addSource(contextId, { type: 'vector', url: contextUrl,
           attribution: '© OpenStreetMap contributors · Natural Earth' });
       }
-      if (state.datasets.roads && !map.getSource(roadsId)) {
+      if (detailed && state.datasets.roads && !map.getSource(roadsId)) {
         registerArchive(roadsUrl);
         map.addSource(roadsId, { type: 'vector', url: roadsUrl,
           attribution: '© OpenStreetMap contributors' });
       }
-      if (state.datasets.overlays && !map.getSource(overlaysId)) {
+      if (detailed && state.datasets.overlays && !map.getSource(overlaysId)) {
         registerArchive(overlaysUrl);
         map.addSource(overlaysId, { type: 'vector', url: overlaysUrl,
           attribution: '© OpenStreetMap contributors' });
@@ -276,9 +301,10 @@
       const style = map.getStyle();
       const templates = (style.layers || []).filter((layer) =>
         layer.id.startsWith('basemap-')
-          && ['basemap-context', 'basemap-roads'].includes(layer.source));
+          && ['basemap-regional', 'basemap-context', 'basemap-roads'].includes(layer.source));
       for (const template of templates) {
-        const source = template.source === 'basemap-context' ? contextId : roadsId;
+        const source = template.source === 'basemap-regional' ? regionalId
+          : template.source === 'basemap-context' ? contextId : roadsId;
         const id = `${visibleLayerPrefix(state.id)}${template.id}`;
         if (!map.getSource(source) || map.getLayer?.(id)) continue;
         const layer = JSON.parse(JSON.stringify({ ...template, id, source }));
@@ -411,11 +437,13 @@
     // measured against the released Washington archive, z4-z7 context tiles
     // peak at ~1.2 MB compressed and WebKit drops them under pressure, while
     // desktop renderers draw them fine. Only constrained maps trade the low
-    // zoom band for the resident state polygons; everything else keeps the
-    // archive's full range.
+    // zoom band for the compact regional archive; everything else keeps the
+    // detailed archive's full range.
     const contextMinZoom = constrainedRenderer ? CONTEXT_MIN_ZOOM : 4;
     if (!Region.localDataAvailable) return createNationalStyle();
     ensureProtocol();
+    const regionalGround = constrainedRenderer && !!Region.datasets.regional;
+    if (regionalGround) registerArchive(REGIONAL_URL);
     const style = {
       version: 8,
       glyphs: glyphUrl(),
@@ -433,6 +461,13 @@
             type: 'geojson', data: { type: 'FeatureCollection', features: [] },
           },
         } : {}),
+        ...(regionalGround ? {
+          'basemap-regional': {
+            type: 'vector',
+            url: REGIONAL_URL,
+            attribution: '© OpenStreetMap contributors',
+          },
+        } : {}),
         'basemap-context': {
           type: 'vector',
           url: CONTEXT_URL,
@@ -446,9 +481,23 @@
       },
       layers: [
         { id: 'basemap-ocean', type: 'background', paint: { 'background-color': '#dcecf2' } },
+        // Administrative state polygons include inland and coastal water, so
+        // they are only a last-resort backdrop. Keep them BELOW both regional
+        // land and regional water: the compact archive corrects Green Lake,
+        // Whidbey and every other shoreline where it exists, while an older
+        // installed neighboring pack still has dry ground until its separate
+        // map update adds regional.pmtiles.
         { id: 'basemap-state-ground', type: 'fill', source: 'basemap-state-ground',
           maxzoom: CONTEXT_MIN_ZOOM + 0.5,
           paint: { 'fill-color': '#f4f3ee', 'fill-opacity': 1 } },
+        ...(regionalGround ? [
+          { id: 'basemap-regional-land-detail', type: 'fill', source: 'basemap-regional',
+            'source-layer': 'land_detail', minzoom: 4, maxzoom: CONTEXT_MIN_ZOOM,
+            paint: { 'fill-color': '#f4f3ee' } },
+          { id: 'basemap-regional-water', type: 'fill', source: 'basemap-regional',
+            'source-layer': 'water', minzoom: 4, maxzoom: CONTEXT_MIN_ZOOM,
+            paint: { 'fill-color': '#dcecf2', 'fill-outline-color': '#c5dce6' } },
+        ] : []),
         { id: 'basemap-state-outline', type: 'line', source: 'basemap-state-ground',
           maxzoom: CONTEXT_MIN_ZOOM + 0.5,
           paint: { 'line-color': '#cbd2d4', 'line-width': 0.8 } },

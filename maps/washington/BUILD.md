@@ -108,6 +108,7 @@ python3 scripts/build_basemap.py \
   --places maps/washington/places.json \
   --out maps/washington/basemap.pmtiles
 
+node scripts/build_regional_basemap.mjs washington
 node scripts/stamp_tiles_version.mjs washington
 ```
 
@@ -165,6 +166,7 @@ tippecanoe-decode maps/washington/roads.pmtiles 13 1311 2858 | grep -c '"ln"'
 | --- | --- | --- |
 | `graph2.bin.gz` | OSM + WSDOT + CRAB + FHWA + AWS Terrarium DEM | `build_graph.py` |
 | `roads.pmtiles` | OSM + WSDOT BLTS + roadlog + funcclass + AADT | `build_roads.py` + tippecanoe |
+| `regional.pmtiles` | zoom 8 `land_detail` and `water` from `basemap.pmtiles` | `build_regional_basemap.mjs` |
 | `basemap.pmtiles` | OSM + Natural Earth 1:10m land + `places.json` | `build_basemap.py` |
 | `overlays.pmtiles` | `bikeinfra.geojson.gz` + `blts.geojson.gz` | `build_overlay_tiles.py` |
 | `blts.geojson[.gz]` | WSDOT BikePedLTS geodatabase (EPSG:2927 → 4326) | `build_blts.py` |
