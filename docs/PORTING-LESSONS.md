@@ -1792,6 +1792,36 @@ squeezing it into a spare bit: a year needs seven bits of its own to span
 existing graph readers accepted the current stamped format; no unfamiliar
 format was introduced by this state import.
 
+### G8 — Metro partition size is the device floor. Corridor length is nearly free.
+
+*What happened.* Planning the California import raised the question of whether
+long multi-state corridors could ever fit a phone's routing-memory budget. A
+corridor study over the released Washington/Oregon catalogue (2026-08-24)
+answered it backwards from the intuition: every rural corner-to-corner
+diagonal admits 19–76 MB across 8–17 cells, and the longest possible trip —
+Bellingham to Ashland through both Seattle and Portland — admits 127 MB
+against the 145.8 MB ceiling. What binds is the single 1°-grid cell holding a
+metro: Seattle's is 58 MB on its own, which puts the Seattle–Portland strict
+corridor floor at 90 MB and makes Seattle–Eugene unroutable at a 100 MB
+budget while Seattle–Buckman still returns its full six-option portfolio.
+
+*Why.* Rural cells are small because road density is low; a straight-line
+corridor crosses few of them. A metro endpoint always admits its whole cell,
+so the largest cell sets the minimum budget for any trip touching it — and
+two metro endpoints plus a spine must fit one composite.
+
+*Evidence.* Corridor study in the memory-contract section of
+`MULTI-STATE-ARCHITECTURE.md`; `test_partition_catalogue_budget.mjs` pins the
+bound (largest cell ≤45% of the ceiling) and the worst diagonals.
+
+*Import rule.* A state with a Los Angeles-class metro must choose a finer
+builder grid (`build_graph_partitions.py --cell-degrees`) so its largest cell
+passes the catalogue-budget test. This is decided at import time by
+measuring, not assumed.
+
+*Travelled.* Washington/Oregon are the origin (2026-08-24). No third state
+yet.
+
 ---
 
 ## What is not yet mined

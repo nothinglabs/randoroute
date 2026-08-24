@@ -221,6 +221,33 @@ partitions, 2 widening retries): the session router's standing set is
 295 MiB — 136 graph, 53 derived, 101 reusable caches — and the zoom-start
 trim reclaims the reusable share. Desktop keeps both engines warm.
 
+One budget governs every graph allocation. `deviceRoutingBudgetBytes()`
+(app.js) is the largest single graph allocation the device may hold: it is
+both the composite admission ceiling and the test for whether a state's
+monolithic graph is loadable at all. It defaults to
+`MAX_DETAILED_GRAPH_INPUT_BYTES`; the native shell or a test lowers it via
+`window.JRA_ROUTING_BUDGET_BYTES`. A state whose `region.json` declares a
+`graphRawBytes` above the budget — a California-scale graph — never loads
+the monolithic home worker: its own in-state trips route through the
+partition session under the same admission budget
+(`routingRequiresPartitionSession`), proven end to end by
+`test_oversized_home_state_routing.mjs` with Washington standing in.
+
+Partition granularity is the feasibility lever, not corridor length. The
+2026-08-24 corridor study over the released catalogue: rural
+corner-to-corner diagonals admit 19–76 MB across 8–17 cells, and the longest
+metro diagonal (Bellingham–Ashland through both Seattle and Portland)
+admits 127 MB — every reachable trip fits the ceiling. What sets the floor
+is the metro cell a trip starts or ends in: Seattle's single 58 MB
+1°-grid cell alone puts the Seattle–Portland strict corridor at 90 MB, and
+at a 100 MB budget Seattle–Buckman still yields its full 6-option portfolio
+(99 MB admitted) while Seattle–Eugene is correctly refused. A future import
+with a larger metro (Los Angeles) must choose a finer builder grid
+(`build_graph_partitions.py --cell-degrees`) so its largest cell stays
+within the bound `test_partition_catalogue_budget.mjs` enforces (≤45% of
+the ceiling); that same choice is what would let three-metro corridors and
+lower device budgets route, with no new machinery.
+
 ## Jurisdiction
 
 Every partition edge carries the owning state/jurisdiction. Composite edge IDs

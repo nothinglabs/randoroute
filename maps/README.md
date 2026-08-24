@@ -257,6 +257,7 @@ places the data is thinnest — which `measure_coverage.py` will name for you.
 | `routeDirectionSuffixes` | Trailing letters in a route id that mean a direction (`{"i": "increasing mileposts"}`). Empty if ids do not work that way. |
 | `directionalShoulderFloor` | Optional. The lowest acceptable ratio of both-direction to either-direction shoulder fill on roads at 45+ mph, checked by `test_shoulder_directional_fill`. Omit it and the default (0.6) applies — Washington measures 0.86. Set it only when the agency genuinely publishes one side of the road, and say why in `STATUS.md`; a low ratio otherwise means the state's adapter is landing its measurement in one slot, which makes the same asphalt fail the rules one way and pass the other. |
 | `datasets` | Which files this folder actually has. The app, the service worker and the iOS bundler all read this. |
+| `graphRawBytes` | The routing graph's decompressed size — the partition catalogue's `sourceRawBytes` for this state (`test_partition_catalogue_budget` checks they agree). The app compares it to the device routing budget: a state whose graph exceeds it (a California-scale network) routes its own trips through the partition session instead of loading the monolith. Optional for a state predating the fact; the monolith path then stays the default. |
 | `versions` | Content hashes, written by `build_graph.py` and `scripts/stamp_tiles_version.mjs`. Never hand-edit. |
 
 ## Stamps

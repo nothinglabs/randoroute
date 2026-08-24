@@ -82,7 +82,17 @@ describes ("Map stores" in `maps/README.md` is the contract). To publish:
    again so `maps/index.json` contains the state's atomic
    `routing-partitions` acquisition. A state with no validated acquisition
    remains internally routable but is not published as a cross-state route
-   dependency.
+   dependency. Two device-memory facts are part of this stage
+   (PORTING-LESSONS G8 has the study behind both):
+   - Record the state's decompressed graph size as `graphRawBytes` in its
+     `region.json` — the catalogue's `sourceRawBytes` for the state, and the
+     fact the app uses to decide whether the state's own trips must route
+     through partitions instead of the monolithic worker.
+   - `node scripts/test_partition_catalogue_budget.mjs` must pass. A state
+     with a large metro (California's Los Angeles) will need a finer builder
+     grid (`build_graph_partitions.py --cell-degrees`) to keep its largest
+     cell inside the bound; corridor length is nearly free, metro cell size
+     is what decides which trips fit a phone's routing budget.
 3. Upload `maps/index.json`, each indexed `maps/<state>/<file>`, and every
    catalogue/partition path named by its acquisitions to a static host with
    CORS. PMTiles additionally require byte ranges. Choose a host against the
