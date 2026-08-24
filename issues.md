@@ -73,7 +73,12 @@ device and states the three-contiguous-state routing limit.
 
 Remaining gates:
 
-- run the full executable suite and record its passes/skips/runtime; and
+- suite gate recorded 2026-08-24 on `claude/multi-state-routing-review-3khslx`
+  at `.803`: 139 of 146 files passed, 2 skipped (missing `tippecanoe-decode` /
+  build inputs), 2195 s wall. Four failures were in-suite timing flakes that
+  each pass standalone (`device_start_follows`, `fail_road_style`,
+  `national_map_first_run`, `pmtiles_truncated_cache_recovery`); the one real
+  failure (`web_preview` pinning the retired source branch name) is fixed.
 - get the owner's physical-iPhone verdict for Cache Storage durability, memory
   pressure, navigation and real timings.
 
@@ -93,7 +98,13 @@ launch validation, and post-launch support plan.
 
 ### 7. Stability issues / random crashing — possibly zoom-related
 Reproduce and diagnose the random crashes, determine whether zoom behavior is
-the cause, and fix the underlying stability issue.
+the cause, and fix the underlying stability issue. Four specific
+ride-length-scaling mechanisms were fixed in `.803`: elevation-canvas
+reallocation on every draw, full route-profile re-upload on every GPS fix,
+the render pipeline running while backgrounded, and a launch-window race
+loading the graph during map warm-up. Needs a field verdict on whether the
+random restarts persist; if they do, the remaining suspects are listed under
+"crash audit" in the session findings.
 
 ### 8. Data licensing and Google Maps key usage
 Verify OSM and every other data source's licensing and attribution requirements.
