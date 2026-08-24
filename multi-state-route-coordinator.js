@@ -511,6 +511,9 @@
       this.routerHasGraph = false;
       this.initialized = false;
       this.sequence = 0;
+      this.pinnedPartitionIds = [];
+      this.lastComposite = null;
+      this.lastCompositeKey = '';
     }
 
     ensureWorkers() {
@@ -539,6 +542,21 @@
     async loadComposite(request) {
       await this.ensureInitialized(request.signal);
       checkAbort(request.signal);
+      // The loader admits exactly requested ∪ pinned, so the router's current
+      // graph answers any request that resolves to the same set under the
+      // same route states and budget — an endpoint nudge or a settings-held
+      // recompute inside the loaded corridor skips the whole compose/transfer
+      // (seconds of work and a second transient composite), exactly as the
+      // single-state worker reuses its resident graph between requests.
+      const admitted = [...new Set([...(request.partitionIds || []),
+        ...this.pinnedPartitionIds])].sort((a, b) => a.localeCompare(b));
+      const compositeKey = JSON.stringify([admitted,
+        [...new Set(request.routeStateIds || [])].sort((a, b) => a.localeCompare(b)),
+        request.budgetBytes || null]);
+      if (this.routerHasGraph && this.lastComposite
+          && this.lastCompositeKey === compositeKey) {
+        return this.lastComposite;
+      }
       // A widening retry replaces the whole composite. The router's copy of
       // the previous one (graph plus derived arrays) must not sit beside the
       // new composite while the loader composes it — on a phone that pairing
@@ -549,6 +567,7 @@
         this.router?.terminate();
         this.router = null;
         this.routerHasGraph = false;
+        this.lastComposite = null;
         this.ensureWorkers();
       }
       const id = `partition-load-${request.generation}-${++this.sequence}`;
@@ -575,10 +594,12 @@
           frontiers: graph.frontiers }),
         (message) => (message.id === frontierId && message.type === 'partition-frontiers-ready')
           || message.type === 'error', this.onProgress, request.signal);
-      return { loadedPartitionIds: graph.loadedPartitionIds,
+      this.lastComposite = { loadedPartitionIds: graph.loadedPartitionIds,
         stateIds: graph.stateIds, partitionRanges: graph.partitionRanges,
         frontiers: graph.frontiers, diagnostics: graph.diagnostics,
         memory: ready.memory };
+      this.lastCompositeKey = compositeKey;
+      return this.lastComposite;
     }
 
     async search({ request, signal }) {
@@ -592,7 +613,9 @@
 
     retainActiveRoute({ result, composite }) {
       const used = new Set(result.partitionIds || []);
-      if (used.size && this.loader) this.loader.postMessage({ type: 'active-route',
+      if (!used.size) return;
+      this.pinnedPartitionIds = [...used].sort((a, b) => a.localeCompare(b));
+      if (this.loader) this.loader.postMessage({ type: 'active-route',
         id: `active-route-${++this.sequence}`, partitionIds: [...used] });
     }
 
@@ -603,6 +626,9 @@
       this.router = null;
       this.routerHasGraph = false;
       this.initialized = false;
+      this.pinnedPartitionIds = [];
+      this.lastComposite = null;
+      this.lastCompositeKey = '';
     }
   }
 

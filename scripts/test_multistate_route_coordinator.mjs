@@ -289,6 +289,25 @@ try {
     bridgedGraph.loadedPartitionIds.join('|') === 'left|right' && bridgedRoute.ok
       && workers.length === 2 && workers[1].graphTransferCount === 3,
     JSON.stringify({ bridgedGraph, bridgedRoute, workers: workers.length }));
+
+  // An identical request set reuses the resident composite: no new workers,
+  // no second compose. A different set replaces the router worker outright so
+  // the retiring composite never sits beside the one being composed.
+  const reused = await bridge.loadComposite({ generation: 2,
+    partitionIds: catalogue.states[0].partitionIds,
+    routeStateIds: ['state-a'], signal: new AbortController().signal });
+  const reusedWorkerCount = workers.length;
+  const widened = await bridge.loadComposite({ generation: 3,
+    partitionIds: [...catalogue.states[0].partitionIds,
+      ...catalogue.states[1].partitionIds],
+    routeStateIds: ['state-a', 'state-b'], signal: new AbortController().signal });
+  check('an unchanged corridor reuses the resident composite without recomposing',
+    reused === bridgedGraph && reusedWorkerCount === 2,
+    JSON.stringify({ reusedWorkerCount, same: reused === bridgedGraph }));
+  check('a widened corridor replaces the router worker before composing',
+    widened.loadedPartitionIds.length >= 2 && workers.length === 3
+      && workers[1].terminated === true,
+    JSON.stringify({ workers: workers.length, retired: workers[1].terminated }));
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

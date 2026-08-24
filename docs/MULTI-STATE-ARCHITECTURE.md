@@ -208,6 +208,19 @@ and JavaScript-object overhead, so they are diagnostics rather than a heap
 limit. The physical-iPhone sheet in the verification guide owns the final
 memory-pressure verdict.
 
+A constrained device holds one statewide graph at a time. When a partition
+session takes over routing, the app terminates the idle home worker
+(`releaseHomeRouterForPartitionSession`); the next single-state request
+rebuilds it through the ordinary `ensureRouter` path. Boot with a saved
+cross-state trip never loads the home graph at all, and the first multi-state
+compute on an unsettled map waits for the launch camera's tiles. Within a
+session, the bridge respawns its composite router before each load, so a
+widening retry never holds the retiring composite beside the one being
+composed. Measured on the Seattle–Eugene portfolio (142.2 MB raw input, 13
+partitions, 2 widening retries): the session router's standing set is
+295 MiB — 136 graph, 53 derived, 101 reusable caches — and the zoom-start
+trim reclaims the reusable share. Desktop keeps both engines warm.
+
 ## Jurisdiction
 
 Every partition edge carries the owning state/jurisdiction. Composite edge IDs
