@@ -87,12 +87,10 @@ install so the new geography becomes active.
 Remaining gates:
 
 - suite gate recorded 2026-08-24 on `claude/multi-state-routing-review-3khslx`
-  at `.805`: 146 of 151 files passed, 2 skipped (missing `tippecanoe-decode` /
-  build inputs), 2195 s wall. Of the three failures, two were in-suite timing
-  flakes that pass standalone (`fail_road_style`, `saved_routes_ui`) and one
-  was a test defect now fixed (`multistate_place_search`'s wait predicate
-  spans the continue-trip reload and threw during the new document's boot
-  window instead of retrying).
+  at `.806`: 149 of 152 files passed, 2 skipped (missing `tippecanoe-decode` /
+  build inputs), 2351 s wall. The single failure (`fail_road_style`, a paint
+  sampler) passes standalone on the same tree — the one remaining in-suite
+  timing flake under the two-browser load cap.
 - get the owner's physical-iPhone verdict for Cache Storage durability, memory
   pressure, navigation and real timings.
 
@@ -139,7 +137,24 @@ re-enabled.
 ### 9. Finalize app name
 Choose and approve the final public name for the app before release.
 
-### 10. Directional bike lanes — code shipped, graph rebuild pending
+### 10. Field rendering failures — self-healing shipped in .806
+Screenshots on .805 showed lake labels without lake polygons and Portland
+with base roads but no green or safety overlays. The first harness run to
+exercise the real serving path (service worker + store-installed archives)
+found: (a) .805's store rejected its own index at install time (unknown
+`graphRawBytes` key — fixed, pinned by test); (b) in a healthy browser the
+full path renders everything, so the field holes are device cache/WebKit
+state — now self-healing twice over: a torn or unreadable SW chunk answers
+from a bounded slice of the cached full archive instead of failing the
+range, and an error burst on a loaded source reloads that source (once per
+45 s) since MapLibre never re-asks for a failed tile; (c) Mac desktop
+Safari was classed as a constrained RENDERER (Apple vendor), hiding lakes,
+green and land detail below z9 on a desktop — it now gets the desktop map
+while keeping the WebKit worker budgets. Phones keep the z9 context floor;
+lifting it needs the low-zoom context tile rebuild (tippecanoe, build
+machine). Needs a field verdict on .806.
+
+### 11. Directional bike lanes — code shipped, graph rebuild pending
 A lane on one side of a two-way street (OSM `cycleway:right`/`:left`) is now
 stored, priced, judged and described per direction of travel (field: 37th
 Avenue NE claimed "Bike lane" on the unlaned side; "A bike lane can also

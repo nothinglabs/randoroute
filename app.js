@@ -1270,7 +1270,7 @@ function saveStateSoon() {
 window.addEventListener('pagehide', saveStateNow);
 
 window.__setAppLaunchStatus?.('Opening local map data…');
-const constrainedMapRuntime = isConstrainedDevice();
+const constrainedMapRuntime = isConstrainedDevice() && !isMacDesktopSafari();
 const map = new maplibregl.Map({
   container: 'map',
   style: BikeBasemap.createStyle({ constrainedRenderer: constrainedMapRuntime }),
@@ -1951,6 +1951,22 @@ function isConstrainedDevice() {
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
     || (navigator.deviceMemory > 0 && navigator.deviceMemory <= 4)
     || /^Apple/.test(navigator.vendor || '');
+}
+
+// Renderer class follows the RENDERER, not the WebKit brand. Mac desktop
+// Safari shares the per-tab memory ceiling (so it keeps every worker cap and
+// routing budget above), but it drives a desktop GPU and a desktop screen:
+// the constrained tile bands — the z9 context floor that hides lakes, green
+// and land detail at regional zoom, the retained-tile cap, the z6 minimum
+// zoom, the disabled cross-fade — exist for phone renderers dropping
+// oversized tiles, and on a Mac they read as the map losing its geography
+// (field: desktop screenshots of lake labels with no lakes). iPads keep the
+// phone renderer: same ceiling, tablet GPU.
+function isMacDesktopSafari() {
+  return /^Apple/.test(navigator.vendor || '')
+    && !/iPad|iPhone|iPod/i.test(navigator.userAgent)
+    && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    && !isNativeAppRuntime();
 }
 
 // The sweep has its own counter. routing.reqId is what every route reply is

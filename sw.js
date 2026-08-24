@@ -617,13 +617,34 @@ async function pmtilesRangeResponse(req) {
   const parts = [];
   for (let i = firstChunk; i <= lastChunk; i++) {
     const entry = await cache.match(chunkRequest(pathname, i));
-    if (!entry) {
-      // A killed worker can leave a torn chunk set; purge so the NEXT
-      // request rebuilds cleanly, and let this one fall back to network.
-      await purgePmtilesChunks(cache, pathname);
-      throw new Error(`missing chunk ${i} for ${pathname}`);
+    let blob = null;
+    if (entry) {
+      try { blob = await entry.blob(); } catch (error) { blob = null; }
     }
-    const blob = await entry.blob();
+    if (!blob) {
+      // A killed worker can tear a chunk set, and storage that lived through
+      // a crash can hold an entry whose body no longer reads. The COMPLETE
+      // archive is still cached either way: answer this range from a bounded
+      // slice of it (at most the range itself, tile-sized), and purge the
+      // chunk set so the next request rebuilds it. The old behaviour threw
+      // here, which put the rider one flaky network fallback away from a
+      // permanently missing map tile — MapLibre never re-asks for a tile it
+      // was handed an error for.
+      await purgePmtilesChunks(cache, pathname);
+      const whole = await full.blob();
+      if (whole.size !== meta.size) {
+        throw new Error(`archive changed size under ${pathname}`);
+      }
+      return new Response(whole.slice(start, end + 1), {
+        status: 206,
+        headers: {
+          'Accept-Ranges': 'bytes',
+          'Content-Range': `bytes ${start}-${end}/${meta.size}`,
+          'Content-Length': String(end - start + 1),
+          'Content-Type': full.headers.get('Content-Type') || 'application/octet-stream',
+        },
+      });
+    }
     const chunkStart = i * meta.chunkBytes;
     parts.push(blob.slice(Math.max(0, start - chunkStart),
       Math.min(blob.size, end + 1 - chunkStart)));

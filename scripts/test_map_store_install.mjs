@@ -27,6 +27,11 @@ const STORE_STATE = {
   datasets: { graph: true, places: true, roads: true, regional: true },
   versions: { graph: 'sha-test-graph', roads: 'sha-test-roads',
     regional: 'sha-test-regional' },
+  // Real region.json entries carry this (the oversized-home routing fact);
+  // .805 shipped a validator that rejected every state naming it, which made
+  // the deployed store uninstallable. Keep one here so the allowlist and the
+  // registry can never drift apart silently again.
+  graphRawBytes: 123456789,
   files: [
     { dataset: 'graph', path: 'graph2.bin.gz', bytes: FILES['graph2.bin.gz'].length },
     { dataset: 'places', path: 'places.json', bytes: FILES['places.json'].length },

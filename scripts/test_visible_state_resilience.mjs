@@ -72,6 +72,23 @@ try {
         layer.id.startsWith('state-oregon-safety-osm')),
     null, { timeout: 120000 });
 
+  // And it self-heals: MapLibre never re-asks for a tile it was handed an
+  // error for, so once the burst settles the wounded source must be reloaded
+  // (setUrl) — debounced, once — instead of leaving permanent holes. Field:
+  // lakes without water, safety color missing on whole archives.
+  const healed = await page.evaluate(() => new Promise((resolve) => {
+    const source = map.getSource('state-oregon-basemap-roads');
+    const original = source.setUrl.bind(source);
+    let called = 0;
+    source.setUrl = (url) => { called += 1; return original(url); };
+    map.fire('error', { sourceId: 'state-oregon-basemap-roads', error: new Error('range failed') });
+    map.fire('error', { sourceId: 'state-oregon-basemap-roads', error: new Error('range failed') });
+    setTimeout(() => resolve({ called,
+      still: !!map.getSource('state-oregon-basemap-roads') }), 6500);
+  }));
+  check('a loaded source reloads itself once after an error burst',
+    healed.called === 1 && healed.still, JSON.stringify(healed));
+
   // Pan home to detach, break the archive, pan back: the failed attachment
   // must self-heal by detaching rather than wedging the style.
   await page.evaluate(() => {
