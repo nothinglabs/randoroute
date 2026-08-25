@@ -32,7 +32,9 @@ The rules that remain:
 - **Never assert on source text.** No `assert.match(appSrc, /…/)`. If a
   behaviour cannot be observed by running something, it is not a test. Extract
   and *evaluate* a function if you must (`scripts/test_route_pulse.mjs` does),
-  but assert on what it does, never on how it reads.
+  but assert on what it does, never on how it reads. One exception: code this
+  container cannot execute at all (the Swift bridge) may keep a source-text
+  TRIPWIRE, labelled as such — it proves the code still exists, nothing more.
 - **Use `scripts/testlib/harness.mjs`.** It owns the graph load, the router
   worker's fake-browser context, the static server, and Playwright resolution.
   A new test should not rebuild any of that.

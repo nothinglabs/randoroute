@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SOURCE-TEXT TRIPWIRE, the one sanctioned exception to the no-source-text
+// rule (AGENTS.md): this container has no Swift compiler, so the bridge
+// cannot be executed here. These matches prove the warmup code still exists;
+// they prove nothing about its behavior, which only a device build can.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
