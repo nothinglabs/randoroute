@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.815';
+const APP_VERSION = '2026-08-25.816';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -17337,7 +17337,8 @@ function offerUpdate(worker) {
   pendingUpdateWorker = worker;
   // One banner at a time, and the app update comes first: it usually carries
   // the very index that announces the map update on the next boot.
-  document.getElementById('mapDataUpdatePrompt').hidden = true;
+  const mapBanner = document.getElementById('mapDataUpdatePrompt');
+  if (mapBanner) mapBanner.hidden = true;
   document.getElementById('updatePrompt').hidden = false;
 }
 
@@ -17534,10 +17535,27 @@ async function runManualUpdateCheck() {
       || await settledUpdateWorker(reg);
     if (fresh) {
       setManualUpdateStatus('Update found — installing…', { busy: true });
-      if (reg.waiting) offerUpdate(reg.waiting);
-      else fresh.addEventListener('statechange', () => {
-        if (fresh.state === 'installed') offerUpdate(fresh);
-      });
+      // Attach AND check immediately, like setupAutomaticUpdates: a fast
+      // install reaches `installed` before a bare listener exists, and the
+      // field then sat on "installing…" forever with no Restart banner. A
+      // worker that dies (`redundant` -- one shell file failed to fetch) must
+      // say so instead of spinning; and a hard-reloaded page has no
+      // controller, so the banner cannot show -- tell the rider to reload.
+      const offerInstalled = () => {
+        const ready = reg.waiting || (fresh.state === 'installed' ? fresh : null);
+        if (fresh.state === 'redundant') {
+          setManualUpdateStatus('The update could not be installed — check your'
+            + ' connection and try again.');
+          return;
+        }
+        if (!ready) return;
+        offerUpdate(ready);
+        if (document.getElementById('updatePrompt').hidden) {
+          setManualUpdateStatus('Update ready — reload this page to finish installing.');
+        }
+      };
+      fresh.addEventListener('statechange', offerInstalled);
+      offerInstalled();
       // The update prompt renders under this modal dialog; close it so the
       // "Get update?" banner is visible.
       document.getElementById('helpDialog')?.close();
