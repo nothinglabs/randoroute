@@ -388,7 +388,16 @@ def _dem_lookup(mosaic, x0, y0, W, H):
         fy = (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * scale
         px = int((fx - x0) * 256); py = int((fy - y0) * 256)
         if 0 <= py < H and 0 <= px < W:
-            return int(mosaic[py, px])
+            value = int(mosaic[py, px])
+            # Terrarium tiles carry real bathymetry over water. A pier or
+            # ferry-terminal node one pixel offshore samples the sea FLOOR
+            # (-2,973 m at the worst in the released Washington graph), and
+            # the short edge climbing back out invented 9,022 ft of ascent on
+            # a Kirkland-Tacoma route. No US land is below -100 m (Death
+            # Valley is -86 m), so anything deeper is water: read it as sea
+            # surface. Clamped at lookup, not in the mosaic, so cached
+            # mosaics built before this line are covered too.
+            return 0 if value < -100 else value
         return 0
     return ele_at
 
