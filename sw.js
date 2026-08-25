@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v810';
+const VERSION = 'v811';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -466,10 +466,11 @@ async function purgePmtilesChunks(cache, pathname) {
 // especially if the route graph is also live.
 const chunkingInFlight = new Map();
 let chunkBuildQueue = Promise.resolve();
-function ensurePmtilesChunks(cache, pathname, fullRequest) {
+function ensurePmtilesChunks(cache, pathname, fullRequest, archiveVersion) {
   let inFlight = chunkingInFlight.get(pathname);
   if (!inFlight) {
-    inFlight = chunkBuildQueue.then(() => buildPmtilesChunks(cache, pathname, fullRequest));
+    inFlight = chunkBuildQueue.then(() =>
+      buildPmtilesChunks(cache, pathname, fullRequest, archiveVersion));
     // A rejected archive must not poison the queue for every archive behind it.
     chunkBuildQueue = inFlight.catch(() => {});
     inFlight = inFlight
@@ -520,35 +521,57 @@ async function declaredPmtilesBytes(blob) {
   return pmtilesHeaderUint64(view, 56) + pmtilesHeaderUint64(view, 64);
 }
 
-async function buildPmtilesChunks(cache, pathname, fullRequest) {
+async function buildPmtilesChunks(cache, pathname, fullRequest, archiveVersion) {
   const cachedIndex = await cache.match(chunkIndexRequest(pathname));
   let full = await cache.match(fullRequest, { ignoreVary: true, ignoreSearch: true });
   if (cachedIndex) {
     const meta = await cachedIndex.json();
-    if (validatedChunkIndexes.has(pathname)) return meta;
-    // A previous worker may have completed a chunk index around a truncated
-    // HTTP 200. Validate that persisted metadata once per worker lifetime;
-    // otherwise every range beyond the false end of file becomes a 416 while
-    // the apparently complete chunk set prevents build-time validation. Read
-    // only chunk zero (at most 8 MB), not the 40+ MB full response: it contains
-    // the same PMTiles header without recreating the WebKit memory spike this
-    // chunk cache exists to avoid.
-    const firstChunk = await cache.match(chunkRequest(pathname, 0));
-    const firstBlob = firstChunk ? await firstChunk.blob() : null;
-    const declaredSize = firstBlob ? await declaredPmtilesBytes(firstBlob) : null;
-    const fullLengthHeader = full ? full.headers.get('Content-Length') : null;
-    const fullHeaderBytes = fullLengthHeader ? Number(fullLengthHeader) : null;
-    if (declaredSize === meta.size
-        && (!Number.isFinite(fullHeaderBytes) || fullHeaderBytes === meta.size)) {
-      validatedChunkIndexes.add(pathname);
-      return meta;
+    // A replaced archive arrives under a new content-version (?v= on every
+    // range request). Chunks mirror one specific copy: an index whose
+    // recorded version does not match the request's -- including an index
+    // from before versions were recorded -- is the .810 field failure, where
+    // a validated store update installed the corrected archive while every
+    // render kept reading the previous copy out of these entries. Rebuild
+    // from the cached full archive (the update already stored it); the
+    // network is only needed if that entry is missing.
+    if (archiveVersion != null && meta.v !== archiveVersion) {
+      await purgePmtilesChunks(cache, pathname);
+      if (!full) full = await fetchAndCacheFullArchive(cache, pathname, fullRequest);
+    } else {
+      return validatedChunkMeta(cache, pathname, fullRequest, meta, full, archiveVersion);
     }
-    if (full) {
-      await cache.delete(fullRequest, { ignoreVary: true, ignoreSearch: true });
-    }
-    await purgePmtilesChunks(cache, pathname);
-    full = await fetchAndCacheFullArchive(cache, pathname, fullRequest);
   }
+  return chunkArchive(cache, pathname, fullRequest, full, archiveVersion);
+}
+
+async function validatedChunkMeta(cache, pathname, fullRequest, meta, full, archiveVersion) {
+  if (validatedChunkIndexes.has(pathname)) return meta;
+  // A previous worker may have completed a chunk index around a truncated
+  // HTTP 200. Validate that persisted metadata once per worker lifetime;
+  // otherwise every range beyond the false end of file becomes a 416 while
+  // the apparently complete chunk set prevents build-time validation. Read
+  // only chunk zero (at most 8 MB), not the 40+ MB full response: it contains
+  // the same PMTiles header without recreating the WebKit memory spike this
+  // chunk cache exists to avoid.
+  const firstChunk = await cache.match(chunkRequest(pathname, 0));
+  const firstBlob = firstChunk ? await firstChunk.blob() : null;
+  const declaredSize = firstBlob ? await declaredPmtilesBytes(firstBlob) : null;
+  const fullLengthHeader = full ? full.headers.get('Content-Length') : null;
+  const fullHeaderBytes = fullLengthHeader ? Number(fullLengthHeader) : null;
+  if (declaredSize === meta.size
+      && (!Number.isFinite(fullHeaderBytes) || fullHeaderBytes === meta.size)) {
+    validatedChunkIndexes.add(pathname);
+    return meta;
+  }
+  if (full) {
+    await cache.delete(fullRequest, { ignoreVary: true, ignoreSearch: true });
+  }
+  await purgePmtilesChunks(cache, pathname);
+  full = await fetchAndCacheFullArchive(cache, pathname, fullRequest);
+  return chunkArchive(cache, pathname, fullRequest, full, archiveVersion);
+}
+
+async function chunkArchive(cache, pathname, fullRequest, full, archiveVersion) {
   if (!full) throw new Error(`no cached archive to chunk for ${pathname}`);
   // blob() + slice, not body streaming: reading a cached response as a Blob
   // is the one primitive the v.583 era PROVED works on Safari, while cached
@@ -579,7 +602,10 @@ async function buildPmtilesChunks(cache, pathname, fullRequest) {
     await cache.put(chunkRequest(pathname, written), new Response(piece));
     written++;
   }
-  const meta = { size, chunkBytes: PMTILES_CHUNK_BYTES, chunks: written };
+  // The recorded version ties these chunks to the archive copy they slice; a
+  // later request under a different ?v= rebuilds instead of serving them.
+  const meta = { size, chunkBytes: PMTILES_CHUNK_BYTES, chunks: written,
+    v: archiveVersion == null ? null : archiveVersion };
   await cache.put(chunkIndexRequest(pathname), new Response(JSON.stringify(meta)));
   validatedChunkIndexes.add(pathname);
   return meta;
@@ -602,7 +628,11 @@ async function pmtilesRangeResponse(req) {
   if (!range) return full;
   const match = /^bytes=(\d+)-(\d*)$/i.exec(range);
   if (!match) return new Response(null, { status: 416 });
-  const meta = await ensurePmtilesChunks(cache, pathname, fullRequest);
+  // The archive's content-version rides the request as ?v=. Chunk entries
+  // mirror ONE archive copy; the version ties them to it (see
+  // buildPmtilesChunks).
+  const archiveVersion = new URL(req.url).searchParams.get('v');
+  const meta = await ensurePmtilesChunks(cache, pathname, fullRequest, archiveVersion);
   const start = Number(match[1]);
   const requestedEnd = match[2] ? Number(match[2]) : meta.size - 1;
   const end = Math.min(requestedEnd, meta.size - 1);

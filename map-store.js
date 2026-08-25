@@ -624,6 +624,19 @@
           // storage peak near one copy of the download instead of two.
           await stage.delete(request);
         }
+        // The service worker serves PMTiles ranges from per-archive chunk
+        // entries (<path>__chunk-N, <path>__chunkindex) that mirror ONE
+        // specific copy. A replaced archive must take its chunks with it, or
+        // every render keeps reading the previous copy out of them: the .810
+        // field wedge was a validated update installed while the map kept
+        // drawing the old archive from these entries.
+        const stagedPaths = new Set(stagedRequests
+          .map((request) => new URL(request.url).pathname));
+        for (const request of await cache.keys()) {
+          const pathname = new URL(request.url).pathname;
+          const base = pathname.replace(/__chunk(?:index|-\d+)$/, '');
+          if (base !== pathname && stagedPaths.has(base)) await cache.delete(request);
+        }
         const installed = readJson(INSTALLED_KEY).filter((entry) => entry.state.id !== state.id);
         const cachedRequests = stagedRequests.map((request) => request.url).sort();
         installed.push({ state, storeUrl, installedAt: Date.now(), cachedRequests });

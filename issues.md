@@ -155,6 +155,29 @@ Saratoga water, z6-z10.5). A route that fails because a state's maps are
 not installed now offers an "Open the Maps screen" button on the failure
 card (`test_route_unavailable_maps_action`).
 
+Release `.811` fixes why `.810`'s corrected archive never appeared on the
+field device that installed it. The service worker answers PMTiles ranges
+from per-archive chunk entries built once per copy; a store install
+replaced the full archive in the cache but nothing invalidated the
+chunks, so every render kept reading the previous copy. The `.808` gzip
+fix had also removed the stored Content-Length that was the chunk
+validator's only replacement tripwire (the header pair is untrustworthy
+on the wire, so its absence passed validation). Two changes: the chunk
+index now records the archive content-version that rides every range
+request as `?v=` and a mismatch -- including an index from before
+versions were recorded -- purges and rebuilds from the already-cached
+archive, which heals devices stuck in the `.810` state without any
+re-download; and installState's commit deletes the chunk entries of every
+file it replaces. `test_map_update_reaches_renderer` walks the rider's
+lifecycle with the REAL service worker in pixels: install the `.807`
+archive, render (wedge sea, chunks built), simulate the stale device
+(new archive and registry, old chunks -- heals on next render), roll back
+through a real install (renderer follows), update forward (wedge land).
+The verification failure this loop exposed: every prior gate ran a fresh
+profile with the service worker blocked and data served from disk, so
+persistence bugs were structurally invisible. Data-changing releases must
+run the lifecycle gate, not only fresh-world pixel gates.
+
 Remaining gates:
 
 - `.808` focused gates recorded 2026-08-24 on
