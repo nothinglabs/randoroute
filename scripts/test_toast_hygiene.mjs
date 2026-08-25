@@ -66,15 +66,23 @@ check(`and lower still while the place picker is open (${Math.round(bands.pickin
 
 // The about line reports the map data the router ACTUALLY loaded -- hashed
 // from the bytes -- so a stale service-worker cache reads STALE there
-// instead of surfacing as an inexplicable route. Here they must agree.
-await page.waitForFunction(() => /map sha-[0-9a-f]{12}$/
+// instead of surfacing as an inexplicable route. Here they must agree. The
+// graph line is the FIRST line; the per-archive renderer stamps follow on
+// their own line so a field report can name the exact map bytes too.
+await page.waitForFunction(() => /map sha-[0-9a-f]{12}(\n|$)/
   .test(document.getElementById('appVersion').textContent), { timeout: 90000 });
 const version = await page.evaluate(() => ({
-  line: document.getElementById('appVersion').textContent,
+  lines: document.getElementById('appVersion').textContent.split('\n'),
   expected: `v${APP_VERSION} · map ${self.GRAPH_DATA_VERSION}`,
+  regionName: Region.name,
 }));
 check('the about line names the loaded map data, matching the shipped stamp',
-  version.line === version.expected, JSON.stringify(version));
+  version.lines[0] === version.expected, JSON.stringify(version));
+check('and stamps the renderer archives per dataset',
+  new RegExp(`^${version.regionName} map data: (regional|basemap)`)
+    .test(version.lines[1] || '')
+    && /roads [0-9a-f]{6}/.test(version.lines[1] || ''),
+  JSON.stringify(version.lines));
 
 check('no page errors', page.pageErrors.length === 0, page.pageErrors.join(' | '));
 
