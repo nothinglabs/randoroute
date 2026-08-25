@@ -17126,6 +17126,63 @@ async function verifyRenderedArchives() {
   location.reload();
 }
 verifyRenderedArchives();
+
+// A rider should hear that an installed state's map has an update, not
+// discover it by opening the Maps screen. The comparison runs against the
+// app-shipped index (refreshed with every app update), so the common path --
+// an app update whose release also re-cut a state's data -- announces itself
+// offline on the very next boot. Dismissal is remembered per offered
+// acquisition set: the banner returns only when a NEWER update appears.
+const MAP_DATA_UPDATE_DISMISSED_KEY = 'jra-map-update-dismissed-1';
+function installedMapUpdateOffers() {
+  if (!window.MapStore) return [];
+  return MapStore.installedStates()
+    .map((entry) => installedMapUpdateOffer(entry.state.id))
+    .filter(Boolean);
+}
+function mapUpdateFingerprint(offers) {
+  return offers.map((offer) => (offer.state.acquisitions || [])
+    .map((unit) => unit.id).sort().join('+')).sort().join('|');
+}
+function announceInstalledMapUpdates() {
+  const banner = document.getElementById('mapDataUpdatePrompt');
+  if (!banner || !document.getElementById('updatePrompt').hidden) return;
+  const offers = installedMapUpdateOffers();
+  if (!offers.length) return;
+  const fingerprint = mapUpdateFingerprint(offers);
+  try {
+    if (localStorage.getItem(MAP_DATA_UPDATE_DISMISSED_KEY) === fingerprint) return;
+  } catch (error) { /* private mode: announce every boot */ }
+  const text = document.getElementById('mapDataUpdateText');
+  const button = document.getElementById('mapDataUpdateBtn');
+  const later = document.getElementById('mapDataUpdateLaterBtn');
+  const totalBytes = offers.reduce((sum, offer) => sum + MapStore.stateBytes(offer.state), 0);
+  text.textContent = offers.length === 1
+    ? `${offers[0].state.name} map update available (${formatMapBytes(totalBytes)})`
+    : `${offers.length} map updates available (${formatMapBytes(totalBytes)})`;
+  button.textContent = offers.length === 1 ? 'Update' : 'Open Maps';
+  button.disabled = false;
+  button.onclick = async () => {
+    if (offers.length > 1) {
+      banner.hidden = true;
+      openMapsDialog();
+      return;
+    }
+    button.disabled = true;
+    const installed = await downloadStoreState(offers[0].storeUrl, offers[0].state, button,
+      { onStatus: (message) => { text.textContent = message; } });
+    // New data binds at boot, exactly like a fresh home-state install.
+    if (installed) rebootIntoInstalledHomeState();
+    else button.disabled = false;
+  };
+  later.onclick = () => {
+    try { localStorage.setItem(MAP_DATA_UPDATE_DISMISSED_KEY, fingerprint); }
+    catch (error) { /* private mode */ }
+    banner.hidden = true;
+  };
+  banner.hidden = false;
+}
+setTimeout(announceInstalledMapUpdates, 3500);
 initializeNationalOrientation();
 // One line answers both "what app is this" and "what map is it routing on".
 // The map half reports the hash of the bytes the router loaded, so a stale
@@ -17291,6 +17348,9 @@ let updateAccepted = false;
 function offerUpdate(worker) {
   if (!worker || worker === deferredUpdateWorker || !navigator.serviceWorker.controller) return;
   pendingUpdateWorker = worker;
+  // One banner at a time, and the app update comes first: it usually carries
+  // the very index that announces the map update on the next boot.
+  document.getElementById('mapDataUpdatePrompt').hidden = true;
   document.getElementById('updatePrompt').hidden = false;
 }
 

@@ -716,6 +716,11 @@
     <button id="getUpdateBtn" title="Installs the update and restarts the app — your route and settings stay">Restart to update</button>
     <button id="updateLaterBtn" aria-label="Not now" title="Not now">✕</button>
   </div>
+  <div id="mapDataUpdatePrompt" class="update-prompt" hidden>
+    <span id="mapDataUpdateText">Map update available</span>
+    <button id="mapDataUpdateBtn">Update</button>
+    <button id="mapDataUpdateLaterBtn" aria-label="Not now" title="Not now">✕</button>
+  </div>
 
   <script>
     // Register the service worker (offline support + installability).
