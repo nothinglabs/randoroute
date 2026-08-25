@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.826';
+const APP_VERSION = '2026-08-25.827';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -15884,12 +15884,7 @@ async function loadNationalCatalogue(force = false) {
   if (force) nationalCataloguePromise = null;
   if (nationalCataloguePromise) return nationalCataloguePromise;
   nationalCataloguePromise = (async () => {
-    const response = await fetch(NATIONAL_STATES_URL);
-    if (!response.ok) throw new Error(`National state map: HTTP ${response.status}`);
-    const boundaries = await response.json();
-    if (boundaries?.type !== 'FeatureCollection' || boundaries.features?.length !== 51) {
-      throw new Error('National state map is not the expected 50 states plus DC.');
-    }
+    const boundaries = await loadNationalBoundaries();
     const offers = new Map();
     const offersByStore = new Map();
     const indexes = await Promise.allSettled(mapStoreUrls().map(async (storeUrl) => ({
@@ -15903,7 +15898,6 @@ async function loadNationalCatalogue(force = false) {
         if (!offers.has(state.id)) offers.set(state.id, offer);
       }
     }
-    nationalFeatureCollection = boundaries;
     nationalMapOffers = offers;
     nationalMapOffersByStore = offersByStore;
     applyNationalMapFeatureStates();
@@ -15913,6 +15907,35 @@ async function loadNationalCatalogue(force = false) {
     throw error;
   });
   return nationalCataloguePromise;
+}
+
+// The state polygons alone, without the store catalogue. placeStateIdAt's
+// accurate containment test needs them from the first tap: they used to load
+// only with the full catalogue (search or the Maps screen), so a rider who
+// booted with a saved trip and tapped a destination fell through to the
+// bounding-box fallback — whose smallest-box tie-break puts the Portland
+// strip inside 45.5–45.54°N in WASHINGTON, silently routing a cross-state
+// tap single-state (found 2026-08-25 when two probe runs ground for 10+
+// minutes on the home graph). The file is in the app-shell precache, so
+// this is one cache read on any installed app.
+let nationalBoundariesPromise = null;
+function loadNationalBoundaries() {
+  if (!nationalBoundariesPromise) {
+    nationalBoundariesPromise = (async () => {
+      const response = await fetch(NATIONAL_STATES_URL);
+      if (!response.ok) throw new Error(`National state map: HTTP ${response.status}`);
+      const boundaries = await response.json();
+      if (boundaries?.type !== 'FeatureCollection' || boundaries.features?.length !== 51) {
+        throw new Error('National state map is not the expected 50 states plus DC.');
+      }
+      nationalFeatureCollection = boundaries;
+      return boundaries;
+    })().catch((error) => {
+      nationalBoundariesPromise = null;
+      throw error;
+    });
+  }
+  return nationalBoundariesPromise;
 }
 
 function nationalAvailability(id) {
@@ -17063,6 +17086,9 @@ function syncSettingsPaneHeight() {
 }
 
 /* ------------------------------------------------------------- boot */
+// State polygons for tap resolution, from the shell cache — see
+// loadNationalBoundaries for why a tap must not wait for search or Maps.
+loadNationalBoundaries().catch(() => { /* bbox fallback remains */ });
 buildSourcePanel();
 buildRulesPanel();
 buildVoicePanel();
