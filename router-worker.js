@@ -3395,6 +3395,12 @@ function candidateSummary(candidate) {
     why: profileExplanation(profile),
     stage: candidate._stage || 'considered',
     stageWhy: candidate._stageWhy || '',
+    // Stage-specific comparators for the "More" screen: who covered a
+    // dominated route and by how much, which twin a duplicate matches, each
+    // seated/near-miss candidate's closest offered route -- with `overlap`
+    // as the shared-road fraction of the shorter route. Labels resolve
+    // app-side from the shipped list by mateId.
+    stageData: candidate._stageData || null,
     distM: candidate.distM,
     timeS: candidate.timeS,
     failM: candidate.failM,
@@ -4861,14 +4867,21 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // from 11 m offered to 1,364 m at that commit, with no help from here. A
   // route that loses on every axis is a wasted slot only when the rider already
   // has its corridor; deciding that from the numbers alone deletes the map.
-  const useful = unique.filter((candidate) => protectedCandidates.has(candidate)
-    || !unique.some((other) => {
+  // The dominator is kept, not merely detected: the troubleshooting record
+  // names WHO covered each dominated candidate and by how much.
+  const dominatorOf = new Map();
+  const useful = unique.filter((candidate) => {
+    if (protectedCandidates.has(candidate)) return true;
+    const dominator = unique.find((other) => {
       if (other === candidate) return false;
       const safety = compareSafety(other, candidate);
       return edgeOverlap(other, candidate) >= 0.96
         && other.timeS <= candidate.timeS + 5 && safety <= 0
         && (other.timeS < candidate.timeS - 5 || safety < 0);
-    }));
+    });
+    if (dominator) dominatorOf.set(candidate, dominator);
+    return !dominator;
+  });
   const choices = useful.length ? useful : unique;
   progress?.('Comparing safety, travel time, and route variety…', 0.96);
 
@@ -5197,25 +5210,54 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
   // the earliest stage a route failed to reach is the one that removed it.
   const inReasonable = new Set(reasonable), inUnique = new Set(unique);
   const inUseful = new Set(useful), inSelected = new Set(presented);
+  const severeM = (route) => route.failM + (route.dismountM || 0) * 3;
+  // The candidate's nearest offered route, by shared road. Only computed for
+  // routes that reached the seating (offered and not-chosen): the earlier
+  // stages carry their own comparator, and paying ~6 edgeOverlap calls for
+  // every one of hundreds of raw candidates would cost real seconds.
+  const nearestOffered = (candidate) => {
+    let best = null, overlap = 0;
+    for (const offered of presented) {
+      if (offered === candidate) continue;
+      const value = pairOverlap(candidate, offered);
+      if (value >= overlap) { overlap = value; best = offered; }
+    }
+    return best ? { mateId: best._profile.id, overlap } : null;
+  };
   for (const candidate of raw) {
+    candidate._stageData = null;
     if (inSelected.has(candidate)) {
       candidate._stage = 'offered';
       candidate._stageWhy = '';
+      candidate._stageData = nearestOffered(candidate);
     } else if (!inReasonable.has(candidate)) {
       candidate._stage = 'too-slow';
       candidate._stageWhy = 'Far slower than the quickest option without being safer.';
+      candidate._stageData = { vsQuickestS: fastest.timeS };
     } else if (!inUnique.has(candidate)) {
       const twin = unique.find((other) => !meaningfullyDifferent(candidate, other));
       candidate._stage = 'duplicate';
       candidate._stageWhy = twin
         ? `Effectively the same roads as ${twin._outcome?.label || twin._profile.label}.`
         : 'Effectively the same roads as another option.';
+      if (twin) {
+        candidate._stageData = { mateId: twin._profile.id,
+          overlap: pairOverlap(candidate, twin) };
+      }
     } else if (!inUseful.has(candidate)) {
+      const dominator = dominatorOf.get(candidate);
       candidate._stage = 'dominated';
       candidate._stageWhy = 'Another option shares this corridor and is no slower and no less safe.';
+      if (dominator) {
+        candidate._stageData = { mateId: dominator._profile.id,
+          overlap: pairOverlap(candidate, dominator),
+          slowerS: candidate.timeS - dominator.timeS,
+          moreSevereM: severeM(candidate) - severeM(dominator) };
+      }
     } else {
       candidate._stage = 'not-chosen';
       candidate._stageWhy = `Survived every filter, but ${MAX_OFFERED} slots were filled by more distinct routes.`;
+      candidate._stageData = nearestOffered(candidate);
     }
   }
   // Letter the extras so a rider can name them. A-E are the offered routes; the

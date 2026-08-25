@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.819';
+const APP_VERSION = '2026-08-25.820';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11215,6 +11215,81 @@ function recommendationBasisLabel(basis) {
   return 'Starred as the lowest suggestion score among practical routes.';
 }
 
+function formatCandidateHours(seconds) {
+  const hours = (Number(seconds) || 0) / 3600;
+  return `${Math.floor(hours)}h${String(Math.round(hours % 1 * 60)).padStart(2, '0')}`;
+}
+
+// The stage sentence, upgraded with the worker's comparator when it shipped
+// one: WHO covered a dominated route and by how much, WHICH twin a duplicate
+// matches, how far past the quickest a too-slow candidate ran. Labels resolve
+// here by profileId so extras read as their listed letter, not an internal
+// profile name. Falls back to the worker's generic sentence.
+function candidateStageDetail(c, stage, labelOf) {
+  const d = c.stageData;
+  const pct = (value) => `${Math.round((Number(value) || 0) * 100)}%`;
+  const mate = d?.mateId ? (labelOf.get(d.mateId) || 'another option') : null;
+  if (c.stage === 'too-slow' && d?.vsQuickestS) {
+    const ratio = (c.timeS / Math.max(1, d.vsQuickestS)).toFixed(1);
+    return `${formatCandidateHours(c.timeS)} against the quickest `
+      + `${formatCandidateHours(d.vsQuickestS)} (${ratio}×), with no offsetting safety gain.`;
+  }
+  if (c.stage === 'duplicate' && mate) {
+    return `Effectively the same roads as ${mate} — ${pct(d.overlap)} shared.`;
+  }
+  if (c.stage === 'dominated' && mate) {
+    const quicker = d.slowerS >= 60
+      ? `${Math.round(d.slowerS / 60)} min quicker` : 'no slower';
+    const safer = d.moreSevereM >= 60
+      ? ` and carries ${Math.round(d.moreSevereM)} m less failing road or walking`
+      : ' and no less safe';
+    return `${mate} covers this corridor (${pct(d.overlap)} shared), is ${quicker},${safer}.`;
+  }
+  if (c.stage === 'not-chosen' && mate) {
+    return `${c.stageWhy} Closest offered route: ${mate}, ${pct(d.overlap)} shared.`;
+  }
+  return c.stageWhy;
+}
+
+// The similarity line an offered route shows: its closest boardmate. 100%
+// never appears here -- the seating's diversity sweep is what this number
+// audits.
+function candidateSimilarityLine(c, labelOf) {
+  const d = c.stageData;
+  if (c.stage !== 'offered' || !d?.mateId) return '';
+  const mate = labelOf.get(d.mateId) || 'another offered route';
+  return `<p class="all-route-stage-why"><b>Similarity:</b> closest to ${mate}, `
+    + `${Math.round((Number(d.overlap) || 0) * 100)}% shared roads.</p>`;
+}
+
+// The portfolio at a glance, above the rows: how many routes were built and
+// offered, what removed the rest, and the spread the corpus actually covers.
+function allRoutesSummary(all) {
+  const offered = all.filter((c) => c.presented);
+  const counts = {};
+  for (const c of all) counts[c.stage] = (counts[c.stage] || 0) + 1;
+  const cutLine = ['too-slow', 'duplicate', 'dominated', 'not-chosen', 'considered']
+    .filter((stage) => counts[stage])
+    .map((stage) => `${counts[stage]} ${CANDIDATE_STAGES[stage].label.toLowerCase()}`)
+    .join(' · ');
+  const stats = all.map((c) => candidateStatLine(c));
+  const min = (values) => Math.min(...values), max = (values) => Math.max(...values);
+  const mi = stats.map((s) => s.mi), pass = stats.map((s) => s.pass);
+  const times = all.map((c) => c.timeS);
+  const recommended = all.find((c) => c.recommended);
+  const meta = document.createElement('div');
+  meta.className = 'all-routes-meta';
+  meta.innerHTML = `
+    <p><b>${all.length}</b> routes built · <b>${offered.length}</b> offered${
+      cutLine ? ` · ${cutLine}` : ''}</p>
+    <p>${mi.length ? `Distance <b>${min(mi).toFixed(1)}–${max(mi).toFixed(1)}</b> mi
+      · time <b>${formatCandidateHours(min(times))}–${formatCandidateHours(max(times))}</b>
+      · passing your rules <b>${min(pass)}–${max(pass)}%</b>` : ''}</p>
+    ${recommended ? `<p>Recommended: <b>${recommended.label}</b> — ${
+      recommendationBasisLabel(recommended.recommendationBasis)}</p>` : ''}`;
+  return meta;
+}
+
 function renderAllRoutesList() {
   const host = document.getElementById('allRoutesList');
   if (!host) return;
@@ -11227,6 +11302,8 @@ function renderAllRoutesList() {
     host.append(empty);
     return;
   }
+  const labelOf = new Map(all.map((c) => [c.profileId, c.label]));
+  host.append(allRoutesSummary(all));
   const bounds = candidateShapeBounds(all);
   for (const c of all) {
     const stage = CANDIDATE_STAGES[c.stage] || CANDIDATE_STAGES.considered;
@@ -11267,7 +11344,11 @@ function renderAllRoutesList() {
         ${c.recommendationBasis ? `<span class="score-basis">${recommendationBasisLabel(c.recommendationBasis)}</span>` : ''}
       </div>` : ''}
       <p class="all-route-why"><b>Built as:</b> ${c.why}</p>
-      ${c.stageWhy ? `<p class="all-route-stage-why"><b>${stage.label}:</b> ${c.stageWhy}</p>` : ''}`;
+      ${candidateSimilarityLine(c, labelOf)}
+      ${(() => {
+        const detail = c.stage === 'offered' ? '' : candidateStageDetail(c, stage, labelOf);
+        return detail ? `<p class="all-route-stage-why"><b>${stage.label}:</b> ${detail}</p>` : '';
+      })()}`;
     row.addEventListener('click', () => chooseCandidate(c));
     host.append(row);
   }

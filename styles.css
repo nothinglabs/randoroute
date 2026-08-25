@@ -207,6 +207,9 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .all-routes-lead { margin: 0 0 12px; color: #435967; font: 500 12px/1.5 system-ui; }
 .all-routes-empty { color: #6a7c86; font: 600 13px system-ui; }
 .all-routes-list { display: grid; gap: 9px; }
+.all-routes-meta { padding: 10px 12px; border: 1px solid #d7e2e8; border-radius: 11px; background: #f4f9fc; color: #34505f; font: 500 12px/1.55 system-ui; }
+.all-routes-meta p { margin: 0; }
+.all-routes-meta b { color: #16394e; }
 /* Thumbnail left, everything else right. The sketch is the fastest way to tell
    two candidates apart, so it leads. */
 .all-route-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; width: 100%; padding: 11px 12px; border: 1px solid #d7e2e8; border-radius: 11px; background: #fff; text-align: left; cursor: pointer; }

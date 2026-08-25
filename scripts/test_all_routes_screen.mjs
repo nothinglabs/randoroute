@@ -202,6 +202,53 @@ check('every row shows the actual suggestion score and its weighted components',
 check('the recommended row explains why it received the star',
   rows.some((r) => /Starred/.test(r.score)), rows.find((r) => /Starred/.test(r.score))?.score);
 
+/* ----------------------------- the meta summary and choice comparators -- */
+const summary = await pg.evaluate(() => {
+  const meta = document.querySelector('.all-routes-meta');
+  const text = (meta?.textContent || '').replace(/\s+/g, ' ').trim();
+  const stageOf = new Map((routing.allCandidates || []).map((c) => [c.profileId, c.stage]));
+  const labels = new Set((routing.allCandidates || []).map((c) => c.label));
+  const rowsByStage = [...document.querySelectorAll('.all-route-row')].map((r) => ({
+    stage: stageOf.get(r.dataset.profileId),
+    stageWhy: (r.querySelector('.all-route-stage-why:last-of-type')?.textContent || '')
+      .replace(/\s+/g, ' ').trim(),
+    similarity: (r.querySelector('.all-route-stage-why')?.textContent || '')
+      .replace(/\s+/g, ' ').trim(),
+  }));
+  return { text, rowsByStage, labels: [...labels] };
+});
+check('a meta summary leads the list with built and offered counts',
+  new RegExp(`${state.all} routes built`).test(summary.text)
+    && new RegExp(`${state.offered} offered`).test(summary.text), summary.text);
+check('the summary spans the corpus: distance, time, and rules-pass ranges',
+  /Distance [\d.]+–[\d.]+ mi/.test(summary.text)
+    && /time \d+h\d+–\d+h\d+/.test(summary.text)
+    && /passing your rules \d+–\d+%/.test(summary.text), summary.text);
+check('the summary names the recommended route and its basis',
+  /Recommended: .+ — Starred/.test(summary.text), summary.text);
+const named = (line) => summary.labels.some((label) => line.includes(label));
+const offeredRows = summary.rowsByStage.filter((r) => r.stage === 'offered');
+check('every offered row reports its closest boardmate with a shared-road score',
+  offeredRows.length >= 2 && offeredRows.every((r) =>
+    /Similarity: closest to .+ \d+% shared roads/.test(r.similarity) && named(r.similarity)),
+  JSON.stringify(offeredRows.find((r) => !/Similarity/.test(r.similarity))));
+const dupRows = summary.rowsByStage.filter((r) => r.stage === 'duplicate');
+check('duplicate rows name their twin and the shared fraction',
+  dupRows.every((r) => /same roads as .+ — \d+% shared/.test(r.stageWhy) && named(r.stageWhy)),
+  JSON.stringify(dupRows.find((r) => !/% shared/.test(r.stageWhy))));
+const domRows = summary.rowsByStage.filter((r) => r.stage === 'dominated');
+check('dominated rows name who covers them and by how much',
+  domRows.every((r) => /covers this corridor \(\d+% shared\)/.test(r.stageWhy)),
+  JSON.stringify(domRows.find((r) => !/covers this corridor/.test(r.stageWhy))));
+const slowRows = summary.rowsByStage.filter((r) => r.stage === 'too-slow');
+check('too-slow rows carry the time comparison',
+  slowRows.every((r) => /against the quickest \d+h\d+ \([\d.]+×\)/.test(r.stageWhy)),
+  JSON.stringify(slowRows.find((r) => !/against the quickest/.test(r.stageWhy))));
+const nearRows = summary.rowsByStage.filter((r) => r.stage === 'not-chosen');
+check('not-chosen rows point at their closest offered route',
+  nearRows.every((r) => /Closest offered route: .+, \d+% shared/.test(r.stageWhy)),
+  JSON.stringify(nearRows.find((r) => !/Closest offered route/.test(r.stageWhy))));
+
 /* ------------------------------- thumbnails are drawn and comparable ---- */
 // The sketches share one bounding box on purpose: these are all routes between
 // the same two points, so per-row autoscaling would normalise away exactly the
