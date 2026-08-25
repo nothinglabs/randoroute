@@ -193,6 +193,24 @@ bytes under the RIGHT version) that only this verification catches:
 6 of 6 pass, plus install 8/8, blind boot 4/4, truncated-cache recovery
 and offline store 10/10 re-run green.
 
+Release `.813`: an installed state's map update now announces itself on
+boot -- a dismissible banner naming the state and download size, with a
+one-tap Update that installs and reboots into the new data (several
+updates open the Maps screen); dismissal is per offered acquisition set,
+and the app-shell update banner keeps priority
+(`test_map_update_banner`, 4/4). The hidden launch spinner's infinite
+animation now stops at app-ready (it ticked the compositor every frame
+for the whole session). Hardening sweep 2026-08-25: cross-state routing
+gate 13/13; a scripted fresh-profile shakedown drove boot, onboarding, a
+12-viewpoint zoom hammer, road cards, rotation, settings panes, layers
+and the offline service-worker boot with zero page errors -- its only
+app-level finding was the spinner. Full suite: 156/162 passed, 2
+documented tool skips, 4 suite-load flakes (`device_start_follows`,
+`saved_routes_ui`, `map_store_update_ui`, `national_map_first_run`), each
+verified passing standalone the same day; `saved_routes_ui` also flaked
+once standalone on a 6.5px navigation-position assertion and is the one
+to watch.
+
 Remaining gates:
 
 - `.808` focused gates recorded 2026-08-24 on
