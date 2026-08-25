@@ -343,7 +343,17 @@ export async function launchBrowser() {
   });
 }
 
-/** A page with the app loaded and the map settled. */
+/**
+ * A page with the app loaded and the map settled.
+ *
+ * Driving a route programmatically: call `setRoutePoint('start'|'end',
+ * {lng, lat}, name)` then `computeRoute()`. Assigning `routing.start` /
+ * `routing.end` directly skips the per-point state resolution
+ * (`startStateId`/`endStateId` stay null), so a cross-state pair silently
+ * routes single-state through the home worker — a state unreachable from
+ * the real UI. Direct assignment is only safe when the test also sets the
+ * state ids itself (see test_route_portfolio_controls.mjs).
+ */
 export async function appPage(browser, port, { desktop = false } = {}) {
   const context = await browser.newContext({
     serviceWorkers: 'block',
