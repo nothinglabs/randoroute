@@ -1,5 +1,9 @@
 # Human TODO List
 
+**AGENTS: STOP WRITING TO THIS FILE.** It is edited on explicit human
+request only. It is not your notepad, not a changelog, and not a place to
+record releases, gates, or session findings — put those in commit messages.
+
 This is a short, human-focused list of project TODOs. It is not an LLM
 notepad, brainstorming log, or automatic issue tracker. Add, remove, reorder,
 or rewrite items only when directed by a human, and keep the list concise.
