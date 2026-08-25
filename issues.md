@@ -211,6 +211,21 @@ verified passing standalone the same day; `saved_routes_ui` also flaked
 once standalone on a 6.5px navigation-position assertion and is the one
 to watch.
 
+Release `.814` fixes the field report of 9,022 ft of climb on a 41.6-mile
+Kirkland-Tacoma ferry route: DEM nodata poisons a few pier nodes with
+kilometre-deep elevations (-2,973 m at the worst; the ferry edges
+themselves are clean), and the short edges climbing out carried thousands
+of metres of invented ascent. Both graph loaders now repair at parse time
+-- nodes below -100 m take a sane neighbor's elevation, and any edge
+whose stored climb exceeds its own length over 100+ m is rebuilt from the
+endpoint delta capped at 1:1 (19 edges in the monolith, shallower
+variants in partitions). `test_elevation_sanity` holds the arrays, the
+Kirkland-Tacoma route and all 89 partitions to physical sense; the A*
+admissibility, portfolio, severance and partition-runtime gates re-ran
+green over the repaired costs. The runtime repair is permanent insurance;
+fold DEM clamping over water into the graph build at the NEXT rebuild
+(any state) so future imports never carry the poison.
+
 Remaining gates:
 
 - `.808` focused gates recorded 2026-08-24 on
