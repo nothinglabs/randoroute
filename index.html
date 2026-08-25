@@ -65,6 +65,10 @@
       animation: app-launch-spin .75s linear infinite;
     }
     html.app-ready #appLaunchScreen { visibility: hidden; opacity: 0; pointer-events: none; }
+    /* The spinner's infinite animation keeps ticking behind the invisible
+       splash for the whole session otherwise -- a needless per-frame
+       compositor wake on phones. */
+    html.app-ready #appLaunchScreen .app-launch-spinner { animation: none; }
     @keyframes app-launch-spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) {
       #appLaunchScreen { transition: none; }
