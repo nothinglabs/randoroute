@@ -29,14 +29,22 @@ const PROBES = [
   ['sea-possession-sound', -122.3446, 47.930, 'sea'],
   ['sea-south-whidbey', -122.500, 47.880, 'sea'],
   ['land-whidbey-center', -122.520, 48.000, 'land'],
-  ['land-mainland-marysville', -122.130, 48.070, 'land'],
+  // Nudged off [-122.130, 48.070]: at z13.5 that exact point sits on a
+  // local-road casing (roads keep serving in the fallback world), whose
+  // grey reads water-leaning to the color heuristic. The stand-in was
+  // fine; the pixel was a road.
+  ['land-mainland-marysville', -122.118, 48.075, 'land'],
   ['lake-stevens', -122.0842, 48.005, 'lake'],
   // Dead center: the shoreline bike loop's green facility paint owns the
   // lake's edge pixels from z8.9, and the name label floats near but not on
   // the centroid through z10.
   ['lake-green-seattle', -122.339, 47.680, 'lake'],
 ];
-const FALLBACK_ZOOMS = [6, 7.8, 8.9, 9.2, 9.6, 10.5, 11.5];
+// 13.5 rides at street zoom: with detail missing there, the overzoomed z8
+// regional tile is very blocky — the assertion is that it is still LAND
+// under the rider, never open sea (field ask, 2026-08-25: a low-res
+// stand-in instead of a sea of blue while detail tiles parse).
+const FALLBACK_ZOOMS = [6, 7.8, 8.9, 9.2, 9.6, 10.5, 11.5, 13.5];
 const HANDOFF_ZOOMS = [8.9, 9.2, 10];
 
 const site = await serveRepo();
