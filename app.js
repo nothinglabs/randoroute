@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.824';
+const APP_VERSION = '2026-08-25.825';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3878,7 +3878,16 @@ function showRouterProgress(detail, title = 'Loading routing engine', progress =
   // On a first install the routing data is the long wait, and on iOS it can
   // overlap the launch screen -- which then sat on a generic message with
   // nothing to say. This no-ops once the app has taken over the screen.
-  window.__setAppLaunchStatus?.(detail || title);
+  //
+  // A route COMPUTE is different: a relaunch with a saved trip starts its
+  // recompute as soon as the camera settles, and on a phone that can be
+  // before the map's first load event -- so corridor-search progress played
+  // on the launch screen and the whole app stayed hidden behind a route it
+  // had not been asked to show (field report, 2026-08-25). The map is
+  // already drawing and the calculation banner narrates the same stream:
+  // hand the screen over instead of narrating on the splash.
+  if (calculating) window.__dismissAppLaunchScreen?.();
+  else window.__setAppLaunchStatus?.(detail || title);
 }
 
 // If the graph we want is not the one we last loaded, ask the worker to drop

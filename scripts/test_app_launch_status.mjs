@@ -108,6 +108,32 @@ check('background routing initialization waits until the first map is usable',
   routingStarts.length > 0 && routingStarts.every((entry) => entry.appReady),
   JSON.stringify(workerStarts));
 
+// A relaunch with a saved trip recomputes it at startup, and on a phone that
+// compute can begin before the map's first load event. Compute progress must
+// hand the screen to the app instead of playing on the launch screen --
+// 2026-08-25 field report: a saved cross-state trip kept the splash up
+// through the whole corridor search.
+const page2 = await context.newPage();
+await page2.goto(site.url, { waitUntil: 'commit' });
+const preReady = await page2.waitForFunction(
+  () => typeof showRouterProgress === 'function'
+    && !document.documentElement.classList.contains('app-ready'),
+  { timeout: 60000 }).then(() => true).catch(() => false);
+check('the pre-map launch window is observable', preReady);
+const computeDismiss = preReady ? await page2.evaluate(() => {
+  routing.start = [-122.3321, 47.6062];
+  routing.end = [-122.3035, 47.6553];
+  routing.routeRequestActive = true;
+  showRouterProgress('Exploring alternative corridors… (2 of 4)',
+    'Calculating route options');
+  const ready = document.documentElement.classList.contains('app-ready');
+  routing.routeRequestActive = false;
+  routing.start = routing.end = null;
+  return ready;
+}) : false;
+check('a startup route compute hands the screen to the app', computeDismiss);
+await page2.close();
+
 await browser.close();
 site.close();
 console.log(`\n${passed} passed${failed ? `, ${failed} FAILED` : ''}`);
