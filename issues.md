@@ -25,17 +25,7 @@ rung 6).
 ### 2. Downloadable map packs — machinery shipped, deployment pending
 The release plan: ship the app with no bundled map data; download states from
 a map store (ours on GitHub Releases; third parties can host their own).
-Shipped in v.717: the store contract (`maps/index.json`, "Map stores" in
-`maps/README.md`), the installer (`map-store.js` → same offline cache the
-service worker serves), the Maps-screen manager (add store / download with
-progress / sizes / remove), the slim iOS build (`JRA_SLIM_SHELL=1`), and the
-publish stage in `docs/IMPORT-A-STATE.md`. The web installer also resumes a
-stable short response through a validated byte-range tail, caps each stream at
-that validated interval when WebKit over-delivers the body, then performs its
-normal size/hash commit. Since `.808` it judges completion by decoded stored
-bytes, never the wire Content-Length: CDNs gzip some transfers, the encoded
-size differs from the manifest's raw size, and Content-Encoding is not
-CORS-readable, so the header pair cannot be trusted cross-origin. Remaining, in order:
+The machinery is shipped and tested. Remaining, in order:
 
 - **Host the store**: upload WA + OR packs and `index.json` to GitHub
   Releases (or equivalent), then verify the by-hand flow in
@@ -85,21 +75,15 @@ launch validation, and post-launch support plan.
 
 ### 7. Stability issues / random crashing — possibly zoom-related
 Reproduce and diagnose the random crashes, determine whether zoom behavior is
-the cause, and fix the underlying stability issue. Four specific
-ride-length-scaling mechanisms were fixed in `.803`: elevation-canvas
-reallocation on every draw, full route-profile re-upload on every GPS fix,
-the render pipeline running while backgrounded, and a launch-window race
-loading the graph during map warm-up. Needs a field verdict on whether the
-random restarts persist; if they do, the remaining suspects are listed under
-"crash audit" in the session findings.
+the cause, and fix the underlying stability issue. The known
+ride-length-scaling mechanisms are fixed; needs a field verdict on whether
+the random restarts persist.
 
 ### 8. Data licensing and Google Maps key usage
-Verify OSM and every other data source's licensing and attribution requirements.
-The tracked Google Maps Embed key was removed in `.797` after GitHub detected
-it in the public preview; Street View now hands off to Google Maps without a
-repository credential. The owner still needs to rotate/revoke that exposed key
-in Google Cloud and verify API restrictions and terms before any in-app embed is
-re-enabled.
+Verify OSM and every other data source's licensing and attribution
+requirements. Rotate/revoke the previously exposed Google Maps Embed key in
+Google Cloud and verify API restrictions and terms before any in-app embed
+is re-enabled.
 
 ### 9. Finalize app name
 Choose and approve the final public name for the app before release.
