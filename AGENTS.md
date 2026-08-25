@@ -87,7 +87,7 @@ from a `BUILD.md` — that is a runbook for a state that is already understood.
   actually has (`datasets`) and their content hashes (`versions`).
 - `maps/states.js` is **generated** — `npm run maps:registry` after adding a
   state or editing a `region.json` by hand. The stampers regenerate it for you.
-- Washington is the only state that ships. The machinery is deliberately not
+- Washington and Oregon ship. The machinery is deliberately not
   tested by a second real folder -- `test_maps_states_screen.mjs` invents two
   states and serves them over the generated index, so `maps/` can hold one state
   or fifty without a test moving.
@@ -158,12 +158,12 @@ are complete answers.
 This is a rule rather than a preference because the framing drives the work.
 Dramatic framing creates pressure to find drama, a finding that carries a
 headline has to be a defect to deserve one, and the shortest route to a headline
-is to file working behaviour as broken. That is what happened to Q1 in round 6 of
-`docs/ROUTING-AUDIT.md`: the shoulder rung was filed as a BUG when it is
-specified in `docs/SAFETY-MODEL.md`, surfaced in Settings, and deliberately
-non-optional. The measurement underneath was sound and is still in the record.
-The framing invented a defect around it, and two replies later there was a
-proposal to loosen a safety rung.
+is to file working behaviour as broken. That happened in a 2026-08 routing
+audit (the document is retired; its findings were all resolved or reclassified):
+the shoulder rung was filed as a BUG when it is specified in
+`docs/SAFETY-MODEL.md`, surfaced in Settings, and deliberately non-optional.
+The measurement underneath was sound. The framing invented a defect around it,
+and two replies later there was a proposal to loosen a safety rung.
 
 ## Other standing rules
 

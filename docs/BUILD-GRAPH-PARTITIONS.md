@@ -166,8 +166,7 @@ Record with a published catalogue:
 - partition and portal counts;
 - compressed total, raw total and largest-partition raw bytes;
 - validator output;
-- store CORS behavior;
-- preview retention/expiration policy; and
+- store CORS behavior; and
 - known route, expansion or device-memory limitations.
 
 Never use portal count alone as cross-border proof. Executable crossing routes,

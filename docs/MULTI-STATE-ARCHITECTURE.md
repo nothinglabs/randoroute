@@ -3,12 +3,12 @@
 Status: the generic contract, production Washington/Oregon partitions,
 incremental composite runtime, state-chain controller, end-to-end jurisdiction
 path, atomic store/offline acquisition, national/first-run orientation and
-cross-state search continuation are implemented on
-`codex/multistate-routing`. Synthetic, browser, full-graph comparison and
-multiple Columbia-crossing gates pass. Ordinary in-state routing remains the
+cross-state search continuation are merged to `main` and shipping from
+production Pages. Synthetic, browser, full-graph comparison and multiple
+Columbia-crossing gates pass. Ordinary in-state routing remains the
 compatibility path; cross-state requests use partition sessions when every
-required acquisition is installed. The isolated slim Pages preview is live;
-the full suite and physical-device handoff are the remaining delivery gates.
+required acquisition is installed. The physical-device handoff
+(`docs/IOS-HANDOFF.md`) is the remaining delivery gate.
 
 ## Product boundary
 
@@ -412,4 +412,4 @@ memory pressure remain human verdicts.
 7. National orientation map and first-run acquisition.
 8. Multi-state search and pending-request continuation.
 9. Full-graph comparisons, Washington/Oregon crossings and documentation.
-10. Review preview, full suite and physical-iPhone handoff.
+10. Full suite and physical-iPhone handoff.

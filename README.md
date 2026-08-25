@@ -1,6 +1,8 @@
-# Washington Bike Safety Visualizer
+# Bike Safety Visualizer
 
-A statewide bicycle-safety map for Washington State. It colors roads and bike
+A statewide bicycle-safety map and router. Washington and Oregon ship today;
+states install from a map store and routes may cross between installed
+neighbors. It colors roads and bike
 infrastructure by how stressful they are to ride, from three local data sources:
 **WSDOT Bicycle Level of Traffic Stress (BLTS)** for state highways,
 **OpenStreetMap** for dedicated bike infrastructure, and the **full OSM road
@@ -44,7 +46,7 @@ left deliberately unfixed, and the parts that only a device can judge.
 
 ## Features
 
-- **MapLibre GL JS** map of Washington with a compact local vector basemap:
+- **MapLibre GL JS** map of the selected state with a compact local vector basemap:
   land, water, parks, street geometry, street names, and place labels all work
   without a tile server.
 - Five independent **data-source toggles**:
@@ -143,7 +145,7 @@ recording how good the data is and exactly how it was produced. No file outside
 service worker is built from it. See **`maps/README.md`** for how the folder
 works and **`docs/PORTING-TO-ANOTHER-STATE.md`** for adding one.
 
-Washington is the only state that ships today. `maps/README.md` carries the
+Washington and Oregon ship today. `maps/README.md` carries the
 readiness rubric a new state is scored against, and the app degrades honestly
 for a partial one: a state that ships only a place index says so rather than
 404ing its way through a startup.
