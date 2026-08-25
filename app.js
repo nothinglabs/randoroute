@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.825';
+const APP_VERSION = '2026-08-25.826';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1342,6 +1342,29 @@ map.on('webglcontextlost', () => {
   map.once('webglcontextrestored', () => { restored = true; });
   setTimeout(() => {
     if (restored || location.hash === CONTEXT_HEAL_MARK) return;
+    // One self-reload is a heal. Repeated ones are a crash loop with extra
+    // steps: context losses recurring within minutes mean sustained memory
+    // pressure (a heavy saved-trip recompute, WebKit reclaiming GPU memory),
+    // and each reload restarts the same pressure — from the outside the app
+    // just "crashes over and over after boot" (field report, 2026-08-25).
+    // Two auto-heals per ten minutes; past that, stop and tell the rider.
+    const HEAL_LOG_KEY = 'jra-context-heals-1';
+    let heals = [];
+    try {
+      heals = JSON.parse(sessionStorage.getItem(HEAL_LOG_KEY) || '[]');
+    } catch (e) { /* fresh log */ }
+    const now = Date.now();
+    heals = (Array.isArray(heals) ? heals : [])
+      .filter((t) => Number.isFinite(t) && now - t < 10 * 60 * 1000);
+    if (heals.length >= 2) {
+      showRouteActionToast('The map lost its graphics context', {
+        detail: 'If the map stays blank, close and reopen the app.',
+        duration: 0,
+      });
+      return;
+    }
+    heals.push(now);
+    try { sessionStorage.setItem(HEAL_LOG_KEY, JSON.stringify(heals)); } catch (e) { /* best effort */ }
     location.hash = CONTEXT_HEAL_MARK;
     location.reload();
   }, 3000);

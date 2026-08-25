@@ -40,6 +40,31 @@ try {
     healed.alive && healed.rebooted, JSON.stringify(healed));
   check('and the healthy boot cleared the guard for the next loss',
     healed.hash === '', JSON.stringify(healed));
+
+  // Losses recurring within minutes are sustained memory pressure, and each
+  // reload restarts the pressure that caused the last one -- a crash loop
+  // with extra steps. The second loss may still heal; the third must hold
+  // the page and say so instead of rebooting again.
+  await page.evaluate(() => {
+    window.__preLossToken = true;
+    map.getCanvas().dispatchEvent(new Event('webglcontextlost'));
+  });
+  await page.waitForFunction(() => window.map && map.loaded && map.loaded()
+    && location.hash === '' && !window.__preLossToken, null, { timeout: 45000 });
+  await page.evaluate(() => {
+    window.__preLossToken = true;
+    map.getCanvas().dispatchEvent(new Event('webglcontextlost'));
+  });
+  await page.waitForTimeout(6500);
+  const throttled = await page.evaluate(() => ({
+    stayed: window.__preLossToken === true,
+    hash: location.hash,
+    toast: document.getElementById('routeActionText')?.textContent || '',
+  }));
+  check('a third loss inside the window does not reboot again',
+    throttled.stayed && throttled.hash === '', JSON.stringify(throttled));
+  check('and the rider is told instead',
+    /graphics context/i.test(throttled.toast), JSON.stringify(throttled));
 } finally {
   await browser.close();
   site.close();
