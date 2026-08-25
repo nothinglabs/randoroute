@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.831';
+const APP_VERSION = '2026-08-25.832';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1430,8 +1430,16 @@ function settleMapLoadingPill() {
   if (shownFor >= MAP_LOADING_PILL_MIN_ON_MS) hide();
   else mapLoadingPillHideTimer = setTimeout(hide, MAP_LOADING_PILL_MIN_ON_MS - shownFor);
 }
-map.on('dataloading', armMapLoadingPill);
-map.on('sourcedataloading', armMapLoadingPill);
+// Only archive (vector tile) sources count as "the map is fetching tiles".
+// GeoJSON sources rewrite on every route switch or marker move and finish
+// within the frame — counting them summoned the spinner right AFTER a route
+// switch had rendered, because a chronically pending tile elsewhere keeps
+// areTilesLoaded false and any armed check then shows (field, 2026-08-25).
+map.on('sourcedataloading', (event) => {
+  const source = event?.sourceId ? map.getSource(event.sourceId) : null;
+  if (source?.type !== 'vector') return;
+  armMapLoadingPill();
+});
 map.on('idle', settleMapLoadingPill);
 const finishAppLaunch = () => {
   clearTimeout(window.__appLaunchFallback);

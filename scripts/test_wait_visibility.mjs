@@ -47,6 +47,29 @@ try {
     null, { timeout: 30000 }).then(() => true).catch(() => false);
   check('and leaves when the map settles again', settled);
 
+  // The stall above left zombie 'loading' tiles behind (hung fetches never
+  // resolve), which is exactly the chronic state a phone lives in — and in
+  // that state a route switch used to summon the spinner AFTER its own
+  // render, because geojson setData fires the same loading events as tile
+  // fetching. Expire the hide cooldown, then storm a geojson source: the
+  // spinner must not appear.
+  await page.waitForTimeout(11000);
+  const afterSwitch = await page.evaluate(async () => {
+    map.addSource('__pill-probe', { type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: '__pill-probe', type: 'circle', source: '__pill-probe' });
+    for (let i = 0; i < 6; i++) {
+      map.getSource('__pill-probe').setData({ type: 'FeatureCollection',
+        features: [{ type: 'Feature', geometry: { type: 'Point',
+          coordinates: [-122.33 + i * 0.001, 47.6] }, properties: {} }] });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3400));
+    return document.getElementById('mapLoadingPill').hidden;
+  });
+  check('a route-switch style geojson update never summons the spinner',
+    afterSwitch === true);
+
   const banner = await page.evaluate(() => {
     hideRouteCalculationStatus();
     showRouteCalculationStatus('Calculating route options', 'Testing route profiles… (1 of 3)');
