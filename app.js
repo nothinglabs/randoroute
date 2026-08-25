@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.818';
+const APP_VERSION = '2026-08-25.819';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1384,6 +1384,15 @@ function syncVisibleStateSafetyLayers(stateIds, { force = false } = {}) {
       // Keep labels and the active route above both states' safety colors by
       // placing every clone immediately below its home-state counterpart.
       map.addLayer(layer, map.getLayer(template.id) ? template.id : undefined);
+      // A cloned tap target must ANSWER taps: featureAt queries the layers
+      // registered here, and without this a tap on a neighbor state's road
+      // dropped a bare point instead of opening the road card (field
+      // report). Same source object, so scoring and the card read the clone
+      // exactly like its home template. Stale ids after a detach are
+      // harmless -- featureAt filters on map.getLayer.
+      if (HIT_SRC[template.id] && !HIT_SRC[layer.id]) {
+        attachHover(HIT_SRC[template.id], layer.id);
+      }
     }
     visibleStateSafetySignatures.set(stateId, templateSignature);
   }

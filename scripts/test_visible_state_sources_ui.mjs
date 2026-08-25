@@ -58,6 +58,27 @@ try {
   check('the Oregon viewport draws Oregon designated bike routes',
     ribbon.rendered > 0 && ribbon.visibility === 'visible', JSON.stringify(ribbon));
 
+  // Tapping a neighbor state's road must open its road card, not drop a bare
+  // point: the cloned invisible tap targets have to be registered with the
+  // tap resolver, not merely drawn.
+  const tap = await page.evaluate(() => {
+    const registered = HIT_LAYERS.includes('state-oregon-safety-roads__hit');
+    // A tap in central Portland: project a known street point and resolve it
+    // exactly the way the tap handler does.
+    const point = map.project([-122.6765, 45.5231]);
+    let hit = null;
+    for (let dx = -40; dx <= 40 && !hit; dx += 8) {
+      for (let dy = -40; dy <= 40 && !hit; dy += 8) {
+        const feature = featureAt({ x: point.x + dx, y: point.y + dy });
+        if (feature && /^state-oregon-safety-/.test(feature.layer?.id || '')) hit = feature;
+      }
+    }
+    return { registered, hitLayer: hit?.layer?.id || null,
+      hitName: hit?.properties?.n || hit?.properties?.name || null };
+  });
+  check('a tap over Oregon resolves to an Oregon road, not a bare point',
+    tap.registered && !!tap.hitLayer, JSON.stringify(tap));
+
   await page.evaluate(() => { map.jumpTo({ center: [-122.3321, 47.6062], zoom: 13 }); });
   await page.waitForFunction(() => !map.getSource('state-oregon-basemap-context'));
   const returned = await page.evaluate(() => ({

@@ -585,10 +585,16 @@ body:not(.navigation-active) #navCard { display: none; }
 .national-state text { fill: #405561; font: 700 10px/1 system-ui; text-anchor: middle; pointer-events: none; paint-order: stroke; stroke: rgba(248,250,249,.92); stroke-width: 2px; }
 .national-state.inset text { font-size: 12px; }
 .national-map-divider { fill: none; stroke: rgba(70,90,100,.35); stroke-width: 1; stroke-dasharray: 3 3; }
-.maps-state-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; }
-.maps-state { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 6px 11px; border: 1px solid #dbe5ea; border-radius: 10px; background: #fff; color: #24343f; font: 700 13.5px/1.2 system-ui; }
+/* A non-home installed card carries radio + name + size + Update + Remove +
+   On-device badge — ~330px of controls. The old 210px column minimum crushed
+   the name to zero and pushed the badge outside the card (field screenshot);
+   the wider minimum fits the common case and the wrap absorbs the rest. */
+.maps-state-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px; }
+.maps-state { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; row-gap: 4px; min-height: 44px; padding: 6px 11px; border: 1px solid #dbe5ea; border-radius: 10px; background: #fff; color: #24343f; font: 700 13.5px/1.2 system-ui; }
 .maps-state input { width: 18px; height: 18px; flex: none; accent-color: #0a66c2; }
-.maps-state-name { display: flex; flex: 1 1 auto; flex-direction: column; gap: 1px; min-width: 0; }
+/* The guaranteed name width is also what makes the controls wrap instead of
+   shrinking the name away: wrap decisions use the flex basis. */
+.maps-state-name { display: flex; flex: 1 1 140px; flex-direction: column; gap: 1px; min-width: 140px; }
 /* Says what a state can actually do. It is the difference between a finished
    map and one that only knows where the towns are, so it is on the row rather
    than behind a tap. */

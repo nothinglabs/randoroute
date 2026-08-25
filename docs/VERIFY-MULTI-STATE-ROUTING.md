@@ -58,8 +58,9 @@ and `Access-Control-Allow-Origin: *`.
 
 Real preview coverage is Washington and Oregon. The third-state gate remains
 synthetic, routes are capped at three states, and physical-iPhone Cache Storage,
-memory-pressure and navigation verdicts remain pending. Retain the preview
-through PR #3 review; remove or archive it after the pull request closes.
+memory-pressure and navigation verdicts remain pending. The preview was
+retired on 2026-08-25 after the branch merged to `main`; this section is the
+deployment record from the review period.
 
 ## First launch
 

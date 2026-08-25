@@ -210,6 +210,8 @@ The review publication is
 `https://nothinglabs.github.io/randoroute-preview/`, generated from source
 commit `ee5eaf5f65c507fbcefc22d7089fb4b48ccb3815`. Its public PMTiles response
 supports byte ranges and CORS. `preview.json` records the same catalogue and
-source graph identities. The separate preview repository is retained through
-PR #3 review and removed or archived after the pull request closes; production
-Pages is unchanged.
+source graph identities. The preview was retired on 2026-08-25 when the
+multi-state branch merged to `main`: production Pages serves the current
+app, the preview repository no longer hosts it, and the in-repo preview
+build tooling is removed. The record above remains the verification
+evidence for the released build.
