@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v827';
+const VERSION = 'v828';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -244,13 +244,19 @@ self.addEventListener('activate', (e) => {
         .filter((k) => !keep.includes(k) && !liveInstallCache(k))
         .map((k) => caches.delete(k))))
       .then(() => purgeStaleGraph())
-      .then(() => refreshReleaseData())
       .then(() => self.clients.claim())
-      // AFTER claiming: a stale 40+ MB archive must never delay the update
-      // taking control. waitUntil keeps the worker alive while it refreshes;
-      // failure keeps the old archive, and the next activation retries.
-      .then(() => refreshStaleArchives())
   );
+  // Deliberately OUTSIDE waitUntil, all of it. The browser queues every page
+  // fetch until activation's extensions settle, so any network work in the
+  // chain above lets a flaky connection hold the whole installed app
+  // hostage: the first PWA launch after an update showed nothing at all
+  // while refreshReleaseData's fetches hung (field, 2026-08-25). Claiming
+  // after local cache work only, the ordering the archive comment always
+  // intended, is not enough — waitUntil itself is the gate pages wait on.
+  // The refreshes run beside activation instead. The trade: the browser may
+  // stop an idle worker mid-refresh; a failed put keeps the old copy, the
+  // stamps make the pass idempotent, and the next activation retries.
+  refreshReleaseData().then(() => refreshStaleArchives()).catch(() => { /* keep old copies */ });
 });
 
 self.addEventListener('fetch', (e) => {
