@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.822';
+const APP_VERSION = '2026-08-25.823';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -7494,6 +7494,25 @@ function speakNavigation(text, kind = 'turn') {
   pumpSpeech();
 }
 
+// The sleep notice must inform, not narrate the whole ride. It is the one
+// banner status with no clearing event -- screenMaySleep never flips back on
+// a device without wake-lock support -- and the message slot outranks turn
+// guidance, so left alone it replaced every maneuver instruction for the
+// entire session (measured in a simulated ride: the headline never showed a
+// single turn). Show it long enough to read, then hand the banner back.
+const SCREEN_SLEEP_NOTICE = 'Screen may sleep on this device';
+let screenSleepNoticeTimer = null;
+function showScreenMaySleepNotice() {
+  turnNav.message = SCREEN_SLEEP_NOTICE;
+  clearTimeout(screenSleepNoticeTimer);
+  screenSleepNoticeTimer = setTimeout(() => {
+    if (turnNav.message === SCREEN_SLEEP_NOTICE) {
+      turnNav.message = '';
+      refreshNavigationUI();
+    }
+  }, 8000);
+}
+
 async function requestNavigationWakeLock() {
   if (!turnNav.active || !navVoice.keepScreenAwake) return;
   const plugin = nativeNavigationPlugin();
@@ -7511,7 +7530,7 @@ async function requestNavigationWakeLock() {
   }
   if (!navigator.wakeLock || document.visibilityState !== 'visible') {
     turnNav.screenMaySleep = true;
-    if (turnNav.locationReady) turnNav.message = 'Screen may sleep on this device';
+    if (turnNav.locationReady) showScreenMaySleepNotice();
     refreshNavigationUI();
     return;
   }
@@ -7524,7 +7543,7 @@ async function requestNavigationWakeLock() {
     if (turnNav.locationReady) turnNav.message = '';
   } catch (e) {
     turnNav.screenMaySleep = true;
-    if (turnNav.locationReady) turnNav.message = 'Screen may sleep on this device';
+    if (turnNav.locationReady) showScreenMaySleepNotice();
   }
   refreshNavigationUI();
 }
@@ -7683,7 +7702,8 @@ function useNearestPlannedRoute(reason = '', purpose = turnNav.connectorPurpose)
   if (offRouteDialog?.open) offRouteDialog.close();
   turnNav.connectorRequestId = null;
   turnNav.joinDecision = 'nearest';
-  turnNav.message = turnNav.screenMaySleep ? 'Screen may sleep on this device' : '';
+  if (turnNav.screenMaySleep) showScreenMaySleepNotice();
+  else turnNav.message = '';
   turnNav.route = turnNav.plannedRoute;
   turnNav.followingConnector = false;
   turnNav.connectorRoute = null;
@@ -8219,7 +8239,8 @@ function updateTurnNavigation(pos) {
   turnNav.nearestPoint = nearest.point;
   turnNav.routeM = nearest.routeM;
   rememberPlannedRouteProgress();
-  turnNav.message = turnNav.screenMaySleep ? 'Screen may sleep on this device' : '';
+  if (turnNav.screenMaySleep) showScreenMaySleepNotice();
+  else turnNav.message = '';
   updateNavigationProgress();
   const instructions = turnNav.route.instructions;
   // Passed maneuvers advance silently; announcing them late is noise. This is
@@ -10960,6 +10981,11 @@ function clearRoute() {
   routing.pendingPanelReveal = false;
   routing.routeRequestActive = false;
   routing.reqId++; // a route already being calculated must not reappear after clear
+  // The stale reply that reqId just orphaned is DISCARDED on arrival --
+  // before the code that would have hidden the calculation banner -- so
+  // without this a clear during a search left "Calculating route options"
+  // on screen indefinitely.
+  hideRouteCalculationStatus();
   activeMultiStateRouting.session?.cancel();
   routing.multiStateActive = false;
   document.body.removeAttribute('data-loaded-partition-count');
@@ -11480,6 +11506,11 @@ function clearCandidatePortfolio() {
 
 function activateRouteOption(option, updateNavigation = false) {
   if (!option?.ok) return;
+  // Activating any route supersedes an in-flight candidate fetch. Without
+  // this, tapping an All-Routes row and then flipping back to a letter let
+  // the fetch's reply arrive seconds later and stomp the newer choice --
+  // the rider's LAST action lost.
+  routing.candidateReqId = (routing.candidateReqId || 0) + 1;
   showRouteActionToast('');
   const warningWasActive = routeHasDetailsWarning(routing.last);
   routing.last = option;
@@ -13268,8 +13299,9 @@ function explainLevel(n, verdict = evaluateRoad(n)) {
 
 const HIT_LAYERS = [];  // hit-layer ids, registered as sources attach
 const HIT_SRC = {};     // hit-layer id -> its source
-// Clicking/tapping PINS the readout (so its links are clickable); hovering
-// only previews and never replaces a pinned readout.
+// Clicking/tapping PINS the readout (so its links are clickable). Hover no
+// longer previews a card -- mousemove only turns the cursor into a pointer
+// over an inspectable feature; the card itself always comes from a click.
 let readoutPinned = false;
 let roadInfoSuppressedUntil = 0;
 

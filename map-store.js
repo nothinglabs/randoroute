@@ -165,7 +165,17 @@
     try {
       const raw = root.localStorage ? root.localStorage.getItem(key) : null;
       const parsed = raw ? JSON.parse(raw) : null;
-      return Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      // The registry read is a BOOT dependency: region.js maps these entries
+      // into the state list before anything else runs, so one malformed
+      // entry -- a wrong-shaped value written by an older build, an
+      // extension, or a corrupted store -- used to throw there and brick
+      // every subsequent launch (the poison persists). Registry keys drop
+      // entries that do not carry a usable state config instead.
+      if (key !== INSTALLED_KEY) return parsed;
+      return parsed.filter((entry) =>
+        entry && entry.state && typeof entry.state.id === 'string'
+        && entry.state.id && typeof entry.state.datasets === 'object');
     } catch (e) { return []; }
   }
   function writeJson(key, value) {

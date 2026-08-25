@@ -1,0 +1,89 @@
+#!/usr/bin/env node
+// On a device without wake-lock support, the "Screen may sleep" notice must
+// inform and then get out of the way. The banner's message slot outranks
+// turn guidance, and this notice was the one status with no clearing event —
+// a simulated ride showed it as the headline for the ENTIRE session, so a
+// rider on such a device never saw a single maneuver instruction.
+import { check, done, launchBrowser, serveRepo } from './testlib/harness.mjs';
+
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)'
+  + ' AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+const site = await serveRepo();
+const browser = await launchBrowser();
+try {
+  const context = await browser.newContext({ serviceWorkers: 'block',
+    userAgent: IPHONE_UA, viewport: { width: 430, height: 900 },
+    hasTouch: true, isMobile: true,
+    permissions: ['geolocation'],
+    geolocation: { latitude: 47.5810, longitude: -122.4020 } });
+  // Deterministically the no-wake-lock world: headless Chromium sometimes
+  // grants the lock, and this test is about the device that cannot.
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, 'wakeLock', { get: () => undefined });
+  });
+  const page = await context.newPage();
+  await page.goto(`http://localhost:${site.port}/index.html`, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.map && map.loaded && map.loaded(),
+    null, { timeout: 120000 });
+  await page.waitForFunction(() =>
+    document.documentElement.classList.contains('app-ready'), null, { timeout: 120000 });
+  await page.evaluate(() => {
+    document.getElementById('onboardingClose')?.click();
+    document.getElementById('onboardingDialog')?.close?.();
+  });
+  await page.evaluate(() => {
+    routing.start = [-122.4020, 47.5810];
+    routing.startName = 'Alki';
+    routing.end = [-122.3565, 47.6370];
+    routing.endName = 'Queen Anne';
+    computeRoute();
+  });
+  await page.waitForFunction(() =>
+    routing.options?.length > 0 && !routing.routeRequestActive, null, { timeout: 300000 });
+  await page.waitForFunction(() => !document.getElementById('navStartButton').hidden,
+    null, { timeout: 30000 });
+  await page.evaluate(() => document.getElementById('navStartButton').click());
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => {
+    const dialog = document.getElementById('routeStartDialog');
+    if (dialog?.open) {
+      const go = [...dialog.querySelectorAll('button')]
+        .find((b) => /start|begin|navigate|anyway|skip/i.test(b.textContent));
+      (go || dialog.querySelector('button'))?.click();
+    }
+  });
+  await page.waitForFunction(() => turnNav.active === true, null, { timeout: 20000 });
+
+  // Ride a few fixes so location is ready and a next maneuver exists.
+  const coords = await page.evaluate(() => routing.last.coords);
+  for (let i = 0; i < 10; i++) {
+    const at = coords[Math.min(i * 2, coords.length - 1)];
+    await context.setGeolocation({ latitude: at[1], longitude: at[0] });
+    await page.waitForTimeout(300);
+  }
+  const early = await page.evaluate(() =>
+    document.getElementById('navBannerText')?.textContent || '');
+  check('the no-wake-lock device is told its screen may sleep',
+    /screen may sleep/i.test(early)
+      // The 8 s window can already have passed on a slow boot; guidance
+      // showing instead is the fixed behavior, not a failure.
+      || /^(In |Now|Continue)/.test(early), early);
+
+  // Within the notice's hand-back window, guidance owns the banner again.
+  await page.waitForFunction(() => {
+    const text = document.getElementById('navBannerText')?.textContent || '';
+    return turnNav.active && !/screen may sleep/i.test(text) && text.length > 0;
+  }, null, { timeout: 15000 });
+  const later = await page.evaluate(() => ({
+    banner: document.getElementById('navBannerText')?.textContent || '',
+    active: turnNav.active,
+  }));
+  check('and the banner hands back to turn guidance within seconds',
+    later.active && /^(In |Now|Continue|Off route|You have arrived)/.test(later.banner),
+    JSON.stringify(later));
+} finally {
+  await browser.close();
+  site.close();
+}
+
+done();

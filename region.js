@@ -40,8 +40,11 @@
     const bundledIds = new Set(root.MAP_STATES_BUNDLED === false ? []
       : Array.isArray(root.MAP_STATES_BUNDLED_IDS)
         ? root.MAP_STATES_BUNDLED_IDS : states.map((state) => state.id));
+    // Belt to map-store's own filtering: a state config without an id can
+    // only brick this boot-critical file, whatever wrote it.
     const installed = root.MapStore.installedRegionConfigs()
-      .filter((state) => !bundledIds.has(state.id));
+      .filter((state) => state && typeof state.id === 'string'
+        && state.id && !bundledIds.has(state.id));
     if (installed.length) {
       const installedIds = new Set(installed.map((state) => state.id));
       states = [...states.filter((state) => !installedIds.has(state.id)), ...installed];
