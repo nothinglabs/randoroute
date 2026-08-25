@@ -128,8 +128,8 @@ async function shoot(page, result, option, outPath, bbox) {
   // Tiles for the new viewport have to arrive before the shot; `idle` fires
   // when MapLibre has nothing left to load or draw.
   await page.evaluate(() => new Promise((resolve) => {
-    if (map.loaded() && map.areTilesLoaded()) { map.once('idle', resolve); setTimeout(resolve, 2500); }
-    else map.once('idle', resolve);
+    if (map.loaded() && map.areTilesLoaded()) { map.once('idle', () => resolve()); setTimeout(resolve, 2500); }
+    else map.once('idle', () => resolve());
   }));
   await page.waitForTimeout(900);
   await page.screenshot({ path: outPath });

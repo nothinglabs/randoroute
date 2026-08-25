@@ -98,7 +98,7 @@ async function samplePixel(page, lng, lat, zoom) {
     map.jumpTo({ center: [lng, lat], zoom }), { lng, lat, zoom });
   await page.evaluate(() => new Promise((resolve) => {
     if (map.loaded()) return resolve();
-    map.once('idle', resolve);
+    map.once('idle', () => resolve());
     setTimeout(resolve, 12000);
   }));
   await page.waitForTimeout(300);

@@ -58,7 +58,7 @@ const pg = await (await browser.newContext({ serviceWorkers: 'block', viewport: 
 await pg.goto(site.url, { waitUntil: 'load' });
 await pg.waitForFunction(() => window.map && map.getLayer?.('basemap-land'), { timeout: 60000 });
 // Georgetown: inland Seattle, real water present but most of the frame is land.
-await pg.evaluate(() => map.jumpTo({ center: [-122.3130, 47.5150], zoom: 13 }));
+await pg.evaluate(() => { map.jumpTo({ center: [-122.3130, 47.5150], zoom: 13 }); });
 await pg.waitForFunction(() => map.isSourceLoaded('basemap-context')
   && map.queryRenderedFeatures({ layers: ['basemap-land'] }).length > 0,
 { timeout: 60000 });
@@ -93,7 +93,7 @@ check('land is actually drawn at z13', present.land > 5,
   `land ${present.land}%, ocean ${present.ocean}%`);
 
 // Detail tiles gone: this is the rider on flaky cell data.
-await pg.evaluate(() => map.setLayoutProperty('basemap-land-detail', 'visibility', 'none'));
+await pg.evaluate(() => { map.setLayoutProperty('basemap-land-detail', 'visibility', 'none'); });
 await settled();
 await pg.screenshot({ path: join(OUT, 'nodetail.png'), clip });
 const nodetail = analyse(join(OUT, 'nodetail.png'));
@@ -107,7 +107,7 @@ check('and land still covers the ground',
 // Control: with the backdrop ALSO gone, ocean must visibly take over. If this
 // does not happen the test is not measuring anything and the checks above are
 // vacuous.
-await pg.evaluate(() => map.setLayoutProperty('basemap-land', 'visibility', 'none'));
+await pg.evaluate(() => { map.setLayoutProperty('basemap-land', 'visibility', 'none'); });
 await settled();
 await pg.screenshot({ path: join(OUT, 'nobackdrop.png'), clip });
 const bare = analyse(join(OUT, 'nobackdrop.png'));

@@ -69,9 +69,9 @@ try {
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction(() => window.map && map.loaded && map.loaded())
     .catch(() => {});
-  await page.evaluate(() => map.jumpTo({ center: [-122.3130, 47.5150], zoom: 13 }));
+  await page.evaluate(() => { map.jumpTo({ center: [-122.3130, 47.5150], zoom: 13 }); });
   await page.evaluate(() => Promise.race([
-    new Promise((resolve) => map.once('idle', resolve)),
+    new Promise((resolve) => map.once('idle', () => resolve())),
     new Promise((resolve) => setTimeout(resolve, 45000)),
   ]));
   await page.waitForTimeout(1500);

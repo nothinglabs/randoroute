@@ -60,7 +60,7 @@ try {
         map.jumpTo({ center: [lng, lat], zoom }), { lng, lat, zoom });
       await page.evaluate(() => new Promise((resolve) => {
         if (map.loaded()) return resolve();
-        map.once('idle', resolve);
+        map.once('idle', () => resolve());
         setTimeout(resolve, 9000);
       }));
       await page.waitForTimeout(200);

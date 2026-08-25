@@ -57,7 +57,7 @@ try {
   }).length > 0, null, { timeout: 45000 });
   const regionalChecks = [];
   for (const zoom of [4, 5, 6, 7, 8]) {
-    await page.evaluate((z) => map.jumpTo({ center: [-122.48, 48.02], zoom: z }), zoom);
+    await page.evaluate((z) => { map.jumpTo({ center: [-122.48, 48.02], zoom: z }); }, zoom);
     await page.waitForFunction(() => map.loaded() && map.isSourceLoaded('basemap-regional'),
       null, { timeout: 45000 });
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() =>
@@ -138,7 +138,7 @@ try {
       band.seam.length === 2 && band.seam.every((probe) =>
         probe.land.onScreen && probe.land.count > 0 && probe.water.count === 0)),
     JSON.stringify(regionalChecks));
-  await page.evaluate(() => map.jumpTo({ center: [-121.5, 46.5], zoom: 4 }));
+  await page.evaluate(() => { map.jumpTo({ center: [-121.5, 46.5], zoom: 4 }); });
   await page.waitForFunction(() => map.loaded() && map.isSourceLoaded('basemap-regional'),
     null, { timeout: 45000 });
   const mixedNeighbor = await page.evaluate(() => {
@@ -166,7 +166,7 @@ try {
       && regionalErrors.length === 0,
     JSON.stringify({ regionalChecks, errors: regionalErrors }));
 
-  await page.evaluate(() => map.jumpTo({ center: [-122.3397, 47.6804], zoom: 9.25 }));
+  await page.evaluate(() => { map.jumpTo({ center: [-122.3397, 47.6804], zoom: 9.25 }); });
   await page.waitForFunction(() => map.isSourceLoaded('basemap-context'),
     null, { timeout: 45000 });
   const handoff = await page.evaluate(() => {
@@ -188,7 +188,7 @@ try {
     handoff.regional > 0 && handoff.detailedLand > 0 && handoff.detailedWater > 0,
     JSON.stringify(handoff));
 
-  await page.evaluate(() => map.jumpTo({ center: [-122.6765, 45.5231], zoom: 13 }));
+  await page.evaluate(() => { map.jumpTo({ center: [-122.6765, 45.5231], zoom: 13 }); });
   await page.waitForFunction(() =>
     document.body.dataset.visibleMapStateIds?.includes('oregon'), null, { timeout: 45000 });
   await page.waitForFunction(() => {

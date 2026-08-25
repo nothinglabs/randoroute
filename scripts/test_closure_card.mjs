@@ -42,7 +42,7 @@ check('the Everett Station bus loop is not a closure',
 const marker = closures.features.find((f) => f.geometry.type === 'Point');
 check('closures include tappable point markers', !!marker);
 const [lng, lat] = marker.geometry.coordinates;
-await page.evaluate(([x, y]) => map.jumpTo({ center: [x, y], zoom: 15 }), [lng, lat]);
+await page.evaluate(([x, y]) => { map.jumpTo({ center: [x, y], zoom: 15 }); }, [lng, lat]);
 await page.waitForFunction(() => map.areTilesLoaded(), { timeout: 60000 }).catch(() => {});
 await page.waitForTimeout(1500);
 

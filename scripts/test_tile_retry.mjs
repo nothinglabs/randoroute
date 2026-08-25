@@ -100,7 +100,7 @@ async function render(label) {
   });
   // Puget Sound at the Tacoma tideflats: land, water and a dense street grid,
   // which is where the holes were reported.
-  await page.evaluate(() => map.jumpTo({ center: [-122.39, 47.26], zoom: 13 }));
+  await page.evaluate(() => { map.jumpTo({ center: [-122.39, 47.26], zoom: 13 }); });
   await page.waitForFunction(() => map.loaded && map.loaded(), { timeout: 45000 }).catch(() => {});
   await page.waitForTimeout(7000);
   const counts = await page.evaluate((layers) => {

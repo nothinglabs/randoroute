@@ -38,7 +38,7 @@ await page.evaluate(() => {
 await page.waitForFunction(() => window.map && map.loaded && map.loaded(), { timeout: 180000 })
   .catch(() => {});
 await page.evaluate(() => Promise.race([
-  new Promise((resolve) => map.once('idle', resolve)),
+  new Promise((resolve) => map.once('idle', () => resolve())),
   new Promise((resolve) => setTimeout(resolve, 30000)),
 ]));
 

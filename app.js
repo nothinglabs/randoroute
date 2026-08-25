@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.816';
+const APP_VERSION = '2026-08-25.817';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -8971,6 +8971,9 @@ function buildRouteUnpavedData(sdata) {
  * a mix rather than a single kind winning everywhere.
  */
 const ROUTE_MARKER_SPACING_M = 700;
+// Offset separating the hill band from everything else in the collision sort
+// key; any value above the largest possible slot index works.
+const ROUTE_MARKER_SLOT_SPAN = 1e6;
 // Below these run lengths a signal is a blip (or a DEM/data artefact), not a
 // stretch worth an icon. Traffic and surface need real length; walking matters
 // even when short. Technical-trail context remains in the road card, rather
@@ -9086,10 +9089,16 @@ function buildRouteMarkerData(sdata) {
           const kind = active.includes('walk')
             ? (others.length && slot % 2 === 1 ? combined : 'walk')
             : combined;
-          // `slot` doubles as the collision priority: with a stable sort key
-          // the placer culls the SAME markers at every zoom, so zooming thins
-          // a chain monotonically instead of toggling which icon a spot shows.
-          const point = { type: 'Feature', properties: { kind, slot,
+          // `sort` is the collision priority: stable, so the placer culls the
+          // SAME markers at every zoom and zooming thins a chain monotonically
+          // instead of toggling which icon a spot shows. Hills sort ahead of
+          // every other kind -- the one climb on a route full of cars and
+          // gravel used to be the marker that vanished at overview zoom, and
+          // it is the one the rider routes around -- so thinning narrows the
+          // chain TOWARD mountains; slot order settles ties within a kind.
+          const sort = (kind === 'steep' || kind.startsWith('steep+')
+            ? 0 : ROUTE_MARKER_SLOT_SPAN) + slot;
+          const point = { type: 'Feature', properties: { kind, slot, sort,
             routeIndex: f.routeIndex },
             geometry: { type: 'Point',
               coordinates: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] } };
@@ -9736,11 +9745,12 @@ function drawRoute(coords, ferrySegs, segs) {
       'icon-size': ROUTE_MARKER_SIZE_BY_ZOOM,
       // allow-overlap false is the crowding control: the symbol placer culls
       // whatever would collide, so zooming out thins the chain instead of
-      // piling badges on badges. The slot sort key keeps the culling stable
-      // across zooms -- without it, which marker survives is arbitrary and a
-      // spot flickers between kinds as the rider zooms.
+      // piling badges on badges. The sort key keeps the culling stable across
+      // zooms -- without it, which marker survives is arbitrary and a spot
+      // flickers between kinds as the rider zooms -- and it ranks hills ahead
+      // of every other kind so they stay visible at overview zoom.
       'icon-allow-overlap': false, 'icon-ignore-placement': false,
-      'symbol-sort-key': ['get', 'slot'],
+      'symbol-sort-key': ['get', 'sort'],
     },
   });
   // Fail badges are promises, not decoration: never let collision placement

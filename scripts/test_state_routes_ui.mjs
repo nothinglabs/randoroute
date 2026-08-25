@@ -380,7 +380,7 @@ await page.evaluate((mid) => {
   map.jumpTo({ center: mid, zoom: 16 });
 }, near.mid);
 await page.evaluate(() => new Promise((resolve) => {
-  map.once('idle', resolve); setTimeout(resolve, 9000);
+  map.once('idle', () => resolve()); setTimeout(resolve, 9000);
 }));
 let tapped = { toggles: [], title: '' };
 for (let attempt = 0; attempt < 3 && !tapped.toggles.length; attempt++) {

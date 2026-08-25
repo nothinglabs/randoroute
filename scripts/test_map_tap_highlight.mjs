@@ -152,7 +152,7 @@ check('in a colour no verdict uses, so it cannot be read as one',
 const rendered = await page.evaluate(async () => {
   const canvas = map.getCanvas();
   const settled = () => new Promise((resolve) => {
-    map.once('idle', resolve);
+    map.once('idle', () => resolve());
     map.triggerRepaint();
   });
   const frame = () => {
@@ -242,7 +242,7 @@ check('and its verdict is still readable through the glow',
 // every other line on the map does.
 const scaled = await page.evaluate(async () => {
   const settled = () => new Promise((resolve) => {
-    map.once('idle', resolve);
+    map.once('idle', () => resolve());
     map.triggerRepaint();
   });
   const read = async (z) => {

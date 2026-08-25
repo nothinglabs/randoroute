@@ -10,7 +10,7 @@ try {
   await page.waitForFunction(() =>
     typeof map !== 'undefined' && typeof map.getLayer === 'function'
       && map.getLayer('basemap-land'));
-  await page.evaluate(() => map.jumpTo({ center: [-122.3321, 47.6062], zoom: 13 }));
+  await page.evaluate(() => { map.jumpTo({ center: [-122.3321, 47.6062], zoom: 13 }); });
   await page.waitForFunction(() => !map.getSource('state-oregon-basemap-context'));
   const initial = await page.evaluate(() => ({
     home: Region.id,
@@ -19,13 +19,13 @@ try {
   check('a Washington viewport does not preload Oregon tile archives',
     initial.home === 'washington' && !initial.oregonContext, JSON.stringify(initial));
 
-  await page.evaluate(() => map.jumpTo({ center: [-122.6765, 45.5231], zoom: 13 }));
+  await page.evaluate(() => { map.jumpTo({ center: [-122.6765, 45.5231], zoom: 13 }); });
   await page.waitForFunction(() =>
     document.body.dataset.visibleMapStateIds?.includes('oregon')
       && map.getSource('state-oregon-basemap-context')
       && map.getLayer('state-oregon-basemap-land'));
   await page.evaluate(() => Promise.race([
-    new Promise((resolve) => map.once('idle', resolve)),
+    new Promise((resolve) => map.once('idle', () => resolve())),
     new Promise((resolve) => setTimeout(resolve, 30000)),
   ]));
   const oregon = await page.evaluate(() => ({
@@ -42,7 +42,7 @@ try {
     oregon.visible.includes('oregon') && oregon.ground > 0 && oregon.roads > 0,
     JSON.stringify(oregon));
 
-  await page.evaluate(() => map.jumpTo({ center: [-122.3321, 47.6062], zoom: 13 }));
+  await page.evaluate(() => { map.jumpTo({ center: [-122.3321, 47.6062], zoom: 13 }); });
   await page.waitForFunction(() => !map.getSource('state-oregon-basemap-context'));
   const returned = await page.evaluate(() => ({
     visible: document.body.dataset.visibleMapStateIds,

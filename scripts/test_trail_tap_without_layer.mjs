@@ -23,7 +23,7 @@ await page.waitForFunction(
 
 const probe = (trailsOn) => page.evaluate(async (on) => {
   const settled = () => new Promise((resolve) => {
-    map.once('idle', resolve);
+    map.once('idle', () => resolve());
     map.triggerRepaint();
   });
   display.offstreetTrails = on;

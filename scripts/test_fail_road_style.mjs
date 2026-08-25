@@ -55,7 +55,7 @@ check('the pass/fail grey dash stops before level 4', layers.failUpperBound === 
 const sampleAt = async (zoom) => page.evaluate(async (z) => {
   const canvas = map.getCanvas();
   const settled = () => new Promise((resolve) => {
-    map.once('idle', resolve);
+    map.once('idle', () => resolve());
     map.triggerRepaint();
   });
   Object.assign(display, {

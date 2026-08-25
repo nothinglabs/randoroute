@@ -114,7 +114,7 @@ await page.evaluate(([centre]) => {
   map.jumpTo({ center: centre, zoom: 13 });
 }, [SEATTLE]);
 await page.evaluate(() => Promise.race([
-  new Promise((resolve) => map.once('idle', resolve)),
+  new Promise((resolve) => map.once('idle', () => resolve())),
   new Promise((resolve) => setTimeout(resolve, 30000)),
 ]));
 

@@ -35,11 +35,15 @@ try {
   const wrong = [];
   for (const zoom of ZOOMS) {
     for (const [name, lng, lat, kind] of PROBES) {
-      await page.evaluate(({ lng, lat, zoom }) =>
-        map.jumpTo({ center: [lng, lat], zoom }), { lng, lat, zoom });
+      // Braces matter: an expression arrow would RETURN the Map instance
+      // (jumpTo returns this), and Playwright then serializes the whole
+      // map -- loaded tiles included -- into one >512 MB pipe message.
+      await page.evaluate(({ lng, lat, zoom }) => {
+        map.jumpTo({ center: [lng, lat], zoom });
+      }, { lng, lat, zoom });
       await page.evaluate(() => new Promise((resolve) => {
         if (map.loaded()) return resolve();
-        map.once('idle', resolve);
+        map.once('idle', () => resolve());
         setTimeout(resolve, 12000);
       }));
       await page.waitForTimeout(250);

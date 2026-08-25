@@ -162,7 +162,7 @@ const drawn = await page.evaluate(async () => {
     distM: segs.reduce((sum, segment) => sum + segment.lenM, 0) };
   map.jumpTo({ center: [-122.34 + 3 * .002, lat], zoom: 15 });
   drawRoute(coords, [], segs);
-  await new Promise((resolve) => { map.once('idle', resolve); setTimeout(resolve, 8000); });
+  await new Promise((resolve) => { map.once('idle', () => resolve()); setTimeout(resolve, 8000); });
   const image = map.style.getImage('route-dismount-marker-icon');
   const markers = map.querySourceFeatures('route-dismount');
   const failMarkers = map.querySourceFeatures('route-marker')

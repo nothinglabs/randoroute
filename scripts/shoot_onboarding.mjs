@@ -119,12 +119,12 @@ const frame = await page.evaluate(() => {
   return { center: map.getCenter().toArray(), zoom: map.getZoom() };
 });
 await activate(picks.fastI);
-await page.evaluate((f) => map.jumpTo(f), frame);
+await page.evaluate((f) => { map.jumpTo(f); }, frame);
 await idle(); await settle(1500);
 await shot('tour-fast', { x: 0, y: 195, width: 430, height: 545 });
 
 await activate(picks.safeI);
-await page.evaluate((f) => map.jumpTo(f), frame);
+await page.evaluate((f) => { map.jumpTo(f); }, frame);
 await idle(); await settle(1500);
 await shot('tour-safer', { x: 0, y: 195, width: 430, height: 545 });
 

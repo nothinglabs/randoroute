@@ -40,7 +40,7 @@ const observed = await page.evaluate(async () => {
       String(place[0] || '').toLowerCase() === 'portland'),
   };
 });
-await page.evaluate(() => map.jumpTo({ center: [-122.6765, 45.5231], zoom: 7 }));
+await page.evaluate(() => { map.jumpTo({ center: [-122.6765, 45.5231], zoom: 7 }); });
 await page.waitForFunction(() => map.isSourceLoaded('basemap-regional'),
   null, { timeout: 60000 });
 const sourceText = JSON.stringify(observed.sources);

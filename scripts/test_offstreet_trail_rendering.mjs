@@ -23,7 +23,7 @@ await page.evaluate(async () => {
   // Interurban Trail, immediately west of Silver Lake near Everett.
   map.jumpTo({ center: [-122.2283, 47.8853], zoom: 14 });
   await Promise.race([
-    new Promise((resolve) => map.once('idle', resolve)),
+    new Promise((resolve) => map.once('idle', () => resolve())),
     new Promise((resolve) => setTimeout(resolve, 20000)),
   ]);
 });
@@ -38,7 +38,7 @@ async function counts(enabled) {
   await page.evaluate(async (on) => {
     setMapLayerVisible('offstreetTrails', on);
     await Promise.race([
-      new Promise((resolve) => map.once('idle', resolve)),
+      new Promise((resolve) => map.once('idle', () => resolve())),
       new Promise((resolve) => setTimeout(resolve, 10000)),
     ]);
   }, enabled);
