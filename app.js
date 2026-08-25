@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.817';
+const APP_VERSION = '2026-08-25.818';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3684,11 +3684,15 @@ function trimRouterCachesSoon(delay = 0) {
   }, Math.max(0, Number(delay) || 0));
 }
 
-function setRouteStatus(t) {
-  for (const id of ['route-status', 'rb-status']) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = t;
-  }
+// Two sinks: the screen-reader live region always hears the message; the
+// route bar's visible span shows it unless the caller says the calculation
+// banner is already narrating (bar: false also clears a stale notice, so
+// the banner takes over cleanly).
+function setRouteStatus(t, { bar = true } = {}) {
+  const live = document.getElementById('route-status');
+  if (live) live.textContent = t;
+  const span = document.getElementById('rb-status');
+  if (span) span.textContent = bar ? t : '';
 }
 
 let routeActionToastTimer = null;
@@ -3824,8 +3828,12 @@ function revealRouteCalculation() {
 }
 
 function showRouterProgress(detail, title = 'Loading routing engine', progress = null) {
-  setRouteStatus(detail || title);
-  if (routing.start && routing.end && (routing.pendingRoute || routing.routeRequestActive)) {
+  const calculating = routing.start && routing.end
+    && (routing.pendingRoute || routing.routeRequestActive);
+  // The calculation banner narrates this stream; the route bar's span must
+  // not echo the same phase text beside it (desktop showed both at once).
+  setRouteStatus(detail || title, { bar: !calculating });
+  if (calculating) {
     showRouteCalculationStatus(title, detail, progress);
     // A previous short-lived notice must not sit over the calculation sheet --
     // except during a quiet (settings-held) recompute, where the calc sheet is
@@ -16870,15 +16878,21 @@ if (routing.start && routing.end) {
   else map.once('load', queueBackgroundRouter);
 }
 
-// On phones, Navigate sits immediately above the permanent Route sheet;
-// desktop keeps the existing top-toolbar arrangement.
+// On phones, Navigate sits immediately above the permanent Route sheet; on
+// desktop it hangs on the left edge just below the docked panel, so the whole
+// left column reads route choices then Navigate.
 const mobileNavMedia = window.matchMedia('(max-width: 720px)');
 let _mobileDockFrame = null;
 let _routeGuidanceTimer = null;
 function syncMobileNavDock() {
-  if (!mobileNavMedia.matches) return;
-  const dock = document.getElementById('mobileNavDock');
   const panel = document.getElementById('panel');
+  if (!mobileNavMedia.matches) {
+    // The docked panel's height is content-driven, so CSS alone cannot hang
+    // the Navigate button under it; publish the measured bottom edge.
+    document.body.style.setProperty('--desktop-panel-bottom',
+      `${Math.ceil(panel.getBoundingClientRect().bottom)}px`);
+    return;
+  }
   const height = document.body.classList.contains('panel-open')
     ? Math.ceil(window.innerHeight - panel.getBoundingClientRect().top) : 0;
   // The dock and the banner are siblings, so put the shared measurement on
@@ -16886,7 +16900,7 @@ function syncMobileNavDock() {
   document.body.style.setProperty('--mobile-panel-height', `${height}px`);
 }
 function scheduleMobileNavDock() {
-  if (!mobileNavMedia.matches || _mobileDockFrame != null) return;
+  if (_mobileDockFrame != null) return;
   _mobileDockFrame = requestAnimationFrame(() => {
     _mobileDockFrame = null;
     syncMobileNavDock();

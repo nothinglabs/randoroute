@@ -55,6 +55,17 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
     max-height: calc(100% - 24px);
     border-radius: 12px;
   }
+  /* Navigate hangs on the left edge just below the docked panel (the route
+     selector), not in the top toolbar: the left column reads route choices,
+     then the button that acts on them. The measured panel bottom comes from
+     syncMobileNavDock; the min() keeps the button on screen when the panel
+     runs full height. */
+  #topToolbar .nav-start {
+    position: fixed;
+    left: 12px;
+    top: min(calc(var(--desktop-panel-bottom, 84px) + 10px), calc(100vh - 60px));
+    z-index: 10;
+  }
 }
 
 /* Mobile: the panel has two explicit states — open or hidden. It does not
