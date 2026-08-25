@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.828';
+const APP_VERSION = '2026-08-25.829';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1370,6 +1370,48 @@ map.on('webglcontextlost', () => {
   }, 3000);
 });
 map.once('render', () => window.__setAppLaunchStatus?.('Drawing roads and trails…'));
+// Slow tile fills used to be invisible work: the map just sat there part
+// drawn with nothing saying why (field, 2026-08-25 — "super slow to fill
+// in"). The pill appears only after the renderer has been waiting on tiles
+// for a continuous stretch, and leaves the moment the map goes idle. The
+// launch screen narrates its own phase, so the pill stays out of boot.
+const MAP_LOADING_PILL_DELAY_MS = 2500;
+const MAP_LOADING_PILL_QUIET_MS = 5000;
+let mapLoadingPillTimer = null;
+let mapLoadingPillRecheck = null;
+let mapLoadingLastEventAt = 0;
+function armMapLoadingPill() {
+  mapLoadingLastEventAt = Date.now();
+  if (mapLoadingPillTimer != null || mapLoadingPillRecheck != null) return;
+  mapLoadingPillTimer = setTimeout(() => {
+    mapLoadingPillTimer = null;
+    const pill = document.getElementById('mapLoadingPill');
+    if (!pill || !document.documentElement.classList.contains('app-ready')) return;
+    if (map.areTilesLoaded?.() !== false && map.loaded()) return;
+    pill.hidden = false;
+    // 'idle' is not a reliable exit: a request that hangs (rather than
+    // failing) leaves its tile 'loading' forever, so neither idle nor
+    // areTilesLoaded ever recovers in that world. The pill therefore means
+    // "map data is actively being fetched": it stays while loading events
+    // keep arriving and leaves once the stream has been quiet for a beat.
+    mapLoadingPillRecheck = setInterval(() => {
+      const tilesDone = map.areTilesLoaded?.() !== false && map.loaded();
+      const quiet = Date.now() - mapLoadingLastEventAt > MAP_LOADING_PILL_QUIET_MS;
+      if (tilesDone || quiet) settleMapLoadingPill();
+    }, 1500);
+  }, MAP_LOADING_PILL_DELAY_MS);
+}
+function settleMapLoadingPill() {
+  clearTimeout(mapLoadingPillTimer);
+  mapLoadingPillTimer = null;
+  clearInterval(mapLoadingPillRecheck);
+  mapLoadingPillRecheck = null;
+  const pill = document.getElementById('mapLoadingPill');
+  if (pill) pill.hidden = true;
+}
+map.on('dataloading', armMapLoadingPill);
+map.on('sourcedataloading', armMapLoadingPill);
+map.on('idle', settleMapLoadingPill);
 const finishAppLaunch = () => {
   clearTimeout(window.__appLaunchFallback);
   window.__dismissAppLaunchScreen?.();
@@ -3802,14 +3844,39 @@ function showRouteActionToast(text, { busy = false, detail = '', duration = 2200
   if (text && duration > 0) routeActionToastTimer = setTimeout(() => { toast.hidden = true; }, duration);
 }
 
+// A compute that is working and one that is stuck look identical once the
+// current phase message stops changing. The banner carries its own clock:
+// past 90 seconds the detail line gains a climbing elapsed marker,
+// re-rendered every 15 seconds even when no new progress message arrives,
+// so a long search reads as "still at it" rather than frozen.
+const CALC_ELAPSED_NOTE_MS = 90000;
+let calcShownAt = 0;
+let calcElapsedTimer = null;
+let calcLastDetail = '';
+function calcElapsedSuffix() {
+  const elapsed = Date.now() - calcShownAt;
+  if (!calcShownAt || elapsed < CALC_ELAPSED_NOTE_MS) return '';
+  return ` · working for ${Math.max(1, Math.round(elapsed / 60000))} min`;
+}
+
 function showRouteCalculationStatus(title = 'Calculating route options', detail = '', progress = null) {
   const tab = document.getElementById('tab-route');
   const status = document.getElementById('routeCalculationStatus');
   const titleLabel = document.getElementById('routeCalculationTitle');
   const detailLabel = document.getElementById('routeCalculationDetail');
   if (!tab || !status || !titleLabel || !detailLabel) return;
+  if (!calcShownAt) {
+    calcShownAt = Date.now();
+    clearInterval(calcElapsedTimer);
+    calcElapsedTimer = setInterval(() => {
+      if (!calcShownAt) return;
+      const label = document.getElementById('routeCalculationDetail');
+      if (label) label.textContent = calcLastDetail + calcElapsedSuffix();
+    }, 15000);
+  }
   titleLabel.textContent = title;
-  detailLabel.textContent = detail || 'Comparing safer, quicker, and bike-friendly routes…';
+  calcLastDetail = detail || 'Comparing safer, quicker, and bike-friendly routes…';
+  detailLabel.textContent = calcLastDetail + calcElapsedSuffix();
   const bar = document.getElementById('routeCalculationProgress');
   const fill = document.getElementById('routeCalculationProgressFill');
   const showBar = typeof progress === 'number' && progress >= 0;
@@ -3823,6 +3890,9 @@ function showRouteCalculationStatus(title = 'Calculating route options', detail 
 }
 
 function hideRouteCalculationStatus() {
+  calcShownAt = 0;
+  clearInterval(calcElapsedTimer);
+  calcElapsedTimer = null;
   document.getElementById('tab-route')?.classList.remove('route-calculating');
   const status = document.getElementById('routeCalculationStatus');
   if (status) status.hidden = true;
