@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.814';
+const APP_VERSION = '2026-08-25.815';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -15640,19 +15640,6 @@ function renderNationalOrientationMap(host) {
       path.setAttribute('d', projected.d);
       path.setAttribute('fill-rule', 'evenodd');
       group.append(path);
-      if (projected.points.length) {
-        const xs = projected.points.map((point) => point[0]);
-        const ys = projected.points.map((point) => point[1]);
-        const width = Math.max(...xs) - Math.min(...xs);
-        const height = Math.max(...ys) - Math.min(...ys);
-        if (width > 15 && height > 9) {
-          const label = document.createElementNS(ns, 'text');
-          label.setAttribute('x', String((Math.min(...xs) + Math.max(...xs)) / 2));
-          label.setAttribute('y', String((Math.min(...ys) + Math.max(...ys)) / 2 + 3));
-          label.textContent = feature.properties.abbreviation;
-          group.append(label);
-        }
-      }
       const open = () => openNationalStateCard(id);
       group.addEventListener('click', open);
       group.addEventListener('keydown', (event) => {
