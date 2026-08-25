@@ -105,6 +105,32 @@
     }
     graph.nodeLonBits = new Uint32Array(buffer, graph.nodeLon.byteOffset, N);
     graph.nodeLatBits = new Uint32Array(buffer, graph.nodeLat.byteOffset, N);
+    // The same impossible-elevation repair as the monolith worker's graph
+    // load (see router-worker.js): DEM nodata poisons a few pier nodes with
+    // kilometre-deep values, and the short edges out of them carry thousands
+    // of metres of invented ascent.
+    {
+      const { nodeEle, eA, eB, eLen, eAsc, eDes, outStart, outTarget } = graph;
+      const bogus = new Set();
+      for (let n = 0; n < N; n++) if (nodeEle[n] < -100) bogus.add(n);
+      for (let pass = 0; pass < 3 && bogus.size; pass++) {
+        for (const n of [...bogus]) {
+          for (let d = outStart[n]; d < outStart[n + 1]; d++) {
+            const other = outTarget[d];
+            if (nodeEle[other] >= -100) { nodeEle[n] = nodeEle[other]; bogus.delete(n); break; }
+          }
+        }
+      }
+      for (const n of bogus) nodeEle[n] = 0;
+      for (let i = 0; i < E; i++) {
+        const delta = nodeEle[eB[i]] - nodeEle[eA[i]];
+        if ((eAsc[i] > 100 && eAsc[i] > eLen[i]) || (eDes[i] > 100 && eDes[i] > eLen[i])) {
+          const cap = Math.floor(eLen[i]);
+          eAsc[i] = Math.min(Math.max(0, delta), cap);
+          eDes[i] = Math.min(Math.max(0, -delta), cap);
+        }
+      }
+    }
     return graph;
   }
 

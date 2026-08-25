@@ -262,6 +262,43 @@ function loadGraph(buf) {
   eName = u32(E); nameOff = u32(U + 1);
   gLon = f32(G); gLat = f32(G);
   nameBytes = u8(B);
+  // DEM nodata and bathymetry poison a handful of pier and terminal nodes
+  // with impossible depths (-2,973 m in the released Washington graph), and
+  // the 100 m pier edge that climbs back out carries thousands of metres of
+  // invented ascent -- a Kirkland-Tacoma ferry route reported 9,022 ft of
+  // climb from one such node. No US land sits below -100 m (Death Valley is
+  // -86 m), so anything deeper is repaired from a sane neighbor and the
+  // incident edges' ascent/descent rebuilt from the endpoint delta. The same
+  // repair lives in partition-runtime.js for the partition session.
+  {
+    const bogus = new Set();
+    for (let n = 0; n < N; n++) if (nodeEle[n] < -100) bogus.add(n);
+    for (let pass = 0; pass < 3 && bogus.size; pass++) {
+      for (const n of [...bogus]) {
+        for (let d = outStart[n]; d < outStart[n + 1]; d++) {
+          const other = outTarget[d];
+          if (nodeEle[other] >= -100) { nodeEle[n] = nodeEle[other]; bogus.delete(n); break; }
+        }
+      }
+    }
+    for (const n of bogus) nodeEle[n] = 0;
+    let repairedEdges = 0;
+    for (let i = 0; i < E; i++) {
+      const delta = nodeEle[eB[i]] - nodeEle[eA[i]];
+      // An impossible stored climb (steeper than 1:1 over a real distance)
+      // can only come from a poisoned sample; endpoint truth replaces it.
+      if ((eAsc[i] > 100 && eAsc[i] > eLen[i]) || (eDes[i] > 100 && eDes[i] > eLen[i])) {
+        // Shallower poison (a -78 m node passes the depth test) can leave
+        // even the endpoint delta impossible; nothing climbs steeper than
+        // 1:1, so the edge's own length caps it.
+        const cap = Math.floor(eLen[i]);
+        eAsc[i] = Math.min(Math.max(0, delta), cap);
+        eDes[i] = Math.min(Math.max(0, -delta), cap);
+        repairedEdges++;
+      }
+    }
+    if (repairedEdges) console.log(`Repaired ${repairedEdges} edges with impossible elevation.`);
+  }
   postMessage({ type: 'progress', phase: 'engine', detail: 'Indexing roads, trails, ferries, and restrictions…' });
   // Outbound bearings at each end let A* price real intersection turns. Use
   // the first non-duplicate geometry point so a straight road split into many
