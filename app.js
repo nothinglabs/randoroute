@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.830';
+const APP_VERSION = '2026-08-25.831';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1377,18 +1377,31 @@ map.once('render', () => window.__setAppLaunchStatus?.('Drawing roads and trails
 // launch screen narrates its own phase, so the pill stays out of boot.
 const MAP_LOADING_PILL_DELAY_MS = 2500;
 const MAP_LOADING_PILL_QUIET_MS = 5000;
+// One loading episode gets ONE steady spinner. The app attaches sources in
+// stages and each stage ends in a brief 'idle', so a per-stage show/hide
+// flickered — the field called it a weird dance. Once shown it stays at
+// least MIN_ON; once hidden it stays away for COOLDOWN.
+const MAP_LOADING_PILL_MIN_ON_MS = 1500;
+const MAP_LOADING_PILL_COOLDOWN_MS = 10000;
 let mapLoadingPillTimer = null;
 let mapLoadingPillRecheck = null;
+let mapLoadingPillHideTimer = null;
 let mapLoadingLastEventAt = 0;
+let mapLoadingPillShownAt = 0;
+let mapLoadingPillCooldownUntil = 0;
 function armMapLoadingPill() {
   mapLoadingLastEventAt = Date.now();
   if (mapLoadingPillTimer != null || mapLoadingPillRecheck != null) return;
+  if (Date.now() < mapLoadingPillCooldownUntil) return;
   mapLoadingPillTimer = setTimeout(() => {
     mapLoadingPillTimer = null;
     const pill = document.getElementById('mapLoadingPill');
     if (!pill || !document.documentElement.classList.contains('app-ready')) return;
     if (map.areTilesLoaded?.() !== false && map.loaded()) return;
+    clearTimeout(mapLoadingPillHideTimer);
+    mapLoadingPillHideTimer = null;
     pill.hidden = false;
+    mapLoadingPillShownAt = Date.now();
     // 'idle' is not a reliable exit: a request that hangs (rather than
     // failing) leaves its tile 'loading' forever, so neither idle nor
     // areTilesLoaded ever recovers in that world. The pill therefore means
@@ -1407,7 +1420,15 @@ function settleMapLoadingPill() {
   clearInterval(mapLoadingPillRecheck);
   mapLoadingPillRecheck = null;
   const pill = document.getElementById('mapLoadingPill');
-  if (pill) pill.hidden = true;
+  if (!pill || pill.hidden || mapLoadingPillHideTimer != null) return;
+  const hide = () => {
+    mapLoadingPillHideTimer = null;
+    pill.hidden = true;
+    mapLoadingPillCooldownUntil = Date.now() + MAP_LOADING_PILL_COOLDOWN_MS;
+  };
+  const shownFor = Date.now() - mapLoadingPillShownAt;
+  if (shownFor >= MAP_LOADING_PILL_MIN_ON_MS) hide();
+  else mapLoadingPillHideTimer = setTimeout(hide, MAP_LOADING_PILL_MIN_ON_MS - shownFor);
 }
 map.on('dataloading', armMapLoadingPill);
 map.on('sourcedataloading', armMapLoadingPill);

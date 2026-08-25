@@ -1275,7 +1275,9 @@ body.route-more-open #topToolbar { z-index: 25; }
    stretch (see armMapLoadingPill). A bare spinner, not a labelled pill: it
    says "still working, not hung" without sitting on the map's content
    (field ask, 2026-08-25). Sits mid-map, below the toast band. */
-#mapLoadingPill { position: absolute; z-index: 18; top: 55%; left: 50%; transform: translate(-50%, -50%); width: 26px; height: 26px; box-sizing: border-box; border: 3px solid #bad3e6; border-top-color: #0a66c2; border-radius: 50%; background: rgba(247,252,255,.85); box-shadow: 0 2px 8px rgba(0,0,0,.14); pointer-events: none; animation: route-options-spin .8s linear infinite; }
+/* Docked under the right toolbar column as UI chrome — never over the map
+   content, where it read as a stray location puck beside the real one. */
+#mapLoadingPill { position: absolute; z-index: 18; top: max(calc(env(safe-area-inset-top) + 208px), 208px); right: 22px; width: 22px; height: 22px; box-sizing: border-box; border: 3px solid #bad3e6; border-top-color: #0a66c2; border-radius: 50%; background: rgba(247,252,255,.9); box-shadow: 0 2px 8px rgba(0,0,0,.14); pointer-events: none; animation: route-options-spin .8s linear infinite; }
 #mapLoadingPill[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) {
   #mapLoadingPill { animation: none; }
