@@ -150,16 +150,18 @@ try {
   // next session's renders must notice the archive version on the range
   // requests and rebuild from the already-cached archive.
   serveStore(newState, newBytes);
-  await page.evaluate(async () => {
+  await page.evaluate(async (state) => {
     const fresh = await fetch('/store/washington/regional.pmtiles?jra-store-install=lifecycle-sim',
       { cache: 'no-store' });
     const cache = await caches.open(DATA_CACHE_NAME);
     await cache.put('maps/washington/regional.pmtiles',
       new Response(await fresh.blob(), { status: 200 }));
+    // Exactly what the pre-fix update wrote: the complete new state config
+    // (versions AND file bytes together), with the previous chunks untouched.
     const installed = JSON.parse(localStorage.getItem('jra-installed-states-1'));
-    installed[0].state.versions.regional = 'sha-lifecycle-new';
+    installed[0].state = state;
     localStorage.setItem('jra-installed-states-1', JSON.stringify(installed));
-  });
+  }, newState);
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction(() => window.map && window.Region
     && Region.localDataAvailable === true, null, { timeout: 90000 });
@@ -200,6 +202,44 @@ try {
   }
   check('after the update, the renderer draws the NEW archive: wedge land, channels water',
     wrong.length === 0, wrong.join(' | '));
+
+  // The nastiest field state: a stale DUPLICATE full copy that wins
+  // first-match, so even version-keyed chunks rebuild from the wrong bytes.
+  // Only reading the renderer's own path and comparing against the manifest
+  // can catch this; the page must then purge through the worker and reload
+  // itself into the clean copy.
+  await page.evaluate(async (oldB64) => {
+    const cache = await caches.open(DATA_CACHE_NAME);
+    const bytes = Uint8Array.from(atob(oldB64), (c) => c.charCodeAt(0));
+    const target = '/maps/washington/regional.pmtiles';
+    await cache.delete(target, { ignoreVary: true, ignoreSearch: true });
+    await cache.put(target, new Response(bytes, { status: 200 }));
+    for (const request of await cache.keys()) {
+      if (new URL(request.url).pathname.startsWith(`${target}__chunk`)) {
+        await cache.delete(request);
+      }
+    }
+  }, oldBytes.toString('base64'));
+  await page.reload({ waitUntil: 'load' });
+  // The archive verifier reloads the page itself once the purge lands; poll
+  // through that navigation for the healed render.
+  let healedPoison = null;
+  for (let attempt = 0; attempt < 90 && !healedPoison; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const rgb = await samplePixel(page, -122.25, 45.95, 7.3);
+      if (!isWaterColor(rgb)) healedPoison = { rgb };
+    } catch (error) { /* self-heal reload in progress */ }
+  }
+  // The marker clears when the post-heal session verifies clean, moments
+  // after the first healed render.
+  let marker = '#pending';
+  for (let attempt = 0; attempt < 20 && marker !== ''; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try { marker = await page.evaluate(() => location.hash); } catch (error) { /* nav */ }
+  }
+  check('a stale first-match duplicate is detected on the renderer path and healed',
+    !!healedPoison && marker === '', JSON.stringify({ ...healedPoison, marker }));
   await context.close();
 } finally {
   await browser.close();

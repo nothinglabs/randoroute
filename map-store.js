@@ -619,6 +619,12 @@
         for (const request of stagedRequests) {
           const response = await stage.match(request);
           if (!response) throw new Error(`staged file disappeared: ${new URL(request.url).pathname}`);
+          // One copy per file, ever: a put only replaces entries that match
+          // under Vary/query rules, so a response stored with different
+          // headers can leave a duplicate behind -- and the service worker's
+          // first-match range serving would then read whichever copy is
+          // older. Clear every variant before storing the new one.
+          await cache.delete(request, { ignoreVary: true, ignoreSearch: true });
           await cache.put(request, response);
           // The staged copy has served its purpose; dropping it now keeps the
           // storage peak near one copy of the download instead of two.

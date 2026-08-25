@@ -28,7 +28,7 @@ const stateFile = (name) => `${DATA_ROOT}/${name}`;
 // Match the numeric release suffix in APP_VERSION. Release .781 changed the
 // app shell but left this at v780: version.json announced the release while
 // returning devices saw byte-identical worker code and had nothing to install.
-const VERSION = 'v811';
+const VERSION = 'v812';
 const SHELL_CACHE = `shell-${VERSION}`;
 // Keep the large offline dataset across ordinary UI-only app releases.
 //
@@ -199,6 +199,22 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('message', (e) => {
   if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+  // The page verified an archive THROUGH the range-serving path and found it
+  // disagreeing with the installed manifest: whatever stale copy or chunk set
+  // is answering, drop every entry for that pathname so the next read
+  // refetches one clean copy. Replies on the provided port so the page can
+  // reload only after the purge landed.
+  if (e.data && e.data.type === 'PURGE_PMTILES_ARCHIVE' && e.data.pathname) {
+    const pathname = String(e.data.pathname);
+    e.waitUntil((async () => {
+      const cache = await caches.open(DATA_CACHE);
+      await purgePmtilesChunks(cache, pathname);
+      for (const request of await cache.keys()) {
+        if (new URL(request.url).pathname === pathname) await cache.delete(request);
+      }
+      e.ports[0]?.postMessage({ ok: true });
+    })());
+  }
   // The page asks for this when the graph version it wants is not the one it
   // last loaded. Activation already purges, but a page can outlive that: the
   // load that first runs a new app.js is still controlled by the PREVIOUS

@@ -178,6 +178,21 @@ profile with the service worker blocked and data served from disk, so
 persistence bugs were structurally invisible. Data-changing releases must
 run the lifecycle gate, not only fresh-world pixel gates.
 
+Release `.812` (after the field reported the wedge surviving `.811`): the
+app now verifies each home-state archive THROUGH the renderer's own
+ranged serving path on every boot -- read the 127-byte PMTiles header via
+a Range fetch, compare the declared total size against the installed
+manifest's bytes -- and on any disagreement has the worker purge every
+cache entry for that archive and reloads once (hash-guarded). This
+catches wrong-bytes-under-any-cause: stale chunks, a first-match
+duplicate full copy that defeats version-keyed chunks, or version
+plumbing errors. installState also deletes all variants of a file
+(ignoreVary/ignoreSearch) before storing, so duplicates cannot
+accumulate. The lifecycle gate grew a poisoned-duplicate phase (wrong
+bytes under the RIGHT version) that only this verification catches:
+6 of 6 pass, plus install 8/8, blind boot 4/4, truncated-cache recovery
+and offline store 10/10 re-run green.
+
 Remaining gates:
 
 - `.808` focused gates recorded 2026-08-24 on

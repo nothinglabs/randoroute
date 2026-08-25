@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.811';
+const APP_VERSION = '2026-08-25.812';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -17057,6 +17057,75 @@ async function healStorageBlindBoot() {
 // Named so a test can observe the decision without navigating the harness.
 function rebootIntoInstalledHomeState() { location.reload(); }
 healStorageBlindBoot();
+
+// The renderer's bytes must be the manifest's bytes. The .810/.811 field
+// failure: a validated store update replaced an archive while the service
+// worker kept answering tile ranges from a previous copy (stale chunk
+// entries; a first-match duplicate cache entry can defeat even
+// version-keyed chunks). This check reads each archive's 127-byte header
+// THROUGH the same ranged path the renderer uses and compares the
+// PMTiles-declared total size against the installed manifest. Any
+// disagreement: have the worker drop every entry for that archive and
+// reload once -- the next read fetches one clean copy. The hash marker
+// stops a repeatedly-wrong archive from reload-looping.
+const ARCHIVE_HEAL_MARK = '#jra-archive-heal';
+function pmtilesDeclaredTotal(buffer) {
+  if (buffer.byteLength < 127) return null;
+  const bytes = new Uint8Array(buffer);
+  if (String.fromCharCode(...bytes.slice(0, 7)) !== 'PMTiles') return null;
+  const view = new DataView(buffer);
+  const u64 = (offset) => view.getUint32(offset, true) + view.getUint32(offset + 4, true) * 2 ** 32;
+  return u64(56) + u64(64);
+}
+async function verifyRenderedArchives() {
+  if (!navigator.serviceWorker?.controller || !window.MapStore) return;
+  const entry = MapStore.installedEntry(Region.id);
+  if (!entry || !Array.isArray(entry.state.files)) return;
+  const manifestBytes = new Map(entry.state.files
+    .filter((file) => file.path.endsWith('.pmtiles'))
+    .map((file) => [new URL(`maps/${entry.state.id}/${file.path}`, location.href).pathname,
+      file.bytes]));
+  if (!manifestBytes.size) return;
+  await new Promise((resolve) => (map.loaded() ? resolve() : map.once('idle', resolve)));
+  const sources = map.getStyle().sources || {};
+  const stale = [];
+  for (const source of Object.values(sources)) {
+    const url = typeof source.url === 'string' && source.url.startsWith('pmtiles://')
+      ? source.url.slice('pmtiles://'.length) : null;
+    if (!url) continue;
+    const pathname = new URL(url, location.href).pathname;
+    const expected = manifestBytes.get(pathname);
+    if (!Number.isFinite(expected)) continue;
+    try {
+      const head = await fetch(url, { headers: { Range: 'bytes=0-126' } });
+      if (head.status !== 206) continue;
+      const declared = pmtilesDeclaredTotal(await head.arrayBuffer());
+      if (declared != null && declared !== expected) stale.push(pathname);
+    } catch (error) { /* offline or transient: verify again next session */ }
+  }
+  if (!stale.length) {
+    if (location.hash === ARCHIVE_HEAL_MARK) {
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+    return;
+  }
+  if (location.hash === ARCHIVE_HEAL_MARK) {
+    console.warn('Stale archives persist after a purge; leaving them to the next update:', stale);
+    return;
+  }
+  for (const pathname of stale) {
+    await new Promise((resolve) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = resolve;
+      setTimeout(resolve, 5000);
+      navigator.serviceWorker.controller.postMessage(
+        { type: 'PURGE_PMTILES_ARCHIVE', pathname }, [channel.port2]);
+    });
+  }
+  location.hash = ARCHIVE_HEAL_MARK;
+  location.reload();
+}
+verifyRenderedArchives();
 initializeNationalOrientation();
 // One line answers both "what app is this" and "what map is it routing on".
 // The map half reports the hash of the bytes the router loaded, so a stale
