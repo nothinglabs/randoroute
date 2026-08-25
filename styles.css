@@ -1272,10 +1272,14 @@ body.route-more-open #topToolbar { z-index: 25; }
    suggestions exactly while the rider was typing. The place picker pushes it
    further still. */
 /* Shown only after the renderer has waited on tiles for a continuous
-   stretch (see armMapLoadingPill); sits mid-map, below the toast band, so
-   the two can appear together without stacking. */
-#mapLoadingPill { position: absolute; z-index: 18; top: 55%; left: 50%; transform: translate(-50%, -50%); padding: 6px 12px; border: 1px solid #9fc8df; border-radius: 999px; background: rgba(247,252,255,.92); box-shadow: 0 2px 10px rgba(0,0,0,.15); color: #22485e; font: 650 12px/1.2 system-ui; pointer-events: none; }
+   stretch (see armMapLoadingPill). A bare spinner, not a labelled pill: it
+   says "still working, not hung" without sitting on the map's content
+   (field ask, 2026-08-25). Sits mid-map, below the toast band. */
+#mapLoadingPill { position: absolute; z-index: 18; top: 55%; left: 50%; transform: translate(-50%, -50%); width: 26px; height: 26px; box-sizing: border-box; border: 3px solid #bad3e6; border-top-color: #0a66c2; border-radius: 50%; background: rgba(247,252,255,.85); box-shadow: 0 2px 8px rgba(0,0,0,.14); pointer-events: none; animation: route-options-spin .8s linear infinite; }
 #mapLoadingPill[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  #mapLoadingPill { animation: none; }
+}
 .route-action-toast { position: absolute; z-index: 19; top: max(calc(env(safe-area-inset-top) + 190px), 30vh); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px); padding: 8px 12px; border: 1px solid #9fc8df; border-radius: 999px; background: rgba(247,252,255,.98); box-shadow: 0 3px 14px rgba(0,0,0,.2); color: #22485e; pointer-events: none; }
 .route-action-toast[hidden] { display: none; }
 .route-action-toast.has-detail { align-items: flex-start; width: min(420px, calc(100vw - 24px)); padding: 10px 13px; border-radius: 14px; }
