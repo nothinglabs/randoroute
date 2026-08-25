@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.821';
+const APP_VERSION = '2026-08-25.822';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -1323,6 +1323,29 @@ function collapseMapAttribution() {
 }
 collapseMapAttribution();
 map.once('load', collapseMapAttribution);
+// iOS reclaims WebGL contexts under memory pressure. MapLibre halts its frame
+// loop on webglcontextlost and resumes only if the BROWSER restores the
+// context -- which memory-pressured WebKit frequently never does -- leaving a
+// permanently frozen map that a rider reports as a crash. Give the browser a
+// moment to restore on its own, then reboot the shell once behind a hash
+// guard, the same self-heal the archive verifier uses. A healthy boot clears
+// the guard so a later loss can heal again; a loss that survives its own
+// reboot stays lost rather than reload-looping.
+const CONTEXT_HEAL_MARK = '#jra-context-heal';
+map.once('load', () => {
+  if (location.hash === CONTEXT_HEAL_MARK) {
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+});
+map.on('webglcontextlost', () => {
+  let restored = false;
+  map.once('webglcontextrestored', () => { restored = true; });
+  setTimeout(() => {
+    if (restored || location.hash === CONTEXT_HEAL_MARK) return;
+    location.hash = CONTEXT_HEAL_MARK;
+    location.reload();
+  }, 3000);
+});
 map.once('render', () => window.__setAppLaunchStatus?.('Drawing roads and trails…'));
 const finishAppLaunch = () => {
   clearTimeout(window.__appLaunchFallback);
@@ -6789,19 +6812,61 @@ function clearRouteElevationSelection() {
   updateNavCard();
 }
 
-function captureNavigationDetailsButtonAnchor() {
+function readNavigationDetailsAnchor() {
   const tab = document.getElementById('tab-route');
   const button = document.getElementById('routeDetailsBtn');
-  if (!tab || !button) return;
+  if (!tab || !button) return null;
   const tabRect = tab.getBoundingClientRect();
   const buttonRect = button.getBoundingClientRect();
-  if (!(buttonRect.width > 0 && buttonRect.height > 0)) return;
-  navDetailsButtonAnchor = {
+  if (!(buttonRect.width > 0 && buttonRect.height > 0)) return null;
+  return {
     left: buttonRect.left - tabRect.left,
     bottom: tabRect.bottom - buttonRect.bottom,
     width: buttonRect.width,
     height: buttonRect.height,
   };
+}
+
+// The live Details button is placed from a rect of the PLANNING card, and the
+// planning card is destroyed the moment navigation starts -- so an anchor
+// captured mid-transition (panel scrollbar toggling, --app-height syncing)
+// misplaced the button for the whole session, with nothing left to re-derive
+// it from (long-standing rare flake, ~1 in 8 under load). Keep the last rect
+// that held still across two separate layout passes during planning;
+// navigation prefers that settled anchor and falls back to the instant read
+// only before the first one settles.
+let settledNavDetailsAnchor = null;
+let pendingNavDetailsAnchor = null;
+function anchorsAgree(a, b) {
+  return Math.abs(a.left - b.left) <= 1 && Math.abs(a.bottom - b.bottom) <= 1
+    && Math.abs(a.width - b.width) <= 1 && Math.abs(a.height - b.height) <= 1;
+}
+function observePlanningDetailsAnchor() {
+  if (turnNav.active) return;
+  const next = readNavigationDetailsAnchor();
+  if (!next) { pendingNavDetailsAnchor = null; return; }
+  if (pendingNavDetailsAnchor && anchorsAgree(pendingNavDetailsAnchor, next)) {
+    settledNavDetailsAnchor = next;
+  }
+  pendingNavDetailsAnchor = next;
+}
+
+function captureNavigationDetailsButtonAnchor() {
+  const instant = readNavigationDetailsAnchor();
+  if (!instant) {
+    navDetailsButtonAnchor = settledNavDetailsAnchor || navDetailsButtonAnchor;
+    return;
+  }
+  // Trust a rect that has been seen twice. The instant read wins when it
+  // matches the settled anchor (no news) or the pending one (a real move the
+  // settle simply had not committed yet); a value matching NEITHER is the
+  // mid-transition frame this exists to reject, so the settled anchor stands.
+  if (settledNavDetailsAnchor && !anchorsAgree(instant, settledNavDetailsAnchor)
+      && !(pendingNavDetailsAnchor && anchorsAgree(instant, pendingNavDetailsAnchor))) {
+    navDetailsButtonAnchor = settledNavDetailsAnchor;
+    return;
+  }
+  navDetailsButtonAnchor = instant;
 }
 
 function positionNavigationDetailsButton() {
@@ -16987,6 +17052,10 @@ const mobileNavMedia = window.matchMedia('(max-width: 720px)');
 let _mobileDockFrame = null;
 let _routeGuidanceTimer = null;
 function syncMobileNavDock() {
+  // Every pass through here is a distinct post-layout frame, which is what
+  // the settled Details-button anchor needs: two agreeing reads from two
+  // separate passes commit; a lone transient read never does.
+  observePlanningDetailsAnchor();
   const panel = document.getElementById('panel');
   if (!mobileNavMedia.matches) {
     // The docked panel's height is content-driven, so CSS alone cannot hang

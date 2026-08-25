@@ -50,14 +50,16 @@ Pillow`) for the data tests, and Playwright for the forty-two browser tests.
 
 ### The long poles
 
-`test_production_cross_state_portfolios.mjs` (~630 s) bounds the suite's wall
-time — three cross-state route portfolios over the released partitions — then
-`test_safety_model.mjs` (~600 s), `test_route_potential.mjs` (~290 s), which
-proves the A* bound admissible, and `test_adaptive_corridor_ferries.mjs`
-(~275 s). `test_route_portfolio.mjs` and
-`test_corridor_severance.mjs` (~100–110 s each) are the ones that matter most:
-they catch a scoring change that severs a corridor. The runner runs files
-concurrently, so wall time is roughly the slowest file rather than the sum.
+The wall-time poles are `test_production_cross_state_portfolios.mjs`
+(cross-state portfolios over the released partitions), `test_safety_model.mjs`
+and `test_route_potential.mjs` (which proves the A* bound admissible).
+`test_route_portfolio.mjs` and `test_corridor_severance.mjs` are the ones that
+matter most: they catch a scoring change that severs a corridor. The runner
+runs files concurrently, so wall time is roughly the slowest file rather than
+the sum. A pixel test that drives a world whose detailed archive 404s must
+use a SHORT idle fallback: that world never reaches 'idle' (the tile-retry
+hook keeps failed requests alive), so a long fallback is paid in full on
+every sample — that mistake once made one file most of the suite's wall time.
 
 ## Maps and states
 

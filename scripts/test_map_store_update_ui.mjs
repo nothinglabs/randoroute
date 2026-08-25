@@ -159,8 +159,13 @@ try {
   await page.evaluate(() => document.getElementById('mapStateDialog').close());
 
   await page.click('#mapsStateList .maps-state-update');
-  await page.waitForFunction(() => window.Region?.states
-    ?.find((state) => state.id === 'oregon')?.datasets?.regional === true
+  // The accepted update RELOADS the page on success; every global below
+  // belongs to the fresh boot. Waiting only on Region/MapStore raced the new
+  // page's parse under suite load -- openMapsDialog was not defined yet --
+  // so the readiness of the function itself is part of the wait.
+  await page.waitForFunction(() => typeof openMapsDialog === 'function'
+    && window.Region?.states
+      ?.find((state) => state.id === 'oregon')?.datasets?.regional === true
     && window.MapStore?.installedEntry('oregon')?.state?.datasets?.regional === true,
   null, { timeout: 30000 });
   await page.evaluate(() => openMapsDialog());

@@ -198,7 +198,17 @@ const rasterAt = async (zoom, center = [-122.3447, 47.6605]) => page.evaluate(as
     }
     return { warm, total: pixels.length / 4 };
   };
-  const dashed = countWarm();
+  // 'idle' can fire BETWEEN tile batches on a busy machine, and the 800 ms
+  // fallback is no patience at all under suite load: one full run read zero
+  // red at every one of five city centers because no tile had painted yet.
+  // Wait for actual ink (or a real deadline for a view with none).
+  const deadline = Date.now() + 8000;
+  let dashed = countWarm();
+  while (dashed.warm <= 20 && Date.now() < deadline) {
+    await settle();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    dashed = countWarm();
+  }
   const original = map.getPaintProperty('roads__vh', 'line-dasharray');
   map.setPaintProperty('roads__vh', 'line-dasharray', [1000, 0.01]);
   await settle();
