@@ -65,6 +65,10 @@
       animation: app-launch-spin .75s linear infinite;
     }
     html.app-ready #appLaunchScreen { visibility: hidden; opacity: 0; pointer-events: none; }
+    /* The spinner's infinite animation keeps ticking behind the invisible
+       splash for the whole session otherwise -- a needless per-frame
+       compositor wake on phones. */
+    html.app-ready #appLaunchScreen .app-launch-spinner { animation: none; }
     @keyframes app-launch-spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) {
       #appLaunchScreen { transition: none; }
@@ -715,6 +719,11 @@
     <span>New version ready</span>
     <button id="getUpdateBtn" title="Installs the update and restarts the app — your route and settings stay">Restart to update</button>
     <button id="updateLaterBtn" aria-label="Not now" title="Not now">✕</button>
+  </div>
+  <div id="mapDataUpdatePrompt" class="update-prompt" hidden>
+    <span id="mapDataUpdateText">Map update available</span>
+    <button id="mapDataUpdateBtn">Update</button>
+    <button id="mapDataUpdateLaterBtn" aria-label="Not now" title="Not now">✕</button>
   </div>
 
   <script>
