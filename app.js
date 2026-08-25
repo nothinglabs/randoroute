@@ -1389,12 +1389,112 @@ function syncVisibleStateSafetyLayers(stateIds, { force = false } = {}) {
   }
 }
 
+// A relative of the bike-network lime, deliberately duller and translucent:
+// a signed route is a recommendation whose usability still depends on the
+// road passing the rider's own rules, so it reads as family with the lime
+// without claiming to BE bike infrastructure. Shared by the home overlay and
+// every visible neighbor's mirror so the ribbon means one thing everywhere.
+function applyDesignatedRibbonPaint(layerId) {
+  setPaint(layerId, 'line-color', DESIGNATED_COLOR);
+  setPaint(layerId, 'line-width', designatedRibbonWidth());
+  setPaint(layerId, 'line-opacity', ['case', ['==', ['get', 'pr'], 1],
+    backgroundLineOpacity(0.52), backgroundLineOpacity(0.4)]);
+  setPaint(layerId, 'line-dasharray', [2, 1.4]);
+}
+
+// Neighbor states' designated-route ribbons. The home overlay is a scored
+// GeoJSON fetch (bikeroutes.geojson.gz), not a tile archive, so the
+// visible-state source sync cannot mirror it the way it mirrors the roads
+// and overlays archives -- and without a mirror, signed routes existed only
+// in the home state (field report). Each attached visible state fetches its
+// own file once and draws it with the identical ribbon styling, under the
+// same Designated-routes toggle. Preferred routing and per-route hide
+// toggles remain home-scoped: this is display context, not controls.
+const visibleStateRouteOverlays = new Map();
+const visibleStateRouteRibbonId = (stateId) => `state-${stateId}-routes-ribbon`;
+function visibleStateRouteRibbonIds() {
+  return [...visibleStateRouteOverlays.keys()].map(visibleStateRouteRibbonId)
+    .filter((id) => map.getLayer(id));
+}
+function attachVisibleStateRouteRibbon(stateId, fc) {
+  const sourceId = `state-${stateId}-routes`;
+  if (!map.getSource(sourceId)) {
+    map.addSource(sourceId, { type: 'geojson', data: fc });
+  }
+  const layerId = visibleStateRouteRibbonId(stateId);
+  if (!map.getLayer(layerId)) {
+    // Directly beneath the home ribbon, so both states' route context shares
+    // one stratum at the bottom of the data stack.
+    const anchor = map.getLayer('routes') ? 'routes'
+      : map.getLayer('roads') ? 'roads' : undefined;
+    forgetStyleValues(); map.addLayer({
+      id: layerId, type: 'line', source: sourceId, minzoom: 0,
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    }, anchor);
+  }
+  applyDesignatedRibbonPaint(layerId);
+  setLayout(layerId, 'visibility', display.designated ? 'visible' : 'none');
+}
+function syncVisibleStateRouteOverlays(stateIds) {
+  if (!map.getStyle?.()) return;
+  const active = new Set(stateIds || []);
+  for (const [stateId, entry] of [...visibleStateRouteOverlays]) {
+    if (active.has(stateId)) continue;
+    visibleStateRouteOverlays.delete(stateId);
+    entry.detached = true;
+    const layerId = visibleStateRouteRibbonId(stateId);
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource(`state-${stateId}-routes`)) {
+      map.removeSource(`state-${stateId}-routes`);
+    }
+  }
+  for (const stateId of active) {
+    const entry = visibleStateRouteOverlays.get(stateId);
+    if (entry) {
+      // Re-ensure after a style rebuild. Source intact: re-add the layer
+      // without refetching. Source gone too: forget the attachment so the
+      // creation path below runs again.
+      if (entry.loaded && !map.getLayer(visibleStateRouteRibbonId(stateId))) {
+        if (map.getSource(`state-${stateId}-routes`)) {
+          attachVisibleStateRouteRibbon(stateId, null);
+        } else {
+          entry.detached = true;
+          visibleStateRouteOverlays.delete(stateId);
+        }
+      }
+      if (visibleStateRouteOverlays.has(stateId)) continue;
+    }
+    const state = Region.states.find((item) => item.id === stateId);
+    if (!state?.datasets?.bikeroutes) continue;
+    const next = { loaded: false, detached: false };
+    visibleStateRouteOverlays.set(stateId, next);
+    (async () => {
+      try {
+        const url = `maps/${stateId}/bikeroutes.geojson.gz`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const fc = await jsonAssetResponse(res, url);
+        if (next.detached) return;
+        attachVisibleStateRouteRibbon(stateId, fc);
+        next.loaded = true;
+      } catch (error) {
+        // Offline before first cache fill, or a state pack without the file:
+        // forget the attempt so a later pan can retry.
+        if (visibleStateRouteOverlays.get(stateId) === next) {
+          visibleStateRouteOverlays.delete(stateId);
+        }
+      }
+    })();
+  }
+}
+
 function syncVisibleDetailedMapSources() {
   if (!Region.localDataAvailable || !map.getStyle?.()) return;
   const installed = Region.states.filter((state) =>
     !window.MapStore || MapStore.availability(state.id) !== 'remote');
   const visible = BikeBasemap.syncVisibleStateSources(map, installed, Region.id);
   syncVisibleStateSafetyLayers(visible);
+  syncVisibleStateRouteOverlays(visible);
   document.body.dataset.visibleMapStateIds = [Region.id, ...visible].join(',');
 }
 map.on('moveend', syncVisibleDetailedMapSources);
@@ -2619,6 +2719,12 @@ function updateVisibility(src) {
     return;
   }
   if (map.getLayer(src.id)) setLayout(src.id, 'visibility', on ? 'visible' : 'none');
+  if (src.id === 'routes') {
+    // Neighbor states' mirrored ribbons follow the same Designated toggle.
+    for (const id of visibleStateRouteRibbonIds()) {
+      setLayout(id, 'visibility', on ? 'visible' : 'none');
+    }
+  }
   if (src.id === 'roads' && map.getLayer(stateSidewalkProbeId))
     setLayout(stateSidewalkProbeId, 'visibility', 'visible');
   if (map.getLayer(trailBaseId(src))) setLayout(trailBaseId(src), 'visibility', 'visible');
@@ -2687,15 +2793,8 @@ function applyDisplayMode(src) {
     // a translucent dashed corridor above ordinary safety/facility coloring.
     // Regulatory restrictions and closures retain the two higher z-ranks.
     setLayerFilter(src.id, null);
-    // A relative of the bike-network lime, deliberately duller and translucent:
-    // a signed route is a recommendation whose usability still depends on the
-    // road passing the rider's own rules, so it reads as family with the lime
-    // without claiming to BE bike infrastructure.
-    setPaint(src.id, 'line-color', DESIGNATED_COLOR);
-    setPaint(src.id, 'line-width', designatedRibbonWidth());
-    setPaint(src.id, 'line-opacity', ['case', ['==', ['get', 'pr'], 1],
-      backgroundLineOpacity(0.52), backgroundLineOpacity(0.4)]);
-    setPaint(src.id, 'line-dasharray', [2, 1.4]);
+    applyDesignatedRibbonPaint(src.id);
+    for (const id of visibleStateRouteRibbonIds()) applyDesignatedRibbonPaint(id);
     if (map.getLayer(failId(src))) setLayerFilter(failId(src), ['boolean', false]);
     if (map.getLayer(vhId(src))) setLayerFilter(vhId(src), ['boolean', false]);
     updateVisibility(src);
@@ -2941,6 +3040,9 @@ function applyDisplayModeAll() {
   const visible = (document.body.dataset.visibleMapStateIds || '')
     .split(',').filter((stateId) => stateId && stateId !== Region.id);
   syncVisibleStateSafetyLayers(visible, { force: true });
+  // Covers a home region without its own routes overlay, where no ribbon
+  // branch above repaints the mirrors on a display-mode flip.
+  for (const id of visibleStateRouteRibbonIds()) applyDesignatedRibbonPaint(id);
 }
 
 async function jsonAssetResponse(response, url) {

@@ -42,15 +42,34 @@ try {
     oregon.visible.includes('oregon') && oregon.ground > 0 && oregon.roads > 0,
     JSON.stringify(oregon));
 
+  // Designated bike routes are a home-region GeoJSON, not a tile archive, so
+  // they need their own mirror: a Washington-home browser in Portland must
+  // still draw Oregon's signed-route ribbon (field report: routes showed only
+  // in the home state).
+  await page.waitForFunction(() =>
+    map.getLayer('state-oregon-routes-ribbon')
+      && map.getSource('state-oregon-routes'), null, { timeout: 60000 });
+  await page.waitForFunction(() => map.queryRenderedFeatures(
+    { layers: ['state-oregon-routes-ribbon'] }).length > 0, null, { timeout: 60000 });
+  const ribbon = await page.evaluate(() => ({
+    rendered: map.queryRenderedFeatures({ layers: ['state-oregon-routes-ribbon'] }).length,
+    visibility: map.getLayoutProperty('state-oregon-routes-ribbon', 'visibility'),
+  }));
+  check('the Oregon viewport draws Oregon designated bike routes',
+    ribbon.rendered > 0 && ribbon.visibility === 'visible', JSON.stringify(ribbon));
+
   await page.evaluate(() => { map.jumpTo({ center: [-122.3321, 47.6062], zoom: 13 }); });
   await page.waitForFunction(() => !map.getSource('state-oregon-basemap-context'));
   const returned = await page.evaluate(() => ({
     visible: document.body.dataset.visibleMapStateIds,
     source: !!map.getSource('state-oregon-basemap-context'),
     layer: !!map.getLayer('state-oregon-basemap-land'),
+    routesLayer: !!map.getLayer('state-oregon-routes-ribbon'),
+    routesSource: !!map.getSource('state-oregon-routes'),
   }));
   check('leaving Oregon releases its detailed renderer sources and layers',
-    returned.visible === 'washington' && !returned.source && !returned.layer,
+    returned.visible === 'washington' && !returned.source && !returned.layer
+      && !returned.routesLayer && !returned.routesSource,
     JSON.stringify(returned));
   check('viewport source switching produces no page errors', page.pageErrors.length === 0,
     page.pageErrors.join(' | '));
