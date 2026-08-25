@@ -147,6 +147,26 @@ check('a route computes offline from the stored graph',
   !routed.error && routed.routes > 0 && routed.distM > 1000,
   routed.error || `${routed.routes} routes, ${routed.distM} m`);
 
+/* ------------------------------------------ find a place, still offline */
+// The place index is installed data; searching it must work with no signal,
+// and a query that reaches for the internet must come back quietly rather
+// than throw. The app's whole point is working offline — the only two
+// legitimate network needs are map downloads and app updates.
+const searched = await page.evaluate(async () => {
+  openPlaceSearch('end');
+  const input = document.getElementById('placeSearch');
+  input.value = 'ball';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  const rows = document.querySelectorAll('#placeResults .place-hit').length;
+  input.value = 'zzz-nowhere-at-all';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 3500));
+  document.getElementById('placePickerClose')?.click();
+  return { rows };
+});
+check('local place search answers offline', searched.rows > 0, JSON.stringify(searched));
+
 // A rider who installed the app and then lost signal should not be looking at
 // an error. Requests that legitimately need the network (the update check) are
 // expected to fail; the map and the router are not.
