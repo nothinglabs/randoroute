@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.820';
+const APP_VERSION = '2026-08-25.821';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -3949,6 +3949,17 @@ function notifySnapDistance(m) {
   if (Number(m.snapStartM) >= SNAP_NOTE_MIN_M) notes.push(`Start connects ${fmtDist(m.snapStartM)} away`);
   if (Number(m.snapEndM) >= SNAP_NOTE_MIN_M) notes.push(`Destination connects ${fmtDist(m.snapEndM)} away`);
   if (notes.length) showRouteActionToast(`⚠ ${notes.join(' · ')}`, { duration: 5000 });
+}
+
+// A pocket re-snap moved a tapped endpoint off a spot bikes can leave but
+// never enter (a ramp, a downhill-only trail): say where the trip really
+// starts or ends, in the same voice as the snap-distance note above.
+function notifyPocketSnaps(snapNotes) {
+  if (!Array.isArray(snapNotes) || !snapNotes.length) return;
+  const notes = snapNotes.map((note) => `${note.last ? 'Destination' : 'Start'} `
+    + `moved ${fmtDist(Math.max(1, note.movedM))} — the tapped spot is `
+    + `${note.last ? 'exit-only' : 'entry-only'} by bike`);
+  showRouteActionToast(`⚠ ${notes.join(' · ')}`, { duration: 6500 });
 }
 
 function handleRouterFailure(message) {
@@ -8752,6 +8763,7 @@ function onRouterMessage(ev) {
     routing.selectRecommendedNext = false;
     activateRouteOption(selected);
     notifySnapDistance(selected);
+    notifyPocketSnaps(m.snapNotes);
     // A quiet recompute (Settings holding the panel) ends with an answer, not
     // a vanishing spinner.
     if (routing.quietRecalcToast && !turnNav.active) {

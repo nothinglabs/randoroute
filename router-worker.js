@@ -499,7 +499,7 @@ function havM(lon1, lat1, lon2, lat2) {
 // preference (>300 m extra before the absolute nearest wins -- a tap beside
 // I-90 should not board I-90) and the MTB filter keep their semantics,
 // applied per edge instead of per node.
-function nearestNode(lon, lat, rules = null) {
+function nearestNode(lon, lat, rules = null, exclude = null, localOnly = false) {
   const kx = 111320 * Math.cos((lat * Math.PI) / 180), ky = 110540;
   const allowMtb = !!(rules && rules.allowMtbTrails);
   let anyNode = -1, anyDm = Infinity;      // nearest of any kind
@@ -529,6 +529,9 @@ function nearestNode(lon, lat, rules = null) {
     }
     if (!(bestSegD < anyDm) && !(bestSegD < localDm)) continue;
     const node = alongAtBest * 2 <= cum ? eA[ei] : eB[ei];
+    // Pocket re-snap: an edge whose snap node sits inside the excluded
+    // directional pocket cannot be the answer; the next-nearest edge is.
+    if (exclude && exclude.has(node)) continue;
     if (bestSegD < anyDm) { anyDm = bestSegD; anyNode = node; }
     const hasLegalDirection = eSh[ei] !== PROHIBITED_SHOULDER
       || (!(eFlags[ei] & 16) && eShBA[ei] !== PROHIBITED_SHOULDER);
@@ -536,10 +539,125 @@ function nearestNode(lon, lat, rules = null) {
       && (allowMtb || !(eOfficial[ei] & EDGE_MTB));
     if (isLocal && bestSegD < localDm) { localDm = bestSegD; localNode = node; }
   }
+  // localOnly: the pocket re-snap may only land on an edge of the class the
+  // search can actually enter -- a legal-direction, non-MTB (unless opted
+  // in), non-ferry, non-freeway edge -- whatever the distance. The ordinary
+  // +300 m preference below still lets a nearby ramp or trail win, which is
+  // exactly what a re-snap must not repeat.
+  if (localOnly) return { node: localNode, distM: localDm };
   if (localNode >= 0 && localNode !== anyNode && localDm <= anyDm + 300) {
     return { node: localNode, distM: localDm };
   }
   return { node: anyNode, distM: anyDm };
+}
+
+/* ------------------------------------------ directional-pocket snapping */
+// A tap can land on an edge you can legally LEAVE but never ENTER: freeway
+// ramps, downhill-only MTB runs, a base behind its gates. The undirected
+// giant-component check above cannot see these -- the pocket is connected,
+// by arcs pointing out -- so the snap succeeded, the search explored the
+// whole graph, and the rider was told "no route exists between these
+// points", which is false: a reachable point sits metres away (audit C1;
+// 470 Washington pockets and 157 Oregon, the largest 255 nodes). Everything
+// here runs only AFTER a search has already failed, so the routine case
+// pays nothing.
+
+// The set of nodes that can reach `node` (or that `node` can reach, when
+// `forward`). A real destination is reachable from essentially the whole
+// state, so a search that EXHAUSTS under the cap has proven the node sits in
+// a small directional pocket -- and the visited set is exactly that pocket.
+const POCKET_NODE_CAP = 4000;
+// Transient reverse adjacency: a counting sort over the arc table. Built only
+// on the failure path and released with its caller, so the graph never
+// carries a second adjacency in memory.
+function buildReverseAdjacency() {
+  const D = outTarget.length;
+  const inOff = new Uint32Array(N + 1);
+  for (let a = 0; a < D; a++) inOff[outTarget[a] + 1]++;
+  for (let n = 0; n < N; n++) inOff[n + 1] += inOff[n];
+  const inFrom = new Uint32Array(D);
+  const inEdge = new Uint32Array(D);
+  const cursor = inOff.slice(0, N + 1);
+  for (let u = 0; u < N; u++) {
+    for (let a = outStart[u]; a < outStart[u + 1]; a++) {
+      const at = cursor[outTarget[a]]++;
+      inFrom[at] = u;
+      inEdge[at] = outEdge[a];
+    }
+  }
+  return { inOff, inFrom, inEdge };
+}
+// The walk honors the SAME admission gates the search applies -- permanent
+// prohibition, MTB opt-in, freeways, ferries -- because "enterable" only
+// means anything in the graph the search is allowed to traverse. A
+// structurally reachable node behind an illegal arc is still a refusal.
+function directionalPocket(node,
+  { forward = false, reverseIndex = null, rules = null } = {}) {
+  if (!(node >= 0)) return null;
+  const index = forward ? null : (reverseIndex || buildReverseAdjacency());
+  const legal = (ei, src) => {
+    const fwd = eA[ei] === src;
+    if (edgeShoulder(ei, fwd) === PROHIBITED_SHOULDER) return false;
+    if (rules) {
+      if (!rules.allowMtbTrails && (eOfficial[ei] & EDGE_MTB)) return false;
+      if (!rules.allowFreeways && (eFlags[ei] & 4)) return false;
+      if (rules.allowFerries === false && (eFlags[ei] & 32)) return false;
+    }
+    return true;
+  };
+  const visited = new Set([node]);
+  const queue = [node];
+  for (let qi = 0; qi < queue.length; qi++) {
+    const u = queue[qi];
+    const lo = forward ? outStart[u] : index.inOff[u];
+    const hi = forward ? outStart[u + 1] : index.inOff[u + 1];
+    for (let a = lo; a < hi; a++) {
+      const v = forward ? outTarget[a] : index.inFrom[a];
+      if (visited.has(v)) continue;
+      const ei = forward ? outEdge[a] : index.inEdge[a];
+      if (!legal(ei, forward ? u : v)) continue;
+      visited.add(v);
+      if (visited.size > POCKET_NODE_CAP) return null; // escaped: not a pocket
+      queue.push(v);
+    }
+  }
+  return visited;
+}
+
+// When a leg finds no route, test whether an endpoint is the reason: a
+// destination nothing can enter, or a start nothing can leave. Re-snap the
+// guilty endpoint to the nearest edge OUTSIDE its pocket -- which is the
+// place the rider's tap meant -- writing the correction into the shared snap
+// object so every later profile in the same request routes with it directly.
+function adjustPocketSnaps(s, t, startLL, endLL, rules) {
+  let adjusted = false;
+  let reverseIndex = null;
+  const resnap = (snap, ll, forward) => {
+    const opts = forward ? { forward, rules } : { rules, reverseIndex:
+      (reverseIndex ||= buildReverseAdjacency()) };
+    const exclude = directionalPocket(snap.node, opts);
+    if (!exclude) return;
+    // An MTB network or ramp braid is a COMPLEX of adjacent pockets; merge
+    // each one the re-snap lands in and try again until an enterable edge
+    // wins or the neighborhood is exhausted. localOnly keeps every attempt
+    // on the edge class the search is allowed to traverse.
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const next = nearestNode(ll[0], ll[1], rules, exclude, true);
+      if (!(next.node >= 0)) return;
+      const nested = directionalPocket(next.node, opts);
+      if (!nested) {
+        snap.node = next.node;
+        snap.pocketAdjustedM = Math.round(next.distM);
+        snap.distM = next.distM;
+        adjusted = true;
+        return;
+      }
+      for (const n of nested) exclude.add(n);
+    }
+  };
+  resnap(t, endLL, false);
+  resnap(s, startLL, true);
+  return adjusted;
 }
 
 const ROAD_BLOCK_NEARBY_M = 16;
@@ -2364,7 +2482,8 @@ function goalPotential(goalNode, startNode, rules, searchRules, mode) {
 
 function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   startSnap, endSnap, diversityEdges = null, diversityFactor = 1, searchRules = rules,
-  blockedCrossingEdges = null, crossingRetry = 0, progressPenaltySecPerM = 0) {
+  blockedCrossingEdges = null, crossingRetry = 0, progressPenaltySecPerM = 0,
+  pocketRetry = 0) {
   const t0 = Date.now();
   const s = startSnap || nearestNode(startLL[0], startLL[1], rules);
   const t = endSnap || nearestNode(endLL[0], endLL[1], rules);
@@ -2587,6 +2706,16 @@ function routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
   }
   if (foundArc < 0) {
     mergeFrontierHits(legFrontierHits, Infinity);
+    // Before declaring the network disconnected, test whether an endpoint is
+    // the real reason: a destination inside an enter-proof pocket, or a start
+    // inside a leave-proof one. If so, correct the snap in place -- shared
+    // snap objects carry the fix to every later profile -- and search once
+    // more. Only a genuine disconnection reaches the message below.
+    if (pocketRetry === 0 && adjustPocketSnaps(s, t, startLL, endLL, rules)) {
+      return routeLeg(startLL, endLL, rules, mode, prefDesig, prefResidential,
+        s, t, diversityEdges, diversityFactor, searchRules,
+        blockedCrossingEdges, crossingRetry, progressPenaltySecPerM, 1);
+    }
     return {
       ok: false,
       reason: rules.requireSafe
@@ -5280,6 +5409,13 @@ function routeOptions(points, rules, forceDesig, forceResidential, preferredProf
     ok: true, options: presented.map(publicCandidate), ms: Date.now() - started,
     timings: { ...phaseMs, totalMs: Date.now() - started },
     candidatesKey: String(routeKey),
+    // Endpoints the pocket re-snap moved (audit C1): the app tells the rider
+    // their tap landed on a spot bikes cannot enter (or leave) and where the
+    // trip actually starts/ends instead.
+    snapNotes: snaps.map((snap, index) => (snap.pocketAdjustedM >= 0 ? {
+      point: index, last: index === snaps.length - 1,
+      movedM: snap.pocketAdjustedM,
+    } : null)).filter(Boolean),
     allCandidates: allCandidates.map((candidate) => ({
       ...candidateSummary(candidate),
       label: candidate._outcome?.label || candidate._extraLabel || candidate._profile.label,
