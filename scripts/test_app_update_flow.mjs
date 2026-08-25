@@ -167,6 +167,51 @@ const settled = await workerScript();
 check('and the worker url has not drifted', settled.active === 'sw.js',
   `active ${settled.active}, waiting ${settled.waiting}`);
 
+/* ----------------------- a release superseded while its banner is showing */
+// The field case (2026-08-25): the banner offers a release, a NEWER release
+// lands before the rider taps, the browser discards the offered waiting
+// worker for the incoming one, and a tap that messages the discarded worker
+// does nothing. The tap must restart the app onto the newest release anyway.
+site.publish('/version.json', JSON.stringify({ version: '2026-12-25.1000' }));
+site.publish('/sw.js', readFileSync(join(ROOT, 'sw.js'), 'utf8')
+  .replace(/const VERSION = 'v\d+'/, "const VERSION = 'v1000'"));
+await page.evaluate(() => {
+  document.getElementById('helpDialog')?.showModal?.();
+  document.getElementById('checkUpdatesBtn').click();
+});
+check('a second release is offered', await promptShown());
+await page.evaluate(() => { window.__staleWorker = pendingUpdateWorker; });
+
+site.publish('/version.json', JSON.stringify({ version: '2026-12-25.1001' }));
+site.publish('/sw.js', readFileSync(join(ROOT, 'sw.js'), 'utf8')
+  .replace(/const VERSION = 'v\d+'/, "const VERSION = 'v1001'"));
+await page.evaluate(async () => {
+  const reg = await navigator.serviceWorker.getRegistration();
+  await reg.update();
+});
+const discarded = await page.waitForFunction(
+  () => window.__staleWorker?.state === 'redundant', { timeout: 60000 },
+).then(() => true).catch(() => false);
+check('the offered worker is discarded by the newer release', discarded);
+// Pin the race: the rider taps in the window before the re-offer replaces
+// the stale reference (on a phone that window is the whole install).
+await page.evaluate(() => { pendingUpdateWorker = window.__staleWorker; });
+const beforeRace = navigations.length;
+await page.evaluate(() => document.getElementById('getUpdateBtn').click());
+await page.waitForFunction(() => navigator.serviceWorker.controller != null)
+  .catch(() => {});
+await page.waitForTimeout(12000);
+check('the tap still restarts the app', navigations.length > beforeRace,
+  `${navigations.length - beforeRace} navigations`);
+const afterRace = await page.evaluate(() => ({
+  banner: !document.getElementById('updatePrompt').hidden,
+  waiting: null,
+})).catch(() => ({ banner: false, waiting: null }));
+check('and it is done asking afterwards', !afterRace.banner);
+const raceWorker = await workerScript();
+check('with the worker still at its stable url', raceWorker.active === 'sw.js',
+  `active ${raceWorker.active}, waiting ${raceWorker.waiting}`);
+
 await browser.close();
 site.close();
 console.log(`\n${pass} checks passed`);

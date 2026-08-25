@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-25.823';
+const APP_VERSION = '2026-08-25.824';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -17715,8 +17715,8 @@ async function setupAutomaticUpdates() {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (reloading || !(wasControlled || updateAccepted)) return;
       reloading = true;
-      saveStateNow();
-      location.reload();
+      // The reload is the point; a storage failure in the save must not eat it.
+      try { saveStateNow(); } finally { location.reload(); }
     });
 
     const check = async () => {
@@ -17736,13 +17736,35 @@ async function setupAutomaticUpdates() {
   }
 }
 
-document.getElementById('getUpdateBtn').addEventListener('click', () => {
+document.getElementById('getUpdateBtn').addEventListener('click', async () => {
   saveStateNow();
   updateAccepted = true;
   // Take the banner down on the way out. Leaving it up through the handover
   // made a successful update look like it was being offered all over again.
   document.getElementById('updatePrompt').hidden = true;
-  if (pendingUpdateWorker) pendingUpdateWorker.postMessage({ type: 'SKIP_WAITING' });
+  // Resolve the worker at tap time rather than trusting the reference captured
+  // when the banner went up. That reference goes stale whenever a newer release
+  // lands while the banner is showing: the browser discards the old waiting
+  // worker for the incoming one, postMessage to the discarded worker is a
+  // silent no-op, and the button did nothing (field report, 2026-08-25).
+  let worker = null;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    worker = reg?.waiting || reg?.installing || null;
+  } catch (e) { /* fall through to the captured worker */ }
+  if (!worker && pendingUpdateWorker?.state !== 'redundant') worker = pendingUpdateWorker;
+  if (worker) {
+    const skip = () => worker.postMessage({ type: 'SKIP_WAITING' });
+    if (worker.state === 'installed') skip();
+    else worker.addEventListener('statechange', () => {
+      if (worker.state === 'installed') skip();
+    });
+  }
+  // The handover normally lands in controllerchange above, which reloads. If
+  // it has not within a few seconds — the worker died, the event was missed —
+  // reload anyway: the rider asked for a restart, so restart. At worst the
+  // banner re-offers a release that is still installing.
+  setTimeout(() => location.reload(), 8000);
 });
 document.getElementById('updateLaterBtn').addEventListener('click', () => {
   deferredUpdateWorker = pendingUpdateWorker;
