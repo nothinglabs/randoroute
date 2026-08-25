@@ -41,7 +41,10 @@ const CORRIDORS = [
   { name: 'Fremont Avenue N', match: /^fremont avenue north$/i, required: 600 },
   { name: 'Stone Way N', match: /^stone way north$/i, required: 800 },
   { name: 'Ravenna Boulevard', match: /ravenna boulevard/i, required: 600 },
-  { name: '11th Avenue NE', match: /^11th avenue northeast$/i, required: 600 },
+  // 800, not 600: this floor also carries what test_dominated_options used
+  // to re-assert on this same trip -- 11th Ave NE was once deleted outright
+  // by the dominance trim, and 800 m is the guard that noticed.
+  { name: '11th Avenue NE', match: /^11th avenue northeast$/i, required: 800 },
   { name: 'N 50th St (with Stone Way)', match: /^north 50th street$/i, preferred: 600 },
 ];
 

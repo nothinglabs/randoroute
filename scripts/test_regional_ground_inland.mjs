@@ -56,12 +56,17 @@ try {
   const wrong = [];
   for (const zoom of ZOOMS) {
     for (const [name, lng, lat, kind] of PROBES) {
-      await page.evaluate(({ lng, lat, zoom }) =>
-        map.jumpTo({ center: [lng, lat], zoom }), { lng, lat, zoom });
+      await page.evaluate(({ lng, lat, zoom }) => {
+        map.jumpTo({ center: [lng, lat], zoom });
+      }, { lng, lat, zoom });
+      // This world 404s the detailed archive, and the tile-retry hook keeps
+      // the map from ever reaching 'idle' -- so a long fallback here is not
+      // patience, it is the whole cost of the file. The regional tiles the
+      // probe reads arrive from the local server in well under a second.
       await page.evaluate(() => new Promise((resolve) => {
         if (map.loaded()) return resolve();
         map.once('idle', () => resolve());
-        setTimeout(resolve, 9000);
+        setTimeout(resolve, 2500);
       }));
       await page.waitForTimeout(200);
       const rgb = await page.evaluate(() => new Promise((resolve) => {

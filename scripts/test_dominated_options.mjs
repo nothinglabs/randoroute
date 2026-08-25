@@ -35,30 +35,10 @@ const TRIPS = [
     from: [-122.61267, 48.51264], to: [-122.33429, 48.42128] },
   { state: 'washington', id: 'pullman-colfax', name: 'Pullman -> Colfax',
     from: [-117.17966, 46.73138], to: [-117.36439, 46.88041] },
-  // The other half of the rule, and the reason the trim ranks by redundancy
-  // rather than by how badly a route loses. Stone Way N is the gentle climb out
-  // of Fremont; every parallel is steeper. The only candidates that ride it are
-  // slightly longer and slightly slower than the routes up Fremont Avenue, so a
-  // dominance trim that ignores geometry deletes them -- and it did, leaving the
-  // rider two routes 0.93 identical to each other and the real alternative
-  // buried in All Routes. A dominated route that is also the most DISTINCT thing
-  // in the set has earned its slot; this trip is where that is observable.
-  // Endpoints are the rider's real ones: Portage Bay Cafe at 4130 Roosevelt Way
-  // NE, and the zoo's 601 N 59th St entrance. An earlier version of this used
-  // the zoo's south gate instead, and that single difference hid the 11th
-  // Avenue case completely -- no candidate on the south-gate trip touches it.
-  { state: 'washington', id: 'udistrict-zoo', name: 'University District -> Woodland Park Zoo',
-    from: [-122.31757, 47.65760], to: [-122.35460, 47.67070],
-    // Two separate corridors. 11th Ave NE was deleted outright by the dominance
-    // trim. Stone Way N appeared only once hills were priced by steepness --
-    // 11 m offered before that commit, 1,364 m after -- so it guards a second
-    // thing entirely: that the gentle climb out of Fremont stays reachable.
-    mustOffer: [
-      { street: /^stone way north$/i, metres: 500 },
-      { street: /^11th avenue northeast$/i, metres: 800 },
-    ],
-    // Both corridors' routes ARE beaten on all three axes, on purpose.
-    skipDominance: true },
+  // The Portage Bay -> Zoo corridor guards (Stone Way N at 500 m, 11th Ave
+  // NE at 800 m, skipDominance) used to ride here too, on the exact trip
+  // test_core_corridors already runs. They live there now, at the stricter
+  // of the two floors, so this file pays only for its own dominance trips.
 ];
 
 // Two routes are near-copies when they trace mostly the same ground. Measured

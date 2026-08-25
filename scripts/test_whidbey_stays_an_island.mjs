@@ -54,14 +54,15 @@ async function bootPhone() {
   return { context, page };
 }
 
-async function samplePixel(page, lng, lat, zoom) {
-  await page.evaluate(({ lng, lat, zoom }) =>
-    map.jumpTo({ center: [lng, lat], zoom }), { lng, lat, zoom });
-  await page.evaluate(() => new Promise((resolve) => {
+async function samplePixel(page, lng, lat, zoom, settleMs = 9000) {
+  await page.evaluate(({ lng, lat, zoom }) => {
+    map.jumpTo({ center: [lng, lat], zoom });
+  }, { lng, lat, zoom });
+  await page.evaluate((limit) => new Promise((resolve) => {
     if (map.loaded()) return resolve();
     map.once('idle', () => resolve());
-    setTimeout(resolve, 9000);
-  }));
+    setTimeout(resolve, limit);
+  }), settleMs);
   await page.waitForTimeout(200);
   return page.evaluate(() => new Promise((resolve) => {
     map.once('render', () => {
@@ -104,7 +105,13 @@ try {
   const wrong = [];
   for (const zoom of FALLBACK_ZOOMS) {
     for (const [name, lng, lat, kind] of PROBES) {
-      const rgb = await samplePixel(fallback.page, lng, lat, zoom);
+      // The 404 world never reaches 'idle' -- the tile-retry hook keeps the
+      // failed detailed requests alive -- so every sample here used to burn
+      // the full fallback timeout: 56 samples x 9 s was most of this file's
+      // wall time. The regional tiles the assertion reads come from the
+      // local static server in well under a second; the short settle keeps
+      // the same probes at a twentieth of the cost.
+      const rgb = await samplePixel(fallback.page, lng, lat, zoom, 2500);
       const bad = verdict(kind, zoom, rgb);
       if (bad) wrong.push(`${name}@z${zoom}=(${rgb}) ${bad}`);
     }

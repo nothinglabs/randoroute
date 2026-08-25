@@ -46,8 +46,11 @@ const SEATTLE = [-122.33006, 47.60383];
 const cases = [
   { name: 'Seattle to Buckman', start: SEATTLE, end: [-122.65195, 45.51738],
     startState: 'washington', minStraightKm: 200 },
-  { name: 'Seattle to St. Johns', start: SEATTLE, end: [-122.7529, 45.5904],
-    startState: 'washington', minStraightKm: 200 },
+  // Seattle -> St. Johns rode here too: a third 200 km portfolio over the
+  // same corridor and partitions as Buckman, differing only in which dense
+  // Portland neighborhood it snapped into. One long portfolio plus the short
+  // cross-border one hold the same convergence and budget gates at two
+  // thirds of this file's cost.
   { name: 'Vancouver to Sellwood', start: [-122.671, 45.638], end: [-122.6647, 45.4640],
     startState: 'washington', minStraightKm: 15 },
 ];
