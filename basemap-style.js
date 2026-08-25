@@ -349,16 +349,22 @@
     for (const stateId of existing) {
       if (keep.has(stateId)) attached.add(stateId);
     }
-    // The Census ground fill includes marine water, so every state whose
-    // coastline-true regional archive is attached must be carved out of it —
-    // the home state from style construction, neighbors as their regional
-    // sources come and go. A state without a regional pack keeps its Census
-    // backdrop until its map update ships one.
+    // The Census ground fill includes marine water, so every state with
+    // coastline-true land serving from z4 must be carved out of it — the
+    // regional archive on a constrained renderer, the detailed context
+    // archive on desktop (its basemap-land floor is 4 there, 9 when
+    // constrained). The home state is excluded from style construction;
+    // neighbors as their land-carrying sources come and go. A state whose
+    // sources provide no z4 land keeps its Census backdrop.
     if (map.getLayer?.('basemap-state-ground') && typeof map.setFilter === 'function') {
+      const desktopGround = map.getLayer('basemap-land')?.minzoom === 4;
       const excluded = [];
-      if (regionalRenderer) excluded.push(homeStateId);
+      if (regionalRenderer || desktopGround) excluded.push(homeStateId);
       for (const state of candidates) {
-        if (map.getSource(visibleSourceId(state.id, 'regional'))) excluded.push(state.id);
+        if (map.getSource(visibleSourceId(state.id, 'regional'))
+            || (desktopGround && map.getSource(visibleSourceId(state.id, 'context')))) {
+          excluded.push(state.id);
+        }
       }
       map.setFilter('basemap-state-ground', excluded.length
         ? ['!', ['in', ['get', 'id'], ['literal', excluded.sort()]]] : null);
@@ -522,15 +528,18 @@
         // the Census outline of Washington FILLS Puget Sound, joins Whidbey
         // to the mainland and paves Green Lake. They are therefore a backdrop
         // ONLY for a state with no regional archive (an older installed
-        // neighboring pack). A state whose coastline-true regional archive is
-        // attached is EXCLUDED from this fill (syncVisibleStateSources keeps
-        // the filter current as neighbor sources come and go):
-        // inside its territory, land is regional land_detail and the sea is
-        // the ocean background, which is the only way a marine strait can
-        // stay water — the regional water layer carries lakes, not the sea.
+        // neighboring pack). A state with coastline-true land from z4 is
+        // EXCLUDED from this fill — the regional archive on a constrained
+        // renderer, the detailed context archive on desktop, whose sea the
+        // Census cream otherwise paints as land wherever a tile is missing
+        // (the field's patchy Sound on desktop). syncVisibleStateSources
+        // keeps the filter current as neighbor sources come and go. Inside an
+        // excluded state, the sea is the ocean background: the archives'
+        // water layers carry lakes, not the sea.
         { id: 'basemap-state-ground', type: 'fill', source: 'basemap-state-ground',
           maxzoom: CONTEXT_MIN_ZOOM + 0.5,
-          ...(regionalGround ? { filter: ['!=', ['get', 'id'], Region.id] } : {}),
+          ...(regionalGround || !constrainedRenderer
+            ? { filter: ['!=', ['get', 'id'], Region.id] } : {}),
           paint: { 'fill-color': '#f4f3ee', 'fill-opacity': 1 } },
         ...(regionalGround ? [
           // No maxzoom on either: overzoomed z8 regional tiles are the

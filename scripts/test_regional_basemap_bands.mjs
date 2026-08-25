@@ -23,12 +23,17 @@ try {
       regionalLayer: !!layer('basemap-regional-land-detail'),
       placesMin: layer('basemap-place-labels')?.minzoom,
       reliefLayer: !!layer('basemap-regional-places'),
+      // Desktop land serves from z4, so the marine-inclusive Census fill
+      // must carve the home state out here too — its cream painted the
+      // Sound wherever a detail tile was missing.
+      groundFilter: JSON.stringify(layer('basemap-state-ground')?.filter || null),
     };
   });
   check('an unconstrained renderer draws context from the archive floor',
     desktopBands.constrained === false && desktopBands.landMin === 4
       && desktopBands.waterMin === 4 && desktopBands.placesMin === 4
-      && !desktopBands.regionalLayer && !desktopBands.reliefLayer,
+      && !desktopBands.regionalLayer && !desktopBands.reliefLayer
+      && desktopBands.groundFilter.includes('washington'),
     JSON.stringify(desktopBands));
   await desktop.close();
 

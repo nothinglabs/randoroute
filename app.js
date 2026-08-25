@@ -15732,6 +15732,15 @@ async function openNationalStateCard(id) {
     setStateCardFact(facts, 'Storage', formatMapBytes(MapStore.stateBytes(state)));
   }
   setStateCardFact(facts, 'Home map', Region.localDataAvailable && Region.id === id ? 'Yes' : 'No');
+  // Which map bytes this device actually holds, so a field report and a
+  // release can be compared without guessing.
+  const installedForVersion = MapStore.installedEntry(id);
+  const mapUnitId = installedForVersion
+    && (installedForVersion.state.acquisitions || [])
+      .find((unit) => unit.kind === 'state-map')?.id;
+  if (mapUnitId) {
+    setStateCardFact(facts, 'Map data', mapUnitId.split('-').pop().slice(0, 8));
+  }
   actionStatus.textContent = '';
   remove.hidden = availability !== 'installed' || MapStore.availability(id) !== 'installed';
   cancel.hidden = true;
@@ -17189,7 +17198,16 @@ function syncGraphVersionLine() {
   const phases = t ? ['snap', 'profiles', 'corridors', 'discovery', 'ferries',
     'matching', 'ranking'].filter((k) => t[k] >= 50)
     .map((k) => `${k} ${(t[k] / 1000).toFixed(1)}`).join(', ') : '';
+  // The map DATA the renderer is serving, per archive, so a field report can
+  // name exactly which map bytes drew a bad pixel. These are the content
+  // stamps region.js bound at boot -- for a store-installed state, what the
+  // registry says is installed.
+  const stamps = ['regional', 'basemap', 'roads', 'overlays']
+    .filter((dataset) => Region.datasets?.[dataset] && Region.versions?.[dataset])
+    .map((dataset) => `${dataset} ${String(Region.versions[dataset]).replace(/^sha-/, '').slice(0, 6)}`)
+    .join(' · ');
   el.textContent = `v${APP_VERSION} · ${graph}`
+    + (stamps ? `\n${Region.name} map data: ${stamps}` : '')
     + (t ? `\nlast route search ${(t.totalMs / 1000).toFixed(1)}s`
       + (phases ? ` (${phases})` : '') : '');
 }
