@@ -1366,11 +1366,16 @@ unchanged.
 
 ### E6 — Price a dismount proportionally, and let length decide severity.
 
-*The rule as shipped.* Dismount stretches cost 4× their walked time (8× on an
-edge over 100 m) on top of walking pace; an explicitly tagged dismount also
-pays an entry penalty. Proportional by
-construction: **a gate stays a shrug; a fifth of a mile of unrideable trail
-prices like something to route around.**
+*The rule as shipped.* Dismount stretches cost a multiple of their walked
+time on top of walking pace, stepped up on longer runs; an explicitly tagged
+dismount also pays a small entry fee. The exact multipliers and the fee are
+specified in `docs/SAFETY-MODEL.md` and deliberately not repeated here: an
+earlier version of this lesson quoted them and was stale within weeks
+(routing audit R6) — the entry fee alone moved from six minutes to one when
+the larger fee priced an Interurban crossing gate near ten minutes and pushed
+routes onto failing streets. Proportional by construction: **a gate stays a
+shrug; a fifth of a mile of unrideable trail prices like something to route
+around.**
 
 *And the display rule that goes with it.* A contiguous **tagged**
 `bicycle=dismount` run over 100 m reports as *failing* — a signed stretch you
