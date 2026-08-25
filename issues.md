@@ -289,31 +289,12 @@ re-enabled.
 ### 9. Finalize app name
 Choose and approve the final public name for the app before release.
 
-### 10. Field rendering failures — self-healing shipped in .806
-Screenshots on .805 showed lake labels without lake polygons and Portland
-with base roads but no green or safety overlays. The first harness run to
-exercise the real serving path (service worker + store-installed archives)
-found: (a) .805's store rejected its own index at install time (unknown
-`graphRawBytes` key — fixed, pinned by test); (b) in a healthy browser the
-full path renders everything, so the field holes are device cache/WebKit
-state — now self-healing twice over: a torn or unreadable SW chunk answers
-from a bounded slice of the cached full archive instead of failing the
-range, and an error burst on a loaded source reloads that source (once per
-45 s) since MapLibre never re-asks for a failed tile; (c) Mac desktop
-Safari was classed as a constrained RENDERER (Apple vendor), hiding lakes,
-green and land detail below z9 on a desktop — it now gets the desktop map
-while keeping the WebKit worker budgets. Phones keep the z9 detailed-context
-floor, while `.807` supplies coastline-correct land and water at z4–8 from the
-small regional archives instead of oversized context tiles. Needs a field
-verdict on .807.
+### 10. Rebuild the Washington and Oregon graphs
+The released graphs predate two shipped fixes that only take effect at
+build time: directional bike lanes (a lane on one side of a two-way street
+is stored and judged per direction of travel, but shipped graphs still
+claim both directions) and the DEM water clamp (pier nodes sampled the sea
+floor, inventing thousands of feet of climb; the routing engines repair it
+at load, the build now samples it correctly at the source). One rebuild
+session with `build_graph.py` plus the partition build activates both.
 
-### 11. Directional bike lanes — code shipped, graph rebuild pending
-A lane on one side of a two-way street (OSM `cycleway:right`/`:left`) is now
-stored, priced, judged and described per direction of travel (field: 37th
-Avenue NE claimed "Bike lane" on the unlaned side; "A bike lane can also
-depend on which way you ride" in `docs/SAFETY-MODEL.md`). The encoding is
-backward-compatible, so shipped graphs behave exactly as before until the
-Washington and Oregon graphs (and their partitions) are rebuilt with
-`build_graph.py` on a machine with the OSM extracts — this container has no
-build inputs. WSDOT's `BikeFacilitySides` attribute is recorded but not yet
-used for direction; a later refinement.
