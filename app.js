@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.843';
+const APP_VERSION = '2026-08-26.844';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -11598,6 +11598,101 @@ function allRoutesSummary(all) {
   return meta;
 }
 
+// Prototype (field ask, 2026-08-26): a 6-8 word character line for every
+// candidate on the routes-considered screen, usually unique within the set.
+// Each candidate offers phrasings of its traits ordered by how distinctive
+// they are against the rest of THIS portfolio (superlatives first, then
+// composition); the first phrasing not already used wins, so collisions fall
+// through to the next trait instead of forcing awkward uniqueness.
+function candidateRouteDescriptions(all) {
+  const facts = all.map((c) => {
+    const mi = c.distM / 1609.344;
+    const ridingM = Math.max(1, c.distM - (c.ferryM || 0));
+    return {
+      c, mi,
+      trailMi: (c.trailM || 0) / 1609.344,
+      trailPct: (c.trailM || 0) / ridingM,
+      lanePct: Math.max(0, (c.facilityM || 0) - (c.trailM || 0)) / ridingM,
+      resPct: (c.residentialM || 0) / ridingM,
+      desigMi: (c.desigM || 0) / 1609.344,
+      failMi: (c.failM || 0) / 1609.344,
+      failPct: (c.failM || 0) / ridingM,
+      unpavedMi: (c.unpavedM || 0) / 1609.344,
+      ferry: (c.ferryM || 0) > 0,
+      ascentFt: (c.ascentM || 0) * 3.28084,
+      ftPerMi: (c.ascentM || 0) * 3.28084 / Math.max(1, mi),
+    };
+  });
+  const min = (key) => Math.min(...facts.map((f) => f[key]));
+  const max = (key) => Math.max(...facts.map((f) => f[key]));
+  const minTime = Math.min(...all.map((c) => c.timeS));
+  const holds = (f, key, best, margin) => facts.length > 1 && f[key] === best(key)
+    && facts.filter((g) => g[key] === f[key]).length === 1
+    && Math.abs(max(key) - min(key)) > margin;
+  const lines = (f) => {
+    const c = f.c;
+    const out = [];
+    if (c.timeS === minTime && facts.length > 1) {
+      if (f.trailPct >= 0.45) out.push(`Quickest here, still ${Math.round(f.trailMi)} miles on trails`);
+      if (f.resPct >= 0.2) out.push('Quickest, leaning on quiet residential connector streets');
+      out.push('The quickest route this search could build');
+    }
+    if (holds(f, 'trailMi', max, 2)) {
+      out.push(`Most trail miles: ${Math.round(f.trailMi)} of ${Math.round(f.mi)} off-street`);
+    }
+    if (holds(f, 'ascentFt', min, 250)) {
+      out.push(`Flattest choice by roughly ${Math.round((max('ascentFt') - f.ascentFt) / 100) * 100} feet of climbing`);
+    }
+    if (holds(f, 'mi', min, 1) && c.timeS !== minTime) {
+      out.push('Shortest distance, though not the quickest option');
+    }
+    if (f.failMi === 0 && facts.some((g) => g.failMi > 0.1)) {
+      out.push('No flagged road at all on this one');
+    }
+    if (holds(f, 'desigMi', max, 2)) {
+      out.push(`Follows signed bike routes for ${Math.round(f.desigMi)} miles`);
+    }
+    if (f.ferry) out.push('Includes a ferry crossing along the way');
+    if (f.trailPct >= 0.6) out.push('Nearly all off-street trail and path riding');
+    else if (f.trailPct >= 0.35) out.push('Roughly half trails, half ordinary street riding');
+    if (f.lanePct >= 0.3) out.push('Bike lanes carry much of this route');
+    if (f.resPct >= 0.3) out.push('Mostly quiet residential streets the whole way');
+    if (f.unpavedMi >= 0.5) out.push(`About ${Math.round(f.unpavedMi)} unpaved miles; otherwise paved riding`);
+    if (f.failPct >= 0.05) out.push(`Rides ${Math.max(1, Math.round(f.failMi))} flagged miles your rules reject`);
+    if (holds(f, 'ftPerMi', max, 20)) {
+      out.push(`The hilliest option, ${Math.round(f.ascentFt / 100) * 100} feet of climbing`);
+    }
+    // Mid-tier composition, so a middling candidate still reads as a route
+    // rather than a time delta.
+    if (f.trailMi >= 3 && f.trailPct < 0.35) {
+      out.push(`${Math.round(f.trailMi)} trail miles woven into street riding`);
+    }
+    if (f.desigMi >= 3) out.push(`Signed bike routes for ${Math.round(f.desigMi)} of ${Math.round(f.mi)} miles`);
+    if (f.resPct >= 0.15) out.push('Quiet residential streets shape much of this');
+    if (f.lanePct >= 0.15) out.push('Painted bike lanes for good stretches here');
+    if (facts.length > 1 && f.ascentFt <= min('ascentFt') * 1.15 + 50) {
+      out.push('Among the flatter choices this search found');
+    }
+    if (facts.length > 1 && f.mi <= min('mi') * 1.03) {
+      out.push('Nearly the shortest distance on offer here');
+    }
+    const slowerMin = Math.round((c.timeS - minTime) / 60);
+    if (slowerMin >= 5) out.push(`About ${slowerMin} minutes slower than the quickest`);
+    out.push(`A ${Math.round(f.mi)}-mile mix of ordinary streets`);
+    out.push('An ordinary mixed-street route between your points');
+    return out;
+  };
+  const used = new Set();
+  const chosen = new Map();
+  for (const f of facts) {
+    const options = lines(f);
+    const pick = options.find((line) => !used.has(line)) || options[options.length - 1];
+    used.add(pick);
+    chosen.set(f.c.profileId, pick);
+  }
+  return chosen;
+}
+
 function renderAllRoutesList() {
   const host = document.getElementById('allRoutesList');
   if (!host) return;
@@ -11613,6 +11708,7 @@ function renderAllRoutesList() {
   const labelOf = new Map(all.map((c) => [c.profileId, c.label]));
   host.append(allRoutesSummary(all));
   const bounds = candidateShapeBounds(all);
+  const descriptions = candidateRouteDescriptions(all);
   for (const c of all) {
     const stage = CANDIDATE_STAGES[c.stage] || CANDIDATE_STAGES.considered;
     const s = candidateStatLine(c);
@@ -11632,6 +11728,7 @@ function renderAllRoutesList() {
         <span class="all-route-badge stage-${stage.tone}">${stage.label}</span>
         ${active ? '<span class="all-route-badge cur">Showing</span>' : ''}
       </div>
+      <p class="all-route-desc">${descriptions.get(c.profileId) || ''}</p>
       <div class="all-route-stats">
         <span><b>${s.mi.toFixed(1)}</b> mi</span>
         <span><b>${Math.floor(s.hours)}h${String(Math.round(s.hours % 1 * 60)).padStart(2, '0')}</b></span>

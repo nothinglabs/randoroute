@@ -214,7 +214,9 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
    two candidates apart, so it leads. */
 .all-route-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; width: 100%; padding: 11px 12px; border: 1px solid #d7e2e8; border-radius: 11px; background: #fff; text-align: left; cursor: pointer; }
 .all-route-row > .all-route-thumb { grid-row: 1 / span 2; align-self: start; }
-.all-route-row > .all-route-why, .all-route-row > .all-route-stage-why { grid-column: 2; }
+.all-route-row > .all-route-why, .all-route-row > .all-route-stage-why,
+.all-route-row > .all-route-desc { grid-column: 2; }
+.all-route-desc { margin: 2px 0 0; color: #44596a; font: italic 600 12px/1.4 system-ui; }
 .all-route-thumb { width: var(--thumb-w); height: var(--thumb-h); border: 1px solid #e4ecf1; border-radius: 8px; background: #f7fafb; }
 .all-route-thumb path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .all-route-thumb .thumb-base { stroke: #0a66c2; stroke-width: 2.1; }

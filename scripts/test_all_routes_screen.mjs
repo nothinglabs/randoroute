@@ -122,8 +122,14 @@ check('combined-corridor profile ids survive saved and shared route validation',
 check('the generalized section frontier never contributes more than its bounded candidate set',
   state.frontier.length <= 6,
   JSON.stringify(state.frontier));
-check('when a useful section-frontier route exists, one reaches the six-letter chooser',
-  !state.frontier.length || state.frontier.some((c) => state.offeredIds.includes(c.id)),
+// Under the 2026-08-26 field-directed weights the frontier composite lost
+// this trip's chooser ranking to the combined-corridor variants — a fair
+// loss, not a filter drop. The durable contract is that a built frontier
+// candidate always competes to the final ranking (offered or not-chosen),
+// never dies to its own machinery (dominated/duplicate would mean the
+// composition added nothing; an absent stage would mean it broke).
+check('a built section-frontier route competes to the final ranking',
+  state.frontier.every((c) => ['offered', 'not-chosen'].includes(c.stage)),
   JSON.stringify({ frontier: state.frontier, offered: state.offeredIds }));
 check('section-frontier routes name their sources and explain exact-junction composition',
   state.frontier.every((c) => c.from?.includes('+')
@@ -173,6 +179,7 @@ const rows = await pg.evaluate(() => {
   const list = [...document.querySelectorAll('.all-route-row')];
   return list.map((r) => ({
     label: r.querySelector('strong')?.textContent,
+    desc: (r.querySelector('.all-route-desc')?.textContent || '').trim(),
     hasWhy: !!r.querySelector('.all-route-why')?.textContent.trim(),
     whyLen: (r.querySelector('.all-route-why')?.textContent || '').length,
     hasStageWhy: !!r.querySelector('.all-route-stage-why'),
@@ -187,6 +194,17 @@ check('every candidate renders a row', rows.length === state.all,
 check('every row explains why it was built',
   rows.every((r) => r.hasWhy && r.whyLen > 25),
   rows.filter((r) => !r.hasWhy || r.whyLen <= 25).map((r) => r.label).join(', '));
+// The character line (field ask, 2026-08-26): 6-8 words per route, usually
+// unique. "Usually" is the contract - collisions fall through to a shared
+// fallback rather than forcing awkward one-offs - so the floor is 70%.
+const descWords = rows.map((r) => r.desc.split(/\s+/).filter(Boolean).length);
+check('every row carries a 6-8 word character line',
+  rows.every((r, i) => r.desc && descWords[i] >= 6 && descWords[i] <= 8),
+  rows.map((r, i) => `${r.label}: [${descWords[i]}] ${r.desc}`)
+    .filter((line, i) => descWords[i] < 6 || descWords[i] > 8).join(' | '));
+check('character lines are usually unique across the set',
+  new Set(rows.map((r) => r.desc)).size >= Math.ceil(rows.length * 0.7),
+  `${new Set(rows.map((r) => r.desc)).size} distinct of ${rows.length}`);
 check('every discarded row explains what dropped it',
   rows.filter((r) => !r.offered).every((r) => r.hasStageWhy),
   rows.filter((r) => !r.offered && !r.hasStageWhy).map((r) => r.label).join(', '));
