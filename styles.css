@@ -1278,9 +1278,9 @@ body.route-more-open #topToolbar { z-index: 25; }
 /* Browser-style refresh indicator: two thin lines sweeping along the very
    top edge while map tiles are actively arriving, gone within a beat of the
    last arrival. Never over the map content. */
-#mapLoadingBar { position: fixed; z-index: 60; top: env(safe-area-inset-top, 0px); left: 0; right: 0; height: 5px; overflow: hidden; pointer-events: none; }
-#mapLoadingBar > span { position: absolute; left: 0; top: 0; height: 2px; width: 30%; border-radius: 2px; background: #0a66c2; animation: map-loading-sweep 1.3s ease-in-out infinite; }
-#mapLoadingBar > span:last-child { top: 3px; animation-delay: .45s; opacity: .55; }
+#mapLoadingBar { position: fixed; z-index: 60; top: env(safe-area-inset-top, 0px); left: 0; right: 0; height: 7px; overflow: hidden; pointer-events: none; opacity: .7; }
+#mapLoadingBar > span { position: absolute; left: 0; top: 0; height: 3px; width: 30%; border-radius: 2px; background: #0a66c2; animation: map-loading-sweep 1.3s ease-in-out infinite; }
+#mapLoadingBar > span:last-child { top: 4px; animation-delay: .45s; opacity: .55; }
 @keyframes map-loading-sweep { from { transform: translateX(-32vw); } to { transform: translateX(104vw); } }
 #mapLoadingBar[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) {
