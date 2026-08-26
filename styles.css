@@ -177,7 +177,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 /* overflow:hidden keeps the row inside its own rounded border. The uppercase
    label cannot shrink, so on a phone the buttons plus gaps could total a few
    pixels more than the control and paint over its edge. */
-#routeOptions { position: relative; display: flex; flex: 1; min-width: 0; gap: 3px; margin: 0; padding: 3px; border: 1px solid #cddde7; border-radius: 10px; background: rgba(248,251,253,.97); box-shadow: 0 2px 6px rgba(18,42,60,.07); overflow: hidden; }
+#routeOptions { position: relative; display: flex; flex: 1; min-width: 0; gap: 3px; margin: 0; padding: 3px; border: 1px solid #cddde7; border-radius: 10px; /* composes over the .panel ground — thin, or the strip reads opaque */ background: rgba(248,251,253,.3); box-shadow: 0 2px 6px rgba(18,42,60,.07); overflow: hidden; }
 /* Shrinkable so an extra route choice steals width from the label rather than
    from the control's own edge; ellipsis keeps it readable while it does. */
 #routeOptions::before { flex: 0 1 auto; min-width: 0; overflow: hidden; align-self: center; padding: 0 3px; color: #526b7a; content: 'Choose route'; font: 800 8.5px/1.05 system-ui; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; text-overflow: ellipsis; }
@@ -1028,7 +1028,9 @@ body.route-more-open #topToolbar { z-index: 25; }
   overflow: hidden;
   border: 1px solid #cbd6de;
   border-radius: 12px;
-  background: rgba(255,255,255,.38);
+  /* Composes with #routeBar's ground behind it — keep this layer thin or
+     the pair stacks back to near-opaque. */
+  background: rgba(255,255,255,.12);
 }
 .route-endpoints.route-guidance-flash {
   animation: route-guidance-border 2.15s ease-out;
