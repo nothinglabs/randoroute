@@ -96,6 +96,46 @@ RING_COORD_DECIMALS = 6
 MAX_SIMPLIFY_FRACTION = 8
 MAX_FILE_BYTES = 55 * 1024 * 1024  # split well under GitHub's 100 MB limit
 
+# The renderer reveals road classes by zoom (basemap-style ROAD_MIN_ZOOM:
+# major 5, medium 8, minor 10.25, local 12.25), and its safety expression
+# reads a fixed fact set (roadTileFacts in app.js). The low-zoom tiles used
+# to carry every class with every attribute regardless: one Seattle z8 tile
+# held ~35k features — 25k of them residential streets nothing below z12
+# draws — and 3.2 MB of attributes, and phones paid for it in seconds-long
+# per-tile parse stalls. Each road therefore ships twice: the full record
+# from z11 up, and — only for classes the low zooms draw — a slim copy
+# carrying the scoring facts, the class, and the label name. A road with a
+# recorded bike facility keeps a low-zoom copy whatever its class: the map
+# deliberately shows facilities before their road class reveals.
+LOW_ZOOM_BAND = {
+    'motorway': 5, 'motorway_link': 5, 'trunk': 5, 'trunk_link': 5,
+    'primary': 5, 'primary_link': 5,
+    'secondary': 8, 'secondary_link': 8,
+    'tertiary': 10, 'tertiary_link': 10,
+}
+LOW_ZOOM_FACILITY_MINZOOM = 5
+LOW_ZOOM_MAXZOOM = 10
+FULL_DETAIL_MINZOOM = 11
+# roadTileFacts' inputs, plus class (h), label name (n) and the designated
+# flag; everything else in props is tap-card provenance the low zooms never
+# render.
+LOW_ZOOM_KEYS = frozenset(['h', 'n', 'd', 'b', 'm', 'ft', 'f', 'l', 's', 'w',
+                           'es', 'ln', 'k', 'u', 'lts', 'adt', 'fc'])
+
+
+def low_zoom_copy(props, geometry):
+    """The slim overview copy of a road, or None when low zooms never draw it."""
+    band = LOW_ZOOM_BAND.get(props.get('h'))
+    if 'ft' in props or props.get('f') == 1:
+        band = LOW_ZOOM_FACILITY_MINZOOM if band is None \
+            else min(band, LOW_ZOOM_FACILITY_MINZOOM)
+    if band is None:
+        return None
+    return {'type': 'Feature',
+            'tippecanoe': {'minzoom': band, 'maxzoom': LOW_ZOOM_MAXZOOM},
+            'properties': {k: v for k, v in props.items() if k in LOW_ZOOM_KEYS},
+            'geometry': geometry}
+
 
 def compact_coords(coords):
     """Drop redundant vertices without letting a feature lose its shape."""
@@ -237,10 +277,14 @@ def build(src, out_prefix, urban_areas, blts, roadlog=None, funcclass=None,
                 props['fc'] = int(m['fc'])
             if m.get('owner'):
                 props['ow'] = int(m['owner'])
+        geometry = {'type': 'LineString', 'coordinates': cc}
         feats.append(json.dumps(
-            {'type': 'Feature', 'properties': props,
-             'geometry': {'type': 'LineString', 'coordinates': cc}},
+            {'type': 'Feature', 'tippecanoe': {'minzoom': FULL_DETAIL_MINZOOM},
+             'properties': props, 'geometry': geometry},
             separators=(',', ':')))
+        slim = low_zoom_copy(props, geometry)
+        if slim is not None:
+            feats.append(json.dumps(slim, separators=(',', ':')))
         kept += 1
 
     def process_way(obj):
