@@ -15,7 +15,7 @@
  *     used for color. Re-scoring is instant and client-side (no refetch).
  */
 
-const APP_VERSION = '2026-08-26.840';
+const APP_VERSION = '2026-08-26.841';
 // All three defined once in build-version.js, which sw.js importScripts() as
 // well. The version numbers used to be spelled out separately here with
 // comments pointing at the other file, and the URL still was -- in a spelling
@@ -12989,6 +12989,21 @@ function buildPlacePicker() {
         else if (n.includes(q)) contains.push(item);
       }
     }
+    // Nearest first within each match tier, from the same reference the
+    // online path biases toward: near Seattle, Carnation WA outranks any
+    // Oregon match, whatever order the state indexes loaded in.
+    const ref = placeSearchReference();
+    const distanceTo = new Map();
+    const dist = (row) => {
+      let d = distanceTo.get(row);
+      if (d === undefined) {
+        d = navDistanceM(ref, [row.lon, row.lat]);
+        distanceTo.set(row, d);
+      }
+      return d;
+    };
+    starts.sort((a, b) => dist(a) - dist(b));
+    contains.sort((a, b) => dist(a) - dist(b));
     return uniqueMatches(starts.concat(contains)).slice(0, 8);
   };
 

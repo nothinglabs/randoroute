@@ -129,11 +129,14 @@ check('the floating Layers and Settings buttons sit just below the trip-action r
   JSON.stringify(state));
 check('every help affordance uses the same circular question-mark treatment',
   state.helpButtonsCircular, JSON.stringify(state));
-check('floating map controls use a slight, consistent transparency',
+check('floating map controls stay translucent but readable',
   state.weightsAbsentFromMap
     && [...state.mapControlBackgrounds, state.routeBarBackground].every((background) => {
     const alpha = Number(background.match(/,\s*(0?\.\d+)\)$/)?.[1]);
-    return alpha >= 0.8 && alpha <= 0.92;
+    // Field-tuned 2026-08-26: dialogs let the map bleed through (route bar
+    // 0.72) without going glassy or fully opaque. The bound guards against
+    // either extreme, not one exact alpha.
+    return alpha >= 0.65 && alpha <= 0.92;
   }), JSON.stringify({ controls: state.mapControlBackgrounds, routeBar: state.routeBarBackground }));
 check('the native Route sheet uses the iPhone bottom instead of adding an empty safe-area band',
   state.nativePanelBottomPadding === 0, JSON.stringify(state));

@@ -173,6 +173,33 @@ try {
   });
   check('border duplicates collapse by stable source identity only in displayed results',
     dedup.length === 1 && dedup[0].name === 'Border Ferry', JSON.stringify(dedup));
+
+  // Field ask (2026-08-26): results rank by distance from where the map is
+  // looking. Near Seattle, Carnation WA must beat an Oregon prefix match even
+  // when Oregon's index rows load first — and a nearer name that merely
+  // contains the query still sits below every prefix match.
+  const ordered = await page.evaluate(async () => {
+    map.jumpTo({ center: [-122.33006, 47.60383], zoom: 10 });
+    placesIndex = [
+      ['Carnation Crossing', -122.90000, 44.10000, 'town', 900, 'oregon', 'osm:n201'],
+      ['The Carnation House', -122.33500, 47.60500, 'attraction', 0, 'washington', 'osm:n202'],
+      ['Carnation', -121.91400, 47.64770, 'town', 2200, 'washington', 'osm:n203'],
+    ];
+    placeSearchLoadedStateIds = ['oregon', 'washington'];
+    availablePlacesIndex = [];
+    placesPromise = Promise.resolve();
+    openPlaceSearch('end');
+    const input = document.getElementById('placeSearch');
+    input.value = 'carnation';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await Promise.resolve();
+    return [...document.querySelectorAll('#placeResults .place-hit:not(.place-internet-search)')]
+      .map((row) => row.dataset.name);
+  });
+  check('matches rank by distance from the map: near Seattle, Carnation WA beats the Oregon match',
+    ordered[0] === 'Carnation' && ordered[1] === 'Carnation Crossing', JSON.stringify(ordered));
+  check('a nearer name that merely contains the query still ranks below prefix matches',
+    ordered[2] === 'The Carnation House', JSON.stringify(ordered));
   check('cross-state place search has no page errors', errors.length === 0, errors.join(' | '));
 } finally {
   await browser.close();
