@@ -27,7 +27,7 @@ button, .panel, #routeBar, .map-dialog { touch-action: manipulation; }
 .panel {
   position: absolute;
   z-index: 10;
-  background: rgba(255, 255, 255, 0.97);
+  background: rgba(255, 255, 255, 0.68);
   box-shadow: 0 2px 14px rgba(0, 0, 0, 0.2);
   font-size: 13px;
   color: #222;
@@ -776,7 +776,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   position: absolute; z-index: 24; top: calc(env(safe-area-inset-top) + 8px); left: 8px;
   width: min(720px, calc(100vw - 16px)); box-sizing: border-box; padding: 7px 10px;
   max-height: min(78dvh, 610px); overflow-y: auto;
-  border: 1px solid #b8cedb; border-radius: 13px; background: rgba(250,253,255,.96);
+  border: 1px solid #b8cedb; border-radius: 13px; background: rgba(250,253,255,.67);
   box-shadow: 0 5px 18px rgba(20,46,62,.24); color: #294554;
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
 }
@@ -836,7 +836,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
 /* -------------------------------------------------------------- overlays */
 .readout {
   position: absolute; z-index: 20;
-  background: rgba(255, 255, 255, 0.97); border-radius: 10px;
+  background: rgba(255, 255, 255, 0.68); border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
   box-sizing: border-box; padding: 8px 43px 7px 10px;
   font: 12px/1.2 system-ui; max-width: 310px;
@@ -966,7 +966,7 @@ input[type="checkbox"] { width: 17px; height: 17px; }
   width: max-content; max-width: calc(100vw - 68px);
   overflow: hidden; padding: 6px 10px;
   border: 1px solid #9fc8df; border-radius: 999px;
-  background: rgba(247,252,255,.98); box-shadow: 0 3px 12px rgba(0,0,0,.18);
+  background: rgba(247,252,255,.69); box-shadow: 0 3px 12px rgba(0,0,0,.18);
   color: #22485e; font: 650 11px/1.2 system-ui; text-overflow: ellipsis; white-space: nowrap;
   transition: opacity .3s, visibility .3s; pointer-events: none;
 }
@@ -1005,7 +1005,7 @@ body.route-more-open #topToolbar { z-index: 25; }
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.62);
   border-radius: 18px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   padding: 6px 10px 6px 6px;
@@ -1234,7 +1234,7 @@ body.route-more-open #topToolbar { z-index: 25; }
 .route-more-menu {
   position: absolute; z-index: 22; top: calc(100% + 6px); right: 5px;
   display: grid; width: min(235px, calc(100vw - 24px)); padding: 5px;
-  border: 1px solid #bdced9; border-radius: 12px; background: rgba(255,255,255,.99);
+  border: 1px solid #bdced9; border-radius: 12px; background: rgba(255,255,255,.69);
   box-shadow: 0 9px 26px rgba(20,46,63,.28); color: #25343d;
   animation: route-more-enter .2s cubic-bezier(.16,1,.3,1);
 }
@@ -1286,7 +1286,7 @@ body.route-more-open #topToolbar { z-index: 25; }
 @media (prefers-reduced-motion: reduce) {
   #mapLoadingBar > span { animation: none; width: 100%; opacity: .45; }
 }
-.route-action-toast { position: absolute; z-index: 19; top: max(calc(env(safe-area-inset-top) + 190px), 30vh); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px); padding: 8px 12px; border: 1px solid #9fc8df; border-radius: 999px; background: rgba(247,252,255,.98); box-shadow: 0 3px 14px rgba(0,0,0,.2); color: #22485e; pointer-events: none; }
+.route-action-toast { position: absolute; z-index: 19; top: max(calc(env(safe-area-inset-top) + 190px), 30vh); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px); padding: 8px 12px; border: 1px solid #9fc8df; border-radius: 999px; background: rgba(247,252,255,.69); box-shadow: 0 3px 14px rgba(0,0,0,.2); color: #22485e; pointer-events: none; }
 .route-action-toast[hidden] { display: none; }
 .route-action-toast.has-detail { align-items: flex-start; width: min(420px, calc(100vw - 24px)); padding: 10px 13px; border-radius: 14px; }
 .place-picker-open .route-action-toast { top: max(calc(env(safe-area-inset-top) + 330px), 55vh); }
@@ -1328,7 +1328,7 @@ body.route-more-open #topToolbar { z-index: 25; }
   position: absolute; z-index: 14; left: 50%; bottom: calc(60px + env(safe-area-inset-bottom));
   transform: translateX(-50%); display: flex; align-items: center; gap: 6px;
   width: min(580px, calc(100vw - 24px)); min-height: 56px; padding: 7px 7px 7px 12px;
-  border: 1px solid #9bd8c9; border-radius: 12px; background: rgba(246, 255, 251, .98);
+  border: 1px solid #9bd8c9; border-radius: 12px; background: rgba(246, 255, 251, .69);
   box-shadow: 0 3px 14px rgba(0, 0, 0, .2); color: #174f44;
 }
 .nav-banner[hidden] { display: none; }
@@ -1339,7 +1339,7 @@ body.route-more-open #topToolbar { z-index: 25; }
 #navBannerMeta { min-width: 0; color: #4f6f68; font: 600 10.5px/1.25 system-ui; }
 .nav-banner button { flex: none; min-height: 29px; border: 1px solid #b8c9d2; border-radius: 8px; padding: 4px 7px; background: #fff; color: #235064; font: 700 11px system-ui; cursor: pointer; }
 .nav-banner button[data-nav-action="reroute"] { min-height: 38px; border-color: #bb7b00; background: #f2a900; color: #2e2400; }
-.nav-banner.off-route-action-visible { flex-direction: column; align-items: stretch; gap: 7px; min-height: 94px; padding: 7px 0 0; overflow: hidden; border-color: #b42318; background: rgba(255,248,247,.98); }
+.nav-banner.off-route-action-visible { flex-direction: column; align-items: stretch; gap: 7px; min-height: 94px; padding: 7px 0 0; overflow: hidden; border-color: #b42318; background: rgba(255,248,247,.69); }
 #navBanner.off-route-action-visible .nav-banner-main { flex: none; padding: 0 7px 0 12px; }
 .nav-banner .nav-off-route-action { align-self: stretch; flex: none; width: auto; min-height: 36px; margin: 0 7px 7px; border: 1px solid #8f1a11; border-radius: 9px; padding: 7px 14px; background: #b42318; box-shadow: 0 1px 2px rgba(92,15,10,.24); color: #fff; font: 800 13px/1.2 system-ui; letter-spacing: .01em; }
 .nav-banner .nav-off-route-action[hidden] { display: none; }
@@ -1381,7 +1381,7 @@ body.navigation-active #routeBar { display: none; }
    * whole itinerary made the picker drift down the phone as stops were added. */
   position: absolute; z-index: 18; top: -4px; right: auto; left: 0;
   transform: none; width: min(88vw, 380px); padding: 8px 9px 9px;
-  border: 1px solid #e1e5e9; border-radius: 12px; background: rgba(255,255,255,.98);
+  border: 1px solid #e1e5e9; border-radius: 12px; background: rgba(255,255,255,.69);
   box-shadow: 0 5px 18px rgba(0,0,0,.2); color: #222;
   transform-origin: var(--picker-origin, 50% 20%);
 }
@@ -1442,7 +1442,7 @@ body.navigation-active #routeBar { display: none; }
   #routeBar .route-endpoint.navigation-guidance-flash { background: #dff3fd; box-shadow: inset 4px 0 #0783c1; }
 }
 
-.update-prompt { position: absolute; z-index: 30; left: 50%; bottom: calc(68px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 7px; width: max-content; max-width: calc(100vw - 20px); padding: 7px 8px 7px 11px; border: 1px solid #cfd8e0; border-radius: 12px; background: rgba(255,255,255,.98); box-shadow: 0 4px 16px rgba(0,0,0,.24); color: #333; font: 600 11px system-ui; }
+.update-prompt { position: absolute; z-index: 30; left: 50%; bottom: calc(68px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 7px; width: max-content; max-width: calc(100vw - 20px); padding: 7px 8px 7px 11px; border: 1px solid #cfd8e0; border-radius: 12px; background: rgba(255,255,255,.69); box-shadow: 0 4px 16px rgba(0,0,0,.24); color: #333; font: 600 11px system-ui; }
 .update-prompt[hidden] { display: none; }
 #getUpdateBtn { min-height: 32px; padding: 6px 9px; border: none; border-radius: 8px; background: #0a66c2; color: #fff; font: 700 11px system-ui; cursor: pointer; }
 #updateLaterBtn { width: 32px; height: 32px; border: none; border-radius: 7px; background: #eef1f4; color: #666; cursor: pointer; }
