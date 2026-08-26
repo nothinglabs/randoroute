@@ -3330,12 +3330,13 @@ function materialTradeoff(a, b) {
 
 // Distinctness is measured in ROAD, not percentage alone. The old flat 4%
 // floor meant a real road choice on a 200-mile trip (8 mi of different
-// riding) but one street on a 20-mile trip (0.8 mi) — offered options read
-// as the same ride (field, 2026-08-26). Distinct now requires at least
-// ~2 miles of different riding on the shorter route, as a fraction capped
-// at 25% so short urban trips can still offer genuinely close variants.
-// Trips of 50 miles and up keep the old 4% behaviour exactly.
-const TWIN_MIN_DISTINCT_M = 3200;
+// riding) but three blocks on a short one — offered options read as the
+// same ride (field, 2026-08-26). Distinct now requires at least half a
+// mile of different riding on the shorter route (field-tuned down from an
+// initial 2 mi, which collapsed too much), as a fraction capped at 25% so
+// very short trips can still offer close variants. Trips of ~12 miles and
+// up keep the old 4% behaviour exactly.
+const TWIN_MIN_DISTINCT_M = 800;
 function twinOverlapLimit(a, b) {
   const shorterM = Math.max(1, Math.min(a.distM, b.distM));
   return 1 - Math.min(0.25, Math.max(0.04, TWIN_MIN_DISTINCT_M / shorterM));
